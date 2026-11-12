@@ -544,7 +544,7 @@ typedef struct QT_T {
   is not made, the option storing its components (when each is a slot value of the case's component shape); and
   `opt!tag.field`, a payload only the next statement reads a component of, reads the component from the option
   after checking the tag. The SSA's backends get the same, and more, from escape analysis ([ssa.md](ssa.md) §4.1);
-  clang cannot remove an allocation, so the C printer keeps these while it is the default backend.
+  clang cannot remove an allocation, so the C printer keeps these while it is a backend programs use.
 
 #### 2. Variant Types (Unordered, First-Class 16-Byte `QVariantVal`, Zero-Allocation Tag Remapping)
 Unlike options, variants are unordered and each branch has **exactly one type** $A_i$ (§6.3):

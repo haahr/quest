@@ -18,7 +18,7 @@ seconds.
 ├── COMMIT/               a release, named by the commit it was cut from
 │   ├── quest             the compiler binary (stage 2 of the commit)
 │   ├── home/             a snapshot of the commit's lib/ and runtime/, which quest compiles against
-│   └── release.json      what it is: commit, ABI, producer, sha256 of quest, date, seed, how it was checked
+│   └── release.json      what it is: commit, ABI, producer, sha256 of quest, date, seed, backend, how it was checked
 ├── current -> COMMIT     the release in use
 ├── previous -> COMMIT    the release before it, kept so that a bad release can be rolled back
 └── lock                  held while current or previous changes
@@ -32,7 +32,9 @@ seconds.
 - **A user of a release resolves `current` once,** to the release's own directory, and uses that directory's
   `quest` and `home/` throughout, so that a cut or rollback in another worktree while it runs cannot give it one
   release's compiler and another's `home/`.
-- **A release is a commit's stage 2,** or with `--whole-program`, stage 2's whole-program build of the driver
+- **A release is a commit's stage 2,** built through arm64 (or the backend `--backend` names, which `release.json`
+  records as its `backend`; releases before 2026-11-12 record none and were built through C), or with
+  `--whole-program`, stage 2's whole-program build of the driver
   (`--whole-program`, [arm64.md](arm64.md) §3.12), which `release.json` records as its `build`. It is cut only from a
   clean tree at a commit on main. `release.json` records the commit, so the release can be rebuilt from its sources:
   from the release before it, or from the bootstrap while it lasts.
@@ -42,9 +44,11 @@ seconds.
 - **Cutting a release** (`tools/release`):
   1. Check that the tree is clean and HEAD is on `origin/main`, and that the current release is sound, as `--verify`
      checks it.
-  2. Run the self-hosting check and the self-hosted suite with stage 2 (`run_tests.py --self-hosting --seed release`,
-     §3), building in `.build/release-check` (`--check-dir`). The current release builds stage 1, so each release is
-     built from the one before it. The check still builds the driver with the bootstrap too, to compare artifacts.
+  2. Run the self-hosting check and the self-hosted suite with stage 2 (`run_tests.py --self-hosting --seed release
+     --stage-backend arm64`, §3), building in `.build/release-check` (`--check-dir`). The current release builds
+     stage 1, so each release is built from the one before it. With `--backend c`, the check also builds the driver
+     with the bootstrap, to compare artifacts; through arm64 that comparison is left to `tools/check`'s fixed point
+     through C, which every push passes.
      `--seed bootstrap` seeds the check from the bootstrap instead, for the first release, or when the current release
      cannot compile the commit (§2). With `--whole-program`, the check stops after the fixed points, the
      whole-program one among them (`--whole-program-fixed-point --fixed-point-only`, [testing.md](testing.md) §2.3),
@@ -83,11 +87,13 @@ Stage 2 is the new compiler. Each stage has its own build directory, and the eng
   Then it brings stages 1 and 2 up to date (when anything under `questlang/`, `lib/`, or `runtime/` is newer than
   stage 2) and runs stage 2. With no release, it says how to make one and falls back to the bootstrap seed
   (`QUEST_SEED=bootstrap` forces that, and also watches `bootstrap/`). It records the seed that built its stages
-  (`.build/quest-stages/seed`: the release's commit and the digest of its `quest`) and starts over when the seed
-  changes, as when a release is cut in another worktree. A release's `home/` carries its commit's times, so artifacts
-  built against one release could look fresh against the next one's older sources.
-- **`QUEST_BACKEND=ssac` or `arm64`** has stage 1 compile stage 2 through that backend, its stages kept apart in
-  `.build/quest-stages-BACKEND` ([arm64.md](arm64.md) §3.12). Stage 1 is the seed's, compiled by C, either way.
+  (`.build/quest-stages/seed`: the release's commit, the digest of its `quest`, and the backend) and starts over
+  when the seed or the backend changes, as when a release is cut in another worktree. A release's `home/` carries
+  its commit's times, so artifacts built against one release could look fresh against the next one's older
+  sources.
+- **`QUEST_BACKEND=c` or `ssac`** has stage 1 compile stage 2 through that backend rather than arm64, the default,
+  its stages kept apart in `.build/quest-stages-BACKEND` ([arm64.md](arm64.md) §3.12). Stage 1 is the seed's,
+  compiled by C (`--backend c`), either way.
 - **The release finds the tree's `questlang/` through `-I`,** because its `QUEST_HOME` is its own `home/`, which
   holds only `lib/` and `runtime/`.
 - **Both stages build in parallel,** with `-j` set to the number of CPUs (`QUEST_JOBS` for `./quest`).

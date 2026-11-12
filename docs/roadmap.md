@@ -136,8 +136,8 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   4. *Register allocation (a trivial allocator, then linear scan on SSA)*
   5. *Frames, tail calls, exceptions, and assembly emission*
 - Follows the evidence-passing object model and AAPCS64 register conventions in [runtime-design.md](runtime-design.md).
-- Done: every step of arm64.md, which is now the backend's reference. C stays the default backend, the user's decision
-  (arm64.md §1), reopened whenever the benchmarks change significantly.
+- Done: every step of arm64.md, which is now the backend's reference. arm64 is the default backend, for programs,
+  the compiler, and releases, since 2026-11-12 (arm64.md §1, [benchmarks.md](benchmarks.md) §21).
 
 ### Step 7: Native AArch64 JIT & Interactive Incremental Runtime — *Complete*
 - In-process dynamic code emission and execution for the REPL, and later for files and `-e`, with the interpreters'

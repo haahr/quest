@@ -173,7 +173,7 @@ let usageText = strutil.joinArray("\n" array of
     "  --show-offsets       show source offsets in parse and desugar's output"
     "  --show-values        show tokens' values in tokenize's output"
     "  --expected-exit N    the status a compiled program must exit with"
-    "  --backend B          compile every unit with B: c (the default), ssac, or arm64"
+    "  --backend B          compile every unit with B: arm64 (the default), c, or ssac"
     "  --unit-backend U=B   compile unit U (main, the program's) with B"
     "  --whole-program      compile the program and its modules as one unit"
     "  -o FILE              write the binary to FILE"
@@ -182,7 +182,7 @@ let usageText = strutil.joinArray("\n" array of
     "  --build-dir DIR      build in DIR (default .build)"
     "  -j N                 compile N modules at once"
     "  -v                   report what the build does"
-    "  --emit-c             (compile) write the program's C, not a binary"
+    "  --emit-c             (compile) write the program's C (the C backend's, unless --backend), not a binary"
     "  --nogc               (compile) compile without the collector"
     "  -h, --help           print this message"
     ""
@@ -194,7 +194,7 @@ let usageText = strutil.joinArray("\n" array of
     "    ssa_tailCalls, ssa_tailJumps,"
     "    ssa: the SSA after each pass"
     "  interpret: run the program (not with compile)"
-    "  codegen_c: the program's code (C, or with --backend arm64, assembly)"
+    "  codegen_c: the program's code (C, unless --backend arm64 gives assembly)"
     "  codegen_arm64: the program's arm64 assembly"
     "  run_c_compiled: run the compiled program (not with compile)"
     ""
@@ -217,7 +217,7 @@ let options =
         let var verbose = false
         let var jobs = 1
         let var wholeProgram = false
-        let var backend = "c"
+        let var backend = "arm64"
         let var backendGiven = false
         let unitBackends = vector.new(:choice.Override)
         let var expectedExit = 0
@@ -405,6 +405,12 @@ let options =
         if {stringOp.equal(stopAfter "codegen_arm64") orif isOneOf("codegen_arm64" vector.toArray(:String dumpAfter))}
             andif not(backendGiven) then
             backend := "arm64"
+        end
+        (* and codegen_c, or compile --emit-c, with C, unless a backend is
+         * given *)
+        if {stringOp.equal(stopAfter "codegen_c") orif isOneOf("codegen_c" vector.toArray(:String dumpAfter))
+            orif emitC} andif not(backendGiven) then
+            backend := "c"
         end
         (* With neither a file nor a program, the REPL starts on an empty
          * program at a terminal; otherwise standard input holds the program,

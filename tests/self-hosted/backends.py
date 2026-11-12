@@ -4,7 +4,7 @@ tests/self-hosted/backends is a program (main.quest) and a module it imports,
 which pass records, closures, exceptions, and polymorphic values across their
 boundary. The driver builds a copy of it outside the checkout, into one build
 directory, with each of a sequence of choices of backends: every unit by c,
-every unit by ssac or arm64, and the program and its module split between the
+every unit by ssac or arm64 (the default, given or not), and the program and its module split between the
 backends both ways. Each build must print what the first printed; each unit's
 manifest must record the backend that compiled it; a unit compiled by another
 backend than the build's choice must be compiled again, and one compiled by the
@@ -36,13 +36,14 @@ EXPECTED = "(6, 8)\n(33, 44)\n(9, 12)\ntoo far: 300\n7\n7\n691847.5\n1230539.875
 # The choices built in turn into one build directory: the options, and the
 # backend each unit's manifest must then record
 BUILDS = (
-    ([], {"main": "c", "geometry": "c"}),
+    (["--backend", "c"], {"main": "c", "geometry": "c"}),
     (["--backend", "ssac"], {"main": "ssac", "geometry": "ssac"}),
     (["--backend", "ssac"], {"main": "ssac", "geometry": "ssac"}),
-    (["--unit-backend", "main=ssac"], {"main": "ssac", "geometry": "c"}),
+    (["--backend", "c", "--unit-backend", "main=ssac"], {"main": "ssac", "geometry": "c"}),
     (["--backend", "ssac", "--unit-backend", "main=c"], {"main": "c", "geometry": "ssac"}),
     (["--backend", "c", "--unit-backend", "geometry=ssac", "--unit-backend", "geometry=c"],
      {"main": "c", "geometry": "c"}),
+    ([], {"main": "arm64", "geometry": "arm64"}),
     (["--backend", "arm64"], {"main": "arm64", "geometry": "arm64"}),
     (["--backend", "arm64", "--unit-backend", "geometry=c"], {"main": "arm64", "geometry": "c"}),
     (["--backend", "c", "--unit-backend", "geometry=arm64"], {"main": "c", "geometry": "arm64"}),
@@ -86,7 +87,7 @@ def check(driver: str) -> list[str]:
                 if recorded != backend:
                     problems.append(f"{label}: {unit}'s manifest records {recorded!r}, not {backend!r}")
             # Every library unit is compiled by the build's default backend
-            default = options[options.index("--backend") + 1] if "--backend" in options else "c"
+            default = options[options.index("--backend") + 1] if "--backend" in options else "arm64"
             for unit, data in found.items():
                 if unit not in backends and data.get("backend") != default:
                     problems.append(f"{label}: {unit}'s manifest records {data.get('backend')!r}, not {default!r}")

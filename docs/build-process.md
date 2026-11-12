@@ -491,13 +491,14 @@ with its own build directory (docs/release-compiler.md §2):
 1. The seed builds stage 1. The seed is the current release, which every worktree shares (in the common git
    directory's `quest-release/`, docs/release-compiler.md §1), compiling against its own `lib/` and `runtime/` (its
    `home/`) and finding the tree's `questlang/` through `-I`, or the bootstrap.
-2. Stage 1 builds stage 2 against the tree's `lib/` and `runtime/`, through the backend `QUEST_BACKEND` names (`c`,
-   the default, `ssac`, or `arm64`; [arm64.md](arm64.md) §3.12), so that stage 2 is the compiler as that backend
-   compiles it. Another backend's stages are kept in `.build/quest-stages-BACKEND`, so that switching rebuilds
-   neither.
+2. Stage 1 builds stage 2 against the tree's `lib/` and `runtime/`, through the backend `QUEST_BACKEND` names
+   (`arm64`, the default, `c`, or `ssac`; [arm64.md](arm64.md) §3.12), so that stage 2 is the compiler as that
+   backend compiles it. Another backend's stages are kept in `.build/quest-stages-BACKEND`, so that switching
+   rebuilds neither. Stage 1 is built through C (`--backend c`), whatever the seed's default.
 
-The stages record their seed and are discarded when it changes. A release's `home/` has its commit's file times, so
-§5's timestamp rules cannot compare artifacts built against one release with another release's sources.
+The stages record their seed and their backend, and are discarded when either changes. A release's `home/` has its
+commit's file times, so §5's timestamp rules cannot compare artifacts built against one release with another
+release's sources.
 
 What this misses: a contract change that nothing in the corpus exercises. The corpus covers the whole library and the
 test suite's interfaces, and grows when a gap is found.
@@ -951,8 +952,8 @@ stale. The build hashes the contents of files in these places, each with SHA-256
 2. **The release's compiler** ([release-compiler.md](release-compiler.md)):
    - `./quest` hashes the current release's `quest` (with `shasum -a 256`) each time it runs with the release as
      its seed, and refuses a binary whose digest is not the one `release.json` records. The release's commit and the
-     digest are the seed's identity, recorded in `.build/quest-stages/seed`: when either changes, the stages are built
-     again from nothing.
+     digest are the seed's identity, recorded in `.build/quest-stages/seed` with the backend that builds stage 2: when
+     any of them changes, the stages are built again from nothing.
    - `run_tests.py --seed release` (`current_release` in `bootstrap/python/quest/testing/runner.py`) makes the same
      check before building from the release.
    - `tools/release` records the digest of the new `quest` in `release.json` when it cuts a release, and checks it

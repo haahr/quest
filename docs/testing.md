@@ -671,8 +671,8 @@ the check. It says which, and why; `--all` and `--self-hosted-only` choose for i
 
 | Change | Runs | Takes (10 cores) |
 | :--- | :--- | ---: |
-| **Both compilers,** or what they share: the language, `lib/`, `runtime/`, `bootstrap/`, a fix to what programs do or what errors they report, the shared tests | At once: the self-hosting check seeded from the release (50% of the workers), the fixed point through `arm64`, each with the whole-program fixed point through its backend, the backends' suite (20%: `--self-hosted --backend` with `ssac`, `arm64`, `arm64-program`, `c-whole`, `arm64-whole`, `jit`, and `jit-files`), the bootstrap's suite (30%), and the unit tests but the terminal ones; then the terminal tests alone | about 11 min |
-| **The self-hosted compiler alone:** `questlang/` changes to how it compiles (its IR, its C), refactorings, and its own goldens | The self-hosting check seeded from the release, with 8 workers, the fixed point through `arm64`, each with the whole-program one, and the backends' suite, with a quarter of the cores | about 11 min |
+| **Both compilers,** or what they share: the language, `lib/`, `runtime/`, `bootstrap/`, a fix to what programs do or what errors they report, the shared tests | At once: the self-hosting check seeded from the release (50% of the workers), the fixed point through `c`, each with the whole-program fixed point through its backend, the backends' suite (20%: `--self-hosted --backend` with `ssac`, `arm64`, `arm64-program`, `c-whole`, `arm64-whole`, `jit`, and `jit-files`), the bootstrap's suite (30%), and the unit tests but the terminal ones; then the terminal tests alone | about 11 min |
+| **The self-hosted compiler alone:** `questlang/` changes to how it compiles (its IR, its C), refactorings, and its own goldens | The self-hosting check seeded from the release, with 8 workers, the fixed point through `c`, each with the whole-program one, and the backends' suite, with a quarter of the cores | about 11 min |
 
 - **Both take about as long,** since the self-hosted suite sets when either ends (section 5.1); the second leaves the
   bootstrap's suite and the unit tests out, which a change to the self-hosted compiler alone cannot affect, and frees
@@ -681,19 +681,21 @@ the check. It says which, and why; `--all` and `--self-hosted-only` choose for i
   (`run_ir_simplified`, `run_ir_specialized`, `run_ir_closed`, and `run_ir_represented`). A pass that breaks a
   program still fails `run_ir_described` and the compiled runs, and `QUEST_CHECK_IR` verifies the IR after every
   pass in every mode; rerunning the four phases (`run_tests.py --self-hosted --phase PHASE`) finds which pass.
-- **The self-hosting check** (`run_tests.py --self-hosting --seed release`) builds stage 1 with the release, and the
-  bootstrap's build alongside it, then stages 2 and 3. It checks the fixed point, that the bootstrap still builds what
-  the release does, that stages 2 and 3 are the same binary, and the whole-program fixed point
-  (`--whole-program-fixed-point`, section 2.3, about 3 minutes), and then runs the whole self-hosted suite with
-  stage 2. It replaces `--self-hosted`, for 5-6 minutes more. Past a gap (a feature the release does not have yet,
+- **The self-hosting check** (`run_tests.py --self-hosting --seed release --stage-backend arm64`) builds stage 1 with
+  the release, then stages 2 and 3 through arm64, the default backend, as releases are built. It checks the fixed
+  point and the whole-program fixed point (`--whole-program-fixed-point`, section 2.3, about 3 minutes), and then
+  runs the whole self-hosted suite with stage 2. It replaces `--self-hosted`, for 5-6 minutes more. Beside it,
+  `self-hosting-c` checks the fixed point through C (`--stage-backend c --fixed-point-only`) with the bootstrap's
+  build alongside stage 1: that the bootstrap still builds what the release does, and that stages 2 and 3 are the
+  same binary. Past a gap (a feature the release does not have yet,
   [instructions.md](instructions.md) §6.1), `tools/check --seed bootstrap` builds stage 1 with the bootstrap.
-- **The fixed point through the other backends** (`run_tests.py --self-hosting --stage-backend ssac|arm64
+- **The fixed point through each backend** (`run_tests.py --self-hosting --stage-backend c|ssac|arm64
   --fixed-point-only`, [arm64.md](arm64.md) §3.12): stage 1, built by the release, builds stage 2 through the
   backend, and stage 2, the compiler as that backend compiles it, builds stage 3 through it too, which must write
   the same artifacts (C, or arm64's assembly) for every unit, and then checks the whole-program fixed point through
   the backend too. It compares artifacts rather than binaries: two arm64 binaries linked from the same assembly
   differ in their Mach-O UUID and code signature. Without `--fixed-point-only`, the self-hosted suite then runs with
-  that stage 2 (not part of `tools/check`, which would take as long again).
+  that stage 2, as `tools/check`'s self-hosting check does through arm64.
 - **ssac in `tools/check`** is the backends' plain `ssac` mode alone, which keeps the SSA's C printer working; its
   fixed point, and `ssac-program`, `ssac-modules`, and `ssac-whole`, run by hand. The `arm64` modes and fixed point
   test the SSA the two backends share, and the other `ssac` runs added a quarter of an hour to the check.

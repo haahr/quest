@@ -32,11 +32,13 @@ The code says **arm64** in directory, module, and option names; this document sa
   backends use (§3.1) are not made in the bootstrap, whose C printer keeps making them itself.
 - **Debug information:** DWARF line tables (`.file` and `.loc` directives, from the IR's source offsets, §3.16); no
   variable locations.
-- **The default backend is C,** for programs, for building the compiler, and for releases, the user's decision from
-  the measurements of [benchmarks.md](benchmarks.md) §5 (2026-10-30), which recommended it. No such decision is
-  final: as arm64's code improves (§6), it becomes the more likely choice, and the question is reopened whenever
-  benchmarks.md records a significant change. Reopened by [benchmarks.md](benchmarks.md) §21 (2026-11-06): the user
-  leans to arm64 for both, pending the checks of §21.4.
+- **The default backend is arm64,** for programs, for building the compiler, and for releases, since 2026-11-12:
+  the user's decision from the measurements of [benchmarks.md](benchmarks.md) §21, once a release through arm64 and
+  the stage caches were checked (§21.4), on the condition that the arm64-built compiler stay within 25 percent of the
+  C-built one. It had been C, from §5 (2026-10-30). `--backend c` compiles through C; `codegen_c` and `compile
+  --emit-c` mean C unless a backend is given, as `codegen_arm64` means arm64. The bootstrap, which has no arm64
+  backend, compiles through C. No such decision is final: the question is reopened whenever benchmarks.md records a
+  significant change.
 - **One SSA-based C backend in the end** (§5): the tree-walking C printer is a second, hand-written
   implementation of every operation's access sequence (§3.1), kept in agreement with the SSA's builder only by tests.
   Once the SSA's code is good enough, `ssac` replaces it as the self-hosted compiler's C backend, so that each
@@ -438,8 +440,9 @@ jump tables yet; they will need the same care.
   is a program's (`Unit.isProgram`). The merged files' offsets are numbered apart, so that a raise names its own file
   (`nodes.site`); a module imported by two names is merged once, by its name in lower case.
 - **Building the compiler:** `QUEST_BACKEND=c|ssac|arm64` chooses the backend `./quest`'s stage 1 compiles stage 2
-  with ([release-compiler.md](release-compiler.md) §2), each backend's stages in their own directory (`c`'s in
-  `.build/quest-stages`, another's in `.build/quest-stages-<backend>/`), so that switching rebuilds neither.
+  with ([release-compiler.md](release-compiler.md) §2), each backend's stages in their own directory (the default's,
+  arm64's, in `.build/quest-stages`, another's in `.build/quest-stages-<backend>/`), so that switching rebuilds
+  neither.
   `run_tests.py --self-hosting --stage-backend ssac|arm64` checks that the compiler built by that backend writes the
   C-built compiler's artifacts for every unit (testing.md §4.1).
 

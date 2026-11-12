@@ -226,8 +226,11 @@ def main() -> int:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     run_tests = [python, str(ROOT_DIR / "run_tests.py"), *(f"--skip-phase={phase}" for phase in SKIPPED_PHASES)]
     self_hosting = [*run_tests, "--self-hosting", "--seed", args.seed, "--whole-program-fixed-point"]
+    # The suite runs with stage 2 as arm64 compiles it, as releases are; C's
+    # fixed point is checked too, and with it the bootstrap's comparison
     fixed_points = [Suite(f"self-hosting-{backend}", [*self_hosting, "--stage-backend", backend, "--fixed-point-only"])
-                    for backend in ("arm64",)]
+                    for backend in ("c",)]
+    self_hosting = [*self_hosting, "--stage-backend", "arm64"]
     backends = [*run_tests, "--self-hosted", "--seed", args.seed, "--backend",
                 "ssac,arm64,arm64-program,c-whole,arm64-whole,jit,jit-files"]
     unit = [python, "-m", "unittest"]

@@ -76,7 +76,7 @@ The compilers were built in steps ([docs/roadmap.md](docs/roadmap.md)):
 | **3** | Python | Tree-walking interpreter and REPL | Complete |
 | **4** | Python | Compiler to C99, through an IR, with a garbage-collected runtime | Complete |
 | **5** | Quest | Self-hosted front end, interpreter, and compiler to C | Complete |
-| **6** | Quest | Native arm64 backend | Complete; C stays the default backend, by choice |
+| **6** | Quest | Native arm64 backend | Complete; the default backend since 2026-11 |
 | **7** | Quest | arm64 JIT compiler and incremental runtime | Complete ([docs/jit.md](docs/jit.md)) |
 
 ### Implementation Notes
@@ -154,8 +154,8 @@ The build has two stages, each a self-hosted compiler: the bootstrap (or a relea
 and stage 1 compiles it again, against the tree's `lib/` and `runtime/`, into stage 2, which is what `./quest` runs.
 Stage 2 is thus the compiler compiled by itself, from the current source. Set `QUEST_VERBOSE=1` to see the steps,
 `QUEST_JOBS` to change how many modules build at once (by default, one per CPU), and `QUEST_BACKEND` to choose the
-backend stage 1 compiles stage 2 with: `c` (the default), `arm64`, or `ssac`, which prints the arm64 backend's
-intermediate form as C, as a check on it.
+backend stage 1 compiles stage 2 with: `arm64` (the default), `c`, or `ssac`, which prints the arm64 backend's
+intermediate form as C, as a check on it. Programs are compiled through arm64 too, unless `--backend` names another.
 
 To build faster, and to run the tests as a push needs them, cut the clone's first release, from a clean checkout of
 `main`. It runs the self-hosting check and the self-hosted suite first, so it takes about twenty minutes:
