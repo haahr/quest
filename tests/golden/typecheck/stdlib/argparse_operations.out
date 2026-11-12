@@ -637,4 +637,79 @@
                 (TypedString 'CAUGHT: invalid integer error' :type String)
               )))
         )))
+    (TypedExprStmt
+      :expr (TypedTry :type Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'bad5Args' :type Array(String)
+              :value (TypedArray :type Array(String)
+                :elements (
+                  (TypedString '--echo=yes' :type String)
+                  (TypedString 'main.quest' :type String)
+                )))
+            (TypedLetValue 'bad5' :type argParse.Results
+              :value (TypedApp :type argParse.Results
+                :func (TypedSelect 'parse' :type Fun(p: argParse.Parser args: Array(String)): argParse.Results
+                  :target (TypedVar 'argParse' :type Module 'argParse'))
+                :args (
+                  (TypedVar 'p' :type argParse.Parser)
+                  (TypedVar 'bad5Args' :type Array(String))
+                )))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedVar 'printStr' :type Fun(s: String): Ok)
+            :args (
+              (TypedString "FAILED: should have raised on a flag's value" :type String)
+            )))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedSelect 'error' :type Exception
+              :target (TypedVar 'argParse' :type Module 'argParse'))
+            :body (TypedApp :type Ok
+              :func (TypedVar 'printStr' :type Fun(s: String): Ok)
+              :args (
+                (TypedString 'CAUGHT: flag value error' :type String)
+              )))
+        )))
+    (TypedLetValue 'q' :type argParse.Parser
+      :value (TypedApp :type argParse.Parser
+        :func (TypedSelect 'new' :type Fun(prog: String description: String): argParse.Parser
+          :target (TypedVar 'argParse' :type Module 'argParse'))
+        :args (
+          (TypedString 'tool' :type String)
+          (TypedString 'A tool' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'addFlag' :type Fun(p: argParse.Parser name: String flags: String help: String): Ok
+          :target (TypedVar 'argParse' :type Module 'argParse'))
+        :args (
+          (TypedVar 'q' :type argParse.Parser)
+          (TypedString 'help' :type String)
+          (TypedString '--usage' :type String)
+          (TypedString 'Print usage notes' :type String)
+        )))
+    (TypedLetValue 'r3' :type argParse.Results
+      :value (TypedApp :type argParse.Results
+        :func (TypedSelect 'parse' :type Fun(p: argParse.Parser args: Array(String)): argParse.Results
+          :target (TypedVar 'argParse' :type Module 'argParse'))
+        :args (
+          (TypedVar 'q' :type argParse.Parser)
+          (TypedArray :type Array(String)
+            :elements (
+              (TypedString '--usage' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printBool' :type Fun(b: Bool): Ok)
+        :args (
+          (TypedApp :type Bool
+            :func (TypedSelect 'getBool' :type Fun(r: argParse.Results name: String): Bool
+              :target (TypedVar 'argParse' :type Module 'argParse'))
+            :args (
+              (TypedVar 'r3' :type argParse.Results)
+              (TypedString 'help' :type String)
+            ))
+        )))
   ))

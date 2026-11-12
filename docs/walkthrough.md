@@ -535,9 +535,9 @@ main {
       var bestKey: K = %3
       let %4: Int = prim -(n, 1)
       var i: Int = 1
-      loop L1 {
-        let %5: Bool = prim <=(i, %4)
-        if %5 {
+      let %5: Bool = prim <=(i, %4)
+      if %5 {
+        loop L1 {
           let i.1: Int = i
           let %6: E = index(a, i.1)
           let k: K = call key(%6)
@@ -546,31 +546,34 @@ main {
             best := i.1
             bestKey := k
           }
-          let %8: Int = prim +(i, 1)
-          i := %8
-        } else {
-          break L1
+          let %8: Bool = prim is(i, %4)
+          if %8 {
+            break L1
+          }
+          let %9: Int = prim +(i, 1)
+          i := %9
         }
       }
       let index: Int = best
       let element: E = index(a, best)
-      let %9: Tuple index: Int element: E end = tuple(index, element)
-      return %9
+      let %10: Tuple index: Int element: E end = tuple(index, element)
+      return %10
     }
   }
   let words: Array(String) = array("pear", "fig", "banana", "kiwi")
-  let %10: Fun(string: String): Int = member string.length
-  let %11: Fun(a: Int b: Int): Bool = builtin >
-  let longest: Tuple index: Int element: String end = call argmax [String Int](words, %10, %11)
+  let %11: Fun(string: String): Int = member string.length
+  let %12: Fun(a: Int b: Int): Bool = builtin >
+  let longest: Tuple index: Int element: String end = call argmax [String Int](words, %11, %12)
 ...
 ```
 
 The whole function now fits on a screen and reads almost like Python written one operation per line. The program's
 top-level phrases are the body of `main`. `argmax` sits in a `funs` group, the IR's way of defining functions
 (possibly several that call one another). The type parameters are still there, in square brackets, and so are the
-type arguments of the call: `call argmax [String Int](...)`. The `for` loop's variable `i` is copied into `i.1` at
-the start of each pass, because in Quest each pass of a loop has its own `i`, which a function made inside the loop
-could keep.
+type arguments of the call: `call argmax [String Int](...)`. The `for` loop tests its bound once before the loop
+starts, and at the end of each pass stops if `i` has reached the bound before adding 1 to it, so a loop up to the
+largest integer ends rather than wrapping around. Its variable `i` is copied into `i.1` at the start of each pass,
+because in Quest each pass of a loop has its own `i`, which a function made inside the loop could keep.
 
 ---
 
@@ -594,25 +597,25 @@ components. `argmax` returns `Tuple index: Int element: E end`, so both calls ge
       let n.1: Int = prim extent(a.1)
 ...
       var best.1: Int = 0
-      let %11: String = index(a.1, 0)
-      let %12: Int = call key.1(%11)
-      var bestKey.1: Int = %12
+      let %12: String = index(a.1, 0)
+      let %13: Int = call key.1(%12)
+      var bestKey.1: Int = %13
 ...
-      let %18: Tuple index: Int element: String end = tuple(index.1, element.1)
-      return %18
+      let %20: Tuple index: Int element: String end = tuple(index.1, element.1)
+      return %20
     }
     fun argmax_spec.1(a.2: Array(Tuple name: String years: Int rating: Real end), key.2: Fun(e: Tuple name: String years: Int rating: Real end): Real, isGreater.2: Fun(x: Real y: Real): Bool): Tuple index: Int element: Tuple name: String years: Int rating: Real end end {
 ...
-  let longest: Tuple index: Int element: String end = call argmax_spec(words, %28, %29)
+  let longest: Tuple index: Int element: String end = call argmax_spec(words, %31, %32)
 ...
-  let best.3: Tuple index: Int element: Tuple name: String years: Int rating: Real end end = call argmax_spec.1(candidates, %32, %33)
+  let best.3: Tuple index: Int element: Tuple name: String years: Int rating: Real end end = call argmax_spec.1(candidates, %35, %36)
 ...
 ```
 
 `argmax_spec` is `argmax` for strings and integers: it has no type parameters, and every `E` has become `String`
 and every `K` `Int`. `argmax_spec.1` is the copy for candidates and reals. The calls no longer pass types. The
 original, generic `argmax` stays too, though nothing calls it now. The copies have fresh names for
-all their variables (`best.1`, `%11`), since every name in the IR is unique, so the temporaries of `main` are
+all their variables (`best.1`, `%12`), since every name in the IR is unique, so the temporaries of `main` are
 renumbered too.
 
 §12 shows what happens to a call that is not specialized.
@@ -793,44 +796,46 @@ Here is `argmax_spec`, the copy for strings, in full except for its declarations
 static Q_UNUSED QTuple_Int_String * qf_argmax_spec(void *_raw_env, QArray * l_a_2, QClosure * l_key_2, QClosure * l_isGreater_2) {
 ...
     l_n_2 = ((l_a_2)->length);
-    l_t_10 = ((l_n_2) == (0LL));
-    if (l_t_10) {
+    l_t_11 = ((l_n_2) == (0LL));
+    if (l_t_11) {
         quest_raise_at(g_empty, Q_OK_VAL, "examples/argmax/argmax.quest:16:24");
     }
     l_best_2 = 0LL;
     quest_check_array_bounds_at(l_a_2, 0LL, "examples/argmax/argmax.quest:18:31");
-    l_t_11 = ((QString *)((l_a_2->data[0LL]).p));
-    l_t_12 = ((QInt (*)(void *, QString *))(l_key_2->fn))(l_key_2->env, l_t_11);
-    l_bestKey_2 = l_t_12;
-    l_t_13 = ((l_n_2) - (1LL));
+    l_t_12 = ((QString *)((l_a_2->data[0LL]).p));
+    l_t_13 = ((QInt (*)(void *, QString *))(l_key_2->fn))(l_key_2->env, l_t_12);
+    l_bestKey_2 = l_t_13;
+    l_t_14 = ((l_n_2) - (1LL));
     l_i_3 = 1LL;
-    for (;;) {
-        l_t_14 = ((l_i_3) <= (l_t_13));
-        if (l_t_14) {
+    l_t_15 = ((l_i_3) <= (l_t_14));
+    if (l_t_15) {
+        for (;;) {
             l_i_4 = l_i_3;
             quest_check_array_bounds_at(l_a_2, l_i_4, "examples/argmax/argmax.quest:20:25");
-            l_t_15 = ((QString *)((l_a_2->data[l_i_4]).p));
-            l_k_2 = ((QInt (*)(void *, QString *))(l_key_2->fn))(l_key_2->env, l_t_15);
-            l_t_16 = ((QBool (*)(void *, QInt, QInt))(l_isGreater_2->fn))(l_isGreater_2->env, l_k_2, l_bestKey_2);
-            if (l_t_16) {
+            l_t_16 = ((QString *)((l_a_2->data[l_i_4]).p));
+            l_k_2 = ((QInt (*)(void *, QString *))(l_key_2->fn))(l_key_2->env, l_t_16);
+            l_t_17 = ((QBool (*)(void *, QInt, QInt))(l_isGreater_2->fn))(l_isGreater_2->env, l_k_2, l_bestKey_2);
+            if (l_t_17) {
                 l_best_2 = l_i_4;
                 l_bestKey_2 = l_k_2;
             }
-            l_t_17 = ((l_i_3) + (1LL));
-            l_i_3 = l_t_17;
-        } else {
-            goto L1_break;
+            l_t_18 = ((l_i_3) == (l_t_14));
+            if (l_t_18) {
+                goto L1_break;
+            }
+            l_t_19 = ((l_i_3) + (1LL));
+            l_i_3 = l_t_19;
         }
+        L1_break:;
     }
-    L1_break:;
     l_index_2 = l_best_2;
     quest_check_array_bounds_at(l_a_2, l_best_2, "examples/argmax/argmax.quest:26:46");
     l_element_2 = ((QString *)((l_a_2->data[l_best_2]).p));
     _t2 = (QTuple_Int_String *)quest_alloc(sizeof(QTuple_Int_String), &quest_layout_QTuple_Int_String);
     _t2->_0 = l_index_2;
     _t2->_1 = l_element_2;
-    l_t_18 = _t2;
-    return l_t_18;
+    l_t_20 = _t2;
+    return l_t_20;
 }
 ...
 ```
