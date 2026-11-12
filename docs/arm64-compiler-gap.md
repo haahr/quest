@@ -30,10 +30,10 @@ last two what the hash map's probe loop (`findIndex`) showed of the general one:
   changing how an environment is passed). A step that changes what a unit's artifacts contain bumps `ABI_VERSION`
   as usual; either way the stage caches (`.build/quest-stages*`) are removed before measuring, since a codegen
   change after the step's last ABI bump leaves a stale stage 2 that looks fresh.
-- **The barriers inline (§4) is the user's to confirm.** The collector's allocation fast path is already inline in
-  the SSA ([collector.md](collector.md) §3.4), and the barriers' would be its counterpart; the user rejected inlining
-  Boehm's allocation into programs (2026-10-31), a dependency on Boehm's internals that does not arise here, since
-  the barriers are Quest's own runtime's.
+- **The barriers inline (§4),** decided by the user (2026-11-12). The collector's allocation fast path is already
+  inline in the SSA ([collector.md](collector.md) §3.4), and the barriers' are its counterpart. (The user rejected
+  inlining Boehm's allocation into programs on 2026-10-31, as a dependency on Boehm's internals; the barriers are
+  Quest's own runtime's.)
 - **Jump tables are not made** unless §3's measurements leave large switches hot: a binary search needs no new
   relocation, encoding, or branch relaxation (arm64.md §3.11), in the assembler or the JIT's encoder.
 
