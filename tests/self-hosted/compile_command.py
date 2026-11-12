@@ -8,6 +8,9 @@ write the same diagnostics, leave the same files (and the same main-unit
 artifacts in .build), and the binaries they leave must print the same. Their
 standard output must be the same too, except that of a case that writes C, which
 the two compilers write differently (docs/testing.md section 2.8): it must be C.
+The bootstrap compiles only through C, so the driver's compile is given
+--backend c; and its compile without one goes through arm64, its default,
+leaving the main unit's assembly and a binary that prints what C's does.
 run_tests.py --self-hosted runs it (docs/testing.md).
 
     python tests/self-hosted/compile_command.py DRIVER
@@ -81,7 +84,7 @@ def run(command: list[str], args: list[str]) -> tuple[int, str, str, list[str], 
 def check(driver: str, args: list[str], writes_c: bool) -> list[str]:
     """How the driver's run of args differs from the bootstrap's."""
     expected = run([str(BOOTSTRAP)], args)
-    actual = run([driver], args)
+    actual = run([driver], ["compile", "--backend", "c", *args[1:]] if args[0] == "compile" else args)
     problems = []
     for i, what in enumerate(("exit status", "output", "errors", "files", "binaries' output")):
         if what == "output" and writes_c:
@@ -94,13 +97,29 @@ def check(driver: str, args: list[str], writes_c: bool) -> list[str]:
     return problems
 
 
+def check_default(driver: str) -> list[str]:
+    """How the driver's compile without a backend differs from going through
+    arm64: the main unit's artifacts are its assembly's, and the binary
+    prints what the bootstrap's does."""
+    args = ["compile", "w.quest"]
+    expected = run([str(BOOTSTRAP)], args)
+    actual = run([driver], args)
+    problems = []
+    if ".build/w.main.s" not in actual[3] or ".build/w.main.c" in actual[3]:
+        problems.append(f"compile w.quest: not through arm64, leaving {actual[3]!r}")
+    if actual[4].get("w") != expected[4].get("w"):
+        problems.append(f"compile w.quest: the binary prints {actual[4].get('w')!r}, not {expected[4].get('w')!r}")
+    return problems
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print(__doc__)
         sys.exit(2)
     driver = str(Path(sys.argv[1]).resolve())
     problems = [problem for args, writes_c in CASES for problem in check(driver, args, writes_c)]
+    problems += check_default(driver)
     for problem in problems:
         print(problem)
-    print(f"{len(CASES)} command lines compared, {len(problems)} differences")
+    print(f"{len(CASES) + 1} command lines compared, {len(problems)} differences")
     sys.exit(1 if problems else 0)
