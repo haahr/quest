@@ -419,9 +419,10 @@ let options =
             backend := "arm64"
         end
         (* and codegen_c, or compile --emit-c, with C, unless a backend is
-         * given *)
-        if {stringOp.equal(stopAfter "codegen_c") orif isOneOf("codegen_c" vector.toArray(:String dumpAfter))
-            orif emitC} andif not(backendGiven) then
+         * given; compile's own last phase is codegen_c, which means only
+         * that it writes the binary, through any backend *)
+        if {{stopGiven andif stringOp.equal(stopAfter "codegen_c")}
+            orif isOneOf("codegen_c" vector.toArray(:String dumpAfter)) orif emitC} andif not(backendGiven) then
             backend := "c"
         end
         (* With neither a file nor a program, the REPL starts on an empty
