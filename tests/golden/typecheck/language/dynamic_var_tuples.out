@@ -1,0 +1,211 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('dynamic') : 'Dynamic')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetType 'Narrow' :kind TYPE)
+    (TypedLetType 'Wide' :kind TYPE)
+    (TypedLetValue 'tryBe' :type Fun(label: String f: Fun(): Ok): Ok
+      :value (TypedFun :params (('label' : String) ('f' : Fun(): Ok)) :type Fun(label: String f: Fun(): Ok): Ok
+        :body (TypedTry :type Ok
+          :body (TypedBlock :type Ok
+            :bindings (
+              (TypedExprStmt
+                :expr (TypedApp :type Ok
+                  :func (TypedVar 'f' :type Fun(): Ok)
+                  :args ()))
+            )
+            :result (TypedApp :type Ok
+              :func (TypedVar 'print' :type Fun(s: String): Ok)
+              :args (
+                (TypedInfix '<>' :type String
+                  :left (TypedVar 'label' :type String)
+                  :right (TypedString ': accepted' :type String))
+              )))
+          :branches (
+            (TypedTryBranch
+              :exc_pattern (TypedSelect 'error' :type Exception
+                :target (TypedVar 'dynamic' :type Module 'dynamic'))
+              :body (TypedApp :type Ok
+                :func (TypedVar 'print' :type Fun(s: String): Ok)
+                :args (
+                  (TypedInfix '<>' :type String
+                    :left (TypedVar 'label' :type String)
+                    :right (TypedString ': dynamic.error' :type String))
+                )))
+          ))))
+    (TypedLetValue 'fixed' :type Tuple x: Int end
+      :value (TypedTuple :type Tuple x: Int end
+        :elements (
+          (TypedInt 1 :type Int)
+        )))
+    (TypedLetValue 'mutable' :type Tuple var x: Int end
+      :value (TypedTuple :type Tuple var x: Int end
+        :elements (
+          (TypedInt 2 :type Int)
+        )))
+    (TypedLetValue 'wideFixed' :type Tuple x: Wide end
+      :value (TypedTuple :type Tuple x: Wide end
+        :elements (
+          (TypedRecord :type Record a: Int b: Int end
+            :fields (
+              (TypedRecordField 'a'
+                :value (TypedInt 1 :type Int))
+              (TypedRecordField 'b'
+                :value (TypedInt 2 :type Int))
+            ))
+        )))
+    (TypedLetValue 'wideMutable' :type Tuple var x: Wide end
+      :value (TypedTuple :type Tuple var x: Wide end
+        :elements (
+          (TypedRecord :type Record a: Int b: Int end
+            :fields (
+              (TypedRecordField 'a'
+                :value (TypedInt 1 :type Int))
+              (TypedRecordField 'b'
+                :value (TypedInt 2 :type Int))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryBe' :type Fun(label: String f: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'immutable as var' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedBlock :type Ok
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedApp :type Tuple var x: Int end
+                    :func (TypedTypeApp [Tuple var x: Int end] :type Fun(d: T): Tuple var x: Int end
+                      :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedApp :type T
+                        :func (TypedTypeApp [Tuple x: Int end] :type Fun(a: Tuple x: Int end): T
+                          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                        :args (
+                          (TypedVar 'fixed' :type Tuple x: Int end)
+                        ))
+                    )))
+              )
+              :result (TypedOk)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryBe' :type Fun(label: String f: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'var as var' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedBlock :type Ok
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedApp :type Tuple var x: Int end
+                    :func (TypedTypeApp [Tuple var x: Int end] :type Fun(d: T): Tuple var x: Int end
+                      :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedApp :type T
+                        :func (TypedTypeApp [Tuple var x: Int end] :type Fun(a: Tuple var x: Int end): T
+                          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                        :args (
+                          (TypedVar 'mutable' :type Tuple var x: Int end)
+                        ))
+                    )))
+              )
+              :result (TypedOk)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryBe' :type Fun(label: String f: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'var as immutable' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedBlock :type Ok
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedApp :type Tuple x: Int end
+                    :func (TypedTypeApp [Tuple x: Int end] :type Fun(d: T): Tuple x: Int end
+                      :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedApp :type T
+                        :func (TypedTypeApp [Tuple var x: Int end] :type Fun(a: Tuple var x: Int end): T
+                          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                        :args (
+                          (TypedVar 'mutable' :type Tuple var x: Int end)
+                        ))
+                    )))
+              )
+              :result (TypedOk)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryBe' :type Fun(label: String f: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'immutable wider' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedBlock :type Ok
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedApp :type Tuple x: Narrow end
+                    :func (TypedTypeApp [Tuple x: Narrow end] :type Fun(d: T): Tuple x: Narrow end
+                      :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedApp :type T
+                        :func (TypedTypeApp [Tuple x: Wide end] :type Fun(a: Tuple x: Wide end): T
+                          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                        :args (
+                          (TypedVar 'wideFixed' :type Tuple x: Wide end)
+                        ))
+                    )))
+              )
+              :result (TypedOk)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'tryBe' :type Fun(label: String f: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'var wider' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedBlock :type Ok
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedApp :type Tuple var x: Narrow end
+                    :func (TypedTypeApp [Tuple var x: Narrow end] :type Fun(d: T): Tuple var x: Narrow end
+                      :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedApp :type T
+                        :func (TypedTypeApp [Tuple var x: Wide end] :type Fun(a: Tuple var x: Wide end): T
+                          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                        :args (
+                          (TypedVar 'wideMutable' :type Tuple var x: Wide end)
+                        ))
+                    )))
+              )
+              :result (TypedOk)))
+        )))
+  ))

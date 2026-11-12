@@ -1147,7 +1147,8 @@ static Q_THREAD_LOCAL size_t quest_subtyping_trail_len = 0;
  *   - Int, Real, Bool, Char, String, Ok, bound type variables, and holes: the
  *     same descriptor only;
  *   - tuples: a prefix, with names equal where super_type names an element,
- *     and covariant elements (any tuple is a subtype of Tuple end);
+ *     and covariant elements, or invariant and var when super_type's is var
+ *     (any tuple is a subtype of Tuple end);
  *   - records: every field of super_type, by name, covariant, or invariant
  *     and var when super_type's is var;
  *   - variants and options: every case of sub in super_type, by name, with a
@@ -1280,7 +1281,14 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
                         break;
                     }
                 }
-                if (!quest_is_subtype(s->elements[i].type, t->elements[i].type)) {
+                /* A var element, as a record's var field: the value's is var too, of the same type */
+                if (t->elements[i].is_var) {
+                    if (!s->elements[i].is_var || !quest_is_subtype(s->elements[i].type, t->elements[i].type) ||
+                        !quest_is_subtype(t->elements[i].type, s->elements[i].type)) {
+                        match = false;
+                        break;
+                    }
+                } else if (!quest_is_subtype(s->elements[i].type, t->elements[i].type)) {
                     match = false;
                     break;
                 }

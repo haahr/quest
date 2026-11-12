@@ -1,0 +1,28 @@
+(* Language: dynamic.be narrows a tuple by the static rule for var components (docs/type-system.md section 4.2): a
+   var component in the target type needs a var component of the same type in the value's, and an immutable one is
+   covariant, as for records *)
+
+import writer: Writer;
+import dynamic: Dynamic;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+Let Narrow = Record a: Int end;
+Let Wide = Record a: Int b: Int end;
+
+let tryBe(label: String f: All() Ok): Ok =
+    try begin f() print(label <> ": accepted") end when dynamic.error then print(label <> ": dynamic.error") end;
+
+let fixed: Tuple x: Int end = tuple let x = 1 end;
+let mutable: Tuple var x: Int end = tuple let var x = 2 end;
+let wideFixed: Tuple x: Wide end = tuple let x = record a = 1 b = 2 end end;
+let wideMutable: Tuple var x: Wide end = tuple let var x = record a = 1 b = 2 end end;
+
+(* 1. An immutable component is not a var one *)
+tryBe("immutable as var" fun(): Ok begin dynamic.be(:Tuple var x: Int end dynamic.new(:Tuple x: Int end fixed)) ok end);
+(* 2. A var component is a var one, and an immutable one *)
+tryBe("var as var" fun(): Ok begin dynamic.be(:Tuple var x: Int end dynamic.new(:Tuple var x: Int end mutable)) ok end);
+tryBe("var as immutable" fun(): Ok begin dynamic.be(:Tuple x: Int end dynamic.new(:Tuple var x: Int end mutable)) ok end);
+(* 3. An immutable component is covariant, a var one invariant *)
+tryBe("immutable wider" fun(): Ok begin dynamic.be(:Tuple x: Narrow end dynamic.new(:Tuple x: Wide end wideFixed)) ok end);
+tryBe("var wider" fun(): Ok begin dynamic.be(:Tuple var x: Narrow end dynamic.new(:Tuple var x: Wide end wideMutable)) ok end);

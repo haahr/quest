@@ -1,0 +1,80 @@
+import writer = "writer" : Writer
+import dynamic = "dynamic" : Dynamic
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @8:45
+      let %2: String = prim <>(s, "\n") @8:59
+      let %3: Ok = call writer.putString(%1, %2) @8:28
+      return %3
+    }
+  }
+  funs {
+    fun tryBe(label: String, f: Fun(): Ok): Ok {
+      let %4: Exception = member dynamic.error @14:57
+      try catching (%4) {
+        do call f() @14:15
+        let %5: String = prim <>(label, ": accepted") @14:25
+        do call print(%5) @14:19
+      } handle (e: Exception) {
+        let %6: Bool = prim is(e, %4) @14:5
+        if %6 { @14:5
+          let %7: String = prim <>(label, ": dynamic.error") @14:82
+          do call print(%7) @14:76
+        } else {
+          reraise e @14:5
+        }
+      }
+      return ok
+    }
+  }
+  let x: Int = 1 @16:45
+  let fixed: Tuple x: Int end = tuple(x) @16:31
+  let x.1: Int = 2 @17:55
+  let mutable: Tuple var x: Int end = tuple(x.1) @17:37
+  let x.2: Record a: Int b: Int end = record(a = 1, b = 2) @18:50
+  let wideFixed: Tuple x: Wide end = tuple(x.2) @18:36
+  let x.3: Record a: Int b: Int end = record(a = 1, b = 2) @19:60
+  let wideMutable: Tuple var x: Wide end = tuple(x.3) @19:42
+  funs {
+    fun f.1(): Ok {
+      let %8: T = call dynamic.new [Tuple x: Int end](fixed) @22:75
+      let %9: Tuple var x: Int end = call dynamic.be [Tuple var x: Int end](%8) @22:42
+      return ok
+    }
+  }
+  do call tryBe("immutable as var", f.1) @22:1
+  funs {
+    fun f.2(): Ok {
+      let %10: T = call dynamic.new [Tuple var x: Int end](mutable) @24:69
+      let %11: Tuple var x: Int end = call dynamic.be [Tuple var x: Int end](%10) @24:36
+      return ok
+    }
+  }
+  do call tryBe("var as var", f.2) @24:1
+  funs {
+    fun f.3(): Ok {
+      let %12: T = call dynamic.new [Tuple var x: Int end](mutable) @25:71
+      let %13: Tuple x: Int end = call dynamic.be [Tuple x: Int end](%12) @25:42
+      return ok
+    }
+  }
+  do call tryBe("var as immutable", f.3) @25:1
+  funs {
+    fun f.4(): Ok {
+      let %14: T = call dynamic.new [Tuple x: Wide end](wideFixed) @27:73
+      let %15: Tuple x: Narrow end = call dynamic.be [Tuple x: Narrow end](%14) @27:41
+      return ok
+    }
+  }
+  do call tryBe("immutable wider", f.4) @27:1
+  funs {
+    fun f.5(): Ok {
+      let %16: T = call dynamic.new [Tuple var x: Wide end](wideMutable) @28:71
+      let %17: Tuple var x: Narrow end = call dynamic.be [Tuple var x: Narrow end](%16) @28:35
+      return ok
+    }
+  }
+  do call tryBe("var wider", f.5) @28:1
+}
+
