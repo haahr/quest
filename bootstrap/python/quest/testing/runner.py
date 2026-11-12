@@ -1149,11 +1149,19 @@ def main() -> int:
     try:
         if len(backends) == 1:
             return run_all_tests(args, available_phases, build_dir, [], jobs=jobs)
-        if not args.self_hosted:
-            arg_parser.error("several backends need --self-hosted")
-        # One driver for every backend's run
-        if not args.self_hosted_driver:
-            python_executable = args.python if os.path.exists(args.python) else sys.executable
+        if not (args.self_hosted or args.self_hosting):
+            arg_parser.error("several backends need --self-hosted or --self-hosting")
+        # One driver for every backend's run: with --self-hosting, the
+        # self-hosting check's stage 2, checked once rather than once a backend
+        python_executable = args.python if os.path.exists(args.python) else sys.executable
+        if args.self_hosting:
+            args.self_hosted = True
+            args.self_hosted_driver = str(check_self_hosting(python_executable, build_dir, args.seed, args.stage_backend,
+                                                             args.whole_program_fixed_point))
+            args.self_hosting = False
+            if args.fixed_point_only:
+                return 0
+        elif not args.self_hosted_driver:
             print(f"Compiling the self-hosted driver ({SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)}) for the backends:")
             args.self_hosted_driver = str(build_seeded_driver(build_dir) if args.seed == "release"
                                           else build_self_hosted_driver(python_executable, build_dir))
@@ -1179,7 +1187,9 @@ def run_all_tests(
     in build_dir with jobs workers, printing a line per test and a summary.
     Returns 0 if every test run passed (or is pending), 1 if any failed, and 2
     for --backend without --self-hosted. main calls it once per --backend mode,
-    with a fresh driver_args, which it extends with the mode's options.
+    with a fresh driver_args, which it extends with the mode's options; with
+    several modes and --self-hosting, main runs the self-hosting check once,
+    first, and each mode's tests with its stage 2.
     docs/testing.md §2.3 describes the runner and its modes.
 
     The phases are --phase's, or all of available_phases, narrowed to the
@@ -1566,9 +1576,14 @@ def run_all_tests(
 
                         error_tasks.append(PhaseTask(
                             test_id=multi_id,
-                            run_fn=make_multi_runner(
-                                multi_file, phase, multi_directives,
-                                multi_directives.timeout if multi_directives.timeout is not None else args.timeout,
+                            run_fn=with_pending(
+                                f"errors/{phase}:{multi_id}",
+                                pending,
+                                pending_counts,
+                                make_multi_runner(
+                                    multi_file, phase, multi_directives,
+                                    multi_directives.timeout if multi_directives.timeout is not None else args.timeout,
+                                ),
                             ),
                         ))
 
