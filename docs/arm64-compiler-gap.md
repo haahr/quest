@@ -8,7 +8,7 @@ last two what the hash map's probe loop (`findIndex`) showed of the general one:
 | Step | Change | Share of the difference (§21.5) |
 |---|---|---|
 | §2 | Constants in the fewest instructions | part of the general half |
-| §3 | Switches: tables of values, and a binary search | about 16 percent |
+| §3 | Switches: tables of values, jump tables, and a binary search | about 16 percent |
 | §4 | The write barriers' fast paths inline | up to 19 percent |
 | §5 | Trampolines without frames, and exports that are their functions | about 11 percent |
 | §6 | A proxy test once per value | part of the general half |
@@ -34,8 +34,9 @@ last two what the hash map's probe loop (`findIndex`) showed of the general one:
   inline in the SSA ([collector.md](collector.md) §3.4), and the barriers' are its counterpart. (The user rejected
   inlining Boehm's allocation into programs on 2026-10-31, as a dependency on Boehm's internals; the barriers are
   Quest's own runtime's.)
-- **Jump tables are not made** unless §3's measurements leave large switches hot: a binary search needs no new
-  relocation, encoding, or branch relaxation (arm64.md §3.11), in the assembler or the JIT's encoder.
+- **Jump tables in both the assembler's code and the JIT's** (the user, 2026-11-12), so that one lowering serves
+  dense switches everywhere: the JIT's encoder resolves labels within a function in two passes already, and a table
+  is a pseudo-instruction whose words are differences of its labels, as a branch's offset is.
 
 ## 2. Constants in the Fewest Instructions (`codegen/arm64/printer`, `select`)
 
@@ -58,7 +59,7 @@ four-instruction sequence for a value one instruction makes.
 
 A switch is a comparison and a branch for each case, in order. `nodes.opcodeIndex`, a 52-way case mapping an
 opcode to its position, takes 1,555 samples against the C build's 196, where clang made it a bounds check and a load
-from a table of 52 words. Two changes, the first for every SSA backend, the second for arm64:
+from a table of 52 words. Three changes, the first for every SSA backend, the others for arm64:
 
 1. **A table of values** (a new SSA pass, `tables`, after `selects`). A switch qualifies when every case's target,
    and the default's unless it is unreachable or raises, is an empty block that jumps to one join block with
@@ -67,14 +68,26 @@ from a table of 52 words. Two changes, the first for every SSA backend, the seco
    load from a static table of the unit's data (`contentsWords`, one table per join parameter) indexed by the value
    less the least case, then the jump to the join. A table's words are read-only data, like the unit's other
    constants.
-2. **A binary search** (arm64 selection). A switch with more than four cases left by (1) is compiled as a balanced
-   tree of comparisons over the sorted cases (`cmp`, `b.eq`, `b.lo`/`b.hi`), its leaves runs of up to three
-   comparisons in order, so that 52 cases take about six comparisons rather than up to 52. `cbz` stays for a case of
-   0 at a leaf. `ssac` keeps its C `switch`, which clang lowers.
+2. **A jump table** (arm64 selection, printer, and encoder). A switch left by (1) with at least eight cases, dense
+   as (1) means it, is a range check against the default and a table of 32-bit offsets from the table to each
+   value's target (the default's for a gap): `adr` of the table, `ldrsw` of the entry by the value less the least
+   case, `add`, and `br`. The table is one pseudo-instruction (`opJumpTable`, its labels), placed after the `br` in
+   the function's code: the printer writes `.long Ltarget - Ltable` words between `.data_region jt32` and
+   `.end_data_region` (so that otool and lldb do not read them as instructions), the JIT's encoder writes the same
+   differences from its label offsets, and branch relaxation (`codegen.relaxBranches`) counts the table's words in
+   the function's size, so that a conditional branch over it, and the `adr`, stay in reach (arm64.md §3.11). Each
+   target is a block the table branches to, which the register allocator and the block layout treat as a successor
+   of the switch as now.
+3. **A binary search** (arm64 selection). A switch with more than four cases left by (1) and (2), sparse ones, is
+   compiled as a balanced tree of comparisons over the sorted cases (`cmp`, `b.eq`, `b.lo`/`b.hi`), its leaves runs
+   of up to three comparisons in order, so that 52 cases would take about six comparisons rather than up to 52.
+   `cbz` stays for a case of 0 at a leaf. `ssac` keeps its C `switch`, which clang lowers.
 
 *Done when* an SSA questlang test (in the style of `ssa_scalars`) shows a dense switch of constants become a table
 and a sparse or non-constant one left; an arm64 questlang test runs switches of 5, 16, and 60 cases, dense, sparse,
-negative, and with a default, through the search; and `opcodeIndex`'s arm64 code is a range check and a load.
+negative, and with a default, through the jump table and the search, assembled and through the JIT's encoder (the
+`encoder` test's comparison of the two); `arm64_relax` relaxes a branch over a table; and `opcodeIndex`'s arm64 code
+is a range check and a load.
 
 ## 4. The Write Barriers' Fast Paths Inline (`ssa/allocations`, `codegen/backend`)
 
