@@ -1,0 +1,165 @@
+(* Self-Hosted Quest Compiler: Test Exports Made Their Functions
+ *
+ * questlang/ssa/passes/trampolines (docs/ssa.md section 4.1) on units of
+ * the SSA written as text and read by questlang/ssa/parser, each printed
+ * before and after the pass and verified: an export that tail-calls an
+ * adapter that tail-calls a function that may raise, which becomes one
+ * function and takes the function's name in the unit's table for tracebacks;
+ * an export of a function too large to copy, which then calls it without the
+ * adapter; and exports left as they are: of a function that makes a call
+ * not in tail position, of one with a stack slot, of one whose first block
+ * is a loop's head, and of a function of another unit; and a function not
+ * exported. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    questlang/ssa/parser : questlang/ssa/Parser
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/passes/trampolines : questlang/ssa/passes/Trampolines
+    questlang/ssa/verify : questlang/ssa/Verify
+    collections/vector : collections/Vector
+    util/strutil : util/Strutil
+    conv : Conv
+    writer : Writer
+;
+
+let emit(s: String): Ok = writer.putString(writer.output s);
+
+let show(title: String lines: Array(String)): Ok =
+    begin
+        emit("== " <> title <> "\n")
+        let u = parser.readUnit(strutil.joinArray("\n" lines) <> "\n")
+        emit(printer.formatUnit(u))
+        trampolines.trampolineUnit(u)
+        emit("-- after trampolines\n")
+        emit(printer.formatUnit(u))
+        try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
+    end;
+
+let joined(units: Array(Array(String))): Array(String) =
+    begin
+        let all = vector.new(:String)
+        for u = 0 upto {extent units - 1} do
+            for k = 0 upto {extent units[u] - 1} do vector.append(:String all units[u][k]) end
+        end
+        vector.toArray(:String all)
+    end;
+
+(* An export, as the builder makes one: it passes a null environment and its
+ * own parameters to callee *)
+let exporter(name: String callee: String): Array(String) =
+    array of
+        "function " <> name <> " exported(%0: ptr, %1: int): int {"
+        "b0(%0: ptr, %1: int):"
+        "  %2: ptr = null"
+        "  tail %3: int = call " <> callee <> "(%2, %0, %1)"
+        "}"
+    end;
+
+(* An adapter, which passes its environment's place a null too *)
+let adapter(name: String callee: String): Array(String) =
+    array of
+        "function " <> name <> "(%0: ptr, %1: ptr, %2: int): int {"
+        "b0(%0: ptr, %1: ptr, %2: int):"
+        "  %3: ptr = null"
+        "  tail %4: int = call " <> callee <> "(%3, %1, %2)"
+        "}"
+    end;
+
+(* A vector's get: a bounds check that raises, and a load *)
+let getter(name: String): Array(String) =
+    array of
+        "function " <> name <> "(%0: ptr, %1: ptr, %2: int): int {"
+        "b0(%0: ptr, %1: ptr, %2: int):"
+        "  %3: int = load8 %1 + 8"
+        "  %4: int = ult %2, %3"
+        "  branch %4, b1(), b2()"
+        "b1():"
+        "  %5: ptr = load8 %1 + 0"
+        "  %6: int = const 8"
+        "  %7: int = mul %2, %6"
+        "  %8: ptr = ptrAdd %5, %7"
+        "  %9: int = load8 %8 + 0"
+        "  return %9"
+        "b2():"
+        "  %10: ptr = symbol bounds"
+        "  call quest_raise(%10)"
+        "  unreachable"
+        "}"
+    end;
+
+(* The unit's table of names for tracebacks, and its registration *)
+let names = array of
+    "function qr_register_dicts() {"
+    "b0():"
+    "  %0: ptr = symbol qr_funcs"
+    "  %1: int = const 1"
+    "  call quest_register_funcs(%0, %1)"
+    "  return"
+    "}"
+    "data qs_get text \"vector.get\""
+    "data qr_funcs words [get, qs_get]"
+end;
+
+show("an export, its adapter, and its function, named as the function" joined(array of
+    exporter("qv_get" "adapt") adapter("adapt" "get") getter("get") names
+end));
+
+let large(): Array(String) =
+    begin
+        let lines = vector.fromArray(:String array of
+            "function large(%0: ptr, %1: ptr, %2: int): int {" "b0(%0: ptr, %1: ptr, %2: int):"
+        end)
+        vector.append(:String lines "  %3: int = add %2, %2")
+        for k = 4 upto 66 do
+            vector.append(:String lines "  %" <> conv.int(k) <> ": int = add %" <> conv.int(k - 1) <> ", %2")
+        end
+        vector.append(:String lines "  return %66")
+        vector.append(:String lines "}")
+        vector.toArray(:String lines)
+    end;
+show("a function too large" joined(array of exporter("qv_large" "adapt") adapter("adapt" "large") large() end));
+
+show("a function that makes a call" joined(array of exporter("qv_caller" "caller") array of
+    "function caller(%0: ptr, %1: ptr, %2: int): int {"
+    "b0(%0: ptr, %1: ptr, %2: int):"
+    "  %3: int = call other(%2)"
+    "  %4: int = add %3, %2"
+    "  return %4"
+    "}"
+end end));
+
+show("a function with a stack slot" joined(array of exporter("qv_slotted" "slotted") array of
+    "function slotted(%0: ptr, %1: ptr, %2: int): int slots [8:8] {"
+    "b0(%0: ptr, %1: ptr, %2: int):"
+    "  %3: ptr = slot 0"
+    "  store8 %3 + 0, %2"
+    "  %4: int = load8 %3 + 0"
+    "  return %4"
+    "}"
+end end));
+
+show("a function whose first block is a loop's head" joined(array of exporter("qv_loop" "loop") array of
+    "function loop(%0: ptr, %1: ptr, %2: int): int {"
+    "b0(%0: ptr, %1: ptr, %2: int):"
+    "  %3: int = const 0"
+    "  %4: int = eq %2, %3"
+    "  branch %4, b1(), b2()"
+    "b1():"
+    "  return %2"
+    "b2():"
+    "  %5: int = const 1"
+    "  %6: int = sub %2, %5"
+    "  jump b0(%0, %1, %6)"
+    "}"
+end end));
+
+show("a function of another unit" exporter("qv_elsewhere" "elsewhere"));
+
+show("a function not exported" joined(array of array of
+    "function local(%0: ptr, %1: int): int {"
+    "b0(%0: ptr, %1: int):"
+    "  %2: ptr = null"
+    "  tail %3: int = call get(%2, %0, %1)"
+    "}"
+end getter("get") end));

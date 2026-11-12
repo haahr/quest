@@ -1,0 +1,203 @@
+(* Quest Self-Hosted Compiler: The SSA's Trampolines Implementation *)
+
+module trampolines : Trampolines
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/passes/tailJumps : questlang/ssa/passes/TailJumps
+    collections/vector : collections/Vector
+    collections/hashMap : collections/HashMap
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+export
+    Let Function = ssa.Function
+
+    (* The most instructions of a function copied, and the most copies made
+     * into one export *)
+    let budget = 64
+    let rounds = 4
+
+    (* Whether g is small enough to copy, and calls nothing but in tail
+     * position or on the way to a raise *)
+    let small(g: Function): Bool =
+        begin
+            let var n = 0
+            let var calls = true
+            for b = 0 upto {vector.length(:ssa.Block g.blocks) - 1} do
+                let blk = ssa.block(g b)
+                n := n + vector.length(:ssa.Inst blk.insts) + 1
+                let raises = case blk.term
+                    when termUnreachable then true
+                    when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termTry then false
+                end
+                if not(raises) then
+                    for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                        if ssa.isCall(vector.get(:ssa.Inst blk.insts k)) then calls := false end
+                    end
+                end
+            end
+            calls andif {n <= budget}
+        end
+
+    (* Whether a block of g goes to its first, which a splice cannot copy *)
+    let entered(g: Function): Bool =
+        begin
+            let var found = false
+            for b = 0 upto {vector.length(:ssa.Block g.blocks) - 1} do
+                let next = ssa.successors(ssa.block(g b).term)
+                for k = 0 upto {extent next - 1} do if next[k] is 0 then found := true end end
+            end
+            found
+        end
+
+    (* Whether g takes args, of f, as its parameters *)
+    let takes(f: Function g: Function args: Array(Int)): Bool =
+        begin
+            let var same = extent args is vector.length(:ssa.Type g.paramTypes)
+            if same then
+                for k = 0 upto {extent args - 1} do
+                    if ssa.typeOf(f args[k]) isnot vector.get(:ssa.Type g.paramTypes k) then same := false end
+                end
+            end
+            same
+        end
+
+    (* Copies into f the function its first block tail-calls, while it
+     * can, appending the symbols of those copied to copied *)
+    let copyCallees(f: Function functions: vector.T(Function) numbers: hashMap.T(String Int) copied: vector.T(String))
+        : Ok =
+        begin
+            let var left = rounds
+            while left > 0 do
+                left := left - 1
+                let blk = ssa.block(f 0)
+                case blk.term
+                    when termTailCall with x then
+                        let n = hashMap.get(:String :Int numbers x.call.symbol)
+                        if ssa.isOp(x.call ssa.opCall) andif maybe.isSome(:Int n) then
+                            let g = vector.get(:Function functions maybe.unwrap(:Int n))
+                            if not(stringOp.equal(g.symbol f.symbol)) andif small(g) andif tailJumps.copiable(g)
+                                andif tailJumps.sameResults(f g) andif not(entered(g)) andif takes(f g x.call.args)
+                            then
+                                blk.term := ssa.termNone
+                                tailJumps.spliceInto(f 0 g x.call.args)
+                                vector.append(:String copied g.symbol)
+                            else left := 0 end
+                        else left := 0 end
+                    when termNone, termJump, termBranch, termSwitch, termReturn, termTry, termUnreachable then left := 0
+                end
+            end
+        end
+
+    (* Copies into f, an export of one block, the function its block
+     * tail-calls, while it can; the symbols of the functions copied *)
+    let trampolineFunction(f: Function functions: vector.T(Function) numbers: hashMap.T(String Int))
+        : vector.T(String) =
+        begin
+            let copied = vector.new(:String)
+            if f.exported andif {vector.length(:ssa.Block f.blocks) is 1} then
+                copyCallees(f functions numbers copied)
+            end
+            copied
+        end
+
+    (* Makes the count of entries qr_register_dicts registers n *)
+    let count(u: ssa.Unit n: Int): Ok =
+        for k = 0 upto {vector.length(:Function u.functions) - 1} do
+            let f = vector.get(:Function u.functions k)
+            if stringOp.equal(f.symbol "qr_register_dicts") then
+                let defs = array of(vector.length(:ssa.Type f.types) ~1)
+                let insts = vector.new(:ssa.Inst)
+                for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                    let blk = ssa.block(f b)
+                    for j = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                        let i = vector.get(:ssa.Inst blk.insts j)
+                        if ssa.isOp(i ssa.opConst) then
+                            defs[i.results[0]] := vector.length(:ssa.Inst insts)
+                            vector.append(:ssa.Inst insts i)
+                        end
+                    end
+                end
+                for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                    let blk = ssa.block(f b)
+                    for j = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                        let i = vector.get(:ssa.Inst blk.insts j)
+                        if ssa.isOp(i ssa.opCall) andif stringOp.equal(i.symbol "quest_register_funcs")
+                            andif {defs[i.args[1]] >= 0}
+                        then
+                            vector.get(:ssa.Inst insts defs[i.args[1]]).imm := n
+                        end
+                    end
+                end
+            end
+        end
+
+    (* The unit's table of its functions' names for tracebacks (ssa/build's
+     * unit, qr_funcs), as pairs of words: a function's code and its name.
+     * A frame is named by the exact start of its function, so an export
+     * that is a function now has that function's name, and the count that
+     * qr_register_dicts passes quest_register_funcs grows to match *)
+    let name(u: ssa.Unit exports: vector.T(String) callees: vector.T(vector.T(String))): Ok =
+        begin
+            let var table = ~1
+            for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
+                if stringOp.equal(vector.get(:ssa.Data u.data k).symbol "qr_funcs") then table := k end
+            end
+            if table >= 0 then
+                let d = vector.get(:ssa.Data u.data table)
+                case d.contents
+                    when contentsWords with x then
+                        let names = hashMap.new(:String :ssa.Word stringOp.equal hash.string)
+                        for k = 0 upto {{extent x.words / 2} - 1} do
+                            case x.words[2 * k]
+                                when wordSymbol with w then
+                                    let ignored = hashMap.insert(:String :ssa.Word names w.symbol x.words[{2 * k} + 1])
+                                when wordInt then ok
+                            end
+                        end
+                        let words = vector.fromArray(:ssa.Word x.words)
+                        for e = 0 upto {vector.length(:String exports) - 1} do
+                            (* The last function copied that has a name *)
+                            let copied = vector.get(:vector.T(String) callees e)
+                            let var found = false
+                            for c = 0 upto {vector.length(:String copied) - 1} do
+                                let n = hashMap.get(:String :ssa.Word names vector.get(:String copied c))
+                                if maybe.isSome(:ssa.Word n) then
+                                    if found then begin let ignored = vector.pop(:ssa.Word words) end
+                                    else
+                                        vector.append(:ssa.Word words option wordSymbol of ssa.Word with
+                                            let symbol = vector.get(:String exports e) let addend = 0
+                                        end)
+                                    end
+                                    vector.append(:ssa.Word words maybe.unwrap(:ssa.Word n))
+                                    found := true
+                                end
+                            end
+                        end
+                        vector.set(:ssa.Data u.data table
+                            ssa.words(d.symbol d.exported d.writable vector.toArray(:ssa.Word words)))
+                        count(u vector.length(:ssa.Word words) / 2)
+                    when contentsZero, contentsText then ok
+                end
+            end
+        end
+
+    let trampolineUnit(u: ssa.Unit): Ok =
+        begin
+            let numbers = hashMap.new(:String :Int stringOp.equal hash.string)
+            for k = 0 upto {vector.length(:Function u.functions) - 1} do
+                let ignored = hashMap.insert(:String :Int numbers vector.get(:Function u.functions k).symbol k)
+            end
+            let exports = vector.new(:String)
+            let callees = vector.new(:vector.T(String))
+            for k = 0 upto {vector.length(:Function u.functions) - 1} do
+                let f = vector.get(:Function u.functions k)
+                let copied = trampolineFunction(f u.functions numbers)
+                if not(vector.empty(:String copied)) then
+                    vector.append(:String exports f.symbol)
+                    vector.append(:vector.T(String) callees copied)
+                end
+            end
+            if not(vector.empty(:String exports)) then name(u exports callees) end
+        end
+end

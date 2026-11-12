@@ -280,7 +280,7 @@ internal error.
   through their closures, were nested calls, 16,384 deep for each array they filled. The blocks a tail call leaves
   unreached are dropped (`cfg.dropUnreached`, as the builder drops its own), since they may return a value that value
   numbering put in place of their parameter, and that the call no longer defines.
-- **`ssa/passes/tailJumps`**, last, makes loops of mutual tail calls ([benchmarks.md](benchmarks.md) §14). The unit's functions
+- **`ssa/passes/tailJumps`** makes loops of mutual tail calls ([benchmarks.md](benchmarks.md) §14). The unit's functions
   and the direct tail calls between them form a graph, whose strongly connected components (Tarjan's) are the groups
   of mutually tail-recursive functions. Into each function of a group of more than one are copied the other members it
   reaches through tail calls, its own and its copies', each once, while the copies total at most 100 instructions: a
@@ -291,6 +291,20 @@ internal error.
   jump to its first block and clang a loop. even-odd's `even1` holds a copy of `odd1`, whose tail call of `even1` is
   then a self tail call: one loop, without pushing and popping a frame at each step. A call through a closure is
   indirect and is left. `ssa_tailjumps` shows each case.
+- **`ssa/passes/trampolines`**, after it, makes an export its function ([arm64-compiler-gap.md](arm64-compiler-gap.md) §5).
+  Another unit calls a module's function through its export (`qv_`), which passes a null environment and tail-calls the
+  function, often through an adapter that tail-calls it in turn ([ir.md](ir.md) §8.4.1): vector.get was three branches
+  on arm64, where clang made the C build's export the function. An exported function of one block that ends in a tail
+  call of a function of the unit gets a copy of that function in place of the call (`tailJumps.spliceInto`: the callee's
+  first block appended to the export's, with the call's arguments for its parameters, its other blocks after), again
+  while that block ends in such a call, up to four times, so that an adapter is copied in and then the function it
+  calls. A function is copied when it has at most 64 instructions, every call it makes is a tail call or one in a block
+  that never ends (a raise), no block goes to its first, it takes the call's arguments with their types, its results are
+  passed as the export's, and `tailJumps.copiable` holds. A function too large is still called directly once its adapter
+  is copied in. The unit's own callers still call the function, and nothing else is inlined. Since a traceback names a
+  frame by its function's exact start, the unit's table of names (`qr_funcs`) gets an entry for each such export, the
+  last function copied into it that has a name, and the count `qr_register_dicts` registers grows to match.
+  `ssa_trampolines` shows each case.
 - **`ssa/passes/interrupts`**, after them and only when the Jupyter kernel's driver asks (`pipeline.setInterruptChecks`, under
   `--kernel`, for the code its JIT compiles; [jupyter-kernel.md](jupyter-kernel.md) §5), checks the runtime's interrupt
   flag at each function's entry and each loop's head (a block a back edge goes to): it splits the block, loading
@@ -323,7 +337,7 @@ preorder and postorder numbers, dominance frontiers, and loop depths) and `ssa/l
 live-out values, which the register allocator uses); `nodes` has the mutators (`targets`, `mapTargets`, `mapBlocks`,
 `replaceUses`). The driver dumps the SSA after the builder (`--dump-after ssa_built`), after each pass (`ssa_escape`,
 `ssa_promote`, `ssa_constants`, `ssa_valueNumbers`, `ssa_selects`, `ssa_tables`, `ssa_accumulate`, `ssa_tailCalls`,
-`ssa_tailJumps`), and at the end
+`ssa_tailJumps`, `ssa_trampolines`), and at the end
 (`ssa`);
 `QUEST_SKIP_PASSES`, a comma-separated list of passes' names, leaves passes out, for a test or a bisection.
 

@@ -129,13 +129,27 @@ export
 
     (* Copies g's first blocks (those it had before any copy was made into
      * it), and the values they use, into f; the number of the copy's first
-     * block *)
-    let copyInto(f: Function g: Function blocks: Int values: Int): Int =
+     * block. With at a block of f (at least 0), which has no terminator yet,
+     * g's first block is not copied as a block of its own: its instructions
+     * and terminator are appended to block at, with args in place of its
+     * parameters, so that no block of g may go to its first *)
+    let copyBlocks(f: Function g: Function blocks: Int values: Int at: Int args: Array(Int)): Int =
         begin
-            let numbers = array of(values 0)
-            for v = 0 upto {values - 1} do numbers[v] := ssa.newValue(f vector.get(:ssa.Type g.types v)) end
+            (* With at, g's first block is f's block at, its parameters
+             * args, and its other blocks follow f's *)
+            let spliced = at >= 0
+            let numbers = array of(values ~1)
+            if spliced then
+                let params = ssa.block(g 0).params
+                for k = 0 upto {vector.length(:Int params) - 1} do numbers[vector.get(:Int params k)] := args[k] end
+            end
+            for v = 0 upto {values - 1} do
+                if numbers[v] < 0 then numbers[v] := ssa.newValue(f vector.get(:ssa.Type g.types v)) end
+            end
             let base = vector.length(:ssa.Block f.blocks)
-            for b = 0 upto {blocks - 1} do let ignored = ssa.newBlock(f) end
+            let first = if spliced then 1 else 0 end
+            for b = first upto {blocks - 1} do let ignored = ssa.newBlock(f) end
+            let blockOf(b: Int): Int = if spliced andif {b is 0} then at else base + b - first end
             let renumber(vs: Array(Int)): Array(Int) =
                 begin
                     let r = array of(extent vs 0)
@@ -150,12 +164,14 @@ export
                     c.invariant := i.invariant
                     c
                 end
-            let retarget(t: ssa.Target): ssa.Target = ssa.target(base + t.block renumber(t.args))
+            let retarget(t: ssa.Target): ssa.Target = ssa.target(blockOf(t.block) renumber(t.args))
             for b = 0 upto {blocks - 1} do
                 let from = ssa.block(g b)
-                let to = ssa.block(f {base + b})
-                for k = 0 upto {vector.length(:Int from.params) - 1} do
-                    vector.append(:Int to.params numbers[vector.get(:Int from.params k)])
+                let to = ssa.block(f blockOf(b))
+                if not(spliced andif {b is 0}) then
+                    for k = 0 upto {vector.length(:Int from.params) - 1} do
+                        vector.append(:Int to.params numbers[vector.get(:Int from.params k)])
+                    end
                 end
                 for k = 0 upto {vector.length(:ssa.Inst from.insts) - 1} do
                     vector.append(:ssa.Inst to.insts copy(vector.get(:ssa.Inst from.insts k)))
@@ -178,13 +194,21 @@ export
                     when termTailCall with x then option termTailCall of ssa.Terminator with let call = copy(x.call) end
                     when termTry with x then
                         option termTry of ssa.Terminator with
-                            let slot = x.slot let body = retarget(x.body) let handler = base + x.handler
+                            let slot = x.slot let body = retarget(x.body) let handler = blockOf(x.handler)
                         end
                     when termNone, termUnreachable then from.term
                 end
                 to.termLoc := from.termLoc
             end
-            base
+            blockOf(0)
+        end
+
+    let copyInto(f: Function g: Function blocks: Int values: Int): Int =
+        copyBlocks(f g blocks values ~1 array of :Int end)
+
+    let spliceInto(f: Function at: Int g: Function args: Array(Int)): Ok =
+        begin
+            let ignored = copyBlocks(f g vector.length(:ssa.Block g.blocks) vector.length(:ssa.Type g.types) at args)
         end
 
     let jumpUnit(u: ssa.Unit): Ok =

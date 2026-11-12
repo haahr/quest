@@ -1,0 +1,23 @@
+(* Quest Self-Hosted Compiler: The SSA's Trampolines Interface
+ *
+ * Makes an export its function (docs/ssa.md section 4.1). Another unit calls
+ * a module's function through its export, qv_, which passes the function's
+ * environment as null and tail-calls it, often through an adapter of the
+ * unit's own (ir.md section 8.4.1) that tail-calls the function in turn:
+ * vector.get was three branches, where the C build's export is the function,
+ * since clang inlines the two. An exported function of one block that ends in
+ * a tail call of a function of the unit gets a copy of that function in place
+ * of the call, again while that block still ends in such a call, up to 4
+ * times, so that an adapter is copied in and then the function it calls. A
+ * function is copied when it has at most 64 instructions, every call it makes
+ * is a tail call or one in a block that never ends (a raise), it takes the
+ * call's arguments as they are passed, its results are the export's, and
+ * tailJumps.copiable says it can be. Its other callers are left as they
+ * are. *)
+
+interface Trampolines
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    trampolineUnit(u: ssa.Unit): Ok
+end

@@ -16,4 +16,16 @@ import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     jumpUnit(u: ssa.Unit): Ok
+
+    (* What questlang/ssa/passes/trampolines shares. Whether g can be copied
+     * into another function: it has no stack slots and no try, and each of
+     * its parameters is passed in a register, as a jump passes it *)
+    copiable(g: ssa.Function): Bool
+    (* Whether g's returns are f's: the same results, passed the same way *)
+    sameResults(f: ssa.Function g: ssa.Function): Bool
+    (* Appends a copy of g to block at of f, which has no terminator yet:
+     * g's first block's instructions and terminator, args in place of its
+     * parameters, and its other blocks as new blocks of f. No block of g may
+     * go to its first *)
+    spliceInto(f: ssa.Function at: Int g: ssa.Function args: Array(Int)): Ok
 end
