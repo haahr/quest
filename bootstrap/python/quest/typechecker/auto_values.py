@@ -3,7 +3,7 @@
 closedness check on types used at run time.
 
 The self-hosted counterpart is questlang/typechecker/autovalues;
-docs/type-system.md §6.11 describes auto types and inspect."""
+docs/type-system.md §6.12 describes auto types and inspect."""
 
 from __future__ import annotations
 

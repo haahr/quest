@@ -790,34 +790,6 @@ class QTupleType(QType):
                 return f
         return None
 
-    # Never called: quest/types/__init__.py replaces every QType subclass's
-    # __eq__ with QType's, which raises, and this one's comparisons of
-    # components' types would raise too. Types are compared with is (they are
-    # interned) or is_type_equal.
-    def __eq__(self, other: Any) -> bool:
-        if not isinstance(other, QTupleType):
-            return False
-        if len(self.fields) != len(other.fields):
-            return False
-        for f1, f2 in zip(self.fields, other.fields):
-            if type(f1) is not type(f2):
-                return False
-            match f1, f2:
-                case QTupleTypeFormal(), QTupleTypeFormal():
-                    if f1.name != f2.name or f1.bound != f2.bound:
-                        return False
-                case QTupleField(), QTupleField():
-                    if f1.name is not None and f2.name is not None and f1.name != f2.name:
-                        return False
-                    if f1.is_var != f2.is_var:
-                        return False
-                    if f1.type_val != f2.type_val:
-                        return False
-                case QTupleTypeBinding(), QTupleTypeBinding():
-                    if f1.name != f2.name or f1.type_val != f2.type_val or f1.bound != f2.bound:
-                        return False
-        return True
-
     def __hash__(self) -> int:
         return hash(self.fields)
 
@@ -1591,14 +1563,6 @@ class QPathType(QType):
 
     def __post_init__(self) -> None:
         _init_free_vars(self, self.bound)
-
-    # Not a symbol id: a hash of the root's symbol id and the field's name,
-    # which could equal a real one. Code that identifies path types keys them
-    # by root_symbol_id, the fields in root_name, and field_name, as
-    # SubtypeTrail.key does, or by identity, as kinds.py and canonical.py do.
-    @property
-    def symbol_id(self) -> int:
-        return hash((self.root_symbol_id, self.field_name))
 
     def evaluate_lazily(self, env: Optional[Any] = None) -> QType:
         return self

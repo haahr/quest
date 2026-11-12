@@ -13,7 +13,7 @@ operations declared `external` (implemented in `bootstrap/python/quest/values/dy
 In Cardelli's *Typeful Programming* (§9.1 and Appendix), dynamic types provide a type-sound mechanism for handling
 heterogeneous data, persistence, and run-time metaprogramming. A dynamic value packages an arbitrary runtime value
 together with its type. As Cardelli defines it, `Dynamic.T` is the auto type `Auto A::TYPE with a:A end`
-([type-system.md](type-system.md) §6.11), so a dynamic value is an auto value whose one component `a` is the value:
+([type-system.md](type-system.md) §6.12), so a dynamic value is an auto value whose one component `a` is the value:
 
 ```quest
 interface Dynamic
@@ -166,7 +166,7 @@ requires the type in a dynamic to be *closed*: it may not contain free type vari
 extracted from a local tuple value (`t.A`) depends on that value and is not closed. Type parameters of enclosing
 polymorphic functions are not free in this sense: a type such as `Tuple fst: A snd: Int end` given to
 `dynamic.new` inside generic code stands for its instance at the call's type arguments, which is what the dynamic
-value records ([type-system.md](type-system.md) §6.11).
+value records ([type-system.md](type-system.md) §6.12).
 
 - **`dynamic.new` rejects value-dependent abstract types.** The typechecker reports a static error when the type
   given to `dynamic.new` contains an abstract type whose root is not a module (a let-bound tuple, a parameter, a
@@ -289,9 +289,9 @@ and the runtime no longer parses type strings.
 
 ### 3.4. `.qi` Files
 
-Interface artifacts are written in this format. Their schema is unchanged: signatures stay Quest-syntax strings
-(`typeSig`, `manifestType`), because they are compiler metadata that need type variables and path types. Only
-the envelope changed, with `ABI_VERSION` 4.
+Interface artifacts are documents of this format (§2.1), and their contents are its values. Their signatures are
+Quest-syntax strings (`typeSig`, `manifestType`), not type nodes, because they are compiler metadata that need type
+variables and path types.
 
 ### 3.5. Abstract Types
 
@@ -317,8 +317,7 @@ the envelope changed, with `ABI_VERSION` 4.
   representation: the writer and `dynamic.be` view such a value at the representation or at the bound as they
   need. The reader looks up the name, checks the representation by subtyping in
   both directions, and makes an opaque descriptor of its own for an unlinked name, with the
-  recorded representation. Since module objects register at startup, this bumped `ABI_VERSION` (to 24).
-  `word.T` has its own descriptor, `quest_type_Word`.
+  recorded representation. `word.T` has its own descriptor, `quest_type_Word`.
 - **A difference between the backends.** Compiled code does not check that two documents read with the same
   unlinked name agree on its representation, which the interpreter does.
 

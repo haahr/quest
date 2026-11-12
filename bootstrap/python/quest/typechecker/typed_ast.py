@@ -950,7 +950,6 @@ class TypedModule(TypedBinding):
     interface_name: str
     bindings: tuple[TypedBinding, ...]
     scope: Scope
-    c_init: Optional[str] = None
     is_precompiled: bool = False
     symbol_id: Optional[int] = field(default=None, compare=False)
 
@@ -1056,7 +1055,7 @@ def scope_exceptions(node: Any) -> list[TypedException]:
     """The named exceptions that a binding, a phrase, or a function's body makes
     for its scope before it runs, so that each one exists throughout the scope
     whether or not the expression that makes it runs (docs/type-system.md
-    §6.14): those named_exceptions_in finds, except the exception node is itself
+    §6.15): those named_exceptions_in finds, except the exception node is itself
     or binds directly, which it makes as it runs."""
     direct = node.expr if isinstance(node, TypedExprStmt) else node.value if isinstance(node, TypedLetValue) else node
     return [exc for exc in named_exceptions_in(node) if exc is not direct and exc.symbol is not None]
@@ -1144,7 +1143,7 @@ _TYPED_FIELDS: dict[type, Callable[[Any], tuple]] = {
     TypedExprStmt: lambda node: (node.expr,),
     TypedInterface: lambda node: (node.name, node.signatures, node.scope),
     TypedModule: lambda node: (
-        node.name, node.interface_name, node.bindings, node.scope, node.c_init, node.is_precompiled, node.symbol_id,
+        node.name, node.interface_name, node.bindings, node.scope, node.is_precompiled, node.symbol_id,
     ),
     TypedImportItem: lambda node: (
         node.names, node.interface_name, node.module_paths, node.interface_path, node.canonical_module_paths,
@@ -1282,7 +1281,7 @@ _REBUILD_TYPED: dict[type, Callable[[Any, tuple], Any]] = {
     ),
     TypedModule: lambda node, values: TypedModule(
         offset=node.offset, name=values[0], interface_name=values[1], bindings=values[2], scope=values[3],
-        c_init=values[4], is_precompiled=values[5], symbol_id=values[6],
+        is_precompiled=values[4], symbol_id=values[5],
     ),
     TypedImportItem: lambda node, values: TypedImportItem(
         offset=node.offset, names=values[0], interface_name=values[1], module_paths=values[2], interface_path=values[3],

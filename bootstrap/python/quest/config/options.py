@@ -42,14 +42,11 @@ class CompilerOptions:
     # Compiled code and the IR interpreter print the last phrase's result, as
     # the source interpreter does
     print_result: bool = False
-    # What run_c_compiled runs the binary with: its arguments, the exit status
-    # expected of it (any other is an error), its environment, and its
-    # standard input (nothing sets the last two, so the binary inherits the
-    # driver's)
+    # What run_c_compiled runs the binary with, which inherits the driver's
+    # environment and standard input: its arguments, and the exit status
+    # expected of it (any other is an error)
     target_args: list[str] = field(default_factory=list)
     expected_exit: int = 0
-    target_env: Optional[dict[str, str]] = None
-    target_stdin: Optional[str] = None
     # Objects (.o) named on the command line, linked into the binary
     extra_objects: list[Path] = field(default_factory=list)
     # Where interface and module artifacts are built and reused
@@ -58,9 +55,6 @@ class CompilerOptions:
     # Compile every module from source into the program's C (--whole-program;
     # docs/build-process.md §1.2), rather than separately
     whole_program: bool = False
-    # Read by nothing: the driver passes --emit-deps to compile_unit_file
-    # itself
-    emit_deps: bool = False
     # The directory of the program's main file, against which unit names under
     # no search root are made canonical (docs/modules.md §2.3), and the
     # directory of the file being compiled

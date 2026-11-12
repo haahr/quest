@@ -11,7 +11,6 @@ import
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    stringOp = string : StringOp
     conv : Conv
 export
     Let Type = model.Type
@@ -83,27 +82,8 @@ export
                     end
                 (* An unsolved metavariable (evaluateLazily looks through a
                  * solved one) is not a recursive variable, so it is
-                 * contractive. The lookup by name, kept from the bootstrap,
-                 * finds nothing in practice: metavariables are named ?A or
-                 * ?T1, which no type symbol is, and none is named Top *)
-                when typeMeta with x then
-                    if stringOp.equal(x.meta.name "Top") then
-                        true
-                    elsif maybe.isSome(:env.T e) then
-                        let sym = env.lookupType(maybe.unwrap(:env.T e) x.meta.name)
-                        if maybe.isSome(:symbols.TypeSymbol sym) then
-                            let s = maybe.unwrap(:symbols.TypeSymbol sym)
-                            if maybe.isSome(:Type s.definition) andif not(has(seen s.symbolId)) then
-                                contractive(maybe.unwrap(:Type s.definition) ids e plus(seen s.symbolId) {depth + 1})
-                            else
-                                true
-                            end
-                        else
-                            true
-                        end
-                    else
-                        true
-                    end
+                 * contractive *)
+                when typeMeta then true
                 when typeRec with x then
                     contractive(x.body plus(newIds() x.symbolId) e seen {depth + 1}) andif
                         contractive(x.body ids e seen {depth + 1})

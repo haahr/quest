@@ -3146,7 +3146,6 @@ const QTypeDescriptor *quest_make_array_descriptor(const QTypeDescriptor *elemen
     char *arr_name = (char *)quest_alloc_bytes(name_len);
     snprintf(arr_name, name_len, "Array(%s)", elem_name);
 
-
     /* Allocate array descriptor */
     QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
     desc->kind = QTYPE_KIND_ARRAY;
@@ -3225,7 +3224,6 @@ const QTypeDescriptor *quest_make_record_descriptor(
 ) {
     const char *rec_name = name ? name : "Record end";
 
-
     const char *dup_name = quest_dup_str(rec_name);
     QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
     desc->kind = QTYPE_KIND_RECORD;
@@ -3245,37 +3243,10 @@ const QTypeDescriptor *quest_make_record_descriptor(
     return desc;
 }
 
-const QTypeDescriptor *quest_make_tuple_descriptor(
-    const char *name, size_t size, size_t alignment, size_t element_count, const QTupleElementDescriptor *elements
-) {
-    if (element_count == 0) return &quest_type_EmptyTuple;
-    const char *tup_name = name ? name : "Tuple end";
-
-
-    const char *dup_name = quest_dup_str(tup_name);
-    QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
-    desc->kind = QTYPE_KIND_TUPLE;
-    desc->name = dup_name;
-    desc->size = size;
-    desc->alignment = alignment > 0 ? alignment : sizeof(void *);
-    desc->is_subtype = quest_is_subtype;
-
-    size_t meta_size = sizeof(QTupleTypeDescriptor) + sizeof(QTupleElementDescriptor) * element_count;
-    QTupleTypeDescriptor *meta = (QTupleTypeDescriptor *)quest_alloc(meta_size, &quest_layout_tuple_descriptor);
-    meta->element_count = element_count;
-    if (elements != NULL && element_count > 0) {
-        memcpy((void *)meta->elements, elements, sizeof(QTupleElementDescriptor) * element_count);
-    }
-    quest_barrier(desc);
-    desc->extra = meta;
-    return desc;
-}
-
 const QTypeDescriptor *quest_make_variant_descriptor(
     const char *name, size_t size, size_t alignment, size_t case_count, const QVariantCaseDescriptor *cases
 ) {
     const char *var_name = name ? name : "Variant end";
-
 
     const char *dup_name = quest_dup_str(var_name);
     QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
@@ -3300,7 +3271,6 @@ const QTypeDescriptor *quest_make_fun_descriptor(
     const char *name, size_t param_count, const QFunParamDescriptor *params, const QTypeDescriptor *result_type
 ) {
     const char *fn_name = name ? name : "Fun()";
-
 
     const char *dup_name = quest_dup_str(fn_name);
     QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);

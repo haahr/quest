@@ -725,9 +725,9 @@ Universal quantifiers can be bounded by power kinds (`A <: Bound`, represented s
   annotation, and its right-hand side entity must syntactically be a constructor or abstraction (Cardelli,
   *Typeful Programming* §4.3).
 
-### 6.10. Dynamic Typing and Narrowing (`dynamic: Dynamic`)
+### 6.11. Dynamic Typing and Narrowing (`dynamic: Dynamic`)
 Dynamic values package a runtime value together with its type. Following Cardelli (*Typeful Programming* §9.1),
-`Dynamic.T` is the auto type `Auto A::TYPE with a:A end` (§6.11), which the predefined type name `Dynamic` also
+`Dynamic.T` is the auto type `Auto A::TYPE with a:A end` (§6.12), which the predefined type name `Dynamic` also
 denotes (`DYNAMIC_TYPE`), and the `dynamic` module is an ordinary library module, `lib/dynamic.mod.quest`, that must
 be imported (see [dynamic.md](dynamic.md), which also notes a discrepancy in Cardelli's appendix about the component's
 name):
@@ -745,12 +745,12 @@ name):
   - An abstract type of a package value (`t.A`) cannot be the type of a dynamic value (`dynamic.new`, `dynamic.be`,
     or any function shaped like them) or appear in the type of an `inspect` branch on a Dynamic: its identity is the
     package's hidden type, which is not known at run time. Types that mention type parameters of enclosing
-    functions are allowed, with the restrictions of §6.11.
+    functions are allowed, with the restrictions of §6.12.
   - An abstract type exported by a module (`list.T(Int)`) is compared by name outside the module, but inside the
     module it is its representation type, so values given run-time types inside the module do not match the
     abstract type outside. This keeps the type opaque to clients while letting the module's own code inspect it.
 
-#### 6.10.1. Intensional Type Analysis vs. Pure Type Erasure
+#### 6.11.1. Intensional Type Analysis vs. Pure Type Erasure
 In a pure type erasure model (such as standard System $F_{<:}$ or ML), type parameters are discarded at compile time, leaving runtime code to operate exclusively on untyped representations. However, `Dynamic` requires **Intensional Type Analysis (ITA)** (Harper & Morrisett 1995), because `dynamic.new` and `dynamic.be` inspect types at runtime:
 - **Why Erasure Breaks Generic Wrappers:**
   Consider a polymorphic wrapper:
@@ -761,7 +761,7 @@ In a pure type erasure model (such as standard System $F_{<:}$ or ML), type para
 - **Comparison with Java RTTI vs. Erasure:**
   In Java, generic methods are implemented via erasure (`<T> void foo(T x)` erases `T` to `Object`). Java's dynamic operations (`instanceof`, reflection, `getClass()`) do not inspect erased generic parameters; they rely on reified class metadata (`java.lang.Class<T>`) stored in every object's heap header. When Java code needs dynamic operations on an abstract type parameter, it cannot write `new T()` or `x instanceof T`; it forces the programmer to pass an explicit runtime type token (`Class<T> typeToken`). In Quest, `dynamic.new(A::TYPE a:A)` specifies `A` as a formal type parameter, so the compiler automatically passes runtime type descriptors (`const QTypeDescriptor *descriptor_A`) to all quantified functions.
 
-### 6.11. Auto Types and Inspect (Cardelli §4.6, §6.7)
+### 6.12. Auto Types and Inspect (Cardelli §4.6, §6.7)
 An auto type `Auto A::K with S end` (`QAutoType`) is the union of the signatures `S[T/A]` over all closed types `T` of
 kind `K`. An auto value pairs such a type `T`, its *type component*, with components matching `S[T/A]`, so that the
 value describes its own shape; `inspect` recovers the type at run time.
@@ -785,7 +785,7 @@ end
   `when` clauses to be closed. Here such a type may mention type parameters of enclosing polymorphic functions
   (`let box(A::TYPE x:A):Boxed = auto :A with x end`, `auto :Tuple fst: A snd: Int end with ... end`,
   `inspect b when Tuple fst: A snd: Int end with t then ...`): they stand for the type arguments of the current
-  call, which both backends know at run time (the C backend passes descriptors for type parameters, §6.10.1; the
+  call, which both backends know at run time (the C backend passes descriptors for type parameters, §6.11.1; the
   interpreter binds run-time type arguments, below). The same holds for the type argument of a function shaped like
   `dynamic.new` or `dynamic.be`. Inside generic code, a value of a type that mentions a type parameter is laid out
   generically (an `A` component is a `QVal`, a closure taking an `A` takes a `QVal`); the C backend describes such
@@ -819,9 +819,9 @@ end
   marked `exact` in the typed AST when it matches by equality.
 
 **Relationship with `Dynamic`.** As Cardelli defines it, `Dynamic_T` is `Auto A::TYPE with a:A end`, and so it is
-here: dynamic values are auto values, and the `dynamic` module is written with `auto` and `inspect` (§6.10).
+here: dynamic values are auto values, and the `dynamic` module is written with `auto` and `inspect` (§6.11).
 
-### 6.12. List Module and Type Operator (`list: List`)
+### 6.13. List Module and Type Operator (`list: List`)
 The `list` module provides functional, immutable linked lists conforming to interface `List`:
 - **Higher-Kinded Abstract Type:** `List.T :: ALL(A::TYPE)::TYPE`.
 - **Operations:**
@@ -834,13 +834,13 @@ The `list` module provides functional, immutable linked lists conforming to inte
   - `list.enum(:A)(l: list.T(A)) : Array(A)`: Converts list to an array.
   - `list.error : Exception`: Raised on invalid operations (e.g. `head` or `tail` on an empty list).
 
-### 6.13. String Substring Precedence (`StringOp.precedesSub`)
+### 6.14. String Substring Precedence (`StringOp.precedesSub`)
 The `StringOp` interface and `string` module provide substring comparison:
 - `string.precedesSub(s1: String, start1: Int, size1: Int, s2: String, start2: Int, size2: Int) : Bool`
 - Compares slices `s1[start1 : start1 + size1]` and `s2[start2 : start2 + size2]` lexicographically. Raises
   `string.error` if any bounds are invalid.
 
-### 6.14. Named Exceptions and Their Scope
+### 6.15. Named Exceptions and Their Scope
 
 `exception E [: T] end` generates a new exception each time it is evaluated (Cardelli §4.9), and when it is named,
 the name `E` binds for the rest of the enclosing scope (a block, a function's body, a module, or the program), even
@@ -858,7 +858,7 @@ them with `let`s before the binding (`make_scope_exceptions` in `ir/lower.py`), 
 them in the binding's frame (`make_scope_exceptions` in `interpreter/treewalk.py`), where the expression that makes
 one finds it.
 
-### 6.15. Catching and Raising Again an Exception of Any Type (`else with`)
+### 6.16. Catching and Raising Again an Exception of Any Type (`else with`)
 
 A `try`'s `else` branch may name the exception it caught, `else with e then ...`, whatever its type
 ([raised.md](raised.md)). The binder's type is `raised.T` (`RAISED_TYPE` in `types/model.py`), the external type

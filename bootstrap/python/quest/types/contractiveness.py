@@ -91,15 +91,9 @@ def is_type_contractive(
                     return is_type_contractive(sym.definition, recursive_var_ids, env, seen | {sym_id}, depth + 1)
             return True
 
-        case QTypeMeta(name=mname):
-            if mname == "Top":
-                return True
-            if env is not None:
-                sym = env.lookup_type(mname)
-                if sym is not None and sym.definition is not None and sym.symbol_id not in seen:
-                    return is_type_contractive(
-                        sym.definition, recursive_var_ids, env, seen | {sym.symbol_id}, depth + 1
-                    )
+        # An unsolved metavariable (evaluate_lazily looks through a solved
+        # one) is not a recursive variable, so it is contractive
+        case QTypeMeta():
             return True
 
         case QRecType(symbol_id=inner_id, body=inner_body):

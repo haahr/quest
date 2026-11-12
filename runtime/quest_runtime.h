@@ -1063,8 +1063,6 @@ const QTypeDescriptor *quest_abstract_type_rep(const QTypeDescriptor *desc);
 /* More descriptors made at run time for the tests (see quest_make_array_descriptor) */
 const QTypeDescriptor *quest_make_record_descriptor(
     const char *name, size_t size, size_t alignment, size_t field_count, const QRecordFieldDescriptor *fields);
-const QTypeDescriptor *quest_make_tuple_descriptor(
-    const char *name, size_t size, size_t alignment, size_t element_count, const QTupleElementDescriptor *elements);
 const QTypeDescriptor *quest_make_variant_descriptor(
     const char *name, size_t size, size_t alignment, size_t case_count, const QVariantCaseDescriptor *cases);
 const QTypeDescriptor *quest_make_fun_descriptor(

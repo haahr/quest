@@ -642,8 +642,6 @@ class RunCCompiledPhase(Phase):
             proc = run_binary(
                 bin_path,
                 args=ctx.options.target_args,
-                env=ctx.options.target_env,
-                input_data=ctx.options.target_stdin,
             )
             if proc.returncode != ctx.options.expected_exit:
                 if proc.stderr:

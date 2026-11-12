@@ -59,7 +59,7 @@ class TestInterpreter(unittest.TestCase):
         self.assertEqual(out, "7 : Int\n")
 
     def test_an_exception_made_on_a_branch_that_does_not_run_exists(self) -> None:
-        # Made where its scope begins (docs/type-system.md §6.14)
+        # Made where its scope begins (docs/type-system.md §6.15)
         out = run(
             "let f(c: Bool): Int = begin "
             "let e: Exception = if c then exception I end else exception J end end "

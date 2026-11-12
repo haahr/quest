@@ -309,7 +309,7 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
     tag mapped (`quest_view_option_tag`), and a payload or option component converted (`quest_view_part`,
     `quest_view_option_component`). Used at another type (its bound, say), such a value is converted by the runtime
     between the two descriptors (a `view` plan). A module's abstract type with a bound is held viewed at its bound
-    outside the module, as before (§6.10).
+    outside the module (§6.4).
 
 - **Closure Adaptation Thunks:**
   When a tuple with concrete function signatures (e.g. `create: Int -> Counter` where `Counter = Int`) is coerced or
@@ -616,11 +616,13 @@ typedef struct QString {
 ### 5.6. Module Records and Lazy Initialization
 Quest modules compile to first-class record values (`QRecordVal`), allowing modules to be passed as arguments or
 manipulated dynamically:
-- **Module State Variable**: Each compiled module emits a static fat pointer:
+- **Module State Variable**: Each compiled module emits a fat pointer, its record, and an init function, with
+  external linkage when its unit exports the module to importers (a separately compiled module) and static
+  otherwise:
   ```c
-  static QRecordVal qm_<mod>;
+  QRecordVal qm_<mod>;
   static bool qv_mod_<mod>_initialized = false;
-  static void qv_mod_<mod>_init(void);
+  void qv_mod_<mod>_init(void);
   ```
 - **Record Struct Shape**: The module interface generates a concrete struct `QT_<Interface>` containing fields
   for each exported function closure (`QClosure *`) or value (`QVal` or concrete scalar/pointer).
@@ -630,9 +632,10 @@ manipulated dynamically:
   3. All fields are populated with **concrete values**: functions use static `QClosure` records (`qf_<fn>_closure`
      or `qx_<symbol>_closure`); data fields hold evaluated constants or pointers.
   4. `qm_<mod>` is initialized with `.val = (void *)payload` and `.dict = (const void *)&offsetdict_<I>_<I>`.
-  5. Exported module members are also copied into the non-static `qv_<mod>_<member>` C globals so importers can call
-     exported functions (`qv_<mod>_<fn>(...)`) and read exported values directly across translation units without going
-     through the `qm_<mod>` record.
+  5. An importer reads an exported member through the module's record, `qm_<mod>` (an extern global its own unit
+     defines): the field at the offset the record's offset table (`.dict`) gives for it, since the importer knows the
+     module only by its interface, not by how the module's unit lays the record out. A call of an imported module's
+     function does not go through the record: it calls the C function the module exports.
 
 ### 5.7. Recursive Types
 Quest's recursive types are equi-recursive: `Rec(X) T` is equal to its unfolding `T[X := Rec(X) T]`, to any depth.
@@ -802,7 +805,7 @@ Creating a capturing closure (`make_closure`) allocates both `struct QEnv_qf_<na
 populates the captured fields.
 
 ### 6.4. Polymorphic Functions and Runtime Type Descriptors (`QTypeDescriptor`)
-While monomorphic functions pass values directly, polymorphic functions (`All(A::K) ...`) require **Intensional Type Analysis (ITA)** (see `docs/type-system.md` §6.10.1) to support Cardelli's `Dynamic` operations (`dynamic.new`, `dynamic.be`) and first-class abstraction barriers without restricting generic wrappers.
+While monomorphic functions pass values directly, polymorphic functions (`All(A::K) ...`) require **Intensional Type Analysis (ITA)** (see `docs/type-system.md` §6.11.1) to support Cardelli's `Dynamic` operations (`dynamic.new`, `dynamic.be`) and first-class abstraction barriers without restricting generic wrappers.
 
 #### 1. The Uniform Quantifier Rule
 > **Rule:** Every universal type quantifier `(A::K)` in a function or method signature compiles to a preceding `const QTypeDescriptor *descriptor_<A>` parameter in C.
@@ -961,8 +964,8 @@ descriptor that matches the wrong values.
   with the `Q_UNUSED` attribute. Forward declarations ensure that self-referential or
   mutually recursive types can cross-reference descriptor addresses as compile-time address constants.
 - **Descriptors made at run time:** for the runtime's own tests (`tests/python`), the C runtime has constructors
-  (`quest_make_record_descriptor`, `quest_make_tuple_descriptor`, `quest_make_variant_descriptor`,
-  `quest_make_fun_descriptor`, `quest_make_array_descriptor`, `quest_make_opaque_descriptor`), each of which makes a
+  (`quest_make_record_descriptor`, `quest_make_variant_descriptor`, `quest_make_fun_descriptor`,
+  `quest_make_array_descriptor`, `quest_make_opaque_descriptor`), each of which makes a
   new descriptor. Nothing interns descriptors: two of the same type are equal as `quest_is_subtype` compares them.
   Compiled code does not call these.
 - **Opaque Types (`QTYPE_KIND_OPAQUE`):** Represent nominal abstract types (`T::TYPE` in an interface or existential
@@ -1013,7 +1016,7 @@ end`, is laid out generically, independently of `A`'s type argument: an `A` comp
 a particular `A`, say `Tuple fst: Real snd: Int end` or `Fun(:Car): String`, is laid out natively (a `QReal`
 component, a closure taking a 16-byte `QRecordVal`). Such types reach run time as the type components of auto values,
 in `inspect` `when` clauses, as type arguments of `dynamic.new` and `dynamic.be`, and as any type argument a generic
-function passes on ([type-system.md](type-system.md) §6.11).
+function passes on ([type-system.md](type-system.md) §6.12).
 
 - **Templates:** the describe pass (`ir/describe.py`, ir.md §8.4) describes such a type by a template: the type with
   each type parameter in scope replaced by a hole (`hole_var`, a reserved type variable `?i` keeping the parameter's
@@ -1266,7 +1269,7 @@ typedef struct QAuto {
 
 ### 8.1. Auto Values
 
-An auto value (`Auto A::K with S end`, [type-system.md](type-system.md) §6.11) is a `QAuto *`: `type_desc` is the
+An auto value (`Auto A::K with S end`, [type-system.md](type-system.md) §6.12) is a `QAuto *`: `type_desc` is the
 descriptor of its type component and `payload.p` points to a tuple struct holding its components. The tuple is
 stored in a layout that does not depend on the type component, that of `Tuple S end` with `A` an abstract type of
 kind `K` (`auto_payload_type(auto_t)`). As for any abstract type, a component of type `A` is a `QVal`, or the

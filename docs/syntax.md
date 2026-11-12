@@ -187,7 +187,7 @@ appendix):
   discriminates on the type component of an auto value (or on the type in a `Dynamic`). The identifiers after
   `with` are bound to the components; an optional `:Type` gives them a supertype.
 
-See [type-system.md](type-system.md) §6.11 for the typing rules.
+See [type-system.md](type-system.md) §6.12 for the typing rules.
 
 ### 3.10. Initial/Final Keyword Block Disambiguation
 Complex expressions (conditionals, loops, records, tuples, options) employ explicit terminating keywords:

@@ -446,7 +446,6 @@ def run_driver(args: list[str]) -> int:
         # (docs/build-process.md §5.2.4).
         build_dir=Path(parsed_args.build_dir) if parsed_args.build_dir else Path(".build"),
         whole_program=parsed_args.whole_program,
-        emit_deps=parsed_args.emit_deps,
     )
 
     sys.argv = [file_name] + target_args
@@ -579,7 +578,7 @@ def run_compile(args: list[str]) -> int:
         "--nogc",
         dest="nogc",
         action="store_true",
-        help="Compile without Boehm GC (uses standard libc malloc/free).",
+        help="Compile with -DQUEST_NOGC: the collector allocates but never collects.",
     )
     arg_parser.add_argument(
         "-c", "--compile-only",
