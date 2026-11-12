@@ -122,6 +122,14 @@ export
         opNop
         (* A label, before the instruction that follows *)
         opLabel with label: String end
+        (* A jump table (docs/arm64.md section 3.11), after the br that
+         * reads it: its start, which is the label label, then an entry for
+         * each value, the offset of its target, the label label, from the
+         * table, as a 32-bit word, then its end, which leaves the block as
+         * the br does *)
+        opJumpTable with label: String end
+        opJumpEntry with table: String label: String end
+        opJumpTableEnd
         (* r: the unwind information's frame address is r plus offset, or a
          * register's saved value is at the frame address plus offset *)
         opCfiDefCfa with offset: Int end
@@ -249,6 +257,9 @@ export
     brk(imm: Int): Inst
     nop: Inst
     label(l: String): Inst
+    jumpTable(label: String): Inst
+    jumpEntry(table: String label: String): Inst
+    jumpTableEnd: Inst
     cfiDefCfa(r: Int offset: Int): Inst
     cfiOffset(r: Int offset: Int): Inst
     loc(file: Int line: Int col: Int): Inst

@@ -648,6 +648,141 @@ export
             end
         end
 
+    (* =========================================================================
+     * Switches (docs/arm64.md section 3.11)
+     * ====================================================================== *)
+
+    (* The fewest cases a switch compiled as a jump table has, and the most a
+     * switch, or a part of one its search leaves, compares in turn *)
+    let tableCases = 8
+    let linearCases = 4
+
+    (* The flags of v's comparison with the constant n *)
+    let compareConst(s: S v: Int n: Int): Ok =
+        if {n > ~4096} andif {n < 4096} then emit(s minst.cmpImm(v n))
+        else
+            let c = temp(s ssa.typeInt)
+            emit(s minst.movConst(c n))
+            emit(s minst.cmp(v c))
+        end
+
+    (* A branch, when the flags satisfy cond, to t through an edge *)
+    let branchIf(s: S cond: minst.Cond t: ssa.Target): Ok =
+        begin
+            let e = edge(s t)
+            emitFull(s machine.kindBranch minst.bCond(cond labelOf(s e)) none none e)
+        end
+
+    (* A branch to t when v is n (cbz for 0) *)
+    let caseBranch(s: S v: Int n: Int t: ssa.Target): Ok =
+        if n is 0 then
+            let e = edge(s t)
+            emitFull(s machine.kindBranch minst.cbz(v labelOf(s e)) none none e)
+        else
+            compareConst(s v n)
+            branchIf(s minst.condEq t)
+        end
+
+    (* A switch of v on dense cases from least, size values in all, to
+     * targets, else default: the value less least checked against size,
+     * then an adr of the table, a load of the entry (its target's offset
+     * from the table) by the value, the sum, and a br, the table after it,
+     * an entry for each value, a gap's the default's (docs/arm64.md section
+     * 3.11). Each entry's target is a block of its own, as a branch's is,
+     * which only jumps when it moves nothing, and is then passed over *)
+    let jumpTable(s: S v: Int least: Int size: Int cases: Array(Int) targets: Array(ssa.Target)
+            default: ssa.Target): Ok =
+        begin
+            let index = if least is 0 then v
+                else
+                    let i = temp(s ssa.typeInt)
+                    if {least > 0} andif {least < 4096} then emit(s minst.subImm(i v least))
+                    elsif {least < 0} andif {least > ~4096} then emit(s minst.addImm(i v 0 - least 0))
+                    else
+                        let c = temp(s ssa.typeInt)
+                        emit(s minst.movConst(c least))
+                        emit(s minst.arith(minst.arithSub i v c))
+                    end
+                    i
+                end
+            compareConst(s index size)
+            branchIf(s minst.condHs default)
+            let label = s.prefix <> "_j" <> conv.int(s.b)
+            let table = temp(s ssa.typePtr)
+            let offset = temp(s ssa.typeInt)
+            let to = temp(s ssa.typePtr)
+            emit(s minst.adr(table label))
+            emit(s minst.loadIndex(minst.loadS32 offset table index 2))
+            emit(s minst.arith(minst.arithAdd to table offset))
+            emit(s minst.br(to))
+            emit(s minst.jumpTable(label))
+            let entries = array of(size default)
+            for k = 0 upto {extent cases - 1} do entries[cases[k] - least] := targets[k] end
+            for k = 0 upto {size - 1} do
+                let e = edge(s entries[k])
+                emitFull(s machine.kindBranch minst.jumpEntry(label labelOf(s e)) none none e)
+            end
+            emitFull(s machine.kindReturn minst.jumpTableEnd none none ~1)
+        end
+
+    (* A switch of v on the cases sorted[lo] to sorted[hi] (indices into
+     * cases and targets, in the cases' order), else default: a few compared
+     * in turn, more by a comparison with the middle one, which branches to
+     * its target when equal and to a block of its own for the greater ones,
+     * the lesser ones searched here *)
+    let rec search(s: S v: Int cases: Array(Int) targets: Array(ssa.Target) sorted: Array(Int) lo: Int hi: Int
+            default: ssa.Target): Ok =
+        if {hi - lo} < linearCases then
+            for k = lo upto hi do caseBranch(s v cases[sorted[k]] targets[sorted[k]]) end
+            jump(s default)
+        else
+            let mid = {lo + hi} / 2
+            compareConst(s v cases[sorted[mid]])
+            branchIf(s minst.condEq targets[sorted[mid]])
+            let greater = machine.newBlock(s.m)
+            vector.append(:Int s.layout greater)
+            emitFull(s machine.kindBranch minst.bCond(minst.condGt labelOf(s greater)) none none greater)
+            search(s v cases targets sorted lo mid - 1 default)
+            let from = s.b
+            s.b := greater
+            search(s v cases targets sorted mid + 1 hi default)
+            s.b := from
+        end
+
+    (* A switch: a jump table for at least tableCases dense cases (their
+     * range at most twice their number), a search for more than
+     * linearCases others, else a comparison and a branch for each case in
+     * turn *)
+    let switch(s: S value: Int cases: Array(Int) targets: Array(ssa.Target) default: ssa.Target): Ok =
+        begin
+            let v = r(s value)
+            let n = extent cases
+            let var least = 0
+            let var most = 0
+            for k = 0 upto {n - 1} do
+                if {k is 0} orif {cases[k] < least} then least := cases[k] end
+                if {k is 0} orif {cases[k] > most} then most := cases[k] end
+            end
+            let spread = most - least
+            if {n >= tableCases} andif {spread >= 0} andif {spread < 2 * n} then
+                jumpTable(s v least spread + 1 cases targets default)
+            elsif n > linearCases then
+                let sorted = array of(n 0)
+                for k = 0 upto {n - 1} do
+                    let var j = k
+                    while {j > 0} andif {cases[sorted[j - 1]] > cases[k]} do
+                        sorted[j] := sorted[j - 1]
+                        j := j - 1
+                    end
+                    sorted[j] := k
+                end
+                search(s v cases targets sorted 0 n - 1 default)
+            else
+                for k = 0 upto {n - 1} do caseBranch(s v cases[k] targets[k]) end
+                jump(s default)
+            end
+        end
+
     let terminator(s: S t: ssa.Terminator): Ok =
         case t
             when termNone then raise unsupported with "arm64: a block without a terminator" end
@@ -703,24 +838,7 @@ export
                     emitFull(s machine.kindBranch minst.cbnz(r(s x.cond) labelOf(s e)) none none e)
                 end
                 jump(s x.ifFalse)
-            (* A comparison and a branch for each case, in order (cbz for 0) *)
-            when termSwitch with x then
-                let v = r(s x.value)
-                for k = 0 upto {extent x.cases - 1} do
-                    let e = edge(s x.targets[k])
-                    if x.cases[k] is 0 then
-                        emitFull(s machine.kindBranch minst.cbz(v labelOf(s e)) none none e)
-                    else
-                        if {x.cases[k] > 0} andif {x.cases[k] < 4096} then emit(s minst.cmpImm(v x.cases[k]))
-                        else
-                            let c = temp(s ssa.typeInt)
-                            emit(s minst.movConst(c x.cases[k]))
-                            emit(s minst.cmp(v c))
-                        end
-                        emitFull(s machine.kindBranch minst.bCond(minst.condEq labelOf(s e)) none none e)
-                    end
-                end
-                jump(s x.default)
+            when termSwitch with x then switch(s x.value x.cases x.targets x.default)
             when termReturn with x then returnValues(s x.values)
             when termTailCall with x then tailCall(s x.call)
             (* Its handler's record pushed, a native handler's, resuming at a
@@ -989,7 +1107,8 @@ export
                 when opMovImm, opMovz, opMovk, opTlvAddress, opMov, opArith, opSubImm, opLogicImm, opShiftImm, opMsub,
                     opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore, opLdp,
                     opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz,
-                    opTbnz, opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                    opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa,
+                    opCfiOffset, opLoc then
                     false
             end
         end

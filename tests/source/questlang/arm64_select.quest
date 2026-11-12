@@ -17,8 +17,10 @@
  * constants are logical immediates, and the flags that falsify a condition;
  * a load and a store of a symbol the unit defines at its page offset, an
  * array's element and a byte at an index register, and a narrow result of a
- * call extended unless the unit's callee extends it; and comparisons with a
- * negative constant (cmn) or a shifted one. *)
+ * call extended unless the unit's callee extends it; comparisons with a
+ * negative constant (cmn) or a shifted one; and switches: a jump table for
+ * dense cases from a negative one, its gaps the default's, a search of
+ * sparse cases, and comparisons in turn of four. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
@@ -263,3 +265,34 @@ let big = ssa.binary(cmns 0 ssa.opUlt cp[0] ssa.constant(cmns 0 ~5000));
 ret(cmns 0 array of ssa.binary(cmns 0 ssa.opAdd ssa.binary(cmns 0 ssa.opAdd lt1 eq5) ssa.binary(cmns 0 ssa.opAdd ge big))
     end);
 show("negative and shifted comparisons" cmns);
+
+(* 14. Switches (docs/arm64.md section 3.11): 12 cases from -3 to 12 with gaps,
+ * a jump table, the value less -3 checked against 16, each entry a block of
+ * its own; 9 sparse cases, some negative and one too large for cmp's
+ * immediate, a search by the middle case (b.eq to it, b.gt to the greater
+ * ones), the rest compared in turn; and 4 cases, compared in turn (cbz for
+ * 0) *)
+let switchTo(f: ssa.Function b: Int v: Int cases: Array(Int) default: Int): Ok =
+    begin
+        let targets = array of(extent cases ssa.target(default none))
+        for k = 0 upto {extent cases - 1} do
+            let t = ssa.newBlock(f)
+            ret(f t array of ssa.constant(f t 100 + k) end)
+            targets[k] := ssa.target(t none)
+        end
+        ssa.terminate(f b option termSwitch of ssa.Terminator with
+            let value = v let cases = cases let targets = targets let default = ssa.target(default none)
+        end)
+    end;
+let switches = ssa.newFunction("qf_switches" false array of tInt end array of tInt end);
+let swp = params(switches);
+let sDefault = ssa.newBlock(switches);
+ret(switches sDefault array of swp[0] end);
+let sSparse = ssa.newBlock(switches);
+let sFew = ssa.newBlock(switches);
+let sTable = ssa.newBlock(switches);
+ssa.terminate(switches 0 option termJump of ssa.Terminator with let target = ssa.target(sTable none) end);
+switchTo(switches sTable swp[0] array of ~3 ~2 0 1 2 4 5 7 8 9 11 12 end sSparse);
+switchTo(switches sSparse swp[0] array of 900 ~40 7 ~1 30 5000 200 60 0 end sFew);
+switchTo(switches sFew swp[0] array of 3 0 1 2 end sDefault);
+show("switches" switches);

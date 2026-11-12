@@ -9,8 +9,8 @@
  * switch and a loop; a try, entered with _setjmp; a loop whose parallel copy
  * has cycles of either class; checks whose raising blocks are laid out
  * last; a thread-local's address and a symbol the unit does not define;
- * constants, each in the fewest instructions; and data of zeros, text, and
- * words.
+ * constants, each in the fewest instructions; a switch made a jump table, and
+ * one searched; and data of zeros, text, and words.
  * tests/python/test_arm64.py assembles the golden. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
@@ -204,7 +204,30 @@ for k = 0 upto {extent values - 1} do ssa.store(consts 0 at 8 * k 8 ssa.constant
 ret(consts 0 none);
 add(consts);
 
-(* 10. Data *)
+(* 10. Switches: one of 10 dense cases from 5, a jump table, and one of 6
+ * sparse cases, a search *)
+let switches = ssa.newFunction("qf_switches" false array of tInt end array of tInt end);
+let swp = params(switches);
+let sDefault = ssa.newBlock(switches);
+ret(switches sDefault array of swp[0] end);
+let switchTo(b: Int cases: Array(Int) default: Int): Ok =
+    begin
+        let targets = array of(extent cases ssa.target(default none))
+        for k = 0 upto {extent cases - 1} do
+            let t = ssa.newBlock(switches)
+            ret(switches t array of ssa.constant(switches t 100 + k) end)
+            targets[k] := ssa.target(t none)
+        end
+        ssa.terminate(switches b option termSwitch of ssa.Terminator with
+            let value = swp[0] let cases = cases let targets = targets let default = ssa.target(default none)
+        end)
+    end;
+let sSparse = ssa.newBlock(switches);
+switchTo(0 array of 5 6 7 8 9 10 11 12 13 14 end sSparse);
+switchTo(sSparse array of 1 50 ~7 300 9000 2 end sDefault);
+add(switches);
+
+(* 11. Data *)
 let word(n: Int): ssa.Word = option wordInt of ssa.Word with let n = n end;
 let address(s: String n: Int): ssa.Word = option wordSymbol of ssa.Word with let symbol = s let addend = n end;
 vector.append(:ssa.Data unit.data tuple

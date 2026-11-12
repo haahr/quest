@@ -116,13 +116,18 @@ export
             end
         end
 
+    (* Whether an operation is a jump table's end, which leaves its block
+     * by the br before the table, not by returning *)
+    let isTableEnd(op: minst.Op): Bool = case op when opJumpTableEnd then true else false end
+
     let isBrk(op: minst.Op): Bool =
         case op
             when opBrk then true
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
                 opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
                 opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr,
-                opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opNop, opLabel, opJumpTable, opJumpEntry,
+                opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
                 false
         end
 
@@ -500,10 +505,11 @@ export
             when opTbnz with x then minst.tbnz(0 x.bit l).op
             when opBCond with x then minst.bCond(x.cond l).op
             when opAdr then option opAdr of minst.Op with let label = l end
+            when opJumpEntry with x then minst.jumpEntry(x.table l).op
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
                 opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
                 opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opBSymbol, opBl, opBlr, opBr,
-                opRet, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                opRet, opBrk, opNop, opLabel, opJumpTable, opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
                 op
         end
 
@@ -545,7 +551,8 @@ export
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
                 opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
                 opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr,
-                opBr, opRet, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                opBr, opRet, opBrk, opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa, opCfiOffset,
+                opLoc then
                 maybe.none(:Conditional)
         end
 
@@ -572,7 +579,7 @@ export
                             opAddImm, opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm,
                             opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff,
                             opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond,
-                            opBrk, opNop, opCfiDefCfa, opCfiOffset, opLoc then
+                            opBrk, opNop, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
                             n := n + printer.count(i.op)
                     end
                 end
@@ -644,8 +651,8 @@ export
                 when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
                     opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp,
                     opCcmpImm, opCset, opCsel, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr,
-                    opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset,
-                    opLoc then
+                    opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry,
+                    opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
                     maybe.none(:Access)
             end
         end
@@ -669,7 +676,8 @@ export
                     when modePre, modePost then barrier
                 end
             when opTlvAddress, opStore, opLdp, opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz,
-                opTbnz, opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset then
+                opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa,
+                opCfiOffset then
                 barrier
         end
 
@@ -988,7 +996,9 @@ export
                             emit(e minst.loc(l.file l.line l.col))
                             last := l
                         end
-                        if machine.isKind(i machine.kindReturn) andif not(isBrk(op)) then restore(e) end
+                        if machine.isKind(i machine.kindReturn) andif not(isBrk(op)) andif not(isTableEnd(op)) then
+                            restore(e)
+                        end
                         if invert then
                             let to = select.label(s final[maybe.unwrap(:machine.Inst following).target])
                             emit(e tuple let op = maybe.unwrap(:Conditional c).inverse(to) let regs = regs end)

@@ -1,0 +1,318 @@
+(* Language: cases on options of 5, 16, and 60 tags, each with every value, compiled as a switch: through arms that
+   only give integers (which the self-hosted compiler's SSA makes a load from a table), arms that give strings, and arms
+   that call a function (which arm64 compiles as a jump table when the cases are dense and many, a search when
+   they are sparse or few, and comparisons in turn when fewer); with an else, which takes the values no case has,
+   among the cases (gaps) or outside them. *)
+
+import writer: Writer;
+import conv: Conv;
+
+let put(s: String): Ok = writer.putString(writer.output s);
+let note(s: String): Int = begin put(s <> " ") 0 end;
+
+Def Small = Option s00 s01 s02 s03 s04 end;
+Def Mid = Option m00 m01 m02 m03 m04 m05 m06 m07 m08 m09 m10 m11 m12 m13 m14 m15 end;
+Def Big = Option b00 b01 b02 b03 b04 b05 b06 b07 b08 b09 b10 b11 b12 b13 b14 b15 b16 b17 b18 b19 b20 b21 b22 b23 b24 b25 b26 b27 b28 b29 b30 b31 b32 b33 b34 b35 b36 b37 b38 b39 b40 b41 b42 b43 b44 b45 b46 b47 b48 b49 b50 b51 b52 b53 b54 b55 b56 b57 b58 b59 end;
+
+(* 1. Five tags: values, and calls *)
+let smallValue(x: Small): Int =
+    case x
+        when s00 then 1
+        when s01 then 11
+        when s02 then 21
+        when s03 then 31
+        when s04 then 41
+    end;
+
+let smallCall(x: Small): Int =
+    case x
+        when s00 then note("s00")
+        when s01 then note("s01")
+        when s02 then note("s02")
+        when s03 then note("s03")
+        when s04 then note("s04")
+    end;
+
+(* 2. Sixteen tags: values, strings, and calls; calls of a few with an else *)
+let midValue(x: Mid): Int =
+    case x
+        when m00 then ~20
+        when m01 then ~19
+        when m02 then ~16
+        when m03 then ~11
+        when m04 then ~4
+        when m05 then 5
+        when m06 then 16
+        when m07 then 29
+        when m08 then 44
+        when m09 then 61
+        when m10 then 80
+        when m11 then 101
+        when m12 then 124
+        when m13 then 149
+        when m14 then 176
+        when m15 then 205
+    end;
+
+let midName(x: Mid): String =
+    case x
+        when m00 then "M00"
+        when m01 then "M01"
+        when m02 then "M02"
+        when m03 then "M03"
+        when m04 then "M04"
+        when m05 then "M05"
+        when m06 then "M06"
+        when m07 then "M07"
+        when m08 then "M08"
+        when m09 then "M09"
+        when m10 then "M10"
+        when m11 then "M11"
+        when m12 then "M12"
+        when m13 then "M13"
+        when m14 then "M14"
+        when m15 then "M15"
+    end;
+
+let midCall(x: Mid): Int =
+    case x
+        when m00 then note("m00") + 0
+        when m01 then note("m01") + 1
+        when m02 then note("m02") + 2
+        when m03 then note("m03") + 3
+        when m04 then note("m04") + 4
+        when m05 then note("m05") + 5
+        when m06 then note("m06") + 6
+        when m07 then note("m07") + 7
+        when m08 then note("m08") + 8
+        when m09 then note("m09") + 9
+        when m10 then note("m10") + 10
+        when m11 then note("m11") + 11
+        when m12 then note("m12") + 12
+        when m13 then note("m13") + 13
+        when m14 then note("m14") + 14
+        when m15 then note("m15") + 15
+    end;
+
+let midSome(x: Mid): Int =
+    case x
+        when m03 then note("m03")
+        when m04 then note("m04")
+        when m05 then note("m05")
+        when m06 then note("m06")
+        when m07 then note("m07")
+        when m08 then note("m08")
+        when m09 then note("m09")
+        when m10 then note("m10")
+        else note("else")
+    end;
+
+(* 3. Sixty tags: values, and calls; dense calls of a part with an else, which also takes the gaps; sparse
+   calls with an else; and values of every seventh with an else *)
+let bigValue(x: Big): Int =
+    case x
+        when b00 then 1000
+        when b01 then 1003
+        when b02 then 1006
+        when b03 then 1009
+        when b04 then 1012
+        when b05 then 1015
+        when b06 then 1018
+        when b07 then 1021
+        when b08 then 1024
+        when b09 then 1027
+        when b10 then 1030
+        when b11 then 1033
+        when b12 then 1036
+        when b13 then 1039
+        when b14 then 1042
+        when b15 then 1045
+        when b16 then 1048
+        when b17 then 1051
+        when b18 then 1054
+        when b19 then 1057
+        when b20 then 1060
+        when b21 then 1063
+        when b22 then 1066
+        when b23 then 1069
+        when b24 then 1072
+        when b25 then 1075
+        when b26 then 1078
+        when b27 then 1081
+        when b28 then 1084
+        when b29 then 1087
+        when b30 then 1090
+        when b31 then 1093
+        when b32 then 1096
+        when b33 then 1099
+        when b34 then 1102
+        when b35 then 1105
+        when b36 then 1108
+        when b37 then 1111
+        when b38 then 1114
+        when b39 then 1117
+        when b40 then 1120
+        when b41 then 1123
+        when b42 then 1126
+        when b43 then 1129
+        when b44 then 1132
+        when b45 then 1135
+        when b46 then 1138
+        when b47 then 1141
+        when b48 then 1144
+        when b49 then 1147
+        when b50 then 1150
+        when b51 then 1153
+        when b52 then 1156
+        when b53 then 1159
+        when b54 then 1162
+        when b55 then 1165
+        when b56 then 1168
+        when b57 then 1171
+        when b58 then 1174
+        when b59 then 1177
+    end;
+
+let bigCall(x: Big): Int =
+    case x
+        when b00 then note("b00")
+        when b01 then note("b01")
+        when b02 then note("b02")
+        when b03 then note("b03")
+        when b04 then note("b04")
+        when b05 then note("b05")
+        when b06 then note("b06")
+        when b07 then note("b07")
+        when b08 then note("b08")
+        when b09 then note("b09")
+        when b10 then note("b10")
+        when b11 then note("b11")
+        when b12 then note("b12")
+        when b13 then note("b13")
+        when b14 then note("b14")
+        when b15 then note("b15")
+        when b16 then note("b16")
+        when b17 then note("b17")
+        when b18 then note("b18")
+        when b19 then note("b19")
+        when b20 then note("b20")
+        when b21 then note("b21")
+        when b22 then note("b22")
+        when b23 then note("b23")
+        when b24 then note("b24")
+        when b25 then note("b25")
+        when b26 then note("b26")
+        when b27 then note("b27")
+        when b28 then note("b28")
+        when b29 then note("b29")
+        when b30 then note("b30")
+        when b31 then note("b31")
+        when b32 then note("b32")
+        when b33 then note("b33")
+        when b34 then note("b34")
+        when b35 then note("b35")
+        when b36 then note("b36")
+        when b37 then note("b37")
+        when b38 then note("b38")
+        when b39 then note("b39")
+        when b40 then note("b40")
+        when b41 then note("b41")
+        when b42 then note("b42")
+        when b43 then note("b43")
+        when b44 then note("b44")
+        when b45 then note("b45")
+        when b46 then note("b46")
+        when b47 then note("b47")
+        when b48 then note("b48")
+        when b49 then note("b49")
+        when b50 then note("b50")
+        when b51 then note("b51")
+        when b52 then note("b52")
+        when b53 then note("b53")
+        when b54 then note("b54")
+        when b55 then note("b55")
+        when b56 then note("b56")
+        when b57 then note("b57")
+        when b58 then note("b58")
+        when b59 then note("b59")
+    end;
+
+let bigPart(x: Big): Int =
+    case x
+        when b10 then note("b10")
+        when b11 then note("b11")
+        when b13 then note("b13")
+        when b14 then note("b14")
+        when b15 then note("b15")
+        when b16 then note("b16")
+        when b18 then note("b18")
+        when b19 then note("b19")
+        when b20 then note("b20")
+        when b21 then note("b21")
+        when b23 then note("b23")
+        when b24 then note("b24")
+        when b25 then note("b25")
+        when b26 then note("b26")
+        when b28 then note("b28")
+        when b29 then note("b29")
+        when b30 then note("b30")
+        when b31 then note("b31")
+        when b33 then note("b33")
+        when b34 then note("b34")
+        when b35 then note("b35")
+        when b36 then note("b36")
+        when b38 then note("b38")
+        when b39 then note("b39")
+        else note("else")
+    end;
+
+let bigSparse(x: Big): Int =
+    case x
+        when b00 then note("b00")
+        when b07 then note("b07")
+        when b14 then note("b14")
+        when b21 then note("b21")
+        when b28 then note("b28")
+        when b35 then note("b35")
+        when b42 then note("b42")
+        when b49 then note("b49")
+        when b56 then note("b56")
+        else note("else")
+    end;
+
+let bigSevenths(x: Big): Int =
+    case x
+        when b00 then 0
+        when b07 then 7
+        when b14 then 14
+        when b21 then 21
+        when b28 then 28
+        when b35 then 35
+        when b42 then 42
+        when b49 then 49
+        when b56 then 56
+        else ~1
+    end;
+
+(* 4. Every value of each *)
+for i = 0 upto 4 do
+    let x = option ordinal(i) of Small end
+    put(conv.int(smallValue(x)) <> " ")
+    let ignored = smallCall(x)
+    put("\n")
+end;
+for i = 0 upto 15 do
+    let x = option ordinal(i) of Mid end
+    put(conv.int(midValue(x)) <> " " <> midName(x) <> " ")
+    put(conv.int(midCall(x)) <> " ")
+    let ignored = midSome(x)
+    put("\n")
+end;
+for i = 0 upto 59 do
+    let x = option ordinal(i) of Big end
+    put(conv.int(bigValue(x)) <> " " <> conv.int(bigSevenths(x)) <> " ")
+    let a = bigCall(x)
+    let b = bigPart(x)
+    let c = bigSparse(x)
+    put("\n")
+end;

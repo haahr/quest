@@ -1,0 +1,239 @@
+(* Quest Self-Hosted Compiler: The SSA's Tables Implementation *)
+
+module tables : Tables
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    conv : Conv
+export
+    Let Function = ssa.Function
+    Let Defs = Array(maybe.T(ssa.Inst))
+
+    (* The fewest cases a switch made a table has, and the most blocks an arm
+     * may pass through on its way to the join *)
+    let fewest = 4
+    let longest = 8
+
+    (* Whether block b's instructions are all constants, which an arm may
+     * make on its way: they cannot be used past the arm, which some other
+     * arm does not pass through to the join *)
+    let onlyConstants(blk: ssa.Block): Bool =
+        begin
+            let var all = true
+            for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                let i = vector.get(:ssa.Inst blk.insts k)
+                if not(ssa.isOp(i ssa.opConst) orif ssa.isOp(i ssa.opSymbol)) then all := false end
+            end
+            all
+        end
+
+    (* Where an arm that starts with target t goes: the first target on its
+     * way that passes arguments, when the blocks before it have no
+     * parameters, only make constants, and only jump on; otherwise none *)
+    let follow(f: Function t: ssa.Target): maybe.T(ssa.Target) =
+        begin
+            let var at = t
+            let var result = maybe.none(:ssa.Target)
+            let var steps = 0
+            let var going = true
+            while going do
+                going := false
+                if extent at.args > 0 then result := maybe.some(:ssa.Target at)
+                else
+                    let blk = ssa.block(f at.block)
+                    if {vector.length(:Int blk.params) is 0} andif {steps < longest} andif onlyConstants(blk) then
+                        case blk.term
+                            when termJump with x then
+                                at := x.target
+                                steps := steps + 1
+                                going := true
+                            when termNone, termBranch, termSwitch, termReturn, termTailCall, termTry, termUnreachable then
+                                ok
+                        end
+                    end
+                end
+            end
+            result
+        end
+
+    (* The word of static data that is v, if an opConst or an opSymbol
+     * defines it *)
+    let wordOf(defs: Defs v: Int): maybe.T(ssa.Word) =
+        if maybe.isNone(:ssa.Inst defs[v]) then maybe.none(:ssa.Word)
+        else
+            let i = maybe.unwrap(:ssa.Inst defs[v])
+            if ssa.isOp(i ssa.opConst) then maybe.some(:ssa.Word option wordInt of ssa.Word with let n = i.imm end)
+            elsif ssa.isOp(i ssa.opSymbol) then
+                maybe.some(:ssa.Word option wordSymbol of ssa.Word with let symbol = i.symbol let addend = i.imm end)
+            else maybe.none(:ssa.Word) end
+        end
+
+    (* A switch's plan: the join, the least case and the range's size, and for
+     * each of the join's parameters either a table's words (varies) or the
+     * value every arm passes (same) *)
+    Let Plan = Tuple
+        join: Int
+        least: Int
+        size: Int
+        varies: Array(Bool)
+        same: Array(Int)
+        words: Array(Array(ssa.Word))
+    end
+
+    (* The plan for a switch of value on cases to targets, else default, if it
+     * can be made a table *)
+    let plan(f: Function defs: Defs cases: Array(Int) targets: Array(ssa.Target) default: ssa.Target): maybe.T(Plan) =
+        if extent cases < fewest then maybe.none(:Plan)
+        else
+            let var least = cases[0]
+            let var most = cases[0]
+            for k = 1 upto {extent cases - 1} do
+                if cases[k] < least then least := cases[k] end
+                if cases[k] > most then most := cases[k] end
+            end
+            (* The range's size, checked before it is computed, so that cases
+             * far apart cannot overflow it *)
+            let spread = most - least
+            let dense = {spread >= 0} andif {spread < 2 * extent cases}
+            let arms = array of(extent cases maybe.none(:ssa.Target))
+            let var fits = dense
+            for k = 0 upto {extent cases - 1} do
+                if fits then
+                    arms[k] := follow(f targets[k])
+                    if maybe.isNone(:ssa.Target arms[k]) then fits := false end
+                end
+            end
+            if not(fits) then maybe.none(:Plan)
+            else
+                let size = spread + 1
+                let first = maybe.unwrap(:ssa.Target arms[0])
+                let join = first.block
+                let n = extent first.args
+                let other = follow(f default)
+                let gaps = size > extent cases
+                let defaultArm = maybe.isSome(:ssa.Target other) andif {maybe.unwrap(:ssa.Target other).block is join}
+                if gaps andif not(defaultArm) then fits := false end
+                for k = 0 upto {extent cases - 1} do
+                    if maybe.unwrap(:ssa.Target arms[k]).block isnot join then fits := false end
+                end
+                let params = ssa.block(f join).params
+                let varies = array of(n false)
+                let same = array of(n 0)
+                let words = array of(n array of :ssa.Word end)
+                let var anyVaries = false
+                if fits then
+                    for p = 0 upto {n - 1} do
+                        let v = first.args[p]
+                        same[p] := v
+                        for k = 1 upto {extent cases - 1} do
+                            if maybe.unwrap(:ssa.Target arms[k]).args[p] isnot v then varies[p] := true end
+                        end
+                        if gaps andif {maybe.unwrap(:ssa.Target other).args[p] isnot v} then varies[p] := true end
+                        if varies[p] then
+                            anyVaries := true
+                            case ssa.typeOf(f vector.get(:Int params p))
+                                when typeReal then fits := false
+                                when typeInt, typePtr, typeVal then ok
+                            end
+                        end
+                    end
+                end
+                if fits andif anyVaries then
+                    for p = 0 upto {n - 1} do
+                        if varies[p] then
+                            (* The default's word fills the gaps *)
+                            let filler = if gaps then wordOf(defs maybe.unwrap(:ssa.Target other).args[p])
+                                else maybe.some(:ssa.Word option wordInt of ssa.Word with let n = 0 end) end
+                            if maybe.isNone(:ssa.Word filler) then fits := false
+                            else
+                                let ws = array of(size maybe.unwrap(:ssa.Word filler))
+                                for k = 0 upto {extent cases - 1} do
+                                    let w = wordOf(defs maybe.unwrap(:ssa.Target arms[k]).args[p])
+                                    if maybe.isNone(:ssa.Word w) then fits := false
+                                    else ws[cases[k] - least] := maybe.unwrap(:ssa.Word w) end
+                                end
+                                words[p] := ws
+                            end
+                        end
+                    end
+                end
+                if fits andif anyVaries then
+                    maybe.some(:Plan tuple
+                        let join = join let least = least let size = size
+                        let varies = varies let same = same let words = words
+                    end)
+                else maybe.none(:Plan) end
+            end
+        end
+
+    (* Block b's switch on value made a check of its range, to default when
+     * out of it, and a block that loads each varying argument from its table
+     * (appended to u's data as symbol, symbol_1, ...) and jumps to the
+     * join *)
+    let convert(u: ssa.Unit f: Function b: Int value: Int default: ssa.Target p: Plan symbol: String): Ok =
+        begin
+            let blk = ssa.block(f b)
+            f.at := blk.termLoc
+            let index = if p.least is 0 then value
+                else ssa.binary(f b ssa.opSub value ssa.constant(f b p.least)) end
+            let inRange = ssa.binary(f b ssa.opUlt index ssa.constant(f b p.size))
+            let load = ssa.newBlock(f)
+            ssa.block(f load).termLoc := blk.termLoc
+            blk.term := option termBranch of ssa.Terminator with
+                let cond = inRange let ifTrue = ssa.target(load array of :Int end) let ifFalse = default
+            end
+            let params = ssa.block(f p.join).params
+            let args = array of(extent p.same 0)
+            let var tables = 0
+            let offset = ssa.binary(f load ssa.opShl index ssa.constant(f load 3))
+            for k = 0 upto {extent p.same - 1} do
+                if p.varies[k] then
+                    let name = if tables is 0 then symbol else symbol <> "_" <> conv.int(tables) end
+                    tables := tables + 1
+                    vector.append(:ssa.Data u.data ssa.words(name false false p.words[k]))
+                    let address = ssa.ptrAdd(f load ssa.symbolAddress(f load name) offset)
+                    args[k] := ssa.invariantLoad(f load address 0 8 false ssa.typeOf(f vector.get(:Int params k)))
+                else args[k] := p.same[k] end
+            end
+            ssa.terminate(f load option termJump of ssa.Terminator with let target = ssa.target(p.join args) end)
+        end
+
+    let tableFunction(u: ssa.Unit f: Function): Ok =
+        begin
+            let g = cfg.graph(f)
+            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let defs = array of(vector.length(:ssa.Type f.types) maybe.none(:ssa.Inst))
+            for b = 0 upto {nBlocks - 1} do
+                let insts = ssa.block(f b).insts
+                for k = 0 upto {vector.length(:ssa.Inst insts) - 1} do
+                    let i = vector.get(:ssa.Inst insts k)
+                    for j = 0 upto {extent i.results - 1} do defs[i.results[j]] := maybe.some(:ssa.Inst i) end
+                end
+            end
+            let at = f.at
+            let var made = 0
+            for b = 0 upto {nBlocks - 1} do
+                if cfg.reached(g b) then
+                    case ssa.block(f b).term
+                        when termSwitch with x then
+                            let p = plan(f defs x.cases x.targets x.default)
+                            if maybe.isSome(:Plan p) then
+                                convert(u f b x.value x.default maybe.unwrap(:Plan p)
+                                    "qt_" <> f.symbol <> "_" <> conv.int(made))
+                                made := made + 1
+                            end
+                        when termNone, termJump, termBranch, termReturn, termTailCall, termTry, termUnreachable then ok
+                    end
+                end
+            end
+            f.at := at
+            if made > 0 then cfg.dropUnreached(f) end
+        end
+
+    let tableUnit(u: ssa.Unit): Ok =
+        for i = 0 upto {vector.length(:Function u.functions) - 1} do
+            tableFunction(u vector.get(:Function u.functions i))
+        end
+end

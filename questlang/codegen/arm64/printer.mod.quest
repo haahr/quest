@@ -141,6 +141,9 @@ export
             when opBrk with x then "brk " <> immediate(x.imm)
             when opNop then "nop"
             when opLabel with x then x.label
+            when opJumpTable then ".data_region jt32"
+            when opJumpEntry with x then ".long " <> x.label <> "-" <> x.table
+            when opJumpTableEnd then ".end_data_region"
             when opCfiDefCfa with x then ".cfi_def_cfa " <> cfiName(rs[0]) <> ", " <> asm.decimal(x.offset)
             when opCfiOffset with x then ".cfi_offset " <> cfiName(rs[0]) <> ", " <> asm.decimal(x.offset)
             when opLoc with x then ".loc " <> conv.int(x.file) <> " " <> conv.int(x.line) <> " " <> conv.int(x.col)
@@ -215,7 +218,8 @@ export
                 when opMovImm, opMovz, opMovk, opMov, opArith, opAddImm, opSubImm, opLogicImm, opShiftImm, opMsub,
                     opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore, opLdp,
                     opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz,
-                    opTbnz, opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                    opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa,
+                    opCfiOffset, opLoc then
                     vector.append(:minst.Inst code tuple let op = op let regs = rs end)
             end
             vector.toArray(:minst.Inst code)
@@ -223,21 +227,25 @@ export
 
     let count(op: minst.Op): Int =
         case op
-            when opLabel, opCfiDefCfa, opCfiOffset, opLoc then 0
+            when opLabel, opJumpTable, opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then 0
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
                 opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
                 opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr,
-                opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop then
+                opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opJumpEntry then
                 extent expansion(op array of 0 end)
         end
 
     let lines(op: minst.Op regs: Array(Int) n: Names): Array(String) =
         case op
             when opLabel with x then array of x.label <> ":" end
+            (* The table's directive, which tells disassemblers its entries
+             * are data, then its label *)
+            when opJumpTable with x then array of "\t.data_region jt32" x.label <> ":" end
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
                 opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
                 opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr,
-                opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opCfiDefCfa, opCfiOffset, opLoc then
+                opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opJumpEntry, opJumpTableEnd,
+                opCfiDefCfa, opCfiOffset, opLoc then
                 let expanded = expansion(op regs)
                 let ls = array of(extent expanded "")
                 for k = 0 upto {extent expanded - 1} do

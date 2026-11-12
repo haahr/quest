@@ -355,7 +355,13 @@ export
                 when opBCond with x then 0x54000000 + shl(distance(x.label 19) 5) + cond(x.cond)
                 when opBrk with x then 0xD4200000 + shl(x.imm 5)
                 when opNop then 0xD503201F
-                when opMovConst, opSymbolAddress, opTlvAddress, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                (* The entry's target's offset from the table, as the
+                 * assembler writes .long of their difference *)
+                when opJumpEntry with x then
+                    words.toInt(words.andBits(words.fromInt(labelOffset(x.label) - labelOffset(x.table))
+                        words.fromInt(0xFFFFFFFF)))
+                when opMovConst, opSymbolAddress, opTlvAddress, opLabel, opJumpTable, opJumpTableEnd, opCfiDefCfa,
+                    opCfiOffset, opLoc then
                     raise unencodable with "a pseudo-instruction, label, or directive" end
             end
         end
@@ -384,6 +390,7 @@ export
                     let i = vector.get(:minst.Inst f.code j)
                     case i.op
                         when opLabel with x then begin hashMap.insert(:String :Int labels x.label at) ok end
+                        when opJumpTable with x then begin hashMap.insert(:String :Int labels x.label at) ok end
                         else at := at + 4 * printer.count(i.op)
                     end
                 end
@@ -424,7 +431,7 @@ export
                             vector.append(:Line lines tuple
                                 let offset = pc let file = x.file let line = x.line let column = x.col
                             end)
-                        when opLabel, opCfiDefCfa, opCfiOffset then ok
+                        when opLabel, opJumpTable, opJumpTableEnd, opCfiDefCfa, opCfiOffset then ok
                         else
                             let expanded = printer.expansion(i.op i.regs)
                             for e = 0 upto {extent expanded - 1} do

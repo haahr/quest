@@ -1,0 +1,27 @@
+(* Quest Self-Hosted Compiler: The SSA's Tables Interface
+ *
+ * Switches of constants made loads from tables (docs/ssa.md section 4.1). A
+ * switch whose arms only pass constants on to one block, each through blocks
+ * of constants that only jump on, becomes a check of the value's range and a
+ * load from a static table of the unit's data for each argument the arms pass
+ * differently, indexed by the value less the least case. nodes.opcodeIndex, a
+ * case of 52 arms each giving an integer, is such a switch: arm64 compared
+ * and branched for each case in turn, where C's compiler made it a load. The
+ * cases must be at least 4 and dense (their range at most twice their
+ * number); a value in the range that no case has takes the default's
+ * arguments, so a switch with such gaps needs a default that passes constants
+ * to the same block too, and one without them may have any default, which a
+ * value out of the range takes.
+ * An argument may be an integer, a symbol's address, or a value the arms all
+ * pass alike; a real is left alone, and so is a switch whose arms pass
+ * nothing differently. A string literal is not a symbol's address but a call
+ * that makes the string, in each arm, so a case of strings is left too. *)
+
+interface Tables
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* Makes the tables of f's switches, appending their data to u *)
+    tableFunction(u: ssa.Unit f: ssa.Function): Ok
+    tableUnit(u: ssa.Unit): Ok
+end

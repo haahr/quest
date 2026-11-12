@@ -190,7 +190,7 @@ registration, and the unit).
 What the builder does not yet build raises `unsupported`, naming the construct; `--stop-after ssa` reports it as an
 internal error.
 
-### 4.1. The Pipeline: Escape Analysis, Promotion, Scalars, Constants, Value Numbering, Selects, and Tail Calls
+### 4.1. The Pipeline: Escape Analysis, Promotion, Scalars, Constants, Value Numbering, Selects, Tables, and Tail Calls
 
 `questlang/ssa/pipeline` builds a unit and then runs its passes, by name, in order, each on every function:
 
@@ -248,6 +248,18 @@ internal error.
   global); they move into the branch's block. A carry in a loop of arbitrary-precision arithmetic (`util/bignum`'s `bit(word.lt(sum operand))`) is such a
   branch, taken as often as not: arm64 mispredicted half of them, and now makes each a `cset` of the comparison's
   flags; C's compiler already made it one ([benchmarks.md](benchmarks.md) §15). `ssa_selects` shows each case.
+- **`ssa/tables`** makes a switch of constants a load from a table. A switch whose arms (each a case's target,
+  directly or through blocks with no parameters that only make constants and jump on) all pass arguments to one
+  block, the join, with at least 4 cases, dense (their range at most twice their number), becomes a check of the value
+  less the least case against the range's size (`ult`), branching to the default when out of it, and a block that
+  loads each argument the arms pass differently from a static table of the unit's (read-only data, a word for each
+  value in the range, `qt_<function>_<n>`) at that index, then jumps to the join. An argument is an integer or a
+  symbol's address (`opConst`, `opSymbol`), or a value every arm passes alike; a `real` keeps the switch. A value in
+  the range that no case has takes the default's arguments, so a switch with such gaps is converted only when its
+  default passes constants to the join too. `nodes.opcodeIndex`, a case of 52 arms each an integer, was arm64's
+  compare and branch for each case, 1,555 of the compiler's samples against the C build's 196, where clang made it a
+  load ([benchmarks.md](benchmarks.md) §21.5); a case of strings is not converted, since each arm calls
+  `quest_string_new` for its literal. `ssa_tables` shows each case.
 - **`ssa/accumulate`** makes loops of recursion through an associative operation (LLVM's accumulator recursion
   elimination; [benchmarks.md](benchmarks.md) §14): in a function of one `int` result, from which no slot's address
   escapes, a block whose last instructions are a call of the function itself and an `add`, `mul`, `and`, `or`, or `xor`
@@ -310,7 +322,7 @@ The passes share their analyses: `ssa/cfg` (predecessors, successors, reverse po
 preorder and postorder numbers, dominance frontiers, and loop depths) and `ssa/liveness` (each block's live-in and
 live-out values, which the register allocator uses); `nodes` has the mutators (`targets`, `mapTargets`, `mapBlocks`,
 `replaceUses`). The driver dumps the SSA after the builder (`--dump-after ssa_built`), after each pass (`ssa_escape`,
-`ssa_promote`, `ssa_constants`, `ssa_valueNumbers`, `ssa_selects`, `ssa_accumulate`, `ssa_tailCalls`,
+`ssa_promote`, `ssa_constants`, `ssa_valueNumbers`, `ssa_selects`, `ssa_tables`, `ssa_accumulate`, `ssa_tailCalls`,
 `ssa_tailJumps`), and at the end
 (`ssa`);
 `QUEST_SKIP_PASSES`, a comma-separated list of passes' names, leaves passes out, for a test or a bisection.
@@ -455,10 +467,9 @@ b0(%0: ptr, %1: int):
 `questlang/ssa/parser` reads the text back into a unit, values keeping their numbers, so that printing what it reads
 prints what it read: with `QUEST_CHECK_IR=1` the driver reads back the SSA it prints and reports any difference, so
 every golden is checked to read back as itself. A pass is tested on SSA written as text: the questlang tests
-`ssa_promote`, `ssa_escape`, `ssa_constants`, `ssa_valuenumbers`, `ssa_selects`, `ssa_accumulate`, `ssa_tailcalls`,
-and `ssa_tailjumps` read small
-functions, run their pass and the verifier, and print the functions before and after; and a program's SSA can be cut
-down to the functions that show a bug.
+`ssa_promote`, `ssa_escape`, `ssa_constants`, `ssa_valuenumbers`, `ssa_selects`, `ssa_tables`, `ssa_accumulate`,
+`ssa_tailcalls`, and `ssa_tailjumps` read small functions, run their pass and the verifier, and print the functions
+before and after; and a program's SSA can be cut down to the functions that show a bug.
 
 ## 7. The Verifier
 

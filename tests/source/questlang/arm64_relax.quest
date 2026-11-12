@@ -6,7 +6,8 @@
  * too far, forward or back, becomes its inverse around an unconditional
  * branch; one within reach, an unconditional branch, and directives are left
  * alone; relaxing one branch can push another out of reach, which the next
- * round relaxes; a pseudo-instruction counts as the instructions it is; and a
+ * round relaxes; a pseudo-instruction counts as the instructions it is, and a
+ * jump table as its entries, a word each; and a
  * test of a bit (tbz, tbnz), which reaches 32 KB, is relaxed at the full reach
  * where cbz is not (the nops between them left out of the output). *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
@@ -67,6 +68,10 @@ end 1);
 show("a constant of four halfwords is four instructions" array of
     bCond(minst.condEq "L") minst.movConst(x9 1311768467463790320) label("L") minst.ret
 end 3);
+show("a jump table's entries count, a word each" array of
+    bCond(minst.condHs "L") minst.adr(x9 "Lt_j0") minst.br(x9) minst.jumpTable("Lt_j0") minst.jumpEntry("Lt_j0" "L")
+    minst.jumpEntry("Lt_j0" "L") minst.jumpEntry("Lt_j0" "L") minst.jumpTableEnd label("L") minst.ret
+end 4);
 
 let far = array of(8003 minst.nop);
 far[0] := minst.tbz(x9 3 "L");

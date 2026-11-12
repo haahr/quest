@@ -66,6 +66,9 @@ export
         opBrk with imm: Int end
         opNop
         opLabel with label: String end
+        opJumpTable with label: String end
+        opJumpEntry with table: String label: String end
+        opJumpTableEnd
         opCfiDefCfa with offset: Int end
         opCfiOffset with offset: Int end
         opLoc with file: Int line: Int col: Int end
@@ -181,7 +184,8 @@ export
                 1
             when opLdp then 2
             when opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opStore, opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet,
-                opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa,
+                opCfiOffset, opLoc then
                 0
         end
     let pure(op: Op): Bool =
@@ -191,7 +195,7 @@ export
                 true
             when opMovk, opTlvAddress, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore,
                 opLdp, opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk,
-                opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
                 false
         end
 
@@ -267,6 +271,10 @@ export
     let brk(imm: Int): Inst = inst(option opBrk of Op with let imm = imm end none)
     let nop: Inst = inst(option opNop of Op end none)
     let label(l: String): Inst = inst(option opLabel of Op with let label = l end none)
+    let jumpTable(label: String): Inst = inst(option opJumpTable of Op with let label = label end none)
+    let jumpEntry(table: String label: String): Inst =
+        inst(option opJumpEntry of Op with let table = table let label = label end none)
+    let jumpTableEnd: Inst = inst(option opJumpTableEnd of Op end none)
     let cfiDefCfa(r: Int offset: Int): Inst = inst(option opCfiDefCfa of Op with let offset = offset end array of r end)
     let cfiOffset(r: Int offset: Int): Inst = inst(option opCfiOffset of Op with let offset = offset end array of r end)
     let loc(file: Int line: Int col: Int): Inst =

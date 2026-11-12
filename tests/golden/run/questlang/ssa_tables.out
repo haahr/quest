@@ -1,0 +1,519 @@
+== integers, cases 0 to 4, a default that raises
+function index(%0: int): int {
+b0(%0: int):
+  switch %0 [0: b1(), 1: b2(), 2: b3(), 3: b4(), 4: b5()] default b6()
+b1():
+  %1: int = const 10
+  jump b7(%1)
+b2():
+  %2: int = const 11
+  jump b7(%2)
+b3():
+  %3: int = const 12
+  jump b7(%3)
+b4():
+  %4: int = const 13
+  jump b7(%4)
+b5():
+  %5: int = const 14
+  jump b7(%5)
+b6():
+  call quest_raise_variant_error()
+  unreachable
+b7(%6: int):
+  return %6
+}
+-- after tables
+function index(%0: int): int {
+b0(%0: int):
+  %7: int = const 5
+  %8: int = ult %0, %7
+  branch %8, b3(), b1()
+b1():
+  call quest_raise_variant_error()
+  unreachable
+b2(%6: int):
+  return %6
+b3():
+  %9: int = const 3
+  %10: int = shl %0, %9
+  %11: ptr = symbol qt_index_0
+  %12: ptr = ptrAdd %11, %10
+  %13: int = load8 %12 + 0 invariant
+  jump b2(%13)
+}
+
+data qt_index_0 words [10, 11, 12, 13, 14]
+== strings, cases 3 to 6, in another order
+function name(%0: int): ptr {
+b0(%0: int):
+  switch %0 [5: b1(), 3: b2(), 6: b3(), 4: b4()] default b5()
+b1():
+  %1: ptr = symbol qs_1
+  jump b6(%1)
+b2():
+  %2: ptr = symbol qs_2
+  jump b6(%2)
+b3():
+  %3: ptr = symbol qs_3
+  jump b6(%3)
+b4():
+  %4: ptr = symbol qs_4 + 8
+  jump b6(%4)
+b5():
+  call quest_raise_variant_error()
+  unreachable
+b6(%5: ptr):
+  return %5
+}
+
+data qs_1 text "one"
+data qs_2 text "two"
+data qs_3 text "three"
+data qs_4 text "four"
+-- after tables
+function name(%0: int): ptr {
+b0(%0: int):
+  %6: int = const 3
+  %7: int = sub %0, %6
+  %8: int = const 4
+  %9: int = ult %7, %8
+  branch %9, b3(), b1()
+b1():
+  call quest_raise_variant_error()
+  unreachable
+b2(%5: ptr):
+  return %5
+b3():
+  %10: int = const 3
+  %11: int = shl %7, %10
+  %12: ptr = symbol qt_name_0
+  %13: ptr = ptrAdd %12, %11
+  %14: ptr = load8 %13 + 0 invariant
+  jump b2(%14)
+}
+
+data qs_1 text "one"
+data qs_2 text "two"
+data qs_3 text "three"
+data qs_4 text "four"
+data qt_name_0 words [qs_2, qs_4 + 8, qs_1, qs_3]
+== gaps, filled by a default that passes a constant
+function gaps(%0: int): int {
+b0(%0: int):
+  %1: int = const 7
+  switch %0 [0: b1(), 2: b2(), 4: b3(), 6: b4()] default b5(%1)
+b1():
+  %2: int = const 1
+  jump b5(%2)
+b2():
+  %3: int = const 2
+  jump b5(%3)
+b3():
+  %4: int = const 3
+  jump b5(%4)
+b4():
+  %5: int = const 4
+  jump b5(%5)
+b5(%6: int):
+  return %6
+}
+-- after tables
+function gaps(%0: int): int {
+b0(%0: int):
+  %1: int = const 7
+  %7: int = const 7
+  %8: int = ult %0, %7
+  branch %8, b2(), b1(%1)
+b1(%6: int):
+  return %6
+b2():
+  %9: int = const 3
+  %10: int = shl %0, %9
+  %11: ptr = symbol qt_gaps_0
+  %12: ptr = ptrAdd %11, %10
+  %13: int = load8 %12 + 0 invariant
+  jump b1(%13)
+}
+
+data qt_gaps_0 words [1, 7, 2, 7, 3, 7, 4]
+== negative cases, arms through two blocks
+function signs(%0: int): int {
+b0(%0: int):
+  switch %0 [~2: b1(), ~1: b2(), 0: b3(), 1: b4()] default b8()
+b1():
+  %1: int = const ~20
+  jump b5()
+b2():
+  jump b6()
+b3():
+  %3: int = const 0
+  jump b9(%3)
+b4():
+  jump b7()
+b5():
+  jump b9(%1)
+b6():
+  %2: int = const ~10
+  jump b9(%2)
+b7():
+  %4: int = const 10
+  jump b9(%4)
+b8():
+  call quest_raise_variant_error()
+  unreachable
+b9(%5: int):
+  return %5
+}
+-- after tables
+function signs(%0: int): int {
+b0(%0: int):
+  %6: int = const ~2
+  %7: int = sub %0, %6
+  %8: int = const 4
+  %9: int = ult %7, %8
+  branch %9, b3(), b1()
+b1():
+  call quest_raise_variant_error()
+  unreachable
+b2(%5: int):
+  return %5
+b3():
+  %10: int = const 3
+  %11: int = shl %7, %10
+  %12: ptr = symbol qt_signs_0
+  %13: ptr = ptrAdd %12, %11
+  %14: int = load8 %13 + 0 invariant
+  jump b2(%14)
+}
+
+data qt_signs_0 words [~20, ~10, 0, 10]
+== two parameters, one passed alike
+function pair(%0: int, %1: ptr): int {
+b0(%0: int, %1: ptr):
+  switch %0 [0: b1(), 1: b2(), 2: b3(), 3: b4()] default b5()
+b1():
+  %2: int = const 5
+  jump b6(%1, %2)
+b2():
+  %3: int = const 6
+  jump b6(%1, %3)
+b3():
+  %4: int = const 7
+  jump b6(%1, %4)
+b4():
+  %5: int = const 8
+  jump b6(%1, %5)
+b5():
+  call quest_raise_variant_error()
+  unreachable
+b6(%6: ptr, %7: int):
+  %8: int = load8 %6 + 0
+  %9: int = add %8, %7
+  return %9
+}
+-- after tables
+function pair(%0: int, %1: ptr): int {
+b0(%0: int, %1: ptr):
+  %10: int = const 4
+  %11: int = ult %0, %10
+  branch %11, b3(), b1()
+b1():
+  call quest_raise_variant_error()
+  unreachable
+b2(%6: ptr, %7: int):
+  %8: int = load8 %6 + 0
+  %9: int = add %8, %7
+  return %9
+b3():
+  %12: int = const 3
+  %13: int = shl %0, %12
+  %14: ptr = symbol qt_pair_0
+  %15: ptr = ptrAdd %14, %13
+  %16: int = load8 %15 + 0 invariant
+  jump b2(%1, %16)
+}
+
+data qt_pair_0 words [5, 6, 7, 8]
+== left: gaps and a default that raises
+function holes(%0: int): int {
+b0(%0: int):
+  switch %0 [0: b1(), 2: b2(), 4: b3(), 6: b4()] default b5()
+b1():
+  %1: int = const 1
+  jump b6(%1)
+b2():
+  %2: int = const 2
+  jump b6(%2)
+b3():
+  %3: int = const 3
+  jump b6(%3)
+b4():
+  %4: int = const 4
+  jump b6(%4)
+b5():
+  call quest_raise_variant_error()
+  unreachable
+b6(%5: int):
+  return %5
+}
+-- after tables
+function holes(%0: int): int {
+b0(%0: int):
+  switch %0 [0: b1(), 2: b2(), 4: b3(), 6: b4()] default b5()
+b1():
+  %1: int = const 1
+  jump b6(%1)
+b2():
+  %2: int = const 2
+  jump b6(%2)
+b3():
+  %3: int = const 3
+  jump b6(%3)
+b4():
+  %4: int = const 4
+  jump b6(%4)
+b5():
+  call quest_raise_variant_error()
+  unreachable
+b6(%5: int):
+  return %5
+}
+== left: sparse cases, three cases, and an arm with an addition
+function sparse(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  switch %0 [0: b1(), 10: b2(), 20: b3(), 30: b4()] default b5(%1)
+b1():
+  %2: int = const 1
+  jump b5(%2)
+b2():
+  %3: int = const 2
+  jump b5(%3)
+b3():
+  %4: int = const 3
+  jump b5(%4)
+b4():
+  %5: int = const 4
+  jump b5(%5)
+b5(%6: int):
+  return %6
+}
+
+function three(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  switch %0 [0: b1(), 1: b2(), 2: b3()] default b4(%1)
+b1():
+  %2: int = const 1
+  jump b4(%2)
+b2():
+  %3: int = const 2
+  jump b4(%3)
+b3():
+  %4: int = const 3
+  jump b4(%4)
+b4(%5: int):
+  return %5
+}
+
+function adds(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  switch %0 [0: b1(), 1: b2(), 2: b3(), 3: b4()] default b5(%1)
+b1():
+  %2: int = const 1
+  jump b5(%2)
+b2():
+  %3: int = const 2
+  jump b5(%3)
+b3():
+  %4: int = add %0, %0
+  jump b5(%4)
+b4():
+  %5: int = const 4
+  jump b5(%5)
+b5(%6: int):
+  return %6
+}
+-- after tables
+function sparse(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  switch %0 [0: b1(), 10: b2(), 20: b3(), 30: b4()] default b5(%1)
+b1():
+  %2: int = const 1
+  jump b5(%2)
+b2():
+  %3: int = const 2
+  jump b5(%3)
+b3():
+  %4: int = const 3
+  jump b5(%4)
+b4():
+  %5: int = const 4
+  jump b5(%5)
+b5(%6: int):
+  return %6
+}
+
+function three(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  switch %0 [0: b1(), 1: b2(), 2: b3()] default b4(%1)
+b1():
+  %2: int = const 1
+  jump b4(%2)
+b2():
+  %3: int = const 2
+  jump b4(%3)
+b3():
+  %4: int = const 3
+  jump b4(%4)
+b4(%5: int):
+  return %5
+}
+
+function adds(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  switch %0 [0: b1(), 1: b2(), 2: b3(), 3: b4()] default b5(%1)
+b1():
+  %2: int = const 1
+  jump b5(%2)
+b2():
+  %3: int = const 2
+  jump b5(%3)
+b3():
+  %4: int = add %0, %0
+  jump b5(%4)
+b4():
+  %5: int = const 4
+  jump b5(%5)
+b5(%6: int):
+  return %6
+}
+== left: different joins, reals, and a value not a constant
+function joins(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  switch %0 [0: b1(), 1: b2(), 2: b3(), 3: b4()] default b5(%1)
+b1():
+  %2: int = const 1
+  jump b5(%2)
+b2():
+  %3: int = const 2
+  jump b5(%3)
+b3():
+  %4: int = const 3
+  jump b6(%4)
+b4():
+  %5: int = const 4
+  jump b5(%5)
+b5(%6: int):
+  return %6
+b6(%7: int):
+  %8: int = add %7, %7
+  return %8
+}
+
+function reals(%0: int): real {
+b0(%0: int):
+  %1: real = realConst 0
+  switch %0 [0: b1(), 1: b2(), 2: b3(), 3: b4()] default b5(%1)
+b1():
+  %2: real = realConst 4607182418800017408
+  jump b5(%2)
+b2():
+  %3: real = realConst 4611686018427387904
+  jump b5(%3)
+b3():
+  %4: real = realConst 4613937818241073152
+  jump b5(%4)
+b4():
+  %5: real = realConst 4616189618054758400
+  jump b5(%5)
+b5(%6: real):
+  return %6
+}
+
+function mixed(%0: int, %1: int): int {
+b0(%0: int, %1: int):
+  %2: int = const 0
+  switch %0 [0: b1(), 1: b2(), 2: b3(), 3: b4()] default b5(%2)
+b1():
+  %3: int = const 1
+  jump b5(%3)
+b2():
+  jump b5(%1)
+b3():
+  %4: int = const 3
+  jump b5(%4)
+b4():
+  %5: int = const 4
+  jump b5(%5)
+b5(%6: int):
+  return %6
+}
+-- after tables
+function joins(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  switch %0 [0: b1(), 1: b2(), 2: b3(), 3: b4()] default b5(%1)
+b1():
+  %2: int = const 1
+  jump b5(%2)
+b2():
+  %3: int = const 2
+  jump b5(%3)
+b3():
+  %4: int = const 3
+  jump b6(%4)
+b4():
+  %5: int = const 4
+  jump b5(%5)
+b5(%6: int):
+  return %6
+b6(%7: int):
+  %8: int = add %7, %7
+  return %8
+}
+
+function reals(%0: int): real {
+b0(%0: int):
+  %1: real = realConst 0
+  switch %0 [0: b1(), 1: b2(), 2: b3(), 3: b4()] default b5(%1)
+b1():
+  %2: real = realConst 4607182418800017408
+  jump b5(%2)
+b2():
+  %3: real = realConst 4611686018427387904
+  jump b5(%3)
+b3():
+  %4: real = realConst 4613937818241073152
+  jump b5(%4)
+b4():
+  %5: real = realConst 4616189618054758400
+  jump b5(%5)
+b5(%6: real):
+  return %6
+}
+
+function mixed(%0: int, %1: int): int {
+b0(%0: int, %1: int):
+  %2: int = const 0
+  switch %0 [0: b1(), 1: b2(), 2: b3(), 3: b4()] default b5(%2)
+b1():
+  %3: int = const 1
+  jump b5(%3)
+b2():
+  jump b5(%1)
+b3():
+  %4: int = const 3
+  jump b5(%4)
+b4():
+  %5: int = const 4
+  jump b5(%5)
+b5(%6: int):
+  return %6
+}

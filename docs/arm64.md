@@ -166,9 +166,17 @@ few constraints, so the patterns are few:
 - `ldp`/`stp` for the halves of 16-byte values and for saving registers.
 
 As built (`codegen/arm64/select`, over `minst`'s instructions, §3.17): immediates
-for `add`, `sub`, and `cmp`; `and`, `orr`, and `eor` with logical (bitmask) immediates; a comparison fused into its
+for `add`, `sub`, and `cmp`, a comparison with a small negative constant as `cmn` of its negation; a constant in the
+fewest instructions (`printer.expansion`, which the assembler's text and the JIT's encoder share): one `mov` when
+`movz`, `movn`, or `orr` of a logical immediate makes it, else from whichever of 0 and ~0 leaves fewer halfwords to
+fill, a `movz` or `movn` and a `movk` for each other halfword (−1 and −2 had been four instructions each, 1,117 such
+sequences in the driver); `and`, `orr`, and `eor` with logical (bitmask) immediates; a comparison fused into its
 branch; an `and` of one bit, seen through conversions between words, or a value compared with 0, as `tbz`/`tbnz` or
-`cbz`/`cbnz`, and a switch's case 0 as `cbz`; an `and` of two integer comparisons as `cmp`, `ccmp`, and `b.cond`; a
+`cbz`/`cbnz`, and a switch's case 0 as `cbz`; a switch of at least eight dense cases (their range at most twice their
+number) as a jump table (§3.11), one of more than four others as a search, a comparison with the middle case
+branching to it when equal and, by `b.gt`, to a block of its own that searches the greater ones, the lesser searched
+on, down to runs of up to four compared in turn, so that 60 sparse cases take about six comparisons; an `and` of two
+integer comparisons as `cmp`, `ccmp`, and `b.cond`; a
 load or store at the start of a symbol the unit defines as `adrp` and the access at the symbol's page offset, without
 the `add`; one at a `ptrAdd` of a base and an index, or of an index times the access's width (an array's element),
 made for it alone, at the base and the index register, shifted (`ldr x0, [x1, x2, lsl #3]`), without the `mul` or
@@ -418,9 +426,21 @@ assembler by `self-hosted/encoder`.
 fixup error. `b.cond`, `cbz`, `cbnz`, and `adr` reach 1 MB either way, and `tbz` and `tbnz` only 32 KB. So
 `codegen.relaxBranches`, once instruction sizes are known, turns a conditional branch whose target is out of reach
 into the inverse branch around an unconditional `b` (128 MB), round after round until none changes, a
-pseudo-instruction counted as the instructions it expands to; a `try`'s `adr` takes the address of a branch beside it
-to the handler. The questlang test `arm64_relax` checks it with a reach of a few instructions. The backend makes no
-jump tables yet; they will need the same care.
+pseudo-instruction counted as the instructions it expands to, and a jump table as its entries, a word each; a `try`'s
+`adr` takes the address of a branch beside it to the handler. The questlang test `arm64_relax` checks it with a reach
+of a few instructions.
+
+**Jump tables,** in the assembler's code and the JIT's alike. A switch of dense cases (§3.5) subtracts its least case,
+checks the result against the range's size (`cmp`, `b.hs` to the default), and branches through a table of 32-bit
+offsets placed just after the `br`: `adr x, Ltable`, `ldrsw y, [x, i, lsl #2]`, `add x, x, y`, `br x`. The table is
+three pseudo-instructions of `minst`: `opJumpTable`, which the printer writes as `.data_region jt32` and the table's
+label (so that otool and lldb read its words as data, as clang's tables are marked); an `opJumpEntry` for each value
+in the range, `.long Ltarget-Ltable` (a gap's target the default); and `opJumpTableEnd`, `.end_data_region`. The JIT's
+encoder writes each entry as the difference of the two labels' offsets, which it knows in its first pass. In the
+machine function each entry is a branch to a block of its own, as every branch's target is (the register allocator
+moves an edge's values at its start), which the emitter passes over when it only jumps; the end is the block's last
+instruction, of the kind that leaves the function, but without the epilogue a return has, since the `br` has already
+left. An entry's offset reaches any distance, and the `adr` reaches the table just after it.
 
 ### 3.12. Build integration and mixing units
 
