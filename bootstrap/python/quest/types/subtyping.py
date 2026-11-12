@@ -204,10 +204,16 @@ class SubtypeTrail:
 
     @staticmethod
     def key(t: QType) -> tuple[Any, ...]:
+        """The identity of a named type, by which two such types are the same:
+        a variable's symbol; a path type's root symbol, the fields after the
+        root (".y" for x.y.A), and its component, so that x.y.A and x.z.A
+        differ; and any other type's object identity."""
         if isinstance(t, (QTypeVar, QAbstractType)):
             return ("var", t.symbol_id)
         if isinstance(t, QPathType):
-            return ("path", t.root_symbol_id, t.field_name)
+            dot = t.root_name.find(".")
+            fields = t.root_name[dot:] if dot >= 0 else ""
+            return ("path", t.root_symbol_id, fields, t.field_name)
         return ("obj", id(t))
 
     def pair(self, sub: QType, sup: QType) -> tuple[Any, Any]:

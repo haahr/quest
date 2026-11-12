@@ -1,0 +1,16 @@
+(* Language: a path type through a field of a value, x.y.A, is the same type wherever it is written, and differs from
+   x.z.A, the type of another field's package (the error test existentials/distinct_nested_package_type_mismatch) *)
+
+import writer: Writer;
+
+Let P = Tuple A::TYPE v: A end;
+let x = tuple
+    let y: P = tuple Let A = Int let v = 1 end
+    let z: P = tuple Let A = String let v = "s" end
+end;
+
+(* No expression has such a type yet (x.y.v cannot be selected), but a
+   function may name it *)
+let same(a: x.y.A): x.y.A = a;
+let pair(a: x.y.A b: x.z.A): Tuple a: x.y.A b: x.z.A end = tuple let a = same(a) let b = b end;
+writer.putString(writer.output "x.y.A and x.z.A checked\n");

@@ -102,11 +102,27 @@ export
             let results = vector.new(:Result)
         end
 
+    (* The fields a path type's root name passes through: ".y" for x.y.A,
+     * "" for x.A. The root's own name is left out, since its symbol
+     * identifies it *)
+    let pathFields(rootName: String): String =
+        begin
+            let n = stringOp.length(rootName)
+            let var i = 0
+            while {i < n} andif {stringOp.getChar(rootName i) isnot '.'} do i := i + 1 end
+            stringOp.getSub(rootName i {n - i})
+        end
+
+    (* The identity of a named type, by which two such types are the same:
+     * a variable's symbol; a path type's root symbol, the fields after the
+     * root, and its component, so that x.y.A and x.z.A differ; and any other
+     * type's hash-consed id *)
     let key(t: Type): String =
         case t.form
             when typeVariable with x then "v" <> conv.int(x.symbolId)
             when typeAbstract with x then "v" <> conv.int(x.symbolId)
-            when typePath with x then "p" <> conv.int(x.rootSymbolId) <> "." <> x.fieldName
+            when typePath with x then
+                "p" <> conv.int(x.rootSymbolId) <> pathFields(x.rootName) <> "." <> x.fieldName
             else "o" <> conv.int(t.id)
         end
 

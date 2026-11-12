@@ -1594,8 +1594,8 @@ class QPathType(QType):
 
     # Not a symbol id: a hash of the root's symbol id and the field's name,
     # which could equal a real one. Code that identifies path types keys them
-    # by (root_symbol_id, field_name), as SubtypeTrail.key does, or by
-    # identity, as kinds.py and canonical.py do.
+    # by root_symbol_id, the fields in root_name, and field_name, as
+    # SubtypeTrail.key does, or by identity, as kinds.py and canonical.py do.
     @property
     def symbol_id(self) -> int:
         return hash((self.root_symbol_id, self.field_name))
