@@ -65,10 +65,6 @@ class TestRuntimeDescriptors(unittest.TestCase):
             assert(quest_type_EmptyTuple.kind == QTYPE_KIND_TUPLE);
             assert(strcmp(quest_type_EmptyTuple.name, "Tuple end") == 0);
 
-            /* Check interning of base descriptors returns the same static pointer */
-            const QTypeDescriptor *d_int = quest_intern_type_descriptor(&quest_type_Int);
-            assert(d_int == &quest_type_Int);
-
             /* Subtyping: Int <: Int, but Tuple end is a supertype only of tuples */
             assert(quest_type_Int.is_subtype(&quest_type_Int, &quest_type_Int));
             assert(!quest_type_Int.is_subtype(&quest_type_Int, &quest_type_EmptyTuple));
@@ -82,9 +78,10 @@ class TestRuntimeDescriptors(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, f"Failed: {proc.stderr}")
         self.assertIn("BASE_DESCRIPTORS_OK", proc.stdout)
 
-    def test_array_descriptor_interning(self):
-        """Tests that array descriptors are memoized such that Array(Int) ==
-        Array(Int)."""
+    def test_array_descriptors(self):
+        """Tests that array descriptors made at run time are fresh, and equal
+        as subtyping compares them: Array(Int) is Array(Int), not
+        Array(String)."""
         c_code = """
         #include "quest_runtime.h"
         #include <assert.h>
@@ -99,9 +96,10 @@ class TestRuntimeDescriptors(unittest.TestCase):
 
             assert(arr1 != NULL);
             assert(arr2 != NULL);
-            /* Canonical pointer equality check */
-            assert(arr1 == arr2);
-            assert(arr1 != arr_str);
+            /* Each call makes a new descriptor; equal types are equal by subtyping */
+            assert(arr1 != arr2);
+            assert(quest_is_subtype(arr1, arr2) && quest_is_subtype(arr2, arr1));
+            assert(!quest_is_subtype(arr1, arr_str));
 
             assert(arr1->kind == QTYPE_KIND_ARRAY);
             assert(strcmp(arr1->name, "Array(Int)") == 0);
@@ -110,7 +108,7 @@ class TestRuntimeDescriptors(unittest.TestCase):
             /* Nested array: Array(Array(Int)) */
             const QTypeDescriptor *nested1 = quest_make_array_descriptor(arr1);
             const QTypeDescriptor *nested2 = quest_make_array_descriptor(arr2);
-            assert(nested1 == nested2);
+            assert(quest_is_subtype(nested1, nested2) && quest_is_subtype(nested2, nested1));
             assert(strcmp(nested1->name, "Array(Array(Int))") == 0);
 
             /* Subtyping checks */
@@ -118,13 +116,13 @@ class TestRuntimeDescriptors(unittest.TestCase):
             assert(!arr1->is_subtype(arr1, &quest_type_EmptyTuple));
             assert(!arr1->is_subtype(arr1, arr_str));
 
-            printf("ARRAY_INTERN_OK\\n");
+            printf("ARRAY_DESCRIPTORS_OK\\n");
             return 0;
         }
         """
         proc = self.compile_and_run_c(c_code)
         self.assertEqual(proc.returncode, 0, f"Failed: {proc.stderr}")
-        self.assertIn("ARRAY_INTERN_OK", proc.stdout)
+        self.assertIn("ARRAY_DESCRIPTORS_OK", proc.stdout)
 
     def test_opaque_descriptor_identity(self):
         """Tests that opaque type descriptors have nominal identity (never equal

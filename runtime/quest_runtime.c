@@ -1042,75 +1042,6 @@ const QTypeDescriptor quest_type_bound_vars[Q_MAX_BOUND_VARS] = {
 };
 
 /* Global Interning Table for Type Descriptors */
-typedef struct QTypeDescriptorEntry {
-    const QTypeDescriptor       *desc;
-    struct QTypeDescriptorEntry *next;
-} QTypeDescriptorEntry;
-
-#define Q_TYPE_INTERN_TABLE_SIZE 256
-static QTypeDescriptorEntry *quest_type_intern_buckets[Q_TYPE_INTERN_TABLE_SIZE];
-static bool quest_type_intern_initialized = false;
-
-/* FNV-1a 64-bit hash for descriptor canonical names */
-static uint64_t quest_hash_string(const char *s) {
-    uint64_t h = 14695981039346656037ULL;
-    if (s == NULL) return h;
-    for (; *s; ++s) {
-        h ^= (uint64_t)(unsigned char)(*s);
-        h *= 1099511628211ULL;
-    }
-    return h;
-}
-
-static void quest_init_type_intern_table(void) {
-    if (quest_type_intern_initialized) return;
-    quest_type_intern_initialized = true;
-
-    /* Register base types in table */
-    const QTypeDescriptor *base_descs[] = {
-        &quest_type_Int,
-        &quest_type_Real,
-        &quest_type_Bool,
-        &quest_type_Char,
-        &quest_type_String,
-        &quest_type_Ok,
-        &quest_type_EmptyTuple,
-        NULL
-    };
-
-    for (int i = 0; base_descs[i] != NULL; ++i) {
-        const QTypeDescriptor *d = base_descs[i];
-        uint64_t h = quest_hash_string(d->name) % Q_TYPE_INTERN_TABLE_SIZE;
-        QTypeDescriptorEntry *entry = (QTypeDescriptorEntry *)quest_alloc(sizeof(QTypeDescriptorEntry), &quest_layout_descriptor_entry);
-        entry->desc = d;
-        entry->next = quest_type_intern_buckets[h];
-        quest_type_intern_buckets[h] = entry;
-    }
-}
-
-const QTypeDescriptor *quest_intern_type_descriptor(const QTypeDescriptor *desc) {
-    if (desc == NULL) return NULL;
-    quest_init_type_intern_table();
-
-    /* Check if already in table by canonical name match */
-    uint64_t h = quest_hash_string(desc->name) % Q_TYPE_INTERN_TABLE_SIZE;
-    for (QTypeDescriptorEntry *cur = quest_type_intern_buckets[h]; cur != NULL; cur = cur->next) {
-        if (cur->desc == desc) {
-            return cur->desc;
-        }
-        if (cur->desc->name != NULL && desc->name != NULL && strcmp(cur->desc->name, desc->name) == 0) {
-            return cur->desc;
-        }
-    }
-
-    /* Not found: insert into bucket */
-    QTypeDescriptorEntry *entry = (QTypeDescriptorEntry *)quest_alloc(sizeof(QTypeDescriptorEntry), &quest_layout_descriptor_entry);
-    entry->desc = desc;
-    entry->next = quest_type_intern_buckets[h];
-    quest_type_intern_buckets[h] = entry;
-    return desc;
-}
-
 static char *quest_dup_str(const char *s) {
     if (s == NULL) return NULL;
     size_t len = strlen(s);
@@ -3198,21 +3129,18 @@ QVariantVal quest_variant_adapt(const QTypeDescriptor *sub_desc, const QTypeDesc
 /* Type Descriptor Constructors & Helpers                                    */
 /* ------------------------------------------------------------------------- */
 
+/* Descriptors made at run time, for tests of the runtime (tests/python): each
+ * call makes a new descriptor, which two of the same type are then equal as
+ * quest_is_subtype compares them, not by address. Compiled code emits its
+ * descriptors statically and never calls these. */
+
 const QTypeDescriptor *quest_make_array_descriptor(const QTypeDescriptor *element_desc) {
-    quest_init_type_intern_table();
 
     const char *elem_name = (element_desc && element_desc->name) ? element_desc->name : "Unknown";
     size_t name_len = strlen("Array()") + strlen(elem_name) + 1;
     char *arr_name = (char *)quest_alloc_bytes(name_len);
     snprintf(arr_name, name_len, "Array(%s)", elem_name);
 
-    /* Check if already interned */
-    uint64_t h = quest_hash_string(arr_name) % Q_TYPE_INTERN_TABLE_SIZE;
-    for (QTypeDescriptorEntry *cur = quest_type_intern_buckets[h]; cur != NULL; cur = cur->next) {
-        if (cur->desc->name != NULL && strcmp(cur->desc->name, arr_name) == 0) {
-            return cur->desc;
-        }
-    }
 
     /* Allocate array descriptor */
     QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
@@ -3227,7 +3155,7 @@ const QTypeDescriptor *quest_make_array_descriptor(const QTypeDescriptor *elemen
     quest_barrier(desc);
     desc->extra = arr_meta;
 
-    return quest_intern_type_descriptor(desc);
+    return desc;
 }
 
 const QTypeDescriptor *quest_make_opaque_descriptor(const char *name) {
@@ -3290,15 +3218,8 @@ const QTypeDescriptor *quest_abstract_type_rep(const QTypeDescriptor *desc) {
 const QTypeDescriptor *quest_make_record_descriptor(
     const char *name, size_t size, size_t alignment, size_t field_count, const QRecordFieldDescriptor *fields
 ) {
-    quest_init_type_intern_table();
     const char *rec_name = name ? name : "Record end";
 
-    uint64_t h = quest_hash_string(rec_name) % Q_TYPE_INTERN_TABLE_SIZE;
-    for (QTypeDescriptorEntry *cur = quest_type_intern_buckets[h]; cur != NULL; cur = cur->next) {
-        if (cur->desc->name != NULL && strcmp(cur->desc->name, rec_name) == 0) {
-            return cur->desc;
-        }
-    }
 
     const char *dup_name = quest_dup_str(rec_name);
     QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
@@ -3316,22 +3237,15 @@ const QTypeDescriptor *quest_make_record_descriptor(
     }
     quest_barrier(desc);
     desc->extra = meta;
-    return quest_intern_type_descriptor(desc);
+    return desc;
 }
 
 const QTypeDescriptor *quest_make_tuple_descriptor(
     const char *name, size_t size, size_t alignment, size_t element_count, const QTupleElementDescriptor *elements
 ) {
     if (element_count == 0) return &quest_type_EmptyTuple;
-    quest_init_type_intern_table();
     const char *tup_name = name ? name : "Tuple end";
 
-    uint64_t h = quest_hash_string(tup_name) % Q_TYPE_INTERN_TABLE_SIZE;
-    for (QTypeDescriptorEntry *cur = quest_type_intern_buckets[h]; cur != NULL; cur = cur->next) {
-        if (cur->desc->name != NULL && strcmp(cur->desc->name, tup_name) == 0) {
-            return cur->desc;
-        }
-    }
 
     const char *dup_name = quest_dup_str(tup_name);
     QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
@@ -3349,21 +3263,14 @@ const QTypeDescriptor *quest_make_tuple_descriptor(
     }
     quest_barrier(desc);
     desc->extra = meta;
-    return quest_intern_type_descriptor(desc);
+    return desc;
 }
 
 const QTypeDescriptor *quest_make_variant_descriptor(
     const char *name, size_t size, size_t alignment, size_t case_count, const QVariantCaseDescriptor *cases
 ) {
-    quest_init_type_intern_table();
     const char *var_name = name ? name : "Variant end";
 
-    uint64_t h = quest_hash_string(var_name) % Q_TYPE_INTERN_TABLE_SIZE;
-    for (QTypeDescriptorEntry *cur = quest_type_intern_buckets[h]; cur != NULL; cur = cur->next) {
-        if (cur->desc->name != NULL && strcmp(cur->desc->name, var_name) == 0) {
-            return cur->desc;
-        }
-    }
 
     const char *dup_name = quest_dup_str(var_name);
     QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
@@ -3381,21 +3288,14 @@ const QTypeDescriptor *quest_make_variant_descriptor(
     }
     quest_barrier(desc);
     desc->extra = meta;
-    return quest_intern_type_descriptor(desc);
+    return desc;
 }
 
 const QTypeDescriptor *quest_make_fun_descriptor(
     const char *name, size_t param_count, const QFunParamDescriptor *params, const QTypeDescriptor *result_type
 ) {
-    quest_init_type_intern_table();
     const char *fn_name = name ? name : "Fun()";
 
-    uint64_t h = quest_hash_string(fn_name) % Q_TYPE_INTERN_TABLE_SIZE;
-    for (QTypeDescriptorEntry *cur = quest_type_intern_buckets[h]; cur != NULL; cur = cur->next) {
-        if (cur->desc->name != NULL && strcmp(cur->desc->name, fn_name) == 0) {
-            return cur->desc;
-        }
-    }
 
     const char *dup_name = quest_dup_str(fn_name);
     QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
@@ -3418,7 +3318,7 @@ const QTypeDescriptor *quest_make_fun_descriptor(
     }
     quest_barrier(desc);
     desc->extra = meta;
-    return quest_intern_type_descriptor(desc);
+    return desc;
 }
 
 QAuto *quest_auto_new(const QTypeDescriptor *type_desc, QVal payload) {
@@ -3858,7 +3758,6 @@ void quest_runtime_roots(QRootVisitor add) {
     add(&quest_func_tables, 1);
     add(&quest_function_ranges, 1);
     add(&quest_echo_buffer, 1);
-    add(quest_type_intern_buckets, Q_TYPE_INTERN_TABLE_SIZE);
     if (quest_subtyping_trail_len > 0) add(quest_subtyping_trail, 2 * quest_subtyping_trail_len);
     add(quest_equiv_trail, 2 * Q_EQUIV_TRAIL_MAX);
     add(&quest_record_dicts, 1);

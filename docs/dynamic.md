@@ -316,7 +316,7 @@ the envelope changed, with `ABI_VERSION` 4.
   opaque type in the bound's representation, and `quest_convert` treats a module's abstract type as its
   representation: the writer and `dynamic.be` view such a value at the representation or at the bound as they
   need. The reader looks up the name, checks the representation by subtyping in
-  both directions, and makes an opaque descriptor (`quest_make_opaque_descriptor`) for an unlinked name, with the
+  both directions, and makes an opaque descriptor of its own for an unlinked name, with the
   recorded representation. Since module objects register at startup, this bumped `ABI_VERSION` (to 24).
   `word.T` has its own descriptor, `quest_type_Word`.
 - **A difference between the backends.** Compiled code does not check that two documents read with the same

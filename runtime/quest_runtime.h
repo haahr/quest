@@ -194,8 +194,7 @@ typedef struct QTypeDescriptor QTypeDescriptor;
  * name: the type as text. For most kinds it is only for display: compiled code writes the type as printed, cut off at
  *   80 characters, so the name need not identify the type, and descriptors are compared structurally. An opaque
  *   descriptor (an abstract type, or an application of an abstract type operator) is identified by its name (a
- *   module's abstract type by its global name, "geo/coord.P"). quest_intern_type_descriptor and the
- *   quest_make_*_descriptor constructors key their table by name.
+ *   module's abstract type by its global name, "geo/coord.P").
  * size, alignment: the size of the C type that holds a value (sizeof(QVal), sizeof(QVariantVal), ...), except that for
  *   a tuple, record, or option it is the size of the struct a value points to (a record's payload). Only
  *   deserialization reads size, to allocate an option; nothing reads alignment, which compiled code always sets to a
@@ -587,7 +586,7 @@ extern const QLayout quest_layout_string, quest_layout_exception, quest_layout_a
     quest_layout_run_result, quest_layout_file_stats, quest_layout_descriptor, quest_layout_array_descriptor,
     quest_layout_exception_descriptor, quest_layout_opaque_descriptor, quest_layout_stored_descriptor,
     quest_layout_record_descriptor, quest_layout_tuple_descriptor, quest_layout_variant_descriptor,
-    quest_layout_fun_descriptor, quest_layout_auto_descriptor, quest_layout_descriptor_entry,
+    quest_layout_fun_descriptor, quest_layout_auto_descriptor,
     quest_layout_record_dict_entries, quest_layout_inst_nodes, quest_layout_inst_cache_entry,
     quest_layout_view_map_entry, quest_layout_variant_adapter_entry, quest_layout_abstract_type_entry;
 
@@ -996,9 +995,10 @@ uint64_t quest_word_from_real_val(double r);
 /* Global standard library initialization */
 void quest_builtins_init(int argc, char **argv);
 
-/* Type descriptor interning and dynamic operations */
+/* Run-time subtyping of descriptors, and descriptors made at run time, for the runtime's tests (tests/python):
+ * each quest_make_*_descriptor call makes a new descriptor, equal to another of the same type as quest_is_subtype
+ * compares them, not by address */
 bool                   quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_type);
-const QTypeDescriptor *quest_intern_type_descriptor(const QTypeDescriptor *desc);
 const QTypeDescriptor *quest_make_array_descriptor(const QTypeDescriptor *element_desc);
 const QTypeDescriptor *quest_make_opaque_descriptor(const char *name);
 

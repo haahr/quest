@@ -121,7 +121,6 @@ Q_ARRAY(quest_layout_tuple_descriptor, "QTupleTypeDescriptor", 24, 16, 4, S, P, 
 Q_ARRAY(quest_layout_variant_descriptor, "QVariantTypeDescriptor", 8, 0, 4, S, P, P, S, S);
 Q_ARRAY(quest_layout_fun_descriptor, "QFunTypeDescriptor", 48, 0, 2, S, P, P, P, S, P, P, S);
 Q_ARRAY(quest_layout_auto_descriptor, "QAutoTypeDescriptor", 24, 16, 4, P, S, S, P, P, S, S);
-Q_FIXED(quest_layout_descriptor_entry, "QTypeDescriptorEntry", 16, P, P);
 Q_SIZED(quest_layout_record_dict_entries, "QRecordDictEntry", P, P, P);
 Q_SIZED(quest_layout_inst_nodes, "QInstNode", P, P, S);
 Q_FIXED(quest_layout_inst_cache_entry, "QInstCacheEntry", 40, P, S, P, P, P);

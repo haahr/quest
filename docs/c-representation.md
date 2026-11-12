@@ -125,8 +125,8 @@ Quest allows native C pointer and handle types to be declared directly in source
 - **Universal Word Boxing (`QVal`)**: When passed into generic polymorphic parameters (`All(A::TYPE)`), arrays, or
   abstract interface record fields, external pointer types are boxed into `QVal` via `(QVal){ .p = (void *)(expr) }`
   and unboxed via `((C_TYPE)(val.p))`.
-- **Runtime Descriptors**: Polymorphic operations and reflection synthesize opaque descriptors for external types:
-  `quest_make_opaque_descriptor("Handle")`.
+- **Runtime Descriptors**: an external type's descriptor is opaque, named by the type, and emitted statically as
+  every other descriptor is (§6.4).
 
 ### 3.4. Word Representation (`Word.T` / `QWord`)
 Quest provides a standard `Word` module (`lib/word.mod.quest`) for 64-bit unsigned machine operations:
@@ -960,10 +960,11 @@ descriptor that matches the wrong values.
   pass lists, ir.md §8.4) and those of its parts, the printer emits a `static const` descriptor struct in `.rodata`
   with the `Q_UNUSED` attribute. Forward declarations ensure that self-referential or
   mutually recursive types can cross-reference descriptor addresses as compile-time address constants.
-- **Runtime Synthesis & Interning:** The C runtime provides constructor functions (`quest_make_record_descriptor`,
-  `quest_make_tuple_descriptor`, `quest_make_variant_descriptor`, `quest_make_fun_descriptor`,
-  `quest_make_array_descriptor`, `quest_make_opaque_descriptor`) with hash-interning in a global bucket table to ensure
-  canonical pointer equality for dynamically constructed types.
+- **Descriptors made at run time:** for the runtime's own tests (`tests/python`), the C runtime has constructors
+  (`quest_make_record_descriptor`, `quest_make_tuple_descriptor`, `quest_make_variant_descriptor`,
+  `quest_make_fun_descriptor`, `quest_make_array_descriptor`, `quest_make_opaque_descriptor`), each of which makes a
+  new descriptor. Nothing interns descriptors: two of the same type are equal as `quest_is_subtype` compares them.
+  Compiled code does not call these.
 - **Opaque Types (`QTYPE_KIND_OPAQUE`):** Represent nominal abstract types (`T::TYPE` in an interface or existential
   package). Subtyping checks compare pointers or canonical nominal names to preserve module encapsulation barriers.
   A module's abstract type is named by its global name, the module's canonical path and the type's name
