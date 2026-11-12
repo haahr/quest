@@ -752,7 +752,8 @@ class _Reader:
     tail, becomes a recursive type. value decodes JSON by its type, the
     reverse of _Writer.encode: an object with an @id is recorded in objects
     as it is made, so that a later {"@ref": n} returns that same object,
-    shared as it was when written."""
+    shared as it was when written, if the type it was read at is a subtype of
+    the type the reference is read at."""
 
     def __init__(self, table: Any) -> None:
         if not isinstance(table, list):
@@ -765,7 +766,8 @@ class _Reader:
         self.recursive: set[int] = set()
         self.binder_ids = {i: allocate_symbol_id() for i in range(len(table))}
         self.binder_id_set = set(self.binder_ids.values())
-        self.objects: dict[int, QValue] = {}
+        # Each @id's object, and the type it was read at
+        self.objects: dict[int, tuple[QValue, TypeRef]] = {}
         # The type parameters of the auto types being built, innermost last,
         # which param nodes refer to; and the witnesses of the auto values being
         # read, which values of those parameters are read at
@@ -998,14 +1000,19 @@ class _Reader:
 
     # --- values ---
 
-    def _shared(self, data: Any, kind: str) -> tuple[Optional[QValue], Optional[int], Any]:
-        """Resolves {"@ref": n}; otherwise returns the object's @id (if any) and
-        its contents."""
+    def _shared(self, data: Any, kind: str, ref: TypeRef) -> tuple[Optional[QValue], Optional[int], Any]:
+        """Resolves {"@ref": n} read at the type ref, whose object must have
+        been read at a subtype of it (as the runtime's quest_read_value
+        checks); otherwise returns the object's @id (if any) and its
+        contents."""
         if isinstance(data, dict) and "@ref" in data:
             if len(data) != 1:
                 raise _fail()
-            obj = self.objects.get(data["@ref"]) if isinstance(data["@ref"], int) else None
-            if obj is None:
+            shared = self.objects.get(data["@ref"]) if isinstance(data["@ref"], int) else None
+            if shared is None:
+                raise _fail()
+            obj, read_at = shared
+            if read_at != ref and not is_subtype(self.type_of(read_at), self.type_of(ref)):
                 raise _fail()
             return obj, None, None
         if isinstance(data, dict) and "@id" in data:
@@ -1056,20 +1063,20 @@ class _Reader:
             labels = tuple(_field_name(label) for label, _ in components)
             return QAutoVal(QTuple(values, labels=labels), self.type_of(witness))
         if kind == "record":
-            existing, obj_id, fields = self._shared(data, kind)
+            existing, obj_id, fields = self._shared(data, kind, ref)
             if existing is not None:
                 return existing
             if not isinstance(fields, dict) or set(fields) != {_field_name(label) for label in body}:
                 raise _fail()
             rec = QRecord({})
             if obj_id is not None:
-                self.objects[obj_id] = rec
+                self.objects[obj_id] = (rec, ref)
             for label, r in body.items():
                 name = _field_name(label)
                 rec.fields[name] = self.value(fields[name], r)
             return rec
         if kind in ("tuple", "array"):
-            existing, obj_id, items = self._shared(data, kind)
+            existing, obj_id, items = self._shared(data, kind, ref)
             if existing is not None:
                 return existing
             if not isinstance(items, list):
@@ -1077,7 +1084,7 @@ class _Reader:
             if kind == "array":
                 arr = QArray([])
                 if obj_id is not None:
-                    self.objects[obj_id] = arr
+                    self.objects[obj_id] = (arr, ref)
                 arr.elements = [self.value(item, body) for item in items]
                 return arr
             if len(items) != len(body):
@@ -1085,7 +1092,7 @@ class _Reader:
             labels = tuple(_field_name(label) or None for label, _ in body)
             tup = QTuple(tuple(OK_VALUE for _ in body), labels=labels)
             if obj_id is not None:
-                self.objects[obj_id] = tup
+                self.objects[obj_id] = (tup, ref)
             tup.elements = tuple(self.value(item, r) for item, (_, r) in zip(items, body))
             return tup
         if kind in ("variant", "option"):

@@ -1,0 +1,89 @@
+import dynamic = "dynamic" : Dynamic
+import reader = "reader" : Reader
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @21:45
+      let %2: String = prim <>(s, "\n") @21:59
+      let %3: Ok = call writer.putString(%1, %2) @21:28
+      return %3
+    }
+  }
+  let %4: reader.T = member reader.input @30:62
+  let %5: T = call dynamic.intern(%4) @30:47
+  let r: Tuple x: Big y: Small end = call dynamic.be [Tuple x: Big y: Small end](%5) @30:9
+  let %6: Big = tuple_field(r, 0) @31:30
+  let %7: Int = record_field(%6, a) @31:30
+  let %8: String = call conv.int(%7) @31:21
+  let %9: Big = tuple_field(r, 0) @31:56
+  let %10: Int = record_field(%9, b) @31:56
+  let %11: String = call conv.int(%10) @31:47
+  let %12: Small = tuple_field(r, 1) @31:82
+  let %13: Int = record_field(%12, b) @31:82
+  let %14: String = call conv.int(%13) @31:73
+  let %15: String = prim <>(" ", %14) @31:66
+  let %16: String = prim <>(%11, %15) @31:47
+  let %17: String = prim <>(" ", %16) @31:40
+  let %18: String = prim <>(%8, %17) @31:21
+  let %19: String = prim <>("record: ", %18) @31:7
+  do call print(%19) @31:1
+  let %20: reader.T = member reader.input @34:61
+  let %21: T = call dynamic.intern(%20) @34:46
+  let t: Tuple x: Pair y: One end = call dynamic.be [Tuple x: Pair y: One end](%21) @34:9
+  let %22: Pair = tuple_field(t, 0) @35:29
+  let %23: Int = tuple_field(%22, 0) @35:29
+  let %24: String = call conv.int(%23) @35:20
+  let %25: Pair = tuple_field(t, 0) @35:55
+  let %26: Int = tuple_field(%25, 1) @35:55
+  let %27: String = call conv.int(%26) @35:46
+  let %28: One = tuple_field(t, 1) @35:81
+  let %29: Int = tuple_field(%28, 0) @35:81
+  let %30: String = call conv.int(%29) @35:72
+  let %31: String = prim <>(" ", %30) @35:65
+  let %32: String = prim <>(%27, %31) @35:46
+  let %33: String = prim <>(" ", %32) @35:39
+  let %34: String = prim <>(%24, %33) @35:20
+  let %35: String = prim <>("tuple: ", %34) @35:7
+  do call print(%35) @35:1
+  let %36: reader.T = member reader.input @38:62
+  let %37: T = call dynamic.intern(%36) @38:47
+  let a: Tuple x: Ints y: Ints end = call dynamic.be [Tuple x: Ints y: Ints end](%37) @38:9
+  let %38: Ints = tuple_field(a, 0) @39:1
+  store %38[0] := 50 @39:1
+  let %39: Ints = tuple_field(a, 1) @40:29
+  let %40: Int = index(%39, 0) @40:29
+  let %41: String = call conv.int(%40) @40:20
+  let %42: Ints = tuple_field(a, 1) @40:56
+  let %43: Int = index(%42, 1) @40:56
+  let %44: String = call conv.int(%43) @40:47
+  let %45: String = prim <>(" ", %44) @40:40
+  let %46: String = prim <>(%41, %45) @40:20
+  let %47: String = prim <>("array: ", %46) @40:7
+  do call print(%47) @40:1
+  funs {
+    fun rejected(label: String): Ok {
+      let %48: Exception = member dynamic.error @46:10
+      try catching (%48) {
+        let %49: reader.T = member reader.input @45:30
+        let %50: T = call dynamic.intern(%49) @45:15
+        let %51: String = prim <>(label, ": accepted") @45:50
+        do call print(%51) @45:44
+      } handle (e: Exception) {
+        let %52: Bool = prim is(e, %48) @45:5
+        if %52 { @45:5
+          let %53: String = prim <>(label, ": dynamic.error") @46:35
+          do call print(%53) @46:29
+        } else {
+          reraise e @45:5
+        }
+      }
+      return ok
+    }
+  }
+  do call rejected("Small at Big") @47:1
+  do call rejected("tuple at record") @48:1
+  do call rejected("Array(Big) at Array(Small)") @49:1
+}
+

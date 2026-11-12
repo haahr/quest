@@ -1829,10 +1829,12 @@ static QTypeTable *quest_read_type_table(QJsonValue *types) {
 /* Reading: Values                                                           */
 /* ------------------------------------------------------------------------- */
 
+/* An object read with an "@id": its value as read (a record boxed, a tuple
+ * or array as it is) and the type it was read at */
 typedef struct QIdEntry {
     int64_t                id;
-    void                  *ptr;
-    const void            *dict;    /* for records */
+    void                  *value;
+    const QTypeDescriptor *desc;
     struct QIdEntry       *next;
 } QIdEntry;
 
@@ -1850,24 +1852,36 @@ static QIdEntry *quest_id_find(QReadContext *cx, int64_t id) {
 
 /* Records the object of an "@id" before its contents are read, so that
  * references inside it can reach it */
-static void quest_id_insert(QReadContext *cx, const QJsonValue *id_val, void *ptr, const void *dict) {
+static void quest_id_insert(QReadContext *cx, const QJsonValue *id_val, void *value, const QTypeDescriptor *desc) {
     if (id_val->kind != QJSON_INT || quest_id_find(cx, id_val->u.i) != NULL) quest_raise_dynamic_error();
     QIdEntry *entry = (QIdEntry *)quest_alloc(sizeof(QIdEntry), &quest_layout_id_entry);
     entry->id = id_val->u.i;
-    entry->ptr = ptr;
-    entry->dict = dict;
+    entry->value = value;
+    entry->desc = desc;
     entry->next = cx->ids;
     cx->ids = entry;
 }
 
-/* The object of {"@ref":n}, or NULL if node is not a reference */
-static QIdEntry *quest_read_ref(QReadContext *cx, const QJsonValue *node) {
+/* Whether node is {"@ref":n}; if it is, *out is its object at type desc. The
+ * object was read at its own type (a document may reach one object at two
+ * types, as a Big record and as a Small one), which must be a subtype of desc,
+ * and is converted to desc: a record viewed at it, its fields found by name; a
+ * tuple viewed as a prefix (perhaps through a proxy); an array, invariant, at
+ * its own type only. Raises dynamic.error for an undefined n or an object
+ * whose type is not a subtype of desc, another kind of object among them. */
+static bool quest_read_ref(QReadContext *cx, const QJsonValue *node, const QTypeDescriptor *desc, QVal *out) {
     QJsonValue *ref = quest_json_obj_get(node, "@ref");
-    if (ref == NULL) return NULL;
+    if (ref == NULL) return false;
     if (node->u.o.count != 1 || ref->kind != QJSON_INT) quest_raise_dynamic_error();
     QIdEntry *entry = quest_id_find(cx, ref->u.i);
     if (entry == NULL) quest_raise_dynamic_error();
-    return entry;
+    QVal value = { .p = entry->value };
+    if (entry->desc != desc) {
+        if (!quest_is_subtype(entry->desc, desc)) quest_raise_dynamic_error();
+        value = quest_convert(value, entry->desc, desc);
+    }
+    *out = value;
+    return true;
 }
 
 static void *quest_alloc_array(int64_t len) {
@@ -1897,7 +1911,8 @@ static QAuto *quest_read_dynamic(QReadContext *cx, QJsonValue *type_ref, QJsonVa
  * out as its type desc and viewed at it; an option is its tag followed by its
  * case's components. Raises dynamic.error when the node does not fit desc: the
  * wrong JSON kind, a missing or extra field or component, an unknown case, an
- * undefined "@ref", or an "@id" given twice. */
+ * "@ref" undefined or to an object of a type not a subtype of desc
+ * (quest_read_ref), or an "@id" given twice. */
 static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDescriptor *desc) {
     if (node == NULL || desc == NULL) quest_raise_dynamic_error();
 
@@ -1987,18 +2002,17 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
 
         case QTYPE_KIND_RECORD: {
             if (node->kind != QJSON_OBJECT) quest_raise_dynamic_error();
-            QIdEntry *shared = quest_read_ref(cx, node);
-            if (shared != NULL) {
-                QRecordVal rec = { .val = shared->ptr, .dict = shared->dict };
-                return (QVal){ .p = quest_record_box(rec) };
-            }
+            QVal shared;
+            if (quest_read_ref(cx, node, desc, &shared)) return shared;
             const QRecordTypeDescriptor *meta = (const QRecordTypeDescriptor *)desc->extra;
             QJsonValue *id_val = quest_json_obj_get(node, "@id");
             if (node->u.o.count != meta->field_count + (id_val != NULL ? 1 : 0)) quest_raise_dynamic_error();
             void *buf = quest_alloc_sized(desc->size > 0 ? desc->size : sizeof(void *), &quest_layout_words);
             ((QRecordHeader *)buf)->descriptor = desc;
             const void *dict = quest_record_dict(desc, desc);
-            if (id_val != NULL) quest_id_insert(cx, id_val, buf, dict);
+            QRecordVal rec = { .val = buf, .dict = dict };
+            QVal boxed = { .p = quest_record_box(rec) };
+            if (id_val != NULL) quest_id_insert(cx, id_val, boxed.p, desc);
             for (size_t i = 0; i < meta->field_count; ++i) {
                 const QRecordFieldDescriptor *f = &meta->fields[i];
                 QJsonValue *f_node = quest_json_obj_get(node, f->name);
@@ -2007,8 +2021,7 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
                 quest_barrier_slot((char *)buf + f->offset);
                 quest_slot_write((char *)buf + f->offset, field);
             }
-            QRecordVal rec = { .val = buf, .dict = dict };
-            return (QVal){ .p = quest_record_box(rec) };
+            return boxed;
         }
 
         case QTYPE_KIND_ARRAY:
@@ -2016,8 +2029,8 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
             QJsonValue *items = node;
             QJsonValue *id_val = NULL;
             if (node->kind == QJSON_OBJECT) {
-                QIdEntry *shared = quest_read_ref(cx, node);
-                if (shared != NULL) return (QVal){ .p = shared->ptr };
+                QVal shared;
+                if (quest_read_ref(cx, node, desc, &shared)) return shared;
                 id_val = quest_json_obj_get(node, "@id");
                 items = quest_json_obj_get(node, "@items");
                 if (id_val == NULL || items == NULL || node->u.o.count != 2) quest_raise_dynamic_error();
@@ -2027,7 +2040,7 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
                 const QTypeDescriptor *elem_t = ((const QArrayTypeDescriptor *)desc->extra)->element_type;
                 int64_t len = (int64_t)items->u.a.count;
                 QArray *arr = (QArray *)quest_alloc_array(len);
-                if (id_val != NULL) quest_id_insert(cx, id_val, arr, NULL);
+                if (id_val != NULL) quest_id_insert(cx, id_val, arr, desc);
                 for (int64_t i = 0; i < len; ++i) {
                     QVal element = quest_read_value(cx, items->u.a.items[i], elem_t);
                     quest_barrier(arr);
@@ -2039,7 +2052,7 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
             size_t n = meta != NULL ? meta->element_count : 0;
             if (items->u.a.count != n) quest_raise_dynamic_error();
             void *tup = quest_alloc_sized(desc->size > 0 ? desc->size : sizeof(void *), &quest_layout_words);
-            if (id_val != NULL) quest_id_insert(cx, id_val, tup, NULL);
+            if (id_val != NULL) quest_id_insert(cx, id_val, tup, desc);
             for (size_t i = 0; i < n; ++i) {
                 const QTupleElementDescriptor *elem = &meta->elements[i];
                 QVal element = quest_read_value(cx, items->u.a.items[i], elem->type);

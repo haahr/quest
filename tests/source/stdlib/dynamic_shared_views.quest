@@ -1,0 +1,49 @@
+(* Standard library: dynamic.intern of an object shared at two types. Each
+   "@ref" is read at the type its place expects, which the object's type must
+   be a subtype of: a record is viewed at it (its fields found by name), a
+   tuple at a prefix; an array, whose type is invariant, only at its own. An
+   "@ref" whose object's type is not a subtype, or is another kind of object,
+   is a dynamic.error *)
+(* @stdin:
+{"quest":1,"types":[{"tuple":[["x",1],["y",2]]},{"record":{"a":"Int","b":"Int"}},{"record":{"b":"Int"}}],"type":0,"value":[{"@id":1,"a":1,"b":2},{"@ref":1}]}
+{"quest":1,"types":[{"tuple":[["x",1],["y",2]]},{"tuple":[["a","Int"],["b","Int"]]},{"tuple":[["a","Int"]]}],"type":0,"value":[{"@id":1,"@items":[3,4]},{"@ref":1}]}
+{"quest":1,"types":[{"tuple":[["x",1],["y",1]]},{"array":"Int"}],"type":0,"value":[{"@id":1,"@items":[5,6]},{"@ref":1}]}
+{"quest":1,"types":[{"tuple":[["x",2],["y",1]]},{"record":{"a":"Int","b":"Int"}},{"record":{"b":"Int"}}],"type":0,"value":[{"@id":1,"b":2},{"@ref":1}]}
+{"quest":1,"types":[{"tuple":[["x",1],["y",2]]},{"tuple":[["a","Int"]]},{"record":{"a":"Int"}}],"type":0,"value":[{"@id":1,"@items":[7]},{"@ref":1}]}
+{"quest":1,"types":[{"tuple":[["x",1],["y",2]]},{"array":3},{"array":4},{"record":{"a":"Int","b":"Int"}},{"record":{"b":"Int"}}],"type":0,"value":[{"@id":1,"@items":[{"a":1,"b":2}]},{"@ref":1}]}
+*)
+
+import dynamic: Dynamic;
+import reader: Reader;
+import writer: Writer;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+Let Big = Record a: Int b: Int end;
+Let Small = Record b: Int end;
+Let Pair = Tuple a: Int b: Int end;
+Let One = Tuple a: Int end;
+Let Ints = Array(Int);
+
+(* 1. A record shared at Big and Small: b is found by name at Small *)
+let r = dynamic.be(:Tuple x: Big y: Small end dynamic.intern(reader.input));
+print("record: " <> conv.int(r.x.a) <> " " <> conv.int(r.x.b) <> " " <> conv.int(r.y.b));
+
+(* 2. A tuple shared at Pair and its prefix One *)
+let t = dynamic.be(:Tuple x: Pair y: One end dynamic.intern(reader.input));
+print("tuple: " <> conv.int(t.x.a) <> " " <> conv.int(t.x.b) <> " " <> conv.int(t.y.a));
+
+(* 3. An array shared at its own type is one array *)
+let a = dynamic.be(:Tuple x: Ints y: Ints end dynamic.intern(reader.input));
+a.x[0] := 50;
+print("array: " <> conv.int(a.y[0]) <> " " <> conv.int(a.y[1]));
+
+(* 4.-6. An object referred to at a type it is not a subtype of: a Small
+   record at Big, a tuple at a record type, and an Array(Big) at Array(Small) *)
+let rejected(label: String): Ok =
+    try begin dynamic.intern(reader.input) print(label <> ": accepted") end
+    when dynamic.error then print(label <> ": dynamic.error") end;
+rejected("Small at Big");
+rejected("tuple at record");
+rejected("Array(Big) at Array(Small)");

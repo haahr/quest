@@ -38,6 +38,9 @@ export
     Let Ref = Tuple name: String index: Int end
     let builtin(name: String): Ref = tuple let name = name let index = ~1 end
     let nodeRef(index: Int): Ref = tuple let name = "" let index = index end
+
+    (* An object read with an @id, and the type it was read at *)
+    Let Seen = Tuple value: Value readAt: Ref end
     let isBuiltin(r: Ref): Bool = stringOp.length(r.name) > 0
     let isRef(r: Ref name: String): Bool = stringOp.equal(r.name name)
 
@@ -1105,7 +1108,7 @@ export
         binderIds: Array(Int)
         binderIdSet: hashMap.T(Int Bool)
         (* The objects read so far, by their @id *)
-        objects: hashMap.T(Int Value)
+        objects: hashMap.T(Int Seen)
         (* The type parameters of the auto types being built, innermost last,
          * which param nodes refer to; and the witnesses of the auto values
          * being read, which values of those parameters are read at *)
@@ -1272,7 +1275,7 @@ export
                 let recursive = hashMap.new(:Int :Bool intEqual hash.int)
                 let binderIds = binderIds
                 let binderIdSet = binderIdSet
-                let objects = hashMap.new(:Int :Value intEqual hash.int)
+                let objects = hashMap.new(:Int :Seen intEqual hash.int)
                 let autoParams = vector.new(:Type)
                 let witnesses = vector.new(:Ref)
             end
@@ -1519,22 +1522,30 @@ export
             tm.exceptionOf(typeOf(rd checkRef(rd e.body)))
         end
 
-    (* Resolves {"@ref": n}; otherwise the object's @id (if any) and its
-     * contents *)
+    (* Resolves {"@ref": n} read at the type r, whose object must have been
+     * read at a subtype of r (as the runtime's quest_read_value checks);
+     * otherwise the object's @id (if any) and its contents *)
     Let Shared = Tuple existing: maybe.T(Value) objId: maybe.T(Int) contents: json.Value end
 
-    let sharedOf(rd: Reader data: json.Value kind: String): Shared =
+    let sameRef(a: Ref b: Ref): Bool = stringOp.equal(a.name b.name) andif {a.index is b.index}
+
+    let sharedOf(rd: Reader data: json.Value kind: String r: Ref): Shared =
         case data
             when jObject with x then
                 if hasMember(x.o "@ref") then
                     if memberCount(x.o) isnot 1 then fail(:Ok) end
                     let n = integer(member(x.o "@ref"))
-                    let obj = hashMap.get(:Int :Value rd.objects n)
-                    if maybe.isNone(:Value obj) then fail(:Ok) end
-                    tuple let existing = obj let objId = maybe.none(:Int) let contents = json.null end
+                    let found = hashMap.get(:Int :Seen rd.objects n)
+                    if maybe.isNone(:Seen found) then fail(:Ok) end
+                    let obj = maybe.unwrap(:Seen found)
+                    if not(sameRef(obj.readAt r))
+                        andif not(subtyping.isSubtype(typeOf(rd obj.readAt) typeOf(rd r) maybe.none(:tm.Lookup))) then
+                        fail(:Ok)
+                    end
+                    tuple let existing = maybe.some(:Value obj.value) let objId = maybe.none(:Int) let contents = json.null end
                 elsif hasMember(x.o "@id") then
                     let id = integer(member(x.o "@id"))
-                    if hashMap.contains(:Int :Value rd.objects id) then fail(:Ok) end
+                    if hashMap.contains(:Int :Seen rd.objects id) then fail(:Ok) end
                     if stringOp.equal(kind "record") then
                         let rest = json.newObject()
                         let ns = json.names(x.o)
@@ -1617,7 +1628,7 @@ export
                         end
                     end
                 elsif stringOp.equal(e.kind "record") then
-                    let s = sharedOf(rd data "record")
+                    let s = sharedOf(rd data "record" r)
                     if maybe.isSome(:Value s.existing) then
                         maybe.unwrap(:Value s.existing)
                     else
@@ -1631,7 +1642,10 @@ export
                         end
                         let map = model.newFields()
                         let result = model.recordValue(map)
-                        if maybe.isSome(:Int s.objId) then hashMap.insert(:Int :Value rd.objects maybe.unwrap(:Int s.objId) result) end
+                        if maybe.isSome(:Int s.objId) then
+                            hashMap.insert(:Int :Seen rd.objects maybe.unwrap(:Int s.objId)
+                                tuple let value = result let readAt = r end)
+                        end
                         for i = 0 upto {extent labels - 1} do
                             let name = fieldName(labels[i])
                             hashMap.insert(:String :Value map name value(rd member(fields name) checkRef(rd member(b labels[i]))))
@@ -1639,20 +1653,23 @@ export
                         result
                     end
                 elsif stringOp.equal(e.kind "array") then
-                    let s = sharedOf(rd data "array")
+                    let s = sharedOf(rd data "array" r)
                     if maybe.isSome(:Value s.existing) then
                         maybe.unwrap(:Value s.existing)
                     else
                         let its = items(s.contents)
                         let elements = array of(vector.length(:json.Value its) model.okValue)
                         let result = option vArray of Value with let a = elements end
-                        if maybe.isSome(:Int s.objId) then hashMap.insert(:Int :Value rd.objects maybe.unwrap(:Int s.objId) result) end
+                        if maybe.isSome(:Int s.objId) then
+                            hashMap.insert(:Int :Seen rd.objects maybe.unwrap(:Int s.objId)
+                                tuple let value = result let readAt = r end)
+                        end
                         let elementRef = checkRef(rd e.body)
                         for i = 0 upto {extent elements - 1} do elements[i] := value(rd vector.get(:json.Value its i) elementRef) end
                         result
                     end
                 elsif stringOp.equal(e.kind "tuple") then
-                    let s = sharedOf(rd data "tuple")
+                    let s = sharedOf(rd data "tuple" r)
                     if maybe.isSome(:Value s.existing) then
                         maybe.unwrap(:Value s.existing)
                     else
@@ -1661,7 +1678,10 @@ export
                         if vector.length(:json.Value its) isnot vector.length(:json.Value ps) then fail(:Ok) end
                         let elements = array of(vector.length(:json.Value ps) model.okValue)
                         let result = model.tupleValue(elements labelsOf(ps))
-                        if maybe.isSome(:Int s.objId) then hashMap.insert(:Int :Value rd.objects maybe.unwrap(:Int s.objId) result) end
+                        if maybe.isSome(:Int s.objId) then
+                            hashMap.insert(:Int :Seen rd.objects maybe.unwrap(:Int s.objId)
+                                tuple let value = result let readAt = r end)
+                        end
                         for i = 0 upto {extent elements - 1} do
                             elements[i] := value(rd vector.get(:json.Value its i) pairRef(rd vector.get(:json.Value ps i)))
                         end
