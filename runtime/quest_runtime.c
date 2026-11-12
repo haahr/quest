@@ -1128,14 +1128,16 @@ static char *quest_dup_str(const char *s) {
  * assumption, comparing Rec(L) Option nil cons with head: Int tail: L end end
  * with itself, through the separate descriptors two units emit for it, would
  * never end */
-#define Q_SUBTYPE_TRAIL_MAX 64
 typedef struct QSubtypePair {
     const QTypeDescriptor *sub;
     const QTypeDescriptor *super_type;
 } QSubtypePair;
 
-static Q_THREAD_LOCAL QSubtypePair quest_subtyping_trail[Q_SUBTYPE_TRAIL_MAX];
-static Q_THREAD_LOCAL size_t quest_subtyping_trail_len = 0;
+/* The trail grows as deep comparisons need, in C memory; its pairs in use
+ * are roots (quest_runtime_roots), since a descriptor being compared may be
+ * reachable from nothing else */
+static Q_THREAD_LOCAL QSubtypePair *quest_subtyping_trail = NULL;
+static Q_THREAD_LOCAL size_t quest_subtyping_trail_len = 0, quest_subtyping_trail_cap = 0;
 
 /* Whether the type sub describes is a subtype of the one super_type describes,
  * compared structurally (docs/c-representation.md §6.4.4, Subtyping
@@ -1164,10 +1166,7 @@ static Q_THREAD_LOCAL size_t quest_subtyping_trail_len = 0;
  *
  * Covariant means sub's part is a subtype of super_type's, contravariant the
  * reverse, and invariant both. Pairs met again while being proved are assumed
- * to hold (the trail, above). The trail has room for Q_SUBTYPE_TRAIL_MAX pairs,
- * and a comparison nested deeper than that gives false: a wrong "no" for types
- * nested that deeply, such as 64 levels of tuples within tuples described by
- * different descriptors */
+ * to hold (the trail, above), which grows as deeply nested types need */
 bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_type) {
     /* A value stored as a type parameter has its type argument's type */
     sub = quest_stored_type(sub);
@@ -1181,8 +1180,15 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
             return true;
         }
     }
-    if (quest_subtyping_trail_len >= Q_SUBTYPE_TRAIL_MAX) {
-        return false;
+    if (quest_subtyping_trail_len == quest_subtyping_trail_cap) {
+        size_t cap = quest_subtyping_trail_cap > 0 ? 2 * quest_subtyping_trail_cap : 64;
+        QSubtypePair *grown = (QSubtypePair *)realloc(quest_subtyping_trail, cap * sizeof *grown);
+        if (grown == NULL) {
+            fprintf(stderr, "quest: out of memory comparing types\n");
+            abort();
+        }
+        quest_subtyping_trail = grown;
+        quest_subtyping_trail_cap = cap;
     }
     quest_subtyping_trail[quest_subtyping_trail_len++] = (QSubtypePair){ sub, super_type };
 
@@ -3853,7 +3859,7 @@ void quest_runtime_roots(QRootVisitor add) {
     add(&quest_function_ranges, 1);
     add(&quest_echo_buffer, 1);
     add(quest_type_intern_buckets, Q_TYPE_INTERN_TABLE_SIZE);
-    add(quest_subtyping_trail, 2 * Q_SUBTYPE_TRAIL_MAX);
+    if (quest_subtyping_trail_len > 0) add(quest_subtyping_trail, 2 * quest_subtyping_trail_len);
     add(quest_equiv_trail, 2 * Q_EQUIV_TRAIL_MAX);
     add(&quest_record_dicts, 1);
     add(quest_inst_cache, Q_INST_CACHE_SIZE);
