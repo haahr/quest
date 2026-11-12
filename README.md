@@ -336,6 +336,8 @@ program through every phase, then [docs/type-system.md](docs/type-system.md) and
   promotion, tail calls).
 - [docs/arm64.md](docs/arm64.md): the arm64 backend: instruction selection, register allocation, and assembly for
   Darwin.
+- [docs/arm64-compiler-gap.md](docs/arm64-compiler-gap.md): the plan for narrowing the arm64-built compiler's gap
+  to the C-built one: constants, switches, inline barriers, trampolines, and proxy tests.
 - [docs/exceptions.md](docs/exceptions.md): how an uncaught exception is reported, with where it was raised and the
   functions active then, in the interpreters and in compiled code.
 
