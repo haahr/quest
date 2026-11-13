@@ -127,7 +127,8 @@ questlang/
 └── driver/                  # Compiler driver (bootstrap pipeline and quest/__main__)
     ├── main                 # Main routine: every phase, -e, -i, and the bootstrap's compiling options
     ├── whole                # A whole program: its modules merged into one unit
-    └── repl                 # The REPL: input completeness, rollback, the loop over io/readline
+    ├── repl                 # The REPL: input completeness, rollback, the loop over io/readline
+    └── kernel               # Kernel mode: the Jupyter kernel's protocol over a REPL session
 ```
 
 The self-hosted compiler compiles itself to a fixed point, and it is the primary compiler: the two compilers agree

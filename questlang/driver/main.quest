@@ -89,6 +89,7 @@ import
     cBackend = questlang/codegen/backend : questlang/codegen/Backend
     questlang/codegen/choice : questlang/codegen/Choice
     questlang/driver/repl : questlang/driver/Repl
+    questlang/driver/kernel : questlang/driver/Kernel
     questlang/jit/session : questlang/jit/Session
     questlang/common/memoryFiles : questlang/common/MemoryFiles
     questlang/build/engine : questlang/build/Engine
@@ -1091,7 +1092,7 @@ let interactive(e: env.T f: model.Frame bag: diagbag.T sm: location.SourceMap): 
         diagbag.renderAll(bag sm writer.err)
         writer.flush(writer.err)
         let r = repl.new(e f)
-        system.sysexit(if options.kernel then repl.runKernel(r) else repl.run(r) end)
+        system.sysexit(if options.kernel then kernel.runKernel(r) else repl.run(r) end)
     end;
 
 (* Runs a program with the JIT (docs/jit.md), as one input, which prints its
@@ -1116,7 +1117,7 @@ let jitRun(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagba
         end
         flushDumps()
         if options.kernel then
-            let status = repl.runKernel(r)
+            let status = kernel.runKernel(r)
             finished()
             system.sysexit(status)
         end
