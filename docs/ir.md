@@ -497,7 +497,7 @@ and read through proxies:
   record literal whether its view's offset table is found at run time (`MakeRecord.runtime_offsets`).
 
 Static decisions (whether layouts agree, whether a copy would lose updates) are made by `generic_layout_agrees` and
-`generic_layout_copies_mutable_data` in `repr/layout.py`, which a differential test
+`generic_layout_copies_mutable_data` in `repr/generic_layout.py`, which a differential test
 (`tests/python/test_layout_differential.py`) checks against the runtime's `quest_layout_equivalent`. After this pass,
 every operation's atoms have exactly the representations the operation requires.
 

@@ -1,0 +1,358 @@
+(* Quest Self-Hosted Compiler: Generic Layouts Implementation *)
+
+module genericLayout : GenericLayout
+import
+    questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/repr/syntax : questlang/repr/Syntax
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    questlang/repr/layout : questlang/repr/Layout
+export
+    Let Type = model.Type
+    Let Shape = shapes.Shape
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+    let endsWith(s: String suffix: String): Bool = strutil.endsWith(s suffix)
+    Let Seen = hashMap.T(Int Bool)
+    let intEqual(a: Int b: Int): Bool = a is b
+    let newSeen(): Seen = hashMap.new(:Int :Bool intEqual hash.int)
+
+    (* The C types of scalar values, which a slot holds in a word of its own *)
+    let wordScalars = array of "QInt" "QReal" "QBool" "QChar" "QVal" "void" end
+    (* The C types of native values passed and returned as a QVal is, in a
+     * 64-bit integer register: not a Real, in a floating-point register, nor a
+     * Bool or Char, a byte *)
+    let registerWords = array of "QInt" "QVal" end
+    (* The C types of native values that a QVal cell holds in the same eight
+     * bytes *)
+    let cellWords = array of "QInt" "QReal" "QVal" "uint64_t" end
+    (* Where a value is held: in an aggregate slot, in a register, or in a cell
+     * a var or out parameter points to *)
+    let slotPlace = "slot"
+    let registerPlace = "register"
+    let cellPlace = "cell"
+    (* Whether the type of shape s mentions one of the type parameters in
+     * subst *)
+    let mentions(s: Shape subst: model.Subst): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent s.type.fv - 1} do
+                if hashMap.contains(:Int :Type subst s.type.fv[i]) then found := true end
+            end
+            found
+        end
+    (* Whether a native value of arg agrees with a value of the type parameter
+     * of shape v as generic code holds it in the place *)
+    let storedValueAgrees(v: Shape arg: Type place: String): Bool =
+        begin
+            let argC = layout.representation(arg)
+            if maybe.isSome(:Shape v.bound) andif layout.ownView(v) then
+                (* Held as arg's own value, in the layout.representation of the
+                 * bound *)
+                let boundC = layout.shapeRepresentation(maybe.unwrap(:Shape v.bound))
+                eq(argC boundC) orif {endsWith(argC "*") andif endsWith(boundC "*")}
+            elsif maybe.isSome(:Shape v.bound) then
+                (* Held as a value of the bound, viewed at it, which agrees with
+                 * one of arg only when both are the same scalar *)
+                eq(argC layout.shapeRepresentation(maybe.unwrap(:Shape v.bound))) andif layout.isOneOf(argC wordScalars)
+                    andif {not(eq(place registerPlace)) orif layout.isOneOf(argC registerWords)}
+            elsif eq(place registerPlace) then
+                layout.isOneOf(argC registerWords) orif endsWith(argC "*")
+            elsif eq(place cellPlace) then
+                (* A cell holds a record or variant boxed, as a QVal does *)
+                layout.isOneOf(argC cellWords) orif endsWith(argC "*") orif layout.isOneOf(argC array of "QRecordVal" "QVariantVal" end)
+            else
+                true
+            end
+        end
+    (* The symbol of the type variable s is the shape of, if it is one *)
+    let typeParameter(s: Shape): maybe.T(Int) =
+        case s.type.form
+            when typeVariable with x then maybe.some(:Int x.symbolId)
+            else maybe.none(:Int)
+        end
+    (* Whether a value of shape s, laid out natively with subst's arguments for
+     * its type parameters, is laid out as generic code lays out s, held in the
+     * place. A type that mentions no parameter agrees; a parameter agrees as
+     * storedValueAgrees says; an aggregate agrees when each component does, in
+     * a slot. A recursive shape met again agrees, as far as this walk can
+     * tell *)
+    let rec agrees(s: Shape subst: model.Subst place: String seen: Seen): Bool =
+        begin
+            let symbol = typeParameter(s)
+            if not(mentions(s subst)) then
+                true
+            elsif maybe.isSome(:Int symbol) then
+                let arg = hashMap.get(:Int :Type subst maybe.unwrap(:Int symbol))
+                if maybe.isSome(:Type arg) then storedValueAgrees(s maybe.unwrap(:Type arg) place) else true end
+            elsif shapes.isRecursive(s) andif hashMap.contains(:Int :Bool seen s.id) then
+                true
+            else
+                if shapes.isRecursive(s) then hashMap.insert(:Int :Bool seen s.id true) end
+                let slot = fun(component: Shape): Bool agrees(component subst slotPlace seen)
+                case s.kind
+                    (* An application of an abstract operator, whose values are
+                     * opaque pointers *)
+                    when shapeAbstract then s.type.form?typeApp
+                    when shapeTuple, shapeRecord then
+                        let var all = true
+                        for i = 0 upto {extent s.components - 1} do
+                            if all andif not(slot(shapes.componentShape(s.components[i]))) then all := false end
+                        end
+                        all
+                    when shapeVariant, shapeOption then
+                        let var all = true
+                        for i = 0 upto {extent s.cases - 1} do
+                            let c = s.cases[i].shape
+                            if all andif maybe.isSome(:Shape c)
+                                andif not(slot(maybe.unwrap(:Shape c))) then all := false end
+                        end
+                        all
+                    (* An exception's payload is raised in a QVal word, read as
+                     * a slot *)
+                    when shapeArray, shapeException then slot(shapes.element(s))
+                    when shapeCell, shapeOut then agrees(shapes.element(s) subst cellPlace seen)
+                    when shapeFun then
+                        let var all = true
+                        for i = 0 upto {extent s.params - 1} do
+                            let p = s.params[i]
+                            if all andif not(agrees(p.shape subst
+                                    if eq(p.mode "value") then registerPlace else cellPlace end seen)) then
+                                all := false
+                            end
+                        end
+                        all andif agrees(shapes.result(s) subst registerPlace seen)
+                    when shapeAll then agrees(shapes.body(s) subst place seen)
+                    (* Anything else that mentions a type parameter (auto types,
+                     * path types) may differ *)
+                    when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
+                        shapeAuto, shapeTypevar, shapeExternal, shapeOperator, shapePending then false
+                end
+            end
+        end
+    let genericLayoutAgrees(t: Type subst: model.Subst): Bool =
+        hashMap.empty(:Int :Type subst) orif agrees(shapes.shape(t) subst slotPlace newSeen())
+    let genericLayoutCopiesMutableData(t: Type subst: model.Subst): Bool =
+        begin
+            let seen = newSeen()
+            let disagrees = fun(component: Shape place: String): Bool not(agrees(component subst place newSeen()))
+            (* Whether a value of s holds mutable data, reachable without
+             * passing through a closure, whose layouts disagree: an array's
+             * or cell's elements, or a var field or case. Converting such a
+             * value would copy it, and writes to the copy would not reach the
+             * original *)
+            let rec visit(s: Shape): Bool =
+                if not(mentions(s subst)) then
+                    false
+                elsif shapes.isRecursive(s) andif hashMap.contains(:Int :Bool seen s.id) then
+                    false
+                else
+                    if shapes.isRecursive(s) then hashMap.insert(:Int :Bool seen s.id true) end
+                    case s.kind
+                        when shapeArray then disagrees(shapes.element(s) slotPlace) orif visit(shapes.element(s))
+                        when shapeCell, shapeOut then disagrees(shapes.element(s) cellPlace)
+                            orif visit(shapes.element(s))
+                        (* A tuple is converted through a proxy, which reads and
+                         * writes its original's components *)
+                        when shapeTuple then
+                            let var any = false
+                            for i = 0 upto {extent s.components - 1} do
+                                if not(any) andif visit(shapes.componentShape(s.components[i])) then any := true end
+                            end
+                            any
+                        when shapeRecord then
+                            let var any = false
+                            for i = 0 upto {extent s.components - 1} do
+                                let c = s.components[i]
+                                let cs = shapes.componentShape(c)
+                                if not(any) andif {{c.isVar andif disagrees(cs slotPlace)}
+                                    orif visit(cs)} then any := true end
+                            end
+                            any
+                        when shapeVariant then
+                            let var any = false
+                            for i = 0 upto {extent s.cases - 1} do
+                                let c = s.cases[i]
+                                if not(any) andif maybe.isSome(:Shape c.shape) then
+                                    let cs = maybe.unwrap(:Shape c.shape)
+                                    if {c.isVar andif disagrees(cs slotPlace)} orif visit(cs) then any := true end
+                                end
+                            end
+                            any
+                        when shapeOption then
+                            let var any = false
+                            for i = 0 upto {extent s.cases - 1} do
+                                let c = s.cases[i]
+                                if not(any) andif maybe.isSome(:Shape c.shape)
+                                    andif visit(maybe.unwrap(:Shape c.shape)) then
+                                    any := true
+                                end
+                            end
+                            any
+                        (* Closures are adapted rather than copied *)
+                        when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
+                            shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal,
+                            shapeOperator, shapePending then false
+                    end
+                end
+            visit(shapes.shape(t))
+        end
+    Def AbstractInstance = Tuple generic: Type subst: model.Subst end
+    let abstractInstance(t0: Type): maybe.T(AbstractInstance) =
+        begin
+            let none = maybe.none(:AbstractInstance)
+            let t = model.pruned(t0)
+            case t.form
+                when typeApp with x then
+                    let symbol = case model.pruned(x.constructor).form
+                        when typeVariable with v then v.symbolId
+                        when typeAbstract with v then v.symbolId
+                        else ~1
+                    end
+                    let entry = if abstractTypes.isAbstractTypeSymbol(symbol) then
+                        abstractTypes.abstractTypeBySymbol(symbol)
+                    else maybe.none(:abstractTypes.ModuleAbstractType) end
+                    (* A transparent one (in a whole program) is laid out as its
+                     * layout.representation is, everywhere *)
+                    let transparent = shapes.transparentAbstractTypes()
+                        andif maybe.isSome(:abstractTypes.ModuleAbstractType entry)
+                        andif abstractTypes.unbounded(maybe.unwrap(:abstractTypes.ModuleAbstractType entry))
+                    let written = if maybe.isSome(:abstractTypes.ModuleAbstractType entry) andif not(transparent) then
+                        maybe.unwrap(:abstractTypes.ModuleAbstractType entry).rep
+                    else maybe.none(:Type) end
+                    if maybe.isNone(:Type written) then
+                        none
+                    else
+                        let rep = shapes.shape(maybe.unwrap(:Type written)).type
+                        case rep.form
+                            when typeOperator with op then
+                                if extent op.params is extent x.arguments then
+                                    let subst = model.newSubst()
+                                    for i = 0 upto {extent op.params - 1} do
+                                        hashMap.insert(:Int :Type subst op.params[i].symbolId x.arguments[i])
+                                    end
+                                    maybe.some(:AbstractInstance tuple let generic = op.body let subst = subst end)
+                                else none end
+                            else none
+                        end
+                    end
+                else none
+            end
+        end
+    let abstractLayoutsDiffer(t: Type): Bool =
+        begin
+            let seen = newSeen()
+            let rec visit(s: Shape): Bool =
+                if hashMap.contains(:Int :Bool seen s.id) then
+                    false
+                else
+                    hashMap.insert(:Int :Bool seen s.id true)
+                    (* An abstract application with a known layout.representation
+                     * differs when that layout.representation's generic layout
+                     * disagrees with its native one; any other shape when one
+                     * of its parts does *)
+                    let any = fun(shapes0: Array(maybe.T(Shape))): Bool
+                        begin
+                            let var found = false
+                            for i = 0 upto {extent shapes0 - 1} do
+                                if not(found) andif maybe.isSome(:Shape shapes0[i])
+                                    andif visit(maybe.unwrap(:Shape shapes0[i])) then found := true end
+                            end
+                            found
+                        end
+                    let inner = vector.new(:maybe.T(Shape))
+                    for i = 0 upto {extent s.components - 1} do
+                        vector.append(:maybe.T(Shape) inner maybe.some(:Shape shapes.componentShape(s.components[i])))
+                    end
+                    for i = 0 upto {extent s.cases - 1} do vector.append(:maybe.T(Shape) inner s.cases[i].shape) end
+                    for i = 0 upto {extent s.params - 1} do
+                        vector.append(:maybe.T(Shape) inner maybe.some(:Shape s.params[i].shape))
+                    end
+                    vector.append(:maybe.T(Shape) inner s.elementShape)
+                    vector.append(:maybe.T(Shape) inner s.resultShape)
+                    vector.append(:maybe.T(Shape) inner s.bodyShape)
+                    let instance = if shapes.kindIs(s shapes.shapeAbstract) then abstractInstance(s.type)
+                        else maybe.none(:AbstractInstance) end
+                    if maybe.isSome(:AbstractInstance instance) then
+                        let i = maybe.unwrap(:AbstractInstance instance)
+                        not(genericLayoutAgrees(i.generic i.subst))
+                    else
+                        any(vector.toArray(:maybe.T(Shape) inner))
+                    end
+                end
+            visit(shapes.shape(t))
+        end
+    let signatureRepresentation(t: Type): String =
+        begin
+            let var s = shapes.shape(t)
+            let var count = 0
+            while shapes.kindIs(s shapes.shapeAll) do
+                count := count + extent s.typeParams
+                s := shapes.body(s)
+            end
+            let params = if shapes.kindIs(s shapes.shapeFun) then s.params else array of :shapes.Param end end
+            let result = if shapes.kindIs(s shapes.shapeFun) then shapes.result(s) else s end
+            let key = stringBuilder.new()
+            key.str(layout.shapeRepresentation(result)).char('|').str(syntax.cInt(count))
+            for i = 0 upto {extent params - 1} do
+                let p = params[i]
+                key.char('|')
+                if not(eq(p.mode "value")) then
+                    key.str(layout.shapeLocationRepresentation(p.shape) <> " *")
+                (* An Ok parameter is passed as a QVal word, since C has no
+                 * void parameter *)
+                elsif shapes.kindIs(p.shape shapes.shapeOk) then
+                    key.str("QVal")
+                else
+                    key.str(layout.shapeRepresentation(p.shape))
+                end
+            end
+            key.toString()
+        end
+    let qtypeToNameStr(t0: Type): String =
+        begin
+            let t = model.pruned(t0)
+            case t.form
+                when typeAlias with x then x.name
+                when typeExternal with x then
+                    if layout.isWordType(t) then "word.T" elsif stringOp.isEmpty(x.name) then x.cType else x.name end
+                else
+                    if layout.isWordType(t) then "word.T"
+                    elsif model.same(t model.intType) then "Int"
+                    elsif model.same(t model.realType) then "Real"
+                    elsif model.same(t model.boolType) then "Bool"
+                    elsif model.same(t model.charType) then "Char"
+                    elsif model.same(t model.stringType) then "String"
+                    elsif model.same(t model.okType) then "Ok"
+                    else model.show(t)
+                    end
+            end
+        end
+    let typeEqual(a: Type b: Type): Bool = model.same(a b) orif subtyping.isTypeEqual(a b maybe.none(:model.Lookup))
+    let isRecordSubtype(s: Type t: Type): Bool =
+        case s.form
+            when typeRecord with x then
+                case t.form
+                    when typeRecord with y then
+                        let var all = true
+                        for i = 0 upto {extent y.fields - 1} do
+                            let f = model.recordGetField(x.fields y.fields[i].name)
+                            if maybe.isNone(:model.RecordField f) then
+                                all := false
+                            elsif not(typeEqual(maybe.unwrap(:model.RecordField f).type y.fields[i].type)) then
+                                all := false
+                            end
+                        end
+                        all
+                    else false
+                end
+            else false
+        end
+end

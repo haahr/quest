@@ -48,7 +48,8 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from quest.repr.descriptors import bound_var_index, hole_var
-from quest.repr.layout import abstract_instance, own_view, representation, resolved_shape
+from quest.repr.layout import own_view, representation, resolved_shape
+from quest.repr.generic_layout import abstract_instance
 from quest.ir import nodes as ir
 from quest.ir.represent import held_shape
 from quest.repr.shapes import shape

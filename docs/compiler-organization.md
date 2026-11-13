@@ -105,6 +105,7 @@ questlang/
 ├── repr/                    # The representation of values, which the IR's passes and every backend share
 │   ├── shapes, written      # Types as the passes see them; the types of a type's components as written
 │   ├── layout, descriptors  # Layouts and digests; descriptors' type-level forms
+│   ├── genericlayout        # Whether generic code's layouts agree with native ones
 │   ├── staticdata, runtimeLayout, objectLayout   # Static data described for every backend; the runtime's struct
 │   │                        # layouts; the layouts of the objects the collector walks
 │   ├── symbols, syntax      # The names units link against; the spelling of C text

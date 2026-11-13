@@ -10,6 +10,7 @@ import
     questlang/repr/written : questlang/repr/Written
     questlang/ir/slots : questlang/ir/Slots
     questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/genericLayout : questlang/repr/GenericLayout
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
@@ -212,9 +213,9 @@ export
                 none
             elsif not(isRecord) andif {not(endsStar(genericC)) orif not(endsStar(nativeC))} then
                 none
-            elsif layout.genericLayoutAgrees(genericType lay.subst) then
+            elsif genericLayout.genericLayoutAgrees(genericType lay.subst) then
                 if eq(genericC nativeC) then none else newPlan(nodes.planCast source target) end
-            elsif layout.genericLayoutCopiesMutableData(genericType lay.subst) then
+            elsif genericLayout.genericLayoutCopiesMutableData(genericType lay.subst) then
                 raise rejectedConversion with
                     "C code generation cannot pass a value of type '" <> model.show(nativeType)
                         <> "' to or from a polymorphic function that lays it out as '" <> model.show(genericType)
@@ -403,7 +404,7 @@ export
                 hashMap.delete(:String :Bool adapting key)
                 let var allNone = true
                 for i = 0 upto {extent fields - 1} do if maybe.isSome(:Plan fields[i]) then allNone := false end end
-                if allNone andif eq(layout.signatureRepresentation(source) layout.signatureRepresentation(target)) then
+                if allNone andif eq(genericLayout.signatureRepresentation(source) genericLayout.signatureRepresentation(target)) then
                     none
                 else
                     (* The thunk takes target's type parameters, which the
@@ -471,16 +472,16 @@ export
             let nativeT = if toGeneric then source else target end
             let nativeC = if toGeneric then cs else ct end
             let instance = if {shapes.kindIs(ss shapes.shapeAbstract) is toGeneric} orif eq(nativeC "QVal") then
-                maybe.none(:layout.AbstractInstance)
-            else layout.abstractInstance(abstractT) end
-            if maybe.isNone(:layout.AbstractInstance instance) then
+                maybe.none(:genericLayout.AbstractInstance)
+            else genericLayout.abstractInstance(abstractT) end
+            if maybe.isNone(:genericLayout.AbstractInstance instance) then
                 maybe.none(:maybe.T(Plan))
             else
-                let i = maybe.unwrap(:layout.AbstractInstance instance)
-                if layout.genericLayoutAgrees(i.generic i.subst)
+                let i = maybe.unwrap(:genericLayout.AbstractInstance instance)
+                if genericLayout.genericLayoutAgrees(i.generic i.subst)
                     orif not(equal(model.substitute(i.generic i.subst) nativeT)) then
                     maybe.none(:maybe.T(Plan))
-                elsif layout.genericLayoutCopiesMutableData(i.generic i.subst) then
+                elsif genericLayout.genericLayoutCopiesMutableData(i.generic i.subst) then
                     raise rejectedConversion with
                         "C code generation cannot convert a value of type '" <> model.show(abstractT)
                             <> "' between its module's layout of it and its own: the layouts differ, and converting "
@@ -722,7 +723,7 @@ export
                     let armC = layout.shapeSlotRepresentation(armShape)
                     if eq(storedC armC) then
                         if isFunctionKind(armShape)
-                            andif not(eq(layout.signatureRepresentation(storedShape.type) layout.signatureRepresentation(armShape.type))) then
+                            andif not(eq(genericLayout.signatureRepresentation(storedShape.type) genericLayout.signatureRepresentation(armShape.type))) then
                             agree := false
                         end
                     elsif not(eq(storedC "QVal")) orif eq(armC "void") then
@@ -986,8 +987,8 @@ export
                     else
                         (* A value of an abstract type's application is laid out
                          * generically already *)
-                        let abstract = layout.abstractInstance(typeOf(a))
-                        if instantiated andif maybe.isNone(:layout.AbstractInstance abstract) then
+                        let abstract = genericLayout.abstractInstance(typeOf(a))
+                        if instantiated andif maybe.isNone(:genericLayout.AbstractInstance abstract) then
                             a := convert(a model.substitute(p.type instantiation.subst) before noLayout)
                         end
                         a := convert(a p.type before layoutOf(instantiation true))
@@ -1205,7 +1206,7 @@ export
                                  * let's *)
                                 let g = vector.get(:GenericResult r.genericResults 0)
                                 let step = plan(g.generic g.instantiated layoutOf(g.instantiation false))
-                                if maybe.isSome(:layout.AbstractInstance layout.abstractInstance(x.v.type)) then
+                                if maybe.isSome(:genericLayout.AbstractInstance genericLayout.abstractInstance(x.v.type)) then
                                     (* A value of an abstract type's
                                      * application, laid out generically *)
                                     result(x g.generic after)

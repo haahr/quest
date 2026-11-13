@@ -40,19 +40,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from quest.repr.layout import (
-    abstract_instance,
-    generic_layout_agrees,
-    held_at_bound,
-    own_view,
-    is_boxed_in_slots,
-    generic_layout_copies_mutable_data,
-    may_be_proxied,
-    resolved_shape,
-    shape_representation,
-    shape_slot_representation,
-    signature_representation,
-)
+from quest.repr.layout import held_at_bound, own_view, is_boxed_in_slots, may_be_proxied, resolved_shape, shape_representation, shape_slot_representation
+from quest.repr.generic_layout import abstract_instance, generic_layout_agrees, generic_layout_copies_mutable_data, signature_representation
 from quest.ir import nodes as ir
 from quest.repr.shapes import Shape, shape
 from quest.ir.slots import decide_slots, may_be_stored_as_subtype, tuple_access

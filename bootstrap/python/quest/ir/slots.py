@@ -47,15 +47,8 @@ from __future__ import annotations
 import dataclasses
 from typing import Optional
 
-from quest.repr.layout import (
-    changes_view,
-    is_boxed_in_slots,
-    is_record_subtype,
-    may_be_proxied,
-    own_view,
-    resolved_shape,
-    shape_representation,
-)
+from quest.repr.layout import changes_view, is_boxed_in_slots, may_be_proxied, own_view, resolved_shape, shape_representation
+from quest.repr.generic_layout import is_record_subtype
 from quest.ir import nodes as ir
 from quest.repr.shapes import Shape, shape
 from quest.ir.walk import statement_bodies, walk_statements

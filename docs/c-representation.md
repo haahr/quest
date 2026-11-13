@@ -1044,7 +1044,7 @@ function passes on ([type-system.md](type-system.md) §6.12).
   abstract type's, viewed at its bound, agrees only with the bound's own layout. Aggregates agree when
   their components do, records when their views' field types do. Recursive descriptors are compared coinductively.
   The compiler makes the same judgement statically for a type laid out by generic code and its instance at known
-  type arguments (`generic_layout_agrees` in `repr/layout.py`), conservatively: when it cannot tell, the value
+  type arguments (`generic_layout_agrees` in `repr/generic_layout.py`), conservatively: when it cannot tell, the value
   is left to `quest_convert`, which returns it unchanged if the layouts agree after all.
 - **Conversion:** `quest_convert(v, from, to)` converts a value between layouts as well as between a subtype and a
   supertype. A value whose layout already suits `to` is returned as it is (so tuples keep their identity and `var`
