@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from quest.repr.syntax import c_int
-from quest.repr.layout import type_digest
+from quest.repr.digests import type_digest
 from quest.repr.shapes import shape
 from quest.types import (
     QAllType,

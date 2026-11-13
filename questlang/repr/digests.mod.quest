@@ -1,0 +1,295 @@
+(* Quest Self-Hosted Compiler: Digests of Types Implementation
+ *
+ * Digests of types stand for their printed text, which is the same in every
+ * compilation. A type whose text is at most printedTextLimit long is
+ * digested from its text; a longer one from the text of its outermost node
+ * with the digests of its parts in place of theirs, computed once per
+ * hash-consed node. *)
+
+module digests : Digests
+import
+    questlang/types/model : questlang/types/Model
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/common/sha256 : questlang/common/Sha256
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/stringBuilder : util/StringBuilder
+    stringOp = string : StringOp
+    ascii : Ascii
+    questlang/repr/layout : questlang/repr/Layout
+export
+    Let Type = model.Type
+    let intEqual(a: Int b: Int): Bool = a is b
+
+    let printedTextLimit = 1024
+    (* What printed digests: a type, a type component, or a kind *)
+    Let Printable = Option
+        pType with t: Type end
+        pKind with k: model.Kind end
+        pTupleComponent with c: model.TupleComponent end
+        pRecordField with f: model.RecordField end
+        pVariantField with f: model.VariantField end
+        pOptionField with f: model.OptionField end
+        pParam with p: model.Param end
+        pQuantifier with q: model.Quantifier end
+        pTypeFormal with f: model.TypeFormal end
+    end
+    Let Piece = Option
+        pieceText with s: String end
+        piecePart with p: Printable end
+    end
+    Let Printed = Tuple length: Int digest: String end
+    let text(s: String): Piece = option pieceText of Piece with let s = s end
+    let part(p: Printable): Piece = option piecePart of Piece with let p = p end
+    let ofType(t: Type): Piece = part(option pType of Printable with let t = t end)
+    let ofKind(k: model.Kind): Piece = part(option pKind of Printable with let k = k end)
+    (* The pieces of items separated by spaces *)
+    let spaced(pieces: vector.T(Piece) items: Array(Piece)): Ok =
+        for i = 0 upto {extent items - 1} do
+            if i > 0 then vector.append(:Piece pieces text(" ")) end
+            vector.append(:Piece pieces items[i])
+        end
+    let framed(head: String items: Array(Piece)): vector.T(Piece) =
+        begin
+            let pieces = vector.new(:Piece)
+            if extent items > 0 then
+                vector.append(:Piece pieces text(head <> " "))
+                spaced(pieces items)
+                vector.append(:Piece pieces text(" end"))
+            else
+                vector.append(:Piece pieces text(head <> " end"))
+            end
+            pieces
+        end
+    let pieces(items: Array(Piece)): vector.T(Piece) = vector.fromArray(:Piece items)
+    (* The text of a node as a list of literal strings and the parts printed in
+     * between, mirroring the bootstrap's __str__ methods; a node not listed
+     * prints as one string *)
+    let printedParts(node: Printable): vector.T(Piece) =
+        case node
+            when pType with x then
+                let t = x.t
+                case t.form
+                    when typeException with y then
+                        if model.same(y.payload model.okType) then pieces(array of text("Exception") end)
+                        else pieces(array of text("Exception(") ofType(y.payload) text(")") end) end
+                    when typeTuple with y then
+                        let items = array of(extent y.fields text(""))
+                        for i = 0 upto {extent y.fields - 1} do
+                            items[i] := part(option pTupleComponent of Printable with let c = y.fields[i] end)
+                        end
+                        framed("Tuple" items)
+                    when typeRecord with y then
+                        if maybe.isSome(:String y.provenance) andif not(stringOp.isEmpty(maybe.unwrap(:String y.provenance))) then
+                            pieces(array of text("Module '" <> maybe.unwrap(:String y.provenance) <> "'") end)
+                        else
+                            let items = array of(extent y.fields text(""))
+                            for i = 0 upto {extent y.fields - 1} do
+                                items[i] := part(option pRecordField of Printable with let f = y.fields[i] end)
+                            end
+                            framed("Record" items)
+                        end
+                    when typeVariant with y then
+                        let items = array of(extent y.variants text(""))
+                        for i = 0 upto {extent y.variants - 1} do
+                            items[i] := part(option pVariantField of Printable with let f = y.variants[i] end)
+                        end
+                        framed("Variant" items)
+                    when typeOption with y then
+                        let items = array of(extent y.options text(""))
+                        for i = 0 upto {extent y.options - 1} do
+                            items[i] := part(option pOptionField of Printable with let f = y.options[i] end)
+                        end
+                        framed("Option" items)
+                    when typeFun with y then
+                        let result = pieces(array of text("Fun(") end)
+                        let items = array of(extent y.params text(""))
+                        for i = 0 upto {extent y.params - 1} do
+                            items[i] := part(option pParam of Printable with let p = y.params[i] end)
+                        end
+                        spaced(result items)
+                        vector.append(:Piece result text("): "))
+                        vector.append(:Piece result ofType(y.result))
+                        result
+                    when typeVar with y then pieces(array of text("Var(") ofType(y.element) text(")") end)
+                    when typeArray with y then pieces(array of text("Array(") ofType(y.element) text(")") end)
+                    when typeOut with y then pieces(array of text("Out(") ofType(y.element) text(")") end)
+                    when typeAll with y then
+                        let result = pieces(array of text("All(") end)
+                        let items = array of(extent y.quantifiers text(""))
+                        for i = 0 upto {extent y.quantifiers - 1} do
+                            items[i] := part(option pQuantifier of Printable with let q = y.quantifiers[i] end)
+                        end
+                        spaced(result items)
+                        vector.append(:Piece result text(") "))
+                        vector.append(:Piece result ofType(y.body))
+                        result
+                    when typeAuto with y then
+                        let result = if model.isPower(y.kindBound) then
+                            pieces(array of
+                                text("Auto " <> y.typeParam <> " <: ") ofType(model.powerBound(y.kindBound)) text(" with ")
+                            end)
+                        else
+                            pieces(array of text("Auto " <> y.typeParam <> " :: ") ofKind(y.kindBound) text(" with ") end)
+                        end
+                        let items = array of(extent y.signature text(""))
+                        for i = 0 upto {extent y.signature - 1} do
+                            items[i] := part(option pRecordField of Printable with let f = y.signature[i] end)
+                        end
+                        spaced(result items)
+                        vector.append(:Piece result text(" end"))
+                        result
+                    when typeOperator with y then
+                        let result = pieces(array of text("Fun(") end)
+                        let items = array of(extent y.params text(""))
+                        for i = 0 upto {extent y.params - 1} do
+                            items[i] := part(option pTypeFormal of Printable with let f = y.params[i] end)
+                        end
+                        spaced(result items)
+                        vector.append(:Piece result text(") "))
+                        vector.append(:Piece result ofType(y.body))
+                        result
+                    when typeApp with y then
+                        let result = pieces(array of ofType(y.constructor) text("(") end)
+                        let items = array of(extent y.arguments text(""))
+                        for i = 0 upto {extent y.arguments - 1} do items[i] := ofType(y.arguments[i]) end
+                        spaced(result items)
+                        vector.append(:Piece result text(")"))
+                        result
+                    when typeRec with y then
+                        pieces(array of text("Rec(" <> y.varName <> " :: ") ofKind(y.bound) text(") ") ofType(y.body) end)
+                    else pieces(array of text(model.show(t)) end)
+                end
+            when pKind with x then
+                case x.k.form
+                    when kindPower with y then pieces(array of text("<: ") ofType(y.bound) end)
+                    when kindAll with y then
+                        pieces(array of
+                            text("ALL(" <> y.paramName <> " :: ") ofKind(y.paramKind) text(") ") ofKind(y.resultKind)
+                        end)
+                    else pieces(array of text(model.showKind(x.k)) end)
+                end
+            when pTupleComponent with x then
+                case x.c
+                    when tupleField with f then
+                        let prefix = if f.isVar then "var " else "" end
+                        let head = if maybe.isSome(:String f.name) andif not(stringOp.isEmpty(maybe.unwrap(:String f.name))) then
+                            prefix <> maybe.unwrap(:String f.name) <> ": "
+                        else
+                            prefix <> ":"
+                        end
+                        pieces(array of text(head) ofType(f.type) end)
+                    when tupleTypeFormal with f then pieces(array of text(f.name <> "::") ofKind(f.bound) end)
+                    when tupleTypeBinding with f then
+                        let result = pieces(array of text("Let " <> f.name) end)
+                        if maybe.isSome(:model.Kind f.bound) then
+                            vector.append(:Piece result text("::"))
+                            vector.append(:Piece result ofKind(maybe.unwrap(:model.Kind f.bound)))
+                        end
+                        vector.append(:Piece result text(" = "))
+                        vector.append(:Piece result ofType(f.type))
+                        result
+                end
+            when pRecordField with x then
+                pieces(array of text(if x.f.isVar then "var " else "" end <> x.f.name <> ": ") ofType(x.f.type) end)
+            when pVariantField with x then
+                let prefix = if x.f.isVar then "var " else "" end
+                if maybe.isSome(:Type x.f.type) then
+                    pieces(array of text(prefix <> x.f.name <> ": ") ofType(maybe.unwrap(:Type x.f.type)) end)
+                else
+                    pieces(array of text(prefix <> x.f.name) end)
+                end
+            when pOptionField with x then
+                if maybe.isSome(:Type x.f.payload) then
+                    pieces(array of text(x.f.name <> " with ") ofType(maybe.unwrap(:Type x.f.payload)) end)
+                else
+                    pieces(array of text(x.f.name) end)
+                end
+            when pParam with x then
+                let prefix = if x.p.isVar then "var " elsif x.p.isOut then "out " else "" end
+                pieces(array of text(prefix <> x.p.name <> ": ") ofType(x.p.type) end)
+            when pQuantifier with x then
+                if model.isPower(x.q.bound) then
+                    pieces(array of text(x.q.name <> " <: ") ofType(model.powerBound(x.q.bound)) end)
+                else
+                    pieces(array of text(x.q.name <> " :: ") ofKind(x.q.bound) end)
+                end
+            when pTypeFormal with x then pieces(array of text(x.f.name <> " :: ") ofKind(x.f.bound) end)
+        end
+    (* The text of a node: its pieces' text *)
+    let rec textOf(node: Printable): String =
+        case node
+            when pType with x then model.show(x.t)
+            when pKind with x then model.showKind(x.k)
+            else
+                let b = stringBuilder.new()
+                let ps = printedParts(node)
+                for i = 0 upto {vector.length(:Piece ps) - 1} do
+                    case vector.get(:Piece ps i)
+                        when pieceText with y then b.str(y.s)
+                        when piecePart with y then b.str(textOf(y.p))
+                    end
+                end
+                b.toString()
+        end
+    let printedMemo = hashMap.new(:Int :Printed intEqual hash.int)
+    (* The length of a node's text, the sum of its pieces' lengths, and the
+     * digest of either its text or, if that is too long, its pieces with each
+     * part's digest in place of the part. In the latter a NUL comes before
+     * each part's digest and a byte 1 starts the whole, so that it is never
+     * also some type's text *)
+    let rec printedUncached(node: Printable): Printed =
+        begin
+            let var length = 0
+            let joined = stringBuilder.new()
+            let ps = printedParts(node)
+            for i = 0 upto {vector.length(:Piece ps) - 1} do
+                case vector.get(:Piece ps i)
+                    when pieceText with y then
+                        length := length + stringOp.length(y.s)
+                        joined.str(y.s)
+                    when piecePart with y then
+                        let p = printed(y.p)
+                        length := length + p.length
+                        joined.char(ascii.char(0)).str(p.digest)
+                end
+            end
+            let digest = if length <= printedTextLimit then
+                sha256.hexDigest(textOf(node))
+            else
+                sha256.hexDigest(stringOp.new(1 ascii.char(1)) <> joined.toString())
+            end
+            tuple let length = length let digest = digest end
+        end
+    (* The length of a node's text and a digest of that text, kept by the
+     * node's id. A type or kind with a metavariable (an unknown the type
+     * checker may yet solve) is not kept, since its text may change *)
+    and printed(node0: Printable): Printed =
+        begin
+            let node = case node0 when pType with x then option pType of Printable with let t = model.pruned(x.t) end else node0 end
+            let key = case node
+                when pType with x then if x.t.hasMeta then maybe.none(:Int) else maybe.some(:Int x.t.id) end
+                when pKind with x then if x.k.hasMeta then maybe.none(:Int) else maybe.some(:Int x.k.id) end
+                else maybe.none(:Int)
+            end
+            if maybe.isNone(:Int key) then
+                printedUncached(node)
+            else
+                let found = hashMap.get(:Int :Printed printedMemo maybe.unwrap(:Int key))
+                if maybe.isSome(:Printed found) then
+                    maybe.unwrap(:Printed found)
+                else
+                    let p = printedUncached(node)
+                    hashMap.insert(:Int :Printed printedMemo maybe.unwrap(:Int key) p)
+                    p
+                end
+            end
+        end
+    let typeDigest(t: Type): String =
+        stringOp.getSub(printed(option pType of Printable with let t = shapes.shape(t).structure end).digest 0 16)
+    let typeIdentityKey(t: Type): String = layout.typeTag(t) <> "#" <> typeDigest(t)
+    let printedType(t: Type): Printed = printed(option pType of Printable with let t = t end)
+    let textDigest(text: String): String = stringOp.getSub(sha256.hexDigest(text) 0 16)
+end

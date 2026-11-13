@@ -1,4 +1,18 @@
-(* Quest Self-Hosted Compiler: Generic Layouts Implementation *)
+(* Quest Self-Hosted Compiler: Generic Layouts Implementation
+ *
+ * Generic code (a polymorphic function's body, or code outside a module
+ * that uses its abstract types) holds a value of a type parameter T in a
+ * QVal word. So it lays out a type that mentions T with a word wherever T
+ * appears: an Array(T) has QVal slots. Native code with T = Int lays out
+ * Array(Int) with QInt slots, which agree, since a slot is a word either
+ * way; with T = a record type, the native slots hold boxes the generic
+ * code expects too. But a function value of type All(x: T) T, called with
+ * a QVal in generic code and with a QReal in native code at T = Real,
+ * disagrees, and must be converted where the value passes between them.
+ *
+ * Whether the layouts agree depends on where a T is held: in a slot of an
+ * aggregate (a word), in a register (a parameter or result, where C's
+ * types must match), or in a cell a var or out parameter points to. *)
 
 module genericLayout : GenericLayout
 import

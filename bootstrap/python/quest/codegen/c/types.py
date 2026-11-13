@@ -18,21 +18,8 @@ from quest.repr.descriptors import (
     hole_index,
     module_abstract_type_name,
 )
-from quest.repr.layout import (
-    PRINTED_TEXT_LIMIT,
-    is_boxed_in_slots,
-    shape_location_representation,
-    shape_slot_representation,
-    option_struct_name,
-    printed,
-    representation,
-    resolved_shape,
-    shape_representation,
-    text_digest,
-    tuple_struct_name,
-    type_digest,
-    type_tag,
-)
+from quest.repr.layout import is_boxed_in_slots, shape_location_representation, shape_slot_representation, option_struct_name, representation, resolved_shape, shape_representation, tuple_struct_name, type_tag
+from quest.repr.digests import PRINTED_TEXT_LIMIT, printed, text_digest, type_digest
 from quest.repr.shapes import Shape, shape
 from quest.repr.written import echo_children, echo_head, recursive_identity, tuple_type_components
 from quest.repr.symbols import mangle_ident

@@ -85,7 +85,8 @@ from quest.codegen.c.types import (
     shape_slot_store,
     shape_slot_to_qval,
 )
-from quest.repr.layout import layout_of, resolved_shape, shape_location_representation, shape_representation, shape_slot_representation, shape_tag, tuple_struct_name, type_identity_key, type_tag
+from quest.repr.layout import layout_of, resolved_shape, shape_location_representation, shape_representation, shape_slot_representation, shape_tag, tuple_struct_name, type_tag
+from quest.repr.digests import type_identity_key
 from quest.repr.generic_layout import qtype_to_name_str
 from quest.repr.symbols import mangle_ident, mangle_module_ident, mangle_module_name, module_record_ident
 from quest.diagnostics import MAIN_FRAME, init_frame

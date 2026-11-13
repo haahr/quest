@@ -15,7 +15,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from quest.repr.layout import layout_of, resolved_shape, shape_tag, type_digest, type_tag
+from quest.repr.layout import layout_of, resolved_shape, shape_tag, type_tag
+from quest.repr.digests import type_digest
 from quest.repr.shapes import Shape, shape
 from quest.types import QType
 

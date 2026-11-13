@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from quest.repr.layout import type_identity_key
+from quest.repr.digests import type_identity_key
 from quest.repr.generic_layout import abstract_layouts_differ
 from quest.ir import nodes as ir
 from quest.repr.shapes import Shape, shape

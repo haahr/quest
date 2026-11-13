@@ -1,0 +1,28 @@
+(* Quest Self-Hosted Compiler: Digests of Types Interface
+ *
+ * Digests of types, which stand for their printed text, the same in every
+ * compilation: what names structs, descriptors, and layouts where typeTag
+ * (repr/layout) conflates types. The counterpart is the printed digests of
+ * bootstrap/python/quest/repr/layout.py. *)
+
+interface Digests
+import
+    questlang/types/model : questlang/types/Model
+export
+    (* The longest printed text a type is digested from directly; a longer one
+     * is digested from its outermost node's text with its parts' digests in
+     * place of theirs *)
+    printedTextLimit: Int
+    (* A short digest of a type's printed text, telling apart types that typeTag
+     * conflates *)
+    typeDigest(t: model.Type): String
+    (* A key telling types apart where typeTag does not: the tag and a digest of
+     * the canonical type's text *)
+    typeIdentityKey(t: model.Type): String
+    (* The length of a type's printed text and the SHA-256 of that text (for a
+     * text longer than printedTextLimit, of its outermost node's text with its
+     * parts' digests in place of theirs) *)
+    printedType(t: model.Type): Tuple length: Int digest: String end
+    (* The first 16 hex digits of a text's SHA-256 *)
+    textDigest(text: String): String
+end

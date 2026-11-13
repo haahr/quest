@@ -9,6 +9,7 @@ import
     questlang/repr/written : questlang/repr/Written
     questlang/repr/syntax : questlang/repr/Syntax
     questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/digests : questlang/repr/Digests
     questlang/repr/descriptors : questlang/repr/Descriptors
     questlang/repr/symbols : questlang/repr/Symbols
     collections/hashMap : collections/HashMap
@@ -110,7 +111,7 @@ export
                 let parts = vector.new(:String)
                 vector.append(:String parts pyRepr.str(f.name))
                 vector.append(:String parts pyRepr.str(layout.typeTag(f.type)))
-                vector.append(:String parts pyRepr.str(layout.typeDigest(f.type)))
+                vector.append(:String parts pyRepr.str(digests.typeDigest(f.type)))
                 (* In a whole program, a field of a transparent abstract type
                  * and one of its representation are laid out alike but
                  * described apart *)
@@ -126,7 +127,7 @@ export
         begin
             let key = shapeKey(t)
             if not(hashMap.contains(:String :String ctx.aliasByShape key)) then
-                let name = aliasName <> "_" <> layout.textDigest(key)
+                let name = aliasName <> "_" <> digests.textDigest(key)
                 hashMap.insert(:String :String ctx.aliasByShape key name)
                 hashMap.insert(:String :String ctx.canonicalNames key name)
             end
@@ -140,7 +141,7 @@ export
             if maybe.isSome(:String found) then
                 maybe.unwrap(:String found)
             else
-                let name = "record_" <> layout.textDigest(key)
+                let name = "record_" <> digests.textDigest(key)
                 hashMap.insert(:String :String ctx.canonicalNames key name)
                 name
             end
@@ -170,8 +171,8 @@ export
             if maybe.isSome(:String globalName) then
                 maybe.unwrap(:String globalName)
             else
-                let p = layout.printedType(t)
-                if p.length <= layout.printedTextLimit then model.show(t)
+                let p = digests.printedType(t)
+                if p.length <= digests.printedTextLimit then model.show(t)
                 else dump.shortTypeName(t) <> "#" <> stringOp.getSub(p.digest 0 16)
                 end
             end
@@ -215,7 +216,7 @@ export
                 let index = maybe.unwrap(:Int hole)
                 let bound = case s.type.form when typeVariable with v then v.bound else maybe.none(:model.Kind) end
                 let tag = "hole_" <> syntax.cInt(index) <> if boundIsPower(bound) then
-                    "_" <> layout.typeDigest(model.powerBound(maybe.unwrap(:model.Kind bound)))
+                    "_" <> digests.typeDigest(model.powerBound(maybe.unwrap(:model.Kind bound)))
                 else
                     ""
                 end
@@ -244,19 +245,19 @@ export
                      * outside the module in the representation of its bound,
                      * viewed at the bound (a stored descriptor) *)
                     let g = maybe.unwrap(:String abstractName)
-                    described("stored" "stored_" <> layout.textDigest(g) maybe.some(:Type t) g)
+                    described("stored" "stored_" <> digests.textDigest(g) maybe.some(:Type t) g)
                 elsif shapes.kindIs(held shapes.shapeRecord) then
                     (* A type variable bounded by a record, variant, or option
                      * type is described by its bound *)
                     ofType("record" recordStructName(held.structure ctx) held.structure)
                 elsif shapes.kindIs(s shapes.shapeTuple) then
-                    ofType("tuple" layout.tupleStructName(t) <> "_" <> layout.typeDigest(t) t)
+                    ofType("tuple" layout.tupleStructName(t) <> "_" <> digests.typeDigest(t) t)
                 elsif shapes.kindIs(held shapes.shapeVariant) then
                     let v = held.structure
-                    ofType("variant" layout.typeTag(v) <> "_" <> layout.typeDigest(v) v)
+                    ofType("variant" layout.typeTag(v) <> "_" <> digests.typeDigest(v) v)
                 elsif shapes.kindIs(held shapes.shapeOption) then
                     let o = held.structure
-                    let f = ofType("option" layout.optionStructName(o) <> "_" <> layout.typeDigest(o) o)
+                    let f = ofType("option" layout.optionStructName(o) <> "_" <> digests.typeDigest(o) o)
                     tuple
                         let kind = f.kind let tag = f.tag let type = f.type let name = f.name let expr = f.expr
                         let struct = layout.optionStructName(o) let display = f.display let symbol = f.symbol
@@ -271,20 +272,20 @@ export
                             (* An application of an abstract type operator
                              * (list.T(Int)): opaque, compared by the
                              * operator's name and the arguments *)
-                            described("opaque" "opaque_" <> layout.typeDigest(t) maybe.some(:Type t)
+                            described("opaque" "opaque_" <> digests.typeDigest(t) maybe.some(:Type t)
                                 opaqueName(x.constructor))
-                        when typeArray then ofType("array" "array_" <> layout.typeDigest(t) t)
-                        when typeException then ofType("exception" "exception_" <> layout.typeDigest(t) t)
+                        when typeArray then ofType("array" "array_" <> digests.typeDigest(t) t)
+                        when typeException then ofType("exception" "exception_" <> digests.typeDigest(t) t)
                         when typeFun, typeAll then
                             let canonical = descriptors.canonicalFunType(t)
-                            ofType("fun" "fun_" <> layout.typeDigest(canonical) canonical)
+                            ofType("fun" "fun_" <> digests.typeDigest(canonical) canonical)
                         when typeExternal with x then
                             let name = if stringOp.length(x.name) > 0 then x.name else x.cType end
                             named(name)
                         else
                             if maybe.isSome(:String abstractName) then
                                 let g = maybe.unwrap(:String abstractName)
-                                opaque("opaque_" <> layout.textDigest(g) g)
+                                opaque("opaque_" <> digests.textDigest(g) g)
                             else
                                 case t.form
                                     when typeVariable with x then named(x.name)
@@ -295,10 +296,10 @@ export
                                          * binding of t *)
                                         let name = x.rootName <> "." <> x.fieldName <> "#"
                                             <> syntax.cInt(x.rootSymbolId)
-                                        opaque("opaque_" <> layout.textDigest(name) name)
+                                        opaque("opaque_" <> digests.textDigest(name) name)
                                     when typeAuto then
                                         let canonical = descriptors.canonicalAutoType(t)
-                                        ofType("auto" "auto_" <> layout.typeDigest(canonical) canonical)
+                                        ofType("auto" "auto_" <> digests.typeDigest(canonical) canonical)
                                     when typeVar with x then descriptorForm(x.element ctx)
                                     when typeOut with x then descriptorForm(x.element ctx)
                                     when typeOperator then
@@ -306,7 +307,7 @@ export
                                          * higher-kinded type parameter:
                                          * opaque, compared by name *)
                                         let name = opaqueName(t)
-                                        opaque("opaque_" <> layout.textDigest(name) name)
+                                        opaque("opaque_" <> digests.textDigest(name) name)
                                     else
                                         raise missingDescriptor with
                                             "no runtime type descriptor for type '" <> model.show(t) <> "'"
@@ -401,7 +402,7 @@ export
                         elsif eq(f.kind "record") then f.tag
                         else ""
                     end
-                    let tag = f.tag <> "_echo_" <> layout.textDigest(maybe.unwrap(:String key))
+                    let tag = f.tag <> "_echo_" <> digests.textDigest(maybe.unwrap(:String key))
                     maybe.some(:DescriptorForm tuple
                         let kind = f.kind
                         let tag = tag
