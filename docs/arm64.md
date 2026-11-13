@@ -391,9 +391,12 @@ traceback walk uses. A function that needs none has none: one that saves no call
 calls nothing (a tail call is a branch), and has no instruction using `x29`, `x30`, or `sp` (as an argument passed on
 the stack would) keeps them as its caller left them, its unwind information a frameless function's, so that a
 backtrace from it reads its return address in `x30` (`tests/self-hosted/line_tables.py` stops in one). Leaves, loops
-that call nothing, and the trampolines (an export's or an adapter's branch on to its function) are such
-functions; none is on the stack when a collection walks it, since none calls. The prologue and epilogue save the callee-saved registers the function uses, with `.cfi` directives from which
-the assembler and linker make compact unwind entries. The prologue stores the lowest of the pairs it saves
+that call nothing, and the trampolines (an export's or an adapter's branch on to its function) are such functions; none
+is on the stack when a collection walks it, since none calls. Most exports are no longer trampolines: an exported
+function of one block that tail-calls a small function of its unit is a copy of that function (`ssa/passes/trampolines`,
+[ssa.md](ssa.md) §4.1). The prologue and epilogue save the callee-saved registers the function uses, with `.cfi`
+directives from which the assembler and linker make compact unwind entries. The prologue stores the lowest of the pairs
+it saves
 first, moving `sp` once (`stp x28, x27, [sp, #-96]!`), then the others and the frame record above it, as clang does.
 Each pair's odd register is above its even one, and the `.cfi_offset` directives name `x19` before `x20` and each pair
 in order down from the frame record: the places and order Darwin's compact unwind encoding needs. Stored the other way,
@@ -519,6 +522,11 @@ that is not, the places known so far are scanned as ambiguous words, and that fr
 always seen, and seen as what its owner says when the frames between are mapped. A register no mapped frame has
 live is not scanned where a mapped frame saved it. `QUEST_GC_MAPS=0` scans every frame whole, and `QUEST_GC_STATS`
 counts the frames scanned each way.
+
+**The write barriers** ([collector.md](collector.md) §3.5) are calls of the runtime's `quest_barrier` and
+`quest_barrier_slot`, which the C backend's code inlines from `runtime/quest_runtime.h`. Their fast paths inline in
+the SSA (about ten instructions each, besides the call of the slow path) were tried and not kept: the compiler got
+1.3 percent slower and its text 1.8 percent larger ([benchmarks.md](benchmarks.md) §22.2).
 
 `codegen.frameSlots` returns each slot of a function's frame with its offset, its size, and its class, and
 `codegen.frameMaps` the frame and each call's map as text; `questlang/arm64_frames` prints both for functions that

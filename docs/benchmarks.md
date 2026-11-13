@@ -14,7 +14,8 @@ This document describes the MLton suite, records the baseline taken on 2026-10-2
 benchmarks found and what could be done about it, compares the C and arm64 backends (§4 to §6), measures the inliner
 (§7), times every backend and the inliner's settings at one commit (§11), measures the Jupyter kernel's interrupt checks
 (§12), times the SSA's backends after the arm64 review (§13), measures the SSA's loops of accumulated recursion and
-mutual tail calls (§14), and times the library's arbitrary-precision integers (§15).
+mutual tail calls (§14), times the library's arbitrary-precision integers (§15), and records the arm64-built
+compiler's gap to the C-built one narrowed (§22).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -2144,4 +2145,110 @@ has 1.23 times the C one's instructions (1.68 million against 1.36 million). The
 
 Each of the first three is a contained change to the arm64 backend: jump tables (or a table of values, for a case
 whose arms are constants) for dense switches, the barriers' fast paths inline, and exports and adapters that are
-the function, or branch without a frame. None is planned yet.
+the function, or branch without a frame. §22 made them, and two changes for the general half.
+
+## 22. Narrowing the arm64-built compiler's gap to the C-built one (2026-11-12)
+
+Five changes to the self-hosted compiler's SSA and arm64 backend, from §21.5's profile, made as the steps of a plan
+(`docs/arm64-compiler-gap.md`, `40e9626e`, retired into this section): constants in the fewest instructions,
+switches as tables, the write barriers' fast paths inline, trampolines, and a proxy test once per value. They are
+the self-hosted compiler's alone ([testing.md](testing.md) §2.8), and the JIT, which runs the same SSA pipeline and
+arm64 backend, has each. Four were kept; the inline barriers were not. End to end, the arm64-built compiler went
+from **1.15** times the C-built one's user time compiling the driver to **1.05**, and the suite did not move.
+
+The data are in `benchmarks/mlton/baselines/2026-11-12/`: the suite through arm64, whole, at each step
+(`quest-arm64-whole-COMMIT.jsonl`, with the base `681fe377`), each step's own compiler timings
+(`compiler-step-COMMIT.txt`), the alternations of compilers below (`compiler-alternating-*.txt`), and the script
+that ran them (`compiler-alternating.sh`).
+
+### 22.1. How they were taken
+
+Each step, after `tools/check` passed, with the stage caches removed (a codegen change after a step's last ABI bump
+leaves a stale stage 2 that looks fresh) and after three minutes with the load below 5:
+
+- **The compiler,** as §21.5 measured it: the C-built and arm64-built stage 2 at the step's commit compiling the
+  driver through arm64 at `-j 1` from an empty build directory, three rounds alternating, best user time. Since the
+  machine's speed drifts between sessions by more than a step's gain, a step that was kept was also timed against
+  the step before it in one session, the compilers (the step's, its predecessor's, and a C-built one) alternating
+  three rounds on the same source.
+- **The suite** through arm64, whole program, `--scale 0.25 --clean`, one run, compared by the geometric mean of
+  processor times against the step before.
+
+### 22.2. The steps
+
+| Step | Commit | arm64 / C, own session | Alternated with the step before | Text | Suite |
+|---|---|--:|---|--:|--:|
+| §21.5 | `ac1e7715` | 1.13 | | | |
+| Constants | `328c6519` | 1.124 | | | 1.014 |
+| Switches | `536293ee` | 1.103 | ratio 1.107 to 1.095 | | 0.986 |
+| Barriers inline, not kept | `87acb5e7` | 1.117 | 63.68 to 64.48 s (+1.3%) | +1.8% | 1.000 |
+| No frame when none is needed | `179801ab` | 1.068 | 63.22 to 60.39 s (−4.5%) | −0.8% | 1.009 |
+| Exports that are their functions | `32019faf` | 1.056 | 61.20 to 59.97 s (−2.0%) | +0.3% | 1.000 |
+| A proxy test once per value | `06191a54` | 1.032 | 59.20 to 58.71 s (−0.8%) | −1.2% | 0.995 |
+
+Each suite is against the step before it; the barriers' and the frames' are both against the switches'.
+The last three steps were measured before the modules were restructured, as `7e6c5881`, `1ae6d96f`, and
+`52eb3e4b`, the names their baselines and §22.3 keep; they were replayed onto the new layout without changing what
+they compile, and the table and the items below name the replayed commits.
+
+1. **Constants** (`328c6519`, [arm64.md](arm64.md) §3.5): a constant one `mov` makes (`movz`, `movn`, or `orr` of a
+   logical immediate) is that `mov`, another starts from whichever of 0 and ~0 leaves fewer halfwords for `movk`,
+   and a comparison with a small negative constant is `cmn`. The driver's stage 2 had 1,117 four-instruction
+   constants, −1 and −2 among them, and has none. Found on the way: the JIT's encoder wrote a logical immediate's
+   rotation inverted (`fdb35a7d`), wrong for every mask whose run starts above bit 0, which no test had made until
+   then; `stdlib/word_masks` runs masks at every rotation. This step was measured before a rebase onto `681fe377`
+   (as `461099a5`), and its suite's swings (peek 0.82, tailmerge 1.18) the switches' reversed, so they are the
+   code's placement rather than either step.
+2. **Switches** (`536293ee`, [ssa.md](ssa.md) §4.1, arm64.md §3.11): a new SSA pass, `ssa/passes/tables`, makes a switch of
+   at least four dense cases whose arms pass only constants to one join a range check and a load from a read-only
+   table in the unit's data; arm64 compiles a switch of at least eight other dense cases as a jump table (in the
+   assembler's code and the JIT's), and one of more than four sparse cases as a binary search. `opcodeIndex`, 52
+   integer cases (1,555 samples against C's 196), is a range check and a load. Strings are not converted, each arm
+   making its literal by a call.
+3. **The write barriers' fast paths inline** (not kept, branch `claude/inline-barriers-not-kept`): built as planned,
+   an SSA expansion after the barrier rule's check, it took `quest_barrier_slot` from 924 of the compiler's samples to
+   27, but the compiler got slower (with the slot barrier alone inline, +0.9%), the text grew 1.8% (1,751 object and
+   860 slot barriers of about ten instructions each), and the samples gained were spread over many functions, which
+   looks like the cost of the larger code.
+4. **No frame for a function that needs none** (`179801ab`, arm64.md §3.10): a function that saves no callee-saved
+   register, has no frame, calls nothing but in tail position, and uses none of `x29`, `x30`, and `sp` keeps them as
+   its caller left them, with a frameless function's unwind information. Leaves, loops that call nothing, and the
+   trampolines (§21.5's 2,508 functions that only branch on) are such functions. The plan's second part, dropping an
+   adapter that converts nothing, found none to drop: `ir/represent` drops such plans already, and vector.get's
+   adapter unboxes the interface's abstract `T(A)`, a conversion in C and a branch in the SSA's backends.
+5. **Exports that are their functions** (`32019faf`, `ssa/passes/trampolines`): an exported function of one block that
+   tail-calls a function of its unit gets a copy of that function, up to four times, when it is at most 64
+   instructions and calls only in tail position or to raise; vector.get's export, three branches, is now the
+   function. Since a traceback names a frame by its function's exact start, each such export gets the function's
+   name in the unit's table of names (the first `tools/check` failed on `jit_hosts` without it).
+6. **A proxy test once per value** (`06191a54`, ssa.md §2 and §4.1): reading a field of a record that may be a
+   proxy was a branch and a join, which value numbering cannot merge, so `findIndex`'s probe loop tested its record
+   before each field. The builder makes a pure `unproxy` instead, value numbering merges it with one in a dominating
+   block, and `findIndex` tests its record once, before the loop; escape analysis and scalar replacement take an
+   allocation's `unproxy` as the allocation. Not each backend's lowering, as planned, but one SSA pass,
+   `ssa/passes/unproxies`, after the others, makes it the old test again for arm64, the JIT, and `ssac`. In the suite,
+   wc-scanStream 0.81 and hamlet and tyan 0.95; zebra's 1.17 was noise (11.05 s three times again, 11.26 s before).
+   An `unproxy` first made inside a loop is not hoisted out of it.
+
+### 22.3. Before and after
+
+The arm64-built stage 2 at the base (`681fe377`, rebuilt from empty stage caches) and the C-built and arm64-built
+ones at `52eb3e4b`, alternating three rounds compiling `52eb3e4b`'s driver through arm64:
+
+| | arm64-built, before | arm64-built, after | C-built |
+|---|--:|--:|--:|
+| `-j 1`, user | 64.61 s | 58.67 s | 56.03 s |
+| `-j 1`, wall | 69.11 s | 63.21 s | 60.56 s |
+| `-j 8`, wall | 21.36 s | 19.19 s | 18.68 s |
+| `-j 8`, user | 101.50 s | 91.85 s | 87.54 s |
+| text | 6,741,052 bytes | 6,584,604 bytes | |
+
+The arm64-built compiler takes **9.2 percent** less user time than before, and **1.047** of the C-built one's
+(1.153 before, against the same C-built compiler at `52eb3e4b`; §21.5's 1.13 was in another session, against
+`ac1e7715`'s). Its text is 2.3 percent smaller. The suite through arm64, whole, at `52eb3e4b`
+takes **1.004** of the base's processor time (1.007 wall): wc-scanStream 0.81 and flat-array 0.94 faster, zebra
+1.18 slower in that run and the same as before when timed again, nothing else moving by 4 percent.
+
+What is left of the difference is §21.5's general half: code 1.2 to 1.4 times as long as clang's in the hot
+functions. The barriers stay out of line; the profile's other remainders (copies at a loop's join, a spill reloaded
+each round in `findIndex`) are the register allocator's.

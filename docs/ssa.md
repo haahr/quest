@@ -292,7 +292,7 @@ internal error.
   jump to its first block and clang a loop. even-odd's `even1` holds a copy of `odd1`, whose tail call of `even1` is
   then a self tail call: one loop, without pushing and popping a frame at each step. A call through a closure is
   indirect and is left. `ssa_tailjumps` shows each case.
-- **`ssa/passes/trampolines`**, after it, makes an export its function ([arm64-compiler-gap.md](arm64-compiler-gap.md) §5).
+- **`ssa/passes/trampolines`**, after it, makes an export its function ([benchmarks.md](benchmarks.md) §22).
   Another unit calls a module's function through its export (`qv_`), which passes a null environment and tail-calls the
   function, often through an adapter that tail-calls it in turn ([ir.md](ir.md) §8.4.1): vector.get was three branches
   on arm64, where clang made the C build's export the function. An exported function of one block that ends in a tail
