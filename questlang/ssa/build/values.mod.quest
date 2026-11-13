@@ -725,20 +725,8 @@ export
         end
 
     (* =========================================================================
-     * Slots, and aggregates' components (docs/arm64.md section 7.2)
+     * Boxes, and checks that call the runtime when they fail
      * ====================================================================== *)
-
-    (* The values of a slot at an address (its slot form: a record or variant
-     * as its box's pointer) *)
-    let readSlot(fn: Fn address: Int t: Type): Array(Int) = readParts(fn address slotParts(t))
-    let writeSlot(fn: Fn address: Int t: Type values: Array(Int)): Ok = writeParts(fn address slotParts(t) values)
-
-    (* A slot's contents as a QVal word, and back (shapeSlotToQval and
-     * shapeQvalToSlot): a box is its pointer's word *)
-    let slotToWord(fn: Fn vs: Array(Int) t: Type): Int =
-        if layout.isBoxedInSlots(shapes.shape(t)) then toVal(fn vs[0]) else toWord(fn vs t) end
-    let slotFromWord(fn: Fn w: Int t: Type): Array(Int) =
-        if layout.isBoxedInSlots(shapes.shape(t)) then array of fromVal(fn w tPtr) end else fromWord(fn w t) end
 
     (* A record or variant into a new box, and out of its box *)
     let boxed(fn: Fn vs: Array(Int) t: Type): Array(Int) =
@@ -752,57 +740,6 @@ export
             array of call1(fn helper vs) end
         end
     let unboxed(fn: Fn vs: Array(Int) t: Type): Array(Int) = readValue(fn vs[0] t)
-
-    (* The index of a case of a variant or option shape (0 if it has none of
-     * that name), as tags number them *)
-    let tagIndex(s: shapes.Shape tag: String): Int =
-        begin
-            let var index = 0
-            for i = 0 upto {extent s.cases - 1} do
-                if eq(maybe.unwrapOr(:String s.cases[i].name "") tag) then index := i end
-            end
-            index
-        end
-
-    let heldShape(t: Type kind: shapes.ShapeKind): shapes.Shape =
-        begin
-            let h = layout.resolvedShape(shapes.shape(t))
-            if not(shapes.sameKind(h.kind kind)) then
-                raise unsupported with "a " <> shapes.kindName(kind) <> " operation on " <> model.show(t) end
-            end
-            h
-        end
-    let componentShape(s: shapes.Shape i: Int): shapes.Shape = maybe.unwrap(:shapes.Shape s.components[i].shape)
-
-    (* A value chosen by a branch: then's in one block, otherwise's in another,
-     * merged into a block of parameters of the types *)
-    let choose(fn: Fn cond: Int types: Array(ssa.Type) yes: All() Array(Int) no: All() Array(Int)): Array(Int) =
-        begin
-            let thenB = ssa.newBlock(fn.f)
-            let elseB = ssa.newBlock(fn.f)
-            let merged = ssa.newBlock(fn.f)
-            let results = array of(extent types 0)
-            for i = 0 upto {extent types - 1} do results[i] := ssa.addParam(fn.f merged types[i]) end
-            terminate(fn option termBranch of ssa.Terminator with
-                let cond = cond let ifTrue = ssa.target(thenB noValues) let ifFalse = ssa.target(elseB noValues)
-            end)
-            fn.cur := thenB
-            jump(fn merged yes())
-            fn.cur := elseB
-            jump(fn merged no())
-            fn.cur := merged
-            results
-        end
-
-    (* The object a tuple's or an option's pointer is: the original a proxy
-     * views (its first field, the pointer less its tag bit), or the pointer
-     * itself (quest_unproxy, inline) *)
-    let unproxy(fn: Fn p: Int): Int =
-        choose(fn isProxy(fn p) array of tPtr end
-            fun(): Array(Int) array of
-                invariantWord(fn p runtimeLayout.offset("QProxy" "orig") - runtimeLayout.constant("QUEST_PROXY_TAG") tPtr)
-            end
-            fun(): Array(Int) array of p end)[0]
 
     (* Continues where cond is (holds true) or is not (holds false); otherwise
      * calls the runtime's function name, which raises, with the arguments
@@ -821,82 +758,6 @@ export
             terminate(fn ssa.termUnreachable)
             fn.cur := good
         end
-
-    (* Component i of the tuple at t (shape ts), in its slot form, read as
-     * access says: directly, from the original of what may be a proxy, or
-     * through the proxy if it is one *)
-    let tupleComponent(fn: Fn t: Int ts: shapes.Shape i: Int access: ir.Access): Array(Int) =
-        begin
-            let comp = componentShape(ts i)
-            let offset = 8 * i
-            case access
-                when direct then readSlot(fn offsetPtr(fn t offset) comp.type)
-                when original then readSlot(fn offsetPtr(fn unproxy(fn t) offset) comp.type)
-                when proxy then
-                    choose(fn isProxy(fn t) typesOf(slotParts(comp.type))
-                        fun(): Array(Int)
-                            slotFromWord(fn call1(fn "quest_proxy_element" array of t constant(fn i) end) comp.type)
-                        fun(): Array(Int) readSlot(fn offsetPtr(fn t offset) comp.type))
-            end
-        end
-
-    (* The tag of the option at o, read as access says *)
-    let optionTag(fn: Fn o: Int access: ir.Access): Int =
-        case access
-            when direct then invariantWord(fn o runtimeLayout.offset("QOptionHeader" "tag") tInt)
-            (* A proxy's tag is the view's numbering of the original's *)
-            when original, proxy then
-                choose(fn isProxy(fn o) array of tInt end
-                    fun(): Array(Int) array of call1(fn "quest_proxy_tag" array of o end) end
-                    fun(): Array(Int) array of invariantWord(fn o runtimeLayout.offset("QOptionHeader" "tag") tInt) end)[0]
-        end
-
-    (* The tag of a variant or option value vs of shape ts, in its numbering,
-     * or through the view map of a bounded type parameter's value *)
-    let tagOf(fn: Fn vs: Array(Int) ts: shapes.Shape access: ir.Access viewMap: maybe.T(Variable)): Int =
-        if maybe.isSome(:Variable viewMap) then
-            let vm = atom1(fn ir.atomOfVar(maybe.unwrap(:Variable viewMap)))
-            case ts.kind
-                when shapeVariant then
-                    let index = invariantWord(fn vm runtimeLayout.offset("QViewMap" "index") tPtr)
-                    let scaled = binary(fn ssa.opMul vs[0] constant(fn 8))
-                    invariantWord(fn indexPtr(fn index scaled) 0 tInt)
-                when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
-                    shapeTuple, shapeRecord, shapeOption, shapeArray, shapeCell, shapeOut, shapeException, shapeFun,
-                    shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending then
-                    call1(fn "quest_view_option_tag" array of vs[0] vm end)
-            end
-        elsif shapes.kindIs(ts shapes.shapeVariant) then
-            vs[0]
-        else
-            optionTag(fn vs[0] access)
-        end
-
-    (* Component i (~1: the payload, when it is not a tuple) of case tag's
-     * payload of the option at o, in its slot form, read as access says *)
-    let optionComponent(fn: Fn o: Int os: shapes.Shape tag: String i: Int access: ir.Access): Array(Int) =
-        begin
-            let cs = maybe.unwrap(:shapes.Shape maybe.unwrap(:shapes.Component shapes.caseOf(os tag)).shape)
-            let comp = if i < 0 then cs else componentShape(cs i) end
-            let offset = 8 + 8 * {if i < 0 then 0 else i end}
-            case access
-                when direct then readSlot(fn offsetPtr(fn o offset) comp.type)
-                when original then readSlot(fn offsetPtr(fn unproxy(fn o) offset) comp.type)
-                when proxy then
-                    choose(fn isProxy(fn o) typesOf(slotParts(comp.type))
-                        fun(): Array(Int) slotFromWord(fn
-                            call1(fn "quest_proxy_option_element" array of o constant(fn {if i < 0 then 0 else i end})
-                                end)
-                            comp.type)
-                        fun(): Array(Int) readSlot(fn offsetPtr(fn o offset) comp.type))
-            end
-        end
-
-    (* A new object of n bytes, zeroed by the collector, laid out as the
-     * layout at the symbol says *)
-    let alloc(fn: Fn bytes: Int layout: String): Int =
-        call1(fn "quest_alloc" array of constant(fn bytes) symbolAt(fn layout) end)
-
 
     (* =========================================================================
      * Functions being built

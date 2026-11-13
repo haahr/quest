@@ -1,0 +1,50 @@
+(* Quest Self-Hosted Compiler: Slots and Aggregates' Components in SSA Interface
+ *
+ * The SSA's reads and writes of slots and of aggregates' components
+ * (docs/arm64.md section 7.2), over ssa/build/values: a slot's values and its
+ * QVal word, tuples' and options' components read directly, through the
+ * original of a proxy, or through the proxy, tags, and new objects. *)
+
+interface Representation
+import
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    questlang/repr/shapes : questlang/repr/Shapes
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    vals = questlang/ssa/build/values : questlang/ssa/build/Values
+    questlang/types/model : questlang/types/Model
+    util/maybe : util/Maybe
+export
+    (* The values of a slot at an address (its slot form: a record or variant
+     * as its box's pointer) *)
+    readSlot(fn: vals.Fn address: Int t: model.Type): Array(Int)
+    writeSlot(fn: vals.Fn address: Int t: model.Type values: Array(Int)): Ok
+    (* A slot's contents as a QVal word, and back (shapeSlotToQval and
+     * shapeQvalToSlot): a box is its pointer's word *)
+    slotToWord(fn: vals.Fn vs: Array(Int) t: model.Type): Int
+    slotFromWord(fn: vals.Fn w: Int t: model.Type): Array(Int)
+    (* The index of a case of a variant or option shape (0 if it has none of
+     * that name), as tags number them *)
+    tagIndex(s: shapes.Shape tag: String): Int
+    heldShape(t: model.Type kind: shapes.ShapeKind): shapes.Shape
+    componentShape(s: shapes.Shape i: Int): shapes.Shape
+    (* A value chosen by a branch: then's in one block, otherwise's in another,
+     * merged into a block of parameters of the types *)
+    choose(fn: vals.Fn cond: Int types: Array(ssa.Type) yes: All() Array(Int) no: All() Array(Int)): Array(Int)
+    (* Proxies *)
+    (* The object a tuple's or an option's pointer is: the original a proxy
+     * views, or the pointer itself (quest_unproxy, inline) *)
+    unproxy(fn: vals.Fn p: Int): Int
+    (* Component i of the tuple at t (shape ts), in its slot form, read as
+     * access says: directly, from the original of what may be a proxy, or
+     * through the proxy if it is one *)
+    tupleComponent(fn: vals.Fn t: Int ts: shapes.Shape i: Int access: ir.Access): Array(Int)
+    (* The tag of a variant or option value vs of shape ts, in its numbering,
+     * or through the view map of a bounded type parameter's value *)
+    tagOf(fn: vals.Fn vs: Array(Int) ts: shapes.Shape access: ir.Access viewMap: maybe.T(ir.Variable)): Int
+    (* Component i (~1: the payload, when it is not a tuple) of case tag's
+     * payload of the option at o, in its slot form, read as access says *)
+    optionComponent(fn: vals.Fn o: Int os: shapes.Shape tag: String i: Int access: ir.Access): Array(Int)
+    (* A new object of the given number of bytes, zeroed by the collector,
+     * whose layout is at the symbol layout *)
+    alloc(fn: vals.Fn bytes: Int layout: String): Int
+end

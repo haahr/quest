@@ -15,6 +15,7 @@ import
     util/maybe : util/Maybe
     util/sort : util/Sort
     vals = questlang/ssa/build/values : questlang/ssa/build/Values
+    questlang/ssa/build/representation : questlang/ssa/build/Representation
     descriptors = questlang/ssa/build/descriptors : questlang/ssa/build/Descriptors
 export
     Let Type = model.Type
@@ -42,7 +43,7 @@ export
                     let a = x()
                     let b = y()
                     vals.check(fn vals.binary(fn ssa.opNe b vals.constant(fn 0)) true "quest_raise_int_error_at" site)
-                    vals.choose(fn vals.binary(fn ssa.opEq b vals.constant(fn ~1)) array of vals.tInt end
+                    representation.choose(fn vals.binary(fn ssa.opEq b vals.constant(fn ~1)) array of vals.tInt end
                         fun(): Array(Int) array of byMinusOne(a) end
                         fun(): Array(Int) array of vals.binary(fn op a b) end)
                 end
@@ -78,7 +79,7 @@ export
                         case ssa.typeOf(fn.f a[0])
                             when typePtr then
                                 case o.access
-                                    when original then vals.binary(fn ssa.opPeq vals.unproxy(fn a[0]) vals.unproxy(fn b[0]))
+                                    when original then vals.binary(fn ssa.opPeq representation.unproxy(fn a[0]) representation.unproxy(fn b[0]))
                                     when direct, proxy then vals.binary(fn ssa.opPeq a[0] b[0])
                                 end
                             when typeReal then vals.binary(fn ssa.opFeq a[0] b[0])
@@ -414,10 +415,10 @@ export
                         else
                             let n = y()
                             let shifted(op: ssa.Opcode by: Int): Array(Int) =
-                                vals.choose(fn vals.binary(fn ssa.opUlt by vals.constant(fn 64)) array of vals.tInt end
+                                representation.choose(fn vals.binary(fn ssa.opUlt by vals.constant(fn 64)) array of vals.tInt end
                                     fun(): Array(Int) array of vals.binary(fn op w by) end
                                     fun(): Array(Int) array of vals.constant(fn 0) end)
-                            maybe.some(:Array(Int) vals.choose(fn vals.binary(fn ssa.opLt n vals.constant(fn 0))
+                            maybe.some(:Array(Int) representation.choose(fn vals.binary(fn ssa.opLt n vals.constant(fn 0))
                                 array of vals.tInt end
                                 fun(): Array(Int) shifted(ssa.opLshr vals.binary(fn ssa.opSub vals.constant(fn 0) n))
                                 fun(): Array(Int) shifted(ssa.opShl n)))
@@ -437,7 +438,7 @@ export
                 elsif vals.eq(lib "string") then
                     if named("length") then
                         let s = x()
-                        maybe.some(:Array(Int) vals.choose(fn vals.binary(fn ssa.opPeq s vals.null(fn))
+                        maybe.some(:Array(Int) representation.choose(fn vals.binary(fn ssa.opPeq s vals.null(fn))
                             array of vals.tInt end
                             fun(): Array(Int) array of vals.constant(fn 0) end
                             fun(): Array(Int)
@@ -551,7 +552,7 @@ export
             let val = vals.loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "val") vals.tPtr)
             let dict = vals.loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "dict") vals.tPtr)
             let offset = vals.loadWord(fn dict 8 * index vals.tInt)
-            vals.readSlot(fn vals.indexPtr(fn val offset) fieldType)
+            representation.readSlot(fn vals.indexPtr(fn val offset) fieldType)
         end
 
     let moduleMember(fn: vals.Fn r: ir.ModuleRef member: maybe.T(String)): Array(Int) =

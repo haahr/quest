@@ -165,7 +165,7 @@ registration, and the unit).
   addresses `threadLocal` takes: the native backend calls their accessor (arm64.md §3.6), which clobbers what a call
   does and is not rematerialized, and `ssac` takes the address with `&`; neither keeps a list of their names.
 - **Runtime helpers expanded inline,** as the C printer gets them from the header's `static inline` functions, so
-  that `ssac` and arm64 both gain: an option's tag and unproxying, by a test of the proxy bit (`values.choose`), the
+  that `ssac` and arm64 both gain: an option's tag and unproxying, by a test of the proxy bit (`representation.choose`), the
   runtime called only for a proxy; real `+`, `-`, `*`, and `/` by their instruction and an `isNaN` test; `Int` `div`
   and `mod` with the test for zero inline; and the bounds, count, and ordinal checks. Each check branches to a block
   that computes the site and calls the runtime's raise (`values.check`), so that the common path computes no site.

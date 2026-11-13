@@ -15,6 +15,7 @@ import
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     vals = questlang/ssa/build/values : questlang/ssa/build/Values
+    questlang/ssa/build/representation : questlang/ssa/build/Representation
     descriptors = questlang/ssa/build/descriptors : questlang/ssa/build/Descriptors
     calls = questlang/ssa/build/calls : questlang/ssa/build/Calls
     control = questlang/ssa/build/control : questlang/ssa/build/Control
@@ -215,7 +216,7 @@ export
             (* The adapter: a closure of the thunk *)
             let adapt = newFunction(u "quest_adapt_" <> tag false pointers(3) array of vals.part(vals.tPtr 8 false) end)
             let af = adapt.f
-            let env = vals.alloc(adapt bytes("QFunAdapterEnv") objectLayout.adapterEnvSymbol)
+            let env = representation.alloc(adapt bytes("QFunAdapterEnv") objectLayout.adapterEnvSymbol)
             let mark = vals.beginInit(adapt env)
             vals.store(adapt env runtimeLayout.offset("QFunAdapterEnv" "orig") 8 param(af 0))
             vals.store(adapt env runtimeLayout.offset("QFunAdapterEnv" "from") 8 param(af 1))
@@ -225,7 +226,7 @@ export
                 vals.part(vals.tInt 1 false))
             vals.store(adapt env runtimeLayout.offset("QFunAdapterEnv" "direct") 1 same)
             vals.endInit(adapt mark env)
-            let adapted = vals.alloc(adapt bytes("QClosure") objectLayout.closureSymbol)
+            let adapted = representation.alloc(adapt bytes("QClosure") objectLayout.closureSymbol)
             vals.store(adapt adapted runtimeLayout.offset("QClosure" "fn") 8 vals.symbolAt(adapt thunkName))
             vals.store(adapt adapted runtimeLayout.offset("QClosure" "env") 8 env)
             returnValues(adapt array of adapted end)

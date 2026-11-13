@@ -276,48 +276,13 @@ export
     opName(o: ir.Op): String
     statementName(s: ir.Stmt): String
 
-    (* Proxies *)
-    (* The object a tuple's or an option's pointer is: the original a proxy
-     * views, or the pointer itself (quest_unproxy, inline) *)
-    unproxy(fn: Fn p: Int): Int
-
-    (* Slots, and aggregates' components (docs/arm64.md section 7.2) *)
-    (* The values of a slot at an address (its slot form: a record or variant
-     * as its box's pointer) *)
-    readSlot(fn: Fn address: Int t: Type): Array(Int)
-    writeSlot(fn: Fn address: Int t: Type values: Array(Int)): Ok
-    (* A slot's contents as a QVal word, and back (shapeSlotToQval and
-     * shapeQvalToSlot): a box is its pointer's word *)
-    slotToWord(fn: Fn vs: Array(Int) t: Type): Int
-    slotFromWord(fn: Fn w: Int t: Type): Array(Int)
     (* A record or variant into a new box, and out of its box *)
     boxed(fn: Fn vs: Array(Int) t: Type): Array(Int)
     unboxed(fn: Fn vs: Array(Int) t: Type): Array(Int)
-    (* The index of a case of a variant or option shape (0 if it has none of
-     * that name), as tags number them *)
-    tagIndex(s: shapes.Shape tag: String): Int
-    heldShape(t: Type kind: shapes.ShapeKind): shapes.Shape
-    componentShape(s: shapes.Shape i: Int): shapes.Shape
-    (* A value chosen by a branch: then's in one block, otherwise's in another,
-     * merged into a block of parameters of the types *)
-    choose(fn: Fn cond: Int types: Array(ssa.Type) yes: All() Array(Int) no: All() Array(Int)): Array(Int)
     (* Continues where cond is (holds true) or is not (holds false); otherwise
      * calls the runtime's function name, which raises, with the arguments
      * args makes there, so that the common path computes none of them *)
     check(fn: Fn cond: Int holds: Bool name: String args: All() Array(Int)): Ok
-    (* Component i of the tuple at t (shape ts), in its slot form, read as
-     * access says: directly, from the original of what may be a proxy, or
-     * through the proxy if it is one *)
-    tupleComponent(fn: Fn t: Int ts: shapes.Shape i: Int access: ir.Access): Array(Int)
-    (* The tag of a variant or option value vs of shape ts, in its numbering,
-     * or through the view map of a bounded type parameter's value *)
-    tagOf(fn: Fn vs: Array(Int) ts: shapes.Shape access: ir.Access viewMap: maybe.T(Variable)): Int
-    (* Component i (~1: the payload, when it is not a tuple) of case tag's
-     * payload of the option at o, in its slot form, read as access says *)
-    optionComponent(fn: Fn o: Int os: shapes.Shape tag: String i: Int access: ir.Access): Array(Int)
-    (* A new object of the given number of bytes, zeroed by the collector,
-     * whose layout is at the symbol layout *)
-    alloc(fn: Fn bytes: Int layout: String): Int
     (* Whether a value of type t has a word that may be a pointer, which a
      * store of it into an existing object must barrier (docs/collector.md
      * section 3.5) *)
@@ -329,4 +294,13 @@ export
      * unreachable, and blocks the entry does not reach are dropped, the rest
      * renumbered in order *)
     finish(fn: Fn): Ok
+
+    (* The parts of a value of t in an aggregate's slot or a QVal word: one
+     * word, a record or variant as a pointer to its box
+     * (layout.isBoxedInSlots), a Bool or Char widened to the word *)
+    slotParts(t: model.Type): Array(Part)
+    (* The values of parts ps at an address, and their store; a location of no
+     * words (an Ok's) holds nothing, whatever is stored *)
+    readParts(fn: Fn address: Int ps: Array(Part)): Array(Int)
+    writeParts(fn: Fn address: Int ps: Array(Part) values: Array(Int)): Ok
 end

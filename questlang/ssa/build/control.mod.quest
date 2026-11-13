@@ -18,6 +18,7 @@ import
     questlang/ir/describe : questlang/ir/Describe
     stringOp = string : StringOp
     vals = questlang/ssa/build/values : questlang/ssa/build/Values
+    questlang/ssa/build/representation : questlang/ssa/build/Representation
     descriptors = questlang/ssa/build/descriptors : questlang/ssa/build/Descriptors
     calls = questlang/ssa/build/calls : questlang/ssa/build/Calls
     aggregates = questlang/ssa/build/aggregates : questlang/ssa/build/Aggregates
@@ -111,7 +112,7 @@ export
                 end
             when opTupleField with x then
                 if maybe.isSome(:Variable x.viewMap) then
-                    let comp = vals.componentShape(layout.resolvedShape(shapes.shape(ir.atomType(x.tup))) x.index)
+                    let comp = representation.componentShape(layout.resolvedShape(shapes.shape(ir.atomType(x.tup))) x.index)
                     let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable x.viewMap)))
                     vals.fromWord(fn vals.call1(fn "quest_view_tuple_element" array of vals.atom1(fn x.tup) vm
                         vals.constant(fn x.index) end)
@@ -119,7 +120,7 @@ export
                 elsif maybe.isSome(:Variable ir.atomVarOf(x.tup)) andif maybe.unwrap(:Variable ir.atomVarOf(x.tup)).unboxed then
                     array of vals.atom(fn x.tup)[x.index] end
                 else
-                    vals.tupleComponent(fn vals.atom1(fn x.tup) shapes.shape(ir.atomType(x.tup)) x.index x.access)
+                    representation.tupleComponent(fn vals.atom1(fn x.tup) shapes.shape(ir.atomType(x.tup)) x.index x.access)
                 end
             when opMakeException with x then
                 array of vals.call1(fn "quest_alloc_exception" array of vals.symbolAt(fn vals.stringSymbol(fn.u x.name))
@@ -129,39 +130,39 @@ export
                 if ir.planIs(x.plan ir.planUnbox) andif maybe.isSome(:Variable result)
                     andif maybe.unwrap(:Variable result).boxed then
                     (* A QVal word holds a record or variant as its box *)
-                    vals.slotFromWord(fn vals.atom1(fn x.value) x.plan.target)
+                    representation.slotFromWord(fn vals.atom1(fn x.value) x.plan.target)
                 elsif ir.planIs(x.plan ir.planBox) andif maybe.isSome(:Variable v) andif maybe.unwrap(:Variable v).boxed
                     andif not(maybe.unwrap(:Variable v).isMutable) then
                     (* A box is a record's or variant's QVal word *)
-                    array of vals.slotToWord(fn vals.atom(fn x.value) x.plan.source) end
+                    array of representation.slotToWord(fn vals.atom(fn x.value) x.plan.source) end
                 else
                     aggregates.convert(fn vals.atom(fn x.value) x.plan)
                 end
             when opMakeRecord with x then aggregates.makeRecord(fn x maybe.unwrap(:Variable result))
             when opRecordField with x then aggregates.recordField(fn vals.atom(fn x.recordAtom)
-                vals.heldShape(ir.atomType(x.recordAtom) shapes.shapeRecord) x)
+                representation.heldShape(ir.atomType(x.recordAtom) shapes.shapeRecord) x)
             when opMakeVariant with x then
-                let vs = vals.heldShape(maybe.unwrap(:Variable result).type shapes.shapeVariant)
-                let index = vals.constant(fn vals.tagIndex(vs x.tag))
+                let vs = representation.heldShape(maybe.unwrap(:Variable result).type shapes.shapeVariant)
+                let index = vals.constant(fn representation.tagIndex(vs x.tag))
                 if maybe.isNone(:Atom x.payload) then
                     array of index vals.toVal(fn vals.constant(fn 0)) end
                 else
                     let pa = maybe.unwrap(:Atom x.payload)
                     let cs = aggregates.caseShape(vs x.tag)
                     let caseT = if maybe.isSome(:shapes.Shape cs) then maybe.unwrap(:shapes.Shape cs).type else ir.atomType(pa) end
-                    array of index vals.slotToWord(fn vals.atom(fn pa) caseT) end
+                    array of index representation.slotToWord(fn vals.atom(fn pa) caseT) end
                 end
             when opMakeOption with x then aggregates.makeOption(fn x maybe.unwrap(:Variable result).type)
             when opIsTag with x then
                 let ts = aggregates.tagShape(ir.atomType(x.value))
-                let tag = vals.tagOf(fn vals.atom(fn x.value) ts x.access x.viewMap)
-                array of vals.binary(fn ssa.opEq tag vals.constant(fn vals.tagIndex(ts x.tag))) end
+                let tag = representation.tagOf(fn vals.atom(fn x.value) ts x.access x.viewMap)
+                array of vals.binary(fn ssa.opEq tag vals.constant(fn representation.tagIndex(ts x.tag))) end
             when opPayload with x then aggregates.payload(fn x maybe.unwrap(:Variable result).type)
             when opOrdinal with x then
                 (* The tag numbers the shape's cases, ordered by name; the
                  * ordinal counts in the static type's order *)
                 let ts = aggregates.tagShape(ir.atomType(x.value))
-                let tag = vals.tagOf(fn vals.atom(fn x.value) ts x.access x.viewMap)
+                let tag = representation.tagOf(fn vals.atom(fn x.value) ts x.access x.viewMap)
                 let indices = array of(extent ts.cases 0)
                 for i = 0 upto {extent ts.cases - 1} do
                     let caseName = maybe.unwrapOr(:String ts.cases[i].name "")
@@ -179,11 +180,11 @@ export
                 let n = vals.atom1(fn x.count)
                 vals.check(fn vals.binary(fn ssa.opLt n vals.constant(fn 0)) false "quest_raise_array_error_at"
                     fun(): Array(Int) array of vals.site(fn x.offset) end)
-                array of vals.call1(fn "quest_array_new" array of n vals.slotToWord(fn vals.atom(fn x.init) elem.type)
+                array of vals.call1(fn "quest_array_new" array of n representation.slotToWord(fn vals.atom(fn x.init) elem.type)
                     vals.symbolAt(fn objectLayout.arraySymbol(objectLayout.slotKind(elem))) end) end
             when opIndex with x then
                 let address = aggregates.elementAddress(fn vals.atom1(fn x.arr) vals.atom1(fn x.index) x.offset)
-                vals.slotFromWord(fn vals.loadWord(fn address 0 vals.tVal) aggregates.elementShape(x.arr).type)
+                representation.slotFromWord(fn vals.loadWord(fn address 0 vals.tVal) aggregates.elementShape(x.arr).type)
             when opTypeApp with x then aggregates.typeApp(fn x maybe.unwrap(:Variable result))
             when opAddrVar with x then
                 let pointer = vals.pointerOf(fn x.v)
@@ -199,7 +200,7 @@ export
                 array of addr end
             when opLoad with x then vals.readLocation(fn vals.atom1(fn x.address) maybe.unwrap(:Variable result).type)
             when opAddrField with x then
-                array of aggregates.recordSlot(fn vals.atom(fn x.base) vals.heldShape(ir.atomType(x.base) shapes.shapeRecord)
+                array of aggregates.recordSlot(fn vals.atom(fn x.base) representation.heldShape(ir.atomType(x.base) shapes.shapeRecord)
                     x.name x.viewMap) end
             when opAddrComponent with x then
                 if maybe.isSome(:Variable x.viewMap) then
@@ -210,9 +211,9 @@ export
                     let b = vals.atom1(fn x.base)
                     case x.access
                         when direct then array of vals.offsetPtr(fn b 8 * x.index) end
-                        when original then array of vals.offsetPtr(fn vals.unproxy(fn b) 8 * x.index) end
+                        when original then array of vals.offsetPtr(fn representation.unproxy(fn b) 8 * x.index) end
                         when proxy then
-                            vals.choose(fn vals.isProxy(fn b) array of vals.tPtr end
+                            representation.choose(fn vals.isProxy(fn b) array of vals.tPtr end
                                 fun(): Array(Int) array of vals.call1(fn "quest_proxy_slot" array of b vals.constant(fn
                                     x.index) end) end
                                 fun(): Array(Int) array of vals.offsetPtr(fn b 8 * x.index) end)
@@ -222,7 +223,7 @@ export
             when opExceptionPayload with x then
                 let v = case x.exc when atomVar with y then y.v else ir.newVar("" model.okType false) end
                 let state = vals.handlerState(fn v)
-                vals.slotFromWord(fn vals.loadWord(fn state runtimeLayout.offset("QExceptionState" "payload") vals.tVal)
+                representation.slotFromWord(fn vals.loadWord(fn state runtimeLayout.offset("QExceptionState" "payload") vals.tVal)
                     maybe.unwrap(:Variable result).type)
             when opCaughtException with x then
                 (* The handler's state, copied to the heap (docs/raised.md
@@ -232,7 +233,7 @@ export
             when opMakeAuto with x then
                 let storedType = model.autoPayloadType(x.autoType maybe.none(:Type))
                 array of vals.call1(fn "quest_auto_new" array of descriptors.maybeDescriptor(fn x.descriptor)
-                    vals.slotToWord(fn vals.atom(fn x.payload) storedType) end) end
+                    representation.slotToWord(fn vals.atom(fn x.payload) storedType) end) end
             when opExternal with x then externalValue(fn x.symbol)
             else raise vals.unsupported with "operation " <> vals.opName(o) end
         end
@@ -257,7 +258,7 @@ export
                     vector.append(:objectLayout.Kind kinds option kindScalar of objectLayout.Kind end)
                 end
                 let words = vector.length(:objectLayout.Kind kinds)
-                let env = vals.alloc(fn 8 * words objectLayout.register(fn.u.layouts
+                let env = representation.alloc(fn 8 * words objectLayout.register(fn.u.layouts
                     objectLayout.envLayout(code vector.toArray(:objectLayout.Kind kinds) 8 * words "")))
                 let mark = vals.beginInit(fn env)
                 let descs = descriptors.descriptors(fn x.descriptors)
@@ -284,7 +285,7 @@ export
                     end
                 end
                 vals.endInit(fn mark env)
-                let clos = vals.alloc(fn runtimeLayout.offset("QClosure" "env") + 8 objectLayout.closureSymbol)
+                let clos = representation.alloc(fn runtimeLayout.offset("QClosure" "env") + 8 objectLayout.closureSymbol)
                 vals.store(fn clos runtimeLayout.offset("QClosure" "fn") 8 vals.symbolAt(fn code))
                 vals.store(fn clos runtimeLayout.offset("QClosure" "env") 8 env)
                 array of clos end
@@ -464,52 +465,52 @@ export
                         vals.callVoid(fn "quest_barrier_slot" array of address end)
                     end
                 when sStoreField with x then
-                    let rs = vals.heldShape(ir.atomType(x.base) shapes.shapeRecord)
+                    let rs = representation.heldShape(ir.atomType(x.base) shapes.shapeRecord)
                     let slot = aggregates.recordSlot(fn vals.atom(fn x.base) rs x.name x.viewMap)
-                    vals.writeSlot(fn slot aggregates.fieldShape(rs x.name).type vals.atom(fn x.value))
+                    representation.writeSlot(fn slot aggregates.fieldShape(rs x.name).type vals.atom(fn x.value))
                     if vals.holdsPointer(ir.atomType(x.value)) then
                         vals.callVoid(fn "quest_barrier_slot" array of slot end)
                     end
                 when sStoreComponent with x then
                     if maybe.isSome(:Variable x.viewMap) then
-                        let comp = vals.componentShape(layout.resolvedShape(shapes.shape(ir.atomType(x.base))) x.index)
+                        let comp = representation.componentShape(layout.resolvedShape(shapes.shape(ir.atomType(x.base))) x.index)
                         let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable x.viewMap)))
                         let slot = vals.call1(fn "quest_view_tuple_slot" array of vals.atom1(fn x.base) vm
                             vals.constant(fn x.index) end)
-                        vals.writeSlot(fn slot comp.type vals.atom(fn x.value))
+                        representation.writeSlot(fn slot comp.type vals.atom(fn x.value))
                         if vals.holdsPointer(ir.atomType(x.value)) then
                             vals.callVoid(fn "quest_barrier_slot" array of slot end)
                         end
                     else
                         let ts = shapes.shape(ir.atomType(x.base))
-                        let comp = vals.componentShape(ts x.index)
+                        let comp = representation.componentShape(ts x.index)
                         let b = vals.atom1(fn x.base)
                         let v = vals.atom(fn x.value)
                         let barrier = vals.holdsPointer(ir.atomType(x.value))
                         case x.access
                             when original then
-                                let o = vals.unproxy(fn b)
-                                vals.writeSlot(fn vals.offsetPtr(fn o 8 * x.index) comp.type v)
+                                let o = representation.unproxy(fn b)
+                                representation.writeSlot(fn vals.offsetPtr(fn o 8 * x.index) comp.type v)
                                 if barrier then vals.callVoid(fn "quest_barrier" array of o end) end
                             (* A var component of a proxy is the original's,
                              * which quest_proxy_store barriers itself *)
                             when proxy then
-                                vals.choose(fn vals.isProxy(fn b) vals.noValuesTypes
+                                representation.choose(fn vals.isProxy(fn b) vals.noValuesTypes
                                     fun(): Array(Int)
                                         begin
                                             vals.callVoid(fn "quest_proxy_store"
-                                                array of b vals.constant(fn x.index) vals.slotToWord(fn v comp.type) end)
+                                                array of b vals.constant(fn x.index) representation.slotToWord(fn v comp.type) end)
                                             vals.noValues
                                         end
                                     fun(): Array(Int)
                                         begin
-                                            vals.writeSlot(fn vals.offsetPtr(fn b 8 * x.index) comp.type v)
+                                            representation.writeSlot(fn vals.offsetPtr(fn b 8 * x.index) comp.type v)
                                             if barrier then vals.callVoid(fn "quest_barrier" array of b end) end
                                             vals.noValues
                                         end)
                                 ok
                             when direct then
-                                vals.writeSlot(fn vals.offsetPtr(fn b 8 * x.index) comp.type v)
+                                representation.writeSlot(fn vals.offsetPtr(fn b 8 * x.index) comp.type v)
                                 if barrier then vals.callVoid(fn "quest_barrier" array of b end) end
                         end
                     end
@@ -517,7 +518,7 @@ export
                     let arr = vals.atom1(fn x.base)
                     let elem = aggregates.elementShape(x.base)
                     let address = aggregates.elementAddress(fn arr vals.atom1(fn x.index) x.offset)
-                    vals.store(fn address 0 8 vals.slotToWord(fn vals.atom(fn x.value) elem.type))
+                    vals.store(fn address 0 8 representation.slotToWord(fn vals.atom(fn x.value) elem.type))
                     if vals.holdsPointer(elem.type) then vals.callVoid(fn "quest_barrier_slot" array of address end) end
                 when sSwitch with x then switch(fn x)
                 when sTry with x then tryStatement(fn x)
@@ -544,7 +545,7 @@ export
                     end
                     fn.deferred := saved
                 when sEcho with x then
-                    let word = vals.slotToWord(fn vals.atom(fn x.value) x.type)
+                    let word = representation.slotToWord(fn vals.atom(fn x.value) x.type)
                     let suffix = if stringOp.length(x.prefix) > 0 then "" else " : "
                         <> layout.qtypeToNameStr(x.type) end
                     let kind = describe.echoValueKind(x.type)
@@ -580,7 +581,7 @@ export
             let v = vals.atom(fn x.value)
             let t = aggregates.tagShape(ir.atomType(x.value))
             let isVariant = shapes.kindIs(t shapes.shapeVariant)
-            let tag = vals.tagOf(fn v t x.access x.viewMap)
+            let tag = representation.tagOf(fn v t x.access x.viewMap)
             let after = ssa.newBlock(fn.f)
             let cases = vector.new(:Int)
             let targets = vector.new(:ssa.Target)
@@ -589,7 +590,7 @@ export
                 blocks[ci] := ssa.newBlock(fn.f)
                 let c = x.cases[ci]
                 for ti = 0 upto {extent c.tags - 1} do
-                    vector.append(:Int cases vals.tagIndex(t c.tags[ti]))
+                    vector.append(:Int cases representation.tagIndex(t c.tags[ti]))
                     vector.append(:ssa.Target targets ssa.target(blocks[ci] vals.noValues))
                 end
             end
@@ -616,11 +617,11 @@ export
                          * through the view map, converted *)
                         aggregates.viewPayload(fn v t c.tags[0] vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable x.viewMap))) binder.type)
                     elsif isVariant then
-                        vals.slotFromWord(fn v[1] binder.type)
+                        representation.slotFromWord(fn v[1] binder.type)
                     elsif shapes.sameKind(binderKind shapes.shapeTuple) then
                         array of aggregates.optionCasePayload(fn v[0] x.access c.components) end
                     else
-                        vals.optionComponent(fn v[0] t c.tags[0] ~1 c.components[0])
+                        representation.optionComponent(fn v[0] t c.tags[0] ~1 c.components[0])
                     end
                     vals.write(fn binder values)
                 end
@@ -738,7 +739,7 @@ export
                         let same = vals.narrowed(fn vals.call1(fn "quest_layout_equivalent" array of typeDesc matchDesc
                             end)
                             vals.part(vals.tInt 1 false))
-                        vals.choose(fn same array of vals.tPtr end
+                        representation.choose(fn same array of vals.tPtr end
                             fun(): Array(Int)
                                 if arm.shared then array of stored end
                                 elsif maybe.isNone(:ir.Plan arm.plan) then array of stored end
@@ -785,7 +786,7 @@ export
             let var n = extent arm.descriptors
             if extent storedFields < n then n := extent storedFields end
             if extent armFields < n then n := extent armFields end
-            let a = vals.alloc(fn 8 * {if extent armFields is 0 then 1 else extent armFields end}
+            let a = representation.alloc(fn 8 * {if extent armFields is 0 then 1 else extent armFields end}
                 objectLayout.register(fn.u.layouts objectLayout.tupleLayout(shapes.shape(armType) "" noBoxes)))
             let mark = vals.beginInit(fn a)
             for i = 0 upto {n - 1} do
