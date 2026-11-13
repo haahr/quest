@@ -20,7 +20,9 @@ Those documents hold the measurements and the arguments; this one cites them and
 [wasm-plans-comparison.md](wasm-plans-comparison.md) compares the plans as first written. Where this plan and one of
 the four disagree, this plan holds.
 
-§1 lists the decisions and whose they are. §2 to §6 are the design. §7 is what is given up. §8 has the steps.
+§1 lists the decisions and whose they are. §2 to §6 are the design. §7 is what is given up. §8 has the steps, and
+§9 the results of step 0's probes (2026-11-13), on which the owner confirmed decisions 1 and 2. Step 0 is done;
+step 1 is next.
 
 ---
 
@@ -229,9 +231,9 @@ stack's and the heap's.** Fable's R15 and Opus's §7 have the table of instructi
   huge one at once and raises the exception of today; only then is it narrowed to `i32`.
 - **A size to allocate:** negative raises as today; over the maximum is the fatal out-of-memory error, with its
   message, before `array.new` can trap. The maximum is by element kind and by engine, measured and not assumed: V8
-  takes 134,217,720 `eqref` elements (about 2²⁷) and 1,073,741,792 bytes (Opus's measurement), and wasmtime's are
-  measured in step 0. The runtime tests against the least of the engines' figures for the kind, so a program
-  behaves alike on each.
+  takes 134,217,720 `eqref` elements (about 2²⁷) and 1,073,741,792 bytes, and wasmtime 536,870,899 and
+  2,147,483,596 (§9.4). The runtime tests against the least of the engines' figures for the kind, which are V8's,
+  so a program behaves alike on each.
 - **A failed cast or a null** cannot happen. Where a program's values decide (unboxing, a proxy), the code is a
   `br_on_cast`, which does not trap. A trap of this kind is reported by the host as an internal error.
 
@@ -698,6 +700,8 @@ only when the backend's files differ, until its time is known.
    keyed by `Int`, and a walk over tuples. (d) Each engine's largest array, by element kind (§2.10).
    *Done when* §2.3, §2.4, §3.2, and §6.2 record the numbers, and decisions 1 and 2 are confirmed or changed on
    them, by the owner.
+   *Done 2026-11-13: §9 has the numbers and what they say. Decision 3 stands, and the owner confirmed decisions 1
+   and 2 on them the same day.*
 1. **A census of what the compiler uses:** `auto`, `inspect`, and `dynamic`; identity hashes, and that
    `ir/represent`'s use of one reaches no output (§2.8); operations on `Real`; `os/process`; the widest closure and
    the largest function's variables (§2.11).
@@ -784,3 +788,147 @@ In an order chosen then:
   on scalar type arguments (§4.1), flat tuples (§2.3);
 - the page's size and start-up time, and merging modules (§5.1);
 - Safari and Firefox, neither checked nor promised until then.
+
+---
+
+## 9. Step 0's Results (2026-11-13)
+
+The probes are in `tools/wasm-probes/`: `gen.py` writes them as WebAssembly text, `build.sh` assembles them with
+`wasm-tools`, `run.mjs` and `stack.mjs` run them in node 26.13 (V8), and `wt.sh` in wasmtime 50.0.1 with the
+copying collector. Small integers are `i31ref`s and others boxes, as §2.2 has them. The machine was in use (load
+averages 2 to 6), so the timings are indicative: node's are the best of five warm runs, each variant in a process
+of its own, and repeated runs agreed within 5%; wasmtime's are one process each, compilation included.
+
+### 9.1. Tuples (decision 1)
+
+A tree of 2²¹ nodes, each a tuple of a kind (a small integer), a span, and two children, built and then walked,
+summing kinds and spans. The span either fits 31 bits or is boxed, as a merged file's span is (`file * 2³² + d`).
+
+| | V8: slot array | V8: flat struct | wasmtime: slot array | wasmtime: flat struct |
+|---|---|---|---|---|
+| build once, spans fit | 66 ms | 39 ms | 150 ms | 52 ms |
+| build once, spans boxed | 83 ms | 75 ms | 100 ms | 118 ms |
+| walk 10 times, spans fit | 86 ms | 104 ms | about 350 ms | about 180 ms |
+| walk 10 times, spans boxed | 115 ms | 139 ms | about 420 ms | about 250 ms |
+
+(wasmtime's figures are derived: its runs build five times, or build once and walk ten times.)
+
+- **In V8, the slot array costs allocation and nothing else.** Building is 1.7 times slower when nothing else is
+  allocated, and 1.1 times when one component in four is a boxed integer. Walking was not slower but 20% faster; I
+  cannot explain that, and Argon's loop over one tuple measured the opposite (17% slower), so I take reads as about
+  equal.
+- **In wasmtime the flat struct is about twice as fast** at both, with exceptions that look like the collector's
+  timing.
+- **A boxed integer stored in a tuple costs 8 to 18 ns in V8** (the difference between the rows), in either layout.
+  That is more than the second object costs (about 13 ns a node), and it is the price of decision "`i31` or a box",
+  not of decision 1.
+
+**Decision 1 stands** (confirmed by the owner, 2026-11-13). The cost in V8 is a tenth to a third of a tuple's allocation and none of its
+reads, against which stand one type for every arity, the runtime's access by a run-time index, locations without
+dispatch, and no limit of arity. If step 10's profile shows tuples' allocation leading, flat structs for the common
+small arities remain possible.
+
+### 9.2. Arrays (decision 2)
+
+A million elements, either all fitting 31 bits or all full-width (`i * 0x9E3779B97F4A7C15`, as a `Word` hash is).
+First with the element type known to the code, as in the compiler's `Array(Int)` side tables; then through another
+unit's generic `get` and `set`, as `collections/hashmap` reaches its `vector.T(word.T)` of hashes through
+`collections/vector`. Inlining does not cross units outside a whole program ([ir.md](ir.md) §8.6), so the second is
+how the compiler's vectors are used. "Typed" there is an `i64` store that the generic code finds by a cast of the
+array's struct, boxing what it returns and unboxing what it is given.
+
+| V8 | `eqref` elements | `i64` elements |
+|---|---|---|
+| known type: fill 20 times, values fit | 31 ms | 21 ms |
+| known type: fill once, sum 100 times, values fit | 69 ms | 64 ms |
+| known type: fill 20 times, full-width | 464 ms | 21 ms |
+| known type: fill once, sum 100 times, full-width | 82 to 94 ms | 64 ms |
+| through a unit: set all 20 times, values fit | 55 ms | 67 ms |
+| through a unit: set all once, get all 50 times, values fit | 120 ms | 164 ms |
+| through a unit: set all 20 times, full-width | 516 to 549 ms | 91 ms |
+| through a unit: set all once, get all 50 times, full-width | 154 to 171 ms | 225 to 237 ms |
+
+| wasmtime | `eqref` elements | `i64` elements |
+|---|---|---|
+| known type: fill 20 times, full-width | 0.33 s | 0.04 s |
+| through a unit: set all 20 times, values fit | 0.06 s | 0.16 s |
+| through a unit: set all 20 times, full-width | 0.42 s | 5.4 s |
+| through a unit: set all once, get all 50 times, full-width | 0.23 s | 13.8 s |
+
+- **For values that fit 31 bits the two are equal** where the type is known, and `eqref` is faster by 20 to 35%
+  through a unit, where typed arrays pay the dispatch.
+- **Storing a full-width value into an `eqref` array costs about 23 ns in V8,** against 1 ns into an `i64` array:
+  the box outlives the store, so it is a write barrier and a survivor, not only an allocation. Reading it back
+  costs little (0.2 to 0.3 ns more).
+- **Through a unit, typed arrays box on the way in and on the way out.** The boxes die at once, which V8 makes
+  cheap (4.5 ns a store), so stores are still 6 times faster than into an `eqref` array; but every read allocates,
+  and reads are 1.4 times slower than from an `eqref` array, whose box was made once.
+- **wasmtime's copying collector makes those short-lived boxes ruinous:** 13.8 s where `eqref` arrays take 0.23 s,
+  since each collection copies the live array. Typed arrays would make the suite crawl there wherever a `Word`
+  vector is read.
+
+What the compiler stores full-width in arrays is its hashes: one store for each insertion into a hash map (a
+rehash moves the boxes, and allocates none), and one read or more for each lookup. Typed arrays would save about
+20 ns an insertion and lose about 1 ns a lookup. Its other full-width integers (spans, reserved symbol ids) are in
+tuples, which decision 2 does not touch.
+
+**Decision 2 stands** (confirmed by the owner, 2026-11-13). Typed arrays win only on stores of full-width values, lose on every generic
+read, add the invariant of §2.4, and are far worse in wasmtime. They would pay for `Array(Real)` and `Array(Word)`
+used at a known type in a user's numeric program, which is milestone 4's question, and the struct around the store
+keeps that door open.
+
+### 9.3. Casts at Boundaries (decision 3)
+
+A function of three reference parameters (a string, a tuple, an array) that reads a field of each, called 100
+million times from another module: at precise parameter types, and at `eqref` with a cast of each at entry.
+
+| | precise | `eqref` and three casts |
+|---|---|---|
+| V8 | 213 ms | 292 ms |
+| wasmtime | 0.19 s | 0.33 s |
+
+The three casts cost 0.8 ns a call in V8 and 1.4 ns in wasmtime, about a third of a call that does nothing else.
+**Decision 3 stands.**
+
+### 9.4. The Stack in Baseline Code, and Array Limits
+
+A recursive function of 40 `i64` locals, each set and used once in turn, two values live across the call; the same
+with the 40 steps sharing two locals; and a function with none. The deepest recursion before V8's `RangeError`:
+
+| Where | Tier | no locals | 40 locals | 40 steps in 2 locals |
+|---|---|---|---|---|
+| node's main thread (984 KB) | baseline | 15,545 | 2,487 | 10,363 |
+| | optimized (`--no-liftoff`) | 46,635 | 37,308 | 37,308 |
+| a node worker, `stackSizeMb: 0.5` | baseline | 4,452 | 712 | 2,968 |
+| | optimized | 13,356 | 10,683 | 10,683 |
+| a node worker, `stackSizeMb: 1` | baseline | 12,644 | 2,023 | 8,429 |
+| | optimized | 37,932 | 30,345 | 30,345 |
+
+- **node with no flags gave the baseline figures exactly:** a first deep recursion runs entirely in baseline code.
+- **A baseline frame is about 63 bytes and 8 for each local,** declared, whether or not it is live: 395 bytes with
+  40 locals, 95 with two. An optimized frame is 21 to 26 bytes whatever the locals.
+- **So a function of 40 locals reaches a fifteenth of its optimized depth, and reusing locals gives back a factor
+  of four.** The printer's reuse of locals (§2.11) is required for the stack, not only for the limit of 50,000,
+  and it should be aggressive: a local for each type, not for each variable.
+- This confirms that the native figure cannot stand for the page (§6.2). With 0.9 KB of native stack for a level
+  of the compiler's nesting, and baseline frames perhaps three to seven times an optimized frame's, a worker's
+  512 KB is some 80 to 200 levels of nesting in a cold compiler, where the native compiler has thousands. Step 7
+  measures it on the compiler's own functions.
+
+The largest array each engine makes, by bisection:
+
+| Element | V8 | wasmtime (copying collector) |
+|---|---|---|
+| `eqref` | 134,217,720 | 536,870,899 |
+| `i64` | 134,217,720 | 268,435,449 |
+| `i8` | 1,073,741,792 | 2,147,483,596 |
+
+### 9.5. Besides
+
+- **wasmtime's copying collector copies everything live at each collection,** so short-lived garbage beside a
+  large live heap is very slow there (§9.2). The suite's programs are small. A self-compilation, with hundreds of
+  megabytes live, is not, which is one more reason it runs in node (decision 13).
+- **Full-width integers in slots are the cost to watch** (§9.1, §9.2): 8 to 23 ns for each one stored, in a
+  compiler that natively allocates 57 million objects for one unit. Where the compiler makes such integers by
+  packing two small ones (a merged file's span, a reserved symbol id), a pair of small integers would allocate
+  nothing. That is a change to the compiler's source for step 10's profile to ask for, not a change to this design.
