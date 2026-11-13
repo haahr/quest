@@ -94,7 +94,7 @@ from quest.types.kinds import (  # noqa: E402
     synth_kind,
 )
 from quest.types.subtyping import is_subkind, is_subtype, is_type_equal  # noqa: E402
-from quest.diagnostics import QuestCompilerError  # noqa: E402
+from quest.common.diagnostics import QuestCompilerError  # noqa: E402
 
 TEST_DIR = ROOT_DIR / "tests" / "source" / "questlang"
 GOLDEN_DIR = ROOT_DIR / "tests" / "golden" / "run" / "questlang"

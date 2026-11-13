@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
-from quest.syntax.sources import BYTE_ENCODING  # noqa: E402
+from quest.common.location import BYTE_ENCODING  # noqa: E402
 from quest.testing.layout import DRIVER_SCRIPT, EVAL_GOLDEN  # noqa: E402
 from quest.testing.transcripts import eval_transcript  # noqa: E402
 

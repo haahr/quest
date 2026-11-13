@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 sys.path.insert(0, str(ROOT_DIR / "tests" / "parser"))
 
 import quest.syntax.ast as A  # noqa: E402
-from quest.diagnostics import QuestCompilerError  # noqa: E402
+from quest.common.diagnostics import QuestCompilerError  # noqa: E402
 from quest.syntax.desugar import desugar  # noqa: E402
 from quest.syntax.grammar import parse_quest_program  # noqa: E402
 from quest.syntax.tokenizer import Tokenizer  # noqa: E402

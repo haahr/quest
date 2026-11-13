@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
 import quest.syntax.ast as ast  # noqa: E402
 from quest.syntax.grammar import parse_quest_program  # noqa: E402
-from quest.syntax.sources import SourceMap  # noqa: E402
+from quest.common.location import SourceMap  # noqa: E402
 from quest.syntax.tokenizer import Tokenizer  # noqa: E402
 
 LIB_DIR = ROOT_DIR / "lib"
