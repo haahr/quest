@@ -38,7 +38,7 @@ match.
 ```
 questlang/
 ├── common/                  # Cross-cutting foundational utilities
-│   ├── location             # Source coordinates (Pos, Span) and source maps (bootstrap syntax/sources)
+│   ├── location             # Source coordinates (Pos, Span) and source maps
 │   ├── diagnostics          # Diagnostic messages, error severity
 │   ├── diagbag              # Diagnostic accumulator and reporter
 │   ├── keys                 # Integer keys for the type tables (the bootstrap keys them by tuples)
@@ -50,7 +50,7 @@ questlang/
 │   ├── tokens               # TokenKind and Token definitions
 │   ├── tokenizer            # Lexical scanner
 │   ├── ast                  # Abstract syntax tree: Node, TypeForm, ExprForm, PhraseForm (§3)
-│   ├── astprint             # Canonical S-expression printer, matching the bootstrap ast_dump
+│   ├── astprint             # Canonical S-expression printer, matching the bootstrap's
 │   ├── parser               # Parsing a program, a type, a kind, or a value (§4)
 │   ├── parser/              # Data-driven PEG / Packrat parser (bootstrap syntax/parser and grammar)
 │   │   ├── engine           # Generic PEG engine (constructs, syntax targets, rules, memo) and semantic values
@@ -131,7 +131,7 @@ questlang/
 ├── build/                   # The build engine and its log; compilerrunner, the host C compiler and linker;
 │                            # headers, interfaces' C headers kept beside their .qi files
 │
-└── driver/                  # Compiler driver (bootstrap pipeline and quest/__main__)
+└── driver/                  # Compiler driver (the bootstrap's driver/, and its pipeline)
     ├── main                 # Main routine: every phase, -e, -i, and the bootstrap's compiling options
     ├── options              # The command line: its phases, usage, and options
     ├── whole                # A whole program: its modules merged into one unit
