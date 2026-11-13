@@ -191,7 +191,12 @@ this stage runs the full `tools/check`, not the light one.
 
 - util/path's T and its file-system functions move to os/ (os/path), leaving util/path the string functions; the
   library's file-system operations, now in system, os/fileStats, and path, are listed in one place in its docs.
-- tools/'s four identical launchers that find Python share one helper.
+  Moved to stage 10, after the release: the compiler (build/engine, common/files, config/abi) uses path.T, and stage
+  1 compiles questlang/ against the release's own lib/, which has no os/path (release-compiler.md, the one rule). In
+  os/path the names that had to differ from the string functions' lose their prefixes (pathStem becomes stem,
+  normalizePath normalize, joinPaths join).
+- tools/'s four identical launchers that find Python share one helper. Done: tools/python.sh, which ./questboot
+  sources too.
 
 ### Stage 9. The bootstrap's own
 
@@ -205,4 +210,5 @@ this stage runs the full `tools/check`, not the light one.
 ### Stage 10. Finish
 
 compiler-organization.md's tree and layers (§2, §5) as they now are, the full `tools/check`, the push, and a release.
+Then stage 8's os/path, against that release, with its own check and push.
 This document is then deleted, what it decided recorded in compiler-organization.md.
