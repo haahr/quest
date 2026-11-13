@@ -50,6 +50,39 @@ does it.
 
 ---
 
+## tools/check may run more processes than the machine has cores
+
+**Problem.** `tools/check` runs its suites at once, each with a share of the cores as its `-j`, and each suite's
+builds of the self-hosted driver compile as many modules at once as there are cores. On the 10-core machine the load
+average reaches 30 to 140 during a check. Whether that costs wall time is not known: the one measurement (section 5.1
+of [testing.md](testing.md), 2026-10-28) is older than the stress tier, the backends' seven modes, and the fixed
+points, and found running the suites at once 1.7 times faster than one after another. What the load does cost is
+known: tests with fixed time limits (three arm64-whole tests at 30 s, repl_sessions, the terminal tests) time out
+under load, which is why a check waits for an idle machine.
+
+**Reproduce.** On an idle machine (load under 5 for 3 minutes, nothing else running), time three checks of the same
+commit, each with `--all` so that they run the same suites, and sample the load every 30 s while each runs
+(`while sleep 30; do uptime; done > load.txt`):
+
+1. `time tools/check --all`, the default: shares of all the cores, and each build at `-j` 10.
+2. `time tools/check --all --jobs 6`: shares of 6 cores, and each build at `-j` 6 (`QUEST_JOBS`).
+3. `time tools/check --all --serial`: the suites one after another, each with all the cores.
+
+Each run prints when each suite finished (`.build/check/SUITE.txt` keeps its output). For comparison, a run of
+`--serial --jobs 1` on 2026-11-13 (f8aeb5bb, not on an idle machine) took 10,003 s, about 2.8 hours, with no timeouts;
+the backends suite was the longest, at about 4,400 s. Run each a second time if the first two are within a few percent
+of each other. Note any timeouts, as well as the times.
+
+**Where to start.** `tools/check.py`: `share` and the `Suite`s' `-j` in `main`, `stress_tier`, and `light`;
+`--jobs` sets `QUEST_JOBS`, which the runner's driver builds read (`build_jobs` in
+`bootstrap/python/quest/testing/layout.py`), as `./quest` does.
+
+**Done when.** The three times (and the load and any timeouts) are recorded in testing.md section 5.1, and the default
+is whichever is fastest without timeouts. If a capped `--jobs` is as fast as the default, make the cap the default
+(the cores less a few, say), so that a check leaves the machine usable and its timed tests pass.
+
+---
+
 ## Quest isn't highlighted in JupyterLab's editor
 
 **Problem.** The Jupyter kernel ([jupyter-kernel.md](jupyter-kernel.md)) names a Pygments lexer, which nbconvert uses
