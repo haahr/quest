@@ -1,0 +1,29 @@
+(* Quest Self-Hosted Compiler: The WebAssembly Runtime Types Interface
+ *
+ * R, the one recursion group of the types the runtime defines and code tells
+ * apart by a cast (docs/wasm-plan.md section 2.11), from one table: every
+ * module declares it first, so each of its types has the same index, its
+ * position in the table, in every module, and is the same type across
+ * modules. A change to it is a change to the ABI.
+ *
+ * It holds what section 2 defines in full: $obj, the base of everything with
+ * an identity and its hash; the boxes of Int and Real; $slots, $bytes, and
+ * $i32s, the arrays; $tupleLike, $tuple, and $option (section 2.3); $string
+ * and $array (sections 2.7 and 2.4); $varBox (section 2.5); and $clos, the
+ * base of closures (section 3.1). The steps that define the rest add them:
+ * proxies, records and their views' tables, and records' boxes with step 4,
+ * exceptions and descriptors with step 6, view maps with step 7. *)
+
+interface RuntimeTypes
+import
+    questlang/wasm/model : questlang/wasm/Model
+export
+    (* R's types, in the order of their indices from 0 *)
+    group: model.RecGroup
+
+    (* The index of R's type named name (as "tuple" for $tuple), and of its
+     * field named field; each raises model.malformed for a name R does not
+     * have *)
+    index(name: String): Int
+    field(name: String field: String): Int
+end

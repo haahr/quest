@@ -6,7 +6,7 @@ engine's collector is Quest's. The compiler is compiled by that backend, runs in
 each interaction to a module that the page loads into the session, as the arm64 JIT loads machine code
 ([jit.md](jit.md)).
 
-**Status: decided, nothing built** (2026-11-12). This is the plan to build from. It is a hybrid of four plans written
+**Status: decided** (2026-11-12), **being built** (from 2026-11-13). This is the plan to build from. It is a hybrid of four plans written
 the same day, each revised after a review:
 
 | Plan | What this plan takes from it |
@@ -22,7 +22,7 @@ the four disagree, this plan holds.
 
 §1 lists the decisions and whose they are. §2 to §6 are the design. §7 is what is given up. §8 has the steps, and
 §9 the results of step 0's probes (2026-11-13), on which the owner confirmed decisions 1 and 2, and §10 step 1's
-census of what the compiler uses. Steps 0 and 1 are done; step 2 is next.
+census of what the compiler uses. Steps 0, 1, and 2 are done, and step 8's native half; step 3 is next.
 
 ---
 
@@ -751,6 +751,12 @@ only when the backend's files differ, until its time is known.
    *Done when*, for a corpus of modules built in unit tests, the encoder's bytes equal `wasm-tools parse` of the
    printed text, every module passes `wasm-tools validate`, and one with a struct, an exception, and a tail call
    gives the same output in wasmtime and in node.
+   *Done 2026-11-13:* `questlang/wasm/` has `model` (modules as data), `ops` (the operations whose immediates are
+   all integers, one table for both formats), `encode`, `printer`, and `runtimeTypes` (R). The corpus is the
+   questlang test `wasm_encode`, its golden the text and, in comments, the bytes; `tests/python/test_wasm.py` checks
+   it. The encoder writes the name section as `wasm-tools parse` does, so the engines' traces name functions, and
+   block and function types of several results by index, for `unbox` (§4.1). R holds only the types §2 defines
+   in full; the steps that define the rest add them (`runtimeTypes`' header lists which).
 3. **The backend's skeleton.** `--backend wasm`; code from the described IR for `Int`, `Bool`, `Char`, control
    flow, direct calls, tail calls, string literals, and the tests before trapping instructions (§2.10); output
    through the host, over WASI and in JavaScript; a unit is a module from this step on, the runtime a module of its

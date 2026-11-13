@@ -1,0 +1,190 @@
+(* Quest Self-Hosted Compiler: WebAssembly Operations Interface
+ *
+ * The operations whose immediates are all Ints (model.Op), one value each,
+ * named for its text name in camel case (return is returnOp): its opcode, its
+ * immediates, and a memory access's alignment, which wasm/encode and
+ * wasm/printer both read, so that the two formats cannot disagree. Only the
+ * operations the wasm backend uses or is expected to; one is added here when
+ * needed. *)
+
+interface Ops
+import
+    questlang/wasm/model : questlang/wasm/Model
+export
+    (* Control: a branch takes a depth, a call a function or its type *)
+    unreachable: model.Op
+    nop: model.Op
+    br: model.Op
+    brIf: model.Op
+    returnOp: model.Op
+    call: model.Op
+    returnCall: model.Op
+    callRef: model.Op
+    returnCallRef: model.Op
+    throw: model.Op
+    throwRef: model.Op
+    drop: model.Op
+    brOnNull: model.Op
+    brOnNonNull: model.Op
+
+    (* Variables *)
+    localGet: model.Op
+    localSet: model.Op
+    localTee: model.Op
+    globalGet: model.Op
+    globalSet: model.Op
+
+    (* The memory, which holds bytes on their way to and from the host *)
+    i32Load: model.Op
+    i64Load: model.Op
+    i32Load8S: model.Op
+    i32Load8U: model.Op
+    i32Store: model.Op
+    i64Store: model.Op
+    i32Store8: model.Op
+    memorySize: model.Op
+    memoryGrow: model.Op
+    memoryCopy: model.Op
+    memoryFill: model.Op
+    dataDrop: model.Op
+
+    (* Constants of 32 and 64 bits (f64.const is model.f64Const) *)
+    i32Const: model.Op
+    i64Const: model.Op
+
+    (* i32 *)
+    i32Eqz: model.Op
+    i32Eq: model.Op
+    i32Ne: model.Op
+    i32LtS: model.Op
+    i32LtU: model.Op
+    i32GtS: model.Op
+    i32GtU: model.Op
+    i32LeS: model.Op
+    i32LeU: model.Op
+    i32GeS: model.Op
+    i32GeU: model.Op
+    i32Clz: model.Op
+    i32Ctz: model.Op
+    i32Popcnt: model.Op
+    i32Add: model.Op
+    i32Sub: model.Op
+    i32Mul: model.Op
+    i32DivS: model.Op
+    i32DivU: model.Op
+    i32RemS: model.Op
+    i32RemU: model.Op
+    i32And: model.Op
+    i32Or: model.Op
+    i32Xor: model.Op
+    i32Shl: model.Op
+    i32ShrS: model.Op
+    i32ShrU: model.Op
+    i32Rotl: model.Op
+    i32Rotr: model.Op
+
+    (* i64 *)
+    i64Eqz: model.Op
+    i64Eq: model.Op
+    i64Ne: model.Op
+    i64LtS: model.Op
+    i64LtU: model.Op
+    i64GtS: model.Op
+    i64GtU: model.Op
+    i64LeS: model.Op
+    i64LeU: model.Op
+    i64GeS: model.Op
+    i64GeU: model.Op
+    i64Clz: model.Op
+    i64Ctz: model.Op
+    i64Popcnt: model.Op
+    i64Add: model.Op
+    i64Sub: model.Op
+    i64Mul: model.Op
+    i64DivS: model.Op
+    i64DivU: model.Op
+    i64RemS: model.Op
+    i64RemU: model.Op
+    i64And: model.Op
+    i64Or: model.Op
+    i64Xor: model.Op
+    i64Shl: model.Op
+    i64ShrS: model.Op
+    i64ShrU: model.Op
+    i64Rotl: model.Op
+    i64Rotr: model.Op
+
+    (* f64 *)
+    f64Eq: model.Op
+    f64Ne: model.Op
+    f64Lt: model.Op
+    f64Gt: model.Op
+    f64Le: model.Op
+    f64Ge: model.Op
+    f64Abs: model.Op
+    f64Neg: model.Op
+    f64Ceil: model.Op
+    f64Floor: model.Op
+    f64Trunc: model.Op
+    f64Nearest: model.Op
+    f64Sqrt: model.Op
+    f64Add: model.Op
+    f64Sub: model.Op
+    f64Mul: model.Op
+    f64Div: model.Op
+    f64Min: model.Op
+    f64Max: model.Op
+    f64Copysign: model.Op
+
+    (* Conversions; the saturating truncations do not trap *)
+    i32WrapI64: model.Op
+    i64ExtendI32S: model.Op
+    i64ExtendI32U: model.Op
+    f64ConvertI32S: model.Op
+    f64ConvertI64S: model.Op
+    f64ConvertI64U: model.Op
+    i64ReinterpretF64: model.Op
+    f64ReinterpretI64: model.Op
+    i32Extend8S: model.Op
+    i32Extend16S: model.Op
+    i64Extend8S: model.Op
+    i64Extend16S: model.Op
+    i64Extend32S: model.Op
+    i32TruncSatF64S: model.Op
+    i32TruncSatF64U: model.Op
+    i64TruncSatF64S: model.Op
+    i64TruncSatF64U: model.Op
+
+    (* References; ref.null, ref.test, and ref.cast are model.Insts *)
+    refIsNull: model.Op
+    refFunc: model.Op
+    refEq: model.Op
+    refAsNonNull: model.Op
+    refI31: model.Op
+    i31GetS: model.Op
+    i31GetU: model.Op
+    anyConvertExtern: model.Op
+    externConvertAny: model.Op
+
+    (* Structs: a type, and for an access its field *)
+    structNew: model.Op
+    structNewDefault: model.Op
+    structGet: model.Op
+    structGetS: model.Op
+    structGetU: model.Op
+    structSet: model.Op
+
+    (* Arrays: a type, and for array.copy the destination's and the source's *)
+    arrayNew: model.Op
+    arrayNewDefault: model.Op
+    arrayNewFixed: model.Op
+    arrayNewData: model.Op
+    arrayGet: model.Op
+    arrayGetS: model.Op
+    arrayGetU: model.Op
+    arraySet: model.Op
+    arrayLen: model.Op
+    arrayFill: model.Op
+    arrayCopy: model.Op
+    arrayInitData: model.Op
+end

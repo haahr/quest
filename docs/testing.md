@@ -280,7 +280,10 @@ the whole ones, all empty. The self-hosted driver's REPL and `-e` run on the JIT
 marked `@skip-phase: whole` (§2.4);
 `tests/self-hosted/pending-jit.txt` lists the differences that remain. The
 questlang tests `ssac_print` and `arm64_assemble` print a unit of the SSA built by hand as C and as assembly, whose
-goldens `tests/python/test_ssac.py` compiles and `tests/python/test_arm64.py` assembles. The SSA's passes are tested on
+goldens `tests/python/test_ssac.py` compiles and `tests/python/test_arm64.py` assembles. `wasm_encode` prints a corpus
+of WebAssembly modules built by hand (`questlang/wasm`) as text, each followed by its encoder's bytes in comments;
+`tests/python/test_wasm.py` checks that `wasm-tools parse` of each text is its bytes, that each validates, and that
+wasmtime and node run the last, and is skipped where those tools are missing. The SSA's passes are tested on
 SSA written as text (`questlang/ssa/parser`): `ssa_promote` and `ssa_tailcalls` print small functions before and after
 their pass, `ssa_escape` what escape analysis says of their allocations ([ssa.md](ssa.md) §4.2), and
 `ssa_verify` the problems the verifier finds ([ssa.md](ssa.md) §6).

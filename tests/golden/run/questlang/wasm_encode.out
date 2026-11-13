@@ -1,0 +1,1017 @@
+;; module empty
+(module
+)
+;; bytes
+;; 0061736d 01000000
+;; module runtime
+(module $runtime
+  (rec
+    (type $obj (sub (struct (field $hash (mut i32)))))
+    (type $boxInt (struct (field $value i64)))
+    (type $boxReal (struct (field $value f64)))
+    (type $slots (array (mut eqref)))
+    (type $bytes (array (mut i8)))
+    (type $i32s (array (mut i32)))
+    (type $tupleLike (sub $obj (struct (field $hash (mut i32)))))
+    (type $tuple (sub $tupleLike (struct (field $hash (mut i32)) (field $slots (ref $slots)))))
+    (type $option (sub final $tuple (struct (field $hash (mut i32)) (field $slots (ref $slots)) (field $tag i32))))
+    (type $string (sub final $obj (struct (field $hash (mut i32)) (field $length i32) (field $bytes (ref $bytes)))))
+    (type $array (sub final $obj (struct (field $hash (mut i32)) (field $elems (ref $slots)))))
+    (type $varBox (struct (field $tag i32) (field $payload eqref)))
+    (type $clos (sub $obj (struct (field $hash (mut i32)))))
+  )
+)
+;; bytes
+;; 0061736d 01000000 015a014e 0d50005f 017f015f 017e005f 017c005e 6d015e78
+;; 015e7f01 5001005f 017f0150 01065f02 7f016403 004f0107 5f037f01 6403007f
+;; 004f0100 5f037f01 7f006404 004f0100 5f027f01 6403005f 027f006d 00500100
+;; 5f017f01 00fa0104 6e616d65 00080772 756e7469 6d650462 0d00036f 626a0106
+;; 626f7849 6e740207 626f7852 65616c03 05736c6f 74730405 62797465 73050469
+;; 33327306 09747570 6c654c69 6b650705 7475706c 6508066f 7074696f 6e090673
+;; 7472696e 670a0561 72726179 0b067661 72426f78 0c04636c 6f730a84 010a0001
+;; 00046861 73680101 00057661 6c756502 01000576 616c7565 06010004 68617368
+;; 07020004 68617368 0105736c 6f747308 03000468 61736801 05736c6f 74730203
+;; 74616709 03000468 61736801 066c656e 67746802 05627974 65730a02 00046861
+;; 73680105 656c656d 730b0200 03746167 01077061 796c6f61 640c0100 04686173
+;; 68
+;; module numbers
+(module $numbers
+  (type $binop (func (param i64 i64) (result i64)))
+  (type $pair (func (param i64) (result i64 i64)))
+  (type $void (func))
+  (type $real (func (param f64) (result f64)))
+  (type (func (param i32) (result i32)))
+  (func $constants (type $void)
+    i32.const 0
+    drop
+    i32.const 63
+    drop
+    i32.const 64
+    drop
+    i32.const -64
+    drop
+    i32.const -65
+    drop
+    i32.const 8191
+    drop
+    i32.const 8192
+    drop
+    i32.const -8193
+    drop
+    i32.const 2147483647
+    drop
+    i32.const -2147483648
+    drop
+    i64.const 127
+    drop
+    i64.const 128
+    drop
+    i64.const -129
+    drop
+    i64.const 4294967296
+    drop
+    i64.const 9223372036854775807
+    drop
+    i64.const -9223372036854775808
+    drop
+    f64.const 0x0p+0
+    drop
+    f64.const -0x0p+0
+    drop
+    f64.const 0x1.8p+0
+    drop
+    f64.const 0x1.999999999999ap-4
+    drop
+    f64.const 0x0.0000000000001p-1022
+    drop
+    f64.const 0x1.fffffffffffffp+1023
+    drop
+    f64.const inf
+    drop
+    f64.const -inf
+    drop
+    f64.const nan:0x8000000000000
+    drop
+    f64.const nan:0x4
+    drop
+    f64.const 0x1.5555555555555p-2
+    drop
+  )
+  (func $arith (type $binop) (param $a i64) (param $b i64) (result i64)
+    (local $t i64)
+    (local i64)
+    (local i32)
+    (local i64)
+    (local f64)
+    (local eqref)
+    (local eqref)
+    local.get $a
+    local.get $b
+    i64.add
+    local.get $b
+    i64.mul
+    i64.const 3
+    i64.shr_s
+    local.tee $t
+    local.get $a
+    i64.lt_s
+    if $positive (result i64)
+      local.get $t
+    else
+      i64.const 0
+    end
+    local.get $a
+    local.get $b
+    local.get $b
+    i64.eqz
+    select
+    local.get $b
+    i64.const 7
+    local.get $a
+    i32.wrap_i64
+    select (result i64)
+    i64.add
+    i64.add
+  )
+  (func $sum (type $binop) (param $n i64) (param $acc i64) (result i64)
+    block $done (result i64)
+      loop $again
+        local.get $n
+        i64.eqz
+        if
+          local.get $acc
+          br $done
+        end
+        local.get $acc
+        local.get $n
+        i64.add
+        local.set $acc
+        local.get $n
+        i64.const 1
+        i64.sub
+        local.set $n
+        br $again
+      end
+      unreachable
+    end
+  )
+  (func $switch (type 4) (param $x i32) (result i32)
+    block $high
+      block
+        block $low
+          local.get $x
+          br_table $low 1 $high $low
+        end
+        i32.const 10
+        return
+      end
+      i32.const 11
+      return
+    end
+    i32.const 12
+  )
+  (func $shadow (type $void)
+    block $x
+      block $x
+        br 1
+        br $x
+      end
+    end
+  )
+  (func $swap (type $pair) (param i64) (result i64 i64)
+    local.get 0
+    block (type $pair)
+      i64.const 2
+    end
+  )
+  (func $useSwap (type $binop) (param $x i64) (param $y i64) (result i64)
+    local.get $x
+    call $swap
+    call $arith
+  )
+  (func $convert (type $real) (param $r f64) (result f64)
+    local.get $r
+    i64.trunc_sat_f64_s
+    f64.convert_i64_s
+    local.get $r
+    f64.sqrt
+    f64.add
+    local.get $r
+    i64.reinterpret_f64
+    f64.reinterpret_i64
+    f64.mul
+  )
+)
+;; bytes
+;; 0061736d 01000000 011a0560 027e7e01 7e60017e 027e7e60 00006001 7c017c60
+;; 017f017f 03090802 00000402 0100030a f50208c8 01004100 1a413f1a 41c0001a
+;; 41401a41 bf7f1a41 ff3f1a41 80c0001a 41ffbf7f 1a41ffff ffff071a 41808080
+;; 80781a42 ff001a42 80011a42 ff7e1a42 80808080 101a42ff ffffffff ffffffff
+;; 001a4280 80808080 80808080 7f1a4400 00000000 0000001a 44000000 00000000
+;; 801a4400 00000000 00f83f1a 449a9999 999999b9 3f1a4401 00000000 0000001a
+;; 44ffffff ffffffef 7f1a4400 00000000 00f07f1a 44000000 000000f0 ff1a4400
+;; 00000000 00f87f1a 44040000 000000f0 7f1a4455 55555555 55d53f1a 0b380502
+;; 7e017f01 7e017c02 6d200020 017c2001 7e420387 22022000 53047e20 02054200
+;; 0b200020 01200150 1b200142 072000a7 1c017e7c 7c0b2300 027e0340 20005004
+;; 4020010c 020b2001 20007c21 01200042 017d2100 0c000b00 0b0b1b00 02400240
+;; 02402000 0e030001 02000b41 0a0f0b41 0b0f0b41 0c0b0c00 02400240 0c010c00
+;; 0b0b0b09 00200002 0142020b 0b080020 00100510 010b1000 2000fc06 b920009f
+;; a02000bd bfa20b00 ca01046e 616d6500 08076e75 6d626572 73014008 0009636f
+;; 6e737461 6e747301 05617269 74680203 73756d03 06737769 74636804 06736861
+;; 646f7705 04737761 70060775 73655377 61700707 636f6e76 65727402 28050103
+;; 00016101 01620201 74020200 016e0103 61636303 01000178 06020001 78010179
+;; 07010001 72033104 01010008 706f7369 74697665 02020004 646f6e65 01056167
+;; 61696e03 02000468 69676802 036c6f77 04020001 78010178 041a0400 0562696e
+;; 6f700104 70616972 0204766f 69640304 7265616c
+;; module gc
+(module $gc
+  (rec
+    (type $obj (sub (struct (field $hash (mut i32)))))
+    (type $boxInt (struct (field $value i64)))
+    (type $boxReal (struct (field $value f64)))
+    (type $slots (array (mut eqref)))
+    (type $bytes (array (mut i8)))
+    (type $i32s (array (mut i32)))
+    (type $tupleLike (sub $obj (struct (field $hash (mut i32)))))
+    (type $tuple (sub $tupleLike (struct (field $hash (mut i32)) (field $slots (ref $slots)))))
+    (type $option (sub final $tuple (struct (field $hash (mut i32)) (field $slots (ref $slots)) (field $tag i32))))
+    (type $string (sub final $obj (struct (field $hash (mut i32)) (field $length i32) (field $bytes (ref $bytes)))))
+    (type $array (sub final $obj (struct (field $hash (mut i32)) (field $elems (ref $slots)))))
+    (type $varBox (struct (field $tag i32) (field $payload eqref)))
+    (type $clos (sub $obj (struct (field $hash (mut i32)))))
+  )
+  (type $packed (struct (field $lo (mut i8)) (field $hi i16)))
+  (type $mk (func (param i64) (result (ref $tuple))))
+  (type $test (func (param eqref) (result i32)))
+  (type (func))
+  (func $mk (type $mk) (param $n i64) (result (ref $tuple))
+    (local $s (ref $slots))
+    (local $t (ref $tuple))
+    local.get $n
+    i64.const 1
+    i64.add
+    i32.wrap_i64
+    ref.i31
+    ref.null none
+    array.new_fixed $slots 2
+    local.set $s
+    i32.const 0
+    local.get $s
+    struct.new $tuple
+    local.tee $t
+    struct.get $tuple $slots
+    i32.const 0
+    local.get $t
+    array.set $slots
+    local.get $t
+    i32.const 7
+    struct.set $tuple $hash
+    local.get $s
+    array.len
+    drop
+    local.get $t
+  )
+  (func $test (type $test) (param $v eqref) (result i32)
+    block $isI31 (result (ref i31))
+      block $isTuple (result (ref $tuple))
+        local.get $v
+        br_on_cast $isTuple eqref (ref $tuple)
+        br_on_cast $isI31 eqref (ref i31)
+        drop
+        i32.const 0
+        return
+      end
+      struct.get $tuple $hash
+      return
+    end
+    i31.get_s
+  )
+  (func $unbox (type $test) (param $v eqref) (result i32)
+    block $other (result eqref)
+      local.get $v
+      br_on_cast_fail $other eqref (ref i31)
+      i31.get_u
+      return
+    end
+    ref.test (ref $boxInt)
+    local.get $v
+    ref.cast (ref null $tuple)
+    ref.is_null
+    i32.add
+    local.get $v
+    ref.test eqref
+    i32.add
+  )
+  (func $data (type 16)
+    (local $a (ref $slots))
+    i32.const 0
+    i32.const 3
+    array.new_data $bytes $d
+    i32.const 1
+    array.get_u $bytes
+    drop
+    ref.null eq
+    ref.null $slots
+    ref.eq
+    drop
+    i64.const 5
+    struct.new $boxInt
+    struct.get $boxInt $value
+    drop
+    struct.new_default $packed
+    struct.get_u $packed $lo
+    drop
+    struct.new_default $packed
+    struct.get_s $packed $hi
+    drop
+    i32.const 4
+    array.new_default $slots
+    local.tee $a
+    i32.const 0
+    local.get $a
+    i32.const 1
+    i32.const 2
+    array.copy $slots $slots
+    local.get $a
+    i32.const 0
+    ref.null none
+    i32.const 4
+    array.fill $slots
+    local.get $a
+    i32.const 0
+    array.get $slots
+    drop
+    block $null
+      ref.null eq
+      br_on_null $null
+      drop
+    end
+    ref.null noextern
+    any.convert_extern
+    extern.convert_any
+    drop
+  )
+  (data $d "ab\22\5c\00\ff")
+)
+;; bytes
+;; 0061736d 01000000 016e054e 0d50005f 017f015f 017e005f 017c005e 6d015e78
+;; 015e7f01 5001005f 017f0150 01065f02 7f016403 004f0107 5f037f01 6403007f
+;; 004f0100 5f037f01 7f006404 004f0100 5f027f01 6403005f 027f006d 00500100
+;; 5f017f01 5f027801 77006001 7e016407 60016d01 7f600000 0305040e 0f0f100c
+;; 01010aeb 01043b02 01640301 64072000 42017ca7 fb1cd071 fb080302 21014100
+;; 2001fb00 072202fb 02070141 002002fb 0e032002 4107fb05 07002001 fb0f1a20
+;; 020b2300 02646c02 64072000 fb180100 6d07fb18 01016d6c 1a41000f 0bfb0207
+;; 000f0bfb 1d0b2000 026d2000 fb190100 6d6cfb1e 0f0bfb14 012000fb 1707d16a
+;; 2000fb15 6d6a0b68 01016403 41004103 fb090400 4101fb0d 041ad06d d003d31a
+;; 4205fb00 01fb0201 001afb01 0dfb040d 001afb01 0dfb030d 011a4104 fb070322
+;; 00410020 00410141 02fb1103 03200041 00d07141 04fb1003 20004100 fb0b031a
+;; 0240d06d d5001a0b d072fb1a fb1b1a0b 0b090101 06616222 5c00ff00 f402046e
+;; 616d6500 03026763 01180400 026d6b01 04746573 74020575 6e626f78 03046461
+;; 7461021b 04000300 016e0101 73020174 01010001 76020100 01760301 00016103
+;; 24030102 00056973 49333101 07697354 75706c65 02010005 6f746865 72030100
+;; 046e756c 6c047410 00036f62 6a010662 6f78496e 74020762 6f785265 616c0305
+;; 736c6f74 73040562 79746573 05046933 32730609 7475706c 654c696b 65070574
+;; 75706c65 08066f70 74696f6e 09067374 72696e67 0a056172 7261790b 06766172
+;; 426f780c 04636c6f 730d0670 61636b65 640e026d 6b0f0474 65737409 04010001
+;; 640a8e01 0b000100 04686173 68010100 0576616c 75650201 00057661 6c756506
+;; 01000468 61736807 02000468 61736801 05736c6f 74730803 00046861 73680105
+;; 736c6f74 73020374 61670903 00046861 73680106 6c656e67 74680205 62797465
+;; 730a0200 04686173 68010565 6c656d73 0b020003 74616701 07706179 6c6f6164
+;; 0c010004 68617368 0d020002 6c6f0102 6869
+;; module control
+(module $control
+  (type $v (func))
+  (type $i (func (param i64)))
+  (type $ii (func (param i64) (result i64)))
+  (type $caughtRef (func (result i64 exnref)))
+  (import "host" "log" (func $log (type $i)))
+  (import "host" "memory" (memory $mem 1 2))
+  (import "host" "base" (global $base i64))
+  (import "host" "error" (tag $hostError (type $i)))
+  (tag $e (type $i))
+  (global $counter (mut i64) i64.const 0)
+  (export "double" (func $double))
+  (export "memory" (memory 0))
+  (export "counter" (global $counter))
+  (export "e" (tag $e))
+  (start $init)
+  (elem declare func $double)
+  (func $init (type $v)
+    global.get $base
+    global.set $counter
+    global.get $base
+    call $log
+  )
+  (func $double (type $ii) (param $x i64) (result i64)
+    local.get $x
+    local.get $x
+    i64.add
+  )
+  (func $twice (type $ii) (param $x i64) (result i64)
+    local.get $x
+    ref.func $double
+    call_ref $ii
+    ref.func $double
+    return_call_ref $ii
+  )
+  (func $count (type $ii) (param $n i64) (result i64)
+    global.get $counter
+    i64.const 1
+    i64.add
+    global.set $counter
+    local.get $n
+    i64.eqz
+    if (result i64)
+      i64.const 0
+    else
+      local.get $n
+      i64.const 1
+      i64.sub
+      return_call $count
+    end
+  )
+  (func $catcher (type $ii) (param $x i64) (result i64)
+    block $caughtAllRef (result exnref)
+      block $caughtAll
+        block $caughtRef (type $caughtRef)
+          block $caught (result i64)
+            try_table (result i64) (catch $e $caught) (catch_ref $hostError $caughtRef) (catch_all $caughtAll) (catch_all_ref $caughtAllRef)
+              local.get $x
+              throw $e
+            end
+            return
+          end
+          return
+        end
+        throw_ref
+      end
+      i64.const -1
+      return
+    end
+    throw_ref
+  )
+  (func $memory (type $ii) (param $x i64) (result i64)
+    i32.const 16
+    local.get $x
+    i64.store offset=8
+    i32.const 16
+    i64.load offset=8
+    i32.const 0
+    i32.load8_u
+    i64.extend_i32_u
+    i64.add
+    i32.const 1
+    i32.const 255
+    i32.store8
+    memory.size
+    drop
+    i32.const 1
+    memory.grow
+    drop
+    i32.const 0
+    i32.const 8
+    i32.const 4
+    memory.copy
+    i32.const 0
+    i32.const 0
+    i32.const 4
+    memory.fill
+    data.drop $passive
+    i32.const 4
+    i32.load offset=4
+    i64.extend_i32_s
+    i64.add
+  )
+  (data $greeting (i32.const 0) "hi\0a")
+  (data $passive "zz")
+)
+;; bytes
+;; 0061736d 01000000 01120460 00006001 7e006001 7e017e60 00027e69 02370404
+;; 686f7374 036c6f67 00010468 6f737406 6d656d6f 72790201 01020468 6f737404
+;; 62617365 037e0004 686f7374 05657272 6f720400 01030706 00020202 02020d03
+;; 01000106 06017e01 42000b07 21040664 6f75626c 65000206 6d656d6f 72790200
+;; 07636f75 6e746572 03010165 04010801 01090501 03000102 0c01020a a601060a
+;; 00230024 01230010 000b0700 20002000 7c0b0c00 2000d202 1402d202 15020b19
+;; 00230142 017c2401 20005004 7e420005 20004201 7d12040b 0b270002 69024002
+;; 03027e1f 7e040001 00010001 02020303 20000801 0b0f0b0f 0b0a0b42 7f0f0b0a
+;; 0b420041 10200037 03084110 29030841 002d0000 ad7c4101 41ff013a 00003f00
+;; 1a410140 001a4100 41084104 fc0a0000 41004100 4104fc0b 00fc0901 41042802
+;; 04ac7c0b 0b0d0200 41000b03 68690a01 027a7a00 ea01046e 616d6500 0807636f
+;; 6e74726f 6c013307 00036c6f 67010469 6e697402 06646f75 626c6503 05747769
+;; 63650405 636f756e 74050763 61746368 65720606 6d656d6f 7279021a 05020100
+;; 01780301 00017804 0100016e 05010001 78060100 0178032f 01050400 0c636175
+;; 67687441 6c6c5265 66010963 61756768 74416c6c 02096361 75676874 52656603
+;; 06636175 67687404 16040001 76010169 02026969 03096361 75676874 52656606
+;; 06010003 6d656d07 10020004 62617365 0107636f 756e7465 72091402 00086772
+;; 65657469 6e670107 70617373 6976650b 0f020009 686f7374 4572726f 72010165
+;; module indices
+(module
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (struct (field i64)))
+  (type (func (result (ref null 129))))
+  (func (type 130) (result (ref null 129))
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    (local i32)
+    block (result (ref null 70))
+      ref.null 70
+    end
+    drop
+    i32.const 0
+    local.set 199
+    i64.const 1
+    struct.new 129
+  )
+)
+;; bytes
+;; 0061736d 01000000 01900483 015f017e 005f017e 005f017e 005f017e 005f017e
+;; 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e
+;; 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e
+;; 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e
+;; 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e
+;; 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e
+;; 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e
+;; 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e
+;; 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e
+;; 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e
+;; 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e
+;; 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e
+;; 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e
+;; 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e
+;; 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e
+;; 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e 005f017e
+;; 005f017e 005f017e 005f017e 005f017e 005f017e 00600001 63810103 03018201
+;; 0a1b0119 01c8017f 0263c600 d0c6000b 1a410021 c7014201 fb008101 0b
+;; run run
+(module $run
+  (rec
+    (type $obj (sub (struct (field $hash (mut i32)))))
+    (type $boxInt (struct (field $value i64)))
+    (type $boxReal (struct (field $value f64)))
+    (type $slots (array (mut eqref)))
+    (type $bytes (array (mut i8)))
+    (type $i32s (array (mut i32)))
+    (type $tupleLike (sub $obj (struct (field $hash (mut i32)))))
+    (type $tuple (sub $tupleLike (struct (field $hash (mut i32)) (field $slots (ref $slots)))))
+    (type $option (sub final $tuple (struct (field $hash (mut i32)) (field $slots (ref $slots)) (field $tag i32))))
+    (type $string (sub final $obj (struct (field $hash (mut i32)) (field $length i32) (field $bytes (ref $bytes)))))
+    (type $array (sub final $obj (struct (field $hash (mut i32)) (field $elems (ref $slots)))))
+    (type $varBox (struct (field $tag i32) (field $payload eqref)))
+    (type $clos (sub $obj (struct (field $hash (mut i32)))))
+  )
+  (type $fdWrite (func (param i32 i32 i32 i32) (result i32)))
+  (type $void (func))
+  (type $tag (func (param i64)))
+  (type $sum (func (param i64 i64) (result i64)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fdWrite (type $fdWrite)))
+  (memory $memory 1)
+  (tag $error (type $tag))
+  (export "memory" (memory 0))
+  (export "_start" (func $_start))
+  (elem declare func $sum)
+  (func $print (type $tag) (param $n i64)
+    (local $p i32)
+    i32.const 96
+    local.set $p
+    local.get $p
+    i32.const 1
+    i32.sub
+    local.tee $p
+    i32.const 10
+    i32.store8
+    loop $digit
+      local.get $p
+      i32.const 1
+      i32.sub
+      local.tee $p
+      local.get $n
+      i64.const 10
+      i64.rem_u
+      i32.wrap_i64
+      i32.const 48
+      i32.add
+      i32.store8
+      local.get $n
+      i64.const 10
+      i64.div_u
+      local.tee $n
+      i64.const 0
+      i64.ne
+      br_if $digit
+    end
+    i32.const 0
+    local.get $p
+    i32.store
+    i32.const 4
+    i32.const 96
+    local.get $p
+    i32.sub
+    i32.store
+    i32.const 1
+    i32.const 0
+    i32.const 1
+    i32.const 32
+    call $fdWrite
+    drop
+  )
+  (func $sum (type $sum) (param $n i64) (param $acc i64) (result i64)
+    local.get $n
+    i64.eqz
+    if (result i64)
+      local.get $acc
+    else
+      local.get $n
+      i64.const 1
+      i64.sub
+      local.get $acc
+      local.get $n
+      i64.add
+      return_call $sum
+    end
+  )
+  (func $thrower (type $tag) (param $n i64)
+    local.get $n
+    throw $error
+  )
+  (func $_start (type $void)
+    i64.const 1000000
+    i64.const 0
+    ref.func $sum
+    call_ref $sum
+    call $print
+    block $caught (result i64)
+      try_table (catch $error $caught)
+        i64.const 42
+        call $thrower
+      end
+      i64.const 0
+    end
+    call $print
+    i32.const 0
+    i32.const 7
+    ref.i31
+    array.new_fixed $slots 1
+    struct.new $tuple
+    struct.get $tuple $slots
+    i32.const 0
+    array.get $slots
+    ref.cast (ref i31)
+    i31.get_s
+    i64.extend_i32_s
+    call $print
+  )
+)
+;; bytes
+;; 0061736d 01000000 016f054e 0d50005f 017f015f 017e005f 017c005e 6d015e78
+;; 015e7f01 5001005f 017f0150 01065f02 7f016403 004f0107 5f037f01 6403007f
+;; 004f0100 5f037f01 7f006404 004f0100 5f027f01 6403005f 027f006d 00500100
+;; 5f017f01 60047f7f 7f7f017f 60000060 017e0060 027e7e01 7e022301 16776173
+;; 695f736e 61707368 6f745f70 72657669 65773108 66645f77 72697465 000d0305
+;; 040f100f 0e050301 00010d03 01000f07 1302066d 656d6f72 79020006 5f737461
+;; 72740004 09050103 0001020a b4010454 01017f41 e0002101 20014101 6b220141
+;; 0a3a0000 03402001 41016b22 01200042 0a82a741 306a3a00 00200042 0a802200
+;; 4200520d 000b4100 20013602 00410441 e0002001 6b360200 41014100 41014120
+;; 10001a0b 17002000 50047e20 01052000 42017d20 0120007c 12020b0b 06002000
+;; 08000b3e 0042c084 3d4200d2 02141010 01027e1f 40010000 00422a10 030b4200
+;; 0b100141 004107fb 1cfb0803 01fb0007 fb020701 4100fb0b 03fb166c fb1dac10
+;; 010b00fd 02046e61 6d650004 0372756e 01270500 07666457 72697465 01057072
+;; 696e7402 0373756d 03077468 726f7765 7204065f 73746172 74021803 01020001
+;; 6e010170 02020001 6e010361 63630301 00016e03 14020101 00056469 67697404
+;; 01000663 61756768 74047b11 00036f62 6a010662 6f78496e 74020762 6f785265
+;; 616c0305 736c6f74 73040562 79746573 05046933 32730609 7475706c 654c696b
+;; 65070574 75706c65 08066f70 74696f6e 09067374 72696e67 0a056172 7261790b
+;; 06766172 426f780c 04636c6f 730d0766 64577269 74650e04 766f6964 0f037461
+;; 67100373 756d0609 0100066d 656d6f72 790a8401 0a000100 04686173 68010100
+;; 0576616c 75650201 00057661 6c756506 01000468 61736807 02000468 61736801
+;; 05736c6f 74730803 00046861 73680105 736c6f74 73020374 61670903 00046861
+;; 73680106 6c656e67 74680205 62797465 730a0200 04686173 68010565 6c656d73
+;; 0b020003 74616701 07706179 6c6f6164 0c010004 68617368 0b080100 05657272
+;; 6f72
+;; expect 500000500000
+;; expect 42
+;; expect 7

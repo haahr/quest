@@ -1,0 +1,484 @@
+(* Quest Self-Hosted Compiler: The WebAssembly Printer Implementation *)
+
+module printer : Printer
+import
+    questlang/wasm/model : questlang/wasm/Model
+    collections/vector : collections/Vector
+    util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+    ascii : Ascii
+    word : Word
+    conv : Conv
+    stringOp = string : StringOp
+export
+    Let Builder = stringBuilder.T
+    Let Module = model.Module
+    Let ValType = model.ValType
+    Let HeapType = model.HeapType
+    Let Inst = model.Inst
+
+    let fail(what: String): Ok = raise model.malformed with what end
+
+    (* ======================================================================
+     * Numbers, names, and strings
+     * ====================================================================== *)
+
+    (* n in decimal, with - for a negative one, as the text format has it *)
+    let signed(n: Int): String =
+        if n >= 0 then conv.int(n)
+        else "-" <> stringBuilder.new().word(word.sub(word.fromInt(0) word.fromInt(n))).toString()
+        end
+
+    let hexDigit(d: Int): String = stringOp.getSub("0123456789abcdef" d 1)
+
+    (* The 52-bit fraction of a real in 13 hex digits, less the trailing
+     * zeros *)
+    let fractionDigits(fraction: Int): String =
+        begin
+            let var s = ""
+            for k = 12 downto 0 do s := s <> hexDigit(word.toInt(word.extract(word.fromInt(fraction) {4 * k} 4))) end
+            let var n = 13
+            while {n > 0} andif {stringOp.getChar(s n - 1) is '0'} do n := n - 1 end
+            stringOp.getSub(s 0 n)
+        end
+
+    (* A positive Int in hex, with no leading zeros *)
+    let hexWord(n: Int): String =
+        begin
+            let var s = ""
+            let var v = n
+            while v > 0 do
+                s := hexDigit(v - {{v / 16} * 16}) <> s
+                v := v / 16
+            end
+            if stringOp.isEmpty(s) then "0" else s end
+        end
+
+    (* The real whose bits are given, exactly, as the text format writes a
+     * hexadecimal float: 0x1.8p+1, 0x0.0000000000001p-1022, 0x0p+0, inf,
+     * nan:0x8000000000000, each after - when the sign bit is set *)
+    let hexFloat(bits: Int): String =
+        begin
+            let w = word.fromInt(bits)
+            let sign = if word.getBit(w 63) then "-" else "" end
+            let field = word.toInt(word.extract(w 52 11))
+            let fraction = word.toInt(word.extract(w 0 52))
+            let digits = fractionDigits(fraction)
+            let point = if stringOp.isEmpty(digits) then "" else "." <> digits end
+            sign <> if field is 2047 then
+                if fraction is 0 then "inf"
+                else "nan:0x" <> hexWord(fraction)
+                end
+            elsif field is 0 then
+                if fraction is 0 then "0x0p+0" else "0x0" <> point <> "p-1022" end
+            else
+                let e = field - 1023
+                "0x1" <> point <> "p" <> {if e >= 0 then "+" else "-" end} <> conv.int(if e >= 0 then e else 0 - e end)
+            end
+        end
+
+    (* A string in quotes, its bytes outside printable ASCII, a quote, and a
+     * backslash each as \hh *)
+    let quoted(s: String): String =
+        begin
+            let b = stringBuilder.new()
+            b.char('"')
+            for k = 0 upto stringOp.length(s) - 1 do
+                let c = ascii.val(stringOp.getChar(s k))
+                if {c >= 0x20} andif {c < 0x7F} andif {c isnot 0x22} andif {c isnot 0x5C} then b.char(ascii.char(c))
+                else
+                    b.char('\\')
+                    b.str(hexDigit(c / 16))
+                    b.str(hexDigit(c - {{c / 16} * 16}))
+                end
+            end
+            b.char('"')
+            b.toString()
+        end
+
+    (* An index as its name, if it has one, else as a number *)
+    let id(name: String index: Int): String = if stringOp.isEmpty(name) then conv.int(index) else "$" <> name end
+
+    let typeId(m: Module i: Int): String = id(model.typeAt(m i).name i)
+
+    (* ======================================================================
+     * Types
+     * ====================================================================== *)
+
+    let heapType(m: Module h: HeapType): String =
+        case h
+            when heapAny then "any" when heapEq then "eq" when heapI31 then "i31" when heapStruct then "struct"
+            when heapArray then "array" when heapNone then "none" when heapFunc then "func"
+            when heapNoFunc then "nofunc" when heapExtern then "extern" when heapNoExtern then "noextern"
+            when heapExn then "exn" when heapNoExn then "noexn"
+            when heapIndex with x then typeId(m x.index)
+        end
+
+    (* A nullable abstract reference type in its short form, as wasm/encode
+     * writes it; others in full *)
+    let refType(m: Module nullable: Bool h: HeapType): String =
+        if nullable andif not(h?heapIndex) then
+            case h
+                when heapAny then "anyref" when heapEq then "eqref" when heapI31 then "i31ref"
+                when heapStruct then "structref" when heapArray then "arrayref" when heapNone then "nullref"
+                when heapFunc then "funcref" when heapNoFunc then "nullfuncref" when heapExtern then "externref"
+                when heapNoExtern then "nullexternref" when heapExn then "exnref" when heapNoExn then "nullexnref"
+                else ""
+            end
+        else "(ref " <> {if nullable then "null " else "" end} <> heapType(m h) <> ")"
+        end
+
+    let valType(m: Module t: ValType): String =
+        case t
+            when valI32 then "i32" when valI64 then "i64" when valF32 then "f32" when valF64 then "f64"
+            when valRef with x then refType(m x.nullable x.heap)
+        end
+
+    (* Value types after a keyword, as (param i64 i32) or (result eqref);
+     * nothing for none *)
+    let typeList(m: Module keyword: String ts: Array(ValType)): String =
+        if extent ts is 0 then ""
+        else
+            let b = stringBuilder.new()
+            b.str(" (" <> keyword)
+            for k = 0 upto extent ts - 1 do b.str(" " <> valType(m ts[k])) end
+            b.str(")")
+            b.toString()
+        end
+
+    let storage(m: Module f: model.Field): String =
+        begin
+            let t = case f.storage
+                when storageI8 then "i8"
+                when storageI16 then "i16"
+                when storageValue with x then valType(m x.type)
+            end
+            if f.mutable then "(mut " <> t <> ")" else t end
+        end
+
+    let composite(m: Module c: model.Composite): String =
+        case c
+            when compFunc with x then "(func" <> typeList(m "param" x.params) <> typeList(m "result" x.results) <> ")"
+            when compStruct with x then
+                let b = stringBuilder.new()
+                b.str("(struct")
+                for k = 0 upto extent x.fields - 1 do
+                    let f = x.fields[k]
+                    b.str(" (field " <> {if stringOp.isEmpty(f.name) then "" else "$" <> f.name <> " " end}
+                          <> storage(m f) <> ")")
+                end
+                b.str(")")
+                b.toString()
+            when compArray with x then "(array " <> storage(m x.element) <> ")"
+        end
+
+    let subType(m: Module t: model.SubType): String =
+        begin
+            let named = if stringOp.isEmpty(t.name) then "" else " $" <> t.name end
+            if t.final andif {extent t.supers is 0} then "(type" <> named <> " " <> composite(m t.composite) <> ")"
+            else
+                let b = stringBuilder.new()
+                b.str("(type" <> named <> " (sub")
+                if t.final then b.str(" final") end
+                for k = 0 upto extent t.supers - 1 do b.str(" " <> typeId(m t.supers[k])) end
+                b.str(" " <> composite(m t.composite) <> "))")
+                b.toString()
+            end
+        end
+
+    (* ======================================================================
+     * Instructions
+     * ====================================================================== *)
+
+    (* What an instruction needs of its function: its locals' names, and the
+     * labels of the structured instructions around it, innermost last *)
+    Def Context = Tuple locals: Array(String) labels: vector.T(String) end
+
+    (* A branch's target at depth d: its label's name, if it has one and no
+     * label within it has the same name, else d *)
+    let label(c: Context d: Int): String =
+        begin
+            let n = vector.length(:String c.labels)
+            if {d < 0} orif {d > n} then fail("a branch of depth " <> conv.int(d) <> " in " <> conv.int(n) <> " blocks")
+            end
+            if d is n then conv.int(d)
+            else
+                let name = vector.get(:String c.labels {{n - 1} - d})
+                let var shadowed = false
+                for k = n - d upto n - 1 do
+                    if stringOp.equal(vector.get(:String c.labels k) name) then shadowed := true end
+                end
+                if stringOp.isEmpty(name) orif shadowed then conv.int(d) else "$" <> name end
+            end
+        end
+
+    let blockType(m: Module t: model.BlockType): String =
+        case t
+            when blockEmpty then ""
+            when blockValue with x then " (result " <> valType(m x.type) <> ")"
+            when blockIndex with x then " (type " <> typeId(m x.index) <> ")"
+        end
+
+    (* The name of the item an immediate's index names, from its space *)
+    let spaceName(m: Module kind: All(k: model.ImportKind) Bool defined: Array(String) index: Int): String =
+        begin
+            let var n = 0
+            let var found = ""
+            for k = 0 upto vector.length(:model.Import m.imports) - 1 do
+                let i = vector.get(:model.Import m.imports k)
+                if kind(i.kind) then
+                    if n is index then found := i.name end
+                    n := n + 1
+                end
+            end
+            if {index >= n} andif {{index - n} < extent defined} then found := defined[index - n] end
+            found
+        end
+
+    let isFunc(k: model.ImportKind): Bool = k?importFunc
+    let isGlobal(k: model.ImportKind): Bool = k?importGlobal
+    let isTag(k: model.ImportKind): Bool = k?importTag
+    let notImported(k: model.ImportKind): Bool = false
+
+    (* The names of each space's definitions, once for the module *)
+    Def Names = Tuple functions: Array(String) globals: Array(String) tags: Array(String) data: Array(String) end
+
+    let names(m: Module): Names =
+        begin
+            let functions = array of(vector.length(:model.Function m.functions) "")
+            for k = 0 upto extent functions - 1 do functions[k] := vector.get(:model.Function m.functions k).name end
+            let globals = array of(vector.length(:model.Global m.globals) "")
+            for k = 0 upto extent globals - 1 do globals[k] := vector.get(:model.Global m.globals k).name end
+            let tags = array of(vector.length(:model.Tag m.tags) "")
+            for k = 0 upto extent tags - 1 do tags[k] := vector.get(:model.Tag m.tags k).name end
+            let data = array of(vector.length(:model.Data m.data) "")
+            for k = 0 upto extent data - 1 do data[k] := vector.get(:model.Data m.data k).name end
+            tuple let functions = functions let globals = globals let tags = tags let data = data end
+        end
+
+    (* The field named by index in the struct type t *)
+    let fieldId(m: Module t: Int index: Int): String =
+        case model.typeAt(m t).composite
+            when compStruct with x then
+                if {index >= 0} andif {index < extent x.fields} then id(x.fields[index].name index)
+                else conv.int(index)
+                end
+            else conv.int(index)
+        end
+
+    let immediates(m: Module ns: Names c: Context o: model.Op args: Array(Int)): String =
+        begin
+            if {extent args} isnot {extent o.imms} then
+                fail(o.name <> " has " <> conv.int(extent args) <> " immediates, not " <> conv.int(extent o.imms))
+            end
+            let b = stringBuilder.new()
+            for k = 0 upto extent args - 1 do
+                let a = args[k]
+                let text = case o.imms[k]
+                    when immType then typeId(m a)
+                    when immFunc then id(spaceName(m isFunc ns.functions a) a)
+                    when immLocal then id(if {a >= 0} andif {a < extent c.locals} then c.locals[a] else "" end a)
+                    when immGlobal then id(spaceName(m isGlobal ns.globals a) a)
+                    when immTag then id(spaceName(m isTag ns.tags a) a)
+                    when immData then id(spaceName(m notImported ns.data a) a)
+                    when immMemory then if a is 0 then "" else conv.int(a) end
+                    when immLabel then label(c a)
+                    when immField then fieldId(m args[k - 1] a)
+                    when immCount then conv.int(a)
+                    when immI32, immI64 then signed(a)
+                    when immOffset then if a is 0 then "" else "offset=" <> conv.int(a) end
+                end
+                if not(stringOp.isEmpty(text)) then b.str(" " <> text) end
+            end
+            b.toString()
+        end
+
+    let catchText(m: Module ns: Names c: Context x: model.Catch): String =
+        case x.kind
+            when catchTag then
+                " (catch " <> id(spaceName(m isTag ns.tags x.tag) x.tag) <> " " <> label(c x.label) <> ")"
+            when catchTagRef then
+                " (catch_ref " <> id(spaceName(m isTag ns.tags x.tag) x.tag) <> " " <> label(c x.label) <> ")"
+            when catchAll then " (catch_all " <> label(c x.label) <> ")"
+            when catchAllRef then " (catch_all_ref " <> label(c x.label) <> ")"
+        end
+
+    let named(label: String): String = if stringOp.isEmpty(label) then "" else " $" <> label end
+
+    (* An instruction's text, without its indentation; a structured one's
+     * label is pushed, and an end's popped *)
+    let instruction(m: Module ns: Names c: Context i: Inst): String =
+        case i
+            when instOp with x then x.op.name <> immediates(m ns c x.op x.args)
+            when instBlock with x then
+                let keyword = case x.kind
+                    when kindBlock then "block" when kindLoop then "loop" when kindIf then "if"
+                end
+                vector.append(:String c.labels x.label)
+                keyword <> named(x.label) <> blockType(m x.type)
+            when instTryTable with x then
+                let b = stringBuilder.new()
+                b.str("try_table" <> named(x.label) <> blockType(m x.type))
+                for k = 0 upto extent x.catches - 1 do b.str(catchText(m ns c x.catches[k])) end
+                vector.append(:String c.labels x.label)
+                b.toString()
+            when instElse then "else"
+            when instEnd then
+                if vector.empty(:String c.labels) then fail("an end with no block to end") end
+                vector.pop(:String c.labels)
+                "end"
+            when instBrTable with x then
+                let b = stringBuilder.new()
+                b.str("br_table")
+                for k = 0 upto extent x.labels - 1 do b.str(" " <> label(c x.labels[k])) end
+                b.str(" " <> label(c x.default))
+                b.toString()
+            when instF64Const with x then "f64.const " <> hexFloat(x.bits)
+            when instRefNull with x then "ref.null " <> heapType(m x.heap)
+            when instRefTest with x then "ref.test " <> refType(m x.type.nullable x.type.heap)
+            when instRefCast with x then "ref.cast " <> refType(m x.type.nullable x.type.heap)
+            when instBrOnCast with x then
+                {if x.fail then "br_on_cast_fail " else "br_on_cast " end} <> label(c x.label) <> " "
+                <> refType(m x.from.nullable x.from.heap) <> " " <> refType(m x.to.nullable x.to.heap)
+            when instSelect with x then "select" <> typeList(m "result" x.types)
+        end
+
+    (* Instructions flat, one to a line, after indent spaces and two more for
+     * each structured instruction they are in *)
+    let instructions(b: Builder m: Module ns: Names c: Context insts: vector.T(Inst) indent: Int): Ok =
+        for k = 0 upto vector.length(:Inst insts) - 1 do
+            let i = vector.get(:Inst insts k)
+            let depth = vector.length(:String c.labels)
+            let outer = {i?instEnd} orif {i?instElse}
+            let text = instruction(m ns c i)
+            b.repeat(' ' indent + {2 * if outer then depth - 1 else depth end})
+            b.str(text)
+            b.char('\n')
+        end
+
+    (* ======================================================================
+     * Modules
+     * ====================================================================== *)
+
+    let limits(min: Int max: Int): String = " " <> conv.int(min) <> if max < 0 then "" else " " <> conv.int(max) end
+
+    let globalType(m: Module t: ValType mutable: Bool): String =
+        if mutable then "(mut " <> valType(m t) <> ")" else valType(m t) end
+
+    let importText(m: Module i: model.Import): String =
+        "(import " <> quoted(i.moduleName) <> " " <> quoted(i.field) <> " "
+        <> case i.kind
+            when importFunc with x then "(func" <> named(i.name) <> " (type " <> typeId(m x.type) <> "))"
+            when importMemory with x then "(memory" <> named(i.name) <> limits(x.min x.max) <> ")"
+            when importGlobal with x then "(global" <> named(i.name) <> " " <> globalType(m x.type x.mutable) <> ")"
+            when importTag with x then "(tag" <> named(i.name) <> " (type " <> typeId(m x.type) <> "))"
+        end
+        <> ")"
+
+    let constant(m: Module ns: Names insts: Array(Inst)): String =
+        begin
+            let c = tuple let locals = array of :String end let labels = vector.new(:String) end
+            let b = stringBuilder.new()
+            for k = 0 upto extent insts - 1 do b.str(" " <> instruction(m ns c insts[k])) end
+            b.toString()
+        end
+
+    let function(b: Builder m: Module ns: Names f: model.Function): Ok =
+        begin
+            let t = model.typeAt(m f.type)
+            let params = case t.composite
+                when compFunc with x then x.params
+                else
+                    fail("function " <> f.name <> "'s type " <> conv.int(f.type) <> " is not a function type")
+                    array of :ValType end
+            end
+            let results = case t.composite when compFunc with x then x.results else array of :ValType end end
+            if {extent f.params} isnot {extent params} then
+                fail("function " <> f.name <> " names " <> conv.int(extent f.params) <> " parameters of "
+                     <> conv.int(extent params))
+            end
+            b.str("  (func" <> named(f.name) <> " (type " <> typeId(m f.type) <> ")")
+            for k = 0 upto extent params - 1 do
+                b.str(" (param" <> named(f.params[k]) <> " " <> valType(m params[k]) <> ")")
+            end
+            b.str(typeList(m "result" results))
+            b.char('\n')
+            let localNames = vector.new(:String)
+            for k = 0 upto extent f.params - 1 do vector.append(:String localNames f.params[k]) end
+            for k = 0 upto vector.length(:model.Local f.locals) - 1 do
+                let l = vector.get(:model.Local f.locals k)
+                vector.append(:String localNames l.name)
+                b.str("    (local" <> named(l.name) <> " " <> valType(m l.type) <> ")\n")
+            end
+            let c = tuple let locals = vector.toArray(:String localNames) let labels = vector.new(:String) end
+            instructions(b m ns c f.body 4)
+            if not(vector.empty(:String c.labels)) then
+                fail("function " <> f.name <> " has a block without its end")
+            end
+            b.str("  )\n") ok
+        end
+
+    let exportText(m: Module ns: Names e: model.Export): String =
+        "(export " <> quoted(e.field) <> " "
+        <> case e.kind
+            when exportFunc then "(func " <> id(spaceName(m isFunc ns.functions e.index) e.index) <> ")"
+            when exportMemory then "(memory " <> conv.int(e.index) <> ")"
+            when exportGlobal then "(global " <> id(spaceName(m isGlobal ns.globals e.index) e.index) <> ")"
+            when exportTag then "(tag " <> id(spaceName(m isTag ns.tags e.index) e.index) <> ")"
+        end
+        <> ")"
+
+    let print(m: Module): String =
+        begin
+            let b = stringBuilder.new()
+            let ns = names(m)
+            b.str("(module" <> named(m.name) <> "\n")
+            for g = 0 upto vector.length(:model.RecGroup m.types) - 1 do
+                let group = vector.get(:model.RecGroup m.types g)
+                if extent group is 1 then b.str("  " <> subType(m group[0]) <> "\n")
+                else
+                    b.str("  (rec\n")
+                    for k = 0 upto extent group - 1 do b.str("    " <> subType(m group[k]) <> "\n") end
+                    b.str("  )\n")
+                end
+            end
+            for k = 0 upto vector.length(:model.Import m.imports) - 1 do
+                b.str("  " <> importText(m vector.get(:model.Import m.imports k)) <> "\n")
+            end
+            for k = 0 upto vector.length(:model.Memory m.memories) - 1 do
+                let mem = vector.get(:model.Memory m.memories k)
+                b.str("  (memory" <> named(mem.name) <> limits(mem.min mem.max) <> ")\n")
+            end
+            for k = 0 upto vector.length(:model.Tag m.tags) - 1 do
+                let t = vector.get(:model.Tag m.tags k)
+                b.str("  (tag" <> named(t.name) <> " (type " <> typeId(m t.type) <> "))\n")
+            end
+            for k = 0 upto vector.length(:model.Global m.globals) - 1 do
+                let g = vector.get(:model.Global m.globals k)
+                b.str("  (global" <> named(g.name) <> " " <> globalType(m g.type g.mutable) <> constant(m ns g.init)
+                      <> ")\n")
+            end
+            for k = 0 upto vector.length(:model.Export m.exports) - 1 do
+                b.str("  " <> exportText(m ns vector.get(:model.Export m.exports k)) <> "\n")
+            end
+            if m.start >= 0 then b.str("  (start " <> id(spaceName(m isFunc ns.functions m.start) m.start) <> ")\n") end
+            if vector.length(:Int m.declared) > 0 then
+                b.str("  (elem declare func")
+                for k = 0 upto vector.length(:Int m.declared) - 1 do
+                    let f = vector.get(:Int m.declared k)
+                    b.str(" " <> id(spaceName(m isFunc ns.functions f) f))
+                end
+                b.str(")\n")
+            end
+            for k = 0 upto vector.length(:model.Function m.functions) - 1 do
+                function(b m ns vector.get(:model.Function m.functions k))
+            end
+            for k = 0 upto vector.length(:model.Data m.data) - 1 do
+                let d = vector.get(:model.Data m.data k)
+                let offset = if d.offset < 0 then "" else " (i32.const " <> conv.int(d.offset) <> ")" end
+                b.str("  (data" <> named(d.name) <> offset <> " " <> quoted(d.bytes) <> ")\n")
+            end
+            b.str(")\n")
+            b.toString()
+        end
+end

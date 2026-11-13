@@ -138,6 +138,8 @@ questlang/
 │                            # §3.14)
 │
 ├── jit/                     # The JIT (docs/jit.md): session, loader, debugobject
+├── wasm/                    # WebAssembly for the wasm backend (docs/wasm-plan.md): model (modules as data), ops,
+│                            # encode (the binary format), printer (the text), runtimeTypes (R)
 │
 ├── config/                  # The ABI version and artifacts' format
 ├── build/                   # The build engine and its log; compilerrunner, the host C compiler and linker;
@@ -413,7 +415,7 @@ Layer 6: modules/abstracttypes, loader, elaboration, stdlib
 Layer 7: typechecker/checker → bindings, application, aggregates, tuples, control, exceptions, autovalues →
          typecheck, scoping
 Layer 8: types/reduce → canonical → values/model → dynamicjson → interpreter/primitives, builtins,
-         formatting → treewalk | repr/* → ir/* → ssa/* → codegen/* → jit/*, modules' artifacts, config/*,
+         formatting → treewalk | repr/* → ir/* → ssa/* → codegen/*, wasm/* → jit/*, modules' artifacts, config/*,
          build/*
 Layer 9: driver/*
 ```

@@ -1,0 +1,106 @@
+(* Quest Self-Hosted Compiler: The WebAssembly Runtime Types Implementation *)
+
+module runtimeTypes : RuntimeTypes
+import
+    questlang/wasm/model : questlang/wasm/Model
+    stringOp = string : StringOp
+export
+    (* What a field of the table holds: a number, a packed byte, an eqref,
+     * or a reference, never null, to another of R's types, by name *)
+    Def Kind = Option kindI32 kindI64 kindF64 kindI8 kindEqref kindRef with name: String end end
+    Def Slot = Tuple name: String kind: Kind mutable: Bool end
+    (* A type of R: open to subtypes or final, its supertype's name ("" for
+     * none), and its fields, a struct's, or an array's one element (whose
+     * name is "") *)
+    Def Entry = Tuple name: String final: Bool super: String isArray: Bool slots: Array(Slot) end
+
+    let i32 = option kindI32 of Kind end
+    let i64 = option kindI64 of Kind end
+    let f64 = option kindF64 of Kind end
+    let i8 = option kindI8 of Kind end
+    let eqref = option kindEqref of Kind end
+    let refTo(name: String): Kind = option kindRef of Kind with let name = name end
+    let slot(name: String kind: Kind): Slot = tuple let name = name let kind = kind let mutable = false end
+    let mutableSlot(name: String kind: Kind): Slot = tuple let name = name let kind = kind let mutable = true end
+    let entry(name: String final: Bool super: String slots: Array(Slot)): Entry =
+        tuple let name = name let final = final let super = super let isArray = false let slots = slots end
+    let arrayOf(name: String element: Slot): Entry =
+        tuple let name = name let final = true let super = "" let isArray = true let slots = array of element end end
+
+    (* Every subtype of $obj starts with its hash (section 2.8), which is 0
+     * until it is first asked for *)
+    let hash = mutableSlot("hash" i32)
+
+    (* R. A subtype repeats its supertype's fields first, as WebAssembly
+     * requires. *)
+    let table = array of
+        entry("obj" false "" array of hash end)
+        entry("boxInt" true "" array of slot("value" i64) end)
+        entry("boxReal" true "" array of slot("value" f64) end)
+        arrayOf("slots" mutableSlot("" eqref))
+        arrayOf("bytes" mutableSlot("" i8))
+        arrayOf("i32s" mutableSlot("" i32))
+        entry("tupleLike" false "obj" array of hash end)
+        entry("tuple" false "tupleLike" array of hash slot("slots" refTo("slots")) end)
+        entry("option" true "tuple" array of hash slot("slots" refTo("slots")) slot("tag" i32) end)
+        entry("string" true "obj" array of hash slot("length" i32) slot("bytes" refTo("bytes")) end)
+        entry("array" true "obj" array of hash slot("elems" refTo("slots")) end)
+        entry("varBox" true "" array of slot("tag" i32) slot("payload" eqref) end)
+        entry("clos" false "obj" array of hash end)
+    end
+
+    let index(name: String): Int =
+        begin
+            let var found = ~1
+            for k = 0 upto extent table - 1 do if stringOp.equal(table[k].name name) then found := k end end
+            if found < 0 then raise model.malformed with "R has no type $" <> name end end
+            found
+        end
+
+    let field(name: String field: String): Int =
+        begin
+            let slots = table[index(name)].slots
+            let var found = ~1
+            for k = 0 upto extent slots - 1 do if stringOp.equal(slots[k].name field) then found := k end end
+            if found < 0 then raise model.malformed with "R's $" <> name <> " has no field $" <> field end end
+            found
+        end
+
+    let valType(k: Kind): model.ValType =
+        case k
+            when kindI32 then model.i32
+            when kindI64 then model.i64
+            when kindF64 then model.f64
+            when kindI8 then model.i32
+            when kindEqref then model.eqref
+            when kindRef with x then model.ref(index(x.name))
+        end
+
+    let fieldOf(s: Slot): model.Field =
+        begin
+            let storage = if s.kind?kindI8 then option storageI8 of model.Storage end
+                else option storageValue of model.Storage with let type = valType(s.kind) end
+                end
+            tuple let name = s.name let storage = storage let mutable = s.mutable end
+        end
+
+    let subType(e: Entry): model.SubType =
+        begin
+            let composite = if e.isArray then
+                    option compArray of model.Composite with let element = fieldOf(e.slots[0]) end
+                else
+                    let fields = array of(extent e.slots fieldOf(e.slots[0]))
+                    for k = 0 upto extent e.slots - 1 do fields[k] := fieldOf(e.slots[k]) end
+                    option compStruct of model.Composite with let fields = fields end
+                end
+            let supers = if stringOp.isEmpty(e.super) then array of :Int end else array of index(e.super) end end
+            tuple let name = e.name let final = e.final let supers = supers let composite = composite end
+        end
+
+    let group: model.RecGroup =
+        begin
+            let types = array of(extent table subType(table[0]))
+            for k = 0 upto extent table - 1 do types[k] := subType(table[k]) end
+            types
+        end
+end

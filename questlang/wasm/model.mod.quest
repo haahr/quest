@@ -1,0 +1,182 @@
+(* Quest Self-Hosted Compiler: WebAssembly Modules as Data Implementation *)
+
+module model : Model
+import
+    collections/vector : collections/Vector
+    word : Word
+    conv : Conv
+export
+    Def HeapType = Option
+        heapAny heapEq heapI31 heapStruct heapArray heapNone heapFunc heapNoFunc heapExtern heapNoExtern heapExn
+        heapNoExn
+        heapIndex with index: Int end
+    end
+    Def ValType = Option
+        valI32 valI64 valF32 valF64
+        valRef with nullable: Bool heap: HeapType end
+    end
+    Def RefType = Tuple nullable: Bool heap: HeapType end
+    Def Storage = Option storageI8 storageI16 storageValue with type: ValType end end
+    Def Field = Tuple name: String storage: Storage mutable: Bool end
+    Def Composite = Option
+        compFunc with params: Array(ValType) results: Array(ValType) end
+        compStruct with fields: Array(Field) end
+        compArray with element: Field end
+    end
+    Def SubType = Tuple name: String final: Bool supers: Array(Int) composite: Composite end
+    Def RecGroup = Array(SubType)
+
+    Def Imm = Option
+        immType immFunc immLocal immGlobal immTag immData immMemory immLabel immField immCount immI32 immI64
+        immOffset
+    end
+    Def Op = Tuple name: String prefix: Int code: Int imms: Array(Imm) align: Int end
+    Def BlockKind = Option kindBlock kindLoop kindIf end
+    Def BlockType = Option
+        blockEmpty
+        blockValue with type: ValType end
+        blockIndex with index: Int end
+    end
+    Def CatchKind = Option catchTag catchTagRef catchAll catchAllRef end
+    Def Catch = Tuple kind: CatchKind tag: Int label: Int end
+    Def Inst = Option
+        instOp with op: Op args: Array(Int) end
+        instBlock with kind: BlockKind type: BlockType label: String end
+        instTryTable with type: BlockType label: String catches: Array(Catch) end
+        instElse
+        instEnd
+        instBrTable with labels: Array(Int) default: Int end
+        instF64Const with bits: Int end
+        instRefNull with heap: HeapType end
+        instRefTest with type: RefType end
+        instRefCast with type: RefType end
+        instBrOnCast with fail: Bool label: Int from: RefType to: RefType end
+        instSelect with types: Array(ValType) end
+    end
+
+    Def ImportKind = Option
+        importFunc with type: Int end
+        importMemory with min: Int max: Int end
+        importGlobal with type: ValType mutable: Bool end
+        importTag with type: Int end
+    end
+    Def Import = Tuple moduleName: String field: String name: String kind: ImportKind end
+    Def Memory = Tuple name: String min: Int max: Int end
+    Def Global = Tuple name: String type: ValType mutable: Bool init: Array(Inst) end
+    Def Tag = Tuple name: String type: Int end
+    Def ExportKind = Option exportFunc exportMemory exportGlobal exportTag end
+    Def Export = Tuple field: String kind: ExportKind index: Int end
+    Def Local = Tuple name: String type: ValType end
+    Def Function = Tuple
+        name: String
+        type: Int
+        params: Array(String)
+        locals: vector.T(Local)
+        body: vector.T(Inst)
+    end
+    Def Data = Tuple name: String bytes: String offset: Int end
+    Def Module = Tuple
+        name: String
+        types: vector.T(RecGroup)
+        imports: vector.T(Import)
+        functions: vector.T(Function)
+        memories: vector.T(Memory)
+        tags: vector.T(Tag)
+        globals: vector.T(Global)
+        exports: vector.T(Export)
+        var start: Int
+        declared: vector.T(Int)
+        data: vector.T(Data)
+    end
+
+    let malformed: Exception(String) = exception malformed: String end
+
+    let newModule(name: String): Module =
+        tuple
+            let name = name
+            let types = vector.new(:RecGroup)
+            let imports = vector.new(:Import)
+            let functions = vector.new(:Function)
+            let memories = vector.new(:Memory)
+            let tags = vector.new(:Tag)
+            let globals = vector.new(:Global)
+            let exports = vector.new(:Export)
+            let var start = ~1
+            let declared = vector.new(:Int)
+            let data = vector.new(:Data)
+        end
+
+    let typeAt(m: Module i: Int): SubType =
+        begin
+            let var base = 0
+            let var g = 0
+            while {g < vector.length(:RecGroup m.types)} andif {i >= base + extent vector.get(:RecGroup m.types g)} do
+                base := base + extent vector.get(:RecGroup m.types g)
+                g := g + 1
+            end
+            if {i < 0} orif {g >= vector.length(:RecGroup m.types)} then
+                raise malformed with "no type " <> conv.int(i) end
+            end
+            vector.get(:RecGroup m.types g)[i - base]
+        end
+
+    (* How many of the imports are of the kind that counts says *)
+    let importsOf(m: Module counts: All(k: ImportKind) Bool): Int =
+        begin
+            let var n = 0
+            for i = 0 upto vector.length(:Import m.imports) - 1 do
+                if counts(vector.get(:Import m.imports i).kind) then n := n + 1 end
+            end
+            n
+        end
+    let importedFunctions(m: Module): Int = importsOf(m fun(k: ImportKind): Bool k?importFunc)
+    let importedGlobals(m: Module): Int = importsOf(m fun(k: ImportKind): Bool k?importGlobal)
+    let importedTags(m: Module): Int = importsOf(m fun(k: ImportKind): Bool k?importTag)
+    let importedMemories(m: Module): Int = importsOf(m fun(k: ImportKind): Bool k?importMemory)
+
+    let functionType(m: Module i: Int): Int =
+        begin
+            let var k = 0
+            let var found = ~1
+            for j = 0 upto vector.length(:Import m.imports) - 1 do
+                case vector.get(:Import m.imports j).kind
+                    when importFunc with x then
+                        if k is i then found := x.type end
+                        k := k + 1
+                    else ok
+                end
+            end
+            if found >= 0 then found
+            elsif {i - k} < vector.length(:Function m.functions) then vector.get(:Function m.functions {i - k}).type
+            else raise malformed with "no function " <> conv.int(i) end
+            end
+        end
+
+    let i32: ValType = option valI32 of ValType end
+    let i64: ValType = option valI64 of ValType end
+    let f32: ValType = option valF32 of ValType end
+    let f64: ValType = option valF64 of ValType end
+    let refTo(nullable: Bool heap: HeapType): ValType =
+        option valRef of ValType with let nullable = nullable let heap = heap end
+    let ref(t: Int): ValType = refTo(false option heapIndex of HeapType with let index = t end)
+    let refNull(t: Int): ValType = refTo(true option heapIndex of HeapType with let index = t end)
+    let eqref: ValType = refTo(true option heapEq of HeapType end)
+
+    let op(o: Op args: Array(Int)): Inst = option instOp of Inst with let op = o let args = args end
+    let i32ConstOp: Op =
+        tuple let name = "i32.const" let prefix = 0 let code = 0x41 let imms = array of option immI32 of Imm end end
+            let align = 0 end
+    let i64ConstOp: Op =
+        tuple let name = "i64.const" let prefix = 0 let code = 0x42 let imms = array of option immI64 of Imm end end
+            let align = 0 end
+    let i32Const(n: Int): Inst = op(i32ConstOp array of n end)
+    let i64Const(n: Int): Inst = op(i64ConstOp array of n end)
+    let f64Const(r: Real): Inst = option instF64Const of Inst with let bits = word.toInt(word.fromReal(r)) end
+    let structured(k: BlockKind t: BlockType label: String): Inst =
+        option instBlock of Inst with let kind = k let type = t let label = label end
+    let blockInst(t: BlockType label: String): Inst = structured(option kindBlock of BlockKind end t label)
+    let loopInst(t: BlockType label: String): Inst = structured(option kindLoop of BlockKind end t label)
+    let ifInst(t: BlockType label: String): Inst = structured(option kindIf of BlockKind end t label)
+    let elseInst: Inst = option instElse of Inst end
+    let endInst: Inst = option instEnd of Inst end
+end

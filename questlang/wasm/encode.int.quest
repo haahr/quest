@@ -1,0 +1,21 @@
+(* Quest Self-Hosted Compiler: The WebAssembly Encoder Interface
+ *
+ * A module (wasm/model) in the binary format, byte for byte what wasm-tools
+ * parse makes of the text wasm/printer writes for it (docs/wasm-plan.md
+ * section 8.1, step 2), name section included: so a module's text, which
+ * the backend's goldens hold, says exactly what its bytes are, and the
+ * engines' stack traces name functions. Where the format leaves a choice,
+ * this takes the one wasm-tools does: the short form of a final type with no
+ * supertype and of a nullable abstract reference type, runs of locals of one
+ * type, sections only when not empty, and a data count section exactly
+ * when code names a data segment. *)
+
+interface Encode
+import
+    questlang/wasm/model : questlang/wasm/Model
+export
+    (* The module's bytes, one to a character. Raises model.malformed for
+     * what the format cannot hold: an index or count out of range, a
+     * constant too wide for its type. *)
+    encode(m: model.Module): String
+end

@@ -1,0 +1,236 @@
+(* Quest Self-Hosted Compiler: WebAssembly Modules as Data Interface
+ *
+ * What the wasm backend makes (docs/wasm-plan.md section 8.1, step 2): a
+ * WebAssembly module with garbage collection, exceptions, and tail calls, as
+ * data that wasm/encode writes in the binary format and wasm/printer in the
+ * text format, the same module either way. Only what the backend needs is
+ * here: no tables, no 32-bit floats beyond their type, no vectors, and at
+ * most one memory, which carries bytes across to the host.
+ *
+ * Everything is referred to by its index in its space, as in the binary
+ * format: types by their position among all the module's types, counting
+ * every member of every recursion group; functions, globals, and tags with
+ * the imported ones first, in the order of the imports, then the defined ones;
+ * a branch's target by its depth, 0 being the innermost enclosing block. A
+ * name, which may be "", is only for the printer's identifiers and the name
+ * section, and a name given is one of the text format's identifier
+ * characters, without the "$". *)
+
+interface Model
+import
+    collections/vector : collections/Vector
+export
+    (* ======================================================================
+     * Types
+     * ====================================================================== *)
+
+    (* A heap type: an abstract one, or a type of the module by index *)
+    Def HeapType = Option
+        heapAny heapEq heapI31 heapStruct heapArray heapNone heapFunc heapNoFunc heapExtern heapNoExtern heapExn
+        heapNoExn
+        heapIndex with index: Int end
+    end
+
+    (* A value type: a number, or a reference to a heap type, which null may
+     * be when nullable *)
+    Def ValType = Option
+        valI32 valI64 valF32 valF64
+        valRef with nullable: Bool heap: HeapType end
+    end
+
+    (* A reference type apart from value types, as ref.test, ref.cast, and
+     * br_on_cast take one *)
+    Def RefType = Tuple nullable: Bool heap: HeapType end
+
+    (* What a field or an array's element holds: a value, or a packed
+     * integer of 8 or 16 bits *)
+    Def Storage = Option storageI8 storageI16 storageValue with type: ValType end end
+    Def Field = Tuple name: String storage: Storage mutable: Bool end
+
+    (* A function's, a struct's, or an array's type *)
+    Def Composite = Option
+        compFunc with params: Array(ValType) results: Array(ValType) end
+        compStruct with fields: Array(Field) end
+        compArray with element: Field end
+    end
+
+    (* A type definition: final or open to subtypes, its declared supertype
+     * (by index; none, or one), and its structure. A final type with no
+     * supertype is written in the short form, as the text format's
+     * (type (struct ...)) is. *)
+    Def SubType = Tuple name: String final: Bool supers: Array(Int) composite: Composite end
+
+    (* The module's types are a sequence of recursion groups. A group of one
+     * is written without rec, which is what makes its type merge with any
+     * other of the same structure; a type in a group of several is told apart
+     * by its position in the group too (docs/wasm-plan.md section 2.11). *)
+    Def RecGroup = Array(SubType)
+
+    (* ======================================================================
+     * Instructions
+     * ====================================================================== *)
+
+    (* What an operation's immediates are, each one Int of an instruction's
+     * args, in order: an index in a space (a type, a function, a local, a
+     * global, a tag, a data segment, the memory); a branch's depth; a field
+     * of the struct type given by the immediate before it; a count; a
+     * signed 32- or 64-bit constant; a memory access's offset in bytes, at
+     * the operation's natural alignment *)
+    Def Imm = Option
+        immType immFunc immLocal immGlobal immTag immData immMemory immLabel immField immCount immI32 immI64
+        immOffset
+    end
+
+    (* An operation whose immediates are all Ints: its text name, its opcode
+     * (prefix 0 for a one-byte opcode, else 0xFB or 0xFC with code after it),
+     * its immediates, and, for a memory access, the log of its natural
+     * alignment *)
+    Def Op = Tuple name: String prefix: Int code: Int imms: Array(Imm) align: Int end
+
+    (* A structured instruction's kind, and its type: no values, one value
+     * type for its one result, or a function type by index for parameters
+     * and several results *)
+    Def BlockKind = Option kindBlock kindLoop kindIf end
+    Def BlockType = Option
+        blockEmpty
+        blockValue with type: ValType end
+        blockIndex with index: Int end
+    end
+
+    (* A try_table's clause: catch (a tag's values), catch_ref (and the
+     * exception's reference), catch_all, catch_all_ref; each branches to the
+     * label at its depth, counted from outside the try_table *)
+    Def CatchKind = Option catchTag catchTagRef catchAll catchAllRef end
+    Def Catch = Tuple kind: CatchKind tag: Int label: Int end
+
+    (* An instruction. A block, loop, if, or try_table starts a structured
+     * instruction, which a later instEnd ends (and an if's instElse divides),
+     * as the binary format writes them; label names it for the printer and
+     * the name section. *)
+    Def Inst = Option
+        instOp with op: Op args: Array(Int) end
+        instBlock with kind: BlockKind type: BlockType label: String end
+        instTryTable with type: BlockType label: String catches: Array(Catch) end
+        instElse
+        instEnd
+        instBrTable with labels: Array(Int) default: Int end
+        (* f64.const of the real whose 64 bits are bits, so that every NaN is
+         * one *)
+        instF64Const with bits: Int end
+        instRefNull with heap: HeapType end
+        instRefTest with type: RefType end
+        instRefCast with type: RefType end
+        (* br_on_cast, or br_on_cast_fail when fail, from one reference type
+         * to a subtype of it *)
+        instBrOnCast with fail: Bool label: Int from: RefType to: RefType end
+        (* select, typed when types is not empty *)
+        instSelect with types: Array(ValType) end
+    end
+
+    (* ======================================================================
+     * Modules
+     * ====================================================================== *)
+
+    (* An import's kind: a function of a type, the memory (min and max in
+     * 64 KB pages, max ~1 for none), a global, or a tag of a function type
+     * with no results *)
+    Def ImportKind = Option
+        importFunc with type: Int end
+        importMemory with min: Int max: Int end
+        importGlobal with type: ValType mutable: Bool end
+        importTag with type: Int end
+    end
+    Def Import = Tuple moduleName: String field: String name: String kind: ImportKind end
+
+    Def Memory = Tuple name: String min: Int max: Int end
+    (* A global's initial value is a constant expression, without its end *)
+    Def Global = Tuple name: String type: ValType mutable: Bool init: Array(Inst) end
+    Def Tag = Tuple name: String type: Int end
+
+    Def ExportKind = Option exportFunc exportMemory exportGlobal exportTag end
+    Def Export = Tuple field: String kind: ExportKind index: Int end
+
+    (* A function of a function type, its parameters' names (one for each
+     * parameter, "" for none), its other locals, and its body, without the
+     * end that closes it *)
+    Def Local = Tuple name: String type: ValType end
+    Def Function = Tuple
+        name: String
+        type: Int
+        params: Array(String)
+        locals: vector.T(Local)
+        body: vector.T(Inst)
+    end
+
+    (* A data segment: passive (offset ~1), as array.new_data reads one, or
+     * active, at offset in the memory *)
+    Def Data = Tuple name: String bytes: String offset: Int end
+
+    (* A module, in the order of the text format's fields. declared lists
+     * the functions ref.func takes that are not otherwise referred to
+     * outside code, which must be declared (an elem declare segment); start
+     * is the start function's index, ~1 for none. *)
+    Def Module = Tuple
+        name: String
+        types: vector.T(RecGroup)
+        imports: vector.T(Import)
+        functions: vector.T(Function)
+        memories: vector.T(Memory)
+        tags: vector.T(Tag)
+        globals: vector.T(Global)
+        exports: vector.T(Export)
+        var start: Int
+        declared: vector.T(Int)
+        data: vector.T(Data)
+    end
+
+    (* A module with nothing in it *)
+    newModule(name: String): Module
+
+    (* The type at index i, counting every recursion group's members *)
+    typeAt(m: Module i: Int): SubType
+
+    (* The number of imports of each kind *)
+    importedFunctions(m: Module): Int
+    importedGlobals(m: Module): Int
+    importedTags(m: Module): Int
+    importedMemories(m: Module): Int
+
+    (* The parameters' and results' types of the function at index i in the
+     * function space, imported or defined *)
+    functionType(m: Module i: Int): Int
+
+    (* What cannot be encoded or printed, naming it *)
+    malformed: Exception(String)
+
+    (* ======================================================================
+     * Shorthand
+     * ====================================================================== *)
+
+    i32: ValType
+    i64: ValType
+    f32: ValType
+    f64: ValType
+    (* (ref $t) or (ref null $t), for the type at index t *)
+    ref(t: Int): ValType
+    refNull(t: Int): ValType
+    (* A reference to an abstract heap type *)
+    refTo(nullable: Bool heap: HeapType): ValType
+    eqref: ValType
+
+    (* An instruction of an operation and its immediates *)
+    op(o: Op args: Array(Int)): Inst
+    (* i32.const's and i64.const's operations, which ops names too *)
+    i32ConstOp: Op
+    i64ConstOp: Op
+    (* i32.const, i64.const, and f64.const *)
+    i32Const(n: Int): Inst
+    i64Const(n: Int): Inst
+    f64Const(r: Real): Inst
+    (* A structured instruction's start *)
+    blockInst(t: BlockType label: String): Inst
+    loopInst(t: BlockType label: String): Inst
+    ifInst(t: BlockType label: String): Inst
+    elseInst: Inst
+    endInst: Inst
+end
