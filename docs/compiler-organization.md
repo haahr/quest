@@ -135,6 +135,7 @@ questlang/
     ├── main                 # Main routine: every phase, -e, -i, and the bootstrap's compiling options
     ├── whole                # A whole program: its modules merged into one unit
     ├── repl                 # The REPL: input completeness, rollback, the loop over io/readline
+    ├── binaryerrors         # A compiled program's error output made a diagnostic
     └── kernel               # Kernel mode: the Jupyter kernel's protocol over a REPL session
 ```
 
