@@ -96,12 +96,12 @@ def parse_type_string(type_str: str) -> QType:
         return base_types[cleaned]
 
     try:
-        from quest.diagnostics import QuestCompilerError
+        from quest.common.diagnostics import QuestCompilerError
         from quest.typechecker.elaborate_types import elaborate_type
         from quest.types.env import Environment
         from quest.syntax.grammar import parse_quest_program
         from quest.syntax.tokenizer import Tokenizer
-        from quest.syntax.sources import SourceMap
+        from quest.common.location import SourceMap
 
         source_map = SourceMap(cleaned, "<type>")
         tokens = Tokenizer(cleaned, "<type>").tokenize_all()

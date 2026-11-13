@@ -5,7 +5,7 @@ import unittest
 import quest.syntax.ast as ast
 from quest.modules.units import parse_unit
 from quest.syntax.desugar import BUILTIN_INFIX_OPERATORS, desugar
-from quest.syntax.sources import SourceMap
+from quest.common.location import SourceMap
 from tests.python.helpers import parse_expr, parse_phrase
 
 

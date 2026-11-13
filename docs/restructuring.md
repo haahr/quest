@@ -207,6 +207,13 @@ this stage runs the full `tools/check`, not the light one.
   common/location.py, ast.py's ast_dump → syntax/astprint.py, typed_ast.py's printer → typechecker/typedastprint.py.
 - quest/__init__.py's unused re-exports, and the dead classes, removed.
 
+Done: testing/selfhost.py and transcripts.py, with testing/layout.py (paths) and directives.py, which they share
+with the runner; quest/driver/ (options, main, repl); quest/common/ (diagnostics, location); syntax/astprint.py;
+typechecker/typedastprint.py, which has the typed AST's printer, while each node class keeps its dump_header,
+dump_children, and dump_type, as each syntax node keeps its fields; quest/__init__.py imports only the type checker,
+for the binding elaborator it registers. CodeSuggestion stays: it is the type of a Diagnostic's suggestions, which
+the renderer prints; ContractivenessError was already gone.
+
 ### Stage 10. Finish
 
 compiler-organization.md's tree and layers (§2, §5) as they now are, the full `tools/check`, the push, and a release.

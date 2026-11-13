@@ -77,53 +77,6 @@ class TypedNode:
         """The type appended to the header as :type, if any."""
         return None
 
-    def dump(self, indent: int = 0, env: Optional[Any] = None) -> str:
-        """Recursively formats this node into a canonical 2-space indented
-        S-expression."""
-        child_pad = "  " * (indent + 1)
-
-        # 1. Construct header parts
-        parts = [self.__class__.__name__]
-        extra = self.dump_header(env=env)
-        if extra:
-            parts.append(extra)
-
-        t_val = self.dump_type()
-        if t_val is not None:
-            parts.append(f":type {format_type_compact(t_val, env=env)}")
-
-        header_str = " ".join(parts)
-        children = self.dump_children()
-
-        # 2. Leaf node: render compact single-line
-        if not children:
-            return f"({header_str})"
-
-        # 3. Non-leaf node: format labeled children consistently
-        lines = [f"({header_str}"]
-        for label, child in children:
-            match child:
-                case TypedNode():
-                    lines.append(f"{child_pad}{label} {child.dump(indent + 1, env=env)}")
-                case tuple() | list():
-                    if not child:
-                        lines.append(f"{child_pad}{label} ()")
-                    else:
-                        lines.append(f"{child_pad}{label} (")
-                        for elem in child:
-                            if isinstance(elem, TypedNode):
-                                lines.append(f"{child_pad}  {elem.dump(indent + 2, env=env)}")
-                            else:
-                                lines.append(f"{child_pad}  {elem}")
-                        lines.append(f"{child_pad})")
-                case None:
-                    pass
-                case _:
-                    lines.append(f"{child_pad}{label} {child}")
-
-        lines[-1] = lines[-1] + ")"
-        return "\n".join(lines)
-
 
 @dataclass(frozen=True)
 class TypedExpr(TypedNode):
@@ -1059,12 +1012,6 @@ def scope_exceptions(node: Any) -> list[TypedException]:
     or binds directly, which it makes as it runs."""
     direct = node.expr if isinstance(node, TypedExprStmt) else node.value if isinstance(node, TypedLetValue) else node
     return [exc for exc in named_exceptions_in(node) if exc is not direct and exc.symbol is not None]
-
-
-def typed_ast_dump(node: TypedNode, indent: int = 0, env: Optional[Any] = None) -> str:
-    """Formats a TypedNode into a canonical 2-space indented S-expression
-    string."""
-    return node.dump(indent, env=env)
 
 
 # The explicit traversal: a case for each class of typed node

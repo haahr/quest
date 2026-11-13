@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from quest.diagnostics import (
+from quest.common.diagnostics import (
     MAIN_FRAME,
     QuestCompilerError,
     frame_name,
@@ -35,7 +35,7 @@ from quest.interpreter.primitives import (
     real_relational,
 )
 from quest.modules.graph import Roots, UnitGraph, UnitKind
-from quest.syntax.sources import SourceMap, display_file_name, read_source
+from quest.common.location import SourceMap, display_file_name, read_source
 from quest.values.model import (
     DYNAMIC_ERROR_EXC,
     QuestException,

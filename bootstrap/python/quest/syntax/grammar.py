@@ -18,7 +18,7 @@ import dataclasses
 from functools import reduce
 from typing import Any, Callable
 
-from quest.syntax.sources import SourceMap
+from quest.common.location import SourceMap
 from quest.syntax.tokens import Token, TokenKind
 from quest.syntax.parser import (
     Construct,

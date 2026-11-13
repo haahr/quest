@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from quest.interpreter.builtins import set_system_args, use_byte_streams
-from quest.diagnostics import DiagnosticRenderer, QuestCompilerError, Severity, diagnostic_of
+from quest.common.diagnostics import DiagnosticRenderer, QuestCompilerError, Severity, diagnostic_of
 from quest.config import CompilerOptions
 from quest.interpreter.formatting import format_interactive_result
 from quest.pipeline import (
@@ -34,7 +34,7 @@ from quest.build.compiler_runner import compile_c_source
 from quest.modules.graph import UnitKind, file_unit_kind
 from quest.driver.options import OBJECT_SUFFIXES, compile_parser, driver_parser, split_program_args
 from quest.driver.repl import run_repl
-from quest.syntax.sources import SourceMap, os_text, read_source
+from quest.common.location import SourceMap, os_text, read_source
 
 
 def report_error(prog: str, error: Exception, source_file: Optional[Path] = None) -> None:

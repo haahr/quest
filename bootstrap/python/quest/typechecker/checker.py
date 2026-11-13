@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from typing import Any, Optional
 
 import quest.syntax.ast as ast
-from quest.diagnostics import QuestTypeError
+from quest.common.diagnostics import QuestTypeError
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.typechecker.checks import require_subtype
 from quest.typechecker.typed_ast import TypedExpr

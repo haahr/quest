@@ -15,9 +15,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Optional as Opt
 
-from quest.syntax.sources import SourceMap
+from quest.common.location import SourceMap
 from quest.syntax.tokens import Token, TokenKind
-from quest.diagnostics import QuestCompilerError
+from quest.common.diagnostics import QuestCompilerError
 
 
 # ============================================================================

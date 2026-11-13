@@ -48,7 +48,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, Protocol, Union, runtime_checkable
 
-from quest.diagnostics import (
+from quest.common.diagnostics import (
     Diagnostic,
     DiagnosticRenderer,
     QuestCompilerError,

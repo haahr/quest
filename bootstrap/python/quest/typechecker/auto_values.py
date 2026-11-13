@@ -32,7 +32,7 @@ from quest.types.env import (
     TypeSymbol,
     ValueSymbol,
 )
-from quest.diagnostics import QuestTypeError
+from quest.common.diagnostics import QuestTypeError
 from quest.typechecker.elaborate_types import (
     elaborate_kind,
     elaborate_type,

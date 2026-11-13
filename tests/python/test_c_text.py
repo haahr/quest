@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from quest.repr.syntax import c_char, c_int, c_int_literal, c_real, c_string, call, comma, index_table
-from quest.diagnostics import QuestCompilerError
+from quest.common.diagnostics import QuestCompilerError
 from quest.interpreter.builtins import _conv_real
 from quest.syntax.tokenizer import Tokenizer
 from quest.syntax.tokens import TokenKind

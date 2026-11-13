@@ -23,7 +23,7 @@ from quest.types import (
     is_subtype,
     is_type_equal,
 )
-from quest.diagnostics import QuestTypeError
+from quest.common.diagnostics import QuestTypeError
 from quest.types.env import (
     Environment,
     TypeSymbol,

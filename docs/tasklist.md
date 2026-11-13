@@ -23,7 +23,7 @@ prints the error in full.
 **Where to start.** The path an error takes out of an imported unit's compilation: `questlang/types/env.mod.quest`,
 which relocates it with `diagnostics.inFile` and `diagnostics.atImport` (around lines 298–333), and those functions in
 `questlang/common/diagnostics.mod.quest`; then `questlang/build/engine.mod.quest`, if the error comes back from a
-unit the build engine compiled. Compare the bootstrap's `at_import` in `bootstrap/python/quest/diagnostics.py`. The
+unit the build engine compiled. Compare the bootstrap's `at_import` in `bootstrap/python/quest/common/diagnostics.py`. The
 lost text suggests the error is rebuilt from a value that has no message or offset, rather than passed on.
 
 **Done when.** `./quest` reports the error in an imported module as `./questboot` does (message, location, and the

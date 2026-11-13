@@ -52,7 +52,7 @@ from quest.modules.paths import (
     resolve_object_file,
 )
 from quest.config import CompilerOptions
-from quest.syntax.sources import SourceMap, display_file_name, read_source
+from quest.common.location import SourceMap, display_file_name, read_source
 from quest.modules.units import parse_unit
 from quest.typechecker.typecheck import TypeElaborator
 

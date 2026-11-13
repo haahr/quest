@@ -42,7 +42,7 @@ from quest.pipeline import (
     ir_run_pipeline,
 )
 from quest.modules.graph import UnitKind, file_unit_kind
-from quest.syntax.sources import BYTE_ENCODING
+from quest.common.location import BYTE_ENCODING
 from quest.testing.errors import run_error_test
 from quest.testing.layout import (
     ROOT_DIR,

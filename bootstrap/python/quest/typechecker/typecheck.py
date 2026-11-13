@@ -23,7 +23,7 @@ from quest.types import (
     QVarType,
 )
 from quest.types.env import Environment
-from quest.diagnostics import (
+from quest.common.diagnostics import (
     QuestCompilerError,
     QuestTypeError,
 )

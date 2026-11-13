@@ -16,7 +16,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from quest.syntax.sources import BYTE_ENCODING
+from quest.common.location import BYTE_ENCODING
 
 
 def find_c_compiler() -> str:

@@ -32,7 +32,7 @@ from quest.build.headers import ensure_imported_interface_header
 from quest.config import CompilerOptions
 
 import quest.syntax.ast as ast
-from quest.diagnostics import (
+from quest.common.diagnostics import (
     MAIN_FRAME,
     diagnostic_of,
     Diagnostic,
@@ -44,6 +44,7 @@ from quest.diagnostics import (
 )
 from quest.typechecker.elaborate_types import elaborate_kind, elaborate_type
 from quest.types.env import Environment, Scope
+from quest.syntax.astprint import ast_dump
 from quest.syntax.desugar import desugar
 from quest.syntax.grammar import parse_quest_program
 from quest.interpreter.formatting import format_interactive_result
@@ -60,13 +61,14 @@ from quest.interpreter.treewalk import (
 from quest.values.model import QuestException, OK_VALUE, QOk, QValue, qvalue_to_str
 from quest.syntax.parser import ParserError
 from quest.syntax.tokenizer import Tokenizer, TokenizerError
-from quest.syntax.sources import SourceMap, read_source
+from quest.common.location import SourceMap, read_source
 from quest.syntax.tokens import Token, TokenKind
 from quest.typechecker.typecheck import (
     elaborate_phrase,
     elaborate_program,
     synth_expr,
 )
+from quest.typechecker.typedastprint import typed_ast_dump
 from quest.typechecker.typed_ast import TypedBinding, TypedExpr, TypedImport, TypedModule, TypedNode, TypedProgram
 from quest.types import KindError, QKind, QType
 
@@ -258,7 +260,7 @@ class ParsePhase(Phase):
 
     def dump(self, output_data: Any, ctx: CompilerContext) -> str:
         if isinstance(output_data, ast.ASTNode):
-            return ast.ast_dump(output_data, show_offsets=ctx.options.show_offsets)
+            return ast_dump(output_data, show_offsets=ctx.options.show_offsets)
         return str(output_data)
 
 
@@ -274,7 +276,7 @@ class DesugarPhase(Phase):
 
     def dump(self, output_data: Any, ctx: CompilerContext) -> str:
         if isinstance(output_data, ast.ASTNode):
-            return ast.ast_dump(output_data, show_offsets=ctx.options.show_offsets)
+            return ast_dump(output_data, show_offsets=ctx.options.show_offsets)
         return str(output_data)
 
 
@@ -307,7 +309,7 @@ class TypecheckPhase(Phase):
 
     def dump(self, output_data: Any, ctx: CompilerContext) -> str:
         if isinstance(output_data, TypedNode):
-            return output_data.dump(env=ctx.env)
+            return typed_ast_dump(output_data, env=ctx.env)
         return str(output_data)
 
 

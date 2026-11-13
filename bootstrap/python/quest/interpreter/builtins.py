@@ -27,7 +27,7 @@ try:
 except ImportError:
     line_editor = None  # type: ignore[assignment]
 
-from quest.syntax.sources import BYTE_ENCODING, os_text
+from quest.common.location import BYTE_ENCODING, os_text
 from quest.values.dynamic_writer import jsog_encode
 from quest.values.dynamic_reader import jsog_decode
 from quest.interpreter.primitives import (

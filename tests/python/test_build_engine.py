@@ -629,7 +629,7 @@ class TestImportsResolvedAgain(unittest.TestCase):
         self.assertEqual(self._build("h3")[0], [])
 
     def test_changed_include_path_rejects_incompatible_interface(self) -> None:
-        from quest.diagnostics import QuestCompilerError
+        from quest.common.diagnostics import QuestCompilerError
 
         self.assertEqual(self._build("h1")[1], "7")
         with self.assertRaises(QuestCompilerError) as ctx:

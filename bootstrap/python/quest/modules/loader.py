@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import quest.syntax.ast as ast
-from quest.diagnostics import QuestTypeError
+from quest.common.diagnostics import QuestTypeError
 from quest.modules.elaboration import (
     create_module_export_scope,
     elaborate_interface,
@@ -48,7 +48,7 @@ from quest.modules.paths import (
     is_typecheck_only,
     resolve_object_file,
 )
-from quest.syntax.sources import SourceMap, display_file_name, read_source
+from quest.common.location import SourceMap, display_file_name, read_source
 from quest.modules.units import parse_unit
 
 if TYPE_CHECKING:

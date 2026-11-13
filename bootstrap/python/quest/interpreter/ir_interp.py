@@ -32,7 +32,7 @@ from __future__ import annotations
 import sys
 from typing import Any, Optional
 
-from quest.diagnostics import MAIN_FRAME, QuestCompilerError, init_frame
+from quest.common.diagnostics import MAIN_FRAME, QuestCompilerError, init_frame
 from quest.interpreter.formatting import exposed_type, format_value_with_type
 from quest.interpreter.primitives import (
     ARRAY_OP_ERROR_EXC,

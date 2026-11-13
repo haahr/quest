@@ -28,7 +28,7 @@ from quest.codegen.backend import module_file_to_c
 from quest.build.compiler_runner import compile_c_to_object
 from quest.build.headers import ensure_imported_interface_header
 from quest.config import CompilerOptions
-from quest.diagnostics import in_unit
+from quest.common.diagnostics import in_unit
 from quest.modules.artifacts.manifest import (
     ImportedInterfaceRef,
     ImportedModuleRef,
@@ -42,7 +42,7 @@ from quest.modules.units import parse_unit, unit_declaration
 from quest.modules.loader import load_interface
 from quest.modules.graph import Resolver, Roots, UnitGraph, resolve_interface, resolve_module, unit_artifact_dir
 from quest.modules.paths import DEFAULT_LIB_DIR, DEFAULT_PROJECT_DIR, resolve_object_file
-from quest.syntax.sources import SourceMap, display_file_name, read_source
+from quest.common.location import SourceMap, display_file_name, read_source
 
 
 class ModuleCompileResult(tuple):

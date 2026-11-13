@@ -31,7 +31,7 @@ from typing import Optional
 import quest.syntax.ast as ast
 from quest.modules.graph import Resolver, Roots
 from quest.syntax.grammar import parse_quest_program
-from quest.syntax.sources import BYTE_ENCODING, SourceMap
+from quest.common.location import BYTE_ENCODING, SourceMap
 from quest.syntax.tokenizer import Tokenizer
 
 

@@ -12,7 +12,7 @@ goes on. docs/syntax.md §2 gives the lexical rules."""
 from __future__ import annotations
 
 from typing import Callable, Iterator
-from quest.syntax.sources import SourceMap, read_source
+from quest.common.location import SourceMap, read_source
 from quest.syntax.tokens import (
     DELIMITERS,
     KEYWORDS,
@@ -21,7 +21,7 @@ from quest.syntax.tokens import (
     Token,
     TokenKind,
 )
-from quest.diagnostics import QuestCompilerError
+from quest.common.diagnostics import QuestCompilerError
 
 
 class TokenizerError(QuestCompilerError):

@@ -23,7 +23,7 @@ from collections.abc import Callable
 from collections.abc import Sequence
 from typing import Any, Optional
 
-from quest.diagnostics import Diagnostic, DiagnosticLabel, QuestCompilerError, Severity
+from quest.common.diagnostics import Diagnostic, DiagnosticLabel, QuestCompilerError, Severity
 from quest.types import QType, is_type_equal
 
 

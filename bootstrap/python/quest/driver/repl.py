@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from quest.diagnostics import DiagnosticRenderer
+from quest.common.diagnostics import DiagnosticRenderer
 from quest.syntax.grammar import parse_quest_program
 from quest.interpreter.formatting import format_interactive_result
 from quest.syntax.parser import ParserError
@@ -38,7 +38,7 @@ from quest.config import CompilerOptions
 from quest.pipeline import CompilerContext, InterpretPhase, PipelineResult, default_pipeline
 from quest.values.model import QOk, QuestException, QValue
 from quest.syntax.tokenizer import Tokenizer, TokenizerError
-from quest.syntax.sources import SourceMap
+from quest.common.location import SourceMap
 from quest.syntax.tokens import TokenKind
 from quest.typechecker.typed_ast import TypedBinding, TypedExpr
 

@@ -37,7 +37,7 @@ from quest.types import (
 from quest.types.env import (
     Environment,
 )
-from quest.diagnostics import QuestTypeError
+from quest.common.diagnostics import QuestTypeError
 from quest.typechecker.elaborate_types import (
     elaborate_type,
 )

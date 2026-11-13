@@ -22,7 +22,7 @@ from quest.build.headers import compile_interface_with_header
 from quest.syntax.grammar import parse_quest_program
 from quest.modules.artifacts.module_compiler import compile_module_file
 from quest.syntax.tokenizer import Tokenizer
-from quest.syntax.sources import SourceMap
+from quest.common.location import SourceMap
 from quest.driver.main import run_compile
 
 

@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from quest.syntax.sources import BYTE_ENCODING
+from quest.common.location import BYTE_ENCODING
 from quest.testing import releases
 from quest.testing.layout import ROOT_DIR, DRIVER_SCRIPT, SELF_HOSTED_DRIVER
 

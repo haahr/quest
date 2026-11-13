@@ -89,7 +89,7 @@ from quest.repr.layout import layout_of, resolved_shape, shape_location_represen
 from quest.repr.digests import type_identity_key
 from quest.repr.generic_layout import qtype_to_name_str
 from quest.repr.symbols import mangle_ident, mangle_module_ident, mangle_module_name, module_record_ident
-from quest.diagnostics import MAIN_FRAME, init_frame
+from quest.common.diagnostics import MAIN_FRAME, init_frame
 from quest.ir import nodes as ir
 from quest.ir.describe import echo_value_kind
 from quest.ir.represent import held_shape

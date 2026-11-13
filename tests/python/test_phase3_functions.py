@@ -6,7 +6,7 @@ tests/source/language/core_functions."""
 import unittest
 
 import quest.syntax.ast as ast
-from quest.diagnostics import QuestTypeError as TypeError
+from quest.common.diagnostics import QuestTypeError as TypeError
 from quest.typechecker.typecheck import check_expr, synth_expr
 from quest.typechecker.typed_ast import TypedFun
 from quest.types import (

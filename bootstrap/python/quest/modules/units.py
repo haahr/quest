@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import Optional
 
 import quest.syntax.ast as ast
-from quest.diagnostics import QuestTypeError
+from quest.common.diagnostics import QuestTypeError
 from quest.syntax.desugar import desugar
 from quest.syntax.grammar import parse_quest_program
-from quest.syntax.sources import SourceMap
+from quest.common.location import SourceMap
 from quest.syntax.tokenizer import Tokenizer
 
 INTERFACE_SUFFIX = ".int.quest"

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Optional, Union
 
-from quest.diagnostics import Diagnostic, DiagnosticRenderer, QuestCompilerError
+from quest.common.diagnostics import Diagnostic, DiagnosticRenderer, QuestCompilerError
 from quest.types.model import (
     TYPE_KIND,
     QAbstractType,

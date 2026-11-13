@@ -21,8 +21,8 @@ from typing import Any, Optional, Union
 
 from quest.config.abi import built_from, has_current_abi
 from quest.config import CompilerOptions
-from quest.diagnostics import QuestCompilerError, QuestTypeError
-from quest.syntax.sources import read_source
+from quest.common.diagnostics import QuestCompilerError, QuestTypeError
+from quest.common.location import read_source
 from quest.syntax.tokens import TokenKind
 from quest.syntax.tokenizer import Tokenizer
 

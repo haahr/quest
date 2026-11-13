@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import Any, Optional, Union
 
 import quest.syntax.ast as ast
-from quest.diagnostics import QuestTypeError
+from quest.common.diagnostics import QuestTypeError
 from quest.types import (
     TYPE_KIND,
     alias_reference,

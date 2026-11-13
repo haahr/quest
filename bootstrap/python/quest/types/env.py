@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, ClassVar, Optional, Protocol
 
-from quest.diagnostics import in_unit
+from quest.common.diagnostics import in_unit
 from quest.modules.graph import UnitGraph
 from quest.types.model import (
     BOOL_TYPE,

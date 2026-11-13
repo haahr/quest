@@ -3,7 +3,7 @@
 import unittest
 
 import quest.syntax.ast as ast
-from quest.diagnostics import QuestTypeError
+from quest.common.diagnostics import QuestTypeError
 from quest.types.env import Environment, ValueSymbol
 from quest.typechecker.typed_ast import TypedExprStmt, TypedLetValue
 from quest.typechecker.typecheck import TypeElaborator

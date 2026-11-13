@@ -46,7 +46,7 @@ from quest.modules.paths import (
     dependency_change,
     recorded_dependencies,
 )
-from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError, at_import, diagnostic_of, in_unit
+from quest.common.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError, at_import, diagnostic_of, in_unit
 from quest.values.dynamic_json import parse_type_string
 from quest.values.dynamic_writer import jsog_encode
 from quest.values.dynamic_reader import jsog_decode
@@ -67,7 +67,7 @@ from quest.values.model import (
     QString,
 )
 from quest.syntax.tokenizer import Tokenizer
-from quest.syntax.sources import SourceMap, display_file_name, read_source
+from quest.common.location import SourceMap, display_file_name, read_source
 from quest.types import (
     QAliasType,
     BOOL_TYPE,

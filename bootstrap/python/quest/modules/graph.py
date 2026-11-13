@@ -47,7 +47,7 @@ from typing import TYPE_CHECKING, Any, Optional, Union
 
 import quest.syntax.ast as ast
 from quest.config import CompilerOptions
-from quest.diagnostics import QuestCompilerError
+from quest.common.diagnostics import QuestCompilerError
 from quest.modules.artifacts.manifest import ModuleManifest, unit_staleness
 from quest.modules.paths import (
     InterfaceDependency,
@@ -61,7 +61,7 @@ from quest.modules.paths import (
     strip_unit_suffix,
 )
 from quest.modules.units import unit_kind
-from quest.syntax.sources import read_source
+from quest.common.location import read_source
 
 if TYPE_CHECKING:
     from quest.types.symbols import Scope
@@ -295,7 +295,7 @@ def interface_import_paths(source: Path) -> list[str]:
     reports why.
     """
     from quest.syntax.grammar import parse_quest_program
-    from quest.syntax.sources import SourceMap
+    from quest.common.location import SourceMap
     from quest.syntax.tokenizer import Tokenizer
 
     try:

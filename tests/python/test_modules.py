@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 
 import quest.syntax.ast as ast
 from quest.syntax.desugar import desugar
-from quest.diagnostics import QuestTypeError
+from quest.common.diagnostics import QuestTypeError
 from quest.types.env import Environment
 from quest.modules.elaboration import (
     elaborate_import,

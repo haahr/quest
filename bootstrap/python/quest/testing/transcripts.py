@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from quest.syntax.sources import BYTE_ENCODING
+from quest.common.location import BYTE_ENCODING
 from quest.testing.errors import relativize_root_paths
 from quest.testing.layout import ROOT_DIR, DRIVER_SCRIPT, EVAL_CASES, EVAL_GOLDEN, TESTS_REPL_DIR, TESTS_REPL_GOLDEN_DIR
 from quest.testing.directives import LOAD_PATTERN, parse_test_directives

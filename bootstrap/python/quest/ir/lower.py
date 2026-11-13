@@ -19,7 +19,7 @@ The self-hosted counterpart is questlang/ir/lower.
 from __future__ import annotations
 
 from typing import Optional
-from quest.diagnostics import MAIN_FRAME, frame_name, init_frame
+from quest.common.diagnostics import MAIN_FRAME, frame_name, init_frame
 from quest.modules.elaboration import build_record_type_from_scope
 from quest.modules.stdlib import STANDARD_LIBRARY_MODULE_NAMES, STANDARD_LIBRARY_MODULES
 from quest.config import CompilerOptions

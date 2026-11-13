@@ -39,7 +39,7 @@ tests/source/errors/run/divide_by_zero.quest:4:13: error: Exception: int.error
 ```
 
 The header and source line are what the interpreter prints today. The `in` lines are new: a `trace` field on
-`Diagnostic` (`quest/diagnostics.py`), rendered after the source line and any notes. Run-error goldens
+`Diagnostic` (`quest/common/diagnostics.py`), rendered after the source line and any notes. Run-error goldens
 (`tests/golden/errors/run/*.error`) match the substring `error: Exception: <name>`, which is unchanged.
 
 An exception raised inside an external C primitive (`quest_string_get_char`, say) has no raise site: the diagnostic
@@ -66,7 +66,7 @@ Exception: int.error
   in <main>
 ```
 
-The `at` line is omitted when there is no raise site. File names are `display_file_name` (`quest/syntax/sources.py`)
+The `at` line is omitted when there is no raise site. File names are `display_file_name` (`quest/common/location.py`)
 of the source file, fixed at compile time. The `run_c_compiled` phase parses this output into the diagnostic of
 §2.1, reading the named file for the source line (and rendering without it if the file cannot be read). This
 replaces today's `Diagnostic.make_error(stderr, 0)`, which places every compiled exception at `1:1`.
@@ -146,7 +146,7 @@ again as `ir.Reraise` does, from anywhere ([raised.md](raised.md)).
 
 ### 3.2. In the Interpreters
 
-`QuestException` already has `offset`, and `in_unit` (`quest/diagnostics.py`) attaches an imported unit's source map
+`QuestException` already has `offset`, and `in_unit` (`quest/common/diagnostics.py`) attaches an imported unit's source map
 to errors raised while elaborating it. Raise sites use the same two fields rather than a new location type:
 
 - The tree-walking interpreter's scopes have the source map of the file whose code runs in them (`RuntimeEnvironment.
@@ -196,7 +196,7 @@ The interpreters may keep per-call state, so they keep an explicit stack of fram
   error leaves a frame without them (`note_frames`), to the stack reversed. A re-raise keeps them. Fatal run-time
   errors (an option ordinal out of bounds) have frames as exceptions do.
 
-Names are given by the rules of §2.3 where functions are made (`frame_name`, `quest/diagnostics.py`). A let-bound
+Names are given by the rules of §2.3 where functions are made (`frame_name`, `quest/common/diagnostics.py`). A let-bound
 function is the value of a `TypedLetValue`, which both consumers see, so the binder needs no field of its own:
 
 - The tree-walking interpreter names a closure when it makes it (`make_closure`), from the binder, if any, and the

@@ -15,7 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from quest.diagnostics import at_import, in_unit
+from quest.common.diagnostics import at_import, in_unit
 from quest.types.env import Environment
 from quest.modules.graph import Resolved, Resolver, Roots
 from quest.modules.artifacts.interface_compiler import (

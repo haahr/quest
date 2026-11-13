@@ -19,7 +19,7 @@ from quest.types.env import (
     Environment,
     ValueSymbol,
 )
-from quest.diagnostics import QuestTypeError
+from quest.common.diagnostics import QuestTypeError
 from quest.typechecker.elaborate_types import elaborate_type
 from quest.typechecker.typed_ast import (
     TypedException,

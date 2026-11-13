@@ -31,7 +31,7 @@ from quest.types.env import (
     TypeSymbol,
     ValueSymbol,
 )
-from quest.diagnostics import Diagnostic, QuestTypeError
+from quest.common.diagnostics import Diagnostic, QuestTypeError
 from quest.modules.elaboration import (
     elaborate_interface,
     elaborate_module,

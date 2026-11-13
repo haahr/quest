@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 import quest.syntax.ast as ast
-from quest.diagnostics import QuestCompilerError, QuestTypeError
+from quest.common.diagnostics import QuestCompilerError, QuestTypeError
 from quest.types.env import Environment
 from quest.typechecker.typed_ast import TypedExpr
 from quest.types import (

@@ -13,7 +13,7 @@ from __future__ import annotations
 import math
 from typing import Optional
 
-from quest.diagnostics import Diagnostic, DiagnosticLabel, QuestCompilerError, Severity
+from quest.common.diagnostics import Diagnostic, DiagnosticLabel, QuestCompilerError, Severity
 from quest.values.model import QExceptionVal, QuestException
 
 

@@ -1,7 +1,7 @@
 # Quest Diagnostics: Errors and How They Are Reported
 
 This document describes how the two compilers, their interpreters, and the REPL find errors, carry them to the
-driver, and print them. The bootstrap's are `bootstrap/python/quest/diagnostics.py` and `pipeline.py`; the
+driver, and print them. The bootstrap's are `bootstrap/python/quest/common/diagnostics.py` and `pipeline.py`; the
 self-hosted compiler's are `questlang/common/diagnostics` and `diagbag`. Both print the same text for the same error,
 which the error tests compare ([testing.md](testing.md) §3).
 
@@ -10,7 +10,7 @@ which the error tests compare ([testing.md](testing.md) §3).
 ## 1. Principles
 
 1. **Offsets.** An error is located by a 0-indexed character offset and a length in its unit's source text. A
-   `SourceMap` (`syntax/sources.py`, `questlang/common/location`) turns an offset into a file, line, and column when
+   `SourceMap` (`common/location.py`, `questlang/common/location`) turns an offset into a file, line, and column when
    the error is printed.
 2. **Raised where found, reported at the edge.** Code that finds an error raises it, and the work it was part of
    stops. Each phase of the pipeline catches what its work raised and makes a diagnostic of it; the driver prints the
@@ -140,7 +140,7 @@ in that file, not the one being compiled. So the unit's file travels with the er
 - **Rendering.** `diagnostic_of(error)` makes the diagnostic, carrying the unit's source map
   (`Diagnostic.source_map`) and the import labels (each `DiagnosticLabel.source_map`); the renderer locates each label
   in its own file. Diagnostics name a unit by its path relative to the current directory when it is inside it
-  (`syntax/sources.py`).
+  (`common/location.py`).
 
 ```
 grp.int.quest:3:29: error: Undefined type 'Nope'
@@ -211,5 +211,5 @@ come each secondary label, as `::: FILE:LINE:COLUMN` with its line and a dashed 
 (`= note:`), the help (`= help:`), and an uncaught exception's frames (`in NAME`, with a run of the same frame shown
 once and then `... NAME repeated N more times`). A diagnostic without a location prints only its message. A fatal
 diagnostic says `fatal:` in the bootstrap and `fatal error:` in the self-hosted compiler. A unit is named by its path
-relative to the current directory when it is inside it (`display_file_name` in `syntax/sources.py`). The output is
+relative to the current directory when it is inside it (`display_file_name` in `common/location.py`). The output is
 plain text, without color.

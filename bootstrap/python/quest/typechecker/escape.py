@@ -15,7 +15,7 @@ The self-hosted counterpart is questlang/typechecker/escape."""
 
 from __future__ import annotations
 
-from quest.diagnostics import QuestTypeError
+from quest.common.diagnostics import QuestTypeError
 from quest.types import (
     QType,
     find_path_types,

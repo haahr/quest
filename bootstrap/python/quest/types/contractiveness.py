@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from quest.diagnostics import TypeRecursionLimitExceeded
+from quest.common.diagnostics import TypeRecursionLimitExceeded
 from quest.types.kinds import KindError
 from quest.types.model import (
     MAX_TYPE_EXPANSION_DEPTH,

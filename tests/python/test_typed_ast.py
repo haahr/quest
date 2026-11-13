@@ -35,6 +35,7 @@ from quest.types.env import (
     TypeSymbol,
     ValueSymbol,
 )
+from quest.typechecker.typedastprint import typed_ast_dump
 from quest.typechecker.typed_ast import (
     TypedApp,
     TypedArray,
@@ -73,7 +74,6 @@ from quest.typechecker.typed_ast import (
     TypedVarCell,
     TypedVariant,
     TypedWhile,
-    typed_ast_dump,
 )
 
 
