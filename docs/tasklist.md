@@ -5,29 +5,28 @@ it, where to start, and when it is done. Remove a task when the work lands.
 
 ---
 
-## The self-hosted compiler loses the messages of errors in imported modules
+## A missing interface in an imported module's import is located at the module's first line
 
-**Problem.** When a module that a program imports fails to compile, `./quest` reports the error at the module's first
-line with no message (`x.mod.quest:1:1: error:` and nothing after it), so its text, its location, and the "imported
-here" note are all lost. `./questboot` reports the same error in full, and `./quest` does too when given the module
-itself. It was met while writing the MLton-gap plan's passes, where a type error in an edited compiler module showed
-only as `simplify.mod.quest:1:1: error:`.
+**Problem.** When a module file that a program imports itself imports an interface that cannot be found, both
+compilers report the error at the module's `1:1`, quoting its first line, instead of at the import that names the
+interface. It shows in a `-o` build with either compiler, and in `./quest`'s run with the JIT, which compiles the module
+from source as a build does. A run with `--no-jit`, and the bootstrap's run, which type check the module through
+`env.atImport`, locate it at the import. Since the compilers agree on `-o`, both must change together.
 
-**Reproduce.** In an empty directory, `x.int.quest` (`interface X export f(n: Int): Int end`), `x.mod.quest` (`module
-x : X export let f(n: Int): Int = n + true end`), and `p.quest` (`import x : X; x.f(1)`). `./quest --build-dir b
-p.quest` prints `x.mod.quest:1:1: error:` with an empty message; `./questboot --build-dir b2 p.quest` prints
-`x.mod.quest:3:30: error: Type mismatch: synthesized type 'Bool' is not a subtype of expected type 'Int'`, the line
-and caret, and `p.quest:1:10 ... note: imported here`; `./quest --build-dir b3 --stop-after typecheck x.mod.quest`
-prints the error in full.
+**Reproduce.** In an empty directory, `a.int.quest` (`interface A export g(): Ok end`), `a.mod.quest` (a comment on
+its first line, then `module a : A import bad : Bad export let g(): Ok = bad.f() end`, with `bad : Bad` on line 4),
+and `main.quest` (`import a : A; a.g();`), with no `bad.int.quest`. `./questboot --build-dir b -o b/m main.quest`
+and `./quest --build-dir b2 main.quest` print `a.mod.quest:1:1: error: Undefined interface 'Bad': ...` and quote the
+comment; `./questboot --build-dir b3 main.quest` prints `a.mod.quest:4:9`, the import, and `main.quest:1:10 ... note:
+imported here`.
 
-**Where to start.** The path an error takes out of an imported unit's compilation: `questlang/types/env.mod.quest`,
-which relocates it with `diagnostics.inFile` and `diagnostics.atImport` (around lines 298–333), and those functions in
-`questlang/common/diagnostics.mod.quest`; then `questlang/build/engine.mod.quest`, if the error comes back from a
-unit the build engine compiled. Compare the bootstrap's `at_import` in `bootstrap/python/quest/common/diagnostics.py`. The
-lost text suggests the error is rebuilt from a value that has no message or offset, rather than passed on.
+**Where to start.** Step 2 of `elaborate` in `questlang/modules/artifacts/modulecompiler.mod.quest` loads each
+import's interface (`elaboration.loadInterface`) outside `env.atImport`, so the error keeps offset 0 and
+`env.withUnitSource` places it at the file's start; the bootstrap's module compiler in `bootstrap/python/quest/` does
+the same. Wrapping the load in `env.atImport(e imp.offset 1 ...)`, in both, should locate it at the import.
 
-**Done when.** `./quest` reports the error in an imported module as `./questboot` does (message, location, and the
-"imported here" note), and an error test under `tests/` (with its `tests/golden/self-hosted/errors/` golden) shows it.
+**Done when.** Every path (`-o`, run with the JIT, run with `--no-jit`) in both compilers reports the error at the
+import, and a case under `tests/self-hosted/build-errors` shows it (`build_errors.py` checks all three paths).
 
 ---
 
