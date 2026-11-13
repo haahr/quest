@@ -3,6 +3,7 @@
 unsound module session : Session
 import
     questlang/common/location : questlang/common/Location
+    questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/types/env : questlang/types/Env
     questlang/types/symbols : questlang/types/Symbols
     questlang/modules/elaboration : questlang/modules/Elaboration
@@ -12,6 +13,7 @@ import
     mangling = questlang/repr/symbols : questlang/repr/Symbols
     tm = questlang/types/model : questlang/types/Model
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/typechecker/typecheck : questlang/typechecker/Typecheck
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/lower : questlang/ir/Lower
     questlang/ir/verify : questlang/ir/Verify
@@ -417,26 +419,76 @@ export
             symbols
         end
 
+    (* body, with an error it raises in another file than file labeled as
+     * imported at offset in file, as env.atImport labels the errors of the
+     * units the type checker loads *)
+    let importedAt(body: All() Ok offset: Int file: String): Ok =
+        try
+            body()
+        when diagnostics.compilerError with err then
+            diagnostics.raiseError(:Ok diagnostics.atImport(err offset 1 file))
+        end
+
     (* A module file the driver does not link, which an input or another such
      * module imports, loaded once in a session (docs/jit.md section 3.4):
      * compiled from source, after the module files it imports. Its
-     * initializer runs when an importer's first does. *)
+     * initializer runs when an importer's first does. It is elaborated as a
+     * build elaborates a module file (typecheck.install), so that an error in
+     * one of its members is raised, not recorded by the input's checker, whose
+     * hook the module system would otherwise call back to; the input's is put
+     * back after. *)
     let rec loadModuleFile(s: T canonical: String source: String): Ok =
         if inDriver(canonical) orif hashMap.contains(:String :Bool s.loaded canonical) then
             ok
         else
             let e = s.e
-            let m = moduleCompiler.moduleFileUnit(source vector.toArray(:String e.includePaths) e.buildDir e.programDir
-                maybe.some(:graph.Resolver e.units.resolver))
-            for i = 0 upto {extent m.imports - 1} do loadModuleFile(s m.imports[i].name m.imports[i].source) end
+            let saved = elaboration.hooks.elaborateBinding
+            typecheck.install()
+            let m = try
+                moduleCompiler.moduleFileUnit(source vector.toArray(:String e.includePaths) e.buildDir e.programDir
+                    maybe.some(:graph.Resolver e.units.resolver))
+            else with r then
+                elaboration.hooks.elaborateBinding := saved
+                raised.reraise(:moduleCompiler.ModuleUnit r)
+            end
+            elaboration.hooks.elaborateBinding := saved
+            for i = 0 upto {extent m.imports - 1} do
+                let imp = m.imports[i]
+                importedAt(fun(): Ok loadModuleFile(s imp.name imp.source) imp.offset location.file(m.sourceMap))
+            end
             compileAndLoad(s m.unit)
             hashMap.insert(:String :location.SourceMap s.sources location.file(m.sourceMap) m.sourceMap)
             hashMap.insert(:String :Bool s.loaded canonical true)
             vector.append(:String s.loadedNow canonical)
         end
 
-    (* The module an input imports, if the driver does not link it *)
-    let loadImported(s: T imp: nodes.Import): Ok =
+    (* The offset of the import item in program that imports the module
+     * canonical, if one does *)
+    let importOffset(program: typedAst.Program canonical: String): maybe.T(Int) =
+        begin
+            let var found = maybe.none(:Int)
+            for i = 0 upto {extent program.phrases - 1} do
+                case program.phrases[i].form
+                    when bindImport with x then
+                        for k = 0 upto {extent x.items - 1} do
+                            let item = x.items[k]
+                            let paths = typedAst.effectiveCanonicalModulePaths(item)
+                            for j = 0 upto {extent paths - 1} do
+                                if maybe.isNone(:Int found) andif stringOp.equal(paths[j] canonical) then
+                                    found := maybe.some(:Int item.offset)
+                                end
+                            end
+                        end
+                    else ok
+                end
+            end
+            found
+        end
+
+    (* The module an input (program, in file) imports, if the driver does not
+     * link it; an error compiling it is labeled as imported where program
+     * imports it *)
+    let loadImported(s: T imp: nodes.Import program: typedAst.Program file: String): Ok =
         if strutil.startsWith(imp.canonicalPath "qj_") orif {stringOp.length(imp.interfacePath) is 0}
             orif inDriver(imp.canonicalPath) orif hashMap.contains(:String :Bool s.loaded imp.canonicalPath) then
             ok
@@ -445,7 +497,9 @@ export
             if maybe.isNone(:String source) then
                 fail(:Ok "module '" <> imp.canonicalPath <> "' is not in the driver, and has no source to compile")
             end
-            loadModuleFile(s imp.canonicalPath maybe.unwrap(:String source))
+            let load = fun(): Ok loadModuleFile(s imp.canonicalPath maybe.unwrap(:String source))
+            let site = importOffset(program imp.canonicalPath)
+            if maybe.isSome(:Int site) then importedAt(load maybe.unwrap(:Int site) file) else load() end
         end
 
     (* A module a later input may name: an imported one, by its record, as
@@ -526,7 +580,9 @@ export
                 printResult capture)
                 when lower.loweringError with m then fail(:nodes.Unit m)
                 end
-            for i = 0 upto {extent unit.imports - 1} do loadImported(s unit.imports[i]) end
+            for i = 0 upto {extent unit.imports - 1} do
+                loadImported(s unit.imports[i] program location.file(sourceMap))
+            end
             let m = vector.get(:nodes.Module unit.modules vector.length(:nodes.Module unit.modules) - 1)
             let recordType = maybe.unwrap(:nodes.Variable m.recordVar).type
             let symbols = compileAndLoad(s unit)

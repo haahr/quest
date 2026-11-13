@@ -33,7 +33,7 @@ import
     system : System
 export
     Let ModuleCompileResult = Tuple c: String o: String qm: String end
-    Let ModuleImport = Tuple name: String source: String end
+    Let ModuleImport = Tuple name: String source: String offset: Int end
     Let ModuleUnit = Tuple unit: nodes.Unit sourceMap: location.SourceMap imports: Array(ModuleImport) end
 
     let eq(a: String b: String): Bool = stringOp.equal(a b)
@@ -343,18 +343,25 @@ export
                 let x = elaborate(m.decl m.offset m.e m.canon buildDir)
                 let unit = lower.lowerModuleFile(x.typed m.e maybe.some(:location.SourceMap m.sm) 0)
                 restore(x)
-                let imports = vector.new(:Tuple name: String source: String end)
-                for i = 0 upto {vector.length(:manifest.ImportedModuleRef x.modules) - 1} do
-                    let r = vector.get(:manifest.ImportedModuleRef x.modules i)
-                    if stringOp.length(r.source) > 0 then
-                        vector.append(:Tuple name: String source: String end imports tuple
-                            let name = r.name let source = r.source
-                        end)
+                (* x.modules has an entry for each name of each import item,
+                 * in order *)
+                let imports = vector.new(:ModuleImport)
+                let var k = 0
+                for i = 0 upto {vector.length(:ast.ImportItem m.decl.imports) - 1} do
+                    let item = vector.get(:ast.ImportItem m.decl.imports i)
+                    for j = 0 upto {vector.length(:String item.names) - 1} do
+                        let r = vector.get(:manifest.ImportedModuleRef x.modules k)
+                        k := k + 1
+                        if stringOp.length(r.source) > 0 then
+                            vector.append(:ModuleImport imports tuple
+                                let name = r.name let source = r.source let offset = item.offset
+                            end)
+                        end
                     end
                 end
                 tuple
                     let unit = unit let sourceMap = m.sm
-                    let imports = vector.toArray(:Tuple name: String source: String end imports)
+                    let imports = vector.toArray(:ModuleImport imports)
                 end
             end)
 end
