@@ -13,7 +13,7 @@
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
-    questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
+    questlang/codegen/arm64/peephole : questlang/codegen/arm64/Peephole
     questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
     questlang/codegen/arm64/printer : questlang/codegen/arm64/Printer
     questlang/codegen/arm64/target : questlang/codegen/arm64/Target
@@ -24,7 +24,7 @@ import
 let show(title: String code: Array(minst.Inst) reach: Int): Ok =
     begin
         writer.putString(writer.output "== " <> title <> "\n")
-        let relaxed = codegen.relaxBranches(vector.fromArray(:minst.Inst code) "Lt" reach)
+        let relaxed = peephole.relaxBranches(vector.fromArray(:minst.Inst code) "Lt" reach)
         for i = 0 upto {vector.length(:minst.Inst relaxed) - 1} do
             let inst = vector.get(:minst.Inst relaxed i)
             let lines = printer.lines(inst.op inst.regs printer.physical)
@@ -36,7 +36,7 @@ let show(title: String code: Array(minst.Inst) reach: Int): Ok =
 let showBranches(title: String code: Array(minst.Inst)): Ok =
     begin
         writer.putString(writer.output "== " <> title <> "\n")
-        let relaxed = codegen.relaxBranches(vector.fromArray(:minst.Inst code) "Lt" 260000)
+        let relaxed = peephole.relaxBranches(vector.fromArray(:minst.Inst code) "Lt" 260000)
         for i = 0 upto {vector.length(:minst.Inst relaxed) - 1} do
             let inst = vector.get(:minst.Inst relaxed i)
             let shown = case inst.op when opNop then false else true end

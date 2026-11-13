@@ -121,7 +121,8 @@ questlang/
 │   ├── backend
 │   ├── choice               # The backend each unit is compiled by
 │   ├── machine/             # A native backend's target-independent half: target, machine, regalloc
-│   ├── arm64/               # The native backend: codegen (instructions, frames, calls), asm (Darwin's spellings)
+│   ├── arm64/               # The native backend: codegen (instructions, frames, calls), asm (Darwin's spellings),
+│   │                        # peephole (branch relaxation, ldp and stp pairs)
 │   └── c/                   # declarations, headers, printer, types; ssac, the SSA's C printer (docs/arm64.md
 │                            # §3.14)
 │

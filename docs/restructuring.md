@@ -162,6 +162,8 @@ Left whole (decided 2026-11-12), because no split of them moves code without cha
 - **ir/lower's REPL phrase units.** phraseExpr and echoBinding are members of lowering's recursive group, and
   lowerPhrases uses most of the lowerer's internals (newLowerer, binding, emit, inBody, lowerModule): a module of
   them would need the lowerer's state exported.
+- **codegen/arm64/codegen's frames and stack maps.** Their definitions (the frame's slots and layout, the frame
+  maps, the unit's frame table) lie in three of its sections, with no seam between them and the rest.
 - **build/engine's unflushedBuildModules.** One 425-line function, not sections: dividing it into staleness, waves,
   conformance, and cycles is a rewrite of the build's main loop, not a split.
 

@@ -424,7 +424,7 @@ assembler by `self-hosted/encoder`.
 
 **Branch ranges.** `clang -c`'s assembler does not relax arm64 branches whose targets are out of range; it reports a
 fixup error. `b.cond`, `cbz`, `cbnz`, and `adr` reach 1 MB either way, and `tbz` and `tbnz` only 32 KB. So
-`codegen.relaxBranches`, once instruction sizes are known, turns a conditional branch whose target is out of reach
+`peephole.relaxBranches`, once instruction sizes are known, turns a conditional branch whose target is out of reach
 into the inverse branch around an unconditional `b` (128 MB), round after round until none changes, a
 pseudo-instruction counted as the instructions it expands to, and a jump table as its entries, a word each; a `try`'s
 `adr` takes the address of a branch beside it to the handler. The questlang test `arm64_relax` checks it with a reach

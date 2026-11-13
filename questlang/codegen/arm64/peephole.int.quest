@@ -1,0 +1,37 @@
+(* Quest Self-Hosted Compiler: arm64 Peephole Passes Interface
+ *
+ * The passes codegen/arm64/codegen runs on a function's instructions once
+ * they are allocated and rewritten: branch relaxation (docs/arm64.md section
+ * 3.11), and pairing loads and stores into ldp and stp. *)
+
+interface Peephole
+import
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+export
+    (* A load or store of 8 bytes at a base plus an immediate offset: whether
+     * it loads, its register, its base, and its offset *)
+    Def Access = Tuple load: Bool t: Int base: Int offset: Int end
+    (* A conditional branch's inverse to a label, its target, and its reach
+     * (in instructions), if op is one: cbz and cbnz of a register, tbz and
+     * tbnz of a bit, and b.cond *)
+    Def Conditional = Tuple inverse: All(l: String) minst.Op target: String reach: Int end
+    conditional(op: minst.Op): maybe.T(Conditional)
+    (* How far, in instructions, a conditional branch may reach: 1 MB less a
+     * margin *)
+    branchReach: Int
+    (* A function's instructions with each conditional branch whose target is
+     * more than reach instructions away (a pseudo-instruction counted as the
+     * instructions it is) turned into the inverse branch around an
+     * unconditional one (docs/arm64.md section 3.11); its labels begin with
+     * prefix *)
+    relaxBranches(code: vector.T(minst.Inst) prefix: String reach: Int): vector.T(minst.Inst)
+    (* i's access, if it is a load or store of 8 bytes at a base plus an
+     * immediate offset *)
+    access(i: minst.Inst): maybe.T(Access)
+    (* code with loads (and stores) of 8 bytes off one base, at offsets 8
+     * apart, merged into ldp (stp) where the instructions between them allow
+     * (docs/arm64-performance-review.md section 3.5) *)
+    pairs(code: vector.T(minst.Inst)): vector.T(minst.Inst)
+end
