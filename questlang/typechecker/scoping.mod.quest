@@ -64,139 +64,6 @@ export
             when exprException then "TypedException" when exprRaise then "TypedRaise" when exprTry then "TypedTry"
         end
 
-    (* A child of a node: an expression or a binding, in the order of the node's
-     * fields *)
-    Let Child = Option
-        childExpr with e: Expr end
-        childBinding with b: Binding end
-    end
-
-    let ex(e: Expr): Child = option childExpr of Child with let e = e end
-    let opt(e: maybe.T(Expr)): Array(Child) =
-        if maybe.isSome(:Expr e) then
-            array of ex(maybe.unwrap(:Expr e)) end
-        else
-            array of :Child end
-        end
-    let exs(es: Array(Expr)): Array(Child) =
-        begin
-            let children = vector.new(:Child)
-            for i = 0 upto {extent es - 1} do vector.append(:Child children ex(es[i])) end
-            vector.toArray(:Child children)
-        end
-    let concat(parts: Array(Array(Child))): Array(Child) =
-        begin
-            let children = vector.new(:Child)
-            for i = 0 upto {extent parts - 1} do
-                for j = 0 upto {extent parts[i] - 1} do vector.append(:Child children parts[i][j]) end
-            end
-            vector.toArray(:Child children)
-        end
-
-    let children(e: Expr): Array(Child) =
-        case e.form
-            when exprFun with x then array of ex(x.body) end
-            when exprApp with x then concat(array of array of ex(x.func) end exs(x.args) end)
-            when exprTypeApp with x then array of ex(x.func) end
-            when exprInfix with x then array of ex(x.left) ex(x.right) end
-            when exprRecord with x then
-                begin
-                    let values = vector.new(:Expr)
-                    for i = 0 upto {extent x.fields - 1} do vector.append(:Expr values x.fields[i].value) end
-                    exs(vector.toArray(:Expr values))
-                end
-            when exprTuple with x then exs(x.elements)
-            when exprSelect with x then array of ex(x.target) end
-            when exprIndex with x then array of ex(x.target) ex(x.index) end
-            when exprIndexAssign with x then array of ex(x.target) ex(x.index) ex(x.value) end
-            when exprArray with x then exs(x.elements)
-            when exprArrayRep with x then array of ex(x.count) ex(x.initVal) end
-            when exprVarCell with x then array of ex(x.value) end
-            when exprDerefCell with x then array of ex(x.target) end
-            when exprSelectRef with x then array of ex(x.target) end
-            when exprIndexRef with x then array of ex(x.target) ex(x.index) end
-            when exprTupleSelectRef with x then array of ex(x.target) end
-            when exprAssign with x then array of ex(x.target) ex(x.value) end
-            when exprVariant with x then opt(x.payload)
-            when exprOption with x then concat(array of opt(x.payload) opt(x.ordinalExpr) end)
-            when exprAuto with x then array of ex(x.payload) end
-            when exprVariantCheck with x then array of ex(x.target) end
-            when exprVariantAssert with x then array of ex(x.target) end
-            when exprCase with x then
-                begin
-                    let bodies = vector.new(:Expr)
-                    for i = 0 upto {extent x.branches - 1} do vector.append(:Expr bodies x.branches[i].body) end
-                    concat(array of array of ex(x.target) end exs(vector.toArray(:Expr bodies)) opt(x.elseBranch) end)
-                end
-            when exprInspect with x then
-                begin
-                    let bodies = vector.new(:Expr)
-                    for i = 0 upto {extent x.branches - 1} do vector.append(:Expr bodies x.branches[i].body) end
-                    concat(array of array of ex(x.target) end exs(vector.toArray(:Expr bodies)) opt(x.elseBranch) end)
-                end
-            when exprBlock with x then
-                begin
-                    let children = vector.new(:Child)
-                    for i = 0 upto {extent x.bindings - 1} do
-                        vector.append(:Child children option childBinding of Child with let b = x.bindings[i] end)
-                    end
-                    vector.append(:Child children ex(x.result))
-                    vector.toArray(:Child children)
-                end
-            when exprIf with x then array of ex(x.cond) ex(x.thenBranch) ex(x.elseBranch) end
-            when exprWhile with x then array of ex(x.cond) ex(x.body) end
-            when exprLoop with x then array of ex(x.body) end
-            when exprFor with x then array of ex(x.start) ex(x.stop) ex(x.body) end
-            when exprRaise with x then concat(array of array of ex(x.exc) end opt(x.payload) end)
-            when exprTry with x then
-                begin
-                    let parts = vector.new(:Expr)
-                    for i = 0 upto {extent x.branches - 1} do
-                        vector.append(:Expr parts x.branches[i].excPattern)
-                        vector.append(:Expr parts x.branches[i].body)
-                    end
-                    concat(array of array of ex(x.body) end exs(vector.toArray(:Expr parts)) opt(x.elseBranch) end)
-                end
-            else array of :Child end
-        end
-
-    let bindingChildren(b: Binding): Array(Child) =
-        case b.form
-            when bindLetValue with x then array of ex(x.value.value) end
-            when bindLetValueGroup with x then
-                begin
-                    let values = vector.new(:Expr)
-                    for i = 0 upto {extent x.members - 1} do vector.append(:Expr values x.members[i].value) end
-                    exs(vector.toArray(:Expr values))
-                end
-            when bindExprStmt with x then array of ex(x.expr) end
-            when bindInterface with x then
-                begin
-                    let children = vector.new(:Child)
-                    for i = 0 upto {extent x.signatures - 1} do
-                        vector.append(:Child children option childBinding of Child with let b = x.signatures[i] end)
-                    end
-                    vector.toArray(:Child children)
-                end
-            when bindModule with x then
-                begin
-                    let children = vector.new(:Child)
-                    for i = 0 upto {extent x.bindings - 1} do
-                        vector.append(:Child children option childBinding of Child with let b = x.bindings[i] end)
-                    end
-                    vector.toArray(:Child children)
-                end
-            else array of :Child end
-        end
-
-    (* The let declarations of a binding *)
-    let letValues(b: Binding): Array(typedAst.LetValue) =
-        case b.form
-            when bindLetValue with x then array of x.value end
-            when bindLetValueGroup with x then x.members
-            else array of :typedAst.LetValue end
-        end
-
     let quantifierIds(f: Expr): Array(Int) =
         case f.type.form
             when typeAll with a then
@@ -266,7 +133,7 @@ export
                     end
                 when exprBlock with x then
                     for i = 0 upto {extent x.bindings - 1} do
-                        let lets = letValues(x.bindings[i])
+                        let lets = typedAst.letValues(x.bindings[i])
                         for j = 0 upto {extent lets - 1} do
                             hashMap.insert(:Int :Bool st.localIds lets[j].symbol.symbolId true)
                         end
@@ -302,13 +169,13 @@ export
                     end
                 else ok
             end
-            collectChildren(st children(e))
+            collectChildren(st typedAst.children(e))
         end
-    and collectChildren(st: State cs: Array(Child)): Ok =
+    and collectChildren(st: State cs: Array(typedAst.Child)): Ok =
         for i = 0 upto {extent cs - 1} do
             case cs[i]
                 when childExpr with x then collectExpr(st x.e)
-                when childBinding with x then collectChildren(st bindingChildren(x.b))
+                when childBinding with x then collectChildren(st typedAst.bindingChildren(x.b))
             end
         end
 
@@ -394,7 +261,7 @@ export
                         let scope = copyIds(values)
                         for i = 0 upto {extent x.bindings - 1} do
                             let b = x.bindings[i]
-                            let lets = letValues(b)
+                            let lets = typedAst.letValues(b)
                             let var isRec = false
                             for j = 0 upto {extent lets - 1} do if lets[j].isRec then isRec := true end end
                             if isRec then
@@ -462,12 +329,12 @@ export
                         end
                         walkOpt(st x.elseBranch values types)
                     end
-                else walkChildren(st children(e) values types)
+                else walkChildren(st typedAst.children(e) values types)
             end
         end
     and walkOpt(st: State e: maybe.T(Expr) values: Ids types: Ids): Ok =
         if maybe.isSome(:Expr e) then walkExpr(st maybe.unwrap(:Expr e) values types) end
-    and walkChildren(st: State cs: Array(Child) values: Ids types: Ids): Ok =
+    and walkChildren(st: State cs: Array(typedAst.Child) values: Ids types: Ids): Ok =
         for i = 0 upto {extent cs - 1} do
             case cs[i]
                 when childExpr with x then walkExpr(st x.e values types)
@@ -476,18 +343,18 @@ export
         end
     and walkBinding(st: State b: Binding values: Ids types: Ids): Ok =
         begin
-            let lets = letValues(b)
+            let lets = typedAst.letValues(b)
             for i = 0 upto {extent lets - 1} do
                 checkType(st lets[i].symbol.type types "TypedLetValue" lets[i].offset)
                 walkExpr(st lets[i].value values types)
             end
-            if extent lets is 0 then walkChildren(st bindingChildren(b) values types) end
+            if extent lets is 0 then walkChildren(st typedAst.bindingChildren(b) values types) end
         end
 
     let checkWellScoped(p: typedAst.Program): Array(String) =
         begin
             let st: State = tuple let problems = vector.new(:String) let localIds = newIds() let paramIds = newIds() end
-            for i = 0 upto {extent p.phrases - 1} do collectChildren(st array of option childBinding of Child with let b = p.phrases[i] end end) end
+            for i = 0 upto {extent p.phrases - 1} do collectChildren(st array of option childBinding of typedAst.Child with let b = p.phrases[i] end end) end
             for i = 0 upto {extent p.phrases - 1} do walkBinding(st p.phrases[i] newIds() newIds()) end
             vector.toArray(:String st.problems)
         end

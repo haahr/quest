@@ -8,8 +8,8 @@ expression forms, and the entry points (`check_expr`, `synth_expr`,
 mixin per construct family:
 
 - `bindings`: function abstractions and value, type, and kind bindings.
-- `application`: monomorphic and polymorphic calls, and lvalue arguments of var
-  and out parameters.
+- `application`: monomorphic and polymorphic calls, lvalue arguments of var
+  and out parameters, and inferred type arguments resolved.
 - `aggregates`: records, tuples, selection, options, variants, arrays, and
   indexing.
 - `control`: case, infix operators and assignment, conditionals, for loops, and
@@ -19,8 +19,8 @@ mixin per construct family:
   time.
 
 Helpers shared by them: `checks` (subtype assertions, joins, kind bounds),
-`escape` (escaping path types and closedness), `lvalues`, `metas` (resolving
-inferred type arguments), and `scoping` (the well-scopedness check).
+`escape` (escaping path types and closedness), and `scoping` (the
+well-scopedness check).
 """
 
 __all__ = [
@@ -33,8 +33,6 @@ __all__ = [
     "elaborate_types",
     "escape",
     "exceptions",
-    "lvalues",
-    "metas",
     "scoping",
     "typecheck",
     "typed_ast",

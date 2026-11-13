@@ -7,20 +7,25 @@ docs/type-system.md §6.12 describes auto types and inspect."""
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from typing import Optional
 
 import quest.syntax.ast as ast
 from quest.typechecker.checker import Checker
 from quest.types import (
     OK_TYPE,
+    QAllType,
     QAutoType,
+    QFunType,
     QType,
+    QTypeVar,
     TYPE_KIND,
     KindError,
     check_kind,
     is_subtype,
     auto_matches_subtypes,
     auto_payload_type,
+    unalias,
 )
 from quest.types.env import (
     Environment,
@@ -42,13 +47,48 @@ from quest.typechecker.checks import (
     describe_kind,
     join_types,
 )
-from quest.typechecker.escape import (
-    check_no_package_types,
-    inspected_auto_type,
-)
+from quest.typechecker.escape import check_no_package_types
 
 # Internal convenience alias for typechecking error raises
 TypeError = QuestTypeError
+
+
+def inspected_auto_type(target: TypedExpr, env: Environment) -> Optional[QAutoType]:
+    """The auto type of an inspect target."""
+    target_type = target.type_val.evaluate_lazily(env)
+    return target_type if isinstance(target_type, QAutoType) else None
+
+
+def is_auto_type(t: QType) -> bool:
+    """Returns True if t (stripped of aliases) is an auto type."""
+    return isinstance(unalias(t), QAutoType)
+
+
+def check_dynamic_type_args(
+    all_type: QAllType,
+    type_args: Sequence[QType],
+    offset: int,
+    check: Callable[[QType, str, int], None],
+) -> None:
+    """Checks with `check` (the closedness check) the type argument of a
+    function shaped like dynamic.new (A::TYPE a:A): T or dynamic.be (A::TYPE
+    d:T): A for an auto type T, which record or test the type argument at run
+    time (inside the function it is a type parameter, which the closedness check
+    allows)."""
+    body = all_type.body
+    if len(all_type.quantifiers) != 1 or not isinstance(body, QFunType) or len(body.params) != 1 or not type_args:
+        return
+    a_id = all_type.quantifiers[0].symbol_id
+
+    def is_a(t: QType) -> bool:
+        t = unalias(t)
+        return isinstance(t, QTypeVar) and t.symbol_id == a_id
+
+    param_t = body.params[0].type_val
+    if (is_a(param_t) and is_auto_type(body.result_type)) or (
+        is_auto_type(param_t) and is_a(body.result_type)
+    ):
+        check(type_args[0], "The type of a dynamic value", offset)
 
 
 class AutoValueMixin(Checker):

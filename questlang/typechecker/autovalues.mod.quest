@@ -24,6 +24,37 @@ export
 
     let isAuto(t: Type): Bool = case t.form when typeAuto then true else false end
 
+    (* The auto type of an inspect target *)
+    let inspectedAutoType(target: typedAst.Expr e: env.T): maybe.T(model.Type) =
+        begin
+            let t = model.evaluateLazily(target.type symbols.lookup)
+            case t.form when typeAuto then maybe.some(:model.Type t) else maybe.none(:model.Type) end
+        end
+
+    (* Whether t, stripped of aliases, is an auto type *)
+    let isAutoType(t: model.Type): Bool = case model.unalias(t).form when typeAuto then true else false end
+
+    let checkDynamicTypeArgs(
+        allType: model.Type typeArgs: Array(model.Type) offset: Int check: All(t: model.Type what: String offset: Int) Ok
+    ): Ok =
+        case allType.form
+            when typeAll with a then
+                case a.body.form
+                    when typeFun with f then
+                        if {extent a.quantifiers is 1} andif {extent f.params is 1} andif {extent typeArgs > 0} then
+                            let aId = a.quantifiers[0].symbolId
+                            let isA(t: model.Type): Bool =
+                                case model.unalias(t).form when typeVariable with v then v.symbolId is aId else false end
+                            let paramT = f.params[0].type
+                            if {isA(paramT) andif isAutoType(f.result)} orif {isAutoType(paramT) andif isA(f.result)} then
+                                check(typeArgs[0] "The type of a dynamic value" offset)
+                            end
+                        end
+                    else ok
+                end
+            else ok
+        end
+
     let checkClosedType(t: Type what: String offset: Int): Ok = escape.checkNoPackageTypes(t what offset)
 
     let elaborateInspect(c: checker.T expr: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
@@ -94,7 +125,7 @@ export
                         let target = targetTyped
                         let branches = vector.toArray(:typedAst.InspectBranch branches)
                         let elseBranch = elseTyped
-                        let autoType = escape.inspectedAutoType(targetTyped e)
+                        let autoType = inspectedAutoType(targetTyped e)
                     end)
                 end
             else internal(:typedAst.Expr "an inspect" expr)

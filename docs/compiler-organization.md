@@ -68,10 +68,10 @@ questlang/
 │   └── canonical            # Reduced and canonical forms of types, for the backends
 │
 ├── typechecker/             # Bidirectional type checker
-│   ├── typedast             # The typed AST
+│   ├── typedast             # The typed AST, and the walk of its children
 │   ├── typedastprint        # Its printer, matching the bootstrap's typed AST dump
 │   ├── checker              # The checker's state, shared helpers, and dispatch hooks
-│   ├── checks, escape, lvalues, metas   # Shared checks
+│   ├── checks, escape       # Shared checks
 │   ├── elaboratetypes       # Syntactic types and kinds to semantic ones
 │   ├── bindings, application, aggregates, control, exceptions, autovalues   # Construct families
 │   ├── typecheck            # Dispatch on expression forms, phrases, programs, entry points
@@ -384,7 +384,7 @@ Layer 1: syntax/* (tokens, tokenizer, ast, astprint, parser, parser/*, desugar)
 Layer 2: types/model → symbols, dump → subtyping; typechecker/typedast
 Layer 3: modules/paths, units, graph
 Layer 4: types/env → kinds, contractiveness
-Layer 5: typechecker/typedastprint, elaboratetypes, checks, escape, lvalues, metas
+Layer 5: typechecker/typedastprint, elaboratetypes, checks, escape
 Layer 6: modules/abstracttypes, loader, elaboration, stdlib
 Layer 7: typechecker/checker → bindings, application, aggregates, control, exceptions, autovalues → typecheck,
          scoping

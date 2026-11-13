@@ -36,6 +36,7 @@ from quest.diagnostics import QuestTypeError
 from quest.typechecker.elaborate_types import elaborate_type
 from quest.typechecker.typed_ast import (
     TypedApp,
+    TypedNode,
     TypedExpr,
     TypedIndexRef,
     TypedSelectRef,
@@ -43,14 +44,81 @@ from quest.typechecker.typed_ast import (
     TypedTypeApp,
     TypedVar,
     TypedVarCell,
+    rebuild_typed,
+    typed_fields,
 )
 from quest.typechecker.checks import check_type_arg_kind
-from quest.typechecker.escape import check_dynamic_type_args
-from quest.typechecker.lvalues import check_lvalue_mode_type
-from quest.typechecker.metas import resolve_typed_metas
+from quest.typechecker.auto_values import check_dynamic_type_args
 
 # Internal convenience alias for typechecking error raises
 TypeError = QuestTypeError
+
+
+# The destination of a var or out argument (@x, @r.f, @a[i], or var(e)), the
+# location a reference parameter reads and writes: Var(T) is invariant, since
+# the callee both reads and writes T there, and Out(T) only writes, so any
+# location of a supertype of T will do (docs/type-system.md §6.2.1, §6.5)
+def check_lvalue_mode_type(
+    param_type: QType,
+    dest_raw_type: QType,
+    is_out: bool,
+    target_desc: str,
+    offset: int,
+    env: Environment,
+) -> QType:
+    """Unwraps reference cell types and validates invariance (var) or covariance
+    (out)."""
+    dest_type = (
+        dest_raw_type.element_type
+        if isinstance(dest_raw_type, (QVarType, QOutType))
+        else dest_raw_type
+    )
+    if is_out:
+        if not is_subtype(param_type, dest_type, env):
+            raise QuestTypeError(
+                f"Type mismatch on out parameter: parameter type '{param_type}' is not a subtype "
+                f"of destination {target_desc} type '{dest_type}'",
+                offset=offset,
+            )
+    else:
+        if not (
+            is_subtype(param_type, dest_type, env)
+            and is_subtype(dest_type, param_type, env)
+        ):
+            raise QuestTypeError(
+                f"Type mismatch on var parameter: expected exactly '{param_type}', but got "
+                f"{target_desc} of type '{dest_type}' (var parameters are invariant)",
+                offset=offset,
+            )
+    return dest_type
+
+
+# A typed AST with its solved metavariables (the placeholders for inferred type
+# arguments, QTypeMeta) replaced by their solutions, so that later phases never
+# meet one
+def resolve_typed_metas(node: Any, memo: Optional[dict[int, Any]] = None) -> Any:
+    """Rebuilds a typed AST with solved metavariables in its types replaced by
+    their solutions."""
+    if memo is None:
+        memo = {}
+    key = id(node)
+    if key in memo:
+        return memo[key]
+    result = node
+    match node:
+        case QType():
+            result = resolve_metas(node)
+        case tuple():
+            items = tuple(resolve_typed_metas(item, memo) for item in node)
+            if any(a is not b for a, b in zip(items, node)):
+                result = items
+        case TypedNode():
+            parts = typed_fields(node)
+            resolved = tuple(resolve_typed_metas(part, memo) for part in parts)
+            if any(a is not b for a, b in zip(resolved, parts)):
+                result = rebuild_typed(node, resolved)
+    memo[key] = result
+    return result
 
 
 class ApplicationMixin(Checker):

@@ -12,9 +12,6 @@ import
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/typechecker/checker : questlang/typechecker/Checker
     questlang/typechecker/checks : questlang/typechecker/Checks
-    questlang/typechecker/escape : questlang/typechecker/Escape
-    questlang/typechecker/lvalues : questlang/typechecker/Lvalues
-    questlang/typechecker/metas : questlang/typechecker/Metas
     questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
     questlang/typechecker/autoValues : questlang/typechecker/AutoValues
     collections/hashMap : collections/HashMap
@@ -31,6 +28,40 @@ export
     let varType(t: Type): Type = model.varType(t)
     let isRefType(t: Type): Bool = case t.form when typeVar then true when typeOut then true else false end
     let isVarType(t: Type): Bool = case t.form when typeVar then true else false end
+
+    (* The destination of a var or out argument (@x, @r.f, @a[i], or var(e)),
+     * the location a reference parameter reads and writes: its type unwrapped
+     * of a reference cell, which must be exactly paramType for a var parameter,
+     * since the callee both reads and writes it there (invariance), and a
+     * supertype of it for an out parameter, which only writes
+     * (docs/type-system.md §6.2.1, §6.5) *)
+    let checkLvalueModeType(
+        paramType: model.Type destRawType: model.Type isOut: Bool targetDesc: String offset: Int e: env.T
+    ): model.Type =
+        begin
+            let destType = case destRawType.form
+                when typeVar with x then x.element
+                when typeOut with x then x.element
+                else destRawType
+            end
+            let lookup = env.lookupOf(e)
+            if isOut then
+                if not(subtyping.isSubtype(paramType destType lookup)) then
+                    diagnostics.fail(:Ok "Type mismatch on out parameter: parameter type '" <> model.show(paramType) <>
+                        "' is not a subtype of destination " <> targetDesc <> " type '" <> model.show(destType) <> "'"
+                        offset)
+                end
+            elsif not(subtyping.isSubtype(paramType destType lookup) andif subtyping.isSubtype(destType paramType lookup)) then
+                diagnostics.fail(:Ok "Type mismatch on var parameter: expected exactly '" <> model.show(paramType) <>
+                    "', but got " <> targetDesc <> " of type '" <> model.show(destType) <>
+                    "' (var parameters are invariant)" offset)
+            end
+            destType
+        end
+
+    (* e with its solved metavariables replaced by their solutions, so that
+     * later phases never meet one *)
+    let resolveTypedMetas(e: typedAst.Expr): typedAst.Expr = typedAst.mapTypes(e model.resolveMetas)
 
     let digits(s: String): Bool =
         begin
@@ -98,7 +129,7 @@ export
      * and the conditions below test both: a declaration marks its symbol or
      * field isVar, while a cell made by var(e) and bound by an ordinary let is
      * mutable through its type, Var(T). Its type must then fit the parameter's
-     * mode (lvalues.checkLvalueModeType). For var it must be exactly the
+     * mode (checkLvalueModeType). For var it must be exactly the
      * parameter's type: passing @x, where x is a Record p: Int q: Int end, to
      * var r: Record p: Int end would let the callee store a record without q
      * into x. For out, which the callee only assigns, any supertype of the
@@ -128,7 +159,7 @@ export
                             diagnostics.fail(:Ok "Argument to 'var' parameter '" <> x.name <> "' must be a mutable variable"
                                 offset)
                         end
-                        let destType = lvalues.checkLvalueModeType(paramType sym.type isOut "variable" offset e)
+                        let destType = checkLvalueModeType(paramType sym.type isOut "variable" offset e)
                         expr(offset varType(destType) option exprVar of typedAst.ExprForm with
                             let name = sym.name let symbol = sym
                         end)
@@ -164,7 +195,7 @@ export
                                     if not(f.isVar orif isRefType(f.type)) then
                                         diagnostics.fail(:Ok "Tuple component '" <> x.field <> "' is not mutable" offset)
                                     end
-                                    let destType = lvalues.checkLvalueModeType(paramType f.type isOut "tuple component"
+                                    let destType = checkLvalueModeType(paramType f.type isOut "tuple component"
                                         offset e)
                                     let fieldName = if digits(x.field) then maybe.none(:String) else maybe.some(:String x.field) end
                                     expr(offset varType(destType) option exprTupleSelectRef of typedAst.ExprForm with
@@ -192,7 +223,7 @@ export
                                     if not(f.isVar) andif not(isRefType(f.type)) then
                                         diagnostics.fail(:Ok "Record field '" <> x.field <> "' is not mutable" offset)
                                     end
-                                    let fieldType = lvalues.checkLvalueModeType(paramType f.type isOut "field" offset e)
+                                    let fieldType = checkLvalueModeType(paramType f.type isOut "field" offset e)
                                     expr(offset varType(fieldType) option exprSelectRef of typedAst.ExprForm with
                                         let target = recTyped let field = x.field
                                     end)
@@ -210,7 +241,7 @@ export
                                     "' argument must be an Array, got '" <> model.show(arrType) <> "'" offset)
                         end
                         let idxTyped = checker.checkExpr(c x.index model.intType e loopDepth)
-                        let destType = lvalues.checkLvalueModeType(paramType element isOut "array element" offset e)
+                        let destType = checkLvalueModeType(paramType element isOut "array element" offset e)
                         expr(offset varType(destType) option exprIndexRef of typedAst.ExprForm with
                             let target = arrTyped let index = idxTyped
                         end)
@@ -261,7 +292,7 @@ export
      * the outer call's unsolved metavariables, as nil() in cons(nil() tail):
      * it hands its unsolved ones to the outer call (c.pendingTypeArgs), which
      * solves them, and rewrites the nested call's node with the solutions
-     * (metas.resolveTypedMetas), when it finishes.
+     * (resolveTypedMetas), when it finishes.
      *
      * An empty application of a polymorphic constant (list.nil(), for
      * nil: All(A::TYPE) T(A)) instantiates it. *)
@@ -327,7 +358,7 @@ export
                 model.substitute(body subst)
             end
             let resolvedTargs = vector.toArray(:Type resolved)
-            escape.checkDynamicTypeArgs(allType resolvedTargs offset autoValues.checkClosedType)
+            autoValues.checkDynamicTypeArgs(allType resolvedTargs offset autoValues.checkClosedType)
             let typedTypeApp = expr(offset instantiated option exprTypeApp of typedAst.ExprForm with
                 let func = funcTyped let typeArgs = resolvedTargs
             end)
@@ -463,7 +494,7 @@ export
                  * metavariables *)
                 let resolvedArgs = vector.new(:typedAst.Expr)
                 for i = 0 upto {extent typedArgs - 1} do
-                    vector.append(:typedAst.Expr resolvedArgs metas.resolveTypedMetas(typedArgs[i]))
+                    vector.append(:typedAst.Expr resolvedArgs resolveTypedMetas(typedArgs[i]))
                 end
                 typedArgs := vector.toArray(:typedAst.Expr resolvedArgs)
                 let var leaked = extent model.unsolvedMetas(finalFn) > 0
@@ -473,7 +504,7 @@ export
                 if leaked then diagnostics.fail(:Ok "internal: metavariables escaped polymorphic call inference" offset) end
             end
 
-            escape.checkDynamicTypeArgs(allType resolvedTargs offset autoValues.checkClosedType)
+            autoValues.checkDynamicTypeArgs(allType resolvedTargs offset autoValues.checkClosedType)
             let typedTypeApp = expr(offset finalFn option exprTypeApp of typedAst.ExprForm with
                 let func = funcTyped let typeArgs = resolvedTargs
             end)

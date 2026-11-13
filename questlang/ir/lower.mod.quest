@@ -10,7 +10,6 @@ import
     questlang/types/canonical : questlang/types/Canonical
     questlang/types/env : questlang/types/Env
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
-    questlang/typechecker/scoping : questlang/typechecker/Scoping
     questlang/modules/elaboration : questlang/modules/Elaboration
     questlang/modules/stdlib : questlang/modules/Stdlib
     questlang/modules/paths : questlang/modules/Paths
@@ -222,18 +221,18 @@ export
     let capturedMutables(prog: typedAst.Program captured: hashMap.T(Int Bool)): Ok =
         begin
             let declared = hashMap.new(:Int :Int fun(a: Int b: Int): Bool a is b hash.int)
-            let rec walkChild(c: scoping.Child depth: Int top: Bool): Ok =
+            let rec walkChild(c: typedAst.Child depth: Int top: Bool): Ok =
                 case c
                     when childExpr with x then walkExpr(x.e depth)
                     when childBinding with x then
-                        let lets = scoping.letValues(x.b)
+                        let lets = typedAst.letValues(x.b)
                         for i = 0 upto {extent lets - 1} do
                             if lets[i].symbol.isVar andif not(top) then
                                 hashMap.insert(:Int :Int declared lets[i].symbol.symbolId depth)
                             end
                         end
                         (* A module's bindings are at the top level it is at *)
-                        let children = scoping.bindingChildren(x.b)
+                        let children = typedAst.bindingChildren(x.b)
                         let childTop = top andif x.b.form?bindModule
                         for i = 0 upto {extent children - 1} do walkChild(children[i] depth childTop) end
                 end
@@ -247,12 +246,12 @@ export
                             end
                         else ok
                     end
-                    walkChildren(scoping.children(e) if e.form?exprFun then depth + 1 else depth end)
+                    walkChildren(typedAst.children(e) if e.form?exprFun then depth + 1 else depth end)
                 end
-            and walkChildren(cs: Array(scoping.Child) depth: Int): Ok =
+            and walkChildren(cs: Array(typedAst.Child) depth: Int): Ok =
                 for i = 0 upto {extent cs - 1} do walkChild(cs[i] depth false) end
             for i = 0 upto {extent prog.phrases - 1} do
-                walkChild(option childBinding of scoping.Child with let b = prog.phrases[i] end 0 true)
+                walkChild(option childBinding of typedAst.Child with let b = prog.phrases[i] end 0 true)
             end
         end
 

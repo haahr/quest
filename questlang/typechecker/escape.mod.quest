@@ -5,45 +5,12 @@ module escape : Escape
 import
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/types/env : questlang/types/Env
-    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
-    util/maybe : util/Maybe
     util/sort : util/Sort
     stringOp = string : StringOp
 export
-    let inspectedAutoType(target: typedAst.Expr e: env.T): maybe.T(model.Type) =
-        begin
-            let t = model.evaluateLazily(target.type symbols.lookup)
-            case t.form when typeAuto then maybe.some(:model.Type t) else maybe.none(:model.Type) end
-        end
-
-    let isAutoType(t: model.Type): Bool = case model.unalias(t).form when typeAuto then true else false end
-
-    let checkDynamicTypeArgs(
-        allType: model.Type typeArgs: Array(model.Type) offset: Int check: All(t: model.Type what: String offset: Int) Ok
-    ): Ok =
-        case allType.form
-            when typeAll with a then
-                case a.body.form
-                    when typeFun with f then
-                        if {extent a.quantifiers is 1} andif {extent f.params is 1} andif {extent typeArgs > 0} then
-                            let aId = a.quantifiers[0].symbolId
-                            let isA(t: model.Type): Bool =
-                                case model.unalias(t).form when typeVariable with v then v.symbolId is aId else false end
-                            let paramT = f.params[0].type
-                            if {isA(paramT) andif isAutoType(f.result)} orif {isAutoType(paramT) andif isA(f.result)} then
-                                check(typeArgs[0] "The type of a dynamic value" offset)
-                            end
-                        end
-                    else ok
-                end
-            else ok
-        end
-
     let pathName(p: model.Type): String =
         case p.form when typePath with x then x.rootName <> "." <> x.fieldName else "" end
 
