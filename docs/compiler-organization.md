@@ -92,7 +92,8 @@ questlang/
 │
 ├── values/                  # Runtime values
 │   ├── model                # Values, and the interpreter's frames
-│   └── dynamicjson          # The serialized form of dynamic values
+│   ├── dynamicjson          # The serialized form of dynamic values: the type graph and canonical table
+│   └── dynamicwriter, dynamicreader   # Writing and reading the serialized form
 │
 ├── interpreter/             # Interpreters: tree walking and IR
 │   ├── primitives, formatting, builtins

@@ -4,7 +4,8 @@
 module builtins : Builtins
 import
     questlang/values/model : questlang/values/Model
-    questlang/values/dynamicJson : questlang/values/DynamicJson
+    questlang/values/dynamicReader : questlang/values/DynamicReader
+    questlang/values/dynamicWriter : questlang/values/DynamicWriter
     questlang/interpreter/primitives : questlang/interpreter/Primitives
     collections/hashMap : collections/HashMap
     util/hash : util/Hash
@@ -219,7 +220,7 @@ export
 
     let dynamicExtern(w: writer.T d: Value): Value =
         begin
-            let text = dynamicJson.encode(d)
+            let text = dynamicWriter.encode(d)
             try writer.putString(w text) when writer.error then dynamicFailure(:Ok) end
             unit
         end
@@ -294,12 +295,12 @@ export
         end
 
     (* dynamic.intern(rd): reads one dynamic value from rd, as dynamic.extern
-     * writes it (readDocument), and decodes it (dynamicJson.decode: JSOG, JSON
+     * writes it (readDocument), and decodes it (dynamicReader.decode: JSOG, JSON
      * with @id and @ref for objects reached more than once). dynamic.error is
      * raised for a closed reader, input that ends inside the value, a failed
      * read, and a document that does not decode. *)
     let dynamicIntern(r: reader.T): Value =
-        dynamicJson.decode(try readDocument(r) when reader.error then dynamicFailure(:String) end)
+        dynamicReader.decode(try readDocument(r) when reader.error then dynamicFailure(:String) end)
 
     (* Fills table, when this module initializes, with the externals the
      * interpreter provides, keyed by C symbol: all but quest_system_args,

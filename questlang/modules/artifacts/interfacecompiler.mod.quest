@@ -22,7 +22,8 @@ import
     questlang/modules/units : questlang/modules/Units
     questlang/modules/elaboration : questlang/modules/Elaboration
     values = questlang/values/model : questlang/values/Model
-    questlang/values/dynamicjson : questlang/values/DynamicJson
+    questlang/values/dynamicReader : questlang/values/DynamicReader
+    questlang/values/dynamicWriter : questlang/values/DynamicWriter
     questlang/config/abi : questlang/config/Abi
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
@@ -472,7 +473,7 @@ export
             let label = maybe.some(:String "a")
             let payload =
                 values.tupleValue(array of description end maybe.some(:Array(maybe.T(String)) array of label end))
-            dynamicjson.encode(option vAuto of Value with
+            dynamicWriter.encode(option vAuto of Value with
                 let a = tuple let value = payload let type = parseTypeString(qiSchemaType) end
             end)
         end
@@ -790,7 +791,7 @@ export
             if not(abi.hasCurrentAbi(file)) then diagnostics.fail(:Ok abi.incompatibleArtifactMessage(file) 0) end
             let text = files.readText(file)
             if maybe.isNone(:String text) then diagnostics.fail(:Ok "Error reading .qi file '" <> file <> "'" 0) end
-            let rec0 = case dynamicjson.decode(maybe.unwrap(:String text))
+            let rec0 = case dynamicReader.decode(maybe.unwrap(:String text))
                 when vAuto with x then
                     case x.a.value
                         when vTuple with t then t.t.elements[0]

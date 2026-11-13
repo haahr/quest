@@ -13,7 +13,9 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
 import tests.python.helpers  # noqa: F401
-from quest.values.dynamic_json import jsog_decode, jsog_encode, parse_type_string
+from quest.values.dynamic_json import parse_type_string
+from quest.values.dynamic_writer import jsog_encode
+from quest.values.dynamic_reader import jsog_decode
 from quest.values.model import (
     DYNAMIC_ERROR_EXC,
     QuestException,

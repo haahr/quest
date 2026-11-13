@@ -1,17 +1,18 @@
-(* Quest Self-Hosted Compiler: The Dynamic Format Interface
+(* Quest Self-Hosted Compiler: The Dynamic Format's Types Interface
  *
- * bootstrap/python/quest/values/dynamic_json.py: serializing dynamic values
- * (dynamic.extern and dynamic.intern), format version 1 (docs/dynamic.md
- * section 2). A document holds a type table and a value:
+ * bootstrap/python/quest/values/dynamic_json.py's types: format version 1 of
+ * serialized dynamic values (docs/dynamic.md section 2). A document holds a
+ * type table and a value:
  *
  *     {"quest":1,"types":[<type node>,...],"type":<type ref>,"value":<value>}
  *
  * The table is canonical, so that the interpreter and compiled code write the
- * same text for the same value: the writer builds the graph of the types it
- * meets, merges structurally equivalent nodes (the coarsest bisimulation), and
- * numbers the rest in the order a depth-first walk from the roots first reaches
- * them. Objects reached more than once are written once, with @id, and then as
- * {"@ref": n}. A failure raises dynamic.error.
+ * same text for the same value: the writer (values/dynamicWriter) builds the
+ * graph of the types it meets, merges structurally equivalent nodes (the
+ * coarsest bisimulation), and numbers the rest in the order a depth-first
+ * walk from the roots first reaches them; the reader (values/dynamicReader)
+ * makes types of the table's nodes. This module is the graph, the table, and
+ * the types' encoding the two share. A failure raises dynamic.error.
  *
  * The bootstrap's parse_type_string, which only .qi files use, is
  * interfacecompiler.parseTypeString. *)
@@ -19,10 +20,59 @@
 interface DynamicJson
 import
     questlang/values/model : questlang/values/Model
+    tm = questlang/types/model : questlang/types/Model
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
+    questlang/common/json : questlang/common/Json
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
 export
-    (* A dynamic value (an auto value of one component) as a version 1
-     * document *)
-    encode(d: model.Value): String
-    (* A version 1 document's dynamic value *)
-    decode(text: String): model.Value
+
+    (* A type ref: a built-in type's name, or a node's index in the graph (or,
+     * in a document, the table) *)
+    Def Ref = Tuple name: String index: Int end
+    (* A type node's shape: its kind; the labels of fields, cases, or parameter
+     * modes; flags (a case's payload, an auto type's bound); text (an
+     * external type's C type, an abstract type's global name); and count (an
+     * abstract type's arguments, a param node's depth) *)
+    Def Shape = Tuple kind: String labels: Array(String) flags: Array(Bool) text: String count: Int end
+    Def Node = Tuple shape: Shape children: Array(Ref) end
+    (* The graph of the types a document's values have, as the writer meets
+     * them, one node a structure (docs/dynamic.md section 2.2) *)
+    Def Graph = Tuple
+        nodes: vector.T(Node)
+        index: hashMap.T(String Int)
+        (* The type parameters of the auto types around the type being added,
+         * innermost last *)
+        binders: vector.T(Int)
+    end
+    newGraph(): Graph
+    (* How the table refers to t, adding the nodes of t and its parts to g the
+     * first time they are met; raises dynamic.error for a type the format
+     * cannot encode *)
+    ref(g: Graph t: tm.Type): Ref
+    (* The canonical table of a graph's nodes reachable from the roots: its
+     * structurally equivalent nodes merged and the rest numbered as a
+     * depth-first walk first reaches them *)
+    Def Table = Tuple types: json.Value index: hashMap.T(Int Int) end
+    canonicalTable(nodes: vector.T(Node) roots: vector.T(Ref)): Table
+    (* A ref as a document writes it: a built-in type's name, or its node's
+     * number in the table *)
+    refJson(r: Ref t: Table): json.Value
+    (* A field's name, without a var label's "var " *)
+    fieldName(label: String): String
+
+    (* The built-in type a ref names (Ok, Bool, Char, String, Int, Real,
+     * Dynamic), and whether a name is one *)
+    builtinType(name: String): tm.Type
+    isBuiltinName(name: String): Bool
+    (* Whether t mentions the type variable symbolId *)
+    mentions(t: tm.Type symbolId: Int): Bool
+    (* Whether an abstract type of this kind is encodable: TYPE or POWER(B), or
+     * an operator from types to TYPE *)
+    isUnbounded(k0: tm.Kind): Bool
+    (* The kind of an abstract type, or of an abstract type operator *)
+    boundOf(t: tm.Type): tm.Kind
+    (* The representation of a module abstract type, or of an application of an
+     * abstract type operator *)
+    representation(entry: abstractTypes.ModuleAbstractType args: Array(tm.Type)): tm.Type
 end

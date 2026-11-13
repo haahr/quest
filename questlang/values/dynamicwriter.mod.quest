@@ -1,0 +1,432 @@
+(* Quest Self-Hosted Compiler: Writing Dynamic Values Implementation *)
+
+module dynamicWriter : DynamicWriter
+import
+    questlang/values/model : questlang/values/Model
+    questlang/common/json : questlang/common/Json
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    realOp = real : RealOp
+    word : Word
+    questlang/values/dynamicJson : questlang/values/DynamicJson
+export
+    Let Value = model.Value
+    let formatVersion = 1
+    let none = maybe.none(:Int)
+    let fail(A::TYPE): A = model.raiseException(:A model.dynamicError none)
+    Let Ref = dynamicJson.Ref
+    let builtin(name: String): Ref = tuple let name = name let index = ~1 end
+    let isBuiltin(r: Ref): Bool = stringOp.length(r.name) > 0
+    let isRef(r: Ref name: String): Bool = stringOp.equal(r.name name)
+    Let Node = dynamicJson.Node
+    let nodeOf(g: dynamicJson.Graph r: Ref): Node = vector.get(:Node g.nodes r.index)
+    let kindOf(g: dynamicJson.Graph r: Ref): String = if isBuiltin(r) then "" else nodeOf(g r).shape.kind end
+
+    let items(v: json.Value): vector.T(json.Value) = case v when jArray with x then x.items else fail(:vector.T(json.Value)) end
+
+    Let Pair = Tuple value: Value ref: Ref end
+    Let Nested = Tuple target: json.Object witness: Ref end
+    (* The identity of a value that may be shared: what `is` compares *)
+    let identityHash(v: Value): word.T =
+        case v
+            when vRecord with x then hash.identityHash(:model.RecordValue x.r)
+            when vArray with x then hash.identityHash(:Array(Value) x.a)
+            when vTuple with x then hash.identityHash(:model.TupleValue x.t)
+            else hash.int(0)
+        end
+    let newIdentityMap(V::TYPE): hashMap.T(Value V) = hashMap.new(:Value :V model.same identityHash)
+    (* Writes a value as the document's value, by its type, in two passes.
+     *
+     * scan walks the value first and finds the objects reached more than
+     * once: records, arrays, and nonempty tuples, which have identity.
+     * encodeValue then writes it as JSON, following its type: a record as an
+     * object, a tuple as an array, an option as {case: payload} or the case's
+     * name alone, and a shared object with an @id where it is first written
+     * and as {"@ref": n} where it is met again. So a pair of one point twice,
+     *
+     *     tuple let a = p let b = p end
+     *
+     * is written
+     *
+     *     [{"@id": 1, "x": 10, "y": 20}, {"@ref": 1}]
+     *
+     * and a cycle of objects ends in a @ref. Writing adds the types it meets
+     * to the graph; an abstract type's value is written at its
+     * representation's type (concrete), and an auto value's components at
+     * their types with the auto value's witness, the type it hides, for its
+     * type parameter (witnesses). *)
+    Let Writer = Tuple
+        graph: dynamicJson.Graph
+        roots: vector.T(Ref)
+        nested: vector.T(Nested)
+        seen: hashMap.T(Value Bool)
+        shared: hashMap.T(Value Bool)
+        ids: hashMap.T(Value Int)
+        (* The witnesses of the auto values being written, innermost last, which
+         * param nodes refer to *)
+        witnesses: vector.T(Ref)
+    end
+    let rec derefValue(v: Value): Value = case v when vRef with r then derefValue(model.deref(r.r)) else v end
+    (* Whether a value may be shared: records, arrays, and nonempty tuples
+     * (compiled code has one empty tuple) *)
+    let hasIdentity(v: Value): Bool =
+        case v
+            when vRecord then true
+            when vArray then true
+            when vTuple with x then extent x.t.elements > 0
+            else false
+        end
+    let pair(v: Value r: Ref): Pair = tuple let value = v let ref = r end
+    (* The type a value of type r is written at: an abstract type's value at its
+     * representation, and a value of an auto type's parameter at the auto
+     * value's witness *)
+    let concrete(w: Writer r0: Ref): Ref =
+        begin
+            let var r = r0
+            let var done = false
+            while not(done) andif not(isBuiltin(r)) do
+                let node = nodeOf(w.graph r)
+                if stringOp.equal(node.shape.kind "abstract") then
+                    r := node.children[extent node.children - 1]
+                elsif stringOp.equal(node.shape.kind "param") then
+                    let n = vector.length(:Ref w.witnesses)
+                    if node.shape.count >= n then fail(:Ok) end
+                    r := vector.get(:Ref w.witnesses {{n - 1} - node.shape.count})
+                else
+                    done := true
+                end
+            end
+            r
+        end
+    Let AutoParts = Tuple witness: Ref components: vector.T(Pair) end
+    (* An auto value's witness, and its components with their types (which refer
+     * to the witness by param) *)
+    let autoParts(w: Writer v: Value r: Ref): AutoParts =
+        begin
+            let node = nodeOf(w.graph r)
+            let offset = if node.shape.flags[0] then 1 else 0 end
+            let a = case v when vAuto with x then x.a else fail(:model.AutoValue) end
+            let t = case a.value when vTuple with x then x.t else fail(:model.TupleValue) end
+            if extent t.elements isnot {extent node.children - offset} then fail(:Ok) end
+            let components = vector.new(:Pair)
+            for i = 0 upto {extent t.elements - 1} do
+                vector.append(:Pair components pair(t.elements[i] node.children[offset + i]))
+            end
+            tuple let witness = dynamicJson.ref(w.graph a.type) let components = components end
+        end
+    let tagged(v: Value): model.Tagged =
+        case v
+            when vVariant with x then x.v
+            when vOption with x then x.v
+            else fail(:model.Tagged)
+        end
+    (* The type ref of a variant or option value's payload, or none if it is
+     * written as its bare tag *)
+    let casePayload(w: Writer v: Value node: Node): maybe.T(Ref) =
+        begin
+            let tag = tagged(v).tag
+            let var next = 0
+            let var result = maybe.none(:Ref)
+            let var found = false
+            for i = 0 upto {extent node.shape.labels - 1} do
+                let payloadRef = if node.shape.flags[i] then maybe.some(:Ref node.children[next]) else maybe.none(:Ref) end
+                if node.shape.flags[i] then next := next + 1 end
+                if not(found) andif stringOp.equal(dynamicJson.fieldName(node.shape.labels[i]) tag) then
+                    found := true
+                    if maybe.isSome(:Ref payloadRef) andif not(isRef(maybe.unwrap(:Ref payloadRef) "Ok")) then
+                        let p = maybe.unwrap(:Ref payloadRef)
+                        if stringOp.equal(node.shape.kind "option") andif not(stringOp.equal(kindOf(w.graph p) "tuple")) then
+                            fail(:Ok)
+                        end
+                        result := payloadRef
+                    end
+                end
+            end
+            if not(found) then fail(:Ok) end
+            result
+        end
+    (* The component values of v with their type refs, in the order they are
+     * written *)
+    let children(w: Writer v: Value r0: Ref): vector.T(Pair) =
+        begin
+            let r = concrete(w r0)
+            let target = vector.new(:Pair)
+            if isBuiltin(r) then
+                if isRef(r "Dynamic") then
+                    case v
+                        when vAuto with x then
+                            case x.a.value
+                                when vTuple with t then
+                                    if extent t.t.elements isnot 1 then fail(:Ok) end
+                                    vector.append(:Pair target pair(t.t.elements[0] dynamicJson.ref(w.graph x.a.type)))
+                                else fail(:Ok)
+                            end
+                        else fail(:Ok)
+                    end
+                end
+            else
+                let node = nodeOf(w.graph r)
+                let kind = node.shape.kind
+                if stringOp.equal(kind "record") then
+                    case v
+                        when vRecord with x then
+                            for i = 0 upto {extent node.shape.labels - 1} do
+                                let name = dynamicJson.fieldName(node.shape.labels[i])
+                                if not(hashMap.contains(:String :Value x.r.fields name)) then fail(:Ok) end
+                                vector.append(:Pair target pair(hashMap.find(:String :Value x.r.fields name) node.children[i]))
+                            end
+                        else fail(:Ok)
+                    end
+                elsif stringOp.equal(kind "tuple") then
+                    case v
+                        when vTuple with x then
+                            if extent x.t.elements < extent node.children then fail(:Ok) end
+                            for i = 0 upto {extent node.children - 1} do
+                                vector.append(:Pair target pair(x.t.elements[i] node.children[i]))
+                            end
+                        else fail(:Ok)
+                    end
+                elsif stringOp.equal(kind "array") then
+                    case v
+                        when vArray with x then
+                            for i = 0 upto {extent x.a - 1} do vector.append(:Pair target pair(x.a[i] node.children[0])) end
+                        else fail(:Ok)
+                    end
+                elsif stringOp.equal(kind "variant") orif stringOp.equal(kind "option") then
+                    let payloadRef = casePayload(w v node)
+                    if maybe.isSome(:Ref payloadRef) then
+                        let p = maybe.unwrap(:Ref payloadRef)
+                        let payload = maybe.unwrapOr(:Value tagged(v).payload model.okValue)
+                        if stringOp.equal(kind "variant") then
+                            vector.append(:Pair target pair(payload p))
+                        else
+                            (* An option's components are stored in the option
+                             * value itself (as in compiled code), so they are
+                             * written in place and never shared *)
+                            let components = nodeOf(w.graph p).children
+                            case derefValue(payload)
+                                when vTuple with x then
+                                    if extent x.t.elements < extent components then fail(:Ok) end
+                                    for i = 0 upto {extent components - 1} do
+                                        vector.append(:Pair target pair(x.t.elements[i] components[i]))
+                                    end
+                                else fail(:Ok)
+                            end
+                        end
+                    end
+                elsif stringOp.equal(kind "external") then
+                    ok
+                elsif stringOp.equal(kind "auto") then
+                    let parts = autoParts(w v r)
+                    for i = 0 upto {vector.length(:Pair parts.components) - 1} do
+                        vector.append(:Pair target vector.get(:Pair parts.components i))
+                    end
+                else
+                    (* Functions and exceptions cannot be externed *)
+                    fail(:Ok)
+                end
+            end
+            target
+        end
+    (* Finds the records, tuples, and arrays reached more than once *)
+    let rec scan(w: Writer v0: Value r: Ref): Ok =
+        begin
+            let v = derefValue(v0)
+            let var done = false
+            if hasIdentity(v) then
+                if hashMap.contains(:Value :Bool w.seen v) then
+                    hashMap.insert(:Value :Bool w.shared v true)
+                    done := true
+                else
+                    hashMap.insert(:Value :Bool w.seen v true)
+                    ok
+                end
+            end
+            if not(done) then
+                let c = concrete(w r)
+                if not(isBuiltin(c)) andif stringOp.equal(kindOf(w.graph c) "auto") then
+                    let parts = autoParts(w v c)
+                    vector.append(:Ref w.witnesses parts.witness)
+                    for i = 0 upto {vector.length(:Pair parts.components) - 1} do
+                        let p = vector.get(:Pair parts.components i)
+                        scan(w p.value p.ref)
+                    end
+                    vector.pop(:Ref w.witnesses)
+                    ok
+                else
+                    let cs = children(w v r)
+                    for i = 0 upto {vector.length(:Pair cs) - 1} do
+                        let p = vector.get(:Pair cs i)
+                        scan(w p.value p.ref)
+                    end
+                end
+            end
+        end
+    let isInfinite(r: Real): Bool = {r >> realOp.maxReal} orif {r << {0.0 -- realOp.maxReal}}
+    let rec encodeValue(w: Writer v0: Value r0: Ref): json.Value =
+        begin
+            let v = derefValue(v0)
+            let r = concrete(w r0)
+            if isBuiltin(r) then
+                encodeBuiltin(w v r.name)
+            else
+                let node = nodeOf(w.graph r)
+                let kind = node.shape.kind
+                if stringOp.equal(kind "external") then
+                    case v
+                        when vWord with x then json.number(strutil.wordToString(x.w) true)
+                        else fail(:json.Value)
+                    end
+                elsif stringOp.equal(kind "auto") then
+                    (* As a dynamic value is: its witness, then its components
+                     * at their types, which refer to it *)
+                    let parts = autoParts(w v r)
+                    let target = json.newObject()
+                    json.put(target "@type" json.null)
+                    json.put(target "@value" json.null)
+                    vector.append(:Ref w.roots parts.witness)
+                    vector.append(:Nested w.nested tuple let target = target let witness = parts.witness end)
+                    vector.append(:Ref w.witnesses parts.witness)
+                    let items = vector.new(:json.Value)
+                    for i = 0 upto {vector.length(:Pair parts.components) - 1} do
+                        let p = vector.get(:Pair parts.components i)
+                        vector.append(:json.Value items encodeValue(w p.value p.ref))
+                    end
+                    vector.pop(:Ref w.witnesses)
+                    json.put(target "@value" json.arrayValue(items))
+                    json.object(target)
+                else
+                    let var objId = ~1
+                    let var reference = maybe.none(:json.Value)
+                    if hasIdentity(v) andif hashMap.contains(:Value :Bool w.shared v) then
+                        if hashMap.contains(:Value :Int w.ids v) then
+                            let o = json.newObject()
+                            json.put(o "@ref" json.int(hashMap.find(:Value :Int w.ids v)))
+                            reference := maybe.some(:json.Value json.object(o))
+                        else
+                            objId := hashMap.size(:Value :Int w.ids) + 1
+                            hashMap.insert(:Value :Int w.ids v objId)
+                            ok
+                        end
+                    end
+                    if maybe.isSome(:json.Value reference) then
+                        maybe.unwrap(:json.Value reference)
+                    elsif stringOp.equal(kind "record") then
+                        let target = json.newObject()
+                        if objId > 0 then json.put(target "@id" json.int(objId)) end
+                        let cs = children(w v r)
+                        for i = 0 upto {vector.length(:Pair cs) - 1} do
+                            let p = vector.get(:Pair cs i)
+                            json.put(target dynamicJson.fieldName(node.shape.labels[i]) encodeValue(w p.value p.ref))
+                        end
+                        json.object(target)
+                    elsif stringOp.equal(kind "tuple") orif stringOp.equal(kind "array") then
+                        let items = vector.new(:json.Value)
+                        let cs = children(w v r)
+                        for i = 0 upto {vector.length(:Pair cs) - 1} do
+                            let p = vector.get(:Pair cs i)
+                            vector.append(:json.Value items encodeValue(w p.value p.ref))
+                        end
+                        if objId > 0 then
+                            let target = json.newObject()
+                            json.put(target "@id" json.int(objId))
+                            json.put(target "@items" json.arrayValue(items))
+                            json.object(target)
+                        else
+                            json.arrayValue(items)
+                        end
+                    elsif stringOp.equal(kind "variant") orif stringOp.equal(kind "option") then
+                        let payloadRef = casePayload(w v node)
+                        let tag = tagged(v).tag
+                        if maybe.isNone(:Ref payloadRef) then
+                            json.string(tag)
+                        else
+                            let target = json.newObject()
+                            if stringOp.equal(kind "option") then
+                                let items = vector.new(:json.Value)
+                                let cs = children(w v r)
+                                for i = 0 upto {vector.length(:Pair cs) - 1} do
+                                    let p = vector.get(:Pair cs i)
+                                    vector.append(:json.Value items encodeValue(w p.value p.ref))
+                                end
+                                json.put(target tag json.arrayValue(items))
+                            else
+                                json.put(target tag encodeValue(w maybe.unwrapOr(:Value tagged(v).payload model.okValue)
+                                    maybe.unwrap(:Ref payloadRef)))
+                            end
+                            json.object(target)
+                        end
+                    else
+                        fail(:json.Value)
+                    end
+                end
+            end
+        end
+    and encodeBuiltin(w: Writer v: Value name: String): json.Value =
+        if stringOp.equal(name "Int") then
+            case v when vInt with x then json.int(x.n) else fail(:json.Value) end
+        elsif stringOp.equal(name "Real") then
+            let r = case v
+                when vReal with x then x.r
+                when vInt with x then realOp.int(x.n)
+                else fail(:Real)
+            end
+            if isInfinite(r) then json.string(if r >> 0.0 then "Infinity" else "-Infinity" end) else json.real(r) end
+        elsif stringOp.equal(name "Bool") then
+            case v when vBool with x then json.bool(x.b) else fail(:json.Value) end
+        elsif stringOp.equal(name "Char") then
+            case v when vChar with x then json.string(stringOp.new(1 x.c)) else fail(:json.Value) end
+        elsif stringOp.equal(name "String") then
+            case v when vString with x then json.string(x.s) else fail(:json.Value) end
+        elsif stringOp.equal(name "Ok") then
+            json.null
+        elsif stringOp.equal(name "Dynamic") then
+            let cs = children(w v builtin("Dynamic"))
+            let p = vector.get(:Pair cs 0)
+            let target = json.newObject()
+            json.put(target "@type" json.null)
+            json.put(target "@value" json.null)
+            vector.append(:Ref w.roots p.ref)
+            vector.append(:Nested w.nested tuple let target = target let witness = p.ref end)
+            json.put(target "@value" encodeValue(w p.value p.ref))
+            json.object(target)
+        else
+            fail(:json.Value)
+        end
+    let encode(d: Value): String =
+        begin
+            let w: Writer = tuple
+                let graph = dynamicJson.newGraph()
+                let roots = vector.new(:Ref)
+                let nested = vector.new(:Nested)
+                let seen = newIdentityMap(:Bool)
+                let shared = newIdentityMap(:Bool)
+                let ids = newIdentityMap(:Int)
+                let witnesses = vector.new(:Ref)
+            end
+            scan(w d builtin("Dynamic"))
+            let a = case d when vAuto with x then x.a else fail(:model.AutoValue) end
+            let element = case a.value
+                when vTuple with t then if extent t.t.elements is 1 then t.t.elements[0] else fail(:Value) end
+                else fail(:Value)
+            end
+            let root = dynamicJson.ref(w.graph a.type)
+            vector.append(:Ref w.roots root)
+            let value = encodeValue(w element root)
+            let table = dynamicJson.canonicalTable(w.graph.nodes w.roots)
+            for i = 0 upto {vector.length(:Nested w.nested) - 1} do
+                let n = vector.get(:Nested w.nested i)
+                json.put(n.target "@type" dynamicJson.refJson(n.witness table))
+            end
+            let document = json.newObject()
+            json.put(document "quest" json.int(formatVersion))
+            json.put(document "types" table.types)
+            json.put(document "type" dynamicJson.refJson(root table))
+            json.put(document "value" value)
+            json.dump(json.object(document))
+        end
+end

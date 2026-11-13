@@ -47,7 +47,9 @@ from quest.modules.paths import (
     recorded_dependencies,
 )
 from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError, at_import, diagnostic_of, in_unit
-from quest.values.dynamic_json import jsog_decode, jsog_encode, parse_type_string
+from quest.values.dynamic_json import parse_type_string
+from quest.values.dynamic_writer import jsog_encode
+from quest.values.dynamic_reader import jsog_decode
 from quest.typechecker.elaborate_types import elaborate_kind, elaborate_rec_type_operators, elaborate_type
 from quest.types.env import Environment, Scope, TypeSymbol, ValueSymbol
 from quest.syntax.grammar import parse_quest_program
