@@ -169,8 +169,8 @@ end
 
 ### 1.4. `util/path : util/Path`
 
-POSIX paths: their decomposition, normalization, and relative resolution, both over Strings and over paths as values
-of their own type, `path.T`, with the file system operations a program needs over `path.T` (Python's `pathlib.Path`).
+POSIX paths as Strings: their decomposition, normalization, and relative resolution. `os/path` (§4.1) has paths as
+values of their own type, built on these, with the file system over them.
 
 #### Interface Summary
 
@@ -178,9 +178,6 @@ of their own type, `path.T`, with the file system operations a program needs ove
 interface Path
 import
     collections/vector : collections/Vector
-    util/maybe : util/Maybe
-    os/fileStats : os/FileStats
-    word : Word
 export
     error: Exception
 
@@ -210,49 +207,8 @@ export
     normalize(path: String): String
     relativeTo(path: String base: String): String
     resolve(path: String): String
-
-    (* Paths as values, normalized as PurePath normalizes them *)
-    T::TYPE
-    fromString(s: String): T
-    toString(p: T): String
-    equal(a: T b: T): Bool
-    hash(p: T): word.T
-    name(p: T): String
-    parent(p: T): T
-    suffix(p: T): String
-    pathStem(p: T): String
-    withSuffix(p: T newSuffix: String): T
-    pathParts(p: T): vector.T(String)
-    child(p: T s: String): T
-    joinPaths(p: T q: T): T
-    pathIsAbsolute(p: T): Bool
-    normalizePath(p: T): T
-    pathRelativeTo(p: T base: T): T
-    resolvePath(p: T): T
-
-    (* The file system, over T *)
-    exists(p: T): Bool
-    isFile(p: T): Bool
-    isDir(p: T): Bool
-    stat(p: T): fileStats.T
-    find(p: T): maybe.T(fileStats.T)
-    iterDir(p: T): Array(T)
-    mkdir(p: T parents: Bool): Ok
-    unlink(p: T): Ok
-    rename(p: T q: T): Ok
-    readText(p: T): String
-    writeText(p: T text: String): Ok
 end
 ```
-
-A `path.T` is the string it was made from, normalized: repeated separators collapse, and `.` components and a trailing
-separator drop, so `fromString("./a//b/")` is `a/b`. `..` components stay, as in Python, because cancelling them can
-change what a path names when a component is a symlink; `normalizePath` cancels them lexically. Normalized paths that
-name a file the same way are equal strings, so `equal` and `hash` make `path.T` a `hashMap` key. The functions over
-`path.T` take the names Python's `Path` gives them where the String functions do not already use the name
-(`pathStem`, `pathParts`, `pathIsAbsolute`, and so on where they do); `of`, a keyword, is `fromString`. `iterDir`
-gives a directory's entries sorted by name, and `mkdir` raises `system.error` if the directory exists, as Python's
-does without `exist_ok`.
 
 ---
 
@@ -795,7 +751,71 @@ end
 
 ## 4. The Operating System (`lib/os/`)
 
-### 4.1. `os/fileStats : os/FileStats`
+The file system is in three places: `system`, over paths as Strings (`fileExists`, `isFile`, `isDirectory`,
+`listDirectory`, `makeDirectory`, `removeFile`, `removeDirectory`, `renameFile`, `currentDirectory`,
+`changeDirectory`); `os/fileStats` (§4.2), what `stat(2)` says about a path; and `os/path` (§4.1), paths as values
+with all of these over them, and reading and writing a file's text. `util/path` (§1.4) has the string operations on
+paths, which touch no file.
+
+### 4.1. `os/path : os/Path`
+
+Paths as values of their own type, `path.T`, with the file system operations a program needs over them (Python's
+`pathlib.Path`), built on `util/path`'s string functions.
+
+#### Interface Summary
+
+```quest
+interface Path
+import
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    os/fileStats : os/FileStats
+    word : Word
+export
+    (* Paths as values, normalized as PurePath normalizes them *)
+    T::TYPE
+    fromString(s: String): T
+    toString(p: T): String
+    equal(a: T b: T): Bool
+    hash(p: T): word.T
+    name(p: T): String
+    parent(p: T): T
+    suffix(p: T): String
+    stem(p: T): String
+    withSuffix(p: T newSuffix: String): T
+    parts(p: T): vector.T(String)
+    child(p: T s: String): T
+    join(p: T q: T): T
+    isAbsolute(p: T): Bool
+    normalize(p: T): T
+    relativeTo(p: T base: T): T
+    resolve(p: T): T
+
+    (* The file system, over T *)
+    exists(p: T): Bool
+    isFile(p: T): Bool
+    isDir(p: T): Bool
+    stat(p: T): fileStats.T
+    find(p: T): maybe.T(fileStats.T)
+    iterDir(p: T): Array(T)
+    mkdir(p: T parents: Bool): Ok
+    unlink(p: T): Ok
+    rename(p: T q: T): Ok
+    readText(p: T): String
+    writeText(p: T text: String): Ok
+end
+```
+
+A `path.T` is the string it was made from, normalized: repeated separators collapse, and `.` components and a trailing
+separator drop, so `fromString("./a//b/")` is `a/b`. `..` components stay, as in Python, because cancelling them can
+change what a path names when a component is a symlink; `normalize` cancels them lexically. Normalized paths that name
+a file the same way are equal strings, so `equal` and `hash` make `path.T` a `hashMap` key. The functions take the
+names Python's `Path` gives them; `of`, a keyword, is `fromString`. `withSuffix` and `relativeTo` raise `util/path`'s
+`error`. `iterDir` gives a directory's entries sorted by name, and `mkdir` raises `system.error` if the directory
+exists, as Python's does without `exist_ok`. A module that needs both modules imports one of them under another name
+(`strings = util/path : util/Path`, as `os/path` does).
+
+### 4.2. `os/fileStats : os/FileStats`
 
 What `stat(2)` says about a path, modeled on Python's `os.stat_result` (what `pathlib.Path(...).stat()` returns). One
 call gives a path's kind, size, permissions, and times, so a caller that needs to know whether a file exists and when
@@ -842,7 +862,7 @@ failure, such as a directory that cannot be searched, raises `system.error` from
 computed as Python computes them (seconds plus nanoseconds times 1e-9), so a compiled program and an interpreted one
 agree exactly. Compare the integer times when an exact order matters, as staleness checks do.
 
-### 4.2. `os/process : os/Process`
+### 4.3. `os/process : os/Process`
 
 Programs started without waiting for them, so that a program can run several at once (`system.run` starts one and
 waits). Its externals, `quest_process_*`, are in `runtime/quest_os.c`. The bootstrap's interpreters implement
@@ -879,7 +899,7 @@ environment are the parent's. `waitAny` reaps whichever child finishes first (`w
 list of the children not yet reaped and records each status on its handle; a child that is not `os/process`'s is
 reaped and ignored. A child killed by a signal has that signal's number, negated, as its code, as with `system.run`.
 
-### 4.3. `os/value : os/Value` and `os/code : os/Code`
+### 4.4. `os/value : os/Value` and `os/code : os/Code`
 
 The JIT's primitives ([jit.md](jit.md) §3.11), behind unsound interfaces, so that only an unsound module may import
 them ([modules.md](modules.md) §4.4). Their externals, `quest_value_*` and `quest_code_*`, are in

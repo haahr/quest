@@ -50,8 +50,8 @@ they do not interfere. Their output is kept in .build/check/SUITE.txt, and each
 suite's summary is printed with when it finished. The exit status is 0 when
 every suite passes.
 
---light is for the stages of a restructuring (docs/restructuring.md section
-1), whose moves can break a build but not a behavior: the self-hosted fixed
+--light is for a series of moves of modules (docs/testing.md section 4.1),
+which can break a build but not a behavior: the self-hosted fixed
 point through arm64, then the tests that import compiler modules
 (tests/source/questlang) with its stage 2; every module of the bootstrap
 imported; and the unit tests but those that drive a terminal. It is not enough
@@ -249,7 +249,7 @@ def main() -> int:
     stress.add_argument("--stress", action="store_true", help="the stress tier alone (minutes)")
     stress.add_argument("--no-stress", action="store_true", help="the suites without the stress tier before them")
     which.add_argument("--light", action="store_true",
-                       help="the checks a move of modules needs (docs/restructuring.md section 1), not a push's")
+                       help="the checks a move of modules needs (docs/testing.md section 4.1), not a push's")
     parser.add_argument("--seed", choices=("release", "bootstrap"), default="release",
                         help="what builds the self-hosting check's stage 1 (default: the current release; the "
                         "bootstrap past a gap, docs/instructions.md section 6.1)")

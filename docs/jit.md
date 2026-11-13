@@ -568,7 +568,7 @@ the runtime for every program, and come first so that the JIT is built on them.
    step.** Tests: an unsound module that reads a tuple's and a record's
    words through `os/value`; one that writes a hand-encoded function into a code region and calls it, and one whose
    function raises and gets the exception back.
-   *Done* (2026-11-01, ABI 60). The natives are in `runtime/quest_code.c`; new-libraries.md §4.3 documents both
+   *Done* (2026-11-01, ABI 60). The natives are in `runtime/quest_code.c`; new-libraries.md §4.4 documents both
    interfaces. Both interpreters refuse the modules `os/value` and `os/code` by name. Tests:
    `tests/source/stdlib/os_value` and `os_code` (compiled only) and `tests/errors/run/os_value_interpreted`. Fixed
    alongside: the self-hosted loader gave a separately compiled hierarchical module no external types, so `os/code`'s

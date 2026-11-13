@@ -454,3 +454,41 @@ further:
   without the bootstrap's Python traceback. `--dump-after` is ported for the C phases only.
 - **The REPL's snapshots** record no symbol counter and no frame parent, neither of which the self-hosted compiler can
   observe ([repl.md](repl.md) §7).
+
+---
+
+## 7. Conventions, and Modules Left Whole
+
+The layout above is the one the restructuring of 2026-11-12 settled (the comment review's structure suggestions):
+
+- **File names are lowercase,** new ones too, while unit paths keep their camelCase:
+  `questlang/modules/artifacts/interfaceCompiler` is `interfacecompiler.mod.quest`.
+- **The two trees stay parallel.** A module that moves or splits in one compiler moves or splits in the other, where
+  the bootstrap has the module (§2); a split of what only the self-hosted compiler has (the SSA, the arm64 backend,
+  the JIT) is its own.
+- **A new `lib/` module waits for a release before `questlang/` uses it,** since stage 1 compiles `questlang/` against
+  the release's own `lib/` ([release-compiler.md](release-compiler.md)): `os/path` was added, released, and then used.
+- **A move renames the moved module's C symbols** (`mangleModuleName`: `questlang/repr/layout` is
+  `questlang__repr__layout`) but not the scheme, so it needs no ABI bump; nor does moving text between the runtime's
+  headers, whose digest in the ABI corpus covers `quest_runtime.h` and the two it includes.
+
+Left whole, because no split of them moves code without changing it:
+
+- **codegen/c/printer.** Its sections share the printer's state (P, FnState) and a few dozen helpers (names, C types,
+  descriptors, emitting). A lower module of them would export some 40 names, which the printer's other 2,700 lines
+  would then all qualify, and the unit assembly, split upward, would need 19 of the printer's internals exported.
+- **ir/lower's REPL phrase units.** phraseExpr and echoBinding are members of lowering's recursive group, and
+  lowerPhrases uses most of the lowerer's internals (newLowerer, binding, emit, inBody, lowerModule): a module of
+  them would need the lowerer's state exported.
+- **codegen/arm64/codegen's frames and stack maps.** Their definitions (the frame's slots and layout, the frame
+  maps, the unit's frame table) lie in three of its sections, with no seam between them and the rest.
+- **build/engine's unflushedBuildModules.** One 425-line function, not sections: dividing it into staleness, waves,
+  conformance, and cycles is a rewrite of the build's main loop, not a split.
+- **runtime/quest_gc.c's checking modes.** They read 77 of the collector's statics (the block table, the marks, the
+  cursors, the young and log lists, the statistics) and call its static inline helpers, so a header between them
+  would declare nearly all of the collector's state, and the hot functions the checks share (quest_gc_scan_object,
+  quest_gc_mark_roots) would lose `static`.
+- **The bootstrap's typed AST printing.** typechecker/typedastprint.py lays a node out, but each node class keeps its
+  dump_header, dump_children, and dump_type, as each syntax node keeps its fields: taking 93 methods out of their
+  classes into a table is a rewrite, not a move.
+

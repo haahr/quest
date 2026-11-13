@@ -735,6 +735,12 @@ the check. It says which, and why; `--all` and `--self-hosted-only` choose for i
 - **Output:** each suite's output is kept in `.build/check/SUITE.txt`; `tools/check` prints each suite's summary and
   when it finished, and exits 0 only when every suite passes.
 - **A comment- or documentation-only change** needs no suites.
+- **`tools/check --light`** is for the stages of a series of moves of modules, which can break a build but not a
+  behavior: no golden names a compiler module but `questlang/common/*` and `questlang/syntax/*`. It runs at once the
+  self-hosted fixed point through arm64, with the tests that import compiler modules (`tests/source/questlang/*`)
+  compiled by stage 2; every module of the bootstrap imported, and `quest_driver.py` compiled; and the unit tests but
+  the terminal ones, in about a quarter of the full check's time. It misses the other backends, the stress modes,
+  and behavior, so it is never enough for a push, and a step that changes code rather than moving it needs more.
 
 ---
 
