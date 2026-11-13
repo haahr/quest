@@ -33,7 +33,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
 from quest.modules.graph import UnitKind, file_unit_kind  # noqa: E402
-from quest.testing.runner import parse_test_directives  # noqa: E402
+from quest.testing.directives import parse_test_directives  # noqa: E402
 
 CACHE_DIR = ROOT_DIR / ".build" / "c-diff"
 TRIVIAL_PROGRAM = "let x = 1;\n"

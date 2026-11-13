@@ -26,7 +26,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
-from quest.testing.runner import compare_build_dirs  # noqa: E402
+from quest.testing.selfhost import compare_build_dirs  # noqa: E402
 
 CASES_DIRS = (Path(__file__).resolve().parent / "parallel-build", Path(__file__).resolve().parent / "build-errors")
 

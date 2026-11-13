@@ -41,7 +41,8 @@ from quest.build.compiler_runner import compile_c_source, run_binary
 from quest.codegen.backend import program_to_c
 from quest.config import CompilerOptions  # noqa: E402
 from quest.pipeline import CompilerContext, compile_pipeline, default_pipeline, link_dependencies  # noqa: E402
-from quest.testing.runner import discover_tests, parse_skipped_phases  # noqa: E402
+from quest.testing.directives import parse_skipped_phases  # noqa: E402
+from quest.testing.runner import discover_tests  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 BASELINE = HERE / "baseline.json"

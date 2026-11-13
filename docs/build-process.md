@@ -954,7 +954,7 @@ stale. The build hashes the contents of files in these places, each with SHA-256
      its seed, and refuses a binary whose digest is not the one `release.json` records. The release's commit and the
      digest are the seed's identity, recorded in `.build/quest-stages/seed` with the backend that builds stage 2: when
      any of them changes, the stages are built again from nothing.
-   - `run_tests.py --seed release` (`current_release` in `bootstrap/python/quest/testing/runner.py`) makes the same
+   - `run_tests.py --seed release` (`current_release` in `bootstrap/python/quest/testing/selfhost.py`) makes the same
      check before building from the release.
    - `tools/release` records the digest of the new `quest` in `release.json` when it cuts a release, and checks it
      again in `--verify` and before installing a new release.
