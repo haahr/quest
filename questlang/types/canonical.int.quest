@@ -13,6 +13,29 @@ import
     questlang/types/model : questlang/types/Model
     util/maybe : util/Maybe
 export
+    (* Exposing a type's outermost constructor (its head). Several functions
+     * do it, differing in what they look through; use the one whose
+     * difference matters:
+     *
+     * - model.evaluateLazily(t lookup): the checker's. Aliases, applications
+     *   (tolerating a mismatch in arity), and recursion, and a type variable
+     *   replaced by its definition in the environment. Not bounds.
+     * - normalizeType (here): the backends'. Aliases, recursion, and
+     *   applications, with no environment; cached by node.
+     * - betaReduceHead (here): applications only, stopping at a mismatch in
+     *   arity; neither aliases nor recursion.
+     * - unfoldRecursive and unfoldRecursiveAny (here): recursion and
+     *   applications until neither is at the head.
+     * - resolveTypeBound (here): aliases, then the POWER bounds of variables,
+     *   abstract types, and path types, followed to the end; model.powerBoundOf
+     *   takes one such step.
+     * - kinds.unfoldHead: one step of recursion or application, or none;
+     *   kinds.resolveBound loops over it and over bounds until a predicate
+     *   holds, for the checker's record, variant, tuple, and option bounds.
+     *
+     * canonicalStructure, private here, is normalizeType's for canonical
+     * forms. *)
+
     (* t with the type operator applications at its head beta-reduced, without
      * unfolding recursive types *)
     betaReduceHead(t: model.Type): model.Type

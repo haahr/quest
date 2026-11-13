@@ -176,23 +176,6 @@ export
             else 0
         end
 
-    (* The upper bound of a type variable, abstract type, or path type, if a
-     * power kind *)
-    let namedBound(t: Type): maybe.T(Type) =
-        begin
-            let bound = case t.form
-                when typeVariable with x then x.bound
-                when typeAbstract with x then maybe.some(:Kind x.bound)
-                when typePath with x then maybe.some(:Kind x.bound)
-                else maybe.none(:Kind)
-            end
-            if maybe.isSome(:Kind bound) andif model.isPower(maybe.unwrap(:Kind bound)) then
-                maybe.some(:Type model.powerBound(maybe.unwrap(:Kind bound)))
-            else
-                maybe.none(:Type)
-            end
-        end
-
     let optName(n: maybe.T(String)): String = maybe.unwrapOr(:String n "\n")
     let sameName(a: maybe.T(String) b: maybe.T(String)): Bool =
         if maybe.isSome(:String a) andif maybe.isSome(:String b) then
@@ -234,8 +217,8 @@ export
      * subtype of one with fewer, as Record a: Int b: Int end <: Record a: Int
      * end, and a tuple is a subtype of a tuple made of a prefix of its
      * components. A type variable has no constructor, but its bound is known
-     * (namedBound): a type parameter declared A <: B is a subtype of whatever
-     * B is.
+     * (model.powerBoundOf): a type parameter declared A <: B is a subtype of
+     * whatever B is.
      *
      * Recursive types are the first complication. Quest's are equi-recursive:
      * Rec(X) T is the same type as its unfolding, T with the Rec type itself
@@ -336,7 +319,7 @@ export
                         else
                             assume(trail lazyPair sub sup)
                             (* 5. A type variable's bound *)
-                            let bound = if isNamed(sub) then namedBound(sub) else maybe.none(:Type) end
+                            let bound = if isNamed(sub) then model.powerBoundOf(sub) else maybe.none(:Type) end
                             if maybe.isSome(:Type bound) andif prove(maybe.unwrap(:Type bound) sup env trail fuel) then
                                 true
                             else

@@ -2,6 +2,7 @@
 
 module staticdata : StaticData
 import
+    questlang/common/pyRepr : questlang/common/PyRepr
     questlang/types/model : questlang/types/Model
     questlang/types/dump : questlang/types/Dump
     questlang/repr/shapes : questlang/repr/Shapes
@@ -67,50 +68,6 @@ export
      * type the bootstrap's name for it.
      * ====================================================================== *)
 
-    (* A string as Python's repr writes it: in single quotes, or in double
-     * quotes when it has a single quote and no double quote, with backslash
-     * escapes for the quote, backslash, and unprintable characters *)
-    let pyRepr(s: String): String =
-        begin
-            let var hasSingle = false
-            let var hasDouble = false
-            for i = 0 upto {stringOp.length(s) - 1} do
-                let c = stringOp.getChar(s i)
-                if c is '\'' then hasSingle := true elsif c is '"' then hasDouble := true end
-            end
-            let quote = if hasSingle andif not(hasDouble) then '"' else '\'' end
-            let hex = "0123456789abcdef"
-            let b = stringBuilder.new()
-            b.char(quote)
-            for i = 0 upto {stringOp.length(s) - 1} do
-                let c = stringOp.getChar(s i)
-                let code = ascii.val(c)
-                if {c is quote} orif {c is '\\'} then
-                    b.char('\\').char(c)
-                elsif c is '\t' then
-                    b.str("\\t")
-                elsif c is '\n' then
-                    b.str("\\n")
-                elsif c is '\r' then
-                    b.str("\\r")
-                elsif {code < 32} orif {{code >= 127} andif {code <= 160}} orif {code is 173} then
-                    (* Unprintable, as Python decides it for the character
-                     * a byte decodes to *)
-                    b.str("\\x").char(stringOp.getChar(hex code / 16)).char(stringOp.getChar(hex code % 16))
-                else
-                    b.char(c)
-                end
-            end
-            b.char(quote)
-            b.toString()
-        end
-
-    (* Items in Python's repr of a tuple (one item has a trailing comma) and of
-     * a list *)
-    let pyTuple(items: vector.T(String)): String =
-        "(" <> syntax.joined(", " items) <> if vector.length(:String items) is 1 then ",)" else ")" end
-    let pyList(items: vector.T(String)): String = "[" <> syntax.joined(", " items) <> "]"
-
     (* =========================================================================
      * Record naming
      * ====================================================================== *)
@@ -151,18 +108,18 @@ export
             for i = 0 upto {extent fields - 1} do
                 let f = fields[i]
                 let parts = vector.new(:String)
-                vector.append(:String parts pyRepr(f.name))
-                vector.append(:String parts pyRepr(layout.typeTag(f.type)))
-                vector.append(:String parts pyRepr(layout.typeDigest(f.type)))
+                vector.append(:String parts pyRepr.str(f.name))
+                vector.append(:String parts pyRepr.str(layout.typeTag(f.type)))
+                vector.append(:String parts pyRepr.str(layout.typeDigest(f.type)))
                 (* In a whole program, a field of a transparent abstract type
                  * and one of its representation are laid out alike but
                  * described apart *)
                 if shapes.transparentAbstractTypes() then
                     vector.append(:String parts syntax.cInt(shapes.opaqueShape(f.type).id))
                 end
-                vector.append(:String items pyTuple(parts))
+                vector.append(:String items pyRepr.tupleOf(parts))
             end
-            pyTuple(items)
+            pyRepr.tupleOf(items)
         end
 
     let registerAlias(ctx: RecordNaming aliasName: String t: Type): Ok =
@@ -404,10 +361,10 @@ export
                     let key = echoKey(children[i].type inner)
                     if maybe.isSome(:String key) then anyPart := true end
                     let pair = vector.new(:String)
-                    vector.append(:String pair pyRepr(children[i].key))
-                    let keyText = if maybe.isSome(:String key) then pyRepr(maybe.unwrap(:String key)) else "None" end
+                    vector.append(:String pair pyRepr.str(children[i].key))
+                    let keyText = if maybe.isSome(:String key) then pyRepr.str(maybe.unwrap(:String key)) else "None" end
                     vector.append(:String pair keyText)
-                    vector.append(:String parts pyTuple(pair))
+                    vector.append(:String parts pyRepr.tupleOf(pair))
                 end
                 if {extent own is 0} andif not(anyPart) then
                     maybe.none(:String)
@@ -416,14 +373,14 @@ export
                     for i = 0 upto {extent own - 1} do
                         let pair = vector.new(:String)
                         vector.append(:String pair conv.int(own[i].position))
-                        vector.append(:String pair pyRepr(own[i].text))
-                        vector.append(:String owned pyTuple(pair))
+                        vector.append(:String pair pyRepr.str(own[i].text))
+                        vector.append(:String owned pyRepr.tupleOf(pair))
                     end
                     let whole = vector.new(:String)
-                    vector.append(:String whole pyRepr(headClassName(head)))
-                    vector.append(:String whole pyList(owned))
-                    vector.append(:String whole pyList(parts))
-                    maybe.some(:String pyTuple(whole))
+                    vector.append(:String whole pyRepr.str(headClassName(head)))
+                    vector.append(:String whole pyRepr.listOf(owned))
+                    vector.append(:String whole pyRepr.listOf(parts))
+                    maybe.some(:String pyRepr.tupleOf(whole))
                 end
             end
         end

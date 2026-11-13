@@ -2,6 +2,7 @@
 
 module loader : Loader
 import
+    questlang/common/pyRepr : questlang/common/PyRepr
     questlang/common/location : questlang/common/Location
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/syntax/ast : questlang/syntax/Ast
@@ -31,22 +32,6 @@ export
     let loadedQis = hashMap.new(:String :LoadedQi stringOp.equal hash.string)
 
     Let Scope = symbols.Scope
-
-    let lastSegment(name: String): String =
-        begin
-            let i = strutil.rfind(name "/")
-            if i < 0 then name else stringOp.getSub(name {i + 1} {{stringOp.length(name) - i} - 1}) end
-        end
-
-    (* Python's repr of a list of strings *)
-    let reprList(xs: Array(String)): String =
-        begin
-            let var s = "["
-            for i = 0 upto {extent xs - 1} do
-                s := s <> {if i > 0 then ", " else "" end} <> diagnostics.pyRepr(xs[i])
-            end
-            s <> "]"
-        end
 
     let chain(loading: vector.T(String) last: String): String =
         begin
@@ -167,7 +152,7 @@ export
             let register(scope: Scope): Scope =
                 begin
                     env.registerInterface(e name scope)
-                    let declName = lastSegment(name)
+                    let declName = paths.lastSegment(name)
                     if not(stringOp.equal(declName name)) then env.registerInterface(e declName scope) end
                     if not(stringOp.equal(canon name)) then env.registerInterface(e canon scope) end
                     if maybe.isSome(:String unitFile) then
@@ -252,7 +237,7 @@ export
                     diagnostics.fail(:Scope "Undefined interface '" <> name <> "': cannot find interface file for '"
                         <> name <>
                         "' (looked for '" <> normName <> ".qi' or '" <> normName <> ".int.quest' in " <>
-                        reprList(paths.searchedDirs(e.currentDir listedIncludePaths(e))) <> ")" 0)
+                        pyRepr.strList(paths.searchedDirs(e.currentDir listedIncludePaths(e))) <> ")" 0)
                 elsif strutil.endsWith(maybe.unwrap(:String fresh) ".qi") then
                     register(loadQi(maybe.unwrap(:String fresh)))
                 else
@@ -265,7 +250,7 @@ export
                                 when interfaceDecl with d then d.decl
                                 else diagnostics.fail(:ast.InterfaceDecl "internal: not an interface" 0)
                             end
-                            if not(stringOp.equal(paths.lower(decl.name) lastSegment(normName))) then
+                            if not(stringOp.equal(paths.lower(decl.name) paths.lastSegment(normName))) then
                                 diagnostics.fail(:Ok "Interface declared in '" <> paths.baseName(file)
                                     <> "' has name '" <>
                                     decl.name <> "', which does not match file name" 0)
@@ -358,7 +343,7 @@ export
                         let normName = paths.lower(name)
                         diagnostics.fail(:typedAst.Binding "Undefined module '" <> name <> "': cannot find module file for '" <>
                             name <> "' (looked for '" <> normName <> ".mod.quest' or '" <> normName <> ".o' in " <>
-                            reprList(paths.searchedDirs(e.currentDir listedIncludePaths(e))) <> ")" 0)
+                            pyRepr.strList(paths.searchedDirs(e.currentDir listedIncludePaths(e))) <> ")" 0)
                     end
                 else
                     loadModuleSource(name expectedInterface e maybe.unwrap(:String filePath) canon u)
@@ -401,13 +386,13 @@ export
                     let normName = paths.lower(name)
                     let expectedBase = paths.lower(stringOp.getSub(fileName 0 strutil.find(fileName ".")))
                     if not(stringOp.equal(paths.lower(decl.name) expectedBase)) orif
-                            not(stringOp.equal(paths.lower(decl.name) lastSegment(normName))) then
+                            not(stringOp.equal(paths.lower(decl.name) paths.lastSegment(normName))) then
                         diagnostics.fail(:Ok "Module declared in '" <> fileName <> "' has name '" <> decl.name <>
                             "', which does not match file name" 0)
                     end
                     if not(stringOp.equal(decl.interfaceName expectedInterface)) andif
-                            not(stringOp.equal(lastSegment(decl.interfaceName) expectedInterface)) andif
-                            not(stringOp.equal(decl.interfaceName lastSegment(expectedInterface))) then
+                            not(stringOp.equal(paths.lastSegment(decl.interfaceName) expectedInterface)) andif
+                            not(stringOp.equal(decl.interfaceName paths.lastSegment(expectedInterface))) then
                         diagnostics.fail(:Ok "Module '" <> decl.name <> "' in '" <> fileName <> "' implements interface '" <>
                             decl.interfaceName <> "', expected '" <> expectedInterface <> "'" 0)
                     end

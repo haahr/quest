@@ -68,14 +68,7 @@ export
                     while repl[r] isnot r do r := repl[r] end
                     r
                 end
-            let defs = array of(n maybe.none(:ssa.Inst))
-            for b = 0 upto {nBlocks - 1} do
-                let insts = ssa.block(f b).insts
-                for k = 0 upto {vector.length(:ssa.Inst insts) - 1} do
-                    let i = vector.get(:ssa.Inst insts k)
-                    for r = 0 upto {extent i.results - 1} do defs[i.results[r]] := maybe.some(:ssa.Inst i) end
-                end
-            end
+            let defs = ssa.definitions(f)
             let constantOf(v: Int): maybe.T(Int) =
                 if maybe.isSome(:ssa.Inst defs[v]) andif ssa.isOp(maybe.unwrap(:ssa.Inst defs[v]) ssa.opConst) then
                     maybe.some(:Int maybe.unwrap(:ssa.Inst defs[v]).imm)

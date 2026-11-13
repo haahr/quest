@@ -7,7 +7,7 @@
 
 module astprint : AstPrint
 import
-    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/pyRepr : questlang/common/PyRepr
     questlang/syntax/ast : questlang/syntax/Ast
     collections/vector : collections/Vector
     util/maybe : util/Maybe
@@ -44,7 +44,7 @@ export
     let none: S = option nil of S end
     let flag(value: Bool): S = option flag of S with let value = value end
     let atom(text: String): S = option atom of S with let text = text end
-    let str(s: String): S = atom(diagnostics.pyRepr(s))
+    let str(s: String): S = atom(pyRepr.str(s))
     let int(n: Int): S = atom(pyNumber(conv.int(n)))
     let real(r: Real): S = atom(pyNumber(conv.real(r)))
     let strs(items: vector.T(String)): S = option strs of S with let items = items end
@@ -411,7 +411,7 @@ export
         begin
             for i = 0 upto {vector.length(:String items) - 1} do
                 if i > 0 then b.str(sep) end
-                b.str(diagnostics.pyRepr(vector.get(:String items i)))
+                b.str(pyRepr.str(vector.get(:String items i)))
             end
             b
         end

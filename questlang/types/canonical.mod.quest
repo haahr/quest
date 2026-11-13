@@ -186,23 +186,6 @@ export
             end
         end
 
-    (* A variable's, abstract type's, or path type's bound, if it is a power
-     * kind *)
-    let powerBoundOf(t: Type): maybe.T(Type) =
-        begin
-            let bound = case t.form
-                when typeVariable with x then x.bound
-                when typeAbstract with x then maybe.some(:model.Kind x.bound)
-                when typePath with x then maybe.some(:model.Kind x.bound)
-                else maybe.none(:model.Kind)
-            end
-            if maybe.isSome(:model.Kind bound) andif model.isPower(maybe.unwrap(:model.Kind bound)) then
-                maybe.some(:Type model.powerBound(maybe.unwrap(:model.Kind bound)))
-            else
-                maybe.none(:Type)
-            end
-        end
-
     (* Whether two bounded types are one, as resolve_type_bound tells them
      * apart: a variable or abstract type by its symbol, a path type by
      * itself *)
@@ -221,7 +204,7 @@ export
             let visited = vector.new(:Type)
             let var done = false
             while not(done) do
-                let bound = powerBoundOf(curr)
+                let bound = model.powerBoundOf(curr)
                 if maybe.isNone(:Type bound) then
                     done := true
                 else

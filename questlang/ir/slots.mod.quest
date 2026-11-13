@@ -25,31 +25,17 @@ export
     let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
-    let isViewedKind(kind: shapes.ShapeKind): Bool =
-        case kind
-            when shapeRecord, shapeVariant, shapeOption then true
-            when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom, shapeTuple,
-                shapeArray, shapeCell, shapeOut, shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar,
-                shapeAbstract, shapeExternal, shapeOperator, shapePending then false
-        end
-
     let mayBeStoredAsSubtype(s: Shape): Bool =
         if shapes.kindIs(s shapes.shapeTuple) then extent s.components > 0
         else shapes.kindIs(s shapes.shapeFun) orif shapes.kindIs(s shapes.shapeAll)
-            orif isViewedKind(layout.resolvedShape(s).kind) end
+            orif shapes.isViewedKind(layout.resolvedShape(s).kind) end
 
     let typeOf(a: Atom): Type = nodes.atomType(a)
 
-    let held(t: Type kind: shapes.ShapeKind): maybe.T(Shape) =
-        begin
-            let h = layout.resolvedShape(shapes.shape(t))
-            if shapes.sameKind(h.kind kind) then maybe.some(:Shape h) else maybe.none(:Shape) end
-        end
-
     let tagShape(t: Type): maybe.T(Shape) =
         begin
-            let v = held(t shapes.shapeVariant)
-            if maybe.isSome(:Shape v) then v else held(t shapes.shapeOption) end
+            let v = layout.heldShape(t shapes.shapeVariant)
+            if maybe.isSome(:Shape v) then v else layout.heldShape(t shapes.shapeOption) end
         end
 
     let boxed(s: maybe.T(Shape)): Bool = maybe.isSome(:Shape s) andif layout.isBoxedInSlots(maybe.unwrap(:Shape s))
@@ -238,7 +224,7 @@ export
                 recordFields[i] := tuple let name = fields[i].name let type = typeOf(fields[i].atom) let isVar = fields[i].isVar end
             end
             let concrete = model.recordType(recordFields maybe.none(:String))
-            let h = held(maybe.unwrap(:Variable v).type shapes.shapeRecord)
+            let h = layout.heldShape(maybe.unwrap(:Variable v).type shapes.shapeRecord)
             let target = if maybe.isSome(:Shape h) then maybe.unwrap(:Shape h).structure else concrete end
             not(subtyping.isTypeEqual(target concrete maybe.none(:model.Lookup)) orif layout.isRecordSubtype(concrete target))
         end
@@ -266,7 +252,7 @@ export
                     boxed(ts.components[x.index].shape)
                 end
             when opRecordField with x then
-                let rs = held(typeOf(x.recordAtom) shapes.shapeRecord)
+                let rs = layout.heldShape(typeOf(x.recordAtom) shapes.shapeRecord)
                 if maybe.isNone(:Shape rs) then
                     false
                 else
@@ -362,7 +348,7 @@ export
                 false
             when opMakeOption with x then
                 if maybe.isSome(:Variable v) then
-                    let os = held(maybe.unwrap(:Variable v).type shapes.shapeOption)
+                    let os = layout.heldShape(maybe.unwrap(:Variable v).type shapes.shapeOption)
                     let tag = if maybe.isSome(:Shape os) then optionCaseTag(maybe.unwrap(:Shape os) x.cases x.tag x.ordinalAtom)
                         else maybe.none(:String) end
                     if maybe.isSome(:Atom x.payload) andif maybe.isSome(:String tag) then
@@ -384,7 +370,7 @@ export
                 false
             when opMakeVariant with x then
                 if maybe.isSome(:Variable v) andif maybe.isSome(:Atom x.payload) then
-                    let vs = held(maybe.unwrap(:Variable v).type shapes.shapeVariant)
+                    let vs = layout.heldShape(maybe.unwrap(:Variable v).type shapes.shapeVariant)
                     let c = if maybe.isSome(:Shape vs) then shapes.caseOf(maybe.unwrap(:Shape vs) x.tag) else maybe.none(:shapes.Component) end
                     x.payload := optSlotIfBoxed(st x.payload
                         if maybe.isSome(:shapes.Component c) then maybe.unwrap(:shapes.Component c).shape else maybe.none(:Shape) end before)
@@ -532,7 +518,7 @@ export
                 when sAssign with x then if x.v.boxed then x.value := slot(st x.value before) end
                 when sStoreAt with x then x.value := slotIfBoxed(st x.value maybe.some(:Shape locatedShape(x.address)) before)
                 when sStoreField with x then
-                    let rs = held(typeOf(x.base) shapes.shapeRecord)
+                    let rs = layout.heldShape(typeOf(x.base) shapes.shapeRecord)
                     let var field = maybe.none(:Shape)
                     if maybe.isSome(:Shape rs) then
                         let fields = shapes.sortedComponents(maybe.unwrap(:Shape rs))
@@ -596,15 +582,12 @@ export
 
     let decideSlots(unit: nodes.Unit): Ok =
         begin
-            let bodies = vector.new(:Body)
-            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do vector.append(:Body bodies vector.get(:nodes.Module unit.modules i).init) end
-            vector.append(:Body bodies unit.main)
-            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do vector.append(:Body bodies vector.get(:nodes.Function unit.functions i).body) end
+            let bodies = walk.unitBodies(unit)
             (* The mutable variables of record or variant types whose addresses
              * are taken are held boxed, as are var and out parameters of those
              * types *)
-            for i = 0 upto {vector.length(:Body bodies) - 1} do
-                let stmts = walk.walkStatements(vector.get(:Body bodies i) false)
+            for i = 0 upto {extent bodies - 1} do
+                let stmts = walk.walkStatements(bodies[i] false)
                 for j = 0 upto {vector.length(:Stmt stmts) - 1} do
                     case vector.get(:Stmt stmts j)
                         when sLet with x then
@@ -624,12 +607,12 @@ export
                     if not(eq(p.mode "value")) andif boxed(maybe.some(:Shape shapes.shape(p.v.type))) then p.v.boxed := true end
                 end
             end
-            for i = 0 upto {vector.length(:Body bodies) - 1} do
+            for i = 0 upto {extent bodies - 1} do
                 let st = tuple
                     let var boxes = hashMap.new(:Int :Variable intEqual hash.int)
                     let var fresh = hashMap.new(:Int :Bool intEqual hash.int)
                 end
-                body(st vector.get(:Body bodies i))
+                body(st bodies[i])
             end
         end
 end

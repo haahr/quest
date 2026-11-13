@@ -25,17 +25,6 @@ import
 export
     Let Value = values.Value
 
-    let fieldOf(r: Value name: String): maybe.T(Value) =
-        case r when vRecord with x then hashMap.get(:String :Value x.r.fields name) else maybe.none(:Value) end
-    let stringOf(v: maybe.T(Value)): String =
-        if maybe.isNone(:Value v) then "" else case maybe.unwrap(:Value v) when vString with x then x.s else "" end end
-    let boolOf(v: maybe.T(Value)): Bool =
-        maybe.isSome(:Value v) andif case maybe.unwrap(:Value v) when vBool with x then x.b else false end
-    let itemsOf(v: maybe.T(Value)): Array(Value) =
-        if maybe.isNone(:Value v) then array of :Value end
-        else case maybe.unwrap(:Value v) when vArray with x then x.a else array of :Value end end
-        end
-
     (* The interface path an import of a .qi names: what follows its last
      * colon (maybe=util/maybe:util/Maybe, :Word) *)
     let importedPath(imp: String): String =
@@ -57,7 +46,7 @@ export
 
     let imports(r: Value): Array(String) =
         begin
-            let items = itemsOf(fieldOf(r "imports"))
+            let items = interfaceCompiler.itemsOf(interfaceCompiler.fieldOf(r "imports"))
             let result = array of(extent items "")
             for i = 0 upto {extent items - 1} do
                 result[i] := case items[i] when vString with x then x.s else "" end
@@ -91,20 +80,20 @@ export
                 vector.append(:String useLines "uses " <> path <> " " <> imported(path) <> "\n")
             end
             let typeLines = vector.new(:String)
-            let types = itemsOf(fieldOf(r "types"))
+            let types = interfaceCompiler.itemsOf(interfaceCompiler.fieldOf(r "types"))
             for i = 0 upto {extent types - 1} do
                 let t = types[i]
-                let manifest = if boolOf(fieldOf(t "isManifest")) then " = " <> stringOf(fieldOf(t "manifestType"))
+                let manifest = if interfaceCompiler.boolOf(interfaceCompiler.fieldOf(t "isManifest")) then " = " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(t "manifestType"))
                     else "" end
                 vector.append(:String typeLines
-                    "type " <> stringOf(fieldOf(t "name")) <> " " <> stringOf(fieldOf(t "kind")) <> manifest <> "\n")
+                    "type " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(t "name")) <> " " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(t "kind")) <> manifest <> "\n")
             end
             let valueLines = vector.new(:String)
-            let vals = itemsOf(fieldOf(r "values"))
+            let vals = interfaceCompiler.itemsOf(interfaceCompiler.fieldOf(r "values"))
             for i = 0 upto {extent vals - 1} do
                 let v = vals[i]
                 vector.append(:String valueLines
-                    "value " <> stringOf(fieldOf(v "name")) <> ": " <> stringOf(fieldOf(v "typeSig")) <> "\n")
+                    "value " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(v "name")) <> ": " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(v "typeSig")) <> "\n")
             end
             sha256.hexDigest("abi " <> conv.int(abi.abiVersion) <> "\ninterface " <> canonical <> "\n"
                 <> sorted(importLines) <> sorted(typeLines) <> sorted(valueLines) <> sorted(useLines))

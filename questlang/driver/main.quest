@@ -720,15 +720,6 @@ let compiledPrintsResult = options.printResult orif stringOp.equal(options.stopA
  * module artifacts in (docs/build-process.md section 5.2.4) *)
 let buildDir = paths.absolute(maybe.unwrapOr(:String options.buildDir ".build"));
 
-(* A program's base name, without its last suffix (Python's Path.stem) *)
-let stem(file: String): String =
-    begin
-        let name = paths.baseName(file)
-        let var dot = ~1
-        for i = 1 upto {stringOp.length(name) - 1} do if stringOp.getChar(name i) is '.' then dot := i end end
-        if dot < 0 then name else stringOp.getSub(name 0 dot) end
-    end;
-
 (* The 0-indexed offset of a (1-indexed) line and column of a source, the
  * inverse of location.locate *)
 let offsetOf(text: String line: Int column: Int): Int =
@@ -971,7 +962,7 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                     else engine.unitModuleRefs(importRefs(program) passes.implicitImports(t.unit program)
                         e.currentDir vector.toArray(:String e.includePaths) e.programDir e.units.resolver)
                     end
-                let importer = if strutil.startsWith(options.file "<") then options.file else stem(options.file) end
+                let importer = if strutil.startsWith(options.file "<") then options.file else paths.stem(options.file) end
                 try
                     let objects = engine.buildModules(newEngine(e) modules importer e.programDir)
                     if writing then

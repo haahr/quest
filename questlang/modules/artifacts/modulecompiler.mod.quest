@@ -75,13 +75,6 @@ export
             found
         end
 
-    let effectiveInterfacePath(imp: ast.ImportItem): String =
-        maybe.unwrapOr(:String imp.interfacePath imp.interfaceName)
-    let effectiveModulePaths(imp: ast.ImportItem): vector.T(String) =
-        if maybe.isSome(:vector.T(String) imp.modulePaths) then maybe.unwrap(:vector.T(String) imp.modulePaths)
-        else imp.names
-        end
-
     let interfaceRef(resolved: graph.Resolved path: String): manifest.ImportedInterfaceRef =
         begin
             let src = resolved.source
@@ -148,7 +141,7 @@ export
             (* 2. The interfaces and modules it imports *)
             for i = 0 upto {vector.length(:ast.ImportItem decl.imports) - 1} do
                 let imp = vector.get(:ast.ImportItem decl.imports i)
-                let ifacePath = effectiveInterfacePath(imp)
+                let ifacePath = ast.effectiveInterfacePath(imp)
                 if maybe.isNone(:symbols.Scope env.lookupInterface(e ifacePath))
                     andif maybe.isNone(:symbols.Scope env.lookupInterface(e imp.interfaceName)) then
                     elaboration.loadInterface(ifacePath e)
@@ -157,7 +150,7 @@ export
                 let imported = env.resolveInterface(e ifacePath)
                 let ref = interfaceRef(imported ifacePath)
                 vector.append(:manifest.ImportedInterfaceRef interfaces ref)
-                let modulePaths = effectiveModulePaths(imp)
+                let modulePaths = ast.effectiveModulePaths(imp)
                 for j = 0 upto {vector.length(:String imp.names) - 1} do
                     let modulePath = if j < vector.length(:String modulePaths) then
                         vector.get(:String modulePaths j) else "" end

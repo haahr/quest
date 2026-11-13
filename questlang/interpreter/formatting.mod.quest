@@ -15,7 +15,7 @@ import
     stringOp = string : StringOp
 export
     Let Value = model.Value
-    Let Visited = vector.T(Value)
+    Let Visited = model.Visited
 
     let exposedType(t0: tm.Type): tm.Type =
         begin
@@ -26,24 +26,6 @@ export
                 unfolded := kinds.unfoldHead(t)
             end
             t
-        end
-
-    let isVisited(visited: Visited v: Value): Bool =
-        begin
-            let var found = false
-            for i = 0 upto {vector.length(:Value visited) - 1} do
-                if model.same(vector.get(:Value visited i) v) then found := true end
-            end
-            found
-        end
-
-    let joined(parts: vector.T(String)): String =
-        begin
-            let var s = ""
-            for i = 0 upto {vector.length(:String parts) - 1} do
-                s := if i is 0 then vector.get(:String parts i) else s <> " " <> vector.get(:String parts i) end
-            end
-            s
         end
 
     (* s without a prefix and a suffix (removeprefix, removesuffix), then
@@ -154,7 +136,7 @@ export
             end
         end
     and guarded(v: Value t: tm.Type visited: Visited opening: String): String =
-        if isVisited(visited v) then
+        if model.isVisited(visited v) then
             opening <> " ... end"
         else
             vector.append(:Value visited v)
@@ -187,7 +169,7 @@ export
                                         end
                                 end
                             end
-                            if vector.empty(:String parts) then "tuple end" else "tuple " <> joined(parts) <> " end" end
+                            if vector.empty(:String parts) then "tuple end" else "tuple " <> model.joined(parts) <> " end" end
                         else model.toString(v)
                     end
                 when vRecord with x then
@@ -204,14 +186,14 @@ export
                                         name <> "=" <> formatTyped(hashMap.find(:String :Value x.r.fields name) field.type visited))
                                 end
                             end
-                            if vector.empty(:String parts) then "record end" else "record " <> joined(parts) <> " end" end
+                            if vector.empty(:String parts) then "record end" else "record " <> model.joined(parts) <> " end" end
                         else model.toString(v)
                     end
                 when vArray with x then
                     case t.form
                         when typeArray with at then
                             for i = 0 upto {extent x.a - 1} do vector.append(:String parts formatTyped(x.a[i] at.element visited)) end
-                            if vector.empty(:String parts) then "array of end" else "array of " <> joined(parts) <> " end" end
+                            if vector.empty(:String parts) then "array of end" else "array of " <> model.joined(parts) <> " end" end
                         else model.toString(v)
                     end
                 else model.toString(v)

@@ -121,14 +121,6 @@ export
                 {shapes.kindIs(shapes.shape(f.resultType) shapes.shapeTuple) andif mentionsAny(f.resultType ids)}}
         end
 
-    (* Whether values of type t are functions, polymorphic or not *)
-    let isFunction(t: Type): Bool =
-        begin
-            let var s = shapes.shape(t)
-            while shapes.kindIs(s shapes.shapeAll) do s := shapes.body(s) end
-            shapes.kindIs(s shapes.shapeFun)
-        end
-
     (* The clone of a function the substitution instantiates (its type
      * parameters are substituted away) *)
     let cloneFunction(c: cloning.Cloner f: nodes.Function): nodes.Function =
@@ -385,7 +377,7 @@ export
         case o
             when opTypeApp with app then
                 let definition = definitionOf(sp app.callee app.moduleRef app.member)
-                if maybe.isSome(:Definition definition) andif not(isFunction(result.type)) then
+                if maybe.isSome(:Definition definition) andif not(shapes.isFunction(result.type)) then
                     let d = maybe.unwrap(:Definition definition)
                     if {extent d.function.params is 0} andif specializes(d.function app.typeArgs enclosing)
                         andif not(crossesAbstractLayouts(app.moduleRef app.calleeType app.typeArgs)) then

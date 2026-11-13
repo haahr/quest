@@ -350,9 +350,6 @@ export
         tuple let name = name let value = value end
     let arrayOf(xs: vector.T(Value)): Value = option vArray of Value with let a = vector.toArray(:Value xs) end
 
-    let effectiveInterfacePath(imp: ast.ImportItem): String =
-        maybe.unwrapOr(:String imp.interfacePath imp.interfaceName)
-
     let compileInterfaceToQi(decl: ast.InterfaceDecl scope: Scope source: maybe.T(String)
         deps: Array(paths.InterfaceDependency)): String =
         begin
@@ -363,11 +360,11 @@ export
                 let hasModulePaths = maybe.isSome(:vector.T(String) imp.modulePaths)
                     andif not(vector.empty(:String maybe.unwrap(:vector.T(String) imp.modulePaths)))
                 vector.append(:Value imports str(
-                    if vector.empty(:String imp.names) then ":" <> effectiveInterfacePath(imp)
+                    if vector.empty(:String imp.names) then ":" <> ast.effectiveInterfacePath(imp)
                     elsif hasModulePaths then
                         names <> "=" <> strutil.join("," maybe.unwrap(:vector.T(String) imp.modulePaths)) <> ":"
-                            <> effectiveInterfacePath(imp)
-                    else names <> ":" <> effectiveInterfacePath(imp)
+                            <> ast.effectiveInterfacePath(imp)
+                    else names <> ":" <> ast.effectiveInterfacePath(imp)
                     end))
             end
 
@@ -614,7 +611,7 @@ export
                             env.atImport(:Ok e imp.offset 1 fun(): Ok
                                 begin
                                     ensureResolvedInterfaceArtifacts(graph.resolveInterface(res
-                                        effectiveInterfacePath(imp)
+                                        ast.effectiveInterfacePath(imp)
                                         maybe.some(:String paths.parent(file)) roots) maybe.unwrap(:String build)
                                             onCompiled res)
                                     ok
@@ -786,18 +783,6 @@ export
         end
         end
 
-    let declareTypesAndKinds(target: Scope source: Scope): Ok =
-        begin
-            let ts = hashMap.values(:String :symbols.TypeSymbol source.types)
-            for i = 0 upto {vector.length(:symbols.TypeSymbol ts) - 1} do
-                symbols.declareType(target vector.get(:symbols.TypeSymbol ts i))
-            end
-            let ks = hashMap.values(:String :symbols.KindSymbol source.kinds)
-            for i = 0 upto {vector.length(:symbols.KindSymbol ks) - 1} do
-                symbols.declareKind(target vector.get(:symbols.KindSymbol ks i))
-            end
-            ok
-        end
 
     let loadInterfaceFromQiFile(file: String e: env.T): Scope =
         begin
@@ -829,7 +814,7 @@ export
             for i = 0 upto {extent importsOf - 1} do
                 let impText = case importsOf[i] when vString with x then x.s else "" end
                 if strutil.startsWith(impText ":") then
-                    declareTypesAndKinds(frame interfaceOf(stringOp.getSub(impText 1 {stringOp.length(impText) - 1})))
+                    elaboration.declareTypesAndKinds(interfaceOf(stringOp.getSub(impText 1 {stringOp.length(impText) - 1})) frame)
                 else
                     let var names = vector.new(:String)
                     let var modulePaths = vector.new(:String)
@@ -850,7 +835,7 @@ export
                     end
                     let impScope = interfaceOf(impName)
                     if vector.empty(:String names) then
-                        declareTypesAndKinds(frame impScope)
+                        elaboration.declareTypesAndKinds(impScope frame)
                     else
                         for j = 0 upto {vector.length(:String names) - 1} do
                             let modPath = vector.get(:String modulePaths j)
@@ -875,7 +860,7 @@ export
 
             let ifaceScope = symbols.newScope(maybe.some(:Scope frame) "interface_" <> name)
             ifaceScope.isUnsound := boolOf(fieldOf(rec0 "isUnsound"))
-            declareTypesAndKinds(ifaceScope frame)
+            elaboration.declareTypesAndKinds(frame ifaceScope)
 
             (* 2. Its types, and 3. its values *)
             let saved = e.currentScope

@@ -100,22 +100,6 @@ export
     let setDef(s: Simplifier id: Int o: Op): Ok = begin hashMap.insert(:Int :Op s.defs id o) ok end
     let setConst(s: Simplifier id: Int a: Atom): Ok = begin hashMap.insert(:Int :Atom s.consts id a) ok end
 
-    (* The unit's bodies: its modules' initializations first, in order (each
-     * runs before the main body, and what it binds its members to is known when
-     * the main body calls them), then its main body and its functions *)
-    let rec bodies(unit: nodes.Unit): Array(Body) =
-        begin
-            let found = vector.new(:Body)
-            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
-                vector.append(:Body found vector.get(:nodes.Module unit.modules i).init)
-            end
-            vector.append(:Body found unit.main)
-            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
-                vector.append(:Body found vector.get(:nodes.Function unit.functions i).body)
-            end
-            vector.toArray(:Body found)
-        end
-
     let pin(s: Simplifier m: nodes.Members): Ok =
         for i = 0 upto {vector.length(:String m.names) - 1} do
             let v = nodes.member(m vector.get(:String m.names i))
@@ -158,7 +142,7 @@ export
                     pinId(s maybe.unwrap(:Variable m.recordVar).id)
                 end
             end
-            let all = bodies(unit)
+            let all = walk.unitBodies(unit)
             for b = 0 upto {extent all - 1} do countBody(s all[b]) end
         end
 
@@ -564,14 +548,6 @@ export
             noVariable
         end
 
-    (* Whether a type is a function's, under any type parameters *)
-    let isFunction(t: model.Type): Bool =
-        begin
-            let var sh = shapes.shape(t)
-            while shapes.kindIs(sh shapes.shapeAll) do sh := shapes.body(sh) end
-            shapes.kindIs(sh shapes.shapeFun)
-        end
-
     (* The name of the member of a module's that a variable of its is, if it is
      * one: the member's variable, or the variable the module's initialization
      * copies to it (an exception's, error, which error.1 is bound to) *)
@@ -631,7 +607,7 @@ export
                     let name = memberName(r.m v)
                     let sh = shapes.shape(v.type)
                     let laidOut = shapes.transparentAbstractTypes() orif shapes.kindIs(sh shapes.shapeException)
-                    if v.isMutable orif isFunction(v.type) orif not(laidOut) orif maybe.isNone(:String name) then
+                    if v.isMutable orif shapes.isFunction(v.type) orif not(laidOut) orif maybe.isNone(:String name) then
                         all := false
                     else
                         vector.append(:inline.Read reads tuple
@@ -799,7 +775,7 @@ export
         case o
             when opCall with c then maybe.some(:nodes.OpCall c)
             when opTypeApp with t then
-                if maybe.isSome(:Variable result) andif not(isFunction(maybe.unwrap(:Variable result).type)) then
+                if maybe.isSome(:Variable result) andif not(shapes.isFunction(maybe.unwrap(:Variable result).type)) then
                     maybe.some(:nodes.OpCall tuple
                         let var callee = t.callee
                         let var typeArgs = t.typeArgs
@@ -1093,7 +1069,7 @@ export
                 let renames = hashMap.new(:Int :Variable intEqual hash.int)
                 let consts = hashMap.new(:Int :Atom intEqual hash.int)
                 let var changed = true
-                let var analysis = inline.analyze(bodies(unit))
+                let var analysis = inline.analyze(walk.unitBodies(unit))
                 let labels = clone.newLabels()
                 let var grown = 0
                 let var budget = 0
@@ -1105,7 +1081,7 @@ export
                 s.changed := false
                 count(s unit)
                 hashMap.clear(:Int :Op s.defs)
-                let all = bodies(unit)
+                let all = walk.unitBodies(unit)
                 if round > 0 then s.analysis := inline.analyze(all) end
                 for b = 0 upto {extent all - 1} do body(s all[b] maybe.none(:Int)) end
                 if contify.contify(all s.analysis.recursive s.pinned s.labels) then s.changed := true end

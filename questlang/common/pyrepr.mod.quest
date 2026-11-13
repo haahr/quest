@@ -1,0 +1,65 @@
+(* Quest Self-Hosted Compiler: Python Repr Implementation *)
+
+module pyRepr : PyRepr
+import
+    collections/vector : collections/Vector
+    util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    ascii : Ascii
+    conv : Conv
+export
+    let hexDigit(n: Int): Char = stringOp.getChar("0123456789abcdef" n)
+
+    let str(s: String): String =
+        begin
+            let size = stringOp.length(s)
+            let var hasSingle = false
+            let var hasDouble = false
+            for i = 0 upto {size - 1} do
+                let c = stringOp.getChar(s i)
+                if c is '\'' then hasSingle := true elsif c is '"' then hasDouble := true end
+            end
+            let quote = if hasSingle andif not(hasDouble) then '"' else '\'' end
+            let b = stringBuilder.new()
+            b.char(quote)
+            for i = 0 upto {size - 1} do
+                let c = stringOp.getChar(s i)
+                let code = ascii.val(c)
+                if c is '\\' then b.str("\\\\")
+                elsif c is quote then b.char('\\').char(quote)
+                elsif code is 10 then b.str("\\n")
+                elsif code is 13 then b.str("\\r")
+                elsif code is 9 then b.str("\\t")
+                elsif {code < 32} orif {{code >= 127} andif {code <= 160}} orif {code is 173} then
+                    (* Python's repr escapes the bytes that are not printable
+                     * Latin-1 characters *)
+                    b.str("\\x").char(hexDigit(code / 16)).char(hexDigit(code % 16))
+                else b.char(c)
+                end
+            end
+            b.char(quote).toString()
+        end
+
+    let joinedItems(items: vector.T(String)): String = strutil.join(", " items)
+
+    let tupleOf(items: vector.T(String)): String =
+        "(" <> joinedItems(items) <> if vector.length(:String items) is 1 then ",)" else ")" end
+    let listOf(items: vector.T(String)): String = "[" <> joinedItems(items) <> "]"
+
+    let strList(xs: Array(String)): String =
+        begin
+            let items = vector.new(:String)
+            for i = 0 upto {extent xs - 1} do vector.append(:String items str(xs[i])) end
+            listOf(items)
+        end
+
+    let ints(xs: Array(Int) open: String close: String): String =
+        begin
+            let var s = open
+            for i = 0 upto {extent xs - 1} do
+                s := if i is 0 then s <> conv.int(xs[i]) else s <> ", " <> conv.int(xs[i]) end
+            end
+            if {extent xs is 1} andif stringOp.equal(open "(") then s <> ",)" else s <> close end
+        end
+end

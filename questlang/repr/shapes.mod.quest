@@ -652,4 +652,23 @@ export
 
     let shape(t: Type): Shape = if transparency.on then shapeIn(asked true t) else shapeIn(opaquelyAsked false t) end
     let opaqueShape(t: Type): Shape = shapeIn(opaquelyAsked false t)
+
+    (* The kinds of shapes in whose representation a type parameter bounded by
+     * one holds its values: records, variants, and options, which values of a
+     * subtype hold at the bound's view *)
+    let isViewedKind(kind: ShapeKind): Bool =
+        case kind
+            when shapeRecord, shapeVariant, shapeOption then true
+            when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom, shapeTuple,
+                shapeArray, shapeCell, shapeOut, shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar,
+                shapeAbstract, shapeExternal, shapeOperator, shapePending then false
+        end
+
+    (* Whether values of type t are functions, polymorphic or not *)
+    let isFunction(t: Type): Bool =
+        begin
+            let var s = shape(t)
+            while kindIs(s shapeAll) do s := body(s) end
+            kindIs(s shapeFun)
+        end
 end

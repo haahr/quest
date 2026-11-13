@@ -194,15 +194,6 @@ export
             vector.toArray(:String dirs)
         end
 
-    (* A file name without its last suffix (Python's Path.stem) *)
-    let stem(file: String): String =
-        begin
-            let name = paths.baseName(file)
-            let var dot = ~1
-            for i = 1 upto {stringOp.length(name) - 1} do if stringOp.getChar(name i) is '.' then dot := i end end
-            if dot < 0 then name else stringOp.getSub(name 0 dot) end
-        end
-
     (* Where a main routine's artifacts go: build/<dir>/<stem>, <dir> being its
      * directory relative to the current directory, if it is inside it
      * (docs/build-process.md section 3.2) *)
@@ -215,7 +206,7 @@ export
             else
                 eng.buildDir
             end
-            str(pathLib.child(dir stem(str(main))))
+            str(pathLib.child(dir paths.stem(str(main))))
         end
 
     (* A main routine's .main.qm, .main.c, and .main.o: the .main suffix keeps
@@ -332,25 +323,6 @@ export
                 maybe.some(:All(m: manifest.ModuleManifest) maybe.T(String) changed))
         end
 
-    let effectiveModulePaths(item: ast.ImportItem): vector.T(String) =
-        if maybe.isSome(:vector.T(String) item.modulePaths) then maybe.unwrap(:vector.T(String) item.modulePaths)
-        else item.names
-        end
-
-    let interfaceRef(resolved: graph.Resolved path: String): manifest.ImportedInterfaceRef =
-        begin
-            let src = resolved.source
-            let stats = if maybe.isSome(:String src) then fileStats.find(maybe.unwrap(:String src))
-                else maybe.none(:fileStats.T) end
-            let hasSource = maybe.isSome(:fileStats.T stats) andif {maybe.unwrap(:fileStats.T stats).kind?file}
-            tuple
-                let name = graph.interfaceName(resolved)
-                let source = if maybe.isSome(:String src) then paths.absolute(maybe.unwrap(:String src)) else "" end
-                let mtime = if hasSource then maybe.unwrap(:fileStats.T stats).modifiedTime else 0.0 end
-                let path = path let dir = ""
-            end
-        end
-
     (* Compiles a main routine into its .main.qm, .main.c, and .main.o,
      * returning the modules it imports *)
     let compileMainUnit(eng: T mainFile: String): Array(manifest.ImportedModuleRef) =
@@ -403,11 +375,11 @@ export
                                         ok
                                     end
                                     vector.append(:manifest.ImportedInterfaceRef interfaces
-                                        interfaceRef(env.resolveInterface(e ifacePath) ifacePath))
+                                        moduleCompiler.interfaceRef(env.resolveInterface(e ifacePath) ifacePath))
                                     vector.append(:ImportRef imports tuple
                                         let interfacePath = ifacePath
                                         let names = vector.toArray(:String it.names)
-                                        let modulePaths = vector.toArray(:String effectiveModulePaths(it))
+                                        let modulePaths = vector.toArray(:String ast.effectiveModulePaths(it))
                                     end)
                                 end
                             else ok
@@ -609,8 +581,8 @@ export
             let sourceFiles = vector.new(:String)
             let linked = vector.fromArray(:String strs(eng.extraObjects))
             for i = 0 upto {extent eng.extraObjects - 1} do
-                vector.append(:String discovered stem(str(eng.extraObjects[i])))
-                vector.append(:String discovered paths.lower(stem(str(eng.extraObjects[i]))))
+                vector.append(:String discovered paths.stem(str(eng.extraObjects[i])))
+                vector.append(:String discovered paths.lower(paths.stem(str(eng.extraObjects[i]))))
             end
             let moduleGraph = vector.new(:Edges)
             let expected = vector.new(:NamedExpected)
@@ -747,7 +719,7 @@ export
                          * without source is up to date *)
                         let var foundObject = maybe.none(:String)
                         for i = 0 upto {extent eng.extraObjects - 1} do
-                            let s = paths.lower(stem(str(eng.extraObjects[i])))
+                            let s = paths.lower(paths.stem(str(eng.extraObjects[i])))
                             if maybe.isNone(:String foundObject)
                                 andif {eq(s artifactStem) orif eq(s paths.lower(item))} then
                                 foundObject := maybe.some(:String str(eng.extraObjects[i]))
@@ -759,7 +731,7 @@ export
                         if maybe.isSome(:String foundObject) andif system.isFile(maybe.unwrap(:String foundObject)) then
                             let o = maybe.unwrap(:String foundObject)
                             let dir = stringOp.getSub(o 0 {stringOp.length(o) - stringOp.length(paths.baseName(o))})
-                            let qmCandidate = dir <> stem(o) <> ".qm"
+                            let qmCandidate = dir <> paths.stem(o) <> ".qm"
                             a := tuple let qm = if system.isFile(qmCandidate) then qmCandidate else a.qm end
                                 let c = a.c let o = o end
                             if system.isFile(qmCandidate) andif not(abi.hasCurrentAbi(qmCandidate)) then
@@ -875,7 +847,7 @@ export
                                 when moduleDecl with d then
                                     for i = 0 upto {vector.length(:ast.ImportItem d.decl.imports) - 1} do
                                         let it = vector.get(:ast.ImportItem d.decl.imports i)
-                                        let modulePaths = effectiveModulePaths(it)
+                                        let modulePaths = ast.effectiveModulePaths(it)
                                         for j = 0 upto {vector.length(:String it.names) - 1} do
                                             let path = if {j < vector.length(:String modulePaths)}
                                                 andif {stringOp.length(vector.get(:String modulePaths j)) > 0} then
@@ -1040,7 +1012,7 @@ export
             let target = if maybe.isSome(:String output) then paths.absolute(maybe.unwrap(:String output))
                 else mainArtifactBase(eng main) end
             log(eng "BUILD START" "target=" <> main <> " mode=separate build_dir=" <> str(eng.buildDir))
-            let item = stem(main)
+            let item = paths.stem(main)
             log(eng "QUEUE INIT" "enqueued main routine " <> quoted(item))
             log(eng "POP QUEUE" quoted(item) <> " (kind=main)")
             let a = mainArtifacts(eng main)

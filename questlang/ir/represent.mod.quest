@@ -67,14 +67,6 @@ export
     let hasInstantiation(layout: Layout): Bool =
         maybe.isSome(:nodes.PlanLayout layout) andif not(hashMap.empty(:Int :Type maybe.unwrap(:nodes.PlanLayout layout).subst))
 
-    let isViewedKind(kind: shapes.ShapeKind): Bool =
-        case kind
-            when shapeRecord, shapeVariant, shapeOption then true
-            when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom, shapeTuple,
-                shapeArray, shapeCell, shapeOut, shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar,
-                shapeAbstract, shapeExternal, shapeOperator, shapePending then false
-        end
-
     let isFunctionKind(s: Shape): Bool = shapes.kindIs(s shapes.shapeFun) orif shapes.kindIs(s shapes.shapeAll)
 
     let typeOf(a: Atom): Type = nodes.atomType(a)
@@ -88,12 +80,12 @@ export
 
     (* Whether s is a module's abstract type's (or an abstract or path type's)
      * bounded by a record, variant, or option type, held viewed at its bound *)
-    let boundedView(s: Shape): Bool = layout.heldAtBound(s) andif isViewedKind(layout.resolvedShape(s).kind)
+    let boundedView(s: Shape): Bool = layout.heldAtBound(s) andif shapes.isViewedKind(layout.resolvedShape(s).kind)
 
     (* Whether s is a type parameter's bounded by a record, variant, option, or
      * tuple type, whose values are held at their own view *)
     let ownViewed(s: Shape): Bool =
-        layout.ownView(s) andif {isViewedKind(layout.resolvedShape(s).kind)
+        layout.ownView(s) andif {shapes.isViewedKind(layout.resolvedShape(s).kind)
             orif shapes.kindIs(layout.resolvedShape(s) shapes.shapeTuple)}
 
     let equal(a: Type b: Type): Bool = model.same(a b) orif subtyping.isTypeEqual(a b lookupNone)

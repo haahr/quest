@@ -2118,4 +2118,19 @@ export
                     "Let " <> f.name <> bound <> " = " <> show(f.type)
                 end
         end
+
+    let powerBoundOf(t: Type): maybe.T(Type) =
+        begin
+            let bound = case t.form
+                when typeVariable with x then x.bound
+                when typeAbstract with x then maybe.some(:Kind x.bound)
+                when typePath with x then maybe.some(:Kind x.bound)
+                else maybe.none(:Kind)
+            end
+            if maybe.isSome(:Kind bound) andif isPower(maybe.unwrap(:Kind bound)) then
+                maybe.some(:Type powerBound(maybe.unwrap(:Kind bound)))
+            else
+                maybe.none(:Type)
+            end
+        end
 end

@@ -16,20 +16,10 @@ export
 
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
-    (* The kinds of shapes in whose representation a type parameter bounded by
-     * one holds its values *)
-    let isViewedKind(kind: shapes.ShapeKind): Bool =
-        case kind
-            when shapeRecord, shapeVariant, shapeOption then true
-            when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom, shapeTuple,
-                shapeArray, shapeCell, shapeOut, shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar,
-                shapeAbstract, shapeExternal, shapeOperator, shapePending then false
-        end
-
     let writtenStructure(t: Type kind: shapes.ShapeKind): maybe.T(Type) =
         begin
             let s = shapes.shape(t)
-            let held = if isViewedKind(kind) then layout.resolvedShape(s) else s end
+            let held = if shapes.isViewedKind(kind) then layout.resolvedShape(s) else s end
             if not(shapes.sameKind(held.kind kind)) then
                 maybe.none(:Type)
             else

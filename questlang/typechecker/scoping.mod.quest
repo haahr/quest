@@ -2,6 +2,7 @@
 
 module scoping : Scoping
 import
+    questlang/common/pyRepr : questlang/common/PyRepr
     questlang/types/model : questlang/types/Model
     questlang/types/symbols : questlang/types/Symbols
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
@@ -32,16 +33,6 @@ export
             let copy = copyIds(ids)
             for i = 0 upto {extent more - 1} do hashMap.insert(:Int :Bool copy more[i] true) end
             copy
-        end
-
-    (* Python's repr of a sequence of ints: (1, 2) or [1, 2] *)
-    let reprInts(xs: Array(Int) open: String close: String): String =
-        begin
-            let var s = open
-            for i = 0 upto {extent xs - 1} do
-                s := if i is 0 then s <> conv.int(xs[i]) else s <> ", " <> conv.int(xs[i]) end
-            end
-            if {extent xs is 1} andif stringOp.equal(open "(") then s <> ",)" else s <> close end
         end
 
     (* The class name of a node, as the bootstrap's problems name it *)
@@ -127,8 +118,8 @@ export
                         end
                         if {extent x.typeParamIds > 0} andif not(same) then
                             vector.append(:String st.problems "function at offset " <> conv.int(e.offset) <>
-                                ": type_param_ids " <> reprInts(x.typeParamIds "(" ")") <> " are not the quantifiers " <>
-                                reprInts(quants "(" ")") <> " of its type " <> model.show(e.type))
+                                ": type_param_ids " <> pyRepr.ints(x.typeParamIds "(" ")") <> " are not the quantifiers " <>
+                                pyRepr.ints(quants "(" ")") <> " of its type " <> model.show(e.type))
                         end
                     end
                 when exprBlock with x then
@@ -194,7 +185,7 @@ export
             end
             if not(vector.empty(:Int stray)) then
                 vector.append(:String st.problems whereName <> " at offset " <> conv.int(whereOffset) <> ": type " <>
-                    model.show(t) <> " mentions type parameters " <> reprInts(vector.toArray(:Int stray) "[" "]") <>
+                    model.show(t) <> " mentions type parameters " <> pyRepr.ints(vector.toArray(:Int stray) "[" "]") <>
                     " outside their function")
             end
         end

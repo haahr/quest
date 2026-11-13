@@ -33,21 +33,6 @@ export
 
     let siteKey(s: Site): String = conv.int(s.function) <> " " <> conv.int(s.block) <> " " <> conv.int(s.index)
 
-    (* The instruction defining each value of f, if one does (not a block's
-     * parameter) *)
-    let definitions(f: Function): Defs =
-        begin
-            let defs = array of(vector.length(:ssa.Type f.types) maybe.none(:ssa.Inst))
-            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
-                let insts = ssa.block(f b).insts
-                for k = 0 upto {vector.length(:ssa.Inst insts) - 1} do
-                    let i = vector.get(:ssa.Inst insts k)
-                    for j = 0 upto {extent i.results - 1} do defs[i.results[j]] := maybe.some(:ssa.Inst i) end
-                end
-            end
-            defs
-        end
-
     (* The symbol v is the address of plus an addend, if an opSymbol defines
      * v *)
     let symbolOf(defs: Defs v: Int): maybe.T(ssa.Inst) =
@@ -252,7 +237,7 @@ export
              * at it, or anything else, which rules it out *)
             for fi = 0 upto {nFunctions - 1} do
                 let f = vector.get(:Function u.functions fi)
-                let defs = definitions(f)
+                let defs = ssa.definitions(f)
                 allDefs[fi] := defs
                 let candidateAt(v: Int): maybe.T(Candidate) =
                     begin

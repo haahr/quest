@@ -93,14 +93,42 @@ bootstrap's codegen/backend.py and codegen/c/backend.py move the same way (it ha
 
 ### Stage 5. One home for each duplicated helper (code changes)
 
-The review's item 4: effectiveModulePaths and effectiveInterfacePath (5 copies), interfaceRef (2), Python-style repr
-formatting (common/pyrepr, from 6 places), the `.qi`/`.qm` field readers, the caches that peek at a module's text,
-and in ir/, ssa/ and the interpreters the helpers listed there; each gets one definition, its callers call it. Then
-item 5: the functions that expose a type's outer constructor (evaluateLazily, unfolding, betaReduceHead,
-normalizeType, canonicalStructure, resolveTypeBound, unfoldHead, resolveBound, subtyping's bound-following) get one
-home, types/heads or canonical's head section, with a comment saying when to use which; they are not merged where they
-differ. Where two copies differ, the step says which behavior it keeps and why, and that case is tested. Besides the
-light check: the bootstrap's suite, since its helpers change.
+The review's items 4 and 5, after an inventory of every copy (2026-11-12), which found some copies identical, some
+differing, and some claimed duplicates not to be. Given one home, their callers calling it:
+
+- syntax/ast's effectiveModulePaths and effectiveInterfacePath (8 copies in 4 modules), as the bootstrap's
+  ast.ImportItem has them. elaboration's copy also took present but empty module paths as absent; the grammar never
+  makes such an import, so every copy agreed on every import there is.
+- moduleCompiler's interfaceRef (build/engine's was the same); modules/paths's stem (build/engine's and driver/main's)
+  and lastSegment (loader's differed only on a trailing slash, which canonical names never have); elaboration's
+  declareTypesAndKinds (interfaceCompiler's took its arguments in the other order); interfaceCompiler's `.qi` field
+  readers (fingerprint's were the same).
+- repr/shapes's isViewedKind (3 copies) and isFunction (4), repr/layout's heldShape (2); ssa/nodes's typeCode and
+  typeOfCode (scalars's were the same) and definitions (3 passes built the table the same way); ir/walk's unitBodies
+  (simplify's and slots's lists of a unit's bodies).
+- common/pyRepr: Python's repr of strings (diagnostics's, and staticdata's, written again), lists (loader's), tuples
+  and lists of items (staticdata's), and integers (scoping's).
+- values/model's isVisited and joined (interpreter/formatting's were the same); types/model's powerBoundOf
+  (subtyping's namedBound and canonical's were the same).
+- irinterp's isOneOf, which nothing called, removed.
+
+Left as they are, and why:
+
+- The functions that find the call a statement makes (simplify, contify, inline) and that rewrite returns (inline,
+  contify) or jumps (simplify): each does something different.
+- The two caches of a unit file's text (modules/paths, modules/elaboration): they look for different things.
+- The defining-instruction tables that also record blocks, indexes, or uses (arm64/select, barriers, verify, scalars,
+  escape); the lists of a unit's bodies that start with main (thunks, walk's knownClosures) or pair each body with its
+  function (verify).
+- intEqual (`a is b`, about 37 copies) and the isOneOf functions: one line each, not worth an import.
+- The interpreters' resolveType: the same steps on two different frames.
+- The C printer's isFunction and heldShape, which go through its own cached shapeOf; build/engine's quoted and
+  pyList and the tokenizer's charRepr, which are not Python's repr and print what the bootstrap's messages print.
+- The functions that expose a type's head, which differ in what they look through: canonical's interface lists them
+  and says when to use which.
+
+Besides the light check: the self-hosted compiler's whole suite (the self-hosting check), since messages and dumps
+that print with these helpers are checked there; the bootstrap is unchanged.
 
 ### Stage 6. Splits of large modules
 

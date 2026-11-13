@@ -93,14 +93,6 @@ export
             scope
         end
 
-    let effectiveInterfacePath(imp: ast.ImportItem): String = maybe.unwrapOr(:String imp.interfacePath imp.interfaceName)
-    let effectiveModulePaths(imp: ast.ImportItem): vector.T(String) =
-        if maybe.isSome(:vector.T(String) imp.modulePaths) andif
-                not(vector.empty(:String maybe.unwrap(:vector.T(String) imp.modulePaths))) then
-            maybe.unwrap(:vector.T(String) imp.modulePaths)
-        else
-            imp.names
-        end
     let stringArray(v: vector.T(String)): Array(String) = vector.toArray(:String v)
 
     (* Declares every type and kind of a scope in another *)
@@ -351,7 +343,7 @@ export
                 let imp = vector.get(:ast.ImportItem decl.imports i)
                 env.atImport(:Ok e imp.offset 1 fun(): Ok
                     begin
-                        let ifacePath = effectiveInterfacePath(imp)
+                        let ifacePath = ast.effectiveInterfacePath(imp)
                         let source = importInterface(ifacePath imp.interfaceName e)
                         if vector.empty(:String imp.names) then
                             (* An unaliased interface import: interface
@@ -360,7 +352,7 @@ export
                                 not(stringOp.equal(imp.interfaceName ifacePath))
                             declareTypesAndKinds(source if isAlias then importScope else interfaceScope end)
                         else
-                            let modPaths = effectiveModulePaths(imp)
+                            let modPaths = ast.effectiveModulePaths(imp)
                             for j = 0 upto {vector.length(:String imp.names) - 1} do
                                 let name = vector.get(:String imp.names j)
                                 let modPath = vector.get(:String modPaths j)
@@ -481,7 +473,7 @@ export
     let canonicalPaths(imp: ast.ImportItem e: env.T): Array(String) =
         begin
             let result = vector.new(:String)
-            let modPaths = effectiveModulePaths(imp)
+            let modPaths = ast.effectiveModulePaths(imp)
             for i = 0 upto {vector.length(:String modPaths) - 1} do
                 vector.append(:String result graph.canonicalName(env.resolveModule(e vector.get(:String modPaths i))))
             end
@@ -615,13 +607,13 @@ export
                 vector.append(:vector.T(maybe.T(symbols.ValueSymbol)) importSymbols syms)
                 env.atImport(:Ok e imp.offset 1 fun(): Ok
                     begin
-                        let ifacePath = effectiveInterfacePath(imp)
+                        let ifacePath = ast.effectiveInterfacePath(imp)
                         let source = importInterface(ifacePath imp.interfaceName e)
                         requireSoundImport(source ifacePath decl.isUnsound)
                         if vector.empty(:String imp.names) then
                             declareTypesAndKinds(source internalScope)
                         else
-                            let modPaths = effectiveModulePaths(imp)
+                            let modPaths = ast.effectiveModulePaths(imp)
                             for j = 0 upto {vector.length(:String imp.names) - 1} do
                                 let localName = vector.get(:String imp.names j)
                                 let modPath = vector.get(:String modPaths j)
@@ -787,7 +779,7 @@ export
                 let item = vector.get(:ast.ImportItem phrase.items i)
                 env.atImport(:Ok e item.offset 1 fun(): Ok
                     begin
-                        let ifacePath = effectiveInterfacePath(item)
+                        let ifacePath = ast.effectiveInterfacePath(item)
                         let ifaceScope = importInterface(ifacePath item.interfaceName e)
                         requireSoundImport(ifaceScope ifacePath false)
                         if vector.empty(:String item.names) then
@@ -798,7 +790,7 @@ export
                                 maybe.none(:Array(maybe.T(Int))) maybe.some(:Array(String) array of :String end)))
                         else
                             let ids = vector.new(:maybe.T(Int))
-                            let modPaths = effectiveModulePaths(item)
+                            let modPaths = ast.effectiveModulePaths(item)
                             for j = 0 upto {vector.length(:String item.names) - 1} do
                                 let localName = vector.get(:String item.names j)
                                 let modPath = vector.get(:String modPaths j)

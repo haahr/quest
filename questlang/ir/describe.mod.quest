@@ -47,21 +47,11 @@ export
                     orif maybe.isSome(:String maybe.unwrap(:canonical.OptionIdentity rule).single)}
         end
 
-    (* The shape at which a value of t is held, if it is of kind: t's own, or
-     * for a type parameter (or abstract type) bounded by POWER(T), the shape
-     * the bound resolves to (layout.resolvedShape), since a value of a bounded
-     * type parameter is read through its bound's structure *)
-    let heldShape(t: Type kind: shapes.ShapeKind): maybe.T(Shape) =
-        begin
-            let h = layout.resolvedShape(shapes.shape(t))
-            if shapes.sameKind(h.kind kind) then maybe.some(:Shape h) else maybe.none(:Shape) end
-        end
-
-    (* The structure of heldShape(t kind), raising unsupportedDescriptor if t
+    (* The structure of layout.heldShape(t kind), raising unsupportedDescriptor if t
      * is not held at a shape of kind *)
     let heldStructure(t: Type kind: shapes.ShapeKind): Type =
         begin
-            let h = heldShape(t kind)
+            let h = layout.heldShape(t kind)
             if maybe.isNone(:Shape h) then raise unsupportedDescriptor with "not a " <> shapes.kindName(kind) <> ": "
                 <> model.show(t) end end
             maybe.unwrap(:Shape h).structure
@@ -168,13 +158,6 @@ export
                     else false
                 end
             end
-        end
-
-    let isFunction(t: Type): Bool =
-        begin
-            let var s = shapes.shape(t)
-            while shapes.kindIs(s shapes.shapeAll) do s := shapes.body(s) end
-            shapes.kindIs(s shapes.shapeFun)
         end
 
     let descVar(v: Variable): Descriptor = option descVar of Descriptor with let v = v end
@@ -523,7 +506,7 @@ export
                         end
                         if maybe.isSome(:Type fromModule) then maybe.unwrap(:Type fromModule) else maybe.unwrapOr(:Type x.calleeType model.okType) end
                     end
-                    if isFunction(origType) then
+                    if shapes.isFunction(origType) then
                         (* The instance is a thunk, whose plans convert its
                          * arguments and result *)
                         thunk(d x.thunkSymbols fun(params: Array(nodes.DescriptorParam)): Ok
@@ -541,7 +524,7 @@ export
                         fields[i] := tuple let name = x.fields[i].name let type = typeOf(x.fields[i].atom) let isVar = x.fields[i].isVar end
                     end
                     let concrete = model.recordType(fields maybe.none(:String))
-                    let held = heldShape(maybe.unwrap(:Variable result).type shapes.shapeRecord)
+                    let held = layout.heldShape(maybe.unwrap(:Variable result).type shapes.shapeRecord)
                     let target = if maybe.isSome(:Shape held) then maybe.unwrap(:Shape held).structure else concrete end
                     x.descriptor := maybe.some(:Descriptor describeType(d concrete))
                     if x.runtimeOffsets then
@@ -553,7 +536,7 @@ export
                     end
                 when opRecordField with x then
                     if x.stored then
-                        let rs = maybe.unwrap(:Shape heldShape(typeOf(x.recordAtom) shapes.shapeRecord))
+                        let rs = maybe.unwrap(:Shape layout.heldShape(typeOf(x.recordAtom) shapes.shapeRecord))
                         let fields = shapes.sortedComponents(rs)
                         let var field = fields[0]
                         for i = {extent fields - 1} downto 0 do

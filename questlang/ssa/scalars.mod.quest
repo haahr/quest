@@ -17,13 +17,6 @@ export
     let intEqual(a: Int b: Int): Bool = a is b
     let proxyTag(): Int = runtimeLayout.constant("QUEST_PROXY_TAG")
 
-    let typeCode(t: ssa.Type): Int =
-        case t when typeInt then 0 when typePtr then 1 when typeReal then 2 when typeVal then 3 end
-
-    let typeOfCode(code: Int): ssa.Type =
-        if code is 1 then ssa.typePtr elsif code is 2 then ssa.typeReal elsif code is 3 then ssa.typeVal
-        else ssa.typeInt end
-
     (* A word of a group's layout: nothing known of it (no member stores it
      * and nothing loads it), a value of one type, or a pointer to an object
      * of another group, at an offset, whose own words it stands for *)
@@ -605,7 +598,7 @@ export
             end
             let valueNote(l: Layout w: Int v: Int): Ok =
                 if live(s v) then note(l w wordNested 0 find(s s.ptr[v]) s.off[v])
-                else note(l w wordScalar typeCode(ssa.typeOf(f v)) ~1 0) end
+                else note(l w wordScalar ssa.typeCode(ssa.typeOf(f v)) ~1 0) end
             for a = 0 upto {n - 1} do
                 if not(s.dead[a]) then
                     let l = hashMap.find(:Int :Layout result find(s a))
@@ -829,7 +822,7 @@ export
         begin
             let l = hashMap.find(:Int :Layout ls g)
             for w = 0 upto {extent l.kind - 1} do
-                if l.kind[w] is wordScalar then vector.append(:ssa.Type into typeOfCode(l.code[w]))
+                if l.kind[w] is wordScalar then vector.append(:ssa.Type into ssa.typeOfCode(l.code[w]))
                 elsif l.kind[w] is wordNested then leafTypes(ls l.group[w] into)
                 end
             end
@@ -928,7 +921,7 @@ export
                         let stored = vector.get(:Array(Int) s.stores o)
                         for w = 0 upto {extent l.kind - 1} do
                             if l.kind[w] is wordScalar then
-                                let t = typeOfCode(l.code[w])
+                                let t = ssa.typeOfCode(l.code[w])
                                 if datum andif {w < extent ws} then
                                     let r = ssa.newValue(f t)
                                     let i = case ws[w]

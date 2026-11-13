@@ -218,14 +218,6 @@ export
         writer.putString(w format(d sm))
 
     (* ======================================================================
-     * Quoting
-     * ====================================================================== *)
-
-    let hexDigit(n: Int): Char = stringOp.getChar("0123456789abcdef" n)
-
-    (* Python's repr of a string: single quotes unless the string holds a single
-     * quote and no double quote *)
-    (* ======================================================================
      * Errors raised where they are found
      * ====================================================================== *)
 
@@ -349,34 +341,4 @@ export
 
     let warningDiagnostic(e: CompilerError file: String): Diagnostic =
         warning(e.message location.span(maybe.unwrapOr(:String e.file file) e.offset {e.offset + e.length}))
-
-    let pyRepr(s: String): String =
-        begin
-            let size = stringOp.length(s)
-            let var hasSingle = false
-            let var hasDouble = false
-            for i = 0 upto {size - 1} do
-                let c = stringOp.getChar(s i)
-                if c is '\'' then hasSingle := true elsif c is '"' then hasDouble := true end
-            end
-            let quote = if hasSingle andif not(hasDouble) then '"' else '\'' end
-            let b = stringBuilder.new()
-            b.char(quote)
-            for i = 0 upto {size - 1} do
-                let c = stringOp.getChar(s i)
-                let code = ascii.val(c)
-                if c is '\\' then b.str("\\\\")
-                elsif c is quote then b.char('\\').char(quote)
-                elsif code is 10 then b.str("\\n")
-                elsif code is 13 then b.str("\\r")
-                elsif code is 9 then b.str("\\t")
-                elsif {code < 32} orif {{code >= 127} andif {code <= 160}} orif {code is 173} then
-                    (* Python's repr escapes the bytes that are not printable
-                     * Latin-1 characters *)
-                    b.str("\\x").char(hexDigit(code / 16)).char(hexDigit(code % 16))
-                else b.char(c)
-                end
-            end
-            b.char(quote).toString()
-        end
 end
