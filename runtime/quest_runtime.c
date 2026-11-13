@@ -116,14 +116,20 @@ void quest_string_set_sub(QString *dest, int64_t dest_start, const QString *src,
     }
 }
 
+/* A new string of size copies of init (stringOp.new). One buffer, allocated
+ * before the string, as quest_string_new allocates them */
 QString *quest_string_alloc(int64_t size, QChar init) {
     if (size < 0) {
         quest_raise_string_error();
     }
-    char *buf = (char *)quest_alloc_bytes((size_t)size + 1);
-    memset(buf, (int)init, (size_t)size);
-    buf[size] = '\0';
-    return quest_string_new(buf, size);
+    char *data = (char *)quest_alloc_bytes((size_t)size + 1);
+    QString *s = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
+    s->length = size;
+    s->capacity = size;
+    s->data = data;
+    memset(s->data, (int)init, (size_t)size);
+    s->data[size] = '\0';
+    return s;
 }
 
 bool quest_string_is_empty(const QString *s) {

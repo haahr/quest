@@ -72,20 +72,6 @@ goldens of the tests whose cases store their binders change.
 
 ---
 
-## Making a string of one character allocates and copies it twice
-
-**Problem.** `quest_string_alloc` (`runtime/quest_runtime.c`), which `stringOp.new(size init)` calls, fills a buffer
-of its own and passes it to `quest_string_new`, which allocates another buffer and copies the first into it: twice
-the allocation and copying a new string needs. A performance problem, not a wrong result.
-
-**Where to start.** `quest_string_alloc`: allocate the buffer and then the `QString` itself, as `quest_string_new`
-does (in that order, so that its stores need no write barrier: docs/collector.md section 3.5), and fill the one
-buffer.
-
-**Done when.** `quest_string_alloc` allocates one buffer, and the suites pass.
-
----
-
 ## Quest isn't highlighted in JupyterLab's editor
 
 **Problem.** The Jupyter kernel ([jupyter-kernel.md](jupyter-kernel.md)) names a Pygments lexer, which nbconvert uses
