@@ -21,8 +21,8 @@ Those documents hold the measurements and the arguments; this one cites them and
 the four disagree, this plan holds.
 
 §1 lists the decisions and whose they are. §2 to §6 are the design. §7 is what is given up. §8 has the steps, and
-§9 the results of step 0's probes (2026-11-13), on which the owner confirmed decisions 1 and 2. Step 0 is done;
-step 1 is next.
+§9 the results of step 0's probes (2026-11-13), on which the owner confirmed decisions 1 and 2, and §10 step 1's
+census of what the compiler uses. Steps 0 and 1 are done; step 2 is next.
 
 ---
 
@@ -336,21 +336,23 @@ The signature is computed from the type alone, with a type parameter as `eqref`.
 `String -> Word` has the signature that generic code computes for `K -> Word`, and `hashMap`'s calls of a string's
 hash and equality take the native entry with nothing boxed.
 
-*What it does not cover, and it is a common case:* a closure whose own signature has a scalar where the caller's
-has a type parameter (`hash.int` at `K -> Word`). The test fails, the call goes through the uniform entry at ten
-times the cost, and the `Word` result, full width, is boxed: an allocation for each hash of an `Int` key, and the
-uniform entry again for each equality. Nearly all of the compiler's roughly 350 hash maps are keyed by `Int` or
-`String` (Fable's count), each stored hash is boxed again by decision 2, and specialization does not cross units.
-**The first milestone's running time rests on this,** and step 10 expects to act on it, not only to measure it.
-The remedies, in the order to try them:
+*A closure whose own signature has a scalar where the caller's has a type parameter* (`hash.int` at `K -> Word`)
+would fail the test and go through the uniform entry, at ten times the cost and with the `Word` result boxed.
+Nearly all of the compiler's roughly 350 hash maps are keyed by `Int` or `String`, so this looked like the case the
+first milestone's running time rested on. **The census found that it does not arise** (§10.3): the represent pass
+already wraps such a function in an adapter of the generic signature, its `adapt` plan, wherever a parameter or the
+result needs a `box` or `unbox`, which for C is every scalar and every pointer. `hashMap.new(:Int :V intEqual
+hash.int)` is given two adapters today, natively, and the compiler's units have 813 such conversions. On this
+target the adapter's closure signature is the generic caller's, so the caller's test succeeds and nothing is boxed
+but the key, which is an `i31ref`.
 
-1. *An adapter at the call's argument.* Where a function is passed as an argument whose parameter's closure
-   signature differs from the function's own (`hash.int` to `hashMap.new`), the backend wraps it once in a closure
-   of the parameter's signature: an allocation for each map, none for each lookup. The backend sees both types at
-   the call and needs no change to the represent pass. It does not reach a function inside a tuple. The wrapper
-   and the function differ under `is`, where natively they are one closure (§7).
-2. *Typed arrays* (§2.4), for the stored hashes.
-3. *A model of this target in the represent pass* (§4.1), which makes the adapter a plan like any other.
+What is left:
+
+- *A function inside a tuple or an array* that reaches generic code unconverted: the uniform entry, correctly and
+  slowly. C's `runtime` plan, which would wrap it, occurs nowhere in the compiler (§10.3).
+- *Adapters this target does not need:* the pass also wraps `hash.string` and `stringOp.equal`, since for C a
+  pointer is boxed to a word. Here their signatures already agree (`eqref`), and the adapter is one more call. A
+  model of this target in the pass (§4.1) would leave them out; step 10's profile says whether it matters.
 
 ### 3.3. Tail Calls (decision 9)
 
@@ -657,8 +659,7 @@ replay; that is an addition, with a cost in every unit compiled for a session.
 6. **The mathematical functions' results may differ in the last bit** from Apple's libm, and are absent until
    milestone 4 (§4.3).
 7. **`os/process`, `os/code`, `os/value`, and readline** are absent, and with them the parallel build.
-8. **`is` on some converted values:** true on a tuple that C's `runtime` conversion copies (§4.1); false between a
-   function and the adapter §3.2's first remedy makes of it, if that remedy is taken.
+8. **`is` on some converted values:** true on a tuple that C's `runtime` conversion copies (§4.1).
 9. **No mixing with C units.** The other backends were brought up by moving units between backends until a
    miscompile was found; a wasm unit's values are not C's. The interpreter is the reference and the IR dumps are
    the evidence.
@@ -706,6 +707,8 @@ only when the backend's files differ, until its time is known.
    `ir/represent`'s use of one reaches no output (§2.8); operations on `Real`; `os/process`; the widest closure and
    the largest function's variables (§2.11).
    *Done when* each is listed as needed for this milestone or pending.
+   *Done 2026-11-13: §10. It removes variants, record views, proxies' making, `auto`, `inspect`, and locations
+   from this milestone, and finds §3.2's adapters already made; steps 4, 6, and 7 are narrowed below.*
 2. **Instructions, encoder, and printer** (`questlang/wasm/`): instructions and types as data, an encoder to the
    binary format, a printer to the text format, and R from one table.
    *Done when*, for a corpus of modules built in unit tests, the encoder's bytes equal `wasm-tools parse` of the
@@ -718,19 +721,24 @@ only when the backend's files differ, until its time is known.
    *Done when* the run goldens that need no more pass in both engines, a test of each row of §2.10 passes, loops
    whose tail calls reach their return through join points (§3.3) run a million times around in a worker's stack,
    and the native backends' goldens are unchanged.
-4. **Aggregates:** tuples and options (§2.3), arrays (§2.4), strings, records and variants (§2.5), with boxing at
-   slot operations (§4.1), case binders that share the payload, and the options' value rules.
-   *Done when* their goldens pass.
+4. **Aggregates:** tuples and options (§2.3), arrays (§2.4), strings, and records (§2.5) as far as the compiler
+   has them, which is a module's record and one record type in the library (§10.1), with boxing at slot operations
+   (§4.1), case binders that share the payload, and the options' value rules. A read of a type that may be proxied
+   tests for the proxy and, finding one, fails as pending: nothing in the compiler makes one. Variants and records'
+   views are pending.
+   *Done when* their goldens pass, less those the pending list names.
 5. **Closures:** the closure types, both entries, the closure signature, the call through a closure with its test
    and its fallback, static closures.
    *Done when* the higher-order goldens that are not polymorphic pass.
-6. **The runtime, first part:** descriptors built by a unit's initializer within §2.11's limits, instantiation and
-   its memoization, `is` at a type parameter, the identity hash, printing as the REPL echoes, exceptions with the
-   uncaught report.
+6. **The runtime, first part,** which the census makes the whole of this milestone's runtime (§10.1): descriptors
+   built by a unit's initializer within §2.11's limits, instantiation and its memoization, `is` at a type
+   parameter, the identity hash, printing as the REPL echoes, exceptions with the uncaught report.
    *Done when* the goldens for printing and for exceptions pass with the C runtime's output, less tracebacks' frames.
-7. **Polymorphism:** descriptor parameters, the `box` and `unbox` plans, own views and view maps, proxies and the
-   subtyping plans, and as much of `auto`, `inspect`, and `dynamic` as step 1 found the compiler to use.
-   *Done when* the polymorphism and subtyping goldens pass, less what step 1 marked pending; and, as the first
+7. **Polymorphism:** descriptor parameters, and the three plans the compiler has (§10.3): `box`, `unbox`, and
+   `adapt`, with the thunks `ir/thunks` makes for it. Own views, view maps, proxies, and the other subtyping plans
+   are pending, as are `auto` and `inspect`: `lib/dynamic`, the one unit with either, is linked and never called,
+   and its two functions that use them are compiled to fail as pending.
+   *Done when* the polymorphism goldens pass, less what step 1 marked pending; and, as the first
    point at which the backend can compile them, the stack that the compiler's large recursive functions use for
    each level of nesting is measured in baseline code and recorded (§6.2), without waiting for step 10.
 8. **`Real` formatting and parsing in Quest** (§4.3).
@@ -749,9 +757,8 @@ only when the backend's files differ, until its time is known.
     sources, then itself. Differences are found against the native compiler's IR dumps, stage by stage.
     *Done when* the compiler running in node, compiling itself with `--backend wasm`, writes modules byte-identical
     to those the native compiler wrote; and [benchmarks.md](benchmarks.md) records, beside arm64's, that
-    self-compilation's time and peak memory, and a profile naming what boxes most (§2.4's `Word`s, §3.2's hash
-    functions). §3.2's first remedy is taken in this step if the profile shows hash functions' cost, as it is
-    expected to.
+    self-compilation's time and peak memory, and a profile naming what boxes most (§2.4's `Word`s, the full-width
+    integers of §9.5) and what the unneeded adapters of §3.2 cost.
 
     *The stack,* measured apart: the least stack with which the driver compiles one unit and a REPL-sized input in
     node with `--liftoff-only`, as a page's first inputs run, against a worker's 512 KB and a page's 1 MB (§6.2).
@@ -782,7 +789,9 @@ In an order chosen then:
 
 - `var` and `out` parameters (§2.6);
 - the rest of `auto`, `inspect`, and `dynamic`;
-- the mathematical functions in Quest (§4.3);
+- the mathematical functions in Quest (§4.3), and `real.format`;
+- variants, records' views, bounded quantifiers, proxies, and the runtime they need: subtyping, `quest_convert`,
+  view maps, the map of record tables (§10.1);
 - the run suite's pending list worked down;
 - whatever step 10's profile asked for: typed arrays (§2.4), adapters at polymorphic calls (§3.2), specialization
   on scalar type arguments (§4.1), flat tuples (§2.3);
@@ -823,7 +832,8 @@ summing kinds and spans. The span either fits 31 bits or is boxed, as a merged f
   That is more than the second object costs (about 13 ns a node), and it is the price of decision "`i31` or a box",
   not of decision 1.
 
-**Decision 1 stands** (confirmed by the owner, 2026-11-13). The cost in V8 is a tenth to a third of a tuple's allocation and none of its
+**Decision 1 stands** (confirmed by the owner, 2026-11-13).
+The cost in V8 is a tenth to a third of a tuple's allocation and none of its
 reads, against which stand one type for every arity, the runtime's access by a run-time index, locations without
 dispatch, and no limit of arity. If step 10's profile shows tuples' allocation leading, flat structs for the common
 small arities remain possible.
@@ -872,7 +882,8 @@ rehash moves the boxes, and allocates none), and one read or more for each looku
 20 ns an insertion and lose about 1 ns a lookup. Its other full-width integers (spans, reserved symbol ids) are in
 tuples, which decision 2 does not touch.
 
-**Decision 2 stands** (confirmed by the owner, 2026-11-13). Typed arrays win only on stores of full-width values, lose on every generic
+**Decision 2 stands** (confirmed by the owner, 2026-11-13).
+Typed arrays win only on stores of full-width values, lose on every generic
 read, add the invariant of §2.4, and are far worse in wasmtime. They would pay for `Array(Real)` and `Array(Word)`
 used at a known type in a user's numeric program, which is milestone 4's question, and the struct around the store
 keeps that door open.
@@ -932,3 +943,116 @@ The largest array each engine makes, by bisection:
   compiler that natively allocates 57 million objects for one unit. Where the compiler makes such integers by
   packing two small ones (a merged file's span, a reserved symbol id), a pair of small integers would allocate
   nothing. That is a change to the compiler's source for step 10's profile to ask for, not a change to this design.
+
+---
+
+## 10. Step 1's Census (2026-11-13)
+
+What the compiler uses, from two sources: its text (`questlang/` and `lib/`), and the described IR of each of its
+175 units (the 174 modules of `questlang/` and `lib/`, and `driver/main`), dumped with
+`quest compile --stop-after ir_described` and counted. The IR is each unit's own, compiled apart, as this target
+compiles them. It holds 5,703 functions.
+
+### 10.1. What the First Milestone Needs, and What It Does Not
+
+| Feature | In the compiler's units | First milestone |
+|---|---|---|
+| tuples | 4,317 made, 34,795 components read | needed |
+| options | 2,603 made, 3,070 `switch`es | needed |
+| arrays | 2,213 made, 6,697 elements read, 2,752 stores | needed |
+| closures | made at 5,517 sites, 5,146 of them capturing nothing; at most 11 captures | needed; the static closure of §3.1 is the common case |
+| a module's record, and members read through it | 174 records, 4,097 `member`s | needed |
+| other records | one type, `hashMap.Entry`, made at one site | needed, without views |
+| exceptions | 837 `raise`s, 168 `try`s in 35 units | needed |
+| type parameters | 3,599 type applications; 9,477 `box` and 6,752 `unbox` plans | needed |
+| functions passed at generic types | 813 `adapt` plans in 85 units | needed (§10.3) |
+| reads that may meet a proxy | 23,611 in 136 units | the test is needed; the proxy's path is pending, since nothing makes one |
+| variants | none | pending |
+| a record seen at a supertype (`record_view`), `variant_tags` | none | pending |
+| `view`, `runtime`, `copy`, `cast`, `unproxy` plans | none | pending |
+| bounded quantifiers | none | pending |
+| `var` and `out` parameters, `@`, `var(e)` | none | pending, as planned |
+| `auto`, `inspect` | one each, both in `lib/dynamic` (`new`, `be`) | pending: the unit is linked so that inputs can import it, and the compiler never calls it |
+| `dynamic.copy`, `intern`, `extern` | externals of `lib/dynamic`; the interpreter has its own, in Quest (`values/dynamicjson`) | pending |
+
+So the first milestone's runtime is much less than §4.2's list: descriptors and their instantiation, `is`, the
+identity hash, printing, exceptions. Run-time subtyping, `quest_convert`, proxies, view maps, and the map of record
+tables wait for milestone 4, where the run suite needs them. Steps 4, 6, and 7 are narrowed accordingly (§8.1).
+
+### 10.2. `Real`
+
+| Use | Where | First milestone |
+|---|---|---|
+| reading a literal: `strutil.tryToReal` (`quest_strutil_to_real`) | the lexer, once | needed (step 8) |
+| printing: `conv.real`, `stringBuilder.appendReal` | the dumps of tokens, syntax, typed syntax, and IR; `values/json`; `values/model` | needed (step 8) |
+| arithmetic and comparison | 21 primitive operations in four units: `lib/real`, the interpreter's primitives and builtins, `values/dynamicjson` | needed: instructions, with the NaN tests |
+| bits of a `Real` (`word.fromReal`, `toReal`) | the native backends' constants | needed: one instruction each |
+| `real.format` (a style and a digit count) | only the interpreter's builtin for an interpreted program's call | pending; a third formatter to write, in milestone 4 |
+| `sin`, `log`, `exp`, and the rest | only the interpreter's builtins | pending (§4.3) |
+
+The compiler's own paths use no mathematical function and no `real.format`, so step 8 is the lexer's reader and
+`conv.real`'s printer, as planned.
+
+### 10.3. Adapters Are Already Made
+
+The plan expected a function with a scalar parameter, passed where generic code has a type parameter, to be called
+through its uniform entry (§3.2), and named it the cost the first milestone's running time rested on. The IR shows
+otherwise. `hashMap.new(:Int :Bool intEqual hash.int)`, in `ir/represent`:
+
+```
+let %114: Fun(n: Int): word.T = member hash.int
+let intEqual.2: Fun(k1: K k2: K): Bool = closure qa_adapt.5 {}
+let %115: Fun(k: K): word.T = convert(%114, adapt by qa_adapt.6)
+let foundIds.1: hashMap.T(Int Bool) = call hashMap.new [descriptor(Int), descriptor(Bool)](intEqual.2, %115)
+```
+
+and the thunk is `fun qa_adapt.1 {orig}(k: K): word.T { let k' : Int = convert(k, unbox); return call orig(k') }`.
+The pass's `adaptPlan` makes one whenever a parameter or the result has a plan of its own, and `box` and `unbox`
+are plans. So the generic code is handed a closure of its own signature, and on this target calls its native
+entry; the `Word` comes back as an `i64`.
+
+The same rule wraps `hash.string` and `stringOp.equal`, whose pointers C boxes. This target would not need those
+(§3.2).
+
+### 10.4. Sizes
+
+| Measure | Value | Against |
+|---|---|---|
+| variables of a function: median, 90th and 99th percentile | 10, 85, 503 | |
+| the most variables in one function | 1,450 (`ssa/statics`'s `descriptorData`); eleven others over 1,100 | the limit of 50,000 locals |
+| captures of the widest closure | 11 | 10,000 fields |
+| distinct externals named | 174 | Opus's count of `lib/`'s values |
+
+**The large functions are the stack's problem, not the limit's.** Those with over a thousand variables are the
+compiler's great `case`s over a form, and several are the recursive walks themselves: the IR verifier's
+`statement` (1,416), `ir/clone`'s `copyOp` (1,368), `ir/describe`'s `opTypes` (1,374), the lowering's `valueForm`
+(1,158), `types/model`'s `rebuild` (1,176), and the interpreter's `evalExpr` (1,181). At 8 bytes for each local in
+baseline code (§9.4), a frame of `evalExpr` with a local for each variable would be 9 KB, and fifty levels of it a
+worker's whole stack. Each arm of such a `case` uses a few variables, so locals shared by type across arms bring a
+frame down to the widest arm's. If that is not enough, the printer can put a large `case`'s arms into functions of
+their own, so that a frame holds only the arm taken. Step 7 measures which.
+
+### 10.5. The Host
+
+- **`os/process`** is used by `build/workers`, which spawns a driver for each batch of a parallel build, and by
+  the interpreter's builtins. With this backend the compiler spawns nothing else: it writes the modules itself,
+  with no assembler, C compiler, or linker. A serial build never calls it.
+- **`os/code` and `os/value`** are used by `driver/interrupts` and the native JIT (`jit/loader`, `jit/session`);
+  **readline** by `driver/repl` and the interpreter's builtins. None is on the path of a compilation.
+- **`os/fileStats`** is used by the build's test for staleness and by the paths' lookups, and is needed (§4.4).
+- **Externals called while units initialize:** a search of every initializer's own statements finds 34 distinct
+  callees, nearly all the library's constructors (`hashMap.new`, `hashMap.insert`, `vector.new`) filling tables.
+  Two reach the host: `system.getEnv`, which the host has, and `code.symbol` in `driver/interrupts`, which §4.2
+  already answers. The search does not follow calls into functions, so step 9's first run is the real test.
+
+### 10.6. Identity Hashes and the Fixed Point
+
+`hash.identityHash` is called where Fable's plan counted it (R9 there): on a substitution in `ir/represent`, on a
+builtin, and on interpreted values. Its values differ on this target, a counter's where natively an address's, and
+the fixed point of step 10 needs the compiler's output not to depend on them. It does not:
+
+- **In `ir/represent`** the hash's digits are part of a string that keys the set of plans in progress, which is
+  only asked, added to, and deleted from. It needs distinct live objects to have distinct hashes, which a counter
+  gives.
+- **Everywhere,** `collections/hashmap` and `hashSet` iterate in insertion order (`keys`, `values`, `entries`,
+  `iter`, `fold`), never in the order of hashes, so no listing the compiler makes from a map depends on a hash.
