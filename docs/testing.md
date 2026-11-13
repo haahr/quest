@@ -740,7 +740,10 @@ the check. It says which, and why; `--all` and `--self-hosted-only` choose for i
 - **`tools/check --jobs N`** splits N cores between the suites rather than the machine's, for a machine doing other
   work, and sets `QUEST_JOBS`, so that the builds of the self-hosted driver inside them compile N modules at once (as
   `./quest` does with it). The suites still run at once, each with at least one worker, so `--jobs 1` keeps about five
-  processes busy, not one; the check takes correspondingly longer.
+  processes busy, not one; the check takes correspondingly longer. `--serial` runs the suites one after another
+  instead, each with all N cores (or the machine's), so that the check never uses more than that; it takes about as
+  long as the suites' times added up, a few times the usual check. The two combine: `--serial --jobs 2` keeps about
+  two cores busy.
 - **`tools/check --light`** is for the stages of a series of moves of modules, which can break a build but not a
   behavior: no golden names a compiler module but `questlang/common/*` and `questlang/syntax/*`. It runs at once the
   self-hosted fixed point through arm64, with the tests that import compiler modules (`tests/source/questlang/*`)

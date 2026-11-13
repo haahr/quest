@@ -9,6 +9,7 @@ between them.
     tools/check --no-stress        the suites without the stress tier before them
     tools/check --light            the checks a move of modules needs, not a push's
     tools/check --jobs N           any of these with N cores, not the machine's
+    tools/check --serial           any of these with the suites one after another
 
 The change is what differs from origin/main: the commits since they diverged,
 and what is not yet committed. A change only to the self-hosted compiler, its
@@ -134,7 +135,27 @@ class Suite:
         return picked or lines[-3:]
 
 
+# --serial: the suites run one after another, each with all the cores
+SERIAL = False
+
+
+def share(cores: int, numerator: int, denominator: int) -> int:
+    """The workers a suite gets of cores: its share of them when the suites
+    run at once, and all of them when they run one after another (--serial)."""
+    return cores if SERIAL else max(1, cores * numerator // denominator)
+
+
+def together_word() -> str:
+    """How the suites run, for the messages that announce them."""
+    return "one after another" if SERIAL else "at once"
+
+
 def run_at_once(suites: list[Suite], start: float) -> None:
+    """Runs the suites, at once, or one after another with --serial."""
+    if SERIAL:
+        for suite in suites:
+            suite.run(start)
+        return
     threads = [threading.Thread(target=suite.run, args=(start,)) for suite in suites]
     for thread in threads:
         thread.start()
@@ -168,7 +189,7 @@ def stress_tier(python: str, cores: int, self_hosted_only: bool) -> bool:
         print(f"The stress tier's driver did not build:\n{build.stdout}{build.stderr}")
         return False
     driver = ROOT_DIR / ".build" / "quest-stages" / "stage2" / "quest"
-    run_tests = [python, str(ROOT_DIR / "run_tests.py"), "--timeout", "120", "-j", str(max(1, cores // 3))]
+    run_tests = [python, str(ROOT_DIR / "run_tests.py"), "--timeout", "120", "-j", str(share(cores, 1, 3))]
     self_hosted = [*run_tests, "--self-hosted", "--self-hosted-driver", str(driver)]
     suites = [
         Suite("stress-arm64", [*self_hosted, "--backend", "arm64"], STRESS_PROGRAMS_ENVIRONMENT),
@@ -178,7 +199,7 @@ def stress_tier(python: str, cores: int, self_hosted_only: bool) -> bool:
     if not self_hosted_only:
         suites.append(Suite("stress-bootstrap", [*run_tests, "--phase", "run_c_compiled"], STRESS_ENVIRONMENT))
     start = time.monotonic()
-    print(f"Running the stress tier ({', '.join(suite.name for suite in suites)}) at once; output in "
+    print(f"Running the stress tier ({', '.join(suite.name for suite in suites)}) {together_word()}; output in "
           f"{OUTPUT_DIR.relative_to(ROOT_DIR)}/", flush=True)
     run_at_once(suites, start)
     return not report(suites, start)
@@ -228,13 +249,13 @@ def light(seed: str, cores: int) -> int:
     unit_environment = {"PYTHONPATH": str(ROOT_DIR / "bootstrap" / "python")}
     suites = [
         Suite("light-self-hosting", [python, str(ROOT_DIR / "run_tests.py"), "--self-hosting", "--seed", seed,
-                                     "--stage-backend", "arm64", "-k", "questlang/", "-j", str(max(1, cores // 2))]),
+                                     "--stage-backend", "arm64", "-k", "questlang/", "-j", str(share(cores, 1, 2))]),
         Suite("light-imports", [python, "-c", IMPORT_ALL], unit_environment),
         Suite("light-unit", [python, "-m", "unittest", "discover", "-s", "tests/python"],
               {**unit_environment, "QUEST_SKIP_PTY_TESTS": "1"}),
     ]
     start = time.monotonic()
-    print(f"Running {', '.join(suite.name for suite in suites)} at once (not enough for a push); output in "
+    print(f"Running {', '.join(suite.name for suite in suites)} {together_word()} (not enough for a push); output in "
           f"{OUTPUT_DIR.relative_to(ROOT_DIR)}/", flush=True)
     run_at_once(suites, start)
     return 1 if report(suites, start) else 0
@@ -254,6 +275,8 @@ def main() -> int:
     parser.add_argument("--seed", choices=("release", "bootstrap"), default="release",
                         help="what builds the self-hosting check's stage 1 (default: the current release; the "
                         "bootstrap past a gap, docs/instructions.md section 6.1)")
+    parser.add_argument("--serial", action="store_true",
+                        help="run the suites one after another, each with all the cores (or --jobs), not at once")
     parser.add_argument("--jobs", type=int, metavar="N",
                         help="the cores to split between the suites, rather than the machine's; also each build's "
                         "modules at once (QUEST_JOBS)")
@@ -261,6 +284,8 @@ def main() -> int:
     if args.jobs is not None and args.jobs < 1:
         parser.error("--jobs must be at least 1")
     cores = args.jobs or os.cpu_count() or 4
+    global SERIAL
+    SERIAL = args.serial
     if args.jobs is not None:
         # Before the suites are made, which copy the environment: their
         # builds of the self-hosted driver compile N modules at once, as ./quest
@@ -313,7 +338,7 @@ def main() -> int:
     if self_hosted_only:
         together = [
             Suite("self-hosting", [*self_hosting, "-j", str(min(8, cores))]),
-            Suite("backends", [*backends, "-j", str(max(1, cores // 4))], INCREMENTAL_PROGRAMS_ENVIRONMENT),
+            Suite("backends", [*backends, "-j", str(share(cores, 1, 4))], INCREMENTAL_PROGRAMS_ENVIRONMENT),
             *fixed_points,
         ]
         after: list[Suite] = []
@@ -321,16 +346,16 @@ def main() -> int:
         # The self-hosted suite takes longest, and sets when the run ends: it
         # gets most of the cores (docs/testing.md section 5.1)
         together = [
-            Suite("self-hosting", [*self_hosting, "-j", str(max(1, cores * 5 // 10))]),
-            Suite("backends", [*backends, "-j", str(max(1, cores * 2 // 10))], INCREMENTAL_PROGRAMS_ENVIRONMENT),
+            Suite("self-hosting", [*self_hosting, "-j", str(share(cores, 5, 10))]),
+            Suite("backends", [*backends, "-j", str(share(cores, 2, 10))], INCREMENTAL_PROGRAMS_ENVIRONMENT),
             *fixed_points,
-            Suite("bootstrap", [*run_tests, "-j", str(max(1, cores * 3 // 10))]),
+            Suite("bootstrap", [*run_tests, "-j", str(share(cores, 3, 10))]),
             Suite("unit", [*unit, "discover", "-s", "tests/python"], {**unit_environment, "QUEST_SKIP_PTY_TESTS": "1"}),
         ]
         after = [Suite("pty", [*unit, PTY_TESTS], unit_environment)]
 
     start = time.monotonic()
-    print(f"Running {', '.join(suite.name for suite in together)} at once"
+    print(f"Running {', '.join(suite.name for suite in together)} {together_word()}"
           + (f", then {', '.join(suite.name for suite in after)}" if after else "")
           + f"; output in {OUTPUT_DIR.relative_to(ROOT_DIR)}/", flush=True)
     run_at_once(together, start)
