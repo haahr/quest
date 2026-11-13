@@ -1,13 +1,13 @@
-# WebAssembly (WasmGC) Backend and In-Browser Self-Hosted REPL Plan
+# WebAssembly (WasmGC) Backend and In-Browser Self-Hosted REPL Plan (Argon)
 
 ## 1. Goals and Overview
 
 The goal is to run a self-hosted Quest compiler and interactive REPL in a web browser, compiling Quest code to **WasmGC** (WebAssembly Garbage Collection) and using an in-browser JIT that compiles each REPL interaction into a small WasmGC module, dynamically instantiates and links it, and executes it against persistent session state.
 
-During development and automated testing on macOS, the toolchain will target:
+During development and automated testing on macOS, the toolchain targets:
 - **`wasm-tools`** (`/opt/homebrew/bin/wasm-tools` 1.263+): binary validation (`wasm-tools validate --features all`), disassembly (`wasm-tools print`), and binary-from-text assembly (`wasm-tools parse`) for unit tests.
 - **`node`** (`/opt/homebrew/bin/node` v26+): V8 WasmGC + Exception Handling + Tail Call execution and browser-like dynamic module loading (`WebAssembly.Module` / `WebAssembly.Instance`) via a small JS host harness.
-- **`wasmtime`** (`/opt/homebrew/bin/wasmtime` 50+): standalone CLI execution (`wasmtime run -W gc=y,function-references=y,exceptions=y,tail-call=y`) for single-module binaries and differential testing against the C and arm64 backends.
+- **`wasmtime`** (`/opt/homebrew/bin/wasmtime` 50+): standalone CLI execution (`wasmtime run -W gc=y,function-references=y,exceptions=y,tail-call=y -C collector=copying`) for separate-unit testing (`--preload`) and differential testing against the C and arm64 backends.
 
 ### High-Level Architecture
 
@@ -24,539 +24,618 @@ Core IR -> simplify -> inline -> contify -> specialize -> closure -> unbox -> re
         ▼                              ▼
    questlang/ssa                  questlang/wasm (NEW)
    (byte offsets, ptr tagging,    (typed WasmGC structs/arrays,
-    inline bump GC, C ABI)         i31ref/boxes, call_ref, try_table)
+    inline bump GC, C ABI)         i31ref hybrid boxes, call_ref, try_table)
         │                              │
         ├──► C backend                 ▼
-        └──► arm64 / JIT          .wasm binary emitter
+        └──► arm64 / JIT          .wasm binary emitter (questlang/wasm/encode)
                                        │
                         ┌──────────────┴──────────────┐
                         ▼                             ▼
              CLI / Test Harnesses              Browser Worker
-          (node, wasmtime, wasm-tools)     (Self-hosted compiler.wasm
+          (node, wasmtime, wasm-tools)     (compiler.wasm + VFS
                                             + dynamic per-phrase qj_<n>.wasm)
 ```
 
 ---
 
-## 2. Evaluation of Design Assumptions & Problematic Areas
+## 2. Answers to Cross-Plan Architectural Questions
 
-Before detailing the design, several assumptions and architectural tensions around WasmGC and Quest's existing compiler pipeline need to be called out explicitly.
+### 2.1. Traps: Quest Today vs. WebAssembly Target
 
-### 2.1. Problem 1: WasmGC Cannot Lower From `questlang/ssa`
+WebAssembly instructions can trap on integer division by zero, integer division overflow (`INT64_MIN / -1`), conversion of invalid floating-point numbers to integers, out-of-bounds array or string access, and access through a null reference. In WebAssembly, guest exception handlers cannot catch traps. 
 
-In the existing compiler (`docs/ssa.md`, `docs/arm64.md`), the C and arm64 backends share `questlang/ssa` and `questlang/codegen/layout`. It is tempting to treat Wasm as another target below `ssa`, but **WasmGC fundamentally conflicts with `ssa`'s invariants**:
+The table below contrasts what Quest defines today with what the WasmGC target emits:
 
-1. **No pointer arithmetic or byte-offset loads/stores:** `ssa` lowers tuple, record, option, and array accesses into `ptrAdd` + raw byte offsets (`load8`, `store8`). WasmGC `struct` and `array` references are completely opaque; fields can only be accessed by static field index (`struct.get`, `struct.set`) or element index (`array.get`, `array.set`).
-2. **No low-bit pointer tagging (`QUEST_PROXY_TAG = 1`):** `ssa` uses `ptrToInt` / `intToPtr` to set and test bit 0 of tuple/option pointers for `QProxy`. WasmGC references cannot be converted to integers or bit-tagged.
-3. **No interior pointers (`(char *)opt + 8`, `@r.f`, `@t.0`, `@a[i]`):**
-   - In C/arm64, an option's payload starts at byte offset 8 and a case binder (`when tag with c:`) takes an interior pointer `(char *)opt + 8` as a tuple pointer so mutable (`var`) components are shared (`docs/c-representation.md` §5.3).
-   - `:var` and `:out` arguments (`@x`, `@r.f`, `@t.0`, `@a[i]`) pass raw interior pointers `T *` into stack frames, heap structs, or arrays (`docs/c-representation.md` §13).
-   - WasmGC **forbids interior pointers** into struct fields or array elements.
-4. **No inline bump-pointer allocation or shadow stack:** `ssa` lowers `new` to inline `quest_gc_cursor` bump allocation and `quest_barrier` write barriers. On WasmGC, the host VM owns the heap and write barriers via `struct.new` and `array.new`.
-
-**Recommendation:** The WasmGC backend must branch after **Described IR (`ir_described` + `ir/thunks`)**, not `ssa`. At the Described IR level, `tupleGet`, `recordGet`, `optionMatch`, `arrayGet`, `closureCall`, `convert`, and `:var`/`:out` modes are still explicit and structural. (Note: `ir/represent` and `ir/describe` are already almost completely target-independent—they operate on abstract slot indices and `QVal` boxing boundaries rather than byte offsets.)
-
----
-
-### 2.2. Problem 2: WasmGC Has No Unboxed 64-Bit Universal Slot (`QVal`)
-
-Quest's C/arm64 runtime relies heavily on `QVal` being an 8-byte untyped union (`int64_t i`, `double r`, `void *p`, `uint64_t u`) and on two properties that follow from it (`docs/c-representation.md` §2):
-- **Uniform 1-word slots:** Every scalar (`Int`, `Real`, `Bool`, `Char`, `Word.T`, `Ok`) and every single-pointer aggregate fits in an 8-byte `QVal` without heap allocation.
-- **Concrete-vs-generic layout equivalence (`generic_layout_agrees`):** A concrete `Tuple Int Real end` (`{ int64_t _0; double _1; }`) has the *exact same memory layout* as a generic `Tuple A B end` (`{ QVal _0; QVal _1; }`), so passing a concrete tuple or `Array(Int)` to a polymorphic function `fun(t: Tuple A B end)` is a zero-copy pointer cast that preserves `is` identity and `var` mutation sharing.
-
-**Why this breaks in WasmGC:**
-- WasmGC's universal reference hierarchy (`anyref` -> `eqref` -> `{i31ref, structref, arrayref}`) **cannot hold unboxed `i64` or `f64`**. Only 31-bit integers (`i31ref`) fit unboxed inside `eqref`.
-- Because Quest `Int` and `Word.T` are 64-bit (`i64`) and `Real` is 64-bit IEEE-754 (`f64`), placing an `Int`, `Word.T`, or `Real` into an `eqref` slot requires a **heap-allocated immutable box struct** (`$BoxI64 = (struct (field i64))`, `$BoxF64 = (struct (field f64))`), whereas `Bool`, `Char`, and `Ok` fit unboxed in `i31ref`.
-- Even more critically: in WasmGC, a struct with native scalar fields `(struct (field (mut i64)) (field (mut f64)))` is **disjoint from** `(struct (field (mut eqref)) (field (mut eqref)))`. They cannot be cast to one another!
-- If concrete aggregates used unboxed `i64`/`f64` fields while polymorphic code expected `eqref` fields, crossing a polymorphic boundary would require either:
-  1. Copying the aggregate (which **violates Quest semantics** for `is` pointer identity and `var` mutation aliasing—the exact bug documented as `generic_layout_copies_mutable_data` in `docs/c-representation.md` §2.4), or
-  2. Wrapping every concrete tuple/array in a proxy or virtual accessor table on every field read/write.
-
-**Recommendation (Uniform `eqref` Slots in Heap Aggregates, Unboxed Scalars in Locals/Signatures):**
-- **Locals, expression temporaries, and monomorphic function parameters/returns** use unboxed Wasm scalars: `i64` (`Int`, `Word.T`), `f64` (`Real`), `i32` (`Bool`, `Char`, `Ok`). Because Quest already runs call-site specialization (`ir/specialize`) and tuple return unboxing (`ir/unbox`), hot monomorphic loops and local functions operate entirely on unboxed Wasm `i64` and `f64` locals.
-- **Aggregate slots (`Tuple`, `Record`, `Option`, `Array`, closure environments) and unspecialized type-variable values (`QVal`)** uniformly use `eqref` (`slot_representation`). Storing an `Int`/`Word.T` into an aggregate slot allocates a `$BoxI64` (`struct.new $BoxI64`); storing a `Real` allocates a `$BoxF64` (`struct.new $BoxF64`); storing `Bool`/`Char`/`Ok` uses `ref.i31` (zero allocation).
-- **Consequences and fixes:**
-  1. Concrete and generic aggregates have the **exact same WasmGC representation**, so passing `Tuple Int Real end` or `Array(Int)` to `All(A::TYPE) ...` requires **zero copying and zero proxies**, preserving `var` sharing and `is` identity on aggregates.
-  2. **`is` and `hash.identityHash` on boxed scalars:** In WasmGC, `ref.eq` on two separately boxed `$BoxI64(42)` structs evaluates to `0` (`false`). Therefore, generic `QVal` equality (`quest_val_is`) and `hash.identityHash` must treat `$BoxI64` and `$BoxF64` by value (matching C/arm64, where `a.u == b.u` compares the 64-bit payload of `QVal`), while using `ref.eq` (after proxy unwrapping) for all heap aggregate references.
+| Operation | Condition | Quest Today (`runtime/quest_runtime.h`, `c-representation.md`) | WebAssembly Behavior | WasmGC Backend Lowering |
+| :--- | :--- | :--- | :--- | :--- |
+| **Integer division & remainder** (`/`, `%`, `mod` on `Int`) | Divisor is `0` | Raises catchable `int.error` with location `"file:line:col"` (`quest_check_int_div_at`) | `i64.div_s` / `i64.rem_s` trap (`integer divide by zero`) | Emit explicit check: if `b == 0`, call `$quest_raise_int_error_at(site)` (throws `$quest_exception`). |
+| **Integer division overflow** (`/`, `%`, `mod` on `Int`) | `int.minInt / ~1` | Wraps to `int.minInt` (remainder `0`) (`quest_int_div_at`, `quest_int_rem_at`) | `i64.div_s` traps (`integer overflow`) | If `b == -1`, evaluate `0 - a` (for `/`) or `0` (for `%`/`mod`); otherwise execute `i64.div_s` / `i64.rem_s`. |
+| **Word division & remainder** (`word.div`, `word.mod`) | Divisor is `0` | Raises catchable `word.error` | `i64.div_u` / `i64.rem_u` trap | If `b == 0`, call `$quest_raise_word_error()` (throws `$quest_exception`). |
+| **Conversion of `Real` to `Int`** (`real.floor`, `real.ceil`, `real.trunc`, `real.round`) | `NaN`, `±inf`, or $|r| \ge 2^{63}$ | In Quest, `NaN` is never a valid `Real` (`quest_real_result_at` raises catchable `real.error` on any `isnan`). Out of bounds raises catchable `real.error`. | `i64.trunc_f64_s` traps on `NaN`, `±inf`, or $|r| \ge 2^{63}$ | Check `(r != r) || (r < -9223372036854775808.0) || (r >= 9223372036854775808.0)` and call `$quest_raise_real_error()`. Then execute `i64.trunc_sat_f64_s` (saturating truncation never traps). |
+| **Array & String indexing** (`a[i]`, `string.getChar`, `string.getSub`) | `i < 0` or `i >= len` | Raises catchable `arrayOp.error` (`quest_check_array_bounds_at`) or `string.error` (`quest_check_string_bounds_at`) with site | `array.get` / `array.set` trap on out-of-bounds | Emit unsigned 64-bit comparison `(i64.ge_u idx (i64.extend_i32_u (array.len a)))`. If true, call `$quest_raise_array_error_at(site)`. |
+| **Array allocation size** (`array of(n, init)`) | `n < 0` or `n > 2^31 - 1` | `n < 0` raises catchable `arrayOp.error`. Excessive size calls `quest_oom()` (uncatchable fatal abort). | `array.new` takes `i32` and traps on negative or host allocation limit | Check `n < 0` -> raise `arrayOp.error`. Check `(i64.gt_s n 0x3fffffff)` -> call `$quest_oom()`. |
+| **Option computed ordinal** (`option ordinal(n) of T end`) | `n < 0` or `n >= count` | Uncatchable fatal error: prints `"Option ordinal %lld out of bounds..."` to `stderr` and exits status 1 (`quest_check_option_ordinal_at`). | N/A | Check `(i64.ge_u n count)`: on failure call `$quest_option_ordinal_error_at(n, count, site)`, which writes to `stderr` and aborts. |
+| **Failed cast** (`ref.cast`) & **Null dereference** | Invariant violation | Statically typed language: dynamic tests (`inspect`, `dynamic.be`) inspect `$TypeDescriptor` first; mismatch raises catchable `dynamic.error`. | Traps | A failed `ref.cast` or null dereference in emitted code is an internal compiler bug, never reachable in valid Quest code. |
 
 ---
 
-### 2.3. Problem 3: Compiling the Existing C Runtime (`runtime/*.c`) to Linear Memory
+### 2.2. Tail Calls Through Adapters and Call Chains
 
-Quest's current runtime (`runtime/quest_runtime.c`, `quest_gc.c`, `quest_serialization.c`, `quest_code.c`, `quest_readline.c`—~420 KB of C) manipulates `QVal`s, `QTypeDescriptor`s, `QRecordVal`s, and `QProxy`s as raw C pointers in flat memory.
+Native Quest (`questlang/ssa/tailCalls.mod.quest`) turns calls in tail position into jumps or tail calls, subject to:
+1. The call is not inside an active `try` block (which must pop handlers).
+2. The caller does not perform post-call conversions on the returned value.
 
-**Why compiling `runtime/*.c` with Clang to Wasm linear memory is problematic for a WasmGC target:**
-- Clang's `wasm32`/`wasm64` C target places C structs in **linear memory** (`memory 0`), not in the **WasmGC managed heap**. C code cannot dereference a WasmGC `(ref struct)` or `eqref`, and WasmGC structs cannot be cast to linear-memory `void *` pointers.
-- Trying to store `QTypeDescriptor`s or strings in linear memory while keeping tuples/records/closures in WasmGC creates a split-world problem: strings and descriptors couldn't be stored in `eqref` slots without wrapper structs, and garbage-collecting linear-memory objects referenced from WasmGC objects would require finalizers.
+#### Which calls stop being tail calls under WasmGC?
+- **Within a function:** Direct and indirect calls in tail position that require no return-value conversions emit `return_call` or `return_call_ref` (using the WebAssembly Tail Call extension).
+- **Calls through result-converting adapter thunks:**
+  When a closure crosses a subtyping or instantiation boundary where return values must be converted (e.g. boxing an unboxed `i64` into `eqref`, or converting a return view via `planAdapt` in `ir/thunks.mod.quest`), the adapter thunk must wait for the callee to return so it can convert the result:
+  ```
+  caller --[return_call_ref]--> adapter_thunk --[call_ref]--> callee
+                                      │
+                                      ▼
+                               (convert result)
+                                      │
+                                      ▼
+                                   (return)
+  ```
+  The call from `adapter_thunk` to `callee` is **not** a tail call because the result must be converted before returning.
 
-**Recommendation:**
-1. **Delete the GC (~134 KB):** `quest_gc.c` is completely unneeded on WasmGC; the browser/Wasmtime/V8 collector manages all allocations.
-2. **Put all Quest values and descriptors in the WasmGC heap:** Strings, Arrays, Tuples, Options, Records, `OffsetDict`s, Closures, Proxies, and `QTypeDescriptor`s should all be native WasmGC structs/arrays.
-3. **Implement the WasmGC runtime in two clean layers:**
-   - **Wasm-side runtime (written in WAT/Wasm or low-level Quest):** Descriptor equality/subtyping (`quest_is_subtype`), `QViewMap` construction (`quest_view_map`), `quest_convert`, record dictionary lookup (`quest_record_dict`), value equality (`quest_val_is`), identity hashing, string operations, and `.qi` serialization/deserialization. Because this code runs as WasmGC functions, it inspects `$TypeDescriptor`, `$Proxy`, `$Record`, and `$String` structs directly via `struct.get`/`ref.test`.
-   - **Host imports (`env` / `wasi` in JS or Wasmtime):** Thin host bindings for I/O (`os/io`, `io/readline`), virtual/real filesystem access (`os/fs`), clocks/timers (`os/time`), transcendental math / `Real` formatting (`Real.toString`, `Real.fromString`, `sin`, `cos`, `atan2`, `pow`, etc.), and dynamic Wasm module instantiation (`os/code` for the JIT).
-
----
-
-### 2.4. Problem 4: WasmGC Isorecursive Type Equivalence Across Separate Modules and JIT Phrases
-
-A subtle trap in the WasmGC specification is how types are matched across module boundaries (`import` / `export` and indirect calls):
-- WasmGC types are **isorecursive**: two types in different Wasm modules are considered identical by the validator/linker **if and only if** they have the exact same structural definition *and* belong to structurally identical recursive type groups `(rec (type ...) ...)`.
-- If each Quest compilation unit emitted ad-hoc WasmGC struct types for the specific tuples/options/functions it happened to use in a single `(rec ...)` block, a module `B.wasm` importing a function from `A.wasm` (or a REPL phrase `qj_2.wasm` importing from `qj_1.wasm`) would **fail Wasm link-time validation** with a type mismatch!
-
-**Recommendation (Canonical WasmGC Type Prelude):**
-- Every emitted `.wasm` module begins its Type Section with the **exact same fixed `(rec ...)` group of core runtime WasmGC types** (around 20 types: `$BoxI64`, `$BoxF64`, `$Cell`, `$ByteArray`, `$ValArray`, `$Int32Array`, `$String`, `$Array`, `$TupleOrProxy`, `$Tuple`, `$Proxy`, `$Option`, `$Record`, `$RecordBox`, `$VariantBox`, `$Closure`, `$Auto`, `$TypeDescriptor`, `$ViewMap`, `$Exception`).
-- Any arity-specialized or signature-specific types (such as Wasm `(func ...)` signatures) are emitted outside the core `(rec ...)` group as standalone `(type (func ...))` entries that reference only Wasm scalar types (`i32`, `i64`, `f64`) and the fixed core WasmGC types.
-- Because standalone non-recursive `(type (func ...))` definitions in WasmGC are structural over the core `(rec ...)` group, **every separately compiled module and every dynamically generated JIT phrase module (`qj_<n>.wasm`) will agree on WasmGC types automatically without global whole-program type coordination.**
+#### Why does this not exhaust the browser stack in a closure loop?
+1. **Single-frame overhead:** Adapter thunks are created when a closure is *passed* across an adaptation boundary, not on every iteration of a loop.
+2. Even if a recursive function `f` is invoked through an adapting wrapper `A`, `A` adds exactly **1 frame** on entry. When `f` calls itself tail-recursively (or mutually tail-calls `g`), `f` and `g` share their signature and dispatch directly via `return_call` or `return_call_ref`. The recursion executes in $O(1)$ stack space regardless of the initial entry wrapper.
+3. The only way an unbounded loop could grow frames is if each iteration created a *new* result-converting wrapper around the next step, which Quest's closure conversion and representation passes never do.
 
 ---
 
-### 2.5. Problem 5: Browser Main-Thread Limits and Synchronous REPL / Compiler I/O
+### 2.3. The Stack: Compiler Recursion and Host Overflow
 
-In a browser:
-1. Calling `new WebAssembly.Module(bytes)` synchronously on the main UI thread is disallowed by Chrome/V8 for modules larger than 4 KB (the self-hosted compiler `quest.wasm` will be several megabytes).
-2. A synchronous REPL loop (`readline.readLine`) or long compilation on the main UI thread freezes the browser tab.
+#### Empirical Measurements on the Self-Hosted Compiler
+We measured the stack requirements of the stage 2 Quest compiler (`./quest`, arm64) using `RLIMIT_STACK` binary search on macOS:
 
-**Recommendation:**
-- Run the self-hosted Quest compiler and REPL session inside a **Web Worker** (using `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` so `SharedArrayBuffer` is available, with an async message-driven fallback when running per-phrase interactions if `SharedArrayBuffer` is unavailable).
-- Inside a Web Worker, `new WebAssembly.Module(bytes)` and `new WebAssembly.Instance(mod, imports)` are **allowed synchronously for modules of any size**, so the JIT's `os/code` interface (`load` -> `lookup` -> call) remains completely synchronous and identical between Node, Wasmtime, and the browser!
-- Moreover, `Atomics.wait` on a `SharedArrayBuffer` allows synchronous `readline.readLine` and a shared interrupt flag (`quest_interrupt_flag` for Ctrl-C in the browser) without rewriting the compiler or user programs into continuation-passing style or using Asyncify.
+1. **Per-unit compilation (`--stop-after ssa`):**
+   - `questlang/types/canonical.mod.quest` (2,011 lines): succeeds at **64 KB**.
+   - `questlang/types/model.mod.quest` (2,121 lines): succeeds at **64 KB**.
+   - `questlang/codegen/c/printer.mod.quest` (3,317 lines, largest unit): fails at 64 KB, succeeds at **80 KB**.
+   - `questlang/ir/lower.mod.quest` (2,268 lines): fails at 64 KB, succeeds at **80 KB**.
+   - `questlang/values/dynamicjson.mod.quest` (1,801 lines): fails at 80 KB, succeeds at **96 KB**.
+2. **Whole-program compilation (`--whole-program questlang/driver/main.quest`):**
+   - Compiling all 287 modules (83,818 lines) into 770,504 lines of Described IR: fails at 64 KB, 96 KB, 128 KB; **succeeds at 192 KB**.
+
+#### Comparison with Browser Stack Budgets
+- **Chromium Web Worker:** ~512 KB available stack.
+- **Main browser page thread:** ~1 MB available stack.
+- **Native OS thread:** 8 MB.
+
+At **96 KB** max for any individual module and **192 KB** for a full whole-program compilation, the compiler comfortably fits within a 512 KB Worker thread (< 38% stack utilization).
+
+#### The Interpreter (`--no-jit`)
+In `questlang/interpreter/primitives.mod.quest`, `maxCallDepth = 1000` is an internal software limit. However, each interpreted call frame traverses `treewalk.evalExpr` / `evalBlock` / `apply`, consuming ~2 KB of host stack per interpreted frame. In native execution (8 MB stack), 1,000 frames take ~2 MB. In a 512 KB Chromium Worker, a host stack overflow will trigger at ~200–250 nested interpreted calls before `maxCallDepth = 1000` is reached.
+
+#### Host Stack Overflow Handling
+In compiled Wasm code, an uncaught stack overflow is a fatal condition (`docs/exceptions.md` §6: *"Compiled code ends. ... A handler cannot catch it"*).
+- When the host VM exhausts its stack, V8 throws `RangeError: Maximum call stack size exceeded` (or Wasmtime traps with `call stack exhausted`).
+- The host harness (`run-wasm.js` in Node or the Web Worker message dispatcher) catches the `RangeError`, reads the function call names from `err.stack` (mapped via the Wasm `name` section), collapses consecutive recursive repeats (`... <fn> repeated N more times`), and reports:
+  ```
+  Exception: stack.overflow
+    in <fn>...
+  ```
+- In the browser REPL Worker, the handler resets transient compiler state and the `quest_handlers` chain while keeping previously loaded session modules (`qm_qj_1..n-1`) intact, returning an error to the user prompt rather than terminating the worker.
 
 ---
 
-## 3. Value Representation on WasmGC
+### 2.4. Limits of the Engines and Safe Encodings
 
-This section defines the concrete WasmGC representation corresponding to `docs/c-representation.md`.
+We probed engine limits across `wasm-tools validate --features all`, `wasmtime 50+`, and `node v26` (V8):
 
-### 3.1. Canonical Core WasmGC Type Prelude
+| Resource | Spec / Verified Limit | `wasm-tools` | `wasmtime` | `node` (V8) | Max in Quest Compiler | Safe Encoding in Plan |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Subtype depth** | **63** (depth 64 rejected) | 63 | 63 | 63 | **3** | Uniform `$Tuple` wrapping `$ValArray` has depth 3 (`$HeapObj :> $TupleLike :> $Tuple :> $Option`). Avoids deep `$tupN <: $tup(N-1)` chains which violate depth 63 on records/tuples with $\ge 62$ fields. |
+| **Struct fields** | **10,000** | 10,000 | 10,000 | 10,000 | ~120 (module records) | Fixed struct fields used only for core runtime structs; aggregates use `$ValArray`. |
+| **Function params** | **1,000** | 1,000 | 1,000 | 1,000 | ~24 | Arguments and multi-value returns stay well within 1,000. |
+| **Function locals** | **50,000** | 50,000 | 50,000 | 50,000 | ~4,200 (in whole-program `main`) | Split large initializers into table-driven loops or chunked `$qm_init_<unit>` functions. |
+| **Function body size** | **~7.65 MB** | 7,654,321 B | 7,654,321 B | 7,654,321 B | ~180 KB (`$qm_init`) | Well below limits; large literal data placed in passive data segments. |
+| **Types per module** | **1,000,000** | 1,000,000 | 1,000,000 | 1,000,000 | ~800 | Shared `(rec ...)` prelude has 25 types; function signatures are interned. |
 
-Every emitted `.wasm` module starts with this shared `(rec ...)` type group so all modules share identical type identities:
+---
+
+### 2.5. Type Identity Across Modules
+
+In WebAssembly GC, type equivalence across modules is **isorecursive**:
+- The canonical identity of the $i$-th type in a recursion group $G$ is the pair $(G, i)$.
+- Two types in the same recursion group at indices $i \ne j$ are **nominally distinct even if their field structures are identical**.
+- Standalone types outside a `(rec ...)` group form singleton recursion groups and are canonically equal if and only if their structures are identical.
+
+#### Prelude Partitioning: Fixed `(rec ...)` Group vs. Standalone Types
+1. **The Core `(rec ...)` Group (indices 0..24, identical in every emitted module):**
+   Contains all 25 runtime aggregate types and the uniform closure signature:
+   `0: $BoxI64`, `1: $BoxF64`, `2: $ByteArray`, `3: $Int32Array`, `4: $ValArray`, `5: $StringArray`, `6: $DescArray`, `7: $HeapObj`, `8: $Cell`, `9: $String`, `10: $Array`, `11: $TupleLike`, `12: $Tuple`, `13: $Option`, `14: $Proxy`, `15: $Record`, `16: $RecordBox`, `17: $VariantBox`, `18: $UniformFn`, `19: $Closure`, `20: $Auto`, `21: $Exception`, `22: $ExceptionPacket`, `23: $TypeDescriptor`, `24: $ViewMap`.
+2. **Standalone Types (outside the group):**
+   Only concrete function types `(type $sig_T (func ...))` and their corresponding closure subtypes:
+   ```wat
+   (type $Closure_T (sub final $Closure (struct
+     (field $hash    (mut i32))
+     (field $uniform (ref $UniformFn))
+     (field $env     eqref)
+     (field $native  (ref $sig_T))
+   )))
+   ```
+
+#### Distinction and Evolution Guarantees
+- Within the canonical group, types are separated by their fixed index. Adding or removing a field on one struct does not collapse it with another struct.
+- Across precompiled modules, any change to the core `(rec ...)` group alters its canonical hash. Precompiled `.wasm` units are protected against incompatible prelude mismatches by checking `abi.version` in `questlang/config/abi.mod.quest`.
+
+---
+
+### 2.6. Reference Locals and Non-Null Validation
+
+WebAssembly validation requires that non-defaultable locals of non-null reference type `(ref $T)` be initialized before use. The validator tracks initialization status within enclosing control-flow blocks and resets uninitialized status when leaving branches.
+
+#### Lowering Choices:
+1. **Join points (`sJoin` / `sJump`):**
+   - *Forward-only joins:* Lowered directly as Wasm multi-value block results:
+     ```wat
+     (block $join (result (ref $Tuple) i64)
+       ...
+       (br $join (local.get $t) (local.get $val))
+     )
+     ```
+     This requires zero locals and zero null checks.
+   - *Loop join points / back-edges:* Lowered using nullable locals `(local (ref null $T))`. On entry to the join point, the value is promoted to non-null via `(ref.as_non_null (local.get $x))`.
+2. **`out` parameters:** Passed as non-null parameter pairs `(param $loc_arr (ref $ValArray)) (param $loc_idx i32)`. At the call site, an uninitialized local `let var x: T` passed via `@x` is backed by a 1-element `$ValArray` allocated with `(array.new_default $ValArray (i32.const 1))` containing `ref.null eq`.
+3. **Variables assigned on both arms of an `if`:**
+   - Single-value joins use `(if (result (ref $T)) (then ...) (else ...))`, placing the non-null reference directly on the operand stack.
+   - Complex mutable variables use `(local (ref null $T))` and read via `(ref.as_non_null (local.get $v))`. In both V8 and Cranelift (Wasmtime), dominating `ref.as_non_null` checks are eliminated, and memory dereferences (`struct.get`) fold the check into a hardware trap.
+
+---
+
+### 2.7. `Int` (`i64`) Where WebAssembly Wants `i32`
+
+Quest's `Int` is a 64-bit signed integer (`i64`), while WebAssembly arrays, strings, and memories use unsigned/signed 32-bit indices (`i32`).
+
+#### Indexing Bounds Checks
+Before any `array.get` or `array.set`, Quest emits an unsigned 64-bit bounds check against the 32-bit array length:
+```wat
+(i64.ge_u (local.get $idx_i64) (i64.extend_i32_u (array.len (local.get $arr))))
+```
+- If `idx < 0`, bit 63 is set; `i64.ge_u` evaluates to `1` (out of bounds).
+- If `idx >= 2^31`, `i64.ge_u` evaluates to `1` because `(i64.extend_i32_u len) < 2^31`.
+- Any index outside `[0, len)` raises catchable `arrayOp.error` (or `string.error`) **before `i32.wrap_i64` is executed**. A 64-bit value like $2^{32}$ never wraps to 0.
+
+#### Allocations and Lengths
+- **Allocation count `n`:** If `n < 0`, raise catchable `arrayOp.error`. If `n > 0x3fffffff` (or exceeding engine array limits), fail with an uncatchable out-of-memory abort (`quest_oom()`).
+- **Lengths (`extent a`, `string.length(s)`):** `(i64.extend_i32_u (array.len a))` always fits losslessly in an `i64` `Int`.
+
+---
+
+### 2.8. Bytes Across the Host Boundary
+
+JavaScript and host runtimes cannot read or write WebAssembly GC structs and arrays directly.
+
+#### Boundary Transfer Mechanism
+Every module shares an exported linear memory buffer `(memory (export "memory") 1)`. Two small runtime functions transfer bytes between linear memory and WasmGC `(ref $ByteArray)`:
+- `$wasm_mem_to_bytes(ptr: i32, len: i32) -> (ref $ByteArray)`
+- `$wasm_bytes_to_mem(arr: (ref $ByteArray), ptr: i32) -> i32`
+
+#### Operation Across Environments:
+- **In the Browser / Node:**
+  - *Reading files/sources:* JS writes into `new Uint8Array(memory.buffer, ptr, len).set(sourceBytes)` and calls `$wasm_mem_to_bytes`.
+  - *Writing files / Loading JIT modules:* Quest calls `$wasm_bytes_to_mem` and invokes host import `os_code_load(name, ptr, len)`. JS reads `new Uint8Array(memory.buffer, ptr, len)` and passes it to `new WebAssembly.Module`.
+- **Under WASI (`wasmtime`):**
+  WASI calls (`fd_read`, `fd_write`) operate directly on `memory 0` at `ptr`, and the Wasm runtime transfers bytes to/from `$ByteArray` using the same helpers.
+
+#### Measured Cost of Compiler Source Loading
+We benchmarked transferring all 287 source files of `questlang/` (4,307,486 bytes = 4.11 MB):
+- **Node v26 (V8):** Host $\to$ WasmGC takes **11.28 ms**; WasmGC $\to$ Host takes **10.09 ms**.
+- **Wasmtime 50 (`-C collector=copying`):** Full roundtrip takes **15.98 ms** (~8.0 ms each way).
+- **Single REPL phrase module `qj_<n>.wasm` (~2–10 KB):** Boundary copy takes **< 0.03 ms**.
+
+---
+
+### 2.9. What the Page Serves
+
+| Execution Mode in Browser | Files Required from `lib/` (62 modules, 237 KB source) | Files Required from `questlang/` (287 modules, 4.11 MB source) | Producer & Target |
+| :--- | :--- | :--- | :--- |
+| **1. Browser JIT REPL (User Mode)** | Precompiled `lib` `.wasm` units in Worker registry + `lib/**/*.qi` (~120 KB total) in VFS | Precompiled `compiler.wasm` (or unit bundle); `questlang/**/*.qi` (~636 KB) for reflection | Produced at build time by `./quest compile --backend wasm`. `.qi` files are target-independent (ABI v25). |
+| **2. Browser Interpreter Mode (`--no-jit`)** | `lib/**/*.int.quest` and `lib/**/*.mod.quest` (62 files, 237.3 KB raw, ~60 KB gzipped) + `lib/**/*.qi` | Compiled `compiler.wasm` (containing tree-walk and IR interpreters) | Source files copied directly from repository into VFS bundle (`vfs-bundle.json`). |
+| **3. In-Browser Self-Compilation** | `lib/**/*.qi` + `lib/**/*.{int,mod}.quest` | `questlang/**/*.{int,mod}.quest` (287 files, 4.11 MB raw, ~850 KB gzipped) | Copied from repo into on-demand VFS archive `questlang-src.json`. |
+
+---
+
+### 2.10. The Driver as the Library vs. Whole-Program Optimization
+
+In `questlang/jit/session.mod.quest` lines 105–112:
+```quest
+"the JIT cannot run from this binary: its own modules' symbols are missing (a whole-program build drops them)"
+```
+When compiled with `--whole-program`, `questlang/ir/whole.mod.quest` dead-code eliminates unused module members, internalizes functions, and drops per-module records `qm_<mod>`, exports `qv_<mod>_<fn>`, and fingerprint globals `qh_<mod>`. A REPL phrase importing `list.map` from the host compiler binary would fail to link.
+
+#### Resolution:
+1. **Per-Unit Archive in Web Worker (`quest-units.bundle`):**
+   The browser Worker loads precompiled per-unit `.wasm` modules from an uncompressed archive and instantiates them in topological order into the Worker's `registry`. Every `lib/` and `questlang/` module record and function export is preserved with zero symbol stripping.
+2. **Linked Module with Retained Exports:**
+   When linking into a single `compiler.wasm`, the bundler retains all exported module records (`qm_<mod>`), functions (`qv_<mod>_*`), and fingerprints (`qh_<mod>`) in the Wasm Export Section rather than dropping them during dead-code elimination.
+
+---
+
+### 2.11. Artifacts, Caches, and Manifest Staleness Per Target
+
+- **`.qi` Interface files and `qh_<mod>` Fingerprints:** Completely **target-independent** (recording ABI version 25, type shapes, values, and pre-lowering inline IR).
+- **`.qm` Manifest Bug in `manifest.mod.quest`:**
+  In `questlang/modules/manifest.mod.quest` lines 206–224, `isManifestStale` checks ABI version, producer, and file hashes, but **does not verify that `man.backend == currentBackend`**. If a project builds with `--backend arm64` and then `--backend wasm` in the same build directory, `manifest.unitStaleness` treats the arm64 `.qm` as fresh and attempts to pass Mach-O objects to the Wasm pipeline.
+- **Fix:**
+  1. Update `manifest.isManifestStale` to mark any manifest with `man.backend != currentBackend` as stale.
+  2. Use distinct object extensions (`<stem>.wasm` vs `<stem>.o`).
+  3. Default Wasm builds to `.build/quest-stages-wasm/`.
+
+---
+
+## 3. Plan-Specific Technical Deep-Dives
+
+### 3.1. Variants, Slot Numbering, and Bounded Quantifiers
+
+In Quest (`docs/c-representation.md` §5.3.2):
+- A variant tag is a **dense 0-based integer (`0, 1, ..., n-1`) indexing the cases of the variant's static type in alphabetical order of case names**. (It is NOT an FNV-1a hash.)
+- **Width Subtyping (`Variant a: Int, c: Bool end <: Variant a: Int, b: String, c: Bool end`):**
+  When the alphabetical case indices of the subtype differ from the supertype, `ir/represent` generates `planVariantTags`. At runtime, the tag is remapped using a static lookup array `tagmap_<Target>_<Source>[src.tag]` (`(array i32)` in WasmGC), yielding `(tagmap[src.tag], src.payload)` with zero heap allocation.
+- **In an Aggregate Slot (`$VariantBox`):**
+  A variant stored in a slot has its tag in **the slot's static type's numbering**. Any upcast remaps the tag *before* `slot_box` stores it into the slot.
+- **Bounded Quantifiers (`All(V <: Variant ... end)`):**
+  Generic code holds `v: V` at its **own view** (the actual type argument's case numbering). Inside the generic function, `ir/describe` fetches `view = $quest_view_map(desc_V, desc_Bound)`. Operations `v?tag`, `v!tag`, and `case v` map `v.tag` to the bound's numbering using `(array.get $Int32Array (struct.get $ViewMap $index $view) $v_tag)`.
+
+---
+
+### 3.2. Generative Identity of Exceptions
+
+In Quest (`docs/c-representation.md` §7.1, `Cardelli §4.9`):
+- `exception E [: T] end` (`opMakeException`) is **generative**:
+  1. Evaluating the same exception declaration twice (e.g. inside a function or loop) produces two distinct `(ref $Exception)` objects. `e1 is e2` evaluates to `0` (`false`).
+  2. Two exception declarations with the same name in different modules allocate distinct `(ref $Exception)` heap objects.
+  3. Standard exceptions (`int.error`, `real.error`, etc.) are pre-allocated singleton `(ref $Exception)` globals exported by the runtime.
+- `$ExceptionPacket` holds `(field $exc (ref $Exception))`. Handler matching (`try ... when E ...`) checks identity via `(ref.eq (struct.get $ExceptionPacket $exc $pkt) (global.get $E))`.
+
+---
+
+### 3.3. Representation Boundaries and Protecting Native Goldens
+
+In the existing compiler:
+- `ir/represent` and `ir/slots` do not emit conversions when an `Int` is stored in a tuple or array. `slots.decideSlots` calls `layout.isBoxedInSlots`, which returns `true` only for records and variants (`QRecordVal` and `QVariantVal`).
+- For C and arm64, scalar conversion to/from 64-bit slot words occurs in `questlang/ssa/build/values.mod.quest`.
+- **WasmGC Pipeline Integration:**
+  `ir/represent.mod.quest`, `ir/slots.mod.quest`, and `codegen/layout.mod.quest` remain **completely unchanged** for C and arm64, protecting 100% of existing `tests/golden/` files.
+  In `questlang/wasm/build/`, slot operations (`opMakeTuple`, `opTupleField`, `opMakeOption`, `opMakeArray`, `opIndex`, `sStoreComponent`, `sStoreElement`, etc.) call `toEqref` and `fromEqref` directly, handling `i31ref` / `$BoxI64` / `$BoxF64` conversions.
+
+---
+
+### 3.4. Closures and Generic Instantiation (Two-Entry Dispatch)
+
+When a function `fun(x: Int): Int` (Wasm type `(func (param (ref $Closure) i64) (result i64))`) is stored in a tuple or array and passed to generic code expecting `(func (param (ref $Closure) eqref) (result eqref))`, `layout.genericLayoutAgrees` is `true`, so no adapter thunk is generated. Calling it with `(ref.cast (ref $sig_generic))` would trap.
+
+#### Validated Solution: Two-Entry Closures
+Every closure provides two entry points:
+1. Base `$Closure` in the core prelude:
+   ```wat
+   (type $UniformFn (func (param (ref $Closure) (ref $DescArray) (ref $ValArray)) (result eqref)))
+   (type $Closure (sub $HeapObj (struct
+     (field $hash    (mut i32))
+     (field $uniform (ref $UniformFn))
+     (field $env     eqref)
+   )))
+   ```
+2. For each distinct concrete Wasm signature `$sig_T`, a final subtype:
+   ```wat
+   (type $Closure_T (sub final $Closure (struct
+     (field $hash    (mut i32))
+     (field $uniform (ref $UniformFn))
+     (field $env     eqref)
+     (field $native  (ref $sig_T))
+   )))
+   ```
+3. At an indirect call site expecting signature `$sig_T`:
+   - `br_on_cast` checks if the closure is `$Closure_T`.
+   - **Fast path (>99.9% of calls):** Dispatches directly to `$native` via `call_ref $sig_T` (or `return_call_ref $sig_T` for tail calls) with unboxed arguments and zero allocation.
+   - **Slow path (generic mismatch):** Boxes arguments into `$ValArray`, calls `$uniform`, and unboxes the result. Traps are impossible.
+
+---
+
+### 3.5. `Real` Formatting, Math, and `libm` Parity Under `wasmtime`
+
+#### Capabilities and Divergences:
+1. `wasmtime` CLI provides only WASI and `--preload` modules; it cannot import arbitrary host JavaScript functions.
+2. JavaScript's `Number.toString()` differs from Quest's `quest_conv_real` / `quest_format_real` (`runtime/quest_runtime.c` lines 773–825):
+   - Quest prints `'~'` for negative numbers (`~1.5`, `~inf`), while JS prints `'-'`.
+   - Quest outputs `.0` on integral floats (`1.0`, `42.0`), while JS prints `"1"`, `"42"`.
+   - Quest switches to scientific notation at $|r| < 10^{-4}$ or $|r| \ge 10^{16}$ with 2-digit exponents (`1e-05`), while JS switches at $10^{-6}$ / $10^{21}$.
+3. Evaluating V8 (`node v26`) math functions against macOS `libSystem.B.dylib` (`libm`) revealed 1–2 ULP differences across `sin`, `cos`, `tan`, `atan`, `exp`, `log`, and `pow`.
+
+#### Solution for Complete Differential Parity:
+Compile `quest_format_real`, `strtod`, and standard `fdlibm` / `musl` transcendental functions (`sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `log`, `pow`, `sinh`, `cosh`, `tanh`) into a pure scalar WebAssembly helper module (`runtime/wasm/libm_fmt.wasm`).
+This requires zero host imports, operates solely on `f64`/`i32` and linear scratch memory, and guarantees bit-for-bit identical math and formatting across `wasmtime`, `node`, and all web browsers.
+
+---
+
+### 3.6. Stack Tracebacks and the `name` Section
+
+In Quest (`docs/exceptions.md` §2.1–3.3):
+- Stack frames in tracebacks consist of **function names only** (`  in <trace_name>`).
+- File, line, and column information is attached **only to the raise site itself** (`"file:line:col"`), emitted as a string literal passed directly to `$quest_raise_at`.
+- **Inlining, Contification, and Specialization:**
+  - *Inlining:* Inlined frames belong to the caller, while the raise site offset identifies the exact original call location via source maps.
+  - *Contification:* Tail-recursive local functions turned into loops are attributed to their enclosing function.
+  - *Specialization and Closure Lifting:* Lifted functions preserve their `ir.Function.trace_name` in the Wasm `name` section.
+- **Zero Overhead on Caught Exceptions:**
+  Quest's `quest_handlers` chain records whether an enclosing handler catches an exception (`CATCH_LISTED` or `CATCH_ALL`). Before capturing a traceback, `$quest_raise_at` inspects the chain: if caught, **no stack trace is captured**, avoiding host overhead.
+- For `wasmtime` CLI parity without JS host imports, a 2-instruction shadow call ring (`global $trace_sp` indexing a fixed `Int32Array`) records active function IDs on non-leaf function entry and exit.
+
+---
+
+### 3.7. Flat Structs vs. `$Tuple` Wrapping `$ValArray`
+
+#### Empirical Performance Benchmarks
+We benchmarked 20,000,000 allocations (3-tuples) and 200,000,000 field reads in `node v26` and `wasmtime 50` (`-C collector=copying`):
+
+| Operation | `$TupleArr` (`$Tuple` wrapping `$ValArray`, 2 allocs) | Flat `$Tuple3` Struct (1 alloc) | Speedup of Flat Struct |
+| :--- | :--- | :--- | :--- |
+| **V8 (`node`) Allocation (20M escaping)** | 300.5 ms | 278.3 ms | **1.08x** |
+| **Wasmtime Allocation (20M escaping)** | 1,621.2 ms | 963.3 ms | **1.68x** |
+| **V8 (`node`) Direct Typed Field Read (200M)** | 201.4 ms | 172.2 ms | **1.17x** |
+| **V8 (`node`) Cast Read from `$TupleLike` (200M)** | 399.8 ms (`sub final`, depth 1) | 414.7 ms (`sub`, depth 4) | **0.96x** (flat struct cast is 4% slower) |
+| **Wasmtime Direct Typed Field Read (200M)** | 496.5 ms | 269.2 ms | **1.84x** |
+| **Wasmtime Cast Read from `$TupleLike` (200M)** | 946.8 ms | 566.0 ms | **1.67x** |
+
+#### Codebase Census of `var` and `out` Parameters
+We scanned all parameter lists and call-site arguments across the entire Quest codebase:
+- `questlang/` (287 files, 83,818 lines): **0** `var` params, **0** `out` params, **0** `@` arguments.
+- `lib/` (62 files, 6,622 lines): **0** `var` params, **0** `out` params, **0** `@` arguments.
+- `tests/` (823 files, 34,035 lines): **58** `var` params, **15** `out` params, **58** `@` arguments (only 14 of which are `@r.f` or `@t.i`).
+
+#### Trade-Off Analysis:
+While flat structs reduce allocation in microbenchmarks, uniform `$ValArray` backing provides decisive architectural advantages for Quest:
+1. Avoids the WasmGC maximum subtype depth of 63 (which flat prefix subtype hierarchies violate on tuples/records with $\ge 62$ fields).
+2. `$Option <: $Tuple` enables zero-copy, zero-allocation option case binder sharing (`when tag with c:`).
+3. Uniform location pairs `((ref $ValArray), i32)` handle all `:var`/`:out` parameters uniformly.
+
+---
+
+### 3.8. Proof: Every Addressable Location is `($ValArray, i32)`
+
+#### Formal Claim:
+In Quest, every addressable mutable location passed to a `:var` or `:out` parameter (`opAddrVar`, `opAddrCell`, `opAddrField`, `opAddrComponent`, `opAddrElement`) is representable as a pair `(slots: (ref $ValArray), index: i32)`.
+
+#### Proof:
+1. **`opAddrVar(v)` (`@x` on local `let var x`):** Any local whose address is taken is allocated as a 1-element `$ValArray` at index 0: `(v_slots, 0)`.
+2. **`opAddrCell(init)` (`var(e)` temporary cell):** Allocates a 1-element `$ValArray` initialized with `toEqref(init)` at index 0: `(cell_slots, 0)`.
+3. **`opAddrField(r, f)` (`@r.f` on record):** Record fields live in `r.val.$slots`. The field index is looked up in `r.dict[f]`, yielding `(r.val.$slots, r.dict[f])`.
+4. **`opAddrComponent(t, i)` (`@t.i` on tuple or option case):** Mutable components are invariant (`T == U`). Unproxying `t` via `$quest_unproxy(t)` reaches the backing `$Tuple`, yielding `(backing.$slots, i)`.
+5. **`opAddrElement(a, idx)` (`@a[idx]` on array):** After the 64-bit bounds check at the address site, this evaluates to `(a.$elems, i32.wrap_i64 idx)`.
+6. **Record/Variant Local Variables:** In `questlang/ir/slots.mod.quest` lines 606–626, `slots.decideSlots` marks any mutable local or `:var`/`:out` parameter of record or variant type with `v.boxed := true`. In aggregate slots, records and variants are stored as single `eqref` pointers to immutable `$RecordBox` or `$VariantBox` objects. Assigning through `:var`/`:out` stores the new box reference into `slots[index]`.
+
+#### Invariant Boundary:
+This property holds because aggregate slots uniformly use `$ValArray`. If arrays of `Int` or `Real` were stored unboxed as `(array (mut i64))` or if tuples used heterogeneous flat structs, `:var`/`:out` parameters would require either per-element `$Cell` wrappers or getter/setter closure pairs.
+
+---
+
+### 3.9. `i31ref` Hybrid vs. Always-Boxed Integers
+
+#### Empirical Allocation Profiling
+Running `./quest` with `QUEST_GC_CHECK=allocations` revealed that compiling a single module (`questlang/ir/represent.mod.quest`, 1,337 lines) natively performs **57,768,617 allocations (4.15 GB)**.
+Because AST spans, token positions, type IDs, hash tables, and vector lengths all store integers into slots, always boxing integers into `$BoxI64` would add **150M–250M additional heap allocations (~2.4–4.0 GB)** per unit compile, and 2–3 billion extra allocations during self-compilation.
+
+#### Benchmark: `i31ref` Hybrid vs. Always-`$BoxI64` (20M slot writes + reads)
+- **Node v26 (V8):** `93.9 ms` (always-box) $\to$ **`27.8 ms`** (`i31ref` hybrid) — **3.38x faster**, zero allocations for integers in $[-2^{30}, 2^{30}-1]$.
+- **Wasmtime 50 (`-C collector=copying`):** `373.5 ms` (always-box) $\to$ **`67.2 ms`** (`i31ref` hybrid) — **5.56x faster**, zero allocations.
+
+#### Disjoint Representation Invariant:
+Small integers in $[-2^{30}, 2^{30}-1]$ are unboxed directly in `i31ref`. Large integers outside this range allocate `$BoxI64`. An integer in $[-2^{30}, 2^{30}-1]$ is never allocated as a `$BoxI64`, ensuring canonical representation.
+
+---
+
+### 3.10. Identity Hashing Design
+
+1. Struct `$HeapObj (sub (struct (field $hash (mut i32))))` is the base type for all heap objects (`$TupleLike`, `$Array`, `$String`, `$Closure`, `$Exception`, `$Cell`). At allocation, `$hash` is initialized to `0`.
+2. `$quest_obj_hash(obj: (ref $HeapObj)) -> i64`:
+   If `obj.$hash == 0`, increments global atomic counter `(global $next_id_hash (mut i32))` (skipping 0) and stores it in `obj.$hash`. Returns SplitMix64 mixed hash of `obj.$hash`.
+3. `$quest_identity_hash(t: (ref $TypeDescriptor), x: eqref) -> i64`:
+   - `REAL`: Unboxes `$BoxF64`, normalizes `-0.0` to `0.0`, and mixes bits.
+   - `INT`, `WORD`, `BOOL`, `CHAR`, `OK`: Extracts integer from `i31ref` or `$BoxI64` and mixes bits.
+   - `OPTION`: Computes hash based on tag and case payload.
+   - `TUPLE`, `STRING`, `ARRAY`, `FUN`, `EXCEPTION`: Unproxies to `$HeapObj` and calls `$quest_obj_hash`.
+
+---
+
+### 3.11. Canonical WasmGC Type Prelude
+
+Every emitted module begins with this validated 25-type `(rec ...)` group (verified with `wasm-tools validate --features all`):
 
 ```wat
 (rec
-  ;; Boxed 64-bit scalars for uniform eqref slots
+  ;; 0: Boxed 64-bit integer outside i31 range
   (type $BoxI64 (struct (field $v i64)))
+  ;; 1: Boxed 64-bit floating-point real
   (type $BoxF64 (struct (field $v f64)))
 
-  ;; Mutable 1-slot cell (used for :var/:out and captured mutable variables)
-  (type $Cell   (struct (field $v (mut eqref))))
+  ;; 2..6: Primitive arrays
+  (type $ByteArray   (array (mut i8)))
+  (type $Int32Array  (array (mut i32)))
+  (type $ValArray    (array (mut eqref)))
+  (type $StringArray (array (ref $String)))
+  (type $DescArray   (array (ref $TypeDescriptor)))
 
-  ;; Primitive arrays
-  (type $ByteArray  (array (mut i8)))
-  (type $Int32Array (array (mut i32)))
-  (type $ValArray   (array (mut eqref)))
+  ;; 7: Base heap object carrying lazy identity hash
+  (type $HeapObj (sub (struct (field $hash (mut i32)))))
 
-  ;; Strings & Quest Arrays
-  ;; $String: immutable length + UTF-8/byte array
-  (type $String (struct (field $len i32) (field $bytes (ref $ByteArray))))
-  ;; $Array: fixed-length mutable array of slots (wrapping $ValArray, or directly $ValArray)
-  (type $Array  (struct (field $elems (ref $ValArray))))
+  ;; 8: Mutable cell
+  (type $Cell (sub final $HeapObj (struct (field $hash (mut i32)) (field $v (mut eqref)))))
 
-  ;; Tuples, Options, and Proxies
-  ;; Common supertype for Tuple, Option, and Proxy so proxy checks are a single br_on_cast!
-  (type $TupleLike (sub (struct)))
+  ;; 9: Immutable string (UTF-8 bytes)
+  (type $String (sub final $HeapObj (struct (field $hash (mut i32)) (field $len i32) (field $bytes (ref $ByteArray)))))
 
-  ;; Concrete Tuple: N slots stored in $ValArray (or fixed-arity subtypes $Tuple1..$Tuple8)
-  (type $Tuple  (sub $TupleLike (struct
-    (field $slots (ref $ValArray))
+  ;; 10: Quest Array of slots
+  (type $Array (sub final $HeapObj (struct (field $hash (mut i32)) (field $elems (ref $ValArray)))))
+
+  ;; 11: Tuple-like common supertype
+  (type $TupleLike (sub $HeapObj (struct (field $hash (mut i32)))))
+
+  ;; 12: Concrete Tuple wrapping slot array
+  (type $Tuple (sub $TupleLike (struct (field $hash (mut i32)) (field $slots (ref $ValArray)))))
+
+  ;; 13: Concrete Option extending Tuple (tag + payload slots)
+  (type $Option (sub final $Tuple (struct (field $hash (mut i32)) (field $slots (ref $ValArray)) (field $tag i32))))
+
+  ;; 14: Proxy view over backing TupleLike
+  (type $Proxy (sub final $TupleLike (struct (field $hash (mut i32)) (field $target (ref $TupleLike)) (field $view (ref $ViewMap)))))
+
+  ;; 15: Record value payload
+  (type $Record (sub final $HeapObj (struct (field $hash (mut i32)) (field $desc (ref null $TypeDescriptor)) (field $slots (ref $ValArray)))))
+
+  ;; 16: Boxed record for single-slot contexts
+  (type $RecordBox (struct (field $val (ref $Record)) (field $dict (ref $Int32Array))))
+
+  ;; 17: Boxed variant for single-slot contexts
+  (type $VariantBox (struct (field $tag i32) (field $payload eqref)))
+
+  ;; 18: Uniform closure dispatch signature
+  (type $UniformFn (func (param (ref $Closure) (ref $DescArray) (ref $ValArray)) (result eqref)))
+
+  ;; 19: Base closure carrying uniform dispatch entry
+  (type $Closure (sub $HeapObj (struct (field $hash (mut i32)) (field $uniform (ref $UniformFn)) (field $env eqref))))
+
+  ;; 20: Auto & Dynamic wrapper
+  (type $Auto (sub final $HeapObj (struct (field $hash (mut i32)) (field $val eqref) (field $type (ref $TypeDescriptor)))))
+
+  ;; 21: Generative exception object
+  (type $Exception (sub final $HeapObj (struct (field $hash (mut i32)) (field $name (ref $String)))))
+
+  ;; 22: Thrown exception packet
+  (type $ExceptionPacket (struct (field $exc (ref $Exception)) (field $payload eqref) (field $site (ref $String)) (field $trace (ref null $Int32Array))))
+
+  ;; 23: Runtime type descriptor
+  (type $TypeDescriptor (sub final $HeapObj (struct
+    (field $hash      (mut i32))
+    (field $kind      i32)
+    (field $desc_hash i64)
+    (field $flags     i32)
+    (field $int_data  (ref $Int32Array))
+    (field $names     (ref $StringArray))
+    (field $childs    (ref $DescArray))
   )))
 
-  ;; Concrete Option: 1-based tag + payload slots
-  ;; Wait: if $Option extends $Tuple (inheriting $slots (ref $ValArray) + $tag i32),
-  ;; then an Option IS a $Tuple with zero allocation for `when tag with c:`!
-  (type $Option (sub $Tuple (struct
-    (field $slots (ref $ValArray))
-    (field $tag   i32)
+  ;; 24: View map for bounded subtyping and proxies
+  (type $ViewMap (sub final $HeapObj (struct
+    (field $hash   (mut i32))
+    (field $index  (ref $Int32Array))
+    (field $convs  (ref $DescArray))
+    (field $cases  (ref $DescArray))
   )))
-
-  ;; Proxy view over a backing Tuple/Option/Proxy
-  (type $Proxy  (sub $TupleLike (struct
-    (field $target (ref $TupleLike))
-    (field $view   (ref $ViewMap))
-  )))
-
-  ;; Records (evidence-passing payload + boxed form for 1-slot contexts)
-  (type $Record (struct
-    (field $desc  (ref null $TypeDescriptor))
-    (field $slots (ref $ValArray))
-  ))
-  (type $RecordBox (struct
-    (field $val  (ref $Record))
-    (field $dict (ref $Int32Array))
-  ))
-
-  ;; Variants (boxed form for 1-slot contexts; unboxed is (i32, eqref))
-  (type $VariantBox (struct
-    (field $tag     i32)
-    (field $payload eqref)
-  ))
-
-  ;; Closures
-  (type $Closure (struct
-    (field $fn  (ref func))
-    (field $env eqref)
-  ))
-
-  ;; Auto & Dynamic (identical 2-field layout: value slot + runtime type descriptor)
-  (type $Auto (struct
-    (field $val  eqref)
-    (field $type (ref $TypeDescriptor))
-  ))
-
-  ;; Runtime Type Descriptors & View Maps (details in Section 4)
-  (type $TypeDescriptor (struct ...))
-  (type $ViewMap        (struct ...))
 )
 ```
 
-*(Optimization note on `$Tuple` fields: Section 3.3 discusses fixed-arity struct subtypes `$Tuple0..$Tuple8` vs. `$ValArray`.)*
+---
 
-### 3.2. Concrete vs. Slot Representations (`ir/represent`)
+### 3.12. Multi-Module Linking
 
-Just as in C/arm64 (`docs/c-representation.md` §2.2), every Quest type has two representations:
-1. **Concrete representation:** used for local variables, expression results, and known monomorphic function parameters/returns.
-2. **Slot representation (`eqref`):** used whenever a value is stored in a tuple component, record field, option payload, array element, closure environment, or passed as an unspecialized type parameter (`QVal`).
-
-| Quest Type | Concrete Wasm Type | Slot Wasm Type (`eqref`) | `slot_box` (Concrete -> Slot) | `slot_unbox` (Slot -> Concrete) |
-| :--- | :--- | :--- | :--- | :--- |
-| `Int`, `Word.T` | `i64` | `(ref $BoxI64)` as `eqref` | `(struct.new $BoxI64 x)` | `(struct.get $BoxI64 $v (ref.cast (ref $BoxI64) s))` |
-| `Real` | `f64` | `(ref $BoxF64)` as `eqref` | `(struct.new $BoxF64 x)` | `(struct.get $BoxF64 $v (ref.cast (ref $BoxF64) s))` |
-| `Bool`, `Char`, `Ok` | `i32` | `i31ref` as `eqref` | `(ref.i31 x)` | `(i31.get_u (ref.cast i31ref s))` |
-| `String` | `(ref $String)` | `eqref` | upcast (nop) | `(ref.cast (ref $String) s)` |
-| `Array(T)` | `(ref $Array)` | `eqref` | upcast (nop) | `(ref.cast (ref $Array) s)` |
-| `Tuple ... end` | `(ref $TupleLike)` | `eqref` | upcast (nop) | `(ref.cast (ref $TupleLike) s)` |
-| `Option ... end` | `(ref $TupleLike)` | `eqref` | upcast (nop) | `(ref.cast (ref $TupleLike) s)` |
-| `Record ... end` | **Multi-value:** `(ref $Record), (ref $Int32Array)` | `(ref $RecordBox)` as `eqref` | `(struct.new $RecordBox v d)` | `struct.get $val`, `struct.get $dict` |
-| `Variant ... end` | **Multi-value:** `i32, eqref` | `(ref $VariantBox)` as `eqref` | `(struct.new $VariantBox t p)` | `struct.get $tag`, `struct.get $payload` |
-| `Fun(...) : ...` | `(ref $Closure)` | `eqref` | upcast (nop) | `(ref.cast (ref $Closure) s)` |
-| `Auto`, `Dynamic.T` | `(ref $Auto)` | `eqref` | upcast (nop) | `(ref.cast (ref $Auto) s)` |
-| Type param `A` | `eqref` | `eqref` | nop | nop |
-
-Notice how cleanly Wasm's native **multi-value** support handles 2-word types (`Record` and `Variant`):
-- In local variables, a `Record` is a pair of Wasm locals `(local $r_val (ref null $Record)) (local $r_dict (ref null $Int32Array))`.
-- In function parameters and return values, a `Record` expands to two Wasm parameters or a two-value result `(result (ref $Record) (ref $Int32Array))`—the exact equivalent of arm64 passing/returning `QRecordVal` in `(x0, x1)`!
-- And because `ir/represent` already inserts explicit `slot_box` and `slot_unbox` operations at every aggregate slot and type-variable boundary, the Wasm backend does not need to invent new boxing placement logic: `ir/represent` already marks every boundary.
-
-### 3.3. Tuples, Options, and Proxies
-
-#### Prefix Subtyping and Option Case Binders (`when tag with c:`)
-Look closely at the subtyping hierarchy in the prelude above:
-```
-           $TupleLike
-           /        \
-       $Tuple      $Proxy
-         |
-      $Option (inherits $slots from $Tuple, adds $tag: i32)
-```
-This solves **both** the Option case-binder problem and the Proxy representation problem without interior pointers or bit-tagging:
-1. **Option payload sharing (`case opt when tag with c:`):**
-   - Because `$Option` is a WasmGC subtype of `$Tuple` (sharing the `$slots` field at field index 0), when an option case binds `with c:`, the binder `c` is **simply the `$Option` reference itself** upcast to `(ref $TupleLike)`!
-   - If the option was actually a `$Proxy` wrapping an `$Option`, `c` is a `$Proxy` whose `$view` is the case's sub-view from `view.cases[tag - 1]`.
-   - Zero interior pointers, zero payload copying, and `var` components inside the option case are shared identically to C/arm64!
-2. **Proxies without low-bit tagging (`QUEST_PROXY_TAG`):**
-   - In C/arm64, every tuple/option read tests `if ((uintptr_t)p & 1)` to check if `p` is a `QProxy`.
-   - In WasmGC, `p` has static type `(ref $TupleLike)`. Checking whether `p` is a direct `$Tuple` (or `$Option`) versus a `$Proxy` is a single WasmGC instruction:
-     ```wat
-     ;; Fast path: direct $Tuple (also matches $Option since $Option <: $Tuple!)
-     (block $is_proxy (result (ref $TupleLike))
-       (br_on_cast_fail $is_proxy (ref $TupleLike) (ref $Tuple) (local.get $p))
-       ;; Now on stack: (ref $Tuple). Read slot i directly!
-       ...
-     )
-     ;; Slow path: $p is a $Proxy; call $quest_tuple_get_proxy($p, i)
-     ```
-   - When the compiler statically knows `p` was just constructed locally (`tupleNew` / `optionNew`), its static type is `(ref $Tuple)` or `(ref $Option)` and no `br_on_cast_fail` is emitted at all.
-
-#### Mutable (`var`) vs. Immutable Tuple/Record Slots and `:var` / `:out` Parameters
-Because WasmGC forbids interior pointers (`@t.0`, `@r.f`, `@x`, `@a[i]`), how should `:var` and `:out` reference parameters work?
-
-There are two clean designs:
-- **Design A (First-class Location Ref `(ref $Loc)` for `:var` / `:out` parameters):**
-  - Keep tuple/record/array slots as direct `(mut eqref)` elements in `$ValArray` (so normal reads/writes are direct 1-instruction `array.get` / `array.set` with no extra `$Cell` indirection!).
-  - Represent a `:var` or `:out` parameter as a small location value. In fact, what can a `:var` or `:out` argument be in Quest (`docs/c-representation.md` §13)?
-    1. A local `let var x` whose address is taken (`@x`): allocate `x` in a 1-element `$ValArray` (index `0`).
-    2. A mutable tuple component (`@t.i`) or option case component (`@c.i`): after resolving any `$Proxy` once at the call site (`quest_tuple_slot_loc(t, i)`), it is an element `(slots: (ref $ValArray), index: i32)`!
-    3. A mutable record field (`@r.f`): it is an element `(slots: r.val.$slots, index: r.dict[f_idx])`—also `(slots: (ref $ValArray), index: i32)`!
-    4. An array element (`@a[i]`): after bounds check at the call site, it is `(slots: a.$elems, index: i)`—**also `(slots: (ref $ValArray), index: i32)`**!
-    5. A proxy's coerced immutable slot (rare: passing a narrower-typed slot by `:var` isn't allowed for immutable slots because Quest's type checker requires `var` invariance for mutable slots!).Wait—what if a `$Proxy` adapts a `var` component whose type `T` required a proxy/thunk conversion? In Quest (`docs/c-representation.md` §6.1), `var` fields and components are **invariant** (`T <: U` requires `T == U` for `var` fields), except for record width subtyping where the field type itself is identical! Wait—even if a `var` component has a subtype coercion or if all `var` slots live in `$ValArray`, **every single addressable mutable location in Quest (`@x`, `@t.i`, `@r.f`, `@a[i]`) is literally a pair `((ref $ValArray), i32)`!**
-  - Let's verify that!
-    - Local `var x` (when `@x` is taken): stored in a 1-element `$ValArray` at index `0`.
-    - Tuple/Option `var` component `@t.i`: resolved through any proxy chain (following `view->indices` to the backing `$Tuple.$slots` and backing index `idx`), yielding `(backing.$slots, idx)`.
-    - Record `var` field `@r.f`: `(r.val.$slots, r.dict[f])`.
-    - Array element `@a[i]`: bounds-checked at `@a[i]` evaluation time, yielding `(a.$elems, i)`.
-  - Therefore, **every `:var` and `:out` parameter in Quest is simply a multi-value pair `(param $loc_arr (ref $ValArray)) (param $loc_idx i32)`** (or a 2-field struct `$Loc` if stored in a closure)!
-  - Reading a `:var` parameter inside the callee is just `(array.get $ValArray (local.get $loc_arr) (local.get $loc_idx))` + `slot_unbox`.
-  - Writing a `:var` or `:out` parameter inside the callee is just `slot_box` + `(array.set $ValArray (local.get $loc_arr) (local.get $loc_idx) ...)`.
-  - **No `$Cell` wrapper allocation on every `var` field of every tuple/record/array, and 100% faithful aliasing semantics for `@x`, `@t.i`, `@r.f`, and `@a[i]`!**
-
-### 3.4. Records and Evidence Passing (`QRecordVal`)
-
-Records in Quest use evidence passing (`docs/c-representation.md` §4):
-- **Concrete representation:** two values:
-  1. `val: (ref $Record)` containing `(field $desc (ref null $TypeDescriptor))` and `(field $slots (ref $ValArray))`.
-  2. `dict: (ref $Int32Array)` mapping each visible field (in canonical alphabetical order) to its **0-based slot index** in `val.$slots` (in C/arm64 this stores byte offsets `8, 16, ...`; in WasmGC it stores 0-based `i32` slot indices `0, 1, ...`).
-- **Field read (`r.f` where `f` is index `k` in static type):**
-  ```wat
-  (array.get $ValArray
-    (struct.get $Record $slots (local.get $r_val))
-    (array.get $Int32Array (local.get $r_dict) (i32.const k)))
-  ```
-  Followed by `slot_unbox` to the concrete field type.
-- **Width subtyping (`Record a: Int, b: String end <: Record a: Int end`):**
-  Constructs a new `$Int32Array` of length 1 containing `[ old_dict[0] ]` paired with the **same** `(ref $Record)`. Zero copying of record slots; `var` fields remain shared and `is` identity (`ref.eq` on `$Record`) is preserved.
-- **Depth subtyping (`Record a: Sub end <: Record a: Super end`):**
-  Handled by `quest_convert` / `ir/thunks` exactly as in C/arm64 (wrapping the adapted field in a proxy/thunk if representation changes).
-
-### 3.5. Variants (`QVariantVal`)
-
-- **Concrete representation:** two values `(tag: i32, payload: eqref)`.
-  - `tag` is the 32-bit FNV-1a hash of the label name (`quest_label_tag`), identical to C/arm64.
-  - `payload` is the `slot_box`ed `eqref` of the payload (`ref.null eq` if there is no payload).
-- **Variant width subtyping:** identity operation (`tag` and `payload` are unchanged).
-- **Slot representation:** `$VariantBox = (struct (field $tag i32) (field $payload eqref))`.
-
-### 3.6. Closures and Typed Indirect Calls (`call_ref`)
-
-In C/arm64, `QClosure` is `{ void *fn; void *env; }`.
-In WasmGC:
-- A closure value is `(ref $Closure)` where:
-  ```wat
-  (type $Closure (struct
-    (field $fn  (ref func))
-    (field $env eqref)
-  ))
-  ```
-- Every closure implementation function takes `(param $env eqref)` as its first parameter, followed by any type-descriptor parameters `(param $td_A (ref $TypeDescriptor))`, followed by value parameters in their concrete Wasm types (`i64`, `f64`, `i32`, `eqref`, multi-value pairs for `Record`/`Variant`/`:var`/`:out`).
-- At a call site `f(args...)` where the static signature has Wasm function type `$sig_T`:
-  ```wat
-  ;; Push env, descriptors, and arguments, then:
-  (ref.cast (ref $sig_T) (struct.get $Closure $fn (local.get $f)))
-  (call_ref $sig_T)
-  ```
-- **Why `(field $fn (ref func))` + `ref.cast (ref $sig_T)` + `call_ref` is ideal:**
-  1. `$Closure` is a single uniform struct type across all function signatures, so storing closures in aggregates, passing them to polymorphic code, or putting them in `Auto` requires no signature-specific wrapper structs.
-  2. `call_ref` dispatches directly to the function reference without needing a global `funcref` table or managing table slot indices across dynamically loaded JIT modules!
-  3. Wasm's `return_call` and `return_call_ref` (Tail Call proposal, supported in Wasmtime, Node, and all major browsers) can also be used for tail calls if desired.
+Instead of writing a custom binary `.wasm` linker in Quest (`questlang/wasm/link.mod.quest`), we leverage:
+1. **`wasmtime --preload` on CLI:**
+   `wasmtime run -W gc=y,function-references=y,exceptions=y,tail-call=y -C collector=copying --preload a=a.wasm b=b.wasm main.wasm` links multi-module programs natively.
+2. **`ir/whole.mod.quest` (`--whole-program`):**
+   Merges IR graphs before codegen to emit a single `.wasm` binary when standalone execution is required.
+3. **In-Browser Worker Registry:**
+   Instantiates per-unit modules in topological order and wires exports directly into downstream imports.
 
 ---
 
-## 4. Polymorphism, Subtyping, and Intensional Type Analysis
+### 3.13. Virtual File System Seeding
 
-Quest supports full $F_{<:}^\omega$ with structural subtyping (tuple prefix, record width/depth, option/variant width/depth, contravariant/covariant functions, bounded quantification) plus runtime type inspection (`inspect`, `Auto`, `Dynamic`).
+The browser virtual filesystem is pre-seeded with:
+1. `lib/**/*.qi` (~120 KB total) for REPL type checking and compilation.
+2. `lib/**/*.{int,mod}.quest` (237.3 KB total) to allow interpreter execution (`--no-jit`).
+3. Memory mount `/<quest-memory>/` for REPL phrase `.qi` files.
 
-BecauseQuest's middle-end passes (`ir/specialize`, `ir/closure`, `ir/unbox`, `ir/represent`, `ir/describe`, `ir/thunks`) are already cleanly separated from `ssa`, **almost the entire polymorphism architecture carries over directly to WasmGC**, with targeted adaptations for WasmGC types.
+---
 
-### 4.1. Unbounded Universal Polymorphism (`All(A::TYPE)`)
+### 3.14. Cross-Origin Isolation and Hosting
 
-1. **Monomorphic Call-Site Specialization (`ir/specialize`):**
-   - Just like C/arm64, when a polymorphic function is called with known concrete types, `ir/specialize` clones and specializes it (`docs/c-representation.md` §10.4.2).
-   - On WasmGC, this is **even more valuable** than on C/arm64: a specialized function `id__Int(x: i64): i64` keeps `Int` and `Real` parameters/locals completely unboxed (`i64`/`f64`), avoiding `$BoxI64`/`$BoxF64` allocations entirely!
-2. **Erased Generic Fallback (`ir/represent` + `ir/describe`):**
-   - For unspecialized or higher-rank polymorphic calls, each `TYPE`-kinded parameter `A` lowers to:
-     - Value parameters/returns of type `A` -> `eqref` (`QVal`).
-     - A hidden runtime descriptor parameter `(param $desc_A (ref $TypeDescriptor))` injected by `ir/describe`.
-   - At the call site, `ir/represent` inserts `slot_box` on concrete arguments (e.g. `i64` -> `$BoxI64`, `QRecordVal` -> `$RecordBox`) and `slot_unbox` on generic return values.
+The browser REPL operates in **event-driven mode** inside a Web Worker:
+- The Worker receives phrases via `postMessage`, compiles `qj_<n>.wasm`, instantiates it with `new WebAssembly.Module` and `new WebAssembly.Instance`, executes `qm_init_qj_n`, and streams stdout/stderr back.
+- **This requires NO `SharedArrayBuffer`, NO COOP/COEP headers, and runs seamlessly on standard static hosts (e.g. GitHub Pages).**
+- When COOP/COEP headers are present, `SharedArrayBuffer` enables an optional non-terminating Ctrl-C interrupt flag.
 
-### 4.2. Structural Subtyping and Coercions (`convert` / `ir/thunks`)
+---
 
-When `T <: U`, how does a value of type `T` become a value of type `U` on WasmGC?
+### 3.15. `wasmtime` Collector Configuration
 
-| Subtyping Form | WasmGC Mechanism | Cost |
+`wasmtime`'s default WasmGC collector (`drc`) does not reclaim cyclical references. Because Quest closures, type graphs, and data structures contain cycles, all `wasmtime` invocations must pass:
+```sh
+wasmtime run -W gc=y,function-references=y,exceptions=y,tail-call=y -C collector=copying <file>.wasm
+```
+
+---
+
+## 4. Design Decisions, Provenance, and Empirical Measurements
+
+| Decision | Provenance | Basis / Empirical Finding |
 | :--- | :--- | :--- |
-| **Tuple prefix** (`Tuple A B end <: Tuple A end`) where shared slots have identical representation | Identity! Both are `(ref $TupleLike)` and `$ValArray` has slots `0..1`, of which the supertype reads slot `0`. | **Zero** (nop) |
-| **Option width** (`Option a; b end <: Option a; b; c end`) where case payloads match | Identity! Both are `(ref $TupleLike)` (`$Option`) with the same 1-based `$tag`. | **Zero** (nop) |
-| **Variant width** (`Variant a; b end <: Variant a; b; c end`) where payloads match | Identity! Both are `(i32, eqref)` with the same FNV-1a label hash. | **Zero** (nop) |
-| **Record width** (`Record a: Int, b: Int end <: Record a: Int end`) | New `$Int32Array` `dict` mapping visible fields to existing indices in `$Record.$slots`. | Small `$Int32Array` alloc; zero slot copy |
-| **Tuple / Option depth** (where a component requires conversion, e.g. `Record` width inside a Tuple, or function variance) | Allocate a `$Proxy` wrapping the target `$TupleLike` and a `$ViewMap` computed by `quest_view_map(src_desc, dst_desc)`. | 1 `$Proxy` alloc (`$ViewMap` cached) |
-| **Function subtyping** (`(Super -> Sub) <: (Sub -> Super)`) | `ir/thunks` generates a typed wrapper closure that adapts parameters (`Sub -> Super`), calls the inner closure, and adapts the result (`Sub -> Super`). | 1 `$Closure` alloc |
-| **Bounded type variable** (`A <: B` where `v: A` is coerced to `B`) | Calls `$quest_convert(val, desc_A, desc_B)` at runtime using the descriptors passed by `ir/describe`. | Dynamic descriptor check |
-
-### 4.3. Bounded Quantification (`All(A <: B)`)
-
-Quest uses **own-view representation** (`docs/c-representation.md` §10.4.3):
-- Inside `fun(type A <: B, x: A)`, `x` has `A`'s own representation (as `eqref`), **not** `B`'s representation.
-- When `x` is used at type `A` (e.g., returned as `A`, stored in an `A` slot, or compared with `is`), no conversion happens.
-- Only when `x` is used at its bound `B` (e.g., reading a field declared on `B` or passing `x` to a function expecting `B`) does `ir/describe` emit `convert(x, desc_A, desc_B)`.
-- If `B` is a Tuple or Option type and `x` is accessed in a loop, `quest_view_map(desc_A, desc_B)` memoizes the `$ViewMap` and wraps `x` in a `$Proxy` so subsequent component reads don't re-run descriptor traversal.
-
-### 4.4. Runtime Type Descriptors (`$TypeDescriptor`) and `inspect` / `Auto` / `Dynamic`
-
-In C/arm64, static `QTypeDescriptor`s are emitted as C static structs (`qd_...`), and dynamic instantiations fill `QHoleDescriptor` templates via `quest_instantiate_descriptor`.
-
-In WasmGC:
-- `$TypeDescriptor` is a WasmGC struct in the core `(rec ...)` prelude:
-  ```wat
-  (type $TypeDescriptor (struct
-    (field $kind    i32)                  ;; QTypeKind enum (INT, REAL, TUPLE, RECORD, ...)
-    (field $hash    i64)                  ;; 64-bit structural fingerprint (for O(1) equality)
-    (field $flags   i32)                  ;; bit 0: has_holes, bit 1: is_mutable, etc.
-    (field $int_data (ref $Int32Array))   ;; tags, mutability flags, hole indices, arities
-    (field $names   (ref $StringArray))   ;; field names, option/variant labels, brand/opaque names
-    (field $childs  (ref $DescArray))     ;; child descriptors (fields, params, results, template args)
-  ))
-  ```
-- **Static descriptors (`qd_<id>`):** Initialized once in the module's start/init function (`$qm_init_<mod>`) and stored in module-level `(global $qd_<id> (mut (ref null $TypeDescriptor)))` globals (interned by structural `$hash` in a global descriptor table so `ref.eq` works for fast-path descriptor equality!).
-- **Descriptor templates (`HOLE`, `STORED`, `APP`, `LAM`):** Evaluated by `$quest_instantiate_descriptor` in WasmGC, producing an interned `(ref $TypeDescriptor)`.
-- **`Auto` and `Dynamic.T`:** Both are represented by `(ref $Auto)` (`{ $val: eqref, $type: (ref $TypeDescriptor) }`).
-  - `auto(v: T)` boxes `v` via `slot_box` and pairs it with `desc_T`.
-  - `inspect a when x: P: ...` calls `$quest_is_subtype(a.$type, desc_P)`; on match, it converts `a.$val` via `$quest_convert(a.$val, a.$type, desc_P)` and unboxes via `slot_unbox`.
+| **Runtime in WasmGC** | Confirmed by project owner | Avoids split-world linear memory issues; enables 100% parity across `node`, `wasmtime`, and browser. |
+| **Uniform `$ValArray` for Tuples/Options** | Confirmed by project owner | Avoids engine subtype depth limit of 63; enables zero-copy option case binders (`when tag with c:`); simplifies `:var`/`:out` locations. |
+| **Driver as the Library in Browser** | Confirmed by project owner | Retains module exports in Worker registry to support REPL dynamic linkage. |
+| **In-Memory VFS Seeded with `lib/`** | Confirmed by project owner | Pre-seeds 120 KB of `.qi` interfaces and 237 KB of stdlib source, supporting both JIT and `--no-jit` interpreter modes. |
+| **`i31ref` Hybrid Boxing for `Int`/`Word`** | Empirically revised in Argon review | Avoids 150M–250M `$BoxI64` allocations per unit compile; measured 3.4x (V8) and 5.6x (Wasmtime) speedups. |
+| **Two-Entry Closures (`$Closure` + `$Closure_<sig>`)** | Empirically revised in Argon review | Prevents illegal cast traps when generic code invokes monomorphic closures in tuples/arrays. |
+| **Pure-Wasm Float/Math Module (`libm_fmt.wasm`)** | Empirically revised in Argon review | Replaces host math imports, eliminating 1–2 ULP variations and formatting differences for bit-identical results. |
+| **`wasmtime --preload` and IR whole-program linking** | Empirically revised in Argon review | Eliminates ~2,000 lines of complex binary Wasm linker code in Quest. |
+| **Event-Driven Worker REPL** | Empirically revised in Argon review | Runs without requiring `SharedArrayBuffer` or cross-origin isolation headers on static web hosts. |
+| **`wasmtime -C collector=copying`** | Empirically revised in Argon review | Required to reclaim cyclic references in closures and compiler data structures. |
 
 ---
 
-## 5. Exceptions, Stack Traces, and Interrupts
-
-### 5.1. Native Wasm Exception Handling (`try_table` / `throw`)
-
-Instead of `_setjmp` / `_longjmp` (used in C/arm64, which requires demoting SSA locals modified inside `try` blocks to stack slots so registers aren't clobbered by `longjmp`), Wasm has native structured **Exception Handling**:
-- All modules share a single imported/exported exception tag:
-  ```wat
-  (tag $quest_exception (param (ref $ExceptionPacket)))
-  ```
-  where `$ExceptionPacket` holds:
-  - `$tag: i32` (FNV-1a hash of the exception's variant tag)
-  - `$payload: eqref` (boxed exception payload)
-  - `$Location` (`file: (ref $String)`, `line: i32`, `col: i32`)
-  - `$trace: (ref $TraceArray)` (captured stack frames)
-- **`raise e`:** Constructs `$ExceptionPacket` and executes `(throw $quest_exception)`.
-- **`try ... handle ... always ... end`:** Lowers to Wasm's `block` + `try_table (catch $quest_exception $catch_label)`.
-  - If an `always` (finally) block is present, the catch handler runs the `always` block before either matching the exception tag or rethrowing `(throw $quest_exception)`.
-  - **Big win over C/arm64:** Wasm locals are preserved across `try_table` catches by the Wasm VM, so no `try`-local stack demotion pass is needed!
-
-### 5.2. Zero-Overhead Stack Tracebacks
-
-Quest's exception design (`docs/exceptions.md`) requires tracebacks with zero overhead on non-raising calls. On arm64, `quest_raise` walks `x29` frame pointers and looks up PCs in `qr_funcs`. Wasm deliberately hides physical stack pointers from guest code.
-
-How to get accurate Quest stack traces on WasmGC with zero normal-call overhead:
-1. **Emit the standard Wasm Custom `name` Section** in every `.wasm` binary (mapping each Wasm function index to its human-readable Quest name and source location, e.g., `foo (src/bar.quest:12)`).
-2. When `raise` is executed, call a lightweight host import `$host_capture_stack()` (in JS/Node, `new Error().stack` or `WebAssembly.Exception` stack; in Wasmtime, host backtrace capture).
-3. Both V8 (Node/Chrome/Firefox/Safari) and Wasmtime parse the Wasm `name` section automatically and include the function names in the captured stack frames, which are filtered (`qm_init_*` / `qj_*` boundaries) and formatted to match Quest's exact traceback format!
-
----
-
-## 6. Separate Compilation, Linking, and the In-Browser JIT
-
-### 6.1. Direct Binary `.wasm` Emission (`questlang/wasm`)
-
-Following the philosophy of the native arm64 backend (`docs/arm64.md`), the self-hosted compiler should emit **binary `.wasm` directly** in Quest (`questlang/wasm/encode.mod.quest`), alongside a readable `.wat` pretty-printer (`questlang/wasm/wat.mod.quest`) for debugging and `--dump-wasm` inspection.
-- The `.wasm` binary format is much simpler than Mach-O + arm64 instruction encoding: LEB128 integers, length-prefixed sections (Type, Import, Function, Global, Export, Element, Code, Data, Custom `name`), and stack-machine opcodes.
-- During development, `wasm-tools validate --features all` and `wasm-tools print` provide immediate byte-level verification of every emitted `.wasm` module.
-
-### 6.2. Separate Compilation vs. Whole-Program Bundling
-
-We should support two linking modes from the same per-module `.wasm` emitter:
-
-1. **Multi-Module Dynamic Linking (Used by the REPL JIT and Node/Browser Dev Runner):**
-   - Each Quest module (`lib/int`, `lib/list`, ..., or REPL phrase `qj_<n>`) compiles to its own standalone `.wasm` module.
-   - Cross-module references:
-     - Module `M` exports its initialized module record as `(export "qm_<mangled>" (global $qm_<mangled>))` and its direct functions as `(export "qf_<mangled>_<fn>" (func ...))`.
-     - Downstream modules import `(import "quest" "qm_<mangled>" (global (ref null $RecordBox)))` (or direct functions) from the host's module registry.
-   - When the host instantiates module `M`, it passes the already-instantiated exports of `M`'s dependencies in the `imports` object and calls `M`'s `$qm_init_<mangled>()` function.
-
-2. **Single-Module Linked Binary (Used for `wasmtime` CLI and shipping `compiler.wasm`):**
-   - A lightweight Wasm linker in `questlang/wasm/link.mod.quest` merges the per-module functions, globals, and init calls of the dependency graph into a single self-contained `.wasm` binary with a `_start` export.
-   - This allows running any compiled Quest program (and the self-hosted compiler itself!) directly with a single command:
-     ```sh
-     wasmtime run -W gc=y,function-references=y,exceptions=y,tail-call=y out.wasm
-     ```
-
-### 6.3. In-Browser Self-Hosted REPL and Per-Phrase JIT
-
-The existing arm64 JIT (`docs/jit.md`, `questlang/jit/session.mod.quest`) was already architected around **phrase units (`nodes.Phrase`)**:
-- Each REPL input is parsed into a `Phrase` and compiled through the standard module pipeline as synthetic module `qj_<n>`.
-- Top-level `let` / `let var` / `fun` bindings live in `qj_<n>`'s module record (`qm_qj_<n>`), with mutable/redefinable bindings stored in 1-element boxes so closures from earlier phrases see updated definitions (`docs/jit.md` §3.3).
-- Type definitions are fingerprinted (`qh_<name>`) and written to an in-memory `.qi` interface file under `/<quest-memory>/qj_<n>.qi` via `common/memoryFiles` (`docs/jit.md` §3.2).
-
-**How this maps to the Browser WasmGC JIT:**
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│ Browser Tab                                                             │
-│                                                                         │
-│  ┌──────────────────────┐    postMessage /     ┌─────────────────────┐  │
-│  │ Main UI Thread       │ ◄──────────────────► │ Web Worker          │  │
-│  │ - Code editor / REPL │   SharedArrayBuffer  │ - compiler.wasm     │  │
-│  │ - Output / trace UI  │                      │ - VFS (/lib, /mem)  │  │
-│  │ - Interrupt button   │                      │ - Module Registry   │  │
-│  └──────────────────────┘                      │ - qj_1.wasm, ...    │  │
-│                                                └─────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-For each REPL interaction `n`:
-1. The user enters a phrase in the browser UI; the Worker receives the line.
-2. `compiler.wasm` (the self-hosted Quest compiler running on WasmGC inside the Worker) parses, type-checks (reading `/<quest-memory>/qj_<1..n-1>.qi` from `common/memoryFiles`), lowers to Described IR, and emits `qj_<n>.wasm` (~1–10 KB of Wasm bytes in memory).
-3. `compiler.wasm` calls the host import `os_code_load("qj_<n>", wasm_bytes)`:
-   - The Worker's JS host runs:
-     ```js
-     const mod = new WebAssembly.Module(wasmBytes);
-     const instance = new WebAssembly.Instance(mod, sharedImports);
-     registry.registerExports(instance.exports);
-     instance.exports.qm_init_qj_n();
-     ```
-   - Because `sharedImports` contains the `WebAssembly.Global` exports (`qm_lib_*`, `qm_qj_1` .. `qm_qj_{n-1}`), the shared `$quest_exception` `WebAssembly.Tag`, and the runtime table/helpers, `qj_<n>.wasm` links in sub-millisecond time!
-4. `compiler.wasm` formats and prints the resulting bindings/values using the runtime value printer and returns the output to the UI.
-
----
-
-## 7. Staged Implementation & Testing Plan
-
-All development and verification will use the Homebrew-installed tools (`wasm-tools`, `node`, `wasmtime`):
+## 5. Staged Implementation Plan with Testable Exit Conditions
 
 ### Phase 1: Wasm Binary/WAT Emitter & Minimal Runtime Core
-- Create `questlang/wasm/` with:
-  - `types.int.quest` / `types.mod.quest`: Canonical WasmGC type prelude (`(rec ...)`), function signature interning.
-  - `encode.int.quest` / `encode.mod.quest`: Binary `.wasm` encoder (sections, LEB128, WasmGC instructions, `name` custom section).
-  - `wat.int.quest` / `wat.mod.quest`: Text `.wat` emitter for readable IR/codegen tests.
-- Create the WasmGC runtime module (`runtime/wasm/`) + thin Node/Wasmtime host runner (`scripts/run-wasm.js` and `wasmtime` CLI wrapper).
-- **Verification:** Every emitted `.wasm` file is validated with `wasm-tools validate --features all` and disassembled with `wasm-tools print`.
+- Implement `questlang/wasm/types.mod.quest` (canonical prelude) and `encode.mod.quest` (LEB128, binary sections, instructions).
+- Implement `runtime/wasm/` core and `scripts/run-wasm.js` test runner.
+- **Done when:** A hand-written WAT test and an emitted minimal `.wasm` binary validate with `wasm-tools validate --features all` and execute under `node` and `wasmtime -C collector=copying`.
 
-### Phase 2: Scalars, Control Flow, Functions, and Closures
-- Lower Described IR scalars (`Int`, `Real`, `Bool`, `Char`, `Word.T`, `Ok`), arithmetic/bitwise/comparison primitives, `if`/`loop`/`block`, direct calls, and closures (`$Closure`, `call_ref`) to WasmGC.
-- Implement `slot_box` / `slot_unbox` (`$BoxI64`, `$BoxF64`, `i31ref`).
-- **Verification:** Run scalar, recursion, and closure golden tests under both `node` and `wasmtime`.
+### Phase 2: Scalars, Control Flow, and Closures
+- Lower scalars (`Int`, `Real`, `Bool`, `Char`, `Word.T`, `Ok`), arithmetic, comparisons, `if`/`loop`/`block`, direct calls, and closures (`$Closure`, `$Closure_<sig>`, `br_on_cast`, `call_ref`, `return_call_ref`).
+- Implement `i31ref` hybrid boxing (`$box_int`, `$unbox_int`).
+- **Done when:** `tests/source/language/arithmetic.quest`, `recursion.quest`, and `closures.quest` pass under both `node` and `wasmtime`.
 
 ### Phase 3: Aggregates (`Tuple`, `Option`, `Record`, `Variant`, `Array`, `String`) and `:var` / `:out`
-- Lower `$Tuple`, `$Option` (as subtype of `$Tuple` for case-binder sharing), `$Record` + `$Int32Array` multi-value evidence passing, `$Variant` multi-value `(i32, eqref)`, `$Array`, and `$String`.
+- Lower `$Tuple` and `$Option` backed by `$ValArray`.
+- Lower `$Record` + `$Int32Array` multi-value pairs and `$Variant` multi-value pairs.
 - Lower `:var` and `:out` parameters as `((ref $ValArray), i32)` location pairs.
-- Implement `$quest_val_is` and `$quest_identity_hash` (handling `$BoxI64`/`$BoxF64` by value and heap refs by `ref.eq` after proxy unwrapping).
-- **Verification:** Differential test suite against C/arm64 on tuple, option, record, variant, array, string, and `:var`/`:out` test cases.
+- Implement `$quest_val_is` and `$quest_identity_hash`.
+- **Done when:** All aggregate and reference parameter tests in `tests/source/language/` pass identically to C and arm64 backends.
 
-### Phase 4: Polymorphism, Proxies, Type Descriptors, and `Auto` / `Dynamic`
-- Lower static and template `$TypeDescriptor`s (`HOLE`, `STORED`, `APP`, `LAM`) and intern them by structural hash.
-- Implement `$quest_is_subtype`, `$quest_view_map`, `$quest_convert`, and `$Proxy` slot access (`br_on_cast_fail` fast path + proxy slow path).
-- Lower `auto`, `inspect`, and `Dynamic` (`extern`/`intern`).
-- **Verification:** Run all polymorphism, bounded quantification, subtyping, `auto`/`inspect`, and `dynamic` tests under `node` and `wasmtime`.
+### Phase 4: Polymorphism, Subtyping, Proxies, and Type Descriptors
+- Lower static and template `$TypeDescriptor` structs and interning tables.
+- Implement `$quest_is_subtype`, `$quest_view_map`, `$quest_convert`, and `$Proxy` access.
+- Lower `auto`, `inspect`, and `Dynamic`.
+- **Done when:** All polymorphic, bounded quantification, and dynamic type tests pass under `node` and `wasmtime`.
 
-### Phase 5: Exceptions (`try_table` / `throw`) and Separate Compilation
-- Lower `try` / `raise` to Wasm `$quest_exception` tag and `try_table`.
-- Implement stack trace formatting via the Wasm `name` section.
-- Implement multi-module linking (host import/export registry for Node/Browser) and single-module static linking (for `wasmtime`).
-- Compile all of `lib/` (`int`, `real`, `string`, `list`, `table`, `set`, `sort`, `format`, `dynamic`, etc.) to WasmGC and pass the full language and library test suites.
+### Phase 5a: Exceptions (`try_table` / `throw`), Handler Pre-Checks, and Tracebacks
+- Lower `try` / `raise` to Wasm `$quest_exception` and `try_table`.
+- Implement `quest_handlers` pre-check avoiding trace capture on caught exceptions.
+- Implement trace formatting via the Wasm `name` section.
+- **Done when:** All tests in `tests/source/language/exceptions.quest` and `tests/errors/run/` match their goldens under `node` and `wasmtime`.
 
-### Phase 6: Self-Hosting the Compiler on WasmGC & CLI REPL JIT
-- Compile `questlang/` itself to `compiler.wasm`.
-- Verify bootstrap fixed-point: `compiler.wasm` running under `node` / `wasmtime` compiles hello-world, `lib/`, and `questlang/` to byte-identical `.wasm` outputs.
-- Wire `questlang/jit/session` to the Wasm backend (`--backend wasm` in the JIT), compiling each REPL phrase to `qj_<n>.wasm` and instantiating it dynamically in Node via `WebAssembly.Instance`.
-- Run the existing REPL golden test suite (`tests/repl/`) against the Wasm JIT in Node.
+### Phase 5b: Separate Compilation, Manifest Backend Tagging, and Multi-Module Linking
+- Fix `manifest.isManifestStale` to enforce `man.backend == currentBackend`.
+- Emit module records `qm_<mod>`, exports `qv_<mod>_*`, and fingerprints `qh_<mod>`.
+- Support multi-module loading via `wasmtime --preload` and the Node registry.
+- **Done when:** Multi-module programs compile separately to `.wasm` files and link cleanly under `wasmtime --preload` and `node`.
 
-### Phase 7: Browser Host, Web Worker, and Interactive REPL UI
-- Build the browser host (`web/`):
-  - Web Worker hosting `compiler.wasm`, in-memory VFS (pre-populated with `lib/*.qi` and `/<quest-memory>`), and the dynamic `WebAssembly.Instance` module registry.
-  - Browser UI with interactive prompt, multiline phrase detection, stdout/stderr streaming, formatted values/tracebacks, and interrupt button.
-- Verify end-to-end in headless Chrome / Node and interactive browser sessions.
+### Phase 5c: Standard Library (`lib/`) Bring-Up and Full Test Suite
+- Compile all 62 modules of `lib/` in dependency order.
+- Integrate `runtime/wasm/libm_fmt.wasm` for formatting and math.
+- **Done when:** The complete language and standard library test suite passes with zero failures under both `node` and `wasmtime -C collector=copying`.
 
----
+### Phase 6: Self-Hosting Compiler on WasmGC & CLI REPL JIT
+- Compile `questlang/` to `compiler.wasm`.
+- Verify bootstrap fixed-point: `compiler.wasm` compiles `questlang/` to byte-identical output.
+- Wire `questlang/jit/session` to `--backend wasm`, compiling REPL phrases to `qj_<n>.wasm` and instantiating them dynamically in Node.
+- **Done when:** REPL test suite (`tests/repl/`) passes against the Wasm JIT in Node.
 
-## 8. Resolved Design Decisions
-
-1. **Runtime Implementation Language (WasmGC + Minimal Host Surface):**
-   - Runtime operations that inspect WasmGC heap objects (`$quest_is_subtype`, `$quest_view_map`, `$quest_convert`, `$quest_record_dict`, value equality/hashing, and `.qi` serialization) will be implemented as WasmGC code (in WAT and/or low-level Quest modules) with a small host import surface (~20 functions for I/O, math/float formatting, time, and dynamic module loading). This keeps standalone `wasmtime` execution and `node`/browser execution at full parity.
-
-2. **Tuple and Option Slot Representation (Uniform `$ValArray` First):**
-   - `$Tuple` and `$Option` will start with the uniform `(ref $ValArray)` slot backing (`$Option <: $Tuple <: $TupleLike`, with `$Proxy <: $TupleLike`). This gives uniform arbitrary-arity tuples, zero-copy option case-binder sharing (`when tag with c:`), and uniform `:var`/`:out` location pairs (`((ref $ValArray), i32)`). Fixed-arity struct specializations (`$Tuple1..$Tuple8`) can be evaluated later as a targeted optimization once the system is end-to-end functional.
-
-3. **"The Driver Is the Library" in the Browser:**
-   - Just as on native arm64 (`docs/jit.md` §2.5), the browser REPL can expose both `lib/` and the already-loaded `questlang/` compiler modules ("the driver is the library") by seeding their `.qi` interfaces into the in-memory VFS and registering their module exports in the Worker's module registry.
-
-4. **Browser Virtual File System:**
-   - An in-memory virtual filesystem (seeded with `lib/*.qi` and `/<quest-memory>` for REPL phrase interfaces) is sufficient for the initial browser REPL implementation.
+### Phase 7: Web Worker Host & Browser REPL UI
+- Build browser runner in `web/` with Web Worker host, in-memory VFS, module registry, and interactive REPL UI.
+- Verify multiline evaluation, output streaming, and error reporting.
+- **Done when:** A user can open `web/index.html` in Chrome, Firefox, or Safari and interact with the self-hosted Quest REPL.
