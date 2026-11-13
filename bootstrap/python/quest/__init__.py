@@ -17,8 +17,9 @@ binding elaborator with quest.modules.elaboration, which needs it.
 - quest.build: whole-program and multi-module builds
 - quest.config: compiler options and the artifact ABI
 - quest.testing: the golden test runner
-- quest.diagnostics, quest.pipeline, quest.repl: error reporting, the compiler
-  phases (docs/pipeline.md), and the REPL
+- quest.driver: the command line (quest_driver.py runs it), and the REPL
+- quest.diagnostics, quest.pipeline: error reporting, and the compiler phases
+  (docs/pipeline.md)
 
 docs/compiler-organization.md describes the self-hosted compiler's modules and
 the bootstrap module each follows.

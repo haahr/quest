@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "bootstra
 from quest.build.compiler_runner import run_binary
 from quest.build.headers import compile_interface_with_header
 from quest.modules.artifacts.module_compiler import compile_module_file
-from quest_driver import run_compile, run_driver
+from quest.driver.main import run_compile, run_driver
 
 
 class TestObjectLinking(unittest.TestCase):

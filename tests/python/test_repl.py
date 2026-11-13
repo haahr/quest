@@ -7,7 +7,7 @@ from pathlib import Path
 from quest.config import CompilerOptions
 from quest.modules.graph import UnitKind
 from quest.pipeline import CompilerContext
-from quest.repl import QuestREPL, check_input_completeness
+from quest.driver.repl import QuestREPL, check_input_completeness
 
 
 class TestQuestREPL(unittest.TestCase):

@@ -25,7 +25,7 @@ from typing import Callable
 # Ensure bootstrap/python is in sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-from quest_driver import run_compile, run_driver
+from quest.driver.main import run_compile, run_driver
 
 
 class TestQuestDriverCLI(unittest.TestCase):

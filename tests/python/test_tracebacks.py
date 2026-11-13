@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-from quest_driver import run_driver
+from quest.driver.main import run_driver
 
 INTERPRETER_PHASES = (
     "interpret", "run_ir_core", "run_ir_specialized", "run_ir_closed", "run_ir_represented", "run_ir_described",

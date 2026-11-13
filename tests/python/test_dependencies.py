@@ -27,7 +27,7 @@ COMPILATION = (
     "quest.types",
     "quest.values",
 )
-INTERPRETERS = ("quest.interpreter", "quest.repl")
+INTERPRETERS = ("quest.interpreter", "quest.driver")
 # C compilation: the C backend (which writes interfaces' C headers too), and
 # what drives it (the backends' entry points, the build engine, compiling module
 # files, and the pipeline, whose phases include C's). Only these may import the
@@ -40,7 +40,7 @@ C_COMPILATION = (
     "quest.pipeline",
 )
 # What runs the pipeline, and so reaches the C backend through it
-PIPELINE_CLIENTS = ("quest.repl", "quest.testing")
+PIPELINE_CLIENTS = ("quest.driver", "quest.testing")
 C_BACKEND = ("quest.codegen.c",)
 
 

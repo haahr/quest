@@ -11,7 +11,7 @@ from pathlib import Path
 from quest.build.compiler_runner import compile_c_source, run_binary
 from quest.config import CompilerOptions
 from quest.pipeline import compile_pipeline
-from quest_driver import run_driver
+from quest.driver.main import run_driver
 
 
 class TestPhase41Codegen(unittest.TestCase):

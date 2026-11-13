@@ -1026,7 +1026,7 @@ def _readline_write_history(path: QString, max_lines: QInt) -> QOk:
     return OK_VALUE
 
 
-# The same for Python callers (quest.repl): strings as Python has them, and
+# The same for Python callers (quest.driver.repl): strings as Python has them, and
 # paths as it decodes them from the OS
 def readline_read_line(prompt: str) -> str:
     return _readline_read_line(QString(prompt)).value

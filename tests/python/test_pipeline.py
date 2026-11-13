@@ -13,7 +13,7 @@ from quest.pipeline import (
     PhasePipeline,
     default_pipeline,
 )
-from quest_driver import run_driver
+from quest.driver.main import run_driver
 
 
 class TestPipeline(unittest.TestCase):

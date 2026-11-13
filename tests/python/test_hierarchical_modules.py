@@ -23,7 +23,7 @@ from quest.syntax.grammar import parse_quest_program
 from quest.modules.artifacts.module_compiler import compile_module_file
 from quest.syntax.tokenizer import Tokenizer
 from quest.syntax.sources import SourceMap
-from quest_driver import run_compile
+from quest.driver.main import run_compile
 
 
 def _parse(code: str) -> ast.Program:
