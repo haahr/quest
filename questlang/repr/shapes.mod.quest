@@ -4,6 +4,7 @@ module shapes : Shapes
 import
     questlang/types/model : questlang/types/Model
     questlang/types/canonical : questlang/types/Canonical
+    questlang/types/reduce : questlang/types/Reduce
     questlang/types/dump : questlang/types/Dump
     questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     collections/hashMap : collections/HashMap
@@ -240,7 +241,7 @@ export
 
     let isWordType(t0: Type): Bool =
         begin
-            let t = canonical.normalizeType(canonical.resolveTypeBound(t0))
+            let t = reduce.normalizeType(reduce.resolveTypeBound(t0))
             case t.form
                 when typeVariable with x then isOneOf(x.name array of "Word.T" "word.T" end)
                 when typePath with x then
@@ -430,7 +431,7 @@ export
                     when typeRec then shapeOf(model.unfoldLazily(t))
                     when typeRecGroup then shapeOf(model.unfoldLazily(t))
                     when typeApp then
-                        let reduced = canonical.normalizeType(t)
+                        let reduced = reduce.normalizeType(t)
                         if model.same(reduced t) then build(t) else shapeOf(reduced) end
                     (* Equal types whose cases are listed in different orders
                      * have one shape, its cases ordered by name *)

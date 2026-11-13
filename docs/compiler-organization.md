@@ -66,7 +66,8 @@ questlang/
 │   ├── contractiveness      # Contractiveness of recursive types
 │   ├── env                  # Type-checking environments and the builtin registry
 │   ├── dump                 # Canonical and compact type formatters
-│   └── canonical            # Reduced and canonical forms of types, for the backends
+│   ├── reduce               # Reduced forms of types, for the backends: heads exposed, bounds followed
+│   └── canonical            # Canonical forms of recursive types, for the backends
 │
 ├── typechecker/             # Bidirectional type checker
 │   ├── typedast             # The typed AST, and the walk of its children
@@ -391,7 +392,7 @@ Layer 5: typechecker/typedastprint, elaboratetypes, checks, escape
 Layer 6: modules/abstracttypes, loader, elaboration, stdlib
 Layer 7: typechecker/checker → bindings, application, aggregates, tuples, control, exceptions, autovalues →
          typecheck, scoping
-Layer 8: types/canonical → values/model → dynamicjson → interpreter/primitives, builtins,
+Layer 8: types/reduce → canonical → values/model → dynamicjson → interpreter/primitives, builtins,
          formatting → treewalk | repr/* → ir/* → ssa/* → codegen/*, modules' artifacts, config/*, build/*
 Layer 9: driver/*
 ```

@@ -7,7 +7,7 @@ import
     questlang/types/model : questlang/types/Model
     questlang/types/symbols : questlang/types/Symbols
     questlang/types/subtyping : questlang/types/Subtyping
-    questlang/types/canonical : questlang/types/Canonical
+    questlang/types/reduce : questlang/types/Reduce
     questlang/types/env : questlang/types/Env
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/modules/elaboration : questlang/modules/Elaboration
@@ -86,7 +86,7 @@ export
                 when typeAll with x then x.quantifiers
                 else array of :model.Quantifier end
             end
-            let collected = canonical.collectFunQuantifiers(varType)
+            let collected = reduce.collectFunQuantifiers(varType)
             let quants = collected.quantifiers
             case collected.body.form
                 when typeFun with inner then
@@ -112,7 +112,7 @@ export
     (* The names of the cases of t as written, if it is an option type (or a
      * type parameter bounded by one) *)
     let optionCases(t: Type): maybe.T(Array(String)) =
-        try maybe.some(:Array(String) canonical.optionCaseNames(t)) when canonical.notAnOption then maybe.none(:Array(String)) end
+        try maybe.some(:Array(String) reduce.optionCaseNames(t)) when reduce.notAnOption then maybe.none(:Array(String)) end
 
     (* An element type of a Var or Out type, or the type *)
     let unref(t: Type): Type =
@@ -648,7 +648,7 @@ export
                 end
                 let p = if maybe.isSome(:Expr x.payload) then maybe.some(:Atom value(l maybe.unwrap(:Expr x.payload) none))
                     else maybe.none(:Atom) end
-                let cases = if maybe.isSome(:Atom ordinalAtom) then canonical.optionCaseNames(e.type) else array of :String end end
+                let cases = if maybe.isSome(:Atom ordinalAtom) then reduce.optionCaseNames(e.type) else array of :String end end
                 letOp(l nodes.makeOption(x.tag p ordinalAtom offsetOf(l e) cases) e.type into)
             when exprVariantCheck with x then letOp(l nodes.isTag(value(l x.target none) x.tag) e.type into)
             when exprVariantAssert with x then
@@ -839,10 +839,10 @@ export
             let c = calleeOf(l func)
             let calleeType = if maybe.isSome(:nodes.ModuleRef c.moduleRef) then maybe.some(:Type func.type) else maybe.none(:Type) end
             let given = vector.toArray(:Type typeArgs)
-            if extent given >= extent canonical.collectFunQuantifiers(func.type).quantifiers then
+            if extent given >= extent reduce.collectFunQuantifiers(func.type).quantifiers then
                 letOp(l nodes.typeApp(c.callee given c.moduleRef c.member calleeType) e.type into)
             else
-                let rest = canonical.collectFunQuantifiers(e.type)
+                let rest = reduce.collectFunQuantifiers(e.type)
                 let v = if maybe.isSome(:Variable into) then maybe.unwrap(:Variable into) else fresh("f" e.type false) end
                 let typeParams = vector.new(:nodes.TypeParam)
                 for i = 0 upto {extent rest.quantifiers - 1} do
@@ -930,7 +930,7 @@ export
                     for i = 0 upto {extent app.args - 1} do vector.append(:Atom args value(l app.args[i] none)) end
                     let atoms = vector.toArray(:Atom args)
                     let o = if eq(name "ordinal") then
-                        nodes.ordinalOf(atoms[0] canonical.optionCaseNames(app.args[0].type))
+                        nodes.ordinalOf(atoms[0] reduce.optionCaseNames(app.args[0].type))
                     else
                         nodes.prim(nodes.primNamed(name) atoms offsetOf(l e))
                     end

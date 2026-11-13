@@ -151,7 +151,7 @@ def _compares_as_option(t: QType) -> bool:
     (docs/extensions.md, Options as Values)."""
     if shape(t).kind != "option":
         return False
-    from quest.types.canonical import option_identity
+    from quest.types.reduce import option_identity
     rule = option_identity(t)
     return rule is not None and (bool(rule.empty) or rule.single is not None)
 

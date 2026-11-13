@@ -1,10 +1,9 @@
-(* Quest Self-Hosted Compiler: Reduced and Canonical Forms of Types Interface
+(* Quest Self-Hosted Compiler: Canonical Forms of Types Interface
  *
- * bootstrap/python/quest/types/canonical.py: type operator applications
- * reduced, recursive types unfolded, an option type's cases in order, and the
- * canonical form of a type containing recursion, its minimal graph, so that
- * equal types have one representation however they are written (which the IR's
- * shapes are built from). The checker keeps types as written and does not use
+ * bootstrap/python/quest/types/canonical.py: the canonical form of a type
+ * containing recursion, its minimal graph, so that equal types have one
+ * representation however they are written (which the IR's shapes are built
+ * from); the reduced forms they start from are types/reduce's. The checker keeps types as written and does not use
  * canonical forms (docs/type-system.md §2.2); docs/c-representation.md §5.7
  * describes the C side. *)
 
@@ -13,69 +12,6 @@ import
     questlang/types/model : questlang/types/Model
     util/maybe : util/Maybe
 export
-    (* Exposing a type's outermost constructor (its head). Several functions
-     * do it, differing in what they look through; use the one whose
-     * difference matters:
-     *
-     * - model.evaluateLazily(t lookup): the checker's. Aliases, applications
-     *   (tolerating a mismatch in arity), and recursion, and a type variable
-     *   replaced by its definition in the environment. Not bounds.
-     * - normalizeType (here): the backends'. Aliases, recursion, and
-     *   applications, with no environment; cached by node.
-     * - betaReduceHead (here): applications only, stopping at a mismatch in
-     *   arity; neither aliases nor recursion.
-     * - unfoldRecursive and unfoldRecursiveAny (here): recursion and
-     *   applications until neither is at the head.
-     * - resolveTypeBound (here): aliases, then the POWER bounds of variables,
-     *   abstract types, and path types, followed to the end; model.powerBoundOf
-     *   takes one such step.
-     * - kinds.unfoldHead: one step of recursion or application, or none;
-     *   kinds.resolveBound loops over it and over bounds until a predicate
-     *   holds, for the checker's record, variant, tuple, and option bounds.
-     *
-     * canonicalStructure, private here, is normalizeType's for canonical
-     * forms. *)
-
-    (* t with the type operator applications at its head beta-reduced, without
-     * unfolding recursive types *)
-    betaReduceHead(t: model.Type): model.Type
-    (* t with recursive types at its head unfolded, and type operator
-     * applications there reduced, until its outermost node is neither; none
-     * if that does not happen, as for an application of an abstract type
-     * operator, or after a limit of 1000 steps. A type that is neither is
-     * itself *)
-    unfoldRecursiveAny(t: model.Type): maybe.T(model.Type)
-    (* That unfolding only when it is a type whose values are represented the
-     * same as the recursive type's (a tuple, record, variant, option, array,
-     * Var, Out, auto, function, All, or exception type); none for anything
-     * else, such as Int or a type variable *)
-    unfoldRecursive(t: model.Type): maybe.T(model.Type)
-    (* t with its outermost constructor exposed: aliases stripped, a recursive
-     * type unfolded, an application reduced *)
-    normalizeType(t: model.Type): model.Type
-    (* t, or for a variable, abstract type, or path type bounded by POWER(T),
-     * the type its bounds resolve to *)
-    resolveTypeBound(t: model.Type): model.Type
-    (* The names of an option type's cases as written, in order (for a parameter
-     * bounded by one, its bound's); notAnOption if t is not one *)
-    optionCaseNames(t: model.Type): Array(String)
-    notAnOption: Exception(String)
-    (* How is compares options of an option type (docs/extensions.md,
-     * Options as Values): its cases without components compare by case;
-     * and if the type is single-word, its one case with components
-     * (single) by its one component, of type component *)
-    Def OptionIdentity = Tuple empty: Array(String) single: maybe.T(String) component: maybe.T(model.Type) end
-    (* t's option identity, or none if t is not an option type: for a module's
-     * abstract type, its representation's, since is compares an abstract
-     * type's values as their representation's; for a parameter bounded by an
-     * option type, its bound's *)
-    optionIdentity(t: model.Type): maybe.T(OptionIdentity)
-
-    (* The universal quantifiers wrapping a function type (a recursive one,
-     * through its unfolding), and the type they quantify, as written *)
-    Def FunQuantifiers = Tuple quantifiers: Array(model.Quantifier) body: model.Type end
-    collectFunQuantifiers(funType: model.Type): FunQuantifiers
-
     (* The canonical form of t if t contains recursion and is not in canonical
      * form. Equal types containing recursion have the same canonical form. With
      * QUEST_CHECK_CANONICAL=1, a canonical form that is not equal to its type,

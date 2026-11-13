@@ -28,7 +28,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterator, Optional
 
-from quest.types.canonical import canonical_type, normalize_type, resolve_type_bound
+from quest.types.canonical import canonical_type
+from quest.types.reduce import normalize_type, resolve_type_bound
 from quest.types import (
     QAbstractType,
     QAliasType,

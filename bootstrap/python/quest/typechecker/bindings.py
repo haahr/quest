@@ -25,7 +25,7 @@ from quest.types import (
     is_subtype,
     is_type_equal,
 )
-from quest.types.canonical import collect_fun_quantifiers
+from quest.types.reduce import collect_fun_quantifiers
 from quest.types.env import (
     Environment,
     TypeSymbol,

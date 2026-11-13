@@ -7,7 +7,7 @@ import
     tm = questlang/types/model : questlang/types/Model
     questlang/types/symbols : questlang/types/Symbols
     questlang/types/subtyping : questlang/types/Subtyping
-    questlang/types/canonical : questlang/types/Canonical
+    questlang/types/reduce : questlang/types/Reduce
     questlang/types/env : questlang/types/Env
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/modules/paths : questlang/modules/Paths
@@ -654,7 +654,7 @@ export
                             if stringOp.equal(b.b.name "ordinal") then
                                 case args[0]
                                     when vOption with o then
-                                        model.intValue(position(canonical.optionCaseNames(x.args[0].type) o.v.tag))
+                                        model.intValue(position(reduce.optionCaseNames(x.args[0].type) o.v.tag))
                                     else model.internalError(:Value "ordinal expects Option, got " <> model.typeName(args[0]) offset)
                                 end
                             else
@@ -834,7 +834,7 @@ export
                             maybe.unwrapOr(:Value v.v.payload model.okValue)
                         when vOption with v then
                             if not(stringOp.equal(v.v.tag x.tag)) then model.raiseException(:Ok primitives.variantError offset) end
-                            optionAssertion(v.v position(canonical.optionCaseNames(x.target.type) x.tag))
+                            optionAssertion(v.v position(reduce.optionCaseNames(x.target.type) x.tag))
                         else model.internalError(:Value "Variant assert target must be Variant or Option, got "
                             <> model.typeName(target) offset)
                     end

@@ -31,7 +31,7 @@ from typing import Optional
 
 from quest.repr.layout import resolved_shape
 from quest.repr.shapes import shape
-from quest.types.canonical import collect_fun_quantifiers, normalize_type, resolve_type_bound
+from quest.types.reduce import collect_fun_quantifiers, normalize_type, resolve_type_bound
 from quest.types import (
     QAliasType,
     QAllType,

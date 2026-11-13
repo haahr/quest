@@ -1,26 +1,17 @@
-(* Quest Self-Hosted Compiler: Reduced and Canonical Forms of Types
- * Implementation
+(* Quest Self-Hosted Compiler: Canonical Forms of Types Implementation
  *
- * The module has two halves, both serving the IR and the C backend rather
- * than the checker. The first exposes a type's outermost constructor:
- * betaReduceHead applies type operators to their arguments (Fun(A) T applied
- * to U is T with U for A), unfolding and unfoldRecursive* unfold recursive
- * types, normalizeType combines the two and caches the result, and
- * resolveTypeBound, optionCaseNames, and optionIdentity look through bounded
- * variables and abstract types. The second, from the banner "Canonical forms
- * of recursive types", computes canonicalType: a type containing recursion
- * as a graph, minimized and written back as a type, so that equal recursive
- * types get one C struct and one run-time descriptor (the comment on Graph
- * gives the steps). The counterpart is bootstrap/python/quest/types/
- * canonical.py; docs/type-system.md §2.2 says why only the backend
- * canonicalizes. *)
+ * canonicalType, for the IR and the C backend rather than the checker: a type
+ * containing recursion as a graph, minimized and written back as a type, so
+ * that equal recursive types get one C struct and one run-time descriptor
+ * (the comment on Graph gives the steps). It works on types/reduce's reduced
+ * forms. The counterpart is bootstrap/python/quest/types/canonical.py;
+ * docs/type-system.md §2.2 says why only the backend canonicalizes. *)
 
 module canonical : Canonical
 import
     questlang/types/model : questlang/types/Model
     questlang/types/subtyping : questlang/types/Subtyping
     questlang/types/dump : questlang/types/Dump
-    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
@@ -31,306 +22,16 @@ import
     conv : Conv
     system : System
     writer : Writer
+    questlang/types/reduce : questlang/types/Reduce
 export
     Let Type = model.Type
     Let Kind = model.Kind
-
-    (* An internal error: a type that is not an option where one must be (the
-     * bootstrap's ValueError) *)
-    let notAnOption: Exception(String) = exception notAnOption: String end
 
     (* A canonical form not equal to its type, or not a fixed point, when
      * QUEST_CHECK_CANONICAL=1 (the bootstrap's AssertionError) *)
     let canonicalError: Exception(String) = exception canonicalError: String end
 
-    let maxBetaSteps = 1000
-
     let intEqual(a: Int b: Int): Bool = a is b
-
-    let isApp(t: Type): Bool = t.form?typeApp
-    let isRecursive(t: Type): Bool = t.form?typeRec orif t.form?typeRecGroup
-
-    let rec betaReduceHead(t0: Type): Type =
-        begin
-            let var t = t0
-            let var done = false
-            let var steps = 0
-            while not(done) andif {steps < maxBetaSteps} do
-                steps := steps + 1
-                t := model.pruned(t)
-                case t.form
-                    when typeApp with app then
-                        let ctor = betaReduceHead(app.constructor)
-                        case ctor.form
-                            when typeException then
-                                if extent app.arguments is 1 then
-                                    t := model.exceptionOf(app.arguments[0])
-                                end
-                                done := true
-                            when typeOperator with op then
-                                if extent op.params is extent app.arguments then
-                                    let subst = model.newSubst()
-                                    for i = 0 upto {extent op.params - 1} do
-                                        hashMap.insert(:Int :Type subst op.params[i].symbolId app.arguments[i])
-                                    end
-                                    t := model.substitute(op.body subst)
-                                else
-                                    done := true
-                                end
-                            else done := true
-                        end
-                    else done := true
-                end
-            end
-            t
-        end
-
-    (* The unfolding of t, through recursive types and applications *)
-    let unfolding(t0: Type): Type =
-        begin
-            let var t = if isApp(t0) then betaReduceHead(t0) else t0 end
-            let var steps = 0
-            while isRecursive(t) andif {steps < maxBetaSteps} do
-                steps := steps + 1
-                t := model.pruned(model.unfoldLazily(t))
-                if isApp(t) then t := betaReduceHead(t) end
-            end
-            t
-        end
-
-    let unfoldRecursiveAny(t: Type): maybe.T(Type) =
-        begin
-            let u = unfolding(t)
-            if isRecursive(u) orif isApp(u) then maybe.none(:Type) else maybe.some(:Type u) end
-        end
-
-    (* The constructed types a value is represented like its recursive type's
-     * unfolding (_UNFOLDED_REPRESENTATION) *)
-    let isUnfoldedRepresentation(t: Type): Bool =
-        case t.form
-            when typeTuple then true
-            when typeRecord then true
-            when typeVariant then true
-            when typeOption then true
-            when typeArray then true
-            when typeVar then true
-            when typeOut then true
-            when typeAuto then true
-            when typeFun then true
-            when typeAll then true
-            when typeException then true
-            else false
-        end
-
-    let unfoldRecursive(t: Type): maybe.T(Type) =
-        begin
-            let u = unfolding(t)
-            if isUnfoldedRepresentation(u) then maybe.some(:Type u) else maybe.none(:Type) end
-        end
-
-    (* Reduced forms by the id of the type node *)
-    let normalized = hashMap.new(:Int :Type intEqual hash.int)
-
-    (* normalizeType's work: aliases stripped, then a recursive type unfolded
-     * as far as its outermost node is neither recursive nor an application.
-     * An application becomes its unfolding if that is a constructed type
-     * (unfoldRecursive), else its beta-reduction if that has a constructor
-     * at its head, else its lazy evaluation if that is a tuple or record
-     * type; if none of these, as for an application of an abstract type
-     * operator (m.T(Int)), it stays as it is *)
-    let normalizeUncached(t0: Type): Type =
-        begin
-            let t = model.stripAliases(t0)
-            let var result = t
-            let var found = false
-            if isRecursive(t) then
-                let unfolded = unfoldRecursiveAny(t)
-                if maybe.isSome(:Type unfolded) then
-                    result := maybe.unwrap(:Type unfolded)
-                    found := true
-                end
-            end
-            if not(found) andif isApp(t) then
-                let unfolded = unfoldRecursive(t)
-                if maybe.isSome(:Type unfolded) then
-                    result := maybe.unwrap(:Type unfolded)
-                else
-                    let reduced = betaReduceHead(t)
-                    if not(isApp(reduced) orif isRecursive(reduced)) then
-                        result := reduced
-                    else
-                        let evaled = model.evaluateLazily(t model.noLookup)
-                        if not(model.same(evaled t)) andif {evaled.form?typeTuple orif evaled.form?typeRecord} then
-                            result := evaled
-                        end
-                    end
-                end
-            end
-            result
-        end
-
-    let normalizeType(t0: Type): Type =
-        begin
-            let t = model.pruned(t0)
-            if t.hasMeta then
-                normalizeUncached(t)
-            else
-                let found = hashMap.get(:Int :Type normalized t.id)
-                if maybe.isSome(:Type found) then
-                    maybe.unwrap(:Type found)
-                else
-                    let result = normalizeUncached(t)
-                    hashMap.insert(:Int :Type normalized t.id result)
-                    result
-                end
-            end
-        end
-
-    (* Whether two bounded types are one, as resolve_type_bound tells them
-     * apart: a variable or abstract type by its symbol, a path type by
-     * itself *)
-    let sameNode(a: Type b: Type): Bool =
-        case a.form
-            when typeVariable with x then case b.form when typeVariable with y then x.symbolId is y.symbolId else false end
-            when typeAbstract with x then case b.form when typeAbstract with y then x.symbolId is y.symbolId else false end
-            else model.same(a b)
-        end
-
-    let resolveTypeBound(t: Type): Type =
-        begin
-            let var curr = model.stripAliases(model.pruned(t))
-            (* The nodes passed through: a variable or abstract type by its
-             * symbol, a path type by itself *)
-            let visited = vector.new(:Type)
-            let var done = false
-            while not(done) do
-                let bound = model.powerBoundOf(curr)
-                if maybe.isNone(:Type bound) then
-                    done := true
-                else
-                    let var seen = false
-                    for i = 0 upto {vector.length(:Type visited) - 1} do
-                        let v = vector.get(:Type visited i)
-                        if sameNode(v curr) then seen := true end
-                    end
-                    if seen then
-                        done := true
-                    else
-                        vector.append(:Type visited curr)
-                        curr := model.pruned(maybe.unwrap(:Type bound))
-                    end
-                end
-            end
-            curr
-        end
-
-    let optionCaseNames(t: Type): Array(String) =
-        begin
-            let var curr = normalizeType(t)
-            while not(curr.form?typeOption) do
-                let exposed = normalizeType(resolveTypeBound(curr))
-                if model.same(exposed curr) then
-                    raise notAnOption with model.show(t) <> " is not an option type" end
-                end
-                curr := exposed
-            end
-            case curr.form
-                when typeOption with x then
-                    let names = array of(extent x.options "")
-                    for i = 0 upto {extent x.options - 1} do names[i] := x.options[i].name end
-                    names
-                else array of :String end
-            end
-        end
-
-    Def OptionIdentity = Tuple empty: Array(String) single: maybe.T(String) component: maybe.T(Type) end
-
-    let optionIdentity(t: Type): maybe.T(OptionIdentity) =
-        begin
-            let var curr = normalizeType(t)
-            let var stuck = false
-            (* Each round looks through one layer: the module abstract types
-             * free in curr replaced by their representations, or else curr's
-             * bound. A representation may itself be bounded, or mention
-             * another abstract type, so rounds repeat until an option shows
-             * or nothing changes *)
-            while not(stuck) andif not(curr.form?typeOption) do
-                let reps = model.newSubst()
-                for i = 0 upto {extent curr.fv - 1} do
-                    let e = abstractTypes.abstractTypeBySymbol(curr.fv[i])
-                    if maybe.isSome(:abstractTypes.ModuleAbstractType e)
-                        andif maybe.isSome(:Type maybe.unwrap(:abstractTypes.ModuleAbstractType e).rep) then
-                        hashMap.insert(:Int :Type reps curr.fv[i]
-                            maybe.unwrap(:Type maybe.unwrap(:abstractTypes.ModuleAbstractType e).rep))
-                    end
-                end
-                let var exposed = if hashMap.size(:Int :Type reps) > 0 then
-                    normalizeType(model.substitute(curr reps)) else curr end
-                if model.same(exposed curr) then exposed := normalizeType(resolveTypeBound(curr)) end
-                if model.same(exposed curr) then stuck := true else curr := exposed end
-            end
-            case curr.form
-                when typeOption with x then
-                    let empty = vector.new(:String)
-                    let var withComponents = 0
-                    let var single = maybe.none(:String)
-                    let var component = maybe.none(:Type)
-                    for i = 0 upto {extent x.options - 1} do
-                        let o = x.options[i]
-                        let fields = if maybe.isSome(:Type o.payload) then
-                            case normalizeType(maybe.unwrap(:Type o.payload)).form
-                                when typeTuple with y then y.fields
-                                else array of :model.TupleComponent end
-                            end
-                        else
-                            array of :model.TupleComponent end
-                        end
-                        if extent fields is 0 then
-                            vector.append(:String empty o.name)
-                        else
-                            withComponents := withComponents + 1
-                            if extent fields is 1 then
-                                case fields[0]
-                                    when tupleField with f then
-                                        if not(f.isVar) then
-                                            single := maybe.some(:String o.name)
-                                            component := maybe.some(:Type f.type)
-                                        end
-                                    else ok
-                                end
-                            end
-                        end
-                    end
-                    if withComponents isnot 1 then
-                        single := maybe.none(:String)
-                        component := maybe.none(:Type)
-                    end
-                    maybe.some(:OptionIdentity tuple
-                        let empty = vector.toArray(:String empty) let single = single let component = component
-                    end)
-                else maybe.none(:OptionIdentity)
-            end
-        end
-
-    Def FunQuantifiers = Tuple quantifiers: Array(model.Quantifier) body: Type end
-
-    let collectFunQuantifiers(funType: Type): FunQuantifiers =
-        begin
-            let quants = vector.new(:model.Quantifier)
-            let var curr = normalizeType(funType)
-            let var done = false
-            while not(done) do
-                case curr.form
-                    when typeAll with x then
-                        for i = 0 upto {extent x.quantifiers - 1} do
-                            vector.append(:model.Quantifier quants x.quantifiers[i])
-                        end
-                        curr := normalizeType(x.body)
-                    else done := true
-                end
-            end
-            tuple let quantifiers = vector.toArray(:model.Quantifier quants) let body = curr end
-        end
 
     (* ======================================================================
      * Reserved symbols of canonical forms and tags
@@ -429,18 +130,18 @@ export
             let var t = t0
             let var result = maybe.none(:Type)
             let var steps = 0
-            while maybe.isNone(:Type result) andif {steps < maxBetaSteps} do
+            while maybe.isNone(:Type result) andif {steps < reduce.maxBetaSteps} do
                 steps := steps + 1
                 t := model.stripAliases(model.pruned(t))
-                if not(isRecursive(t) orif isApp(t)) then
+                if not(reduce.isRecursive(t) orif reduce.isApp(t)) then
                     result := maybe.some(:Type t)
                 else
-                    let unfolded = unfolding(t)
+                    let unfolded = reduce.unfolding(t)
                     if isGraphNode(unfolded) then
                         result := maybe.some(:Type unfolded)
-                    elsif isApp(t) then
-                        let reduced = betaReduceHead(t)
-                        if isApp(reduced) orif isRecursive(reduced) then result := maybe.some(:Type t) else t := reduced end
+                    elsif reduce.isApp(t) then
+                        let reduced = reduce.betaReduceHead(t)
+                        if reduce.isApp(reduced) orif reduce.isRecursive(reduced) then result := maybe.some(:Type t) else t := reduced end
                     else
                         result := maybe.some(:Type t)
                     end

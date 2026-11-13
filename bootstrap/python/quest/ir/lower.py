@@ -28,7 +28,7 @@ from quest.types.env import Environment, ValueSymbol
 from quest.ir import nodes as ir
 from quest.repr.layout import abstract_layouts_differ, resolved_shape
 from quest.repr.shapes import shape
-from quest.types.canonical import collect_fun_quantifiers, option_case_names
+from quest.types.reduce import collect_fun_quantifiers, option_case_names
 from quest.typechecker.typed_ast import (
     typed_fields,
     TypedApp,

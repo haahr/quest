@@ -65,7 +65,7 @@ from quest.values.model import (
     QVariant,
     qvalue_is,
 )
-from quest.types.canonical import option_case_names
+from quest.types.reduce import option_case_names
 from quest.types import (
     QOptionType,
     QTupleType,

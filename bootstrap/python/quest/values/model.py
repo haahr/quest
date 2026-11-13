@@ -822,7 +822,7 @@ def qvalue_is(v1: QValue, v2: QValue, t: Optional[QType] = None) -> bool:
         return False
 
     if isinstance(v1, QOption) and v1 is not v2 and t is not None and v1.tag == v2.tag:
-        from quest.types.canonical import option_identity
+        from quest.types.reduce import option_identity
         rule = option_identity(t)
         if rule is not None:
             if v1.tag in rule.empty:
