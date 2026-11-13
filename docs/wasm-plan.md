@@ -826,6 +826,18 @@ only when the backend's files differ, until its time is known.
    built by a unit's initializer within §2.11's limits, instantiation and its memoization, `is` at a type
    parameter, the identity hash, printing as the REPL echoes, exceptions with the uncaught report.
    *Done when* the goldens for printing and for exceptions pass with the C runtime's output, less tracebacks' frames.
+   *Exceptions, done 2026-11-13; descriptors and printing remain:*
+   - **R** gains `$exception` (hash and name) and `$raised`, a raised exception's state: the exception, its
+     payload, the site, and how the report writes the payload.
+   - **The runtime:** the built-in exceptions are its exported globals. `raise` throws the one tag with the state,
+     and `uncaught` writes the C runtime's report less the frames.
+   - **A `try`** is a `try_table` that catches the tag. The handler tests the state with `is`, which compares
+     exceptions (`exceptionOf`), and raises it again with `throw`, so its site is kept.
+   - **No tail call inside a `try`:** a call in tail position inside a `try`'s body is not made a tail call, since
+     leaving the `try_table` would leave its handler.
+   - **Still to come:** a payload that needs a descriptor is written `<val>` until descriptors come.
+   - **Run goldens:** the modes pass 56. `tests/self-hosted/wasm/exceptions.quest` checks exceptions in both engines
+     against arm64.
 7. **Polymorphism:** descriptor parameters, and the three plans the compiler has (§10.3): `box`, `unbox`, and
    `adapt`, with the thunks `ir/thunks` makes for it. Own views, view maps, proxies, and the other subtyping plans
    are pending, as are `auto` and `inspect`: `lib/dynamic`, the one unit with either, is linked and never called,

@@ -16,12 +16,14 @@
     (type $record (sub final $obj (struct (field $hash (mut i32)) (field $layout eqref) (field $slots (ref $slots)))))
     (type $dict (struct (field $indices (ref $i32s))))
     (type $recBox (struct (field $payload (ref $record)) (field $dict (ref $dict))))
+    (type $exception (sub final $obj (struct (field $hash (mut i32)) (field $name (ref $string)))))
+    (type $raised (struct (field $exception (ref $exception)) (field $payload eqref) (field $site eqref) (field $text eqref) (field $kind i32)))
   )
   (type (func (param eqref eqref) (result eqref)))
   (type (func (param eqref i32) (result eqref)))
   (type (func (param i64) (result eqref)))
   (type (func (param i32) (result eqref)))
-  (type (func (param eqref eqref)))
+  (type (func (param eqref eqref eqref eqref i32)))
   (type (func (param eqref)))
   (type (func (param eqref) (result i64)))
   (type (func (param eqref i32)))
@@ -31,31 +33,45 @@
   (type (func (param eqref i64 i64) (result eqref)))
   (type (func (param eqref i64 eqref i64 i64) (result eqref)))
   (type (func (param eqref eqref) (result i32)))
+  (type (func (param eqref) (result eqref)))
   (type (func))
-  (import "quest.runtime" "putString" (func $putString (type 16)))
-  (import "quest.runtime" "putChar" (func $putChar (type 17)))
-  (import "quest.runtime" "concat" (func $concat (type 16)))
-  (import "quest.runtime" "convInt" (func $convInt (type 18)))
-  (import "quest.runtime" "convBool" (func $convBool (type 19)))
-  (import "quest.runtime" "convChar" (func $convChar (type 19)))
-  (import "quest.runtime" "fail" (func $fail (type 20)))
-  (import "quest.runtime" "uncaught" (func $uncaught (type 21)))
-  (import "quest.runtime" "decimal" (func $decimal (type 18)))
-  (import "quest.runtime" "hex" (func $hex (type 18)))
-  (import "quest.runtime" "escaped" (func $escaped (type 17)))
-  (import "quest.runtime" "boxInt" (func $boxInt (type 18)))
-  (import "quest.runtime" "unboxInt" (func $unboxInt (type 22)))
-  (import "quest.runtime" "fatal" (func $fatal (type 23)))
-  (import "quest.runtime" "stringGetChar" (func $stringGetChar (type 24)))
-  (import "quest.runtime" "stringSetChar" (func $stringSetChar (type 25)))
-  (import "quest.runtime" "stringNew" (func $stringNew (type 26)))
-  (import "quest.runtime" "stringGetSub" (func $stringGetSub (type 27)))
-  (import "quest.runtime" "stringSetSub" (func $stringSetSub (type 28)))
-  (import "quest.runtime" "stringEqual" (func $stringEqual (type 29)))
-  (import "quest.runtime" "error" (tag $error (type 21)))
+  (import "quest.runtime" "exception:int.error" (global $int.error (ref $exception)))
+  (import "quest.runtime" "exception:real.error" (global $real.error (ref $exception)))
+  (import "quest.runtime" "exception:word.error" (global $word.error (ref $exception)))
+  (import "quest.runtime" "exception:string.error" (global $string.error (ref $exception)))
+  (import "quest.runtime" "exception:arrayOp.error" (global $arrayOp.error (ref $exception)))
+  (import "quest.runtime" "exception:variant.tagMismatch" (global $variant.tagMismatch (ref $exception)))
+  (import "quest.runtime" "exception:ascii.error" (global $ascii.error (ref $exception)))
+  (import "quest.runtime" "exception:dynamic.error" (global $dynamic.error (ref $exception)))
+  (import "quest.runtime" "exception:writer.error" (global $writer.error (ref $exception)))
+  (import "quest.runtime" "exception:reader.error" (global $reader.error (ref $exception)))
+  (import "quest.runtime" "exception:system.error" (global $system.error (ref $exception)))
+  (import "quest.runtime" "putString" (func $putString (type 18)))
+  (import "quest.runtime" "putChar" (func $putChar (type 19)))
+  (import "quest.runtime" "concat" (func $concat (type 18)))
+  (import "quest.runtime" "convInt" (func $convInt (type 20)))
+  (import "quest.runtime" "convBool" (func $convBool (type 21)))
+  (import "quest.runtime" "convChar" (func $convChar (type 21)))
+  (import "quest.runtime" "raise" (func $raise (type 22)))
+  (import "quest.runtime" "uncaught" (func $uncaught (type 23)))
+  (import "quest.runtime" "decimal" (func $decimal (type 20)))
+  (import "quest.runtime" "hex" (func $hex (type 20)))
+  (import "quest.runtime" "escaped" (func $escaped (type 19)))
+  (import "quest.runtime" "boxInt" (func $boxInt (type 20)))
+  (import "quest.runtime" "unboxInt" (func $unboxInt (type 24)))
+  (import "quest.runtime" "fatal" (func $fatal (type 25)))
+  (import "quest.runtime" "stringGetChar" (func $stringGetChar (type 26)))
+  (import "quest.runtime" "stringSetChar" (func $stringSetChar (type 27)))
+  (import "quest.runtime" "stringNew" (func $stringNew (type 28)))
+  (import "quest.runtime" "stringGetSub" (func $stringGetSub (type 29)))
+  (import "quest.runtime" "stringSetSub" (func $stringSetSub (type 30)))
+  (import "quest.runtime" "stringEqual" (func $stringEqual (type 31)))
+  (import "quest.runtime" "exceptionOf" (func $exceptionOf (type 32)))
+  (import "quest.runtime" "payloadOf" (func $payloadOf (type 32)))
+  (import "quest.runtime" "error" (tag $error (type 23)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (export "_start" (func $_start))
-  (func $main (type 30)
+  (func $main (type 33)
     (local $v eqref)
     (local $v.1 eqref)
     (local $v.2 eqref)
@@ -564,19 +580,23 @@
     i64.const 0
     i64.eqz
     if
+      global.get $int.error
       i32.const 0
-      i32.const 9
+      ref.i31
+      i32.const 0
+      i32.const 111
       i32.const 114
-      i32.const 9
+      i32.const 111
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
-      i32.const 111
-      i32.const 123
-      i32.const 111
+      i32.const 0
+      i32.const 225
+      i32.const 0
       array.new_data $bytes $strings
       struct.new $string
-      call $fail
+      i32.const 0
+      call $raise
       unreachable
     end
     i64.const 0
@@ -598,19 +618,23 @@
     i64.const 0
     i64.eqz
     if
+      global.get $int.error
       i32.const 0
-      i32.const 9
-      i32.const 234
-      i32.const 9
-      array.new_data $bytes $strings
-      struct.new $string
+      ref.i31
       i32.const 0
       i32.const 111
-      i32.const 243
+      i32.const 225
       i32.const 111
       array.new_data $bytes $strings
       struct.new $string
-      call $fail
+      i32.const 0
+      i32.const 0
+      i32.const 336
+      i32.const 0
+      array.new_data $bytes $strings
+      struct.new $string
+      i32.const 0
+      call $raise
       unreachable
     end
     i64.const 0
@@ -629,7 +653,7 @@
     local.set $v.83
     i32.const 0
     i32.const 12
-    i32.const 354
+    i32.const 336
     i32.const 12
     array.new_data $bytes $strings
     struct.new $string
@@ -642,7 +666,7 @@
     local.set $v.85
     i32.const 0
     i32.const 3
-    i32.const 366
+    i32.const 348
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
@@ -655,7 +679,7 @@
     local.set $v.87
     i32.const 0
     i32.const 3
-    i32.const 369
+    i32.const 351
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
@@ -672,7 +696,7 @@
     local.get $v.89
     i32.const 0
     i32.const 1
-    i32.const 372
+    i32.const 354
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -684,7 +708,7 @@
     local.set $v.92
     i32.const 0
     i32.const 11
-    i32.const 373
+    i32.const 355
     i32.const 11
     array.new_data $bytes $strings
     struct.new $string
@@ -695,7 +719,7 @@
     local.get $s
     i32.const 0
     i32.const 1
-    i32.const 384
+    i32.const 366
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -706,7 +730,7 @@
     call $putString
     local.set $v.95
   )
-  (func $_start (type 30)
+  (func $_start (type 33)
     block $uncaught (result eqref)
       try_table (catch $error $uncaught)
         call $main
@@ -715,6 +739,6 @@
     end
     call $uncaught
   )
-  (data $strings ", remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0aint.error/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/division.quest:6:94int.error/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/division.quest:7:17, remainder  =  / \0anot reached\0a")
+  (data $strings ", remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/division.quest:6:94/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/division.quest:7:17, remainder  =  / \0anot reached\0a")
 )
 

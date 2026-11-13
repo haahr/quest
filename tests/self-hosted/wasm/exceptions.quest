@@ -1,0 +1,36 @@
+(* The wasm backend's exceptions (docs/wasm-plan.md section 2.9, step 6): a
+ * declared exception raised with a payload and caught by name; a built-in
+ * one (int.error) caught; else; one not named passed on through a handler
+ * and caught further out; a try in a loop; and last, one uncaught, whose
+ * report names it, its payload, and the raise's site. *)
+let say(s: String): Ok = writer.putString(writer.output s <> "\n");
+let bad: Exception(Int) = exception bad: Int end;
+let other: Exception = exception other end;
+let named: Exception(String) = exception named: String end;
+let f(n: Int): Int = if n > 3 then raise bad with n end else n end;
+let r = try f(5) when bad with x then x * 10 when other then 0 end;
+say(conv.int(r));
+let g(n: Int): Int = try 100 / n when int.error then ~1 end;
+say(conv.int(g(0)) <> " " <> conv.int(g(4)));
+let h(): Int = try raise other end else 7 end;
+say(conv.int(h()));
+let inner(): Int = try f(9) when other then 0 end;
+let outer(): Int = try inner() when bad with x then x + 1000 end;
+say(conv.int(outer()));
+let var caught = 0;
+for i = 1 upto 10 do
+    caught := caught + try f(i) when bad with x then 100 end
+end;
+say(conv.int(caught));
+say(conv.bool(other is other));
+(* A call in tail position inside a try is not a tail call, which would leave
+ * its handler *)
+let stop: Exception = exception stop end;
+let deepest(n: Int): Int =
+    begin
+        let rec tries(i: Int): Int =
+            if i >= n then raise stop end else try tries(i + 1) when stop then i end end
+        tries(0)
+    end;
+say(conv.int(deepest(3)) <> " " <> conv.int(deepest(50)));
+raise named with "the end" end;

@@ -35,12 +35,15 @@ export
      *   convInt(n): String       n in decimal, ~ for negatives, as conv.int
      *   convBool(b): String      "true" or "false"
      *   convChar(c): String      the one character c
-     *   fail(name site)          raises the run-time error named name (as
-     *                            "int.error") at site ("file:line:col", or
-     *                            empty): the tag error's payload is the
-     *                            report an uncaught one makes
-     *   uncaught(report)         writes the report to standard error and
-     *                            ends the program with status 1
+     *   raise(exception payload site text kind)
+     *                            raises exception with its payload (ok for
+     *                            none) at site ("file:line:col", or empty);
+     *                            text is the payload's type as the raise
+     *                            wrote it, and kind how its value is written
+     *                            in the report (0 for no payload)
+     *   uncaught(state)          writes an uncaught exception's report to
+     *                            standard error and ends the program with
+     *                            status 1
      *   decimal(n): String       n in decimal, - for negatives, as echo
      *   hex(w): String           w in hexadecimal, lower case, as echo
      *   escaped(s quote): String s's bytes as echo writes them between
@@ -55,12 +58,20 @@ export
      *                            error (1) or running out of memory (70)
      *   stringGetChar, stringSetChar, stringNew, stringGetSub, stringSetSub,
      *   stringEqual              string's externals, raising string.error
-     *                            for an index or a size outside a string *)
+     *                            for an index or a size outside a string
+     *   exceptionOf(x)           the exception a handler's state holds, or x
+     *                            itself, an exception
+     *   payloadOf(state)         a raised exception's payload *)
     exports: Array(Export)
 
-    (* The tag every Quest exception is thrown with, of one eqref, and the
-     * field it is exported by *)
+    (* The tag every Quest exception is thrown with, of one eqref, a raised
+     * exception's state ($raised), and the field it is exported by *)
     tagField: String
+
+    (* The built-in exceptions, by name (as "int.error"), each a global the
+     * runtime exports by exceptionField(name), in this order *)
+    builtinExceptions: Array(String)
+    exceptionField(name: String): String
 
     (* The runtime module itself, with R first (wasm/runtimeTypes) *)
     runtimeModule(): model.Module

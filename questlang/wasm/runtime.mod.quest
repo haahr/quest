@@ -7,6 +7,7 @@ import
     rt = questlang/wasm/runtimeTypes : questlang/wasm/RuntimeTypes
     collections/vector : collections/Vector
     stringOp = string : StringOp
+    ascii : Ascii
 export
     Def Export = Tuple field: String params: Array(model.ValType) results: Array(model.ValType) end
     Let Inst = model.Inst
@@ -24,7 +25,7 @@ export
         entry("convInt" array of model.i64 end array of model.eqref end)
         entry("convBool" array of model.i32 end array of model.eqref end)
         entry("convChar" array of model.i32 end array of model.eqref end)
-        entry("fail" array of model.eqref model.eqref end none)
+        entry("raise" array of model.eqref model.eqref model.eqref model.eqref model.i32 end none)
         entry("uncaught" array of model.eqref end none)
         entry("decimal" array of model.i64 end array of model.eqref end)
         entry("hex" array of model.i64 end array of model.eqref end)
@@ -39,7 +40,17 @@ export
         entry("stringSetSub" array of model.eqref model.i64 model.eqref model.i64 model.i64 end
             array of model.eqref end)
         entry("stringEqual" array of model.eqref model.eqref end array of model.i32 end)
+        entry("exceptionOf" array of model.eqref end array of model.eqref end)
+        entry("payloadOf" array of model.eqref end array of model.eqref end)
     end
+
+    (* The built-in exceptions, the C runtime's quest_exc globals, each a
+     * global of the runtime exported as exception:NAME *)
+    let builtinExceptions = array of
+        "int.error" "real.error" "word.error" "string.error" "arrayOp.error" "variant.tagMismatch" "ascii.error"
+        "dynamic.error" "writer.error" "reader.error" "system.error"
+    end
+    let exceptionField(name: String): String = "exception:" <> name
 
     (* ======================================================================
      * Building
@@ -74,7 +85,7 @@ export
     let convInt = 5
     let convBool = 6
     let convChar = 7
-    let fail = 8
+    let raiseIt = 8
     let uncaught = 9
     let decimal = 10
     let hex = 11
@@ -88,25 +99,39 @@ export
     let stringGetSub = 19
     let stringSetSub = 20
     let stringEqual = 21
-    let ensure = 22
-    let digits = 23
-    let escapeChar = 24
-    let hexDigit = 25
-    let putByte = 26
-    let stringError = 27
+    let exceptionOf = 22
+    let payloadOf = 23
+    let ensure = 24
+    let digits = 25
+    let escapeChar = 26
+    let hexDigit = 27
+    let putByte = 28
+    let stringError = 29
+    let show = 30
 
     (* The runtime's own text, in its one passive data segment: each string's
      * offset and length *)
-    let text = "truefalseException: \n  at \nstring.error"
+    let text = "truefalseException: \n  at \nstring.error with :'\"ok16##<fun><hidden><val>"
     Def Piece = Tuple offset: Int length: Int end
     let piece(offset: Int length: Int): Piece = tuple let offset = offset let length = length end
     let trueText = piece(0 4)
     let falseText = piece(4 5)
     let exceptionText = piece(9 11)
     let atText = piece(20 6)
+    let siteLead = piece(21 5)
     let newlineText = piece(26 1)
     let stringErrorText = piece(27 12)
     let emptyText = piece(0 0)
+    let withText = piece(39 6)
+    let colonText = piece(45 1)
+    let apostropheText = piece(46 1)
+    let quoteText = piece(47 1)
+    let okText = piece(48 2)
+    let hexPrefixText = piece(50 3)
+    let hashText = piece(53 1)
+    let funText = piece(54 5)
+    let hiddenText = piece(59 8)
+    let valText = piece(67 5)
 
     let runtimeModule(): model.Module =
         begin
@@ -115,6 +140,27 @@ export
             let tString = rt.index("string")
             let tBytes = rt.index("bytes")
             let tBoxInt = rt.index("boxInt")
+            let tException = rt.index("exception")
+            let tRaised = rt.index("raised")
+            (* The built-in exceptions, their names written out, as constant
+             * expressions allow *)
+            for k = 0 upto extent builtinExceptions - 1 do
+                let exceptionName = builtinExceptions[k]
+                let init = vector.new(:Inst)
+                vector.append(:Inst init c32(0))
+                vector.append(:Inst init c32(0))
+                vector.append(:Inst init c32(stringOp.length(exceptionName)))
+                for j = 0 upto stringOp.length(exceptionName) - 1 do
+                    vector.append(:Inst init c32(ascii.val(stringOp.getChar(exceptionName j))))
+                end
+                vector.append(:Inst init i2(ops.arrayNewFixed tBytes stringOp.length(exceptionName)))
+                vector.append(:Inst init i1(ops.structNew tString))
+                vector.append(:Inst init i1(ops.structNew tException))
+                vector.append(:model.Global m.globals tuple
+                    let name = exceptionName let type = model.ref(tException) let mutable = false
+                    let init = vector.toArray(:Inst init)
+                end)
+            end
             let sLength = rt.field("string" "length")
             let sBytes = rt.field("string" "bytes")
             let nullString = model.refNull(tString)
@@ -234,24 +280,59 @@ export
             add("convChar" typeOf[5] array of "c" end array of :model.Local end array of
                 c32(0) c32(1) i1(ops.localGet 0) c32(1) i1(ops.arrayNew tBytes) i1(ops.structNew tString)
             end)
-            add("fail" typeOf[6] array of "name" "site" end array of local("report" model.eqref) end cat(array of
-                pieceString(exceptionText)
-                array of i1(ops.localGet 0) i1(ops.call concat) i1(ops.localSet 2) end
+            (* Raises exception with its payload at site (section 2.9): its
+             * state, which the one tag carries *)
+            add("raise" typeOf[6] array of "exception" "payload" "site" "text" "kind" end array of :model.Local end
                 array of
-                    i1(ops.localGet 1) castTo(tString) i2(ops.structGet tString sLength) i(ops.i32Eqz) i(ops.i32Eqz)
-                    model.ifInst(empty "")
-                    i1(ops.localGet 2)
-                end
-                pieceString(atText)
-                array of i1(ops.call concat) i1(ops.localGet 1) i1(ops.call concat) i1(ops.localSet 2) model.endInst end
-                array of i1(ops.localGet 2) end
-                pieceString(newlineText)
-                array of i1(ops.call concat) i1(ops.throw 0) end
-            end))
-            add("uncaught" typeOf[7] array of "report" end array of :model.Local end array of
-                c32(2) i(ops.refI31) i1(ops.localGet 0) i1(ops.call putString) i(ops.drop)
-                c32(1) i1(ops.call procExit)
-            end)
+                    i1(ops.localGet 0) castTo(tException) i1(ops.localGet 1) i1(ops.localGet 2) i1(ops.localGet 3)
+                    i1(ops.localGet 4) i1(ops.structNew tRaised) i1(ops.throw 0)
+                end)
+            (* An uncaught exception's report, as quest_reraise writes it, less
+             * the frames (decision 12): Exception: NAME, with its payload as
+             * echo writes it and its type, and the raise's site *)
+            add("uncaught" typeOf[7] array of "state" end
+                array of local("s" model.refNull(tRaised)) local("report" model.eqref) local("kind" model.i32) end
+                cat(array of
+                    array of i1(ops.localGet 0) castTo(tRaised) i1(ops.localSet 1) end
+                    pieceString(exceptionText)
+                    array of
+                        i1(ops.localGet 1) i2(ops.structGet tRaised 0) i2(ops.structGet tException 1)
+                        i1(ops.call concat) i1(ops.localSet 2)
+                        i1(ops.localGet 1) i2(ops.structGet tRaised 4) i1(ops.localTee 3)
+                        model.ifInst(empty "")
+                        i1(ops.localGet 2)
+                    end
+                    pieceString(withText)
+                    array of
+                        i1(ops.call concat)
+                        i1(ops.localGet 1) i2(ops.structGet tRaised 1) i1(ops.localGet 3) i1(ops.call show)
+                        i1(ops.call concat)
+                    end
+                    pieceString(colonText)
+                    array of
+                        i1(ops.call concat) i1(ops.localGet 1) i2(ops.structGet tRaised 3) i1(ops.call concat)
+                        i1(ops.localSet 2)
+                        model.endInst
+                        i1(ops.localGet 2)
+                    end
+                    pieceString(newlineText)
+                    array of
+                        i1(ops.call concat) i1(ops.localSet 2)
+                        i1(ops.localGet 1) i2(ops.structGet tRaised 2) castTo(tString) i2(ops.structGet tString sLength)
+                        i(ops.i32Eqz) i(ops.i32Eqz)
+                        model.ifInst(empty "")
+                        i1(ops.localGet 2)
+                    end
+                    pieceString(siteLead)
+                    array of i1(ops.call concat) i1(ops.localGet 1) i2(ops.structGet tRaised 2) i1(ops.call concat) end
+                    pieceString(newlineText)
+                    array of
+                        i1(ops.call concat) i1(ops.localSet 2)
+                        model.endInst
+                        c32(2) i(ops.refI31) i1(ops.localGet 2) i1(ops.call putString) i(ops.drop)
+                        c32(1) i1(ops.call procExit)
+                    end
+                end))
             add("decimal" typeOf[8] array of "n" end array of :model.Local end array of
                 i1(ops.localGet 0) c32(45) i1(ops.call digits)
             end)
@@ -471,6 +552,22 @@ export
                     model.endInst model.endInst
                     c32(1)
                 end)
+            (* The exception a handler's state holds, or the exception itself *)
+            add("exceptionOf" typeOf[20] array of "x" end array of :model.Local end array of
+                model.blockInst(result(model.eqref) "other")
+                i1(ops.localGet 0)
+                option instBrOnCast of Inst with
+                    let fail = true let label = 0
+                    let from = tuple let nullable = true let heap = option heapEq of model.HeapType end end
+                    let to = tuple let nullable = false let heap = option heapIndex of model.HeapType with
+                        let index = tRaised end end
+                end
+                i2(ops.structGet tRaised 0) i(ops.returnOp)
+                model.endInst
+            end)
+            add("payloadOf" typeOf[21] array of "state" end array of :model.Local end array of
+                i1(ops.localGet 0) castTo(tRaised) i2(ops.structGet tRaised 1)
+            end)
             (* The functions only the runtime calls, after those it exports *)
             (* Grows the memory to hold need bytes *)
             add("ensure" funcType(array of model.i32 end none) array of "need" end array of :model.Local end array of
@@ -536,11 +633,77 @@ export
                     i1(ops.localGet 1) c32(1) i(ops.i32Add)
                 end)
             add("stringError" funcType(none none) array of :String end array of :model.Local end cat(array of
-                pieceString(stringErrorText) pieceString(emptyText) array of i1(ops.call fail) end
+                array of i1(ops.globalGet 3) c32(0) i(ops.refI31) end
+                pieceString(emptyText) pieceString(emptyText)
+                array of c32(0) i1(ops.call raiseIt) end
             end))
+            (* A payload as echo writes a value (quest_put_value), by its kind:
+             * 1 Int, 2 Bool, 3 Char, 4 String, 5 Ok, 6 Word, 7 a function, 8
+             * an abstract type's value; anything else waits for descriptors *)
+            let kindIs(k: Int): Array(Inst) = array of i1(ops.localGet 1) c32(k) i(ops.i32Eq) end
+            let eqrefResult = result(model.eqref)
+            add("show" funcType(array of model.eqref model.i32 end array of model.eqref end)
+                array of "payload" "kind" end
+                array of :model.Local end cat(array of
+                    kindIs(1)
+                    array of
+                        model.ifInst(eqrefResult "") i1(ops.localGet 0) i1(ops.call unboxInt) i1(ops.call decimal)
+                        model.elseInst
+                    end
+                    kindIs(2)
+                    array of
+                        model.ifInst(eqrefResult "") i1(ops.localGet 0) castI31 i(ops.i31GetU) i1(ops.call convBool)
+                        model.elseInst
+                    end
+                    kindIs(3)
+                    array of model.ifInst(eqrefResult "") end
+                    pieceString(apostropheText)
+                    array of
+                        i1(ops.localGet 0) castI31 i(ops.i31GetU) i1(ops.call convChar) c32(39) i1(ops.call escaped)
+                        i1(ops.call concat)
+                    end
+                    pieceString(apostropheText)
+                    array of i1(ops.call concat) model.elseInst end
+                    kindIs(4)
+                    array of model.ifInst(eqrefResult "") end
+                    pieceString(quoteText)
+                    array of i1(ops.localGet 0) c32(34) i1(ops.call escaped) i1(ops.call concat) end
+                    pieceString(quoteText)
+                    array of i1(ops.call concat) model.elseInst end
+                    kindIs(5)
+                    array of model.ifInst(eqrefResult "") end
+                    pieceString(okText)
+                    array of model.elseInst end
+                    kindIs(6)
+                    array of model.ifInst(eqrefResult "") end
+                    pieceString(hexPrefixText)
+                    array of i1(ops.localGet 0) i1(ops.call unboxInt) i1(ops.call hex) i1(ops.call concat) end
+                    pieceString(hashText)
+                    array of i1(ops.call concat) model.elseInst end
+                    kindIs(7)
+                    array of model.ifInst(eqrefResult "") end
+                    pieceString(funText)
+                    array of model.elseInst end
+                    kindIs(8)
+                    array of model.ifInst(eqrefResult "") end
+                    pieceString(hiddenText)
+                    array of model.elseInst end
+                    pieceString(valText)
+                    array of
+                        model.endInst model.endInst model.endInst model.endInst model.endInst model.endInst
+                        model.endInst model.endInst
+                    end
+                end))
 
             vector.append(:model.Export m.exports
                 tuple let field = "memory" let kind = option exportMemory of model.ExportKind end let index = 0 end)
+            for k = 0 upto extent builtinExceptions - 1 do
+                vector.append(:model.Export m.exports tuple
+                    let field = exceptionField(builtinExceptions[k])
+                    let kind = option exportGlobal of model.ExportKind end
+                    let index = k
+                end)
+            end
             vector.append(:model.Export m.exports
                 tuple let field = tagField let kind = option exportTag of model.ExportKind end let index = 0 end)
             for k = 0 upto extent exports - 1 do

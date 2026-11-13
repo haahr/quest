@@ -18,6 +18,7 @@ import
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
     stringOp = string : StringOp
     ascii : Ascii
     conv : Conv
@@ -263,7 +264,7 @@ export
         if hashMap.contains(:Int :Int f.g.globals v.id) then hashMap.find(:Int :Int f.g.globals v.id)
         else
                 let ts = varParts(v)
-                let n = vector.length(:model.Global f.g.m.globals)
+                let n = model.importedGlobals(f.g.m) + vector.length(:model.Global f.g.m.globals)
                 for k = 0 upto extent ts - 1 do
                     let init = case ts[k]
                         when valI64 then model.i64Const(0)
@@ -520,15 +521,45 @@ export
         end
 
     (* Raises the run-time error named name at the operation's offset *)
+    (* A built-in exception's global, imported from the runtime first *)
+    let builtinException(name: String): Int =
+        begin
+            let var found = ~1
+            for k = 0 upto extent runtime.builtinExceptions - 1 do
+                if stringOp.equal(runtime.builtinExceptions[k] name) then found := k end
+            end
+            if found < 0 then fail("the built-in exception " <> name) end
+            found
+        end
+
+    (* The site of an offset, as an uncaught report writes it *)
+    let siteText(f: F offset: maybe.T(Int)): String =
+        if maybe.isNone(:Int offset) then ""
+        else maybe.unwrapOr(:String ir.site(f.g.unit maybe.unwrap(:Int offset)) "")
+        end
+
     let raiseAt(f: F name: String offset: maybe.T(Int)): Ok =
         begin
-            literal(f name)
-            let site = if maybe.isNone(:Int offset) then ""
-                else maybe.unwrapOr(:String ir.site(f.g.unit maybe.unwrap(:Int offset)) "")
-                end
-            literal(f site)
-            runtimeCall(f "fail")
+            emit(f i1(ops.globalGet builtinException(name)))
+            emit(f model.i32Const(0))
+            emit(f i(ops.refI31))
+            literal(f siteText(f offset))
+            literal(f "")
+            emit(f model.i32Const(0))
+            runtimeCall(f "raise")
             emit(f i(ops.unreachable))
+        end
+
+    (* How the uncaught report writes a payload of type t (the runtime's show):
+     * by the kind echo writes it by; 9 for one that needs a descriptor *)
+    let payloadKind(t: ir.Type): Int =
+        begin
+            let kind = describe.echoValueKind(t)
+            let named = fun(k: String): Bool stringOp.equal(kind k)
+            if named("Int") then 1 elsif named("Bool") then 2 elsif named("Char") then 3 elsif named("String") then 4
+            elsif named("Ok") then 5 elsif named("Word") orif named("Word.T") orif named("word.T") then 6
+            elsif named("fun") then 7 elsif named("hidden") then 8 else 9
+            end
         end
 
     (* ======================================================================
@@ -1110,7 +1141,14 @@ export
             when primGt then compare(f x ops.i64GtS ops.i32GtU)
             when primGe then compare(f x ops.i64GeS ops.i32GeU)
             when primIs, primIsnot then
-                if shapes.kindIs(shapeOf(ir.atomType(x.args[0])) shapes.shapeOption) then
+                if shapes.kindIs(shapeOf(ir.atomType(x.args[0])) shapes.shapeException) then
+                    for k = 0 upto 1 do
+                        atom(f x.args[k])
+                        runtimeCall(f "exceptionOf")
+                    end
+                    emit(f i(ops.refEq))
+                    if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
+                elsif shapes.kindIs(shapeOf(ir.atomType(x.args[0])) shapes.shapeOption) then
                     let a = scratch(f model.eqref)
                     let b = scratch(f model.eqref)
                     atom(f x.args[0])
@@ -1304,6 +1342,22 @@ export
             end
         end
 
+    (* The built-in exception a library module's error member is *)
+    let libraryException(name: String): maybe.T(String) =
+        begin
+            let pairs = array of
+                "int.error" "int.error" "real.error" "real.error" "word.error" "word.error" "string.error"
+                "string.error" "arrayop.error" "arrayOp.error" "ascii.error" "ascii.error" "dynamic.error"
+                "dynamic.error" "writer.error" "writer.error" "reader.error" "reader.error" "system.error"
+                "system.error"
+            end
+            let var found = maybe.none(:String)
+            for k = 0 upto {extent pairs / 2} - 1 do
+                if stringOp.equal(pairs[2 * k] name) then found := maybe.some(:String pairs[{2 * k} + 1]) end
+            end
+            found
+        end
+
     let member(f: F x: ir.OpModuleMember): Ok =
         begin
             let name = case x.moduleRef
@@ -1314,9 +1368,11 @@ export
             if stringOp.equal(name "writer.output") then
                 emit(f model.i32Const(1))
                 emit(f i(ops.refI31))
-            elsif stringOp.equal(name "writer.error") then
+            elsif stringOp.equal(name "writer.err") then
                 emit(f model.i32Const(2))
                 emit(f i(ops.refI31))
+            elsif maybe.isSome(:String libraryException(name)) then
+                emit(f i1(ops.globalGet builtinException(maybe.unwrap(:String libraryException(name)))))
             else fail("the module member " <> name <> " (step 9)")
             end
         end
@@ -1345,7 +1401,7 @@ export
                 end
                 vector.append(:Inst init i2(ops.arrayNewFixed rt.index("i32s") extent vs))
                 vector.append(:Inst init i1(ops.structNew tDict))
-                let n = vector.length(:model.Global f.g.m.globals)
+                let n = model.importedGlobals(f.g.m) + vector.length(:model.Global f.g.m.globals)
                 vector.append(:model.Global f.g.m.globals tuple
                     let name = fresh(f.g.names "dict") let type = model.ref(tDict) let mutable = false
                     let init = vector.toArray(:Inst init)
@@ -1485,7 +1541,7 @@ export
             let native = hashMap.find(:Int :Int g.functions fn.id)
             declare(g u)
             declare(g native)
-            let n = vector.length(:model.Global g.m.globals)
+            let n = model.importedGlobals(g.m) + vector.length(:model.Global g.m.globals)
             vector.append(:model.Global g.m.globals tuple
                 let name = fresh(g.names fn.v.hint <> ".static") let type = model.ref(own) let mutable = false
                 let init = array of model.i32Const(0) i1(ops.refFunc u) i1(ops.refFunc native) i1(ops.structNew own) end
@@ -1561,7 +1617,7 @@ export
             end)
             declare(g native)
             declare(g uniform)
-            let n = vector.length(:model.Global g.m.globals)
+            let n = model.importedGlobals(g.m) + vector.length(:model.Global g.m.globals)
             vector.append(:model.Global g.m.globals tuple
                 let name = fresh(g.names "builtin" <> name <> ".static") let type = model.ref(s) let mutable = false
                 let init = array of
@@ -1689,7 +1745,15 @@ export
             when opTypeApp then fail("a type application (step 7)")
             when opBuiltin with x then emit(f i1(ops.globalGet builtinClosure(f.g x.name)))
             when opExternal, opCallExternal then fail("an external function (step 9)")
-            when opMakeException, opExceptionPayload, opCaughtException then fail("exceptions (step 6)")
+            when opMakeException with x then
+                emit(f model.i32Const(0))
+                literal(f x.name)
+                emit(f i1(ops.structNew rt.index("exception")))
+            when opExceptionPayload with x then
+                atom(f x.exc)
+                runtimeCall(f "payloadOf")
+                if maybe.isSome(:ir.Variable target) then unboxFor(f maybe.unwrap(:ir.Variable target).type target) end
+            when opCaughtException then fail("an exception as a value of raised.T (step 9)")
             when opMakeVariant then fail("a variant (milestone 4)")
             when opMakeAuto then fail("an auto value (milestone 4)")
             when opAddrVar, opAddrCell, opAddrField, opAddrComponent, opAddrElement, opLoad then
@@ -1833,10 +1897,22 @@ export
     (* Makes s and next a tail call, if s's call's result is what next
      * returns, the callee is called directly, and its results are the
      * function's; whether it did *)
+    (* Whether the code is inside a try's body, which a tail call would
+     * leave, and with it the handler *)
+    let insideTry(f: F): Bool =
+        begin
+            let var inside = false
+            for k = 0 upto vector.length(:Label f.labels) - 1 do
+                let name = vector.get(:Label f.labels k).name
+                if strutil.startsWith(name "try") andif strutil.endsWith(name ".body") then inside := true end
+            end
+            inside
+        end
+
     let tailCall(f: F s: ir.Stmt next: ir.Stmt): Bool =
         begin
             let found = callIn(f s)
-            if maybe.isNone(:Found found) then false
+            if maybe.isNone(:Found found) orif insideTry(f) then false
             else
                 let c = maybe.unwrap(:Found found).call
                 let direct = directCallee(f c)
@@ -1970,7 +2046,52 @@ export
                 if extent f.results > 0 then atom(f x.value) end
                 emit(f i(ops.returnOp))
             when sUnreachable then emit(f i(ops.unreachable))
-            when sRaise, sReraise, sTry then fail("exceptions (step 6)")
+            when sRaise with x then
+                atom(f x.exc)
+                let var kind = 0
+                if maybe.isSome(:ir.Atom x.payload) then
+                    let pl = maybe.unwrap(:ir.Atom x.payload)
+                    boxedAtom(f pl)
+                    if not(stringOp.isEmpty(x.payloadText)) then kind := payloadKind(ir.atomType(pl)) end
+                else
+                    emit(f model.i32Const(0))
+                    emit(f i(ops.refI31))
+                end
+                literal(f siteText(f x.offset))
+                literal(f x.payloadText)
+                emit(f model.i32Const(kind))
+                runtimeCall(f "raise")
+                emit(f i(ops.unreachable))
+            when sReraise with x then
+                (* the state again, with its site *)
+                atom(f ir.atomOfVar(x.exc))
+                emit(f i1(ops.throw 0))
+            when sTry with x then
+                (* A try_table that catches the one tag (section 2.9); its
+                 * handler binds the state, tests it, and raises it again if
+                 * nothing it names matches *)
+                let base = "try" <> conv.int(vector.length(:Inst f.code))
+                emit(f model.blockInst(empty ""))
+                open(f base <> ".after" option labelIf of LabelKind end)
+                emit(f model.blockInst(option blockValue of model.BlockType with let type = model.eqref end ""))
+                open(f base <> ".handler" option labelIf of LabelKind end)
+                emit(f option instTryTable of Inst with
+                    let type = empty let label = ""
+                    let catches = array of
+                        tuple let kind = option catchTag of model.CatchKind end let tag = 0 let label = 0 end
+                    end
+                end)
+                open(f base <> ".body" option labelIf of LabelKind end)
+                body(f x.body)
+                if not(ir.terminated(x.body)) then
+                    emit(f i1(ops.br depth(f base <> ".after" option labelIf of LabelKind end)))
+                end
+                close(f)
+                emit(f i(ops.unreachable))
+                close(f)
+                store(f x.exc)
+                body(f x.handler)
+                close(f)
             when sEcho with x then echo(f x)
             when sEchoText with x then output(f fun(): Ok literal(f x.text <> "\n"))
             when sStoreAt then fail("a location (milestone 4)")
@@ -2116,9 +2237,19 @@ export
         begin
             let m = model.newModule("main")
             vector.append(:model.RecGroup m.types rt.group)
+            (* The built-in exceptions, the first globals *)
+            for k = 0 upto extent runtime.builtinExceptions - 1 do
+                vector.append(:model.Import m.imports tuple
+                    let moduleName = runtime.name let field = runtime.exceptionField(runtime.builtinExceptions[k])
+                    let name = runtime.builtinExceptions[k]
+                    let kind = option importGlobal of model.ImportKind with
+                        let type = model.ref(rt.index("exception")) let mutable = false
+                    end
+                end)
+            end
             (* The closure a direct call of a function that captures nothing
              * passes, which it never reads *)
-            let noClosure = vector.length(:model.Global m.globals)
+            let noClosure = model.importedGlobals(m) + vector.length(:model.Global m.globals)
             vector.append(:model.Global m.globals tuple
                 let name = "noClosure" let type = model.ref(rt.index("clos")) let mutable = false
                 let init = array of model.i32Const(0) model.op(ops.structNew array of rt.index("clos") end) end
