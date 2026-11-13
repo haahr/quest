@@ -10,6 +10,8 @@
  *   ssac   the IR is built into SSA form (ssa/pipeline) and printed as C by
  *          codegen/c/ssac
  *   arm64  the same SSA is compiled to assembly (codegen/arm64/codegen)
+ *   wasm   the IR is compiled to a WebAssembly module (wasm/codegen), and
+ *          unitToC returns its bytes (docs/wasm-plan.md)
  *
  * What a backend cannot compile raises its own exception (the C printer's
  * unsupported, the SSA's builder's and verifier's, ssac's, arm64's); each is
@@ -33,6 +35,10 @@ export
      * path of the unit's interface header, if there is one. What the backend
      * cannot compile raises unsupported *)
     unitToC(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String): String
+    (* A program unit's WebAssembly module as text (wasm/printer), whose
+     * bytes unitToC returns for the wasm backend; raises unsupported as
+     * unitToC does *)
+    wasmText(unit: nodes.Unit): String
     (* The flags a backend's C is compiled with, besides the C compiler's
      * usual ones *)
     cFlags(backend: String): Array(String)

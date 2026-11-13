@@ -18,18 +18,36 @@ import
     ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
     questlang/codegen/c/ssac : questlang/codegen/c/Ssac
     arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
+    wasm = questlang/wasm/codegen : questlang/wasm/Codegen
+    questlang/wasm/encode : questlang/wasm/Encode
+    wasmPrinter = questlang/wasm/printer : questlang/wasm/Printer
+    questlang/wasm/model : questlang/wasm/Model
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     stringOp = string : StringOp
 export
     let unsupported: Exception(String) = exception unsupported: String end
 
+    (* A unit's WebAssembly module (docs/wasm-plan.md): a program's only,
+     * until step 9 of the plan compiles modules *)
+    let wasmModule(unit: nodes.Unit): model.Module =
+        if not(unit.isProgram) then raise unsupported with "wasm: a module file (step 9)" end
+        else
+            try wasm.programModule(unit)
+            when wasm.unsupported with m then raise unsupported with "wasm: unsupported: " <> m end
+            when model.malformed with m then raise unsupported with "wasm: malformed: " <> m end
+            end
+        end
+
+    let wasmText(unit: nodes.Unit): String = wasmPrinter.print(wasmModule(unit))
+
     (* A unit's C with a datum of its own, exported: a symbol and the C
      * string it names. A backend's failure is raised as unsupported, so that
      * callers handle one exception whatever the backend. *)
     let unitWithDatum(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String
         datum: maybe.T(Tuple symbol: String text: String end)): String =
-        if stringOp.equal(backend "ssac") orif stringOp.equal(backend "arm64") then
+        if stringOp.equal(backend "wasm") then encode.encode(wasmModule(unit))
+        elsif stringOp.equal(backend "ssac") orif stringOp.equal(backend "arm64") then
             try
                 let built = ssaPipeline.build(unit)
                 if maybe.isSome(:Tuple symbol: String text: String end datum) then

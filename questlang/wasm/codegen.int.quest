@@ -1,0 +1,31 @@
+(* Quest Self-Hosted Compiler: The wasm Code Generator Interface
+ *
+ * A program's unit, described (docs/ir.md), as a WebAssembly module
+ * (wasm/model, docs/wasm-plan.md section 4.1) that imports the runtime module
+ * (wasm/runtime) and exports _start, a WASI command's entry, which runs the
+ * program's top level and reports an uncaught exception.
+ *
+ * Step 3 of the plan compiles Int, Word, Bool, Char, String, and Ok values;
+ * statements' control flow, join points and loops among it, as blocks and
+ * branches (section 4.1); direct calls of the unit's functions, made tail
+ * calls wherever a call's result reaches a return, through join points that
+ * only pass it on (section 3.3); string literals, from a data segment; the
+ * library's output and conversions to text, through the runtime; and a
+ * phrase's value echoed, when its type's kind says how to write it with no
+ * descriptor (describe.echoValueKind). Division and remainder test their
+ * divisor before the instruction that would trap (section 2.10). Every
+ * reference is an eqref, cast where it is used.
+ *
+ * What it cannot compile yet raises unsupported, naming it and the step of
+ * the plan that adds it. *)
+
+interface Codegen
+import
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    questlang/wasm/model : questlang/wasm/Model
+export
+    unsupported: Exception(String)
+
+    (* The program unit's module *)
+    programModule(unit: ir.Unit): model.Module
+end

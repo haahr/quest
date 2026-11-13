@@ -1,0 +1,21 @@
+(* The wasm backend's tail calls (docs/wasm-plan.md section 3.3): a self
+ * recursion, a mutual one, and one whose step a join point computes, each a
+ * million times around or more, which as calls would need far more stack than
+ * a worker has. *)
+let say(s: String): Ok = writer.putString(writer.output s <> "\n");
+let rec sum(n: Int acc: Int): Int = if n is 0 then acc else sum({n - 1} {acc + n}) end;
+let rec isEven(n: Int): Bool = if n is 0 then true else isOdd(n - 1) end
+and isOdd(n: Int): Bool = if n is 0 then false else isEven(n - 1) end;
+let rec count(n: Int acc: Int): Int =
+    begin
+        let step = if {n % 3} is 0 then 2 else 1 end
+        if n <= 0 then acc else count({n - step} {acc + 1}) end
+    end;
+(* Each is called twice, so that it stays a function, rather than becoming
+ * its one caller's loop *)
+say(conv.int(sum(1000000 0)));
+say(conv.int(sum(10 0)));
+say(conv.bool(isEven(1000001)));
+say(conv.bool(isOdd(7)));
+say(conv.int(count(3000000 0)));
+say(conv.int(count(10 0)));

@@ -1,0 +1,865 @@
+(* Quest Self-Hosted Compiler: The wasm Code Generator Implementation *)
+
+module codegen : Codegen
+import
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/genericLayout : questlang/repr/GenericLayout
+    questlang/ir/describe : questlang/ir/Describe
+    questlang/wasm/model : questlang/wasm/Model
+    questlang/wasm/ops : questlang/wasm/Ops
+    questlang/wasm/printer : questlang/wasm/Printer
+    questlang/wasm/runtime : questlang/wasm/Runtime
+    rt = questlang/wasm/runtimeTypes : questlang/wasm/RuntimeTypes
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/stringBuilder : util/StringBuilder
+    stringOp = string : StringOp
+    ascii : Ascii
+    conv : Conv
+export
+    Let Inst = model.Inst
+    Let ValType = model.ValType
+
+    let unsupported: Exception(String) = exception unsupported: String end
+    let fail(what: String): Ok = raise unsupported with what end
+
+    let intEqual(a: Int b: Int): Bool = a is b
+    let noArgs = array of :Int end
+    let noTypes = array of :ValType end
+    let i(o: model.Op): Inst = model.op(o noArgs)
+    let i1(o: model.Op a: Int): Inst = model.op(o array of a end)
+    let i2(o: model.Op a: Int b: Int): Inst = model.op(o array of a b end)
+    let empty = option blockEmpty of model.BlockType end
+
+    (* ======================================================================
+     * The module's state
+     * ====================================================================== *)
+
+    (* What compiling the unit's functions shares: the module made; each
+     * global variable's global, each function's index (by Function.id), and
+     * each known closure (walk.knownClosures), by variable id; the runtime's
+     * functions by field; the function types made, by their text; the string
+     * literals' bytes, the one data segment; and the names given, so that each
+     * is given once *)
+    Def G = Tuple
+        unit: ir.Unit
+        m: model.Module
+        globalIds: hashMap.T(Int Bool)
+        globals: hashMap.T(Int Int)
+        functions: hashMap.T(Int Int)
+        known: hashMap.T(Int ir.OpMakeClosure)
+        runtimeFunctions: hashMap.T(String Int)
+        funcTypes: hashMap.T(String Int)
+        strings: stringBuilder.T
+        names: hashMap.T(String Int)
+    end
+
+    (* A name not given before among names: base, or base.k *)
+    let fresh(names: hashMap.T(String Int) base: String): String =
+        begin
+            let root = if stringOp.isEmpty(base) then "v" else base end
+            let n = maybe.unwrapOr(:Int hashMap.get(:String :Int names root) 0)
+            hashMap.insert(:String :Int names root n + 1)
+            if n is 0 then root else root <> "." <> conv.int(n) end
+        end
+
+    let typeCount(m: model.Module): Int =
+        begin
+            let var n = 0
+            for k = 0 upto vector.length(:model.RecGroup m.types) - 1 do
+                n := n + extent vector.get(:model.RecGroup m.types k)
+            end
+            n
+        end
+
+    (* The index of the function type of params and results, made once *)
+    let funcType(g: G params: Array(ValType) results: Array(ValType)): Int =
+        begin
+            let key = stringBuilder.new()
+            for k = 0 upto extent params - 1 do key.str(printer.valType(g.m params[k]) <> " ") end
+            key.str("->")
+            for k = 0 upto extent results - 1 do key.str(" " <> printer.valType(g.m results[k])) end
+            let known = hashMap.get(:String :Int g.funcTypes key.toString())
+            if maybe.isSome(:Int known) then maybe.unwrap(:Int known)
+            else
+                    let n = typeCount(g.m)
+                    vector.append(:model.RecGroup g.m.types array of
+                        tuple let name = "" let final = true let supers = array of :Int end
+                            let composite = option compFunc of model.Composite with
+                                let params = params let results = results end
+                        end
+                    end)
+                    hashMap.insert(:String :Int g.funcTypes key.toString() n)
+                    n
+            end
+        end
+
+    (* A value's representation in a local, a parameter, or a result (section
+     * 3.2 of the plan), from its type's *)
+    let valType(t: ir.Type): ValType =
+        case layout.representationKind(t)
+            when repInt, repWord then model.i64
+            when repBool, repChar then model.i32
+            when repVoid, repPointer, repQVal then model.eqref
+            when repReal then
+                fail("a Real (step 8 connects util/realconv)")
+                model.f64
+            when repRecord then
+                fail("a record (step 4)")
+                model.eqref
+            when repVariant then
+                fail("a variant (milestone 4)")
+                model.eqref
+        end
+
+    let sameType(a: ValType b: ValType): Bool =
+        case a
+            when valI32 then b?valI32 when valI64 then b?valI64 when valF32 then b?valF32 when valF64 then b?valF64
+            when valRef then b?valRef
+        end
+    let sameTypes(a: Array(ValType) b: Array(ValType)): Bool =
+        begin
+            let var same = {extent a} is {extent b}
+            if same then for k = 0 upto extent a - 1 do if not(sameType(a[k] b[k])) then same := false end end end
+            same
+        end
+
+    (* ======================================================================
+     * A function's state
+     * ====================================================================== *)
+
+    (* A structured instruction open around the code being made: an IR
+     * label's loop (its exit, a block, or its repetition, the loop), a join
+     * point (its continuation's entry, or the end after it), or an if *)
+    Def LabelKind = Option labelExit labelRepeat labelJoin labelAfter labelIf end
+    Def Label = Tuple name: String kind: LabelKind end
+
+    (* What compiling one function keeps: its code, its locals by variable
+     * id, its locals after its parameters, their names, the labels open,
+     * innermost last, its results, and the join points whose continuations
+     * only return their one parameter *)
+    Def F = Tuple
+        g: G
+        code: vector.T(Inst)
+        locals: hashMap.T(Int Int)
+        declared: vector.T(model.Local)
+        nparams: Int
+        names: hashMap.T(String Int)
+        labels: vector.T(Label)
+        results: Array(ValType)
+        returning: hashMap.T(String Bool)
+    end
+
+    let emit(f: F x: Inst): Ok = vector.append(:Inst f.code x)
+
+    let sameKind(a: LabelKind b: LabelKind): Bool =
+        case a
+            when labelExit then b?labelExit when labelRepeat then b?labelRepeat when labelJoin then b?labelJoin
+            when labelAfter then b?labelAfter when labelIf then b?labelIf
+        end
+
+    let open(f: F name: String kind: LabelKind): Ok =
+        vector.append(:Label f.labels tuple let name = name let kind = kind end)
+    let close(f: F): Ok =
+        begin
+            vector.pop(:Label f.labels)
+            emit(f model.endInst)
+        end
+
+    (* The depth of a branch to the label named name of kind kind *)
+    let depth(f: F name: String kind: LabelKind): Int =
+        begin
+            let n = vector.length(:Label f.labels)
+            let var found = ~1
+            for k = 0 upto n - 1 do
+                let l = vector.get(:Label f.labels k)
+                if stringOp.equal(l.name name) andif sameKind(l.kind kind) then found := {n - 1} - k end
+            end
+            if found < 0 then fail("a branch to " <> name <> ", which is not open") end
+            found
+        end
+
+    let isGlobal(f: F v: ir.Variable): Bool = hashMap.contains(:Int :Bool f.g.globalIds v.id)
+
+    (* v's global, made the first time it is named *)
+    let global(f: F v: ir.Variable): Int =
+        if hashMap.contains(:Int :Int f.g.globals v.id) then hashMap.find(:Int :Int f.g.globals v.id)
+        else
+                let t = valType(v.type)
+                let init = case t
+                    when valI64 then model.i64Const(0)
+                    when valI32 then model.i32Const(0)
+                    else option instRefNull of Inst with let heap = option heapNone of model.HeapType end end
+                end
+                let n = vector.length(:model.Global f.g.m.globals)
+                vector.append(:model.Global f.g.m.globals tuple
+                    let name = fresh(f.g.names v.hint) let type = t let mutable = true let init = array of init end
+                end)
+                hashMap.insert(:Int :Int f.g.globals v.id n)
+                n
+        end
+
+    (* v's local, made the first time it is bound *)
+    let local(f: F v: ir.Variable): Int =
+        if hashMap.contains(:Int :Int f.locals v.id) then hashMap.find(:Int :Int f.locals v.id)
+        else
+                let n = f.nparams + vector.length(:model.Local f.declared)
+                vector.append(:model.Local f.declared
+                    tuple let name = fresh(f.names v.hint) let type = valType(v.type) end)
+                hashMap.insert(:Int :Int f.locals v.id n)
+                n
+        end
+
+    (* Stores the value on the stack in v *)
+    let store(f: F v: ir.Variable): Ok =
+        if isGlobal(f v) then emit(f i1(ops.globalSet global(f v))) else emit(f i1(ops.localSet local(f v))) end
+
+    (* ======================================================================
+     * Values
+     * ====================================================================== *)
+
+    (* A new string of the literal s's bytes, from the data segment *)
+    let literal(f: F s: String): Ok =
+        begin
+            let offset = f.g.strings.length()
+            f.g.strings.str(s)
+            let n = stringOp.length(s)
+            emit(f model.i32Const(0))
+            emit(f model.i32Const(n))
+            emit(f model.i32Const(offset))
+            emit(f model.i32Const(n))
+            emit(f i2(ops.arrayNewData rt.index("bytes") 0))
+            emit(f i1(ops.structNew rt.index("string")))
+        end
+
+    let constant(f: F c: ir.Const): Ok =
+        case c.value
+            when constInt with x then emit(f model.i64Const(x.n))
+            when constBool with x then emit(f model.i32Const(if x.b then 1 else 0 end))
+            when constChar with x then emit(f model.i32Const(ascii.val(x.c)))
+            when constString with x then literal(f x.s)
+            when constOk then
+                emit(f model.i32Const(0))
+                emit(f i(ops.refI31))
+            when constReal then fail("a Real (step 8 connects util/realconv)")
+        end
+
+    let atom(f: F a: ir.Atom): Ok =
+        case a
+            when atomVar with x then
+                let v = x.v
+                if isGlobal(f v) then emit(f i1(ops.globalGet global(f v)))
+                else
+                    if hashMap.contains(:Int :Int f.locals v.id) then
+                        emit(f i1(ops.localGet hashMap.find(:Int :Int f.locals v.id)))
+                    else fail("the variable " <> v.hint <> ", which has no value here")
+                    end
+                end
+            when atomConst with x then constant(f x.c)
+        end
+
+    let atoms(f: F args: Array(ir.Atom)): Ok = for k = 0 upto extent args - 1 do atom(f args[k]) end
+
+    let atomType(a: ir.Atom): ValType = valType(ir.atomType(a))
+
+    let runtimeCall(f: F field: String): Ok =
+        if hashMap.contains(:String :Int f.g.runtimeFunctions field) then
+            emit(f i1(ops.call hashMap.find(:String :Int f.g.runtimeFunctions field)))
+        else fail("the runtime's " <> field)
+        end
+
+    (* Raises the run-time error named name at the operation's offset *)
+    let raiseAt(f: F name: String offset: maybe.T(Int)): Ok =
+        begin
+            literal(f name)
+            let site = if maybe.isNone(:Int offset) then ""
+                else maybe.unwrapOr(:String ir.site(f.g.unit maybe.unwrap(:Int offset)) "")
+                end
+            literal(f site)
+            runtimeCall(f "fail")
+            emit(f i(ops.unreachable))
+        end
+
+    (* Integer division or remainder, the divisor tested for 0, which raises
+     * int.error, and for -1, whose quotient negates (wrapping) and whose
+     * remainder is 0, so that neither traps *)
+    let divide(f: F x: ir.OpPrim remainder: Bool): Ok =
+        begin
+            let a = x.args[0]
+            let b = x.args[1]
+            atom(f b)
+            emit(f i(ops.i64Eqz))
+            emit(f model.ifInst(empty ""))
+            raiseAt(f "int.error" x.offset)
+            emit(f model.endInst)
+            atom(f b)
+            emit(f model.i64Const(~1))
+            emit(f i(ops.i64Eq))
+            emit(f model.ifInst(option blockValue of model.BlockType with let type = model.i64 end ""))
+            if remainder then emit(f model.i64Const(0))
+            else
+                emit(f model.i64Const(0))
+                atom(f a)
+                emit(f i(ops.i64Sub))
+            end
+            emit(f model.elseInst)
+            atom(f a)
+            atom(f b)
+            emit(f i(if remainder then ops.i64RemS else ops.i64DivS end))
+            emit(f model.endInst)
+        end
+
+    (* A comparison of two Ints (signed) or two Chars or Bools (unsigned) *)
+    let compare(f: F x: ir.OpPrim int: model.Op small: model.Op): Ok =
+        begin
+            atoms(f x.args)
+            case atomType(x.args[0])
+                when valI64 then emit(f i(int))
+                when valI32 then emit(f i(small))
+                else fail("an ordering of references")
+            end
+        end
+
+    let prim(f: F x: ir.OpPrim): Ok =
+        case x.op
+            when primAdd then
+                atoms(f x.args)
+                emit(f i(ops.i64Add))
+            when primSub then
+                atoms(f x.args)
+                emit(f i(ops.i64Sub))
+            when primMul then
+                atoms(f x.args)
+                emit(f i(ops.i64Mul))
+            when primDiv then divide(f x false)
+            when primRem, primMod then divide(f x true)
+            when primLt then compare(f x ops.i64LtS ops.i32LtU)
+            when primLe then compare(f x ops.i64LeS ops.i32LeU)
+            when primGt then compare(f x ops.i64GtS ops.i32GtU)
+            when primGe then compare(f x ops.i64GeS ops.i32GeU)
+            when primIs, primIsnot then
+                if maybe.isSome(:ir.Descriptor x.descriptor) then fail("is through a descriptor (step 6)") end
+                atoms(f x.args)
+                case atomType(x.args[0])
+                    when valI64 then emit(f i(ops.i64Eq))
+                    when valI32 then emit(f i(ops.i32Eq))
+                    when valRef then emit(f i(ops.refEq))
+                    else fail("is on a Real")
+                end
+                if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
+            when primAnd then
+                atoms(f x.args)
+                emit(f i(ops.i32And))
+            when primOr then
+                atoms(f x.args)
+                emit(f i(ops.i32Or))
+            when primNot then
+                atoms(f x.args)
+                emit(f i(ops.i32Eqz))
+            when primConcat then
+                atoms(f x.args)
+                runtimeCall(f "concat")
+            when primRealAdd, primRealSub, primRealMul, primRealDiv, primRealPow, primRealLt, primRealLe, primRealGt,
+                primRealGe then fail("the primitive " <> ir.primName(x.op) <> " (step 8 connects util/realconv)")
+            when primExtent then fail("extent (step 4)")
+        end
+
+    (* A call of the library's lib.member, which step 9 links as a unit of
+     * its own: until then, the few that step 3's programs use, through the
+     * runtime or as instructions *)
+    let library(f: F lib: String member: String args: Array(ir.Atom)): Ok =
+        begin
+            let name = lib <> "." <> member
+            let through = fun(field: String): Ok begin atoms(f args) runtimeCall(f field) end
+            if stringOp.equal(name "writer.putString") then through("putString")
+            elsif stringOp.equal(name "writer.putChar") then through("putChar")
+            elsif stringOp.equal(name "conv.int") then through("convInt")
+            elsif stringOp.equal(name "conv.bool") then through("convBool")
+            elsif stringOp.equal(name "conv.char") then through("convChar")
+            elsif stringOp.equal(name "string.length") then
+                atoms(f args)
+                emit(f option instRefCast of Inst with let type = tuple let nullable = false
+                    let heap = option heapIndex of model.HeapType with let index = rt.index("string") end end
+                end)
+                emit(f i2(ops.structGet rt.index("string") rt.field("string" "length")))
+                emit(f i(ops.i64ExtendI32U))
+            else fail("the library's " <> name <> " (step 9)")
+            end
+        end
+
+    (* The function a call names directly, if it does: a known closure's code
+     * (walk.knownClosures), with no type arguments *)
+    let directCallee(f: F x: ir.OpCall): maybe.T(Int) =
+        if maybe.isNone(:ir.Variable x.callee) then maybe.none(:Int)
+        else
+            let c = maybe.unwrap(:ir.Variable x.callee)
+            if not(hashMap.contains(:Int :ir.OpMakeClosure f.g.known c.id)) then maybe.none(:Int)
+            else
+                let k = hashMap.find(:Int :ir.OpMakeClosure f.g.known c.id)
+                if {extent x.typeArgs is 0} andif {extent k.typeArgs is 0} then
+                    hashMap.get(:Int :Int f.g.functions k.code.id)
+                else maybe.none(:Int)
+                end
+            end
+        end
+
+    let call(f: F x: ir.OpCall): Ok =
+        begin
+            let direct = directCallee(f x)
+            if maybe.isSome(:Int direct) then
+                atoms(f x.args)
+                emit(f i1(ops.call maybe.unwrap(:Int direct)))
+            elsif maybe.isSome(:ir.Variable x.callee) then fail("a call through a closure (step 5)")
+            elsif maybe.isNone(:ir.ModuleRef x.moduleRef) then fail("a call of no function")
+            else
+                case maybe.unwrap(:ir.ModuleRef x.moduleRef)
+                    when refImport with imp then
+                        let member = maybe.unwrapOr(:String x.member "")
+                        if maybe.isSome(:String imp.i.libPath) then
+                            library(f maybe.unwrap(:String imp.i.libPath) member x.args)
+                        else fail("a call of the unit " <> imp.i.canonicalPath <> "'s " <> member <> " (step 9)")
+                        end
+                    when refModule then fail("a call of a module's member (step 9)")
+                end
+            end
+        end
+
+    let member(f: F x: ir.OpModuleMember): Ok =
+        begin
+            let name = case x.moduleRef
+                when refImport with imp then maybe.unwrapOr(:String imp.i.libPath "") <> "."
+                    <> maybe.unwrapOr(:String x.member "")
+                when refModule then ""
+            end
+            if stringOp.equal(name "writer.output") then
+                emit(f model.i32Const(1))
+                emit(f i(ops.refI31))
+            elsif stringOp.equal(name "writer.error") then
+                emit(f model.i32Const(2))
+                emit(f i(ops.refI31))
+            else fail("the module member " <> name <> " (step 9)")
+            end
+        end
+
+    (* The operation's value, on the stack *)
+    let operation(f: F o: ir.Op): Ok =
+        case o
+            when opAtom with x then atom(f x.atom)
+            when opPrim with x then prim(f x)
+            when opCall with x then call(f x)
+            when opModuleMember with x then member(f x)
+            when opMakeClosure with x then
+                (* Step 3 calls known closures directly; the value stands for
+                 * the closure step 5 makes *)
+                if {extent x.captures > 0} orif {extent x.typeArgs > 0} then fail("a closure's captures (step 5)") end
+                emit(f model.i32Const(0))
+                emit(f i1(ops.structNew rt.index("clos")))
+            when opMakeTuple, opTupleField, opMakeOption, opIsTag, opPayload, opOrdinal then
+                fail("tuples and options (step 4)")
+            when opMakeArray, opArrayRep, opIndex then fail("arrays (step 4)")
+            when opMakeRecord, opRecordField then fail("records (step 4)")
+            when opConvert then fail("a conversion (step 7)")
+            when opTypeApp then fail("a type application (step 7)")
+            when opEnvField then fail("a closure's captures (step 5)")
+            when opBuiltin then fail("a built-in function as a value (step 5)")
+            when opExternal, opCallExternal then fail("an external function (step 9)")
+            when opMakeException, opExceptionPayload, opCaughtException then fail("exceptions (step 6)")
+            when opMakeVariant then fail("a variant (milestone 4)")
+            when opMakeAuto then fail("an auto value (milestone 4)")
+            when opAddrVar, opAddrCell, opAddrField, opAddrComponent, opAddrElement, opLoad then
+                fail("a location (milestone 4)")
+        end
+
+    (* Writes text to standard output, through the runtime *)
+    let output(f: F text: All() Ok): Ok =
+        begin
+            emit(f model.i32Const(1))
+            emit(f i(ops.refI31))
+            text()
+            runtimeCall(f "putString")
+            emit(f i(ops.drop))
+        end
+
+    (* A phrase's value as the driver's echo writes it (quest_print_value):
+     * after prefix, and for an expression with its type; by its type's kind,
+     * a base type's or a function's or an abstract type's, whose values need
+     * no descriptor to be written *)
+    let echo(f: F x: ir.StmtEcho): Ok =
+        begin
+            let kind = describe.echoValueKind(x.type)
+            let suffix = if stringOp.isEmpty(x.prefix) then " : " <> genericLayout.qtypeToNameStr(x.type) else "" end
+            let kindIs = fun(k: String): Bool stringOp.equal(kind k)
+            let quoted = fun(quote: Char): Ok
+                begin
+                    emit(f model.i32Const(ascii.val(quote)))
+                    runtimeCall(f "escaped")
+                    runtimeCall(f "concat")
+                    literal(f stringOp.new(1 quote))
+                    runtimeCall(f "concat")
+                end
+            let value = fun(): Ok
+                begin
+                    literal(f x.prefix)
+                    if kindIs("Int") then
+                        atom(f x.value)
+                        runtimeCall(f "decimal")
+                    elsif kindIs("Bool") then
+                        atom(f x.value)
+                        runtimeCall(f "convBool")
+                    elsif kindIs("Char") then
+                        literal(f "'")
+                        atom(f x.value)
+                        runtimeCall(f "convChar")
+                        quoted('\'')
+                    elsif kindIs("String") then
+                        literal(f "\"")
+                        atom(f x.value)
+                        quoted('"')
+                    elsif kindIs("Ok") then literal(f "ok")
+                    elsif kindIs("Word") orif kindIs("Word.T") orif kindIs("word.T") then
+                        literal(f "16#")
+                        atom(f x.value)
+                        runtimeCall(f "hex")
+                        runtimeCall(f "concat")
+                        literal(f "#")
+                        runtimeCall(f "concat")
+                    elsif kindIs("fun") then literal(f "<fun>")
+                    elsif kindIs("hidden") then literal(f "<hidden>")
+                    elsif stringOp.isEmpty(kind) then fail("echo of a value its descriptor writes (step 6)")
+                    else literal(f "<val>")
+                    end
+                    runtimeCall(f "concat")
+                    literal(f suffix <> "\n")
+                    runtimeCall(f "concat")
+                end
+            output(f value)
+        end
+
+    (* ======================================================================
+     * Statements
+     * ====================================================================== *)
+
+    let blockOf(f: F types: Array(ValType)): model.BlockType =
+        if extent types is 0 then empty
+        elsif extent types is 1 then option blockValue of model.BlockType with let type = types[0] end
+        else option blockIndex of model.BlockType with let index = funcType(f.g noTypes types) end
+        end
+
+    (* Whether the atom is the variable v *)
+    let isVar(a: ir.Atom v: ir.Variable): Bool =
+        case a when atomVar with x then x.v.id is v.id else false end
+
+    (* Whether a join point's continuation only returns its one parameter,
+     * or passes it to one that does: a jump to it then returns what it
+     * passes *)
+    let returnsParam(f: F s: ir.StmtJoin): Bool =
+        if {extent s.params} isnot 1 then false
+        else
+            let ss = s.continuation.statements
+            if vector.length(:ir.Stmt ss) isnot 1 then false
+            else
+                case vector.get(:ir.Stmt ss 0)
+                    when sReturn with r then isVar(r.value s.params[0])
+                    when sJump with j then
+                        {extent j.args is 1} andif isVar(j.args[0] s.params[0])
+                        andif maybe.unwrapOr(:Bool hashMap.get(:String :Bool f.returning j.label) false)
+                    else false
+                end
+            end
+        end
+
+    (* Whether statement next, after a call bound to v (or done, v none),
+     * returns its result: a return of it (of ok, for a call done), or a jump
+     * that passes it to a join point that returns it *)
+    let returnsResult(f: F v: maybe.T(ir.Variable) next: ir.Stmt): Bool =
+        case next
+            when sReturn with r then
+                if maybe.isSome(:ir.Variable v) then isVar(r.value maybe.unwrap(:ir.Variable v))
+                else case r.value when atomConst with c then c.c.value?constOk else false end
+                end
+            when sJump with j then
+                maybe.isSome(:ir.Variable v) andif {extent j.args is 1}
+                andif isVar(j.args[0] maybe.unwrap(:ir.Variable v))
+                andif maybe.unwrapOr(:Bool hashMap.get(:String :Bool f.returning j.label) false)
+            else false
+        end
+
+    (* The call a statement makes, and the variable it binds (none for do), if
+     * it is a direct call *)
+    Def Found = Tuple call: ir.OpCall v: maybe.T(ir.Variable) end
+    let callIn(f: F s: ir.Stmt): maybe.T(Found) =
+        begin
+            case s
+                when sLet with x then
+                    case x.value
+                        when opCall with c then
+                            if isGlobal(f x.v) then maybe.none(:Found)
+                            else maybe.some(:Found tuple let call = c let v = maybe.some(:ir.Variable x.v) end)
+                            end
+                        else maybe.none(:Found)
+                    end
+                when sDo with x then
+                    case x.value
+                        when opCall with c then
+                            maybe.some(:Found tuple let call = c let v = maybe.none(:ir.Variable) end)
+                        else maybe.none(:Found)
+                    end
+                else maybe.none(:Found)
+            end
+        end
+
+    (* Makes s and next a tail call, if s's call's result is what next
+     * returns, the callee is called directly, and its results are the
+     * function's; whether it did *)
+    let tailCall(f: F s: ir.Stmt next: ir.Stmt): Bool =
+        begin
+            let found = callIn(f s)
+            if maybe.isNone(:Found found) then false
+            else
+                let c = maybe.unwrap(:Found found).call
+                let direct = directCallee(f c)
+                if maybe.isNone(:Int direct) then false
+                else
+                    let d = maybe.unwrap(:Int direct)
+                    let callee = model.typeAt(f.g.m model.functionType(f.g.m d))
+                    let results = case callee.composite when compFunc with t then t.results else noTypes end
+                    if returnsResult(f maybe.unwrap(:Found found).v next) andif sameTypes(results f.results) then
+                        atoms(f c.args)
+                        emit(f i1(ops.returnCall d))
+                        true
+                    else false
+                    end
+                end
+            end
+        end
+
+    let rec body(f: F b: ir.Body): Ok =
+        begin
+            let ss = vector.toArray(:ir.Stmt b.statements)
+            let var k = 0
+            while k < extent ss do
+                if {{k + 1} < extent ss} andif tailCall(f ss[k] ss[k + 1]) then k := k + 2
+                else
+                    statement(f ss[k])
+                    k := k + 1
+                end
+            end
+        end
+
+    and statement(f: F s: ir.Stmt): Ok =
+        case s
+            when sLet with x then
+                operation(f x.value)
+                store(f x.v)
+            when sDo with x then
+                operation(f x.value)
+                emit(f i(ops.drop))
+            when sVarDecl with x then
+                if maybe.isSome(:ir.Atom x.init) then
+                    atom(f maybe.unwrap(:ir.Atom x.init))
+                    store(f x.v)
+                elsif not(isGlobal(f x.v)) then
+                    local(f x.v)
+                    ok
+                end
+            when sAssign with x then
+                atom(f x.value)
+                store(f x.v)
+            when sIf with x then
+                atom(f x.cond)
+                emit(f model.ifInst(empty ""))
+                open(f "" option labelIf of LabelKind end)
+                body(f x.thenBody)
+                emit(f model.elseInst)
+                body(f x.elseBody)
+                close(f)
+            when sLoop with x then
+                emit(f model.blockInst(empty x.label <> ".exit"))
+                open(f x.label option labelExit of LabelKind end)
+                emit(f model.loopInst(empty x.label))
+                open(f x.label option labelRepeat of LabelKind end)
+                body(f x.body)
+                if not(ir.terminated(x.body)) then emit(f i1(ops.br 0)) end
+                close(f)
+                close(f)
+            when sBreak with x then emit(f i1(ops.br depth(f x.label option labelExit of LabelKind end)))
+            when sContinue with x then emit(f i1(ops.br depth(f x.label option labelRepeat of LabelKind end)))
+            when sJoin with x then
+                hashMap.insert(:String :Bool f.returning x.label returnsParam(f x))
+                let types = array of(extent x.params model.i32)
+                for k = 0 upto extent x.params - 1 do types[k] := valType(x.params[k].type) end
+                emit(f model.blockInst(empty x.label <> ".after"))
+                open(f x.label option labelAfter of LabelKind end)
+                emit(f model.blockInst(blockOf(f types) x.label))
+                open(f x.label option labelJoin of LabelKind end)
+                body(f x.body)
+                if not(ir.terminated(x.body)) then
+                    emit(f i1(ops.br depth(f x.label option labelAfter of LabelKind end)))
+                end
+                close(f)
+                for k = extent x.params - 1 downto 0 do store(f x.params[k]) end
+                body(f x.continuation)
+                close(f)
+            when sJump with x then
+                atoms(f x.args)
+                emit(f i1(ops.br depth(f x.label option labelJoin of LabelKind end)))
+            when sReturn with x then
+                if extent f.results > 0 then atom(f x.value) end
+                emit(f i(ops.returnOp))
+            when sUnreachable then emit(f i(ops.unreachable))
+            when sRaise, sReraise, sTry then fail("exceptions (step 6)")
+            when sSwitch then fail("a switch on a variant or option (step 4)")
+            when sEcho with x then echo(f x)
+            when sEchoText with x then output(f fun(): Ok literal(f x.text <> "\n"))
+            when sStoreAt then fail("a location (milestone 4)")
+            when sStoreField, sStoreComponent, sStoreElement then fail("a store (step 4)")
+            when sLetRec then fail("recursive values (step 4)")
+            when sFuns then fail("a function not closure-converted")
+            when sInspect then fail("an inspect (milestone 4)")
+        end
+
+    (* ======================================================================
+     * Functions and the unit
+     * ====================================================================== *)
+
+    let newF(g: G params: Array(String) results: Array(ValType)): F =
+        begin
+            let names = hashMap.new(:String :Int stringOp.equal hash.string)
+            tuple
+                let g = g
+                let code = vector.new(:Inst)
+                let locals = hashMap.new(:Int :Int intEqual hash.int)
+                let declared = vector.new(:model.Local)
+                let nparams = extent params
+                let names = names
+                let labels = vector.new(:Label)
+                let results = results
+                let returning = hashMap.new(:String :Bool stringOp.equal hash.string)
+            end
+        end
+
+    let finish(f: F name: String type: Int params: Array(String)): Ok =
+        vector.append(:model.Function f.g.m.functions
+            tuple let name = name let type = type let params = params let locals = f.declared let body = f.code end)
+
+    (* A function's parameters' and result's representations, its signature
+     * (section 3.2 of the plan), or unsupported for what step 3 does not
+     * compile *)
+    Def Signature = Tuple params: Array(ValType) results: Array(ValType) end
+    let signature(fn: ir.Function): Signature =
+        begin
+            if {extent fn.typeParams > 0} orif {extent fn.descriptorParams > 0} then
+                fail("a polymorphic function (step 7)")
+            end
+            if maybe.isSome(:ir.Variable fn.env) then fail("a closure's captures (step 5)") end
+            if fn.unboxedResult then fail("an unboxed tuple result (step 4)") end
+            let params = array of(extent fn.params model.i64)
+            for k = 0 upto extent fn.params - 1 do
+                if not(stringOp.equal(fn.params[k].mode "value")) then fail("a var or out parameter (milestone 4)") end
+                params[k] := valType(fn.params[k].v.type)
+            end
+            tuple let params = params let results = array of valType(fn.resultType) end end
+        end
+
+    (* A function of the unit, whose index and type are already given *)
+    let function(g: G fn: ir.Function): Ok =
+        begin
+            let sig = signature(fn)
+            let names = array of(extent fn.params "")
+            let f = newF(g names sig.results)
+            for k = 0 upto extent fn.params - 1 do
+                names[k] := fresh(f.names fn.params[k].v.hint)
+                hashMap.insert(:Int :Int f.locals fn.params[k].v.id k)
+            end
+            body(f fn.body)
+            emit(f i(ops.unreachable))
+            let at = maybe.unwrap(:Int hashMap.get(:Int :Int g.functions fn.id)) - model.importedFunctions(g.m)
+            let given = vector.get(:model.Function g.m.functions at)
+            vector.set(:model.Function g.m.functions at tuple
+                let name = given.name let type = given.type let params = names let locals = f.declared let body = f.code
+            end)
+        end
+
+    let programModule(unit: ir.Unit): model.Module =
+        begin
+            let m = model.newModule("main")
+            vector.append(:model.RecGroup m.types rt.group)
+            let g = tuple
+                let unit = unit
+                let m = m
+                let globalIds = walk.globalVariables(unit)
+                let globals = hashMap.new(:Int :Int intEqual hash.int)
+                let functions = hashMap.new(:Int :Int intEqual hash.int)
+                let known = walk.knownClosures(unit)
+                let runtimeFunctions = hashMap.new(:String :Int stringOp.equal hash.string)
+                let funcTypes = hashMap.new(:String :Int stringOp.equal hash.string)
+                let strings = stringBuilder.new()
+                let names = hashMap.new(:String :Int stringOp.equal hash.string)
+            end
+            (* The runtime's functions and tag, imported first *)
+            for k = 0 upto extent runtime.exports - 1 do
+                let e = runtime.exports[k]
+                vector.append(:model.Import m.imports tuple
+                    let moduleName = runtime.name let field = e.field let name = fresh(g.names e.field)
+                    let kind = option importFunc of model.ImportKind with let type = funcType(g e.params e.results) end
+                end)
+                hashMap.insert(:String :Int g.runtimeFunctions e.field k)
+            end
+            vector.append(:model.Import m.imports tuple
+                let moduleName = runtime.name let field = runtime.tagField let name = fresh(g.names "error")
+                let kind = option importTag of model.ImportKind with
+                    let type = funcType(g array of model.eqref end noTypes)
+                end
+            end)
+            (* Each function's index and type, before any is compiled, so that
+             * a call, a tail call above all, knows its callee's signature
+             * wherever the callee is in the unit; its code is filled in when
+             * it is compiled *)
+            let base = model.importedFunctions(m)
+            let placeholder = funcType(g noTypes noTypes)
+            for k = 0 upto vector.length(:ir.Function unit.functions) - 1 do
+                let fn = vector.get(:ir.Function unit.functions k)
+                let sig = signature(fn)
+                hashMap.insert(:Int :Int g.functions fn.id base + k)
+                vector.append(:model.Function m.functions tuple
+                    let name = fresh(g.names fn.v.hint) let type = funcType(g sig.params sig.results)
+                    let params = array of :String end let locals = vector.new(:model.Local) let body = vector.new(:Inst)
+                end)
+            end
+            for k = 0 upto vector.length(:ir.Function unit.functions) - 1 do
+                function(g vector.get(:ir.Function unit.functions k))
+            end
+            (* The program's top level *)
+            let mainIndex = base + vector.length(:ir.Function unit.functions)
+            let mainF = newF(g array of :String end noTypes)
+            body(mainF unit.main)
+            finish(mainF fresh(g.names "main") placeholder array of :String end)
+            (* _start: the top level, and an uncaught exception's report *)
+            let start = newF(g array of :String end noTypes)
+            emit(start model.blockInst(option blockValue of model.BlockType with let type = model.eqref end "uncaught"))
+            emit(start option instTryTable of Inst with
+                let type = empty let label = ""
+                let catches = array of
+                    tuple let kind = option catchTag of model.CatchKind end let tag = 0 let label = 0 end
+                end
+            end)
+            emit(start i1(ops.call mainIndex))
+            emit(start model.endInst)
+            emit(start i(ops.returnOp))
+            emit(start model.endInst)
+            runtimeCall(start "uncaught")
+            finish(start "_start" placeholder array of :String end)
+            vector.append(:model.Export m.exports tuple
+                let field = "_start" let kind = option exportFunc of model.ExportKind end let index = mainIndex + 1
+            end)
+            if g.strings.length() > 0 then
+                vector.append(:model.Data m.data
+                    tuple let name = "strings" let bytes = g.strings.toString() let offset = ~1 end)
+            end
+            m
+        end
+end

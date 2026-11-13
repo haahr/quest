@@ -1,0 +1,57 @@
+(* Quest Self-Hosted Compiler: The WebAssembly Runtime Interface
+ *
+ * The runtime module that every unit the wasm backend compiles imports
+ * (docs/wasm-plan.md section 4.2), as the module named name: its exception
+ * tag, the memory that bytes cross to the host in (section 4.4), and the
+ * functions compiled code calls. It is built here, from wasm/model, for what
+ * step 3 compiles: strings' text and output, Int, Bool, and Char written as
+ * text, as conv and as echo writes them, and run-time errors with their
+ * uncaught report. The plan's runtime in
+ * Quest, over intrinsics, replaces it from step 6, behind the same exports.
+ *
+ * Every reference crosses as an eqref (section 3.2); the runtime casts. The
+ * host it imports is WASI's first preview, fd_write and proc_exit, which
+ * wasmtime provides, and runtime/wasm/run.mjs for node. *)
+
+interface Runtime
+import
+    questlang/wasm/model : questlang/wasm/Model
+export
+    (* The module name units import the runtime by; not a unit's canonical
+     * name, which has no dot *)
+    name: String
+
+    (* A function the runtime exports, by its field, and its type *)
+    Def Export = Tuple field: String params: Array(model.ValType) results: Array(model.ValType) end
+
+    (* The functions, each with the field compiled code imports it by:
+     *
+     *   putString(w s): Ok      s's bytes to the stream w (an i31, its file
+     *                            descriptor: 1 for writer.output, 2 for
+     *                            writer.error)
+     *   putChar(w c): Ok         one byte to the stream w
+     *   concat(a b): String      a's bytes, then b's, as a new string
+     *   convInt(n): String       n in decimal, ~ for negatives, as conv.int
+     *   convBool(b): String      "true" or "false"
+     *   convChar(c): String      the one character c
+     *   fail(name site)          raises the run-time error named name (as
+     *                            "int.error") at site ("file:line:col", or
+     *                            empty): the tag error's payload is the
+     *                            report an uncaught one makes
+     *   uncaught(report)         writes the report to standard error and
+     *                            ends the program with status 1
+     *   decimal(n): String       n in decimal, - for negatives, as echo
+     *   hex(w): String           w in hexadecimal, lower case, as echo
+     *   escaped(s quote): String s's bytes as echo writes them between
+     *                            quotes quote (' or "): \n, \t, \r, \\,
+     *                            the quote, and others not printable as
+     *                            \xhh *)
+    exports: Array(Export)
+
+    (* The tag every Quest exception is thrown with, of one eqref, and the
+     * field it is exported by *)
+    tagField: String
+
+    (* The runtime module itself, with R first (wasm/runtimeTypes) *)
+    runtimeModule(): model.Module
+end

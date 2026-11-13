@@ -102,7 +102,7 @@ def check(driver: str) -> list[str]:
                                     f"backend {'changed' if changed else 'did not change'}")
 
         for options, message in (
-            (["--backend", "x86"], "--backend takes c, ssac, or arm64"),
+            (["--backend", "x86"], "--backend takes c, ssac, arm64, or wasm"),
             (["--unit-backend", "main"], "--unit-backend takes UNIT=BACKEND"),
             (["--unit-backend", "main=x"], "--unit-backend takes UNIT=BACKEND"),
             (["--whole-program", "--unit-backend", "main=arm64"], "--whole-program compiles one unit"),

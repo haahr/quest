@@ -121,13 +121,21 @@ BACKEND_MODES = {
     "jit": [],
     # The run goldens' programs, each one input of the JIT
     "jit-files": ["--jit"],
+    # The run goldens' programs compiled to WebAssembly (docs/wasm-plan.md), run
+    # in wasmtime and in node
+    "wasm": ["--backend", "wasm"],
+    "wasm-node": ["--backend", "wasm", "--wasm-engine", "node"],
 }
 SSAC_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-ssac.txt"
 ARM64_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-arm64.txt"
 WHOLE_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-whole.txt"
 JIT_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-jit.txt"
+WASM_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-wasm.txt"
+# The engine each mode runs its programs in, without which it is skipped
+BACKEND_ENGINES = {"wasm": "wasmtime", "wasm-node": "node"}
 BACKEND_PENDING = {mode: WHOLE_PENDING if mode.endswith("-whole") else SSAC_PENDING if mode.startswith("ssac")
-                   else JIT_PENDING if mode.startswith("jit") else ARM64_PENDING for mode in BACKEND_MODES}
+                   else JIT_PENDING if mode.startswith("jit") else WASM_PENDING if mode.startswith("wasm")
+                   else ARM64_PENDING for mode in BACKEND_MODES}
 # The phases that compile a program, which a backend's mode runs; the jit mode
 # runs the REPL's transcripts, but those marked @skip-phase: jit, which show a
 # difference the JIT is allowed (docs/jit.md section 4)
@@ -139,7 +147,8 @@ SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 # ABI corpus (tests/abi/corpus-self-hosted), and that lib/'s modules compile;
 # and of the errors its builds report, against the bootstrap's; that its
 # parallel builds (-j) are its serial ones; that its compile command does
-# what the bootstrap's does; that lldb reads the arm64 backend's line tables;
+# what the bootstrap's does; that the wasm backend's programs run in wasmtime
+# and node as natively; that lldb reads the arm64 backend's line tables;
 # that its kernel mode serves a Jupyter kernel's requests; and that the kernel
 # serves a notebook's
 UNIT_CHECKS = (
@@ -149,6 +158,7 @@ UNIT_CHECKS = (
     ("self-hosted/parallel_build", ROOT_DIR / "tests" / "self-hosted" / "parallel_build.py", ()),
     ("self-hosted/compile_command", ROOT_DIR / "tests" / "self-hosted" / "compile_command.py", ()),
     ("self-hosted/backends", ROOT_DIR / "tests" / "self-hosted" / "backends.py", ()),
+    ("self-hosted/wasm_programs", ROOT_DIR / "tests" / "self-hosted" / "wasm_programs.py", ()),
     ("self-hosted/line_tables", ROOT_DIR / "tests" / "self-hosted" / "line_tables.py", ()),
     ("self-hosted/fingerprints", ROOT_DIR / "tests" / "self-hosted" / "fingerprints.py", ()),
     ("self-hosted/encoder", ROOT_DIR / "tests" / "self-hosted" / "encoder.py", ()),
@@ -621,7 +631,8 @@ def main() -> int:
         default="c",
         help="With --self-hosted, compile the compiled tests' units with this backend (docs/arm64.md §3.12): "
         "ssac compiles every unit through the SSA's C printer, ssac-program the program's alone, and ssac-modules "
-        "the modules' alone. Each runs only the phases that compile, with its own pending list too. Several, "
+        "the modules' alone; wasm and wasm-node compile the program to WebAssembly and run it in wasmtime or "
+        "node. Each runs only the phases that compile, with its own pending list too. Several, "
         "separated by commas, run one after another with one driver.",
     )
     arg_parser.add_argument(
@@ -681,6 +692,15 @@ def main() -> int:
     for backend in backends:
         if backend != "c" and backend not in BACKEND_MODES:
             arg_parser.error(f"--backend: {backend!r} is not one of c, {', '.join(BACKEND_MODES)}")
+    # A wasm mode runs its programs in an engine, which may not be installed:
+    # then the mode is skipped, not failed
+    missing = [b for b in backends if b in BACKEND_ENGINES and shutil.which(BACKEND_ENGINES[b]) is None]
+    for backend in missing:
+        print(f"=== Backend: {backend} === skipped: {BACKEND_ENGINES[backend]} is not installed")
+    backends = [b for b in backends if b not in missing]
+    if not backends:
+        return 0
+    args.backend = ",".join(backends)
     try:
         if len(backends) == 1:
             return run_all_tests(args, available_phases, build_dir, [], jobs=jobs)

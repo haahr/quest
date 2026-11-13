@@ -36,6 +36,7 @@ export
         jobs: Int
         wholeProgram: Bool
         backends: choice.T
+        wasmEngine: String
         expectedExit: Int
         dumpAfter: Array(String)
         extraObjects: Array(String)
@@ -63,9 +64,9 @@ export
         "ssa_accumulate" "ssa_tailCalls" "ssa_tailJumps" "ssa_trampolines" "ssa"
     end
 
-    (* The phases of the backends: the program's code (C, or arm64's assembly),
-     * and its run *)
-    let cPhases = array of "codegen_c" "codegen_arm64" "run_c_compiled" end
+    (* The phases of the backends: the program's code (C, arm64's assembly, or
+     * a WebAssembly module's text), and its run *)
+    let cPhases = array of "codegen_c" "codegen_arm64" "codegen_wasm" "run_c_compiled" end
 
     (* Every phase --stop-after and --dump-after name: the front end's, the
      * IR's dumps and runs, the interpreter's, the backends', and the SSA's *)
@@ -121,8 +122,9 @@ export
         "  --show-offsets       show source offsets in parse and desugar's output"
         "  --show-values        show tokens' values in tokenize's output"
         "  --expected-exit N    the status a compiled program must exit with"
-        "  --backend B          compile every unit with B: arm64 (the default), c, or ssac"
+        "  --backend B          compile every unit with B: arm64 (the default), c, ssac, or wasm"
         "  --unit-backend U=B   compile unit U (main, the program's) with B"
+        "  --wasm-engine E      run a wasm program in E: wasmtime (the default) or node"
         "  --whole-program      compile the program and its modules as one unit"
         "  -o FILE              write the binary to FILE"
         "  -c                   compile without linking"
@@ -147,6 +149,7 @@ export
         "  interpret: run the program (not with compile)"
         "  codegen_c: the program's code (C, unless --backend arm64 gives assembly)"
         "  codegen_arm64: the program's arm64 assembly"
+        "  codegen_wasm: the program's WebAssembly module, as text"
         "  run_c_compiled: run the compiled program (not with compile)"
         ""
     end)
@@ -171,6 +174,7 @@ export
             let var wholeProgram = false
             let var backend = "arm64"
             let var backendGiven = false
+            let var wasmEngine = "wasmtime"
             let unitBackends = vector.new(:choice.Override)
             let var expectedExit = 0
             let dumpAfter = vector.new(:String)
@@ -244,16 +248,24 @@ export
                 elsif stringOp.equal(arg "--backend") andif valued then
                     (* The backend every unit is compiled by (codegen/choice) *)
                     if not(choice.isBackend(system.args[i + 1])) then
-                        usage("--backend takes c, ssac, or arm64, not '" <> system.args[i + 1] <> "'")
+                        usage("--backend takes c, ssac, arm64, or wasm, not '" <> system.args[i + 1] <> "'")
                     end
                     backend := system.args[i + 1]
                     backendGiven := true
                     i := i + 2
+                elsif stringOp.equal(arg "--wasm-engine") andif valued then
+                    (* The engine a program compiled by the wasm backend
+                     * runs in (docs/wasm-plan.md section 1, decision 13) *)
+                    if not(strings.isOneOf(system.args[i + 1] array of "wasmtime" "node" end)) then
+                        usage("--wasm-engine takes wasmtime or node, not '" <> system.args[i + 1] <> "'")
+                    end
+                    wasmEngine := system.args[i + 1]
+                    i := i + 2
                 elsif stringOp.equal(arg "--unit-backend") andif valued then
                     let o = choice.parseOverride(system.args[i + 1])
                     if maybe.isNone(:choice.Override o) then
-                        usage("--unit-backend takes UNIT=BACKEND, with BACKEND c, ssac, or arm64, not '" <> system.args[i + 1]
-                            <> "'")
+                        usage("--unit-backend takes UNIT=BACKEND, with BACKEND c, ssac, arm64, or wasm, not '"
+                            <> system.args[i + 1] <> "'")
                     end
                     vector.append(:choice.Override unitBackends maybe.unwrap(:choice.Override o))
                     i := i + 2
@@ -366,6 +378,11 @@ export
                 andif not(backendGiven) then
                 backend := "arm64"
             end
+            (* codegen_wasm, with wasm *)
+            if {stringOp.equal(stopAfter "codegen_wasm") orif strings.isOneOf("codegen_wasm" vector.toArray(:String dumpAfter))}
+                andif not(backendGiven) then
+                backend := "wasm"
+            end
             (* and codegen_c, or compile --emit-c, with C, unless a backend is
              * given; compile's own last phase is codegen_c, which means only
              * that it writes the binary, through any backend *)
@@ -405,6 +422,7 @@ export
                 let jobs = jobs
                 let wholeProgram = wholeProgram
                 let backends = tuple let default = backend let overrides = vector.toArray(:choice.Override unitBackends) end
+                let wasmEngine = wasmEngine
                 let expectedExit = expectedExit
                 let dumpAfter = vector.toArray(:String dumpAfter)
                 let extraObjects = vector.toArray(:String extraObjects)

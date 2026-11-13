@@ -91,6 +91,8 @@ import
     questlang/interpreter/irInterp : questlang/interpreter/IrInterp
     cBackend = questlang/codegen/backend : questlang/codegen/Backend
     questlang/codegen/choice : questlang/codegen/Choice
+    wasmRuntime = questlang/wasm/runtime : questlang/wasm/Runtime
+    questlang/wasm/encode : questlang/wasm/Encode
     questlang/driver/repl : questlang/driver/Repl
     questlang/driver/kernel : questlang/driver/Kernel
     commandLine = questlang/driver/options : questlang/driver/Options
@@ -192,6 +194,10 @@ if {stringOp.equal(options.stopAfter "codegen_arm64") orif dumps("codegen_arm64"
     andif not(stringOp.equal(programBackend "arm64")) then
     usage("codegen_arm64 is the arm64 backend's phase, but the program is compiled by " <> programBackend)
 end;
+if {stringOp.equal(options.stopAfter "codegen_wasm") orif dumps("codegen_wasm")}
+    andif not(choice.isWasm(programBackend)) then
+    usage("codegen_wasm is the wasm backend's phase, but the program is compiled by " <> programBackend)
+end;
 
 let dumpsSsa: Bool =
     begin
@@ -240,6 +246,8 @@ let pipeline: Array(String) =
             vector.append(:String ps "codegen_c")
             (* arm64's code is its assembly, which codegen_c prints too *)
             if stringOp.equal(programBackend "arm64") then vector.append(:String ps "codegen_arm64") end
+            (* and wasm's its module's text *)
+            if choice.isWasm(programBackend) then vector.append(:String ps "codegen_wasm") end
             if not(compileMode) andif maybe.isNone(:String options.output) then
                 vector.append(:String ps "run_c_compiled")
             end
@@ -469,9 +477,35 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
         if maybe.isSome(:Tuple c: String unit: nodes.Unit end translated) then
             let t = maybe.unwrap(:Tuple c: String unit: nodes.Unit end translated)
             if shows("codegen_c") orif shows("codegen_arm64") then dump(t.c) end
+            if shows("codegen_wasm") then dump(cBackend.wasmText(t.unit)) end
             let running = reaches("run_c_compiled")
             let writing = {compileMode orif maybe.isSome(:String options.output)} andif not(options.stopGiven)
                 andif not(options.emitC)
+            (* A run's result: its stderr made a diagnostic if it did not exit
+             * as expected, and its stdout run_c_compiled's dump, as the
+             * bootstrap has it, printed when that phase is stopped after (as
+             * linking objects alone does) or dumped *)
+            let finishRun = fun(r: Tuple code: Int stdout: String stderr: String end): Ok
+                begin
+                    if not(r.code is options.expectedExit) then
+                        if stringOp.length(r.stderr) > 0 then
+                            diagbag.add(bag binaryErrors.binaryErrorDiagnostic(r.stderr sm))
+                        else
+                            diagbag.add(bag diagnostics.error("Binary exited with code " <> conv.int(r.code)
+                                location.span("" ~1 ~1)))
+                        end
+                    end
+                    let var shown = r.stdout
+                    if {stringOp.length(shown) > 0}
+                        andif {stringOp.getChar(shown {stringOp.length(shown) - 1}) is '\n'} then
+                        shown := stringOp.getSub(shown 0 {stringOp.length(shown) - 1})
+                    end
+                    flushDumps()
+                    if {stringOp.length(shown) > 0} andif {stringOp.equal(options.stopAfter "run_c_compiled")
+                        orif dumps("run_c_compiled")} then
+                        print(shown)
+                    end
+                end
             if compileMode andif options.emitC andif not(options.stopGiven) then
                 if maybe.isSome(:String compileOutput) then
                     let target = maybe.unwrap(:String compileOutput)
@@ -485,6 +519,55 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                 else
                     flushDumps()
                     writer.putString(writer.output t.c)
+                end
+            elsif choice.isWasm(programBackend) andif {running orif writing} then
+                (* The program's module and the runtime's (docs/wasm-plan.md
+                 * step 3): until step 9 the program's is its only unit,
+                 * and the library's members it uses are compiled into it *)
+                let save = fun(path: String contents: String): Ok
+                    begin
+                        let w = writer.file(path)
+                        writer.putString(w contents)
+                        writer.close(w)
+                    end
+                let runtimeBytes = encode.encode(wasmRuntime.runtimeModule())
+                try
+                    if writing then
+                        let target = files.absolute(maybe.unwrap(:String compileOutput))
+                        save(target t.c)
+                        save(target <> ".runtime.wasm" runtimeBytes)
+                    else
+                        let base = compilerRunner.temporaryBinary()
+                        let program = base <> ".wasm"
+                        let runtimePath = base <> ".runtime.wasm"
+                        save(program t.c)
+                        save(runtimePath runtimeBytes)
+                        let command = vector.new(:String)
+                        if stringOp.equal(options.wasmEngine "node") then
+                            vector.append(:String command "node")
+                            vector.append(:String command files.join(paths.projectDir() "runtime/wasm/run.mjs"))
+                            vector.append(:String command runtimePath)
+                        else
+                            vector.append(:String command "wasmtime")
+                            vector.append(:String command "run")
+                            vector.append(:String command "-W")
+                            vector.append(:String command "gc=y,function-references=y,tail-call=y,exceptions=y")
+                            vector.append(:String command "-C")
+                            vector.append(:String command "collector=copying")
+                            vector.append(:String command "--preload")
+                            vector.append(:String command wasmRuntime.name <> "=" <> runtimePath)
+                        end
+                        vector.append(:String command program)
+                        for k = 0 upto extent options.programArgs - 1 do
+                            vector.append(:String command options.programArgs[k])
+                        end
+                        let r = system.run(vector.toArray(:String command))
+                        if system.fileExists(base) then system.removeFile(base) end
+                        if system.fileExists(program) then system.removeFile(program) end
+                        if system.fileExists(runtimePath) then system.removeFile(runtimePath) end
+                        finishRun(r)
+                    end
+                when writer.error then failWith("error writing the program's WebAssembly modules")
                 end
             elsif running orif writing then
                 (* A whole program's modules are in its unit, but for those it
@@ -516,28 +599,7 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                             cBackend.cFlags(programBackend) choice.isAssembly(programBackend))
                         let r = compilerRunner.runBinary(binary options.programArgs)
                         if system.fileExists(binary) then system.removeFile(binary) end
-                        if not(r.code is options.expectedExit) then
-                            if stringOp.length(r.stderr) > 0 then
-                                diagbag.add(bag binaryErrors.binaryErrorDiagnostic(r.stderr sm))
-                            else
-                                diagbag.add(bag diagnostics.error("Binary exited with code " <> conv.int(r.code)
-                                    location.span("" ~1 ~1)))
-                            end
-                        end
-                        let var shown = r.stdout
-                        if {stringOp.length(shown) > 0}
-                            andif {stringOp.getChar(shown {stringOp.length(shown) - 1}) is '\n'} then
-                            shown := stringOp.getSub(shown 0 {stringOp.length(shown) - 1})
-                        end
-                        (* Its output is run_c_compiled's dump, as the
-                         * bootstrap has it, printed when that phase is
-                         * stopped after (as linking objects alone does) or
-                         * dumped *)
-                        flushDumps()
-                        if {stringOp.length(shown) > 0} andif {stringOp.equal(options.stopAfter "run_c_compiled")
-                            orif dumps("run_c_compiled")} then
-                            print(shown)
-                        end
+                        finishRun(r)
                     end
                 when diagnostics.compilerError with err then
                     (* Such as a type error in an imported module's body, found
@@ -836,8 +898,10 @@ let buildProgram(): Ok =
 (* A worker of a parallel build compiles one module (build/workers). A
  * program goes to the build engine when it is to be built into a binary
  * (compile, or -o) and nothing asks for another path: no whole program, no
- * phase or dump, no --echo, no compile --emit-c or --print-result, and a file
- * rather than -e or standard input; anything else is run. A unit file is
+ * phase or dump, no --echo, no compile --emit-c or --print-result, a file
+ * rather than -e or standard input, and a backend other than wasm, whose
+ * program is its one unit until step 9 of docs/wasm-plan.md; anything else is
+ * run. A unit file is
  * compiled alone unless a phase or -e asks for it to be run *)
 if workers.isUnitMode(system.args) then
     workers.unitMain(system.args)
@@ -846,7 +910,8 @@ else
         when programUnit then
             if {compileMode orif maybe.isSome(:String options.output)} andif not(options.wholeProgram)
                 andif not(options.stopGiven) andif {extent options.dumpAfter is 0} andif not(options.echo)
-                andif not(compileMode andif {options.emitC orif options.printResult}) andif options.fromFile then
+                andif not(compileMode andif {options.emitC orif options.printResult}) andif options.fromFile
+                andif not(choice.isWasm(programBackend)) then
                 buildProgram()
             else
                 run()

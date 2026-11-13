@@ -22,7 +22,7 @@ the four disagree, this plan holds.
 
 §1 lists the decisions and whose they are. §2 to §6 are the design. §7 is what is given up. §8 has the steps, and
 §9 the results of step 0's probes (2026-11-13), on which the owner confirmed decisions 1 and 2, and §10 step 1's
-census of what the compiler uses. Steps 0, 1, and 2 are done, and step 8's native half; step 3 is next.
+census of what the compiler uses. Steps 0 to 3 are done, and step 8's native half; step 4 is next.
 
 ---
 
@@ -764,6 +764,24 @@ only when the backend's files differ, until its time is known.
    *Done when* the run goldens that need no more pass in both engines, a test of each row of §2.10 passes, loops
    whose tail calls reach their return through join points (§3.3) run a million times around in a worker's stack,
    and the native backends' goldens are unchanged.
+   *Done 2026-11-13, but for three rows of §2.10:*
+   - **Code:** `questlang/wasm/codegen` compiles a program's unit to a module that imports `quest.runtime` and
+     exports `_start`. The runtime is `questlang/wasm/runtime`, built from the model until step 6 writes it in Quest.
+   - **Running:** `--backend wasm` runs the program in wasmtime, or in node with `--wasm-engine node`
+     (`runtime/wasm/run.mjs`), and `--stop-after codegen_wasm` prints its text. Until step 9 the program is its
+     only unit, and the library's members it uses go through a table, not the engine's build.
+   - **References:** every reference is an `eqref` for now, cast where it is used. The precise locals of §3.2 come
+     later.
+   - **Run goldens:** the modes `wasm` and `wasm-node` pass the same 15 in both engines.
+     `tests/self-hosted/pending-wasm.txt` lists the other 282, each under the step that adds what it needs; no
+     failure is a wrong result.
+   - **Its own tests:** `self-hosted/wasm_programs` runs tail recursions, self and mutual, from one to three million
+     deep, and division's row of §2.10, in wasmtime and in node's default stack, against the arm64 backend's output.
+     Its `.wat` files are the backend's first text goldens.
+   - **Tail position through join points:** the backend finds it, but in these programs no such join is left. The
+     simplifier turns a jump to a join point that only returns into a return.
+   - **The other rows of §2.10** wait for their types: Real to Int for step 8's connection, an index and a size to
+     allocate for step 4's arrays.
 4. **Aggregates:** tuples and options (§2.3), arrays (§2.4), strings, and records (§2.5) as far as the compiler
    has them, which is a module's record and one record type in the library (§10.1), with boxing at slot operations
    (§4.1), case binders that share the payload, and the options' value rules. A read of a type that may be proxied

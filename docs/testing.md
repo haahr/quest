@@ -278,7 +278,11 @@ the whole ones, all empty. The self-hosted driver's REPL and `-e` run on the JIT
 `jit-files` runs the run goldens' programs with `--jit` (the `interpret` phase), skipping those marked
 `@skip-phase: jit` or `@skip-phase: run_c_compiled`, and `-e`'s transcript on the JIT; the whole modes skip the tests
 marked `@skip-phase: whole` (§2.4);
-`tests/self-hosted/pending-jit.txt` lists the differences that remain. The
+`tests/self-hosted/pending-jit.txt` lists the differences that remain. `wasm` and `wasm-node` compile each
+program with the wasm backend ([wasm-plan.md](wasm-plan.md)) and run its module and the runtime's in wasmtime and in
+node (`--wasm-engine node`, through `runtime/wasm/run.mjs`); `tests/self-hosted/pending-wasm.txt` lists what they do not
+yet pass, each test under the step of the plan that adds what it needs. Each is skipped where its engine is not
+installed. The
 questlang tests `ssac_print` and `arm64_assemble` print a unit of the SSA built by hand as C and as assembly, whose
 goldens `tests/python/test_ssac.py` compiles and `tests/python/test_arm64.py` assembles. `wasm_encode` prints a corpus
 of WebAssembly modules built by hand (`questlang/wasm`) as text, each followed by its encoder's bytes in comments;
@@ -296,7 +300,10 @@ which takes minutes.
 `run_c_compiled` compiles and runs every run program and run-time error test with the self-hosted driver, and runs the
 checks of its unit files, builds, and ABI corpus (`self-hosted/abi_corpus`, `self-hosted/unit_artifacts`,
 `self-hosted/build_errors`, `self-hosted/parallel_build`, `self-hosted/compile_command`, `self-hosted/backends`,
-`self-hosted/line_tables`). The generated C has no goldens: `tools/c-diff` shows how a
+`self-hosted/wasm_programs`, `self-hosted/line_tables`). `self-hosted/wasm_programs` runs the programs in
+`tests/self-hosted/wasm` with the wasm backend in wasmtime and node, which must do what the arm64 backend's builds do,
+and compares each module's text (`--stop-after codegen_wasm`) with its `.wat` golden (`--update` rewrites them). The
+generated C has no goldens: `tools/c-diff` shows how a
 change alters it (§2.9). `run_c_compiled` builds into a directory of its own under each worker's (`self-hosted-units`), so that they don't reuse the bootstrap's fresh
 artifacts. The self-hosted driver builds the questlang tests once, one after another, into a shared directory
 (`self-hosted-questlang-tests`).

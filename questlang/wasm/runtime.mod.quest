@@ -1,0 +1,403 @@
+(* Quest Self-Hosted Compiler: The WebAssembly Runtime Implementation *)
+
+module runtime : Runtime
+import
+    questlang/wasm/model : questlang/wasm/Model
+    questlang/wasm/ops : questlang/wasm/Ops
+    rt = questlang/wasm/runtimeTypes : questlang/wasm/RuntimeTypes
+    collections/vector : collections/Vector
+    stringOp = string : StringOp
+export
+    Def Export = Tuple field: String params: Array(model.ValType) results: Array(model.ValType) end
+    Let Inst = model.Inst
+
+    let name = "quest.runtime"
+    let tagField = "error"
+
+    let none = array of :model.ValType end
+    let entry(field: String params: Array(model.ValType) results: Array(model.ValType)): Export =
+        tuple let field = field let params = params let results = results end
+    let exports = array of
+        entry("putString" array of model.eqref model.eqref end array of model.eqref end)
+        entry("putChar" array of model.eqref model.i32 end array of model.eqref end)
+        entry("concat" array of model.eqref model.eqref end array of model.eqref end)
+        entry("convInt" array of model.i64 end array of model.eqref end)
+        entry("convBool" array of model.i32 end array of model.eqref end)
+        entry("convChar" array of model.i32 end array of model.eqref end)
+        entry("fail" array of model.eqref model.eqref end none)
+        entry("uncaught" array of model.eqref end none)
+        entry("decimal" array of model.i64 end array of model.eqref end)
+        entry("hex" array of model.i64 end array of model.eqref end)
+        entry("escaped" array of model.eqref model.i32 end array of model.eqref end)
+    end
+
+    (* ======================================================================
+     * Building
+     * ====================================================================== *)
+
+    let noArgs = array of :Int end
+    let i(o: model.Op): Inst = model.op(o noArgs)
+    let i1(o: model.Op a: Int): Inst = model.op(o array of a end)
+    let i2(o: model.Op a: Int b: Int): Inst = model.op(o array of a b end)
+    let c32(n: Int): Inst = model.i32Const(n)
+    let empty = option blockEmpty of model.BlockType end
+    let result(t: model.ValType): model.BlockType = option blockValue of model.BlockType with let type = t end
+    let castTo(t: Int): Inst =
+        option instRefCast of Inst with
+            let type = tuple
+                let nullable = false let heap = option heapIndex of model.HeapType with let index = t end
+            end
+        end
+    let castI31: Inst =
+        option instRefCast of Inst with
+            let type = tuple let nullable = false let heap = option heapI31 of model.HeapType end end
+        end
+    let local(name: String t: model.ValType): model.Local = tuple let name = name let type = t end
+
+    (* The function index of each import and function, in the order they are
+     * added below *)
+    let fdWrite = 0
+    let procExit = 1
+    let putString = 2
+    let putChar = 3
+    let concat = 4
+    let convInt = 5
+    let convBool = 6
+    let convChar = 7
+    let fail = 8
+    let uncaught = 9
+    let decimal = 10
+    let hex = 11
+    let escaped = 12
+    let ensure = 13
+    let digits = 14
+    let escapeChar = 15
+    let hexDigit = 16
+    let putByte = 17
+
+    (* The runtime's own text, in its one passive data segment: each string's
+     * offset and length *)
+    let text = "truefalseException: \n  at \n"
+    Def Piece = Tuple offset: Int length: Int end
+    let piece(offset: Int length: Int): Piece = tuple let offset = offset let length = length end
+    let trueText = piece(0 4)
+    let falseText = piece(4 5)
+    let exceptionText = piece(9 11)
+    let atText = piece(20 6)
+    let newlineText = piece(26 1)
+
+    let runtimeModule(): model.Module =
+        begin
+            let m = model.newModule("quest.runtime")
+            vector.append(:model.RecGroup m.types rt.group)
+            let tString = rt.index("string")
+            let tBytes = rt.index("bytes")
+            let sLength = rt.field("string" "length")
+            let sBytes = rt.field("string" "bytes")
+            let nullString = model.refNull(tString)
+            let nullBytes = model.refNull(tBytes)
+            let funcType(params: Array(model.ValType) results: Array(model.ValType)): Int =
+                begin
+                    let n = vector.length(:model.RecGroup m.types)
+                    let base = {extent rt.group} + {n - 1}
+                    vector.append(:model.RecGroup m.types array of
+                        tuple let name = "" let final = true let supers = array of :Int end
+                            let composite = option compFunc of model.Composite with
+                                let params = params let results = results end
+                        end
+                    end)
+                    base
+                end
+            (* A new string of the runtime's text, as its own bytes *)
+            let pieceString(p: Piece): Array(Inst) =
+                array of
+                    c32(0) c32(p.length) c32(p.offset) c32(p.length) i2(ops.arrayNewData tBytes 0)
+                    i1(ops.structNew tString)
+                end
+            let add(name: String t: Int params: Array(String) locals: Array(model.Local) body: Array(Inst)): Ok =
+                vector.append(:model.Function m.functions tuple
+                    let name = name let type = t let params = params
+                    let locals = vector.fromArray(:model.Local locals) let body = vector.fromArray(:Inst body)
+                end)
+            let cat(parts: Array(Array(Inst))): Array(Inst) =
+                begin
+                    let all = vector.new(:Inst)
+                    for k = 0 upto extent parts - 1 do
+                        for j = 0 upto extent parts[k] - 1 do vector.append(:Inst all parts[k][j]) end
+                    end
+                    vector.toArray(:Inst all)
+                end
+
+            let wasi = "wasi_snapshot_preview1"
+            vector.append(:model.Import m.imports tuple
+                let moduleName = wasi let field = "fd_write" let name = "fdWrite"
+                let kind = option importFunc of model.ImportKind with
+                    let type = funcType(array of model.i32 model.i32 model.i32 model.i32 end array of model.i32 end)
+                end
+            end)
+            vector.append(:model.Import m.imports tuple
+                let moduleName = wasi let field = "proc_exit" let name = "procExit"
+                let kind = option importFunc of model.ImportKind with
+                    let type = funcType(array of model.i32 end none)
+                end
+            end)
+            vector.append(:model.Memory m.memories tuple let name = "memory" let min = 1 let max = ~1 end)
+            vector.append(:model.Tag m.tags
+                tuple let name = "error" let type = funcType(array of model.eqref end none) end)
+            vector.append(:model.Data m.data tuple let name = "text" let bytes = text let offset = ~1 end)
+            let typeOf = array of(extent exports 0)
+            for k = 0 upto extent exports - 1 do typeOf[k] := funcType(exports[k].params exports[k].results) end
+
+            (* Bytes cross at 16 and up; the iovec is at 0, the count written
+             * at 8 *)
+            let write(fd: Array(Inst)): Array(Inst) = cat(array of
+                array of c32(0) c32(16) i1(ops.i32Store 0) end
+                fd
+                array of c32(0) c32(1) c32(8) i1(ops.call fdWrite) i(ops.drop) end
+            end)
+            add("putString" typeOf[0] array of "w" "s" end
+                array of local("str" nullString) local("n" model.i32) local("bytes" nullBytes) local("i" model.i32) end
+                cat(array of array of
+                    i1(ops.localGet 1) castTo(tString) i1(ops.localTee 2) i2(ops.structGet tString sLength)
+                    i1(ops.localSet 3)
+                    i1(ops.localGet 2) i2(ops.structGet tString sBytes) i1(ops.localSet 4)
+                    i1(ops.localGet 3) c32(16) i(ops.i32Add) i1(ops.call ensure)
+                    c32(0) i1(ops.localSet 5)
+                    model.blockInst(empty "done") model.loopInst(empty "copy")
+                    i1(ops.localGet 5) i1(ops.localGet 3) i(ops.i32GeU) i1(ops.brIf 1)
+                    i1(ops.localGet 5) c32(16) i(ops.i32Add)
+                    i1(ops.localGet 4) i1(ops.localGet 5) i1(ops.arrayGetU tBytes) i1(ops.i32Store8 0)
+                    i1(ops.localGet 5) c32(1) i(ops.i32Add) i1(ops.localSet 5)
+                    i1(ops.br 0)
+                    model.endInst model.endInst
+                    c32(4) i1(ops.localGet 3) i1(ops.i32Store 0)
+                end
+                write(array of i1(ops.localGet 0) castI31 i(ops.i31GetS) end)
+                array of c32(0) i(ops.refI31) end
+                end))
+            add("putChar" typeOf[1] array of "w" "c" end array of :model.Local end cat(array of
+                array of c32(16) i1(ops.localGet 1) i1(ops.i32Store8 0) c32(4) c32(1) i1(ops.i32Store 0) end
+                write(array of i1(ops.localGet 0) castI31 i(ops.i31GetS) end)
+                array of c32(0) i(ops.refI31) end
+            end))
+            add("concat" typeOf[2] array of "a" "b" end
+                array of local("x" nullString) local("y" nullString) local("la" model.i32) local("lb" model.i32)
+                    local("out" nullBytes) end
+                array of
+                    i1(ops.localGet 0) castTo(tString) i1(ops.localTee 2) i2(ops.structGet tString sLength)
+                    i1(ops.localSet 4)
+                    i1(ops.localGet 1) castTo(tString) i1(ops.localTee 3) i2(ops.structGet tString sLength)
+                    i1(ops.localSet 5)
+                    i1(ops.localGet 4) i1(ops.localGet 5) i(ops.i32Add) i1(ops.arrayNewDefault tBytes)
+                    i1(ops.localSet 6)
+                    i1(ops.localGet 6) c32(0) i1(ops.localGet 2) i2(ops.structGet tString sBytes) c32(0)
+                    i1(ops.localGet 4)
+                    i2(ops.arrayCopy tBytes tBytes)
+                    i1(ops.localGet 6) i1(ops.localGet 4) i1(ops.localGet 3) i2(ops.structGet tString sBytes) c32(0)
+                    i1(ops.localGet 5) i2(ops.arrayCopy tBytes tBytes)
+                    c32(0) i1(ops.localGet 4) i1(ops.localGet 5) i(ops.i32Add) i1(ops.localGet 6) i(ops.refAsNonNull)
+                    i1(ops.structNew tString)
+                end)
+            add("convInt" typeOf[3] array of "n" end array of :model.Local end array of
+                i1(ops.localGet 0) c32(126) i1(ops.call digits)
+            end)
+            add("convBool" typeOf[4] array of "b" end array of :model.Local end cat(array of
+                array of i1(ops.localGet 0) model.ifInst(result(model.eqref) "") end
+                pieceString(trueText)
+                array of model.elseInst end
+                pieceString(falseText)
+                array of model.endInst end
+            end))
+            add("convChar" typeOf[5] array of "c" end array of :model.Local end array of
+                c32(0) c32(1) i1(ops.localGet 0) c32(1) i1(ops.arrayNew tBytes) i1(ops.structNew tString)
+            end)
+            add("fail" typeOf[6] array of "name" "site" end array of local("report" model.eqref) end cat(array of
+                pieceString(exceptionText)
+                array of i1(ops.localGet 0) i1(ops.call concat) i1(ops.localSet 2) end
+                array of
+                    i1(ops.localGet 1) castTo(tString) i2(ops.structGet tString sLength) i(ops.i32Eqz) i(ops.i32Eqz)
+                    model.ifInst(empty "")
+                    i1(ops.localGet 2)
+                end
+                pieceString(atText)
+                array of i1(ops.call concat) i1(ops.localGet 1) i1(ops.call concat) i1(ops.localSet 2) model.endInst end
+                array of i1(ops.localGet 2) end
+                pieceString(newlineText)
+                array of i1(ops.call concat) i1(ops.throw 0) end
+            end))
+            add("uncaught" typeOf[7] array of "report" end array of :model.Local end array of
+                c32(2) i(ops.refI31) i1(ops.localGet 0) i1(ops.call putString) i(ops.drop)
+                c32(1) i1(ops.call procExit)
+            end)
+            add("decimal" typeOf[8] array of "n" end array of :model.Local end array of
+                i1(ops.localGet 0) c32(45) i1(ops.call digits)
+            end)
+            (* w in hexadecimal, lower case, as printf's %llx *)
+            add("hex" typeOf[9] array of "w" end
+                array of local("buf" nullBytes) local("p" model.i32) local("m" model.i64) local("out" nullBytes) end
+                array of
+                    c32(16) i1(ops.arrayNewDefault tBytes) i1(ops.localSet 1)
+                    c32(16) i1(ops.localSet 2)
+                    i1(ops.localGet 0) i1(ops.localSet 3)
+                    model.loopInst(empty "digit")
+                    i1(ops.localGet 2) c32(1) i(ops.i32Sub) i1(ops.localSet 2)
+                    i1(ops.localGet 1) i1(ops.localGet 2)
+                    i1(ops.localGet 3) model.i64Const(15) i(ops.i64And) i(ops.i32WrapI64) i1(ops.call hexDigit)
+                    i1(ops.arraySet tBytes)
+                    i1(ops.localGet 3) model.i64Const(4) i(ops.i64ShrU) i1(ops.localTee 3) model.i64Const(0)
+                    i(ops.i64Ne) i1(ops.brIf 0)
+                    model.endInst
+                    c32(16) i1(ops.localGet 2) i(ops.i32Sub) i1(ops.arrayNewDefault tBytes) i1(ops.localSet 4)
+                    i1(ops.localGet 4) c32(0) i1(ops.localGet 1) i1(ops.localGet 2) c32(16) i1(ops.localGet 2)
+                    i(ops.i32Sub) i2(ops.arrayCopy tBytes tBytes)
+                    c32(0) c32(16) i1(ops.localGet 2) i(ops.i32Sub) i1(ops.localGet 4) i(ops.refAsNonNull)
+                    i1(ops.structNew tString)
+                end)
+            (* s's bytes escaped as echo writes them inside quotes quote
+             * (quest_escape_char): the length found first, then the bytes *)
+            let printable = array of
+                i1(ops.localGet 9) c32(32) i(ops.i32GeU) i1(ops.localGet 9) c32(126) i(ops.i32LeU) i(ops.i32And)
+            end
+            let put(b: Array(Inst)): Array(Inst) = cat(array of
+                array of i1(ops.localGet 7) i1(ops.localGet 8) end
+                b
+                array of i1(ops.call putByte) i1(ops.localSet 8) end
+            end)
+            (* Each byte of s in turn as local 9, i from 0 *)
+            let eachByte(each: Array(Inst)): Array(Inst) = cat(array of
+                array of
+                    c32(0) i1(ops.localSet 5)
+                    model.blockInst(empty "") model.loopInst(empty "")
+                    i1(ops.localGet 5) i1(ops.localGet 3) i(ops.i32GeU) i1(ops.brIf 1)
+                    i1(ops.localGet 4) i1(ops.localGet 5) i1(ops.arrayGetU tBytes) i1(ops.localSet 9)
+                end
+                each
+                array of
+                    i1(ops.localGet 5) c32(1) i(ops.i32Add) i1(ops.localSet 5)
+                    i1(ops.br 0) model.endInst model.endInst
+                end
+            end)
+            add("escaped" typeOf[10] array of "s" "quote" end
+                array of local("str" nullString) local("n" model.i32) local("bytes" nullBytes) local("i" model.i32)
+                    local("length" model.i32) local("out" nullBytes) local("j" model.i32) local("c" model.i32)
+                    local("e" model.i32) end
+                cat(array of
+                    array of
+                        i1(ops.localGet 0) castTo(tString) i1(ops.localTee 2) i2(ops.structGet tString sLength)
+                        i1(ops.localSet 3)
+                        i1(ops.localGet 2) i2(ops.structGet tString sBytes) i1(ops.localSet 4)
+                        c32(0) i1(ops.localSet 6)
+                    end
+                    eachByte(cat(array of
+                        array of
+                            i1(ops.localGet 6) i1(ops.localGet 9) i1(ops.localGet 1) i1(ops.call escapeChar)
+                            model.ifInst(result(model.i32) "") c32(2) model.elseInst
+                        end
+                        printable
+                        array of
+                            model.ifInst(result(model.i32) "") c32(1) model.elseInst c32(4) model.endInst
+                            model.endInst i(ops.i32Add) i1(ops.localSet 6)
+                        end
+                    end))
+                    array of
+                        i1(ops.localGet 6) i1(ops.arrayNewDefault tBytes) i1(ops.localSet 7) c32(0) i1(ops.localSet 8)
+                    end
+                    eachByte(cat(array of
+                        array of
+                            i1(ops.localGet 9) i1(ops.localGet 1) i1(ops.call escapeChar) i1(ops.localTee 10)
+                            model.ifInst(empty "")
+                        end
+                        put(array of c32(92) end)
+                        put(array of i1(ops.localGet 10) end)
+                        array of model.elseInst end
+                        printable
+                        array of model.ifInst(empty "") end
+                        put(array of i1(ops.localGet 9) end)
+                        array of model.elseInst end
+                        put(array of c32(92) end)
+                        put(array of c32(120) end)
+                        put(array of i1(ops.localGet 9) c32(4) i(ops.i32ShrU) i1(ops.call hexDigit) end)
+                        put(array of i1(ops.localGet 9) c32(15) i(ops.i32And) i1(ops.call hexDigit) end)
+                        array of model.endInst model.endInst end
+                    end))
+                    array of
+                        c32(0) i1(ops.localGet 6) i1(ops.localGet 7) i(ops.refAsNonNull) i1(ops.structNew tString)
+                    end
+                end))
+            (* The functions only the runtime calls, after those it exports *)
+            (* Grows the memory to hold need bytes *)
+            add("ensure" funcType(array of model.i32 end none) array of "need" end array of :model.Local end array of
+                i1(ops.memorySize 0) c32(16) i(ops.i32Shl) i1(ops.localGet 0) i(ops.i32LtU)
+                model.ifInst(empty "")
+                i1(ops.localGet 0) i1(ops.memorySize 0) c32(16) i(ops.i32Shl) i(ops.i32Sub) c32(65535) i(ops.i32Add)
+                c32(16) i(ops.i32ShrU) i1(ops.memoryGrow 0) i(ops.drop)
+                model.endInst
+            end)
+            (* n in decimal, after sign when negative: ~ as conv.int writes it,
+             * - as echo does *)
+            add("digits" funcType(array of model.i64 model.i32 end array of model.eqref end) array of "n" "sign" end
+                array of local("buf" nullBytes) local("p" model.i32) local("m" model.i64) local("out" nullBytes) end
+                array of
+                    c32(20) i1(ops.arrayNewDefault tBytes) i1(ops.localSet 2)
+                    c32(20) i1(ops.localSet 3)
+                    i1(ops.localGet 0) model.i64Const(0) i(ops.i64LtS)
+                    model.ifInst(result(model.i64) "") model.i64Const(0) i1(ops.localGet 0) i(ops.i64Sub)
+                    model.elseInst i1(ops.localGet 0) model.endInst
+                    i1(ops.localSet 4)
+                    model.loopInst(empty "digit")
+                    i1(ops.localGet 3) c32(1) i(ops.i32Sub) i1(ops.localSet 3)
+                    i1(ops.localGet 2) i1(ops.localGet 3)
+                    i1(ops.localGet 4) model.i64Const(10) i(ops.i64RemU) i(ops.i32WrapI64) c32(48) i(ops.i32Add)
+                    i1(ops.arraySet tBytes)
+                    i1(ops.localGet 4) model.i64Const(10) i(ops.i64DivU) i1(ops.localTee 4) model.i64Const(0)
+                    i(ops.i64Ne) i1(ops.brIf 0)
+                    model.endInst
+                    i1(ops.localGet 0) model.i64Const(0) i(ops.i64LtS)
+                    model.ifInst(empty "")
+                    i1(ops.localGet 3) c32(1) i(ops.i32Sub) i1(ops.localSet 3)
+                    i1(ops.localGet 2) i1(ops.localGet 3) i1(ops.localGet 1) i1(ops.arraySet tBytes)
+                    model.endInst
+                    c32(20) i1(ops.localGet 3) i(ops.i32Sub) i1(ops.arrayNewDefault tBytes) i1(ops.localSet 5)
+                    i1(ops.localGet 5) c32(0) i1(ops.localGet 2) i1(ops.localGet 3) c32(20) i1(ops.localGet 3)
+                    i(ops.i32Sub) i2(ops.arrayCopy tBytes tBytes)
+                    c32(0) c32(20) i1(ops.localGet 3) i(ops.i32Sub) i1(ops.localGet 5) i(ops.refAsNonNull)
+                    i1(ops.structNew tString)
+                end)
+            (* What follows a backslash in c's escape, inside quotes quote
+             * (quest_escape_char), or 0 if c is not escaped so *)
+            add("escapeChar" funcType(array of model.i32 model.i32 end array of model.i32 end) array of "c" "quote" end
+                array of :model.Local end array of
+                    i1(ops.localGet 0) c32(10) i(ops.i32Eq) model.ifInst(result(model.i32) "") c32(110) model.elseInst
+                    i1(ops.localGet 0) c32(9) i(ops.i32Eq) model.ifInst(result(model.i32) "") c32(116) model.elseInst
+                    i1(ops.localGet 0) c32(13) i(ops.i32Eq) model.ifInst(result(model.i32) "") c32(114) model.elseInst
+                    i1(ops.localGet 0) c32(92) i(ops.i32Eq) model.ifInst(result(model.i32) "") c32(92) model.elseInst
+                    i1(ops.localGet 0) i1(ops.localGet 1) i(ops.i32Eq) model.ifInst(result(model.i32) "")
+                    i1(ops.localGet 1) model.elseInst c32(0) model.endInst
+                    model.endInst model.endInst model.endInst model.endInst
+                end)
+            add("hexDigit" funcType(array of model.i32 end array of model.i32 end) array of "d" end
+                array of :model.Local end
+                array of
+                    i1(ops.localGet 0) c32(10) i(ops.i32LtU) model.ifInst(result(model.i32) "")
+                    i1(ops.localGet 0) c32(48) i(ops.i32Add) model.elseInst i1(ops.localGet 0) c32(87) i(ops.i32Add)
+                    model.endInst
+                end)
+            (* Stores c at j in out, giving j + 1 *)
+            add("putByte" funcType(array of nullBytes model.i32 model.i32 end array of model.i32 end)
+                array of "out" "j" "c" end array of :model.Local end array of
+                    i1(ops.localGet 0) i1(ops.localGet 1) i1(ops.localGet 2) i1(ops.arraySet tBytes)
+                    i1(ops.localGet 1) c32(1) i(ops.i32Add)
+                end)
+
+            vector.append(:model.Export m.exports
+                tuple let field = "memory" let kind = option exportMemory of model.ExportKind end let index = 0 end)
+            vector.append(:model.Export m.exports
+                tuple let field = tagField let kind = option exportTag of model.ExportKind end let index = 0 end)
+            for k = 0 upto extent exports - 1 do
+                vector.append(:model.Export m.exports tuple
+                    let field = exports[k].field let kind = option exportFunc of model.ExportKind end let index = 2 + k
+                end)
+            end
+            m
+        end
+end

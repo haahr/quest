@@ -138,8 +138,9 @@ questlang/
 │                            # §3.14)
 │
 ├── jit/                     # The JIT (docs/jit.md): session, loader, debugobject
-├── wasm/                    # WebAssembly for the wasm backend (docs/wasm-plan.md): model (modules as data), ops,
-│                            # encode (the binary format), printer (the text), runtimeTypes (R)
+├── wasm/                    # The wasm backend (docs/wasm-plan.md): model (modules as data), ops, encode (the
+│                            # binary format), printer (the text), runtimeTypes (R); codegen, the described IR as
+│                            # a module, and runtime, the module every unit imports
 │
 ├── config/                  # The ABI version and artifacts' format
 ├── build/                   # The build engine and its log; compilerrunner, the host C compiler and linker;
