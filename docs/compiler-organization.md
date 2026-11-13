@@ -101,7 +101,7 @@ questlang/
 │   └── irinterp             # IR interpreter
 │
 ├── ir/                      # IR lowering and passes (docs/ir.md)
-│   └── nodes, walk, lower, specialize, closure, represent, slots, describe, thunks, verifycore, verify, printer
+│   └── nodes, walk, captures, lower, specialize, closure, represent, slots, describe, thunks, verifycore, verify, printer
 │
 ├── repr/                    # The representation of values, which the IR's passes and every backend share
 │   ├── shapes, written      # Types as the passes see them; the types of a type's components as written

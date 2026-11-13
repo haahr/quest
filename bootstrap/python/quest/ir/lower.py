@@ -19,7 +19,6 @@ The self-hosted counterpart is questlang/ir/lower.
 from __future__ import annotations
 
 from typing import Optional
-
 from quest.diagnostics import MAIN_FRAME, frame_name, init_frame
 from quest.modules.elaboration import build_record_type_from_scope
 from quest.modules.stdlib import STANDARD_LIBRARY_MODULE_NAMES, STANDARD_LIBRARY_MODULES
@@ -31,7 +30,6 @@ from quest.repr.generic_layout import abstract_layouts_differ
 from quest.repr.shapes import shape
 from quest.types.reduce import collect_fun_quantifiers, option_case_names
 from quest.typechecker.typed_ast import (
-    typed_fields,
     TypedApp,
     TypedArray,
     TypedArrayRep,
@@ -112,6 +110,8 @@ from quest.types import (
     QOutType,
     binds_module,
 )
+from quest.ir.captures import captured_mutables
+
 
 def _expected_params(var_t: QType, fun_t: QType, count: int) -> Optional[list[QType]]:
     """The parameter types of a function's variable's type (var_t), as written,
@@ -138,40 +138,6 @@ _BUILTIN_FUNCTIONS = frozenset(INFIX_OPERATORS) | {"is", "isnot", "not", "extent
 # The standard library's array operations, which are lowered to the IR's
 # (array_op)
 _ARRAY_OPS = frozenset({"new", "size", "get", "set"})
-
-
-def _captured_mutables(prog: TypedProgram) -> set[int]:
-    """The symbols of the local var variables that functions nested in their
-    scope use: a let var anywhere but directly at a unit's or a module's top
-    level (where it is global), used inside a function within its scope."""
-    declared: dict[int, int] = {}
-    captured: set[int] = set()
-    seen: set[int] = set()
-
-    def walk(n, depth: int, top: bool) -> None:
-        if isinstance(n, (list, tuple)):
-            for item in n:
-                walk(item, depth, top)
-            return
-        if id(n) in seen:
-            return
-        fields = typed_fields(n)
-        if fields is None:
-            return
-        seen.add(id(n))
-        if isinstance(n, TypedLetValue) and n.symbol.is_var and not top:
-            declared[n.symbol.symbol_id] = depth
-        elif isinstance(n, TypedVar) and declared.get(n.symbol.symbol_id, depth) < depth:
-            captured.add(n.symbol.symbol_id)
-        inner = depth + 1 if isinstance(n, TypedFun) else depth
-        # A unit's phrases, a module's bindings, and a group's members are at
-        # the top level their parent is at
-        inner_top = top and isinstance(n, (TypedProgram, TypedModule, TypedLetValueGroup))
-        for part in fields:
-            walk(part, inner, inner_top)
-
-    walk(prog, 0, True)
-    return captured
 
 
 class LoweringError(Exception):
@@ -248,7 +214,7 @@ class _Lowerer:
         # sees: made before the binding containing them (make_scope_exceptions),
         # and not yet reached where they are written
         self.made: set[int] = set()
-        # The local var variables that closures capture (_captured_mutables),
+        # The local var variables that closures capture (captured_mutables),
         # and the boxes that hold those bound so far: a tuple of one var
         # component, which the frame and the closures share
         self.captured: set[int] = set()
@@ -1014,7 +980,7 @@ class _Lowerer:
                         self.emit(ir.EchoText(f"let {name}:{_display(symbol.type_val)} = <fun>"))
                     return
                 if symbol.is_var and symbol.symbol_id in self.captured:
-                    # Held in a box that closures capture (_captured_mutables)
+                    # Held in a box that closures capture (captured_mutables)
                     init = self.value(value)
                     box_t = QTupleType((QTupleField(name=name, type_val=symbol.type_val, is_var=True),))
                     box = self.let(ir.MakeTuple((init,)), box_t, hint=name)
@@ -1167,7 +1133,7 @@ class _Lowerer:
         return module
 
     def program(self, prog: TypedProgram) -> ir.Unit:
-        self.captured = _captured_mutables(prog)
+        self.captured = captured_mutables(prog)
         main = ir.Body()
         modules: list[ir.Module] = []
         phrases = prog.phrases
