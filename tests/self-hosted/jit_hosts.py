@@ -32,6 +32,9 @@ ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
 from quest.testing import runner  # noqa: E402
+from quest.testing.directives import parse_skipped_phases  # noqa: E402
+from quest.testing.layout import TESTS_REPL_GOLDEN_DIR  # noqa: E402
+from quest.testing.transcripts import discover_repl_tests, repl_transcript  # noqa: E402
 
 
 def session(driver: str, home: Path, cwd: Path, text: str) -> str:
@@ -124,11 +127,11 @@ def check_arm64_host(driver: str, scratch: Path) -> list[str]:
         return [f"the arm64 build of the driver failed:\n{built.stdout}{built.stderr}"]
     pending = runner.self_hosted_pending(runner.JIT_PENDING)
     problems = []
-    for source in runner.discover_repl_tests():
-        if "jit" in runner.parse_skipped_phases(source) or f"repl:repl/{source.stem}" in pending:
+    for source in discover_repl_tests():
+        if "jit" in parse_skipped_phases(source) or f"repl:repl/{source.stem}" in pending:
             continue
-        actual, _ = runner.repl_transcript(source, [str(host), "--jit"], 120)
-        expected = (runner.TESTS_REPL_GOLDEN_DIR / (source.stem + ".out")).read_text(encoding="utf-8")
+        actual, _ = repl_transcript(source, [str(host), "--jit"], 120)
+        expected = (TESTS_REPL_GOLDEN_DIR / (source.stem + ".out")).read_text(encoding="utf-8")
         if actual != expected:
             problems.append(f"repl/{source.stem} through an arm64-built driver:\n{actual}")
     return problems
