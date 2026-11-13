@@ -21,7 +21,7 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 DRIVER = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
 sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
-from quest.codegen.c.compiler_runner import _sdk_has  # noqa: E402
+from quest.build.compiler_runner import _sdk_has  # noqa: E402
 
 # Under load, these tests time out waiting for the terminal's output, so
 # tools/check skips them while the suites run (QUEST_SKIP_PTY_TESTS) and then

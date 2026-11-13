@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 import unittest
 
-from quest.codegen.c.compiler_runner import find_c_compiler, get_runtime_dir
+from quest.build.compiler_runner import find_c_compiler, get_runtime_dir
 from quest.codegen.c.headers import compile_interface_with_header
 from quest.modules.manifest import read_qm
 from quest.modules.module_compiler import compile_module_file

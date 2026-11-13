@@ -11,7 +11,7 @@ from pathlib import Path
 # Ensure bootstrap/python is in sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-from quest.codegen.c.compiler_runner import compile_c_source, run_binary
+from quest.build.compiler_runner import compile_c_source, run_binary
 
 
 class TestRuntimeDescriptors(unittest.TestCase):

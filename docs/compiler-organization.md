@@ -41,7 +41,9 @@ questlang/
 │   ├── location             # Source coordinates (Pos, Span) and source maps (bootstrap syntax/sources)
 │   ├── diagnostics          # Diagnostic messages, error severity
 │   ├── diagbag              # Diagnostic accumulator and reporter
-│   └── keys                 # Integer keys for the type tables (the bootstrap keys them by tuples)
+│   ├── keys                 # Integer keys for the type tables (the bootstrap keys them by tuples)
+│   ├── json                 # JSON text, as the dynamic format and the build's artifacts use it
+│   └── sha256               # SHA-256, for layout tags, type digests, and fingerprints
 │
 ├── syntax/                  # Concrete syntax and parsing
 │   ├── tokens               # TokenKind and Token definitions
@@ -87,7 +89,6 @@ questlang/
 │
 ├── values/                  # Runtime values
 │   ├── model                # Values, and the interpreter's frames
-│   ├── json                 # JSON text, as the dynamic format uses it
 │   └── dynamicjson          # The serialized form of dynamic values
 │
 ├── interpreter/             # Interpreters: tree walking and IR
@@ -101,18 +102,19 @@ questlang/
 ├── ssa/                     # The native backends' SSA (docs/ssa.md): nodes, build, statics, verify, printer
 │
 ├── codegen/                 # Backends: the shared layer and the C backend
-│   ├── syntax, layout, descriptors, sha256   # C spelling, layouts and digests, descriptors' type-level forms
+│   ├── syntax, layout, descriptors   # C spelling, layouts and digests, descriptors' type-level forms
 │   ├── staticdata, runtimeLayout   # Static data described for every backend; the runtime's struct layouts
 │   ├── backend, symbols
 │   ├── choice, ssac         # The backend each unit is compiled by; the SSA's C printer (docs/arm64.md §3.14)
 │   ├── arm64/               # The native backend: codegen (instructions, frames, calls), asm (Darwin's spellings)
-│   └── c/                   # backend, declarations, headers, printer, types, compilerrunner
+│   └── c/                   # backend, declarations, headers, printer, types
 │
 ├── config/                  # The ABI version and artifacts' format
-├── build/                   # The build engine and its log
+├── build/                   # The build engine and its log; compilerrunner, the host C compiler and linker
 │
 └── driver/                  # Compiler driver (bootstrap pipeline and quest/__main__)
     ├── main                 # Main routine: every phase, -e, -i, and the bootstrap's compiling options
+    ├── whole                # A whole program: its modules merged into one unit
     └── repl                 # The REPL: input completeness, rollback, the loop over io/readline
 ```
 
@@ -120,7 +122,7 @@ The self-hosted compiler compiles itself to a fixed point, and it is the primary
 on what programs do, not on how they compile them ([testing.md](testing.md) §2.8). `./quest` runs it, built from the
 tree by a released self-hosted compiler ([release-compiler.md](release-compiler.md)) or by the bootstrap. So
 `questlang/` may use only what the current release compiles. The bootstrap's `config/options` was not ported, because
-the driver and the build engine take their options directly. (`codegen/sha256` is the SHA-256 that the bootstrap takes
+the driver and the build engine take their options directly. (`common/sha256` is the SHA-256 that the bootstrap takes
 from Python's `hashlib`, for layout tags and type digests.)
 
 ---
@@ -374,7 +376,7 @@ Layer 5: typechecker/typedastprint, elaboratetypes, checks, escape, lvalues, met
 Layer 6: modules/abstracttypes, loader, elaboration, stdlib
 Layer 7: typechecker/checker → bindings, application, aggregates, control, exceptions, autovalues → typecheck,
          scoping
-Layer 8: types/canonical, values/json → values/model → dynamicjson → interpreter/primitives, builtins,
+Layer 8: types/canonical → values/model → dynamicjson → interpreter/primitives, builtins,
          formatting → treewalk | ir/* | codegen/*, modules' artifacts, config/*, build/*
 Layer 9: driver/*
 ```
@@ -412,7 +414,7 @@ further:
   (`rec`, `out`, `record`, `inspect`).
 - **Paths** are `util/path`'s, normalized lexically without following symbolic links. The project directory, which
   the bootstrap knows as its own source tree, is `QUEST_HOME`, which the runners set, or else the current directory.
-- **JSON.** `values/json`, private to `questlang/values/`, keeps a number's text, so that a word's integer (up to
+- **JSON.** `common/json` keeps a number's text, so that a word's integer (up to
   2^64 - 1) is read exactly; an integer read as an `Int` must fit one, where Python's are unbounded. A `\u` escape
   above `\u00ff` fails as the text is parsed, since a character is a byte. `dynamic.intern` reads from a native reader,
   which cannot put a character back, so after a value that is not an object, array, or string it reads the delimiter

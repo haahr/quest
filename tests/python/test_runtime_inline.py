@@ -13,7 +13,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "bootstrap" / "python"))
 
-from quest.codegen.c.compiler_runner import (
+from quest.build.compiler_runner import (
     RUNTIME_SOURCES,
     base_c_flags,
     detect_gc_flags,

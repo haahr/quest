@@ -83,6 +83,9 @@ bootstrap's codegen/backend.py and codegen/c/backend.py move the same way (it ha
 - **modules/artifacts/**: interfaceCompiler, moduleCompiler, manifest, fingerprint, the code that writes and reads
   `.qi`, `.qm`, and objects, apart from modules/' loading and resolving; the bootstrap's interface_compiler,
   module_compiler, and manifest likewise.
+- **Lowercase file names**: the units this plan moves get lowercase file names as they move (objectLayout,
+  runtimeLayout, runtimeFunctions in stage 2; valueNumbers, tailCalls, tailJumps here); common/memoryFiles and
+  jit/debugObject, which stay where they are, are renamed in place. Their unit paths are unchanged.
 - **typechecker**: scoping's walk of the typed tree (children, bindingChildren, letValues) moves into typedAst;
   escape's auto-value helpers into autoValues; lvalues and metas fold into application, in both compilers.
 

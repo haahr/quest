@@ -34,7 +34,7 @@ from quest.pipeline import (
     link_dependencies,
 )
 from quest.build.engine import BuildEngine, compile_unit_file
-from quest.codegen.c.compiler_runner import compile_c_source
+from quest.build.compiler_runner import compile_c_source
 from quest.modules.graph import UnitKind, file_unit_kind
 from quest.repl import run_repl
 from quest.values.model import QOk, qvalue_to_str

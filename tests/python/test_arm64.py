@@ -15,7 +15,7 @@ import unittest
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "bootstrap" / "python"))
 
-from quest.codegen.c.compiler_runner import find_c_compiler
+from quest.build.compiler_runner import find_c_compiler
 
 GOLDEN = ROOT / "tests" / "golden" / "run" / "questlang" / "arm64_assemble.out"
 

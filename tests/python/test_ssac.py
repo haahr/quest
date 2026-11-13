@@ -15,7 +15,7 @@ import unittest
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "bootstrap" / "python"))
 
-from quest.codegen.c.compiler_runner import base_c_flags, find_c_compiler
+from quest.build.compiler_runner import base_c_flags, find_c_compiler
 
 GOLDEN = ROOT / "tests" / "golden" / "run" / "questlang" / "ssac_print.out"
 SSAC = ROOT / "questlang" / "codegen" / "ssac.mod.quest"

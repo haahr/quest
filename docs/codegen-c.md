@@ -25,7 +25,7 @@ Typed AST (TypedProgram, or a module file's TypedModule)
            |
            v  (C99 source)
 +-----------------------+
-| c/compiler_runner.py  | <--- Locates clang/gcc, builds the runtime, adds -I runtime/
+| build/compiler_runner | <--- Locates clang/gcc, builds the runtime, adds -I runtime/
 +-----------------------+
            |
            v
@@ -60,7 +60,6 @@ The C backend (`codegen/c/`):
   their `.qi` files, up to date when at least as new as the `.qi` ([build-process.md §5.3](build-process.md)).
 - **`types.py`:** C spellings: the C types of representations, function pointer types, `QVal` wrapping, literals,
   record struct and offset table names, and descriptor expressions (`descriptor_form`).
-- **`compiler_runner.py`:** Discovers host compiler, builds the runtime's objects, compiles C source, and runs binaries.
 
 Only C compilation's drivers import `codegen/c/` (`tests/python/test_dependencies.py`).
 
@@ -592,9 +591,9 @@ are lowered as follows:
 
 ---
 
-## 11. Host Compiler Runner (`c/compiler_runner.py`)
+## 11. Host Compiler Runner (`build/compiler_runner.py`)
 
-The compiler runner manages external C compiler toolchain discovery, the collector's flags, and native executable generation:
+The compiler runner, which lives with the build engine since every backend's objects are compiled and linked through it, manages external C compiler toolchain discovery, the collector's flags, and native executable generation:
 
 ### 11.1. Compiler Discovery
 `find_c_compiler()` searches `PATH` in order:

@@ -3,7 +3,7 @@ compiled with (the runtime's headers, the collector's and the line editor's),
 the runtime's objects, compiled once and cached, and compiling, linking, and
 running a program's C (docs/codegen-c.md §11).
 
-The self-hosted counterpart is questlang/codegen/c/compilerrunner."""
+The self-hosted counterpart is questlang/build/compilerrunner."""
 
 from __future__ import annotations
 
@@ -41,8 +41,8 @@ def traceback_flags(compiler: str) -> tuple[str, ...]:
 
 def get_runtime_dir() -> Path:
     """Returns absolute path to repository runtime/ directory."""
-    # This file is bootstrap/python/quest/codegen/c/compiler_runner.py
-    repo_root = Path(__file__).resolve().parents[5]
+    # This file is bootstrap/python/quest/build/compiler_runner.py
+    repo_root = Path(__file__).resolve().parents[4]
     runtime_dir = repo_root / "runtime"
     if not runtime_dir.exists():
         raise RuntimeError(f"Runtime directory not found at {runtime_dir}")

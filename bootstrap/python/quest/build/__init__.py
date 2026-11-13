@@ -1,6 +1,7 @@
 """Quest Build System package.
 
-Provides whole-program and multi-module build orchestration.
+Provides whole-program and multi-module build orchestration, and the host C
+compiler and linker every backend's objects go through (compiler_runner.py).
 """
 
 from __future__ import annotations

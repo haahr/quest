@@ -40,7 +40,7 @@ compiled by the JIT ([jit.md](jit.md)), with the session's bindings kept from ce
 
 The driver reads requests from descriptor 3 and writes records to descriptor 4 (`questlang/driver/repl`'s
 `runKernel`), until descriptor 3 ends. Each request and record is one JSON object on one line. A string's characters
-are bytes, as Quest's are: each byte above 126 is escaped as `\u00XX` (`questlang/values/json`), so the client sends
+are bytes, as Quest's are: each byte above 126 is escaped as `\u00XX` (`questlang/common/json`), so the client sends
 a cell's UTF-8 bytes and decodes records' strings from theirs. `--kernel` takes neither a file nor `-e` (arguments
 after a `--` are the program's, `system.args`), and `--no-jit` interprets the cells. A driver started without the
 descriptors says so and exits 2.

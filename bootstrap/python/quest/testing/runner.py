@@ -98,7 +98,7 @@ BACKEND_MODES = {
     "arm64": ["--backend", "arm64"],
     "arm64-program": ["--backend", "c", "--unit-backend", "main=arm64"],
     "arm64-modules": ["--backend", "arm64", "--unit-backend", "main=c"],
-    # A whole program, its modules merged into the program's unit (ir/whole,
+    # A whole program, its modules merged into the program's unit (driver/whole,
     # docs/arm64.md section 3.12), through each backend
     "c-whole": ["--whole-program", "--backend", "c"],
     "ssac-whole": ["--whole-program", "--backend", "ssac"],

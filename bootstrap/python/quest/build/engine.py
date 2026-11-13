@@ -25,7 +25,7 @@ from quest.modules.manifest import (
     write_qm,
 )
 from quest.modules.stdlib import BuiltinModuleRegistry
-from quest.codegen.c.compiler_runner import compile_c_to_object, link_objects
+from quest.build.compiler_runner import compile_c_to_object, link_objects
 from quest.codegen.backend import implicit_imports
 from quest.codegen.c.backend import program_to_c
 from quest.types.env import Environment

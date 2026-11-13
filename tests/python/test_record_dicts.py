@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-from quest.codegen.c.compiler_runner import compile_c_source, run_binary
+from quest.build.compiler_runner import compile_c_source, run_binary
 
 # Three record layouts: Big = {a b c}, Mid = {b c}, Other = {x}; all fields Int.
 PRELUDE = r"""

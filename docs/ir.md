@@ -627,7 +627,7 @@ the runtime's helpers inline ([ssa.md](ssa.md) §4); clang inlines within a C un
 
 - **Always on.** No option enables it; tests and bisection leave passes out through `QUEST_SKIP_PASSES`.
 - **Across modules only in whole programs** (`--whole-program`, [build-process.md](build-process.md) §1.2), whose
-  modules are one unit (`ir/whole`). Separate compilation gets no unfoldings: `.qi` files and manifests carry no
+  modules are one unit (`driver/whole`). Separate compilation gets no unfoldings: `.qi` files and manifests carry no
   bodies, so an importer depends on interfaces alone and builds keep their parallelism.
 - **Deterministic:** sizes, counts, and source order, never a hash table's iteration order, so that the self-hosting
   fixed point holds.

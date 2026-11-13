@@ -36,7 +36,7 @@ In whole-program compilation mode:
 - The single C file is compiled and linked directly to produce the native executable.
 - *The self-hosted compiler* lowers each imported module with a source to IR as a module file of its own would be,
   and merges it into the program's unit, each after those it imports, its references made the unit's own
-  (`questlang/ir/whole`); the unit then goes through any backend (`--backend c`, `ssac`, or `arm64`), as one unit, so
+  (`questlang/driver/whole`); the unit then goes through any backend (`--backend c`, `ssac`, or `arm64`), as one unit, so
   `--unit-backend` has none to choose. A module known only through its interface and object (the library's prelinked
   modules) stays imported and is linked as in separate compilation. A raise's site names the file it is in: the
   offsets of each merged file are numbered apart (`nodes.fileOffset`). Specialization reaches across the merged
@@ -944,8 +944,8 @@ Staleness (§5) compares file times, never contents: no source or artifact is ha
 stale. The build hashes the contents of files in these places, each with SHA-256:
 
 1. **The runtime's objects** (both compilers, on every link: `runtime_objects` in
-   `bootstrap/python/quest/codegen/c/compiler_runner.py`, `runtimeObjects` in
-   `questlang/codegen/c/compilerrunner`). The key of the cache directory the objects are kept in
+   `bootstrap/python/quest/build/compiler_runner.py`, `runtimeObjects` in
+   `questlang/build/compilerrunner`). The key of the cache directory the objects are kept in
    (`.build/runtime/KEY/`, or `$QUEST_RUNTIME_CACHE/KEY/`) is the first 24 hex digits of a digest of the C compiler's
    name, its `--version` output, the compile flags, and the name and contents of every `.c` and `.h` file in
    `runtime/` ([codegen-c.md](codegen-c.md) §11.3). Changing any of them compiles the runtime again.
@@ -965,7 +965,7 @@ The tests hash a file too, though no build does: the ABI corpus records a digest
 The C backend's other digests are of text it makes, not of files: the names of generated C types (a type's printed
 form, in `layout.type_digest` and `layout.text_digest`, `questlang/codegen/layout` in the self-hosted compiler), and
 the tags of long shapes. The self-hosted compiler computes these with SHA-256 written in Quest
-(`questlang/codegen/sha256`), which is a measurable part of its time ([tasklist.md](tasklist.md)).
+(`questlang/common/sha256`), which is a measurable part of its time ([tasklist.md](tasklist.md)).
 
 ---
 

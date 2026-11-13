@@ -454,7 +454,7 @@ left. An entry's offset reaches any distance, and the `adr` reaches the table ju
   by another is stale. Interface headers are still written when a C unit needs them; the arm64 backend reads layouts
   from interfaces, not from headers.
 - **Whole programs** (`--whole-program`, [build-process.md](build-process.md) §1.2) go through any backend, as one
-  unit, so they take no `--unit-backend`. `ir/whole` lowers each imported module with a source as a module file is
+  unit, so they take no `--unit-backend`. `driver/whole` lowers each imported module with a source as a module file is
   lowered and merges it into the program's unit, its references to merged modules made the unit's own, while the
   library's modules known only through interfaces and objects stay imported and are linked. A unit says whether it
   is a program's (`Unit.isProgram`). The merged files' offsets are numbered apart, so that a raise names its own file
