@@ -1,7 +1,8 @@
-(* util/path's paths as values (path.T): normalization, the lexical functions
+(* os/path's paths as values (path.T): normalization, the lexical functions
    over them, and equality and hashing as a hashMap's keys. *)
 import
-    util/path : util/Path
+    os/path : os/Path
+    strings = util/path : util/Path
     util/maybe : util/Maybe
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
@@ -27,7 +28,7 @@ show("fromString(\"..\")" at(".."));
 let p = at("/usr/lib/libquest.tar.gz");
 print("name: " <> path.name(p));
 print("suffix: " <> path.suffix(p));
-print("pathStem: " <> path.pathStem(p));
+print("stem: " <> path.stem(p));
 show("parent" path.parent(p));
 show("parent of a" path.parent(at("a")));
 show("parent of /" path.parent(at("/")));
@@ -35,24 +36,24 @@ show("parent of /a" path.parent(at("/a")));
 show("parent of ." path.parent(at(".")));
 print("name of /: [" <> path.name(at("/")) <> "]");
 print("suffix of .bashrc: [" <> path.suffix(at("dir/.bashrc")) <> "]");
-let parts = path.pathParts(p);
+let parts = path.parts(p);
 let var joined = "";
 for i = 0 upto {vector.length(:String parts) - 1} do joined := joined <> "[" <> vector.get(:String parts i) <> "]" end;
-print("pathParts: " <> joined);
-print("pathParts of .: " <> conv.int(vector.length(:String path.pathParts(at(".")))));
+print("parts: " <> joined);
+print("parts of .: " <> conv.int(vector.length(:String path.parts(at(".")))));
 
 (* 3. Changing and joining *)
 show("withSuffix .xz" path.withSuffix(p ".xz"));
 show("withSuffix \"\"" path.withSuffix(at("a/b.txt") ""));
-print(try path.toString(path.withSuffix(at("/") ".txt")) when path.error then "withSuffix of /: path.error" end);
+print(try path.toString(path.withSuffix(at("/") ".txt")) when strings.error then "withSuffix of /: error" end);
 show("child" path.child(at("a") "b/c"));
 show("child absolute" path.child(at("a") "/b"));
-show("joinPaths" path.joinPaths(at("a/b") at("../c")));
-print("pathIsAbsolute: " <> conv.bool(path.pathIsAbsolute(p)) <> " " <> conv.bool(path.pathIsAbsolute(at("a"))));
-show("normalizePath" path.normalizePath(at("a/b/../c")));
-show("pathRelativeTo" path.pathRelativeTo(at("/a/b/c") at("/a")));
-show("pathRelativeTo sibling" path.pathRelativeTo(at("/a/b") at("/a/c")));
-print("resolvePath is absolute: " <> conv.bool(path.pathIsAbsolute(path.resolvePath(at("x/y")))));
+show("join" path.join(at("a/b") at("../c")));
+print("isAbsolute: " <> conv.bool(path.isAbsolute(p)) <> " " <> conv.bool(path.isAbsolute(at("a"))));
+show("normalize" path.normalize(at("a/b/../c")));
+show("relativeTo" path.relativeTo(at("/a/b/c") at("/a")));
+show("relativeTo sibling" path.relativeTo(at("/a/b") at("/a/c")));
+print("resolve is absolute: " <> conv.bool(path.isAbsolute(path.resolve(at("x/y")))));
 
 (* 4. Equality and hashing *)
 print("equal: " <> conv.bool(path.equal(at("a/b/") at("a//b"))) <> " " <> conv.bool(path.equal(at("a/b") at("a/c"))));
