@@ -420,6 +420,8 @@ def run_single_golden_test(
         # The SSA's raise sites name the program by the path it was given,
         # which is absolute, since the test runs in a scratch directory; the
         # golden names it relative to the checkout, so that it holds in any
+        # checkout. The diff below shows this normalized output too, so that
+        # a mismatch shows only what really differs.
         output = output.replace(str(ROOT_DIR) + os.sep, "")
     if update_golden and writes_golden(phase_name, driver_command is not None):
         out_file.write_text(output, encoding=BYTE_ENCODING)
@@ -437,7 +439,7 @@ def run_single_golden_test(
 
     diff = difflib.unified_diff(
         expected_output.splitlines(keepends=True),
-        process.stdout.splitlines(keepends=True),
+        output.splitlines(keepends=True),
         fromfile=f"golden/{golden_base.name}/{rel_source.with_suffix('.out')}",
         tofile=f"actual/{golden_base.name}/{rel_source.with_suffix('.out')}",
     )
