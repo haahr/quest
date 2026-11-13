@@ -7,6 +7,7 @@ between them.
     tools/check --all              every suite, whatever the change
     tools/check --stress           the stress tier alone
     tools/check --no-stress        the suites without the stress tier before them
+    tools/check --light            the checks a move of modules needs, not a push's
 
 The change is what differs from origin/main: the commits since they diverged,
 and what is not yet committed. A change only to the self-hosted compiler, its
@@ -48,6 +49,13 @@ runs still show. Each suite builds into a temporary directory of its own, so
 they do not interfere. Their output is kept in .build/check/SUITE.txt, and each
 suite's summary is printed with when it finished. The exit status is 0 when
 every suite passes.
+
+--light is for the stages of a restructuring (docs/restructuring.md section
+1), whose moves can break a build but not a behavior: the self-hosted fixed
+point through arm64, then the tests that import compiler modules
+(tests/source/questlang) with its stage 2; every module of the bootstrap
+imported; and the unit tests but those that drive a terminal. It is not enough
+for a push, which needs the suites above.
 """
 
 from __future__ import annotations
@@ -191,6 +199,46 @@ def changed_files() -> list[str] | None:
     return sorted({*committed, *untracked})
 
 
+# Imports every module of the bootstrap's package, and compiles its driver
+# script, which nothing imports: a move that left an import behind fails here
+IMPORT_ALL = """
+import importlib, pkgutil, py_compile, sys
+import quest
+failed = []
+for module in pkgutil.walk_packages(quest.__path__, "quest."):
+    try:
+        importlib.import_module(module.name)
+    except Exception as error:
+        failed.append(f"{module.name}: {type(error).__name__}: {error}")
+try:
+    py_compile.compile("bootstrap/python/quest_driver.py", doraise=True)
+except py_compile.PyCompileError as error:
+    failed.append(f"quest_driver.py: {error}")
+print("\\n".join(failed) or "OK: every module imported")
+sys.exit(1 if failed else 0)
+"""
+
+
+def light(seed: str) -> int:
+    """Runs the --light checks at once; 0 if they pass."""
+    python = sys.executable
+    cores = os.cpu_count() or 4
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    unit_environment = {"PYTHONPATH": str(ROOT_DIR / "bootstrap" / "python")}
+    suites = [
+        Suite("light-self-hosting", [python, str(ROOT_DIR / "run_tests.py"), "--self-hosting", "--seed", seed,
+                                     "--stage-backend", "arm64", "-k", "questlang/", "-j", str(max(1, cores // 2))]),
+        Suite("light-imports", [python, "-c", IMPORT_ALL], unit_environment),
+        Suite("light-unit", [python, "-m", "unittest", "discover", "-s", "tests/python"],
+              {**unit_environment, "QUEST_SKIP_PTY_TESTS": "1"}),
+    ]
+    start = time.monotonic()
+    print(f"Running {', '.join(suite.name for suite in suites)} at once (not enough for a push); output in "
+          f"{OUTPUT_DIR.relative_to(ROOT_DIR)}/", flush=True)
+    run_at_once(suites, start)
+    return 1 if report(suites, start) else 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     which = parser.add_mutually_exclusive_group()
@@ -200,11 +248,15 @@ def main() -> int:
     stress = parser.add_mutually_exclusive_group()
     stress.add_argument("--stress", action="store_true", help="the stress tier alone (minutes)")
     stress.add_argument("--no-stress", action="store_true", help="the suites without the stress tier before them")
+    which.add_argument("--light", action="store_true",
+                       help="the checks a move of modules needs (docs/restructuring.md section 1), not a push's")
     parser.add_argument("--seed", choices=("release", "bootstrap"), default="release",
                         help="what builds the self-hosting check's stage 1 (default: the current release; the "
                         "bootstrap past a gap, docs/instructions.md section 6.1)")
     args = parser.parse_args()
 
+    if args.light:
+        return light(args.seed)
     if args.self_hosted_only or args.all:
         self_hosted_only = args.self_hosted_only
     else:
