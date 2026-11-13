@@ -1,0 +1,58 @@
+(* Quest Self-Hosted Compiler: The IR's Core Invariants Interface
+ *
+ * The invariants every stage of the IR keeps (docs/ir.md section 9): ANF, each
+ * variable bound once and used only in its scope, jumps and breaks to what
+ * encloses them, and the rest; the scopes they are checked in. ir/verify adds
+ * the later stages' and runs them all. *)
+
+interface VerifyCore
+import
+    questlang/ir/nodes : questlang/ir/Nodes
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+export
+    Def Ids = hashMap.T(Int Bool)
+    (* A join point in scope: its label and the number of values a jump to it
+     * passes *)
+    Def JoinPoint = Tuple label: String arity: Int end
+    (* What the checks find: the problems so far, the variables bound so far,
+     * and what the unit defines *)
+    Def Verifier = Tuple
+        problems: vector.T(String)
+        bound: Ids
+        (* The modules the unit defines and imports, which module references
+         * must be *)
+        modules: Ids
+        (* After closure conversion, the unit's functions, which closures must
+         * be of *)
+        var functions: maybe.T(Ids)
+        var represented: Bool
+    end
+    (* What is in scope at a point: variables, join points, loops, and the
+     * enclosing function *)
+    Def Scope = Tuple
+        vars: Ids
+        var joins: vector.T(JoinPoint)
+        var loops: vector.T(String)
+        var inFunction: Bool
+        (* Mutable variables of enclosing functions, which a nested function
+         * must not use *)
+        var outerMutables: Ids
+        (* Mutable variables of the current function (or top level), and whether
+         * this is a top level *)
+        var localMutables: Ids
+        var topLevel: Bool
+        (* The variables added in each body being checked, removed when it
+         * ends *)
+        logs: vector.T(vector.T(nodes.Variable))
+    end
+    newIds(): Ids
+    newScope(vars: Ids): Scope
+    copyIds(ids: Ids): Ids
+    problem(v: Verifier text: String): Ok
+    bind(v: Verifier x: nodes.Variable where: String): Ok
+    operation(v: Verifier o: nodes.Op scope: Scope where: String): Ok
+    function(v: Verifier f: nodes.Function scope: Scope): Ok
+    body(v: Verifier b: nodes.Body scope: Scope where: String): Ok
+end
