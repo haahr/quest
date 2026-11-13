@@ -173,8 +173,16 @@ Left whole (decided 2026-11-12), because no split of them moves code without cha
   echo), quest_types.c (descriptors, subtyping, the run-time constructors), quest_views.c (views, proxies,
   conversions, templates, view maps), quest_os.c and quest_stdlib.c (the library's natives), its banners corrected;
   each file with static roots registers a roots callback, as quest_serialization.c does.
-- quest_gc.c's checking modes (~870 lines) into quest_gc_check.c, behind quest_gc_internal.h.
-- quest_runtime.h an umbrella over quest_gc.h and quest_types.h: the header's digest changes, so ABI bump.
+  Done: each file reports its own roots (quest_runtime_roots calls them), so the caches and trails stay static;
+  seven functions are shared, through quest_runtime_internal.h, with QSubtypePair; the real formatting moved to
+  quest_print.c, and the builtins' init stays in quest_runtime.c.
+- quest_gc.c's checking modes (~700 lines): left whole. They read 77 of the collector's statics (the block table,
+  the marks, the cursors, the young and log lists, the statistics) and call its static inline helpers, so a
+  quest_gc_internal.h would declare nearly all of the collector's state, and the hot functions the checks share
+  (quest_gc_scan_object, quest_gc_mark_roots) would lose `static`. No seam.
+- quest_runtime.h an umbrella over quest_types.h (the descriptors, and the base ones) and quest_gc.h (the
+  collector's interface), each included where its text was and refusing to be included alone. The text is
+  unchanged, so no ABI bump: the corpus's digest covers the three headers and was regenerated.
 
 Every list of the runtime's sources changes (both compilers' compiler runners, the JIT's, the release's snapshot), so
 this stage runs the full `tools/check`, not the light one.

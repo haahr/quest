@@ -528,7 +528,7 @@ unsound module over a C core of a few hundred lines is a real option, for a plan
 |---|---|
 | `runtime/quest_gc.c` (new) | The heap, allocation slow path, barrier slow path (interior stores included), marking, sweeping, roots, the statistics; replaces `GC_*`. With step 7: the slot log, evacuation, hash words, the hold count |
 | `runtime/quest_runtime.h` | `quest_alloc(size, layout)` returning past the header; barrier and root macros; layout structs. With step 7: `quest_alloc_pinned` for metadata |
-| `runtime/quest_runtime.c` | Its ninety allocations named by layout; its pointer stores into existing objects audited and barriered (`quest_proxy_store` among them); roots enumerated in `quest_gc_roots`. With step 7: `quest_identity_hash` by hash state, metadata allocated pinned |
+| `runtime/quest_runtime.c` (and the files split from it) | Its ninety allocations named by layout; its pointer stores into existing objects audited and barriered (`quest_proxy_store` among them); roots enumerated in `quest_runtime_roots`. With step 7: `quest_identity_hash` by hash state, metadata allocated pinned |
 | `runtime/quest_serialization.c` | With step 7: evacuation held while the sharing table is live |
 | `runtime/quest_code.c`, `jit/loader` | Data regions as ambiguous roots through the new API |
 | `ir/describe` (both compilers) | Layouts per allocation site, emitted as static data with the descriptors |

@@ -123,7 +123,7 @@ the user's, 2026-11-02). Everything else is as before and pays nothing: code the
 `-e` or a file; every binary `quest compile` writes; and the interpreter outside kernel mode. Ctrl-C keeps its
 default meaning there.
 
-- **The runtime** (`quest_runtime.c`) has the flag `quest_interrupt_pending`, a word, which an aligned store from the
+- **The runtime** (`quest_os.c`) has the flag `quest_interrupt_pending`, a word, which an aligned store from the
   handler writes at once; `quest_interrupt_install`, which installs the handler; and `quest_interrupt_raise`, which
   clears the flag and raises `interrupted`. None is in `quest_runtime.h`.
 - **The driver** (`questlang/driver/interrupts`) finds them by name, through `os/code`'s `symbol`, installs the

@@ -66,8 +66,10 @@ _EXPECTED = "\n".join([
 
 
 def inline_helpers() -> set[str]:
-    """The names of the header's Q_INLINE functions."""
-    return set(_DEFINITION.findall((get_runtime_dir() / "quest_runtime.h").read_text()))
+    """The names of the Q_INLINE functions of the header and the headers it
+    includes."""
+    return {name for header in ("quest_runtime.h", "quest_types.h", "quest_gc.h")
+            for name in _DEFINITION.findall((get_runtime_dir() / header).read_text())}
 
 
 def defined_symbols(obj: str) -> set[str]:

@@ -24,6 +24,9 @@ NARROW = {"int", "unsigned", "unsigned int", "signed", "short", "unsigned short"
 # value the callee reads: argc, which the program's main passes on, as main
 # received it, in the first parameter
 REGISTER_INTS = {("quest_system_init", 0), ("quest_builtins_init", 0)}
+# The header of what the runtime's files share with each other, which compiled
+# code never calls, so that the backend never passes their arguments
+INTERNAL_HEADER = "quest_runtime_internal.h"
 
 # A function's declaration, or an inline function's definition, whose
 # out-of-line copy (runtime/quest_inline.c) native code calls: its result type,
@@ -48,6 +51,8 @@ def declarations() -> list[tuple[str, str, list[str]]]:
     """Each runtime function's name, result type, and parameters' types."""
     found = []
     for header in sorted(RUNTIME_DIR.glob("*.h")):
+        if header.name == INTERNAL_HEADER:
+            continue
         for result, name, params in DECLARATION.findall(without_comments(header.read_text(encoding="utf-8"))):
             if "(" in params:
                 continue  # a parameter of function type: a pointer

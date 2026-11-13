@@ -616,9 +616,9 @@ under which it allocates but never collects.
 `-DQUEST_NOREADLINE`; `QUEST_READLINE` chooses one), as [new-libraries.md](new-libraries.md) §3.1 describes.
 
 ### 11.3. Compilation Invocation
-The runtime's C files (`quest_runtime.c`, `quest_serialization.c`, `quest_readline.c`, `quest_code.c`, `quest_gc.c`,
-and `quest_inline.c`, which gives the header's inline helpers external definitions for native code) are compiled
-once into objects
+The runtime's C files (`quest_runtime.c` and the six split from it, `quest_serialization.c`, `quest_readline.c`,
+`quest_code.c`, `quest_gc.c`, and `quest_inline.c`, which gives the header's inline helpers external definitions
+for native code; `RUNTIME_SOURCES` lists them) are compiled once into objects
 (`runtime_objects`), kept in `.build/runtime/KEY/` under the checkout (or `$QUEST_RUNTIME_CACHE/KEY/`), where KEY
 hashes the runtime's sources and headers, the compiler and its `--version`, and the compile flags: a change to any of
 them compiles the runtime again, and objects are reused across builds and test runs otherwise. Each object is written

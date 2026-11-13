@@ -211,10 +211,9 @@ class TestModuleCompiler(unittest.TestCase):
 
         compiler = find_c_compiler()
         bin_file = self.dir_path / "test_driver_bin"
-        runtime_c = self.runtime_dir / "quest_runtime.c"
-        serialization_c = self.runtime_dir / "quest_serialization.c"
-        gc_c = self.runtime_dir / "quest_gc.c"
-        code_c = self.runtime_dir / "quest_code.c"
+        runtime_cs = [str(self.runtime_dir / name) for name in (
+            "quest_runtime.c", "quest_exceptions.c", "quest_print.c", "quest_types.c", "quest_views.c", "quest_os.c",
+            "quest_stdlib.c", "quest_serialization.c", "quest_gc.c", "quest_code.c")]
 
         cmd = [
             compiler,
@@ -224,10 +223,7 @@ class TestModuleCompiler(unittest.TestCase):
             "-DQUEST_NOGC",
             str(driver_c),
             str(o_file),
-            str(runtime_c),
-            str(serialization_c),
-            str(gc_c),
-            str(code_c),
+            *runtime_cs,
             "-o",
             str(bin_file),
         ]

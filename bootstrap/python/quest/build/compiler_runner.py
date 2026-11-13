@@ -98,8 +98,9 @@ def _sdk_has(header: str) -> bool:
 
 
 # The runtime's C files, which every program is linked with
-RUNTIME_SOURCES = ("quest_runtime.c", "quest_serialization.c", "quest_readline.c", "quest_inline.c", "quest_code.c",
-                   "quest_gc.c")
+RUNTIME_SOURCES = ("quest_runtime.c", "quest_exceptions.c", "quest_print.c", "quest_types.c", "quest_views.c",
+                   "quest_os.c", "quest_stdlib.c", "quest_serialization.c", "quest_readline.c", "quest_inline.c",
+                   "quest_code.c", "quest_gc.c")
 
 
 def base_c_flags(compiler: str) -> list[str]:

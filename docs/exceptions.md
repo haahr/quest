@@ -349,7 +349,7 @@ simple function, well within the 8 MB of the main thread's.
 
 **Compiled code ends.** Compiled code does not count its calls. Runaway recursion runs into the guard page below the
 main thread's stack, and a handler for the fault, on a signal stack of its own (`quest_install_stack_guard` in
-`runtime/quest_runtime.c`, on macOS and on Linux with glibc), prints `Exception: stack.overflow` and the frames running,
+`runtime/quest_exceptions.c`, on macOS and on Linux with glibc), prints `Exception: stack.overflow` and the frames running,
 with no site, and exits with status 1, as for any uncaught exception (§2.2); output written before is flushed. On macOS
 on arm64 the frames are walked from the faulting context: its `pc`'s function, then its `x29`'s chain (§5.3). A handler
 cannot catch it. Other faults keep their default action. The C compiler and the SSA (`ssa/passes/accumulate`, [ssa.md](ssa.md)

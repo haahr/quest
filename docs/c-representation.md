@@ -1382,15 +1382,26 @@ never collects.
 The runtime files are located at the repository root and shared with future native code backends:
 ```
 runtime/
-├── quest_runtime.h         /* Core ABI, QVal, QProxy, QTypeDescriptor, inline helpers */
-├── quest_runtime.c         /* Strings, I/O streams, subtyping, proxies, exceptions, stack unwinding */
-├── quest_serialization.h   /* Dynamic serialization & deserialization API */
-├── quest_serialization.c   /* dynamic.extern & dynamic.intern (docs/dynamic.md §2) */
-├── quest_readline.c        /* io/readline: line editing and history (docs/new-libraries.md §3.1) */
-└── quest_inline.c          /* External definitions of the header's Q_INLINE helpers (docs/arm64.md §7.5) */
+├── quest_runtime.h           /* Core ABI, QVal, QProxy, exceptions, the runtime's functions, inline helpers */
+├── quest_types.h             /* QTypeDescriptor and its metadata, templates, auto values (in quest_runtime.h) */
+├── quest_gc.h                /* The collector's interface: layouts, barriers, roots, allocation (in quest_runtime.h) */
+├── quest_runtime_internal.h  /* What the runtime's files share with each other, not with compiled code */
+├── quest_runtime.c           /* Strings, arrays, reals, the roots, builtins init, operators as closures */
+├── quest_exceptions.c        /* Raising, tracebacks, stack unwinding, the stack overflow guard */
+├── quest_print.c             /* Formatting reals, printing values for echo */
+├── quest_types.c             /* Base descriptors, subtyping, descriptors made at run time */
+├── quest_views.c             /* Record dicts, proxies, conversions, templates, view maps, adaptation */
+├── quest_os.c                /* system, os, and process primitives */
+├── quest_stdlib.c            /* Writers, readers, conv, strutil, string builders, ascii, reals, words, hashing */
+├── quest_gc.c                /* The collector (docs/collector.md) */
+├── quest_serialization.h     /* Dynamic serialization & deserialization API */
+├── quest_serialization.c     /* dynamic.extern & dynamic.intern (docs/dynamic.md §2) */
+├── quest_code.c              /* The JIT's primitives (docs/jit.md) */
+├── quest_readline.c          /* io/readline: line editing and history (docs/new-libraries.md §3.1) */
+└── quest_inline.c            /* External definitions of the header's Q_INLINE helpers (docs/arm64.md §7.5) */
 ```
 
-### 10.1. Implemented Runtime Functions (`runtime/quest_runtime.c`)
+### 10.1. Implemented Runtime Functions (`runtime/quest_runtime.c` and the files beside it)
 - **String Primitives:**
   - `QString *quest_string_new(const char *data, size_t len)`: Allocates `QString` with trailing null byte.
   - `QString *quest_string_concat(const QString *s1, const QString *s2)`: Implements Quest `<>` string concatenation.

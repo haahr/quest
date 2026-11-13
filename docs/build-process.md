@@ -308,7 +308,7 @@ The recorded paths let a later build check that each import still resolves to th
 Every entry is written from the unit graph's resolution of the import (§2.1), the one its compilation used.
 
 ### 4.4. Builtin Runtime Modules (`BUILTIN_RUNTIME_MODULES`)
-Certain core modules are implemented directly in the native C runtime (`runtime/quest_runtime.c`, with
+Certain core modules are implemented directly in the native C runtime (`runtime/`, with
 `BuiltinModuleRegistry` providing the interpreter runtime symbol bridge) rather than as Quest source files:
 - **Registry Set:** `BUILTIN_RUNTIME_MODULES = { "dynamic" }`.
 - **Interface Exposure:** Each runtime module defines a standard Quest interface (`dynamic.int.quest`), producing

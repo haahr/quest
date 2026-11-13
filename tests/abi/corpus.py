@@ -6,7 +6,8 @@ questlang/ (tests/abi/inputs), so that it changes only when the compiler's
 output for the same input changes, not when the library evolves. It holds each
 interface's generated .qi file and C header, normalized so that only
 contract-relevant content remains (no producer stamp, no comments), plus a
-digest of the runtime interface (runtime/quest_runtime.h), the self-hosted
+digest of the runtime interface (runtime/quest_runtime.h and the
+quest_types.h and quest_gc.h it includes), the self-hosted
 compiler's table of the standard library's externals
 (questlang/codegen/externals.mod.quest, which tools/externals generates), and
 the ABI version the corpus was generated with. tests/python/test_abi_corpus.py regenerates it
@@ -52,7 +53,8 @@ INPUTS_DIR = ABI_DIR / "inputs"
 # Snapshot layout mirrors the search roots: inputs/lib/... (like lib/) and
 # inputs/questlang/... (under the project).
 SNAPSHOT_SOURCES = ((ROOT_DIR / "lib", INPUTS_DIR / "lib"), (ROOT_DIR / "questlang", INPUTS_DIR / "questlang"))
-RUNTIME_HEADER = ROOT_DIR / "runtime" / "quest_runtime.h"
+# The runtime interface: quest_runtime.h and the headers it includes
+RUNTIME_HEADERS = tuple(ROOT_DIR / "runtime" / name for name in ("quest_runtime.h", "quest_types.h", "quest_gc.h"))
 EXTERNALS_TABLE = ROOT_DIR / "questlang" / "repr" / "externals.mod.quest"
 
 
@@ -108,7 +110,10 @@ def generate(compiler: str | None = None) -> dict[str, str]:
                 corpus[rel] = _normalize_qi(text)
             elif artifact.suffix == ".h":
                 corpus[rel] = _normalize_header(text)
-    corpus["quest_runtime.h.sha256"] = hashlib.sha256(RUNTIME_HEADER.read_bytes()).hexdigest() + "\n"
+    digest = hashlib.sha256()
+    for header in RUNTIME_HEADERS:
+        digest.update(header.name.encode("utf-8") + b"\0" + header.read_bytes() + b"\0")
+    corpus["quest_runtime.h.sha256"] = digest.hexdigest() + "\n"
     # Importers call the externals it lists directly, so a change to it is a
     # change to the contract between compiled units
     corpus["externals.mod.quest"] = EXTERNALS_TABLE.read_text(encoding="utf-8")

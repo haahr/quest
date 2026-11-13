@@ -68,7 +68,7 @@ end
 ### 1.2. `util/stringBuilder : util/StringBuilder`
 
 String accumulator with $O(N)$ construction, backed by a native buffer in the runtime (`quest_sb_*` in
-`runtime/quest_runtime.c`, with a matching implementation in the interpreter). Short appends are written into a fixed
+`runtime/quest_stdlib.c`, with a matching implementation in the interpreter). Short appends are written into a fixed
 512-byte working buffer, and numbers are formatted straight into it; a full buffer becomes a finished chunk, and a
 string longer than 256 characters is copied into a chunk of its own. Appended strings are always copied, so changing a
 string after appending it does not change the result.
@@ -800,7 +800,7 @@ end
 What `stat(2)` says about a path, modeled on Python's `os.stat_result` (what `pathlib.Path(...).stat()` returns). One
 call gives a path's kind, size, permissions, and times, so a caller that needs to know whether a file exists and when
 it changed makes a single system call, with no race between the two questions. Its one external,
-`quest_filestats_stat`, is in `runtime/quest_runtime.c`. The bootstrap's interpreters implement it with `os.stat`
+`quest_filestats_stat`, is in `runtime/quest_os.c`. The bootstrap's interpreters implement it with `os.stat`
 and `os.lstat`, and the self-hosted interpreter with the compiled library's own (`questlang/interpreter/builtins`).
 
 #### Interface Summary
@@ -845,7 +845,7 @@ agree exactly. Compare the integer times when an exact order matters, as stalene
 ### 4.2. `os/process : os/Process`
 
 Programs started without waiting for them, so that a program can run several at once (`system.run` starts one and
-waits). Its externals, `quest_process_*`, are in `runtime/quest_runtime.c`. The bootstrap's interpreters implement
+waits). Its externals, `quest_process_*`, are in `runtime/quest_os.c`. The bootstrap's interpreters implement
 them with `subprocess.Popen`, and the self-hosted interpreter with the compiled library's own
 (`questlang/interpreter/builtins`).
 

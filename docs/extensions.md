@@ -315,7 +315,7 @@ is `^^`, a power, not e raised to a number). Numerical programs need more, and t
 
 As for the operators ([type-system.md](type-system.md) §6.3.2), a result that would be NaN raises `real.error`: a
 negative square root, the sine of an infinity, an arc sine outside [-1, 1]. A result too large for a `Real` is an
-infinity. Each is a runtime function `quest_real_<name>` (`runtime/quest_runtime.c`); both interpreters implement
+infinity. Each is a runtime function `quest_real_<name>` (`runtime/quest_stdlib.c`); both interpreters implement
 them, the bootstrap's with Python's `math` (mapping its `ValueError` to `real.error` and its `OverflowError` to an
 infinity, as C behaves), and the self-hosted one through the compiled library. `tests/source/stdlib/real_math.quest`
 tests them, printing libm's results to 12 significant digits so that its goldens do not depend on a libm's last bits.
