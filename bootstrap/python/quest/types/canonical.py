@@ -124,7 +124,7 @@ _NORMALIZED: dict[int, tuple[QType, QType]] = {}
 
 def normalize_type(t: QType) -> QType:
     """t with its outermost constructor exposed, which shapes are built from
-    (ir/shapes.py): aliases stripped, a recursive type replaced by its
+    (repr/shapes.py): aliases stripped, a recursive type replaced by its
     unfolding, and an application of a type operator by its reduction. An
     application that reduces to a recursive type is replaced by the unfolding
     when that is a constructed type, and otherwise by the application's lazy
@@ -179,7 +179,7 @@ def option_case_names(t: QType) -> tuple[str, ...]:
     """The names of the cases of an option type as written, in order (for a type
     parameter bounded by one, its bound's): the order an option's ordinal counts
     in at t (docs/type-system.md §6.6), whatever the order of the type its value
-    was made at, or of t's shape (ir/shapes.py, which orders cases by name)."""
+    was made at, or of t's shape (repr/shapes.py, which orders cases by name)."""
     curr = normalize_type(t)
     while not isinstance(curr, QOptionType):
         exposed = normalize_type(resolve_type_bound(curr))
@@ -239,7 +239,7 @@ def collect_fun_quantifiers(fun_type: QType) -> tuple[tuple[QQuantifier, ...], Q
     """The universal quantifiers wrapping a function type (a recursive one,
     through its unfolding), and the type they quantify, as written: their
     symbols are those the type's own parts refer to, where a shape's are those
-    of its canonical form (ir/shapes.py)."""
+    of its canonical form (repr/shapes.py)."""
     quants: tuple[QQuantifier, ...] = ()
     curr = normalize_type(fun_type)
     while isinstance(curr, QAllType):

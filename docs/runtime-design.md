@@ -102,7 +102,7 @@ incompatible memory layouts. Passing an array or tuple of records to a polymorph
 deep copy on entry and copying back on exit—and for a mutable `Array(R)` or a tuple with a `var` field, copying breaks
 aliasing and mutability!
 
-Quest solves this cleanly with **uniform 1-word aggregate slots** (`slot_representation` in `quest/codegen/layout.py`):
+Quest solves this cleanly with **uniform 1-word aggregate slots** (`slot_representation` in `quest/repr/layout.py`):
 - **Every aggregate slot is one 64-bit word (8 bytes).**
   - In a native aggregate slot, a record has C type `QRecordVal *` and a variant has C type `QVariantVal *`—a pointer to
     an immutable 16-byte heap box (`quest_box_record` / `quest_box_variant`).

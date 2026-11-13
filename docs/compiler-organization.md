@@ -97,14 +97,20 @@ questlang/
 │   └── irinterp             # IR interpreter
 │
 ├── ir/                      # IR lowering and passes (docs/ir.md)
-│   └── nodes, walk, lower, specialize, closure, shapes, represent, slots, describe, thunks, written, verify, printer
+│   └── nodes, walk, lower, specialize, closure, represent, slots, describe, thunks, verify, printer
+│
+├── repr/                    # The representation of values, which the IR's passes and every backend share
+│   ├── shapes, written      # Types as the passes see them; the types of a type's components as written
+│   ├── layout, descriptors  # Layouts and digests; descriptors' type-level forms
+│   ├── staticdata, runtimeLayout, objectLayout   # Static data described for every backend; the runtime's struct
+│   │                        # layouts; the layouts of the objects the collector walks
+│   ├── symbols, syntax      # The names units link against; the spelling of C text
+│   └── externals            # The standard library's external C functions and types
 │
 ├── ssa/                     # The native backends' SSA (docs/ssa.md): nodes, build, statics, verify, printer
 │
 ├── codegen/                 # Backends: the shared layer and the C backend
-│   ├── syntax, layout, descriptors   # C spelling, layouts and digests, descriptors' type-level forms
-│   ├── staticdata, runtimeLayout   # Static data described for every backend; the runtime's struct layouts
-│   ├── backend, symbols
+│   ├── backend
 │   ├── choice, ssac         # The backend each unit is compiled by; the SSA's C printer (docs/arm64.md §3.14)
 │   ├── arm64/               # The native backend: codegen (instructions, frames, calls), asm (Darwin's spellings)
 │   └── c/                   # backend, declarations, headers, printer, types
@@ -377,7 +383,7 @@ Layer 6: modules/abstracttypes, loader, elaboration, stdlib
 Layer 7: typechecker/checker → bindings, application, aggregates, control, exceptions, autovalues → typecheck,
          scoping
 Layer 8: types/canonical → values/model → dynamicjson → interpreter/primitives, builtins,
-         formatting → treewalk | ir/* | codegen/*, modules' artifacts, config/*, build/*
+         formatting → treewalk | repr/* → ir/* → ssa/* → codegen/*, modules' artifacts, config/*, build/*
 Layer 9: driver/*
 ```
 

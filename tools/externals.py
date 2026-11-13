@@ -1,4 +1,4 @@
-"""Generates questlang/codegen/externals.mod.quest from lib/: the standard
+"""Generates questlang/repr/externals.mod.quest from lib/: the standard
 library's members that its modules define as external C functions, and its
 external types, which the self-hosted compiler builds in (docs/c-representation.md
 section 6.2). A call of such a function from an importer compiles to a call of
@@ -31,7 +31,7 @@ from quest.syntax.sources import SourceMap  # noqa: E402
 from quest.syntax.tokenizer import Tokenizer  # noqa: E402
 
 LIB_DIR = ROOT_DIR / "lib"
-TABLE = ROOT_DIR / "questlang" / "codegen" / "externals.mod.quest"
+TABLE = ROOT_DIR / "questlang" / "repr" / "externals.mod.quest"
 SCALARS = frozenset({"Int", "Real", "Bool", "Char", "String", "Ok"})
 
 

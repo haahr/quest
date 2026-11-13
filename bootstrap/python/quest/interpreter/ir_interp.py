@@ -87,7 +87,7 @@ from quest.types import (
     is_subtype,
     is_type_equal,
 )
-from quest.codegen.descriptors import hole_var
+from quest.repr.descriptors import hole_var
 from quest.interpreter.builtins import resolve_external_symbol
 
 _INT_ARITHMETIC = ("+", "-", "*", "/", "mod", "%")

@@ -5,7 +5,7 @@
  * what generated code and the runtime's own files (quest_runtime.c, quest_gc.c,
  * quest_serialization.c, ...) agree on. The C that both compilers generate
  * includes this header; the self-hosted compiler's arm64 backend and JIT, which
- * emit machine code, mirror its structs and constants in codegen/runtimeLayout,
+ * emit machine code, mirror its structs and constants in repr/runtimeLayout,
  * which a test checks against this header (docs/arm64.md §3.3).
  *
  * The header is part of the artifact contract, the ABI: compiled units and
@@ -1592,7 +1592,7 @@ uint64_t quest_hash_combine(uint64_t h1, uint64_t h2);
 uint64_t quest_identity_hash(const QTypeDescriptor *t, QVal x);
 
 /* The built-in operators as values, when a program uses one other than by applying it (passing + to a fold): static
- * closures with no environment, named as codegen/symbols mangles the operator's name (qv_sym_ and the names of its
+ * closures with no environment, named as repr/symbols mangles the operator's name (qv_sym_ and the names of its
  * characters, or qv_mod for mod) followed by _closure, which compiled code refers to as &qv_sym_plus_closure. Each
  * computes what the operator applied directly does, raising int.error or real.error where it does (quest_runtime.c) */
 extern QClosure qv_sym_plus_closure;

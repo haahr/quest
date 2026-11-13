@@ -107,14 +107,14 @@ after it has goldens, since machine code changes with almost any backend change.
 
 - **Layout.** The arm64 backend computes every offset and size that clang computes for the C backend's structs, and
   the C asserts each, so that any C compilation checks the arm64 backend's arithmetic:
-  - aggregates' structs (tuples, records, options and their cases' payloads): `codegen/layout` (`tupleBytes`,
+  - aggregates' structs (tuples, records, options and their cases' payloads): `repr/layout` (`tupleBytes`,
     `recordFieldOffset`, `optionBytes`, `slotsBytes`), asserted after each struct the C defines, in units and in
     interface headers (`static_assert(... == N, layout_<struct>_...)`);
-  - the unit's static data (descriptors and their payloads, offset tables): `codegen/staticdata`, asserted after
+  - the unit's static data (descriptors and their payloads, offset tables): `repr/staticdata`, asserted after
     each;
   - the runtime's own structs that generated code touches (`QClosure`, `QArray`, `QString`, `QExceptionState`,
     `QViewMap`, `QLayout`, every descriptor struct, ...) and its constants (`QTypeKind`'s, `Q_CATCH_ALL`, ...):
-    `codegen/runtimeLayout`, a table that the questlang test `codegen_runtime_layout` prints as C assertions and
+    `repr/runtimeLayout`, a table that the questlang test `codegen_runtime_layout` prints as C assertions and
     `tests/python/test_runtime_layout.py` compiles against `quest_runtime.h`.
 
   Closure environments are private to their unit and need no assertions (§7.1).
@@ -148,7 +148,7 @@ in data are relocations. Read-only data goes in `__TEXT,__const` or `__TEXT,__cs
 `__DATA,__const` (or `__DATA` when written at run time).
 
 The data is the SSA's, not the C declarations': a unit's data is words, text, and zeros ([ssa.md](ssa.md) §5), its
-descriptors laid out by `ssa/statics` from `codegen/staticdata`'s descriptions (§7.5), and its function types'
+descriptors laid out by `ssa/statics` from `repr/staticdata`'s descriptions (§7.5), and its function types'
 adapters, thunks, and invokers, its exported functions, its function table, and `qr_register_dicts` are SSA
 functions, so that `ssac` and arm64 emit the same data and code. Static data cannot hold a thread-local's address,
 which is not a constant.
@@ -814,7 +814,7 @@ A survey (2026-10-29) of `questlang/codegen/c/printer`, `declarations`, and `typ
 `runtime/quest_runtime.h`: what the C backend decides that is more than C syntax, and where the SSA backends (`ssac`
 and `arm64`) get each decision. The sources are:
 
-- **layout**: `questlang/codegen/layout` and `ir/shapes`, already shared;
+- **layout**: `questlang/repr/layout` and `repr/shapes`, already shared;
 - **pass**: a shared IR pass after describe (§7.5), whose results the C printer prints too;
 - **data**: a shared description of static data (§7.5);
 - **build**: the SSA's construction, which does what the C printer prints for the operation; the mixed builds (§4)
@@ -912,7 +912,7 @@ alignment beyond 8.
    expression) and what the SSA backends need (bytes, offsets, a symbol and an index). The C printer prints the
    description, its C unchanged; the SSA backends lay it out by the runtime structs' layouts (§3.3) and generate
    the adapters' and invokers' code in the SSA. The descriptor forms and record naming are in
-   `codegen/staticdata`, which builds the description; `declarations` prints it.
+   `repr/staticdata`, which builds the description; `declarations` prints it.
 3. **Slot conversions as data.** `layout` says which of a few kinds of conversion takes a shape's value to its slot's
    word and back, and `codegen/c/types` spells each kind in C.
 4. **Out-of-line runtime helpers.** The header's `static inline` helpers are declared `Q_INLINE`, which is

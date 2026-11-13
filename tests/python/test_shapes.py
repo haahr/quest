@@ -1,4 +1,4 @@
-"""Shapes, the backend's view of types (quest/ir/shapes.py, docs/ir.md §4.1)."""
+"""Shapes, the backend's view of types (quest/repr/shapes.py, docs/ir.md §4.1)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from quest.config import CompilerOptions
 from quest.typechecker.elaborate_types import elaborate_type_binding, elaborate_type_binding_group
 from quest.types.env import Environment, TypeSymbol, ValueSymbol
 from quest.pipeline import default_pipeline
-from quest.ir.shapes import KINDS, shape, shapes_reachable
+from quest.repr.shapes import KINDS, shape, shapes_reachable
 from quest.typechecker.typed_ast import TypedNode
 from quest.types import TYPE_KIND, QType, QTypeFun
 from tests.python.helpers import elaborate_test_type, parse_phrase

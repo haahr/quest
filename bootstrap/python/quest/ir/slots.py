@@ -3,7 +3,7 @@ and read from aggregates' slots, and how tuples and options that may be proxies
 are read.
 
 Slots (docs/ir.md §4.2). Every slot of an aggregate holds a record or variant
-boxed (slot_representation in codegen/layout.py), as does the location a var or
+boxed (slot_representation in repr/layout.py), as does the location a var or
 out parameter points to. The step makes the boxes explicit:
 
 - an operation that reads a record or variant from a slot (a tuple's component,
@@ -47,7 +47,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Optional
 
-from quest.codegen.layout import (
+from quest.repr.layout import (
     changes_view,
     is_boxed_in_slots,
     is_record_subtype,
@@ -57,7 +57,7 @@ from quest.codegen.layout import (
     shape_representation,
 )
 from quest.ir import nodes as ir
-from quest.ir.shapes import Shape, shape
+from quest.repr.shapes import Shape, shape
 from quest.ir.walk import statement_bodies, walk_statements
 from quest.types import QRecordField, QRecordType, QType, is_type_equal
 

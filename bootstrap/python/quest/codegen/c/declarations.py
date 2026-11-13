@@ -10,9 +10,9 @@ from __future__ import annotations
 from typing import Any, Callable, Optional, Sequence
 
 from quest.ir.slots import may_be_stored_as_subtype
-from quest.ir.shapes import Shape, shape
-from quest.ir.written import echo_children, fun_signature, quantified, tuple_type_components
-from quest.codegen.syntax import c_int, c_int_literal, c_string, call, comma
+from quest.repr.shapes import Shape, shape
+from quest.repr.written import echo_children, fun_signature, quantified, tuple_type_components
+from quest.repr.syntax import c_int, c_int_literal, c_string, call, comma
 from quest.codegen.c.types import (
     closure_fn_ptr_type,
     descriptor_form,
@@ -24,8 +24,8 @@ from quest.codegen.c.types import (
     record_struct_name,
     RecordNamingContext,
 )
-from quest.codegen.descriptors import fun_descriptor_tag
-from quest.codegen.layout import (
+from quest.repr.descriptors import fun_descriptor_tag
+from quest.repr.layout import (
     location_representation,
     option_struct_name,
     resolved_shape,
@@ -34,7 +34,7 @@ from quest.codegen.layout import (
     tuple_struct_name,
     type_tag,
 )
-from quest.codegen.symbols import mangle_ident, mangle_module_ident, mangle_module_name, module_record_ident
+from quest.repr.symbols import mangle_ident, mangle_module_ident, mangle_module_name, module_record_ident
 from quest.types import (
     auto_payload_type,
     BOOL_TYPE,

@@ -4,19 +4,19 @@ the unit, which says for each word of the object whether it is a pointer, a
 scalar, or ambiguous (a QVal of generic code, whose kind the site does not
 know), so that a precise collector can scan the object and
 QUEST_GC_CHECK=layouts can check what the compilers say. The kinds come from the shapes the slots hold
-(codegen/layout): a slot's representation, or a value's representation for a
+(repr/layout): a slot's representation, or a value's representation for a
 closure environment's captures. A unit's layouts are collected in a table by
 tag, and the C printer lays them out as static data (quest_layout_<tag>); the
 runtime defines the common ones (a closure, an array, an adapter's environment),
 which generated code names by symbol. The self-hosted compiler's
-questlang/codegen/objectLayout is this module in Quest."""
+questlang/repr/objectLayout is this module in Quest."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from quest.codegen.layout import layout_of, resolved_shape, shape_tag, type_digest, type_tag
-from quest.ir.shapes import Shape, shape
+from quest.repr.layout import layout_of, resolved_shape, shape_tag, type_digest, type_tag
+from quest.repr.shapes import Shape, shape
 from quest.types import QType
 
 SCALAR, POINTER, AMBIGUOUS = 0, 1, 2

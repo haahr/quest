@@ -677,8 +677,8 @@ taken on what 4 and 7 measure; 9 is optional.
    the header before the object and returns past it; the runtime's allocations name theirs; `QUEST_GC_CHECK=layouts`
    against `GC_base`. *Done when:* every suite passes with `layouts` on through every backend and both compilers, and
    the heap growth from headers is recorded here, translated from Boehm's rounding to the design's (§3.2).
-   *Done 2026-11-03.* The layouts are computed from shapes by `codegen/objectLayout` (the bootstrap's
-   `quest/codegen/objectlayout.py`), registered per unit by both C printers and the SSA's builder, and laid out as
+   *Done 2026-11-03.* The layouts are computed from shapes by `repr/objectLayout` (the bootstrap's
+   `quest/repr/objectlayout.py`), registered per unit by both C printers and the SSA's builder, and laid out as
    static data (`quest_layout_<tag>`, its kinds `qlk_<tag>`); the runtime's own are in `runtime/quest_gc.c`, with
    the `layouts` and `report` modes. Three forms of layout were needed, not two: a *sized* one for the allocations
    whose size is known only at the call and recorded nowhere else (string buffers, the runtime's tables), which

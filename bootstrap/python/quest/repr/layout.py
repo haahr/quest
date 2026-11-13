@@ -1,5 +1,5 @@
 """How values are laid out, for every backend (docs/c-representation.md),
-computed from shapes (ir/shapes.py) and cached per shape: each type's layout tag
+computed from shapes (repr/shapes.py) and cached per shape: each type's layout tag
 (which names its struct and descriptor), digests and identity keys of types, and
 its representation, the runtime's (runtime/quest_runtime.h): a scalar, a QVal
 word, a 16-byte record or variant value, or a pointer (to a tuple's or option's
@@ -13,15 +13,15 @@ link with C units. Also whether generic code's layout of a type agrees with the
 native one (generic_layout_agrees), and whether a value of a tuple or option
 type may be a proxy, a view of an object of a subtype (may_be_proxied).
 
-The self-hosted counterpart is questlang/codegen/layout."""
+The self-hosted counterpart is questlang/repr/layout."""
 
 from __future__ import annotations
 
 import hashlib
 from typing import Any, Optional
 
-from quest.codegen.syntax import c_int, joined
-from quest.ir.shapes import Shape, shape
+from quest.repr.syntax import c_int, joined
+from quest.repr.shapes import Shape, shape
 from quest.types.canonical import is_rec_self_symbol, rec_self_level, rec_self_var
 from quest.types import (
     BOOL_TYPE,

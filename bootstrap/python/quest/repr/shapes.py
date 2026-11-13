@@ -20,7 +20,7 @@ itself). Canonical forms name their binders afresh (types/canonical.py), so the
 type parameters of a shape's polymorphic function or auto type are not those of
 the type it was asked for, whose parts refer to its own.
 
-The self-hosted counterpart is questlang/ir/shapes.
+The self-hosted counterpart is questlang/repr/shapes.
 """
 
 from __future__ import annotations

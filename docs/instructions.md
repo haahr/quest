@@ -61,7 +61,7 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
   default) prints it against the working tree's; the suites check what the C does, not its text
   ([testing.md](testing.md) §2.9).
 - **The library's externals:** after changing an external function or type in `lib/`, run `tools/externals` to
-  regenerate the self-hosted compiler's table (`questlang/codegen/externals.mod.quest`), then bump `ABI_VERSION` and
+  regenerate the self-hosted compiler's table (`questlang/repr/externals.mod.quest`), then bump `ABI_VERSION` and
   regenerate the ABI corpora; a unit test fails while the table is out of date.
 - **Releases:** `tools/release` cuts one from a clean tree at a commit on `main`, after the self-hosting check seeded
   from the current release (`--seed bootstrap` for the first, or past a gap); `--verify`, `--rollback`, and `--show`
@@ -115,7 +115,7 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
 - **Types are hash-consed and have no Python `==`** (it raises). Compare with `is_type_equal(t1, t2, env)` or
   identity (`is`), and key dictionaries by `type_identity_key` (C backend) or by canonical objects, not by types.
 - **Types reach code generation unreduced:** alias nodes, applications of type operators (`Box(A)`), and recursive
-  types. Below lowering, ask the type's shape (`ir/shapes.py`); elsewhere, reduce with `normalize_type`
+  types. Below lowering, ask the type's shape (`repr/shapes.py`); elsewhere, reduce with `normalize_type`
   (`types/canonical.py`) before structural tests such as `isinstance(t, QTupleType)`; a test on the unreduced type
   silently skips `Box(A)`.
 - **Invariant checks run in tests.** `QUEST_CHECK_CANONICAL=1` (C canonical forms), `QUEST_CHECK_SCOPES=1`

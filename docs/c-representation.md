@@ -61,7 +61,7 @@ declaration and printing the descriptive message token in the error output.
 The self-hosted compiler's C asserts the layouts of the unit's static data too: for each descriptor it defines, the
 size of the struct it describes and the offset of each field, element, or component, and for each static offset
 table, each field's offset, as `static_assert(sizeof(struct S) == 24, layout_<tag>_size)` and
-`static_assert(offsetof(...) == 8, layout_<tag>_0)`. The numbers are those `questlang/codegen/staticdata` computes
+`static_assert(offsetof(...) == 8, layout_<tag>_0)`. The numbers are those `questlang/repr/staticdata` computes
 from the layouts of §5, which the native backend lays data out by ([arm64.md](arm64.md) §3.3), so that every C
 compilation checks them.
 
@@ -244,7 +244,7 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
 - **Slots:**
   Every slot of an aggregate (a tuple component, an option payload component, a record field, an array element, an
   auto value's component, a module record's field) is one 8-byte word holding the value's *slot representation*
-  (`slot_representation` in `codegen/layout.py`): a record or variant is a pointer to an immutable 16-byte box
+  (`slot_representation` in `repr/layout.py`): a record or variant is a pointer to an immutable 16-byte box
   (`QRecordVal *`, `QVariantVal *`, made by `quest_record_box` and `quest_variant_box`), a `Bool` or `Char` is a word
   of its own (`QBoolSlot`, `QCharSlot`: 0 or 1, or the character, as a `QVal`'s `.i` holds it), an `Ok` is the word
   `Q_OK_VAL` (a `QVal`, since `Ok` has no C type of its own), and any other value is its representation. A slot thus holds exactly the value's `QVal` form, so the slots generic code lays out for a
@@ -354,7 +354,7 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
     operator (`handler.T(Real)`, for `Let T = Fun(K::TYPE) Tuple f: All(k: K) K end`) is opaque outside the module,
     which cannot convert it, so it has one layout there whoever made it: the module's generic code's, its
     representation laid out with each of the operator's parameters a `QVal` (`abstract_instance` in
-    `codegen/layout.py`). The module's code at concrete arguments lays the representation out natively, which
+    `repr/layout.py`). The module's code at concrete arguments lays the representation out natively, which
     differs where a closure's C signature changes with them (a `QReal` or a record's register pair for a `QVal`), and
     converts at the module's boundary: where a member of one of the unit's modules is called from outside it, an
     argument or result of the abstract type at the representation's native type converts by a `view` plan between
@@ -712,7 +712,7 @@ typedef struct QProxy {
   variant, auto value, type variable, abstract type, function whose signature mentions one, or a tuple or option that
   may be a proxy), or may hold a proxy (any tuple, or an option with a payload: a value of its subtype there may be a
   proxy, and must be converted when the container is upcast to a type at which it never is), or of an option type
-  with two or more cases or such a payload component (`may_be_proxied` in `codegen/layout.py`). No value of any other
+  with two or more cases or such a payload component (`may_be_proxied` in `repr/layout.py`). No value of any other
   type is a proxy: an upcast to such a type unwraps one (`quest_unproxy`; its original serves, as no component of the
   type changes view), and `quest_convert` copies rather than proxies a value whose target type cannot be proxied
   otherwise (the runtime decides with the same rule on descriptors, `quest_may_be_proxied`, conservatively).
@@ -779,7 +779,7 @@ static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
    parameters only, and of scalar and external types, is called by the self-hosted compiler's importers as that C
    function itself (`quest_word_xor_bits(a, b)` for `word.xorBits(a b)`), so the C compiler can inline it. The
    compiler has these functions, and the library's external types, built in: `tools/externals` generates
-   `questlang/codegen/externals.mod.quest` from `lib/`, a test checks that it is current, and the ABI corpus records
+   `questlang/repr/externals.mod.quest` from `lib/`, a test checks that it is current, and the ABI corpus records
    it, so a change to it needs a new ABI version. Compiling an importer never reads a module's source: the table
    applies only to imports that resolve to `lib/`'s modules (the lowering marks them, `libModulePath` in
    `questlang/modules/paths`), so a program's own module of the same name is called through its wrapper. The call
@@ -1044,7 +1044,7 @@ function passes on ([type-system.md](type-system.md) §6.12).
   abstract type's, viewed at its bound, agrees only with the bound's own layout. Aggregates agree when
   their components do, records when their views' field types do. Recursive descriptors are compared coinductively.
   The compiler makes the same judgement statically for a type laid out by generic code and its instance at known
-  type arguments (`generic_layout_agrees` in `codegen/layout.py`), conservatively: when it cannot tell, the value
+  type arguments (`generic_layout_agrees` in `repr/layout.py`), conservatively: when it cannot tell, the value
   is left to `quest_convert`, which returns it unchanged if the layouts agree after all.
 - **Conversion:** `quest_convert(v, from, to)` converts a value between layouts as well as between a subtype and a
   supertype. A value whose layout already suits `to` is returned as it is (so tuples keep their identity and `var`
@@ -1332,7 +1332,7 @@ document are unchanged.
 - `quest_alloc_words(size_t n)`: n words of unknown kind, for the runtime's structures that hold values of any type.
 
 A compiler's allocation site names a layout the unit defines (`quest_layout_<tag>`, computed by
-`codegen/objectLayout` in the self-hosted compiler and `quest/codegen/objectlayout.py` in the bootstrap: a tuple's or
+`repr/objectLayout` in the self-hosted compiler and `quest/repr/objectlayout.py` in the bootstrap: a tuple's or
 a record's struct with the boxes embedded after it, an option's case, a closure's environment) or one of the
 runtime's (`quest_layout_closure`, `quest_layout_adapter_env`, and `quest_layout_array_pointer`, `_scalar`, and
 `_ambiguous` for arrays by their elements' kind); the runtime's own allocations name theirs (`runtime/quest_gc.c`).

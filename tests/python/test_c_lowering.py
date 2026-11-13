@@ -14,10 +14,10 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
 import tests.python.helpers  # noqa: F401
-from quest.codegen.layout import layout_of, printed, PRINTED_TEXT_LIMIT, type_digest, type_tag
-from quest.ir.shapes import shape
+from quest.repr.layout import layout_of, printed, PRINTED_TEXT_LIMIT, type_digest, type_tag
+from quest.repr.shapes import shape
 from quest.codegen.c.types import descriptor_form, qtype_to_c_type
-from quest.codegen.descriptors import hole_var
+from quest.repr.descriptors import hole_var
 from quest.types import (
     BOOL_TYPE,
     INT_TYPE,

@@ -464,7 +464,7 @@ A version number is only as reliable as the discipline of bumping it, so a test 
 (`tests/abi/inputs`):
 - the generated `.qi` files and `<stem>.int.h` headers, with the producer stamp and comments left out;
 - a digest of `runtime/quest_runtime.h`;
-- the self-hosted compiler's table of the standard library's externals (`questlang/codegen/externals.mod.quest`),
+- the self-hosted compiler's table of the standard library's externals (`questlang/repr/externals.mod.quest`),
   whose functions importers call directly ([c-representation.md](c-representation.md) §6.2).
 
 The inputs are a snapshot, not the live library, so that the corpus changes only when the compiler's output for the
@@ -963,7 +963,7 @@ The tests hash a file too, though no build does: the ABI corpus records a digest
 (§5.2.3).
 
 The C backend's other digests are of text it makes, not of files: the names of generated C types (a type's printed
-form, in `layout.type_digest` and `layout.text_digest`, `questlang/codegen/layout` in the self-hosted compiler), and
+form, in `layout.type_digest` and `layout.text_digest`, `questlang/repr/layout` in the self-hosted compiler), and
 the tags of long shapes. The self-hosted compiler computes these with SHA-256 written in Quest
 (`questlang/common/sha256`), which is a measurable part of its time ([tasklist.md](tasklist.md)).
 

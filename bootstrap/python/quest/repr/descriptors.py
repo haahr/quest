@@ -3,15 +3,15 @@
 template holes, the canonical forms of function and auto types that descriptors
 compare, and descriptor tags.
 
-The self-hosted counterpart is questlang/codegen/descriptors."""
+The self-hosted counterpart is questlang/repr/descriptors."""
 
 from __future__ import annotations
 
 from typing import Any, Optional
 
-from quest.codegen.syntax import c_int
-from quest.codegen.layout import type_digest
-from quest.ir.shapes import shape
+from quest.repr.syntax import c_int
+from quest.repr.layout import type_digest
+from quest.repr.shapes import shape
 from quest.types import (
     QAllType,
     QAutoType,

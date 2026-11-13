@@ -21,11 +21,11 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from quest.codegen.layout import abstract_layouts_differ, type_identity_key
+from quest.repr.layout import abstract_layouts_differ, type_identity_key
 from quest.ir import nodes as ir
-from quest.ir.shapes import Shape, shape
+from quest.repr.shapes import Shape, shape
 from quest.ir.walk import fields_of, rebuild, statement_bodies
-from quest.ir.written import is_type_operator, quantified
+from quest.repr.written import is_type_operator, quantified
 from quest.types import QFunType, QParam, QType
 
 # The depth of clones made for calls in clones, beyond which calls stay generic:

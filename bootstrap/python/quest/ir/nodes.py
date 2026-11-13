@@ -28,7 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
-from quest.ir.shapes import Shape, shape
+from quest.repr.shapes import Shape, shape
 from quest.types import QExternalType, QKind, QType
 
 
@@ -87,7 +87,7 @@ VIEW_MAP_TYPE = QExternalType(name="view_map", c_type="const QViewMap *")
 @dataclass(eq=False)
 class StaticDescriptor:
     """The static descriptor of a type that mentions no type parameter in scope,
-    or of a template, a type whose holes (codegen/descriptors.py, hole_var)
+    or of a template, a type whose holes (repr/descriptors.py, hole_var)
     stand for type parameters. `echo`: the descriptor echo writes a value of the
     closed type by, which writes its type components with their alias names (a
     copy of the shared descriptor, where the type has type components)."""

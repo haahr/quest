@@ -21,6 +21,7 @@ COMPILATION = (
     "quest.codegen",
     "quest.ir",
     "quest.modules",
+    "quest.repr",
     "quest.syntax",
     "quest.typechecker",
     "quest.types",
@@ -112,7 +113,7 @@ class TestDependencies(unittest.TestCase):
 
     def test_only_c_compilation_imports_the_c_backend(self) -> None:
         graph = import_graph()
-        self.assertIn("quest.codegen.layout", graph)
+        self.assertIn("quest.repr.layout", graph)
         importers = sorted(
             f"{m} -> {i}" for m, imported in graph.items() for i in imported
             if _within(i, C_BACKEND) and not _within(m, C_COMPILATION)

@@ -2,11 +2,11 @@
 into identifiers (docs/name-mangling.md). Every backend's units use them, so
 that they link with one another and with the C runtime.
 
-The self-hosted counterpart is questlang/codegen/symbols."""
+The self-hosted counterpart is questlang/repr/symbols."""
 
 from __future__ import annotations
 
-from quest.codegen.syntax import joined
+from quest.repr.syntax import joined
 
 
 SYMBOL_MANGLE_MAP: dict[str, str] = {

@@ -3,7 +3,7 @@ that looks inside them.
 
 Every IR variable has a Quest type as the program wrote it, with its alias
 names, so that IR dumps and echo show the program's names (`let p: Point`, not
-`let p: Tuple x: Int y: Int end`). Shapes (ir/shapes.py) are what passes decide
+`let p: Tuple x: Int y: Int end`). Shapes (repr/shapes.py) are what passes decide
 by; they keep no alias names, and name the type parameters of polymorphic types
 afresh. So where a pass makes a variable of a component's type, plans a
 closure's conversion by its signature, or echoes a value, it needs the written
@@ -22,15 +22,15 @@ type's structure, which this module exposes:
 The passes and the C printer use these and shapes, not the type checker's
 normalizing functions.
 
-The self-hosted counterpart is questlang/ir/written.
+The self-hosted counterpart is questlang/repr/written.
 """
 
 from __future__ import annotations
 
 from typing import Optional
 
-from quest.codegen.layout import resolved_shape
-from quest.ir.shapes import shape
+from quest.repr.layout import resolved_shape
+from quest.repr.shapes import shape
 from quest.types.canonical import collect_fun_quantifiers, normalize_type, resolve_type_bound
 from quest.types import (
     QAliasType,

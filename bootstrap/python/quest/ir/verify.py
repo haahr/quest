@@ -57,10 +57,10 @@ from typing import Optional
 
 from quest.ir import nodes as ir
 from quest.ir.walk import contents, global_variables, statement_binders, statement_bodies, view_map_of, walk_statements
-from quest.codegen.layout import is_boxed_in_slots, representation, resolved_shape, slot_representation
+from quest.repr.layout import is_boxed_in_slots, representation, resolved_shape, slot_representation
 from quest.ir.describe import free_type_vars
-from quest.ir.shapes import shape
-from quest.ir.written import fun_signature
+from quest.repr.shapes import shape
+from quest.repr.written import fun_signature
 
 
 def ir_checks_enabled() -> bool:

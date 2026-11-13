@@ -91,7 +91,7 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
 
 ### Step 4: Bootstrap C Compiler (Python) — *Complete*
 - **Intermediate Representation & Passes (`quest/ir/`):** A-normal form with structured control flow and join points
-  (`ir/lower.py`), canonical type shapes (`ir/shapes.py`), call-site specialization (`ir/specialize.py`), closure
+  (`ir/lower.py`), canonical type shapes (`repr/shapes.py`), call-site specialization (`ir/specialize.py`), closure
   conversion and lambda lifting (`ir/closure.py`), representation, slot boxing, and proxy conversion insertion
   (`ir/represent.py`, `ir/slots.py`), and runtime type descriptor materialization (`ir/describe.py`).
 - **Runtime Representation & C Code Generation (`quest/codegen/`):** Uniform 64-bit `QVal` ABI, 16-byte `QRecordVal`

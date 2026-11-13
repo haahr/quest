@@ -97,7 +97,7 @@ the ABI by and `ssac` writes C's types from (`nodes.Passed`):
   whose address the builder passes, as AAPCS64 passes the address of a copy, and whose contents `ssac` passes.
 
 The runtime's functions' signatures, with their effects (what each does to memory, whether it may raise, allocates, or
-never returns), come from the table `codegen/runtimeFunctions`, which holds each one's C prototype and is checked
+never returns), come from the table `ssa/runtimeFunctions`, which holds each one's C prototype and is checked
 against `quest_runtime.h`; a Quest function's come from its parameters' and results' representations. A function extends
 its byte parameters on entry, since a C caller leaves their upper bits unspecified. A C `bool` or `QChar` result is
 extended by a `zext8` after the call, since AAPCS64 leaves a narrow result's upper bits unspecified; a function that
@@ -153,14 +153,14 @@ registration, and the unit).
   at once: `language/global_joins`).
 - **Memory.** Every aggregate slot is a word (`layout`); a box or a global holds a record or variant's 16 bytes; a
   location (a cell, what a `var` or `out` parameter points to) holds a record or variant as its box's pointer
-  (`layout.shapeLocationRepresentation`). Offsets come from `codegen/layout`, `codegen/staticdata`, and
-  `codegen/runtimeLayout`, which the C asserts.
+  (`layout.shapeLocationRepresentation`). Offsets come from `repr/layout`, `repr/staticdata`, and
+  `repr/runtimeLayout`, which the C asserts.
 - **Closures.** A closure's environment is the descriptors of its type arguments then its captures, a word for each
   of their values: private to the unit, which alone reads it ([arm64.md](arm64.md) §7.1). A call of a variable bound
   to a closure of one of the unit's functions calls the function directly, as the C printer does; when that function
   is an external's thunk (`qx_`, ir.md §8.4.1), which only forwards its arguments, the call is of the external C
   function itself, as the C compiler makes it by inlining the thunk. A call of an imported member that is one of the
-  standard library's externals (`codegen/externals`) calls the C function, as the C printer's `libraryExternal` does.
+  standard library's externals (`repr/externals`) calls the C function, as the C printer's `libraryExternal` does.
 - **Thread-locals.** The handler chain and the current exception are the runtime's thread-local variables, whose
   addresses `threadLocal` takes: the native backend calls their accessor (arm64.md §3.6), which clobbers what a call
   does and is not rematerialized, and `ssac` takes the address with `&`; neither keeps a list of their names.
@@ -422,14 +422,14 @@ its contents, 8-byte aligned: zeros (a global, a module's record and its initial
 NUL (a literal, a name in a descriptor or the function table), or words, each an integer or a symbol's address plus a
 byte offset (a descriptor and what its extra field points at, an offset table, a tag map, a static closure, the function
 table, the layouts of the objects the unit allocates: a `quest_layout_<tag>` and its kinds `qlk_<tag>`, packed
-eight to a word, laid out by `ssa/statics` from `codegen/objectLayout`, docs/collector.md §3.2, and the unit's root
+eight to a word, laid out by `ssa/statics` from `repr/objectLayout`, docs/collector.md §3.2, and the unit's root
 table `qr_roots`: the address and words of each global that may hold a pointer and of each module record, ended by
 a null slot, which `qr_register_dicts` registers). A store of a `ptr` or `val` word into an existing object is
 followed by a call of `quest_barrier` or `quest_barrier_slot`, with no other call between the two (docs/collector.md §3.5). Words lay out the runtime's structs on a little-endian target, a narrow field in the low bytes of its word.
 
 The builder makes, besides the IR's functions and the module initializers and `main`:
 
-- the data of `ir.StaticData`'s descriptors (`ssa/statics`, from `codegen/staticdata`'s descriptions), offset
+- the data of `ir.StaticData`'s descriptors (`ssa/statics`, from `repr/staticdata`'s descriptions), offset
   tables, and tag maps, as the C printer's declarations define them, and of the layouts the unit's allocations
   registered (`objectLayout.Table` in the unit builder), added once every function is built;
 - each function type's adapter, thunk, and invoker (`quest_adapt_<tag>`, `quest_thunk_<tag>`, `quest_invoke_<tag>`),

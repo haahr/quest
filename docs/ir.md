@@ -136,7 +136,7 @@ type alongside the shape.
 **Types as written.** Every IR variable's type is the type as written, by design, so that dumps and echo show the
 program's alias names (`let p: Point`). Passes decide by shapes; where one needs the written structure of such a
 type (a component's type for a variable it makes, a function type's quantifiers and signature, whose symbols a
-call's type arguments refer to, or what echo writes), it asks `ir/written.py`, the one module below lowering that
+call's type arguments refer to, or what echo writes), it asks `repr/written.py`, the one module below lowering that
 looks inside types as written.
 
 ### 4.2. Representations
@@ -423,7 +423,7 @@ arguments and result by the plans the represent pass records on it (§8.3).
 
 ### 8.3. Represent
 
-`ir/represent.py`. A binder's representation is its shape's (`codegen/layout.py`, shared by every backend, which
+`ir/represent.py`. A binder's representation is its shape's (`repr/layout.py`, shared by every backend, which
 computes layouts from shapes and caches them per shape), so the pass inserts `convert` wherever a value's
 representation or layout differs from the one its use requires. Its decisions are made on shapes. The variables it
 makes have types as written, with their alias names, which the IR prints (§5): the types of components of a type as
@@ -497,7 +497,7 @@ and read through proxies:
   record literal whether its view's offset table is found at run time (`MakeRecord.runtime_offsets`).
 
 Static decisions (whether layouts agree, whether a copy would lose updates) are made by `generic_layout_agrees` and
-`generic_layout_copies_mutable_data` in `codegen/layout.py`, which a differential test
+`generic_layout_copies_mutable_data` in `repr/layout.py`, which a differential test
 (`tests/python/test_layout_differential.py`) checks against the runtime's `quest_layout_equivalent`. After this pass,
 every operation's atoms have exactly the representations the operation requires.
 

@@ -19,9 +19,9 @@ from typing import Optional
 
 import quest.syntax.ast as ast
 from quest.codegen.c.declarations import CDeclarationEmitter, collect_aggregate_types
-from quest.codegen.syntax import comma, lines_text
+from quest.repr.syntax import comma, lines_text
 from quest.codegen.c.types import RecordNamingContext, qtype_to_c_type
-from quest.codegen.layout import location_representation, slot_representation
+from quest.repr.layout import location_representation, slot_representation
 from quest.config.abi import header_stamp
 from quest.diagnostics import at_import, in_unit
 from quest.types.env import Environment, Scope

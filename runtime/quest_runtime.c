@@ -1647,7 +1647,7 @@ void *quest_view_option_payload(const void *opt, const QViewMap *m) {
 }
 
 /* Whether a value of type d (a tuple or option) may be a proxy, as the compiler
- * decides it for the type (may_be_proxied in codegen/layout.py), or less often:
+ * decides it for the type (may_be_proxied in repr/layout.py), or less often:
  * a tuple one of whose components may change view, an option of two or more
  * cases or one of whose payloads' components may. A component may change view
  * when it is view-sensitive or may hold a proxy (a tuple, or an option with a
@@ -1665,7 +1665,7 @@ static bool quest_view_sensitive_rec(const QTypeDescriptor *d, const QTypeDescri
 
 /* Whether a component of type d may hold a proxy though values of d itself may
  * not be: a tuple, or an option with a payload (holds_proxies in
- * codegen/layout.py) */
+ * repr/layout.py) */
 static bool quest_holds_proxies(const QTypeDescriptor *d) {
     if (d == NULL) return false;
     if (d->kind == QTYPE_KIND_TUPLE) return true;

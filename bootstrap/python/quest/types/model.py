@@ -504,7 +504,7 @@ class QType(metaclass=_InternedNode):
         return str(self)
 
     # The __str__ methods of types, their components, and kinds are mirrored by
-    # _printed_parts in quest/codegen/layout.py, which digests types without
+    # _printed_parts in quest/repr/layout.py, which digests types without
     # printing them; change both together.
     def __str__(self) -> str:
         return self.__class__.__name__

@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 
 from quest.ir import nodes as ir
 from quest.ir.printer import format_unit
-from quest.ir.shapes import shape
+from quest.repr.shapes import shape
 from quest.ir.verify import verify_unit
 from quest.types import BOOL_TYPE, INT_TYPE, OK_TYPE, QFunType, QParam
 

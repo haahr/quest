@@ -87,7 +87,7 @@ place during inference. Several parts of the type checker depend on how type obj
   to an alias, without coming from a reference to it, prints structurally. References to the builtin primitive names
   (`Int`, `Ok`, ...) elaborate to the primitives themselves (`alias_reference`). A substitution that changes an
   alias's target drops the alias node.
-- **Alias nodes never reach C code generation.** The IR's shapes are of canonical types (`ir/shapes.py`), and the
+- **Alias nodes never reach C code generation.** The IR's shapes are of canonical types (`repr/shapes.py`), and the
   represent pass, the codegen type functions, and the C printer decide from shapes ([ir.md §4.1](ir.md)). The lowering
   prints results from the typed AST's types (`let x:T = ...`), so they show alias names exactly as the interpreter does.
   Types serialized by `dynamic.extern` are written without alias names, so that they read back on their own.
@@ -101,7 +101,7 @@ place during inference. Several parts of the type checker depend on how type obj
   2. Coinductive subtyping (`is_subtype`) already handles equi-recursive types and higher-order type operators directly
      via the trail $\Sigma$ in a few milliseconds; running partition-refinement canonicalization on every type
      constructed during elaboration would add substantial overhead on non-recursive code.
-  Instead, `canonicalize_type` (`quest/types/canonical.py`) and `shape_of` (`quest/ir/shapes.py`) compute canonical
+  Instead, `canonicalize_type` (`quest/types/canonical.py`) and `shape_of` (`quest/repr/shapes.py`) compute canonical
   minimal regular trees on demand (and cache them per type) when lowering to the IR and C backend, where equivalent
   recursive types must map to a single C struct and runtime type descriptor.
 - **Substitution preserves sharing.** Every type node, component (fields, parameters, quantifiers), and kind records at

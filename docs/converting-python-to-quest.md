@@ -135,7 +135,7 @@ sb.str("header\n").int(42).char('\n')
 let result = sb.toString()
 ```
 
-The compiler's C backend writes C text in a form that translates line by line (`codegen/syntax.py`, checked by
+The compiler's C backend writes C text in a form that translates line by line (`repr/syntax.py`, checked by
 `tests/python/test_c_text.py`):
 
 - Every value it interpolates is already a string, so an f-string becomes a `<>` chain: `f"{arr}->data[{idx}] = {v};"`

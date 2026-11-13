@@ -10,8 +10,8 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
 from quest.types.canonical import rec_self_level, rec_self_var
-from quest.codegen.descriptors import bound_var, bound_var_index, canonical_fun_type
-from quest.codegen.layout import type_tag
+from quest.repr.descriptors import bound_var, bound_var_index, canonical_fun_type
+from quest.repr.layout import type_tag
 from quest.types import (
     DYNAMIC_TYPE,
     INT_TYPE,

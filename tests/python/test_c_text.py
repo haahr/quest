@@ -7,7 +7,7 @@ import math
 import unittest
 from pathlib import Path
 
-from quest.codegen.syntax import c_char, c_int, c_int_literal, c_real, c_string, call, comma, index_table
+from quest.repr.syntax import c_char, c_int, c_int_literal, c_real, c_string, call, comma, index_table
 from quest.diagnostics import QuestCompilerError
 from quest.interpreter.builtins import _conv_real
 from quest.syntax.tokenizer import Tokenizer
@@ -16,6 +16,7 @@ from quest.values.model import QReal
 
 _ROOT = Path(__file__).resolve().parents[2]
 _CODEGEN = _ROOT / "bootstrap" / "python" / "quest" / "codegen"
+_REPR = _ROOT / "bootstrap" / "python" / "quest" / "repr"
 # The files that spell C (syntax.py, which defines the vocabulary, may join and
 # format)
 _FILES = [
@@ -23,9 +24,9 @@ _FILES = [
     _CODEGEN / "c" / "declarations.py",
     _CODEGEN / "c" / "types.py",
     _CODEGEN / "c" / "headers.py",
-    _CODEGEN / "layout.py",
-    _CODEGEN / "symbols.py",
-    _CODEGEN / "descriptors.py",
+    _REPR / "layout.py",
+    _REPR / "symbols.py",
+    _REPR / "descriptors.py",
 ]
 
 

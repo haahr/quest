@@ -1,8 +1,8 @@
 # Quest C Name Mangling Specification
 
 This document specifies the name mangling and symbol generation rules of the C backend
-([`symbols.py`](../bootstrap/python/quest/codegen/symbols.py) and
-[`layout.py`](../bootstrap/python/quest/codegen/layout.py), which every backend shares, and the C backend's
+([`symbols.py`](../bootstrap/python/quest/repr/symbols.py) and
+[`layout.py`](../bootstrap/python/quest/repr/layout.py), which every backend shares, and the C backend's
 [`c/types.py`](../bootstrap/python/quest/codegen/c/types.py),
 [`c/declarations.py`](../bootstrap/python/quest/codegen/c/declarations.py), and
 [`c/printer.py`](../bootstrap/python/quest/codegen/c/printer.py)).

@@ -1,7 +1,7 @@
 """Representation (docs/ir.md §8.3): inserts `convert` wherever a value's
 representation differs from the one its use requires.
 
-A value's representation is its type's (codegen/layout.py: the runtime's, shared
+A value's representation is its type's (repr/layout.py: the runtime's, shared
 by every backend): an unbounded type parameter's values are held as QVal words,
 a bounded one's at their own view (their type argument's) in the bound's
 representation, and other types natively (a module's abstract type's viewed at
@@ -25,9 +25,9 @@ also decides what the C printer would otherwise: how inspect cases get their
 components (ir.InspectArm), the thunks' plans of type applications, and, in its
 last step (ir/slots.py), boxing at slots and reads through proxies.
 
-Every decision is made on shapes (ir/shapes.py). The variables the pass makes
+Every decision is made on shapes (repr/shapes.py). The variables the pass makes
 have types as written, with their alias names, which the IR prints (docs/ir.md
-§5), found through ir/written.py: the types of the components of a type as
+§5), found through repr/written.py: the types of the components of a type as
 written (written_structure), and the signatures of function types as written,
 whose type parameters' symbols are those the call's type arguments and the
 callee's parts refer to (a shape's are its canonical form's, named afresh).
@@ -40,7 +40,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from quest.codegen.layout import (
+from quest.repr.layout import (
     abstract_instance,
     generic_layout_agrees,
     held_at_bound,
@@ -54,10 +54,10 @@ from quest.codegen.layout import (
     signature_representation,
 )
 from quest.ir import nodes as ir
-from quest.ir.shapes import Shape, shape
+from quest.repr.shapes import Shape, shape
 from quest.ir.slots import decide_slots, may_be_stored_as_subtype, tuple_access
 from quest.ir.walk import statement_bodies
-from quest.ir.written import array_element as written_element, fun_signature, quantified, written_structure
+from quest.repr.written import array_element as written_element, fun_signature, quantified, written_structure
 from quest.types import (
     auto_payload_type,
     is_kind_equal,
@@ -309,7 +309,7 @@ def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType],
     representations (plan wraps it).
 
     A shape is a type reduced to what decides how C holds its values
-    (ir/shapes.py), its representation: an Int as an int64_t, a tuple as a
+    (repr/shapes.py), its representation: an Int as an int64_t, a tuple as a
     pointer to its struct, and so on. A view is the type a value's layout is
     read at, which a record, variant, or option seen at a supertype may change,
     and a proxy is a small object that shows a tuple or option at another view

@@ -31,8 +31,8 @@ The three run at once, as `tools/check --light` (stage 0 adds it), in about a qu
 miss what only the full check sees: the other backends, the stress modes, and behavior; the stages that change code
 rather than move it (stages 5, 6, and 7) say what more they need.
 
-A move renames the moved module's C symbols (`mangleModuleName`: `questlang/codegen/layout` is
-`questlang__codegen__layout`) but not the scheme, so it needs no ABI bump. `tests/abi/inputs` is a frozen snapshot of
+A move renames the moved module's C symbols (`mangleModuleName`: `questlang/repr/layout` is
+`questlang__repr__layout`) but not the scheme, so it needs no ABI bump. `tests/abi/inputs` is a frozen snapshot of
 interfaces and is not updated.
 
 ---
@@ -63,7 +63,9 @@ First, because stage 2's representation directory imports sha256.
 codegen/layout, codegen/descriptors, ir/shapes, ir/written, codegen/runtimeLayout, codegen/objectLayout, and
 codegen/staticdata are the representation of values in memory, which the IR passes, the SSA, and both backends use;
 they move to **`questlang/repr/`**, and the bootstrap's counterparts (layout, descriptors, shapes, written,
-objectlayout) to `bootstrap/python/quest/repr/`. codegen/runtimeFunctions, used only by ssa/, moves to
+objectlayout) to `bootstrap/python/quest/repr/`. So do codegen/symbols (the names units link against), codegen/syntax
+(the spelling of C text, which layout's struct names need), and codegen/externals (the library's external C
+functions), which ir/, ssa/, and the representation import too. codegen/runtimeFunctions, used only by ssa/, moves to
 **`ssa/runtimeFunctions`**. ir/ and ssa/ then import nothing from codegen/, and codegen/ imports them: the layering
 §5 of compiler-organization.md describes. About 100 import lines change (shapes alone has 38 importers, layout 21).
 

@@ -13,7 +13,7 @@ the uniform quantifier rule says (docs/c-representation.md §6.4):
 - a type that mentions no type parameter in scope is its static descriptor
   (ir.StaticDescriptor);
 - a type that mentions some is its template, a hole for each
-  (codegen/descriptors.py, hole_var), instantiated with their descriptors
+  (repr/descriptors.py, hole_var), instantiated with their descriptors
   (ir.Instantiate); and the generic layout of a polymorphic callee's type (a
   `runtime` plan's) is its template with a hole for each of the callee's type
   parameters too, instantiated with the type arguments' descriptors.
@@ -47,13 +47,13 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from quest.codegen.descriptors import bound_var_index, hole_var
-from quest.codegen.layout import abstract_instance, own_view, representation, resolved_shape
+from quest.repr.descriptors import bound_var_index, hole_var
+from quest.repr.layout import abstract_instance, own_view, representation, resolved_shape
 from quest.ir import nodes as ir
 from quest.ir.represent import held_shape
-from quest.ir.shapes import shape
+from quest.repr.shapes import shape
 from quest.ir.walk import contents, statement_bodies
-from quest.ir.written import package_text
+from quest.repr.written import package_text
 from quest.types import (
     QAbstractType,
     QAllKind,

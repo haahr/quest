@@ -35,7 +35,7 @@ the static descriptors, offset tables, and tag maps the printer declares.
 
 The declarations of the types the C uses (structs, descriptors, offset tables,
 function type adapters) are c/declarations.py's, and the representations
-codegen/layout.py's, spelled in C by c/types.py (docs/c-representation.md). A
+repr/layout.py's, spelled in C by c/types.py (docs/c-representation.md). A
 module file's unit exports its interface's members, the ABI other units link
 against: its record (`qm_<module>`), its initializer (`qv_mod_<module>_init`),
 and a function for each function or polymorphic value
@@ -57,8 +57,8 @@ from quest.codegen.c.declarations import (
     module_function_arguments,
     module_function_signature,
 )
-from quest.codegen import objectlayout
-from quest.codegen.syntax import (
+from quest.repr import objectlayout
+from quest.repr.syntax import (
     c_char,
     c_int,
     c_int_literal,
@@ -85,7 +85,7 @@ from quest.codegen.c.types import (
     shape_slot_store,
     shape_slot_to_qval,
 )
-from quest.codegen.layout import (
+from quest.repr.layout import (
     layout_of,
     qtype_to_name_str,
     resolved_shape,
@@ -97,12 +97,12 @@ from quest.codegen.layout import (
     type_identity_key,
     type_tag,
 )
-from quest.codegen.symbols import mangle_ident, mangle_module_ident, mangle_module_name, module_record_ident
+from quest.repr.symbols import mangle_ident, mangle_module_ident, mangle_module_name, module_record_ident
 from quest.diagnostics import MAIN_FRAME, init_frame
 from quest.ir import nodes as ir
 from quest.ir.describe import echo_value_kind
 from quest.ir.represent import held_shape
-from quest.ir.shapes import Shape, shape
+from quest.repr.shapes import Shape, shape
 from quest.ir.walk import global_variables, statement_binders, walk_statements
 from quest.types import (
     QAutoType,

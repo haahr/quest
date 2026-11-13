@@ -8,7 +8,7 @@ the backend a line of Quest when it is ported, where text is concatenated with
 `<>` and a number is never spelled by `conv.int` alone (which writes negative
 numbers with `~`).
 
-The self-hosted counterpart is questlang/codegen/syntax.
+The self-hosted counterpart is questlang/repr/syntax.
 """
 
 from __future__ import annotations

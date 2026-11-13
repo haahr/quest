@@ -53,7 +53,7 @@ INPUTS_DIR = ABI_DIR / "inputs"
 # inputs/questlang/... (under the project).
 SNAPSHOT_SOURCES = ((ROOT_DIR / "lib", INPUTS_DIR / "lib"), (ROOT_DIR / "questlang", INPUTS_DIR / "questlang"))
 RUNTIME_HEADER = ROOT_DIR / "runtime" / "quest_runtime.h"
-EXTERNALS_TABLE = ROOT_DIR / "questlang" / "codegen" / "externals.mod.quest"
+EXTERNALS_TABLE = ROOT_DIR / "questlang" / "repr" / "externals.mod.quest"
 
 
 def _normalize_qi(text: str) -> str:

@@ -1,5 +1,5 @@
 """C spellings for the C backend: the C types of representations
-(codegen/layout.py), function pointer types, QVal wrapping and unwrapping,
+(repr/layout.py), function pointer types, QVal wrapping and unwrapping,
 loading from and storing into aggregate slots (a record or variant boxed),
 literals, record struct and offset table names, and descriptor expressions.
 
@@ -10,15 +10,15 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Optional
 
-from quest.codegen.syntax import c_int, comma
-from quest.codegen.descriptors import (
+from quest.repr.syntax import c_int, comma
+from quest.repr.descriptors import (
     bound_var_index,
     canonical_auto_type,
     canonical_fun_type,
     hole_index,
     module_abstract_type_name,
 )
-from quest.codegen.layout import (
+from quest.repr.layout import (
     PRINTED_TEXT_LIMIT,
     is_boxed_in_slots,
     shape_location_representation,
@@ -33,9 +33,9 @@ from quest.codegen.layout import (
     type_digest,
     type_tag,
 )
-from quest.ir.shapes import Shape, shape
-from quest.ir.written import echo_children, echo_head, recursive_identity, tuple_type_components
-from quest.codegen.symbols import mangle_ident
+from quest.repr.shapes import Shape, shape
+from quest.repr.written import echo_children, echo_head, recursive_identity, tuple_type_components
+from quest.repr.symbols import mangle_ident
 from quest.types import (
     short_type_name,
     QAbstractType,
@@ -273,7 +273,7 @@ class RecordNamingContext:
 
 
 def qtype_to_c_type(t: QType, ctx: Optional[RecordNamingContext] = None) -> str:
-    """The C type of a value of t: its representation (codegen/layout.py), which
+    """The C type of a value of t: its representation (repr/layout.py), which
     is named by the runtime's C type."""
     return representation(t)
 

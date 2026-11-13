@@ -18,7 +18,7 @@ Typed AST (TypedProgram, or a module file's TypedModule)
            v  ir/lower.py: Core IR (ANF with join points)
            v  ir/specialize.py, ir/closure.py, ir/represent.py, ir/describe.py: the passes (ir.md §8)
            |
-+-----------------------+      layout.py, descriptors.py, symbols.py (shared by backends)
++-----------------------+      repr/layout.py, repr/descriptors.py, repr/symbols.py (shared by backends)
 |   c/printer.py        | <--- c/types.py: C spellings; c/declarations.py: structs, tables, descriptors
 |   (CPrinter)          |      Prints what the passes decided: no representation decisions or descriptors of its own
 +-----------------------+
@@ -32,10 +32,10 @@ Typed AST (TypedProgram, or a module file's TypedModule)
     Native Binary (Executable), or a module's object (.o)
 ```
 
-### Module Structure (`bootstrap/python/quest/codegen/`)
-What every backend shares, since a backend's units use the C runtime and link with the C backend's:
-- **`backend.py`:** The IR's passes after lowering (`run_passes`), and the modules a unit uses without importing them.
-- **`layout.py`:** How values are laid out, computed from shapes (`ir/shapes.py`) and cached per shape: layout tags
+### Module Structure (`bootstrap/python/quest/repr/` and `codegen/`)
+The representation of values, which the IR's passes and every backend share (`repr/`), since a backend's units use
+the C runtime and link with the C backend's:
+- **`layout.py`:** How values are laid out, computed from shapes (`repr/shapes.py`) and cached per shape: layout tags
   (which name structs and descriptors), type digests and identity keys, representations (`representation`, named by
   the runtime's C types, and `signature_representation` for calls), slot representations (`slot_representation`: as
   an aggregate's slot or a `QVal` holds a value, a record or variant boxed) and location representations
@@ -44,7 +44,13 @@ What every backend shares, since a backend's units use the C runtime and link wi
   canonical forms of recursive types, which shapes are built from, are `types/canonical.py`'s.
 - **`descriptors.py`:** Runtime descriptors' type-level forms: placeholders for bound type parameters and template
   holes, and the canonical function and auto types that descriptors compare.
+- **`shapes.py`, `written.py`, `objectlayout.py`:** Types as the passes see them, the types of a type's components
+  as written, and the layouts of the objects the runtime's collector walks.
 - **`symbols.py`:** The names units link against (identifier and module mangling).
+- **`syntax.py`:** The spelling of C text: literals, and the forms the C backend repeats.
+
+What every backend shares besides (`codegen/`):
+- **`backend.py`:** The IR's passes after lowering (`run_passes`), and the modules a unit uses without importing them.
 
 The C backend (`codegen/c/`):
 - **`backend.py`:** Its entry points, `program_to_c` and `module_file_to_c` (lowering, passes, printing), used by
@@ -380,7 +386,7 @@ call frames ([exceptions.md](exceptions.md)).
 ### 9.1. Option Types
 Option types are ordered sums with inline union payloads (`QOption_<tags>`):
 - Because option types with the same cases in different orders are equal ([type-system.md §6.8](type-system.md)),
-  canonical shapes order option cases alphabetically by name (`cases_by_name` in `ir/shapes.py`), so equal option types
+  canonical shapes order option cases alphabetically by name (`cases_by_name` in `repr/shapes.py`), so equal option types
   share one C struct and tag numbering (`0, 1, ...` in alphabetical order).
 - A C struct containing `int64_t tag` and an inline union of branch structs for branches carrying components, where
   each component uses its 8-byte `slot_representation`:
