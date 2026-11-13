@@ -10,8 +10,9 @@ mixin per construct family:
 - `bindings`: function abstractions and value, type, and kind bindings.
 - `application`: monomorphic and polymorphic calls, lvalue arguments of var
   and out parameters, and inferred type arguments resolved.
-- `aggregates`: records, tuples, selection, options, variants, arrays, and
-  indexing.
+- `aggregates`: records, selection, options, variants, arrays, and indexing.
+- `tuples`: tuples, their type components and labels, and the declarations
+  their bindings make.
 - `control`: case, infix operators and assignment, conditionals, for loops, and
   blocks.
 - `exceptions`: exception declarations, raise, and try.
@@ -34,6 +35,7 @@ __all__ = [
     "escape",
     "exceptions",
     "scoping",
+    "tuples",
     "typecheck",
     "typed_ast",
 ]

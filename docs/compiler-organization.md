@@ -73,7 +73,7 @@ questlang/
 │   ├── checker              # The checker's state, shared helpers, and dispatch hooks
 │   ├── checks, escape       # Shared checks
 │   ├── elaboratetypes       # Syntactic types and kinds to semantic ones
-│   ├── bindings, application, aggregates, control, exceptions, autovalues   # Construct families
+│   ├── bindings, application, aggregates, tuples, control, exceptions, autovalues   # Construct families
 │   ├── typecheck            # Dispatch on expression forms, phrases, programs, entry points
 │   └── scoping              # Well-scopedness check of typed programs
 │
@@ -387,8 +387,8 @@ Layer 3: modules/paths, units, graph
 Layer 4: types/env → kinds, contractiveness
 Layer 5: typechecker/typedastprint, elaboratetypes, checks, escape
 Layer 6: modules/abstracttypes, loader, elaboration, stdlib
-Layer 7: typechecker/checker → bindings, application, aggregates, control, exceptions, autovalues → typecheck,
-         scoping
+Layer 7: typechecker/checker → bindings, application, aggregates, tuples, control, exceptions, autovalues →
+         typecheck, scoping
 Layer 8: types/canonical → values/model → dynamicjson → interpreter/primitives, builtins,
          formatting → treewalk | repr/* → ir/* → ssa/* → codegen/*, modules' artifacts, config/*, build/*
 Layer 9: driver/*

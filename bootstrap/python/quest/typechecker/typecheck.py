@@ -61,6 +61,7 @@ from quest.typechecker.scoping import (
 from quest.typechecker.bindings import BindingMixin
 from quest.typechecker.application import ApplicationMixin
 from quest.typechecker.aggregates import AggregateMixin
+from quest.typechecker.tuples import TupleMixin
 from quest.typechecker.control import ControlMixin
 from quest.typechecker.exceptions import ExceptionMixin
 from quest.typechecker.auto_values import AutoValueMixin
@@ -69,7 +70,9 @@ from quest.typechecker.auto_values import AutoValueMixin
 TypeError = QuestTypeError
 
 
-class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixin, ExceptionMixin, AutoValueMixin):
+class TypeElaborator(
+    BindingMixin, ApplicationMixin, AggregateMixin, TupleMixin, ControlMixin, ExceptionMixin, AutoValueMixin
+):
     """The type checker, which elaborates a parsed syntax tree into a typed AST
     or reports the first type error.
 
