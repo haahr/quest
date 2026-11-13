@@ -1,0 +1,63 @@
+(* Quest Self-Hosted Compiler: IR Pipeline Implementation *)
+
+module pipeline : Pipeline
+import
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/simplify : questlang/ir/Simplify
+    questlang/ir/specialize : questlang/ir/Specialize
+    questlang/ir/closure : questlang/ir/Closure
+    questlang/ir/unbox : questlang/ir/Unbox
+    questlang/ir/represent : questlang/ir/Represent
+    questlang/ir/describe : questlang/ir/Describe
+    questlang/ir/thunks : questlang/ir/Thunks
+    questlang/ir/verify : questlang/ir/Verify
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    collections/vector : collections/Vector
+    stringOp = string : StringOp
+export
+    Let ImplicitImport = Tuple canonicalPath: String interfacePath: String end
+
+    let checked(unit: nodes.Unit): nodes.Unit =
+        begin
+            if verify.irChecksEnabled() then verify.checkUnit(unit) end
+            unit
+        end
+
+    (* The passes of docs/ir.md section 8, in order: simplify, specialize,
+     * closure conversion, unbox, represent, describe, and thunks *)
+    let runPasses(unit: nodes.Unit): nodes.Unit =
+        begin
+            let specialized = checked(specialize.specializeUnit(checked(simplify.simplifyUnit(unit))))
+            let represented = checked(represent.representUnit(unbox.unboxUnit(checked(closure.closureConvertUnit(specialized)))))
+            checked(thunks.thunkUnit(describe.describeUnit(represented)))
+        end
+
+    (* The unit's imports that none of the program's import phrases names *)
+    let implicitImports(unit: nodes.Unit program: typedAst.Program): Array(ImplicitImport) =
+        begin
+            let imported = vector.new(:String)
+            for i = 0 upto {extent program.phrases - 1} do
+                case program.phrases[i].form
+                    when bindImport with x then
+                        for j = 0 upto {extent x.items - 1} do
+                            let names = x.items[j].names
+                            for k = 0 upto {extent names - 1} do vector.append(:String imported names[k]) end
+                        end
+                    else ok
+                end
+            end
+            let found = vector.new(:ImplicitImport)
+            for i = 0 upto {extent unit.imports - 1} do
+                let imp = unit.imports[i]
+                let var known = false
+                for j = 0 upto {vector.length(:String imported) - 1} do
+                    if stringOp.equal(vector.get(:String imported j) imp.name) then known := true end
+                end
+                if not(known) then
+                    vector.append(:ImplicitImport found
+                        tuple let canonicalPath = imp.canonicalPath let interfacePath = imp.interfacePath end)
+                end
+            end
+            vector.toArray(:ImplicitImport found)
+        end
+end

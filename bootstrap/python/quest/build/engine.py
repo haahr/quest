@@ -26,8 +26,8 @@ from quest.modules.manifest import (
 )
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.build.compiler_runner import compile_c_to_object, link_objects
-from quest.codegen.backend import implicit_imports
-from quest.codegen.c.backend import program_to_c
+from quest.ir.pipeline import implicit_imports
+from quest.codegen.backend import program_to_c
 from quest.types.env import Environment
 from quest.modules.interface_compiler import indirect_interface_refs
 from quest.modules.graph import (

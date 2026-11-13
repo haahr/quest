@@ -603,7 +603,7 @@ on runtime helper operations provided by standard library modules (e.g. `string`
 - Main routines are not required to manually write boilerplate import clauses for core standard library helpers.
 - Lowering a main routine to the IR treats each standard library module it uses without importing it as an import of
   it with its interface (`module_ref` in `ir/lower.py`), including a library module compiled from source (`list`,
-  from `lib/list.mod.quest`); `implicit_imports` in `codegen/backend.py` lists them.
+  from `lib/list.mod.quest`); `implicit_imports` in `ir/pipeline.py` lists them.
 - These implicitly referenced modules are automatically recorded into the main routine's `.main.qm` under
   `imported_modules`.
   (`unit_module_refs` in `build/engine.py` computes this list, explicit imports plus implicit ones, for both full

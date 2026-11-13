@@ -26,7 +26,7 @@ from quest.modules.module_compiler import find_interface_header, header_search_d
 from quest.modules.graph import Roots, unit_artifact_dir
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.modules.units import unit_declaration
-from quest.codegen.backend import IR_PASSES
+from quest.ir.pipeline import IR_PASSES
 from quest.build.compiler_runner import compile_c_source, run_binary
 from quest.codegen.c.headers import ensure_imported_interface_header
 from quest.config import CompilerOptions
@@ -544,7 +544,7 @@ class CodegenCPhase(Phase):
     artifact_name = "c_source"
 
     def run(self, input_data: Any, ctx: CompilerContext) -> Optional[str]:
-        from quest.codegen.backend import implicit_imports
+        from quest.ir.pipeline import implicit_imports
         from quest.codegen.c.printer import print_c
 
         if input_data is None:

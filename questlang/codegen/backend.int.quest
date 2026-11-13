@@ -1,20 +1,47 @@
-(* Quest Self-Hosted Compiler: Backend Interface
+(* Quest Self-Hosted Compiler: The C Backend's Entry Points Interface
  *
- * bootstrap/python/quest/codegen/backend.py: what every backend does with a
- * unit before writing its code (docs/ir.md): the IR's passes after
- * lowering, and the modules a unit uses without importing them. *)
+ * The one place the driver, the build engine and the module compiler turn a
+ * typed program or module file into code, whichever backend compiles it. Each
+ * entry lowers the typed AST to the IR (ir/lower), runs the IR's passes
+ * (ir/pipeline) and hands the unit to the backend named by its backend
+ * argument (codegen/choice):
+ *
+ *   c      the C printer (codegen/c/printer) prints the IR as C
+ *   ssac   the IR is built into SSA form (ssa/pipeline) and printed as C by
+ *          codegen/ssac
+ *   arm64  the same SSA is compiled to assembly (codegen/arm64/codegen)
+ *
+ * What a backend cannot compile raises its own exception (the C printer's
+ * unsupported, the SSA's builder's and verifier's, ssac's, arm64's); each is
+ * raised again as this module's unsupported, so that a caller handles one
+ * exception whatever the backend. The bootstrap's counterpart is
+ * bootstrap/python/quest/codegen/backend.py. *)
 
 interface Backend
 import
-    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/common/location : questlang/common/Location
+    questlang/types/env : questlang/types/Env
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/ir/nodes : questlang/ir/Nodes
+    util/maybe : util/Maybe
 export
-    (* The unit, described: every pass run, each result verified when
-     * QUEST_CHECK_IR=1 *)
-    runPasses(unit: nodes.Unit): nodes.Unit
-    (* The modules (by canonical name and interface) a program's unit uses
-     * without importing them: standard library modules, which it links
-     * against too *)
-    Def ImplicitImport = Tuple canonicalPath: String interfacePath: String end
-    implicitImports(unit: nodes.Unit program: typedAst.Program): Array(ImplicitImport)
+    (* What the unit's backend cannot compile, with why *)
+    unsupported: Exception(String)
+    (* The code backend prints for a unit whose IR passes have run: C, or
+     * assembly for arm64. The C printer's output includes interfaceHeader, the
+     * path of the unit's interface header, if there is one. What the backend
+     * cannot compile raises unsupported *)
+    unitToC(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String): String
+    (* The flags a backend's C is compiled with, besides the C compiler's
+     * usual ones *)
+    cFlags(backend: String): Array(String)
+    (* A program's C translation, and its described unit *)
+    programToC(program: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool printResult: Bool
+        backend: String)
+        : Tuple c: String unit: nodes.Unit end
+    (* A module file's C translation, which exports its interface's members,
+     * and its interface's fingerprint (modules/fingerprint) as the C string
+     * qh_<unit> *)
+    moduleFileToC(m: typedAst.Binding e: env.T sourceMap: maybe.T(location.SourceMap)
+        interfaceHeader: maybe.T(String) backend: String fingerprint: String): String
 end
