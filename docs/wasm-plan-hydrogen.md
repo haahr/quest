@@ -1,6 +1,6 @@
 # Plan: Self-Hosted Quest Browser REPL on WasmGC
 
-**Status:** Draft / Design Plan  
+**Status:** Draft / Design Plan (Revised after Architecture Review)  
 **Target:** Self-hosted Quest compiler (`questlang/`) and REPL running in a browser, targeting WebAssembly with GC (`WasmGC`), with an eventual per-interaction WasmGC JIT.  
 **Dev & Test Toolchain:** `wasmtime` (50.0.1), `wasm-tools` (1.263.0), `node` (v26.13.0 / V8 14.6).
 
@@ -10,11 +10,9 @@
 
 The goal is a self-hosted Quest REPL running in a browser:
 
-1. **AOT WasmGC Backend:** `questlang/` gains a WasmGC backend (`--backend wasm`) that compiles Quest programs and the self-hosted compiler itself (`questlang/driver/main`, ~84K lines across 287 `.quest` files) to `.wasm` modules runnable in `wasmtime`, `node`, and browsers.
-2. **Browser Host:** The compiled driver runs in the browser with a JS host shim replacing `lib/os/`, `lib/io/`, and `runtime/`.
-3. **Per-Interaction WasmGC JIT:** Instead of falling back to the tree-walking interpreter (`--no-jit`), the browser REPL compiles each user phrase to a small WasmGC module in memory, passes it to `WebAssembly.compile` / `WebAssembly.instantiate`, and executes it against the live session state.
-
-This document identifies the **problematic assumptions** in the target architecture, the **hardest design problems** (especially value representation, polymorphism, lvalues, and cross-module WasmGC types), a **concrete representation and compilation design**, a **phased roadmap**, and **open questions**.
+1. **AOT WasmGC Backend:** `questlang/` gains a WasmGC backend (`--backend wasm`) lowering from `ir` to `.wasm` modules runnable in `wasmtime`, `node`, and Chromium/V8.
+2. **Browser Host (Web Worker):** The compiled driver runs in a Web Worker with an event-driven ABI (`repl_init`, `repl_incomplete`, `repl_eval`) and JS host shims for `lib/os/`, `lib/io/`, and `Math.*`.
+3. **Per-Interaction WasmGC JIT:** Each user phrase is compiled to a small WasmGC module in memory and synchronously instantiated in the Worker via `new WebAssembly.Module` / `new WebAssembly.Instance` against the driver's exports and earlier phrase instances.
 
 ---
 
@@ -23,243 +21,205 @@ This document identifies the **problematic assumptions** in the target architect
 Several aspects of Quest's existing architecture—and of the C/ARM64 JIT (`docs/jit.md`)—conflict directly with WasmGC and browser execution:
 
 ### 2.1. WasmGC Has No Interior Pointers (`@` Lvalues and `OffsetDict`)
-In Quest (`docs/c-representation.md` §6.5), functions take `var` (read-write) and `out` (write-only) parameters, and call sites pass `@x`, `@r.f`, `@a[i]`, `@t.1`, or chained paths like `@a[i].f`. The C and ARM64 backends rely on **interior pointers** (`&qv_x`, `(char *)r.val + offset_f`, `&arr->data[i]`).
+In Quest (`docs/c-representation.md` §6.5), functions take `var` (read-write) and `out` (write-only) parameters, and call sites pass `@x`, `@r.f`, `@a[i]`, `@t.1`, or chained paths like `@a[i].f`. C and ARM64 use interior pointers (`&qv_x`, `(char *)r.val + offset_f`, `&arr->data[i]`).
 
-**Problem:** WasmGC `ref`s can only point to the *head* of a `struct` or `array`. There is no pointer-to-field, no pointer-to-array-element, no pointer-to-local, and no byte-offset pointer arithmetic. This affects:
-- `@` lvalues (`var`/`out` parameters)
-- `QRecordVal` field access via `offsetof`
-- `QOptionHeader` payload access (`(char *)opt + 8`)
+**Problem:** WasmGC `ref`s can only point to the *head* of a `struct` or `array`. There is no pointer-to-field, pointer-to-array-element, pointer-to-local, or byte-offset arithmetic.
 
 ### 2.2. WasmGC Strictly Separates Numeric Values from GC References
-In C/ARM64, Quest uses a uniform 64-bit word `QVal` (`union { void *p; int64_t i; double r; uint64_t u; }`). Any polymorphic slot (`A::TYPE`), array element, or generic parameter is 8 bytes, regardless of whether it holds an `Int`, `Real`, `Word.T`, or heap pointer.
+In C/ARM64, Quest uses a uniform 64-bit word `QVal` (`union { void *p; int64_t i; double r; uint64_t u; }`). Any polymorphic slot (`A::TYPE`) is 8 bytes.
 
-**Problem:** WasmGC has **no untagged union** of `i64`/`f64` and `anyref`. Reference types (`anyref`, `structref`, `arrayref`, `i31ref`) live on the GC-managed stack/heap; `i64` and `f64` are unboxed value types. You cannot store an unboxed `i64` or `f64` in an `anyref` slot, and `i31ref` only holds 31-bit signed integers (insufficient for 64-bit `Int` and `Word.T`). Therefore, **universal polymorphism requires heap-boxing primitives** (`Int`, `Real`, `Word.T`) when they cross generic `A::TYPE` boundaries or live in generic containers.
+**Problem:** WasmGC has **no untagged union** of `i64`/`f64` and `eqref`. Reference types live on the GC heap; `i64` and `f64` are unboxed value types; `i31ref` only holds 31-bit signed integers (insufficient for 64-bit `Int` and `Word.T`). Universal polymorphism requires heap-boxing `Int`, `Real`, and `Word.T` across generic `A::TYPE` boundaries and in generic containers.
 
-### 2.3. Per-Interaction Wasm Modules vs. WasmGC Type Identity
-In the ARM64 JIT (`docs/jit.md` §3.2–3.6), each REPL input is compiled into a shared flat address space: `dlsym` resolves host symbols, machine code reads host structs directly, and `os/value` + `os/code` write executable bytes into `MAP_JIT` regions.
-
-**Problem:**
-1. **`os/value` and `os/code` cannot exist on WasmGC.** `value.fetch(addr, displ)`, `value.store`, `code.reserve`, and `code.write32` assume linear/native memory and writable executable pages. The WasmGC JIT must instead emit a **Wasm binary module** (`Array(Byte)` / `String`) and ask the host to instantiate it.
-2. **WasmGC type compatibility across modules:** WasmGC `struct` and `array` types are *isorecursive* (`rec` groups). Two separately compiled Wasm modules only share a `struct`/`array` type if their `rec` groups are structurally identical (same fields, mutability, supertypes, and order inside the `rec` group). If each REPL phrase emits a custom `rec` group of its own types, `ref.cast` across modules will fail unless all cross-module types live in a **canonical shared `rec` group** (or use generic `array`/`struct` supertypes).
-3. **Host/JIT module boundaries:** Each REPL interaction becomes a new `WebAssembly.Module` + `WebAssembly.Instance`. Cross-module calls must go through imported/exported functions, tables, or `funcref`/`struct` values—there is no in-place code patching.
+### 2.3. Per-Interaction Wasm Modules vs. WasmGC Type Identity & `os/value`/`os/code`
+1. **`os/value` and `os/code` cannot exist on WasmGC.** The JIT cannot reserve executable memory or `fetch`/`store` at byte offsets; it must emit `.wasm` bytes and ask the JS host to instantiate them.
+2. **WasmGC `rec`-group type identity:** Two separately compiled Wasm modules only share `struct`/`array` types if their `rec` groups are structurally identical. Cross-module types must live in a **canonical shared `rec` group** (§4.3).
+3. **Host/JIT module boundaries:** Each REPL interaction is a new `WebAssembly.Module` + `WebAssembly.Instance`. There is no in-place code patching.
 
 ### 2.4. `runtime/quest_runtime.c` and `quest_serialization.c` Cannot Touch WasmGC Objects
-Quest currently relies on ~194 KB of C in `runtime/quest_runtime.c`, ~134 KB in `runtime/quest_gc.c`, and ~94 KB in `runtime/quest_serialization.c`.
-- `quest_gc.c` is replaced by WasmGC itself (good).
-- **Problem:** Compiling `quest_runtime.c` or `quest_serialization.c` to Wasm via clang/LLVM puts them in **linear memory**, which **cannot hold or traverse WasmGC `struct`/`array` references** (except awkwardly through `externref` handle tables across a JS/Wasm boundary). All runtime operations that inspect Quest values (`quest_convert`, `quest_is_subtype`, `quest_record_view`, `quest_make_proxy`, `quest_val_is`, `echo` formatting, `dynamic.extern`/`intern`, string/array ops) should be **written in Quest or emitted directly as WasmGC**, not compiled from C.
+- `quest_gc.c` is replaced by WasmGC.
+- `quest_runtime.c` (~194 KB) and `quest_serialization.c` (~94 KB) cannot be compiled to linear-memory Wasm and directly inspect WasmGC structs/arrays. Runtime operations (`quest_is_subtype`, `quest_convert`, `quest_record_view`, `quest_make_proxy`, `quest_val_is`, `quest_identity_hash`, `dynamic.extern`/`intern`, `echo`) must be **written in Quest or emitted directly as WasmGC**.
 
-### 2.5. Synchronous REPL Loop vs. Browser Main Thread
-`questlang/driver/repl` reads lines synchronously via `io/readline` and runs `WebAssembly` synchronously in native code.
+### 2.5. Traps vs. Quest Exceptions
+WebAssembly traps (integer division by zero, `INT64_MIN / -1`, `f64 -> i64` out-of-range/NaN, array out-of-bounds, failed `ref.cast`, `null` dereference) **cannot be caught by `try_table`**. Every trap that Quest specifies as a catchable exception (`int.error`, `real.error`, `word.error`, `arrayOp.error`) must be **explicitly guarded** before executing the Wasm instruction (§5.1).
 
-**Problem:** In a browser:
-- Main-thread JS cannot block on stdin/user input.
-- Main-thread `WebAssembly.Module` / `new WebAssembly.Instance` has synchronous size limits in browsers (historically 4 KB–8 MB in V8/Firefox) when compiling large modules like the self-hosted compiler.
-- **Implication:** Either run the compiler/REPL in a **Web Worker** (with async `WebAssembly.compile` or `SharedArrayBuffer` for blocking `readline`), or structure the browser REPL as an **event-driven** host API (`repl_init()`, `repl_eval(input)` returning output/errors)—mirroring `--kernel` mode (`docs/repl.md` §2.3), which already separates line reading from phrase evaluation. Even in a Worker, `WebAssembly.compile` for JIT modules is naturally `async` (or uses JSPI `WebAssembly.Suspending` if synchronous from Wasm's perspective).
+### 2.6. Stack Limits & Uncatchable Stack Overflow
+Chromium Workers have ~512 KB of stack (~1 MB on the main thread) vs. 8 MB natively. (Probed on Node v26.13.0: ~62,874 minimal 1-param frames in a Node worker, ~15,596 on the main thread, though Chromium's Worker stack is smaller.)
+- Wasm stack overflow throws a JS `RangeError` that **no Wasm `try_table` can catch**.
+- The compiler's own recursive-descent parser, equi-recursive `is_subtype`, typechecker, and IR passes can hit deep recursion on pathological inputs. When V8 throws `RangeError`, the Worker's JS host catches it, reports `Exception: stack.overflow`, and rolls back or resets the session.
 
-### 2.6. Wasm Exceptions Are Static, Generative Exceptions Are Dynamic, and Wasm Hides Stack Frames
-- Quest exceptions (`exception E of T end`) are **generative**: each evaluation creates a distinct exception identity, and `try ... when E with x` matches by runtime identity. Wasm `exnref` (`tag`) declarations are **static** module items and cannot be generated at runtime.
-- Quest produces detailed stack tracebacks (`docs/exceptions.md`) by walking native frame pointers. Wasm `try_table`/`throw` unwinds the stack opaquely with no portable stack inspection API.
+### 2.7. No Object Addresses for Identity Hashing (`hash.identityHash`)
+WasmGC objects can be moved by the collector and have no observable memory address. `hash.identityHash` (used as the default by `collections/hashmap` and `collections/hashset`) must use a lazy per-object ID field (§3.8).
 
 ---
 
-## 3. Core Design Decisions & Representation
+## 3. Representation & Compilation Design
 
-### 3.1. Primitive Types & Universal Polymorphic Value (`anyref`)
+### 3.1. Universal Polymorphic Value: `eqref` (Not `anyref`)
+Use **`eqref`** (`(ref null eq)` / `(ref eq)`) as the universal polymorphic representation (`QVal` equivalent), **not `anyref`**:
+- `ref.eq` requires `(ref null eq)` (`eqref`), not `anyref` (verified with `wasm-tools validate`).
+- All Quest polymorphic values are WasmGC structs, arrays, `i31ref`, or `$QClosureBase` structs wrapping `funcref`—all of which are subtypes of `eqref`. There are no `externref`s inside Quest values.
 
-| Quest Type | Monomorphic / Specialized Wasm Type | Boxed / Polymorphic (`anyref`) Representation | Notes |
+### 3.2. Primitives, Boxing, and `i31ref`
+| Quest Type | Monomorphic / Specialized Wasm Type | Polymorphic (`eqref`) Representation | Notes |
 | :--- | :--- | :--- | :--- |
-| `Int` | `i64` | `(ref $QBox_Int)` = `(struct (field i64))` | Full 64-bit signed; `i31ref` is only 31-bit so cannot hold all `Int`s. |
+| `Int` | `i64` | `(ref $QBox_Int)` = `(struct (field i64))` | Full 64-bit signed. |
 | `Real` | `f64` | `(ref $QBox_Real)` = `(struct (field f64))` | Full 64-bit IEEE-754. |
-| `Word.T` | `i64` | `(ref $QBox_Word)` = `(struct (field i64))` | Unsigned 64-bit; shares `i64` ops (`i64.add`, `i64.div_u`, `i64.popcnt`, etc.). |
-| `Bool` | `i32` (0 or 1) | `i31ref` (`ref.i31`) | Zero-allocation in V8/Wasmtime! |
+| `Word.T` | `i64` | `(ref $QBox_Word)` = `(struct (field i64))` | Unsigned 64-bit. |
+| `Bool` | `i32` (0 or 1) | `i31ref` (`ref.i31`) | Zero-allocation. |
 | `Char` | `i32` (0..255) | `i31ref` (`ref.i31`) | Zero-allocation. |
-| `Ok` | `(ref null any)` or `i32` (or eliminated) | `ref.null any` or `(ref.i31 (i32.const 0))` | Distinct from `null` if `anyref` uses `null` as uninitialized. Using `i31(0)` for `Ok` avoids `null` ambiguity. |
-| `String` | `(ref $QString)` | `(ref $QString)` | See §3.2. |
+| `Ok` | `(ref eq)` / eliminated | `(ref.i31 (i32.const 0))` | Distinct from `null` (which is reserved for uninitialized locals). |
+| `String` | `(ref $QString)` | `(ref $QString)` | See §3.3. |
 
-**Optimization note:** We can optionally tag small 31-bit `Int`s as `i31ref` and only heap-allocate `$QBox_Int` when outside $[-2^{30}, 2^{30}-1]$. However, starting with uniform `$QBox_Int` is much simpler and avoids a `br_on_cast $i31ref` branch on every generic `Int` unbox; `i31ref` optimization can be added later without changing any ABI if `$QBox_Int` is kept internal to boxing/unboxing.
+- **Boxing cost:** In `collections/vector.T(A)` and `collections/hashmap(K, V)`, `A`/`K`/`V` are already polymorphic (`eqref`), so `Int`s stored in generic collections are boxed. Monomorphic `Int` locals, parameters, returns, and `contify`-ed loops remain unboxed `i64`.
+- **`i31ref` for small `Int`s is an ABI choice:** Adding an `i31ref` fast path for 31-bit `Int`s later is **not** transparent—it affects all five places that inspect boxed `Int`s: (1) unboxing (`br_on_cast i31ref` vs `$QBox_Int`), (2) `quest_val_is`, (3) `quest_identity_hash`, (4) `echo` formatting, and (5) `dynamic.extern`/`intern`. Any change to it bumps `config/abi`.
 
-### 3.2. Strings and Arrays
+### 3.3. Strings and Arrays
+- **`String`:** `(struct (field $id (mut i32)) (field $len (mut i32)) (field $data (mut (ref $QByteArray))))` where `$QByteArray = (array (mut i8))`. Supports $O(1)$ length, `setChar`/`setSub`, and identity hashing (`$id`).
+- **`Array(T)`:** `(struct (field $id (mut i32)) (field $elems (ref $QAnyArray)))` where `$QAnyArray = (array (mut eqref))`.
+  - Why uniform `eqref` elements? Quest `Array` is mutable and invariant, and must pass to generic `All(A::TYPE a: Array(A))` without copying (copying breaks aliasing; `array (mut i64)` is not a subtype of `array (mut eqref)`).
+  - **Lengths & indices (`Int` -> `i32`):** Quest `Int` is `i64`; Wasm arrays use `i32`. Every index/length checks `n < 0 || n > MAX_I32_ARRAY` (or `idx < 0 || idx >= len`) in `i64` and raises `arrayOp.error` before `i32.wrap_i64`.
 
-- **`String`:** Quest strings are mutable byte sequences with $O(1)$ length (`string.length`, `string.getChar`, `string.setChar`, `string.setSub`).
-  - Representation: `(struct (field $len (mut i32)) (field $data (mut (ref $QByteArray))))` where `$QByteArray = (array (mut i8))`.
-  - Why a wrapper struct instead of bare `(array (mut i8))`? It supports capacity > length for growth if needed, and keeps `QString` distinct from `Array(Char)` / `Array(Byte)` under `ref.test`.
-- **`Array(T)`:** In Quest (`docs/c-representation.md` §5.4), arrays are mutable, fixed-length, and **invariant** (`Array(S) <: Array(T)` iff `S == T`).
-  - **Key tension:** In C, `Array(Int)` and `Array(A)` (in generic code) have the exact same layout (`QVal data[]`), so passing `Array(Int)` to a generic function `f(A::TYPE a: Array(A))` is a zero-cost pointer cast. In WasmGC, `(array (mut i64))` is **not** a subtype of `(array (mut anyref))`, and copying a mutable array would break aliasing!
-  - **Decision:** Represent `Array(T)` uniformly as `(array (mut anyref))` (or `(struct (field (ref (array (mut anyref)))))` if type-tagged, though bare `(array (mut anyref))` is faster and has `array.len` built in!). Elements of `Array(Int)` are boxed `$QBox_Int`—*except* where specialization or whole-program optimization proves an array never flows into unspecialized generic `Array(A)` code. This guarantees 100% semantic compatibility with Quest's generic functions and `Dynamic` without runtime conversion errors.
+### 3.4. Tuples and Proxies
+- **Decision (pending Phase 0):** Use the uniform **`$QTupleAny`** representation for all tuples initially: `(sub $QTupleBase (struct (field $id (mut i32)) (field $slots (ref $QAnyArray))))`, with `$QTupleProxy` as a sibling subtype of `$QTupleBase`.
+- **Why not typed WasmGC structs for monomorphic tuples?** If a tuple crosses a unit boundary or is passed from a REPL input to a library function, both sides must agree on its layout; moreover, WasmGC limits `sub` depth to **63**, so arity-based prefix subtyping chains would fail for large tuples. Scalar-unboxed tuple structs are only safe as a local optimization for module-private, non-escaping tuples.
 
-### 3.3. Tuples and Prefix Subtyping
+### 3.5. Records and Evidence Passing
+- **Payload:** `$QRecordPayload = (struct (field $id (mut i32)) (field $layout (ref $QTypeDescriptor)) (field $fields (ref $QAnyArray)))`, fields sorted alphabetically.
+- **Evidence Dictionary:** `$QOffsetDict = (struct (field $slots (ref $QInt32Array)) (field $stored (ref null $QDescArray)))`, mapping view field index $i \to$ payload slot index (plus optional `stored_types` for depth subtyping).
+- **First-class `QRecordVal`:** Unboxed multi-value `(ref $QRecordPayload, ref $QOffsetDict)` in locals/params/returns; boxed in a 2-field `$QRecordBox` when stored in an `eqref` slot.
+- Works across separately compiled REPL modules with **zero** per-record-type Wasm `struct` declarations.
 
-Quest tuples support **prefix subtyping** (`Tuple x: Int y: Real end <: Tuple x: Int end`), **depth subtyping** on immutable components, **invariance** on `var` components, and **identity** (`is`).
+### 3.6. Options and Variants
+- **Variants:** Unboxed multi-value `(i32, eqref)` in locals/params/returns; `$QVariantBox = (struct (field $tag i32) (field $payload eqref))` in `eqref` slots. Static `tagmap`s are `$QInt32Array` globals.
+- **Options:** `$QOptionBase` with `$QOptionVal = (sub $QOptionBase (struct (field $id (mut i32)) (field $tag i32) (field $fields (ref $QAnyArray))))` and `$QOptionProxy = (sub $QOptionBase (...))`, dispatched via `ref.test $QOptionProxy`.
 
-- **Option 1 (Native WasmGC `struct` subtyping):**
-  Each tuple shape maps to a WasmGC `struct` inheriting from its prefix:
-  - `Tuple end` $\to$ `$QTupleBase = (sub (struct))`
-  - `Tuple x: Int end` $\to$ `$QTup_i64 = (sub $QTupleBase (struct (field i64)))`
-  - `Tuple x: Int y: Real end` $\to$ `$QTup_i64_f64 = (sub $QTup_i64 (struct (field f64)))`
-  - **Problem:**
-    1. *Generic `Tuple`s:* Inside `All(A::TYPE)`, `Tuple fst: A snd: Int end` has field 0 of type `anyref`, whereas `Tuple fst: Real snd: Int end` has field 0 of type `f64`. In WasmGC, `(struct (field f64) (field i64))` is **not** a subtype of `(struct (field anyref) (field i64))`.
-    2. *Proxies (`QProxy`):* When a tuple is upcast such that a component changes view (e.g., a nested record or closure signature changes), Quest wraps it in a `QProxy` (`docs/c-representation.md` §5.8) rather than copying, preserving `is` identity and `var` sharing. A `$QProxy` struct cannot inherit from `$QTup_i64_f64` because `$QProxy` doesn't have the unboxed `i64`/`f64` fields!
-    3. *Cross-module `rec` groups:* Every tuple shape in a REPL phrase would have to agree with host `rec` groups.
+### 3.7. Closures, Generic Calls, and Adapters
+In C, `QInt` and `QVal` share 64-bit GPRs. **In WasmGC, `i64` (`Int`, `Word.T`) and `eqref` do NOT agree.**
+- **Uniform Closure Representation:**
+  Every closure is a subtype of `$QClosureBase = (sub (struct (field $id (mut i32)) (field $invoke (ref $GenericInvoker))))`, where `$GenericInvoker` has a uniform signature `(param (ref $QClosureBase) (ref $QAnyArray)) (result eqref)`.
+  - Typed closures (e.g. `Int -> Int`) add a second field `(field $fn (ref $Fn_i64_to_i64))` plus captured environment fields directly on the closure struct (1 allocation total).
+  - **Direct & typed indirect calls** invoke `$fn` via `call_ref $Fn_i64_to_i64` (unboxed `i64`, zero boxing!).
+  - **Generic calls (`A -> B`) or calls through `Array(A -> A)` / `var` slots:** invoke `$invoke` via `call_ref $GenericInvoker`! Because **every** closure carries `$invoke`, storing `fun(x: Int): Int` in an `Array(A -> A)` and calling it from generic code works with **zero** `quest_layout_conversion_error` (eliminating a failure case that C rejects in `c-representation.md` §6.4.5!).
+- **Tail Calls:**
+  - `questlang/ir/contify` already computes tail position (`scan` in `contify.mod.quest`). The WasmGC emitter tracks `in_tail_pos` (false inside `try`) and emits `return_call` / `return_call_ref`.
+  - **Calls that stop being tail calls:** Polymorphic calls where the *result* must be unboxed (`eqref -> i64`/`f64`) or adapted by `quest_adapt_fun` after the call returns. (Argument boxing happens *before* the call and preserves tail position.) Monomorphic closure loops stay true tail calls ($O(1)$ stack).
 
-- **Option 2 (Uniform Slot Array for Generic/Proxied, Typed Structs for Non-Escaping/Monomorphic):**
-  - Every `Tuple` (or every tuple that may be proxied / passed generically) has a common supertype `$QTupleAny = (sub (struct))`.
-  - A concrete tuple can be `(sub $QTupleAny (struct (field $slots (ref $QAnyArray))))` (or inline `(array (mut anyref))`), while `$QProxy` is `(sub $QTupleAny (struct (field $orig (ref $QTupleAny)) (field $stored ...) (field $view ...) ...))`.
-  - Accessing a component of a tuple that `may_be_proxied` (`codegen/layout`) checks `ref.test $QProxy` (replacing the C low-bit tag check `ptr & 1`), and otherwise casts to the concrete tuple type and reads the slot directly.
-  - **Recommendation:** Use typed WasmGC structs (`$QTup_...`) **only** when a tuple is monomorphic and neither its type nor any supertype it is cast to requires proxying (or in specialized functions); otherwise use the uniform `(array (mut anyref))` / `$QTupleAny` representation so generic code, proxies, and cross-module REPL phrases work uniformly without `rec`-group explosion.
+### 3.8. Identity (`is`) and Identity Hashing (`hash.identityHash`)
+- **`is` at polymorphic type `A::TYPE` (`quest_val_is(desc, a, b)`):**
+  1. Fast path: `if ref.eq(a, b) return true` (works directly because `a, b: eqref`).
+  2. Slow path (only when `ref.eq` is false): check `desc` (or `br_on_cast` on `$QBox_Int`, `$QBox_Real`, `$QBox_Word`, `$QOptionBase`, `$QTupleProxy`). Two distinct `$QBox_Int(42)` boxes compare their unboxed `i64` values and return `true`; `$QBox_Real` compares `f64` (`-0.0 == 0.0`); `$QTupleProxy` / `$QOptionProxy` unproxy to `$orig` and `ref.eq` (plus option single-word/empty-case rules).
+- **`hash.identityHash(desc, x)`:**
+  - Scalars (`$QBox_Int`, `$QBox_Real`, `$QBox_Word`, `i31ref`): unbox and hash the value (`-0.0` normalized to `0.0`).
+  - Heap objects (`$QString`, `$QArray`, `$QTupleVal`, `$QRecordPayload`, `$QClosureBase`, `$QExceptionTag`): lazily assign a non-zero `i32` ID into their `$id` field from a global monotonic counter (`next_id += 1`) on first hash, then mix with `quest_hash_mix64`.
 
-### 3.4. Records and Structural Subtyping (Evidence Passing without Byte Offsets)
+### 3.9. `var`, `out`, and `@` Lvalues (Pending Phase 0 Probe)
+Because WasmGC has no interior pointers:
+- **Option A (`$QRef` capability structs):** `(type $QRef_Int (sub (struct)))`, `(type $QCell_Int (sub final $QRef_Int (struct (field (mut i64)))))` (validates in `wasm-tools`!), plus `(type $QRef_ArrayElem (sub final $QRef_Any (struct (field (ref $QAnyArray)) (field i32))))` and `$QRef_RecordField`.
+  - `@x` where `x` is already in `$QCell_T` allocates **0** extra objects.
+  - `f(@a[i])` in a loop allocates **1** small 2-field struct per call, preserving exact aliasing (`f(@a[i] @a[i])`).
+- **Option B (Unboxed `(target: eqref, slot: i32)` pair):** Pass `var`/`out` as 2 Wasm parameters `(target, slot)` where `target` is `$QCell_T` (with `slot = -1`), `$QAnyArray`, `$QRecordPayload`, or `$QTupleVal`. **0** allocations even for `f(@a[i])` in a loop, and preserves exact aliasing! (Only needs a `$QCell` if a local `var` has `@x` taken.)
+- **Option C (Shadow cell copy-in/copy-out):** 0 allocations, *but* breaks aliasing on `f(@a[i] @a[i])`.
+- Phase 0 will benchmark Option A vs Option B.
 
-Quest records have **width + permutation + depth subtyping** (`Record x: Int y: Real end <: Record y: Real end`). In C, `QRecordVal` is `{ void *val; const void *dict; }` where `dict` is an `OffsetDict` of `size_t` byte offsets.
-
-Since WasmGC has no `offsetof` or byte-offset loads, there are two ways to implement Evidence Passing in WasmGC:
-
-1. **Slot-Index Dictionary + `(array (mut anyref))` Payload (Recommended Baseline):**
-   - A record payload is `$QRecordPayload = (struct (field $layout (ref $QTypeDescriptor)) (field $fields (ref (array (mut anyref)))))`, with fields sorted alphabetically by name in the payload's creation type.
-   - An evidence dictionary (`OffsetDict`) is `(array i32)` mapping the view's alphabetical field index $0 \dots k-1$ to the payload's slot index in `$fields` (plus optional `stored_types` array for depth subtyping, exactly as in `docs/c-representation.md` §5.2!).
-   - A first-class `QRecordVal` is either a 2-value multi-value `(ref $QRecordPayload, ref $QOffsetDict)` (unboxed on the Wasm stack and in function parameters/returns!) or a 2-field struct `$QRecordVal` when stored in a slot.
-   - **Field read `r.x` (at view index `i`):** `array.get $fields (array.get $dict i)` + `ref.cast` / unbox (plus `quest_convert` if `stored_types != null` and the field is a complex immutable type).
-   - **Why this is great for WasmGC + JIT:**
-     - Zero per-record-type Wasm `struct` declarations needed!
-     - Works seamlessly across separately compiled REPL modules without any `rec`-group coordination for user-defined record types.
-     - Dynamic `quest_record_dict(view, layout)` builds `(array i32)` at runtime cleanly.
-2. **Typed Struct Payload + Vtable of Getter/Setter `funcref`s (Optional Optimization):**
-   - Payload is a typed WasmGC `struct` with unboxed `i64`/`f64` fields; `dict` is a struct of typed getter/setter `funcref`s.
-   - Faster for monomorphic hot loops, but requires generating getter/setter functions per field per record type, complicates `stored_types` depth subtyping, and requires cross-module type agreement. Better saved as a later optimization if needed.
-
-### 3.5. Options and Variants
-
-- **Variants (`Variant a: Int b: String end`):**
-  - In Quest, variants are unordered, each branch has 1 payload, and upcasting remaps tags via a static `tagmap`.
-  - In WasmGC: unboxed multi-value `(i32, anyref)` for local/param/return values (matching `QVariantVal`'s zero-allocation semantics!), and a 2-field struct `$QVariantBox = (struct (field i32) (field anyref))` when stored in an `anyref` slot.
-  - Upcasting across unordered subtyping uses a static `(array i32)` tagmap (`array.get $tagmap tag`).
-- **Options (`Option a b with x: Bool end ... end`):**
-  - Ordered sums with 0+ components per case, `ordinal(o)`, `!` extraction, `var` components in case binders, and `QProxy` support.
-  - Representation: `$QOptionAny` supertype, with concrete option values holding `(field $tag i32)` and `(field $fields (ref $QAnyArray))` (where case `a` with 0 fields can share a per-case singleton constant, matching `docs/c-representation.md` §5.3). `$QOptionProxy` is a subtype of `$QOptionAny` holding `(orig, stored, view, tags, cache)` and checked via `ref.test $QOptionProxy`.
-
-### 3.6. Closures and Calling Conventions
-
-- Every Quest closure compiles to a subtype of `$QClosureBase = (sub (struct (field $fn funcref)))` (or a generic `$QClosure = (struct (field $fn (ref $FnSig)) (field $env ...))` where captured variables are stored directly as fields of the closure struct—1 GC allocation instead of C's 2 allocations for `QClosure` + `QEnv`!).
-- **Direct calls** to known functions call the Wasm function directly (`call $qf_foo` or `return_call $qf_foo`) without allocating or touching the closure struct.
-- **Indirect calls** cast the closure to `(ref $QClosure_Sig)` (or extract `$fn` and `ref.cast` to `(ref $FnSig)`) and invoke `call_ref $FnSig` passing the closure itself as the `env` parameter.
-- **Adapter thunks** (`quest_adapt_fun` for `dynamic.be`, `inspect`, and depth-subtyped record fields): work identically to C, wrapping the underlying closure in a new closure struct whose `$fn` converts arguments/results via `quest_convert` and invokes the wrapped closure.
-
-### 3.7. `var`, `out`, and `@` Lvalues (Solving the Interior Pointer Problem)
-
-Since WasmGC cannot take `&x`, `&r.f`, or `&a[i]`, we need a clean representation for `var`/`out` parameters and `@` lvalues:
-
-1. **Local `var` whose `@` address is taken:** Boxed in a 1-field mutable GC struct `$QCell_T = (struct (field (mut T_wasm)))` (just like `lower.boxesSlot` already boxes `var`s captured by REPL slots!).
-2. **General `@` Lvalues (`@r.f`, `@a[i]`, `@t.1`, `@x`):**
-   - **Recommended Design — Mutable Reference Pair / Capability (`$QRef_T`):**
-     Represent a `var T` / `out T` parameter as a WasmGC struct (or unboxed pair) representing a **slot reference**:
-     - Either a **polymorphic cell/lens** `(struct (field $get (ref $Getter_T)) (field $set (ref $Setter_T)))` (or a base `$QRef` with subtypes `$QRef_Cell`, `$QRef_ArrayElem(arr, idx)`, `$QRef_RecordField(payload, slot_idx)`).
-     - **Why tagged `$QRef` subtypes beat closures:** Creating `(struct.new $QRef_ArrayElem arr idx)` or `(struct.new $QRef_RecordField payload slot_idx)` allocates **one tiny 2-field GC struct** (no closure function generation per call site!), preserves **exact aliasing** (unlike copy-in/copy-out shadow cells—so `swap(@a[i] @a[j])` and `f(@a[i] @a[i])` work 100% faithfully!), and works for `var` parameters passed through multiple levels of calls (`g(@y)` just forwards the `$QRef`!).
-     - **Fast path:** For `@x` where `x` is already boxed in `$QCell_T`, `$QCell_T` itself can *be* a subtype of `$QRef_T` (zero extra allocation at `@x` call sites!).
-     - **Polymorphic `var p: A`:** Uses `$QRef_Any` (reading/writing `anyref`). When calling an unspecialized polymorphic function with `@x` of unboxed type `Int` (`i64`), a `$QRef_BoxedInt` adapter (or shadow cell) converts between `i64` and `$QBox_Int` on read/write.
+### 3.10. Non-Null Reference Locals & Join Points
+Under WasmGC validation, a local of non-null type `(ref $T)` is uninitialized at function entry and is **still considered uninitialized after an `if` even if assigned in both arms**.
+- **Join-point parameters** (`ir/nodes.Stmt.sJoin`): compile to Wasm `block (result ...)` stack values (always initialized, zero overhead).
+- **Variables assigned in `if` arms or `out` targets:** use **nullable `(ref null $T)`** locals initialized to `ref.null`, with `ref.as_non_null` on read.
 
 ---
 
-## 4. Polymorphism and Type Descriptors
+## 4. Polymorphism & Cross-Module Type Identity
 
-Quest's polymorphism combines **parametric polymorphism (`All(A::K)`)**, **bounded quantification (`A <: B`)**, **existential packages**, and **Intensional Type Analysis (`Dynamic`, `Auto`, `inspect`)**.
+### 4.1. Polymorphism Compilation
+- Every quantifier `(A::K)` compiles to `(param $desc_A (ref $QTypeDescriptor))`.
+- Unbounded `A::TYPE` uses `eqref`; bounded `A <: Record`/`Variant` uses the bound's representation at the caller's own view.
+- `questlang/ir/specialize` clones polymorphic functions at concrete call sites, eliminating `$QBox_Int`/`$QBox_Real` allocations in hot monomorphic code.
 
-### 4.1. How Polymorphism Compiles to WasmGC
+### 4.2. Canonical Shared `rec` Group vs. Per-Module Types
+To share GC types across the host driver and per-interaction JIT modules:
+- **Canonical Shared `rec` Group (first entries of every module's type section):**
+  Contains all cross-module ABI types: `$QTypeDescriptor` + its subtypes (`Record`, `Tuple`, `Variant`, `Option`, `Array`, `Fun`, `Opaque`, `Hole`, `Stored`), `$QBox_Int`, `$QBox_Real`, `$QBox_Word`, `$QByteArray`, `$QAnyArray`, `$QInt32Array`, `$QDescArray`, `$QString`, `$QArray`, `$QRecordPayload`, `$QOffsetDict`, `$QRecordBox`, `$QTupleBase`, `$QTupleVal`, `$QTupleProxy`, `$QOptionBase`, `$QOptionVal`, `$QOptionProxy`, `$QVariantBox`, `$QClosureBase`, `$GenericInvoker`, `$QRef_*`, `$QExceptionTag`, `$QExceptionInstance`.
+  - Note: Types at distinct indices in the same `rec` group (e.g., `$QBox_Int` vs `$QBox_Word`) are distinct under `ref.test`/`ref.cast`.
+  - Any change to this `rec` group increments `config/abi` (and thus unit fingerprints).
+- **Stand-alone Per-Module Types (after the `rec` group):**
+  Per-function `$FnSig` types and per-closure `$QEnv_<fn>` structs (inheriting from `$QClosureBase`), plus private local types.
 
-1. **Uniform Quantifier Rule:**
-   Every universal quantifier `(A::K)` compiles to a leading parameter `(param $desc_A (ref $QTypeDescriptor))`.
-   - Unbounded `A::TYPE` parameters have Wasm type `anyref` (`(ref null any)`).
-   - Bounded `A <: Record ...` / `A <: Variant ...` parameters use the bound's representation (`QRecordVal` / `QVariantVal`) at the caller's own view, plus `$desc_A` for field/tag view-map lookup—identical to `docs/c-representation.md` §5.2 & §5.3.
-2. **Selective Call-Site Specialization (`questlang/ir/specialize`):**
-   Quest's IR already has `specialize`, which clones polymorphic functions at concrete call sites!
-   - On WasmGC, specialization is **even more valuable** than on C/ARM64: specializing `f(:Int ...)` eliminates `$QBox_Int` allocations and keeps `Int`/`Real` in unboxed `i64`/`f64` Wasm locals and parameters.
-   - Generic (`anyref`) versions are still emitted for first-class polymorphic closures, polymorphic recursion, and separate compilation boundaries.
-3. **Boxing/Unboxing at Generic Boundaries:**
-   - The `represent` pass (`questlang/ir/represent`) already inserts `box` and `unbox` plans where native types meet generic `QVal` slots.
-   - For WasmGC, `box(Int)` emits `struct.new $QBox_Int`, `unbox(Int)` emits `struct.get $QBox_Int 0 (ref.cast (ref $QBox_Int) v)`. Same for `Real` (`$QBox_Real`) and `Word.T` (`$QBox_Word`). `Bool` and `Char` use `ref.i31` / `i31.get_u`.
-
-### 4.2. Runtime Type Descriptors (`QTypeDescriptor`)
-
-- `QTypeDescriptor` becomes a WasmGC `struct` hierarchy (`$QTypeDescriptor` base + subtypes for record, tuple, variant, option, array, fun, opaque, hole, stored).
-- Static closed descriptors are emitted as Wasm `global`s initialized in the module's `start` / init function (or constant `struct.new` in WasmGC constant expressions! Note: WasmGC allows `struct.new` and `array.new_fixed` inside **constant expressions** for `global` initializers, including cyclic/mutually-recursive globals if initialized in `start`!).
-- Descriptor templates (`quest_instantiate_descriptor` for open types inside generic functions) are implemented directly in Quest/WasmGC.
-
-### 4.3. Cross-Module Type Identity for Separate Compilation & REPL JIT
-
-To allow separately compiled modules (driver + stdlib + per-interaction JIT modules) to pass `QTypeDescriptor`, `QRecordVal`, `QTupleAny`, `QOptionAny`, `QString`, `QClosureBase`, and `QBox_*` values without `ref.cast` failures:
-
-- **Canonical Shared `rec` Group:** Define a single, fixed WasmGC `rec` group containing all universal runtime/ABI types (`$QTypeDescriptor`, `$QBox_Int`, `$QBox_Real`, `$QBox_Word`, `$QString`, `$QAnyArray`, `$QRecordPayload`, `$QOffsetDict`, `$QTupleAny`, `$QOptionAny`, `$QProxy`, `$QClosureBase`, `$QRefAny`, `$QException`, etc.).
-- Every Wasm module emitted by `--backend wasm` (the host driver AND every JIT phrase module) emits **this exact `rec` group as its first type section entries** (or imports them via a shared type/import convention). Because WasmGC type equality is structural on `rec` groups, V8 and Wasmtime treat all of these types as **identical** across every dynamically loaded JIT module!
-- **Per-module private types** (e.g. a closure struct `$QEnv_foo` capturing local variables, or a specialized `$FnSig` for a private function) are declared *after* the shared `rec` group, inheriting from `$QClosureBase` or `anyref`.
+### 4.3. Engine Limits Check
+- **Subtype depth (spec limit: 63):** Max depth in our hierarchy is **2** (`$QRef` / `$QTupleBase` / `$QClosureBase` / `$QTypeDescriptor`).
+- **Monolithic initializer risk:** Emitting all static `QTypeDescriptor`s in one `start` function for an 84K-line compiler could hit V8's per-function size limit (~7.6 MB). **Fix:** Emit closed descriptors as **Wasm `global` constant expressions** (`struct.new` / `array.new_fixed` in global initializers) and split module initialization per Quest unit.
 
 ---
 
-## 5. Runtime, Exceptions, Dynamic, and Browser Host
+## 5. Runtime, Exceptions, `Real`, and Host Boundary
 
-### 5.1. Eliminating `quest_runtime.c`
+### 5.1. Guarded Operations (Avoiding Wasm Traps)
+| Operation | Wasm Trap | Quest Semantics | Required Wasm Guard |
+| :--- | :--- | :--- | :--- |
+| `i64.div_s` / `rem_s` | `b == 0` or `INT64_MIN / -1` | `int.error` on `0`; wrap on `-1` | Check `b == 0 -> throw int.error`; `b == -1 -> -a` / `0` |
+| `i64.div_u` / `rem_u` | `b == 0` | `word.error` on `0` | Check `b == 0 -> throw word.error` |
+| `i64.trunc_f64_s` | `NaN`, `+-Inf`, out-of-range | `real.error` | Check finite & in-range -> else `throw real.error` |
+| `array.get`/`set`/`new` | OOB or negative/huge `i32` | `arrayOp.error` | Check `i64` bounds `0 <= idx < len` -> else `throw arrayOp.error` |
+| `Real` `+ - * /` | (IEEE returns `NaN`) | `real.error` on `NaN` or `0.0` div | Check `b == 0.0` on `/`; check `f64.ne r r` (`isnan`) -> `throw real.error` |
 
-| Current C File | WasmGC Replacement |
-| :--- | :--- |
-| `runtime/quest_gc.c` | **Deleted** — WasmGC handles all allocation, tracing, write barriers, and collection. |
-| `runtime/quest_runtime.c` | **Ported to Quest / WasmGC runtime module**: `quest_is_subtype`, `quest_convert`, `quest_record_view`, `quest_record_dict`, `quest_make_proxy`, `quest_val_is`, `quest_identity_hash`, `echo` formatting, `Word` ops (using native Wasm `i64.*` instructions), `String` ops. |
-| `runtime/quest_serialization.c` | **Ported to Quest** (`dynamic.extern` / `dynamic.intern`) using WasmGC byte arrays (`String` / `Array(Byte)`) and the WasmGC `QTypeDescriptor`s. |
-| `runtime/quest_readline.c` | **Replaced by JS host / Browser UI** (and WASI/Node stdin for CLI testing). |
+### 5.2. Generative Exceptions (`exnref`)
+- Declare **one** Wasm tag: `(tag $quest_exn (param (ref $QExceptionInstance)))`.
+- Each `exception E of T end` allocates a fresh `$QExceptionTag(name, desc)`. `try ... when E` catches `$quest_exn` and checks `ref.eq` on `$tag`.
+- Full tracebacks are deferred; uncaught exceptions report `Exception: <name>`.
 
-### 5.2. Exceptions & Tracebacks
+### 5.3. `Real` Math & Formatting
+- **Math (`sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `log`, `pow`, `sinh`, `cosh`, `tanh`):** Import `Math.*` from JS (wrapped to check `isnan` -> `real.error`).
+- **Formatting & parsing (`quest_real_format`, `echo`, string -> `Real`):** JS `Number.toFixed`/`toExponential` differs from C `snprintf` on `-0.0`, exponent padding, and ties. To match shared run goldens byte-for-byte, implement C-compatible formatting/parsing in Quest/Wasm (or a small tested formatter).
 
-- **Control flow:** Use the standard Wasm **Exceptions (`exnref`)** proposal (`tag`, `throw`, `try_table` — supported in `wasmtime 50 -W exceptions=y`, `node v26`, Chrome, Firefox, Safari).
-- **Generative Identity:** Declare **one** Wasm tag `$quest_exn (param (ref $QExceptionInstance))`. Each Quest `exception E of T end` allocates a fresh `$QExceptionTag` object at runtime (holding its name and payload descriptor). Raising `E` constructs `$QExceptionInstance(tag, payload_anyref, frames)` and executes `throw $quest_exn`. `try ... when E` catches `$quest_exn` and checks `ref.eq` on `tag`.
-- **Tracebacks (`docs/exceptions.md`):** Because Wasm `try_table` does not expose the call stack, maintain a lightweight **shadow frame stack** (a global `array` or linked `$QFrame` chain) pushed/popped around non-leaf functions (or functions that may raise), or capture the shadow stack at `raise` time. (Can be gated by a flag like `--no-tracebacks` if needed for peak speed.)
-
-### 5.3. Tail Calls
-
-- Quest's SSA already identifies tail calls (`questlang/ssa/tailCalls`). Emit Wasm `return_call` / `return_call_ref` (enabled by default in V8/Node 26 and Chrome/Firefox; `-W tail-call=y` in Wasmtime 50). Note: Safari/WebKit tail-call support should be verified if Safari is a required target; if not, a trampoline or non-tail fallback is trivial.
-
-### 5.4. Browser Host & REPL Execution Model
-
-- **Interface:** Model the browser REPL on `--kernel` mode (`docs/repl.md` §2.3):
-  - `quest_repl_init()`: initializes stdlib, built-in `.qi` virtual filesystem, and REPL session.
-  - `quest_repl_incomplete(text) -> Bool`: drives multi-line continuation prompts in the browser terminal UI.
-  - `quest_repl_eval(text) -> Result`: parses, typechecks, compiles (or interprets initially), runs the phrase, captures `==  ...` output and `stdout`/`stderr`, and rolls back on error.
-- **Virtual Filesystem for `lib/*.qi`:** Bundle `lib/` interface files (`.qi` or source `.int.quest`) into the Wasm module's data/init or pass them from JS at startup so the in-browser compiler can resolve `import util/maybe : util/Maybe`, etc.
-- **REPL JIT Loading:**
-  - Just like `docs/jit.md` §3.2, each REPL input is lowered as a phrase unit `qj_<n>` whose module record holds its bindings (`Earlier.boxed` cells).
-  - Instead of `os/code`, a `wasmJit` bridge calls an imported host function `host_compile_and_run(wasm_bytes, imports) -> result` (in JS: `WebAssembly.compile(bytes)` -> `WebAssembly.instantiate(mod, importObject)` -> `instance.exports.qj_n_entry()`).
-  - Using a **Web Worker** for the REPL allows `host_compile_and_run` to be synchronous from Wasm's perspective (or `async` via JSPI `WebAssembly.promising` / `WebAssembly.Suspending` in Node 26 / Chrome).
+### 5.4. Host Boundary, Served Files, and Module Packaging
+- **Bytes across the JS/WASI boundary:** JS cannot directly index `$QByteArray`. Use a **1-page (64 KB) linear memory bounce buffer** (`memory 1`): JS reads/writes `Uint8Array` in linear memory, and Wasm copies to/from `$QByteArray` in a tight loop (or `array.new_data` for bundled static assets). The same linear memory works for WASI `fd_read`/`fd_write` in `wasmtime`.
+- **What the page serves:**
+  - *Phase 3 (Interpreter):* Needs `lib/**/*.int.quest` and `lib/**/*.mod.quest` (bundled as static data or fetched by Worker) so the interpreter can run library modules from source.
+  - *Phase 4 (JIT):* Needs pre-built `lib/**/*.qi` interface files only; `lib/` implementations are already compiled into the driver.
+- **Driver packaging for Phase 4:** Compile the driver as **one WasmGC module** *without* whole-program dead-stripping of `lib/` exports, exporting every `lib/` module's record (`qm_*`), initializer (`qv_*_init`), exported functions (`qv_*`), and interface fingerprint (`qh_*`). Phase 4 JIT phrase modules `qj_<n>` import these from `driverInstance.exports` (and earlier `qj_<k>.exports`) via the JS `importObject`.
+- **Target-separated artifacts:** Build outputs go to `build/wasm/` (separate from `build/c/` and `build/arm64/`), and `config/abi` / interface fingerprints distinguish WasmGC from native targets.
 
 ---
 
 ## 6. Phased Implementation Plan
 
-### Phase 0: Toolchain & Feasibility Smoke Tests (`wasm-tools`, `wasmtime`, `node`)
-- Write small hand-crafted `.wat` test modules exercising our core primitives (`$QBox_Int`, `$QRecordPayload` + `$QOffsetDict`, `$QRef` lvalues, `$QClosureBase` + `call_ref`, `$quest_exn` + `try_table`, cross-module `rec` group sharing, `return_call_ref`).
-- Validate with `wasm-tools validate`, run in both `wasmtime -W gc=y,function-references=y,tail-call=y,exceptions=y` and `node v26.13.0`, and verify JS `WebAssembly.Module` dynamic instantiation from inside a running WasmGC module.
+### Phase 0: Probes & Feasibility Smoke Tests (`wasm-tools`, `wasmtime`, `node`)
+- Probe and benchmark:
+  1. Unboxed `(target: eqref, slot: i32)` vs `$QRef` struct for `@` lvalues.
+  2. Linear-memory bounce buffer throughput for reading `questlang/` sources.
+  3. Synchronous `new WebAssembly.Module` + `new WebAssembly.Instance` inside a Node `worker_threads` Worker sharing the canonical `rec` group with a host module.
+  4. Note on tooling: `wasmtime` CLI cannot dynamically load guest-generated `.wasm` modules at runtime (and Wasmtime 50's DRC collector does not collect cycles), so `wasmtime` tests **Phases 1–3 (AOT & interpreter)** while **`node` (V8)** tests **all Phases 0–4 including the WasmGC JIT**.
 
 ### Phase 1: Wasm Binary Emitter & Minimal AOT `--backend wasm`
-- Build a Wasm binary encoder in `questlang/codegen/wasm/` (emitting sections, `rec` groups, functions, locals, structured control flow from SSA/IR).
-- Compile basic Quest programs (arithmetic, functions, closures, tuples, arrays, strings, control flow, `stdout` via WASI / JS host import) and run `tests/source/language/` subsets on `wasmtime` and `node`.
+- Build `questlang/codegen/wasm/` lowering directly from `ir` (emitting binary `.wasm`, canonical `rec` group, structured control flow, `return_call`/`return_call_ref`, and guarded traps).
+- Run `tests/source/language/` subsets on `wasmtime` and `node`.
 
 ### Phase 2: Full Quest Semantics in WasmGC
-- Implement Evidence Passing for records (`$QRecordPayload` + `$QOffsetDict`), variants, options, and `$QProxy` views.
-- Implement `$QRef` lvalues for `var`/`out`/`@`.
-- Implement `QTypeDescriptor`s, polymorphic `anyref` boxing/unboxing, bounded polymorphism, `Dynamic` (`dynamic.new`/`dynamic.be`/`inspect`), and `Auto`.
-- Implement generative exceptions (`$quest_exn` + shadow frames) and port `quest_runtime.c` / `quest_serialization.c` logic to Quest.
-- Run the full `tests/source/` suite against `--backend wasm` on `wasmtime` and `node`.
+- Implement Evidence Passing (`$QRecordPayload` + `$QOffsetDict`), variants, options, `$QTupleProxy`/`$QOptionProxy`, `$QRef` lvalues, `QTypeDescriptor`s, `Dynamic`/`Auto`, generative exceptions (`$quest_exn`), lazy `$id` identity hashing, and `Real` math/formatting.
+- Port `quest_runtime.c` / `quest_serialization.c` logic to Quest.
+- Run `tests/source/` on `wasmtime` and `node` (excluding traceback-only goldens).
 
 ### Phase 3: Self-Hosted Compiler & Interpreter REPL in Browser
-- Compile `questlang/driver/main` (initially with the tree-walking interpreter for REPL phrases, plus bundled `lib/*.qi` VFS) to WasmGC.
-- Build a minimal browser/Node JS host harness (`repl_init`, `repl_incomplete`, `repl_eval`) and test against `tests/repl/` transcripts in `node`.
+- Compile `questlang/driver/main` (with tree-walking interpreter + bundled `lib/*.int.quest`/`*.mod.quest`) to WasmGC with the event-driven ABI (`repl_init`, `repl_incomplete`, `repl_eval`).
+- Test against `tests/repl/` transcripts in `node` and in a Chromium Web Worker UI.
 
 ### Phase 4: Per-Interaction WasmGC JIT
-- Implement `questlang/jit/wasmSession` (mirroring `questlang/jit/session` for `qj_<n>` phrase units, `Earlier` bindings, and rollback, but emitting `.wasm` bytes instead of ARM64 `minst`).
-- Wire `host_instantiate_and_run` in Node and Browser (Web Worker + `WebAssembly.compile`/`instantiate` or JSPI).
-- Verify `tests/repl/` transcripts pass under the WasmGC JIT in `node` and a browser.
+- Implement `questlang/jit/wasmSession` emitting `.wasm` bytes per phrase unit `qj_<n>` and calling the Worker's synchronous `host_compile_and_run`.
+- Verify `tests/repl/` transcripts under the WasmGC JIT in `node` and Chromium.
 
 ---
 
-## 7. Recorded Decisions
+## 7. Decisions & Provisional Choices
 
-1. **Browser & Engine Support:** Chromium/V8 is sufficient initially (gives us WasmGC, `tail-call`, `exnref`, and JSPI if needed).
-2. **Execution Environment:** Run the REPL in a **Web Worker**, using an **event-driven ABI** (`repl_init`, `repl_incomplete`, `repl_eval`) so switching to/from the main thread later requires only JS host glue changes.
-3. **Exception Tracebacks:** Full source-level stack tracebacks are deferred to a later phase; initial WasmGC exceptions can omit frame walking.
-4. **External `lib/` Primitives:** Browser builds will start with stub/virtual implementations for POSIX `lib/os/` and `lib/io/` modules.
-5. **Staged Milestone:** Phase 3 will compile `questlang` with the tree-walking interpreter to WasmGC first, providing a working browser REPL and test oracle before building the per-interaction WasmGC JIT in Phase 4.
-6. **Lowering Level (`ir` vs. `ssa`):** The WasmGC backend will lower directly from `ir` (after `specialize`, `closure`, `represent`, `describe`, and `simplify`/`inline`/`contify`), rather than `ssa`. `ir` already has structured control flow (avoiding CFG flattening + relooping) and preserves typed aggregate operations that map directly to WasmGC instructions without `ssa`'s byte offsets or `quest_gc.c` write barriers.
+### Owner Decisions (Locked In)
+1. **Browser & Engine Target:** Chromium/V8 initially (`WasmGC`, `tail-call`, `exnref`).
+2. **Execution Environment:** **Web Worker** with an **event-driven ABI** (`repl_init`, `repl_incomplete`, `repl_eval`); no JSPI needed since `new WebAssembly.Module` is synchronous and uncapped in a Worker.
+3. **Lowering Level:** Lower directly from **`ir`** (after `specialize`, `closure`, `represent`, `describe`, `simplify`/`inline`/`contify`), not `ssa`.
+4. **Exception Tracebacks:** Deferred; uncaught exceptions report the exception name without frame walking initially.
+5. **External `lib/` Primitives:** Stub/virtual `lib/os/` and `lib/io/` initially.
+6. **Staged Milestone:** Phase 3 compiles `questlang` with the tree-walking interpreter to WasmGC first, before Phase 4 adds the per-interaction WasmGC JIT.
+
+### Provisional Technical Choices (Pending Phase 0 Probes)
+- **`@` Lvalue Encoding:** Unboxed `(target: eqref, slot: i32)` pair vs. `$QRef` capability structs (benchmark allocation/call overhead in Phase 0).
+- **Tuple Representation:** Uniform `$QTupleAny` everywhere vs. scalar-unboxed structs for module-private non-escaping tuples.
+- **Small `Int` Boxing:** Always `$QBox_Int` vs. `i31ref` for 31-bit `Int`s (ABI decision—must be locked before Phase 2).
+- **Host Byte Transfer:** 64 KB linear-memory bounce buffer vs. per-chunk export helpers.
