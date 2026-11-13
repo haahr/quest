@@ -80,7 +80,7 @@ type parameters' values, calls through closures). Today the uniform representati
 | `Int`, `Word.T` | `i64` | `i31ref` if it fits in 31 bits, else `(ref $boxInt)` |
 | `Real` | `f64` | `(ref $boxReal)` |
 | `Bool`, `Char` | `i32` | `i31ref` |
-| `Ok` | nothing | the `i31ref` 0 |
+| `Ok` | the `i31ref` 0, as an `eqref` | the same |
 | `String` | `(ref $string)` | the same |
 | tuple | `(ref $tuple)`, or `(ref $tupleLike)` if it may be a proxy | the same |
 | option | `(ref $option)`, or `(ref $tupleLike)` if it may be a proxy | the same |
@@ -280,8 +280,8 @@ global.
 
 **The uniform entry's n counts Quest's value parameters, not WebAssembly's.** Each is exactly one `eqref`,
 whatever it is natively: a record is its `$recBox` and a variant its `$varBox`, though each is two values in a
-native signature; a location is a boxed pair; an `Ok` parameter, which a native signature omits, is the `i31ref`
-0. The result is exactly one `eqref`. So every function type of n parameters and d quantifiers has the one uniform
+native signature; a location is a boxed pair; an `Ok` is the `i31ref` 0, as it is natively. The result is exactly
+one `eqref`. So every function type of n parameters and d quantifiers has the one uniform
 type, which is what lets any caller use it.
 
 **Every entry takes its closure as `(ref $clos)`,** the base type in R, never as its own closure type, and casts it
@@ -297,10 +297,11 @@ and merges across modules by structure (§2.11).
   record, variant, or location, S is the uniform signature and one function is both entries. A location reaches a
   uniform entry as one `eqref`, a pair boxed for the call, which allocates; it is the rare path of a rare feature.
 
-So a function value needs no conversion when its type is instantiated, keeps its identity, and may sit in any
-array or `var` slot: this representation has no need of the conversions C rejects because a function's signature
-differs inside mutable data ([c-representation.md](c-representation.md) §6.4.5). The represent pass still rejects
-them at first, so that both targets accept the same programs (§4.1). Opus measured the test at nothing in V8, and
+So a function value can be called at any type it has, with no conversion, and may sit in any array or `var` slot:
+this representation has no need of the conversions C rejects because a function's signature differs inside mutable
+data ([c-representation.md](c-representation.md) §6.4.5). The represent pass still rejects them at first, so that
+both targets accept the same programs, and still wraps a function passed at a generic type in an adapter, which
+is another closure under `is`, as it is natively (§3.2, §4.1). Opus measured the test at nothing in V8, and
 the uniform entry at ten times a native call (§3.1 there).
 
 ### 3.2. The Closure Signature (decision 3)
@@ -312,8 +313,7 @@ The closure signature of a function type maps each parameter and the result:
 | `Int`, `Word` | `i64` |
 | `Real` | `f64` |
 | `Bool`, `Char` | `i32` |
-| `Ok`, as a parameter | nothing |
-| `Ok`, as the result | `eqref`, its uniform value |
+| `Ok` | `eqref`, the `i31ref` 0 |
 | a record | `(ref $record) (ref $dict)` |
 | a variant | `i32 eqref` |
 | a `var` or `out` parameter | `(ref $slots) i32` |
@@ -326,11 +326,22 @@ entry, into a local of its precise type.
 locals only. `return_call` and `return_call_ref` require the callee's result type to be a subtype of the caller's,
 so a function whose result were a `(ref $string)` could not tail-call one that gives an `eqref` (Opus's author
 checked: `wasm-tools validate` rejects it). With one rule for every signature, any call in tail position whose
-results agree in kind can be a tail call (§3.3).
+results agree in kind can be a tail call (§3.3). The one exception is a function the `unbox` pass has given an
+unboxed result (§4.1): it returns its tuple's components as several results, at their closure-signature types,
+and is only ever called directly.
 
-An `Ok` result is returned as a value so that a wrapper has nothing to push after its call: a callback of a scalar
-parameter and an `Ok` result, which is every `iter`-style callback over `Int`s, is then tail-called through its
-uniform entry (§3.3). Changing it later would change every such signature.
+**The signature is computed after bounds are resolved,** as `layout.resolvedShape` does for every backend: a type
+parameter or an abstract type with a bound has its bound's representation (two values for a record's, an `i64`
+for `Int`'s), and only one without a bound is an `eqref`. The bound is in the interface, so exporter and importer
+still agree. The compiler's units have neither (§10.1), so this first matters in milestone 4.
+
+**An `Ok` is a value wherever a value is expected:** a parameter, a result, a local, a slot. The represent pass
+gives no plan when either side of a conversion is `Ok`, so nothing in the IR marks where an `Ok` meets a type
+parameter or a slot, and an `Ok` that were nothing in some places would have to be made or dropped at crossings
+the backend could not see. Natively an `Ok` parameter is a word for the same reason. As a result, a wrapper has
+nothing to push after its call: a callback of a scalar parameter and an `Ok` result, which is every `iter`-style
+callback over `Int`s, is tail-called through its uniform entry (§3.3). Changing this later would change every
+such signature.
 
 The signature is computed from the type alone, with a type parameter as `eqref`. So a closure made for
 `String -> Word` has the signature that generic code computes for `K -> Word`, and `hashMap`'s calls of a string's
@@ -382,8 +393,12 @@ and changes no type.
 ### 4.1. Where the Backend Forks (decision 7)
 
 ```
-typed AST → lower → Core → simplify → specialize → closure-convert → represent → describe → wasm
+typed AST → lower → Core → simplify → specialize → closure-convert → unbox → represent → describe → wasm
 ```
+
+`unbox` (`ir/unbox`) gives a known local function that returns a tuple an unboxed result: its returns give the
+components (`sReturnTuple`) and its direct calls bind them (`sLetTuple`). Here those are WebAssembly's several
+results.
 
 The shared passes, `codegen/layout`, and the native backends' goldens are unchanged. Today's represented IR has no
 conversion where a scalar meets a slot (`slots` asks `layout.isBoxedInSlots`, true only of records and variants);
@@ -543,6 +558,12 @@ A synchronous request is deprecated on a page's own thread, not in a worker, and
 does. Its real costs are a round trip for each file and a logged 404 for each prefix that lacks one, which is why
 the common case does not use it:
 
+**The compiler never sees a URL.** Its paths are POSIX's: `path.isAbsolute` tests for a leading `/`, so
+`https://host/lib` would be taken as relative to the current directory and normalized into nonsense, and
+`modules/paths` leaves out a library directory for which `system.isDirectory` is false. So the host mounts each
+prefix at an absolute path of its own (`/lib`, `/remote/0`), `QUEST_PATH` names those, the host answers
+`isDirectory` for a mount, and it turns `/lib/list.int.quest` into the prefix's URL inside its own file calls.
+
 A prefix may also be given as an archive of its files, fetched once when the session starts, after which a lookup
 under it makes no request. The library is served that way, beside the driver's modules: its sources are about
 240 KB (Argon's count), which one file at a time would be a round trip for each import. Requests one file at a
@@ -551,7 +572,10 @@ time are then for the user's prefixes.
 The page serves two kinds of thing: the driver's modules, built for this target at a release, and sources
 (`lib/`'s interfaces and modules, and the user's), built by nobody. The interpreter runs a library module from its
 source, with its externals bound to the driver's compiled library, as natively. `.qi` texts are made in the
-session's memory.
+session's memory, from the interfaces, as the native JIT makes them (about 10 ms for a program's, natively). A
+`.qi` holds nothing of a target (§5.3), so the library's archive can carry the release's `.qi` files beside the
+sources, and save a session's first inputs the elaboration of every interface they reach, which for an input that
+imports the compiler's own units is some 150 of them. Step 12 measures the first input's latency and decides.
 
 ### 5.3. Artifacts
 
@@ -630,6 +654,12 @@ on what was running:
 - **The compiler or the interpreter:** their structures may be half updated. The host ends the worker, starts
   another, replays the session's committed inputs with their output suppressed, and reports the overflow for the
   failed input. Replay runs the inputs' effects again and assumes they give the same results.
+
+  Replay need not compile again what was compiled. A `WebAssembly.Module` can be passed between threads, so the
+  page keeps the driver's compiled modules and gives them to the new worker, which only instantiates them: built
+  with the page. After milestone 3, the page can keep each committed input's module and `.qi` text too, and a new
+  entry of the driver can admit an input again from those, running its code without compiling it: a refinement,
+  once replay from source is seen to be slow.
 - **Under wasmtime or node, a program:** the run ends, as compiled code's overflow ends it natively.
 
 A count at each function's entry that raises a catchable `stack.overflow` first (Fable's A8) is a later addition.
@@ -779,8 +809,11 @@ A checkpoint (decision 4).
 ### 8.3. Milestone 3: Each Interaction a Module
 
 13. **The JIT:** an input is a unit, compiled in the session to a module, its bytes passed through the buffer and
-    loaded by the host, linked to the driver's modules and to earlier inputs'. A top-level binding that may be
-    redefined is a cell that later modules import ([repl.md](repl.md) §6). A failed input is not committed. The
+    loaded by the host, linked to the driver's modules and to earlier inputs'. Redefinition in place
+    ([repl.md](repl.md) §6) needs nothing new: the lowering already holds a binding that may be redefined in a box,
+    a one-component `var` tuple that the input's record points to ([jit.md](jit.md) §3.2), which here is a
+    `$tuple` of one slot; a later input reaches it through the record and stores to it. A failed input is not
+    committed. The
     fingerprint check carries over, with the target in it. The JIT's transcripts in node, then by hand in the page.
 
 ### 8.4. Milestone 4: The Rest
