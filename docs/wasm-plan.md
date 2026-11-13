@@ -373,7 +373,7 @@ every native-entry call in tail position, and a uniform entry's call when the re
 
 **Tail position is found by the backend, through join points.** A call is in tail position when its result reaches
 a return by any chain of jumps to join points whose continuations only pass it on, not only when a `return`
-follows it. Natively `ssa/tailCalls` finds these on the SSA, which this backend does not have, so it repeats the
+follows it. Natively `ssa/passes/tailcalls` finds these on the SSA, which this backend does not have, so it repeats the
 analysis on the described IR. Without it, loops that the native backends run in constant stack nest: before that
 pass existed, the benchmark `zern`'s two loops nested 16,384 deep. Step 3 tests it.
 
@@ -400,7 +400,7 @@ typed AST → lower → Core → simplify → specialize → closure-convert →
 components (`sReturnTuple`) and its direct calls bind them (`sLetTuple`). Here those are WebAssembly's several
 results.
 
-The shared passes, `codegen/layout`, and the native backends' goldens are unchanged. Today's represented IR has no
+The shared passes, `repr/layout`, and the native backends' goldens are unchanged. Today's represented IR has no
 conversion where a scalar meets a slot (`slots` asks `layout.isBoxedInSlots`, true only of records and variants);
 the native backends convert in the SSA's builder. The wasm backend does the same in its own builder: every slot
 operation (making a tuple, reading a component, an array's element, a record's field, a store) boxes or unboxes by
@@ -463,7 +463,7 @@ The backend checks the rule when it builds the runtime, and reports the cycle's 
 
 `lib/` names 174 external values (151 C functions, 9 constants, 14 exceptions; Opus's count, §9.2 there), and the
 compiler links all of them. Each maps to an instruction sequence, a runtime function, or a host call. A table plays
-the part of `codegen/externals`, and a test checks that it covers `lib/`. `os/process`, `os/code`, `os/value`, and
+the part of `repr/externals`, and a test checks that it covers `lib/`. `os/process`, `os/code`, `os/value`, and
 readline have no counterpart; their externals raise their module's error, with one exception. `code.symbol`
 answers that there is no such symbol, as it does natively for a name the binary lacks:
 `questlang/driver/interrupts` calls it at its top level, `driver/repl` imports that unit, and initialization runs
@@ -1024,7 +1024,7 @@ tables wait for milestone 4, where the run suite needs them. Steps 4, 6, and 7 a
 | Use | Where | First milestone |
 |---|---|---|
 | reading a literal: `strutil.tryToReal` (`quest_strutil_to_real`) | the lexer, once | needed (step 8) |
-| printing: `conv.real`, `stringBuilder.appendReal` | the dumps of tokens, syntax, typed syntax, and IR; `values/json`; `values/model` | needed (step 8) |
+| printing: `conv.real`, `stringBuilder.appendReal` | the dumps of tokens, syntax, typed syntax, and IR; `common/json`; `values/model` | needed (step 8) |
 | arithmetic and comparison | 21 primitive operations in four units: `lib/real`, the interpreter's primitives and builtins, `values/dynamicjson` | needed: instructions, with the NaN tests |
 | bits of a `Real` (`word.fromReal`, `toReal`) | the native backends' constants | needed: one instruction each |
 | `real.format` (a style and a digit count) | only the interpreter's builtin for an interpreted program's call | pending; a third formatter to write, in milestone 4 |
