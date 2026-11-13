@@ -5,14 +5,14 @@ the interfaces it imports, into
    module's exported functions (qv_<mod>_<func>), its record (qm_<mod>), and
    its initializer (qv_mod_<mod>_init), which runs the module's body once;
 2. an object file (<name>.o), by the host C compiler;
-3. a manifest (<name>.qm, modules/manifest.py), from which the build engine
+3. a manifest (<name>.qm, modules/artifacts/manifest.py), from which the build engine
    decides when to compile it again (docs/modules.md §9.2).
 
 Generated file names keep the .int/.mod of their sources' names, so that the
 header of an interface named like a C standard header (math.int.h, not math.h)
 cannot shadow it (<math.h>) on the C compiler's include path.
 
-The self-hosted counterpart is questlang/modules/modulecompiler.
+The self-hosted counterpart is questlang/modules/artifacts/modulecompiler.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from quest.build.compiler_runner import compile_c_to_object
 from quest.codegen.c.headers import ensure_imported_interface_header
 from quest.config import CompilerOptions
 from quest.diagnostics import in_unit
-from quest.modules.manifest import (
+from quest.modules.artifacts.manifest import (
     ImportedInterfaceRef,
     ImportedModuleRef,
     ModuleManifest,
@@ -37,7 +37,7 @@ from quest.modules.manifest import (
 )
 from quest.types.env import Environment
 from quest.modules.elaboration import elaborate_module
-from quest.modules.interface_compiler import indirect_interface_refs
+from quest.modules.artifacts.interface_compiler import indirect_interface_refs
 from quest.modules.units import parse_unit, unit_declaration
 from quest.modules.loader import load_interface
 from quest.modules.graph import Resolver, Roots, UnitGraph, resolve_interface, resolve_module, unit_artifact_dir

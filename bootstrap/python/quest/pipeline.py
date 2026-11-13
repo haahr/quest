@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from quest.build.engine import BuildEngine, unit_module_refs
-from quest.modules.module_compiler import find_interface_header, header_search_dirs
+from quest.modules.artifacts.module_compiler import find_interface_header, header_search_dirs
 from quest.modules.graph import Roots, unit_artifact_dir
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.modules.units import unit_declaration

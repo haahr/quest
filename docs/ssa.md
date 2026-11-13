@@ -61,7 +61,7 @@ register allocation) walk the arrays; only the passes that care what an instruct
 | `call` | args → results | a direct call of the symbol |
 | `callIndirect` | `ptr` args → results | a call through a function pointer |
 | `copy` | value → value | the same value (made by the builder; removed by later passes) |
-| `select` | `int` x x → x | the second argument if the first is nonzero, else the third; x is `int`, `ptr`, or `val` (made by `ssa/selects`, §4.1; ssac's `?:`, arm64's `csel` or `cset`) |
+| `select` | `int` x x → x | the second argument if the first is nonzero, else the third; x is `int`, `ptr`, or `val` (made by `ssa/passes/selects`, §4.1; ssac's `?:`, arm64's `csel` or `cset`) |
 
 ### 2.1. Loads and Stores
 
@@ -115,7 +115,7 @@ terminator:
 | `branch v, b1(args), b2(args)` | `b1` if `v` is nonzero, else `b2` |
 | `switch v, [k: b(args)...], default b(args)` | the block of the case whose integer is `v` |
 | `return values` | return the values (none, one, or two for a 16-byte result) |
-| `tailCall` | a call in tail position (arm64.md §3.7, marked by `ssa/tailCalls`): its results are the function's |
+| `tailCall` | a call in tail position (arm64.md §3.7, marked by `ssa/passes/tailCalls`): its results are the function's |
 | `try slot, body(args), handler()` | enter a `try` (below) |
 | `unreachable` | control does not reach the end of the block |
 
@@ -194,9 +194,9 @@ internal error.
 
 `questlang/ssa/pipeline` builds a unit and then runs its passes, by name, in order, each on every function:
 
-- **`ssa/escape`** makes each allocation that does not leave its function a stack slot (§4.2), which promotion then
+- **`ssa/passes/escape`** makes each allocation that does not leave its function a stack slot (§4.2), which promotion then
   makes values where it can.
-- **`ssa/promote`** turns stack slots into values. A slot can be promoted when it is whole words and its address is
+- **`ssa/passes/promote`** turns stack slots into values. A slot can be promoted when it is whole words and its address is
   only loaded from and stored to, a word at a time or a word's first byte (a `Bool` or `Char` variable's), never
   passed, stored, or offset otherwise. Each word becomes a variable of one type, stored all at one width, and loaded
   whole only if stored whole. A block that the definitions reaching it differ at gets a parameter (Cytron et al.'s
@@ -207,8 +207,8 @@ internal error.
   its slot, its address escaping. `language/mutable_locals` covers each kind.
 - **`ssa/scalars`** replaces the objects that block parameters merge, which escape analysis leaves, by the values of
   their words (§4.3): a loop that carries a tuple carries its components. It runs after promotion, which makes the
-  variables a loop carries its parameters, and before `ssa/constants`.
-- **`ssa/constants`** makes constant the globals bound to constants. A global the unit does not export (another unit
+  variables a loop carries its parameters, and before `ssa/passes/constants`.
+- **`ssa/passes/constants`** makes constant the globals bound to constants. A global the unit does not export (another unit
   could store to one it does), a word of static data that starts as zero, is constant when the unit stores to it once,
   a whole word that is an `opConst` or a symbol's address, and otherwise only loads it, a whole word at a time, as the
   type of that value; when nothing that could read it runs on any path from its function's entry to the store; and
@@ -223,7 +223,7 @@ internal error.
   `oneW`) is such a global: the module's initialization stores it, guarded by the module's flag, and each use loaded
   it, in every iteration of a loop that used it ([benchmarks.md](benchmarks.md) §15.5). Only a unit's own globals are
   seen, so only those are folded: another unit loads an exported member as before. `ssa_constants` shows each case.
-- **`ssa/valueNumbers`** removes redundant values along the dominator tree, in the manner of Briggs, Cooper, and
+- **`ssa/passes/valueNumbers`** removes redundant values along the dominator tree, in the manner of Briggs, Cooper, and
   Simpson: a pure instruction or a load whose equal dominates it becomes that equal, by a key of its opcode, immediate,
   symbol, result type, and arguments' numbers (a constant's by its value; commutative ones ordered; a load's address
   taken apart into a base, an index, and a constant offset through `ptrAdd`s, so that `load8 %4 + 0` of `%4 = ptrAdd %1,
@@ -239,7 +239,7 @@ internal error.
   symbols, and nulls: shared across a function, they were live longer and spilled (hamlet's stack accesses rose from
   8,129 to 10,022, mlyacc's from 4,522 to 5,713, and neither ran faster). The pure instructions and loads then left
   without uses are removed. `ssa_valuenumbers` shows each case.
-- **`ssa/selects`** makes selects of branches (if-conversion): a branch whose two arms only pass values to one block,
+- **`ssa/passes/selects`** makes selects of branches (if-conversion): a branch whose two arms only pass values to one block,
   each arm directly or through a block of its own (one with no parameters, reached only from the branch, that only
   jumps on), becomes a jump to that block, each argument the arms pass differently a `select` by the branch's
   condition, at most two of them and none a `real`. An arm's block may have up to two instructions that can run before
@@ -248,7 +248,7 @@ internal error.
   global); they move into the branch's block. A carry in a loop of arbitrary-precision arithmetic (`util/bignum`'s `bit(word.lt(sum operand))`) is such a
   branch, taken as often as not: arm64 mispredicted half of them, and now makes each a `cset` of the comparison's
   flags; C's compiler already made it one ([benchmarks.md](benchmarks.md) §15). `ssa_selects` shows each case.
-- **`ssa/tables`** makes a switch of constants a load from a table. A switch whose arms (each a case's target,
+- **`ssa/passes/tables`** makes a switch of constants a load from a table. A switch whose arms (each a case's target,
   directly or through blocks with no parameters that only make constants and jump on) all pass arguments to one
   block, the join, with at least 4 cases, dense (their range at most twice their number), becomes a check of the value
   less the least case against the range's size (`ult`), branching to the default when out of it, and a block that
@@ -260,7 +260,7 @@ internal error.
   compare and branch for each case, 1,555 of the compiler's samples against the C build's 196, where clang made it a
   load ([benchmarks.md](benchmarks.md) §21.5); a case of strings is not converted, since each arm calls
   `quest_string_new` for its literal. `ssa_tables` shows each case.
-- **`ssa/accumulate`** makes loops of recursion through an associative operation (LLVM's accumulator recursion
+- **`ssa/passes/accumulate`** makes loops of recursion through an associative operation (LLVM's accumulator recursion
   elimination; [benchmarks.md](benchmarks.md) §14): in a function of one `int` result, from which no slot's address
   escapes, a block whose last instructions are a call of the function itself and an `add`, `mul`, `and`, `or`, or `xor`
   of its result and another value, and which returns that (directly or through blocks that pass it on, as for
@@ -273,14 +273,14 @@ internal error.
   second; a runaway `1 + f(n + 1)` loops forever rather than overflowing the stack, as clang already made it in C
   ([exceptions.md](exceptions.md) §6), and a traceback through the loop's levels shows one frame, as through tail calls
   (`repl/module_errors` subtracts, to keep its frames). `ssa_accumulate` shows each case.
-- **`ssa/tailCalls`** marks calls in tail position (§3, arm64.md §3.7): a call whose block returns its results (or the
+- **`ssa/passes/tailCalls`** marks calls in tail position (§3, arm64.md §3.7): a call whose block returns its results (or the
   extension of its byte), or jumps, through blocks that do nothing else, to one that does. A block's parameters are
   taken as what the jump passes them, so that a join's parameter that its block does not return (as a contified
   loop's exit leaves) does not keep the call from being a tail call: zern's `lp1` and `lp2`, which call each other
   through their closures, were nested calls, 16,384 deep for each array they filled. The blocks a tail call leaves
   unreached are dropped (`cfg.dropUnreached`, as the builder drops its own), since they may return a value that value
   numbering put in place of their parameter, and that the call no longer defines.
-- **`ssa/tailJumps`**, last, makes loops of mutual tail calls ([benchmarks.md](benchmarks.md) §14). The unit's functions
+- **`ssa/passes/tailJumps`**, last, makes loops of mutual tail calls ([benchmarks.md](benchmarks.md) §14). The unit's functions
   and the direct tail calls between them form a graph, whose strongly connected components (Tarjan's) are the groups
   of mutually tail-recursive functions. Into each function of a group of more than one are copied the other members it
   reaches through tail calls, its own and its copies', each once, while the copies total at most 100 instructions: a
@@ -291,12 +291,12 @@ internal error.
   jump to its first block and clang a loop. even-odd's `even1` holds a copy of `odd1`, whose tail call of `even1` is
   then a self tail call: one loop, without pushing and popping a frame at each step. A call through a closure is
   indirect and is left. `ssa_tailjumps` shows each case.
-- **`ssa/interrupts`**, after them and only when the Jupyter kernel's driver asks (`pipeline.setInterruptChecks`, under
+- **`ssa/passes/interrupts`**, after them and only when the Jupyter kernel's driver asks (`pipeline.setInterruptChecks`, under
   `--kernel`, for the code its JIT compiles; [jupyter-kernel.md](jupyter-kernel.md) §5), checks the runtime's interrupt
   flag at each function's entry and each loop's head (a block a back edge goes to): it splits the block, loading
   `quest_interrupt_pending` and branching to a block that calls `quest_interrupt_raise`, or on to the block's old
   instructions. It isn't in `passes`, so no phase dumps it, and no golden sees it.
-- **Inline allocation** (`ssa/allocations`, `pipeline.inlineAllocation`), run by the SSA's backends after the passes:
+- **Inline allocation** (`ssa/passes/allocations`, `pipeline.inlineAllocation`), run by the SSA's backends after the passes:
   arm64 and the JIT cannot get the collector's fast path from the runtime's header as the C printer does, and ssac's
   printer calls every runtime function out of line, `quest_alloc` included (§8), which cost it a third of what C gained
   on the allocation-heavy programs (benchmarks.md §16.2). Each call of `quest_alloc` of a constant size becomes the
@@ -329,7 +329,7 @@ live-out values, which the register allocator uses); `nodes` has the mutators (`
 
 ### 4.2. Escape Analysis
 
-`ssa/escape` removes allocations whose pointers never leave the function that makes them: a tuple made only to be
+`ssa/passes/escape` removes allocations whose pointers never leave the function that makes them: a tuple made only to be
 taken apart, the tuple `o!tag` makes to read one component of, an option's payload tuple copied into the option, a
 record's box only read. Inlining ([ir.md](ir.md) §8.6) is what brings producer and consumer into one function. The
 pass is local and conservative, one function at a time with no summaries of others, and reuses promotion rather than
@@ -500,6 +500,6 @@ problems it reports on functions built by hand.
 
 ## 8. The C Printer
 
-`codegen/ssac` prints a unit's SSA as C (arm64.md §3.14), an oracle for the SSA and the backends after it: with
+`codegen/c/ssac` prints a unit's SSA as C (arm64.md §3.14), an oracle for the SSA and the backends after it: with
 `--backend ssac`, or `--unit-backend UNIT=ssac` for one unit, a build compiles units through it (arm64.md §3.12). The
 questlang test `ssac_print` prints a unit built by hand, and `tests/python/test_ssac.py` compiles its golden.

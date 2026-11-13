@@ -36,7 +36,7 @@ from quest.modules.graph import (
     resolve_interface,
     resolve_module,
 )
-from quest.modules.interface_compiler import (
+from quest.modules.artifacts.interface_compiler import (
     ensure_resolved_interface_artifacts,
     load_interface_from_qi_file,
 )

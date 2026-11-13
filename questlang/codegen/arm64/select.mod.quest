@@ -4,8 +4,8 @@ module select : Select
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/cfg : questlang/ssa/Cfg
-    questlang/codegen/machine : questlang/codegen/Machine
-    targets = questlang/codegen/target : questlang/codegen/Target
+    questlang/codegen/machine/machine : questlang/codegen/machine/Machine
+    targets = questlang/codegen/machine/target : questlang/codegen/machine/Target
     questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
     questlang/codegen/arm64/printer : questlang/codegen/arm64/Printer
     questlang/codegen/arm64/target : questlang/codegen/arm64/Target
@@ -547,7 +547,7 @@ export
                 when opMulHiU then arith(minst.arithUmulh)
                 (* csel by the flags of the condition's comparison, fused
                  * into it when it is the select's alone, else of the
-                 * condition and 0; cset of 1 and 0 (ssa/selects makes the
+                 * condition and 0; cset of 1 and 0 (ssa/passes/selects makes the
                  * selects) *)
                 when opSelect then
                     let c = i.args[0]
@@ -789,7 +789,7 @@ export
             when termJump with x then jump(s x.target)
             (* The true target is reached through a block of its own (edge),
              * since a machine branch's target may have no other predecessor
-             * (codegen/machine); the false one by a jump *)
+             * (codegen/machine/machine); the false one by a jump *)
             when termBranch with x then
                 let e = edge(s x.ifTrue)
                 let l = labelOf(s e)

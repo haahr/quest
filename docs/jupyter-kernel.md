@@ -129,7 +129,7 @@ default meaning there.
 - **The driver** (`questlang/driver/interrupts`) finds them by name, through `os/code`'s `symbol`, installs the
   handler, and clears the flag before each cell, so an interrupt between cells is forgotten. A driver whose runtime
   lacks them, stage 1, built against the release's, runs without interrupts.
-- **The JIT's code** checks the flag at each function's entry and each loop's head: `ssa/interrupts`, run after the
+- **The JIT's code** checks the flag at each function's entry and each loop's head: `ssa/passes/interrupts`, run after the
   SSA's passes when the driver asks (`pipeline.setInterruptChecks`; ssa.md §4.1). `QUEST_SKIP_PASSES=interrupts`
   leaves it out.
 - **The interpreter** (`--kernel --no-jit`) polls the flag at each loop iteration and call (`treewalk`'s

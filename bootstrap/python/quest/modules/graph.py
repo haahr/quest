@@ -48,7 +48,7 @@ from typing import TYPE_CHECKING, Any, Optional, Union
 import quest.syntax.ast as ast
 from quest.config import CompilerOptions
 from quest.diagnostics import QuestCompilerError
-from quest.modules.manifest import ModuleManifest, unit_staleness
+from quest.modules.artifacts.manifest import ModuleManifest, unit_staleness
 from quest.modules.paths import (
     InterfaceDependency,
     canonicalize_interface_name,

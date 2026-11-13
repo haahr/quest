@@ -55,7 +55,7 @@ by `movn`, and a logical immediate by `orr` from `xzr`.
 instruction, and a comparison with −1 as `cmn`; the fixed point holds through arm64; and the driver's stage 2 has no
 four-instruction sequence for a value one instruction makes.
 
-## 3. Switches (`ssa/tables`, `codegen/arm64/select`)
+## 3. Switches (`ssa/passes/tables`, `codegen/arm64/select`)
 
 A switch is a comparison and a branch for each case, in order. `nodes.opcodeIndex`, a 52-way case mapping an
 opcode to its position, takes 1,555 samples against the C build's 196, where clang made it a bounds check and a load

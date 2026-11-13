@@ -2,7 +2,7 @@
 
 Why programs compiled by the arm64 backend run slower than the same programs compiled through C by clang: what the
 generated machine code does that clang's does not, and what in the back end (`questlang/ssa`,
-`questlang/codegen/arm64`, `questlang/codegen/regalloc`) makes it do so. Every time here is a compiled program's run
+`questlang/codegen/arm64`, `questlang/codegen/machine/regalloc`) makes it do so. Every time here is a compiled program's run
 time, on the six benchmarks near the median (life, ray, hamlet, mlyacc, zebra, nucleic), at `6f7cb100` (options as
 values, and the traceback cache); none is the compiler's own. [arm64.md](arm64.md) §6 records what was found
 before this; this review starts again from the measurements, and some of its conclusions revise §6's.
@@ -645,7 +645,7 @@ loads) and §4.1 (the pass):
    code and environment, an array's and a string's length, a proxy's original, an option's tag, offset tables). A
    field's static type is not enough, since `Tuple var a: A end <: Tuple a: A end`; `language/var_field_views`
    checks that a `var` field read through an immutable view is not taken as invariant.
-3. **`ssa/valueNumbers`** (`e913387c`, `76344a73`): dominator-tree value numbering of pure values and invariant loads,
+3. **`ssa/passes/valueNumbers`** (`e913387c`, `76344a73`): dominator-tree value numbering of pure values and invariant loads,
    copies, and trivial block parameters, then the instructions left without uses removed. Comparisons, `and`s,
    `mul`s, and `ptrAdd`s are numbered only within their block, since arm64 fuses them into their use there (the
    `cset` counts did not move). Constants numbered across the function were live longer and spilled (stack accesses:

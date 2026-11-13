@@ -19,11 +19,11 @@ from quest.build.engine import BuildEngine, BuildError
 from quest.diagnostics import QuestTypeError
 from quest.types.env import Environment
 from quest.codegen.c.headers import compile_interface_with_header
-from quest.modules.interface_compiler import (
+from quest.modules.artifacts.interface_compiler import (
     ensure_interface_artifacts,
     load_interface_from_qi_file,
 )
-from quest.modules.module_compiler import compile_module_file
+from quest.modules.artifacts.module_compiler import compile_module_file
 from quest.modules.paths import resolve_interface_file
 
 CALC_INT = "interface Calc export add(a: Int b: Int): Int end;\n"

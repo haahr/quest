@@ -51,12 +51,12 @@ described IR (ir.md §8.4)
   ├─→ C printer → C → clang                                              (unchanged)
   └─→ build SSA          questlang/ssa        CFG, block arguments, mutable locals promoted, try regions;
         │                                     machine scalar types; loads and stores at byte offsets
-        ├─→ SSA-to-C printer  questlang/codegen/ssac  (the oracle, §3.14) → C → clang
+        ├─→ SSA-to-C printer  questlang/codegen/c/ssac  (the oracle, §3.14) → C → clang
         ▼
       lower to arm64     questlang/codegen/arm64   ABI (Apple AAPCS64), instruction selection: machine SSA over
         │                                          virtual registers, with fixed-register constraints
         ▼
-      allocate registers questlang/codegen/regalloc  target-parameterized; out of SSA (parallel copies)
+      allocate registers questlang/codegen/machine/regalloc  target-parameterized; out of SSA (parallel copies)
         │
         ▼
       frame              prologue, epilogue, spill slots, callee-saved registers, tail calls, unwind directives
@@ -250,7 +250,7 @@ Direct, indirect (through a closure), and runtime calls are all eligible. Self t
 function's first block, which also gives loops written as recursion (benchmarks.md §3.2) their speed. Frames
 removed by tail calls are missing from tracebacks, as frames clang removes are now (exceptions.md §2.4).
 
-**As built.** `ssa/tailCalls` marks them as the builder finishes a unit, so the SSA's dumps show them (`tail` before
+**As built.** `ssa/passes/tailCalls` marks them as the builder finishes a unit, so the SSA's dumps show them (`tail` before
 the call), and both native backends compile them:
 
 - A call is in tail position when its results, or the extension of its byte result (a `Bool` or `Char`, which every
@@ -268,7 +268,7 @@ the call), and both native backends compile them:
 
 ### 3.8. Register allocation
 
-`questlang/codegen/regalloc`, parameterized by a target description (register classes, allocatable and fixed
+`questlang/codegen/machine/regalloc`, parameterized by a target description (register classes, allocatable and fixed
 registers, what a call clobbers), so that it can be tested on its own.
 
 It is linear scan on SSA with interval splitting (Wimmer and Mössenböck, *Optimized Interval Splitting in a Linear
@@ -321,8 +321,8 @@ So a value lives in pieces, each in a register or in memory:
   pair, which it must restore for its caller after a raise has passed through frames that clobbered them.
 
 **On machine functions.** The allocator works on a machine
-function's virtual registers (`codegen/machine`), which `codegen/arm64/select` selects from the SSA, rather than on
-the SSA's values, and it reads no register's name: a target (`codegen/target`) gives it register numbers.
+function's virtual registers (`codegen/machine/machine`), which `codegen/arm64/select` selects from the SSA, rather than on
+the SSA's values, and it reads no register's name: a target (`codegen/machine/target`) gives it register numbers.
 
 - **Fixed registers.** The calling convention is moves to and from physical registers: arguments before a call,
   its results after, the parameters at the entry, and returned values before a return. A register is unavailable
@@ -522,7 +522,7 @@ in the assembly ([profiling.md](profiling.md) §6).
 
 ### 3.14. The SSA-to-C printer
 
-`questlang/codegen/ssac` prints a unit's low-level SSA as C, as MLton's C backend prints its lowest IR: each block a
+`questlang/codegen/c/ssac` prints a unit's low-level SSA as C, as MLton's C backend prints its lowest IR: each block a
 label, each SSA value a local, block arguments assignments before the `goto`, stack slots a local byte array, and
 memory reached by byte offsets (`*(int64_t *)(p + 16)`). It computes no layout and chooses no representation; it
 only prints what the SSA says, so a test that passes through it checks the SSA's construction, the shared layout
@@ -650,7 +650,7 @@ would need `else` for the rest. What is specific to a target happens after the S
 2. **A target's machine instructions** (`codegen/arm64/minst`): `arm64.Op`, an option of the target's operations with
    their immediates, conditions, and addressing modes, made by instruction selection over virtual registers and cased
    on, without `else`, only by that target's selection (`codegen/arm64/select`), printer, and encoder.
-3. **Shared machine-level code over a structural shape** (`codegen/machine`): a machine function's blocks hold
+3. **Shared machine-level code over a structural shape** (`codegen/machine/machine`): a machine function's blocks hold
    instructions, each with its operands (each a virtual or physical register, used or defined) and a shared kind
    (`kindOrdinary`, `kindMove`, `kindJump`, `kindBranch`, `kindCall`, `kindReturn`); the target's `Op` sits in a table
    beside them, indexed by instruction, which shared code never reads. A physical operand is fixed, and moves (and a
@@ -659,13 +659,13 @@ would need `else` for the rest. What is specific to a target happens after the S
    instruction (a move, a spill, a reload, a jump), they ask the target through a record of its functions
    (`Lowering`: a move, a load and a store of a virtual register's slot, and the scratch registers).
 
-**A target description** (`codegen/target`) gives the shared code a target's registers (numbers, classes, names),
+**A target description** (`codegen/machine/target`) gives the shared code a target's registers (numbers, classes, names),
 which are allocatable, caller-saved, and callee-saved, its argument and result registers by class, its scratch
 registers, its stack alignment, and its word size. `codegen/arm64/target` is the only one; nothing outside a target's
 own modules names a register. Selection gives each conditional branch's target a block of its own, where its edge's
 moves go, and a `try` a block beside it that a raise enters; the printer expands three pseudo-instructions (a
 constant, a symbol's address, a thread-local's). An x86-64 backend would be a selection, a printer, and a target
-description, reusing everything in `codegen/machine`; an LLVM or WASM backend would print the SSA with its
+description, reusing everything in `codegen/machine/machine`; an LLVM or WASM backend would print the SSA with its
 signatures (WASM would also need `try` through its exception handling, slots on a shadow stack, and precise roots).
 
 ## 4. Testing

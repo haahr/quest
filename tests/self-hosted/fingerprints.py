@@ -143,7 +143,7 @@ def abi_version() -> int:
 
 
 def digest(canonical: str, qi_file: Path, qi_files: dict[str, Path]) -> str:
-    """What modules/fingerprint computes for an interface from its .qi, the
+    """What modules/artifacts/fingerprint computes for an interface from its .qi, the
     .qi files of the interfaces it imports by path."""
     record = json.loads(qi_file.read_text(encoding="utf-8"))["value"]
     imports = sorted(f"import {i}\n" for i in record["imports"])

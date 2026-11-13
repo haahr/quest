@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-from quest.modules.manifest import (
+from quest.modules.artifacts.manifest import (
     ImportedInterfaceRef,
     ImportedModuleRef,
     ModuleManifest,

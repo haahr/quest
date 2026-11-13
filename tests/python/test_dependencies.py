@@ -36,7 +36,7 @@ C_COMPILATION = (
     "quest.build",
     "quest.codegen.backend",
     "quest.codegen.c",
-    "quest.modules.module_compiler",
+    "quest.modules.artifacts.module_compiler",
     "quest.pipeline",
 )
 # What runs the pipeline, and so reaches the C backend through it
@@ -124,7 +124,7 @@ class TestDependencies(unittest.TestCase):
 
     def test_only_c_compilation_reaches_the_c_backend(self) -> None:
         graph = import_graph()
-        self.assertIn("quest.modules.interface_compiler", graph)
+        self.assertIn("quest.modules.artifacts.interface_compiler", graph)
         outside = [m for m in graph if not _within(m, C_COMPILATION + PIPELINE_CLIENTS)]
         self.assertEqual(paths_to(graph, outside, C_BACKEND), [], "modules outside C compilation reach the C backend")
 

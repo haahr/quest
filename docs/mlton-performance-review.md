@@ -185,7 +185,7 @@ The `Read` is read as soon as it is made. It reaches its reader through a block 
 the character and the recursive call at the end of a chunk, join there. The `Stream` is the loop's parameter, bound to
 a new tuple on every edge.
 
-**Why.** `ssa/escape` ([ssa.md](ssa.md) §4.2) lets an allocation's pointer flow into a block parameter only when every
+**Why.** `ssa/passes/escape` ([ssa.md](ssa.md) §4.2) lets an allocation's pointer flow into a block parameter only when every
 edge binds the parameter to that one allocation. A parameter bound to several allocations, or to an allocation on one
 edge and a constant on another, is an escape. That is the shape of every loop that carries a tuple, and of every
 function that returns an option from more than one place, once inlining has made the return a join.
@@ -195,7 +195,7 @@ tuple is not otherwise needed (its `localFlatten` and `deepFlatten` passes). LLV
 not flow through phis, so a frontend has to have done it. GHC's worker/wrapper transformation and constructed product
 results do it for functions.
 
-**Recommendation.** Scalar replacement across block parameters, in `ssa/escape` or as a pass after it:
+**Recommendation.** Scalar replacement across block parameters, in `ssa/passes/escape` or as a pass after it:
 
 - **Which parameters.** A block parameter is split into one parameter per word when every edge binds it to one of
   three things: a candidate allocation of one layout (the same size, its words stored at the same offsets with the
@@ -326,7 +326,7 @@ arm64-performance-review.md §4.
 | | Change | Where | Lines | Checks | Expected |
 |---|---|---|--:|--:|---|
 | 1 | Inline type applications, and members naming their module's variables | `ir/inline` | 100 | 1 to 2 | a few percent on peek, ratio-regions, zebra; every user of `maybe` and `lists` |
-| 2 | Scalar replacement across block parameters | `ssa/escape` | 100 to 1,000 | 2 to 3 | wc-scanStream 0.16 of its time; loops that carry tuples |
+| 2 | Scalar replacement across block parameters | `ssa/passes/escape` | 100 to 1,000 | 2 to 3 | wc-scanStream 0.16 of its time; loops that carry tuples |
 | 3 | Specialization of recursive functions on a known function argument | `ir/inline`, `ir/clone`, `ir/contify` | 100 to 1,000 | 2 to 3 | ratio-regions 0.43; every `lists.app` and `exists` of a closure |
 | 4 | Calls of captured known closures as known calls | `ir/closure`, the C printer, the SSA builder | 100 | 1 to 2 | zebra, up to 0.59 |
 | 5 | No clears on an edge into a raising block; such edges laid out cold (§3.8) | `regalloc`, `select` (`layout`) | 10 to 100 | 1 | a taken branch less per check, in large functions |

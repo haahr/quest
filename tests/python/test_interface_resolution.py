@@ -22,7 +22,7 @@ from quest.types.env import Environment
 from quest.config import CompilerOptions
 from quest.codegen.c.headers import compile_interface_with_header, ensure_imported_interface_header
 from quest.modules.loader import load_interface
-from quest.modules.module_compiler import compile_module_file
+from quest.modules.artifacts.module_compiler import compile_module_file
 
 
 class TestInterfaceResolution(unittest.TestCase):

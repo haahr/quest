@@ -206,7 +206,7 @@ written as hex, of
 6. the fingerprints of the interfaces it imports, so that a change to a type it uses by name (a manifest type in
    another interface, `maybe.T` say) changes its fingerprint too.
 
-One function in `modules/` computes it (`modules/fingerprint`), from the `.qi` that the compiler writes for the
+One function in `modules/` computes it (`modules/artifacts/fingerprint`), from the `.qi` that the compiler writes for the
 interface and the JIT loads, and from the fingerprints of the interfaces it imports, found as the loader finds them;
 the compiler calls it when it compiles a module unit, and the JIT when it imports one.
 
@@ -228,7 +228,7 @@ With all of `lib/` in the driver, the only units a phrase can import that the dr
 files; modules declared in an input (§3.2) are part of it. A unit is never both: if the host links it, the host's copy
 is used (§3.3); otherwise the JIT compiles the module file from source, and loads it once in the session.
 
-- **Compiling.** `modules/moduleCompiler.moduleFileUnit` elaborates the file as a separately compiled module is
+- **Compiling.** `modules/artifacts/moduleCompiler.moduleFileUnit` elaborates the file as a separately compiled module is
   elaborated (in an environment of its own, its abstract types opaque, its imports known through their interfaces),
   and lowers it to a unit of the module alone; the session compiles that unit as it does an input's, through the
   passes, the SSA, and the arm64 backend, and loads it. Its record, initializer, and exports are the symbols a
@@ -254,7 +254,7 @@ in memory, not in a build directory: nothing a program run on the JIT does write
 
 - **Where.** The JIT's build directory is `common/memoryFiles`' root, `/<quest-memory>`, a path that is never a real
   directory. `modules/paths` (`readText`, `isFile`, `modifiedNs`, `writeAtomically`) and `config/abi`'s reader treat a
-  path under it as a text in the process, so the interface compiler, the loader, and `modules/fingerprint` run as they
+  path under it as a text in the process, so the interface compiler, the loader, and `modules/artifacts/fingerprint` run as they
   do with files, the same `.qi` text written, parsed, and digested.
 - **Freshness.** A file in memory is newer than every file (`modifiedNs` is the greatest `Int`), so it is never
   rebuilt: within a process a unit, once loaded, stays loaded, as in the interpreter's REPL (§3.4).
@@ -577,7 +577,7 @@ the runtime for every program, and come first so that the JIT is built on them.
    backends; the driver imports `list` and `dynamic`. Tests: a program finds its units' fingerprints with `os/code`;
    the fingerprint is unchanged by an interface's comments, declaration order, and location, and changed by a change
    to an exported type, to a manifest type it imports, or to the ABI version.
-   *Done* (2026-11-01, ABI 61). `modules/fingerprint` digests a `.qi` and, recursively, those of the interfaces it
+   *Done* (2026-11-01, ABI 61). `modules/artifacts/fingerprint` digests a `.qi` and, recursively, those of the interfaces it
    imports; the module compiler passes the digest to the backend, which emits `qh_<unit>` as a C string beside the
    module's record, through the C printer or as an SSA datum. Every module unit now exports a symbol it did not, so the
    ABI changed, which also rebuilds every unit with one. Test: `tests/self-hosted/fingerprints.py`

@@ -5,7 +5,7 @@ with the sources they were found in, and the ABI version and compiler of its
 artifacts, from which the build engine decides whether the unit is stale
 (is_manifest_stale, unit_staleness; docs/build-process.md §4.3, §5).
 
-The self-hosted counterpart is questlang/modules/manifest, which reads and
+The self-hosted counterpart is questlang/modules/artifacts/manifest, which reads and
 writes the same JSON, so that each compiler can read the other's.
 """
 

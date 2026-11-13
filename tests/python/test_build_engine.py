@@ -15,9 +15,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 from quest.build.engine import BuildEngine, BuildError
 from quest.config.abi import built_from
 from quest.codegen.c.headers import compile_interface_with_header, ensure_interface_header
-from quest.modules.interface_compiler import ensure_interface_artifacts
-from quest.modules.manifest import unit_staleness
-from quest.modules.module_compiler import compile_module_file
+from quest.modules.artifacts.interface_compiler import ensure_interface_artifacts
+from quest.modules.artifacts.manifest import unit_staleness
+from quest.modules.artifacts.module_compiler import compile_module_file
 from quest.modules.paths import resolve_interface_file
 
 

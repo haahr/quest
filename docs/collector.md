@@ -535,7 +535,7 @@ unsound module over a C core of a few hundred lines is a real option, for a plan
 | `ir/represent`, `ir/lower` (both) | Allocation operations carry their layout; `val` words marked ambiguous in it; stores marked mutating, and interior where they are |
 | `codegen/c/printer`, bootstrap printer | Allocation with header, inline bump fast path (from the header file), barrier on mutating stores (a call for interior ones), root table per unit |
 | `codegen/arm64/select`, `ssa/build` | Inline bump allocation, barrier sequence, root table; later stack maps from `frameSlots` |
-| `ssa/escape` | Recognize the new allocation form |
+| `ssa/passes/escape` | Recognize the new allocation form |
 | `ir/verify`, `ssa/verify` | Every store of a `ptr` or `val` word into the heap is a barriered form |
 | `build`, `tools/release`, docs | No libgc; `--nogc` retired or redefined; runtime-design.md §3, c-representation.md §9, arm64.md §3.13 rewritten |
 | `tools/perf/gcstats.py`, `retention.py` | Read the new collector's statistics |
@@ -774,7 +774,7 @@ taken on what 4 and 7 measure; 9 is optional.
    default). A collection clears the marks and line marks of the blocks in use, marks from the root tables, the
    runtime's listed roots, the JIT's regions, and the stack (registers spilled by `setjmp`), setting each marked
    object's lines, then intersects the start bits with the marks, frees dead large runs, and classifies each block. The
-   SSA's backends select the same sequence inline (`ssa/allocations`, ssa.md §4.1): arm64 and the JIT, which cannot get
+   SSA's backends select the same sequence inline (`ssa/passes/allocations`, ssa.md §4.1): arm64 and the JIT, which cannot get
    it from the header, and ssac, whose printer calls every runtime function out of line. Learned: C compilers keep the
    address an allocation returned *before* the header was skipped (clang folds the `+ 8` into every field's offset), so
    an ambiguous word at an object's header, or at a sized object's byte count, must mark that object, as one at its end

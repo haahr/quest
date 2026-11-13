@@ -15,7 +15,7 @@ from typing import Any, Iterable, Optional
 import quest.syntax.ast as ast
 from quest.build.logger import BuildLogger
 from quest.config.abi import has_current_abi, incompatible_artifact_message
-from quest.modules.manifest import (
+from quest.modules.artifacts.manifest import (
     ImportedInterfaceRef,
     ImportedModuleRef,
     ModuleManifest,
@@ -29,7 +29,7 @@ from quest.build.compiler_runner import compile_c_to_object, link_objects
 from quest.ir.pipeline import implicit_imports
 from quest.codegen.backend import program_to_c
 from quest.types.env import Environment
-from quest.modules.interface_compiler import indirect_interface_refs
+from quest.modules.artifacts.interface_compiler import indirect_interface_refs
 from quest.modules.graph import (
     ModuleArtifacts,
     Resolver,
@@ -44,7 +44,7 @@ from quest.modules.graph import (
 )
 from quest.modules.loader import load_interface
 from quest.codegen.c.headers import compile_interface_with_header
-from quest.modules.module_compiler import compile_module_file
+from quest.modules.artifacts.module_compiler import compile_module_file
 from quest.modules.paths import (
     DEFAULT_LIB_DIR,
     DEFAULT_PROJECT_DIR,

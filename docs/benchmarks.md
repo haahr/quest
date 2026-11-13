@@ -1077,7 +1077,7 @@ once for the whole count, seeing that it returns the same value each time, and f
 constant, so that its main does nothing but call `bench.count()`; arm64 makes the same loops of their tail calls. The
 other two were: fib, whose `fib(n - 1) + fib(n - 2)` clang turns into one call and a loop adding into an accumulator,
 and even-odd, whose `even1` and `odd1` clang makes one loop. Two passes of the SSA now do the same ([ssa.md](ssa.md)
-§4.1): `ssa/accumulate` and `ssa/tailJumps`.
+§4.1): `ssa/passes/accumulate` and `ssa/passes/tailJumps`.
 
 ### 14.1. What they change
 
@@ -1182,7 +1182,7 @@ to 2.58 through ssac, and from 3.63 to 3.48 through arm64.
 
 ### 15.4. If-conversion
 
-`ssa/selects` ([ssa.md](ssa.md) §4.1) makes a branch whose arms only pass values to one block a `select`, which arm64
+`ssa/passes/selects` ([ssa.md](ssa.md) §4.1) makes a branch whose arms only pass values to one block a `select`, which arm64
 makes a `csel` (or a `cset` of 1 and 0) on the flags of the branch's comparison, and ssac a `?:`. An arm may move up to
 two instructions into the branch's block, if they cannot trap or write: `util/bignum`'s carries load the module's
 globals `oneW` and `zeroW` in their arms, and the pass did nothing to them until loads of static data at a symbol
@@ -1205,7 +1205,7 @@ could move (smith-normal-form through arm64 took 362.2 s, pidigits 17.97 s). Tak
 
 ### 15.5. Constant globals
 
-`ssa/constants` ([ssa.md](ssa.md) §4.1) makes a global the unit stores once with a constant, before anything that could
+`ssa/passes/constants` ([ssa.md](ssa.md) §4.1) makes a global the unit stores once with a constant, before anything that could
 read it, read-only data holding the constant, and each of its loads the constant itself. `util/bignum`'s `oneW`,
 `zeroW`, and `onesW` are such globals: arm64's `bignum.mod.s` loads none of them now, where it loaded them in every
 iteration of each loop using them. The library's initialization calls its imports' initializations and registers its
@@ -1225,7 +1225,7 @@ smith-normal-form through arm64 is 1.5 times C's 70.05 s, from 1.7; through ssac
 
 The suite on the collector of [collector.md](collector.md) step 3 against §13's Boehm times: the stop-the-world
 mark-region collector of `runtime/quest_gc.c` with its bump allocation, the inline allocation sequence of
-`ssa/allocations` ([ssa.md](ssa.md) §4.1) in the SSA's backends, and the noscan space for layouts of scalars alone.
+`ssa/passes/allocations` ([ssa.md](ssa.md) §4.1) in the SSA's backends, and the noscan space for layouts of scalars alone.
 
 ### 16.1. How they were taken
 
@@ -1796,7 +1796,7 @@ times), by `QUEST_GC_STATS`:
 
 ### 19.4. On the tree with §15's changes (2026-11-06)
 
-§16 to §19 were measured on trees without §15's changes (the library's integers, `ssa/selects`, and `ssa/constants`),
+§16 to §19 were measured on trees without §15's changes (the library's integers, `ssa/passes/selects`, and `ssa/passes/constants`),
 which reached the main branch while the collector was being written. The collector's commits were then replayed onto
 them, and the ABI numbers and section numbers in these sections are the replayed ones. The suite was not retaken. The
 compiler's own build was, as in §19.3 with full collections in cycles, three times with `-j 8` and once with `-j 1`,
@@ -1812,9 +1812,9 @@ on an idle machine (load 1.8), by `./quest` from the replayed step 6 (ABI 73), a
 | A slice, longest (ms) | 2.5 | 3.6 |
 | A minor collection's pause, longest (ms) | 29.7 | 27.7 |
 
-`ssa/constants` makes as many globals constant with the collector as without (123 globals stay writable in the SSA
+`ssa/passes/constants` makes as many globals constant with the collector as without (123 globals stay writable in the SSA
 goldens on both trees), now that it takes the registrations of roots and frame tables and the barriers as running no
-Quest code, and `ssa/selects` makes the same 32 selects there.
+Quest code, and `ssa/passes/selects` makes the same 32 selects there.
 
 ## 20. Closing part of the gap to MLton (2026-11-06)
 
@@ -1850,7 +1850,7 @@ pop in Boehm. Each step was measured on the four before the next was begun.
    (which kept the stream whole), and replaces single objects escape analysis left. Replayed onto the collector, it
    recognizes `quest_alloc` with its layout, and treats a write barrier as escape analysis does, as no use of the
    object, dropping it with the object (`ssa_scalars`' case with barriers; `ssa/barriers` finds none owed after it).
-   It runs before `ssa/constants`.
+   It runs before `ssa/passes/constants`.
 5. **Specialization on a known function argument** (`1906c59c`, ir.md §8.6): `language/specialized_recursion`. Found
    on the way:
    - the unit's growth bound was spent before the simplifier reached `preflowPush`'s calls, so a specialization is

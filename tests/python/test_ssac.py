@@ -1,4 +1,4 @@
-"""The SSA's C printer (questlang/codegen/ssac, docs/arm64.md section 3.14) prints C that clang compiles: the questlang
+"""The SSA's C printer (questlang/codegen/c/ssac, docs/arm64.md section 3.14) prints C that clang compiles: the questlang
 test ssac_print prints a unit of the SSA built by hand, and this test compiles its golden to an object with the flags
 the C backend compiles with and those ssac adds (read from ssac's source, so that they cannot drift apart), and checks
 that the object defines and refers to the symbols the unit does."""
@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "bootstrap" / "python"))
 from quest.build.compiler_runner import base_c_flags, find_c_compiler
 
 GOLDEN = ROOT / "tests" / "golden" / "run" / "questlang" / "ssac_print.out"
-SSAC = ROOT / "questlang" / "codegen" / "ssac.mod.quest"
+SSAC = ROOT / "questlang" / "codegen" / "c" / "ssac.mod.quest"
 
 
 def ssac_flags() -> list[str]:

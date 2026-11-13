@@ -26,7 +26,7 @@ from quest.config.abi import header_stamp
 from quest.diagnostics import at_import, in_unit
 from quest.types.env import Environment, Scope
 from quest.modules.graph import Resolved, Resolver, Roots
-from quest.modules.interface_compiler import (
+from quest.modules.artifacts.interface_compiler import (
     CompiledInterface,
     _type_signatures,
     compile_interface_file,

@@ -352,7 +352,7 @@ main thread's stack, and a handler for the fault, on a signal stack of its own (
 `runtime/quest_runtime.c`, on macOS and on Linux with glibc), prints `Exception: stack.overflow` and the frames running,
 with no site, and exits with status 1, as for any uncaught exception (§2.2); output written before is flushed. On macOS
 on arm64 the frames are walked from the faulting context: its `pc`'s function, then its `x29`'s chain (§5.3). A handler
-cannot catch it. Other faults keep their default action. The C compiler and the SSA (`ssa/accumulate`, [ssa.md](ssa.md)
+cannot catch it. Other faults keep their default action. The C compiler and the SSA (`ssa/passes/accumulate`, [ssa.md](ssa.md)
 §4.1) may turn some runaway recursion into a loop, such as `1 + f(n + 1)`, which then runs forever rather than
 overflowing. Since the self-hosted interpreter is compiled code, the handler also reports the rare overflow of its own
 stack that comes before its limit.

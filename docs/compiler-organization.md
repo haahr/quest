@@ -85,7 +85,8 @@ questlang/
 │   ├── loader               # Loading interfaces and modules
 │   ├── elaboration          # Elaborating interfaces, modules, and imports
 │   ├── stdlib               # The standard library's interfaces and module scopes
-│   ├── interfacecompiler, modulecompiler, manifest   # .qi and .qm artifacts, compiled modules
+│   └── artifacts/           # interfacecompiler, modulecompiler, manifest, fingerprint: .qi and .qm artifacts,
+│                            # compiled modules, interfaces' fingerprints
 │
 ├── values/                  # Runtime values
 │   ├── model                # Values, and the interpreter's frames
@@ -108,12 +109,17 @@ questlang/
 │   └── externals            # The standard library's external C functions and types
 │
 ├── ssa/                     # The native backends' SSA (docs/ssa.md): nodes, build, statics, verify, printer
+│   ├── build/               # The SSA built from the described IR
+│   └── passes/              # Its optimizations: escape, promote, constants, valueNumbers, selects, accumulate,
+│                            # tailCalls, tailJumps, interrupts, allocations
 │
 ├── codegen/                 # Backends: the shared layer and the C backend
 │   ├── backend
-│   ├── choice, ssac         # The backend each unit is compiled by; the SSA's C printer (docs/arm64.md §3.14)
+│   ├── choice               # The backend each unit is compiled by
+│   ├── machine/             # A native backend's target-independent half: target, machine, regalloc
 │   ├── arm64/               # The native backend: codegen (instructions, frames, calls), asm (Darwin's spellings)
-│   └── c/                   # backend, declarations, headers, printer, types
+│   └── c/                   # declarations, headers, printer, types; ssac, the SSA's C printer (docs/arm64.md
+│                            # §3.14)
 │
 ├── config/                  # The ABI version and artifacts' format
 ├── build/                   # The build engine and its log; compilerrunner, the host C compiler and linker

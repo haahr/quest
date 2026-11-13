@@ -11,7 +11,7 @@ types and signatures are strings of Quest type syntax. An interface's C header
 (.int.h) is the C backend's: quest.codegen.c.headers writes it from the
 compiled interface when C compilation needs it.
 
-The self-hosted counterpart is questlang/modules/interfacecompiler; docs/
+The self-hosted counterpart is questlang/modules/artifacts/interfacecompiler; docs/
 modules.md §9.1 describes interface compilation.
 """
 
@@ -31,7 +31,7 @@ from quest.config.abi import (
 )
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.config import CompilerOptions
-from quest.modules.manifest import ImportedInterfaceRef
+from quest.modules.artifacts.manifest import ImportedInterfaceRef
 from quest.modules.graph import (
     Resolved,
     Resolver,

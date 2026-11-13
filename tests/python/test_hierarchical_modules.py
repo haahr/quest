@@ -16,11 +16,11 @@ DRIVER = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
 sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
 import quest.syntax.ast as ast
-from quest.modules.manifest import read_qm
+from quest.modules.artifacts.manifest import read_qm
 from quest.build.compiler_runner import compile_c_to_object, run_binary
 from quest.codegen.c.headers import compile_interface_with_header
 from quest.syntax.grammar import parse_quest_program
-from quest.modules.module_compiler import compile_module_file
+from quest.modules.artifacts.module_compiler import compile_module_file
 from quest.syntax.tokenizer import Tokenizer
 from quest.syntax.sources import SourceMap
 from quest_driver import run_compile
