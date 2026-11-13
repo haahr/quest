@@ -3350,7 +3350,7 @@ void quest_system_init(int argc, char **argv) {
 /* Interrupts in a Jupyter kernel's driver (docs/jupyter-kernel.md section 5):
  * the driver, given --kernel, installs a SIGINT handler that sets a flag, and
  * the code the JIT compiles for a cell checks it at function entries and loop
- * headers (ssa/interrupts), raising `interrupted`. None of these is in
+ * headers (ssa/passes/interrupts), raising `interrupted`. None of these is in
  * quest_runtime.h: only the driver, through os/code's symbol, and the code the
  * JIT links use them, so that a binary that never asks for interrupts is as
  * before. The flag is a word, which the driver reads and clears through
