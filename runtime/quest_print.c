@@ -59,7 +59,7 @@ static int quest_shortest_digits(double r, char *digits, int *x) {
 }
 
 /* Formats r without its sign, as the interpreter does (Python's repr): the
-   shortest digits that read back as r, in fixed notation for 1e-5 <= |r| < 1e16
+   shortest digits that read back as r, in fixed notation for 1e-4 <= |r| < 1e16
    (with ".0" when integral), otherwise d[.ddd]e+XX; an infinity is "inf". The
    caller writes the sign, "~" for conv.real and "-" for displays. See
    docs/type-system.md §6.3.2. */
