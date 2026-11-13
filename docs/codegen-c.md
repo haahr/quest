@@ -62,8 +62,9 @@ The C backend (`codegen/c/`):
 - **`declarations.py`:** The declarations of the types a unit uses (structs, offset and coercion tables, type
   descriptors, function type adapters), the extern declarations of imported modules' functions, and the signature of
   the functions a module file exports (`module_function_signature`).
-- **`headers.py`:** Interfaces' C headers (`.int.h`): generating them, and writing those C compilation needs beside
-  their `.qi` files, up to date when at least as new as the `.qi` ([build-process.md §5.3](build-process.md)).
+- **`headers.py`:** Interfaces' C headers (`.int.h`): generating them. The build writes those C compilation needs
+  beside their `.qi` files, up to date when at least as new as the `.qi` (`build/headers.py`,
+  [build-process.md §5.3](build-process.md)).
 - **`types.py`:** C spellings: the C types of representations, function pointer types, `QVal` wrapping, literals,
   record struct and offset table names, and descriptor expressions (`descriptor_form`).
 

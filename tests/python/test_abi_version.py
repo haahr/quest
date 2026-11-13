@@ -18,7 +18,7 @@ from quest.config.abi import ABI_VERSION, PRODUCER, incompatible_artifact_messag
 from quest.build.engine import BuildEngine, BuildError
 from quest.diagnostics import QuestTypeError
 from quest.types.env import Environment
-from quest.codegen.c.headers import compile_interface_with_header
+from quest.build.headers import compile_interface_with_header
 from quest.modules.artifacts.interface_compiler import (
     ensure_interface_artifacts,
     load_interface_from_qi_file,

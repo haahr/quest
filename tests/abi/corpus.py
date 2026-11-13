@@ -43,7 +43,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
 from quest.config.abi import ABI_VERSION  # noqa: E402
-from quest.codegen.c.headers import compile_interface_with_header  # noqa: E402
+from quest.build.headers import compile_interface_with_header  # noqa: E402
 
 ABI_DIR = Path(__file__).resolve().parent
 CORPUS_DIR = ABI_DIR / "corpus"

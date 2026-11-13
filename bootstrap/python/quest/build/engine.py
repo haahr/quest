@@ -43,7 +43,7 @@ from quest.modules.graph import (
     unit_artifact_dir,
 )
 from quest.modules.loader import load_interface
-from quest.codegen.c.headers import compile_interface_with_header
+from quest.build.headers import compile_interface_with_header
 from quest.modules.artifacts.module_compiler import compile_module_file
 from quest.modules.paths import (
     DEFAULT_LIB_DIR,

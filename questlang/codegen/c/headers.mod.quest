@@ -6,10 +6,6 @@ import
     questlang/types/model : questlang/types/Model
     questlang/types/symbols : questlang/types/Symbols
     questlang/modules/paths : questlang/modules/Paths
-    questlang/common/files : questlang/common/Files
-    questlang/types/env : questlang/types/Env
-    questlang/modules/graph : questlang/modules/Graph
-    questlang/modules/loader : questlang/modules/Loader
     questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
     questlang/config/abi : questlang/config/Abi
     questlang/repr/syntax : questlang/repr/Syntax
@@ -25,7 +21,6 @@ import
     util/strutil : util/Strutil
     stringOp = string : StringOp
     ascii : Ascii
-    system : System
 export
     Let Type = model.Type
 
@@ -269,104 +264,4 @@ export
             syntax.linesText(lines)
         end
 
-    let interfaceHeaderFile(qi: String): String =
-        begin
-            let base = files.baseName(qi)
-            files.join(files.parent(qi) stringOp.getSub(base 0 {stringOp.length(base) - 3}) <> ".int.h")
-        end
-
-    let headerIsCurrent(qi: String header: String): Bool =
-        begin
-            let headerTime = files.fileTime(header)
-            let qiTime = files.fileTime(qi)
-            maybe.isSome(:Int headerTime) andif maybe.isSome(:Int qiTime)
-                andif {maybe.unwrap(:Int headerTime) >= maybe.unwrap(:Int qiTime)}
-        end
-
-    let writeText(file: String text: String): Ok = files.writeAtomically(file text)
-
-    Let Artifacts = Tuple header: String qi: String end
-
-    let rec writeInterfaceHeader(compiled: interfaceCompiler.CompiledInterface buildDir: maybe.T(String)
-        programDir: maybe.T(String) res: graph.Resolver): String =
-        begin
-            if maybe.isSome(:String buildDir) then
-                let buildRoot = files.absolute(maybe.unwrap(:String buildDir))
-                let roots = graph.rootsOf(compiled.includePaths programDir)
-                for i = 0 upto {vector.length(:ast.ImportItem compiled.decl.imports) - 1} do
-                    let imp = vector.get(:ast.ImportItem compiled.decl.imports i)
-                    ensureResolvedInterfaceHeader(graph.resolveInterface(res
-                        maybe.unwrapOr(:String imp.interfacePath imp.interfaceName)
-                        maybe.some(:String files.parent(compiled.source)) roots) buildRoot res)
-                end
-            end
-            let header = interfaceHeaderFile(compiled.qiFile)
-            let canonicalName =
-                paths.canonicalizeInterfaceName(maybe.some(:String compiled.source) compiled.includePaths
-                compiled.decl.name maybe.none(:String))
-            writeText(header compileInterfaceToHeader(compiled.decl compiled.scope canonicalName))
-            header
-        end
-
-    and ensureResolvedInterfaceHeader(resolved: graph.Resolved buildDir: String res: graph.Resolver): Artifacts =
-        begin
-            let programDir = resolved.roots.programDir
-            let write = fun(c: interfaceCompiler.CompiledInterface): Ok
-                begin
-                    writeInterfaceHeader(c maybe.some(:String buildDir) programDir res)
-                    ok
-                end
-            let artifacts = interfaceCompiler.ensureResolvedInterfaceArtifacts(resolved buildDir
-                maybe.some(:interfaceCompiler.OnCompiled write) res)
-            let header = interfaceHeaderFile(artifacts.qiFile)
-            if maybe.isNone(:String artifacts.source) orif headerIsCurrent(artifacts.qiFile header) then
-                tuple let header = header let qi = artifacts.qiFile end
-            else
-                (* A header that is missing or older than a fresh .qi is written
-                 * from the interface elaborated again, leaving the .qi
-                 * untouched, unless the .qi was found outside the build
-                 * directory: then both are rebuilt there *)
-                let inBuildDir =
-                    stringOp.equal(files.absolute(files.parent(artifacts.qiFile)) files.absolute(artifacts.targetDir))
-                system.makeDirectory(artifacts.targetDir)
-                let known = if inBuildDir then interfaceCompiler.compiledInterface(artifacts.qiFile)
-                    else maybe.none(:interfaceCompiler.CompiledInterface) end
-                let compiled = if maybe.isSome(:interfaceCompiler.CompiledInterface known) then
-                    maybe.unwrap(:interfaceCompiler.CompiledInterface known)
-                else
-                    interfaceCompiler.compileInterfaceFile(maybe.unwrap(:String artifacts.source)
-                        maybe.some(:String artifacts.targetDir) artifacts.searchPaths maybe.some(:String buildDir)
-                            programDir
-                        not(inBuildDir) maybe.none(:interfaceCompiler.OnCompiled) res)
-                end
-                tuple
-                    let header = writeInterfaceHeader(compiled maybe.some(:String buildDir) programDir res)
-                    let qi = compiled.qiFile
-                end
-            end
-        end
-
-    let ensureImportedInterfaceHeader(name: String e: env.T): maybe.T(String) =
-        begin
-            let resolved = env.resolveInterface(e name)
-            let root = loader.resolvedArtifactRoot(e resolved)
-            if maybe.isNone(:String root) then maybe.none(:String)
-            else maybe.some(:String
-                ensureResolvedInterfaceHeader(resolved maybe.unwrap(:String root) e.units.resolver).header)
-            end
-        end
-
-    let compileInterfaceWithHeader(file: String outputDir: maybe.T(String) includePaths: Array(String)
-        buildDir: maybe.T(String) programDir: maybe.T(String)): Artifacts =
-        begin
-            let res = graph.newResolver()
-            let write = fun(c: interfaceCompiler.CompiledInterface): Ok
-                begin
-                    writeInterfaceHeader(c buildDir programDir res)
-                    ok
-                end
-            let compiled = interfaceCompiler.compileInterfaceFile(file outputDir includePaths buildDir programDir true
-                maybe.some(:interfaceCompiler.OnCompiled write) res)
-            tuple let header = interfaceHeaderFile(compiled.qiFile) let qi = compiled.qiFile end
-        end
 end

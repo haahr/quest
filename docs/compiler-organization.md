@@ -123,7 +123,8 @@ questlang/
 │                            # §3.14)
 │
 ├── config/                  # The ABI version and artifacts' format
-├── build/                   # The build engine and its log; compilerrunner, the host C compiler and linker
+├── build/                   # The build engine and its log; compilerrunner, the host C compiler and linker;
+│                            # headers, interfaces' C headers kept beside their .qi files
 │
 └── driver/                  # Compiler driver (bootstrap pipeline and quest/__main__)
     ├── main                 # Main routine: every phase, -e, -i, and the bootstrap's compiling options

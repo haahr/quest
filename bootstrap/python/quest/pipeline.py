@@ -28,7 +28,7 @@ from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.modules.units import unit_declaration
 from quest.ir.pipeline import IR_PASSES
 from quest.build.compiler_runner import compile_c_source, run_binary
-from quest.codegen.c.headers import ensure_imported_interface_header
+from quest.build.headers import ensure_imported_interface_header
 from quest.config import CompilerOptions
 
 import quest.syntax.ast as ast

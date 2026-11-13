@@ -26,7 +26,7 @@ import quest.syntax.ast as ast
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.codegen.backend import module_file_to_c
 from quest.build.compiler_runner import compile_c_to_object
-from quest.codegen.c.headers import ensure_imported_interface_header
+from quest.build.headers import ensure_imported_interface_header
 from quest.config import CompilerOptions
 from quest.diagnostics import in_unit
 from quest.modules.artifacts.manifest import (
