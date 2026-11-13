@@ -10,6 +10,7 @@ import
     questlang/types/env : questlang/types/Env
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/modules/paths : questlang/modules/Paths
+    questlang/common/files : questlang/common/Files
     questlang/modules/units : questlang/modules/Units
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/elaboration : questlang/modules/Elaboration
@@ -44,11 +45,11 @@ export
      * diagnostics *)
     let readUnit(file: String what: String): location.SourceMap =
         begin
-            let text = paths.readText(file)
+            let text = files.readText(file)
             if maybe.isNone(:String text) then
                 diagnostics.fail(:Ok "Error reading " <> what <> " file '" <> file <> "'" 0)
             end
-            let sm = location.newSourceMap(paths.displayName(file) maybe.unwrap(:String text))
+            let sm = location.newSourceMap(files.displayName(file) maybe.unwrap(:String text))
             diagnostics.registerSource(sm)
             sm
         end
@@ -85,21 +86,21 @@ export
             let ancestor(path: String levels: Int): String =
                 begin
                     let var d = path
-                    for i = 1 upto levels do d := paths.parent(d) end
-                    paths.absolute(d)
+                    for i = 1 upto levels do d := files.parent(d) end
+                    files.absolute(d)
                 end
             if maybe.isSome(:String e.buildDir) then
-                maybe.some(:String paths.absolute(maybe.unwrap(:String e.buildDir)))
+                maybe.some(:String files.absolute(maybe.unwrap(:String e.buildDir)))
             elsif not(e.compilingC) then
                 maybe.none(:String)
             elsif maybe.isSome(:String resolved.source) then
                 maybe.some(:String ancestor(maybe.unwrap(:String resolved.source)
-                    extent paths.parts(graph.canonicalName(resolved))))
+                    extent files.parts(graph.canonicalName(resolved))))
             elsif maybe.isSome(:String resolved.prebuilt) andif strutil.contains(resolved.path "/") then
                 maybe.some(:String ancestor(maybe.unwrap(:String resolved.prebuilt)
-                    extent paths.parts(paths.lower(resolved.path))))
+                    extent files.parts(paths.lower(resolved.path))))
             else
-                maybe.some(:String paths.absolute(maybe.unwrapOr(:String e.currentDir ".")))
+                maybe.some(:String files.absolute(maybe.unwrapOr(:String e.currentDir ".")))
             end
         end
 
@@ -107,11 +108,11 @@ export
      * but the build directory, which holds only artifacts *)
     let listedIncludePaths(e: env.T): Array(String) =
         begin
-            let built = if maybe.isSome(:String e.buildDir) then paths.absolute(maybe.unwrap(:String e.buildDir)) else "" end
+            let built = if maybe.isSome(:String e.buildDir) then files.absolute(maybe.unwrap(:String e.buildDir)) else "" end
             let listed = vector.new(:String)
             for i = 0 upto {vector.length(:String e.includePaths) - 1} do
                 let p = vector.get(:String e.includePaths i)
-                if not(stringOp.equal(paths.absolute(p) built)) then vector.append(:String listed p) end
+                if not(stringOp.equal(files.absolute(p) built)) then vector.append(:String listed p) end
             end
             vector.toArray(:String listed)
         end
@@ -179,7 +180,7 @@ export
                 (* The .qi records the interface's imports as written in its
                  * source, so they are resolved from there *)
                 let loadQi = fun(qi: String): Scope
-                    loading(:Scope e paths.parent(maybe.unwrapOr(:String intSource qi)) e.loadingInterfaces canon
+                    loading(:Scope e files.parent(maybe.unwrapOr(:String intSource qi)) e.loadingInterfaces canon
                         fun(): Scope
                         env.withUnitNames(:Scope e fun(): Scope interfaceCompiler.loadInterfaceFromQiFile(qi e)))
                 (* With a build directory, or in C compilation, the interface is
@@ -191,7 +192,7 @@ export
                     let outRoot = maybe.unwrap(:String root)
                     let qi = interfaceCompiler.ensureResolvedInterfaceArtifacts(resolved outRoot
                         maybe.none(:interfaceCompiler.OnCompiled) e.units.resolver).qiFile
-                    if paths.isFile(qi) then
+                    if files.isFile(qi) then
                         (* outRoot goes first among the search roots, so that
                          * later resolutions in e (this interface's own
                          * imports, written relative to the root that gives it
@@ -214,7 +215,7 @@ export
                                 vector.append(:String e.includePaths vector.get(:String others i))
                             end
                         end
-                        let mtime = paths.modifiedNs(qi)
+                        let mtime = files.modifiedNs(qi)
                         let cached = hashMap.get(:String :LoadedQi loadedQis qi)
                         let scope = if maybe.isSome(:LoadedQi cached) andif
                                 {maybe.unwrap(:LoadedQi cached).mtime >= mtime} then
@@ -251,11 +252,11 @@ export
                                 else diagnostics.fail(:ast.InterfaceDecl "internal: not an interface" 0)
                             end
                             if not(stringOp.equal(paths.lower(decl.name) paths.lastSegment(normName))) then
-                                diagnostics.fail(:Ok "Interface declared in '" <> paths.baseName(file)
+                                diagnostics.fail(:Ok "Interface declared in '" <> files.baseName(file)
                                     <> "' has name '" <>
                                     decl.name <> "', which does not match file name" 0)
                             end
-                            let typed = loading(:typedAst.Binding e paths.parent(file) e.loadingInterfaces canon
+                            let typed = loading(:typedAst.Binding e files.parent(file) e.loadingInterfaces canon
                                 fun(): typedAst.Binding
                                     env.withUnitNames(:typedAst.Binding e fun(): typedAst.Binding
                                         elaboration.elaborateInterface(decl 0 e)))
@@ -366,7 +367,7 @@ export
     ): typedAst.Binding =
         begin
             let sm = readUnit(file "module")
-            let fileName = paths.baseName(file)
+            let fileName = files.baseName(file)
             let typed = env.withUnitSource(:typedAst.Binding e location.file(sm) fun(): typedAst.Binding
                 begin
                     let prog = units.parseUnit(sm)
@@ -403,7 +404,7 @@ export
                     let savedScope = e.currentScope
                     let restoreScope = fun(): Ok e.currentScope := savedScope
                     let elaborated = try
-                        loading(:typedAst.Binding e paths.parent(file) e.loadingModules canon fun(): typedAst.Binding
+                        loading(:typedAst.Binding e files.parent(file) e.loadingModules canon fun(): typedAst.Binding
                             env.withUnitNames(:typedAst.Binding e fun(): typedAst.Binding
                                 begin
                                     if maybe.isSome(:Scope importerInterface) andif

@@ -55,6 +55,7 @@ import
     questlang/typechecker/typedAstPrint : questlang/typechecker/TypedAstPrint
     questlang/typechecker/typecheck : questlang/typechecker/Typecheck
     questlang/modules/paths : questlang/modules/Paths
+    questlang/common/files : questlang/common/Files
     questlang/modules/stdlib : questlang/modules/Stdlib
     questlang/modules/units : questlang/modules/Units
     questlang/modules/loader : questlang/modules/Loader
@@ -367,7 +368,7 @@ let options =
                 writer.putString(writer.output usageText)
                 system.sysexit(0)
             elsif isObjectFile(arg) then
-                vector.append(:String extraObjects if system.fileExists(arg) then paths.absolute(arg) else arg end)
+                vector.append(:String extraObjects if system.fileExists(arg) then files.absolute(arg) else arg end)
                 i := i + 1
             elsif {stringOp.length(arg) > 1} andif {stringOp.getChar(arg 0) is '-'} andif not(stringOp.equal(arg "--"))
                 then
@@ -719,7 +720,7 @@ let compiledPrintsResult = options.printResult orif stringOp.equal(options.stopA
 
 (* The build directory, which every C phase reuses and builds interface and
  * module artifacts in (docs/build-process.md section 5.2.4) *)
-let buildDir = paths.absolute(maybe.unwrapOr(:String options.buildDir ".build"));
+let buildDir = files.absolute(maybe.unwrapOr(:String options.buildDir ".build"));
 
 (* The 0-indexed offset of a (1-indexed) line and column of a source, the
  * inverse of location.locate *)
@@ -832,7 +833,7 @@ let binaryErrorDiagnostic(stderr: String sm: location.SourceMap): diagnostics.Di
             let at = maybe.unwrap(:Tuple file: String line: Int column: Int end site)
             let message = strutil.strip(joinLines(lines 0 {last - 1}))
             let siteText = if stringOp.equal(at.file location.file(sm)) then maybe.some(:String location.text(sm))
-                else paths.readText(at.file) end
+                else files.readText(at.file) end
             if maybe.isNone(:String siteText) then
                 diagnostics.error(message <> "\n  at " <> at.file <> ":" <> conv.int(at.line) <> ":"
                     <> conv.int(at.column)
@@ -963,7 +964,7 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                     else engine.unitModuleRefs(importRefs(program) passes.implicitImports(t.unit program)
                         e.currentDir vector.toArray(:String e.includePaths) e.programDir e.units.resolver)
                     end
-                let importer = if strutil.startsWith(options.file "<") then options.file else paths.stem(options.file) end
+                let importer = if strutil.startsWith(options.file "<") then options.file else files.stem(options.file) end
                 try
                     let objects = engine.buildModules(newEngine(e) modules importer e.programDir)
                     if writing then
@@ -975,7 +976,7 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         let assembly = choice.isAssembly(programBackend)
                         let flags = vector.fromArray(:String cBackend.cFlags(programBackend))
                         if assembly then vector.append(:String flags "-g") end
-                        compilerRunner.compileCSource(t.c paths.absolute(maybe.unwrap(:String compileOutput))
+                        compilerRunner.compileCSource(t.c files.absolute(maybe.unwrap(:String compileOutput))
                             options.nogc maybe.none(:String) objects vector.toArray(:String flags) assembly)
                     else
                         let binary = compilerRunner.temporaryBinary()
@@ -1136,13 +1137,13 @@ let jitRun(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagba
 let compileUnitFile(): Ok =
     begin
         let bag = diagbag.new()
-        let sm = location.newSourceMap(options.file maybe.unwrapOr(:String paths.readText(options.file) ""))
+        let sm = location.newSourceMap(options.file maybe.unwrapOr(:String files.readText(options.file) ""))
         stdlib.install()
         typecheck.install()
         let includes = array of(extent options.includePaths "")
-        for i = 0 upto {extent options.includePaths - 1} do includes[i] := paths.absolute(options.includePaths[i]) end
+        for i = 0 upto {extent options.includePaths - 1} do includes[i] := files.absolute(options.includePaths[i]) end
         let outputDir = if maybe.isSome(:String options.output) then
-            maybe.some(:String paths.parent(paths.absolute(maybe.unwrap(:String options.output))))
+            maybe.some(:String files.parent(files.absolute(maybe.unwrap(:String options.output))))
         else
             maybe.none(:String)
         end
@@ -1150,12 +1151,12 @@ let compileUnitFile(): Ok =
             case units.unitKind(options.file)
                 when interfaceUnit then
                     if maybe.isSome(:String outputDir) then system.makeDirectory(maybe.unwrap(:String outputDir)) end
-                    headers.compileInterfaceWithHeader(paths.absolute(options.file) outputDir includes options.buildDir
+                    headers.compileInterfaceWithHeader(files.absolute(options.file) outputDir includes options.buildDir
                         maybe.none(:String))
                     ok
                 when moduleUnit then
                     if maybe.isSome(:String outputDir) then system.makeDirectory(maybe.unwrap(:String outputDir)) end
-                    moduleCompiler.compileModuleFile(paths.absolute(options.file) outputDir includes maybe.none(:String)
+                    moduleCompiler.compileModuleFile(files.absolute(options.file) outputDir includes maybe.none(:String)
                         options.nogc vector.toArray(:String vector.new(:String)) options.buildDir maybe.none(:String)
                         maybe.none(:graph.Resolver) options.backends)
                     ok
@@ -1211,8 +1212,8 @@ let run(): Ok =
                 if reaches("typecheck") then
                     stdlib.install()
                     let e = env.new()
-                    let dir = if options.fromFile then paths.parent(paths.absolute(options.file))
-                        else paths.absolute(".") end
+                    let dir = if options.fromFile then files.parent(files.absolute(options.file))
+                        else files.absolute(".") end
                     e.currentDir := maybe.some(:String dir)
                     e.programDir := maybe.some(:String dir)
                     e.sourceFile := options.file
@@ -1243,7 +1244,7 @@ let run(): Ok =
                             paths.canonicalizeModulePath(o options.includePaths maybe.none(:String)))
                         byPath.precompiled := true
                         let byName = graph.unit(e.units option moduleUnit of units.UnitKind end
-                            vector.get(:String strutil.split(paths.baseName(o) ".") 0))
+                            vector.get(:String strutil.split(files.baseName(o) ".") 0))
                         byName.precompiled := true
                     end
                     let result = typecheck.elaborateProgram(desugared e)
@@ -1287,7 +1288,7 @@ let run(): Ok =
 let buildProgram(): Ok =
     begin
         let bag = diagbag.new()
-        let sm = location.newSourceMap(options.file maybe.unwrapOr(:String paths.readText(options.file) ""))
+        let sm = location.newSourceMap(options.file maybe.unwrapOr(:String files.readText(options.file) ""))
         stdlib.install()
         try
             let eng = engine.withBackends(engine.parallel(engine.new(options.buildDir options.includePaths options.verbose

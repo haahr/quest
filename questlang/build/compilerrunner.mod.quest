@@ -3,6 +3,7 @@
 module compilerRunner : CompilerRunner
 import
     questlang/modules/paths : questlang/modules/Paths
+    questlang/common/files : questlang/common/Files
     questlang/common/sha256 : questlang/common/Sha256
     collections/vector : collections/Vector
     collections/hashMap : collections/HashMap
@@ -31,7 +32,7 @@ export
             for i = 0 upto {vector.length(:String dirs) - 1} do
                 let d = vector.get(:String dirs i)
                 if maybe.isNone(:String found) andif {stringOp.length(d) > 0} then
-                    let candidate = paths.join(d name)
+                    let candidate = files.join(d name)
                     if system.isFile(candidate) then found := maybe.some(:String candidate) end
                 end
             end
@@ -75,7 +76,7 @@ export
 
     let runtimeDir(): String =
         begin
-            let d = paths.join(paths.projectDir() "runtime")
+            let d = files.join(paths.projectDir() "runtime")
             if not(system.isDirectory(d)) then raise failure with "Runtime directory not found at " <> d end end
             d
         end
@@ -97,10 +98,10 @@ export
             vector.append(:String roots "/usr/include")
             let sdk = try strutil.strip(system.run(array of "xcrun" "--show-sdk-path" end).stdout) when system.error
                 then "" end
-            if stringOp.length(sdk) > 0 then vector.append(:String roots paths.join(sdk "usr/include")) end
+            if stringOp.length(sdk) > 0 then vector.append(:String roots files.join(sdk "usr/include")) end
             let var found = false
             for i = 0 upto {vector.length(:String roots) - 1} do
-                if system.fileExists(paths.join(vector.get(:String roots i) header)) then found := true end
+                if system.fileExists(files.join(vector.get(:String roots i) header)) then found := true end
             end
             found
         end
@@ -117,14 +118,14 @@ export
                 let prefixes = array of "/opt/homebrew/opt/readline" "/usr/local/opt/readline" "/usr" end
                 for i = 0 upto {extent prefixes - 1} do
                     if maybe.isNone(:Array(String) found) then
-                        let inc = paths.join(prefixes[i] "include")
-                        let lib = paths.join(prefixes[i] "lib")
+                        let inc = files.join(prefixes[i] "include")
+                        let lib = files.join(prefixes[i] "lib")
                         (* GNU readline's own headers, which libedit's
                          * compatibility headers do not have *)
-                        let hasLib = system.fileExists(paths.join(lib "libreadline.dylib"))
-                            orif system.fileExists(paths.join(lib "libreadline.so"))
-                            orif system.fileExists(paths.join(lib "libreadline.a"))
-                        if system.fileExists(paths.join(inc "readline/rlconf.h")) andif hasLib then
+                        let hasLib = system.fileExists(files.join(lib "libreadline.dylib"))
+                            orif system.fileExists(files.join(lib "libreadline.so"))
+                            orif system.fileExists(files.join(lib "libreadline.a"))
+                        if system.fileExists(files.join(inc "readline/rlconf.h")) andif hasLib then
                             found := maybe.some(:Array(String)
                                 array of "-I" <> inc "-DQUEST_GNU_READLINE" "-L" <> lib "-lreadline" end)
                         end
@@ -201,7 +202,7 @@ export
         begin
             let configured = system.getEnv("QUEST_RUNTIME_CACHE")
             if stringOp.length(configured) > 0 then
-                configured else paths.join(paths.parent(runtimeDir()) ".build/runtime") end
+                configured else files.join(files.parent(runtimeDir()) ".build/runtime") end
         end
 
     (* A new empty file (or with directory, a directory), by mktemp *)
@@ -247,23 +248,23 @@ export
             for i = 0 upto {vector.length(:String sources) - 1} do
                 let name = vector.get(:String sources i)
                 vector.append(:String key
-                    name <> nul <> maybe.unwrapOr(:String paths.readText(paths.join(dir name)) "") <> nul)
+                    name <> nul <> maybe.unwrapOr(:String files.readText(files.join(dir name)) "") <> nul)
             end
-            let cache = paths.join(runtimeCacheDir() stringOp.getSub(sha256.hexDigest(strutil.join("" key)) 0 24))
+            let cache = files.join(runtimeCacheDir() stringOp.getSub(sha256.hexDigest(strutil.join("" key)) 0 24))
             let objects = array of(extent runtimeSources "")
             for i = 0 upto {extent runtimeSources - 1} do
                 let name = runtimeSources[i]
-                let o = paths.join(cache stringOp.getSub(name 0 {stringOp.length(name) - 2}) <> ".o")
+                let o = files.join(cache stringOp.getSub(name 0 {stringOp.length(name) - 2}) <> ".o")
                 if not(system.fileExists(o)) then
                     (* Written to a temporary file and renamed, so that builds
                      * linking at once never see half of one *)
                     system.makeDirectory(cache)
-                    let temp = temporary(false paths.join(cache "tmpXXXXXXXX"))
+                    let temp = temporary(false files.join(cache "tmpXXXXXXXX"))
                     let command = vector.new(:String)
                     vector.append(:String command compiler)
                     appendAll(command vector.toArray(:String flags))
                     vector.append(:String command "-c")
-                    vector.append(:String command paths.join(dir name))
+                    vector.append(:String command files.join(dir name))
                     vector.append(:String command "-o")
                     vector.append(:String command temp)
                     let r = system.run(vector.toArray(:String command))
@@ -287,9 +288,9 @@ export
             let cc = if maybe.isSome(:String compiler) then maybe.unwrap(:String compiler) else findCCompiler() end
             let dir = runtimeDir()
             (* The source, in a temporary file of its own *)
-            let tempDir = temporary(true paths.join(maybe.unwrapOr(:String nonEmpty(system.getEnv("TMPDIR")) "/tmp")
+            let tempDir = temporary(true files.join(maybe.unwrapOr(:String nonEmpty(system.getEnv("TMPDIR")) "/tmp")
                 "questXXXXXXXX"))
-            let cFile = paths.join(tempDir if assembly then "program.s" else "program.c" end)
+            let cFile = files.join(tempDir if assembly then "program.s" else "program.c" end)
             let w = writer.file(cFile)
             writer.putString(w source)
             writer.close(w)
@@ -320,7 +321,7 @@ export
     let linkObjects(objects: Array(String) output: String nogc: Bool compiler: maybe.T(String)
         extraFlags: Array(String)): Ok =
         begin
-            system.makeDirectory(paths.parent(paths.absolute(output)))
+            system.makeDirectory(files.parent(files.absolute(output)))
             let cc = if maybe.isSome(:String compiler) then maybe.unwrap(:String compiler) else findCCompiler() end
             let command = vector.new(:String)
             vector.append(:String command cc)
@@ -346,7 +347,7 @@ export
         end
 
     let temporaryBinary(): String =
-        temporary(false paths.join(maybe.unwrapOr(:String nonEmpty(system.getEnv("TMPDIR")) "/tmp") "questXXXXXXXX"))
+        temporary(false files.join(maybe.unwrapOr(:String nonEmpty(system.getEnv("TMPDIR")) "/tmp") "questXXXXXXXX"))
 
     let runBinary(binary: String args: Array(String)): Tuple code: Int stdout: String stderr: String end =
         begin

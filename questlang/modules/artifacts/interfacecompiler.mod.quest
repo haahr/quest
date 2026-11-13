@@ -15,6 +15,7 @@ import
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
     questlang/modules/paths : questlang/modules/Paths
+    questlang/common/files : questlang/common/Files
     questlang/common/memoryFiles : questlang/common/MemoryFiles
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
@@ -461,7 +462,7 @@ export
                 field("deps" arrayOf(depValues))
                 field("producer" str(abi.producer))
                 field("source"
-                    str(if maybe.isSome(:String source) then paths.absolute(maybe.unwrap(:String source)) else "" end))
+                    str(if maybe.isSome(:String source) then files.absolute(maybe.unwrap(:String source)) else "" end))
                 field("name" str(decl.name))
                 field("imports" arrayOf(imports))
                 field("isUnsound" values.boolValue(decl.isUnsound))
@@ -498,7 +499,7 @@ export
         searchPaths: Array(String)
     end
 
-    let writeFile(file: String text: String): Ok = paths.writeAtomically(file text)
+    let writeFile(file: String text: String): Ok = files.writeAtomically(file text)
 
     let contains(xs: Array(String) x: String): Bool =
         begin
@@ -518,13 +519,13 @@ export
     let compiledByQi = hashMap.new(:String :CompiledInterface eq hash.string)
 
     let compiledInterface(qiFile: String): maybe.T(CompiledInterface) =
-        hashMap.get(:String :CompiledInterface compiledByQi paths.absolute(qiFile))
+        hashMap.get(:String :CompiledInterface compiledByQi files.absolute(qiFile))
 
     let rec compileInterfaceFile(file: String outputDir: maybe.T(String) includePaths: Array(String)
         buildDir: maybe.T(String) programDir: maybe.T(String) writeQi: Bool onCompiled: maybe.T(OnCompiled)
         res: graph.Resolver): CompiledInterface =
         begin
-            let key = paths.absolute(file)
+            let key = files.absolute(file)
             let canon = graph.canonicalName(graph.resolveFile(res key graph.rootsOf(includePaths programDir)))
             for i = 0 upto {vector.length(:Compiling compiling) - 1} do
                 if eq(vector.get(:Compiling compiling i).file key) then
@@ -546,7 +547,7 @@ export
             end
             vector.pop(:Compiling compiling)
             if writeQi then
-                hashMap.insert(:String :CompiledInterface compiledByQi paths.absolute(compiled.qiFile) compiled)
+                hashMap.insert(:String :CompiledInterface compiledByQi files.absolute(compiled.qiFile) compiled)
             end
             if maybe.isSome(:OnCompiled onCompiled) then maybe.unwrap(:OnCompiled onCompiled)(compiled) end
             compiled
@@ -556,11 +557,11 @@ export
         programDir: maybe.T(String) writeQi: Bool onCompiled: maybe.T(OnCompiled) res: graph.Resolver)
         : CompiledInterface =
         begin
-            let text = paths.readText(file)
+            let text = files.readText(file)
             if maybe.isNone(:String text) then
                 diagnostics.fail(:Ok "Error reading interface file '" <> file <> "'" 0)
             end
-            let sm = location.newSourceMap(paths.displayName(file) maybe.unwrap(:String text))
+            let sm = location.newSourceMap(files.displayName(file) maybe.unwrap(:String text))
             (* Where the driver finds the lines its errors are in *)
             diagnostics.registerSource(sm)
             let e = env.new()
@@ -571,7 +572,7 @@ export
             e.units := graph.newGraphWith(res)
             for i = 0 upto {extent includePaths - 1} do vector.append(:String e.includePaths includePaths[i]) end
             let build = if maybe.isSome(:String buildDir) then
-                maybe.some(:String paths.absolute(maybe.unwrap(:String buildDir)))
+                maybe.some(:String files.absolute(maybe.unwrap(:String buildDir)))
                 else maybe.none(:String)
             end
             if maybe.isSome(:String build) then
@@ -588,7 +589,7 @@ export
                 end
                 e.buildDir := build
             end
-            e.currentDir := maybe.some(:String paths.parent(file))
+            e.currentDir := maybe.some(:String files.parent(file))
             e.programDir := programDir
             let searchPaths = vector.toArray(:String e.includePaths)
             Let Elaborated = Tuple decl: ast.InterfaceDecl scope: Scope end
@@ -612,7 +613,7 @@ export
                                 begin
                                     ensureResolvedInterfaceArtifacts(graph.resolveInterface(res
                                         ast.effectiveInterfacePath(imp)
-                                        maybe.some(:String paths.parent(file)) roots) maybe.unwrap(:String build)
+                                        maybe.some(:String files.parent(file)) roots) maybe.unwrap(:String build)
                                             onCompiled res)
                                     ok
                                 end)
@@ -627,19 +628,19 @@ export
                 end)
             let targetDir = if maybe.isSome(:String build) andif maybe.isNone(:String outputDir) then
                 let canon =
-                    graph.canonicalName(graph.resolveFile(res paths.absolute(file)
+                    graph.canonicalName(graph.resolveFile(res files.absolute(file)
                     graph.rootsOf(searchPaths programDir)))
                 graph.unitArtifactDir(maybe.unwrap(:String build) canon)
             elsif maybe.isSome(:String outputDir) then
                 maybe.unwrap(:String outputDir)
             else
-                paths.parent(file)
+                files.parent(file)
             end
-            let base = paths.baseName(file)
+            let base = files.baseName(file)
             let stem = if strutil.endsWith(base ".int.quest") then stringOp.getSub(base 0 {stringOp.length(base) - 10})
                 else paths.stripUnitSuffix(base)
             end
-            let qiFile = paths.join(targetDir paths.lower(stem) <> ".qi")
+            let qiFile = files.join(targetDir paths.lower(stem) <> ".qi")
             if writeQi then
                 let deps = graph.interfaceDependencies(res file searchPaths)
                 writeFile(qiFile compileInterfaceToQi(elaborated.decl elaborated.scope maybe.some(:String file) deps))
@@ -675,18 +676,18 @@ export
              * the interfaces it depends on has changed or would resolve
              * elsewhere *)
             let current(qi: String): Bool =
-                if not(paths.isFile(qi)) orif not(abi.hasCurrentAbi(qi)) then
+                if not(files.isFile(qi)) orif not(abi.hasCurrentAbi(qi)) then
                     false
                 elsif not(hasSource) then
                     true
                 else
                     let source = maybe.unwrap(:String src)
-                    let qiTime = paths.modifiedNs(qi)
+                    let qiTime = files.modifiedNs(qi)
                     let deps = paths.recordedDependencies(qi)
                     let resolveSource = fun(path: String fromDir: maybe.T(String) searchPaths: Array(String)):
                         maybe.T(String)
                         graph.interfaceSource(res path fromDir searchPaths)
-                    {paths.modifiedNs(source) <= qiTime} andif abi.builtFrom(qi source)
+                    {files.modifiedNs(source) <= qiTime} andif abi.builtFrom(qi source)
                         andif maybe.isSome(:Array(paths.InterfaceDependency) deps)
                         andif
                             maybe.isNone(:String
@@ -699,7 +700,7 @@ export
             if not(current(qiFile)) then
                 let fresh = graph.freshInterfaceQi(resolved)
                 if maybe.isSome(:String fresh) andif strutil.endsWith(maybe.unwrap(:String fresh) ".qi") then
-                    if current(maybe.unwrap(:String fresh)) orif {not(hasSource) andif not(paths.isFile(qiFile))} then
+                    if current(maybe.unwrap(:String fresh)) orif {not(hasSource) andif not(files.isFile(qiFile))} then
                         qiFile := maybe.unwrap(:String fresh)
                     end
                 end
@@ -707,7 +708,7 @@ export
             (* Rule 3: without a source, existing artifacts cannot be rebuilt
              * (a binary distribution) *)
             if not(hasSource) then
-                if paths.isFile(qiFile) andif not(abi.hasCurrentAbi(qiFile)) then
+                if files.isFile(qiFile) andif not(abi.hasCurrentAbi(qiFile)) then
                     diagnostics.fail(:Ok abi.incompatibleArtifactMessage(qiFile) 0)
                 end
                 artifacts(qiFile)
@@ -787,7 +788,7 @@ export
     let loadInterfaceFromQiFile(file: String e: env.T): Scope =
         begin
             if not(abi.hasCurrentAbi(file)) then diagnostics.fail(:Ok abi.incompatibleArtifactMessage(file) 0) end
-            let text = paths.readText(file)
+            let text = files.readText(file)
             if maybe.isNone(:String text) then diagnostics.fail(:Ok "Error reading .qi file '" <> file <> "'" 0) end
             let rec0 = case dynamicjson.decode(maybe.unwrap(:String text))
                 when vAuto with x then
@@ -800,7 +801,7 @@ export
             case rec0 when vRecord then ok else diagnostics.fail(:Ok "Malformed .qi metadata in '" <> file <> "'" 0) end
             let nameField = fieldOf(rec0 "name")
             let name = if maybe.isSome(:Value nameField) then
-                stringOf(nameField) else paths.stripUnitSuffix(paths.baseName(file)) end
+                stringOf(nameField) else paths.stripUnitSuffix(files.baseName(file)) end
             let frame = symbols.newScope(maybe.some(:Scope e.currentScope) "imports_" <> name)
 
             (* 1. The interfaces it imports *)

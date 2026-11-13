@@ -1,0 +1,137 @@
+(* Quest Self-Hosted Compiler: File Operations Implementation *)
+
+module files : Files
+import
+    questlang/common/memoryFiles : questlang/common/MemoryFiles
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    pathLib = util/path : util/Path
+    os/fileStats : os/FileStats
+    util/stringBuilder : util/StringBuilder
+    stringOp = string : StringOp
+    writer : Writer
+    system : System
+export
+    let isAbsolute(p: String): Bool = pathLib.isAbsolute(p)
+    let join(a: String b: String): String = pathLib.join(a b)
+    let normalize(p: String): String = pathLib.normalize(p)
+    let absolute(p: String): String = pathLib.resolve(p)
+    (* The components between separators, without empty ones (so without an
+     * absolute path's root) *)
+    let components(p: String): vector.T(String) =
+        begin
+            let result = vector.new(:String)
+            let n = stringOp.length(p)
+            let var start = 0
+            for i = 0 upto n do
+                if {i is n} orif {stringOp.getChar(p i) is '/'} then
+                    if i > start then vector.append(:String result stringOp.getSub(p start {i - start})) end
+                    start := i + 1
+                end
+            end
+            result
+        end
+    let parent(p: String): String =
+        begin
+            let cs = components(p)
+            if vector.length(:String cs) <= 1 then
+                if isAbsolute(p) then "/" else "." end
+            else
+                vector.pop(:String cs)
+                let b = stringBuilder.new()
+                if isAbsolute(p) then b.char('/') end
+                for i = 0 upto {vector.length(:String cs) - 1} do
+                    if i > 0 then b.char('/') end
+                    b.str(vector.get(:String cs i))
+                end
+                b.toString()
+            end
+        end
+    let baseName(p: String): String =
+        begin
+            let cs = components(p)
+            if vector.empty(:String cs) then "" else vector.last(:String cs) end
+        end
+    let parts(p: String): Array(String) =
+        begin
+            let result = vector.new(:String)
+            if isAbsolute(p) then vector.append(:String result "/") end
+            let cs = components(p)
+            for i = 0 upto {vector.length(:String cs) - 1} do vector.append(:String result vector.get(:String cs i)) end
+            vector.toArray(:String result)
+        end
+    let relativeTo(p: String root: String): maybe.T(String) =
+        begin
+            let ps = parts(p)
+            let rs = parts(root)
+            let var under = extent rs <= extent ps
+            if under then
+                for i = 0 upto {extent rs - 1} do
+                    if not(stringOp.equal(ps[i] rs[i])) then under := false end
+                end
+            end
+            if under then
+                let b = stringBuilder.new()
+                for i = extent rs upto {extent ps - 1} do
+                    if i > extent rs then b.char('/') end
+                    b.str(ps[i])
+                end
+                let s = b.toString()
+                maybe.some(:String if stringOp.length(s) is 0 then "." else s end)
+            else
+                maybe.none(:String)
+            end
+        end
+    let displayName(p: String): String =
+        begin
+            let rel = relativeTo(absolute(p) absolute(system.currentDirectory()))
+            maybe.unwrapOr(:String rel p)
+        end
+    let readText(file: String): maybe.T(String) =
+        if memoryFiles.isMemory(file) then
+            memoryFiles.read(file)
+        elsif not(system.isFile(file)) then
+            maybe.none(:String)
+        else
+            try
+                maybe.some(:String pathLib.readText(pathLib.fromString(file)))
+            when system.error then
+                maybe.none(:String)
+            end
+        end
+    let fileTime(file: String): maybe.T(Int) =
+        begin
+            let s = fileStats.find(file)
+            if maybe.isSome(:fileStats.T s) andif {maybe.unwrap(:fileStats.T s).kind?file} then
+                maybe.some(:Int maybe.unwrap(:fileStats.T s).modifiedNs)
+            else
+                maybe.none(:Int)
+            end
+        end
+    (* A file in memory is newer than every file *)
+    let modifiedNs(p: String): Int = if memoryFiles.isMemory(p) then 9223372036854775807 else fileStats.stat(p).modifiedNs end
+    let isFile(p: String): Bool =
+        if memoryFiles.isMemory(p) then maybe.isSome(:String memoryFiles.read(p)) else system.isFile(p) end
+    (* What this process's temporary files are named with: none but the
+     * driver's workers set one (build/workers) *)
+    let worker = tuple let var tag = "" end
+    let setWorkerTag(tag: String): Ok = worker.tag := tag
+    let writeAtomically(file: String text: String): Ok =
+        if memoryFiles.isMemory(file) then
+            memoryFiles.write(file text)
+        else
+            system.makeDirectory(parent(file))
+            let temporary = file <> ".tmp" <> worker.tag
+            let w = writer.file(temporary)
+            writer.putString(w text)
+            writer.close(w)
+            system.renameFile(temporary file)
+        end
+    let stem(file: String): String =
+        begin
+            let name = baseName(file)
+            let var dot = ~1
+            for i = 1 upto {stringOp.length(name) - 1} do if stringOp.getChar(name i) is '.' then dot := i end end
+            if dot < 0 then name else stringOp.getSub(name 0 dot) end
+        end
+end

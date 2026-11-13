@@ -23,7 +23,7 @@ import
     questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
     questlang/jit/loader : questlang/jit/Loader
     questlang/jit/debugObject : questlang/jit/DebugObject
-    questlang/modules/paths : questlang/modules/Paths
+    questlang/common/files : questlang/common/Files
     os/value : os/Value
     os/code : os/Code
     raised : Raised
@@ -338,14 +338,14 @@ export
         begin
             if stringOp.length(s.sourceDir) is 0 then
                 let tmp = system.getEnv("TMPDIR")
-                let base = paths.join(if stringOp.length(tmp) > 0 then tmp else "/tmp" end
+                let base = files.join(if stringOp.length(tmp) > 0 then tmp else "/tmp" end
                     "quest-jit-" <> conv.int(value.be(:Int bytesOf(name)) % 1000000007))
                 let var n = 0
                 while system.isDirectory(base <> "-" <> conv.int(n)) do n := n + 1 end
                 s.sourceDir := base <> "-" <> conv.int(n)
                 system.makeDirectory(s.sourceDir)
             end
-            let path = paths.join(s.sourceDir name)
+            let path = files.join(s.sourceDir name)
             let w = writer.file(path)
             writer.putString(w text)
             writer.close(w)
@@ -376,7 +376,7 @@ export
                 file
             else
                 let sm = maybe.unwrap(:location.SourceMap original)
-                let named = paths.absolute(location.file(sm))
+                let named = files.absolute(location.file(sm))
                 if system.isFile(named) then named
                 else writeSource(s "input-" <> stringOp.getSub(base stringOp.length(sourcePrefix)
                     {stringOp.length(base) - stringOp.length(sourcePrefix)}) <> ".quest" location.text(sm)) end

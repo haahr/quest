@@ -6,6 +6,7 @@ import
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/modules/units : questlang/modules/Units
     questlang/modules/paths : questlang/modules/Paths
+    questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/syntax/ast : questlang/syntax/Ast
@@ -117,8 +118,8 @@ export
 
     let resolveFile(res: Resolver file: String roots: Roots): Resolved =
         memoized(res keyOf("file" file maybe.none(:String) roots) fun(): Resolved
-            resolved(units.unitKind(file) paths.stripUnitSuffix(paths.baseName(file))
-                maybe.some(:String paths.parent(file)) roots maybe.some(:String file) maybe.none(:String)))
+            resolved(units.unitKind(file) paths.stripUnitSuffix(files.baseName(file))
+                maybe.some(:String files.parent(file)) roots maybe.some(:String file) maybe.none(:String)))
 
     let artifactName(r: Resolved): String =
         if maybe.isNone(:String r.source) then paths.lower(r.path)
@@ -144,7 +145,7 @@ export
         if maybe.isNone(:Int time) then
             vector.toArray(:String vector.new(:String))
         else
-            let key = paths.absolute(source) <> "\n" <> conv.int(maybe.unwrap(:Int time))
+            let key = files.absolute(source) <> "\n" <> conv.int(maybe.unwrap(:Int time))
             let found = hashMap.get(:String :Array(String) importPathsMemo key)
             if maybe.isSome(:Array(String) found) then
                 maybe.unwrap(:Array(String) found)
@@ -153,7 +154,7 @@ export
                 (* A file that cannot be read or parsed imports nothing here;
                  * compiling it reports why *)
                 try
-                    let text = paths.readText(source)
+                    let text = files.readText(source)
                     if maybe.isSome(:String text) then
                         let prog = units.parseUnit(location.newSourceMap(source maybe.unwrap(:String text)))
                         if vector.length(:ast.Phrase prog.form.phrases) is 1 then
@@ -177,7 +178,7 @@ export
             end
         end
 
-    let interfaceImportPaths(source: String): Array(String) = importPathsAt(source paths.fileTime(source))
+    let interfaceImportPaths(source: String): Array(String) = importPathsAt(source files.fileTime(source))
 
     let interfaceDependencies(res: Resolver source: String searchPaths: Array(String)):
         Array(paths.InterfaceDependency) =
@@ -186,10 +187,10 @@ export
             let deps = vector.new(:paths.InterfaceDependency)
             let seen = hashMap.new(:String :Bool stringOp.equal hash.string)
             let visited = hashMap.new(:String :Bool stringOp.equal hash.string)
-            hashMap.insert(:String :Bool visited paths.absolute(source) true)
+            hashMap.insert(:String :Bool visited files.absolute(source) true)
             let rec visit(importer: String): Ok =
                 begin
-                    let importerDir = paths.absolute(paths.parent(importer))
+                    let importerDir = files.absolute(files.parent(importer))
                     let imported = interfaceImportPaths(importer)
                     for i = 0 upto {extent imported - 1} do
                         let path = imported[i]
@@ -197,15 +198,15 @@ export
                         if not(hashMap.contains(:String :Bool seen key)) then
                             hashMap.insert(:String :Bool seen key true)
                             let depSource =
-                                resolveInterface(res path maybe.some(:String paths.parent(importer)) roots).source
+                                resolveInterface(res path maybe.some(:String files.parent(importer)) roots).source
                             vector.append(:paths.InterfaceDependency deps tuple
                                 let path = path let dir = importerDir let source = maybe.unwrapOr(:String depSource "")
                             end)
                             if maybe.isSome(:String depSource)
                                 andif
                                     not(hashMap.contains(:String :Bool visited
-                                    paths.absolute(maybe.unwrap(:String depSource)))) then
-                                hashMap.insert(:String :Bool visited paths.absolute(maybe.unwrap(:String depSource))
+                                    files.absolute(maybe.unwrap(:String depSource)))) then
+                                hashMap.insert(:String :Bool visited files.absolute(maybe.unwrap(:String depSource))
                                     true)
                                 visit(maybe.unwrap(:String depSource))
                             end
@@ -218,20 +219,20 @@ export
         end
 
     let unitArtifactDir(buildDir: String canonicalName: String): String =
-        if strutil.contains(canonicalName "/") then paths.join(buildDir paths.parent(canonicalName)) else buildDir end
+        if strutil.contains(canonicalName "/") then files.join(buildDir files.parent(canonicalName)) else buildDir end
 
-    let artifactStem(canonicalName: String): String = paths.lower(paths.baseName(canonicalName))
+    let artifactStem(canonicalName: String): String = paths.lower(files.baseName(canonicalName))
 
     let interfaceQiFile(buildDir: String canonicalName: String): String =
-        paths.join(unitArtifactDir(buildDir canonicalName) artifactStem(canonicalName) <> ".qi")
+        files.join(unitArtifactDir(buildDir canonicalName) artifactStem(canonicalName) <> ".qi")
 
     Let ModuleArtifacts = Tuple qm: String c: String o: String end
 
     let artifactsIn(directory: String stem: String): ModuleArtifacts =
         tuple
-            let qm = paths.join(directory stem <> ".qm")
-            let c = paths.join(directory stem <> ".mod.c")
-            let o = paths.join(directory stem <> ".o")
+            let qm = files.join(directory stem <> ".qm")
+            let c = files.join(directory stem <> ".mod.c")
+            let o = files.join(directory stem <> ".o")
         end
 
     let moduleArtifacts(buildDir: String canonicalName: String): ModuleArtifacts =

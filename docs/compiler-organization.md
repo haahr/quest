@@ -43,6 +43,7 @@ questlang/
 │   ├── diagbag              # Diagnostic accumulator and reporter
 │   ├── keys                 # Integer keys for the type tables (the bootstrap keys them by tuples)
 │   ├── json                 # JSON text, as the dynamic format and the build's artifacts use it
+│   ├── files                # Paths and files: joining, components, text and times, atomic writes
 │   └── sha256               # SHA-256, for layout tags, type digests, and fingerprints
 │
 ├── syntax/                  # Concrete syntax and parsing
@@ -78,7 +79,7 @@ questlang/
 │   └── scoping              # Well-scopedness check of typed programs
 │
 ├── modules/                 # Units, imports, interfaces, modules, and their artifacts
-│   ├── paths                # File discovery, search paths, canonical names; files' text and times (over util/path)
+│   ├── paths                # Finding units: search paths, canonical names (over common/files)
 │   ├── units                # Unit files
 │   ├── graph                # The unit graph: resolution, loaded units
 │   ├── abstracttypes        # Modules' abstract types by global name

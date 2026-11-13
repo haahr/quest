@@ -17,6 +17,7 @@ import
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
     questlang/modules/paths : questlang/modules/Paths
+    questlang/common/files : questlang/common/Files
     questlang/repr/externals : questlang/repr/Externals
     questlang/modules/units : questlang/modules/Units
     questlang/modules/graph : questlang/modules/Graph
@@ -216,7 +217,7 @@ export
         else
         begin
             let defs = hashMap.new(:String :Type stringOp.equal hash.string)
-            let text = if maybe.isSome(:String src) then paths.readText(maybe.unwrap(:String src)) else maybe.none(:String) end
+            let text = if maybe.isSome(:String src) then files.readText(maybe.unwrap(:String src)) else maybe.none(:String) end
             let known = if maybe.isSome(:String text) then
                 hashMap.get(:String :hashMap.T(String Type) externalsByText maybe.unwrap(:String text))
             else
@@ -226,7 +227,7 @@ export
                 ok
             elsif maybe.isSome(:String text) andif strutil.contains(maybe.unwrap(:String text) "external") then
                 try
-                    let sm = location.newSourceMap(paths.baseName(maybe.unwrap(:String src)) maybe.unwrap(:String text))
+                    let sm = location.newSourceMap(files.baseName(maybe.unwrap(:String src)) maybe.unwrap(:String text))
                     let bag = diagbag.new()
                     let prog = parser.parseProgram(tokenizer.tokenizeAll(tokenizer.new(sm bag)) sm bag)
                     if vector.length(:ast.Phrase prog.form.phrases) is 1 then

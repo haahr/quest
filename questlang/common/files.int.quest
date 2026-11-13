@@ -1,0 +1,54 @@
+(* Quest Self-Hosted Compiler: File Operations Interface
+ *
+ * Paths and files as the compiler uses them, over util/path and os/fileStats:
+ * joining and normalizing paths, their components, files' text and times, and
+ * writing a file so that no other process reads it half written. The
+ * compiler's own files (a build's, or tests') may be in memory
+ * (common/memoryFiles), which these read and write too. modules/paths finds
+ * units on top of them. *)
+
+interface Files
+import
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+export
+    (* a/b, unless b is absolute *)
+    join(a: String b: String): String
+    (* p without . and .. components or repeated separators *)
+    normalize(p: String): String
+    (* p, normalized, relative to the current directory unless absolute *)
+    absolute(p: String): String
+    components(p: String): vector.T(String)
+    parent(p: String): String
+    baseName(p: String): String
+    (* The components of a path: an absolute one's first is "/" *)
+    parts(p: String): Array(String)
+    (* p relative to root, if p is root or under it (both absolute and
+     * normalized) *)
+    relativeTo(p: String root: String): maybe.T(String)
+    (* How diagnostics name a file the compiler found: relative to the current
+     * directory if inside it *)
+    displayName(p: String): String
+    (* The text of a file, or of a file in memory (common/memoryFiles); none if
+     * it cannot be read *)
+    readText(file: String): maybe.T(String)
+    (* A regular file's modification time in nanoseconds, from a single stat;
+     * none if the path names anything else or nothing *)
+    fileTime(file: String): maybe.T(Int)
+    (* What a path names' modification time in nanoseconds, the greatest Int
+     * for a file in memory; raises system.error if it names nothing *)
+    modifiedNs(p: String): Int
+    (* Whether a path names a regular file, or a file in memory that has been
+     * written *)
+    isFile(p: String): Bool
+    (* Names this process's temporary files apart from other workers' *)
+    setWorkerTag(tag: String): Ok
+    (* Writes text to file (making its directory) through a temporary file
+     * renamed over it, so that another process never reads it half written:
+     * the workers of a parallel build may write the same interface's
+     * artifacts at once; or to the file in memory *)
+    writeAtomically(file: String text: String): Ok
+    (* A file name's last component without its last suffix (Python's
+     * Path.stem): main for src/main.quest, .profile for .profile *)
+    stem(file: String): String
+end

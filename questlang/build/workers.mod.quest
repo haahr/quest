@@ -6,7 +6,7 @@ import
     questlang/common/location : questlang/common/Location
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/json : questlang/common/Json
-    questlang/modules/paths : questlang/modules/Paths
+    questlang/common/files : questlang/common/Files
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/stdlib : questlang/modules/Stdlib
     questlang/modules/artifacts/moduleCompiler : questlang/modules/artifacts/ModuleCompiler
@@ -95,7 +95,7 @@ export
     (* The file's text, as the driver finds the lines of errors in it *)
     let register(file: String): Ok =
         if {stringOp.length(file) > 0} andif system.isFile(file) then
-            let text = paths.readText(file)
+            let text = files.readText(file)
             if maybe.isSome(:String text) then
                 diagnostics.registerSource(location.newSourceMap(file maybe.unwrap(:String text)))
             end
@@ -330,8 +330,8 @@ export
                 i := i + step
             end
             (* Its temporary files apart from other workers'
-             * (paths.writeAtomically) *)
-            paths.setWorkerTag("." <> worker)
+             * (files.writeAtomically) *)
+            files.setWorkerTag("." <> worker)
             stdlib.install()
             (* One resolver for the batch, as a serial build has one for all *)
             let resolver = graph.newResolver()

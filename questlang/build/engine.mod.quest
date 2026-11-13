@@ -12,6 +12,7 @@ import
     questlang/typechecker/typecheck : questlang/typechecker/Typecheck
     questlang/config/abi : questlang/config/Abi
     questlang/modules/paths : questlang/modules/Paths
+    questlang/common/files : questlang/common/Files
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/units : questlang/modules/Units
     questlang/modules/stdlib : questlang/modules/Stdlib
@@ -189,8 +190,8 @@ export
             add(str(eng.buildDir))
             for i = 0 upto {extent eng.extraObjects - 1} do add(str(pathLib.parent(eng.extraObjects[i]))) end
             for i = 0 upto {extent eng.includePaths - 1} do add(str(eng.includePaths[i])) end
-            if system.isDirectory(paths.libDir()) then add(paths.absolute(paths.libDir())) end
-            if system.isDirectory(paths.projectDir()) then add(paths.absolute(paths.projectDir())) end
+            if system.isDirectory(paths.libDir()) then add(files.absolute(paths.libDir())) end
+            if system.isDirectory(paths.projectDir()) then add(files.absolute(paths.projectDir())) end
             vector.toArray(:String dirs)
         end
 
@@ -200,13 +201,13 @@ export
     let mainArtifactBase(eng: T mainFile: String): String =
         begin
             let main = absolutePath(mainFile)
-            let rel = paths.relativeTo(str(pathLib.parent(main)) paths.absolute(system.currentDirectory()))
+            let rel = files.relativeTo(str(pathLib.parent(main)) files.absolute(system.currentDirectory()))
             let dir = if maybe.isSome(:String rel) andif {stringOp.length(maybe.unwrap(:String rel)) > 0} then
                 pathLib.child(eng.buildDir maybe.unwrap(:String rel))
             else
                 eng.buildDir
             end
-            str(pathLib.child(dir paths.stem(str(main))))
+            str(pathLib.child(dir files.stem(str(main))))
         end
 
     (* A main routine's .main.qm, .main.c, and .main.o: the .main suffix keeps
@@ -311,7 +312,7 @@ export
                     if not(eq(m.backend choice.forUnit(eng.backends name))) then
                         maybe.some(:String "compiled by the " <> m.backend <> " backend")
                     else
-                        importResolutionChange(m maybe.some(:String paths.parent(source)) search programDir eng.resolver)
+                        importResolutionChange(m maybe.some(:String files.parent(source)) search programDir eng.resolver)
                     end
                 end
             (* Its code file is the one its recorded backend wrote *)
@@ -328,9 +329,9 @@ export
     let compileMainUnit(eng: T mainFile: String): Array(manifest.ImportedModuleRef) =
         begin
             let a = mainArtifacts(eng mainFile)
-            system.makeDirectory(paths.parent(a.c))
-            let text = maybe.unwrapOr(:String paths.readText(mainFile) "")
-            let sm = location.newSourceMap(paths.displayName(mainFile) text)
+            system.makeDirectory(files.parent(a.c))
+            let text = maybe.unwrapOr(:String files.readText(mainFile) "")
+            let sm = location.newSourceMap(files.displayName(mainFile) text)
             (* The module system's callbacks, which loading the program's
              * interfaces needs before the program is checked *)
             stdlib.install()
@@ -350,7 +351,7 @@ export
                         end
                     end
                     let search = searchPaths(eng)
-                    let dir = paths.parent(mainFile)
+                    let dir = files.parent(mainFile)
                     e.units := graph.newGraphWith(eng.resolver)
                     e.currentDir := maybe.some(:String dir)
                     e.programDir := maybe.some(:String dir)
@@ -411,8 +412,8 @@ export
                     let indirect = interfaceCompiler.indirectInterfaceRefs(direct vector.toArray(:String e.includePaths)
                         e.programDir eng.resolver)
                     log(eng "WRITE QM" a.qm)
-                    manifest.writeQm(manifest.newManifest("<main>" maybe.none(:String) paths.absolute(mainFile)
-                        paths.absolute(a.o) modules
+                    manifest.writeQm(manifest.newManifest("<main>" maybe.none(:String) files.absolute(mainFile)
+                        files.absolute(a.o) modules
                         vector.toArray(:manifest.ImportedInterfaceRef vector.concat(:manifest.ImportedInterfaceRef
                             interfaces vector.fromArray(:manifest.ImportedInterfaceRef indirect))) backend) a.qm)
                     modules
@@ -581,8 +582,8 @@ export
             let sourceFiles = vector.new(:String)
             let linked = vector.fromArray(:String strs(eng.extraObjects))
             for i = 0 upto {extent eng.extraObjects - 1} do
-                vector.append(:String discovered paths.stem(str(eng.extraObjects[i])))
-                vector.append(:String discovered paths.lower(paths.stem(str(eng.extraObjects[i]))))
+                vector.append(:String discovered files.stem(str(eng.extraObjects[i])))
+                vector.append(:String discovered paths.lower(files.stem(str(eng.extraObjects[i]))))
             end
             let moduleGraph = vector.new(:Edges)
             let expected = vector.new(:NamedExpected)
@@ -719,7 +720,7 @@ export
                          * without source is up to date *)
                         let var foundObject = maybe.none(:String)
                         for i = 0 upto {extent eng.extraObjects - 1} do
-                            let s = paths.lower(paths.stem(str(eng.extraObjects[i])))
+                            let s = paths.lower(files.stem(str(eng.extraObjects[i])))
                             if maybe.isNone(:String foundObject)
                                 andif {eq(s artifactStem) orif eq(s paths.lower(item))} then
                                 foundObject := maybe.some(:String str(eng.extraObjects[i]))
@@ -730,8 +731,8 @@ export
                         end
                         if maybe.isSome(:String foundObject) andif system.isFile(maybe.unwrap(:String foundObject)) then
                             let o = maybe.unwrap(:String foundObject)
-                            let dir = stringOp.getSub(o 0 {stringOp.length(o) - stringOp.length(paths.baseName(o))})
-                            let qmCandidate = dir <> paths.stem(o) <> ".qm"
+                            let dir = stringOp.getSub(o 0 {stringOp.length(o) - stringOp.length(files.baseName(o))})
+                            let qmCandidate = dir <> files.stem(o) <> ".qm"
                             a := tuple let qm = if system.isFile(qmCandidate) then qmCandidate else a.qm end
                                 let c = a.c let o = o end
                             if system.isFile(qmCandidate) andif not(abi.hasCurrentAbi(qmCandidate)) then
@@ -749,7 +750,7 @@ export
                              * standalone compilation) are used like those in
                              * the build directory (docs/build-process.md
                              * section 5.2) *)
-                            let beside = graph.artifactsIn(paths.parent(maybe.unwrap(:String src)) artifactStem)
+                            let beside = graph.artifactsIn(files.parent(maybe.unwrap(:String src)) artifactStem)
                             if not(eq(beside.qm a.qm))
                                 andif maybe.isNone(:String
                                     unitStaleness(eng maybe.unwrap(:String src) beside programDir))
@@ -840,7 +841,7 @@ export
                     let src = maybe.unwrap(:String p.src)
                     let found = vector.new(:manifest.ImportedModuleRef)
                     try
-                        let text = paths.readText(src)
+                        let text = files.readText(src)
                         if maybe.isSome(:String text) then
                             case units.unitDeclaration(units.parseUnit(location.newSourceMap(src
                                 maybe.unwrap(:String text))) src)
@@ -856,7 +857,7 @@ export
                                                 vector.get(:String it.names j)
                                             end
                                             let m = graph.resolveModule(eng.resolver path
-                                                maybe.some(:String paths.parent(src)) roots)
+                                                maybe.some(:String files.parent(src)) roots)
                                             vector.append(:manifest.ImportedModuleRef found tuple
                                                 let name = graph.canonicalName(m) let interfaceName = ""
                                                 let source = maybe.unwrapOr(:String m.source "") let path = path
@@ -1007,16 +1008,16 @@ export
      * on the errors of compiling and linking *)
     let unflushedBuildMain(eng: T mainFile: String output: maybe.T(String)): Ok =
         begin
-            let main = paths.absolute(mainFile)
+            let main = files.absolute(mainFile)
             if not(system.isFile(main)) then fail(:Ok "Main routine file not found: " <> main) end
-            let target = if maybe.isSome(:String output) then paths.absolute(maybe.unwrap(:String output))
+            let target = if maybe.isSome(:String output) then files.absolute(maybe.unwrap(:String output))
                 else mainArtifactBase(eng main) end
             log(eng "BUILD START" "target=" <> main <> " mode=separate build_dir=" <> str(eng.buildDir))
-            let item = paths.stem(main)
+            let item = files.stem(main)
             log(eng "QUEUE INIT" "enqueued main routine " <> quoted(item))
             log(eng "POP QUEUE" quoted(item) <> " (kind=main)")
             let a = mainArtifacts(eng main)
-            let reason = unitStaleness(eng main a maybe.some(:String paths.parent(main)))
+            let reason = unitStaleness(eng main a maybe.some(:String files.parent(main)))
             let imported = if maybe.isSome(:String reason) then
                 log(eng "EVAL STALENESS" quoted(item) <> " -> STALE (" <> maybe.unwrap(:String reason) <> ")")
                 log(eng "COMPILE MAIN" quoted(item))
@@ -1025,7 +1026,7 @@ export
                 log(eng "EVAL STALENESS" quoted(item) <> " -> UP TO DATE")
                 maybe.unwrap(:manifest.ModuleManifest manifest.readQm(a.qm)).importedModules
             end
-            let objects = unflushedBuildModules(eng imported item maybe.some(:String paths.parent(main)))
+            let objects = unflushedBuildModules(eng imported item maybe.some(:String files.parent(main)))
             let n = extent eng.extraObjects
             let linked = vector.new(:String)
             for i = 0 upto {n - 1} do vector.append(:String linked objects[i]) end
@@ -1062,7 +1063,7 @@ export
     let compileMain(eng: T mainFile: String): Ok =
         flushingLog(:Ok eng fun(): Ok
             begin
-                let main = paths.absolute(mainFile)
+                let main = files.absolute(mainFile)
                 if not(system.isFile(main)) then fail(:Ok "Main routine file not found: " <> main) end
                 compileMainUnit(eng main)
                 ok

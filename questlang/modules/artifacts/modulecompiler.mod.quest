@@ -11,6 +11,7 @@ import
     questlang/types/symbols : questlang/types/Symbols
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/modules/paths : questlang/modules/Paths
+    questlang/common/files : questlang/common/Files
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/units : questlang/modules/Units
     questlang/modules/elaboration : questlang/modules/Elaboration
@@ -60,7 +61,7 @@ export
             let name = paths.lower(interfaceName) <> ".int.h"
             let var found = maybe.none(:String)
             for i = 0 upto {vector.length(:String dirs) - 1} do
-                if maybe.isNone(:String found) andif system.isFile(paths.join(vector.get(:String dirs i) name)) then
+                if maybe.isNone(:String found) andif system.isFile(files.join(vector.get(:String dirs i) name)) then
                     found := maybe.some(:String name)
                 end
             end
@@ -68,9 +69,9 @@ export
                 andif system.isFile(maybe.unwrap(:String header)) then
                 let h = maybe.unwrap(:String header)
                 for i = 0 upto {vector.length(:String dirs) - 1} do
-                    if maybe.isNone(:String found) then found := paths.relativeTo(h vector.get(:String dirs i)) end
+                    if maybe.isNone(:String found) then found := files.relativeTo(h vector.get(:String dirs i)) end
                 end
-                if maybe.isNone(:String found) then found := maybe.some(:String paths.baseName(h)) end
+                if maybe.isNone(:String found) then found := maybe.some(:String files.baseName(h)) end
             end
             found
         end
@@ -83,7 +84,7 @@ export
             let hasSource = maybe.isSome(:fileStats.T stats) andif {maybe.unwrap(:fileStats.T stats).kind?file}
             tuple
                 let name = graph.interfaceName(resolved)
-                let source = if maybe.isSome(:String src) then paths.absolute(maybe.unwrap(:String src)) else "" end
+                let source = if maybe.isSome(:String src) then files.absolute(maybe.unwrap(:String src)) else "" end
                 let mtime = if hasSource then maybe.unwrap(:fileStats.T stats).modifiedTime else 0.0 end
                 let path = path let dir = ""
             end
@@ -122,7 +123,7 @@ export
             e.compilingC := true
             e.compilingUnit := true
             if maybe.isSome(:String buildDir) then
-                e.buildDir := maybe.some(:String paths.absolute(maybe.unwrap(:String buildDir)))
+                e.buildDir := maybe.some(:String files.absolute(maybe.unwrap(:String buildDir)))
             end
             let modules = vector.new(:manifest.ImportedModuleRef)
             let interfaces = vector.new(:manifest.ImportedInterfaceRef)
@@ -214,8 +215,8 @@ export
                 when cBackend.unsupported with m then diagnostics.fail(:String m 0)
                 end
             let base = if stringOp.length(stem) > 0 then stem else paths.lower(decl.name) end
-            let cFile = choice.codeFile(paths.join(outputDir base <> ".mod.c") backend)
-            let oFile = paths.join(outputDir base <> ".o")
+            let cFile = choice.codeFile(files.join(outputDir base <> ".mod.c") backend)
+            let oFile = files.join(outputDir base <> ".o")
             let w = writer.file(cFile)
             writer.putString(w c)
             writer.close(w)
@@ -237,9 +238,9 @@ export
             let indirect =
                 interfaceCompiler.indirectInterfaceRefs(direct vector.toArray(:String e.includePaths) e.programDir
                 e.units.resolver)
-            let qmFile = paths.join(outputDir base <> ".qm")
-            manifest.writeQm(manifest.newManifest(name maybe.some(:String x.targetName) paths.absolute(sourceFile)
-                paths.absolute(oFile) vector.toArray(:manifest.ImportedModuleRef x.modules)
+            let qmFile = files.join(outputDir base <> ".qm")
+            manifest.writeQm(manifest.newManifest(name maybe.some(:String x.targetName) files.absolute(sourceFile)
+                files.absolute(oFile) vector.toArray(:manifest.ImportedModuleRef x.modules)
                 vector.toArray(:manifest.ImportedInterfaceRef vector.concat(:manifest.ImportedInterfaceRef x.interfaces
                     vector.fromArray(:manifest.ImportedInterfaceRef indirect))) backend) qmFile)
             restore(x)
@@ -266,9 +267,9 @@ export
     let withModuleFile(A::TYPE file: String includePaths: Array(String) buildDir: maybe.T(String)
         programDir: maybe.T(String) res: maybe.T(graph.Resolver) body: All(m: ModuleFile) A): A =
         begin
-            let modPath = paths.absolute(file)
+            let modPath = files.absolute(file)
             if not(system.isFile(modPath)) then diagnostics.fail(:Ok "Module file not found: '" <> modPath <> "'" 0) end
-            let sm = location.newSourceMap(paths.displayName(modPath) maybe.unwrap(:String paths.readText(modPath)))
+            let sm = location.newSourceMap(files.displayName(modPath) maybe.unwrap(:String files.readText(modPath)))
             (* Where the driver finds the lines its errors are in *)
             diagnostics.registerSource(sm)
             let e = env.new()
@@ -279,7 +280,7 @@ export
                         when moduleDecl with d then d
                         else diagnostics.fail(:Tuple decl: ast.ModuleDecl offset: Int end "internal: not a module" 0)
                     end
-                    let base = paths.baseName(modPath)
+                    let base = files.baseName(modPath)
                     let stem = if strutil.endsWith(base ".mod.quest") then
                         stringOp.getSub(base 0 {stringOp.length(base) - 10})
                         elsif strutil.endsWith(base ".quest") then stringOp.getSub(base 0 {stringOp.length(base) - 6})
@@ -289,12 +290,12 @@ export
                         else graph.newResolver()
                     end
                     e.units := graph.newGraphWith(resolver)
-                    e.currentDir := maybe.some(:String paths.parent(modPath))
+                    e.currentDir := maybe.some(:String files.parent(modPath))
                     for i = 0 upto {extent includePaths - 1} do
                         vector.append(:String e.includePaths includePaths[i]) end
                     e.programDir := programDir
                     if maybe.isSome(:String buildDir) then
-                        let b = paths.absolute(maybe.unwrap(:String buildDir))
+                        let b = files.absolute(maybe.unwrap(:String buildDir))
                         let var listed = false
                         for i = 0 upto {vector.length(:String e.includePaths) - 1} do
                             if eq(vector.get(:String e.includePaths i) b) then listed := true end
@@ -325,11 +326,11 @@ export
             ModuleCompileResult
             begin
                 let outDir = if maybe.isSome(:String buildDir) andif maybe.isNone(:String outputDir) then
-                    graph.unitArtifactDir(paths.absolute(maybe.unwrap(:String buildDir)) m.canon)
+                    graph.unitArtifactDir(files.absolute(maybe.unwrap(:String buildDir)) m.canon)
                 elsif maybe.isNone(:String outputDir) then
-                    paths.parent(m.modPath)
+                    files.parent(m.modPath)
                 else
-                    paths.absolute(maybe.unwrap(:String outputDir))
+                    files.absolute(maybe.unwrap(:String outputDir))
                 end
                 compileModule(m.decl m.offset m.e outDir m.searchPaths compiler nogc extraFlags m.sm m.stem m.canon
                     m.modPath buildDir backends)

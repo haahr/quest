@@ -4,7 +4,7 @@ module fingerprint : Fingerprint
 import
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/types/env : questlang/types/Env
-    questlang/modules/paths : questlang/modules/Paths
+    questlang/common/files : questlang/common/Files
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/loader : questlang/modules/Loader
     questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
@@ -116,20 +116,20 @@ export
                 graph.freshInterfaceQi(resolved)
             end
             if maybe.isNone(:String qi) orif not(strutil.endsWith(maybe.unwrap(:String qi) ".qi"))
-                orif not(paths.isFile(maybe.unwrap(:String qi))) then
+                orif not(files.isFile(maybe.unwrap(:String qi))) then
                 (* A builtin interface, which changes only with the ABI *)
                 sha256.hexDigest("abi " <> conv.int(abi.abiVersion) <> "\ninterface " <> canonical <> "\nbuiltin\n")
             else
                 let file = maybe.unwrap(:String qi)
-                let mtime = paths.modifiedNs(file)
+                let mtime = files.modifiedNs(file)
                 let cached = hashMap.get(:String :Known known file)
                 if maybe.isSome(:Known cached) andif {maybe.unwrap(:Known cached).mtime >= mtime} then
                     maybe.unwrap(:Known cached).fingerprint
                 else
-                    let text = paths.readText(file)
+                    let text = files.readText(file)
                     if maybe.isNone(:String text) then diagnostics.fail(:Ok "Error reading .qi file '" <> file <> "'" 0) end
                     (* Its imports are resolved from its own directory *)
-                    let dir = paths.parent(maybe.unwrapOr(:String resolved.source file))
+                    let dir = files.parent(maybe.unwrapOr(:String resolved.source file))
                     let saved = e.currentDir
                     let importedFingerprint(path: String): String =
                         begin
