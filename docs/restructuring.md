@@ -154,6 +154,17 @@ Each split follows the banners already in the module, so it moves code without c
 The bootstrap's counterparts split the same way where they have the same seam; where the bootstrap's module is
 organized differently, the split is the self-hosted compiler's only, and compiler-organization.md §6 says so.
 
+Left whole (decided 2026-11-12), because no split of them moves code without changing it:
+
+- **codegen/c/printer.** Its sections share the printer's state (P, FnState) and a few dozen helpers (names, C types,
+  descriptors, emitting). A lower module of them would export some 40 names, which the printer's other 2,700 lines
+  would then all qualify, and the unit assembly, split upward, would need 19 of the printer's internals exported.
+- **ir/lower's REPL phrase units.** phraseExpr and echoBinding are members of lowering's recursive group, and
+  lowerPhrases uses most of the lowerer's internals (newLowerer, binding, emit, inBody, lowerModule): a module of
+  them would need the lowerer's state exported.
+- **build/engine's unflushedBuildModules.** One 425-line function, not sections: dividing it into staleness, waves,
+  conformance, and cycles is a rewrite of the build's main loop, not a split.
+
 ### Stage 7. The runtime's files
 
 - quest_runtime.c (4,665 lines) into quest_exceptions.c (exceptions, the stack guard), quest_print.c (printing,
