@@ -8,6 +8,7 @@ between them.
     tools/check --stress           the stress tier alone
     tools/check --no-stress        the suites without the stress tier before them
     tools/check --light            the checks a move of modules needs, not a push's
+    tools/check --jobs N           any of these with N cores, not the machine's
 
 The change is what differs from origin/main: the commits since they diverged,
 and what is not yet committed. A change only to the self-hosted compiler, its
@@ -219,10 +220,10 @@ sys.exit(1 if failed else 0)
 """
 
 
-def light(seed: str) -> int:
-    """Runs the --light checks at once; 0 if they pass."""
+def light(seed: str, cores: int) -> int:
+    """Runs the --light checks at once, with cores split between them; 0 if
+    they pass."""
     python = sys.executable
-    cores = os.cpu_count() or 4
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     unit_environment = {"PYTHONPATH": str(ROOT_DIR / "bootstrap" / "python")}
     suites = [
@@ -253,10 +254,21 @@ def main() -> int:
     parser.add_argument("--seed", choices=("release", "bootstrap"), default="release",
                         help="what builds the self-hosting check's stage 1 (default: the current release; the "
                         "bootstrap past a gap, docs/instructions.md section 6.1)")
+    parser.add_argument("--jobs", type=int, metavar="N",
+                        help="the cores to split between the suites, rather than the machine's; also each build's "
+                        "modules at once (QUEST_JOBS)")
     args = parser.parse_args()
+    if args.jobs is not None and args.jobs < 1:
+        parser.error("--jobs must be at least 1")
+    cores = args.jobs or os.cpu_count() or 4
+    if args.jobs is not None:
+        # Before the suites are made, which copy the environment: their
+        # builds of the self-hosted driver compile N modules at once, as ./quest
+        # does with it
+        os.environ["QUEST_JOBS"] = str(args.jobs)
 
     if args.light:
-        return light(args.seed)
+        return light(args.seed, cores)
     if args.self_hosted_only or args.all:
         self_hosted_only = args.self_hosted_only
     else:
@@ -274,7 +286,6 @@ def main() -> int:
                   "own (--all runs every suite)")
 
     python = sys.executable
-    cores = os.cpu_count() or 4
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     run_tests = [python, str(ROOT_DIR / "run_tests.py"), *(f"--skip-phase={phase}" for phase in SKIPPED_PHASES)]
     self_hosting = [*run_tests, "--self-hosting", "--seed", args.seed, "--whole-program-fixed-point"]

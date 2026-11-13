@@ -1,6 +1,7 @@
 """Where the tests, their goldens, and the two compilers' drivers are, for the
 runner (testing/runner.py) and the modules it uses."""
 
+import os
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[4]
@@ -26,3 +27,10 @@ EVAL_GOLDEN = TESTS_GOLDEN_DIR / "self-hosted" / "eval.out"
 # tests/repl/files holds what they load
 TESTS_REPL_DIR = ROOT_DIR / "tests" / "repl"
 TESTS_REPL_GOLDEN_DIR = TESTS_GOLDEN_DIR / "repl"
+
+
+def build_jobs() -> int:
+    """How many modules a build of the self-hosted driver compiles at once
+    (its -j): QUEST_JOBS, as ./quest reads it, which tools/check --jobs sets,
+    else every core."""
+    return int(os.environ.get("QUEST_JOBS") or os.cpu_count() or 1)

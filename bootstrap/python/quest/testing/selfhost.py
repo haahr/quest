@@ -19,7 +19,7 @@ from typing import Optional
 
 from quest.common.location import BYTE_ENCODING
 from quest.testing import releases
-from quest.testing.layout import ROOT_DIR, DRIVER_SCRIPT, SELF_HOSTED_DRIVER
+from quest.testing.layout import ROOT_DIR, DRIVER_SCRIPT, SELF_HOSTED_DRIVER, build_jobs
 
 
 def build_self_hosted_driver(python_executable: str, build_dir: Path) -> Path:
@@ -74,7 +74,7 @@ def run_driver_build(driver: Path, arguments: list[str], home: Path, backend: st
     # Against a release's home, the tree's questlang/ is found through -I.
     # Modules compile in parallel (-j), as every release since c787e2d6 can.
     flags = ["-I", str(ROOT_DIR)] if home != ROOT_DIR else []
-    flags += ["-j", str(os.cpu_count() or 1)]
+    flags += ["-j", str(build_jobs())]
     # Named even for c, which a release whose default is arm64 would not use
     # otherwise
     flags += ["--backend", backend]

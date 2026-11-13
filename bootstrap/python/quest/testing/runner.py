@@ -52,6 +52,7 @@ from quest.testing.layout import (
     TESTS_ERRORS_DIR,
     DRIVER_SCRIPT,
     SELF_HOSTED_DRIVER,
+    build_jobs,
 )
 from quest.testing.directives import (
     TestDirectives,
@@ -247,7 +248,7 @@ def build_questlang_tests(
     for source_file in source_files:
         command = [
             # The self-hosted driver compiles the modules in parallel
-            *(driver_command + ["-j", str(os.cpu_count() or 1)] if driver_command
+            *(driver_command + ["-j", str(build_jobs())] if driver_command
               else [python_executable, str(DRIVER_SCRIPT)]),
             "--build-dir",
             str(build_dir),
