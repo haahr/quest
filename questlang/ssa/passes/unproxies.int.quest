@@ -1,0 +1,18 @@
+(* Quest Self-Hosted Compiler: The SSA's Unproxies Interface
+ *
+ * Lowers each unproxy (docs/ssa.md section 2) for the SSA's backends, after
+ * the passes: the block is split at the instruction, and it branches on the
+ * pointer's tag bit (QUEST_PROXY_TAG) to a block that loads the proxy's
+ * original (an invariant load, QProxy's orig less the tag) or to one that
+ * passes the pointer itself on, both jumping to the rest of the block with
+ * the object as its parameter. That is the code the builder made for each
+ * proxy test before the SSA had the instruction; having it until now lets
+ * value numbering merge an unproxy with one in a dominating block, so that a
+ * loop over fields of a record that may be a proxy tests it once. *)
+
+interface Unproxies
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    lowerUnit(u: ssa.Unit): Ok
+end

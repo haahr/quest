@@ -232,7 +232,7 @@ export
                     opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub,
                     opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
                     opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
-                    opThreadLocal, opToVal, opFromVal, opSelect then
+                    opThreadLocal, opToVal, opFromVal, opSelect, opUnproxy then
                     maybe.none(:Int)
             end
         end
@@ -314,7 +314,7 @@ export
             when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd,
                 opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits,
                 opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal,
-                opToVal, opFromVal, opSelect then
+                opToVal, opFromVal, opSelect, opUnproxy then
                 minst.condEq
         end
     let isComparison(op: ssa.Opcode): Bool =
@@ -325,7 +325,7 @@ export
             when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd,
                 opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits,
                 opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal,
-                opToVal, opFromVal, opSelect then
+                opToVal, opFromVal, opSelect, opUnproxy then
                 false
         end
     let isRealComparison(op: ssa.Opcode): Bool =
@@ -334,7 +334,8 @@ export
             when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opConst, opRealConst, opSymbol, opNull,
                 opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opFadd,
                 opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opLoad,
-                opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal, opFromVal, opSelect then
+                opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal, opFromVal, opSelect,
+                opUnproxy then
                 false
         end
     (* The bit an and of a constant with one bit set tests, and the value it
@@ -360,7 +361,7 @@ export
                             opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe,
                             opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge,
                             opIsNaN, opRealBits, opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect,
-                            opPtrAdd, opThreadLocal, opSelect then
+                            opPtrAdd, opThreadLocal, opSelect, opUnproxy then
                             a
                     end
                 else a end
@@ -590,6 +591,8 @@ export
                 (* Copies of a word: conversions between ints, pointers, and a
                  * Real's bits *)
                 when opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opCopy, opToVal, opFromVal then emitMove(s d a(0))
+                (* Lowered before selection (ssa/passes/unproxies) *)
+                when opUnproxy then raise unsupported with "arm64: an unproxy not lowered" end
                 (* A byte extended, unless it is the result of a call in the
                  * unit that comes back extended (codegen's definedSymbols) *)
                 when opSext8 then

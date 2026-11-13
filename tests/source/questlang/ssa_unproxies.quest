@@ -1,0 +1,87 @@
+(* Self-Hosted Quest Compiler: Test Proxy Tests Once per Value
+ *
+ * The SSA's unproxy (docs/ssa.md section 2) on functions written as text and
+ * read by questlang/ssa/parser, each printed as read, after
+ * questlang/ssa/valueNumbers, and after questlang/ssa/passes/unproxies lowers it
+ * for the backends, and verified: a loop over a record's fields, whose
+ * unproxy in the loop merges with the one before it; unproxies of one value
+ * in sibling blocks, neither dominating the other, each kept and lowered;
+ * and two in one block, the rest of the block after each split in turn. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    questlang/ssa/parser : questlang/ssa/Parser
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/passes/valueNumbers : questlang/ssa/passes/ValueNumbers
+    questlang/ssa/passes/unproxies : questlang/ssa/passes/Unproxies
+    questlang/ssa/verify : questlang/ssa/Verify
+    util/strutil : util/Strutil
+    writer : Writer
+;
+
+let emit(s: String): Ok = writer.putString(writer.output s);
+
+let show(title: String lines: Array(String)): Ok =
+    begin
+        emit("== " <> title <> "\n")
+        let u = parser.readUnit(strutil.joinArray("\n" lines) <> "\n")
+        emit(printer.formatUnit(u))
+        valueNumbers.numberUnit(u)
+        emit("-- after valueNumbers\n")
+        emit(printer.formatUnit(u))
+        try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
+        unproxies.lowerUnit(u)
+        emit("-- after unproxies\n")
+        emit(printer.formatUnit(u))
+        try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
+    end;
+
+show("a loop over a record's fields" array of
+    "function sum(%0: ptr, %1: int): int {"
+    "b0(%0: ptr, %1: int):"
+    "  %2: ptr = unproxy %0"
+    "  %3: int = load8 %2 + 0"
+    "  %4: int = const 0"
+    "  jump b1(%4, %4)"
+    "b1(%5: int, %6: int):"
+    "  %7: int = lt %5, %1"
+    "  branch %7, b2(), b3()"
+    "b2():"
+    "  %8: ptr = unproxy %0"
+    "  %9: int = load8 %8 + 8"
+    "  %10: int = add %6, %9"
+    "  %11: int = add %10, %3"
+    "  %12: int = const 1"
+    "  %13: int = add %5, %12"
+    "  jump b1(%13, %11)"
+    "b3():"
+    "  return %6"
+    "}"
+end);
+
+show("unproxies in sibling blocks" array of
+    "function either(%0: ptr, %1: int): int {"
+    "b0(%0: ptr, %1: int):"
+    "  branch %1, b1(), b2()"
+    "b1():"
+    "  %2: ptr = unproxy %0"
+    "  %3: int = load8 %2 + 0"
+    "  return %3"
+    "b2():"
+    "  %4: ptr = unproxy %0"
+    "  %5: int = load8 %4 + 8"
+    "  return %5"
+    "}"
+end);
+
+show("two values in one block" array of
+    "function both(%0: ptr, %1: ptr): int {"
+    "b0(%0: ptr, %1: ptr):"
+    "  %2: ptr = unproxy %0"
+    "  %3: int = load8 %2 + 0"
+    "  %4: ptr = unproxy %1"
+    "  %5: int = load8 %4 + 0"
+    "  %6: int = add %3, %5"
+    "  return %6"
+    "}"
+end);

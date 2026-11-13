@@ -278,6 +278,12 @@ export
                             s.exact[i.results[0]] := s.exact[i.args[0]]
                             s.exactOff[i.results[0]] := s.exactOff[i.args[0]] + s.constant[i.args[1]]
                             changed := true
+                        elsif ssa.isOp(i ssa.opUnproxy) andif {s.exact[i.args[0]] >= 0}
+                            andif {s.exact[i.results[0]] < 0} then
+                            (* An origin's object is never a proxy *)
+                            s.exact[i.results[0]] := s.exact[i.args[0]]
+                            s.exactOff[i.results[0]] := s.exactOff[i.args[0]]
+                            changed := true
                         end
                     end
                 end
@@ -377,6 +383,11 @@ export
                                     if setPointer(s i.results[0] s.ptr[p] {s.off[p] + s.constant[i.args[1]]}) then
                                         changed := true
                                     end
+                                end
+                            elsif ssa.isOp(i ssa.opUnproxy) then
+                                let p = i.args[0]
+                                if live(s p) then
+                                    if setPointer(s i.results[0] s.ptr[p] s.off[p]) then changed := true end
                                 end
                             elsif ssa.isOp(i ssa.opLoad) andif live(s i.args[0]) then
                                 (* A word that the group's allocations store
@@ -487,6 +498,7 @@ export
                                     if not(live(s i.args[0])) orif {s.exact[i.args[0]] < 0} then
                                         killGroup(s a "stored")
                                     end
+                                elsif ssa.isOp(i ssa.opUnproxy) then ok
                                 elsif ssa.isOp(i ssa.opPtrAdd) andif {j is 0} andif s.isConst[i.args[1]] then
                                     (* A constant's address plus an offset
                                      * is another constant's, which needs
@@ -971,6 +983,8 @@ export
                                 let a = s.exact[i.args[0]]
                                 if vector.get(:Int s.lastStore a) is k then made(a kept i.loc) end
                             elsif ssa.isOp(i ssa.opPtrAdd) andif isPointer(i.args[0]) andif {s.originOf[result] < 0} then
+                                base[result] := base[i.args[0]]
+                            elsif ssa.isOp(i ssa.opUnproxy) andif isPointer(i.args[0]) then
                                 base[result] := base[i.args[0]]
                             elsif ssa.isOp(i ssa.opLoad) andif isPointer(i.args[0]) then
                                 let p = i.args[0]

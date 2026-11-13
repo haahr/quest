@@ -62,6 +62,7 @@ register allocation) walk the arrays; only the passes that care what an instruct
 | `callIndirect` | `ptr` args → results | a call through a function pointer |
 | `copy` | value → value | the same value (made by the builder; removed by later passes) |
 | `select` | `int` x x → x | the second argument if the first is nonzero, else the third; x is `int`, `ptr`, or `val` (made by `ssa/passes/selects`, §4.1; ssac's `?:`, arm64's `csel` or `cset`) |
+| `unproxy` | `ptr` → `ptr` | the object a tuple's or an option's pointer is: the proxy's original when its tag bit (`QUEST_PROXY_TAG`) is set, else the pointer itself (`quest_unproxy`; made by `representation.unproxy` for an `original` access, pure, so that value numbering merges one with its equal in a dominating block; lowered by `ssa/passes/unproxies`, §4.1, before the backends see it) |
 
 ### 2.1. Loads and Stores
 
@@ -305,6 +306,14 @@ internal error.
   frame by its function's exact start, the unit's table of names (`qr_funcs`) gets an entry for each such export, the
   last function copied into it that has a name, and the count `qr_register_dicts` registers grows to match.
   `ssa_trampolines` shows each case.
+- **`ssa/passes/unproxies`**, run by the SSA's backends after the passes (`pipeline.lower`, before inline allocation), lowers
+  each `unproxy` to the test the builder made before the SSA had the instruction: the block is split at it, and branches
+  on the pointer's tag bit to a block that loads the proxy's original (an invariant load of `QProxy`'s `orig`, less the
+  tag) or to one that passes the pointer on, both jumping to the rest of the block, whose parameter is the object. Until
+  then an `unproxy` is a pure instruction, which value numbering merges along the dominator tree: hashmap's `findIndex`
+  tested its record before each field its loop loaded, and tests it once, before the loop. Escape analysis and scalar
+  replacement take an `unproxy` of one of an allocation's pointers as that pointer, since a fresh object is never a
+  proxy; `selects` does not speculate one, since it may load. `ssa_unproxies` shows the merge and the lowering.
 - **`ssa/passes/interrupts`**, after them and only when the Jupyter kernel's driver asks (`pipeline.setInterruptChecks`, under
   `--kernel`, for the code its JIT compiles; [jupyter-kernel.md](jupyter-kernel.md) §5), checks the runtime's interrupt
   flag at each function's entry and each loop's head (a block a back edge goes to): it splits the block, loading
@@ -354,6 +363,7 @@ and what still escapes ([benchmarks.md](benchmarks.md) §9).
 exceptions, and the runtime's other allocators are not. Its result is one of *its pointers*, and so is:
 
 - a `ptrAdd` of one of them by a constant;
+- an `unproxy` of one of them, which is the allocation, since a fresh object is never a proxy;
 - a whole load of a word of the allocation whose stores all store one of its pointers at one offset (as a tuple's
   first word holds the address of its fields);
 - a block's parameter that every edge taken binds to that one value (as the merge after a folded proxy test is).

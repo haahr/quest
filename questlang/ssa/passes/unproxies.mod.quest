@@ -1,0 +1,82 @@
+(* Quest Self-Hosted Compiler: The SSA's Unproxies Implementation *)
+
+module unproxies : Unproxies
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    collections/vector : collections/Vector
+export
+    Let Function = ssa.Function
+
+    (* Splits block b at its instruction k, an unproxy *)
+    let lower(f: Function b: Int k: Int): Ok =
+        begin
+            let blk = ssa.block(f b)
+            let i = vector.get(:ssa.Inst blk.insts k)
+            let p = i.args[0]
+            let at = i.loc
+            f.at := at
+            (* The rest of the block, after the instruction *)
+            let tail = vector.new(:ssa.Inst)
+            for j = k + 1 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                vector.append(:ssa.Inst tail vector.get(:ssa.Inst blk.insts j))
+            end
+            let term = blk.term
+            let termLoc = blk.termLoc
+            while vector.length(:ssa.Inst blk.insts) > k do begin let ignored = vector.pop(:ssa.Inst blk.insts) end end
+            let none = array of :Int end
+            let tag = runtimeLayout.constant("QUEST_PROXY_TAG")
+            let tested = ssa.binary(f b ssa.opAnd ssa.emit(f b ssa.opPtrToInt array of p end ssa.typeInt)
+                ssa.constant(f b tag))
+            let proxy = ssa.newBlock(f)
+            let plain = ssa.newBlock(f)
+            let rest = ssa.newBlock(f)
+            blk.term := option termBranch of ssa.Terminator with
+                let cond = tested let ifTrue = ssa.target(proxy none) let ifFalse = ssa.target(plain none)
+            end
+            blk.termLoc := at
+            let orig = runtimeLayout.offset("QProxy" "orig") - tag
+            let original = ssa.invariantLoad(f proxy p orig 8 false ssa.typePtr)
+            let proxyBlk = ssa.block(f proxy)
+            proxyBlk.term := option termJump of ssa.Terminator with
+                let target = ssa.target(rest array of original end)
+            end
+            proxyBlk.termLoc := at
+            let plainBlk = ssa.block(f plain)
+            plainBlk.term := option termJump of ssa.Terminator with let target = ssa.target(rest array of p end) end
+            plainBlk.termLoc := at
+            (* The rest: the object is the instruction's result *)
+            let moved = ssa.block(f rest)
+            vector.append(:Int moved.params i.results[0])
+            for j = 0 upto {vector.length(:ssa.Inst tail) - 1} do
+                vector.append(:ssa.Inst moved.insts vector.get(:ssa.Inst tail j))
+            end
+            moved.term := term
+            moved.termLoc := termLoc
+        end
+
+    let lowerFunction(f: Function): Ok =
+        begin
+            let var b = 0
+            (* The blocks a split adds hold the rest of a block, and are
+             * reached in turn *)
+            while b < vector.length(:ssa.Block f.blocks) do
+                let blk = ssa.block(f b)
+                let var k = 0
+                let var split = false
+                while not(split) andif {k < vector.length(:ssa.Inst blk.insts)} do
+                    if ssa.isOp(vector.get(:ssa.Inst blk.insts k) ssa.opUnproxy) then
+                        lower(f b k)
+                        split := true
+                    end
+                    k := k + 1
+                end
+                b := b + 1
+            end
+        end
+
+    let lowerUnit(u: ssa.Unit): Ok =
+        for i = 0 upto {vector.length(:ssa.Function u.functions) - 1} do
+            lowerFunction(vector.get(:ssa.Function u.functions i))
+        end
+end

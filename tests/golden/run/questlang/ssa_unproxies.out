@@ -1,0 +1,175 @@
+== a loop over a record's fields
+function sum(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %2: ptr = unproxy %0
+  %3: int = load8 %2 + 0
+  %4: int = const 0
+  jump b1(%4, %4)
+b1(%5: int, %6: int):
+  %7: int = lt %5, %1
+  branch %7, b2(), b3()
+b2():
+  %8: ptr = unproxy %0
+  %9: int = load8 %8 + 8
+  %10: int = add %6, %9
+  %11: int = add %10, %3
+  %12: int = const 1
+  %13: int = add %5, %12
+  jump b1(%13, %11)
+b3():
+  return %6
+}
+-- after valueNumbers
+function sum(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %2: ptr = unproxy %0
+  %3: int = load8 %2 + 0
+  %4: int = const 0
+  jump b1(%4, %4)
+b1(%5: int, %6: int):
+  %7: int = lt %5, %1
+  branch %7, b2(), b3()
+b2():
+  %9: int = load8 %2 + 8
+  %10: int = add %6, %9
+  %11: int = add %10, %3
+  %12: int = const 1
+  %13: int = add %5, %12
+  jump b1(%13, %11)
+b3():
+  return %6
+}
+-- after unproxies
+function sum(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %14: int = ptrToInt %0
+  %15: int = const 1
+  %16: int = and %14, %15
+  branch %16, b4(), b5()
+b1(%5: int, %6: int):
+  %7: int = lt %5, %1
+  branch %7, b2(), b3()
+b2():
+  %9: int = load8 %2 + 8
+  %10: int = add %6, %9
+  %11: int = add %10, %3
+  %12: int = const 1
+  %13: int = add %5, %12
+  jump b1(%13, %11)
+b3():
+  return %6
+b4():
+  %17: ptr = load8 %0 + ~1 invariant
+  jump b6(%17)
+b5():
+  jump b6(%0)
+b6(%2: ptr):
+  %3: int = load8 %2 + 0
+  %4: int = const 0
+  jump b1(%4, %4)
+}
+== unproxies in sibling blocks
+function either(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  branch %1, b1(), b2()
+b1():
+  %2: ptr = unproxy %0
+  %3: int = load8 %2 + 0
+  return %3
+b2():
+  %4: ptr = unproxy %0
+  %5: int = load8 %4 + 8
+  return %5
+}
+-- after valueNumbers
+function either(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  branch %1, b1(), b2()
+b1():
+  %2: ptr = unproxy %0
+  %3: int = load8 %2 + 0
+  return %3
+b2():
+  %4: ptr = unproxy %0
+  %5: int = load8 %4 + 8
+  return %5
+}
+-- after unproxies
+function either(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  branch %1, b1(), b2()
+b1():
+  %6: int = ptrToInt %0
+  %7: int = const 1
+  %8: int = and %6, %7
+  branch %8, b3(), b4()
+b2():
+  %10: int = ptrToInt %0
+  %11: int = const 1
+  %12: int = and %10, %11
+  branch %12, b6(), b7()
+b3():
+  %9: ptr = load8 %0 + ~1 invariant
+  jump b5(%9)
+b4():
+  jump b5(%0)
+b5(%2: ptr):
+  %3: int = load8 %2 + 0
+  return %3
+b6():
+  %13: ptr = load8 %0 + ~1 invariant
+  jump b8(%13)
+b7():
+  jump b8(%0)
+b8(%4: ptr):
+  %5: int = load8 %4 + 8
+  return %5
+}
+== two values in one block
+function both(%0: ptr, %1: ptr): int {
+b0(%0: ptr, %1: ptr):
+  %2: ptr = unproxy %0
+  %3: int = load8 %2 + 0
+  %4: ptr = unproxy %1
+  %5: int = load8 %4 + 0
+  %6: int = add %3, %5
+  return %6
+}
+-- after valueNumbers
+function both(%0: ptr, %1: ptr): int {
+b0(%0: ptr, %1: ptr):
+  %2: ptr = unproxy %0
+  %3: int = load8 %2 + 0
+  %4: ptr = unproxy %1
+  %5: int = load8 %4 + 0
+  %6: int = add %3, %5
+  return %6
+}
+-- after unproxies
+function both(%0: ptr, %1: ptr): int {
+b0(%0: ptr, %1: ptr):
+  %7: int = ptrToInt %0
+  %8: int = const 1
+  %9: int = and %7, %8
+  branch %9, b1(), b2()
+b1():
+  %10: ptr = load8 %0 + ~1 invariant
+  jump b3(%10)
+b2():
+  jump b3(%0)
+b3(%2: ptr):
+  %3: int = load8 %2 + 0
+  %11: int = ptrToInt %1
+  %12: int = const 1
+  %13: int = and %11, %12
+  branch %13, b4(), b5()
+b4():
+  %14: ptr = load8 %1 + ~1 invariant
+  jump b6(%14)
+b5():
+  jump b6(%1)
+b6(%4: ptr):
+  %5: int = load8 %4 + 0
+  %6: int = add %3, %5
+  return %6
+}

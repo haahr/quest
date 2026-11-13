@@ -163,6 +163,12 @@ export
                                         changed := true
                                     end
                                 end
+                            elsif ssa.isOp(i ssa.opUnproxy) then
+                                (* A fresh allocation is never a proxy *)
+                                let p = i.args[0]
+                                if s.ptr[p] >= 0 then
+                                    if setPointer(s i.results[0] s.ptr[p] s.off[p]) then changed := true end
+                                end
                             elsif ssa.isOp(i ssa.opStore) then
                                 let p = i.args[0]
                                 let v = i.args[1]
@@ -270,6 +276,7 @@ export
                                 elsif ssa.isOp(i ssa.opStore) andif {j is 1} then
                                     if s.ptr[i.args[0]] isnot a then escapes(s a "stored") end
                                 elsif ssa.isOp(i ssa.opPtrAdd) andif {j is 0} andif s.isConst[i.args[1]] then ok
+                                elsif ssa.isOp(i ssa.opUnproxy) then ok
                                 elsif ssa.isOp(i ssa.opPtrToInt) then
                                     if not(onlyProxyTests(i.results[0])) then escapes(s a "converted to an integer") end
                                 elsif ssa.isCall(i) andif isBarrier(i.symbol) then ok

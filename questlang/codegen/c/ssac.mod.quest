@@ -203,6 +203,9 @@ export
                 when opSext8 then set("(int64_t)(int8_t)" <> a(0))
                 when opZext8 then set("(int64_t)(uint8_t)" <> a(0))
                 when opCopy then set(a(0))
+                (* Lowered before printing (ssa/passes/unproxies), but the runtime's
+                 * header has it too *)
+                when opUnproxy then set("(char *)quest_unproxy(" <> a(0) <> ")")
                 when opLoad then
                     let t = typeOf(f i.results[0])
                     set(if i.width is 8 then memory(p cType(t) i.args[0] i.imm)

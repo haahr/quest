@@ -14,6 +14,7 @@ import
     questlang/ssa/passes/tailCalls : questlang/ssa/passes/TailCalls
     questlang/ssa/passes/tailJumps : questlang/ssa/passes/TailJumps
     questlang/ssa/passes/trampolines : questlang/ssa/passes/Trampolines
+    questlang/ssa/passes/unproxies : questlang/ssa/passes/Unproxies
     questlang/ssa/passes/interrupts : questlang/ssa/passes/Interrupts
     questlang/ssa/passes/allocations : questlang/ssa/passes/Allocations
     questlang/ssa/passes/valueNumbers : questlang/ssa/passes/ValueNumbers
@@ -90,5 +91,12 @@ export
         if not(skipped("inlineAllocation")) then
             allocations.inlineUnit(u)
             verify.checkUnit(u)
+        end
+
+    let lower(u: ssa.Unit): Ok =
+        begin
+            unproxies.lowerUnit(u)
+            verify.checkUnit(u)
+            inlineAllocation(u)
         end
 end
