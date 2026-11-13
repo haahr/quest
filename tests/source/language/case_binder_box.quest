@@ -1,0 +1,48 @@
+(* Language: a variant case's binder of a record payload stored into a new
+   record and into an array, and an option case's record component stored into
+   a record. A record payload is boxed, and the IR reuses the box it was read
+   from for each store, so ir_represented shows the case's own box (p_box), not
+   a new one; the option's binder is a tuple of its components, whose box is
+   the one the component is read from. The values come from the program's
+   arguments, so that the switches are not folded away. *)
+import
+    writer : Writer
+    conv : Conv
+    system : System
+;
+Let P = Record x: Int y: Int end;
+Let V = Variant point: P none: Ok end;
+Let O = Option some with p: P end nothing end;
+Let Wrapped = Record inner: P tag: Int end;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let show(w: Wrapped): String = conv.int(w.inner.x) <> "," <> conv.int(w.inner.y) <> " " <> conv.int(w.tag);
+
+(* Into a new record *)
+let wrap(v: V): Wrapped =
+    case v
+        when point with p then record inner = p tag = 1 end
+        when none then record inner = record x = 0 y = 0 end tag = 0 end
+    end;
+
+(* Into an array *)
+let twice(v: V): Array(P) =
+    case v
+        when point with p then array of p p end
+        when none then array of end
+    end;
+
+(* An option's payload, a record, into a new record *)
+let wrapOption(o: O): Wrapped =
+    case o
+        when some with c then record inner = c.p tag = 2 end
+        when nothing then record inner = record x = ~1 y = ~1 end tag = 0 end
+    end;
+
+let many = extent system.args > 5;
+let v = if many then variant none of V with ok end else variant point of V with record x = 3 y = 4 end end end;
+let o = if many then option nothing of O end else option some of O with record x = 5 y = 6 end end end;
+print(show(wrap(v)));
+let ps = twice(v);
+print(conv.int(extent ps) <> " " <> conv.int(ps[0].x + ps[1].y));
+print(show(wrapOption(o)));

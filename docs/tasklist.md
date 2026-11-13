@@ -50,28 +50,6 @@ does it.
 
 ---
 
-## A case's binder is boxed again when its body stores it
-
-**Problem.** The represent pass's slots step (docs/ir.md §8.3) remembers the box a record or variant was read from,
-so that storing the value into another slot reuses the box (boxes are immutable) rather than allocating another. A
-switch case whose binder takes a boxed payload binds the binder to the payload's box (`unboxBinder`), but the step
-decides the slots of a statement's bodies before the statement's own, so the case's body has already been rewritten
-by the time the box is remembered: storing the binder into a slot in the body (a field of a new record, an element of
-an array) makes a new box. A performance problem, not a wrong result. Both compilers do it.
-
-**Reproduce.** A switch over a variant whose case payload is a record, the case's body putting the binder in a new
-record; `--dump-after ir_represented` shows a `slot_box` of the binder in the body where the binder's box would serve.
-
-**Where to start.** `body` and `statement`'s `sSwitch` case in `questlang/ir/slots.mod.quest` (`variantCase`,
-`optionCase`, `unboxBinder`), and `body`, `variant_case`, `option_case`, `unbox_binder` in
-`bootstrap/python/quest/ir/slots.py`: bind each case's binder to its box before its body is decided. The IR and SSA
-goldens of the tests whose cases store their binders change.
-
-**Done when.** A stored binder reuses its payload's box in both compilers, the goldens show it, and the benchmarks
-(docs/benchmarks.md) are measured before and after.
-
----
-
 ## Quest isn't highlighted in JupyterLab's editor
 
 **Problem.** The Jupyter kernel ([jupyter-kernel.md](jupyter-kernel.md)) names a Pygments lexer, which nbconvert uses

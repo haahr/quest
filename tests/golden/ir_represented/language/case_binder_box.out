@@ -1,0 +1,130 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import system = "system" : System
+main {
+  let %1: Array(String) = member system.args @42:19
+  let %2: Int = prim extent(%1) @42:12
+  let many: Bool = prim >(%2, 5) @42:12
+  join k4(v: V) {
+    join k5(o: O) {
+      join inlined1(%3: Wrapped) {
+        let %4: P = record_field(%3, inner) via stored types @19:41
+        let %5: Int = record_field(%4, x) @19:41
+        let %6: String = call conv.int(%5) @19:32
+        let %7: P = record_field(%3, inner) via stored types @19:71
+        let %8: Int = record_field(%7, y) @19:71
+        let %9: String = call conv.int(%8) @19:62
+        let %10: Int = record_field(%3, tag) @19:101
+        let %11: String = call conv.int(%10) @19:92
+        let %12: String = prim <>(" ", %11) @19:85
+        let %13: String = prim <>(%9, %12) @19:62
+        let %14: String = prim <>(",", %13) @19:55
+        let %15: String = prim <>(%6, %14) @19:32
+        let %16: writer.T = member writer.output @18:45
+        let %17: String = prim <>(%15, "\n") @18:59
+        let %18: Ok = call writer.putString(%16, %17) @18:28
+        join inlined2(ps: Array(P)) {
+          let %19: Int = prim extent(ps) @47:16
+          let %20: String = call conv.int(%19) @47:7
+          let box: box(P) = index(ps, 0) @47:46
+          let %21: P = convert(box, slot_unbox)
+          let %22: Int = record_field(%21, x) @47:46
+          let box.1: box(P) = index(ps, 1) @47:56
+          let %23: P = convert(box.1, slot_unbox)
+          let %24: Int = record_field(%23, y) @47:56
+          let %25: Int = prim +(%22, %24) @47:46
+          let %26: String = call conv.int(%25) @47:37
+          let %27: String = prim <>(" ", %26) @47:30
+          let %28: String = prim <>(%20, %27) @47:7
+          let %29: writer.T = member writer.output @18:45
+          let %30: String = prim <>(%28, "\n") @18:59
+          let %31: Ok = call writer.putString(%29, %30) @18:28
+          join inlined3(%32: Wrapped) {
+            let %33: P = record_field(%32, inner) via stored types @19:41
+            let %34: Int = record_field(%33, x) @19:41
+            let %35: String = call conv.int(%34) @19:32
+            let %36: P = record_field(%32, inner) via stored types @19:71
+            let %37: Int = record_field(%36, y) @19:71
+            let %38: String = call conv.int(%37) @19:62
+            let %39: Int = record_field(%32, tag) @19:101
+            let %40: String = call conv.int(%39) @19:92
+            let %41: String = prim <>(" ", %40) @19:85
+            let %42: String = prim <>(%38, %41) @19:62
+            let %43: String = prim <>(",", %42) @19:55
+            let %44: String = prim <>(%35, %43) @19:32
+            let %45: writer.T = member writer.output @18:45
+            let %46: String = prim <>(%44, "\n") @18:59
+            let %47: Ok = call writer.putString(%45, %46) @18:28
+          } in {
+            switch tag(o) via proxy { @37:5
+              case some (c: Tuple p: P end) via (proxy): {
+                let box.2: box(P) = tuple_field(c, 0) via proxy @38:46
+                let %48: P = convert(box.2, slot_unbox)
+                let box.3: box(Record inner: P tag: Int end) = record(inner = box.2, tag = 2) @38:31
+                let %49: Record inner: P tag: Int end = convert(box.3, slot_unbox)
+                jump inlined3(%49) @37:5
+              }
+              case nothing: {
+                let box.4: box(Record x: Int y: Int end) = record(x = -1, y = -1) @39:42
+                let %50: Record x: Int y: Int end = convert(box.4, slot_unbox)
+                let box.5: box(Record inner: P tag: Int end) = record(inner = box.4, tag = 0) @39:27
+                let %51: Record inner: P tag: Int end = convert(box.5, slot_unbox)
+                jump inlined3(%51) @37:5
+              }
+            }
+          }
+        } in {
+          switch tag(v) { @30:5
+            case point (p_box: box(P)): {
+              let p: P = convert(p_box, slot_unbox)
+              let %52: Array(P) = array(p_box, p_box) @31:32
+              jump inlined2(%52) @30:5
+            }
+            case none: {
+              let %53: Array(P) = array() @32:24
+              jump inlined2(%53) @30:5
+            }
+          }
+        }
+      } in {
+        switch tag(v) { @23:5
+          case point (p_box.1: box(P)): {
+            let p.1: P = convert(p_box.1, slot_unbox)
+            let box.6: box(Record inner: P tag: Int end) = record(inner = p_box.1, tag = 1) @24:32
+            let %54: Record inner: P tag: Int end = convert(box.6, slot_unbox)
+            jump inlined1(%54) @23:5
+          }
+          case none: {
+            let box.7: box(Record x: Int y: Int end) = record(x = 0, y = 0) @25:39
+            let %55: Record x: Int y: Int end = convert(box.7, slot_unbox)
+            let box.8: box(Record inner: P tag: Int end) = record(inner = box.7, tag = 0) @25:24
+            let %56: Record inner: P tag: Int end = convert(box.8, slot_unbox)
+            jump inlined1(%56) @23:5
+          }
+        }
+      }
+    } in {
+      if many { @44:9
+        let %57: O = option(nothing) @44:22
+        jump k5(%57) @44:9
+      } else {
+        let p_box.2: box(Record x: Int y: Int end) = record(x = 5, y = 6) @44:73
+        let p.2: Record x: Int y: Int end = convert(p_box.2, slot_unbox)
+        let %58: Tuple p: P end = tuple(p_box.2) @44:51
+        let %59: O = option(some, %58) @44:51
+        jump k5(%59) @44:9
+      }
+    }
+  } in {
+    if many { @43:9
+      let %60: V = variant(none, ok) @43:22
+      jump k4(%60) @43:9
+    } else {
+      let box.9: box(Record x: Int y: Int end) = record(x = 3, y = 4) @43:81
+      let %61: Record x: Int y: Int end = convert(box.9, slot_unbox)
+      let %62: V = variant(point, box.9) @43:57
+      jump k4(%62) @43:9
+    }
+  }
+}
+

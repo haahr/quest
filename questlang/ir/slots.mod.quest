@@ -501,13 +501,33 @@ export
             else array of s end
         end
 
+    (* How a switch reads an option's tag and payload, and each case's binder
+     * of a boxed payload bound to the payload's box (from which a let at the
+     * case's start reads the value). Decided before the cases' bodies, so that
+     * st remembers the binder's box while they are: a body storing the binder
+     * into another slot reuses the box rather than making one *)
+    let switchCases(st: SlotState s: Stmt): Ok =
+        case s
+            when sSwitch with x then
+                let ts = tagShape(typeOf(x.value))
+                if layout.ownView(shapes.shape(typeOf(x.value))) then
+                    (* A bounded type parameter's value: its payloads are
+                     * read through the view map, converted, as values *)
+                    ok
+                elsif maybe.isSome(:Shape ts) andif shapes.kindIs(maybe.unwrap(:Shape ts) shapes.shapeOption) then
+                    x.access := optionTagAccess(maybe.unwrap(:Shape ts))
+                    for i = 0 upto {extent x.cases - 1} do optionCase(st maybe.unwrap(:Shape ts) x.cases[i]) end
+                elsif maybe.isSome(:Shape ts) then
+                    for i = 0 upto {extent x.cases - 1} do variantCase(st maybe.unwrap(:Shape ts) x.cases[i]) end
+                end
+            else ok
+        end
+
     (* The statements that replace s (a let's are letStatement's): s, after
      * the lets that box the records and variants it stores into slots (a
      * boxed variable's initial or assigned value, a store's value, a raise's
      * payload, an echoed value); with how a store writes a tuple's component
-     * and a switch reads an option's tag and payload decided, and a switch
-     * case's binder of a boxed payload bound to the payload's box (from
-     * which a let at the case's start reads the value) *)
+     * decided; a switch's are switchCases' *)
     let statement(st: SlotState s: Stmt): Array(Stmt) =
         begin
             let before = vector.new(:Stmt)
@@ -541,18 +561,7 @@ export
                         x.access := tupleAccess(bs x.index false)
                     end
                 when sStoreElement with x then x.value := slotIfBoxed(st x.value shapes.shape(typeOf(x.base)).elementShape before)
-                when sSwitch with x then
-                    let ts = tagShape(typeOf(x.value))
-                    if layout.ownView(shapes.shape(typeOf(x.value))) then
-                        (* A bounded type parameter's value: its payloads are
-                         * read through the view map, converted, as values *)
-                        ok
-                    elsif maybe.isSome(:Shape ts) andif shapes.kindIs(maybe.unwrap(:Shape ts) shapes.shapeOption) then
-                        x.access := optionTagAccess(maybe.unwrap(:Shape ts))
-                        for i = 0 upto {extent x.cases - 1} do optionCase(st maybe.unwrap(:Shape ts) x.cases[i]) end
-                    elsif maybe.isSome(:Shape ts) then
-                        for i = 0 upto {extent x.cases - 1} do variantCase(st maybe.unwrap(:Shape ts) x.cases[i]) end
-                    end
+                when sSwitch then ok (* switchCases, before its cases' bodies *)
                 when sRaise with x then
                     if maybe.isSome(:Atom x.payload) then x.payload := optSlotIfBoxed(st x.payload exceptionPayload(typeOf(x.exc)) before) end
                 when sEcho with x then x.value := slotIfBoxed(st x.value maybe.some(:Shape shapes.shape(x.type)) before)
@@ -567,12 +576,14 @@ export
         end
 
     (* Decides the slots of b's statements, in place: those of the bodies in
-     * each statement first, then the statement's own *)
+     * each statement first, then the statement's own, but a switch's cases
+     * before their bodies *)
     let rec body(st: SlotState b: Body): Ok =
         begin
             let statements = vector.new(:Stmt)
             for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
                 let s = vector.get(:Stmt b.statements i)
+                switchCases(st s)
                 let bodies = walk.statementBodies(s)
                 for j = 0 upto {extent bodies - 1} do body(st bodies[j]) end
                 let made = statement(st s)

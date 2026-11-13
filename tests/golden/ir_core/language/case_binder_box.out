@@ -1,0 +1,132 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import system = "system" : System
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @18:45
+      let %2: String = prim <>(s, "\n") @18:59
+      let %3: Ok = call writer.putString(%1, %2) @18:28
+      return %3
+    }
+  }
+  funs {
+    fun show(w: Wrapped): String {
+      let %4: P = record_field(w, inner) @19:41
+      let %5: Int = record_field(%4, x) @19:41
+      let %6: String = call conv.int(%5) @19:32
+      let %7: P = record_field(w, inner) @19:71
+      let %8: Int = record_field(%7, y) @19:71
+      let %9: String = call conv.int(%8) @19:62
+      let %10: Int = record_field(w, tag) @19:101
+      let %11: String = call conv.int(%10) @19:92
+      let %12: String = prim <>(" ", %11) @19:85
+      let %13: String = prim <>(%9, %12) @19:62
+      let %14: String = prim <>(",", %13) @19:55
+      let %15: String = prim <>(%6, %14) @19:32
+      return %15
+    }
+  }
+  funs {
+    fun wrap(v: V): Wrapped {
+      join k1(r: Wrapped) {
+        return r
+      } in {
+        switch tag(v) { @23:5
+          case point (p: P): {
+            let %16: Record inner: P tag: Int end = record(inner = p, tag = 1) @24:32
+            jump k1(%16) @23:5
+          }
+          case none: {
+            let %17: Record x: Int y: Int end = record(x = 0, y = 0) @25:39
+            let %18: Record inner: P tag: Int end = record(inner = %17, tag = 0) @25:24
+            jump k1(%18) @23:5
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun twice(v.1: V): Array(P) {
+      join k2(r.1: Array(P)) {
+        return r.1
+      } in {
+        switch tag(v.1) { @30:5
+          case point (p.1: P): {
+            let %19: Array(P) = array(p.1, p.1) @31:32
+            jump k2(%19) @30:5
+          }
+          case none: {
+            let %20: Array(P) = array() @32:24
+            jump k2(%20) @30:5
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun wrapOption(o: O): Wrapped {
+      join k3(r.2: Wrapped) {
+        return r.2
+      } in {
+        switch tag(o) { @37:5
+          case some (c: Tuple p: P end): {
+            let %21: P = tuple_field(c, 0) @38:46
+            let %22: Record inner: P tag: Int end = record(inner = %21, tag = 2) @38:31
+            jump k3(%22) @37:5
+          }
+          case nothing: {
+            let %23: Record x: Int y: Int end = record(x = -1, y = -1) @39:42
+            let %24: Record inner: P tag: Int end = record(inner = %23, tag = 0) @39:27
+            jump k3(%24) @37:5
+          }
+        }
+      }
+    }
+  }
+  let %25: Array(String) = member system.args @42:19
+  let %26: Int = prim extent(%25) @42:12
+  let many: Bool = prim >(%26, 5) @42:12
+  join k4(v.2: V) {
+    join k5(o.1: O) {
+      let %27: Wrapped = call wrap(v.2) @45:12
+      let %28: String = call show(%27) @45:7
+      do call print(%28) @45:1
+      let ps: Array(P) = call twice(v.2) @46:10
+      let %29: Int = prim extent(ps) @47:16
+      let %30: String = call conv.int(%29) @47:7
+      let %31: P = index(ps, 0) @47:46
+      let %32: Int = record_field(%31, x) @47:46
+      let %33: P = index(ps, 1) @47:56
+      let %34: Int = record_field(%33, y) @47:56
+      let %35: Int = prim +(%32, %34) @47:46
+      let %36: String = call conv.int(%35) @47:37
+      let %37: String = prim <>(" ", %36) @47:30
+      let %38: String = prim <>(%30, %37) @47:7
+      do call print(%38) @47:1
+      let %39: Wrapped = call wrapOption(o.1) @48:12
+      let %40: String = call show(%39) @48:7
+      do call print(%40) @48:1
+    } in {
+      if many { @44:9
+        let %41: O = option(nothing) @44:22
+        jump k5(%41) @44:9
+      } else {
+        let p.2: Record x: Int y: Int end = record(x = 5, y = 6) @44:73
+        let %42: Tuple p: P end = tuple(p.2) @44:51
+        let %43: O = option(some, %42) @44:51
+        jump k5(%43) @44:9
+      }
+    }
+  } in {
+    if many { @43:9
+      let %44: V = variant(none, ok) @43:22
+      jump k4(%44) @43:9
+    } else {
+      let %45: Record x: Int y: Int end = record(x = 3, y = 4) @43:81
+      let %46: V = variant(point, %45) @43:57
+      jump k4(%46) @43:9
+    }
+  }
+}
+

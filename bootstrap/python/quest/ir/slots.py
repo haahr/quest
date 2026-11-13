@@ -169,12 +169,38 @@ class _Slots:
         return self.slot(a, before) if _boxed(s) else a
 
     def body(self, body: ir.Body) -> None:
+        """Decides the slots of body's statements, in place: those of the
+        bodies in each statement first, then the statement's own, but a
+        switch's cases before their bodies."""
         statements: list = []
         for s in body.statements:
+            self.switch_cases(s)
             for b in statement_bodies(s):
                 self.body(b)
             statements.extend(self.statement(s))
         body.statements = statements
+
+    def switch_cases(self, s) -> None:
+        """How a switch reads an option's tag and payload, and each case's
+        binder of a boxed payload bound to the payload's box (from which a let
+        at the case's start reads the value). Decided before the cases' bodies,
+        so that the binder's box is remembered while they are: a body storing
+        the binder into another slot reuses the box rather than making one."""
+        match s:
+            case ir.Switch(value=value, cases=cases):
+                ts = _tag_shape(_type_of(value))
+                if own_view(shape(_type_of(value))):
+                    # A bounded type parameter's value (at its own view): its
+                    # payloads are read through the view map, converted, as
+                    # values
+                    pass
+                elif ts is not None and ts.kind == "option":
+                    s.access = option_tag_access(ts)
+                    for c in cases:
+                        self.option_case(ts, c)
+                elif ts is not None:
+                    for c in cases:
+                        self.variant_case(ts, c)
 
     def statement(self, s) -> list:
         before: list = []
@@ -205,20 +231,6 @@ class _Slots:
                 s.access = tuple_access(ts, index)
             case ir.StoreElement(base=base):
                 s.value = self.slot_if_boxed(s.value, shape(_type_of(base)).element, before)
-            case ir.Switch(value=value, cases=cases):
-                ts = _tag_shape(_type_of(value))
-                if own_view(shape(_type_of(value))):
-                    # A bounded type parameter's value (at its own view): its
-                    # payloads are read through the view map, converted, as
-                    # values
-                    pass
-                elif ts is not None and ts.kind == "option":
-                    s.access = option_tag_access(ts)
-                    for c in cases:
-                        self.option_case(ts, c)
-                elif ts is not None:
-                    for c in cases:
-                        self.variant_case(ts, c)
             case ir.Raise(exception=e, payload=p) if p is not None:
                 s.payload = self.slot_if_boxed(p, _exception_payload(_type_of(e)), before)
             case ir.Echo(value=value, type=t):

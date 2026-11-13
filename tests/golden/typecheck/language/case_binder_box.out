@@ -1,0 +1,233 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+        (TypedImportItem ('conv') : 'Conv')
+        (TypedImportItem ('system') : 'System')
+      ))
+    (TypedLetType 'P' :kind TYPE)
+    (TypedLetType 'V' :kind TYPE)
+    (TypedLetType 'O' :kind TYPE)
+    (TypedLetType 'Wrapped' :kind TYPE)
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'show' :type Fun(w: Wrapped): String
+      :value (TypedFun :params (('w' : Wrapped)) :type Fun(w: Wrapped): String
+        :body (TypedInfix '<>' :type String
+          :left (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'x' :type Int
+                :target (TypedSelect 'inner' :type P
+                  :target (TypedVar 'w' :type Wrapped)))
+            ))
+          :right (TypedInfix '<>' :type String
+            :left (TypedString ',' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedSelect 'y' :type Int
+                    :target (TypedSelect 'inner' :type P
+                      :target (TypedVar 'w' :type Wrapped)))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedSelect 'tag' :type Int
+                      :target (TypedVar 'w' :type Wrapped))
+                  ))))))))
+    (TypedLetValue 'wrap' :type Fun(v: V): Wrapped
+      :value (TypedFun :params (('v' : V)) :type Fun(v: V): Wrapped
+        :body (TypedCase :type Wrapped
+          :target (TypedVar 'v' :type V)
+          :branches (
+            (TypedCaseBranch tags=(point) :binder 'p'
+              :body (TypedRecord :type Record inner: P tag: Int end
+                :fields (
+                  (TypedRecordField 'inner'
+                    :value (TypedVar 'p' :type P))
+                  (TypedRecordField 'tag'
+                    :value (TypedInt 1 :type Int))
+                )))
+            (TypedCaseBranch tags=(none)
+              :body (TypedRecord :type Record inner: P tag: Int end
+                :fields (
+                  (TypedRecordField 'inner'
+                    :value (TypedRecord :type Record x: Int y: Int end
+                      :fields (
+                        (TypedRecordField 'x'
+                          :value (TypedInt 0 :type Int))
+                        (TypedRecordField 'y'
+                          :value (TypedInt 0 :type Int))
+                      )))
+                  (TypedRecordField 'tag'
+                    :value (TypedInt 0 :type Int))
+                )))
+          ))))
+    (TypedLetValue 'twice' :type Fun(v: V): Array(P)
+      :value (TypedFun :params (('v' : V)) :type Fun(v: V): Array(P)
+        :body (TypedCase :type Array(P)
+          :target (TypedVar 'v' :type V)
+          :branches (
+            (TypedCaseBranch tags=(point) :binder 'p'
+              :body (TypedArray :type Array(P)
+                :elements (
+                  (TypedVar 'p' :type P)
+                  (TypedVar 'p' :type P)
+                )))
+            (TypedCaseBranch tags=(none)
+              :body (TypedArray :type Array(P)
+                :elements ()))
+          ))))
+    (TypedLetValue 'wrapOption' :type Fun(o: O): Wrapped
+      :value (TypedFun :params (('o' : O)) :type Fun(o: O): Wrapped
+        :body (TypedCase :type Wrapped
+          :target (TypedVar 'o' :type O)
+          :branches (
+            (TypedCaseBranch tags=(some) :binder 'c'
+              :body (TypedRecord :type Record inner: P tag: Int end
+                :fields (
+                  (TypedRecordField 'inner'
+                    :value (TypedSelect 'p' :type P
+                      :target (TypedVar 'c' :type Tuple p: P end)))
+                  (TypedRecordField 'tag'
+                    :value (TypedInt 2 :type Int))
+                )))
+            (TypedCaseBranch tags=(nothing)
+              :body (TypedRecord :type Record inner: P tag: Int end
+                :fields (
+                  (TypedRecordField 'inner'
+                    :value (TypedRecord :type Record x: Int y: Int end
+                      :fields (
+                        (TypedRecordField 'x'
+                          :value (TypedInt -1 :type Int))
+                        (TypedRecordField 'y'
+                          :value (TypedInt -1 :type Int))
+                      )))
+                  (TypedRecordField 'tag'
+                    :value (TypedInt 0 :type Int))
+                )))
+          ))))
+    (TypedLetValue 'many' :type Bool
+      :value (TypedInfix '>' :type Bool
+        :left (TypedApp :type Int
+          :func (TypedTypeApp [String] :type Fun(a: Array(String)): Int
+            :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+          :args (
+            (TypedSelect 'args' :type Array(String)
+              :target (TypedVar 'system' :type Module 'system'))
+          ))
+        :right (TypedInt 5 :type Int)))
+    (TypedLetValue 'v' :type V
+      :value (TypedIf :type V
+        :cond (TypedVar 'many' :type Bool)
+        :then (TypedVariant 'none' :type V
+          :payload (TypedOk))
+        :else (TypedVariant 'point' :type V
+          :payload (TypedRecord :type Record x: Int y: Int end
+            :fields (
+              (TypedRecordField 'x'
+                :value (TypedInt 3 :type Int))
+              (TypedRecordField 'y'
+                :value (TypedInt 4 :type Int))
+            )))))
+    (TypedLetValue 'o' :type O
+      :value (TypedIf :type O
+        :cond (TypedVar 'many' :type Bool)
+        :then (TypedOption 'nothing' :type O)
+        :else (TypedOption 'some' :type O
+          :payload (TypedTuple :type Tuple p: P end
+            :elements (
+              (TypedRecord :type Record x: Int y: Int end
+                :fields (
+                  (TypedRecordField 'x'
+                    :value (TypedInt 5 :type Int))
+                  (TypedRecordField 'y'
+                    :value (TypedInt 6 :type Int))
+                ))
+            )))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'show' :type Fun(w: Wrapped): String)
+            :args (
+              (TypedApp :type Wrapped
+                :func (TypedVar 'wrap' :type Fun(v: V): Wrapped)
+                :args (
+                  (TypedVar 'v' :type V)
+                ))
+            ))
+        )))
+    (TypedLetValue 'ps' :type Array(P)
+      :value (TypedApp :type Array(P)
+        :func (TypedVar 'twice' :type Fun(v: V): Array(P))
+        :args (
+          (TypedVar 'v' :type V)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedTypeApp [Record x: Int y: Int end] :type Fun(a: Array(Record x: Int y: Int end)): Int
+                    :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                  :args (
+                    (TypedVar 'ps' :type Array(P))
+                  ))
+              ))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' ' :type String)
+              :right (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedInfix '+' :type Int
+                    :left (TypedSelect 'x' :type Int
+                      :target (TypedIndex :type P
+                        :target (TypedVar 'ps' :type Array(P))
+                        :index (TypedInt 0 :type Int)))
+                    :right (TypedSelect 'y' :type Int
+                      :target (TypedIndex :type P
+                        :target (TypedVar 'ps' :type Array(P))
+                        :index (TypedInt 1 :type Int))))
+                ))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'show' :type Fun(w: Wrapped): String)
+            :args (
+              (TypedApp :type Wrapped
+                :func (TypedVar 'wrapOption' :type Fun(o: O): Wrapped)
+                :args (
+                  (TypedVar 'o' :type O)
+                ))
+            ))
+        )))
+  ))
