@@ -1,0 +1,62 @@
+(* Quest Self-Hosted Compiler: The Driver's Command Line Interface
+ *
+ * driver/main's command line: the phases it can stop after or dump (each IR
+ * stage's, the SSA's, the backends'), its usage, and its options, parsed from
+ * system.args when the module is initialized, with the bootstrap's spellings
+ * (bootstrap/python/quest_driver.py). An error in them prints the usage and
+ * exits with 2. *)
+
+interface Options
+import
+    questlang/codegen/choice : questlang/codegen/Choice
+    util/maybe : util/Maybe
+export
+    (* The IR's stages (docs/ir.md section 9) the driver dumps (ir_STAGE) and
+     * runs (run_ir_STAGE); every phase it knows; the SSA's phases; and the
+     * backends' *)
+    irStages: Array(String)
+    phases: Array(String)
+    ssaPhases: Array(String)
+    cPhases: Array(String)
+    isOneOf(s: String xs: Array(String)): Bool
+    (* Whether the command is `compile`, and the program's name in errors that
+     * are not diagnostics *)
+    compileMode: Bool
+    programName: String
+    (* Prints message and the usage to standard error, and exits with 2 *)
+    usage(message: String): Ok
+    (* The command line, parsed: the phase to stop after (and whether one was
+     * given), the program (a file, standard input, -e's code, or the REPL's
+     * inputs, as file names it), the options of output and dumps, of the
+     * build, and of running, and the program's arguments *)
+    Def T = Tuple
+        stopAfter: String
+        file: String
+        fromFile: Bool
+        fromStdin: Bool
+        code: maybe.T(String)
+        showOffsets: Bool
+        showValues: Bool
+        echo: Bool
+        printResult: Bool
+        stopGiven: Bool
+        buildDir: maybe.T(String)
+        output: maybe.T(String)
+        verbose: Bool
+        jobs: Int
+        wholeProgram: Bool
+        backends: choice.T
+        expectedExit: Int
+        dumpAfter: Array(String)
+        extraObjects: Array(String)
+        includePaths: Array(String)
+        interactive: Bool
+        kernel: Bool
+        jit: Bool
+        programArgs: Array(String)
+        compileOnly: Bool
+        emitC: Bool
+        nogc: Bool
+    end
+    options: T
+end

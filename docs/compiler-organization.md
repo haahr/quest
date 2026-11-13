@@ -133,6 +133,7 @@ questlang/
 │
 └── driver/                  # Compiler driver (bootstrap pipeline and quest/__main__)
     ├── main                 # Main routine: every phase, -e, -i, and the bootstrap's compiling options
+    ├── options              # The command line: its phases, usage, and options
     ├── whole                # A whole program: its modules merged into one unit
     ├── repl                 # The REPL: input completeness, rollback, the loop over io/readline
     ├── binaryerrors         # A compiled program's error output made a diagnostic
