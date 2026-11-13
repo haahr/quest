@@ -22,7 +22,7 @@ the four disagree, this plan holds.
 
 §1 lists the decisions and whose they are. §2 to §6 are the design. §7 is what is given up. §8 has the steps, and
 §9 the results of step 0's probes (2026-11-13), on which the owner confirmed decisions 1 and 2, and §10 step 1's
-census of what the compiler uses. Steps 0 to 4 are done, and step 8's native half; step 5 is next.
+census of what the compiler uses. Steps 0 to 5 are done, and step 8's native half; step 6 is next.
 
 ---
 
@@ -808,6 +808,20 @@ only when the backend's files differ, until its time is known.
 5. **Closures:** the closure types, both entries, the closure signature, the call through a closure with its test
    and its fallback, static closures.
    *Done when* the higher-order goldens that are not polymorphic pass.
+   *Done 2026-11-13:*
+   - **Entries:** every function's native entry takes its closure first, as `(ref $clos)`. A direct call passes the
+     known closure when the function captures something, else a shared closure it never reads.
+   - **Types:** `$closU(n)` and `$closS` are made for each signature, and each function's own final type adds its
+     captures as mutable fields, so that a recursive value's (`sLetRec`) are filled in after it is made.
+   - **Closures:** a function that captures nothing has a static closure, an immutable global. Uniform entries
+     unbox, call, and box, and are the native entry itself when the signature is uniform.
+   - **Calls through a closure** test for `$closS` and call its native entry, else box and call the uniform one,
+     as tail calls where they are in tail position.
+   - **Built-in operators as values** (`{+}`) are static closures over functions of their own, `Int`'s now and
+     `Real`'s with step 8.
+   - **Run goldens:** the modes pass 44, the same in both engines; 253 are pending, none under step 5.
+   - **Its own test:** `tests/self-hosted/wasm/closures.quest` is checked in both engines against the arm64
+     backend, a tail call through a closure a million times around among it.
 6. **The runtime, first part,** which the census makes the whole of this milestone's runtime (§10.1): descriptors
    built by a unit's initializer within §2.11's limits, instantiation and its memoization, `is` at a type
    parameter, the identity hash, printing as the REPL echoes, exceptions with the uncaught report.

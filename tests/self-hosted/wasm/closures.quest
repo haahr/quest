@@ -1,0 +1,34 @@
+(* The wasm backend's closures (docs/wasm-plan.md, step 5): closures that
+ * capture and closures that do not, called through their native entries and,
+ * at a type that boxes, their uniform ones; functions passed, returned, and
+ * composed; a tail call through a closure a million times around; and
+ * built-in operators as values. *)
+let say(s: String): Ok = writer.putString(writer.output s <> "\n");
+let apply(f: All(x: Int) Int x: Int): Int = f(x);
+let rec applyTwice(f: All(x: Int) Int x: Int n: Int): Int = if n is 0 then x else applyTwice(f f(x) n - 1) end;
+let adder(k: Int): All(x: Int) Int = fun(x: Int): Int x + k;
+let add5 = adder(5);
+let add7 = adder(7);
+say(conv.int(apply(add5 10)) <> " " <> conv.int(apply(add7 10)) <> " " <> conv.int(applyTwice(add5 0 1000000)));
+let names = array of "a" "bb" "ccc" end;
+let total(f: All(s: String) Int): Int =
+    begin
+        let var t = 0
+        for i = 0 upto extent names - 1 do t := t + f(names[i]) end
+        t
+    end;
+say(conv.int(total(fun(s: String): Int string.length(s))));
+let compose(f: All(x: Int) Int g: All(x: Int) Int): All(x: Int) Int = fun(x: Int): Int f(g(x));
+say(conv.int(compose(add5 add7)(1)) <> " " <> conv.int(compose(adder(100) fun(x: Int): Int x * 2)(3)));
+let rec countDown(n: Int k: All(m: Int) Int): Int = if n is 0 then k(0) else countDown(n - 1 k) end;
+say(conv.int(countDown(1000000 fun(m: Int): Int m + 1)));
+let pick(b: Bool): All(s: String) String =
+    if b then fun(s: String): String s <> "!" else fun(s: String): String "<" <> s <> ">" end;
+say(pick(true)("yes") <> pick(false)("no"));
+let fold(f: All(a: Int b: Int) Int init: Int xs: Array(Int)): Int =
+    begin
+        let var r = init
+        for i = 0 upto extent xs - 1 do r := f(r xs[i]) end
+        r
+    end;
+say(conv.int(fold({+} 0 array of 1 2 3 4 end)) <> " " <> conv.int(fold({-} 100 array of 1 2 3 4 end)));

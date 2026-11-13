@@ -32,7 +32,7 @@
   (type (func (param eqref i64 eqref i64 i64) (result eqref)))
   (type (func (param eqref eqref) (result i32)))
   (type (func))
-  (type (func (param i64 i64) (result i64 i64)))
+  (type (func (param (ref $clos) i64 i64) (result i64 i64)))
   (type (func (param eqref) (result (ref $option))))
   (import "quest.runtime" "putString" (func $putString (type 16)))
   (import "quest.runtime" "putChar" (func $putChar (type 17)))
@@ -55,10 +55,11 @@
   (import "quest.runtime" "stringSetSub" (func $stringSetSub (type 28)))
   (import "quest.runtime" "stringEqual" (func $stringEqual (type 29)))
   (import "quest.runtime" "error" (tag $error (type 21)))
+  (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $divide.1 (mut eqref) ref.null none)
   (global $dict (ref $dict) i32.const 0 i32.const 1 i32.const 2 array.new_fixed $i32s 3 struct.new $dict)
   (export "_start" (func $_start))
-  (func $divide (type 31) (param $n i64) (param $d i64) (result i64 i64)
+  (func $divide (type 31) (param $closure (ref $clos)) (param $n i64) (param $d i64) (result i64 i64)
     (local $v i32)
     (local $v.1 i64)
     (local $v.2 i64)
@@ -88,6 +89,7 @@
       local.get $d
       i64.sub
       local.set $v.3
+      global.get $noClosure
       local.get $v.3
       local.get $d
       call $divide
@@ -1651,14 +1653,15 @@
     local.get $v.90
     call $putString
     local.set $v.91
-    i32.const 0
-    struct.new $clos
+    global.get $noClosure
     global.set $divide.1
+    global.get $noClosure
     i64.const 47
     i64.const 5
     call $divide
     local.set $qr.1
     local.set $qr
+    global.get $noClosure
     i64.const 100
     i64.const 7
     call $divide

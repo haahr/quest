@@ -53,6 +53,7 @@
   (import "quest.runtime" "stringSetSub" (func $stringSetSub (type 28)))
   (import "quest.runtime" "stringEqual" (func $stringEqual (type 29)))
   (import "quest.runtime" "error" (tag $error (type 21)))
+  (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (export "_start" (func $_start))
   (func $main (type 30)
     (local $v eqref)

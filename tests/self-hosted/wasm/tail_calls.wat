@@ -32,8 +32,18 @@
   (type (func (param eqref i64 eqref i64 i64) (result eqref)))
   (type (func (param eqref eqref) (result i32)))
   (type (func))
-  (type (func (param i64 i64) (result i64)))
-  (type (func (param i64) (result i32)))
+  (type (func (param (ref $clos) i64 i64) (result i64)))
+  (type (func (param (ref $clos) i64) (result i32)))
+  (type (func (param (ref $clos) eqref eqref) (result eqref)))
+  (type $closU2 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 33)))))
+  (type (sub $closU2 (struct (field $hash (mut i32)) (field $uniform (ref 33)) (field $native (ref 31)))))
+  (type $sum.closure (sub final 35 (struct (field $hash (mut i32)) (field $uniform (ref 33)) (field $native (ref 31)))))
+  (type (func (param (ref $clos) eqref) (result eqref)))
+  (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 37)))))
+  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 37)) (field $native (ref 32)))))
+  (type $isEven.closure (sub final 39 (struct (field $hash (mut i32)) (field $uniform (ref 37)) (field $native (ref 32)))))
+  (type $isOdd.closure (sub final 39 (struct (field $hash (mut i32)) (field $uniform (ref 37)) (field $native (ref 32)))))
+  (type $count.closure (sub final 35 (struct (field $hash (mut i32)) (field $uniform (ref 33)) (field $native (ref 31)))))
   (import "quest.runtime" "putString" (func $putString (type 16)))
   (import "quest.runtime" "putChar" (func $putChar (type 17)))
   (import "quest.runtime" "concat" (func $concat (type 16)))
@@ -55,12 +65,18 @@
   (import "quest.runtime" "stringSetSub" (func $stringSetSub (type 28)))
   (import "quest.runtime" "stringEqual" (func $stringEqual (type 29)))
   (import "quest.runtime" "error" (tag $error (type 21)))
+  (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
+  (global $sum.static (ref $sum.closure) i32.const 0 ref.func $sum.uniform ref.func $sum struct.new $sum.closure)
   (global $sum.1 (mut eqref) ref.null none)
+  (global $isEven.static (ref $isEven.closure) i32.const 0 ref.func $isEven.uniform ref.func $isEven struct.new $isEven.closure)
   (global $isEven.1 (mut eqref) ref.null none)
+  (global $isOdd.static (ref $isOdd.closure) i32.const 0 ref.func $isOdd.uniform ref.func $isOdd struct.new $isOdd.closure)
   (global $isOdd.1 (mut eqref) ref.null none)
+  (global $count.static (ref $count.closure) i32.const 0 ref.func $count.uniform ref.func $count struct.new $count.closure)
   (global $count.1 (mut eqref) ref.null none)
   (export "_start" (func $_start))
-  (func $sum (type 31) (param $n i64) (param $acc i64) (result i64)
+  (elem declare func $sum.uniform $sum $isEven.uniform $isEven $isOdd.uniform $isOdd $count.uniform $count)
+  (func $sum (type 31) (param $closure (ref $clos)) (param $n i64) (param $acc i64) (result i64)
     (local $v i32)
     (local $v.1 i64)
     (local $v.2 i64)
@@ -81,13 +97,14 @@
       local.get $n
       i64.add
       local.set $v.2
+      global.get $noClosure
       local.get $v.1
       local.get $v.2
       return_call $sum
     end
     unreachable
   )
-  (func $isEven (type 32) (param $n i64) (result i32)
+  (func $isEven (type 32) (param $closure (ref $clos)) (param $n i64) (result i32)
     (local $v i32)
     (local $v.1 i64)
     local.get $n
@@ -103,12 +120,13 @@
       i64.const 1
       i64.sub
       local.set $v.1
+      global.get $noClosure
       local.get $v.1
       return_call $isOdd
     end
     unreachable
   )
-  (func $isOdd (type 32) (param $n i64) (result i32)
+  (func $isOdd (type 32) (param $closure (ref $clos)) (param $n i64) (result i32)
     (local $v i32)
     (local $v.1 i64)
     local.get $n
@@ -124,12 +142,13 @@
       i64.const 1
       i64.sub
       local.set $v.1
+      global.get $noClosure
       local.get $v.1
       return_call $isEven
     end
     unreachable
   )
-  (func $count (type 31) (param $n i64) (param $acc i64) (result i64)
+  (func $count (type 31) (param $closure (ref $clos)) (param $n i64) (param $acc i64) (result i64)
     (local $v i64)
     (local $v.1 i32)
     (local $step i64)
@@ -199,6 +218,7 @@
         i64.const 1
         i64.add
         local.set $v.4
+        global.get $noClosure
         local.get $v.3
         local.get $v.4
         return_call $count
@@ -237,18 +257,15 @@
     (local $v.27 eqref)
     (local $v.28 eqref)
     (local $v.29 eqref)
-    i32.const 0
-    struct.new $clos
+    global.get $sum.static
     global.set $sum.1
-    i32.const 0
-    struct.new $clos
+    global.get $isEven.static
     global.set $isEven.1
-    i32.const 0
-    struct.new $clos
+    global.get $isOdd.static
     global.set $isOdd.1
-    i32.const 0
-    struct.new $clos
+    global.get $count.static
     global.set $count.1
+    global.get $noClosure
     i64.const 1000000
     i64.const 0
     call $sum
@@ -272,6 +289,7 @@
     local.get $v.3
     call $putString
     local.set $v.4
+    global.get $noClosure
     i64.const 10
     i64.const 0
     call $sum
@@ -295,6 +313,7 @@
     local.get $v.8
     call $putString
     local.set $v.9
+    global.get $noClosure
     i64.const 1000001
     call $isEven
     local.set $v.10
@@ -317,6 +336,7 @@
     local.get $v.13
     call $putString
     local.set $v.14
+    global.get $noClosure
     i64.const 7
     call $isOdd
     local.set $v.15
@@ -339,6 +359,7 @@
     local.get $v.18
     call $putString
     local.set $v.19
+    global.get $noClosure
     i64.const 3000000
     i64.const 0
     call $count
@@ -362,6 +383,7 @@
     local.get $v.23
     call $putString
     local.set $v.24
+    global.get $noClosure
     i64.const 10
     i64.const 0
     call $count
@@ -394,6 +416,38 @@
       return
     end
     call $uncaught
+  )
+  (func $sum.uniform (type 33) (param $closure (ref $clos)) (param $a0 eqref) (param $a1 eqref) (result eqref)
+    local.get $closure
+    local.get $a0
+    call $unboxInt
+    local.get $a1
+    call $unboxInt
+    call $sum
+    call $boxInt
+  )
+  (func $isEven.uniform (type 37) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+    local.get $closure
+    local.get $a0
+    call $unboxInt
+    call $isEven
+    ref.i31
+  )
+  (func $isOdd.uniform (type 37) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+    local.get $closure
+    local.get $a0
+    call $unboxInt
+    call $isOdd
+    ref.i31
+  )
+  (func $count.uniform (type 33) (param $closure (ref $clos)) (param $a0 eqref) (param $a1 eqref) (result eqref)
+    local.get $closure
+    local.get $a0
+    call $unboxInt
+    local.get $a1
+    call $unboxInt
+    call $count
+    call $boxInt
   )
   (data $strings "int.error/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/tail_calls.quest:11:24\0a\0a\0a\0a\0a\0a")
 )

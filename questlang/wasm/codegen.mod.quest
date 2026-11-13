@@ -58,6 +58,20 @@ export
         strings: stringBuilder.T
         names: hashMap.T(String Int)
         dicts: hashMap.T(String Int)
+        (* Closures (section 3.1): the closure types by signature, each
+         * function's own closure type, static closure, and uniform entry,
+         * by its id; the types each function captures; the functions by
+         * id; the functions declared for ref.func; and the closure passed
+         * to a direct call of a function that captures nothing *)
+        closTypes: hashMap.T(String Int)
+        ownTypes: hashMap.T(Int Int)
+        staticClosures: hashMap.T(Int Int)
+        uniforms: hashMap.T(Int Int)
+        captureTypes: hashMap.T(Int Array(ir.Type))
+        byId: hashMap.T(Int ir.Function)
+        declaredFns: hashMap.T(Int Bool)
+        noClosure: Int
+        builtins: hashMap.T(String Int)
     end
 
     (* A name not given before among names: base, or base.k *)
@@ -144,6 +158,10 @@ export
     Def LabelKind = Option labelExit labelRepeat labelJoin labelAfter labelIf end
     Def Label = Tuple name: String kind: LabelKind end
 
+    (* A capture to fill in: the closure, in local holder, of own type own,
+     * its field, and the atom it captures *)
+    Def Patch = Tuple holder: Int own: Int field: Int atom: ir.Atom end
+
     (* What compiling one function keeps: its code, its locals by variable
      * id, its locals after its parameters, their names, the labels open,
      * innermost last, its results, and the join points whose continuations
@@ -158,7 +176,33 @@ export
         labels: vector.T(Label)
         results: Array(ValType)
         returning: hashMap.T(String Bool)
+        (* The function compiled (~1 for the top level), the variables a
+         * recursive value's body is binding, and the captures of theirs to
+         * fill in once it has (sLetRec) *)
+        fnId: Int
+        deferred: hashMap.T(Int Bool)
+        patches: vector.T(Patch)
     end
+
+
+    let newF(g: G params: Array(String) results: Array(ValType) fnId: Int): F =
+        begin
+            let names = hashMap.new(:String :Int stringOp.equal hash.string)
+            tuple
+                let g = g
+                let code = vector.new(:Inst)
+                let locals = hashMap.new(:Int :Int intEqual hash.int)
+                let declared = vector.new(:model.Local)
+                let nparams = extent params
+                let names = names
+                let labels = vector.new(:Label)
+                let results = results
+                let returning = hashMap.new(:String :Bool stringOp.equal hash.string)
+                let fnId = fnId
+                let deferred = hashMap.new(:Int :Bool intEqual hash.int)
+                let patches = vector.new(:Patch)
+            end
+        end
 
     let emit(f: F x: Inst): Ok = vector.append(:Inst f.code x)
 
@@ -241,6 +285,154 @@ export
             let n = f.nparams + vector.length(:model.Local f.declared)
             vector.append(:model.Local f.declared tuple let name = fresh(f.names "t") let type = t end)
             n
+        end
+
+    (* ======================================================================
+     * Closures' types (section 3)
+     * ====================================================================== *)
+
+    (* A block's type, of the values types it gives *)
+    let blockOf(f: F types: Array(ValType)): model.BlockType =
+        if extent types is 0 then empty
+        elsif extent types is 1 then option blockValue of model.BlockType with let type = types[0] end
+        else option blockIndex of model.BlockType with let index = funcType(f.g noTypes types) end
+        end
+
+    (* A function's parameters' and results' representations *)
+    Def Signature = Tuple params: Array(ValType) results: Array(ValType) end
+    let tClos = rt.index("clos")
+    let addType(g: G sub: model.SubType): Int =
+        begin
+            let n = typeCount(g.m)
+            vector.append(:model.RecGroup g.m.types array of sub end)
+            n
+        end
+    let fieldOf(name: String t: ValType mutable: Bool): model.Field =
+        tuple let name = name let storage = option storageValue of model.Storage with let type = t end
+            let mutable = mutable end
+    let hashField = fieldOf("hash" model.i32 true)
+    let structSub(name: String final: Bool super: Int fields: Array(model.Field)): model.SubType =
+        tuple let name = name let final = final let supers = array of super end
+            let composite = option compStruct of model.Composite with let fields = fields end
+        end
+
+    (* A function type's closure signature (section 3.2): its parameters'
+     * and result's parts, after the closure; and how many parameters it has
+     * in Quest *)
+    let closureSig(t: ir.Type): Signature =
+        begin
+            let s = shapeOf(t)
+            if shapes.kindIs(s shapes.shapeAll) then fail("a polymorphic function's value (step 7)") end
+            if not(shapes.kindIs(s shapes.shapeFun)) then fail("a call of a value of no function type") end
+            let ps = vector.new(:ValType)
+            for k = 0 upto extent s.params - 1 do
+                if not(stringOp.equal(s.params[k].mode "value")) then fail("a var or out parameter (milestone 4)") end
+                let pp = parts(s.params[k].shape.type)
+                for j = 0 upto extent pp - 1 do vector.append(:ValType ps pp[j]) end
+            end
+            tuple let params = vector.toArray(:ValType ps) let results = parts(shapes.result(s).type) end
+        end
+    let arity(t: ir.Type): Int = extent shapeOf(t).params
+
+    let withClosure(ts: Array(ValType)): Array(ValType) =
+        begin
+            let all = array of(extent ts + 1 model.ref(tClos))
+            for k = 0 upto extent ts - 1 do all[k + 1] := ts[k] end
+            all
+        end
+    let eqrefs(n: Int): Array(ValType) = array of(n model.eqref)
+
+    (* The uniform entry's type for n parameters, and a native entry's *)
+    let uniformType(g: G n: Int): Int = funcType(g withClosure(eqrefs(n)) array of model.eqref end)
+    let nativeType(g: G sig: Signature): Int = funcType(g withClosure(sig.params) sig.results)
+
+    (* Whether a signature is the uniform one, so that one function is both
+     * entries *)
+    let isUniform(sig: Signature n: Int): Bool =
+        begin
+            let var all = {extent sig.params is n} andif {extent sig.results is 1} andif sig.results[0]?valRef
+            for k = 0 upto extent sig.params - 1 do if not(sig.params[k]?valRef) then all := false end end
+            all
+        end
+
+    (* $closU(n), a subtype of $clos with the uniform entry; $closS, of that
+     * with the native entry, for signature sig (section 3.1) *)
+    let closU(g: G n: Int): Int =
+        begin
+            let key = "U" <> conv.int(n)
+            if hashMap.contains(:String :Int g.closTypes key) then hashMap.find(:String :Int g.closTypes key)
+            else
+                let t = addType(g structSub("closU" <> conv.int(n) false tClos
+                    array of hashField fieldOf("uniform" model.ref(uniformType(g n)) false) end))
+                hashMap.insert(:String :Int g.closTypes key t)
+                t
+            end
+        end
+    let sigText(g: G sig: Signature): String =
+        begin
+            let b = stringBuilder.new()
+            for k = 0 upto extent sig.params - 1 do b.str(printer.valType(g.m sig.params[k]) <> " ") end
+            b.str("->")
+            for k = 0 upto extent sig.results - 1 do b.str(" " <> printer.valType(g.m sig.results[k])) end
+            b.toString()
+        end
+    let closS(g: G sig: Signature n: Int): Int =
+        begin
+            let key = "S" <> conv.int(n) <> ":" <> sigText(g sig)
+            if hashMap.contains(:String :Int g.closTypes key) then hashMap.find(:String :Int g.closTypes key)
+            else
+                let u = closU(g n)
+                let t = addType(g structSub("" false u array of
+                    hashField fieldOf("uniform" model.ref(uniformType(g n)) false)
+                    fieldOf("native" model.ref(nativeType(g sig)) false)
+                end))
+                hashMap.insert(:String :Int g.closTypes key t)
+                t
+            end
+        end
+
+    (* A function's own closure type, final, which adds its captures, each of
+     * its parts a mutable field (so that a recursive value's can be filled
+     * in) *)
+    let ownType(g: G fn: ir.Function): Int =
+        if hashMap.contains(:Int :Int g.ownTypes fn.id) then hashMap.find(:Int :Int g.ownTypes fn.id)
+        else
+            let sig = closureSig(fn.v.type)
+            let n = arity(fn.v.type)
+            let fields = vector.new(:model.Field)
+            vector.append(:model.Field fields hashField)
+            vector.append(:model.Field fields fieldOf("uniform" model.ref(uniformType(g n)) false))
+            vector.append(:model.Field fields fieldOf("native" model.ref(nativeType(g sig)) false))
+            let captures = maybe.unwrapOr(:Array(ir.Type) hashMap.get(:Int :Array(ir.Type) g.captureTypes fn.id)
+                array of :ir.Type end)
+            for k = 0 upto extent captures - 1 do
+                let ps = parts(captures[k])
+                for j = 0 upto extent ps - 1 do
+                    let suffix = if j > 0 then "." <> conv.int(j) else "" end
+                    vector.append(:model.Field fields fieldOf("c" <> conv.int(k) <> suffix ps[j] true))
+                end
+            end
+            let t = addType(g structSub(fresh(g.names fn.v.hint <> ".closure") true closS(g sig n)
+                vector.toArray(:model.Field fields)))
+            hashMap.insert(:Int :Int g.ownTypes fn.id t)
+            t
+        end
+
+    (* The field of a function's own closure type that holds the first part of
+     * its capture index *)
+    let captureField(g: G fn: ir.Function index: Int): Int =
+        begin
+            let captures = maybe.unwrapOr(:Array(ir.Type) hashMap.get(:Int :Array(ir.Type) g.captureTypes fn.id)
+                array of :ir.Type end)
+            let var at = 3
+            for k = 0 upto index - 1 do at := at + extent parts(captures[k]) end
+            at
+        end
+
+    let declare(g: G index: Int): Ok =
+        if not(hashMap.contains(:Int :Bool g.declaredFns index)) then
+            hashMap.insert(:Int :Bool g.declaredFns index true)
+            vector.append(:Int g.m.declared index)
         end
 
     (* v's local, made the first time it is bound; an unboxed tuple's first,
@@ -1035,13 +1227,69 @@ export
             end
         end
 
+    (* The closure a direct call passes: the known closure's, if its function
+     * captures anything, else any closure, which it does not read *)
+    let closureArg(f: F x: ir.OpCall): Ok =
+        begin
+            let c = maybe.unwrap(:ir.Variable x.callee)
+            let k = hashMap.find(:Int :ir.OpMakeClosure f.g.known c.id)
+            if extent k.captures > 0 then
+                atom(f ir.atomOfVar(c))
+                castTo(f tClos)
+            else emit(f i1(ops.globalGet f.g.noClosure))
+            end
+        end
+
+    (* A call through a closure (section 3.1): the native entry, if the
+     * closure is of the callee type's signature, else the uniform entry,
+     * the arguments boxed and the result unboxed; as a tail call, when tail *)
+    let closureCall(f: F x: ir.OpCall tail: Bool): Ok =
+        begin
+            let c = maybe.unwrap(:ir.Variable x.callee)
+            let sig = closureSig(c.type)
+            let n = arity(c.type)
+            let s = closS(f.g sig n)
+            let u = closU(f.g n)
+            let held = scratch(f model.eqref)
+            atom(f ir.atomOfVar(c))
+            emit(f i1(ops.localSet held))
+            emit(f i1(ops.localGet held))
+            emit(f option instRefTest of Inst with let type = tuple let nullable = false let heap = heapOf(s) end end)
+            (* as a tail call, neither branch falls out of the if *)
+            emit(f model.ifInst(blockOf(f if tail then noTypes else sig.results end) ""))
+            emit(f i1(ops.localGet held))
+            castTo(f tClos)
+            atoms(f x.args)
+            emit(f i1(ops.localGet held))
+            castTo(f s)
+            emit(f i2(ops.structGet s 2))
+            emit(f i1(if tail then ops.returnCallRef else ops.callRef end nativeType(f.g sig)))
+            emit(f model.elseInst)
+            emit(f i1(ops.localGet held))
+            castTo(f tClos)
+            for k = 0 upto extent x.args - 1 do boxedAtom(f x.args[k]) end
+            emit(f i1(ops.localGet held))
+            castTo(f u)
+            emit(f i2(ops.structGet u 1))
+            let result = shapes.result(shapeOf(c.type)).type
+            let plain = {extent sig.results is 1} andif sig.results[0]?valRef andif not(isRecord(result))
+            if tail andif plain then emit(f i1(ops.returnCallRef uniformType(f.g n)))
+            else
+                emit(f i1(ops.callRef uniformType(f.g n)))
+                unbox(f result)
+                if tail then emit(f i(ops.returnOp)) end
+            end
+            emit(f model.endInst)
+        end
+
     let call(f: F x: ir.OpCall): Ok =
         begin
             let direct = directCallee(f x)
             if maybe.isSome(:Int direct) then
+                closureArg(f x)
                 atoms(f x.args)
                 emit(f i1(ops.call maybe.unwrap(:Int direct)))
-            elsif maybe.isSome(:ir.Variable x.callee) then fail("a call through a closure (step 5)")
+            elsif maybe.isSome(:ir.Variable x.callee) then closureCall(f x false)
             elsif maybe.isNone(:ir.ModuleRef x.moduleRef) then fail("a call of no function")
             else
                 case maybe.unwrap(:ir.ModuleRef x.moduleRef)
@@ -1186,6 +1434,200 @@ export
                 fail("the conversion " <> ir.planKindName(x.plan.kind) <> " (milestone 4)")
         end
 
+    (* --- Closures --- *)
+
+    (* A function's uniform entry (section 3.1): its native entry itself when
+     * its signature is the uniform one, else a function that unboxes the
+     * arguments, calls it, and boxes the result *)
+    let uniformEntry(g: G fn: ir.Function): Int =
+        if hashMap.contains(:Int :Int g.uniforms fn.id) then hashMap.find(:Int :Int g.uniforms fn.id)
+        else
+            let native = hashMap.find(:Int :Int g.functions fn.id)
+            let sig = closureSig(fn.v.type)
+            let n = arity(fn.v.type)
+            let index = if isUniform(sig n) then native
+                else
+                    let s = shapeOf(fn.v.type)
+                    let names = array of(n + 1 "")
+                    let f = newF(g names array of model.eqref end ~1)
+                    names[0] := "closure"
+                    for k = 1 upto n do names[k] := "a" <> conv.int(k - 1) end
+                    emit(f i1(ops.localGet 0))
+                    for k = 0 upto n - 1 do
+                        emit(f i1(ops.localGet k + 1))
+                        unbox(f s.params[k].shape.type)
+                    end
+                    let result = shapes.result(s).type
+                    let plain = {extent sig.results is 1} andif sig.results[0]?valRef andif not(isRecord(result))
+                    if plain then emit(f i1(ops.returnCall native))
+                    else
+                        emit(f i1(ops.call native))
+                        box(f result)
+                    end
+                    let at = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
+                    vector.append(:model.Function g.m.functions tuple
+                        let name = fresh(g.names fn.v.hint <> ".uniform") let type = uniformType(g n) let params = names
+                        let locals = f.declared let body = f.code
+                    end)
+                    at
+                end
+            hashMap.insert(:Int :Int g.uniforms fn.id index)
+            index
+        end
+
+    (* A function's static closure, which captures nothing: an immutable
+     * global, made once *)
+    let staticClosure(g: G fn: ir.Function): Int =
+        if hashMap.contains(:Int :Int g.staticClosures fn.id) then hashMap.find(:Int :Int g.staticClosures fn.id)
+        else
+            let own = ownType(g fn)
+            let u = uniformEntry(g fn)
+            let native = hashMap.find(:Int :Int g.functions fn.id)
+            declare(g u)
+            declare(g native)
+            let n = vector.length(:model.Global g.m.globals)
+            vector.append(:model.Global g.m.globals tuple
+                let name = fresh(g.names fn.v.hint <> ".static") let type = model.ref(own) let mutable = false
+                let init = array of model.i32Const(0) i1(ops.refFunc u) i1(ops.refFunc native) i1(ops.structNew own) end
+            end)
+            hashMap.insert(:Int :Int g.staticClosures fn.id n)
+            n
+        end
+
+    (* A built-in operator as a value (opBuiltin), as the C runtime's
+     * trampolines are (qv_sym_plus_closure): a static closure of $closS for
+     * its signature, whose native entry computes it, division and remainder
+     * raising int.error with no site, and whose uniform entry unboxes and
+     * boxes. The Int operators; Real's wait for step 8 *)
+    let builtinClosure(g: G name: String): Int =
+        if hashMap.contains(:String :Int g.builtins name) then hashMap.find(:String :Int g.builtins name)
+        else
+            let named = fun(n: String): Bool stringOp.equal(name n)
+            let compares = named("<") orif named("<=") orif named(">") orif named(">=")
+            let arithmetic = named("+") orif named("-") orif named("*") orif named("/") orif named("%")
+                orif named("mod")
+            if not(compares orif arithmetic) then
+                fail("the built-in " <> name <> " as a value")
+            end
+            let result = if compares then model.i32 else model.i64 end
+            let sig = tuple let params = array of model.i64 model.i64 end let results = array of result end end
+            let s = closS(g sig 2)
+            (* The native entry *)
+            let nf = newF(g array of "closure" "a" "b" end sig.results ~1)
+            if named("/") orif named("%") orif named("mod") then
+                emit(nf i1(ops.localGet 2))
+                emit(nf i(ops.i64Eqz))
+                emit(nf model.ifInst(empty ""))
+                raiseAt(nf "int.error" maybe.none(:Int))
+                emit(nf model.endInst)
+                emit(nf i1(ops.localGet 2))
+                emit(nf model.i64Const(~1))
+                emit(nf i(ops.i64Eq))
+                emit(nf model.ifInst(empty ""))
+                if named("/") then
+                    emit(nf model.i64Const(0))
+                    emit(nf i1(ops.localGet 1))
+                    emit(nf i(ops.i64Sub))
+                else emit(nf model.i64Const(0))
+                end
+                emit(nf i(ops.returnOp))
+                emit(nf model.endInst)
+            end
+            emit(nf i1(ops.localGet 1))
+            emit(nf i1(ops.localGet 2))
+            emit(nf i(if named("+") then ops.i64Add elsif named("-") then ops.i64Sub elsif named("*") then ops.i64Mul
+                elsif named("/") then ops.i64DivS elsif named("%") orif named("mod") then ops.i64RemS
+                elsif named("<") then ops.i64LtS elsif named("<=") then ops.i64LeS elsif named(">") then ops.i64GtS
+                else ops.i64GeS end))
+            let native = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
+            vector.append(:model.Function g.m.functions tuple
+                let name = fresh(g.names "builtin" <> name) let type = nativeType(g sig)
+                let params = array of "closure" "a" "b" end
+                let locals = nf.declared let body = nf.code
+            end)
+            (* The uniform entry *)
+            let uf = newF(g array of "closure" "a" "b" end array of model.eqref end ~1)
+            emit(uf i1(ops.localGet 0))
+            for k = 1 upto 2 do
+                emit(uf i1(ops.localGet k))
+                runtimeCall(uf "unboxInt")
+            end
+            emit(uf i1(ops.call native))
+            if compares then emit(uf i(ops.refI31)) else runtimeCall(uf "boxInt") end
+            let uniform = native + 1
+            vector.append(:model.Function g.m.functions tuple
+                let name = fresh(g.names "builtin" <> name <> ".uniform") let type = uniformType(g 2)
+                let params = array of "closure" "a" "b" end let locals = uf.declared let body = uf.code
+            end)
+            declare(g native)
+            declare(g uniform)
+            let n = vector.length(:model.Global g.m.globals)
+            vector.append(:model.Global g.m.globals tuple
+                let name = fresh(g.names "builtin" <> name <> ".static") let type = model.ref(s) let mutable = false
+                let init = array of
+                    model.i32Const(0) i1(ops.refFunc uniform) i1(ops.refFunc native) i1(ops.structNew s)
+                end
+            end)
+            hashMap.insert(:String :Int g.builtins name n)
+            n
+        end
+
+    (* A closure of x.code with its captures: its static closure if it has
+     * none; inside a recursive value's body, a capture of a value not yet
+     * bound is left to fill in (sLetRec) *)
+    let makeClosure(f: F x: ir.OpMakeClosure): Ok =
+        begin
+            if {extent x.typeArgs > 0} orif {extent x.descriptors > 0} then fail("a polymorphic closure (step 7)") end
+            let fn = x.code
+            if fn.unboxedResult then
+                (* only ever called directly (ir/unbox), never through it *)
+                emit(f i1(ops.globalGet f.g.noClosure))
+            elsif extent x.captures is 0 then emit(f i1(ops.globalGet staticClosure(f.g fn)))
+            else
+                let own = ownType(f.g fn)
+                let u = uniformEntry(f.g fn)
+                let native = hashMap.find(:Int :Int f.g.functions fn.id)
+                declare(f.g u)
+                declare(f.g native)
+                emit(f model.i32Const(0))
+                emit(f i1(ops.refFunc u))
+                emit(f i1(ops.refFunc native))
+                let later = vector.new(:Patch)
+                for k = 0 upto extent x.captures - 1 do
+                    let a = x.captures[k]
+                    let pending = case a
+                        when atomVar with v then hashMap.contains(:Int :Bool f.deferred v.v.id)
+                        else false
+                    end
+                    if pending then
+                        let ps = parts(ir.atomType(a))
+                        if extent ps isnot 1 then fail("a recursive value's record capture") end
+                        case ps[0]
+                            when valI64 then emit(f model.i64Const(0))
+                            when valI32 then emit(f model.i32Const(0))
+                            else
+                                emit(f option instRefNull of Inst with
+                                    let heap = option heapNone of model.HeapType end
+                                end)
+                        end
+                        vector.append(:Patch later
+                            tuple let holder = 0 let own = own let field = captureField(f.g fn k) let atom = a end)
+                    else atom(f a)
+                    end
+                end
+                emit(f i1(ops.structNew own))
+                if not(vector.empty(:Patch later)) then
+                    let holder = scratch(f model.eqref)
+                    emit(f i1(ops.localTee holder))
+                    for k = 0 upto vector.length(:Patch later) - 1 do
+                        let pt = vector.get(:Patch later k)
+                        vector.append(:Patch f.patches
+                            tuple let holder = holder let own = pt.own let field = pt.field let atom = pt.atom end)
+                    end
+                end
+            end
+        end
+
     (* The operation's value, on the stack *)
     let operation(f: F o: ir.Op target: maybe.T(ir.Variable)): Ok =
         begin
@@ -1198,12 +1640,17 @@ export
             when opPrim with x then prim(f x)
             when opCall with x then call(f x)
             when opModuleMember with x then member(f x)
-            when opMakeClosure with x then
-                (* Step 3 calls known closures directly; the value stands for
-                 * the closure step 5 makes *)
-                if {extent x.captures > 0} orif {extent x.typeArgs > 0} then fail("a closure's captures (step 5)") end
-                emit(f model.i32Const(0))
-                emit(f i1(ops.structNew rt.index("clos")))
+            when opMakeClosure with x then makeClosure(f x)
+            when opEnvField with x then
+                let fn = hashMap.find(:Int :ir.Function f.g.byId f.fnId)
+                let own = ownType(f.g fn)
+                let at = captureField(f.g fn x.index)
+                let captures = hashMap.find(:Int :Array(ir.Type) f.g.captureTypes fn.id)
+                for j = 0 upto extent parts(captures[x.index]) - 1 do
+                    atom(f x.env)
+                    castTo(f own)
+                    emit(f i2(ops.structGet own at + j))
+                end
             when opMakeTuple with x then
                 if maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).unboxed then
                     atoms(f x.args)
@@ -1240,8 +1687,7 @@ export
             when opRecordField with x then recordField(f x target)
             when opConvert with x then convert(f x target)
             when opTypeApp then fail("a type application (step 7)")
-            when opEnvField then fail("a closure's captures (step 5)")
-            when opBuiltin then fail("a built-in function as a value (step 5)")
+            when opBuiltin with x then emit(f i1(ops.globalGet builtinClosure(f.g x.name)))
             when opExternal, opCallExternal then fail("an external function (step 9)")
             when opMakeException, opExceptionPayload, opCaughtException then fail("exceptions (step 6)")
             when opMakeVariant then fail("a variant (milestone 4)")
@@ -1320,11 +1766,6 @@ export
      * Statements
      * ====================================================================== *)
 
-    let blockOf(f: F types: Array(ValType)): model.BlockType =
-        if extent types is 0 then empty
-        elsif extent types is 1 then option blockValue of model.BlockType with let type = types[0] end
-        else option blockIndex of model.BlockType with let index = funcType(f.g noTypes types) end
-        end
 
     (* Whether the atom is the variable v *)
     let isVar(a: ir.Atom v: ir.Variable): Bool =
@@ -1399,12 +1840,19 @@ export
             else
                 let c = maybe.unwrap(:Found found).call
                 let direct = directCallee(f c)
-                if maybe.isNone(:Int direct) then false
+                if maybe.isNone(:Int direct) then
+                    if maybe.isSome(:ir.Variable c.callee) andif returnsResult(f maybe.unwrap(:Found found).v next)
+                        andif sameTypes(closureSig(maybe.unwrap(:ir.Variable c.callee).type).results f.results) then
+                        closureCall(f c true)
+                        true
+                    else false
+                    end
                 else
                     let d = maybe.unwrap(:Int direct)
                     let callee = model.typeAt(f.g.m model.functionType(f.g.m d))
                     let results = case callee.composite when compFunc with t then t.results else noTypes end
                     if returnsResult(f maybe.unwrap(:Found found).v next) andif sameTypes(results f.results) then
+                        closureArg(f c)
                         atoms(f c.args)
                         emit(f i1(ops.returnCall d))
                         true
@@ -1531,7 +1979,20 @@ export
                 fieldSlot(f x.base x.name)
                 boxedAtom(f x.value)
                 emit(f i1(ops.arraySet tSlots))
-            when sLetRec then fail("recursive values, which closures that capture them make (step 5)")
+            when sLetRec with x then
+                (* The body makes the values, whose closures' captures of them
+                 * are filled in once it has *)
+                let first = vector.length(:Patch f.patches)
+                for k = 0 upto extent x.vars - 1 do hashMap.insert(:Int :Bool f.deferred x.vars[k].id true) end
+                body(f x.body)
+                for k = 0 upto extent x.vars - 1 do hashMap.delete(:Int :Bool f.deferred x.vars[k].id) end
+                while vector.length(:Patch f.patches) > first do
+                    let pt = vector.pop(:Patch f.patches)
+                    emit(f i1(ops.localGet pt.holder))
+                    castTo(f pt.own)
+                    atom(f pt.atom)
+                    emit(f i2(ops.structSet pt.own pt.field))
+                end
             when sFuns then fail("a function not closure-converted")
             when sInspect then fail("an inspect (milestone 4)")
         end
@@ -1597,39 +2058,26 @@ export
      * Functions and the unit
      * ====================================================================== *)
 
-    let newF(g: G params: Array(String) results: Array(ValType)): F =
-        begin
-            let names = hashMap.new(:String :Int stringOp.equal hash.string)
-            tuple
-                let g = g
-                let code = vector.new(:Inst)
-                let locals = hashMap.new(:Int :Int intEqual hash.int)
-                let declared = vector.new(:model.Local)
-                let nparams = extent params
-                let names = names
-                let labels = vector.new(:Label)
-                let results = results
-                let returning = hashMap.new(:String :Bool stringOp.equal hash.string)
-            end
-        end
-
-    let finish(f: F name: String type: Int params: Array(String)): Ok =
-        vector.append(:model.Function f.g.m.functions
-            tuple let name = name let type = type let params = params let locals = f.declared let body = f.code end)
+    (* Fills in the function at index, which has no parameters *)
+    let fill(f: F index: Int name: String type: Int): Ok =
+        vector.set(:model.Function f.g.m.functions {index - model.importedFunctions(f.g.m)} tuple
+            let name = name let type = type let params = array of :String end let locals = f.declared let body = f.code
+        end)
 
     (* A function's parameters' and result's representations, its signature
      * (section 3.2 of the plan), or unsupported for what step 3 does not
      * compile *)
-    Def Signature = Tuple params: Array(ValType) results: Array(ValType) end
     let signature(fn: ir.Function): Signature =
         begin
             if {extent fn.typeParams > 0} orif {extent fn.descriptorParams > 0} then
                 fail("a polymorphic function (step 7)")
             end
-            if maybe.isSome(:ir.Variable fn.env) then fail("a closure's captures (step 5)") end
+            (* The closure first (section 3.1), then each parameter's parts *)
             let params = vector.new(:ValType)
+            vector.append(:ValType params model.ref(tClos))
             for k = 0 upto extent fn.params - 1 do
                 if not(stringOp.equal(fn.params[k].mode "value")) then fail("a var or out parameter (milestone 4)") end
+                if fn.params[k].v.boxed then fail("a parameter held boxed") end
                 let ps = varParts(fn.params[k].v)
                 for j = 0 upto extent ps - 1 do vector.append(:ValType params ps[j]) end
             end
@@ -1642,8 +2090,12 @@ export
         begin
             let sig = signature(fn)
             let names = array of(extent sig.params "")
-            let f = newF(g names sig.results)
-            let var at = 0
+            let f = newF(g names sig.results fn.id)
+            names[0] := fresh(f.names "closure")
+            if maybe.isSome(:ir.Variable fn.env) then
+                hashMap.insert(:Int :Int f.locals maybe.unwrap(:ir.Variable fn.env).id 0)
+            end
+            let var at = 1
             for k = 0 upto extent fn.params - 1 do
                 hashMap.insert(:Int :Int f.locals fn.params[k].v.id at)
                 for j = 0 upto extent varParts(fn.params[k].v) - 1 do
@@ -1664,6 +2116,13 @@ export
         begin
             let m = model.newModule("main")
             vector.append(:model.RecGroup m.types rt.group)
+            (* The closure a direct call of a function that captures nothing
+             * passes, which it never reads *)
+            let noClosure = vector.length(:model.Global m.globals)
+            vector.append(:model.Global m.globals tuple
+                let name = "noClosure" let type = model.ref(rt.index("clos")) let mutable = false
+                let init = array of model.i32Const(0) model.op(ops.structNew array of rt.index("clos") end) end
+            end)
             let g = tuple
                 let unit = unit
                 let m = m
@@ -1676,6 +2135,42 @@ export
                 let strings = stringBuilder.new()
                 let names = hashMap.new(:String :Int stringOp.equal hash.string)
                 let dicts = hashMap.new(:String :Int stringOp.equal hash.string)
+                let closTypes = hashMap.new(:String :Int stringOp.equal hash.string)
+                let ownTypes = hashMap.new(:Int :Int intEqual hash.int)
+                let staticClosures = hashMap.new(:Int :Int intEqual hash.int)
+                let uniforms = hashMap.new(:Int :Int intEqual hash.int)
+                let captureTypes = hashMap.new(:Int :Array(ir.Type) intEqual hash.int)
+                let byId = hashMap.new(:Int :ir.Function intEqual hash.int)
+                let declaredFns = hashMap.new(:Int :Bool intEqual hash.int)
+                let noClosure = noClosure
+                let builtins = hashMap.new(:String :Int stringOp.equal hash.string)
+            end
+            (* Each function, and the types of what its closures capture *)
+            for k = 0 upto vector.length(:ir.Function unit.functions) - 1 do
+                let fn = vector.get(:ir.Function unit.functions k)
+                hashMap.insert(:Int :ir.Function g.byId fn.id fn)
+            end
+            let bodies = walk.unitBodies(unit)
+            for b = 0 upto extent bodies - 1 do
+                let ss = walk.walkStatements(bodies[b] false)
+                for k = 0 upto vector.length(:ir.Stmt ss) - 1 do
+                    case vector.get(:ir.Stmt ss k)
+                        when sLet with x then
+                            case x.value
+                                when opMakeClosure with c then
+                                    if not(hashMap.contains(:Int :Array(ir.Type) g.captureTypes c.code.id)) then
+                                        let ts = vector.new(:ir.Type)
+                                        for j = 0 upto extent c.captures - 1 do
+                                            vector.append(:ir.Type ts ir.atomType(c.captures[j]))
+                                        end
+                                        hashMap.insert(:Int :Array(ir.Type) g.captureTypes c.code.id
+                                            vector.toArray(:ir.Type ts))
+                                    end
+                                else ok
+                            end
+                        else ok
+                    end
+                end
             end
             (* The runtime's functions and tag, imported first *)
             for k = 0 upto extent runtime.exports - 1 do
@@ -1707,16 +2202,24 @@ export
                     let params = array of :String end let locals = vector.new(:model.Local) let body = vector.new(:Inst)
                 end)
             end
+            (* The top level's and _start's, before the uniform entries that
+             * compiling the functions makes *)
+            let mainIndex = base + vector.length(:ir.Function unit.functions)
+            for k = 0 upto 1 do
+                vector.append(:model.Function m.functions tuple
+                    let name = "" let type = placeholder let params = array of :String end
+                    let locals = vector.new(:model.Local) let body = vector.new(:Inst)
+                end)
+            end
             for k = 0 upto vector.length(:ir.Function unit.functions) - 1 do
                 function(g vector.get(:ir.Function unit.functions k))
             end
             (* The program's top level *)
-            let mainIndex = base + vector.length(:ir.Function unit.functions)
-            let mainF = newF(g array of :String end noTypes)
+            let mainF = newF(g array of :String end noTypes ~1)
             body(mainF unit.main)
-            finish(mainF fresh(g.names "main") placeholder array of :String end)
+            fill(mainF mainIndex fresh(g.names "main") placeholder)
             (* _start: the top level, and an uncaught exception's report *)
-            let start = newF(g array of :String end noTypes)
+            let start = newF(g array of :String end noTypes ~1)
             emit(start model.blockInst(option blockValue of model.BlockType with let type = model.eqref end "uncaught"))
             emit(start option instTryTable of Inst with
                 let type = empty let label = ""
@@ -1729,7 +2232,7 @@ export
             emit(start i(ops.returnOp))
             emit(start model.endInst)
             runtimeCall(start "uncaught")
-            finish(start "_start" placeholder array of :String end)
+            fill(start mainIndex + 1 "_start" placeholder)
             vector.append(:model.Export m.exports tuple
                 let field = "_start" let kind = option exportFunc of model.ExportKind end let index = mainIndex + 1
             end)
