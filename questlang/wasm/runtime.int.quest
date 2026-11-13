@@ -6,7 +6,7 @@
  * functions compiled code calls. It is built here, from wasm/model, for what
  * step 3 compiles: strings' text and output, Int, Bool, and Char written as
  * text, as conv and as echo writes them, and run-time errors with their
- * uncaught report. The plan's runtime in
+ * uncaught report; and, from step 4, Ints in slots and string's externals. The plan's runtime in
  * Quest, over intrinsics, replaces it from step 6, behind the same exports.
  *
  * Every reference crosses as an eqref (section 3.2); the runtime casts. The
@@ -45,7 +45,16 @@ export
      *   escaped(s quote): String s's bytes as echo writes them between
      *                            quotes quote (' or "): \n, \t, \r, \\,
      *                            the quote, and others not printable as
-     *                            \xhh *)
+     *                            \xhh
+     *   boxInt(n): eqref         n as a slot holds it: an i31 if it fits 31
+     *                            bits, signed, else a $boxInt
+     *   unboxInt(e): Int         the Int a slot holds
+     *   fatal(report status)     writes the report to standard error and
+     *                            ends the program with status, as a fatal
+     *                            error (1) or running out of memory (70)
+     *   stringGetChar, stringSetChar, stringNew, stringGetSub, stringSetSub,
+     *   stringEqual              string's externals, raising string.error
+     *                            for an index or a size outside a string *)
     exports: Array(Export)
 
     (* The tag every Quest exception is thrown with, of one eqref, and the

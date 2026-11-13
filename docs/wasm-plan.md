@@ -22,7 +22,7 @@ the four disagree, this plan holds.
 
 §1 lists the decisions and whose they are. §2 to §6 are the design. §7 is what is given up. §8 has the steps, and
 §9 the results of step 0's probes (2026-11-13), on which the owner confirmed decisions 1 and 2, and §10 step 1's
-census of what the compiler uses. Steps 0 to 3 are done, and step 8's native half; step 4 is next.
+census of what the compiler uses. Steps 0 to 4 are done, and step 8's native half; step 5 is next.
 
 ---
 
@@ -788,6 +788,23 @@ only when the backend's files differ, until its time is known.
    tests for the proxy and, finding one, fails as pending: nothing in the compiler makes one. Variants and records'
    views are pending.
    *Done when* their goldens pass, less those the pending list names.
+   *Done 2026-11-13:*
+   - **What the code generator adds:**
+     - Tuples, and unboxed tuples as several results.
+     - Options made by case and by ordinal, with `?`, `!`, `ordinal`, `switch` with shared binders, and `is` by
+       the options-as-values rules.
+     - Arrays, with the index, count, and size tests of §2.10.
+     - `string`'s externals.
+     - Records: two values natively, boxed in `$recBox` in a slot, and their views' tables are immutable globals.
+   - **R** gains `$record`, `$dict`, and `$recBox`. The record's layout field is an `eqref` until step 6's
+     descriptors.
+   - **Run goldens:** the modes pass 40, the same in both engines, and 257 remain pending under later steps. None
+     waits on step 4.
+   - **Its own test:** `tests/self-hosted/wasm/aggregates.quest` runs in both engines against the arm64 backend. It
+     leaves out `is` on records, which arm64 does not compile and this backend does.
+   - **Caught on the way:** `conv.char` and `conv.string` quote and escape, which step 3's mapping missed.
+   - **Rows of §2.10:** an index and a size to allocate are now tested before the instruction. Real to Int still
+     waits for step 8's connection.
 5. **Closures:** the closure types, both entries, the closure signature, the call through a closure with its test
    and its fallback, static closures.
    *Done when* the higher-order goldens that are not polymorphic pass.

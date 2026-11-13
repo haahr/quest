@@ -1,0 +1,71 @@
+(* The wasm backend's aggregates (docs/wasm-plan.md, step 4): tuples, a var
+ * component written, and a tuple returned unboxed, as several results;
+ * options made by case and by ordinal, tested, switched on with binders that
+ * share the payload, opened with !, and compared by the options-as-values
+ * rules; arrays made, written, and read, and extent; strings' library
+ * operations; and records, a var field written, held in a tuple and an
+ * array (is on records the arm64 backend does not compile, so it is not
+ * here). Last, an index outside an array raises arrayOp.error, uncaught. *)
+let say(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+Def Shape = Option circle with r: Int end square with side: Int end empty point with x: Int y: Int end end;
+let area(s: Shape): Int =
+    case s
+        when circle with c then 3 * c.r * c.r
+        when square with q then q.side * q.side
+        when point with p then p.x + p.y
+        when empty then 0
+    end;
+let shapes = array of
+    option circle of Shape with let r = 2 end
+    option square of Shape with let side = 5 end
+    option empty of Shape end
+    option point of Shape with let x = 7 let y = 1000000000000 end
+end;
+for i = 0 upto extent shapes - 1 do say(conv.int(area(shapes[i]))) end;
+let pt = shapes[3]!point;
+say(conv.int(pt.x) <> " " <> conv.int(pt.y));
+say(conv.bool(shapes[2] is option empty of Shape end) <> " " <> conv.bool(shapes[0]?circle) <> " "
+    <> conv.int(ordinal(shapes[1])) <> " " <> conv.bool(shapes[0] is shapes[1]));
+Let Light = Option red amber green end;
+let light = option ordinal(2) of Light end;
+say(conv.bool(light?green) <> " " <> conv.int(ordinal(light)));
+Def MaybeInt = Option none some with v: Int end end;
+let m: MaybeInt = option some of MaybeInt with let v = 4 end;
+let n: MaybeInt = option some of MaybeInt with let v = 4 end;
+let o: MaybeInt = option some of MaybeInt with let v = 5 end;
+say(conv.bool(m is n) <> " " <> conv.bool(m is o));
+
+let t = tuple let a = 1 let var b = "two" let c = 'c' end;
+t.b := t.b <> "!";
+say(conv.int(t.a) <> t.b <> conv.char(t.c));
+(* Recursive, so that it is not inlined, and called twice, so that it stays a
+ * function, whose tuple is unboxed *)
+let rec divide(n: Int d: Int): Tuple q: Int r: Int end =
+    if n < d then tuple let q = 0 let r = n end
+    else
+        let t = divide({n - d} d)
+        tuple let q = t.q + 1 let r = t.r end
+    end;
+let qr = divide(47 5);
+let qr2 = divide(100 7);
+say(conv.int(qr.q) <> " " <> conv.int(qr.r) <> " " <> conv.int(qr2.q) <> " " <> conv.int(qr2.r));
+
+let a = array of(5 0);
+for i = 0 upto 4 do a[i] := i * i end;
+say(conv.int(a[4]) <> " " <> conv.int(extent a));
+let str = string.new(3 'x');
+string.setChar(str 1 'y');
+say(str <> " " <> string.getSub("abcdef" 2 3) <> " " <> conv.bool(string.equal("ab" "ab")) <> " "
+    <> conv.char(string.getChar("abc" 2)));
+
+Def Point = Record x: Int var y: Int name: String end;
+let p: Point = record x = 3 var y = 4 name = "p" end;
+p.y := p.y + 10;
+say(p.name <> " " <> conv.int(p.x) <> " " <> conv.int(p.y));
+let norm(q: Point): Int = q.x * q.x + q.y * q.y;
+let ps = array of p record x = 1 var y = 1 name = "q" end end;
+say(ps[1].name <> conv.int(norm(ps[1])) <> " " <> conv.int(norm(p)));
+let held = tuple let first = p let second = 9 end;
+say(held.first.name <> conv.int(held.second));
+say(conv.int(a[5]));

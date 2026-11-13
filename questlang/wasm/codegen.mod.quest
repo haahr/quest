@@ -5,6 +5,7 @@ import
     ir = questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/walk : questlang/ir/Walk
     questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/shapes : questlang/repr/Shapes
     questlang/repr/genericLayout : questlang/repr/GenericLayout
     questlang/ir/describe : questlang/ir/Describe
     questlang/wasm/model : questlang/wasm/Model
@@ -56,6 +57,7 @@ export
         funcTypes: hashMap.T(String Int)
         strings: stringBuilder.T
         names: hashMap.T(String Int)
+        dicts: hashMap.T(String Int)
     end
 
     (* A name not given before among names: base, or base.k *)
@@ -108,13 +110,17 @@ export
             when repReal then
                 fail("a Real (step 8 connects util/realconv)")
                 model.f64
-            when repRecord then
-                fail("a record (step 4)")
-                model.eqref
+            when repRecord then model.eqref
             when repVariant then
                 fail("a variant (milestone 4)")
                 model.eqref
         end
+
+    (* The values a value of type t is held as: two for a record, its payload
+     * and its view's table (section 2.5), else one *)
+    let isRecord(t: ir.Type): Bool = layout.representationKind(t)?repRecord
+    let parts(t: ir.Type): Array(ValType) =
+        if isRecord(t) then array of model.eqref model.eqref end else array of valType(t) end end
 
     let sameType(a: ValType b: ValType): Bool =
         case a
@@ -185,38 +191,84 @@ export
 
     let isGlobal(f: F v: ir.Variable): Bool = hashMap.contains(:Int :Bool f.g.globalIds v.id)
 
-    (* v's global, made the first time it is named *)
+    (* The shape of a value of type t, through its bound, if it has one *)
+    let shapeOf(t: ir.Type): shapes.Shape = layout.resolvedShape(shapes.shape(t))
+    let componentType(s: shapes.Shape i: Int): ir.Type = shapes.componentShape(s.components[i]).type
+
+    (* The representations of an unboxed tuple's components (ir/unbox): each
+     * is a value of its own, never allocated *)
+    let componentTypes(t: ir.Type): Array(ValType) =
+        begin
+            let s = shapeOf(t)
+            let ts = array of(extent s.components model.i64)
+            for k = 0 upto extent s.components - 1 do ts[k] := valType(componentType(s k)) end
+            ts
+        end
+
+    (* The values variable v is held as: an unboxed tuple's components, a
+     * boxed record's box, or its type's parts *)
+    let varParts(v: ir.Variable): Array(ValType) =
+        if v.unboxed then componentTypes(v.type)
+        elsif v.boxed then array of model.eqref end
+        else parts(v.type)
+        end
+
+    (* v's globals, made the first time it is named: the first of one for
+     * each of its parts *)
     let global(f: F v: ir.Variable): Int =
         if hashMap.contains(:Int :Int f.g.globals v.id) then hashMap.find(:Int :Int f.g.globals v.id)
         else
-                let t = valType(v.type)
-                let init = case t
-                    when valI64 then model.i64Const(0)
-                    when valI32 then model.i32Const(0)
-                    else option instRefNull of Inst with let heap = option heapNone of model.HeapType end end
-                end
+                let ts = varParts(v)
                 let n = vector.length(:model.Global f.g.m.globals)
-                vector.append(:model.Global f.g.m.globals tuple
-                    let name = fresh(f.g.names v.hint) let type = t let mutable = true let init = array of init end
-                end)
+                for k = 0 upto extent ts - 1 do
+                    let init = case ts[k]
+                        when valI64 then model.i64Const(0)
+                        when valI32 then model.i32Const(0)
+                        else option instRefNull of Inst with let heap = option heapNone of model.HeapType end end
+                    end
+                    vector.append(:model.Global f.g.m.globals tuple
+                        let name = fresh(f.g.names v.hint) let type = ts[k] let mutable = true
+                        let init = array of init end
+                    end)
+                end
                 hashMap.insert(:Int :Int f.g.globals v.id n)
                 n
         end
 
-    (* v's local, made the first time it is bound *)
+    (* A new local of type t, for the code's own use *)
+    let scratch(f: F t: ValType): Int =
+        begin
+            let n = f.nparams + vector.length(:model.Local f.declared)
+            vector.append(:model.Local f.declared tuple let name = fresh(f.names "t") let type = t end)
+            n
+        end
+
+    (* v's local, made the first time it is bound; an unboxed tuple's first,
+     * of one for each of its components *)
     let local(f: F v: ir.Variable): Int =
         if hashMap.contains(:Int :Int f.locals v.id) then hashMap.find(:Int :Int f.locals v.id)
         else
                 let n = f.nparams + vector.length(:model.Local f.declared)
-                vector.append(:model.Local f.declared
-                    tuple let name = fresh(f.names v.hint) let type = valType(v.type) end)
+                let ts = varParts(v)
+                for k = 0 upto extent ts - 1 do
+                    vector.append(:model.Local f.declared tuple let name = fresh(f.names v.hint) let type = ts[k] end)
+                end
                 hashMap.insert(:Int :Int f.locals v.id n)
                 n
         end
 
-    (* Stores the value on the stack in v *)
+    (* Stores the values on the stack in v, each of its parts *)
     let store(f: F v: ir.Variable): Ok =
-        if isGlobal(f v) then emit(f i1(ops.globalSet global(f v))) else emit(f i1(ops.localSet local(f v))) end
+        begin
+            let n = extent varParts(v)
+            if isGlobal(f v) then
+                let first = global(f v)
+                for k = n - 1 downto 0 do emit(f i1(ops.globalSet first + k)) end
+            else
+                let first = local(f v)
+                for k = n - 1 downto 0 do emit(f i1(ops.localSet first + k)) end
+            end
+        end
 
     (* ======================================================================
      * Values
@@ -252,12 +304,15 @@ export
         case a
             when atomVar with x then
                 let v = x.v
-                if isGlobal(f v) then emit(f i1(ops.globalGet global(f v)))
+                let n = extent varParts(v)
+                if isGlobal(f v) then
+                    let first = global(f v)
+                    for k = 0 upto n - 1 do emit(f i1(ops.globalGet first + k)) end
+                elsif not(hashMap.contains(:Int :Int f.locals v.id)) then
+                    fail("the variable " <> v.hint <> ", which has no value here")
                 else
-                    if hashMap.contains(:Int :Int f.locals v.id) then
-                        emit(f i1(ops.localGet hashMap.find(:Int :Int f.locals v.id)))
-                    else fail("the variable " <> v.hint <> ", which has no value here")
-                    end
+                    let first = hashMap.find(:Int :Int f.locals v.id)
+                    for k = 0 upto n - 1 do emit(f i1(ops.localGet first + k)) end
                 end
             when atomConst with x then constant(f x.c)
         end
@@ -282,6 +337,527 @@ export
             literal(f site)
             runtimeCall(f "fail")
             emit(f i(ops.unreachable))
+        end
+
+    (* ======================================================================
+     * Aggregates (section 2 of the plan)
+     * ====================================================================== *)
+
+    let heapOf(t: Int): model.HeapType = option heapIndex of model.HeapType with let index = t end
+    let castTo(f: F t: Int): Ok =
+        emit(f option instRefCast of Inst with let type = tuple let nullable = false let heap = heapOf(t) end end)
+    let castI31(f: F): Ok =
+        emit(f option instRefCast of Inst with
+            let type = tuple let nullable = false let heap = option heapI31 of model.HeapType end end
+        end)
+    let tSlots = rt.index("slots")
+    let tTuple = rt.index("tuple")
+    let tOption = rt.index("option")
+    let tArray = rt.index("array")
+    let fSlots = rt.field("tuple" "slots")
+    let fTag = rt.field("option" "tag")
+    let fElems = rt.field("array" "elems")
+
+    (* The value on the stack, of type t, as a slot holds it (section 4.1):
+     * an Int or Word an i31 or a box, a Bool or Char an i31, a reference
+     * itself *)
+    let tRecord = rt.index("record")
+    let tDict = rt.index("dict")
+    let tRecBox = rt.index("recBox")
+    let box(f: F t: ir.Type): Ok =
+        if isRecord(t) then
+            (* the pair, in its box *)
+            let dict = scratch(f model.eqref)
+            emit(f i1(ops.localSet dict))
+            castTo(f tRecord)
+            emit(f i1(ops.localGet dict))
+            castTo(f tDict)
+            emit(f i1(ops.structNew tRecBox))
+        else
+            case valType(t)
+                when valI64 then runtimeCall(f "boxInt")
+                when valI32 then emit(f i(ops.refI31))
+                else ok
+            end
+        end
+    let unbox(f: F t: ir.Type): Ok =
+        if isRecord(t) then
+            let b = scratch(f model.refNull(tRecBox))
+            castTo(f tRecBox)
+            emit(f i1(ops.localTee b))
+            emit(f i2(ops.structGet tRecBox 0))
+            emit(f i1(ops.localGet b))
+            emit(f i2(ops.structGet tRecBox 1))
+        else
+            case valType(t)
+                when valI64 then runtimeCall(f "unboxInt")
+                when valI32 then
+                    castI31(f)
+                    emit(f i(ops.i31GetU))
+                else ok
+            end
+        end
+    (* Whether the atom is a variable held boxed (a record in its box) *)
+    let isBoxedVar(a: ir.Atom): Bool =
+        case a when atomVar with x then x.v.boxed else false end
+    (* The atom, as a slot holds it: boxed unless it is a box already *)
+    let boxedAtom(f: F a: ir.Atom): Ok =
+        begin
+            atom(f a)
+            if not(isBoxedVar(a)) then box(f ir.atomType(a)) end
+        end
+    (* A slot's value, read as the variable target holds it: unboxed unless
+     * target is held boxed *)
+    let unboxFor(f: F t: ir.Type target: maybe.T(ir.Variable)): Ok =
+        if maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).boxed then ok else unbox(f t) end
+    (* A record atom's two parts, its box unboxed if it is one *)
+    let recordAtom(f: F a: ir.Atom): Ok =
+        begin
+            atom(f a)
+            if isBoxedVar(a) then unbox(f ir.atomType(a)) end
+        end
+
+    (* Ends the program at what step 4 cannot run: a proxy, which nothing in
+     * the compiler makes (section 10.1) *)
+    let pending(f: F what: String): Ok =
+        begin
+            literal(f "wasm: " <> what <> ", which this backend does not yet run\n")
+            emit(f model.i32Const(1))
+            runtimeCall(f "fatal")
+            emit(f i(ops.unreachable))
+        end
+
+    (* The eqref on the stack as a reference to the struct t, which access
+     * says may be a proxy: a cast, or a test that, finding a proxy, fails as
+     * pending (step 4 of the plan) *)
+    let accessAs(f: F t: Int access: ir.Access): Ok =
+        case access
+            when direct then castTo(f t)
+            when original, proxy then
+                (* the value is the block's parameter *)
+                emit(f model.blockInst(option blockIndex of model.BlockType with
+                    let index = funcType(f.g array of model.eqref end array of model.ref(t) end)
+                end ""))
+                emit(f option instBrOnCast of Inst with
+                    let fail = false let label = 0
+                    let from = tuple let nullable = true let heap = option heapEq of model.HeapType end end
+                    let to = tuple let nullable = false let heap = heapOf(t) end
+                end)
+                emit(f i(ops.drop))
+                pending(f "a proxy")
+                emit(f model.endInst)
+        end
+
+    (* An i32 on the stack mapped through table, as a br_table to constants;
+     * nothing when table is the identity *)
+    let mapI32(f: F table: Array(Int)): Ok =
+        begin
+            let var identity = true
+            for k = 0 upto extent table - 1 do if table[k] isnot k then identity := false end end
+            if not(identity) then
+                let n = extent table
+                let v = scratch(f model.i32)
+                emit(f i1(ops.localSet v))
+                emit(f model.blockInst(option blockValue of model.BlockType with let type = model.i32 end ""))
+                for k = 0 upto n - 1 do emit(f model.blockInst(empty "")) end
+                emit(f i1(ops.localGet v))
+                let targets = array of(n 0)
+                for k = 0 upto n - 1 do targets[k] := k end
+                emit(f option instBrTable of Inst with let labels = targets let default = n - 1 end)
+                for k = 0 upto n - 1 do
+                    emit(f model.endInst)
+                    emit(f model.i32Const(table[k]))
+                    emit(f i1(ops.br {n - 1} - k))
+                end
+                emit(f model.endInst)
+            end
+        end
+
+    (* --- Tuples --- *)
+
+    (* A new tuple of the atoms, each boxed as its slot holds it *)
+    let newTuple(f: F args: Array(ir.Atom)): Ok =
+        begin
+            if extent args > 10000 then fail("a tuple of more than 10,000 components") end
+            emit(f model.i32Const(0))
+            for k = 0 upto extent args - 1 do boxedAtom(f args[k]) end
+            emit(f i2(ops.arrayNewFixed tSlots extent args))
+            emit(f i1(ops.structNew tTuple))
+        end
+
+    let tupleField(f: F x: ir.OpTupleField target: maybe.T(ir.Variable)): Ok =
+        begin
+            if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
+            let s = shapeOf(ir.atomType(x.tup))
+            let held = ir.atomVarOf(x.tup)
+            if maybe.isSome(:ir.Variable held) andif maybe.unwrap(:ir.Variable held).unboxed then
+                emit(f i1(ops.localGet local(f maybe.unwrap(:ir.Variable held)) + x.index))
+            else
+                atom(f x.tup)
+                accessAs(f tTuple x.access)
+                emit(f i2(ops.structGet tTuple fSlots))
+                emit(f model.i32Const(x.index))
+                emit(f i1(ops.arrayGet tSlots))
+                unboxFor(f componentType(s x.index) target)
+            end
+        end
+
+    (* --- Options --- *)
+
+    let optionShape(t: ir.Type): shapes.Shape =
+        begin
+            let s = shapeOf(t)
+            if shapes.kindIs(s shapes.shapeVariant) then fail("a variant (milestone 4)") end
+            if not(shapes.kindIs(s shapes.shapeOption)) then fail("a tag of a value of no option type") end
+            s
+        end
+
+    (* A case's tag: its index among the shape's cases, which are in name
+     * order (docs/c-representation.md section 5.3) *)
+    let tagIndex(s: shapes.Shape tag: String): Int =
+        begin
+            let var index = ~1
+            for k = 0 upto extent s.cases - 1 do
+                if stringOp.equal(maybe.unwrapOr(:String s.cases[k].name "") tag) then index := k end
+            end
+            if index < 0 then fail("an option of no case " <> tag) end
+            index
+        end
+
+    (* How many components case tag has, and whether they are a tuple's,
+     * which a case binder is; one that is not a tuple is one value *)
+    Def CaseForm = Tuple count: Int isTuple: Bool end
+    let caseForm(s: shapes.Shape tag: String): CaseForm =
+        begin
+            let c = s.cases[tagIndex(s tag)]
+            if maybe.isNone(:shapes.Shape c.shape) then tuple let count = 0 let isTuple = true end
+            else
+                let cs = maybe.unwrap(:shapes.Shape c.shape)
+                if shapes.kindIs(cs shapes.shapeTuple) then
+                    tuple let count = extent cs.components let isTuple = true end
+                else tuple let count = 1 let isTuple = false end
+                end
+            end
+        end
+
+    let anyIndirect(access: Array(ir.Access)): ir.Access =
+        begin
+            let var a = ir.direct
+            for k = 0 upto extent access - 1 do if not(access[k]?direct) then a := ir.original end end
+            a
+        end
+
+    (* A fatal error for an option made by an ordinal out of its type's cases
+     * (quest_option_ordinal_error_at), the ordinal an Int atom *)
+    let ordinalError(f: F value: ir.Atom count: Int offset: maybe.T(Int)): Ok =
+        begin
+            literal(f "Option ordinal ")
+            atom(f value)
+            runtimeCall(f "decimal")
+            runtimeCall(f "concat")
+            let site = if maybe.isNone(:Int offset) then ""
+                else maybe.unwrapOr(:String ir.site(f.g.unit maybe.unwrap(:Int offset)) "")
+                end
+            literal(f " out of bounds (0 <= ordinal < " <> conv.int(count) <> ")\n"
+                <> {if stringOp.isEmpty(site) then "" else "  at " <> site <> "\n" end})
+            runtimeCall(f "concat")
+            emit(f model.i32Const(1))
+            runtimeCall(f "fatal")
+            emit(f i(ops.unreachable))
+        end
+
+    (* An option's slots: its payload's components, copied, laid out as case
+     * tag has them *)
+    let payloadSlots(f: F x: ir.OpMakeOption s: shapes.Shape tag: String): Ok =
+        begin
+            let form = caseForm(s tag)
+            if maybe.isNone(:ir.Atom x.payload) orif {form.count is 0} then
+                emit(f i2(ops.arrayNewFixed tSlots 0))
+            elsif form.isTuple then
+                (* The payload tuple's components, copied *)
+                let slots = scratch(f model.refNull(tSlots))
+                emit(f model.i32Const(form.count))
+                emit(f i1(ops.arrayNewDefault tSlots))
+                emit(f i1(ops.localTee slots))
+                emit(f model.i32Const(0))
+                atom(f maybe.unwrap(:ir.Atom x.payload))
+                accessAs(f tTuple anyIndirect(x.access))
+                emit(f i2(ops.structGet tTuple fSlots))
+                emit(f model.i32Const(0))
+                emit(f model.i32Const(form.count))
+                emit(f i2(ops.arrayCopy tSlots tSlots))
+                emit(f i1(ops.localGet slots))
+                emit(f i(ops.refAsNonNull))
+            else
+                boxedAtom(f maybe.unwrap(:ir.Atom x.payload))
+                emit(f i2(ops.arrayNewFixed tSlots 1))
+            end
+        end
+
+    let makeOption(f: F x: ir.OpMakeOption t: ir.Type): Ok =
+        begin
+            let s = optionShape(t)
+            emit(f model.i32Const(0))
+            if maybe.isSome(:ir.Atom x.ordinalAtom) then
+                let index = maybe.unwrap(:ir.Atom x.ordinalAtom)
+                atom(f index)
+                emit(f model.i64Const(extent s.cases))
+                emit(f i(ops.i64LtU))
+                emit(f i(ops.i32Eqz))
+                emit(f model.ifInst(empty ""))
+                ordinalError(f index extent s.cases x.offset)
+                emit(f model.endInst)
+                (* A payload is laid out as the case a constant ordinal names,
+                 * else as the first's, as the SSA's builder lays it out *)
+                let n = case index
+                    when atomConst with c then case c.c.value when constInt with y then y.n else ~1 end
+                    else ~1
+                end
+                let laidOut = if {n >= 0} andif {n < extent x.cases} then x.cases[n]
+                    else maybe.unwrapOr(:String s.cases[0].name "")
+                    end
+                payloadSlots(f x s laidOut)
+                atom(f index)
+                emit(f i(ops.i32WrapI64))
+                let tags = array of(extent x.cases 0)
+                for k = 0 upto extent x.cases - 1 do tags[k] := tagIndex(s x.cases[k]) end
+                mapI32(f tags)
+            else
+                let tag = maybe.unwrapOr(:String x.tag "")
+                payloadSlots(f x s tag)
+                emit(f model.i32Const(tagIndex(s tag)))
+            end
+            emit(f i1(ops.structNew tOption))
+        end
+
+    let tagOf(f: F value: ir.Atom access: ir.Access): Ok =
+        begin
+            atom(f value)
+            accessAs(f tOption access)
+            emit(f i2(ops.structGet tOption fTag))
+        end
+
+    (* opt!tag: a new tuple of the case's ordinal and then its components,
+     * after a test of the tag that raises variant.tagMismatch *)
+    let payload(f: F x: ir.OpPayload t: ir.Type): Ok =
+        begin
+            if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
+            let s = optionShape(ir.atomType(x.value))
+            tagOf(f x.value x.access)
+            emit(f model.i32Const(tagIndex(s x.tag)))
+            emit(f i(ops.i32Ne))
+            emit(f model.ifInst(empty ""))
+            raiseAt(f "variant.tagMismatch" x.offset)
+            emit(f model.endInst)
+            let n = extent shapeOf(t).components
+            let form = caseForm(s x.tag)
+            let slots = scratch(f model.refNull(tSlots))
+            emit(f model.i32Const(0))
+            emit(f model.i32Const(n))
+            emit(f i1(ops.arrayNewDefault tSlots))
+            emit(f i1(ops.localSet slots))
+            emit(f i1(ops.localGet slots))
+            emit(f model.i32Const(0))
+            emit(f model.i32Const(maybe.unwrapOr(:Int x.ordinalIndex 0)))
+            emit(f i(ops.refI31))
+            emit(f i1(ops.arraySet tSlots))
+            let count = if form.count < {n - 1} then form.count else n - 1 end
+            if count > 0 then
+                emit(f i1(ops.localGet slots))
+                emit(f model.i32Const(1))
+                atom(f x.value)
+                accessAs(f tOption anyIndirect(x.components))
+                emit(f i2(ops.structGet tOption fSlots))
+                emit(f model.i32Const(0))
+                emit(f model.i32Const(count))
+                emit(f i2(ops.arrayCopy tSlots tSlots))
+            end
+            emit(f i1(ops.localGet slots))
+            emit(f i(ops.refAsNonNull))
+            emit(f i1(ops.structNew tTuple))
+        end
+
+    (* is at an option type (docs/extensions.md, Options as Values): the same
+     * object, or the same case, which has no components; or, for a
+     * single-word option, the same case, whose components are is each other *)
+    let rec optionIs(f: F s: shapes.Shape a: Int b: Int depth: Int): Ok =
+        begin
+            if depth > 3 then fail("is on options nested more than three deep") end
+            let empties = array of(extent s.cases 0)
+            let var withComponents = ~1
+            let var others = 0
+            for k = 0 upto extent s.cases - 1 do
+                let form = caseForm(s maybe.unwrapOr(:String s.cases[k].name ""))
+                if form.count is 0 then empties[k] := 1
+                else
+                    others := others + 1
+                    withComponents := k
+                end
+            end
+            let var singleWord = false
+            if others is 1 then
+                let form = caseForm(s maybe.unwrapOr(:String s.cases[withComponents].name ""))
+                let c = s.cases[withComponents]
+                let one = if form.isTuple then
+                        {form.count is 1} andif not(maybe.unwrap(:shapes.Shape c.shape).components[0].isVar)
+                    else true end
+                singleWord := one
+            end
+            let ta = scratch(f model.i32)
+            emit(f i1(ops.localGet a))
+            emit(f i1(ops.localGet b))
+            emit(f i(ops.refEq))
+            emit(f model.ifInst(option blockValue of model.BlockType with let type = model.i32 end ""))
+            emit(f model.i32Const(1))
+            emit(f model.elseInst)
+            emit(f i1(ops.localGet a))
+            castTo(f tOption)
+            emit(f i2(ops.structGet tOption fTag))
+            emit(f i1(ops.localTee ta))
+            emit(f i1(ops.localGet b))
+            castTo(f tOption)
+            emit(f i2(ops.structGet tOption fTag))
+            emit(f i(ops.i32Eq))
+            emit(f model.ifInst(option blockValue of model.BlockType with let type = model.i32 end ""))
+            emit(f i1(ops.localGet ta))
+            mapI32(f empties)
+            if singleWord then
+                (* the case with the component: its components compared *)
+                let c = s.cases[withComponents]
+                let cs = maybe.unwrap(:shapes.Shape c.shape)
+                let componentT = if shapes.kindIs(cs shapes.shapeTuple) then componentType(cs 0) else cs.type end
+                emit(f i1(ops.localGet ta))
+                emit(f model.i32Const(withComponents))
+                emit(f i(ops.i32Eq))
+                emit(f model.ifInst(option blockValue of model.BlockType with let type = model.i32 end ""))
+                let first = fun(local: Int): Ok
+                    begin
+                        emit(f i1(ops.localGet local))
+                        castTo(f tOption)
+                        emit(f i2(ops.structGet tOption fSlots))
+                        emit(f model.i32Const(0))
+                        emit(f i1(ops.arrayGet tSlots))
+                    end
+                first(a)
+                first(b)
+                componentIs(f componentT depth)
+                emit(f model.elseInst)
+                emit(f model.i32Const(0))
+                emit(f model.endInst)
+                emit(f i(ops.i32Or))
+            end
+            emit(f model.elseInst)
+            emit(f model.i32Const(0))
+            emit(f model.endInst)
+            emit(f model.endInst)
+        end
+
+    (* is between the two slot values of type t on the stack *)
+    and componentIs(f: F t: ir.Type depth: Int): Ok =
+        begin
+            let x = scratch(f model.eqref)
+            let y = scratch(f model.eqref)
+            emit(f i1(ops.localSet y))
+            emit(f i1(ops.localSet x))
+            let s = shapeOf(t)
+            case valType(t)
+                when valI64 then
+                    emit(f i1(ops.localGet x))
+                    runtimeCall(f "unboxInt")
+                    emit(f i1(ops.localGet y))
+                    runtimeCall(f "unboxInt")
+                    emit(f i(ops.i64Eq))
+                when valRef then
+                    if shapes.kindIs(s shapes.shapeOption) then optionIs(f s x y depth + 1)
+                    else
+                        emit(f i1(ops.localGet x))
+                        emit(f i1(ops.localGet y))
+                        emit(f i(ops.refEq))
+                    end
+                else
+                    (* Bools and Chars, i31s *)
+                    emit(f i1(ops.localGet x))
+                    emit(f i1(ops.localGet y))
+                    emit(f i(ops.refEq))
+            end
+        end
+
+    (* --- Arrays --- *)
+
+    let elementType(t: ir.Type): ir.Type = shapes.element(shapeOf(t)).type
+
+    (* The most elements an array may have here, V8's (section 2.10) *)
+    let maxElements = 134217720
+
+    (* Raises arrayOp.error unless the Int index is within the array *)
+    let checkIndex(f: F arr: ir.Atom index: ir.Atom offset: maybe.T(Int)): Ok =
+        begin
+            atom(f index)
+            atom(f arr)
+            castTo(f tArray)
+            emit(f i2(ops.structGet tArray fElems))
+            emit(f i(ops.arrayLen))
+            emit(f i(ops.i64ExtendI32U))
+            emit(f i(ops.i64LtU))
+            emit(f i(ops.i32Eqz))
+            emit(f model.ifInst(empty ""))
+            raiseAt(f "arrayOp.error" offset)
+            emit(f model.endInst)
+        end
+
+    let elements(f: F arr: ir.Atom index: ir.Atom): Ok =
+        begin
+            atom(f arr)
+            castTo(f tArray)
+            emit(f i2(ops.structGet tArray fElems))
+            atom(f index)
+            emit(f i(ops.i32WrapI64))
+        end
+
+    let makeArray(f: F args: Array(ir.Atom) t: ir.Type): Ok =
+        begin
+            if extent args > 10000 then fail("an array of more than 10,000 elements written out") end
+            let e = elementType(t)
+            emit(f model.i32Const(0))
+            for k = 0 upto extent args - 1 do boxedAtom(f args[k]) end
+            emit(f i2(ops.arrayNewFixed tSlots extent args))
+            emit(f i1(ops.structNew tArray))
+        end
+
+    (* An array of count copies of init: a negative count raises
+     * arrayOp.error, and one over the most there may be is out of memory,
+     * before array.new would trap *)
+    let arrayRep(f: F x: ir.OpArrayRep t: ir.Type): Ok =
+        begin
+            atom(f x.count)
+            emit(f model.i64Const(0))
+            emit(f i(ops.i64LtS))
+            emit(f model.ifInst(empty ""))
+            raiseAt(f "arrayOp.error" x.offset)
+            emit(f model.endInst)
+            atom(f x.count)
+            emit(f model.i64Const(maxElements))
+            emit(f i(ops.i64GtS))
+            emit(f model.ifInst(empty ""))
+            literal(f "quest: out of memory: an array of more than " <> conv.int(maxElements) <> " elements\n")
+            emit(f model.i32Const(70))
+            runtimeCall(f "fatal")
+            emit(f i(ops.unreachable))
+            emit(f model.endInst)
+            emit(f model.i32Const(0))
+            boxedAtom(f x.init)
+            atom(f x.count)
+            emit(f i(ops.i32WrapI64))
+            emit(f i1(ops.arrayNew tSlots))
+            emit(f i1(ops.structNew tArray))
+        end
+
+    let index(f: F x: ir.OpIndex target: maybe.T(ir.Variable)): Ok =
+        begin
+            checkIndex(f x.arr x.index x.offset)
+            elements(f x.arr x.index)
+            emit(f i1(ops.arrayGet tSlots))
+            unboxFor(f elementType(ir.atomType(x.arr)) target)
         end
 
     (* Integer division or remainder, the divisor tested for 0, which raises
@@ -342,6 +918,27 @@ export
             when primGt then compare(f x ops.i64GtS ops.i32GtU)
             when primGe then compare(f x ops.i64GeS ops.i32GeU)
             when primIs, primIsnot then
+                if shapes.kindIs(shapeOf(ir.atomType(x.args[0])) shapes.shapeOption) then
+                    let a = scratch(f model.eqref)
+                    let b = scratch(f model.eqref)
+                    atom(f x.args[0])
+                    emit(f i1(ops.localSet a))
+                    atom(f x.args[1])
+                    emit(f i1(ops.localSet b))
+                    optionIs(f shapeOf(ir.atomType(x.args[0])) a b 0)
+                    if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
+                elsif isRecord(ir.atomType(x.args[0])) then
+                    for k = 0 upto 1 do
+                        atom(f x.args[k])
+                        if isBoxedVar(x.args[k]) then
+                            castTo(f tRecBox)
+                            emit(f i2(ops.structGet tRecBox 0))
+                        else emit(f i(ops.drop))
+                        end
+                    end
+                    emit(f i(ops.refEq))
+                    if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
+                else
                 if maybe.isSome(:ir.Descriptor x.descriptor) then fail("is through a descriptor (step 6)") end
                 atoms(f x.args)
                 case atomType(x.args[0])
@@ -351,6 +948,7 @@ export
                     else fail("is on a Real")
                 end
                 if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
+                end
             when primAnd then
                 atoms(f x.args)
                 emit(f i(ops.i32And))
@@ -365,7 +963,12 @@ export
                 runtimeCall(f "concat")
             when primRealAdd, primRealSub, primRealMul, primRealDiv, primRealPow, primRealLt, primRealLe, primRealGt,
                 primRealGe then fail("the primitive " <> ir.primName(x.op) <> " (step 8 connects util/realconv)")
-            when primExtent then fail("extent (step 4)")
+            when primExtent then
+                atoms(f x.args)
+                castTo(f rt.index("array"))
+                emit(f i2(ops.structGet rt.index("array") rt.field("array" "elems")))
+                emit(f i(ops.arrayLen))
+                emit(f i(ops.i64ExtendI32U))
         end
 
     (* A call of the library's lib.member, which step 9 links as a unit of
@@ -379,7 +982,32 @@ export
             elsif stringOp.equal(name "writer.putChar") then through("putChar")
             elsif stringOp.equal(name "conv.int") then through("convInt")
             elsif stringOp.equal(name "conv.bool") then through("convBool")
-            elsif stringOp.equal(name "conv.char") then through("convChar")
+            elsif stringOp.equal(name "conv.char") orif stringOp.equal(name "conv.string") then
+                (* In quotes, escaped, as quest_conv_char and quest_conv_string
+                 * write them *)
+                let quote = if stringOp.equal(name "conv.char") then '\'' else '"' end
+                literal(f stringOp.new(1 quote))
+                atoms(f args)
+                if quote is '\'' then runtimeCall(f "convChar") end
+                emit(f model.i32Const(ascii.val(quote)))
+                runtimeCall(f "escaped")
+                runtimeCall(f "concat")
+                literal(f stringOp.new(1 quote))
+                runtimeCall(f "concat")
+            elsif stringOp.equal(name "string.getChar") then through("stringGetChar")
+            elsif stringOp.equal(name "string.setChar") then through("stringSetChar")
+            elsif stringOp.equal(name "string.new") then through("stringNew")
+            elsif stringOp.equal(name "string.getSub") then through("stringGetSub")
+            elsif stringOp.equal(name "string.setSub") then through("stringSetSub")
+            elsif stringOp.equal(name "string.cat") then through("concat")
+            elsif stringOp.equal(name "string.equal") then through("stringEqual")
+            elsif stringOp.equal(name "string.isEmpty") then
+                atoms(f args)
+                emit(f option instRefCast of Inst with let type = tuple let nullable = false
+                    let heap = option heapIndex of model.HeapType with let index = rt.index("string") end end
+                end)
+                emit(f i2(ops.structGet rt.index("string") rt.field("string" "length")))
+                emit(f i(ops.i32Eqz))
             elsif stringOp.equal(name "string.length") then
                 atoms(f args)
                 emit(f option instRefCast of Inst with let type = tuple let nullable = false
@@ -445,8 +1073,126 @@ export
             end
         end
 
+    (* --- Records --- *)
+
+    (* The table of the view's fields in a record laid out as layout: for
+     * each of view's fields, in name order, its slot in the payload, whose
+     * fields are in name order; an immutable global, made once for each pair *)
+    let dict(f: F view: ir.Type layout: ir.Type): Int =
+        begin
+            let vs = shapes.sortedComponents(shapeOf(view))
+            let ls = shapes.sortedComponents(shapeOf(layout))
+            let key = conv.int(shapeOf(view).id) <> ":" <> conv.int(shapeOf(layout).id)
+            if hashMap.contains(:String :Int f.g.dicts key) then hashMap.find(:String :Int f.g.dicts key)
+            else
+                let init = vector.new(:Inst)
+                for k = 0 upto extent vs - 1 do
+                    let name = maybe.unwrapOr(:String vs[k].name "")
+                    let var at = ~1
+                    for j = 0 upto extent ls - 1 do
+                        if stringOp.equal(maybe.unwrapOr(:String ls[j].name "") name) then at := j end
+                    end
+                    if at < 0 then fail("a view's field " <> name <> " that the record does not have") end
+                    vector.append(:Inst init model.i32Const(at))
+                end
+                vector.append(:Inst init i2(ops.arrayNewFixed rt.index("i32s") extent vs))
+                vector.append(:Inst init i1(ops.structNew tDict))
+                let n = vector.length(:model.Global f.g.m.globals)
+                vector.append(:model.Global f.g.m.globals tuple
+                    let name = fresh(f.g.names "dict") let type = model.ref(tDict) let mutable = false
+                    let init = vector.toArray(:Inst init)
+                end)
+                hashMap.insert(:String :Int f.g.dicts key n)
+                n
+            end
+        end
+
+    (* A new record: its payload, its fields in name order, and its view's
+     * table; boxed if target is held boxed *)
+    let makeRecord(f: F x: ir.OpMakeRecord target: maybe.T(ir.Variable)): Ok =
+        begin
+            if x.runtimeOffsets orif maybe.isNone(:ir.OffsetTable x.offsets) then
+                fail("a record seen at a type whose table is known only at run time (milestone 4)")
+            end
+            let table = maybe.unwrap(:ir.OffsetTable x.offsets)
+            let ls = shapes.sortedComponents(shapeOf(table.layout))
+            emit(f model.i32Const(0))
+            emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
+            for k = 0 upto extent ls - 1 do
+                let name = maybe.unwrapOr(:String ls[k].name "")
+                let var found = false
+                for j = 0 upto extent x.fields - 1 do
+                    if stringOp.equal(x.fields[j].name name) then
+                        boxedAtom(f x.fields[j].atom)
+                        found := true
+                    end
+                end
+                if not(found) then fail("a record without its layout's field " <> name) end
+            end
+            emit(f i2(ops.arrayNewFixed tSlots extent ls))
+            emit(f i1(ops.structNew tRecord))
+            emit(f i1(ops.globalGet dict(f table.view table.layout)))
+            if maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).boxed then
+                box(f maybe.unwrap(:ir.Variable target).type)
+            end
+        end
+
+    (* The payload's slots and the slot of field name of the record base,
+     * through its view's table *)
+    let fieldSlot(f: F base: ir.Atom name: String): Ok =
+        begin
+            let vs = shapeOf(ir.atomType(base))
+            if not(shapes.kindIs(vs shapes.shapeRecord)) then fail("a field of a value of no record type") end
+            let fields = shapes.sortedComponents(vs)
+            let var k = ~1
+            for j = 0 upto extent fields - 1 do
+                if stringOp.equal(maybe.unwrapOr(:String fields[j].name "") name) then k := j end
+            end
+            if k < 0 then fail("a record type without the field " <> name) end
+            let d = scratch(f model.eqref)
+            recordAtom(f base)
+            emit(f i1(ops.localSet d))
+            castTo(f tRecord)
+            emit(f i2(ops.structGet tRecord rt.field("record" "slots")))
+            emit(f i1(ops.localGet d))
+            castTo(f tDict)
+            emit(f i2(ops.structGet tDict 0))
+            emit(f model.i32Const(k))
+            emit(f i1(ops.arrayGet rt.index("i32s")))
+        end
+
+    let recordField(f: F x: ir.OpRecordField target: maybe.T(ir.Variable)): Ok =
+        begin
+            if x.stored then fail("a record's field stored at another type (milestone 4)") end
+            if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
+            fieldSlot(f x.recordAtom x.name)
+            emit(f i1(ops.arrayGet tSlots))
+            let c = maybe.unwrap(:shapes.Component shapes.component(shapeOf(ir.atomType(x.recordAtom)) x.name))
+            unboxFor(f shapes.componentShape(c).type target)
+        end
+
+    (* A value converted as its plan says (docs/ir.md section 8.3): to and
+     * from a slot's form, which for a record is its box; a cast between
+     * references changes nothing here *)
+    let convert(f: F x: ir.OpConvert target: maybe.T(ir.Variable)): Ok =
+        case x.plan.kind
+            when planBox, planSlotBox then boxedAtom(f x.value)
+            when planUnbox, planSlotUnbox then
+                atom(f x.value)
+                unboxFor(f x.plan.target target)
+            when planCast then atom(f x.value)
+            when planAdapt then fail("an adapter (step 7)")
+            when planRecordView, planVariantTags, planView, planUnproxy, planRuntime, planCopy then
+                fail("the conversion " <> ir.planKindName(x.plan.kind) <> " (milestone 4)")
+        end
+
     (* The operation's value, on the stack *)
-    let operation(f: F o: ir.Op): Ok =
+    let operation(f: F o: ir.Op target: maybe.T(ir.Variable)): Ok =
+        begin
+        let targetType = fun(): ir.Type
+            if maybe.isSome(:ir.Variable target) then maybe.unwrap(:ir.Variable target).type
+            else raise unsupported with "an aggregate made and not bound" end
+            end
         case o
             when opAtom with x then atom(f x.atom)
             when opPrim with x then prim(f x)
@@ -458,11 +1204,41 @@ export
                 if {extent x.captures > 0} orif {extent x.typeArgs > 0} then fail("a closure's captures (step 5)") end
                 emit(f model.i32Const(0))
                 emit(f i1(ops.structNew rt.index("clos")))
-            when opMakeTuple, opTupleField, opMakeOption, opIsTag, opPayload, opOrdinal then
-                fail("tuples and options (step 4)")
-            when opMakeArray, opArrayRep, opIndex then fail("arrays (step 4)")
-            when opMakeRecord, opRecordField then fail("records (step 4)")
-            when opConvert then fail("a conversion (step 7)")
+            when opMakeTuple with x then
+                if maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).unboxed then
+                    atoms(f x.args)
+                else newTuple(f x.args)
+                end
+            when opTupleField with x then tupleField(f x target)
+            when opMakeOption with x then makeOption(f x targetType())
+            when opIsTag with x then
+                if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
+                let s = optionShape(ir.atomType(x.value))
+                tagOf(f x.value x.access)
+                emit(f model.i32Const(tagIndex(s x.tag)))
+                emit(f i(ops.i32Eq))
+            when opPayload with x then payload(f x targetType())
+            when opOrdinal with x then
+                if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
+                let s = optionShape(ir.atomType(x.value))
+                tagOf(f x.value x.access)
+                (* The tag numbers the shape's cases, by name; the ordinal
+                 * counts the static type's, as written *)
+                let ordinals = array of(extent s.cases 0)
+                for k = 0 upto extent s.cases - 1 do
+                    let name = maybe.unwrapOr(:String s.cases[k].name "")
+                    for j = 0 upto extent x.cases - 1 do
+                        if stringOp.equal(x.cases[j] name) then ordinals[k] := j end
+                    end
+                end
+                mapI32(f ordinals)
+                emit(f i(ops.i64ExtendI32U))
+            when opMakeArray with x then makeArray(f x.args targetType())
+            when opArrayRep with x then arrayRep(f x targetType())
+            when opIndex with x then index(f x target)
+            when opMakeRecord with x then makeRecord(f x target)
+            when opRecordField with x then recordField(f x target)
+            when opConvert with x then convert(f x target)
             when opTypeApp then fail("a type application (step 7)")
             when opEnvField then fail("a closure's captures (step 5)")
             when opBuiltin then fail("a built-in function as a value (step 5)")
@@ -472,6 +1248,7 @@ export
             when opMakeAuto then fail("an auto value (milestone 4)")
             when opAddrVar, opAddrCell, opAddrField, opAddrComponent, opAddrElement, opLoad then
                 fail("a location (milestone 4)")
+        end
         end
 
     (* Writes text to standard output, through the runtime *)
@@ -637,6 +1414,22 @@ export
             end
         end
 
+    (* How many values an operation done for its effect leaves: a direct
+     * call's results, else one *)
+    let resultCount(f: F o: ir.Op): Int =
+        case o
+            when opCall with x then
+                let direct = directCallee(f x)
+                if maybe.isSome(:Int direct) then
+                    case model.typeAt(f.g.m model.functionType(f.g.m maybe.unwrap(:Int direct))).composite
+                        when compFunc with t then extent t.results
+                        else 1
+                    end
+                else 1
+                end
+            else 1
+        end
+
     let rec body(f: F b: ir.Body): Ok =
         begin
             let ss = vector.toArray(:ir.Stmt b.statements)
@@ -653,11 +1446,25 @@ export
     and statement(f: F s: ir.Stmt): Ok =
         case s
             when sLet with x then
-                operation(f x.value)
+                operation(f x.value maybe.some(:ir.Variable x.v))
                 store(f x.v)
             when sDo with x then
-                operation(f x.value)
-                emit(f i(ops.drop))
+                operation(f x.value maybe.none(:ir.Variable))
+                for k = 1 upto resultCount(f x.value) do emit(f i(ops.drop)) end
+            when sStoreComponent with x then
+                if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
+                atom(f x.base)
+                accessAs(f tTuple x.access)
+                emit(f i2(ops.structGet tTuple fSlots))
+                emit(f model.i32Const(x.index))
+                boxedAtom(f x.value)
+                emit(f i1(ops.arraySet tSlots))
+            when sStoreElement with x then
+                checkIndex(f x.base x.index x.offset)
+                elements(f x.base x.index)
+                boxedAtom(f x.value)
+                emit(f i1(ops.arraySet tSlots))
+            when sSwitch with x then switch(f x)
             when sVarDecl with x then
                 if maybe.isSome(:ir.Atom x.init) then
                     atom(f maybe.unwrap(:ir.Atom x.init))
@@ -690,8 +1497,12 @@ export
             when sContinue with x then emit(f i1(ops.br depth(f x.label option labelRepeat of LabelKind end)))
             when sJoin with x then
                 hashMap.insert(:String :Bool f.returning x.label returnsParam(f x))
-                let types = array of(extent x.params model.i32)
-                for k = 0 upto extent x.params - 1 do types[k] := valType(x.params[k].type) end
+                let joined = vector.new(:ValType)
+                for k = 0 upto extent x.params - 1 do
+                    let ps = varParts(x.params[k])
+                    for j = 0 upto extent ps - 1 do vector.append(:ValType joined ps[j]) end
+                end
+                let types = vector.toArray(:ValType joined)
                 emit(f model.blockInst(empty x.label <> ".after"))
                 open(f x.label option labelAfter of LabelKind end)
                 emit(f model.blockInst(blockOf(f types) x.label))
@@ -712,14 +1523,74 @@ export
                 emit(f i(ops.returnOp))
             when sUnreachable then emit(f i(ops.unreachable))
             when sRaise, sReraise, sTry then fail("exceptions (step 6)")
-            when sSwitch then fail("a switch on a variant or option (step 4)")
             when sEcho with x then echo(f x)
             when sEchoText with x then output(f fun(): Ok literal(f x.text <> "\n"))
             when sStoreAt then fail("a location (milestone 4)")
-            when sStoreField, sStoreComponent, sStoreElement then fail("a store (step 4)")
-            when sLetRec then fail("recursive values (step 4)")
+            when sStoreField with x then
+                if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
+                fieldSlot(f x.base x.name)
+                boxedAtom(f x.value)
+                emit(f i1(ops.arraySet tSlots))
+            when sLetRec then fail("recursive values, which closures that capture them make (step 5)")
             when sFuns then fail("a function not closure-converted")
             when sInspect then fail("an inspect (milestone 4)")
+        end
+
+    (* A switch on an option's tag (variants are milestone 4's): a block for
+     * each case, inside one for else and one for the end, entered by a
+     * br_table on the tag; a case's binder is the option itself, which
+     * shares its components, or its one component *)
+    and switch(f: F x: ir.StmtSwitch): Ok =
+        begin
+            if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
+            let s = optionShape(ir.atomType(x.value))
+            let opt = scratch(f model.refNull(tOption))
+            atom(f x.value)
+            accessAs(f tOption x.access)
+            emit(f i1(ops.localSet opt))
+            let base = "switch" <> conv.int(vector.length(:Inst f.code))
+            let m = extent x.cases
+            emit(f model.blockInst(empty ""))
+            open(f base <> ".after" option labelIf of LabelKind end)
+            emit(f model.blockInst(empty ""))
+            open(f base <> ".else" option labelIf of LabelKind end)
+            for k = m - 1 downto 0 do
+                emit(f model.blockInst(empty ""))
+                open(f base <> "." <> conv.int(k) option labelIf of LabelKind end)
+            end
+            let targets = array of(extent s.cases m)
+            for k = 0 upto m - 1 do
+                for j = 0 upto extent x.cases[k].tags - 1 do targets[tagIndex(s x.cases[k].tags[j])] := k end
+            end
+            emit(f i1(ops.localGet opt))
+            emit(f i2(ops.structGet tOption fTag))
+            emit(f option instBrTable of Inst with let labels = targets let default = m end)
+            for k = 0 upto m - 1 do
+                close(f)
+                let c = x.cases[k]
+                if maybe.isSome(:ir.Variable c.binder) then
+                    let binder = maybe.unwrap(:ir.Variable c.binder)
+                    if not(shapes.kindIs(shapes.shape(binder.type) shapes.shapeOk)) then
+                        emit(f i1(ops.localGet opt))
+                        if not(shapes.kindIs(shapes.shape(binder.type) shapes.shapeTuple)) then
+                            emit(f i2(ops.structGet tOption fSlots))
+                            emit(f model.i32Const(0))
+                            emit(f i1(ops.arrayGet tSlots))
+                            if not(binder.boxed) then unbox(f binder.type) end
+                        end
+                        store(f binder)
+                    end
+                end
+                body(f c.body)
+                if not(ir.terminated(c.body)) then
+                    emit(f i1(ops.br depth(f base <> ".after" option labelIf of LabelKind end)))
+                end
+            end
+            close(f)
+            if maybe.isSome(:ir.Body x.elseBody) then body(f maybe.unwrap(:ir.Body x.elseBody))
+            else raiseAt(f "variant.tagMismatch" maybe.none(:Int))
+            end
+            close(f)
         end
 
     (* ======================================================================
@@ -756,24 +1627,29 @@ export
                 fail("a polymorphic function (step 7)")
             end
             if maybe.isSome(:ir.Variable fn.env) then fail("a closure's captures (step 5)") end
-            if fn.unboxedResult then fail("an unboxed tuple result (step 4)") end
-            let params = array of(extent fn.params model.i64)
+            let params = vector.new(:ValType)
             for k = 0 upto extent fn.params - 1 do
                 if not(stringOp.equal(fn.params[k].mode "value")) then fail("a var or out parameter (milestone 4)") end
-                params[k] := valType(fn.params[k].v.type)
+                let ps = varParts(fn.params[k].v)
+                for j = 0 upto extent ps - 1 do vector.append(:ValType params ps[j]) end
             end
-            tuple let params = params let results = array of valType(fn.resultType) end end
+            let results = if fn.unboxedResult then componentTypes(fn.resultType) else parts(fn.resultType) end
+            tuple let params = vector.toArray(:ValType params) let results = results end
         end
 
     (* A function of the unit, whose index and type are already given *)
     let function(g: G fn: ir.Function): Ok =
         begin
             let sig = signature(fn)
-            let names = array of(extent fn.params "")
+            let names = array of(extent sig.params "")
             let f = newF(g names sig.results)
+            let var at = 0
             for k = 0 upto extent fn.params - 1 do
-                names[k] := fresh(f.names fn.params[k].v.hint)
-                hashMap.insert(:Int :Int f.locals fn.params[k].v.id k)
+                hashMap.insert(:Int :Int f.locals fn.params[k].v.id at)
+                for j = 0 upto extent varParts(fn.params[k].v) - 1 do
+                    names[at] := fresh(f.names fn.params[k].v.hint)
+                    at := at + 1
+                end
             end
             body(f fn.body)
             emit(f i(ops.unreachable))
@@ -799,6 +1675,7 @@ export
                 let funcTypes = hashMap.new(:String :Int stringOp.equal hash.string)
                 let strings = stringBuilder.new()
                 let names = hashMap.new(:String :Int stringOp.equal hash.string)
+                let dicts = hashMap.new(:String :Int stringOp.equal hash.string)
             end
             (* The runtime's functions and tag, imported first *)
             for k = 0 upto extent runtime.exports - 1 do

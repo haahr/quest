@@ -29,6 +29,16 @@ export
         entry("decimal" array of model.i64 end array of model.eqref end)
         entry("hex" array of model.i64 end array of model.eqref end)
         entry("escaped" array of model.eqref model.i32 end array of model.eqref end)
+        entry("boxInt" array of model.i64 end array of model.eqref end)
+        entry("unboxInt" array of model.eqref end array of model.i64 end)
+        entry("fatal" array of model.eqref model.i32 end none)
+        entry("stringGetChar" array of model.eqref model.i64 end array of model.i32 end)
+        entry("stringSetChar" array of model.eqref model.i64 model.i32 end array of model.eqref end)
+        entry("stringNew" array of model.i64 model.i32 end array of model.eqref end)
+        entry("stringGetSub" array of model.eqref model.i64 model.i64 end array of model.eqref end)
+        entry("stringSetSub" array of model.eqref model.i64 model.eqref model.i64 model.i64 end
+            array of model.eqref end)
+        entry("stringEqual" array of model.eqref model.eqref end array of model.i32 end)
     end
 
     (* ======================================================================
@@ -69,15 +79,25 @@ export
     let decimal = 10
     let hex = 11
     let escaped = 12
-    let ensure = 13
-    let digits = 14
-    let escapeChar = 15
-    let hexDigit = 16
-    let putByte = 17
+    let boxInt = 13
+    let unboxInt = 14
+    let fatal = 15
+    let stringGetChar = 16
+    let stringSetChar = 17
+    let stringNew = 18
+    let stringGetSub = 19
+    let stringSetSub = 20
+    let stringEqual = 21
+    let ensure = 22
+    let digits = 23
+    let escapeChar = 24
+    let hexDigit = 25
+    let putByte = 26
+    let stringError = 27
 
     (* The runtime's own text, in its one passive data segment: each string's
      * offset and length *)
-    let text = "truefalseException: \n  at \n"
+    let text = "truefalseException: \n  at \nstring.error"
     Def Piece = Tuple offset: Int length: Int end
     let piece(offset: Int length: Int): Piece = tuple let offset = offset let length = length end
     let trueText = piece(0 4)
@@ -85,6 +105,8 @@ export
     let exceptionText = piece(9 11)
     let atText = piece(20 6)
     let newlineText = piece(26 1)
+    let stringErrorText = piece(27 12)
+    let emptyText = piece(0 0)
 
     let runtimeModule(): model.Module =
         begin
@@ -92,6 +114,7 @@ export
             vector.append(:model.RecGroup m.types rt.group)
             let tString = rt.index("string")
             let tBytes = rt.index("bytes")
+            let tBoxInt = rt.index("boxInt")
             let sLength = rt.field("string" "length")
             let sBytes = rt.field("string" "bytes")
             let nullString = model.refNull(tString)
@@ -324,6 +347,130 @@ export
                         c32(0) i1(ops.localGet 6) i1(ops.localGet 7) i(ops.refAsNonNull) i1(ops.structNew tString)
                     end
                 end))
+            (* An Int in a slot (section 2.2 of the plan): an i31 if it fits
+             * 31 bits as a signed number, else a box *)
+            add("boxInt" typeOf[11] array of "n" end array of :model.Local end array of
+                i1(ops.localGet 0) model.i64Const(0x40000000) i(ops.i64Add) model.i64Const(0x80000000) i(ops.i64LtU)
+                model.ifInst(result(model.eqref) "")
+                i1(ops.localGet 0) i(ops.i32WrapI64) i(ops.refI31)
+                model.elseInst
+                i1(ops.localGet 0) i1(ops.structNew tBoxInt)
+                model.endInst
+            end)
+            add("unboxInt" typeOf[12] array of "e" end array of :model.Local end array of
+                model.blockInst(result(model.refTo(false option heapI31 of model.HeapType end)) "small")
+                i1(ops.localGet 0)
+                option instBrOnCast of Inst with
+                    let fail = false let label = 0
+                    let from = tuple let nullable = true let heap = option heapEq of model.HeapType end end
+                    let to = tuple let nullable = false let heap = option heapI31 of model.HeapType end end
+                end
+                castTo(tBoxInt) i2(ops.structGet tBoxInt 0) i(ops.returnOp)
+                model.endInst
+                i(ops.i31GetS) i(ops.i64ExtendI32S)
+            end)
+            (* A fatal error's report, which no handler catches, and the
+             * status the program ends with, as the C runtime's quest_fail_at
+             * (1) and its collector's out of memory (70) end a program *)
+            add("fatal" typeOf[13] array of "report" "status" end array of :model.Local end array of
+                c32(2) i(ops.refI31) i1(ops.localGet 0) i1(ops.call putString) i(ops.drop)
+                i1(ops.localGet 1) i1(ops.call procExit)
+            end)
+            (* string's externals, as the C runtime's quest_string functions
+             * are: an index or a substring outside the string raises
+             * string.error, with no site; an index is compared unsigned,
+             * which catches a negative one too *)
+            let checkIndex(s: Int index: Int str: Int): Array(Inst) = array of
+                i1(ops.localGet s) castTo(tString) i1(ops.localTee str) i2(ops.structGet tString sLength)
+                i(ops.i64ExtendI32U) i1(ops.localGet index) i(ops.i64LeU)
+                model.ifInst(empty "") i1(ops.call stringError) model.endInst
+            end
+            add("stringGetChar" typeOf[14] array of "s" "i" end array of local("str" nullString) end cat(array of
+                checkIndex(0 1 2)
+                array of
+                    i1(ops.localGet 2) i2(ops.structGet tString sBytes) i1(ops.localGet 1) i(ops.i32WrapI64)
+                    i1(ops.arrayGetU tBytes)
+                end
+            end))
+            add("stringSetChar" typeOf[15] array of "s" "i" "c" end array of local("str" nullString) end cat(array of
+                checkIndex(0 1 3)
+                array of
+                    i1(ops.localGet 3) i2(ops.structGet tString sBytes) i1(ops.localGet 1) i(ops.i32WrapI64)
+                    i1(ops.localGet 2) i1(ops.arraySet tBytes)
+                    c32(0) i(ops.refI31)
+                end
+            end))
+            add("stringNew" typeOf[16] array of "n" "c" end array of :model.Local end array of
+                i1(ops.localGet 0) model.i64Const(0) i(ops.i64LtS)
+                model.ifInst(empty "") i1(ops.call stringError) model.endInst
+                c32(0) i1(ops.localGet 0) i(ops.i32WrapI64)
+                i1(ops.localGet 1) i1(ops.localGet 0) i(ops.i32WrapI64) i1(ops.arrayNew tBytes)
+                i1(ops.structNew tString)
+            end)
+            (* Whether start and size are outside a string of length len (the
+             * locals' numbers): start > len or size > len - start, unsigned *)
+            let outside(start: Int size: Int len: Int): Array(Inst) = array of
+                i1(ops.localGet start) i1(ops.localGet len) i(ops.i64GtU)
+                i1(ops.localGet size) i1(ops.localGet len) i1(ops.localGet start) i(ops.i64Sub) i(ops.i64GtU)
+                i(ops.i32Or)
+            end
+            add("stringGetSub" typeOf[17] array of "s" "start" "size" end
+                array of local("str" nullString) local("len" model.i64) local("out" nullBytes) end cat(array of
+                array of
+                    i1(ops.localGet 0) castTo(tString) i1(ops.localTee 3) i2(ops.structGet tString sLength)
+                    i(ops.i64ExtendI32U) i1(ops.localSet 4)
+                end
+                outside(1 2 4)
+                array of
+                    model.ifInst(empty "") i1(ops.call stringError) model.endInst
+                    i1(ops.localGet 2) i(ops.i32WrapI64) i1(ops.arrayNewDefault tBytes) i1(ops.localSet 5)
+                    i1(ops.localGet 5) c32(0) i1(ops.localGet 3) i2(ops.structGet tString sBytes)
+                    i1(ops.localGet 1) i(ops.i32WrapI64) i1(ops.localGet 2) i(ops.i32WrapI64)
+                    i2(ops.arrayCopy tBytes tBytes)
+                    c32(0) i1(ops.localGet 2) i(ops.i32WrapI64) i1(ops.localGet 5) i(ops.refAsNonNull)
+                    i1(ops.structNew tString)
+                end
+            end))
+            add("stringSetSub" typeOf[18] array of "dest" "destStart" "source" "sourceStart" "size" end
+                array of local("d" nullString) local("s" nullString) local("dlen" model.i64) local("slen" model.i64) end
+                cat(array of
+                    array of
+                        i1(ops.localGet 0) castTo(tString) i1(ops.localTee 5) i2(ops.structGet tString sLength)
+                        i(ops.i64ExtendI32U) i1(ops.localSet 7)
+                        i1(ops.localGet 2) castTo(tString) i1(ops.localTee 6) i2(ops.structGet tString sLength)
+                        i(ops.i64ExtendI32U) i1(ops.localSet 8)
+                    end
+                    outside(1 4 7)
+                    outside(3 4 8)
+                    array of
+                        i(ops.i32Or)
+                        model.ifInst(empty "") i1(ops.call stringError) model.endInst
+                        i1(ops.localGet 5) i2(ops.structGet tString sBytes) i1(ops.localGet 1) i(ops.i32WrapI64)
+                        i1(ops.localGet 6) i2(ops.structGet tString sBytes) i1(ops.localGet 3) i(ops.i32WrapI64)
+                        i1(ops.localGet 4) i(ops.i32WrapI64) i2(ops.arrayCopy tBytes tBytes)
+                        c32(0) i(ops.refI31)
+                    end
+                end))
+            add("stringEqual" typeOf[19] array of "a" "b" end
+                array of local("x" nullString) local("y" nullString) local("n" model.i32) local("i" model.i32) end
+                array of
+                    i1(ops.localGet 0) castTo(tString) i1(ops.localTee 2) i2(ops.structGet tString sLength)
+                    i1(ops.localSet 4)
+                    i1(ops.localGet 1) castTo(tString) i1(ops.localTee 3) i2(ops.structGet tString sLength)
+                    i1(ops.localGet 4) i(ops.i32Ne)
+                    model.ifInst(empty "") c32(0) i(ops.returnOp) model.endInst
+                    c32(0) i1(ops.localSet 5)
+                    model.blockInst(empty "") model.loopInst(empty "")
+                    i1(ops.localGet 5) i1(ops.localGet 4) i(ops.i32GeU) i1(ops.brIf 1)
+                    i1(ops.localGet 2) i2(ops.structGet tString sBytes) i1(ops.localGet 5) i1(ops.arrayGetU tBytes)
+                    i1(ops.localGet 3) i2(ops.structGet tString sBytes) i1(ops.localGet 5) i1(ops.arrayGetU tBytes)
+                    i(ops.i32Ne)
+                    model.ifInst(empty "") c32(0) i(ops.returnOp) model.endInst
+                    i1(ops.localGet 5) c32(1) i(ops.i32Add) i1(ops.localSet 5)
+                    i1(ops.br 0)
+                    model.endInst model.endInst
+                    c32(1)
+                end)
             (* The functions only the runtime calls, after those it exports *)
             (* Grows the memory to hold need bytes *)
             add("ensure" funcType(array of model.i32 end none) array of "need" end array of :model.Local end array of
@@ -388,6 +535,9 @@ export
                     i1(ops.localGet 0) i1(ops.localGet 1) i1(ops.localGet 2) i1(ops.arraySet tBytes)
                     i1(ops.localGet 1) c32(1) i(ops.i32Add)
                 end)
+            add("stringError" funcType(none none) array of :String end array of :model.Local end cat(array of
+                pieceString(stringErrorText) pieceString(emptyText) array of i1(ops.call fail) end
+            end))
 
             vector.append(:model.Export m.exports
                 tuple let field = "memory" let kind = option exportMemory of model.ExportKind end let index = 0 end)
