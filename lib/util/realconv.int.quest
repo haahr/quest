@@ -1,0 +1,39 @@
+(* Real numbers to and from decimal text, exactly, in Quest: what the C runtime
+ * asks of libc's snprintf and strtod. realconv.mod.quest's header says how and
+ * why. *)
+
+interface RealConv export
+    (* Decimal digits d1 d2 ... dn, each 0 to 9 with d1 not 0, and an exponent
+     * x: the number d1.d2...dn times 10^x *)
+    Def Digits = Tuple digits: Array(Int) exponent: Int end
+
+    (* |r| correctly rounded to p significant digits, ties to even, as C's
+     * printf "%.{p - 1}e" writes it; r finite and not zero, p at least 1 *)
+    rounded(r: Real p: Int): Digits
+
+    (* The shortest digits that read back as |r|, choosing among those of that
+     * length the nearest, as the C runtime's quest_shortest_digits does; r
+     * finite and not zero *)
+    shortest(r: Real): Digits
+
+    (* |r| as conv.real writes it, without its sign: the shortest digits, in
+     * fixed notation for 1e-4 <= |r| < 1e16 (with ".0" when integral) and
+     * otherwise d[.ddd]e+XX; "0.0" for a zero and "inf" for an infinity *)
+    magnitude(r: Real): String
+
+    (* r as conv.real writes it: its magnitude, after ~ when r's sign bit is
+     * set, negative zero and negative infinity included *)
+    toString(r: Real): String
+
+    (* The real nearest the decimal s, ties to even, as strtod reads it: an
+     * optional sign (~, -, or +), digits with an optional fraction (at least
+     * one digit in all), and an optional exponent (e or E, an optional sign,
+     * digits). A magnitude too large for a real is an infinity, and one too
+     * small a zero, each with s's sign. s's syntax is the caller's to check,
+     * as strutil.tryToReal does; what follows a valid prefix is ignored. *)
+    toReal(s: String): Real
+
+    (* The bits of the real whose sign, biased exponent field (0 to 2047), and
+     * 52-bit fraction field are given *)
+    fromFields(negative: Bool field: Int fraction: Int): Real
+end

@@ -1,0 +1,144 @@
+(* util/realconv against the runtime's conversions on many values: the checks of
+ * tests/source/stdlib/realconv_operations.quest, which the golden suite runs on
+ * a few dozen values at four lengths, here on as many as asked for at every
+ * length. Not a golden test (it is
+ * outside tests/source); run it by hand after a change to util/realconv:
+ *
+ *     ./quest tests/realconv/stress.quest COUNT [SEED]
+ *
+ * For each of COUNT pseudo-random reals, their bits uniform: its text against
+ * conv.real, its text read back against strutil.toReal, its digits at each
+ * length 1 to 17 against real.format; the exact decimal of the midpoint above
+ * it, and that decimal moved by one in its last digit either way, read against
+ * strutil.toReal; and a random decimal of 1 to 25 digits with an exponent
+ * from -340 to 320, read the same way. It prints each disagreement and the
+ * counts. *)
+
+import util/realconv : util/RealConv
+import util/strutil : util/Strutil
+import util/bignum : util/Bignum
+import stringOp = string : StringOp
+import conv : Conv
+import word : Word
+import writer : Writer
+import system : System
+
+let show(s: String): Ok =
+    begin
+        writer.putString(writer.output s)
+        writer.putString(writer.output "\n")
+    end
+
+let bits(r: Real): word.T = word.fromReal(r)
+let twoTo52 = 4503599627370496
+let fieldOf(r: Real): Int = word.toInt(word.extract(bits(r) 52 11))
+let fractionOf(r: Real): Int = word.toInt(word.extract(bits(r) 0 52))
+
+let count = if extent system.args > 1 then strutil.toInt(system.args[1]) else 100000 end
+let seed = if extent system.args > 2 then strutil.toInt(system.args[2]) else 20261113 end
+
+let eText(d: realconv.Digits): String =
+    begin
+        let ds = d.digits
+        let var s = conv.int(ds[0])
+        if extent ds > 1 then
+            s := s <> "."
+            for i = 1 upto extent ds - 1 do s := s <> conv.int(ds[i]) end
+        end
+        let x = d.exponent
+        let a = if x < 0 then 0 - x else x end
+        s <> {if x < 0 then "e-" else "e+" end} <> {if a < 10 then "0" else "" end} <> conv.int(a)
+    end
+
+let state = array of word.fromInt(seed) end
+let random(): word.T =
+    begin
+        state[0] := word.add(state[0] word.fromInt(~7046029254386353131))
+        let var z = state[0]
+        z := word.mul(word.xorBits(z word.shift(z ~30)) word.fromInt(~4658895280553007687))
+        z := word.mul(word.xorBits(z word.shift(z ~27)) word.fromInt(~7723592293110705685))
+        word.xorBits(z word.shift(z ~31))
+    end
+
+(* A random integer from 0 to n - 1 *)
+let below(n: Int): Int = word.toInt(word.mod(random() word.fromInt(n)))
+
+let rec randomReal(): Real =
+    begin
+        let w = random()
+        if word.toInt(word.extract(w 52 11)) is 2047 then randomReal() else word.toReal(w) end
+    end
+
+let midpoint(r: Real delta: Int): String =
+    begin
+        let field = fieldOf(r)
+        let m = if field is 0 then fractionOf(r) else fractionOf(r) + twoTo52 end
+        let e = if field is 0 then ~1074 else field - 1075 end
+        let odd = bignum.fromInt({2 * m} + 1)
+        if e >= 1 then bignum.toString(bignum.add(bignum.mul(odd bignum.pow(bignum.fromInt(2) {e - 1})) bignum.fromInt(delta)))
+        else
+            let digits = bignum.add(bignum.mul(odd bignum.pow(bignum.fromInt(5) {1 - e})) bignum.fromInt(delta))
+            bignum.toString(digits) <> "e-" <> conv.int(1 - e)
+        end
+    end
+
+let randomDecimal(): String =
+    begin
+        let var s = if below(2) is 0 then "" else "-" end
+        let n = 1 + below(25)
+        let point = below(n + 1)
+        for i = 0 upto n - 1 do
+            if i is point then s := s <> "." end
+            s := s <> conv.int(below(10))
+        end
+        s <> "e" <> conv.int(below(661) - 340)
+    end
+
+let var textFails = 0
+let var readFails = 0
+let var digitFails = 0
+let var midpointFails = 0
+let var decimalFails = 0
+
+let readAgrees(s: String): Bool = bits(realconv.toReal(s)) is bits(strutil.toReal(s))
+
+for i = 1 upto count do
+    let r = randomReal()
+    let magnitude = realconv.fromFields(false fieldOf(r) fractionOf(r))
+    if not(stringOp.equal(realconv.toString(r) conv.real(r))) then
+        textFails := textFails + 1
+        show("text: " <> conv.real(r) <> " is written " <> realconv.toString(r))
+    end
+    if bits(realconv.toReal(conv.real(r))) isnot bits(r) then
+        readFails := readFails + 1
+        show("read back: " <> conv.real(r))
+    end
+    if bits(magnitude) isnot word.fromInt(0) then
+        for p = 1 upto 17 do
+            let mine = eText(realconv.rounded(magnitude p))
+            let theirs = real.format(magnitude 'e' {p - 1})
+            if not(stringOp.equal(mine theirs)) then
+                digitFails := digitFails + 1
+                show("digits: " <> theirs <> " is written " <> mine)
+            end
+        end
+    end
+    if {fieldOf(r) isnot 2046} orif {fractionOf(r) isnot {twoTo52 - 1}} then
+        for delta = ~1 upto 1 do
+            let s = midpoint(magnitude delta)
+            if not(readAgrees(s)) then
+                midpointFails := midpointFails + 1
+                show("midpoint above " <> conv.real(magnitude) <> ", " <> conv.int(delta))
+            end
+        end
+    end
+    let s = randomDecimal()
+    if not(readAgrees(s)) then
+        decimalFails := decimalFails + 1
+        show("decimal: " <> s)
+    end
+end
+
+show(conv.int(count) <> " reals, seed " <> conv.int(seed) <> ": disagreements in text " <> conv.int(textFails)
+     <> ", reading back " <> conv.int(readFails) <> ", digits " <> conv.int(digitFails) <> ", midpoints "
+     <> conv.int(midpointFails) <> ", random decimals " <> conv.int(decimalFails))

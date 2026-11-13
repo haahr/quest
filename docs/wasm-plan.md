@@ -488,11 +488,18 @@ on `Math.sin`'s last bit. So both are written in Quest, and no C is compiled to 
     big-integer division gives the 53 bits and what is left decides the rounding, with subnormals and overflow as
     cases.
 
-  Both are exact arithmetic over `util/bignum`, slow and plain, not one of the fast algorithms (Ryu, Grisu,
-  Eisel-Lemire), whose subtlety is in avoiding big integers. Being exact, they give libc's digits, which the shared
-  goldens check. One new intrinsic reinterprets an `f64`'s bits as an `i64` and back. The work is some hundreds of
-  lines and does not wait for the backend: it runs natively, so it can be written and tested against libc at any
-  time before step 8, which only connects it.
+  Both are exact arithmetic, slow and plain, not one of the fast algorithms (Ryu, Grisu, Eisel-Lemire), whose
+  subtlety is in avoiding big integers. Being exact, they give libc's digits, which the shared goldens check. A
+  real's bits are `word.fromReal` and `word.toReal`, one instruction each. The work does not wait for the backend:
+  it runs natively, so it is written and tested against libc first, and step 8 connects it.
+
+  *Built 2026-11-13* as `lib/util/realconv` (step 8). It does not use `util/bignum`: that unit imports
+  `util/strutil` and `conv`, whose real conversions this one provides on this target, so the imports would make a
+  cycle. It has its own natural numbers instead, which need only a number times a small one plus a small one, a
+  shift, a subtraction, and a comparison. Their limbs are below 2³⁰, so that in an array they are `i31ref`s and
+  never boxed. It imports only `word`, `string`, and `ascii`, and uses no type parameter, so it can also be part
+  of the core runtime (§4.2), which cannot instantiate descriptors. Reading back a candidate is not a second
+  parse: the candidate reads back when it lies between the midpoints that separate the real from its neighbors.
 
   *Not taken:* a helper compiled from C, or JavaScript's `Number`. The owner chose against the first for the
   toolchain it adds to the build, and the second is absent in wasmtime, where the suite runs.
@@ -773,7 +780,7 @@ only when the backend's files differ, until its time is known.
    each level of nesting is measured in baseline code and recorded (§6.2), without waiting for step 10.
 8. **`Real` formatting and parsing in Quest** (§4.3).
    A subproject of its own, with its own risk: it is tested apart from the backend first, since the Quest code
-   runs natively too, against the C runtime on the same inputs.
+   runs natively too, against the C runtime on the same inputs. Taken first, before step 2, at the owner's word.
    *Done when* the goldens that print and read `Real`s pass byte for byte, and a test of values chosen for their
    difficulty (halfway cases, subnormals, the largest and smallest, negative zero, infinities, and some millions
    of random bit patterns) agrees with the C runtime, natively and on this target.
