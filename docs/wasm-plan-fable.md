@@ -9,8 +9,8 @@ collection (WasmGC): Quest's values are the engine's structs and arrays, and the
 recommendation for each; §8 the parts expected to be hard; §2 where I thought what was asked for was problematic. The
 owner has answered the questions (§11), and §9 has the steps to the first milestone: **the compiler, compiled to
 WebAssembly, compiling itself outside a browser.** A review's twenty-two questions have been worked through, and
-§12 says where each is answered and what it changed. Four questions are open (§11: 2 and 10 to 12), and none blocks
-anything before the second milestone.
+§12 says where each is answered and what it changed. The owner's answers to the last four questions (§11: 2 and 10
+to 12) are provisional; no question is open.
 
 ---
 
@@ -255,7 +255,7 @@ orders the costs differently.
 **Recommended: the pair,** exact semantics at a few nanoseconds a call, because the cost falls on a feature the
 compiler and library do not use, and copying's differences would be a change to the language as implemented, on one
 target only. The measurement also settles that the pair does not force R4's arrays: a struct's component is reached
-by a switch on the index. Awaiting the owner's word (§11, 2); built in the second milestone either way.
+by a switch on the index. Taken, provisionally (§11, 2); built in the second milestone.
 
 **R9. Identity and its hash.** `is` is `ref.eq` after unproxying, with options' value rules as now
 ([extensions.md](extensions.md), "Options as Values"). `hash.identityHash` has no address to hash: I recommend a
@@ -730,8 +730,8 @@ raising `interrupted`, with the session ended if the cell has not stopped after 
 - *The grace period* stays: an input that has not stopped some seconds after the flag (it is inside a host call, or
   in code without the test) is terminated with its worker.
 
-*Recommended:* the worker always; the shared flag where the page is isolated; termination otherwise. Whether the
-page may require isolation is a question of where it will be hosted, for the owner (§11).
+*Decided* (§11, 10, provisionally): the page requires isolation, so the worker and the shared flag always, and
+termination only after the grace period. Wherever the page is hosted must send the two headers.
 
 ## 8. The Hard Parts, in Order of Risk
 
@@ -846,7 +846,7 @@ Stages, in order; steps to be written after milestone 1.
    from URL prefixes (J5), what J6 lists served, interrupts (J7), and recovery from the host's errors (A8).
 2. **Each interaction a module:** compiled in the session, loaded by the host, linked to the driver's roots and
    to earlier interactions' (J1, J4), with the count and the poll in its code (A8, J7); in node first, then in the
-   page. Checked in a Safari, a Chrome, and a Firefox, not only in their engines.
+   page. Checked in a Chromium browser, the only kind promised for now (§11, 12).
 3. **The rest of the language on this target:** `var` and `out` parameters (R8), `dynamic` and the rest of `auto`
    and `inspect`, `Real` in full (§8, 4), and the run suite's pending list worked down.
 4. **The page's module:** a whole-program build, its size and start-up time, and whether Binaryen earns a place in
@@ -868,10 +868,10 @@ Answered 2026-11-12.
 
 1. **node beside wasmtime?** *Yes.* Whether tools may be installed (`wasm-tools`, Binaryen) was not said; neither is
    needed before step 3's encoder exists, and step 1 uses `wasm-tools` only if it may.
-2. **`var` and `out`: exact references or copying?** *Open.* The owner asked what each costs, noting that the
-   parameters are rare and `var` fields common. R8 now answers: `var` fields are not affected; the compiler and
-   library pass no locations at all; an exact reference costs about 5 ns a call more than copying. Recommended:
-   exact references, by R8's pair. Built in milestone 2.
+2. **`var` and `out`: exact references or copying?** *Exact references, by R8's pair* (provisionally, 2026-11-12).
+   The owner first asked what each costs, noting that the parameters are rare and `var` fields common; R8 answered:
+   `var` fields are not affected, the compiler and library pass no locations at all, and an exact reference costs
+   about 5 ns a call more than copying. Built in milestone 2.
 3. **`Int` as `i31` or a box:** *accepted.*
 4. **Scope:** *the compiler with the REPL;* much of the full test suite eventually.
 5. **The first milestone:** *the compiler compiled to WebAssembly running on itself, not in a browser* (§9.1), not
@@ -883,14 +883,15 @@ Answered 2026-11-12.
 9. **Parameterize the represent pass or fork it:** *either;* to be argued when it arises (step 4), and cheap to
    change if wrong.
 
-Raised by the review (§12), and open; none blocks milestone 1:
+Raised by the review (§12), and answered provisionally (2026-11-12):
 
-10. **May the page require cross-origin isolation** (J7)? With it an input can be interrupted and the session kept;
-    without it the only interrupt is to end the session. It is a constraint on where the page is hosted.
+10. **May the page require cross-origin isolation** (J7)? *Yes.* So an input is interrupted through the shared
+    flag and the session kept; ending the worker remains for an input that does not stop within the grace period.
 11. **A loop through closures in constant stack** (P7) costs a second body for some functions. Is the code worth
-    it, or is "not a guarantee", as natively, enough, with such loops limited by the page's stack? I recommend the
-    second bodies, and step 2 will say how many.
-12. **Which browsers,** and from which versions? The plan as written needs Safari 18.4 or later (§1).
+    it? *Yes, probably.* Second bodies are the plan; step 2 still counts them, and the count goes back to the owner
+    if it is most of the compiler.
+12. **Which browsers?** *For now, only Chromium's, that is, V8.* node is then the page's engine outside a page, and
+    Safari and Firefox are not checked or promised; what §1 says of them stands as information.
 
 ## 12. The Review's Questions, and Where They Are Answered
 
