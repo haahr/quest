@@ -1072,6 +1072,29 @@ only when the backend's files differ, until its time is known.
    - **Run goldens:** the modes pass 116, the same in both engines; 181 are pending.
    - **Still to come:** files, arguments, and the environment over WASI; `reader`; `conv.real` through
      `util/realconv`; the externals' coverage test.
+
+   *The library, second part, built 2026-11-14:*
+   - **WASI:** the base imports the rest of WASI's first preview that the library needs (arguments, the
+     environment, opened directories, `path_open`, `fd_read`, `fd_readdir`, `path_filestat_get`, and creating,
+     removing, and renaming), and exports each as `wasi:NAME`, with helpers that read and write its memory and
+     copy strings to and from it. Over them `wasm/core` has, in Quest, `system`'s arguments, environment, files,
+     and directories, `os/filestats`' `rawStat`, `writer.file` and `close`, and `reader`, buffered.
+   - **Paths:** the host opens `/` and `.`; a relative path is resolved against the current directory, which
+     starts as `PWD` and `changeDirectory` sets, and opened from `/`. wasmtime is run with `--dir /`, `--dir .`,
+     `PWD`, and the environment variables the compiler reads; node through `node:wasi`, with the same.
+   - **Without a counterpart:** `system.run` and `os/process` raise `system.error`; `os/code` and `os/value`
+     raise `value.error`, but for `code.address`, which answers that there is no such symbol; `readline` edits
+     no line and raises `readline.error`. WASI has no permission bits, so `rawStat`'s mode is `0o644` for a file
+     and `0o755` for a directory: an accepted difference.
+   - **`util/realconv`** writes a `Real` for `conv.real`, `stringBuilder`, echo, and `wasm/print`, and reads one
+     for `strutil`; a unit that needs it imports it.
+   - **The externals' coverage test** (`tests/python/test_wasm_externals.py`) checks that every external of
+     `lib/` is compiled by the table or listed as lacking: the mathematical functions, `real.format`'s styles,
+     and `dynamic`'s serialization.
+   - **An exception the base does not define** (`readline.endOfInput`) is made by the unit's initializer, once,
+     with the C runtime's name for it.
+   - **Run goldens:** the modes pass 186, the same in both engines; 109 are pending, `os/process`'s among them.
+     wasmtime inherits the environment (`-S inherit-env=y`).
 10. **The compiler through the backend.** The driver's units compiled by the native compiler with `--backend wasm`
     and run in node, with the stack constrained to a browser's, to compile a small program, then the run suite's
     sources, then itself. Differences are found against the native compiler's IR dumps, stage by stage.

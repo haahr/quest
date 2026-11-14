@@ -6,6 +6,10 @@
 unsound module core : Core
 import
     stringOp = string : StringOp
+    system : System
+    realOp = real : RealOp
+    writer : Writer
+    reader : Reader
 export
     Let Any = external "eqref"
 
@@ -340,4 +344,449 @@ export
     let sbLength(b: Buffer): Int = b.length
 
     let sbToString(b: Buffer): String = stringOp.getSub(b.bytes 0 b.length)
+
+    (* ======================================================================
+     * WASI
+     * ====================================================================== *)
+
+    (* The base's memory, at i64 addresses, and WASI's functions, each giving
+     * its errno (0 for success) *)
+    let load8(a: Int): Int = external "wasm.base.memLoad8"
+    let load32(a: Int): Int = external "wasm.base.memLoad32"
+    let load64(a: Int): Int = external "wasm.base.memLoad64"
+    let store32(a: Int v: Int): Ok = external "wasm.base.memStore32"
+    let store64(a: Int v: Int): Ok = external "wasm.base.memStore64"
+    let ensure(a: Int): Ok = external "wasm.base.memEnsure"
+    let memString(a: Int n: Int): String = external "wasm.base.memToString"
+    let toMemory(s: String a: Int): Ok = external "wasm.base.stringToMem"
+    let argsSizesGet(a: Int b: Int): Int = external "wasm.base.wasi:args_sizes_get"
+    let argsGet(a: Int b: Int): Int = external "wasm.base.wasi:args_get"
+    let environSizesGet(a: Int b: Int): Int = external "wasm.base.wasi:environ_sizes_get"
+    let environGet(a: Int b: Int): Int = external "wasm.base.wasi:environ_get"
+    let prestatGet(fd: Int a: Int): Int = external "wasm.base.wasi:fd_prestat_get"
+    let prestatDirName(fd: Int a: Int n: Int): Int = external "wasm.base.wasi:fd_prestat_dir_name"
+    let pathOpen(fd: Int dirflags: Int a: Int n: Int oflags: Int base: Int inheriting: Int fdflags: Int into: Int): Int =
+        external "wasm.base.wasi:path_open"
+    let fdRead(fd: Int iovs: Int count: Int into: Int): Int = external "wasm.base.wasi:fd_read"
+    let fdClose(fd: Int): Int = external "wasm.base.wasi:fd_close"
+    let pathFilestatGet(fd: Int flags: Int a: Int n: Int into: Int): Int = external "wasm.base.wasi:path_filestat_get"
+    let pathCreateDirectory(fd: Int a: Int n: Int): Int = external "wasm.base.wasi:path_create_directory"
+    let pathUnlinkFile(fd: Int a: Int n: Int): Int = external "wasm.base.wasi:path_unlink_file"
+    let pathRemoveDirectory(fd: Int a: Int n: Int): Int = external "wasm.base.wasi:path_remove_directory"
+    let pathRename(fd: Int a: Int n: Int fd2: Int b: Int m: Int): Int = external "wasm.base.wasi:path_rename"
+    let fdReaddir(fd: Int a: Int n: Int cookie: Int into: Int): Int = external "wasm.base.wasi:fd_readdir"
+    let intAny(n: Int): Any = external "wasm.toAny"
+    let anyInt(x: Any): Int = external "wasm.fromAny"
+
+    (* The memory's layout for these calls: results at 64 and up, a path at
+     * 1024, and a buffer after it *)
+    let results = 64
+    let pathAt = 1024
+    let bufferAt = 8192
+    let bufferSize = 65536
+
+    (* The NUL-terminated strings at a: n of them *)
+    let cStrings(a: Int n: Int): Array(String) =
+        begin
+            let all = array of(n "")
+            for i = 0 upto n - 1 do
+                let p = load32(a + {4 * i})
+                let var stop = p
+                while load8(stop) isnot 0 do stop := stop + 1 end
+                all[i] := memString(p stop - p)
+            end
+            all
+        end
+
+    let systemArgs(): Array(String) =
+        begin
+            argsSizesGet(results results + 4)
+            let count = load32(results)
+            let size = load32(results + 4)
+            ensure({bufferAt + {4 * count}} + size)
+            argsGet(bufferAt bufferAt + {4 * count})
+            cStrings(bufferAt count)
+        end
+
+    let environment(): Array(String) =
+        begin
+            environSizesGet(results results + 4)
+            let count = load32(results)
+            let size = load32(results + 4)
+            ensure({bufferAt + {4 * count}} + size)
+            environGet(bufferAt bufferAt + {4 * count})
+            cStrings(bufferAt count)
+        end
+
+    let startsWith(s: String prefix: String): Bool =
+        {stringOp.length(s) >= stringOp.length(prefix)}
+            andif stringOp.equal(stringOp.getSub(s 0 stringOp.length(prefix)) prefix)
+
+    let getEnv(name: String): String =
+        begin
+            let env = environment()
+            let var found = ""
+            for i = 0 upto extent env - 1 do
+                if startsWith(env[i] name <> "=") then
+                    let n = stringOp.length(name) + 1
+                    found := stringOp.getSub(env[i] n stringOp.length(env[i]) - n)
+                end
+            end
+            found
+        end
+
+    (* The directories the host opens, by name, found the first time *)
+    Def Preopen = Tuple fd: Int name: String end
+    let opened = tuple let var found = false let var all = array of :Preopen end let var cwd = "" end
+
+    let preopens(): Array(Preopen) =
+        begin
+            if not(opened.found) then
+                let var fd = 3
+                let var more = true
+                let var all = array of :Preopen end
+                while more do
+                    if prestatGet(fd results) isnot 0 then more := false
+                    else
+                        let n = load32(results + 4)
+                        ensure(pathAt + n)
+                        prestatDirName(fd pathAt n)
+                        let more2 = array of({extent all} + 1 tuple let fd = fd let name = memString(pathAt n) end)
+                        for i = 0 upto extent all - 1 do more2[i] := all[i] end
+                        all := more2
+                        fd := fd + 1
+                    end
+                end
+                opened.all := all
+                opened.found := true
+                opened.cwd := getEnv("PWD")
+            end
+            opened.all
+        end
+
+    (* path made absolute against the current directory, if there is one *)
+    let absolute(path: String): String =
+        begin
+            preopens()
+            if startsWith(path "/") orif stringOp.isEmpty(opened.cwd) then path
+            elsif stringOp.equal(path ".") then opened.cwd
+            else opened.cwd <> "/" <> path
+            end
+        end
+
+    (* The directory a path is opened from and the path relative to it:
+     * an absolute path's from /, a relative one's from . *)
+    Def Resolved = Tuple fd: Int path: String end
+    let resolve(path: String): Resolved =
+        begin
+            let full = absolute(path)
+            let all = preopens()
+            let var fd = ~1
+            let var rest = full
+            for i = 0 upto extent all - 1 do
+                if startsWith(full "/") then
+                    if stringOp.equal(all[i].name "/") then
+                        fd := all[i].fd
+                        rest := stringOp.getSub(full 1 stringOp.length(full) - 1)
+                    end
+                elsif stringOp.equal(all[i].name ".") then fd := all[i].fd
+                end
+            end
+            if stringOp.isEmpty(rest) then rest := "." end
+            tuple let fd = fd let path = rest end
+        end
+
+    (* path written at pathAt, and its length *)
+    let pathArg(path: String): Int =
+        begin
+            ensure(pathAt + stringOp.length(path))
+            toMemory(path pathAt)
+            stringOp.length(path)
+        end
+
+    (* The file type of what path names, or ~1 for none: 3 a directory, 4 a
+     * regular file *)
+    let fileType(path: String): Int =
+        begin
+            let r = resolve(path)
+            if r.fd < 0 then ~1
+            else
+                let n = pathArg(r.path)
+                let fd = r.fd
+                let errno = pathFilestatGet(fd 1 pathAt n results)
+                if errno isnot 0 then ~1 else load8(results + 16) end
+            end
+        end
+
+    let fileExists(path: String): Bool = fileType(path) >= 0
+    let isFile(path: String): Bool = fileType(path) is 4
+    let isDirectory(path: String): Bool = fileType(path) is 3
+
+    let systemError(): Ok = raise system.error end
+
+    Def Stat = Tuple
+        kind: Int size: Int mode: Int accessTime: Real modifiedTime: Real changeTime: Real accessNs: Int
+        modifiedNs: Int changeNs: Int
+    end
+
+    (* Seconds, as Python computes st_mtime from st_mtime_ns *)
+    let seconds(ns: Int): Real = realOp.int(ns / 1000000000) ++ {realOp.int(ns % 1000000000) ** 0.000000001}
+
+    let fileStat(path: String follow: Bool): Stat =
+        begin
+            let r = resolve(path)
+            let errno = if r.fd < 0 then 44
+                else
+                    let n = pathArg(r.path)
+                    let fd = r.fd
+                    pathFilestatGet(fd if follow then 1 else 0 end pathAt n results)
+                end
+            if errno isnot 0 then
+                (* none for ENOENT and ENOTDIR, system.error for the rest *)
+                if {errno isnot 44} andif {errno isnot 54} then systemError() end
+                tuple
+                    let kind = ~1 let size = 0 let mode = 0 let accessTime = 0.0 let modifiedTime = 0.0
+                    let changeTime = 0.0 let accessNs = 0 let modifiedNs = 0 let changeNs = 0
+                end
+            else
+                let type = load8(results + 16)
+                let kind = if type is 4 then 0 elsif type is 3 then 1 elsif type is 7 then 2 else 3 end
+                let at = load64(results + 40)
+                let mt = load64(results + 48)
+                let ct = load64(results + 56)
+                tuple
+                    let kind = kind let size = load64(results + 32) let mode = if kind is 1 then 493 else 420 end
+                    let accessTime = seconds(at) let modifiedTime = seconds(mt) let changeTime = seconds(ct)
+                    let accessNs = at let modifiedNs = mt let changeNs = ct
+                end
+            end
+        end
+
+    (* An operation on a path: its errno, with system.error for a path no
+     * opened directory holds *)
+    let onPath(path: String op: All(fd: Int n: Int) Int): Ok =
+        begin
+            let r = resolve(path)
+            if r.fd < 0 then systemError() end
+            if op(r.fd pathArg(r.path)) isnot 0 then systemError() end
+        end
+
+    (* Each directory along path made, as quest_mkdir_recursive makes them,
+     * one that exists already (EEXIST, 20) left as it is *)
+    let makeDirectory(path: String): Ok =
+        begin
+            if stringOp.isEmpty(path) then systemError() end
+            let make = fun(p: String): Ok
+                onPath(p fun(fd: Int n: Int): Int
+                    begin
+                        let errno = pathCreateDirectory(fd pathAt n)
+                        if errno is 20 then 0 else errno end
+                    end)
+            for i = 1 upto stringOp.length(path) - 1 do
+                if stringOp.getChar(path i) is '/' then make(stringOp.getSub(path 0 i)) end
+            end
+            make(path)
+        end
+    let removeFile(path: String): Ok = onPath(path fun(fd: Int n: Int): Int pathUnlinkFile(fd pathAt n))
+    let removeDirectory(path: String): Ok = onPath(path fun(fd: Int n: Int): Int pathRemoveDirectory(fd pathAt n))
+
+    let renameFile(from: String to: String): Ok =
+        begin
+            let a = resolve(from)
+            let b = resolve(to)
+            if {a.fd < 0} orif {b.fd < 0} then systemError() end
+            let n = stringOp.length(a.path)
+            let m = stringOp.length(b.path)
+            ensure({pathAt + n} + m)
+            toMemory(a.path pathAt)
+            toMemory(b.path pathAt + n)
+            if pathRename(a.fd pathAt n b.fd {pathAt + n} m) isnot 0 then systemError() end
+        end
+
+    let currentDirectory(): String =
+        begin
+            preopens()
+            if stringOp.isEmpty(opened.cwd) then systemError() end
+            opened.cwd
+        end
+
+    (* The current directory: path made absolute, with its . and .. parts
+     * resolved, if it names a directory *)
+    let changeDirectory(path: String): Ok =
+        begin
+            let full = absolute(path)
+            if not(isDirectory(full)) then systemError() end
+            let parts = array of(stringOp.length(full) + 1 "")
+            let var count = 0
+            let var start = 0
+            for i = 0 upto stringOp.length(full) do
+                if {i is stringOp.length(full)} orif {stringOp.getChar(full i) is '/'} then
+                    let part = stringOp.getSub(full start i - start)
+                    if stringOp.equal(part "..") then if count > 0 then count := count - 1 end
+                    elsif not(stringOp.isEmpty(part)) andif not(stringOp.equal(part ".")) then
+                        parts[count] := part
+                        count := count + 1
+                    end
+                    start := i + 1
+                end
+            end
+            let var cwd = ""
+            for i = 0 upto count - 1 do cwd := cwd <> "/" <> parts[i] end
+            opened.cwd := if stringOp.isEmpty(cwd) then "/" else cwd end
+        end
+
+    (* fd, opened from path's directory with oflags (1 to create, 2 for a
+     * directory, 8 to truncate), with the rights to read, write, seek, tell,
+     * and stat a file, or to list and stat a directory; ~1 if it cannot be *)
+    let open(path: String oflags: Int): Int =
+        begin
+            let r = resolve(path)
+            if r.fd < 0 then ~1
+            else
+                let n = pathArg(r.path)
+                let rights = if {oflags % 4} >= 2 then 2113536 else 2113638 end
+                if pathOpen(r.fd 1 pathAt n oflags rights 0 0 results) isnot 0 then ~1
+                else load32(results)
+                end
+            end
+        end
+
+    (* Sorts names in place, as strcmp orders them *)
+    let sort(names: Array(String)): Ok =
+        for i = 1 upto extent names - 1 do
+            let x = names[i]
+            let var j = i - 1
+            while {j >= 0} andif not(precedes(names[j] x)) do
+                names[j + 1] := names[j]
+                j := j - 1
+            end
+            names[j + 1] := x
+        end
+
+    let listDirectory(path: String): Array(String) =
+        begin
+            let fd = open(path 2)
+            if fd < 0 then systemError() end
+            let var names = array of :String end
+            let var cookie = 0
+            let var more = true
+            ensure(bufferAt + bufferSize)
+            while more do
+                if fdReaddir(fd bufferAt bufferSize cookie results) isnot 0 then
+                    fdClose(fd)
+                    systemError()
+                end
+                let used = load32(results)
+                let var at = bufferAt
+                let var whole = true
+                while whole andif {{at + 24} <= {bufferAt + used}} do
+                    let length = load32(at + 16)
+                    if {{at + 24} + length} > {bufferAt + used} then whole := false
+                    else
+                        let name = memString(at + 24 length)
+                        cookie := load64(at)
+                        if not(stringOp.equal(name ".")) andif not(stringOp.equal(name "..")) then
+                            let more2 = array of({extent names} + 1 name)
+                            for i = 0 upto extent names - 1 do more2[i] := names[i] end
+                            names := more2
+                        end
+                        at := {at + 24} + length
+                    end
+                end
+                more := used is bufferSize
+            end
+            fdClose(fd)
+            sort(names)
+            names
+        end
+
+    let writerError(): Ok = raise writer.error end
+
+    let writerFile(name: String): Any =
+        begin
+            let fd = open(name 9)
+            if fd < 0 then writerError() end
+            intAny(fd)
+        end
+
+    let writerClose(w: Any): Ok =
+        begin
+            let fd = anyInt(w)
+            if fd > 2 then fdClose(fd) end
+            ok
+        end
+
+    (* A reader: its file descriptor, the bytes read and not yet taken, and
+     * whether it is closed *)
+    Let Reader = Tuple fd: Int var buffer: String var at: Int var closed: Bool end
+    let input = tuple let fd = 0 let var buffer = "" let var at = 0 let var closed = false end
+
+    let readerError(): Ok = raise reader.error end
+
+    let readerInput(): Reader = input
+
+    let readerFile(name: String): Reader =
+        begin
+            let fd = open(name 0)
+            if fd < 0 then readerError() end
+            tuple let fd = fd let var buffer = "" let var at = 0 let var closed = false end
+        end
+
+    (* Whether r has bytes not yet taken, reading more if it has none *)
+    let fill(r: Reader): Bool =
+        begin
+            if r.closed then readerError() end
+            if r.at >= stringOp.length(r.buffer) then
+                ensure(bufferAt + bufferSize)
+                store32(results bufferAt)
+                store32(results + 4 bufferSize)
+                if fdRead(r.fd results 1 results + 8) isnot 0 then readerError() end
+                r.buffer := memString(bufferAt load32(results + 8))
+                r.at := 0
+            end
+            r.at < stringOp.length(r.buffer)
+        end
+
+    let readerMore(r: Reader): Bool = fill(r)
+
+    let readerGetChar(r: Reader): Char =
+        begin
+            if not(fill(r)) then readerError() end
+            let c = stringOp.getChar(r.buffer r.at)
+            r.at := r.at + 1
+            c
+        end
+
+    (* Up to size bytes, fewer only at the end *)
+    let readerGetString(r: Reader size: Int): String =
+        begin
+            if size < 0 then readerError() end
+            let b = sbNew()
+            while {sbLength(b) < size} andif fill(r) do
+                let n = if {stringOp.length(r.buffer) - r.at} < {size - sbLength(b)} then
+                        stringOp.length(r.buffer) - r.at
+                    else size - sbLength(b)
+                    end
+                sbAppendSub(b r.buffer r.at n)
+                r.at := r.at + n
+            end
+            sbToString(b)
+        end
+
+    let readerGetSubString(r: Reader s: String start: Int size: Int): Ok =
+        begin
+            if {start < 0} orif {size < 0} orif {{start + size} > stringOp.length(s)} then readerError() end
+            let got = readerGetString(r size)
+            if stringOp.length(got) < size then readerError() end
+            stringOp.setSub(s start got 0 size)
+        end
+
+    let readerClose(r: Reader): Ok =
+        begin
+            if not(r.closed) then
+                if r.fd > 2 then fdClose(r.fd) end
+                r.closed := true
+            end
+            ok
+        end
 end

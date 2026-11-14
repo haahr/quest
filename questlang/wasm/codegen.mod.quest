@@ -86,9 +86,11 @@ export
          * hold the unit's descriptors, by their symbol (staticdata) *)
         runtimeUnits: hashMap.T(String Int)
         descGlobals: hashMap.T(String Int)
-        (* Whether the unit is one of the runtime's (section 4.5), which uses
-         * the library only through the members the backend compiles itself *)
+        (* Whether the unit is one of the runtime's (section 4.5), and whether
+         * it is the core, which uses the library only through the members
+         * the backend compiles itself *)
         isRuntime: Bool
+        isCore: Bool
     end
 
     (* A name not given before among names: base, or base.k *)
@@ -283,6 +285,7 @@ export
                     let init = case ts[k]
                         when valI64 then model.i64Const(0)
                         when valI32 then model.i32Const(0)
+                        when valF64 then model.f64Const(0.0)
                         else option instRefNull of Inst with let heap = option heapNone of model.HeapType end end
                     end
                     vector.append(:model.Global f.g.m.globals tuple
@@ -1623,6 +1626,29 @@ export
         array of "quest_sb_clear" "sbClear" "e" "e" end
         array of "quest_sb_length" "sbLength" "e" "n" end
         array of "quest_sb_to_string" "sbToString" "e" "e" end
+        array of "quest_system_args" "systemArgs" "" "e" end
+        array of "quest_system_getenv" "getEnv" "e" "e" end
+        array of "quest_system_file_exists" "fileExists" "e" "b" end
+        array of "quest_system_is_file" "isFile" "e" "b" end
+        array of "quest_system_is_directory" "isDirectory" "e" "b" end
+        array of "quest_system_make_directory" "makeDirectory" "e" "e" end
+        array of "quest_system_remove_file" "removeFile" "e" "e" end
+        array of "quest_system_remove_directory" "removeDirectory" "e" "e" end
+        array of "quest_system_rename_file" "renameFile" "ee" "e" end
+        array of "quest_system_current_directory" "currentDirectory" "" "e" end
+        array of "quest_system_change_directory" "changeDirectory" "e" "e" end
+        array of "quest_system_list_directory" "listDirectory" "e" "e" end
+        array of "quest_filestats_stat" "fileStat" "eb" "e" end
+        array of "quest_writer_file" "writerFile" "e" "e" end
+        array of "quest_writer_close" "writerClose" "e" "e" end
+        array of "quest_reader_input" "readerInput" "" "e" end
+        array of "quest_reader_file" "readerFile" "e" "e" end
+        array of "quest_reader_more" "readerMore" "e" "b" end
+        array of "quest_reader_ready" "readerMore" "e" "b" end
+        array of "quest_reader_get_char" "readerGetChar" "e" "b" end
+        array of "quest_reader_get_string" "readerGetString" "en" "e" end
+        array of "quest_reader_get_substring" "readerGetSubString" "eenn" "e" end
+        array of "quest_reader_close" "readerClose" "e" "e" end
     end
     let coreExternal(symbol: String): maybe.T(Array(String)) =
         begin
@@ -1632,6 +1658,42 @@ export
             end
             found
         end
+    (* The externals that are functions of util/realconv, Quest that both
+     * targets compile (section 4.3), each with the function it calls *)
+    let realconvExternals = array of
+        array of "quest_conv_real" "toString" end
+        array of "quest_sb_append_real" "toString" end
+        array of "quest_strutil_to_real" "toReal" end
+    end
+    let realconvFunction(symbol: String): maybe.T(String) =
+        begin
+            let var found = maybe.none(:String)
+            for k = 0 upto extent realconvExternals - 1 do
+                if stringOp.equal(realconvExternals[k][0] symbol) then
+                    found := maybe.some(:String realconvExternals[k][1])
+                end
+            end
+            found
+        end
+    (* A Real as echo writes it (quest_put_real): its magnitude, as conv.real
+     * writes it, after - when its sign bit is set *)
+    let realText(f: F a: ir.Atom): Ok =
+        begin
+            atom(f a)
+            emit(f i(ops.i64ReinterpretF64))
+            emit(f model.i64Const(0))
+            emit(f i(ops.i64LtS))
+            emit(f model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
+            literal(f "-")
+            emit(f model.elseInst)
+            literal(f "")
+            emit(f model.endInst)
+            emit(f i1(ops.globalGet f.g.noClosure))
+            atom(f a)
+            runtimeUnitCall(f "util/realconv.magnitude")
+            runtimeCall(f "concat")
+        end
+
     let repTypes(codes: String): Array(ValType) =
         begin
             let ts = array of(stringOp.length(codes) model.eqref)
@@ -1688,11 +1750,24 @@ export
             let okValue = fun(): Ok begin emit(f model.i32Const(0)) emit(f i(ops.refI31)) end
             let binary = fun(o: model.Op): Ok begin atoms(f args) emit(f i(o)) end
             let core = coreExternal(symbol)
-            if maybe.isSome(:Array(String) core) then
+            let realconv = realconvFunction(symbol)
+            if named("quest_sb_append_real") then
+                emit(f i1(ops.globalGet f.g.noClosure))
+                atom(f args[0])
+                emit(f i1(ops.globalGet f.g.noClosure))
+                atom(f args[1])
+                runtimeUnitCall(f "util/realconv.toString")
+                runtimeUnitCall(f "wasm/core.sbAppendString")
+            elsif maybe.isSome(:String realconv) then
+                emit(f i1(ops.globalGet f.g.noClosure))
+                atoms(f args)
+                runtimeUnitCall(f "util/realconv." <> maybe.unwrap(:String realconv))
+            elsif maybe.isSome(:Array(String) core) then
                 emit(f i1(ops.globalGet f.g.noClosure))
                 descriptors(f descs)
                 if named("quest_identity_hash") then boxedAtom(f args[0]) else atoms(f args) end
                 runtimeUnitCall(f "wasm/core." <> maybe.unwrap(:Array(String) core)[1])
+                if named("quest_reader_ready") then emit(f i(ops.i64ExtendI32U)) end
             (* string *)
             elsif named("quest_string_alloc") then through("stringNew")
             elsif named("quest_string_get_char") then through("stringGetChar")
@@ -1720,7 +1795,7 @@ export
                 atom(f args[3])
                 runtimeCall(f "stringGetSub")
                 runtimeCall(f "putString")
-            elsif named("quest_writer_flush") orif named("quest_writer_close") then okValue()
+            elsif named("quest_writer_flush") then okValue()
             (* ascii, arrayOp, raised, system *)
             elsif named("quest_ascii_char") then
                 atom(f args[0])
@@ -1751,6 +1826,22 @@ export
                 runtimeCall(f "fatal")
                 okValue()
             elsif named("quest_system_is_terminal") then emit(f model.i32Const(0))
+            (* What has no counterpart here raises its module's error
+             * (section 4.2): no process can be run, no code made or called,
+             * no address read, no line edited. os/code's address answers
+             * that there is no such symbol, as natively for a name the
+             * binary lacks, since the driver asks at its top level *)
+            elsif named("quest_system_run") orif strutil.startsWith(symbol "quest_process_") then
+                raiseAt(f "system.error" maybe.none(:Int))
+            elsif named("quest_code_symbol") orif named("quest_code_tlv_getter") then
+                emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
+            elsif named("quest_code_is_null") then
+                atoms(f args)
+                emit(f i(ops.refIsNull))
+            elsif strutil.startsWith(symbol "quest_code_") orif strutil.startsWith(symbol "quest_value_") then
+                raiseAt(f "value.error" maybe.none(:Int))
+            elsif named("quest_readline_editing") then emit(f model.i32Const(0))
+            elsif strutil.startsWith(symbol "quest_readline_") then raiseAt(f "readline.error" maybe.none(:Int))
             (* hash *)
             elsif named("quest_hash_mix") then
                 atoms(f args)
@@ -1817,14 +1908,15 @@ export
                 emit(f model.ifInst(i64Result ""))
                 emit(f model.i64Const(0))
                 emit(f model.elseInst)
-                atom(f args[0])
                 atom(f args[1])
                 emit(f model.i64Const(0))
                 emit(f i(ops.i64GeS))
                 emit(f model.ifInst(i64Result ""))
+                atom(f args[0])
                 atom(f args[1])
                 emit(f i(ops.i64Shl))
                 emit(f model.elseInst)
+                atom(f args[0])
                 emit(f model.i64Const(0))
                 atom(f args[1])
                 emit(f i(ops.i64Sub))
@@ -2000,6 +2092,7 @@ export
     let externalValue(f: F symbol: String): Ok =
         begin
             let named = fun(n: String): Bool stringOp.equal(symbol n)
+            let core = coreExternal(symbol)
             let prefix = "(&quest_exc_"
             if strutil.startsWith(symbol prefix) andif strutil.endsWith(symbol ")") then
                 (* the module's name, then the exception's, after its first _ *)
@@ -2016,7 +2109,24 @@ export
                     if stringOp.equal(runtime.builtinExceptions[k] name) then known := true end
                 end
                 if known then emit(f i1(ops.globalGet builtinException(name)))
-                else pending(f "the library's exception " <> name <> ", which this target lacks for now")
+                else
+                    (* one the base does not define: made here, once, as the
+                     * unit's initializer evaluates it, its name the C
+                     * runtime's, the part after the module's in camel case
+                     * (readline.endOfInput) *)
+                    let b = stringBuilder.new()
+                    let var upper = false
+                    for k = 0 upto stringOp.length(name) - 1 do
+                        let c = stringOp.getChar(name k)
+                        if {c is '_'} andif {k > at} then upper := true
+                        else
+                            b.char(if upper andif {ascii.val(c) >= 97} then ascii.char(ascii.val(c) - 32) else c end)
+                            upper := false
+                        end
+                    end
+                    emit(f model.i32Const(0))
+                    literal(f b.toString())
+                    emit(f i1(ops.structNew rt.index("exception")))
                 end
             elsif named("QUEST_REAL_MAX") then emit(f model.f64Const(1.7976931348623157e+308))
             elsif named("QUEST_REAL_MIN") then emit(f model.f64Const(~1.7976931348623157e+308))
@@ -2036,9 +2146,9 @@ export
             elsif named("quest_writer_err") then
                 emit(f model.i32Const(2))
                 emit(f i(ops.refI31))
-            elsif named("quest_reader_input") then
-                emit(f model.i32Const(0))
-                emit(f i(ops.refI31))
+            elsif maybe.isSome(:Array(String) core) then
+                emit(f i1(ops.globalGet f.g.noClosure))
+                runtimeUnitCall(f "wasm/core." <> maybe.unwrap(:Array(String) core)[1])
             else pending(f "the library's external " <> symbol <> ", which this target lacks for now")
             end
         end
@@ -2138,7 +2248,7 @@ export
                         if maybe.isSome(:String symbol) then
                             (* an external of the library, compiled in place *)
                             externalCall(f maybe.unwrap(:String symbol) x.args x.descriptors maybe.none(:ir.Variable))
-                        elsif f.g.isRuntime andif maybe.isSome(:String imp.i.libPath) then
+                        elsif f.g.isCore andif maybe.isSome(:String imp.i.libPath) then
                             fail("the runtime's call of the library's " <> imp.i.canonicalPath <> "." <> member
                                 <> ", which the backend does not compile itself")
                         else
@@ -2281,7 +2391,7 @@ export
     let member(f: F x: ir.OpModuleMember target: maybe.T(ir.Variable)): Ok =
         case x.moduleRef
             when refImport with imp then
-                if maybe.isSome(:String imp.i.libPath) andif {f.g.isRuntime orif knownLibraryMember(f x)} then
+                if maybe.isSome(:String imp.i.libPath) andif {f.g.isCore orif knownLibraryMember(f x)} then
                     libraryMember(f x)
                 elsif maybe.isNone(:String x.member) then
                     (* the unit itself, its record *)
@@ -2615,6 +2725,7 @@ export
                         case ps[0]
                             when valI64 then emit(f model.i64Const(0))
                             when valI32 then emit(f model.i32Const(0))
+                            when valF64 then emit(f model.f64Const(0.0))
                             else
                                 emit(f option instRefNull of Inst with
                                     let heap = option heapNone of model.HeapType end
@@ -2659,7 +2770,20 @@ export
                 end
             let tRecBox = rt.index("recBox")
             let tException = rt.index("exception")
-            if named("toAny") then boxedAtom(f args[0])
+            if strutil.startsWith(name "wasm.base.") then
+                (* a function of the base's, by its export's name; Ok when it
+                 * gives nothing *)
+                let field = stringOp.getSub(name 10 {stringOp.length(name) - 10})
+                atoms(f args)
+                runtimeCall(f field)
+                let var results = 1
+                for k = 0 upto extent runtime.exports - 1 do
+                    if stringOp.equal(runtime.exports[k].field field) then
+                        results := extent runtime.exports[k].results
+                    end
+                end
+                if results is 0 then okValue() end
+            elsif named("toAny") then boxedAtom(f args[0])
             elsif named("fromAny") then
                 atom(f args[0])
                 if maybe.isSome(:ir.Variable target) then
@@ -2725,6 +2849,11 @@ export
             elsif named("convInt") then
                 atoms(f args)
                 runtimeCall(f "convInt")
+            elsif named("signBit") then
+                atoms(f args)
+                emit(f i(ops.i64ReinterpretF64))
+                emit(f model.i64Const(0))
+                emit(f i(ops.i64LtS))
             elsif named("charCode") then
                 atoms(f args)
                 emit(f i(ops.i64ExtendI32U))
@@ -2911,6 +3040,7 @@ export
                         atom(f x.value)
                         quoted('"')
                     elsif kindIs("Ok") then literal(f "ok")
+                    elsif kindIs("Real") then realText(f x.value)
                     elsif kindIs("Word") orif kindIs("Word.T") orif kindIs("word.T") then
                         literal(f "16#")
                         atom(f x.value)
@@ -3385,6 +3515,11 @@ export
     (* Whether an import is another unit, compiled to a module of its own,
      * rather than the library, whose members the runtime has until the
      * library is compiled *)
+    (* The name of the unit an import names, as its module is named: a
+     * library unit's by its path in lib/, which an implicit import's
+     * canonical name (arrayOp) may not be *)
+    let unitName(i: ir.Import): String = maybe.unwrapOr(:String i.libPath i.canonicalPath)
+
     let isUnitImport(runtimeUnit: Bool i: ir.Import): Bool = not(runtimeUnit andif maybe.isSome(:String i.libPath))
 
     (* A representation converted to another at an exported function's
@@ -3433,11 +3568,11 @@ export
             let records = hashMap.new(:String :Int stringOp.equal hash.string)
             for k = 0 upto extent unit.imports - 1 do
                 let i = unit.imports[k]
-                if isUnitImport(isRuntimeUnit(moduleName) i) andif not(hashMap.contains(:String :Int records i.canonicalPath)) then
+                if isUnitImport(stringOp.equal(moduleName "wasm/core") i) andif not(hashMap.contains(:String :Int records i.canonicalPath)) then
                     hashMap.insert(:String :Int records i.canonicalPath model.importedGlobals(m))
                     for j = 0 upto 1 do
                         vector.append(:model.Import m.imports tuple
-                            let moduleName = i.canonicalPath
+                            let moduleName = unitName(i)
                             let field = if j is 0 then "record.payload" else "record.dict" end
                             let name = ""
                             let kind = option importGlobal of model.ImportKind with
@@ -3481,6 +3616,7 @@ export
                 let runtimeUnits = hashMap.new(:String :Int stringOp.equal hash.string)
                 let descGlobals = hashMap.new(:String :Int stringOp.equal hash.string)
                 let isRuntime = isRuntimeUnit(moduleName)
+                let isCore = stringOp.equal(moduleName "wasm/core")
             end
             (* Each function, and the types of what its closures capture: an
              * adapter's (ir/thunks), whose environment is the closure it
@@ -3543,9 +3679,9 @@ export
                 end
             for k = 0 upto extent unit.imports - 1 do
                 let i = unit.imports[k]
-                if isUnitImport(g.isRuntime i) andif not(hashMap.contains(:String :Int g.importInits i.canonicalPath)) then
+                if isUnitImport(g.isCore i) andif not(hashMap.contains(:String :Int g.importInits i.canonicalPath)) then
                     hashMap.insert(:String :Int g.importInits i.canonicalPath
-                        importFunction(i.canonicalPath "init" funcType(g noTypes noTypes)))
+                        importFunction(unitName(i) "init" funcType(g noTypes noTypes)))
                 end
             end
             (* The runtime's units, for a unit whose code uses descriptors:
@@ -3562,7 +3698,25 @@ export
             let n = model.i64
             (* A program's report of an uncaught exception writes a payload
              * by its descriptor with print's show *)
-            if described orif {unit.isProgram andif not(isRuntimeUnit(moduleName))} then
+            (* print's echo, for a unit that echoes a value its descriptor
+             * writes; and a program's report of an uncaught exception
+             * writes a payload by its descriptor with print's show. No
+             * other unit imports print, which imports the library *)
+            let var echoes = false
+            let echoBodies = walk.unitBodies(unit)
+            for b = 0 upto extent echoBodies - 1 do
+                let ss = walk.walkStatements(echoBodies[b] true)
+                for k = 0 upto vector.length(:ir.Stmt ss) - 1 do
+                    case vector.get(:ir.Stmt ss k)
+                        when sEcho with x then
+                            if stringOp.isEmpty(describe.echoValueKind(x.type))
+                                andif maybe.isSome(:ir.Descriptor x.descriptor) then echoes := true end
+                        else ok
+                    end
+                end
+            end
+            let printed = {described andif echoes} orif {unit.isProgram andif not(isRuntimeUnit(moduleName))}
+            if printed then
                 hashMap.insert(:String :Int g.runtimeUnits "wasm/print.init"
                     importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
                 runtimeImport("wasm/print" "show" array of e e end array of e end)
@@ -3575,12 +3729,22 @@ export
                 runtimeImport("wasm/core" "setPart" array of e n e e end array of e end)
                 runtimeImport("wasm/core" "setText" array of e n n e end array of e end)
                 runtimeImport("wasm/core" "instantiate" array of e e end array of e end)
-                runtimeImport("wasm/print" "echo" array of e e e e end array of e end)
+                if echoes then runtimeImport("wasm/print" "echo" array of e e e e end array of e end) end
             end
             let allBodies = walk.unitBodies(unit)
             for b = 0 upto extent allBodies - 1 do
                 let ss = walk.walkStatements(allBodies[b] true)
                 for k = 0 upto vector.length(:ir.Stmt ss) - 1 do
+                    (* echo of a Real writes it with util/realconv *)
+                    case vector.get(:ir.Stmt ss k)
+                        when sEcho with x then
+                            if stringOp.equal(describe.echoValueKind(x.type) "Real")
+                                andif not(hashMap.contains(:String :Int g.runtimeUnits "util/realconv.magnitude")) then
+                                runtimeImport("util/realconv" "magnitude" array of model.f64 end
+                                    array of model.eqref end)
+                            end
+                        else ok
+                    end
                     let op = case vector.get(:ir.Stmt ss k)
                         when sLet with x then maybe.some(:ir.Op x.value)
                         when sDo with x then maybe.some(:ir.Op x.value)
@@ -3597,18 +3761,32 @@ export
                                         let fast = maybe.isSome(:String imp.i.libPath) andif
                                             maybe.isSome(:String externalSymbol(maybe.unwrap(:String imp.i.libPath)
                                                 maybe.unwrapOr(:String member "")))
-                                        if isUnitImport(g.isRuntime imp.i) andif not(known) andif not(fast)
+                                        if isUnitImport(g.isCore imp.i) andif not(known) andif not(fast)
                                             andif maybe.isSome(:ir.Type calleeType) then
                                             let sig = closureSig(maybe.unwrap(:ir.Type calleeType))
                                             hashMap.insert(:String :Int g.importFunctions key
-                                                importFunction(imp.i.canonicalPath
+                                                importFunction(unitName(imp.i)
                                                     maybe.unwrapOr(:String member "") nativeType(g sig)))
                                         end
                                     else ok
                                 end
                             end
+                        let realconvImport = fun(field: String): Ok
+                            if not(hashMap.contains(:String :Int g.runtimeUnits "util/realconv." <> field)) then
+                                if stringOp.equal(field "toReal") then
+                                    runtimeImport("util/realconv" field array of model.eqref end array of model.f64 end)
+                                else runtimeImport("util/realconv" field array of model.f64 end array of model.eqref end)
+                                end
+                            end
                         let coreFunction = fun(symbol: String): Ok
-                            if not(g.isRuntime) andif maybe.isSome(:Array(String) coreExternal(symbol)) then
+                            if maybe.isSome(:String realconvFunction(symbol)) then
+                                realconvImport(maybe.unwrap(:String realconvFunction(symbol)))
+                                let append = "wasm/core.sbAppendString"
+                                if stringOp.equal(symbol "quest_sb_append_real")
+                                    andif not(hashMap.contains(:String :Int g.runtimeUnits append)) then
+                                    runtimeImport("wasm/core" "sbAppendString" repTypes("ee") repTypes("e"))
+                                end
+                            elsif not(g.isCore) andif maybe.isSome(:Array(String) coreExternal(symbol)) then
                                 let e = maybe.unwrap(:Array(String) coreExternal(symbol))
                                 if not(hashMap.contains(:String :Int g.runtimeUnits "wasm/core." <> e[1])) then
                                     runtimeImport("wasm/core" e[1] repTypes(e[2]) repTypes(e[3]))
@@ -3629,6 +3807,7 @@ export
                                     end
                                 end
                             when opCallExternal with c then coreFunction(c.symbol)
+                            when opExternal with c then coreFunction(c.symbol)
                             when opTypeApp with c then register(c.callee c.moduleRef c.member c.calleeType)
                             else ok
                         end
@@ -3646,6 +3825,13 @@ export
                     end
                     any
                 end
+            let usesRealconv = hashMap.contains(:String :Int g.runtimeUnits "util/realconv.toString")
+                orif hashMap.contains(:String :Int g.runtimeUnits "util/realconv.toReal")
+                orif hashMap.contains(:String :Int g.runtimeUnits "util/realconv.magnitude")
+            if usesRealconv then
+                hashMap.insert(:String :Int g.runtimeUnits "util/realconv.init"
+                    importFunction("util/realconv" "init" funcType(g noTypes noTypes)))
+            end
             if usesCore() andif not(hashMap.contains(:String :Int g.runtimeUnits "wasm/core.init")) then
                 hashMap.insert(:String :Int g.runtimeUnits "wasm/core.init"
                     importFunction("wasm/core" "init" funcType(g noTypes noTypes)))
@@ -3697,15 +3883,18 @@ export
                     if hashMap.contains(:String :Int g.runtimeUnits "wasm/core.init") then
                         emit(f i1(ops.call hashMap.find(:String :Int g.runtimeUnits "wasm/core.init")))
                     end
-                    if described then
+                    if hashMap.contains(:String :Int g.runtimeUnits "util/realconv.init") then
+                        emit(f i1(ops.call hashMap.find(:String :Int g.runtimeUnits "util/realconv.init")))
+                    end
+                    if described then emit(f i1(ops.call descIndex)) end
+                    if described andif echoes then
                         emit(f i1(ops.call hashMap.find(:String :Int g.runtimeUnits "wasm/print.init")))
-                        emit(f i1(ops.call descIndex))
                     end
                 end
             (* Each unit imported initialized, in the order of the imports *)
             let initImports = fun(f: F): Ok
                 for k = 0 upto extent unit.imports - 1 do
-                    if isUnitImport(g.isRuntime unit.imports[k]) then
+                    if isUnitImport(g.isCore unit.imports[k]) then
                         emit(f i1(ops.call hashMap.find(:String :Int g.importInits unit.imports[k].canonicalPath)))
                     end
                 end

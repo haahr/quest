@@ -82,7 +82,7 @@ def check_program(driver: str, program: Path, update: bool) -> list[str]:
         preloads = [a for u in units for a in ("--preload", u)]
         modules = [a for u in units for a in ("--module", u)]
         engines = (("wasmtime", WASMTIME + ["--preload", f"quest.runtime={runtime}"] + preloads + [str(module)]),
-                   ("node", ["node", str(NODE_HOST)] + modules + [str(runtime), str(module)]))
+                   ("node", ["node", "--no-warnings", str(NODE_HOST)] + modules + [str(runtime), str(module)]))
         for engine, command in engines:
             got = run(command, d, environment)
             if got[0] != expected[0] or got[1] != expected[1]:

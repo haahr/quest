@@ -92,4 +92,42 @@ export
     sbClear(b: Buffer): Ok
     sbLength(b: Buffer): Int
     sbToString(b: Buffer): String
+
+    (* system's, writer's, and reader's externals over WASI's first preview
+     * (docs/wasm-plan.md section 4.4), raising system.error, writer.error,
+     * and reader.error as the C runtime's do. A path is resolved against
+     * the directories the host opens, / and ., after the current directory
+     * changeDirectory sets, PWD's to begin with. A writer is its file
+     * descriptor, as the base writes to one *)
+    systemArgs(): Array(String)
+    getEnv(name: String): String
+    fileExists(path: String): Bool
+    isFile(path: String): Bool
+    isDirectory(path: String): Bool
+    makeDirectory(path: String): Ok
+    removeFile(path: String): Ok
+    removeDirectory(path: String): Ok
+    renameFile(from: String to: String): Ok
+    currentDirectory(): String
+    changeDirectory(path: String): Ok
+    listDirectory(path: String): Array(String)
+    (* os/filestats' rawStat: the kind (0 file, 1 directory, 2 symlink, 3
+     * other, ~1 missing), size, mode, the three times in seconds, and the
+     * same in nanoseconds; WASI has no mode, so a file's is 0o644 and a
+     * directory's 0o755 *)
+    Def Stat = Tuple
+        kind: Int size: Int mode: Int accessTime: Real modifiedTime: Real changeTime: Real accessNs: Int
+        modifiedNs: Int changeNs: Int
+    end
+    fileStat(path: String follow: Bool): Stat
+    writerFile(name: String): Any
+    writerClose(w: Any): Ok
+    Reader::TYPE
+    readerInput(): Reader
+    readerFile(name: String): Reader
+    readerMore(r: Reader): Bool
+    readerGetChar(r: Reader): Char
+    readerGetString(r: Reader size: Int): String
+    readerGetSubString(r: Reader s: String start: Int size: Int): Ok
+    readerClose(r: Reader): Ok
 end

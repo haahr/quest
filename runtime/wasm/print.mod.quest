@@ -8,6 +8,7 @@
 unsound module print : Print
 import
     wasm/core : wasm/Core
+    util/realconv : util/RealConv
     stringOp = string : StringOp
 export
     (* An Any read as an Int (an i31 or a $boxInt, so a Word too), a Bool, a
@@ -16,6 +17,8 @@ export
     let toBool(x: core.Any): Bool = external "wasm.fromAny"
     let toChar(x: core.Any): Char = external "wasm.fromAny"
     let toString(x: core.Any): String = external "wasm.fromAny"
+    let toReal(x: core.Any): Real = external "wasm.fromAny"
+    let signBit(r: Real): Bool = external "wasm.signBit"
     let fromInt(n: Int): core.Any = external "wasm.toAny"
     (* ref.eq *)
     let same(a: core.Any b: core.Any): Bool = external "wasm.same"
@@ -71,6 +74,10 @@ export
         begin
             let k = d.kind
             if k is core.kindInt then decimal(toInt(v))
+            elsif k is core.kindReal then
+                (* quest_put_real: conv.real's digits, with - for ~ *)
+                let r = toReal(v)
+                {if signBit(r) then "-" else "" end} <> realconv.magnitude(r)
             elsif k is core.kindBool then if toBool(v) then "true" else "false" end
             elsif k is core.kindChar then "'" <> {escaped(charString(toChar(v)) '\'') <> "'"}
             elsif k is core.kindString then "\"" <> {escaped(toString(v) '"') <> "\""}

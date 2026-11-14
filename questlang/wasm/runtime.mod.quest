@@ -8,6 +8,7 @@ import
     collections/vector : collections/Vector
     stringOp = string : StringOp
     ascii : Ascii
+    conv : Conv
 export
     Def Export = Tuple field: String params: Array(model.ValType) results: Array(model.ValType) end
     Let Inst = model.Inst
@@ -18,7 +19,28 @@ export
     let none = array of :model.ValType end
     let entry(field: String params: Array(model.ValType) results: Array(model.ValType)): Export =
         tuple let field = field let params = params let results = results end
-    let exports = array of
+    (* The functions of WASI's first preview the runtime imports besides
+     * fd_write and proc_exit, each with its parameters (i an i32, I an i64);
+     * each returns an errno *)
+    let wasiFunctions = array of
+        array of "args_sizes_get" "ii" end
+        array of "args_get" "ii" end
+        array of "environ_sizes_get" "ii" end
+        array of "environ_get" "ii" end
+        array of "fd_prestat_get" "ii" end
+        array of "fd_prestat_dir_name" "iii" end
+        array of "path_open" "iiiiiIIii" end
+        array of "fd_read" "iiii" end
+        array of "fd_close" "i" end
+        array of "path_filestat_get" "iiiii" end
+        array of "path_create_directory" "iii" end
+        array of "path_unlink_file" "iii" end
+        array of "path_remove_directory" "iii" end
+        array of "path_rename" "iiiiii" end
+        array of "fd_readdir" "iiiIi" end
+    end
+    let wasiCount = extent wasiFunctions
+    let fixedExports = array of
         entry("putString" array of model.eqref model.eqref end array of model.eqref end)
         entry("putChar" array of model.eqref model.i32 end array of model.eqref end)
         entry("concat" array of model.eqref model.eqref end array of model.eqref end)
@@ -42,13 +64,44 @@ export
         entry("stringEqual" array of model.eqref model.eqref end array of model.i32 end)
         entry("exceptionOf" array of model.eqref end array of model.eqref end)
         entry("payloadOf" array of model.eqref end array of model.eqref end)
+        (* Memory, for the core's calls of WASI: a byte, a 32-bit word, and a
+         * 64-bit one, read and written at an address; the memory grown to
+         * hold an address; n bytes from an address as a new string; a
+         * string's bytes written at an address *)
+        entry("memLoad8" array of model.i64 end array of model.i64 end)
+        entry("memStore8" array of model.i64 model.i64 end none)
+        entry("memLoad32" array of model.i64 end array of model.i64 end)
+        entry("memStore32" array of model.i64 model.i64 end none)
+        entry("memLoad64" array of model.i64 end array of model.i64 end)
+        entry("memStore64" array of model.i64 model.i64 end none)
+        entry("memEnsure" array of model.i64 end none)
+        entry("memToString" array of model.i64 model.i64 end array of model.eqref end)
+        entry("stringToMem" array of model.eqref model.i64 end none)
     end
+    (* WASI's functions, each exported as wasi:NAME with its parameters and
+     * its errno i64s *)
+    let wasiExports: Array(Export) =
+        begin
+            let es = array of(wasiCount entry("" none none))
+            for k = 0 upto wasiCount - 1 do
+                es[k] := entry("wasi:" <> wasiFunctions[k][0]
+                    array of(stringOp.length(wasiFunctions[k][1]) model.i64) array of model.i64 end)
+            end
+            es
+        end
+    let exports: Array(Export) =
+        begin
+            let es = array of({extent fixedExports} + wasiCount entry("" none none))
+            for k = 0 upto extent fixedExports - 1 do es[k] := fixedExports[k] end
+            for k = 0 upto wasiCount - 1 do es[{extent fixedExports} + k] := wasiExports[k] end
+            es
+        end
 
     (* The built-in exceptions, the C runtime's quest_exc globals, each a
      * global of the runtime exported as exception:NAME *)
     let builtinExceptions = array of
         "int.error" "real.error" "word.error" "string.error" "arrayOp.error" "variant.tagMismatch" "ascii.error"
-        "dynamic.error" "writer.error" "reader.error" "system.error"
+        "dynamic.error" "writer.error" "reader.error" "system.error" "value.error" "readline.error"
     end
     let exceptionField(name: String): String = "exception:" <> name
 
@@ -79,35 +132,35 @@ export
      * added below *)
     let fdWrite = 0
     let procExit = 1
-    let putString = 2
-    let putChar = 3
-    let concat = 4
-    let convInt = 5
-    let convBool = 6
-    let convChar = 7
-    let raiseIt = 8
-    let uncaught = 9
-    let decimal = 10
-    let hex = 11
-    let escaped = 12
-    let boxInt = 13
-    let unboxInt = 14
-    let fatal = 15
-    let stringGetChar = 16
-    let stringSetChar = 17
-    let stringNew = 18
-    let stringGetSub = 19
-    let stringSetSub = 20
-    let stringEqual = 21
-    let exceptionOf = 22
-    let payloadOf = 23
-    let ensure = 24
-    let digits = 25
-    let escapeChar = 26
-    let hexDigit = 27
-    let putByte = 28
-    let stringError = 29
-    let show = 30
+    let putString = 2 + wasiCount
+    let putChar = 3 + wasiCount
+    let concat = 4 + wasiCount
+    let convInt = 5 + wasiCount
+    let convBool = 6 + wasiCount
+    let convChar = 7 + wasiCount
+    let raiseIt = 8 + wasiCount
+    let uncaught = 9 + wasiCount
+    let decimal = 10 + wasiCount
+    let hex = 11 + wasiCount
+    let escaped = 12 + wasiCount
+    let boxInt = 13 + wasiCount
+    let unboxInt = 14 + wasiCount
+    let fatal = 15 + wasiCount
+    let stringGetChar = 16 + wasiCount
+    let stringSetChar = 17 + wasiCount
+    let stringNew = 18 + wasiCount
+    let stringGetSub = 19 + wasiCount
+    let stringSetSub = 20 + wasiCount
+    let stringEqual = 21 + wasiCount
+    let exceptionOf = 22 + wasiCount
+    let payloadOf = 23 + wasiCount
+    let ensure = 24 + wasiCount + {extent exports - 22}
+    let digits = 25 + wasiCount + {extent exports - 22}
+    let escapeChar = 26 + wasiCount + {extent exports - 22}
+    let hexDigit = 27 + wasiCount + {extent exports - 22}
+    let putByte = 28 + wasiCount + {extent exports - 22}
+    let stringError = 29 + wasiCount + {extent exports - 22}
+    let show = 30 + wasiCount + {extent exports - 22}
 
     (* The runtime's own text, in its one passive data segment: each string's
      * offset and length *)
@@ -210,6 +263,19 @@ export
                     let type = funcType(array of model.i32 end none)
                 end
             end)
+            for k = 0 upto wasiCount - 1 do
+                let ps = wasiFunctions[k][1]
+                let params = array of(stringOp.length(ps) model.i32)
+                for j = 0 upto stringOp.length(ps) - 1 do
+                    if stringOp.getChar(ps j) is 'I' then params[j] := model.i64 end
+                end
+                vector.append(:model.Import m.imports tuple
+                    let moduleName = wasi let field = wasiFunctions[k][0] let name = wasiFunctions[k][0]
+                    let kind = option importFunc of model.ImportKind with
+                        let type = funcType(params array of model.i32 end)
+                    end
+                end)
+            end
             vector.append(:model.Memory m.memories tuple let name = "memory" let min = 1 let max = ~1 end)
             vector.append(:model.Tag m.tags
                 tuple let name = "error" let type = funcType(array of model.eqref end none) end)
@@ -572,6 +638,69 @@ export
             add("payloadOf" typeOf[21] array of "state" end array of :model.Local end array of
                 i1(ops.localGet 0) castTo(tRaised) i2(ops.structGet tRaised 1)
             end)
+            (* Memory's helpers: an address is an i64, wrapped *)
+            let k0 = extent fixedExports - 9
+            let addr = array of i1(ops.localGet 0) i(ops.i32WrapI64) end
+            add("memLoad8" typeOf[k0] array of "a" end array of :model.Local end
+                cat(array of addr array of i1(ops.i32Load8U 0) i(ops.i64ExtendI32U) end end))
+            add("memStore8" typeOf[k0 + 1] array of "a" "v" end array of :model.Local end
+                cat(array of addr array of i1(ops.localGet 1) i(ops.i32WrapI64) i1(ops.i32Store8 0) end end))
+            add("memLoad32" typeOf[k0 + 2] array of "a" end array of :model.Local end
+                cat(array of addr array of i1(ops.i32Load 0) i(ops.i64ExtendI32U) end end))
+            add("memStore32" typeOf[k0 + 3] array of "a" "v" end array of :model.Local end
+                cat(array of addr array of i1(ops.localGet 1) i(ops.i32WrapI64) i1(ops.i32Store 0) end end))
+            add("memLoad64" typeOf[k0 + 4] array of "a" end array of :model.Local end
+                cat(array of addr array of i1(ops.i64Load 0) end end))
+            add("memStore64" typeOf[k0 + 5] array of "a" "v" end array of :model.Local end
+                cat(array of addr array of i1(ops.localGet 1) i1(ops.i64Store 0) end end))
+            add("memEnsure" typeOf[k0 + 6] array of "a" end array of :model.Local end
+                cat(array of addr array of i1(ops.call ensure) end end))
+            (* n bytes at a, as a new string *)
+            add("memToString" typeOf[k0 + 7] array of "a" "n" end
+                array of local("bytes" nullBytes) local("i" model.i32) end array of
+                    i1(ops.localGet 1) i(ops.i32WrapI64) i1(ops.arrayNewDefault tBytes) i1(ops.localSet 2)
+                    c32(0) i1(ops.localSet 3)
+                    model.blockInst(empty "done") model.loopInst(empty "copy")
+                    i1(ops.localGet 3) i1(ops.localGet 1) i(ops.i32WrapI64) i(ops.i32GeU) i1(ops.brIf 1)
+                    i1(ops.localGet 2) i1(ops.localGet 3)
+                    i1(ops.localGet 0) i(ops.i32WrapI64) i1(ops.localGet 3) i(ops.i32Add) i1(ops.i32Load8U 0)
+                    i1(ops.arraySet tBytes)
+                    i1(ops.localGet 3) c32(1) i(ops.i32Add) i1(ops.localSet 3)
+                    i1(ops.br 0)
+                    model.endInst model.endInst
+                    c32(0) i1(ops.localGet 1) i(ops.i32WrapI64) i1(ops.localGet 2) i(ops.refAsNonNull)
+                    i1(ops.structNew tString)
+                end)
+            (* s's bytes at a *)
+            add("stringToMem" typeOf[k0 + 8] array of "s" "a" end
+                array of local("bytes" nullBytes) local("n" model.i32) local("i" model.i32) end array of
+                    i1(ops.localGet 0) castTo(tString) i2(ops.structGet tString sLength) i1(ops.localSet 3)
+                    i1(ops.localGet 0) castTo(tString) i2(ops.structGet tString sBytes) i1(ops.localSet 2)
+                    i1(ops.localGet 1) i(ops.i32WrapI64) i1(ops.localGet 3) i(ops.i32Add) i1(ops.call ensure)
+                    c32(0) i1(ops.localSet 4)
+                    model.blockInst(empty "done") model.loopInst(empty "copy")
+                    i1(ops.localGet 4) i1(ops.localGet 3) i(ops.i32GeU) i1(ops.brIf 1)
+                    i1(ops.localGet 1) i(ops.i32WrapI64) i1(ops.localGet 4) i(ops.i32Add)
+                    i1(ops.localGet 2) i1(ops.localGet 4) i1(ops.arrayGetU tBytes) i1(ops.i32Store8 0)
+                    i1(ops.localGet 4) c32(1) i(ops.i32Add) i1(ops.localSet 4)
+                    i1(ops.br 0)
+                    model.endInst model.endInst
+                end)
+            (* WASI's functions, their i64s wrapped and their errno extended *)
+            for k = 0 upto wasiCount - 1 do
+                let ps = wasiFunctions[k][1]
+                let names = array of(stringOp.length(ps) "")
+                let body = vector.new(:Inst)
+                for j = 0 upto stringOp.length(ps) - 1 do
+                    names[j] := "a" <> conv.int(j)
+                    vector.append(:Inst body i1(ops.localGet j))
+                    if stringOp.getChar(ps j) is 'i' then vector.append(:Inst body i(ops.i32WrapI64)) end
+                end
+                vector.append(:Inst body i1(ops.call 2 + k))
+                vector.append(:Inst body i(ops.i64ExtendI32U))
+                add(wasiFunctions[k][0] typeOf[{extent fixedExports} + k] names array of :model.Local end
+                    vector.toArray(:Inst body))
+            end
             (* The functions only the runtime calls, after those it exports *)
             (* Grows the memory to hold need bytes *)
             add("ensure" funcType(array of model.i32 end none) array of "need" end array of :model.Local end array of
@@ -716,7 +845,8 @@ export
                 tuple let field = tagField let kind = option exportTag of model.ExportKind end let index = 0 end)
             for k = 0 upto extent exports - 1 do
                 vector.append(:model.Export m.exports tuple
-                    let field = exports[k].field let kind = option exportFunc of model.ExportKind end let index = 2 + k
+                    let field = exports[k].field let kind = option exportFunc of model.ExportKind end
+                    let index = {2 + wasiCount} + k
                 end)
             end
             m

@@ -1,17 +1,19 @@
-// Runs a program the wasm backend compiled (docs/wasm-plan.md, step 3) in node:
+// Runs a program the wasm backend compiled (docs/wasm-plan.md, steps 3 and 9) in node:
 //
-//     node run.mjs [--module NAME=UNIT.wasm]... RUNTIME.wasm PROGRAM.wasm [ARG...]
+//     node --no-warnings run.mjs [--module NAME=UNIT.wasm]... RUNTIME.wasm PROGRAM.wasm [ARG...]
 //
-// The runtime module (questlang/wasm/runtime) is instantiated first, over the
-// part of WASI's first preview it imports, then each unit's module, named by
+// The runtime module (questlang/wasm/runtime) is instantiated first, over WASI's
+// first preview as node:wasi provides it, with the program's arguments, the
+// environment, and two directories opened: / for absolute paths and . for the
+// rest, as the driver opens them for wasmtime. Then each unit's module, named by
 // its canonical name, in the order given, which puts each after those it
-// imports, and last the program's, each over the exports of those before it,
-// as wasmtime's --preload links them; then the program's _start runs. Bytes
-// cross through the runtime's memory (section 4.4 of the plan): fd_write
-// writes each iovec's bytes to its descriptor, and proc_exit ends the process
-// with its status.
+// imports, and last the program's, each over the exports of those before it, as
+// wasmtime's --preload links them; then the program's _start runs. Bytes cross
+// through the runtime's memory (section 4.4).
 
 import fs from "node:fs";
+import process from "node:process";
+import { WASI } from "node:wasi";
 
 const args = process.argv.slice(2);
 const units = [];
@@ -20,33 +22,22 @@ while (args[0] === "--module") {
   units.push({name, path});
   args.splice(0, 2);
 }
-const [runtimePath, programPath] = args;
+const [runtimePath, programPath, ...programArgs] = args;
 if (!runtimePath || !programPath) {
   process.stderr.write("usage: node run.mjs [--module NAME=UNIT.wasm]... RUNTIME.wasm PROGRAM.wasm [ARG...]\n");
   process.exit(2);
 }
 
-let memory;
-const wasi = {
-  fd_write(fd, iovs, count, written) {
-    const view = new DataView(memory.buffer);
-    let total = 0;
-    for (let i = 0; i < count; i++) {
-      const base = view.getUint32(iovs + 8 * i, true);
-      const length = view.getUint32(iovs + 8 * i + 4, true);
-      fs.writeSync(fd, new Uint8Array(memory.buffer, base, length));
-      total += length;
-    }
-    view.setUint32(written, total, true);
-    return 0;
-  },
-  proc_exit(code) {
-    process.exit(code);
-  },
-};
-
-const runtime = await WebAssembly.instantiate(fs.readFileSync(runtimePath), {wasi_snapshot_preview1: wasi});
-memory = runtime.instance.exports.memory;
+const wasi = new WASI({
+  version: "preview1",
+  args: [programPath, ...programArgs],
+  env: {...process.env, PWD: process.cwd()},
+  preopens: {"/": "/", ".": process.cwd()},
+  returnOnExit: false,
+});
+const runtime = await WebAssembly.instantiate(fs.readFileSync(runtimePath),
+                                              {wasi_snapshot_preview1: wasi.wasiImport});
+wasi.initialize(runtime.instance);
 const imports = {"quest.runtime": runtime.instance.exports};
 for (const unit of units) {
   const instance = await WebAssembly.instantiate(fs.readFileSync(unit.path), imports);

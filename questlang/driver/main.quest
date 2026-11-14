@@ -720,7 +720,10 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         save(runtimePath runtimeBytes)
                         let command = vector.new(:String)
                         if stringOp.equal(options.wasmEngine "node") then
+                            (* node:wasi is experimental, and says so on standard
+                             * error, which a program's own must not have *)
                             vector.append(:String command "node")
+                            vector.append(:String command "--no-warnings")
                             vector.append(:String command files.join(paths.projectDir() "runtime/wasm/run.mjs"))
                             for k = 0 upto vector.length(:String units) - 1 do
                                 vector.append(:String command "--module")
@@ -734,6 +737,16 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                             vector.append(:String command "gc=y,function-references=y,tail-call=y,exceptions=y")
                             vector.append(:String command "-C")
                             vector.append(:String command "collector=copying")
+                            (* WASI's: / and . opened, the environment, and the
+                             * current directory as PWD *)
+                            vector.append(:String command "--dir")
+                            vector.append(:String command "/")
+                            vector.append(:String command "--dir")
+                            vector.append(:String command ".")
+                            vector.append(:String command "-S")
+                            vector.append(:String command "inherit-env=y")
+                            vector.append(:String command "--env")
+                            vector.append(:String command "PWD=" <> system.currentDirectory())
                             vector.append(:String command "--preload")
                             vector.append(:String command wasmRuntime.name <> "=" <> runtimePath)
                             for k = 0 upto vector.length(:String units) - 1 do
