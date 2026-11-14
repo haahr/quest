@@ -224,7 +224,8 @@ export
 
             (* 5. Its C (exporting the interface's members), and 6. its
              * object *)
-            let backend = choice.forUnit(backends name)
+            let library = strutil.startsWith(files.absolute(sourceFile) files.join(paths.projectDir() "lib") <> "/")
+            let backend = choice.forFile(backends name library)
             (* What its backend or the IR passes cannot compile is an error
              * (a conversion the represent pass rejects is raised as the
              * program's error, where it is) *)
@@ -252,9 +253,18 @@ export
                     seen := true end end
                 if not(seen) then vector.append(:String unique d) end
             end
-            compilerRunner.compileCToObject(cFile oFile vector.toArray(:String unique) nogc compiler
-                vector.toArray(:String vector.concat(:String vector.fromArray(:String extraFlags)
-                    vector.fromArray(:String cBackend.cFlags(backend)))))
+            if choice.isWasm(backend) then
+                (* A WebAssembly module, which is its unit's object as well as
+                 * its code: no C compiler, no linker (docs/wasm-plan.md
+                 * section 5.1) *)
+                let o = writer.file(oFile)
+                writer.putString(o c)
+                writer.close(o)
+            else
+                compilerRunner.compileCToObject(cFile oFile vector.toArray(:String unique) nogc compiler
+                    vector.toArray(:String vector.concat(:String vector.fromArray(:String extraFlags)
+                        vector.fromArray(:String cBackend.cFlags(backend)))))
+            end
 
             (* 7. Its manifest *)
             let direct = vector.toArray(:manifest.ImportedInterfaceRef x.interfaces)

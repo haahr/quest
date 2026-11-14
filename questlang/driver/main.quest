@@ -91,6 +91,7 @@ import
     questlang/interpreter/irInterp : questlang/interpreter/IrInterp
     cBackend = questlang/codegen/backend : questlang/codegen/Backend
     questlang/codegen/choice : questlang/codegen/Choice
+    questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
     wasmRuntime = questlang/wasm/runtime : questlang/wasm/Runtime
     questlang/wasm/encode : questlang/wasm/Encode
     questlang/driver/repl : questlang/driver/Repl
@@ -521,9 +522,13 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                     writer.putString(writer.output t.c)
                 end
             elsif choice.isWasm(programBackend) andif {running orif writing} then
-                (* The program's module and the runtime's (docs/wasm-plan.md
-                 * step 3): until step 9 the program's is its only unit,
-                 * and the library's members it uses are compiled into it *)
+                (* The program's module, the runtime's, and those of the
+                 * units it imports, built by the engine (docs/wasm-plan.md
+                 * section 5.1): each unit's object is its module, named by
+                 * its canonical name, its path in the build directory. The
+                 * library's units are compiled by the C printer until the
+                 * library is compiled to WebAssembly (step 9), and their
+                 * members the program uses are compiled into it *)
                 let save = fun(path: String contents: String): Ok
                     begin
                         let w = writer.file(path)
@@ -532,10 +537,73 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                     end
                 let runtimeBytes = encode.encode(wasmRuntime.runtimeModule())
                 try
+                    let modules = engine.unitModuleRefs(importRefs(program) passes.implicitImports(t.unit program)
+                        e.currentDir vector.toArray(:String e.includePaths) e.programDir e.units.resolver)
+                    let importer = if strutil.startsWith(options.file "<") then options.file
+                        else files.stem(options.file)
+                        end
+                    let objects = engine.buildModules(newEngine(e) modules importer e.programDir)
+                    (* The units' modules: each named by its canonical name, its
+                     * path in the build directory, with what it imports, which
+                     * its manifest records *)
+                    let names = vector.new(:String)
+                    let locations = vector.new(:String)
+                    let needs = vector.new(:Array(String))
+                    for k = 0 upto extent objects - 1 do
+                        let o = files.absolute(objects[k])
+                        let bytes = maybe.unwrapOr(:String files.readText(o) "")
+                        if {stringOp.length(bytes) >= 4} andif stringOp.equal(stringOp.getSub(bytes 0 4) "\x00asm")
+                            andif strutil.startsWith(o buildDir <> "/") andif strutil.endsWith(o ".o") then
+                            let n = stringOp.length(buildDir) + 1
+                            let base = stringOp.getSub(o 0 {stringOp.length(o) - 2})
+                            vector.append(:String names stringOp.getSub(o n {{stringOp.length(o) - n} - 2}))
+                            vector.append(:String locations o)
+                            let qm = manifest.readQm(base <> ".qm")
+                            let imported = if maybe.isNone(:manifest.ModuleManifest qm) then array of :String end
+                                else
+                                    let refs = maybe.unwrap(:manifest.ModuleManifest qm).importedModules
+                                    let ns = array of(extent refs "")
+                                    for j = 0 upto extent refs - 1 do ns[j] := refs[j].name end
+                                    ns
+                                end
+                            vector.append(:Array(String) needs imported)
+                        end
+                    end
+                    (* In an order that puts each after those it imports, which
+                     * the engines instantiate it after *)
+                    let units = vector.new(:String)
+                    let placed = array of(vector.length(:String names) false)
+                    let var progress = true
+                    while progress do
+                        progress := false
+                        for k = 0 upto vector.length(:String names) - 1 do
+                            if not(placed[k]) then
+                                let var ready = true
+                                let ns = vector.get(:Array(String) needs k)
+                                for j = 0 upto extent ns - 1 do
+                                    for i = 0 upto vector.length(:String names) - 1 do
+                                        if not(placed[i]) andif {i isnot k}
+                                            andif stringOp.equal(vector.get(:String names i) ns[j]) then
+                                            ready := false
+                                        end
+                                    end
+                                end
+                                if ready then
+                                    placed[k] := true
+                                    progress := true
+                                    vector.append(:String units
+                                        vector.get(:String names k) <> "=" <> vector.get(:String locations k))
+                                end
+                            end
+                        end
+                    end
                     if writing then
                         let target = files.absolute(maybe.unwrap(:String compileOutput))
                         save(target t.c)
                         save(target <> ".runtime.wasm" runtimeBytes)
+                        if not(vector.empty(:String units)) then
+                            failWith("compile -o of a wasm program of several units (docs/wasm-plan.md, step 9)")
+                        end
                     else
                         let base = compilerRunner.temporaryBinary()
                         let program = base <> ".wasm"
@@ -546,6 +614,10 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         if stringOp.equal(options.wasmEngine "node") then
                             vector.append(:String command "node")
                             vector.append(:String command files.join(paths.projectDir() "runtime/wasm/run.mjs"))
+                            for k = 0 upto vector.length(:String units) - 1 do
+                                vector.append(:String command "--module")
+                                vector.append(:String command vector.get(:String units k))
+                            end
                             vector.append(:String command runtimePath)
                         else
                             vector.append(:String command "wasmtime")
@@ -556,6 +628,10 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                             vector.append(:String command "collector=copying")
                             vector.append(:String command "--preload")
                             vector.append(:String command wasmRuntime.name <> "=" <> runtimePath)
+                            for k = 0 upto vector.length(:String units) - 1 do
+                                vector.append(:String command "--preload")
+                                vector.append(:String command vector.get(:String units k))
+                            end
                         end
                         vector.append(:String command program)
                         for k = 0 upto extent options.programArgs - 1 do
@@ -568,6 +644,9 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         finishRun(r)
                     end
                 when writer.error then failWith("error writing the program's WebAssembly modules")
+                when diagnostics.compilerError with err then
+                    diagbag.add(bag diagnostics.errorDiagnostic(err options.file))
+                when engine.buildError with m then located(m)
                 end
             elsif running orif writing then
                 (* A whole program's modules are in its unit, but for those it

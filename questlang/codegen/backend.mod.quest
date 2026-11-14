@@ -28,15 +28,11 @@ import
 export
     let unsupported: Exception(String) = exception unsupported: String end
 
-    (* A unit's WebAssembly module (docs/wasm-plan.md): a program's only,
-     * until step 9 of the plan compiles modules *)
+    (* A unit's WebAssembly module (docs/wasm-plan.md section 5.1) *)
     let wasmModule(unit: nodes.Unit): model.Module =
-        if not(unit.isProgram) then raise unsupported with "wasm: a module file (step 9)" end
-        else
-            try wasm.programModule(unit)
+        try wasm.unitModule(unit)
             when wasm.unsupported with m then raise unsupported with "wasm: unsupported: " <> m end
             when model.malformed with m then raise unsupported with "wasm: malformed: " <> m end
-            end
         end
 
     let wasmText(unit: nodes.Unit): String = wasmPrinter.print(wasmModule(unit))

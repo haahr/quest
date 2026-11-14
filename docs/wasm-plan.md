@@ -856,6 +856,21 @@ only when the backend's files differ, until its time is known.
    files, arguments, and the environment over WASI; artifacts (§5.3).
    *Done when* a program of several units using `lib/` runs in both engines, and the pending list holds only what
    step 1 excluded, locations, and the mathematical functions.
+   *Taken before the rest of step 6, at the owner's word, so that the runtime can be a unit written in Quest.
+   Units, done 2026-11-13; the library and the rest remain:*
+   - **A module file's unit** is a module that exports:
+     - its `init`, guarded by a flag, which runs its imports' `init`s in their order and then its body;
+     - its record's two globals;
+     - each of its functions, at its interface type's closure signature, through a wrapper that boxes or unboxes
+       where its own differs.
+   - **An importer** imports those by the unit's canonical name and reads members through the record.
+   - **A program** runs its imports' `init`s, then its inline modules' bodies, then its top level.
+   - **The build:** the engine writes a unit's module as its object. The driver preloads each unit's module in
+     wasmtime, or passes it to `runtime/wasm/run.mjs` in node, in the order of their manifests' imports.
+   - **The library's units** are still compiled by the C printer under `--backend wasm` (`choice.forFile`), and a
+     program's calls of them still go through the runtime's table, until the library is compiled.
+   - **Run goldens:** the modes pass 77, those of several units among them, the same in both engines. 220 are
+     pending.
 10. **The compiler through the backend.** The driver's units compiled by the native compiler with `--backend wasm`
     and run in node, with the stack constrained to a browser's, to compile a small program, then the run suite's
     sources, then itself. Differences are found against the native compiler's IR dumps, stage by stage.

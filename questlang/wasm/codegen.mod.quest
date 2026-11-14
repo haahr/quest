@@ -73,6 +73,12 @@ export
         declaredFns: hashMap.T(Int Bool)
         noClosure: Int
         builtins: hashMap.T(String Int)
+        (* Other units (section 5.1): the functions imported from each, by
+         * "unit.member", each one's init, and the first of its record's two
+         * globals, by its canonical name *)
+        importFunctions: hashMap.T(String Int)
+        importInits: hashMap.T(String Int)
+        importRecords: hashMap.T(String Int)
     end
 
     (* A name not given before among names: base, or base.k *)
@@ -1335,9 +1341,34 @@ export
                         let member = maybe.unwrapOr(:String x.member "")
                         if maybe.isSome(:String imp.i.libPath) then
                             library(f maybe.unwrap(:String imp.i.libPath) member x.args)
-                        else fail("a call of the unit " <> imp.i.canonicalPath <> "'s " <> member <> " (step 9)")
+                        else
+                            (* the function the unit exports by name (section
+                             * 5.1), at its interface type's signature *)
+                            let key = imp.i.canonicalPath <> "." <> member
+                            if not(hashMap.contains(:String :Int f.g.importFunctions key)) then
+                                fail("a call of the unit " <> imp.i.canonicalPath <> "'s " <> member)
+                            end
+                            emit(f i1(ops.globalGet f.g.noClosure))
+                            atoms(f x.args)
+                            emit(f i1(ops.call hashMap.find(:String :Int f.g.importFunctions key)))
                         end
-                    when refModule then fail("a call of a module's member (step 9)")
+                    when refModule with r then
+                        (* the member's variable, a global of the unit *)
+                        let member = maybe.unwrapOr(:String x.member "")
+                        let v = ir.member(r.m.members member)
+                        if maybe.isNone(:ir.Variable v) then fail("a call of no member " <> member) end
+                        let y = tuple
+                            let var callee = v let var typeArgs = x.typeArgs let var args = x.args
+                            let var moduleRef = maybe.none(:ir.ModuleRef) let var member = maybe.none(:String)
+                            let var calleeType = x.calleeType let var descriptors = x.descriptors
+                        end
+                        let direct = directCallee(f y)
+                        if maybe.isSome(:Int direct) then
+                            closureArg(f y)
+                            atoms(f y.args)
+                            emit(f i1(ops.call maybe.unwrap(:Int direct)))
+                        else closureCall(f y false)
+                        end
                 end
             end
         end
@@ -1358,7 +1389,31 @@ export
             found
         end
 
-    let member(f: F x: ir.OpModuleMember): Ok =
+    (* The slot of field name of the record on the stack (its payload and its
+     * table), of type view, through the table: the payload's slots and the
+     * slot's index *)
+    let fieldSlotOnStack(f: F view: ir.Type name: String): Ok =
+        begin
+            let vs = shapeOf(view)
+            if not(shapes.kindIs(vs shapes.shapeRecord)) then fail("a field of a value of no record type") end
+            let fields = shapes.sortedComponents(vs)
+            let var k = ~1
+            for j = 0 upto extent fields - 1 do
+                if stringOp.equal(maybe.unwrapOr(:String fields[j].name "") name) then k := j end
+            end
+            if k < 0 then fail("a record type without the field " <> name) end
+            let d = scratch(f model.eqref)
+            emit(f i1(ops.localSet d))
+            castTo(f rt.index("record"))
+            emit(f i2(ops.structGet rt.index("record") rt.field("record" "slots")))
+            emit(f i1(ops.localGet d))
+            castTo(f rt.index("dict"))
+            emit(f i2(ops.structGet rt.index("dict") 0))
+            emit(f model.i32Const(k))
+            emit(f i1(ops.arrayGet rt.index("i32s")))
+        end
+
+    let libraryMember(f: F x: ir.OpModuleMember): Ok =
         begin
             let name = case x.moduleRef
                 when refImport with imp then maybe.unwrapOr(:String imp.i.libPath "") <> "."
@@ -1375,6 +1430,56 @@ export
                 emit(f i1(ops.globalGet builtinException(maybe.unwrap(:String libraryException(name)))))
             else fail("the module member " <> name <> " (step 9)")
             end
+        end
+
+    (* A module member as a value: another unit's, read from its record,
+     * whose two globals it exports (section 5.1); the library's, through the
+     * runtime until the library is compiled; the unit's own, its global *)
+    let member(f: F x: ir.OpModuleMember target: maybe.T(ir.Variable)): Ok =
+        case x.moduleRef
+            when refImport with imp then
+                if maybe.isSome(:String imp.i.libPath) then libraryMember(f x)
+                elsif maybe.isNone(:String x.member) then
+                    (* the unit itself, its record *)
+                    if not(hashMap.contains(:String :Int f.g.importRecords imp.i.canonicalPath)) then
+                        fail("the unit " <> imp.i.canonicalPath <> "'s record")
+                    end
+                    let first = hashMap.find(:String :Int f.g.importRecords imp.i.canonicalPath)
+                    emit(f i1(ops.globalGet first))
+                    emit(f i1(ops.globalGet first + 1))
+                    if maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).boxed then
+                        box(f maybe.unwrap(:ir.Variable target).type)
+                    end
+                else
+                    let m = maybe.unwrapOr(:String x.member "")
+                    if not(hashMap.contains(:String :Int f.g.importRecords imp.i.canonicalPath))
+                        orif maybe.isNone(:ir.Type imp.i.recordType) then
+                        fail("the unit " <> imp.i.canonicalPath <> "'s record")
+                    end
+                    let first = hashMap.find(:String :Int f.g.importRecords imp.i.canonicalPath)
+                    let recordType = maybe.unwrap(:ir.Type imp.i.recordType)
+                    emit(f i1(ops.globalGet first))
+                    emit(f i1(ops.globalGet first + 1))
+                    fieldSlotOnStack(f recordType m)
+                    emit(f i1(ops.arrayGet rt.index("slots")))
+                    let c = maybe.unwrap(:shapes.Component shapes.component(shapeOf(recordType) m))
+                    unboxFor(f shapes.componentShape(c).type target)
+                end
+            when refModule with r then
+                if maybe.isNone(:String x.member) then
+                    (* the module itself, its record *)
+                    if maybe.isNone(:ir.Variable r.m.recordVar) then fail("a module without its record") end
+                    let rv = maybe.unwrap(:ir.Variable r.m.recordVar)
+                    atom(f ir.atomOfVar(rv))
+                    let boxedTarget = maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).boxed
+                    if boxedTarget andif not(rv.boxed) then
+                        box(f maybe.unwrap(:ir.Variable target).type)
+                    end
+                else
+                    let v = ir.member(r.m.members maybe.unwrapOr(:String x.member ""))
+                    if maybe.isNone(:ir.Variable v) then fail("no member " <> maybe.unwrapOr(:String x.member "")) end
+                    atom(f ir.atomOfVar(maybe.unwrap(:ir.Variable v)))
+                end
         end
 
     (* --- Records --- *)
@@ -1445,24 +1550,8 @@ export
      * through its view's table *)
     let fieldSlot(f: F base: ir.Atom name: String): Ok =
         begin
-            let vs = shapeOf(ir.atomType(base))
-            if not(shapes.kindIs(vs shapes.shapeRecord)) then fail("a field of a value of no record type") end
-            let fields = shapes.sortedComponents(vs)
-            let var k = ~1
-            for j = 0 upto extent fields - 1 do
-                if stringOp.equal(maybe.unwrapOr(:String fields[j].name "") name) then k := j end
-            end
-            if k < 0 then fail("a record type without the field " <> name) end
-            let d = scratch(f model.eqref)
             recordAtom(f base)
-            emit(f i1(ops.localSet d))
-            castTo(f tRecord)
-            emit(f i2(ops.structGet tRecord rt.field("record" "slots")))
-            emit(f i1(ops.localGet d))
-            castTo(f tDict)
-            emit(f i2(ops.structGet tDict 0))
-            emit(f model.i32Const(k))
-            emit(f i1(ops.arrayGet rt.index("i32s")))
+            fieldSlotOnStack(f ir.atomType(base) name)
         end
 
     let recordField(f: F x: ir.OpRecordField target: maybe.T(ir.Variable)): Ok =
@@ -1695,7 +1784,7 @@ export
             when opAtom with x then atom(f x.atom)
             when opPrim with x then prim(f x)
             when opCall with x then call(f x)
-            when opModuleMember with x then member(f x)
+            when opModuleMember with x then member(f x target)
             when opMakeClosure with x then makeClosure(f x)
             when opEnvField with x then
                 let fn = hashMap.find(:Int :ir.Function f.g.byId f.fnId)
@@ -2233,9 +2322,41 @@ export
             end)
         end
 
-    let programModule(unit: ir.Unit): model.Module =
+    (* Whether an import is another unit, compiled to a module of its own,
+     * rather than the library, whose members the runtime has until the
+     * library is compiled *)
+    let isUnitImport(i: ir.Import): Bool = maybe.isNone(:String i.libPath)
+
+    (* A representation converted to another at an exported function's
+     * boundary (section 5.1): an Int or a Bool boxed or unboxed, as an
+     * abstract type's value whose representation is one crosses *)
+    let convertRep(f: F from: ValType to: ValType): Ok =
+        if sameType(from to) then ok
+        else
+            case from
+                when valRef then
+                    case to
+                        when valI64 then runtimeCall(f "unboxInt")
+                        when valI32 then
+                            castI31(f)
+                            emit(f i(ops.i31GetU))
+                        else fail("a conversion at a unit's boundary")
+                    end
+                when valI64 then runtimeCall(f "boxInt")
+                when valI32 then emit(f i(ops.refI31))
+                else fail("a conversion at a unit's boundary")
+            end
+        end
+
+    let unitModule(unit: ir.Unit): model.Module =
         begin
-            let m = model.newModule("main")
+            (* A module file's module is its unit's last, after any it
+             * defines inline *)
+            let nmodules = vector.length(:ir.Module unit.modules)
+            let moduleName = if unit.isProgram orif {nmodules is 0} then "main"
+                else vector.get(:ir.Module unit.modules {nmodules - 1}).name
+                end
+            let m = model.newModule(moduleName)
             vector.append(:model.RecGroup m.types rt.group)
             (* The built-in exceptions, the first globals *)
             for k = 0 upto extent runtime.builtinExceptions - 1 do
@@ -2246,6 +2367,25 @@ export
                         let type = model.ref(rt.index("exception")) let mutable = false
                     end
                 end)
+            end
+            (* Each unit imported, its record's two globals, which its init
+             * sets *)
+            let records = hashMap.new(:String :Int stringOp.equal hash.string)
+            for k = 0 upto extent unit.imports - 1 do
+                let i = unit.imports[k]
+                if isUnitImport(i) andif not(hashMap.contains(:String :Int records i.canonicalPath)) then
+                    hashMap.insert(:String :Int records i.canonicalPath model.importedGlobals(m))
+                    for j = 0 upto 1 do
+                        vector.append(:model.Import m.imports tuple
+                            let moduleName = i.canonicalPath
+                            let field = if j is 0 then "record.payload" else "record.dict" end
+                            let name = ""
+                            let kind = option importGlobal of model.ImportKind with
+                                let type = model.eqref let mutable = true
+                            end
+                        end)
+                    end
+                end
             end
             (* The closure a direct call of a function that captures nothing
              * passes, which it never reads *)
@@ -2275,6 +2415,9 @@ export
                 let declaredFns = hashMap.new(:Int :Bool intEqual hash.int)
                 let noClosure = noClosure
                 let builtins = hashMap.new(:String :Int stringOp.equal hash.string)
+                let importFunctions = hashMap.new(:String :Int stringOp.equal hash.string)
+                let importInits = hashMap.new(:String :Int stringOp.equal hash.string)
+                let importRecords = records
             end
             (* Each function, and the types of what its closures capture *)
             for k = 0 upto vector.length(:ir.Function unit.functions) - 1 do
@@ -2318,6 +2461,57 @@ export
                     let type = funcType(g array of model.eqref end noTypes)
                 end
             end)
+            (* Each unit imported, its init and the functions this unit calls
+             * of it, each at its interface type's closure signature *)
+            let importFunction = fun(unitName: String field: String type: Int): Int
+                begin
+                    let index = model.importedFunctions(m)
+                    vector.append(:model.Import m.imports tuple
+                        let moduleName = unitName let field = field let name = fresh(g.names unitName <> "." <> field)
+                        let kind = option importFunc of model.ImportKind with let type = type end
+                    end)
+                    index
+                end
+            for k = 0 upto extent unit.imports - 1 do
+                let i = unit.imports[k]
+                if isUnitImport(i) andif not(hashMap.contains(:String :Int g.importInits i.canonicalPath)) then
+                    hashMap.insert(:String :Int g.importInits i.canonicalPath
+                        importFunction(i.canonicalPath "init" funcType(g noTypes noTypes)))
+                end
+            end
+            let allBodies = walk.unitBodies(unit)
+            for b = 0 upto extent allBodies - 1 do
+                let ss = walk.walkStatements(allBodies[b] true)
+                for k = 0 upto vector.length(:ir.Stmt ss) - 1 do
+                    let op = case vector.get(:ir.Stmt ss k)
+                        when sLet with x then maybe.some(:ir.Op x.value)
+                        when sDo with x then maybe.some(:ir.Op x.value)
+                        else maybe.none(:ir.Op)
+                    end
+                    if maybe.isSome(:ir.Op op) then
+                        case maybe.unwrap(:ir.Op op)
+                            when opCall with c then
+                                let byModule = maybe.isSome(:ir.ModuleRef c.moduleRef)
+                                if byModule andif maybe.isNone(:ir.Variable c.callee) then
+                                    case maybe.unwrap(:ir.ModuleRef c.moduleRef)
+                                        when refImport with imp then
+                                            let key = imp.i.canonicalPath <> "." <> maybe.unwrapOr(:String c.member "")
+                                            let known = hashMap.contains(:String :Int g.importFunctions key)
+                                            if isUnitImport(imp.i) andif not(known)
+                                                andif maybe.isSome(:ir.Type c.calleeType) then
+                                                let sig = closureSig(maybe.unwrap(:ir.Type c.calleeType))
+                                                hashMap.insert(:String :Int g.importFunctions key
+                                                    importFunction(imp.i.canonicalPath
+                                                        maybe.unwrapOr(:String c.member "") nativeType(g sig)))
+                                            end
+                                        else ok
+                                    end
+                                end
+                            else ok
+                        end
+                    end
+                end
+            end
             (* Each function's index and type, before any is compiled, so that
              * a call, a tail call above all, knows its callee's signature
              * wherever the callee is in the unit; its code is filled in when
@@ -2333,10 +2527,10 @@ export
                     let params = array of :String end let locals = vector.new(:model.Local) let body = vector.new(:Inst)
                 end)
             end
-            (* The top level's and _start's, before the uniform entries that
-             * compiling the functions makes *)
+            (* The top level's and _start's (a module's init), before the
+             * uniform entries that compiling the functions makes *)
             let mainIndex = base + vector.length(:ir.Function unit.functions)
-            for k = 0 upto 1 do
+            for k = 0 upto if unit.isProgram then 1 else 0 end do
                 vector.append(:model.Function m.functions tuple
                     let name = "" let type = placeholder let params = array of :String end
                     let locals = vector.new(:model.Local) let body = vector.new(:Inst)
@@ -2345,8 +2539,96 @@ export
             for k = 0 upto vector.length(:ir.Function unit.functions) - 1 do
                 function(g vector.get(:ir.Function unit.functions k))
             end
+            (* Each unit imported initialized, in the order of the imports *)
+            let initImports = fun(f: F): Ok
+                for k = 0 upto extent unit.imports - 1 do
+                    if isUnitImport(unit.imports[k]) then
+                        emit(f i1(ops.call hashMap.find(:String :Int g.importInits unit.imports[k].canonicalPath)))
+                    end
+                end
+            if not(unit.isProgram) then
+                (* A module's init, guarded by a flag, as in C (section 5.1);
+                 * its record's globals, which its body sets, exported, and
+                 * its functions at their interface types' signatures *)
+                let mod = vector.get(:ir.Module unit.modules {nmodules - 1})
+                let flag = model.importedGlobals(m) + vector.length(:model.Global m.globals)
+                vector.append(:model.Global m.globals tuple
+                    let name = "initialized" let type = model.i32 let mutable = true
+                    let init = array of model.i32Const(0) end
+                end)
+                let initF = newF(g array of :String end noTypes ~1)
+                emit(initF i1(ops.globalGet flag))
+                emit(initF model.ifInst(empty ""))
+                emit(initF i(ops.returnOp))
+                emit(initF model.endInst)
+                emit(initF model.i32Const(1))
+                emit(initF i1(ops.globalSet flag))
+                initImports(initF)
+                for k = 0 upto nmodules - 1 do body(initF vector.get(:ir.Module unit.modules k).init) end
+                fill(initF mainIndex "init" placeholder)
+                let exportFunction = fun(field: String index: Int): Ok
+                    vector.append(:model.Export m.exports tuple
+                        let field = field let kind = option exportFunc of model.ExportKind end let index = index
+                    end)
+                exportFunction("init" mainIndex)
+                if maybe.isNone(:ir.Variable mod.recordVar) then fail("a module without its record") end
+                let recordVar = maybe.unwrap(:ir.Variable mod.recordVar)
+                let first = global(initF recordVar)
+                for j = 0 upto 1 do
+                    vector.append(:model.Export m.exports tuple
+                        let field = if j is 0 then "record.payload" else "record.dict" end
+                        let kind = option exportGlobal of model.ExportKind end let index = first + j
+                    end)
+                end
+                let members = maybe.unwrapOr(:ir.Members mod.exports mod.members)
+                let recordShape = shapeOf(recordVar.type)
+                for k = 0 upto vector.length(:String members.names) - 1 do
+                    let name = vector.get(:String members.names k)
+                    let v = maybe.unwrap(:ir.Variable ir.member(members name))
+                    let c = shapes.component(recordShape name)
+                    let isFunction = hashMap.contains(:Int :ir.OpMakeClosure g.known v.id)
+                    if maybe.isSome(:shapes.Component c) andif isFunction then
+                        let interfaceType = shapes.componentShape(maybe.unwrap(:shapes.Component c)).type
+                        let fn = hashMap.find(:Int :ir.OpMakeClosure g.known v.id).code
+                        let native = hashMap.find(:Int :Int g.functions fn.id)
+                        let outer = closureSig(interfaceType)
+                        let inner = signature(fn)
+                        let innerParams = array of(extent inner.params - 1 model.i64)
+                        for j = 1 upto extent inner.params - 1 do innerParams[j - 1] := inner.params[j] end
+                        if sameTypes(outer.params innerParams) andif sameTypes(outer.results inner.results) then
+                            exportFunction(name native)
+                        else
+                            (* converted to and from the interface's types *)
+                            if {extent outer.params isnot extent innerParams} orif {extent outer.results isnot 1}
+                                orif {extent inner.results isnot 1} then
+                                fail("an exported function whose interface type differs in its parts")
+                            end
+                            let names = array of(extent outer.params + 1 "")
+                            let wf = newF(g names outer.results ~1)
+                            emit(wf i1(ops.localGet 0))
+                            for j = 0 upto extent outer.params - 1 do
+                                emit(wf i1(ops.localGet j + 1))
+                                convertRep(wf outer.params[j] innerParams[j])
+                            end
+                            emit(wf i1(ops.call native))
+                            convertRep(wf inner.results[0] outer.results[0])
+                            let at = model.importedFunctions(m) + vector.length(:model.Function m.functions)
+                            vector.append(:model.Function m.functions tuple
+                                let name = fresh(g.names name <> ".export") let type = nativeType(g outer)
+                                let params = names
+                                let locals = wf.declared let body = wf.code
+                            end)
+                            exportFunction(name at)
+                        end
+                    end
+                end
+            else
             (* The program's top level *)
             let mainF = newF(g array of :String end noTypes ~1)
+            initImports(mainF)
+            (* the modules the program defines, in order, then its top
+             * level *)
+            for k = 0 upto nmodules - 1 do body(mainF vector.get(:ir.Module unit.modules k).init) end
             body(mainF unit.main)
             fill(mainF mainIndex fresh(g.names "main") placeholder)
             (* _start: the top level, and an uncaught exception's report *)
@@ -2367,6 +2649,7 @@ export
             vector.append(:model.Export m.exports tuple
                 let field = "_start" let kind = option exportFunc of model.ExportKind end let index = mainIndex + 1
             end)
+            end
             if g.strings.length() > 0 then
                 vector.append(:model.Data m.data
                     tuple let name = "strings" let bytes = g.strings.toString() let offset = ~1 end)
