@@ -1163,10 +1163,16 @@ await the owner's review.
       then the driver, then `_start`.
     - **The session's client** (`runtime/wasm/session.mjs`), the page's logic without the page: it keeps the
       committed inputs, calls `request`, and recovers. A `RangeError` or a trap during `execute` is a stack
-      overflow (§6.3): the core runtime's count of shared tables being updated is zero in an input's compiled
-      code, but in this milestone every input runs in the interpreter, so every overflow replays: a new instance,
-      the committed inputs run again with their output suppressed, and the failed input's error is
-      `stack.overflow`. An interrupt is a timeout that ends a `worker_threads` worker and replays the same way.
+      overflow (§6.3). In this milestone every input runs in the interpreter, whose structures the overflow may
+      leave half updated, so every such overflow replays: a new instance, the committed inputs run again with their
+      output suppressed, and the failed input's error is `stack.overflow`. An interrupt is a timeout that ends a
+      `worker_threads` worker and replays the same way.
+    - **The interpreter's limit on this target.** The interpreter raises a catchable `stack.overflow` when more
+      than `maxCallDepth` calls are active (1,000), and the REPL rolls that input back like any failure. A
+      worker's stack runs out first, so on this target the limit is set below the depth a worker's stack holds,
+      measured in this step with a margin, and a user's deep recursion is an ordinary error with no replay. What
+      the limit does not count still replays: a library function's own recursion, the parser's and the
+      elaborator's on deeply nested input, and a call whose body nests unusually deep.
     - **The core's count** (§6.3): `wasm/core` counts its updates of the descriptors' memo in progress, in a global
       the runtime exports, so that milestone 3's host can tell an input's overflow from the runtime's.
     - **Tests in node:** `session.mjs` also speaks the kernel's protocol on its own descriptors 3 and 4, so
@@ -1180,7 +1186,7 @@ await the owner's review.
     *Done when* the kernel's protocol test and the transcripts pass in node at a worker's stack, but for those a
     pending list names with reasons; a session survives an overflow and an interrupt with its bindings; and the
     interpreter's depth in node at a worker's stack, with `--liftoff-only` and without, is recorded in §6.2 beside
-    the native estimate (80 to 250 calls).
+    the native estimate (80 to 250 calls), with the limit chosen from it.
 12. **The page.** A worker, the loader, the prompt.
     - **Built** by `tools/wasm-page/build` into a directory: `index.html`; the page's script, which owns the
       prompt, a line editor of its own with history, and the transcript; the worker's script, which runs
@@ -1213,9 +1219,11 @@ await the owner's review.
   paths under mounts, file descriptors, directories listed, errors' numbers. Running node's tests over the page's
   host finds those in `tools/check`, not by hand. Programs keep `node:wasi`, so the run goldens still compare two
   independent WASI implementations, wasmtime's and node's.
-- **Every interpreter overflow replays.** §6.3 decided that an overflow in the interpreter replays, since its
-  structures may be half updated. With every input interpreted, that is every deep recursion, which is why the
-  interpreter is a checkpoint and the JIT follows.
+- **An overflow the interpreter does not catch replays.** No Quest handler sees a WebAssembly stack overflow, so
+  neither the interpreter's cleanup (its call stack, popped as each call returns) nor the REPL's rollback runs,
+  and §6.3 replays whenever the interpreter or the compiler was running. The interpreter's own limit, set below
+  the stack a worker has, turns the common case, a user's deep recursion, into an ordinary `stack.overflow` that
+  rolls back; what remains replays, which is why the interpreter is a checkpoint and the JIT follows.
 - **`readLine` ends at once in the page.** A worker can block on a person only through `Atomics.wait` on shared
   memory, which needs cross-origin isolation (decision 11). A prompt for a line is milestone 3's, or later's, to
   design with the JIT's three calls.
