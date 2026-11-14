@@ -17,14 +17,14 @@
     (type $dict (struct (field $indices (ref $i32s))))
     (type $recBox (struct (field $payload (ref $record)) (field $dict (ref $dict))))
     (type $exception (sub final $obj (struct (field $hash (mut i32)) (field $name (ref $string)))))
-    (type $raised (struct (field $exception (ref $exception)) (field $payload eqref) (field $site eqref) (field $text eqref) (field $kind i32)))
+    (type $raised (struct (field $exception (ref $exception)) (field $payload eqref) (field $site eqref) (field $text eqref) (field $kind i32) (field $desc eqref)))
   )
   (type (func (param eqref eqref) (result eqref)))
   (type (func (param eqref i32) (result eqref)))
   (type (func (param i64) (result eqref)))
   (type (func (param i32) (result eqref)))
-  (type (func (param eqref eqref eqref eqref i32)))
-  (type (func (param eqref)))
+  (type (func (param eqref eqref eqref eqref i32 eqref)))
+  (type (func (param eqref eqref)))
   (type (func (param eqref) (result i64)))
   (type (func (param eqref i32)))
   (type (func (param eqref i64) (result i32)))
@@ -34,13 +34,20 @@
   (type (func (param eqref i64 eqref i64 i64) (result eqref)))
   (type (func (param eqref eqref) (result i32)))
   (type (func (param eqref) (result eqref)))
+  (type (func (param eqref)))
   (type (func))
+  (type (func (param (ref $clos) eqref eqref) (result eqref)))
+  (type (func (param (ref $clos) i64) (result eqref)))
+  (type (func (param (ref $clos) i64 eqref i64 i64) (result eqref)))
+  (type (func (param (ref $clos) eqref i64 eqref eqref) (result eqref)))
+  (type (func (param (ref $clos) eqref i64 i64 eqref) (result eqref)))
+  (type (func (param (ref $clos) eqref eqref eqref eqref) (result eqref)))
   (type (func (param (ref $clos) i64) (result i64)))
   (type (func (param (ref $clos) eqref) (result eqref)))
-  (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 35)))))
-  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 35)) (field $native (ref 34)))))
-  (type $tries.closure (sub final 37 (struct (field $hash (mut i32)) (field $uniform (ref 35)) (field $native (ref 34)))))
-  (type $tries.closure.1 (sub final 37 (struct (field $hash (mut i32)) (field $uniform (ref 35)) (field $native (ref 34)))))
+  (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 42)))))
+  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 42)) (field $native (ref 41)))))
+  (type $tries.closure (sub final 44 (struct (field $hash (mut i32)) (field $uniform (ref 42)) (field $native (ref 41)))))
+  (type $tries.closure.1 (sub final 44 (struct (field $hash (mut i32)) (field $uniform (ref 42)) (field $native (ref 41)))))
   (import "quest.runtime" "exception:int.error" (global $int.error (ref $exception)))
   (import "quest.runtime" "exception:real.error" (global $real.error (ref $exception)))
   (import "quest.runtime" "exception:word.error" (global $word.error (ref $exception)))
@@ -74,8 +81,26 @@
   (import "quest.runtime" "stringEqual" (func $stringEqual (type 31)))
   (import "quest.runtime" "exceptionOf" (func $exceptionOf (type 32)))
   (import "quest.runtime" "payloadOf" (func $payloadOf (type 32)))
-  (import "quest.runtime" "error" (tag $error (type 23)))
+  (import "quest.runtime" "error" (tag $error (type 33)))
+  (import "wasm/print" "init" (func $wasm/print.init (type 34)))
+  (import "wasm/print" "show" (func $wasm/print.show (type 35)))
+  (import "wasm/core" "init" (func $wasm/core.init (type 34)))
+  (import "wasm/core" "base" (func $wasm/core.base (type 36)))
+  (import "wasm/core" "newDesc" (func $wasm/core.newDesc (type 37)))
+  (import "wasm/core" "setPart" (func $wasm/core.setPart (type 38)))
+  (import "wasm/core" "setText" (func $wasm/core.setText (type 39)))
+  (import "wasm/core" "instantiate" (func $wasm/core.instantiate (type 35)))
+  (import "wasm/print" "echo" (func $wasm/print.echo (type 40)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
+  (global $quest_type_Int (mut eqref) ref.null none)
+  (global $quest_type_Real (mut eqref) ref.null none)
+  (global $quest_type_Bool (mut eqref) ref.null none)
+  (global $quest_type_Char (mut eqref) ref.null none)
+  (global $quest_type_String (mut eqref) ref.null none)
+  (global $quest_type_Ok (mut eqref) ref.null none)
+  (global $quest_type_Word (mut eqref) ref.null none)
+  (global $quest_type_EmptyTuple (mut eqref) ref.null none)
+  (global $quest_type_bound_vars (mut eqref) ref.null none)
   (global $stop (mut eqref) ref.null none)
   (global $tries.static (ref $tries.closure) i32.const 0 ref.func $tries.uniform ref.func $tries struct.new $tries.closure)
   (global $tries.2 (mut eqref) ref.null none)
@@ -83,7 +108,7 @@
   (global $tries.3 (mut eqref) ref.null none)
   (export "_start" (func $_start))
   (elem declare func $tries.uniform $tries $tries.uniform.1 $tries.1)
-  (func $tries (type 34) (param $closure (ref $clos)) (param $i i64) (result i64)
+  (func $tries (type 41) (param $closure (ref $clos)) (param $i i64) (result i64)
     (local $v i32)
     (local $v.1 i64)
     (local $v.2 i64)
@@ -111,6 +136,7 @@
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
+      ref.null none
       call $raise
       unreachable
     else
@@ -149,7 +175,7 @@
     end
     unreachable
   )
-  (func $tries.1 (type 34) (param $closure (ref $clos)) (param $i i64) (result i64)
+  (func $tries.1 (type 41) (param $closure (ref $clos)) (param $i i64) (result i64)
     (local $v i32)
     (local $v.1 i64)
     (local $v.2 i64)
@@ -177,6 +203,7 @@
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
+      ref.null none
       call $raise
       unreachable
     else
@@ -215,7 +242,7 @@
     end
     unreachable
   )
-  (func $main (type 33)
+  (func $main (type 34)
     (local $bad eqref)
     (local $other eqref)
     (local $named eqref)
@@ -292,6 +319,9 @@
     (local $v.56 eqref)
     (local $v.57 eqref)
     (local $v.58 eqref)
+    call $wasm/core.init
+    call $wasm/print.init
+    call $descriptors
     i32.const 0
     i32.const 0
     i32.const 3
@@ -340,6 +370,7 @@
               array.new_data $bytes $strings
               struct.new $string
               i32.const 1
+              ref.null none
               call $raise
               unreachable
             end
@@ -429,6 +460,7 @@
                   array.new_data $bytes $strings
                   struct.new $string
                   i32.const 0
+                  ref.null none
                   call $raise
                   unreachable
                 end
@@ -556,6 +588,7 @@
                     array.new_data $bytes $strings
                     struct.new $string
                     i32.const 0
+                    ref.null none
                     call $raise
                     unreachable
                   end
@@ -611,6 +644,7 @@
                             array.new_data $bytes $strings
                             struct.new $string
                             i32.const 1
+                            ref.null none
                             call $raise
                             unreachable
                           end
@@ -725,6 +759,7 @@
                                     array.new_data $bytes $strings
                                     struct.new $string
                                     i32.const 1
+                                    ref.null none
                                     call $raise
                                     unreachable
                                   else
@@ -907,6 +942,7 @@
               array.new_data $bytes $strings
               struct.new $string
               i32.const 4
+              ref.null none
               call $raise
               unreachable
             end
@@ -915,23 +951,78 @@
       end
     end
   )
-  (func $_start (type 33)
+  (func $_start (type 34)
+    (local $t (ref null $raised))
     block $uncaught (result eqref)
       try_table (catch $error $uncaught)
         call $main
       end
       return
     end
+    ref.cast (ref $raised)
+    local.tee $t
+    local.get $t
+    struct.get $raised $desc
+    ref.is_null
+    if (result eqref)
+      ref.null none
+    else
+      call $wasm/print.init
+      global.get $noClosure
+      local.get $t
+      struct.get $raised $payload
+      local.get $t
+      struct.get $raised $desc
+      call $wasm/print.show
+    end
     call $uncaught
   )
-  (func $tries.uniform (type 35) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+  (func $descriptors (type 34)
+    global.get $noClosure
+    i64.const 1
+    call $wasm/core.base
+    global.set $quest_type_Int
+    global.get $noClosure
+    i64.const 2
+    call $wasm/core.base
+    global.set $quest_type_Real
+    global.get $noClosure
+    i64.const 3
+    call $wasm/core.base
+    global.set $quest_type_Bool
+    global.get $noClosure
+    i64.const 4
+    call $wasm/core.base
+    global.set $quest_type_Char
+    global.get $noClosure
+    i64.const 5
+    call $wasm/core.base
+    global.set $quest_type_String
+    global.get $noClosure
+    i64.const 6
+    call $wasm/core.base
+    global.set $quest_type_Ok
+    global.get $noClosure
+    i64.const 7
+    call $wasm/core.base
+    global.set $quest_type_Word
+    global.get $noClosure
+    i64.const 9
+    call $wasm/core.base
+    global.set $quest_type_EmptyTuple
+    global.get $noClosure
+    i64.const 17
+    call $wasm/core.base
+    global.set $quest_type_bound_vars
+  )
+  (func $tries.uniform (type 42) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt
     call $tries
     call $boxInt
   )
-  (func $tries.uniform.1 (type 35) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+  (func $tries.uniform.1 (type 42) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt

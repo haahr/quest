@@ -537,12 +537,28 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                     end
                 let runtimeBytes = encode.encode(wasmRuntime.runtimeModule())
                 try
-                    let modules = engine.unitModuleRefs(importRefs(program) passes.implicitImports(t.unit program)
-                        e.currentDir vector.toArray(:String e.includePaths) e.programDir e.units.resolver)
+                    (* The runtime's units in Quest (section 4.5), wasm/core and
+                     * wasm/print, found under runtime/, which every unit the
+                     * backend compiles may import *)
+                    let runtimeRoot = files.join(paths.projectDir() "runtime")
+                    let includes = vector.copy(:String e.includePaths)
+                    vector.append(:String includes runtimeRoot)
+                    let implicit = vector.new(:passes.ImplicitImport)
+                    let found = passes.implicitImports(t.unit program)
+                    for k = 0 upto extent found - 1 do vector.append(:passes.ImplicitImport implicit found[k]) end
+                    vector.append(:passes.ImplicitImport implicit
+                        tuple let canonicalPath = "wasm/print" let interfacePath = "wasm/Print" end)
+                    let modules = engine.unitModuleRefs(importRefs(program) vector.toArray(:passes.ImplicitImport implicit)
+                        e.currentDir vector.toArray(:String includes) e.programDir e.units.resolver)
                     let importer = if strutil.startsWith(options.file "<") then options.file
                         else files.stem(options.file)
                         end
-                    let objects = engine.buildModules(newEngine(e) modules importer e.programDir)
+                    let engineIncludes = array of(extent options.includePaths + 1 runtimeRoot)
+                    for k = 0 upto extent options.includePaths - 1 do engineIncludes[k] := options.includePaths[k] end
+                    let wasmEngine = engine.withBackends(engine.parallel(engine.new(maybe.some(:String buildDir)
+                        engineIncludes options.verbose options.nogc options.extraObjects
+                        maybe.some(:graph.Resolver e.units.resolver)) options.jobs system.args[0]) options.backends)
+                    let objects = engine.buildModules(wasmEngine modules importer e.programDir)
                     (* The units' modules: each named by its canonical name, its
                      * path in the build directory, with what it imports, which
                      * its manifest records *)
@@ -566,7 +582,14 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                                     for j = 0 upto extent refs - 1 do ns[j] := refs[j].name end
                                     ns
                                 end
-                            vector.append(:Array(String) needs imported)
+                            (* every unit but the runtime's may import the
+                             * runtime's, which its manifest does not say *)
+                            let name = stringOp.getSub(o n {{stringOp.length(o) - n} - 2})
+                            let runtimeUnit = stringOp.equal(name "wasm/core") orif stringOp.equal(name "wasm/print")
+                            let all = array of(extent imported + 2 "wasm/core")
+                            for j = 0 upto extent imported - 1 do all[j] := imported[j] end
+                            all[extent imported + 1] := "wasm/print"
+                            vector.append(:Array(String) needs if runtimeUnit then imported else all end)
                         end
                     end
                     (* In an order that puts each after those it imports, which
@@ -598,12 +621,21 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         end
                     end
                     if writing then
+                        (* The program's module at the target, and beside it the
+                         * runtime's, TARGET.runtime.wasm, each unit's,
+                         * TARGET.N.wasm, and TARGET.units, a line NAME=PATH
+                         * for each unit, in the order to load them *)
                         let target = files.absolute(maybe.unwrap(:String compileOutput))
                         save(target t.c)
                         save(target <> ".runtime.wasm" runtimeBytes)
-                        if not(vector.empty(:String units)) then
-                            failWith("compile -o of a wasm program of several units (docs/wasm-plan.md, step 9)")
+                        let lines = stringBuilder.new()
+                        for k = 0 upto vector.length(:String units) - 1 do
+                            let parts = strutil.split(vector.get(:String units k) "=")
+                            let path = target <> "." <> conv.int(k) <> ".wasm"
+                            save(path maybe.unwrapOr(:String files.readText(vector.get(:String parts 1)) ""))
+                            lines.str(vector.get(:String parts 0) <> "=" <> path <> "\n")
                         end
+                        save(target <> ".units" lines.toString())
                     else
                         let base = compilerRunner.temporaryBinary()
                         let program = base <> ".wasm"

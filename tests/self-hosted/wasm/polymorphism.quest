@@ -1,0 +1,22 @@
+(* Generic code called from another unit with its type arguments'
+ * descriptors, and closures that capture them; and a value written by its
+ * descriptor, an uncaught exception's payload (docs/wasm-plan.md, steps 6
+ * and 7) *)
+import
+    units/gen : units/Gen
+    writer : Writer
+    stringOp = string : StringOp
+;
+let pos(n: Int): Bool = n > 0;
+let nonEmpty(s: String): Bool = stringOp.length(s) > 0;
+let line(s: String): Ok = writer.putString(writer.output s <> "\n");
+line(conv.int(gen.count(:Int array of 1 ~2 3 end pos)));
+line(conv.int(gen.count(:String array of "a" "" "b" "c" end nonEmpty)));
+line(gen.pick(:String true "yes" "no"));
+line(conv.int(gen.pick(:Int false 1 2000000000000)));
+line(conv.int(gen.twice(:Int fun(n: Int): Int n * 3)(5)));
+line(gen.twice(:String fun(s: String): String s <> "!")("hi"));
+let p = gen.pair(:Int :String 7 "seven");
+line(conv.int(p.first) <> " " <> p.second);
+let bad = exception bad: Tuple first: Int second: String end end;
+raise bad with p end

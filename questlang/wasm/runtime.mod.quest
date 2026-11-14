@@ -25,8 +25,8 @@ export
         entry("convInt" array of model.i64 end array of model.eqref end)
         entry("convBool" array of model.i32 end array of model.eqref end)
         entry("convChar" array of model.i32 end array of model.eqref end)
-        entry("raise" array of model.eqref model.eqref model.eqref model.eqref model.i32 end none)
-        entry("uncaught" array of model.eqref end none)
+        entry("raise" array of model.eqref model.eqref model.eqref model.eqref model.i32 model.eqref end none)
+        entry("uncaught" array of model.eqref model.eqref end none)
         entry("decimal" array of model.i64 end array of model.eqref end)
         entry("hex" array of model.i64 end array of model.eqref end)
         entry("escaped" array of model.eqref model.i32 end array of model.eqref end)
@@ -282,54 +282,58 @@ export
             end)
             (* Raises exception with its payload at site (section 2.9): its
              * state, which the one tag carries *)
-            add("raise" typeOf[6] array of "exception" "payload" "site" "text" "kind" end array of :model.Local end
+            add("raise" typeOf[6] array of "exception" "payload" "site" "text" "kind" "desc" end
+                array of :model.Local end
                 array of
                     i1(ops.localGet 0) castTo(tException) i1(ops.localGet 1) i1(ops.localGet 2) i1(ops.localGet 3)
-                    i1(ops.localGet 4) i1(ops.structNew tRaised) i1(ops.throw 0)
+                    i1(ops.localGet 4) i1(ops.localGet 5) i1(ops.structNew tRaised) i1(ops.throw 0)
                 end)
             (* An uncaught exception's report, as quest_reraise writes it, less
              * the frames (decision 12): Exception: NAME, with its payload as
              * echo writes it and its type, and the raise's site *)
-            add("uncaught" typeOf[7] array of "state" end
+            add("uncaught" typeOf[7] array of "state" "shown" end
                 array of local("s" model.refNull(tRaised)) local("report" model.eqref) local("kind" model.i32) end
                 cat(array of
-                    array of i1(ops.localGet 0) castTo(tRaised) i1(ops.localSet 1) end
+                    array of i1(ops.localGet 0) castTo(tRaised) i1(ops.localSet 2) end
                     pieceString(exceptionText)
                     array of
-                        i1(ops.localGet 1) i2(ops.structGet tRaised 0) i2(ops.structGet tException 1)
-                        i1(ops.call concat) i1(ops.localSet 2)
-                        i1(ops.localGet 1) i2(ops.structGet tRaised 4) i1(ops.localTee 3)
+                        i1(ops.localGet 2) i2(ops.structGet tRaised 0) i2(ops.structGet tException 1)
+                        i1(ops.call concat) i1(ops.localSet 3)
+                        i1(ops.localGet 2) i2(ops.structGet tRaised 4) i1(ops.localTee 4)
                         model.ifInst(empty "")
-                        i1(ops.localGet 2)
+                        i1(ops.localGet 3)
                     end
                     pieceString(withText)
                     array of
                         i1(ops.call concat)
-                        i1(ops.localGet 1) i2(ops.structGet tRaised 1) i1(ops.localGet 3) i1(ops.call show)
+                        i1(ops.localGet 1) i(ops.refIsNull)
+                        model.ifInst(option blockValue of model.BlockType with let type = model.eqref end "")
+                        i1(ops.localGet 2) i2(ops.structGet tRaised 1) i1(ops.localGet 4) i1(ops.call show)
+                        model.elseInst i1(ops.localGet 1) model.endInst
                         i1(ops.call concat)
                     end
                     pieceString(colonText)
                     array of
-                        i1(ops.call concat) i1(ops.localGet 1) i2(ops.structGet tRaised 3) i1(ops.call concat)
-                        i1(ops.localSet 2)
+                        i1(ops.call concat) i1(ops.localGet 2) i2(ops.structGet tRaised 3) i1(ops.call concat)
+                        i1(ops.localSet 3)
                         model.endInst
-                        i1(ops.localGet 2)
+                        i1(ops.localGet 3)
                     end
                     pieceString(newlineText)
                     array of
-                        i1(ops.call concat) i1(ops.localSet 2)
-                        i1(ops.localGet 1) i2(ops.structGet tRaised 2) castTo(tString) i2(ops.structGet tString sLength)
+                        i1(ops.call concat) i1(ops.localSet 3)
+                        i1(ops.localGet 2) i2(ops.structGet tRaised 2) castTo(tString) i2(ops.structGet tString sLength)
                         i(ops.i32Eqz) i(ops.i32Eqz)
                         model.ifInst(empty "")
-                        i1(ops.localGet 2)
+                        i1(ops.localGet 3)
                     end
                     pieceString(siteLead)
-                    array of i1(ops.call concat) i1(ops.localGet 1) i2(ops.structGet tRaised 2) i1(ops.call concat) end
+                    array of i1(ops.call concat) i1(ops.localGet 2) i2(ops.structGet tRaised 2) i1(ops.call concat) end
                     pieceString(newlineText)
                     array of
-                        i1(ops.call concat) i1(ops.localSet 2)
+                        i1(ops.call concat) i1(ops.localSet 3)
                         model.endInst
-                        c32(2) i(ops.refI31) i1(ops.localGet 2) i1(ops.call putString) i(ops.drop)
+                        c32(2) i(ops.refI31) i1(ops.localGet 3) i1(ops.call putString) i(ops.drop)
                         c32(1) i1(ops.call procExit)
                     end
                 end))
@@ -635,7 +639,11 @@ export
             add("stringError" funcType(none none) array of :String end array of :model.Local end cat(array of
                 array of i1(ops.globalGet 3) c32(0) i(ops.refI31) end
                 pieceString(emptyText) pieceString(emptyText)
-                array of c32(0) i1(ops.call raiseIt) end
+                array of
+                    c32(0)
+                    option instRefNull of model.Inst with let heap = option heapNone of model.HeapType end end
+                    i1(ops.call raiseIt)
+                end
             end))
             (* A payload as echo writes a value (quest_put_value), by its kind:
              * 1 Int, 2 Bool, 3 Char, 4 String, 5 Ok, 6 Word, 7 a function, 8

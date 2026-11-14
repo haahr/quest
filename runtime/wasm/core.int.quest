@@ -1,0 +1,71 @@
+(* Quest WebAssembly Runtime: The Core Interface
+ *
+ * The runtime's core (docs/wasm-plan.md sections 4.2 and 4.5), a unit the wasm
+ * backend compiles and every other unit it compiles imports: descriptors,
+ * types as run-time values, which a unit's initializer makes for the types
+ * its code describes, by the constructors below. Only the wasm backend
+ * compiles it; it imports nothing, and reaches the engine's objects through
+ * intrinsics, externals named wasm.NAME that the backend compiles in place.
+ *
+ * Any is every value as a slot holds it, an eqref: an Int, Bool, or Char an
+ * i31 (or an Int a $boxInt), a record its pair boxed, and the rest the
+ * object itself. *)
+
+unsound interface Core
+export
+    Any::TYPE
+
+    (* A type as a run-time value, as the C runtime's QTypeDescriptor is: its
+     * kind (below), its name as written, and its parts by kind: a tuple's
+     * elements, a record's fields in name order, an option's cases in the
+     * order of its tags, an array's element, an exception's payload. labels
+     * are the parts' names (an element's, "" for none; a field's; a case's),
+     * and positions and texts a tuple's type components, written by echo as
+     * text before the element at the position. A recursive type's
+     * descriptor is cyclic: its parts are filled in after it is made. *)
+    Def Rec Desc = Tuple
+        kind: Int
+        name: String
+        parts: Array(Desc)
+        labels: Array(String)
+        positions: Array(Int)
+        texts: Array(String)
+    end
+
+    (* The kinds, which the backend's (wasm/codegen) numbering matches; none
+     * is an option case's payload when it has none *)
+    kindNone: Int
+    kindInt: Int
+    kindReal: Int
+    kindBool: Int
+    kindChar: Int
+    kindString: Int
+    kindOk: Int
+    kindWord: Int
+    kindFun: Int
+    kindTuple: Int
+    kindRecord: Int
+    kindOption: Int
+    kindVariant: Int
+    kindArray: Int
+    kindException: Int
+    kindOpaque: Int
+    kindAuto: Int
+    kindBoundVar: Int
+    kindHole: Int
+    kindStored: Int
+
+    (* The one descriptor of a kind with no parts (Int, Bool, Ok, ...) *)
+    base(kind: Int): Desc
+    (* A new descriptor of n parts, each none until set, and m type
+     * components *)
+    newDesc(kind: Int name: String n: Int m: Int): Desc
+    (* Sets d's part i, and its label *)
+    setPart(d: Desc i: Int part: Desc label: String): Ok
+    (* Sets d's type component i *)
+    setText(d: Desc i: Int position: Int text: String): Ok
+    (* The template t (a descriptor with holes, each named ?N for the Nth
+     * type parameter of generic code) with its holes filled by args,
+     * memoized, so that one instance is one descriptor *)
+    instantiate(t: Desc args: Array(Desc)): Desc
+end

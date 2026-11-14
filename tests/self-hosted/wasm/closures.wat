@@ -17,14 +17,14 @@
     (type $dict (struct (field $indices (ref $i32s))))
     (type $recBox (struct (field $payload (ref $record)) (field $dict (ref $dict))))
     (type $exception (sub final $obj (struct (field $hash (mut i32)) (field $name (ref $string)))))
-    (type $raised (struct (field $exception (ref $exception)) (field $payload eqref) (field $site eqref) (field $text eqref) (field $kind i32)))
+    (type $raised (struct (field $exception (ref $exception)) (field $payload eqref) (field $site eqref) (field $text eqref) (field $kind i32) (field $desc eqref)))
   )
   (type (func (param eqref eqref) (result eqref)))
   (type (func (param eqref i32) (result eqref)))
   (type (func (param i64) (result eqref)))
   (type (func (param i32) (result eqref)))
-  (type (func (param eqref eqref eqref eqref i32)))
-  (type (func (param eqref)))
+  (type (func (param eqref eqref eqref eqref i32 eqref)))
+  (type (func (param eqref eqref)))
   (type (func (param eqref) (result i64)))
   (type (func (param eqref i32)))
   (type (func (param eqref i64) (result i32)))
@@ -34,19 +34,20 @@
   (type (func (param eqref i64 eqref i64 i64) (result eqref)))
   (type (func (param eqref eqref) (result i32)))
   (type (func (param eqref) (result eqref)))
+  (type (func (param eqref)))
   (type (func))
+  (type (func (param (ref $clos) eqref eqref) (result eqref)))
   (type (func (param (ref $clos) i64) (result i64)))
   (type (func (param (ref $clos) i64 eqref) (result i64)))
   (type (func (param (ref $clos) eqref) (result eqref)))
-  (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 36)))))
-  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 36)) (field $native (ref 34)))))
-  (type $f.closure (sub final 38 (struct (field $hash (mut i32)) (field $uniform (ref 36)) (field $native (ref 34)))))
-  (type (func (param (ref $clos) eqref eqref) (result eqref)))
-  (type $closU2 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 40)))))
-  (type (sub $closU2 (struct (field $hash (mut i32)) (field $uniform (ref 40)) (field $native (ref 35)))))
-  (type $countDown.closure (sub final 42 (struct (field $hash (mut i32)) (field $uniform (ref 40)) (field $native (ref 35)))))
+  (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 38)))))
+  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 38)) (field $native (ref 36)))))
+  (type $f.closure (sub final 40 (struct (field $hash (mut i32)) (field $uniform (ref 38)) (field $native (ref 36)))))
+  (type $closU2 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 35)))))
+  (type (sub $closU2 (struct (field $hash (mut i32)) (field $uniform (ref 35)) (field $native (ref 37)))))
+  (type $countDown.closure (sub final 43 (struct (field $hash (mut i32)) (field $uniform (ref 35)) (field $native (ref 37)))))
   (type (func (param (ref $clos) i64 i64) (result i64)))
-  (type (sub $closU2 (struct (field $hash (mut i32)) (field $uniform (ref 40)) (field $native (ref 44)))))
+  (type (sub $closU2 (struct (field $hash (mut i32)) (field $uniform (ref 35)) (field $native (ref 45)))))
   (import "quest.runtime" "exception:int.error" (global $int.error (ref $exception)))
   (import "quest.runtime" "exception:real.error" (global $real.error (ref $exception)))
   (import "quest.runtime" "exception:word.error" (global $word.error (ref $exception)))
@@ -80,16 +81,18 @@
   (import "quest.runtime" "stringEqual" (func $stringEqual (type 31)))
   (import "quest.runtime" "exceptionOf" (func $exceptionOf (type 32)))
   (import "quest.runtime" "payloadOf" (func $payloadOf (type 32)))
-  (import "quest.runtime" "error" (tag $error (type 23)))
+  (import "quest.runtime" "error" (tag $error (type 33)))
+  (import "wasm/print" "init" (func $wasm/print.init (type 34)))
+  (import "wasm/print" "show" (func $wasm/print.show (type 35)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $f.static (ref $f.closure) i32.const 0 ref.func $f.uniform ref.func $f struct.new $f.closure)
   (global $countDown.static (ref $countDown.closure) i32.const 0 ref.func $countDown.uniform ref.func $countDown struct.new $countDown.closure)
   (global $countDown.1 (mut eqref) ref.null none)
-  (global $builtin+.static (ref 45) i32.const 0 ref.func $builtin+.uniform ref.func $builtin+ struct.new 45)
-  (global $builtin-.static (ref 45) i32.const 0 ref.func $builtin-.uniform ref.func $builtin- struct.new 45)
+  (global $builtin+.static (ref 46) i32.const 0 ref.func $builtin+.uniform ref.func $builtin+ struct.new 46)
+  (global $builtin-.static (ref 46) i32.const 0 ref.func $builtin-.uniform ref.func $builtin- struct.new 46)
   (export "_start" (func $_start))
   (elem declare func $f.uniform $f $countDown.uniform $countDown $builtin+ $builtin+.uniform $builtin- $builtin-.uniform)
-  (func $f (type 34) (param $closure (ref $clos)) (param $x i64) (result i64)
+  (func $f (type 36) (param $closure (ref $clos)) (param $x i64) (result i64)
     (local $v i64)
     local.get $x
     i64.const 5
@@ -99,7 +102,7 @@
     return
     unreachable
   )
-  (func $countDown (type 35) (param $closure (ref $clos)) (param $n i64) (param $k eqref) (result i64)
+  (func $countDown (type 37) (param $closure (ref $clos)) (param $n i64) (param $k eqref) (result i64)
     (local $v i32)
     (local $t eqref)
     (local $v.1 i64)
@@ -112,15 +115,15 @@
       local.get $k
       local.set $t
       local.get $t
-      ref.test (ref 38)
+      ref.test (ref 40)
       if
         local.get $t
         ref.cast (ref $clos)
         i64.const 0
         local.get $t
-        ref.cast (ref 38)
-        struct.get 38 $native
-        return_call_ref 34
+        ref.cast (ref 40)
+        struct.get 40 $native
+        return_call_ref 36
       else
         local.get $t
         ref.cast (ref $clos)
@@ -129,7 +132,7 @@
         local.get $t
         ref.cast (ref $closU1)
         struct.get $closU1 $uniform
-        call_ref 36
+        call_ref 38
         call $unboxInt
         return
       end
@@ -145,7 +148,7 @@
     end
     unreachable
   )
-  (func $main (type 33)
+  (func $main (type 34)
     (local $f eqref)
     (local $v eqref)
     (local $v.1 eqref)
@@ -281,15 +284,15 @@
               local.get $f.2
               local.set $t
               local.get $t
-              ref.test (ref 38)
+              ref.test (ref 40)
               if (result i64)
                 local.get $t
                 ref.cast (ref $clos)
                 local.get $x.1
                 local.get $t
-                ref.cast (ref 38)
-                struct.get 38 $native
-                call_ref 34
+                ref.cast (ref 40)
+                struct.get 40 $native
+                call_ref 36
               else
                 local.get $t
                 ref.cast (ref $clos)
@@ -298,7 +301,7 @@
                 local.get $t
                 ref.cast (ref $closU1)
                 struct.get $closU1 $uniform
-                call_ref 36
+                call_ref 38
                 call $unboxInt
               end
               local.set $v.3
@@ -436,6 +439,7 @@
               array.new_data $bytes $strings
               struct.new $string
               i32.const 0
+              ref.null none
               call $raise
               unreachable
             end
@@ -709,6 +713,7 @@
                 array.new_data $bytes $strings
                 struct.new $string
                 i32.const 0
+                ref.null none
                 call $raise
                 unreachable
               end
@@ -723,16 +728,16 @@
               local.get $v.48
               local.set $t.2
               local.get $t.2
-              ref.test (ref 45)
+              ref.test (ref 46)
               if (result i64)
                 local.get $t.2
                 ref.cast (ref $clos)
                 local.get $r
                 local.get $v.53
                 local.get $t.2
-                ref.cast (ref 45)
-                struct.get 45 $native
-                call_ref 44
+                ref.cast (ref 46)
+                struct.get 46 $native
+                call_ref 45
               else
                 local.get $t.2
                 ref.cast (ref $clos)
@@ -743,7 +748,7 @@
                 local.get $t.2
                 ref.cast (ref $closU2)
                 struct.get $closU2 $uniform
-                call_ref 40
+                call_ref 35
                 call $unboxInt
               end
               local.set $v.54
@@ -837,6 +842,7 @@
                 array.new_data $bytes $strings
                 struct.new $string
                 i32.const 0
+                ref.null none
                 call $raise
                 unreachable
               end
@@ -851,16 +857,16 @@
               local.get $v.59
               local.set $t.3
               local.get $t.3
-              ref.test (ref 45)
+              ref.test (ref 46)
               if (result i64)
                 local.get $t.3
                 ref.cast (ref $clos)
                 local.get $r.1
                 local.get $v.64
                 local.get $t.3
-                ref.cast (ref 45)
-                struct.get 45 $native
-                call_ref 44
+                ref.cast (ref 46)
+                struct.get 46 $native
+                call_ref 45
               else
                 local.get $t.3
                 ref.cast (ref $clos)
@@ -871,7 +877,7 @@
                 local.get $t.3
                 ref.cast (ref $closU2)
                 struct.get $closU2 $uniform
-                call_ref 40
+                call_ref 35
                 call $unboxInt
               end
               local.set $v.65
@@ -934,23 +940,40 @@
       end
     end
   )
-  (func $_start (type 33)
+  (func $_start (type 34)
+    (local $t (ref null $raised))
     block $uncaught (result eqref)
       try_table (catch $error $uncaught)
         call $main
       end
       return
     end
+    ref.cast (ref $raised)
+    local.tee $t
+    local.get $t
+    struct.get $raised $desc
+    ref.is_null
+    if (result eqref)
+      ref.null none
+    else
+      call $wasm/print.init
+      global.get $noClosure
+      local.get $t
+      struct.get $raised $payload
+      local.get $t
+      struct.get $raised $desc
+      call $wasm/print.show
+    end
     call $uncaught
   )
-  (func $f.uniform (type 36) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+  (func $f.uniform (type 38) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt
     call $f
     call $boxInt
   )
-  (func $countDown.uniform (type 40) (param $closure (ref $clos)) (param $a0 eqref) (param $a1 eqref) (result eqref)
+  (func $countDown.uniform (type 35) (param $closure (ref $clos)) (param $a0 eqref) (param $a1 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt
@@ -958,12 +981,12 @@
     call $countDown
     call $boxInt
   )
-  (func $builtin+ (type 44) (param $closure (ref $clos)) (param $a i64) (param $b i64) (result i64)
+  (func $builtin+ (type 45) (param $closure (ref $clos)) (param $a i64) (param $b i64) (result i64)
     local.get $a
     local.get $b
     i64.add
   )
-  (func $builtin+.uniform (type 40) (param $closure (ref $clos)) (param $a eqref) (param $b eqref) (result eqref)
+  (func $builtin+.uniform (type 35) (param $closure (ref $clos)) (param $a eqref) (param $b eqref) (result eqref)
     local.get $closure
     local.get $a
     call $unboxInt
@@ -972,12 +995,12 @@
     call $builtin+
     call $boxInt
   )
-  (func $builtin- (type 44) (param $closure (ref $clos)) (param $a i64) (param $b i64) (result i64)
+  (func $builtin- (type 45) (param $closure (ref $clos)) (param $a i64) (param $b i64) (result i64)
     local.get $a
     local.get $b
     i64.sub
   )
-  (func $builtin-.uniform (type 40) (param $closure (ref $clos)) (param $a eqref) (param $b eqref) (result eqref)
+  (func $builtin-.uniform (type 35) (param $closure (ref $clos)) (param $a eqref) (param $b eqref) (result eqref)
     local.get $closure
     local.get $a
     call $unboxInt

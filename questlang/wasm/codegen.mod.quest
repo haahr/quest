@@ -7,6 +7,7 @@ import
     questlang/repr/layout : questlang/repr/Layout
     questlang/repr/shapes : questlang/repr/Shapes
     questlang/repr/genericLayout : questlang/repr/GenericLayout
+    questlang/repr/staticdata : questlang/repr/StaticData
     questlang/ir/describe : questlang/ir/Describe
     questlang/wasm/model : questlang/wasm/Model
     questlang/wasm/ops : questlang/wasm/Ops
@@ -79,6 +80,11 @@ export
         importFunctions: hashMap.T(String Int)
         importInits: hashMap.T(String Int)
         importRecords: hashMap.T(String Int)
+        (* The runtime's units (section 4.5): the functions imported from
+         * wasm/core and wasm/print, by "unit.member"; and the globals that
+         * hold the unit's descriptors, by their symbol (staticdata) *)
+        runtimeUnits: hashMap.T(String Int)
+        descGlobals: hashMap.T(String Int)
     end
 
     (* A name not given before among names: base, or base.k *)
@@ -326,20 +332,58 @@ export
     (* A function type's closure signature (section 3.2): its parameters'
      * and result's parts, after the closure; and how many parameters it has
      * in Quest *)
+    (* A function type's quantifiers' type parameters, how many, and its
+     * body, a function's shape or, for a type-only function, its result's *)
+    Def Quantified = Tuple count: Int body: shapes.Shape end
+    let quantified(t: ir.Type): Quantified =
+        begin
+            let var s = shapeOf(t)
+            let var count = 0
+            while shapes.kindIs(s shapes.shapeAll) do
+                count := count + extent s.typeParams
+                s := shapes.body(s)
+            end
+            tuple let count = count let body = s end
+        end
+
+    (* A type-only function's closure signature: a descriptor for each type
+     * parameter, and its result's parts *)
+    let typeOnlySig(q: Quantified): Signature =
+        tuple let params = array of(q.count model.eqref) let results = parts(q.body.type) end
+
     let closureSig(t: ir.Type): Signature =
         begin
-            let s = shapeOf(t)
-            if shapes.kindIs(s shapes.shapeAll) then fail("a polymorphic function's value (step 7)") end
+            let q = quantified(t)
+            let s = q.body
+            if {q.count > 0} andif not(shapes.kindIs(s shapes.shapeFun)) then typeOnlySig(q)
+            else
             if not(shapes.kindIs(s shapes.shapeFun)) then fail("a call of a value of no function type") end
+            (* each quantifier's descriptors first (section 3.2) *)
             let ps = vector.new(:ValType)
+            for k = 0 upto q.count - 1 do vector.append(:ValType ps model.eqref) end
             for k = 0 upto extent s.params - 1 do
                 if not(stringOp.equal(s.params[k].mode "value")) then fail("a var or out parameter (milestone 4)") end
                 let pp = parts(s.params[k].shape.type)
                 for j = 0 upto extent pp - 1 do vector.append(:ValType ps pp[j]) end
             end
             tuple let params = vector.toArray(:ValType ps) let results = parts(shapes.result(s).type) end
+            end
         end
-    let arity(t: ir.Type): Int = extent shapeOf(t).params
+    (* How many parameters a function type has, its descriptors among them *)
+    let arity(t: ir.Type): Int =
+        begin
+            let q = quantified(t)
+            q.count + if shapes.kindIs(q.body shapes.shapeFun) then extent q.body.params else 0 end
+        end
+    (* Whether a function is an adapter (ir/thunks): its environment is the
+     * closure it adapts, of that closure's type, where a lifted function's
+     * has the placeholder type Ok *)
+    let isAdapter(fn: ir.Function): Bool =
+        maybe.isSome(:ir.Variable fn.env) andif not(layout.representationKind(maybe.unwrap(:ir.Variable fn.env).type)?repVoid)
+
+    (* How many of a function's type parameters its closure supplies, as
+     * captures, rather than its callers (the rest) *)
+    let capturedDescriptors(fn: ir.Function): Int = extent fn.typeParams - quantified(fn.v.type).count
 
     let withClosure(ts: Array(ValType)): Array(ValType) =
         begin
@@ -410,6 +454,9 @@ export
             vector.append(:model.Field fields hashField)
             vector.append(:model.Field fields fieldOf("uniform" model.ref(uniformType(g n)) false))
             vector.append(:model.Field fields fieldOf("native" model.ref(nativeType(g sig)) false))
+            for k = 0 upto capturedDescriptors(fn) - 1 do
+                vector.append(:model.Field fields fieldOf("d" <> conv.int(k) model.eqref true))
+            end
             let captures = maybe.unwrapOr(:Array(ir.Type) hashMap.get(:Int :Array(ir.Type) g.captureTypes fn.id)
                 array of :ir.Type end)
             for k = 0 upto extent captures - 1 do
@@ -431,7 +478,7 @@ export
         begin
             let captures = maybe.unwrapOr(:Array(ir.Type) hashMap.get(:Int :Array(ir.Type) g.captureTypes fn.id)
                 array of :ir.Type end)
-            let var at = 3
+            let var at = 3 + capturedDescriptors(fn)
             for k = 0 upto index - 1 do at := at + extent parts(captures[k]) end
             at
         end
@@ -552,6 +599,7 @@ export
             literal(f siteText(f offset))
             literal(f "")
             emit(f model.i32Const(0))
+            emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
             runtimeCall(f "raise")
             emit(f i(ops.unreachable))
         end
@@ -586,6 +634,237 @@ export
     let fSlots = rt.field("tuple" "slots")
     let fTag = rt.field("option" "tag")
     let fElems = rt.field("array" "elems")
+
+    (* ======================================================================
+     * Descriptors (section 4.5)
+     * ====================================================================== *)
+
+    (* Whether the unit is one of the runtime's, which import no runtime
+     * unit but the core *)
+    let isRuntimeUnit(name: String): Bool =
+        stringOp.equal(name "wasm/core") orif stringOp.equal(name "wasm/print")
+
+    let runtimeUnitCall(f: F key: String): Ok =
+        if hashMap.contains(:String :Int f.g.runtimeUnits key) then
+            emit(f i1(ops.call hashMap.find(:String :Int f.g.runtimeUnits key)))
+        else fail("the runtime's " <> key)
+        end
+
+    (* A descriptor's kind, as wasm/core numbers them, from its form's
+     * QTypeKind constant *)
+    let kindOf(constant: String): Int =
+        begin
+            let names = array of
+                "" "INT" "REAL" "BOOL" "CHAR" "STRING" "OK" "WORD" "FUN" "TUPLE" "RECORD" "OPTION" "VARIANT" "ARRAY"
+                "EXCEPTION" "OPAQUE" "AUTO" "BOUND_VAR" "HOLE" "STORED"
+            end
+            let var found = ~1
+            for k = 1 upto extent names - 1 do
+                if stringOp.equal(constant "QTYPE_KIND_" <> names[k]) then found := k end
+            end
+            if found < 0 then fail("the descriptor kind " <> constant) end
+            found
+        end
+    (* The C runtime's descriptors, which staticdata names by symbol, and
+     * their kinds; every bound variable is one, written <hidden> *)
+    let baseSymbols = array of
+        "quest_type_Int" "quest_type_Real" "quest_type_Bool" "quest_type_Char" "quest_type_String" "quest_type_Ok"
+        "quest_type_Word" "quest_type_EmptyTuple" "quest_type_bound_vars"
+    end
+    let baseKinds = array of 1 2 3 4 5 6 7 9 17 end
+
+    let newGlobal(g: G name: String): Int =
+        begin
+            let n = model.importedGlobals(g.m) + vector.length(:model.Global g.m.globals)
+            vector.append(:model.Global g.m.globals tuple
+                let name = fresh(g.names name) let type = model.eqref let mutable = true
+                let init = array of option instRefNull of Inst with let heap = option heapNone of model.HeapType end end end
+            end)
+            n
+        end
+
+    (* The descriptors the unit's static data needs, the base ones and those
+     * collected (staticdata), each a global, which makeDescriptors fills
+     * in: the forms of the latter, in their order *)
+    let descriptorGlobals(g: G): vector.T(staticdata.DescriptorForm) =
+        begin
+            let data = maybe.unwrap(:ir.StaticData g.unit.staticData)
+            for k = 0 upto extent baseSymbols - 1 do
+                hashMap.insert(:String :Int g.descGlobals baseSymbols[k] newGlobal(g baseSymbols[k]))
+            end
+            let plain = vector.new(:ir.Type)
+            let echoed = vector.new(:ir.Type)
+            for k = 0 upto vector.length(:ir.StaticDescriptor data.descriptors) - 1 do
+                let d = vector.get(:ir.StaticDescriptor data.descriptors k)
+                vector.append(:ir.Type if d.echo then echoed else plain end d.type)
+            end
+            let collected = try
+                    staticdata.collectDescriptors(plain echoed maybe.none(:staticdata.RecordNaming)
+                        hashMap.new(:String :Bool stringOp.equal hash.string))
+                when staticdata.missingDescriptor with msg then
+                    fail("a descriptor: " <> msg)
+                    staticdata.collectDescriptors(vector.new(:ir.Type) vector.new(:ir.Type)
+                        maybe.none(:staticdata.RecordNaming) hashMap.new(:String :Bool stringOp.equal hash.string))
+                end
+            let forms = vector.new(:staticdata.DescriptorForm)
+            for k = 0 upto extent staticdata.descriptorKinds - 1 do
+                let fs = staticdata.formsOf(collected staticdata.descriptorKinds[k])
+                for j = 0 upto vector.length(:staticdata.DescriptorForm fs) - 1 do
+                    let form = vector.get(:staticdata.DescriptorForm fs j)
+                    if not(hashMap.contains(:String :Int g.descGlobals form.symbol)) then
+                        hashMap.insert(:String :Int g.descGlobals form.symbol newGlobal(g form.tag))
+                        vector.append(:staticdata.DescriptorForm forms form)
+                    end
+                end
+            end
+            forms
+        end
+
+    (* The global of the descriptor a symbol names *)
+    let descGlobal(f: F symbol: String): Int =
+        if hashMap.contains(:String :Int f.g.descGlobals symbol) then hashMap.find(:String :Int f.g.descGlobals symbol)
+        else raise unsupported with "the descriptor " <> symbol <> ", which the unit does not make" end
+        end
+
+    let formOf(d: ir.StaticDescriptor): staticdata.DescriptorForm =
+        try
+            let echo = if d.echo then staticdata.echoDescriptorForm(d.type maybe.none(:staticdata.RecordNaming))
+                else maybe.none(:staticdata.DescriptorForm)
+                end
+            if maybe.isSome(:staticdata.DescriptorForm echo) then maybe.unwrap(:staticdata.DescriptorForm echo)
+            else staticdata.descriptorForm(d.type maybe.none(:staticdata.RecordNaming))
+            end
+        when staticdata.missingDescriptor with msg then raise unsupported with "a descriptor: " <> msg end
+        end
+
+    (* A descriptor operand's value, an eqref: a static one's global; a
+     * descriptor variable's and an instantiation come with step 7 *)
+    let rec descriptor(f: F d: ir.Descriptor): Ok =
+        case d
+            when descStatic with x then emit(f i1(ops.globalGet descGlobal(f formOf(x.d).symbol)))
+            when descVar with x then atom(f ir.atomOfVar(x.v))
+            when descInstantiate with x then
+                (* the template's, its holes filled by the core *)
+                let form = try staticdata.descriptorForm(x.template maybe.none(:staticdata.RecordNaming))
+                    when staticdata.missingDescriptor with msg then
+                        fail("a descriptor: " <> msg)
+                        staticdata.descriptorForm(x.template maybe.none(:staticdata.RecordNaming))
+                    end
+                if stringOp.equal(form.kind "base") then emit(f i1(ops.globalGet descGlobal(f form.symbol)))
+                else
+                    emit(f i1(ops.globalGet f.g.noClosure))
+                    emit(f i1(ops.globalGet descGlobal(f form.symbol)))
+                    emit(f model.i32Const(0))
+                    for k = 0 upto extent x.args - 1 do descriptor(f x.args[k]) end
+                    emit(f i2(ops.arrayNewFixed tSlots extent x.args))
+                    emit(f i1(ops.structNew tArray))
+                    runtimeUnitCall(f "wasm/core.instantiate")
+                end
+        end
+
+    (* Descriptor operands, each an eqref, in order *)
+    and descriptors(f: F ds: Array(ir.Descriptor)): Ok = for k = 0 upto extent ds - 1 do descriptor(f ds[k]) end
+
+    (* A part of a descriptor: its label and the descriptor it refers to *)
+    Def Part = Tuple label: String ref: staticdata.Ref end
+
+    let partsOf(d: staticdata.Descriptor): Array(Part) =
+        begin
+            let part = fun(label: maybe.T(String) r: staticdata.Ref): Part
+                tuple let label = maybe.unwrapOr(:String label "") let ref = r end
+            let components = fun(cs: Array(staticdata.Component)): Array(Part)
+                begin
+                    let ps = array of(extent cs part(maybe.none(:String) staticdata.nullRef))
+                    for j = 0 upto extent cs - 1 do ps[j] := part(cs[j].name cs[j].type) end
+                    ps
+                end
+            let cases = fun(cs: Array(staticdata.Case)): Array(Part)
+                begin
+                    let ps = array of(extent cs part(maybe.none(:String) staticdata.nullRef))
+                    for j = 0 upto extent cs - 1 do
+                        ps[cs[j].tagIndex] := part(maybe.some(:String cs[j].name) cs[j].payload)
+                    end
+                    ps
+                end
+            case d.payload
+                when payloadTuple with x then components(x.elements)
+                when payloadRecord with x then components(x.fields)
+                when payloadOption with x then cases(x.cases)
+                when payloadVariant with x then cases(x.cases)
+                when payloadArray with x then array of part(maybe.none(:String) x.element) end
+                when payloadException with x then array of part(maybe.none(:String) x.payloadType) end
+                else array of :Part end
+            end
+        end
+
+    let textsOf(d: staticdata.Descriptor): Array(staticdata.TypeComponentText) =
+        case d.payload
+            when payloadTuple with x then x.typeComponents
+            else array of :staticdata.TypeComponentText end
+        end
+
+    (* The code that makes the unit's descriptors, in its initializer: the
+     * base ones the core's, then each collected one made with its parts
+     * unset, then its parts set, so that cycles close *)
+    let makeDescriptors(f: F forms: vector.T(staticdata.DescriptorForm)): Ok =
+        begin
+            let callCore = fun(field: String): Ok runtimeUnitCall(f "wasm/core." <> field)
+            let noClosure = fun(): Ok emit(f i1(ops.globalGet f.g.noClosure))
+            for k = 0 upto extent baseSymbols - 1 do
+                noClosure()
+                emit(f model.i64Const(baseKinds[k]))
+                callCore("base")
+                emit(f i1(ops.globalSet descGlobal(f baseSymbols[k])))
+            end
+            let partOf = fun(t: ir.Type): staticdata.DescriptorForm
+                staticdata.descriptorForm(t maybe.none(:staticdata.RecordNaming))
+            let described = vector.new(:staticdata.Descriptor)
+            for k = 0 upto vector.length(:staticdata.DescriptorForm forms) - 1 do
+                let form = vector.get(:staticdata.DescriptorForm forms k)
+                vector.append(:staticdata.Descriptor described
+                    staticdata.describeDescriptor(form maybe.none(:staticdata.RecordNaming) partOf))
+            end
+            for k = 0 upto vector.length(:staticdata.Descriptor described) - 1 do
+                let d = vector.get(:staticdata.Descriptor described k)
+                noClosure()
+                emit(f model.i64Const(kindOf(d.kindConstant)))
+                literal(f d.name)
+                emit(f model.i64Const(extent partsOf(d)))
+                emit(f model.i64Const(extent textsOf(d)))
+                callCore("newDesc")
+                emit(f i1(ops.globalSet descGlobal(f d.form.symbol)))
+            end
+            for k = 0 upto vector.length(:staticdata.Descriptor described) - 1 do
+                let d = vector.get(:staticdata.Descriptor described k)
+                let at = descGlobal(f d.form.symbol)
+                let ps = partsOf(d)
+                for j = 0 upto extent ps - 1 do
+                    noClosure()
+                    emit(f i1(ops.globalGet at))
+                    emit(f model.i64Const(j))
+                    if stringOp.isEmpty(ps[j].ref.symbol) then
+                        noClosure()
+                        emit(f model.i64Const(0))
+                        callCore("base")
+                    else emit(f i1(ops.globalGet descGlobal(f ps[j].ref.symbol)))
+                    end
+                    literal(f ps[j].label)
+                    callCore("setPart")
+                    emit(f i(ops.drop))
+                end
+                let ts = textsOf(d)
+                for j = 0 upto extent ts - 1 do
+                    noClosure()
+                    emit(f i1(ops.globalGet at))
+                    emit(f model.i64Const(j))
+                    emit(f model.i64Const(ts[j].position))
+                    literal(f ts[j].text)
+                    callCore("setText")
+                    emit(f i(ops.drop))
+                end
+            end
+        end
+
 
     (* The value on the stack, of type t, as a slot holds it (section 4.1):
      * an Int or Word an i31 or a box, a Bool or Char an i31, a reference
@@ -1175,13 +1454,45 @@ export
                     emit(f i(ops.refEq))
                     if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
                 else
-                if maybe.isSome(:ir.Descriptor x.descriptor) then fail("is through a descriptor (step 6)") end
+                if maybe.isSome(:ir.Descriptor x.descriptor) andif atomType(x.args[0])?valRef then
+                    (* a type parameter's values, as slots hold them: the same
+                     * reference, or two boxed Ints of one value *)
+                    let tBox = rt.index("boxInt")
+                    let a = scratch(f model.eqref)
+                    let b = scratch(f model.eqref)
+                    atom(f x.args[0])
+                    emit(f i1(ops.localTee a))
+                    atom(f x.args[1])
+                    emit(f i1(ops.localTee b))
+                    emit(f i(ops.refEq))
+                    emit(f model.ifInst(option blockValue of model.BlockType with let type = model.i32 end ""))
+                    emit(f model.i32Const(1))
+                    emit(f model.elseInst)
+                    for k = 0 upto 1 do
+                        emit(f i1(ops.localGet if k is 0 then a else b end))
+                        emit(f option instRefTest of Inst with let type = tuple let nullable = false
+                            let heap = heapOf(tBox) end end)
+                    end
+                    emit(f i(ops.i32And))
+                    emit(f model.ifInst(option blockValue of model.BlockType with let type = model.i32 end ""))
+                    for k = 0 upto 1 do
+                        emit(f i1(ops.localGet if k is 0 then a else b end))
+                        castTo(f tBox)
+                        emit(f i2(ops.structGet tBox 0))
+                    end
+                    emit(f i(ops.i64Eq))
+                    emit(f model.elseInst)
+                    emit(f model.i32Const(0))
+                    emit(f model.endInst)
+                    emit(f model.endInst)
+                else
                 atoms(f x.args)
                 case atomType(x.args[0])
                     when valI64 then emit(f i(ops.i64Eq))
                     when valI32 then emit(f i(ops.i32Eq))
                     when valRef then emit(f i(ops.refEq))
                     else fail("is on a Real")
+                end
                 end
                 if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
                 end
@@ -1303,6 +1614,7 @@ export
             emit(f model.ifInst(blockOf(f if tail then noTypes else sig.results end) ""))
             emit(f i1(ops.localGet held))
             castTo(f tClos)
+            descriptors(f x.descriptors)
             atoms(f x.args)
             emit(f i1(ops.localGet held))
             castTo(f s)
@@ -1311,11 +1623,13 @@ export
             emit(f model.elseInst)
             emit(f i1(ops.localGet held))
             castTo(f tClos)
+            descriptors(f x.descriptors)
             for k = 0 upto extent x.args - 1 do boxedAtom(f x.args[k]) end
             emit(f i1(ops.localGet held))
             castTo(f u)
             emit(f i2(ops.structGet u 1))
-            let result = shapes.result(shapeOf(c.type)).type
+            let q = quantified(c.type)
+            let result = if shapes.kindIs(q.body shapes.shapeFun) then shapes.result(q.body).type else q.body.type end
             let plain = {extent sig.results is 1} andif sig.results[0]?valRef andif not(isRecord(result))
             if tail andif plain then emit(f i1(ops.returnCallRef uniformType(f.g n)))
             else
@@ -1331,6 +1645,7 @@ export
             let direct = directCallee(f x)
             if maybe.isSome(:Int direct) then
                 closureArg(f x)
+                descriptors(f x.descriptors)
                 atoms(f x.args)
                 emit(f i1(ops.call maybe.unwrap(:Int direct)))
             elsif maybe.isSome(:ir.Variable x.callee) then closureCall(f x false)
@@ -1349,6 +1664,7 @@ export
                                 fail("a call of the unit " <> imp.i.canonicalPath <> "'s " <> member)
                             end
                             emit(f i1(ops.globalGet f.g.noClosure))
+                            descriptors(f x.descriptors)
                             atoms(f x.args)
                             emit(f i1(ops.call hashMap.find(:String :Int f.g.importFunctions key)))
                         end
@@ -1365,10 +1681,41 @@ export
                         let direct = directCallee(f y)
                         if maybe.isSome(:Int direct) then
                             closureArg(f y)
+                            descriptors(f y.descriptors)
                             atoms(f y.args)
                             emit(f i1(ops.call maybe.unwrap(:Int direct)))
                         else closureCall(f y false)
                         end
+                end
+            end
+        end
+
+    (* A type application (opTypeApp): a type-only function, or a module's
+     * member that is one, called with its type arguments' descriptors
+     * alone, its result then converted as its plan says, where a box, an
+     * unbox, or a cast does *)
+    let typeApp(f: F x: ir.OpTypeApp target: maybe.T(ir.Variable)): Ok =
+        begin
+            if maybe.isSome(:Array(ir.DescriptorParam) x.thunkParams) then
+                fail("a type application whose instance is a function, not its thunk's closure")
+            end
+            let asCall = fun(callee: maybe.T(ir.Variable) moduleRef: maybe.T(ir.ModuleRef)): ir.OpCall
+                tuple
+                    let var callee = callee let var typeArgs = x.typeArgs let var args = array of :ir.Atom end
+                    let var moduleRef = moduleRef let var member = x.member let var calleeType = x.calleeType
+                    let var descriptors = x.descriptors
+                end
+            if maybe.isSome(:ir.Variable x.callee) then closureCall(f asCall(x.callee maybe.none(:ir.ModuleRef)) false)
+            elsif maybe.isNone(:ir.ModuleRef x.moduleRef) then fail("a type application of no function")
+            else call(f asCall(maybe.none(:ir.Variable) x.moduleRef))
+            end
+            if {extent x.plans > 0} andif maybe.isSome(:ir.Plan x.plans[0]) then
+                let plan = maybe.unwrap(:ir.Plan x.plans[0])
+                case plan.kind
+                    when planBox, planSlotBox then box(f plan.source)
+                    when planUnbox, planSlotUnbox then unboxFor(f plan.target target)
+                    when planCast then ok
+                    else fail("a type application's conversion " <> ir.planKindName(plan.kind))
                 end
             end
         end
@@ -1564,21 +1911,6 @@ export
             unboxFor(f shapes.componentShape(c).type target)
         end
 
-    (* A value converted as its plan says (docs/ir.md section 8.3): to and
-     * from a slot's form, which for a record is its box; a cast between
-     * references changes nothing here *)
-    let convert(f: F x: ir.OpConvert target: maybe.T(ir.Variable)): Ok =
-        case x.plan.kind
-            when planBox, planSlotBox then boxedAtom(f x.value)
-            when planUnbox, planSlotUnbox then
-                atom(f x.value)
-                unboxFor(f x.plan.target target)
-            when planCast then atom(f x.value)
-            when planAdapt then fail("an adapter (step 7)")
-            when planRecordView, planVariantTags, planView, planUnproxy, planRuntime, planCopy then
-                fail("the conversion " <> ir.planKindName(x.plan.kind) <> " (milestone 4)")
-        end
-
     (* --- Closures --- *)
 
     (* A function's uniform entry (section 3.1): its native entry itself when
@@ -1592,7 +1924,8 @@ export
             let n = arity(fn.v.type)
             let index = if isUniform(sig n) then native
                 else
-                    let s = shapeOf(fn.v.type)
+                    let q = quantified(fn.v.type)
+                    let s = q.body
                     let names = array of(n + 1 "")
                     let f = newF(g names array of model.eqref end ~1)
                     names[0] := "closure"
@@ -1600,9 +1933,9 @@ export
                     emit(f i1(ops.localGet 0))
                     for k = 0 upto n - 1 do
                         emit(f i1(ops.localGet k + 1))
-                        unbox(f s.params[k].shape.type)
+                        if k >= q.count then unbox(f s.params[k - q.count].shape.type) end
                     end
-                    let result = shapes.result(s).type
+                    let result = if shapes.kindIs(s shapes.shapeFun) then shapes.result(s).type else s.type end
                     let plain = {extent sig.results is 1} andif sig.results[0]?valRef andif not(isRecord(result))
                     if plain then emit(f i1(ops.returnCall native))
                     else
@@ -1637,6 +1970,39 @@ export
             end)
             hashMap.insert(:Int :Int g.staticClosures fn.id n)
             n
+        end
+
+    (* A value converted as its plan says (docs/ir.md section 8.3): to and
+     * from a slot's form, which for a record is its box; a cast between
+     * references changes nothing here *)
+    let convert(f: F x: ir.OpConvert target: maybe.T(ir.Variable)): Ok =
+        case x.plan.kind
+            when planBox, planSlotBox then boxedAtom(f x.value)
+            when planUnbox, planSlotUnbox then
+                atom(f x.value)
+                unboxFor(f x.plan.target target)
+            when planCast then atom(f x.value)
+            when planAdapt then
+                (* a closure of the adapter (ir/thunks), which captures the
+                 * closure it adapts *)
+                if maybe.isNone(:ir.Function x.plan.thunk) then fail("an adapt plan without its adapter") end
+                let fn = maybe.unwrap(:ir.Function x.plan.thunk)
+                if capturedDescriptors(fn) > 0 then fail("an adapter whose closure supplies descriptors") end
+                let own = ownType(f.g fn)
+                let u = uniformEntry(f.g fn)
+                let native = hashMap.find(:Int :Int f.g.functions fn.id)
+                declare(f.g u)
+                declare(f.g native)
+                emit(f model.i32Const(0))
+                emit(f i1(ops.refFunc u))
+                emit(f i1(ops.refFunc native))
+                atom(f x.value)
+                emit(f i1(ops.structNew own))
+            (* nothing this backend compiles makes a proxy (section 10.1), so
+             * a value that might be one is its original *)
+            when planUnproxy then atom(f x.value)
+            when planRecordView, planVariantTags, planView, planRuntime, planCopy then
+                fail("the conversion " <> ir.planKindName(x.plan.kind) <> " (milestone 4)")
         end
 
     (* A built-in operator as a value (opBuiltin), as the C runtime's
@@ -1722,12 +2088,12 @@ export
      * bound is left to fill in (sLetRec) *)
     let makeClosure(f: F x: ir.OpMakeClosure): Ok =
         begin
-            if {extent x.typeArgs > 0} orif {extent x.descriptors > 0} then fail("a polymorphic closure (step 7)") end
             let fn = x.code
             if fn.unboxedResult then
                 (* only ever called directly (ir/unbox), never through it *)
                 emit(f i1(ops.globalGet f.g.noClosure))
-            elsif extent x.captures is 0 then emit(f i1(ops.globalGet staticClosure(f.g fn)))
+            elsif {extent x.captures is 0} andif {extent x.descriptors is 0} then
+                emit(f i1(ops.globalGet staticClosure(f.g fn)))
             else
                 let own = ownType(f.g fn)
                 let u = uniformEntry(f.g fn)
@@ -1737,6 +2103,8 @@ export
                 emit(f model.i32Const(0))
                 emit(f i1(ops.refFunc u))
                 emit(f i1(ops.refFunc native))
+                (* the type arguments' descriptors it supplies *)
+                for k = 0 upto extent x.descriptors - 1 do descriptor(f x.descriptors[k]) end
                 let later = vector.new(:Patch)
                 for k = 0 upto extent x.captures - 1 do
                     let a = x.captures[k]
@@ -1771,6 +2139,95 @@ export
                     end
                 end
             end
+        end
+
+    (* An intrinsic (section 4.5): an external named wasm.NAME, which an
+     * unsound module the backend compiles, the runtime's core above all,
+     * declares at the types it uses it at; compiled in place, its value
+     * that of its function's result type, target's *)
+    let intrinsic(f: F x: ir.OpCallExternal target: maybe.T(ir.Variable)): Ok =
+        begin
+            let name = x.symbol
+            let args = x.args
+            let named = fun(n: String): Bool stringOp.equal(name "wasm." <> n)
+            let indexArg = fun(): Ok
+                begin
+                    atom(f args[1])
+                    emit(f i(ops.i32WrapI64))
+                end
+            let okValue = fun(): Ok
+                begin
+                    emit(f model.i32Const(0))
+                    emit(f i(ops.refI31))
+                end
+            let tRecBox = rt.index("recBox")
+            let tException = rt.index("exception")
+            if named("toAny") then boxedAtom(f args[0])
+            elsif named("fromAny") then
+                atom(f args[0])
+                if maybe.isSome(:ir.Variable target) then
+                    unboxFor(f maybe.unwrap(:ir.Variable target).type target)
+                end
+            elsif named("same") then
+                atoms(f args)
+                emit(f i(ops.refEq))
+            elsif named("tupleCount") orif named("arrayCount") then
+                let isArray = named("arrayCount")
+                atom(f args[0])
+                castTo(f if isArray then tArray else tTuple end)
+                emit(f i2(ops.structGet if isArray then tArray else tTuple end if isArray then fElems else fSlots end))
+                emit(f i(ops.arrayLen))
+                emit(f i(ops.i64ExtendI32U))
+            elsif named("tupleSlot") orif named("arraySlot") then
+                let isArray = named("arraySlot")
+                atom(f args[0])
+                castTo(f if isArray then tArray else tTuple end)
+                emit(f i2(ops.structGet if isArray then tArray else tTuple end if isArray then fElems else fSlots end))
+                indexArg()
+                emit(f i1(ops.arrayGet tSlots))
+            elsif named("recordField") then
+                (* the payload's slot that the view's table gives field i *)
+                let b = scratch(f model.refNull(tRecBox))
+                atom(f args[0])
+                castTo(f tRecBox)
+                emit(f i1(ops.localTee b))
+                emit(f i2(ops.structGet tRecBox 0))
+                emit(f i2(ops.structGet tRecord rt.field("record" "slots")))
+                emit(f i1(ops.localGet b))
+                emit(f i2(ops.structGet tRecBox 1))
+                emit(f i2(ops.structGet tDict 0))
+                indexArg()
+                emit(f i1(ops.arrayGet rt.index("i32s")))
+                emit(f i1(ops.arrayGet tSlots))
+            elsif named("optionTag") then
+                atom(f args[0])
+                castTo(f tOption)
+                emit(f i2(ops.structGet tOption fTag))
+                emit(f i(ops.i64ExtendI32U))
+            elsif named("exceptionName") then
+                atom(f args[0])
+                castTo(f tException)
+                emit(f i2(ops.structGet tException rt.field("exception" "name")))
+            elsif named("decimal") then
+                atoms(f args)
+                runtimeCall(f "decimal")
+            elsif named("hex") then
+                atoms(f args)
+                runtimeCall(f "hex")
+            elsif named("escaped") then
+                atoms(f args)
+                runtimeCall(f "escaped")
+            elsif named("charString") then
+                atoms(f args)
+                runtimeCall(f "convChar")
+            elsif named("put") then
+                emit(f model.i32Const(1))
+                emit(f i(ops.refI31))
+                atoms(f args)
+                runtimeCall(f "putString")
+            else fail("the external " <> name <> ", which is no intrinsic")
+            end
+            ok
         end
 
     (* The operation's value, on the stack *)
@@ -1831,9 +2288,13 @@ export
             when opMakeRecord with x then makeRecord(f x target)
             when opRecordField with x then recordField(f x target)
             when opConvert with x then convert(f x target)
-            when opTypeApp then fail("a type application (step 7)")
+            when opTypeApp with x then typeApp(f x target)
             when opBuiltin with x then emit(f i1(ops.globalGet builtinClosure(f.g x.name)))
-            when opExternal, opCallExternal then fail("an external function (step 9)")
+            when opCallExternal with x then
+                if strutil.startsWith(x.symbol "wasm.") then intrinsic(f x target)
+                else fail("an external function (step 9)")
+                end
+            when opExternal then fail("an external value (step 9)")
             when opMakeException with x then
                 emit(f model.i32Const(0))
                 literal(f x.name)
@@ -1868,6 +2329,16 @@ export
         begin
             let kind = describe.echoValueKind(x.type)
             let suffix = if stringOp.isEmpty(x.prefix) then " : " <> genericLayout.qtypeToNameStr(x.type) else "" end
+            if stringOp.isEmpty(kind) andif maybe.isSome(:ir.Descriptor x.descriptor) then
+                (* written by its descriptor, by print's echo *)
+                emit(f i1(ops.globalGet f.g.noClosure))
+                literal(f x.prefix)
+                boxedAtom(f x.value)
+                descriptor(f maybe.unwrap(:ir.Descriptor x.descriptor))
+                literal(f suffix)
+                runtimeUnitCall(f "wasm/print.echo")
+                emit(f i(ops.drop))
+            else
             let kindIs = fun(k: String): Bool stringOp.equal(kind k)
             let quoted = fun(quote: Char): Ok
                 begin
@@ -1905,7 +2376,7 @@ export
                         runtimeCall(f "concat")
                     elsif kindIs("fun") then literal(f "<fun>")
                     elsif kindIs("hidden") then literal(f "<hidden>")
-                    elsif stringOp.isEmpty(kind) then fail("echo of a value its descriptor writes (step 6)")
+                    elsif stringOp.isEmpty(kind) then fail("echo of a value its descriptor writes, without one")
                     else literal(f "<val>")
                     end
                     runtimeCall(f "concat")
@@ -1913,6 +2384,7 @@ export
                     runtimeCall(f "concat")
                 end
             output(f value)
+            end
         end
 
     (* ======================================================================
@@ -2149,6 +2621,11 @@ export
                 literal(f siteText(f x.offset))
                 literal(f x.payloadText)
                 emit(f model.i32Const(kind))
+                (* a payload written by its descriptor, the report's *)
+                if {kind is 9} andif maybe.isSome(:ir.Descriptor x.descriptor) then
+                    descriptor(f maybe.unwrap(:ir.Descriptor x.descriptor))
+                else emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
+                end
                 runtimeCall(f "raise")
                 emit(f i(ops.unreachable))
             when sReraise with x then
@@ -2279,12 +2756,12 @@ export
      * compile *)
     let signature(fn: ir.Function): Signature =
         begin
-            if {extent fn.typeParams > 0} orif {extent fn.descriptorParams > 0} then
-                fail("a polymorphic function (step 7)")
-            end
-            (* The closure first (section 3.1), then each parameter's parts *)
+            (* The closure first (section 3.1), then the descriptors of the
+             * type parameters its callers supply, then each parameter's
+             * parts *)
             let params = vector.new(:ValType)
             vector.append(:ValType params model.ref(tClos))
+            for k = 0 upto quantified(fn.v.type).count - 1 do vector.append(:ValType params model.eqref) end
             for k = 0 upto extent fn.params - 1 do
                 if not(stringOp.equal(fn.params[k].mode "value")) then fail("a var or out parameter (milestone 4)") end
                 if fn.params[k].v.boxed then fail("a parameter held boxed") end
@@ -2302,10 +2779,33 @@ export
             let names = array of(extent sig.params "")
             let f = newF(g names sig.results fn.id)
             names[0] := fresh(f.names "closure")
-            if maybe.isSome(:ir.Variable fn.env) then
+            if maybe.isSome(:ir.Variable fn.env) andif not(isAdapter(fn)) then
                 hashMap.insert(:Int :Int f.locals maybe.unwrap(:ir.Variable fn.env).id 0)
             end
             let var at = 1
+            let captured = capturedDescriptors(fn)
+            for k = captured upto extent fn.descriptorParams - 1 do
+                hashMap.insert(:Int :Int f.locals fn.descriptorParams[k].v.id at)
+                names[at] := fresh(f.names fn.descriptorParams[k].v.hint)
+                at := at + 1
+            end
+            (* an adapter's environment, the closure it adapts, from its
+             * closure *)
+            if isAdapter(fn) then
+                let own = ownType(g fn)
+                emit(f i1(ops.localGet 0))
+                castTo(f own)
+                emit(f i2(ops.structGet own captureField(g fn 0)))
+                emit(f i1(ops.localSet local(f maybe.unwrap(:ir.Variable fn.env))))
+            end
+            (* the descriptors its closure supplies, from the closure *)
+            for k = 0 upto captured - 1 do
+                let own = ownType(g fn)
+                emit(f i1(ops.localGet 0))
+                castTo(f own)
+                emit(f i2(ops.structGet own 3 + k))
+                emit(f i1(ops.localSet local(f fn.descriptorParams[k].v)))
+            end
             for k = 0 upto extent fn.params - 1 do
                 hashMap.insert(:Int :Int f.locals fn.params[k].v.id at)
                 for j = 0 upto extent varParts(fn.params[k].v) - 1 do
@@ -2418,11 +2918,19 @@ export
                 let importFunctions = hashMap.new(:String :Int stringOp.equal hash.string)
                 let importInits = hashMap.new(:String :Int stringOp.equal hash.string)
                 let importRecords = records
+                let runtimeUnits = hashMap.new(:String :Int stringOp.equal hash.string)
+                let descGlobals = hashMap.new(:String :Int stringOp.equal hash.string)
             end
-            (* Each function, and the types of what its closures capture *)
+            (* Each function, and the types of what its closures capture: an
+             * adapter's (ir/thunks), whose environment is the closure it
+             * adapts, of that closure's type, captures that closure *)
             for k = 0 upto vector.length(:ir.Function unit.functions) - 1 do
                 let fn = vector.get(:ir.Function unit.functions k)
                 hashMap.insert(:Int :ir.Function g.byId fn.id fn)
+                if isAdapter(fn) then
+                    hashMap.insert(:Int :Array(ir.Type) g.captureTypes fn.id
+                        array of maybe.unwrap(:ir.Variable fn.env).type end)
+                end
             end
             let bodies = walk.unitBodies(unit)
             for b = 0 upto extent bodies - 1 do
@@ -2479,6 +2987,35 @@ export
                         importFunction(i.canonicalPath "init" funcType(g noTypes noTypes)))
                 end
             end
+            (* The runtime's units, for a unit whose code uses descriptors:
+             * the core's constructors, which its initializer makes them
+             * with, and print's echo; each at its interface's closure
+             * signature *)
+            let described = not(isRuntimeUnit(moduleName)) andif maybe.isSome(:ir.StaticData unit.staticData)
+                andif {vector.length(:ir.StaticDescriptor maybe.unwrap(:ir.StaticData unit.staticData).descriptors) > 0}
+            let runtimeImport = fun(unitName: String field: String params: Array(ValType)
+                results: Array(ValType)): Bool
+                hashMap.insert(:String :Int g.runtimeUnits unitName <> "." <> field
+                    importFunction(unitName field funcType(g withClosure(params) results)))
+            let e = model.eqref
+            let n = model.i64
+            (* A program's report of an uncaught exception writes a payload
+             * by its descriptor with print's show *)
+            if described orif {unit.isProgram andif not(isRuntimeUnit(moduleName))} then
+                hashMap.insert(:String :Int g.runtimeUnits "wasm/print.init"
+                    importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
+                runtimeImport("wasm/print" "show" array of e e end array of e end)
+            end
+            if described then
+                hashMap.insert(:String :Int g.runtimeUnits "wasm/core.init"
+                    importFunction("wasm/core" "init" funcType(g noTypes noTypes)))
+                runtimeImport("wasm/core" "base" array of n end array of e end)
+                runtimeImport("wasm/core" "newDesc" array of n e n n end array of e end)
+                runtimeImport("wasm/core" "setPart" array of e n e e end array of e end)
+                runtimeImport("wasm/core" "setText" array of e n n e end array of e end)
+                runtimeImport("wasm/core" "instantiate" array of e e end array of e end)
+                runtimeImport("wasm/print" "echo" array of e e e e end array of e end)
+            end
             let allBodies = walk.unitBodies(unit)
             for b = 0 upto extent allBodies - 1 do
                 let ss = walk.walkStatements(allBodies[b] true)
@@ -2489,24 +3026,26 @@ export
                         else maybe.none(:ir.Op)
                     end
                     if maybe.isSome(:ir.Op op) then
-                        case maybe.unwrap(:ir.Op op)
-                            when opCall with c then
-                                let byModule = maybe.isSome(:ir.ModuleRef c.moduleRef)
-                                if byModule andif maybe.isNone(:ir.Variable c.callee) then
-                                    case maybe.unwrap(:ir.ModuleRef c.moduleRef)
-                                        when refImport with imp then
-                                            let key = imp.i.canonicalPath <> "." <> maybe.unwrapOr(:String c.member "")
-                                            let known = hashMap.contains(:String :Int g.importFunctions key)
-                                            if isUnitImport(imp.i) andif not(known)
-                                                andif maybe.isSome(:ir.Type c.calleeType) then
-                                                let sig = closureSig(maybe.unwrap(:ir.Type c.calleeType))
-                                                hashMap.insert(:String :Int g.importFunctions key
-                                                    importFunction(imp.i.canonicalPath
-                                                        maybe.unwrapOr(:String c.member "") nativeType(g sig)))
-                                            end
-                                        else ok
-                                    end
+                        let register = fun(callee: maybe.T(ir.Variable) moduleRef: maybe.T(ir.ModuleRef)
+                            member: maybe.T(String) calleeType: maybe.T(ir.Type)): Ok
+                            if maybe.isSome(:ir.ModuleRef moduleRef) andif maybe.isNone(:ir.Variable callee) then
+                                case maybe.unwrap(:ir.ModuleRef moduleRef)
+                                    when refImport with imp then
+                                        let key = imp.i.canonicalPath <> "." <> maybe.unwrapOr(:String member "")
+                                        let known = hashMap.contains(:String :Int g.importFunctions key)
+                                        if isUnitImport(imp.i) andif not(known)
+                                            andif maybe.isSome(:ir.Type calleeType) then
+                                            let sig = closureSig(maybe.unwrap(:ir.Type calleeType))
+                                            hashMap.insert(:String :Int g.importFunctions key
+                                                importFunction(imp.i.canonicalPath
+                                                    maybe.unwrapOr(:String member "") nativeType(g sig)))
+                                        end
+                                    else ok
                                 end
+                            end
+                        case maybe.unwrap(:ir.Op op)
+                            when opCall with c then register(c.callee c.moduleRef c.member c.calleeType)
+                            when opTypeApp with c then register(c.callee c.moduleRef c.member c.calleeType)
                             else ok
                         end
                     end
@@ -2536,9 +3075,30 @@ export
                     let locals = vector.new(:model.Local) let body = vector.new(:Inst)
                 end)
             end
+            let descIndex = mainIndex + if unit.isProgram then 2 else 1 end
+            let forms = if described then descriptorGlobals(g) else vector.new(:staticdata.DescriptorForm) end
+            if described then
+                vector.append(:model.Function m.functions tuple
+                    let name = "" let type = placeholder let params = array of :String end
+                    let locals = vector.new(:model.Local) let body = vector.new(:Inst)
+                end)
+            end
             for k = 0 upto vector.length(:ir.Function unit.functions) - 1 do
                 function(g vector.get(:ir.Function unit.functions k))
             end
+            (* The runtime's units initialized, and the unit's descriptors
+             * made, first in its initializer *)
+            if described then
+                let df = newF(g array of :String end noTypes ~1)
+                makeDescriptors(df forms)
+                fill(df descIndex "descriptors" placeholder)
+            end
+            let initRuntime = fun(f: F): Ok
+                if described then
+                    emit(f i1(ops.call hashMap.find(:String :Int g.runtimeUnits "wasm/core.init")))
+                    emit(f i1(ops.call hashMap.find(:String :Int g.runtimeUnits "wasm/print.init")))
+                    emit(f i1(ops.call descIndex))
+                end
             (* Each unit imported initialized, in the order of the imports *)
             let initImports = fun(f: F): Ok
                 for k = 0 upto extent unit.imports - 1 do
@@ -2563,6 +3123,7 @@ export
                 emit(initF model.endInst)
                 emit(initF model.i32Const(1))
                 emit(initF i1(ops.globalSet flag))
+                initRuntime(initF)
                 initImports(initF)
                 for k = 0 upto nmodules - 1 do body(initF vector.get(:ir.Module unit.modules k).init) end
                 fill(initF mainIndex "init" placeholder)
@@ -2625,6 +3186,7 @@ export
             else
             (* The program's top level *)
             let mainF = newF(g array of :String end noTypes ~1)
+            initRuntime(mainF)
             initImports(mainF)
             (* the modules the program defines, in order, then its top
              * level *)
@@ -2643,6 +3205,26 @@ export
             emit(start i1(ops.call mainIndex))
             emit(start model.endInst)
             emit(start i(ops.returnOp))
+            emit(start model.endInst)
+            (* the payload as print's show writes it, if its descriptor
+             * writes it *)
+            let tRaised = rt.index("raised")
+            let state = scratch(start model.refNull(tRaised))
+            castTo(start tRaised)
+            emit(start i1(ops.localTee state))
+            emit(start i1(ops.localGet state))
+            emit(start i2(ops.structGet tRaised rt.field("raised" "desc")))
+            emit(start i(ops.refIsNull))
+            emit(start model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
+            emit(start option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
+            emit(start model.elseInst)
+            runtimeUnitCall(start "wasm/print.init")
+            emit(start i1(ops.globalGet g.noClosure))
+            emit(start i1(ops.localGet state))
+            emit(start i2(ops.structGet tRaised rt.field("raised" "payload")))
+            emit(start i1(ops.localGet state))
+            emit(start i2(ops.structGet tRaised rt.field("raised" "desc")))
+            runtimeUnitCall(start "wasm/print.show")
             emit(start model.endInst)
             runtimeCall(start "uncaught")
             fill(start mainIndex + 1 "_start" placeholder)

@@ -302,7 +302,8 @@ checks of its unit files, builds, and ABI corpus (`self-hosted/abi_corpus`, `sel
 `self-hosted/build_errors`, `self-hosted/parallel_build`, `self-hosted/compile_command`, `self-hosted/backends`,
 `self-hosted/wasm_programs`, `self-hosted/line_tables`). `self-hosted/wasm_programs` runs the programs in
 `tests/self-hosted/wasm` with the wasm backend in wasmtime and node, which must do what the arm64 backend's builds do,
-and compares each module's text (`--stop-after codegen_wasm`) with its `.wat` golden (`--update` rewrites them). The
+and compares each module's text (`--stop-after codegen_wasm`) with its `.wat` golden (`--update` rewrites them); the
+units they import are in `tests/self-hosted/wasm/units`, imported as `units/NAME`. The
 generated C has no goldens: `tools/c-diff` shows how a
 change alters it (§2.9). `run_c_compiled` builds into a directory of its own under each worker's (`self-hosted-units`), so that they don't reuse the bootstrap's fresh
 artifacts. The self-hosted driver builds the questlang tests once, one after another, into a shared directory

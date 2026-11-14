@@ -477,6 +477,27 @@ lists every external the driver calls at a top level.
 *Written 2026-11-13, after steps 6's exceptions and 9's units, and revised after its review the same day; the core
 is built on it.*
 
+*As built (2026-11-14), the design below with these departures:*
+- **No `wasm/intrinsics` interface.** An intrinsic is an external named `wasm.NAME`, which each of the runtime's
+  unsound modules declares itself, at the types it uses it at: `let toInt(x: core.Any): Int = external
+  "wasm.fromAny"`. The backend compiles the external's call in place, by its name, from its arguments' types and
+  its result's. `toAny` and `fromAny` take their type from the declaration, so the rule of point 3 below holds
+  unchanged, and none of the build's changes for an interface without a module were needed. `Any` is
+  `external "eqref"`, which the backend holds as an `eqref`.
+- **The set built** is what printing needs: `same`, `toAny`, `fromAny`, `tupleCount`, `tupleSlot`, `arrayCount`,
+  `arraySlot`, `recordField` (through the view's table), `optionTag`, `exceptionName`, and the base's `decimal`,
+  `hex`, `escaped`, `charString`, and `put`. The table below stays the list to draw on.
+- **Two units, under `runtime/wasm/`:** `wasm/core` makes descriptors (`base`, `newDesc`, `setPart`, `setText`)
+  and instantiates templates (`instantiate`, memoized); `wasm/print` writes values by them (`show`, `echo`). The
+  driver builds both with `runtime/` on the include path and preloads them before every other unit, and `-o`
+  writes each unit's module beside the program, with `TARGET.units` naming them in order.
+- **The uncaught report's hook is the program's `_start`,** not a field of the core: `$raised` carries the
+  payload's descriptor, and `_start` writes the payload with `wasm/print`'s `show` and passes the text to the
+  base's `uncaught`. Every exception a program does not catch reaches its `_start`, the inits of its units
+  included.
+- **Not yet built:** the backend's check that the core imports nothing but the library's members it compiles
+  itself (the core imports `string` for those), and `--wasm-checked`.
+
 The core (§4.2) is Quest that must reach what no Quest type exposes: a value's kind, an object's slots and hash, a
 string's bytes. It does so through one unsound interface, `wasm/intrinsics`, whose members the backend compiles at
 each call. The core is written against it, and so are descriptors, printing, and later the library's externals.
@@ -954,7 +975,7 @@ only when the backend's files differ, until its time is known.
    built by a unit's initializer within §2.11's limits, instantiation and its memoization, `is` at a type
    parameter, the identity hash, printing as the REPL echoes, exceptions with the uncaught report.
    *Done when* the goldens for printing and for exceptions pass with the C runtime's output, less tracebacks' frames.
-   *Exceptions, done 2026-11-13; descriptors and printing remain:*
+   *Done 2026-11-14,* exceptions first (2026-11-13) and then descriptors and printing:
    - **R** gains `$exception` (hash and name) and `$raised`, a raised exception's state: the exception, its
      payload, the site, and how the report writes the payload.
    - **The runtime:** the built-in exceptions are its exported globals. `raise` throws the one tag with the state,
@@ -963,9 +984,18 @@ only when the backend's files differ, until its time is known.
      exceptions (`exceptionOf`), and raises it again with `throw`, so its site is kept.
    - **No tail call inside a `try`:** a call in tail position inside a `try`'s body is not made a tail call, since
      leaving the `try_table` would leave its handler.
-   - **Still to come:** a payload that needs a descriptor is written `<val>` until descriptors come.
-   - **Run goldens:** the modes pass 56. `tests/self-hosted/wasm/exceptions.quest` checks exceptions in both engines
-     against arm64.
+   - **Descriptors** are values of `wasm/core`'s `Desc`, a tuple (§4.5). A unit whose code uses any imports the
+     core's constructors, and a function it runs first in its initializer makes each of its static descriptors
+     (`staticdata`'s forms) as a global: the base ones, then each collected one with its parts unset, then its
+     parts, so that a recursive type's closes.
+   - **Echo** of a value whose type needs a descriptor calls `wasm/print`'s `echo` with the value as a slot holds
+     it.
+   - **An uncaught payload** that needs a descriptor is written by `wasm/print`'s `show`: `$raised` carries the
+     descriptor, and the program's `_start` passes the text to the base's `uncaught`.
+   - **Run goldens:** the modes pass 77 and then 97, the same in both engines; the tests left under step 6 went
+     to the steps that add what they need (a record view, a variant, a `Real`, `reader`).
+     `tests/self-hosted/wasm/exceptions.quest` checks exceptions in both engines against arm64, and
+     `polymorphism.quest` an uncaught payload written by its descriptor.
 7. **Polymorphism:** descriptor parameters, and the three plans the compiler has (§10.3): `box`, `unbox`, and
    `adapt`, with the thunks `ir/thunks` makes for it. Own views, view maps, proxies, and the other subtyping plans
    are pending, as are `auto` and `inspect`: `lib/dynamic`, the one unit with either, is linked and never called,
@@ -973,6 +1003,27 @@ only when the backend's files differ, until its time is known.
    *Done when* the polymorphism goldens pass, less what step 1 marked pending; and, as the first
    point at which the backend can compile them, the stack that the compiler's large recursive functions use for
    each level of nesting is measured in baseline code and recorded (§6.2), without waiting for step 10.
+   *Built 2026-11-14, but for the measurement:*
+   - **Signatures:** a function type's closure signature has a descriptor, an `eqref`, for each of its
+     quantifiers' type parameters, before its value parameters; a type-only function's is the descriptors and its
+     result's parts.
+   - **Descriptor parameters:** a function's callers pass those of its own quantifiers; those its closure supplies
+     (`typeArgs` of the closure made) are fields of its own closure type, after the entries and before the
+     captures, which its prologue reads. A closure that supplies any is never static.
+   - **Calls** pass the call's descriptors before the arguments, directly, through a closure's either entry, and
+     to another unit's export; a type application (`opTypeApp`) is a call with descriptors alone, its result
+     boxed or unboxed as its plan says.
+   - **Adapters** (`adapt`, made by `ir/thunks`): a closure of the adapter that captures the closure it adapts,
+     which its prologue binds to the adapter's environment.
+   - **Descriptors at run time:** a descriptor variable is its local, and a template instantiated by the core's
+     `instantiate`, memoized.
+   - **`is` at a type parameter** compares the values as slots hold them: the same reference, or two boxed `Int`s
+     of one value. An `unproxy` plan changes nothing, since nothing this backend compiles makes a proxy.
+   - **Tests:** `tests/self-hosted/wasm/polymorphism.quest` calls generic functions of another unit
+     (`wasm/units/gen`), which the program cannot specialize, and gets closures that capture descriptors.
+   - **Run goldens:** none of those listed under step 7 waits on it any more; each went to what it does wait on:
+     20 to milestone 4 (variants, views, `var` parameters, `auto`), 3 to step 8, and 15 to step 9's library.
+   - **The measurement** needs the compiler's units compiled, and so the library: it moves to step 9.
 8. **`Real` formatting and parsing in Quest** (§4.3).
    A subproject of its own, with its own risk: it is tested apart from the backend first, since the Quest code
    runs natively too, against the C runtime on the same inputs. Taken first, before step 2, at the owner's word.

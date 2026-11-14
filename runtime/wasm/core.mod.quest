@@ -1,0 +1,162 @@
+(* Quest WebAssembly Runtime: The Core
+ *
+ * Monomorphic, and importing nothing (docs/wasm-plan.md section 4.5): it
+ * uses no library unit's Quest code, and so no maybe, vector, or hashMap. *)
+
+unsound module core : Core
+import
+    stringOp = string : StringOp
+export
+    Let Any = external "eqref"
+
+    Def Rec Desc = Tuple
+        kind: Int
+        name: String
+        parts: Array(Desc)
+        labels: Array(String)
+        positions: Array(Int)
+        texts: Array(String)
+    end
+
+    let kindNone = 0
+    let kindInt = 1
+    let kindReal = 2
+    let kindBool = 3
+    let kindChar = 4
+    let kindString = 5
+    let kindOk = 6
+    let kindWord = 7
+    let kindFun = 8
+    let kindTuple = 9
+    let kindRecord = 10
+    let kindOption = 11
+    let kindVariant = 12
+    let kindArray = 13
+    let kindException = 14
+    let kindOpaque = 15
+    let kindAuto = 16
+    let kindBoundVar = 17
+    let kindHole = 18
+    let kindStored = 19
+    let kindCount = 20
+
+    let names = array of
+        "" "Int" "Real" "Bool" "Char" "String" "Ok" "Word.T" "fun" "Tuple end" "record" "option" "variant" "array"
+        "exception" "opaque" "auto" "?" "?" "stored"
+    end
+
+    let plain(kind: Int): Desc =
+        tuple
+            let kind = kind let name = names[kind] let parts = array of :Desc end let labels = array of :String end
+            let positions = array of :Int end let texts = array of :String end
+        end
+
+    let bases: Array(Desc) =
+        begin
+            let all = array of(kindCount plain(kindNone))
+            for k = 1 upto kindCount - 1 do all[k] := plain(k) end
+            all
+        end
+
+    let base(kind: Int): Desc = bases[kind]
+
+    let newDesc(kind: Int name: String n: Int m: Int): Desc =
+        tuple
+            let kind = kind let name = name let parts = array of(n bases[kindNone]) let labels = array of(n "")
+            let positions = array of(m 0) let texts = array of(m "")
+        end
+
+    let setPart(d: Desc i: Int part: Desc label: String): Ok =
+        begin
+            d.parts[i] := part
+            d.labels[i] := label
+        end
+
+    let setText(d: Desc i: Int position: Int text: String): Ok =
+        begin
+            d.positions[i] := position
+            d.texts[i] := text
+        end
+
+    (* The instances made, each by its template and arguments, and the
+     * descriptors an instantiation has copied, each by its original, so that
+     * a cycle closes; each a list grown by doubling *)
+    Def Instance = Tuple template: Desc args: Array(Desc) result: Desc end
+    let instances = tuple
+        let var items = array of :Instance end
+        let var count = 0
+        let var copied = array of :Desc end
+        let var copies = array of :Desc end
+        let var ncopied = 0
+    end
+
+    (* The hole's index, the digits of its name after "?" *)
+    let holeIndex(d: Desc): Int =
+        begin
+            let var n = 0
+            for i = 1 upto stringOp.length(d.name) - 1 do
+                let c = stringOp.getChar(d.name i)
+                let var v = 0
+                for k = 0 upto 9 do if c is stringOp.getChar("0123456789" k) then v := k end end
+                n := {n * 10} + v
+            end
+            n
+        end
+
+    let rec copy(d: Desc args: Array(Desc)): Desc =
+        if d.kind is kindHole then
+            let k = holeIndex(d)
+            if k < extent args then args[k] else d end
+        elsif extent d.parts is 0 then d
+        else
+            let var found = ~1
+            for i = 0 upto instances.ncopied - 1 do if instances.copied[i] is d then found := i end end
+            if found >= 0 then instances.copies[found]
+            else
+                let c = newDesc(d.kind d.name extent d.parts extent d.texts)
+                if instances.ncopied >= extent instances.copied then
+                    let more = array of({2 * instances.ncopied} + 4 d)
+                    let moreCopies = array of({2 * instances.ncopied} + 4 d)
+                    for i = 0 upto instances.ncopied - 1 do
+                        more[i] := instances.copied[i]
+                        moreCopies[i] := instances.copies[i]
+                    end
+                    instances.copied := more
+                    instances.copies := moreCopies
+                end
+                instances.copied[instances.ncopied] := d
+                instances.copies[instances.ncopied] := c
+                instances.ncopied := instances.ncopied + 1
+                for i = 0 upto extent d.texts - 1 do setText(c i d.positions[i] d.texts[i]) end
+                for i = 0 upto extent d.parts - 1 do setPart(c i copy(d.parts[i] args) d.labels[i]) end
+                c
+            end
+        end
+
+    let instantiate(t: Desc args: Array(Desc)): Desc =
+        begin
+            let var found = ~1
+            for i = 0 upto instances.count - 1 do
+                let x = instances.items[i]
+                if {x.template is t} andif {extent x.args is extent args} then
+                    let var same = true
+                    for j = 0 upto extent args - 1 do if not(x.args[j] is args[j]) then same := false end end
+                    if same then found := i end
+                end
+            end
+            if found >= 0 then instances.items[found].result
+            else
+                instances.ncopied := 0
+                let result = copy(t args)
+                let made = tuple let template = t let args = args let result = result end
+                if instances.count >= extent instances.items then
+                    let more = array of({2 * instances.count} + 4 made)
+                    for i = 0 upto instances.count - 1 do more[i] := instances.items[i] end
+                    instances.items := more
+                end
+                instances.items[instances.count] := made
+                instances.count := instances.count + 1
+                result
+            end
+        end
+end

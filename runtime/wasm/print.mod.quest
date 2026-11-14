@@ -1,0 +1,154 @@
+(* Quest WebAssembly Runtime: Printing Values
+ *
+ * quest_print.c's quest_put_value in Quest, over intrinsics (externals named
+ * wasm.NAME, which the backend compiles in place; docs/wasm-plan.md section
+ * 4.5). A value is read as a slot holds it, an Any, by its descriptor's
+ * kind. *)
+
+unsound module print : Print
+import
+    wasm/core : wasm/Core
+    stringOp = string : StringOp
+export
+    (* An Any read as an Int (an i31 or a $boxInt, so a Word too), a Bool, a
+     * Char, or a String; and an Int as an Any *)
+    let toInt(x: core.Any): Int = external "wasm.fromAny"
+    let toBool(x: core.Any): Bool = external "wasm.fromAny"
+    let toChar(x: core.Any): Char = external "wasm.fromAny"
+    let toString(x: core.Any): String = external "wasm.fromAny"
+    let fromInt(n: Int): core.Any = external "wasm.toAny"
+    (* ref.eq *)
+    let same(a: core.Any b: core.Any): Bool = external "wasm.same"
+    (* A tuple's or an option's elements (its $slots), an array's elements,
+     * a record's field i (in its view's name order) through its table, an
+     * option's tag, and an exception's name *)
+    let tupleCount(x: core.Any): Int = external "wasm.tupleCount"
+    let tupleSlot(x: core.Any i: Int): core.Any = external "wasm.tupleSlot"
+    let arrayCount(x: core.Any): Int = external "wasm.arrayCount"
+    let arraySlot(x: core.Any i: Int): core.Any = external "wasm.arraySlot"
+    let recordField(x: core.Any i: Int): core.Any = external "wasm.recordField"
+    let optionTag(x: core.Any): Int = external "wasm.optionTag"
+    let exceptionName(x: core.Any): String = external "wasm.exceptionName"
+    (* The base's: an Int in decimal (- for negatives) and in hexadecimal, a
+     * string's bytes escaped between quotes, a Char as a string, and bytes
+     * to standard output *)
+    let decimal(n: Int): String = external "wasm.decimal"
+    let hex(n: Int): String = external "wasm.hex"
+    let escaped(s: String quote: Char): String = external "wasm.escaped"
+    let charString(c: Char): String = external "wasm.charString"
+    let put(s: String): Ok = external "wasm.put"
+
+    (* The aggregates being written, so that a cyclic value is cut off as the
+     * interpreter does (quest_print_enter) *)
+    let nestingMax = 256
+    let nesting = tuple let var depth = 0 let items = array of(nestingMax fromInt(0)) end
+
+    Def Entered = Tuple entered: Bool text: String end
+
+    (* Starts writing the aggregate p: opening, or if p is already being
+     * written, opening and " ... end", not entered *)
+    let enter(p: core.Any opening: String): Entered =
+        begin
+            let var found = false
+            for i = 0 upto nesting.depth - 1 do
+                if {i < nestingMax} andif same(nesting.items[i] p) then found := true end
+            end
+            if found then tuple let entered = false let text = opening <> " ... end" end
+            else
+                if nesting.depth < nestingMax then nesting.items[nesting.depth] := p end
+                nesting.depth := nesting.depth + 1
+                tuple let entered = true let text = opening end
+            end
+        end
+
+    let leave(): Ok =
+        begin
+            nesting.depth := nesting.depth - 1
+            if nesting.depth < nestingMax then nesting.items[nesting.depth] := fromInt(0) end
+        end
+
+    let rec show(v: core.Any d: core.Desc): String =
+        begin
+            let k = d.kind
+            if k is core.kindInt then decimal(toInt(v))
+            elsif k is core.kindBool then if toBool(v) then "true" else "false" end
+            elsif k is core.kindChar then "'" <> {escaped(charString(toChar(v)) '\'') <> "'"}
+            elsif k is core.kindString then "\"" <> {escaped(toString(v) '"') <> "\""}
+            elsif k is core.kindOk then "ok"
+            elsif k is core.kindWord then "16#" <> {hex(toInt(v)) <> "#"}
+            elsif k is core.kindFun then "<fun>"
+            elsif k is core.kindTuple then tupleText(v d v false)
+            elsif k is core.kindRecord then
+                if extent d.parts is 0 then "record end"
+                else
+                    let e = enter(v "record")
+                    if not(e.entered) then e.text
+                    else
+                        let var text = e.text
+                        for i = 0 upto extent d.parts - 1 do
+                            text := text <> " " <> {d.labels[i] <> {"=" <> show(recordField(v i) d.parts[i])}}
+                        end
+                        leave()
+                        text <> " end"
+                    end
+                end
+            elsif k is core.kindOption then
+                let tag = optionTag(v)
+                if {tag < 0} orif {tag >= extent d.parts} then "<val>"
+                else
+                    let p = d.parts[tag]
+                    let head = "option " <> d.labels[tag]
+                    if {p.kind is core.kindNone} orif {p.kind is core.kindOk} then head <> " end"
+                    elsif p.kind is core.kindTuple then head <> {" with " <> {tupleText(v p v true) <> " end"}}
+                    else head <> {" with " <> {show(tupleSlot(v 0) p) <> " end"}}
+                    end
+                end
+            elsif k is core.kindArray then
+                let e = enter(v "array of")
+                if not(e.entered) then e.text
+                else
+                    let var text = e.text
+                    for i = 0 upto arrayCount(v) - 1 do text := text <> " " <> show(arraySlot(v i) d.parts[0]) end
+                    leave()
+                    text <> " end"
+                end
+            elsif k is core.kindException then "exception " <> exceptionName(v)
+            elsif k is core.kindOpaque then
+                if stringOp.equal(d.name "Word.T") orif stringOp.equal(d.name "word.T") then
+                    "16#" <> {hex(toInt(v)) <> "#"}
+                else "<hidden>"
+                end
+            elsif {k is core.kindBoundVar} orif {k is core.kindHole} then "<hidden>"
+            else "<val>"
+            end
+        end
+
+    (* A tuple of type d as `tuple ... end`, its elements those of v, or of
+     * the option holder's payload (quest_put_tuple) *)
+    and tupleText(v: core.Any d: core.Desc holder: core.Any inOption: Bool): String =
+        begin
+            let e = enter(holder "tuple")
+            if not(e.entered) then e.text
+            else
+                let var text = e.text
+                let var c = 0
+                let n = extent d.parts
+                for i = 0 upto n do
+                    while {c < extent d.positions} andif {d.positions[c] <= i} do
+                        text := text <> " " <> d.texts[c]
+                        c := c + 1
+                    end
+                    if i < n then
+                        text := text <> " "
+                        if not(stringOp.isEmpty(d.labels[i])) then text := text <> d.labels[i] <> "=" end
+                        text := text <> show(tupleSlot(v i) d.parts[i])
+                    end
+                end
+                leave()
+                text <> " end"
+            end
+        end
+
+    let echo(prefix: String v: core.Any d: core.Desc suffix: String): Ok =
+        put(prefix <> {show(v d) <> {suffix <> "\n"}})
+end
