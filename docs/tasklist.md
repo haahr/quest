@@ -122,3 +122,22 @@ protocol, their outputs compared with the notebook's).
 cells.
 
 **Done when.** Either is wanted and built; until then, this records them.
+
+---
+
+## The write barriers' inline fast paths, not kept, may be worth another try
+
+**Problem.** The arm64-built compiler spends time in `quest_barrier_slot` and `quest_barrier_object`, called out of
+line at every barriered store. Inlining their fast paths (an SSA expansion after the barrier rule's check, in arm64's
+and the JIT's code) took `quest_barrier_slot` from 924 of the compiler's samples to 27, but made the compiler 1.3
+percent slower (0.9 percent with the slot barrier alone inline) and its text 1.8 percent larger, and the suite didn't
+move ([benchmarks.md](benchmarks.md) §22.2, item 3). It wasn't kept. It may pay once the code around a barrier is
+shorter, or with a smaller expansion: only in loops, only the slot barrier, or a shared out-of-line tail.
+
+**Where to start.** Branch `claude/inline-barriers-not-kept` (`87acb5e7`, on `238a594f`, local to this repository's
+clone, not on origin): `questlang/ssa/writeBarriers` and its test `ssa_write_barriers`, the runtime's entries in
+`codegen/runtimeFunctions` and `codegen/runtimeLayout`, and the pipeline's call. It predates the restructuring: the
+pass belongs in `questlang/ssa/passes/`, and `runtimeLayout` is now `questlang/repr/runtimeLayout`.
+
+**Done when.** A variant makes the compiler or the suite faster, measured as §22.1 measures, and is kept, or the idea
+is dropped and the branch with it.
