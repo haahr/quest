@@ -14,8 +14,8 @@ This document describes the MLton suite, records the baseline taken on 2026-10-2
 benchmarks found and what could be done about it, compares the C and arm64 backends (§4 to §6), measures the inliner
 (§7), times every backend and the inliner's settings at one commit (§11), measures the Jupyter kernel's interrupt checks
 (§12), times the SSA's backends after the arm64 review (§13), measures the SSA's loops of accumulated recursion and
-mutual tail calls (§14), times the library's arbitrary-precision integers (§15), and records the arm64-built
-compiler's gap to the C-built one narrowed (§22).
+mutual tail calls (§14), times the library's arbitrary-precision integers (§15), records the arm64-built
+compiler's gap to the C-built one narrowed (§22), and times the reuse of a case binder's box (§23).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -2252,3 +2252,26 @@ takes **1.004** of the base's processor time (1.007 wall): wc-scanStream 0.81 an
 What is left of the difference is §21.5's general half: code 1.2 to 1.4 times as long as clang's in the hot
 functions. The barriers stay out of line; the profile's other remainders (copies at a loop's join, a spill reloaded
 each round in `findIndex`) are the register allocator's.
+
+## 23. Reusing a case binder's box (2026-11-13)
+
+Two changes to what compiled programs allocate, made in both compilers: `stringOp.new` allocates its string's buffer
+once rather than twice (`8dbafba1`), and a case's binder of a boxed payload (a record, say, in a variant) that the
+case's body stores into a new record, array, or option reuses the box the payload was read from rather than
+allocating another (`77204652`, `ir/slots`; `tests/source/language/case_binder_box.quest` shows it in its
+`ir_represented` golden). Neither moves the suite: its programs do not make enough such strings or stores for one
+allocation each to show.
+
+The data are in `benchmarks/mlton/baselines/2026-11-13/`: the suite at `51930f1b`, the commit before the two, and at
+`e646e9ab`, after them (`quest-arm64-COMMIT.jsonl`), each through arm64, the default, in separate modules,
+`--scale 0.25 --clean`, one run, the first after the second on a machine idle for three minutes. Another
+session's tests ran during the last eight minutes of the second run; the benchmarks they overlapped (peek on) have a
+geometric mean of 0.999 against the first run, those before them 1.007.
+
+| | Before (`51930f1b`) | After (`e646e9ab`) | After / before, geometric mean |
+|---|--:|--:|--:|
+| Wall time, total | 837.8 s | 839.1 s | 1.003 |
+| Processor time, total | 820.8 s | 825.4 s | 1.006 |
+
+Every benchmark is within 0.976 to 1.035 of its time before, the noise of one run (the largest moves: mlyacc 1.035,
+fft 1.030, tailfib and even-odd 1.023, vliw 0.977).
