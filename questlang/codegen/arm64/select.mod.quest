@@ -144,9 +144,11 @@ export
         uses: Array(Int)
         (* The comparisons each fused into the branch on it *)
         fused: Array(Bool)
-        (* The addresses folded into the one load or store of each, with an
-         * index register: each one's index (~1 for one not folded) and its
-         * shift; and the values computed only for those, which are not *)
+        (* The ptrAdds folded into the one load or store that uses each, as
+         * a base and an index register: by the ptrAdd's value, the index's
+         * value (~1 for a value not folded) and its shift; and the values
+         * folded, which are not computed on their own (each such ptrAdd, and
+         * a multiplication by the access's width that only it uses) *)
         indexOf: Array(Int)
         shiftOf: Array(Int)
         folded: Array(Bool)
@@ -548,8 +550,8 @@ export
                 when opMulHiU then arith(minst.arithUmulh)
                 (* csel by the flags of the condition's comparison, fused
                  * into it when it is the select's alone, else of the
-                 * condition and 0; cset of 1 and 0 (ssa/passes/selects makes the
-                 * selects) *)
+                 * condition and 0; cset of 1 and 0 (ssa/passes/selects makes
+                 * the selects) *)
                 when opSelect then
                     let c = i.args[0]
                     let cond = if s.fused[c] then

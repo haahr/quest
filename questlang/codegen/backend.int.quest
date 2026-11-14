@@ -1,4 +1,4 @@
-(* Quest Self-Hosted Compiler: The C Backend's Entry Points Interface
+(* Quest Self-Hosted Compiler: The Backends' Entry Points Interface
  *
  * The one place the driver, the build engine and the module compiler turn a
  * typed program or module file into code, whichever backend compiles it. Each
@@ -15,7 +15,8 @@
  * unsupported, the SSA's builder's and verifier's, ssac's, arm64's); each is
  * raised again as this module's unsupported, so that a caller handles one
  * exception whatever the backend. The bootstrap's counterpart is
- * bootstrap/python/quest/codegen/backend.py. *)
+ * bootstrap/python/quest/codegen/backend.py, which has the C printer
+ * alone. *)
 
 interface Backend
 import
@@ -35,13 +36,13 @@ export
     (* The flags a backend's C is compiled with, besides the C compiler's
      * usual ones *)
     cFlags(backend: String): Array(String)
-    (* A program's C translation, and its described unit *)
+    (* A program's code, as unitToC prints it, and its described unit *)
     programToC(program: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool printResult: Bool
         backend: String)
         : Tuple c: String unit: nodes.Unit end
-    (* A module file's C translation, which exports its interface's members,
-     * and its interface's fingerprint (modules/artifacts/fingerprint) as the C string
-     * qh_<unit> *)
+    (* A module file's code, as unitToC prints it, which exports its
+     * interface's members, and its interface's fingerprint
+     * (modules/artifacts/fingerprint) as the string qh_<module> *)
     moduleFileToC(m: typedAst.Binding e: env.T sourceMap: maybe.T(location.SourceMap)
         interfaceHeader: maybe.T(String) backend: String fingerprint: String): String
 end

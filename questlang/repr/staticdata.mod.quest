@@ -61,16 +61,12 @@ export
     let ofType(kind: String tag: String t: Type): DescriptorForm = described(kind tag maybe.some(:Type t) "")
 
     (* =========================================================================
-     * Python's repr, for the texts some names digest
-     *
-     * Some names end with a digest of a key, such as a record's fields. The
-     * bootstrap compiler digests Python's repr of the key, a tuple of strings,
-     * so this compiler writes the key's text as repr would, and gives every
-     * type the bootstrap's name for it.
-     * ====================================================================== *)
-
-    (* =========================================================================
      * Record naming
+     *
+     * A record's name ends with a digest of a key, its fields. The bootstrap
+     * compiler digests Python's repr of the key, a tuple of strings, so this
+     * compiler writes the key's text as repr would (common/pyRepr), and gives
+     * every record the bootstrap's name for it.
      * ====================================================================== *)
 
     Def RecordNaming = Tuple
@@ -300,6 +296,8 @@ export
                                     when typeAuto then
                                         let canonical = descriptors.canonicalAutoType(t)
                                         ofType("auto" "auto_" <> digests.typeDigest(canonical) canonical)
+                                    (* The type of a var or out parameter:
+                                     * described by its element type *)
                                     when typeVar with x then descriptorForm(x.element ctx)
                                     when typeOut with x then descriptorForm(x.element ctx)
                                     when typeOperator then

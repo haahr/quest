@@ -148,6 +148,11 @@ export
      * there *)
     let lineTable(e: encode.Encoded codeAddress: Int files: Array(String)): Bytes =
         begin
+            (* The header after its version and its own length: minimum
+             * instruction length 1, one operation per instruction, rows are
+             * statements, line base -5, line range 14, opcode base 13 and the
+             * operand counts of standard opcodes 1 to 12; then the files'
+             * directories and the files, each in its own directory *)
             let header = vector.new(:Int)
             byte(header 1)
             byte(header 1)
@@ -166,6 +171,10 @@ export
                 uleb(header 0)
             end
             byte(header 0)
+            (* The opcodes used: 0 9 2 sets the address (an extended opcode
+             * of 9 bytes), 2 advances it, 4 sets the file, 3 advances the
+             * line, 5 sets the column, 1 appends a row, and 0 1 1 ends a
+             * sequence *)
             let program = vector.new(:Int)
             let var next = 0
             for k = 0 upto {extent e.functions - 1} do
@@ -259,6 +268,8 @@ export
             end
             (* LC_SYMTAB *)
             u32(b 2) u32(b 24) u32(b symbolsAt) u32(b extent e.functions) u32(b namesAt) u32(b vector.length(:Int names))
+            (* The code as encoded, its relocations not applied: lldb reads
+             * the loaded code from the process at codeAddress *)
             for k = 0 upto {extent e.code - 1} do u32(b e.code[k]) end
             for i = 0 upto {extent sections - 1} do append(b sections[i].bytes) end
             padTo(b 8)

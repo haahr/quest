@@ -67,8 +67,10 @@ export
                 base[s] := nVars
                 if {bytes % 8} isnot 0 then promoted[s] := false else nVars := nVars + {bytes / 8} end
             end
-            (* ~2 for a variable not yet seen; 0 for none, else 8 or 1, or ~1
-             * for both *)
+            (* Each variable's type code (~2 before any access, ~1 once
+             * accesses of two types meet); the width it is stored at (0 for
+             * none yet, 8 or 1, or ~1 for both); and whether it is loaded
+             * whole *)
             let kind = array of(nVars ~2)
             let stored = array of(nVars 0)
             let loadedWhole = array of(nVars false)
@@ -180,7 +182,10 @@ export
                                     end
                                 end
                             end
-                            (* The entry's parameters are the function's *)
+                            (* A slot with a variable that needs a parameter
+                             * at the entry (a loop back to it) is not
+                             * promoted: the entry's parameters are the
+                             * function's *)
                             if needs[v][0] then promoted[s] := false end
                         end
                     end

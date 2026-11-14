@@ -9,8 +9,9 @@ import
 export
     Let Function = ssa.Function
 
-    (* A block that ends in a call of the function itself (with op none, a
-     * tail call) or in such a call and op of its result and other *)
+    (* A block that ends in a call of the function itself and op of its
+     * result and other, or in such a call alone (a tail call: op the call
+     * itself, and other ~1) *)
     Let Site = Tuple block: Int call: ssa.Inst op: ssa.Inst other: Int end
 
     (* The operations an accumulator combines with: associative and
@@ -120,7 +121,10 @@ export
                 let replace(v: Int): Int = if {v < extent fresh} andif {fresh[v] >= 0} then fresh[v] else v end
                 ssa.replaceUses(f replace)
                 (* Each site jumps to the header, combining its other value
-                 * with the accumulator *)
+                 * with the accumulator. replaceUses has already renamed the
+                 * site's call's arguments, an array it shares with the
+                 * block's instruction, but other is a number of the site's
+                 * own, so it is renamed here. *)
                 for k = 0 upto {vector.length(:Site found) - 1} do
                     let s = vector.get(:Site found k)
                     let b = if s.block is 0 then header else s.block end

@@ -387,8 +387,10 @@ export
             else maybe.none(:Type)
         end
 
-    (* The id a variable is visited by: its symbol, or for a path type its
-     * node *)
+    (* The bound B of a type variable, abstract type, or path type of kind
+     * POWER(B), with the id a walk through bounds marks it visited by: its
+     * symbol, or for a path type, which has none of its own, its node's id
+     * negated; none for any other type *)
     let boundedVariable(t: Type): maybe.T(Tuple id: Int bound: Type end) =
         begin
             Let Bounded = Tuple id: Int bound: Type end
@@ -406,6 +408,12 @@ export
             end
         end
 
+    (* The first type that wanted accepts on a walk from t, or none: each step
+     * evaluates the current type (without an environment, only unaliases
+     * it), then unfolds a recursive type or reduces an application at its
+     * head (unfoldHead), or replaces a bounded variable by its bound
+     * (boundedVariable). The walk ends when no step applies, or when it
+     * meets a head it unfolded or a variable it passed through before *)
     let resolveBound(t: Type e: Env wanted: All(u: Type) Bool): maybe.T(Type) =
         begin
             let visited = hashMap.new(:Int :Bool fun(a: Int b: Int): Bool a is b hash.int)

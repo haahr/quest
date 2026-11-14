@@ -27,6 +27,10 @@ export
     let maxBetaSteps = 1000
     let isApp(t: Type): Bool = t.form?typeApp
     let isRecursive(t: Type): Bool = t.form?typeRec orif t.form?typeRecGroup
+    (* Exception(T) is written as an application of the builtin Exception, an
+     * exception type itself, and so reduces to the exception type of payload
+     * T. An application whose operator takes a different number of
+     * arguments is left as it is, as is anything else at the head *)
     let rec betaReduceHead(t0: Type): Type =
         begin
             let var t = t0
@@ -78,8 +82,11 @@ export
             let u = unfolding(t)
             if isRecursive(u) orif isApp(u) then maybe.none(:Type) else maybe.some(:Type u) end
         end
-    (* The constructed types a value is represented like its recursive type's
-     * unfolding (_UNFOLDED_REPRESENTATION) *)
+    (* Whether a recursive type that unfolds to t is represented as t is:
+     * true for the constructed types below (a tuple's values by a pointer to
+     * its struct, a function's by a closure pointer), so that the two, being
+     * equal, share a representation (the bootstrap's
+     * _UNFOLDED_REPRESENTATION) *)
     let isUnfoldedRepresentation(t: Type): Bool =
         case t.form
             when typeTuple then true

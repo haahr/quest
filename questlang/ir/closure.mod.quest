@@ -18,6 +18,9 @@ export
 
     let intEqual(a: Int b: Int): Bool = a is b
 
+    (* The unit, to whose functions lifted ones are added, and its globals
+     * (walk.globalVariables), which lifted functions read directly rather
+     * than capture *)
     Let Converter = Tuple unit: nodes.Unit globals: hashMap.T(Int Bool) end
 
     let concat(a: Array(nodes.TypeParam) b: Array(nodes.TypeParam)): Array(nodes.TypeParam) =
@@ -38,6 +41,9 @@ export
 
     Let Lifted = Tuple code: nodes.Function captures: Array(Variable) end
 
+    (* Replaces, in place, the funs statements of b and of the bodies it holds
+     * by lets of closures of their lifted functions (funs); typeParams are
+     * the type parameters of the functions enclosing b, outermost first *)
     let rec convertBody(c: Converter b: Body typeParams: Array(nodes.TypeParam)): Ok =
         begin
             let statements = vector.new(:Stmt)
@@ -102,6 +108,8 @@ export
                 for i = 0 upto {extent functions - 1} do
                     let code = all[i].code
                     let n = extent all[i].captures
+                    (* lift began the code's body with a let of each capture
+                     * read from the environment, in capture order *)
                     for k = 0 upto {n - 1} do
                         case vector.get(:Stmt code.body.statements k)
                             when sLet with x then

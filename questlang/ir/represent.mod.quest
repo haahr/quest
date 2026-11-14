@@ -94,6 +94,8 @@ export
     (* The type variables in each type met, by the type's id *)
     let typeVarsMemo = hashMap.new(:Int :Array(Type) intEqual hash.int)
 
+    (* The type variables t0 mentions, each once, in the order first met; a
+     * subterm's are taken from typeVarsMemo when an earlier call found them *)
     let typeVars(t0: Type): Array(Type) =
         begin
             let found = vector.new(:Type)
@@ -1007,6 +1009,10 @@ export
             signature.result
         end
 
+    (* The type of record field name, of tuple value component index, or of
+     * variant case tag's payload, in t's written structure
+     * (written.writtenStructure: for a type parameter bounded by such a type,
+     * its bound's); none if t has no such structure or member *)
     let writtenField(t: Type kind: shapes.ShapeKind name: String): maybe.T(Type) =
         begin
             let w = written.writtenStructure(t kind)

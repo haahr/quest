@@ -343,9 +343,9 @@ export
      * Analysis
      * ====================================================================== *)
 
-    (* Whether v points into a's group at offset, adding it there if it points
-     * nowhere yet; two groups it points into are one, and two offsets kill
-     * them *)
+    (* Records that v points into a's group at offset, and returns whether
+     * that changed anything: v pointed nowhere yet, or two groups it points
+     * into are joined into one. Two offsets kill the group instead. *)
     let setPointer(s: State v: Int a: Int offset: Int): Bool =
         if s.ptr[v] < 0 then begin s.ptr[v] := a s.off[v] := offset true end
         else begin
@@ -963,6 +963,9 @@ export
                         hashMap.insert(:Int :Array(Int) values v vector.toArray(:Int result))
                         ok
                     end
+                (* The blocks in reverse postorder, so that each pointer's
+                 * values are recorded before a block it dominates uses them;
+                 * the parameters' are recorded above, for the back edges *)
                 let g = cfg.graph(f)
                 for r = 0 upto {extent g.order - 1} do
                     let b = g.order[r]

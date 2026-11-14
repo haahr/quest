@@ -120,7 +120,9 @@ export
     catchAllTraced: Catching
     catchUnknown: Catching
 
-    (* The IR's stages, in order: each pass produces the next *)
+    (* The IR's stages, in order, the names Unit.stage takes: each pass
+     * produces the next, but for unbox and thunks, which leave the stage as
+     * the pass before them set it (questlang/ir/pipeline) *)
     stages: Array(String)
 
     (* The types of the variables the describe pass binds (docs/ir.md sections
@@ -820,11 +822,15 @@ export
         var main: Body
         var modules: vector.T(Module)
         var imports: Array(Import)
+        (* The unit's top-level functions: empty until closure conversion
+         * lifts every function here; the thunks pass adds its thunks *)
         var functions: vector.T(Function)
+        (* The last stage the unit has reached, one of stages *)
         var stage: String
         var sourceMap: maybe.T(location.SourceMap)
         (* With --whole-program, the maps of the files of the modules merged
-         * into the unit (driver/whole): file k's offsets are fileOffset(k + 1 ...) *)
+         * into the unit (driver/whole): file k's offsets are
+         * fileOffset(k + 1 ...) *)
         var mergedSources: vector.T(maybe.T(location.SourceMap))
         var staticData: maybe.T(StaticData)
         (* A phrase unit's (docs/jit.md section 3.2), compiled for the JIT *)
@@ -904,7 +910,10 @@ export
     stmtPos(s: Stmt): Int
     (* Sets the position of such a statement s to pos if it has none *)
     positionAt(s: Stmt pos: Int): Ok
+    (* Whether control never goes on past s: a return, jump, break, continue,
+     * raise, reraise, or unreachable, which must end its body *)
     isTerminator(s: Stmt): Bool
+    (* Whether b's last statement is a terminator *)
     terminated(b: Body): Bool
     (* The variable an atom is, if it is one *)
     atomVarOf(a: Atom): maybe.T(Variable)

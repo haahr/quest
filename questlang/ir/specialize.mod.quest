@@ -316,8 +316,10 @@ export
             maybe.none(:Definition)
         end
 
-    (* Whether f applied to typeArgs (closed, since they mention none of the
-     * enclosing type parameters) is specialized *)
+    (* Whether a call of f at typeArgs is specialized: typeArgs supply all of
+     * f's type parameters, are closed (mention none of enclosing, the type
+     * parameters of the functions around the call), and meet the selective
+     * trigger (shouldSpecialize) *)
     let specializes(f: nodes.Function typeArgs: Array(Type) enclosing: Ids): Bool =
         begin
             let var open = false
@@ -370,10 +372,10 @@ export
 
     (* A type application whose instance is not a function runs the function
      * applied, as a call without arguments does: specialized as such a call
-     * is, it is a call of the clone. Its result is otherwise laid out
-     * generically where the clones that a whole program's calls of a module's
-     * functions are specialized to expect it native (an identity hash map of
-     * Reals, hashMap.newIdentityMap) *)
+     * is, it is a call of the clone. Otherwise its result would be laid out
+     * generically where the clones made for a whole program's calls of the
+     * module's functions expect it native (an identity hash map of Reals,
+     * made by hashMap.newIdentityMap) *)
     let specializeTypeApp(sp: Specializer o: Op result: Variable enclosing: Ids): maybe.T(Op) =
         case o
             when opTypeApp with app then

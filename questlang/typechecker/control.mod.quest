@@ -265,13 +265,15 @@ export
      * type: a tuple type, a record type, or a type bounded by one, so that a
      * function over A <: Record var count: Int end can assign a.count.
      *
-     * A closure may not assign a var variable or parameter of an enclosing
-     * function (checker.checkCapturable), since the location lives in that
-     * function's frame:
+     * The target variable must be one the code may refer to
+     * (checker.checkCapturable): a closure may not assign a var or out
+     * parameter of an enclosing function, which is the address of its
+     * caller's location, and no function may assign a global var variable
+     * directly. A closure may assign a local var variable of an enclosing
+     * function, which the lowering boxes so that both share it:
      *
      *     let h(): Ok = begin let var m = 0 let g(): Ok = m := 2 g() end;
      *
-     * is rejected, while module-level variables may be assigned anywhere.
      * Assignments to array elements, a[i] := v, never reach here: desugaring
      * made them exprIndexAssign nodes. *)
     let synthAssignment(c: checker.T x0: ast.Expr left: ast.Expr right: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
@@ -314,6 +316,12 @@ export
                         case targetType.form
                             when typeTuple with t then
                                 begin
+                                    (* field names a value component by its
+                                     * label, by its position among the value
+                                     * components (p.1), or by _ and that
+                                     * position (p._1). The scan runs down, so
+                                     * the first component that matches
+                                     * wins. *)
                                     let fields = model.tupleValueFields(t.fields)
                                     let var index = ~1
                                     for i = {extent fields - 1} downto 0 do

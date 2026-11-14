@@ -3,7 +3,8 @@
  * The invariants every stage of the IR keeps (docs/ir.md section 9): ANF, each
  * variable bound once and used only in its scope, jumps and breaks to what
  * encloses them, and the rest; the scopes they are checked in. ir/verify adds
- * the later stages' and runs them all. *)
+ * the later stages' and runs them all. The counterpart is
+ * bootstrap/python/quest/ir/verify_core.py. *)
 
 interface VerifyCore
 import
@@ -27,10 +28,15 @@ export
         (* After closure conversion, the unit's functions, which closures must
          * be of *)
         var functions: maybe.T(Ids)
+        (* Whether the unit is past the represent pass, before which no
+         * operation may be a convert *)
         var represented: Bool
     end
     (* What is in scope at a point: variables, join points, loops, and the
-     * enclosing function *)
+     * enclosing function. The bootstrap's scopes are immutable values, each
+     * extended for the rest of a body; this is one mutable scope, whose
+     * additions in a body are undone when the body ends (logs), and whose
+     * other fields function saves and restores around a function *)
     Def Scope = Tuple
         vars: Ids
         var joins: vector.T(JoinPoint)
@@ -50,9 +56,18 @@ export
     newIds(): Ids
     newScope(vars: Ids): Scope
     copyIds(ids: Ids): Ids
+    (* Adds a problem, text, to those found *)
     problem(v: Verifier text: String): Ok
+    (* Notes that x is bound (in where, as problems name it), a problem if it
+     * was bound before *)
     bind(v: Verifier x: nodes.Variable where: String): Ok
+    (* The checks of o: that it may occur at the unit's stage, refers only to
+     * the unit's modules and imports, and uses only variables in scope *)
     operation(v: Verifier o: nodes.Op scope: Scope where: String): Ok
+    (* The checks of f and its body, in scope with f's parameters and
+     * environment: the enclosing join points and loops are out of scope in
+     * it, and the enclosing functions' mutable variables may not be used *)
     function(v: Verifier f: nodes.Function scope: Scope): Ok
+    (* The checks of b's statements; what b binds leaves scope at its end *)
     body(v: Verifier b: nodes.Body scope: Scope where: String): Ok
 end

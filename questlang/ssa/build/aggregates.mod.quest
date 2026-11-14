@@ -23,7 +23,7 @@ export
     Let Atom = ir.Atom
 
     (* =========================================================================
-     * Conversions (the represent pass's plans, nodes.Plan)
+     * Conversions (the represent pass's plans, ir.Plan)
      * ====================================================================== *)
 
     let rec convert(fn: vals.Fn vs: Array(Int) plan: ir.Plan): Array(Int) =
@@ -123,7 +123,7 @@ export
      * Tuples
      * ====================================================================== *)
 
-    (* Stores an aggregate's fields: each its vals.atom's slot form, or for one the
+    (* Stores an aggregate's fields: each its atom's slot form, or for one the
      * represent pass embedded, a fresh box in the aggregate's allocation after
      * its struct (at boxes, 16 bytes each), holding the record or variant *)
     let storeFields(fn: vals.Fn base: Int offsets: Array(Int) args: Array(Atom) types: Array(Type) embedded: Array(Int)
@@ -396,9 +396,6 @@ export
             array of opt end
         end
 
-    (* A new tuple of an option's case components (after offset components of
-     * tupleType: the case's ordinal), read as access says *)
-
     (* Whether an option shape's case has no components *)
     let caseWithoutComponents(os: shapes.Shape tag: String): Bool =
         begin
@@ -433,6 +430,10 @@ export
             end
         end
 
+    (* A new tuple of type tupleType holding the components of case tag of
+     * the option at opt (of shape os), read as access says, after offset
+     * leading components; when there are any, the first is ordinalValue, the
+     * case's ordinal *)
     let optionCaseTuple(fn: vals.Fn opt: Int os: shapes.Shape tag: String tupleType: Type offset: Int access: Array(ir.Access)
         ordinalValue: Int): Int =
         begin

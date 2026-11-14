@@ -625,9 +625,9 @@ export
         end
 
     (* What inlining a function of a size grows the unit by: its size less the
-     * call's, which the copy replaces. Counting the whole size spent the
-     * bound on copies no larger than the calls (maybe.none's, a constant)
-     * and left zebra's larger calls, met later, as they were. *)
+     * call's, which the copy replaces. Counting the whole size would spend
+     * the bound on copies no larger than their calls (such as maybe.none's,
+     * a constant), leaving larger calls met later uninlined. *)
     let net(size: Int): Int = if size > inline.callSize then size - inline.callSize else 0 end
 
     (* A call to inline: its function, the variables passed by address for its
@@ -669,8 +669,10 @@ export
              * is inlined only at the function's own type, and of a function
              * that is closed or names only variables of its module's that the
              * copy can read as members (memberReads) *)
-            (* In a whole program, where abstract types are transparent, at a type
-             * whose calls are represented as the function's own are *)
+            (* Whether the call is at f's own type: it has no interface type,
+             * or one of f's shape, or, in a whole program, where abstract
+             * types are transparent, one whose calls are represented as f's
+             * own are *)
             let sameShape = fun(f: nodes.Function): Bool
                 maybe.isNone(:model.Type x.calleeType)
                     orif {shapes.shape(maybe.unwrap(:model.Type x.calleeType)).id is shapes.shape(f.v.type).id}
@@ -973,8 +975,9 @@ export
                         elsif {usesOf(s x.v) is 0} andif not(pinned(s x.v)) andif pure(x.value) then
                             s.changed := true
                         else
-                            (* A let rec's variable is in scope after the body that
-                             * binds it, where what made its value may not be *)
+                            (* Pinned variables have no def: a let rec's
+                             * variable is in scope after the body that binds
+                             * it, where what made its value may not be *)
                             if not(x.v.isMutable) andif not(pinned(s x.v)) then setDef(s x.v.id x.value) end
                             vector.append(:Stmt kept st)
                         end

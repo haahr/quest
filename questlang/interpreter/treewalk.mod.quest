@@ -180,8 +180,8 @@ export
             end
         end
 
-    (* The values of two Int operands of an operator, or an error naming their
-     * types *)
+    (* The Int of v, an operand of op whose other operand is w, or an internal
+     * error naming both operands' types; realOperand likewise for a Real *)
     let intOperand(op: String v: Value w: Value offset: maybe.T(Int)): Int =
         case v
             when vInt with x then x.n
@@ -439,8 +439,8 @@ export
         end
 
     (* What opt!tag gives for an option: a new tuple of the case's ordinal
-       followed by the payload's components (its var components copies of the
-       payload's, which a case's binder shares) *)
+     * followed by the payload's components (its var components copies of the
+     * payload's, which a case's binder shares) *)
     let optionAssertion(t: model.Tagged caseIndex: Int): Value =
         begin
             let ord = model.intValue(caseIndex)
@@ -931,10 +931,14 @@ export
                                     maybe.unwrap(:Value handled)
                                 elsif maybe.isSome(:Expr x.elseBranch) then
                                     if maybe.isSome(:symbols.ValueSymbol x.elseBinder) then
-                                        (* The else branch names the exception: the error itself, which
-                                         * raised.reraise raises again (docs/raised.md section 5), located
-                                         * and with its frames as if it left this frame, which it was raised
-                                         * in if it has neither *)
+                                        (* The else branch names the
+                                         * exception: the error itself,
+                                         * which raised.reraise raises
+                                         * again (docs/raised.md section
+                                         * 5), located and with its frames
+                                         * as if it left this frame, which
+                                         * it was raised in if it has
+                                         * neither *)
                                         leaving(err f)
                                         let child = pushScope(f)
                                         define(child maybe.unwrap(:symbols.ValueSymbol x.elseBinder).name
@@ -1171,9 +1175,8 @@ export
      * ... and y = ...) computes all its values in the current frame first,
      * since no member's value sees the others (let x = y and y = x swaps
      * them), and then binds them in a new frame, always, for the same
-     * reason. A rec group
-     * binds its members in the frame it evaluates them in, so that each
-     * closure sees the others *)
+     * reason. A rec group binds its members in the frame it evaluates them
+     * in, so that each closure sees the others *)
     and evalScopedBinding(b: Binding f0: Frame): Scoped =
         begin
             let var f = makeScopeExceptions(typedAst.scopeExceptions(b) f0)

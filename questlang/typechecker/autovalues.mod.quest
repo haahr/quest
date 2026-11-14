@@ -67,8 +67,12 @@ export
                         diagnostics.fail(:Ok "Target of inspect must have an Auto type (such as Dynamic), got '" <>
                             model.show(autoType) <> "'" x.target.span.startOffset)
                     end
-                    (* In the branch for type T, the binders denote the auto
-                     * value's components, with signature S[T] *)
+                    (* A branch matches a supertype of the value's type
+                     * component only when the signature's type parameter is
+                     * the whole type of immutable components (fst,snd: A);
+                     * otherwise viewing the components at the supertype is
+                     * unsound, and the branch's type must be equal
+                     * (docs/type-system.md §6.12, matching rule) *)
                     let exact = not(model.autoMatchesSubtypes(autoType))
                     let branches = vector.new(:typedAst.InspectBranch)
                     let bodies = vector.new(:typedAst.Expr)
@@ -76,6 +80,9 @@ export
                         let branch = vector.get(:ast.InspectBranch x.branches i)
                         let matchT = elaborateTypes.elaborateType(branch.matchType e)
                         checkClosedType(matchT "The type in an inspect when clause" branch.matchType.span.startOffset)
+                        (* In the branch for type T, of Auto A with S end, the
+                         * binders denote the auto value's components, of type
+                         * Tuple S[T/A] end *)
                         let armType = model.autoPayloadType(autoType maybe.some(:Type matchT))
                         Let Arm = Tuple binders: Array(symbols.ValueSymbol) body: typedAst.Expr end
                         let arm = env.scoped(:Arm e "inspect_branch" fun(s: symbols.Scope): Arm

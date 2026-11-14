@@ -339,6 +339,9 @@ export
     let writeSource(s: T name: String text: String): String =
         begin
             if stringOp.length(s.sourceDir) is 0 then
+                (* Named by a number taken from an address in this process,
+                 * which another driver rarely shares, and the first suffix
+                 * -N not yet taken *)
                 let tmp = system.getEnv("TMPDIR")
                 let base = files.join(if stringOp.length(tmp) > 0 then tmp else "/tmp" end
                     "quest-jit-" <> conv.int(value.be(:Int bytesOf(name)) % 1000000007))
@@ -367,8 +370,8 @@ export
 
     (* Where a debugger finds the source of a unit's file: an input's (named
      * <repl>#N in its code) is its file, if it has one, else its text written
-     * to a file of the process's own (os/code's debugSource); a module file's
-     * is itself *)
+     * to input-N.quest in the session's own directory (writeSource); a module
+     * file's is itself *)
     let debugFile(s: T file: String): String =
         begin
             let base = stringOp.getSub(file strutil.rfind(file "/") + 1 {stringOp.length(file) - strutil.rfind(file "/")} - 1)
@@ -583,6 +586,8 @@ export
             for i = 0 upto {extent unit.imports - 1} do
                 loadImported(s unit.imports[i] program location.file(sourceMap))
             end
+            (* The input's own module, qj_N, which lowerPhrases puts after
+             * the modules the input declares *)
             let m = vector.get(:nodes.Module unit.modules vector.length(:nodes.Module unit.modules) - 1)
             let recordType = maybe.unwrap(:nodes.Variable m.recordVar).type
             let symbols = compileAndLoad(s unit)

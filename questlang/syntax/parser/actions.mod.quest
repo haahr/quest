@@ -76,6 +76,8 @@ export
     (* Reports an error, which stops parsing *)
     let reject(A::TYPE ctx: Ctx sp: location.Span message: String): A =
         begin
+            (* addStoppingError raises fatalError itself; the raise after it,
+             * never reached, gives the block its type A *)
             diagbag.addStoppingError(ctx.bag sp message)
             raise diagbag.fatalError with diagbag.get(ctx.bag {diagbag.count(ctx.bag) - 1}) end
         end
@@ -434,7 +436,9 @@ export
     let vImport(item: ast.ImportItem): Val = option importItem of Val with let val = item end
     let somePaths(paths: vector.T(String)): maybe.T(vector.T(String)) = maybe.some(:vector.T(String) paths)
     let noPaths: maybe.T(vector.T(String)) = maybe.none(:vector.T(String))
-    (* A path that names a directory, as the bootstrap keeps it *)
+    (* The interface path an import item records, as the bootstrap does: the
+     * path if it has a directory (util/Counter), none for a bare name (Ascii),
+     * which the interface's local name then stands for (ast.ImportItem) *)
     let dirPath(path: String): maybe.T(String) =
         if strutil.contains(path "/") then maybe.some(:String path) else maybe.none(:String) end
 
@@ -1191,8 +1195,9 @@ export
             let kindVal = ty(args[1])
         end)
 
-    (* ide {( TypeFormals )} [HasKind] = Type: a type operator's formals make
-     * its value a Fun *)
+    (* ide {( TypeFormals )} [HasKind] = Type: a type operator's formals, all
+     * its groups' in one list, make its value a Fun, whose result kind the
+     * HasKind is; without formals, the HasKind is the binding's bound *)
     let typeDecl(ctx: Ctx args: Args): Val =
         begin
             let ide = tok(args[0])

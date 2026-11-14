@@ -1058,17 +1058,19 @@ export
             end
         end
 
-    (* Where the slots of dead values are cleared (docs/arm64-performance-
-     * review.md section 3.2). A conservative collector scans every word of
-     * every frame, so a slot still holding a dead value's pointer keeps what
-     * it points to alive; the value is cleared where it dies instead: after
-     * the instruction that last reads it, or at the start of a branch's target
-     * it is not live into though it is live at the branch. Only a value the
-     * lowering clears (one that may be a pointer) that has a slot is, and only
-     * where a call, in which a collection can happen, may follow before the
-     * function returns, and not in a cold block. after holds, for each block's instructions, the values
-     * (by index) cleared after each; atStart, those cleared at each block's
-     * start. *)
+    (* Where the slots of dead values are cleared, for a target whose
+     * collector scans every word of a frame conservatively
+     * (docs/arm64-performance-review.md section 3.2): there a slot still
+     * holding a dead value's pointer keeps what it points to alive. A value
+     * is cleared where it dies: after the instruction that last reads it, or
+     * at the start of a branch's target it is not live into though it is live
+     * at the branch. Only a value the lowering clears (one that may be a
+     * pointer) that has a slot is, and only where a call, in which a
+     * collection can happen, may follow before the function returns, and not
+     * in a cold block. (arm64's lowering clears nothing, since its frame maps
+     * tell the collector which slots are live; regalloc_scan tests this.)
+     * after holds, for each block's instructions, the values (by index)
+     * cleared after each; atStart, those cleared at each block's start. *)
     Let Clears = Tuple after: Array(Array(Array(Int))) atStart: Array(Array(Int)) end
 
     let clears(f: Function a: Allocation lowering: machine.Lowering): Clears =
@@ -1142,10 +1144,10 @@ export
                         let i = vector.get(:machine.Inst insts j)
                         let dies = vector.new(:Int)
                         let reads = bitset.new(nValues)
-                        (* A jump's target's parameters are not live into it, but
-                         * one passed as an argument (a loop's invariant, back
-                         * to its header) does not die there: the edge stores
-                         * it again *)
+                        (* A jump's target's parameters are not live into it,
+                         * but one passed as an argument (a loop's invariant,
+                         * back to its header) does not die there: the edge
+                         * stores it again *)
                         let redefined = bitset.new(nValues)
                         if machine.isKind(i machine.kindJump) then
                             bitset.assign(live liveIn[i.target])

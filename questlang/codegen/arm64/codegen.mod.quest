@@ -315,10 +315,15 @@ export
             maps
         end
 
-    (* A function that enters a try saves every callee-saved pair. A raise
+    (* f compiled, its labels prefixed Lf<index>: selected (defined is
+     * definedSymbols's), allocated, its frame laid out (the stack slots,
+     * then a slot for each value stored in memory, values of one type
+     * sharing one where their lifetimes do not overlap, unless f enters a
+     * try), its calls' maps made, and rewritten in the registers allocated.
+     * A function that enters a try saves every callee-saved pair. A raise
      * resumes in it with the registers as the function that raised left
-     * them, not as the functions in between restored them, so it must restore
-     * all of its caller's from its own frame *)
+     * them, not as the functions in between restored them, so it must
+     * restore all of its caller's from its own frame. *)
     let compile(f: Function index: Int defined: hashMap.T(String Bool)): Compiled =
         begin
             let s = select.select(f "Lf" <> conv.int(index) defined)

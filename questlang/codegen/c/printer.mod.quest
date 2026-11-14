@@ -96,6 +96,8 @@ export
             if shapes.sameKind(held.kind kind) then maybe.some(:Shape held) else maybe.none(:Shape) end
         end
 
+    (* How many type parameters t's quantifiers bind, nested ones included:
+     * the descriptors a function of type t takes after its environment *)
     let typeParameterCount(t: Type): Int =
         begin
             let var s = shapeOf(t)
@@ -107,6 +109,7 @@ export
             count
         end
 
+    (* Whether t is a function type, under any quantifiers *)
     let isFunction(t: Type): Bool =
         begin
             let var s = shapeOf(t)
@@ -228,8 +231,10 @@ export
         usedNames: hashMap.T(String Bool)
         nameCounts: hashMap.T(String Int)
         codeNames: hashMap.T(Int String)
-        (* Closures bound by lets (by variable), whose calls call their
-         * functions directly *)
+        (* The closure each variable is known to hold, by id, so that its
+         * calls call the closure's code directly (callClosure): those
+         * walk.knownClosures finds, and each let of a closure as statement
+         * prints it *)
         closures: hashMap.T(Int nodes.OpMakeClosure)
         (* The variables that hold a caught exception (a try's exc), by id,
          * which C declares as the whole exception state, QExceptionState *)
@@ -1042,8 +1047,8 @@ export
                         let byDescriptor =
                             maybe.isSome(:nodes.Plan fp) andif nodes.planIs(maybe.unwrap(:nodes.Plan fp) nodes.planView)
                         if byDescriptor then
-                            (* Converted by descriptor, from the slot's QVal form to
-                             * the target slot's *)
+                            (* Converted by descriptor, from the slot's QVal
+                             * form to the target slot's *)
                             let f = maybe.unwrap(:nodes.Plan fp)
                             let sourceD = descriptor(p f.descriptors[0])
                             let targetD = descriptor(p f.descriptors[1])
@@ -1158,9 +1163,6 @@ export
             end
         end
 
-    (* A new option: its tag, and its payload's components (a tuple's read as
-     * the represent pass decided, a payload that is not a tuple in its slot
-     * form) *)
     (* Whether a tuple's let st can be fused into the option the next
      * statement makes of it: the option's case stores each component as the
      * tuple would (of the same shape, read directly), and none needs a box *)
@@ -1399,6 +1401,11 @@ export
             hashMap.find(:String :String p.optionTables struct)
         end
 
+    (* A new option of type t, as o makes it: for a case without components,
+     * a pointer to its entry in the option struct's static table
+     * (optionTable), and for an ordinal, when no case has components, the
+     * entry its checked value picks; otherwise one allocated
+     * (makeAllocatedOption) *)
     let makeOption(p: P o: nodes.OpMakeOption t: Type): String =
         begin
             let os = held(t shapes.shapeOption)
@@ -1427,9 +1434,11 @@ export
             end
         end
 
-    (* A component of an option's case, read from the case's struct, in the C
-     * type of wanted *)
-
+    (* src, component index of an option's case whose payload is stored at
+     * shape stored, in wanted's slot C type: unwrapped where it is stored as
+     * a QVal word and wanted is not one, cast where both are pointers of
+     * different types, and otherwise (or where stored is not a tuple) src as
+     * it is *)
     let optionField(src: String stored: maybe.T(Shape) index: Int wanted: Shape): String =
         if maybe.isNone(:Shape stored) orif not(shapes.kindIs(maybe.unwrap(:Shape stored) shapes.shapeTuple))
             orif {index >= extent maybe.unwrap(:Shape stored).components} then
@@ -1692,6 +1701,11 @@ export
         case r when refImport with x then maybe.some(:nodes.Import x.i) else maybe.none(:nodes.Import) end
     let memberOf(m: nodes.Module member: String): Variable = maybe.unwrap(:Variable nodes.member(m.members member))
 
+    (* A call of the closure callee holds, of descriptors descs and then
+     * args: of its code directly when callee is known to hold a closure
+     * without type arguments (p.closures), its environment NULL if it
+     * captures nothing; else through the closure's function pointer, cast to
+     * the C signature of callee's type, its environment first *)
     let callClosure(p: P callee: Variable descs: vector.T(String) args: Array(Atom)): String =
         begin
             let cArgs = joinedWith(descs atoms(p args))
@@ -1817,6 +1831,12 @@ export
                 end
         end
 
+    (* A closure of o.code: the static <code>_closure when it captures
+     * nothing and takes no type arguments; else a new QClosure of the code
+     * and a new environment, struct QEnv_<code> (envStruct), of o's
+     * descriptors (d0, d1, ...) and captures (c0, c1, ...). A capture of a
+     * variable of the let rec being printed is stored after the let rec's
+     * body instead (Deferred). *)
     let makeClosure(p: P o: nodes.OpMakeClosure): String =
         begin
             let code = codeName(p o.code)
@@ -2889,6 +2909,9 @@ export
             lines
         end
 
+    (* The extern declarations of what the unit's imports define, each module
+     * once: its record (qm_<module>), its initializer, and the functions it
+     * exports (emitPrecompiledModuleDeclarations) *)
     let importDeclarations(p: P): Lines =
         begin
             let imports = vector.new(:nodes.Import)
@@ -3112,8 +3135,8 @@ export
     let printUnit(p: P): String =
         begin
             let unit = p.unit
-            (* The closures of each function (for its environment's struct), and
-             * those bound by lets (direct calls) *)
+            (* The closure that makes each function, by the function's id
+             * (the first found), for its environment's struct *)
             let closuresOf = hashMap.new(:Int :nodes.OpMakeClosure intEqual hash.int)
             let bodies = vector.new(:nodes.Body)
             vector.append(:nodes.Body bodies unit.main)
@@ -3238,8 +3261,9 @@ export
                 add(res "};")
                 add(res "")
             end
-            (* The offset tables of the records the unit views at supertypes,
-             * registered for dynamic values, and its function table *)
+            (* Registers the unit's root table, its function table, and the
+             * offset tables of the records it views at supertypes, for
+             * dynamic values *)
             add(res "static void qr_register_dicts(void) {")
             add(res "    quest_register_roots(qr_roots);")
             if not(vector.empty(:FuncEntry funcs)) then

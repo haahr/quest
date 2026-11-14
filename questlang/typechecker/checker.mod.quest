@@ -158,9 +158,10 @@ export
 
     (* Rejects a use, from a closure, of a var or out parameter of an enclosing
      * function: such a parameter is the address of its caller's location,
-     * which may not outlive the call. A closure may capture a local var
-     * variable, which the lowering then holds in a box the frame and the
-     * closure share (capturedMutables in questlang/ir/lower). *)
+     * which may not outlive the call. Also rejects a use of a global var
+     * variable from inside any function (isGlobalVar). A closure may capture
+     * a local var variable, which the lowering then holds in a box the frame
+     * and the closure share (capturedMutables in questlang/ir/lower). *)
     let checkCapturable(c: T sym: symbols.ValueSymbol offset: Int): Ok =
         if {sym.isOut orif sym.isVar} andif sym.isParam andif {sym.functionDepth > 0}
             andif {c.functionDepth > sym.functionDepth} then

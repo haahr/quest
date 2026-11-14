@@ -32,11 +32,11 @@ export
 
     (* Whether only an equal in its own block may replace an instruction:
      * what arm64's selection fuses into the branch or the access that uses
-     * it, when both are in one block (select.mod.quest, fused and indexOf);
-     * and constants, which shared across blocks are live longer, and
-     * spilled where arm64's allocator does not rematerialize them
-     * (docs/ssa.md section 4.1: hamlet's stack accesses rose
-     * from 8,129 to 10,022) *)
+     * it, when both are in one block (codegen/arm64/select's fused and
+     * indexOf); and constants, symbols' addresses, and nulls, which shared
+     * across blocks are live longer, and spilled where arm64's allocator does
+     * not rematerialize them (docs/ssa.md section 4.1: hamlet's stack accesses
+     * rose from 8,129 to 10,022) *)
     let local(op: ssa.Opcode): Bool =
         case op
             when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN,
@@ -205,12 +205,12 @@ export
                 let b = vector.pop(:Int stack)
                 let blk = ssa.block(f b)
                 let kept = vector.new(:ssa.Inst)
-                (* The words this block loads, by address: a whole word's
-                 * load whose neighbor it also loads stays, though an equal
-                 * from another block is available, so that arm64 loads the
-                 * two as a pair (codegen.pairs): a lone load of half of a
-                 * pair just stored took psdes-random's loop from 1.39 to
-                 * 1.90 of C's time, as an ldp did not *)
+                (* The words this block loads, by address: a whole word's load
+                 * whose neighbor it also loads stays, though an equal from
+                 * another block is available, so that arm64 loads the two as a
+                 * pair (codegen/arm64/peephole's pairs): a lone load of half of
+                 * a pair just stored took psdes-random's loop from 1.39 to 1.90
+                 * of C's time, as an ldp did not *)
                 let words = hashMap.new(:String :Bool stringOp.equal hash.string)
                 for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
                     let i = vector.get(:ssa.Inst blk.insts k)

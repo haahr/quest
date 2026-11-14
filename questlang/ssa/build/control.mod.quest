@@ -33,8 +33,8 @@ export
      * Operations
      * ====================================================================== *)
 
-    (* An external C value (not a function, which is its thunk's closure): one of
-     * the runtime's constants, or a runtime object's address *)
+    (* An external C value (not a function, which is its thunk's closure): one
+     * of the runtime's constants, or a runtime object's address *)
     let externalValue(fn: vals.Fn symbol: String): Array(Int) =
         begin
             let var found = maybe.none(:Array(Int))
@@ -176,8 +176,8 @@ export
             when opMakeArray with x then aggregates.makeArray(fn x.args maybe.unwrap(:Variable result).type)
             when opArrayRep with x then
                 let elem = shapes.element(shapes.shape(maybe.unwrap(:Variable result).type))
-                (* A negative count raises array.error (quest_check_array_count_at,
-                 * inline) *)
+                (* A negative count raises array.error
+                 * (quest_check_array_count_at, inline) *)
                 let n = vals.atom1(fn x.count)
                 vals.check(fn vals.binary(fn ssa.opLt n vals.constant(fn 0)) false "quest_raise_array_error_at"
                     fun(): Array(Int) array of vals.site(fn x.offset) end)
@@ -438,8 +438,8 @@ export
                     leaveTo(fn labelDepth(fn x.label))
                     vals.jump(fn hashMap.find(:String :Int fn.joins x.label) args)
                 when sReturn with x then
-                    (* A C function returning void returns nothing, and Ok returned
-                     * as a QVal word is 0 *)
+                    (* A C function returning void returns nothing, and Ok
+                     * returned as a QVal word is 0 *)
                     let wanted = vector.length(:ssa.Type fn.f.resultTypes)
                     let vs = if wanted is 0 then vals.noValues else vals.atom(fn x.value) end
                     let zero = fun(): Int
@@ -652,7 +652,10 @@ export
             let h = ssa.slotAddress(fn.f fn.cur slot)
             let chain = vals.threadLocal(fn handlerChain)
             vals.store(fn h runtimeLayout.offset("QExceptionHandler" "prev") 8 vals.loadWord(fn chain 0 vals.tPtr))
-            (* A C handler's record, which the native backend makes its own *)
+            (* A null resume marks a C handler's record, which a raise
+             * resumes by _longjmp; the arm64 backend stores its handler
+             * block's address here instead, and the frame's sp and fp
+             * (docs/arm64.md section 3.6) *)
             vals.store(fn h runtimeLayout.offset("QExceptionHandler" "resume") 8 vals.null(fn))
             let catchesAt = runtimeLayout.offset("QExceptionHandler" "catches")
             let countAt = runtimeLayout.offset("QExceptionHandler" "n_catches")
@@ -689,6 +692,9 @@ export
             fn.cur := handlerB
             vals.store(fn vals.threadLocal(fn handlerChain) 0 8 vals.loadWord(fn h
                 runtimeLayout.offset("QExceptionHandler" "prev") vals.tPtr))
+            (* The handler's variable: a copy of quest_current_exception, which
+             * any raise the handler's code makes, even one it catches itself,
+             * overwrites *)
             let stateRecord = maybe.unwrap(:runtimeLayout.Struct runtimeLayout.struct("QExceptionState"))
             let stateSlot = ssa.newSlot(fn.f stateRecord.bytes 8)
             let state = ssa.slotAddress(fn.f fn.cur stateSlot)

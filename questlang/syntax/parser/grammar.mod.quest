@@ -222,7 +222,8 @@ export
     (* Types (Level 1) *)
     let typeRules(x: Targets): Ok =
         begin
-            (* PostfixType [ InfixTail ] *)
+            (* PostfixType [infix Type]: infix operators on types group to the
+             * right with one precedence, as on values (valueRules) *)
             rule(x.type actions.typeInfix) of x.postfixType opt of t(symbolicInfix) x.type end end
             rule(x.postfixType actions.typePostfix) of x.primaryType rep of x.postfixTypeOp end end
             (* . ide *)
@@ -311,7 +312,10 @@ export
             rule(x.infixOp actions.lexeme) of t(kwAndif) end
             rule(x.infixOp actions.lexeme) of t(kwOrif) end
             rule(x.infixOp actions.lexeme) of t(assign) end
-            (* PostfixValue [ InfixOp Value ] *)
+            (* PostfixValue [ InfixOp Value ]: the right operand is a whole
+             * Value, so every infix operator has the same precedence and
+             * groups to the right: a + b * c is a + (b * c), and a - b - c is
+             * a - (b - c) (docs/syntax.md §3.2) *)
             rule(x.value actions.valueInfix) of x.postfixValue opt of x.infixOp x.value end end
             rule(x.postfixValue actions.valuePostfix) of x.primaryValue rep of x.postfixOp end end
             (* . ide, ? ide, ! ide *)

@@ -39,8 +39,8 @@ export
             maybe.some(:String b.toString())
         end
 
-    (* Writes a record of the members names and values, after the program's
-     * output *)
+    (* Writes a record whose members are names[i]: values[i], after flushing
+     * what the program wrote, so that its output precedes the record *)
     let writeRecord(w: writer.T names: Array(String) values: Array(json.Value)): Ok =
         begin
             writer.flush(writer.output)
@@ -245,7 +245,8 @@ export
                 let v = symbols.lookupValue(r.e.currentScope name)
                 let t = symbols.lookupType(r.e.currentScope name)
                 let m = env.lookupModule(r.e name)
-                (* A module is a value too, of a type that shows only its name *)
+                (* A module is a value too, of a type that shows only its
+                 * name, so it is shown by its members *)
                 if maybe.isSome(:symbols.Scope m) then
                     maybe.some(:String showModule(name maybe.unwrap(:symbols.Scope m)))
                 elsif maybe.isSome(:symbols.ValueSymbol v) then

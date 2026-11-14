@@ -133,8 +133,9 @@ export
      * parameter's type: passing @x, where x is a Record p: Int q: Int end, to
      * var r: Record p: Int end would let the callee store a record without q
      * into x. For out, which the callee only assigns, any supertype of the
-     * parameter's type will do. As with any use of a mutable local, passing
-     * one from a closure that would capture it is rejected
+     * parameter's type will do. As with any use of a variable, @y is rejected
+     * from a closure if y is a var or out parameter of an enclosing function,
+     * and from any function if y is a global var variable
      * (checker.checkCapturable). *)
     and checkLvalueTarget(
         c: checker.T target: ast.Expr paramType: Type e: env.T loopDepth: Int isOut: Bool offset: Int
@@ -265,6 +266,8 @@ export
 
     let isTypeOrKindArg(a: ast.Expr): Bool = case a.form when typeArg then true when kindArg then true else false end
 
+    (* Whether metavariable m is solved: prune gives m itself only while it is
+     * unsolved *)
     let pruned(m: Type): Bool = not(model.same(model.prune(m) m))
 
     (* Elaborates a call f(args) of a polymorphic function,

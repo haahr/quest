@@ -1,4 +1,5 @@
-(* Quest Self-Hosted Compiler: Slots and Aggregates' Components in SSA Implementation *)
+(* Quest Self-Hosted Compiler: The SSA Builder's Representation
+ * Implementation *)
 
 module representation : Representation
 import
@@ -43,8 +44,9 @@ export
             h
         end
     let componentShape(s: shapes.Shape i: Int): shapes.Shape = maybe.unwrap(:shapes.Shape s.components[i].shape)
-    (* A value chosen by a branch: then's in one block, otherwise's in another,
-     * merged into a block of parameters of the types *)
+    (* A value chosen by a branch on cond: the values yes makes in one block,
+     * or those no makes in another, merged as the parameters, of the types
+     * given, of a third block, where fn.cur is left *)
     let choose(fn: vals.Fn cond: Int types: Array(ssa.Type) yes: All() Array(Int) no: All() Array(Int)): Array(Int) =
         begin
             let thenB = ssa.newBlock(fn.f)
@@ -68,7 +70,7 @@ export
      * numbering merges the tests of one value, which ssa/passes/unproxies
      * lowers for the backends *)
     let unproxy(fn: vals.Fn p: Int): Int = ssa.emit(fn.f fn.cur ssa.opUnproxy array of p end vals.tPtr)
-    (* Component i of the tuple at t (shape ts), in its slot form, vals.read as
+    (* Component i of the tuple at t (shape ts), in its slot form, read as
      * access says: directly, from the original of what may be a proxy, or
      * through the proxy if it is one *)
     let tupleComponent(fn: vals.Fn t: Int ts: shapes.Shape i: Int access: ir.Access): Array(Int) =
@@ -85,7 +87,7 @@ export
                         fun(): Array(Int) readSlot(fn vals.offsetPtr(fn t offset) comp.type))
             end
         end
-    (* The tag of the option at o, vals.read as access says *)
+    (* The tag of the option at o, read as access says *)
     let optionTag(fn: vals.Fn o: Int access: ir.Access): Int =
         case access
             when direct then vals.invariantWord(fn o runtimeLayout.offset("QOptionHeader" "tag") vals.tInt)
@@ -116,7 +118,7 @@ export
             optionTag(fn vs[0] access)
         end
     (* Component i (~1: the payload, when it is not a tuple) of case tag's
-     * payload of the option at o, in its slot form, vals.read as access says *)
+     * payload of the option at o, in its slot form, read as access says *)
     let optionComponent(fn: vals.Fn o: Int os: shapes.Shape tag: String i: Int access: ir.Access): Array(Int) =
         begin
             let cs = maybe.unwrap(:shapes.Shape maybe.unwrap(:shapes.Component shapes.caseOf(os tag)).shape)

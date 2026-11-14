@@ -38,11 +38,17 @@ export
 
     let has(ids: Ids id: Int): Bool = hashMap.contains(:Int :Bool ids id)
 
-    (* Contractiveness (Cardelli and Longo, section 2.4): primitive types and
-     * type constructors are contractive; a variable is contractive in X iff it
-     * is not X; All(X' :: K) B iff B is; an application iff its (opaque, since
-     * evaluation reduces applications of type operators) constructor is;
-     * Rec(X') B iff B is in X' and in X *)
+    (* Whether t is contractive in ids (Cardelli and Longo, section 2.4):
+     * primitive types and type constructors are contractive; a variable is
+     * contractive in X iff it is not X; All(X' :: K) B iff B is; an
+     * application iff its (opaque, since evaluation reduces applications of
+     * type operators) constructor is; Rec(X') B iff B is in X' and in X.
+     *
+     * Given an environment, a type variable that has a definition is checked
+     * through it; seen holds the variables whose definitions are being
+     * followed, so a definition that leads back to its own variable is not
+     * followed again. depth counts the nested calls, against
+     * maxTypeExpansionDepth. *)
     let rec contractive(t: Type ids: Ids e: maybe.T(env.T) seen: Ids depth: Int): Bool =
         begin
             if depth > maxTypeExpansionDepth then

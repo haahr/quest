@@ -1,6 +1,6 @@
 (* Quest Self-Hosted Compiler: Reduced Types Interface
  *
- * bootstrap/python/quest/types/canonical.py's first half: type operator
+ * The reduced types of bootstrap/python/quest/types/reduce.py: type operator
  * applications reduced and recursive types unfolded at a type's head, a
  * bounded type's bound followed, and the queries on option types the backends
  * make (an option's cases in order, how is compares its values). The checker
@@ -29,8 +29,10 @@ export
      *   abstract types, and path types, followed to the end; model.powerBoundOf
      *   takes one such step.
      * - kinds.unfoldHead: one step of recursion or application, or none;
-     *   kinds.resolveBound loops over it and over bounds until a predicate
-     *   holds, for the checker's record, variant, tuple, and option bounds.
+     *   kinds' private resolveBound loops over it and over bounds until a
+     *   predicate holds, for the checker's record, variant, sum (variant or
+     *   option), and tuple bounds; kinds.resolveOptionBound walks on its
+     *   own.
      *
      * canonical's canonicalStructure, private to it, is normalizeType's for
      * canonical forms. *)
@@ -42,7 +44,8 @@ export
     Def OptionIdentity = Tuple empty: Array(String) single: maybe.T(String) component: maybe.T(model.Type) end
 
     (* The universal quantifiers wrapping a function type (a recursive one,
-     * through its unfolding), and the type they quantify, as written *)
+     * through its unfolding), and the type they quantify, as written: with
+     * their own symbols, not those of a canonical form *)
     Def FunQuantifiers = Tuple quantifiers: Array(model.Quantifier) body: model.Type end
 
     (* The most applications reduced or recursive types unfolded at a type's
@@ -58,8 +61,9 @@ export
     (* t with the type operator applications at its head beta-reduced, without
      * unfolding recursive types *)
     betaReduceHead(t: model.Type): model.Type
-    (* t with its head's applications reduced and its recursive types
-     * unfolded, until it is neither *)
+    (* t0 with its head's applications reduced and its recursive types
+     * unfolded, until its head is not a recursive type (it may be an
+     * application that does not reduce) or maxBetaSteps is reached *)
     unfolding(t0: model.Type): model.Type
     (* t with recursive types at its head unfolded, and type operator
      * applications there reduced, until its outermost node is neither; none
