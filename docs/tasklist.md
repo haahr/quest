@@ -134,9 +134,9 @@ percent slower (0.9 percent with the slot barrier alone inline) and its text 1.8
 move ([benchmarks.md](benchmarks.md) §22.2, item 3). It wasn't kept. It may pay once the code around a barrier is
 shorter, or with a smaller expansion: only in loops, only the slot barrier, or a shared out-of-line tail.
 
-**Where to start.** Branch `claude/inline-barriers-not-kept` (`87acb5e7`, on `238a594f`, local to this repository's
-clone, not on origin): `questlang/ssa/writeBarriers` and its test `ssa_write_barriers`, the runtime's entries in
-`codegen/runtimeFunctions` and `codegen/runtimeLayout`, and the pipeline's call. It predates the restructuring: the
+**Where to start.** Branch `claude/inline-barriers-not-kept` on origin (`87acb5e7`, on `238a594f`):
+`questlang/ssa/writeBarriers` and its test `ssa_write_barriers`, the runtime's entries in `codegen/runtimeFunctions`
+and `codegen/runtimeLayout`, and the pipeline's call. It predates the restructuring: the
 pass belongs in `questlang/ssa/passes/`, and `runtimeLayout` is now `questlang/repr/runtimeLayout`.
 
 **Done when.** A variant makes the compiler or the suite faster, measured as §22.1 measures, and is kept, or the idea
