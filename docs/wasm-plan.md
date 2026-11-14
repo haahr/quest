@@ -451,7 +451,7 @@ imports `util/hash`, whose `identityHash` is the runtime's.
 - **The base**, beneath both, is not Quest: the module `questlang/wasm/runtime` builds from the model (steps 3 to 6).
   It holds what Quest cannot say: the memory and the host's imports (§4.4), the exception tag and the built-in
   exceptions, `Int`'s boxing, and copying bytes to and from strings. It shrinks to that as the core grows (§4.5).
-- **The core** imports no unit but the intrinsics (§4.5). It holds `is`, the identity hash, descriptors and their
+- **The core** imports no unit but the intrinsics, not even the library's helpers, and the backend checks it (§4.5). It holds `is`, the identity hash, descriptors and their
   instantiation, run-time subtyping, conversion, proxies, view maps, and the map of record tables. Its memo tables are written out over arrays, as the C runtime's are, not taken from
   `collections/`. Every external of `lib/` maps to an instruction sequence, a host call, or a function of the core.
   **Its code is monomorphic:** it defines descriptors and their instantiation, so it can use no type parameter
@@ -474,7 +474,8 @@ lists every external the driver calls at a top level.
 
 ### 4.5. The Intrinsics
 
-*Written 2026-11-13, after steps 6's exceptions and 9's units, for review before the core is built on it.*
+*Written 2026-11-13, after steps 6's exceptions and 9's units, and revised after its review the same day; the core
+is built on it.*
 
 The core (§4.2) is Quest that must reach what no Quest type exposes: a value's kind, an object's slots and hash, a
 string's bytes. It does so through one unsound interface, `wasm/intrinsics`, whose members the backend compiles at
@@ -484,12 +485,15 @@ Changing it later means changing all of them.
 **An interface with no module.**
 - `wasm/intrinsics` is `runtime/wasm/intrinsics.int.quest`, an unsound interface ([modules.md](modules.md) §4.4).
   Only an unsound module may import it.
-- No module implements it. The build knows it by its canonical name and links nothing for it, as the backend
-  already treats `lib/`'s members it compiles itself (step 3).
-- The backend compiles each call of one of its functions to an instruction sequence, or to a call of the base, at
-  the call site. A call costs what the instructions do.
-- Nothing native compiles it. It and the core are the wasm backend's alone, as `runtime/*.c` is the native
-  backends'.
+- No module implements it. The backend compiles each call of one of its functions to an instruction sequence, or to
+  a call of the base, at the call site, as it already compiles `lib/`'s members it knows (step 3). A call costs what
+  the instructions do.
+- Three places that assume an interface has a module learn that this one has none: the engine's staleness test,
+  which finds no object to compare; the driver's ordering of the units it preloads, which skips it among a
+  manifest's imports; and linking, which links nothing for it.
+- Nothing native compiles it or the core: `runtime/wasm/` is the wasm backend's alone, as `runtime/*.c` is the
+  native backends'. A native build that meets an import of `wasm/intrinsics` reports it as an error naming the
+  importer, rather than failing to link.
 
 **Its types are the engine's references.**
 - They are abstract types with no bound, and the backend holds any such type as an `eqref` (§3.2). So declaring
@@ -515,26 +519,69 @@ Changing it later means changing all of them.
 | records | `payloadOf(r: Any): Any` and `dictOf(r: Any): Any` (a `$recBox`'s), `dictSlot(d: Any i: Int): Int`, `layoutOf(p: Any): Any` |
 | strings | `bytesOf(s: String): Bytes`, `byteCount(b: Bytes): Int`, `byte(b: Bytes i: Int): Int`, `setByte(b: Bytes i: Int v: Int): Ok`, `newString(n: Int): String` |
 | exceptions | `exceptionName(e: Any): String` |
+| the host | `put(fd: Int s: String): Ok`, `fatal(message: String status: Int): Ok` (the base's) |
 
-The core reaches the host and the built-in exceptions through the library's own members, `writer` and `int.error`,
-which the backend compiles to the base whether a sound module or the core calls them.
+**What an intrinsic misused does.** The core is unsound, so a wrong call is the core's bug, not a program's.
+- `fromAny` at the wrong type, and `slot` or `byte` past the end, trap; the host reports a trap as an internal error.
+  The backend's `--wasm-checked` compiles each cast as a `br_on_cast` and each index as a test, failing with a report
+  that names the intrinsic and its caller, for debugging the core. It is off by default.
+- `newSlots`, `newString`, and `newArray`'s sizes are tested against §2.10's limits like any allocation, so a size
+  too large is the fatal out-of-memory error and not a trap.
 
-**Descriptors are Quest values.** A descriptor (`QTypeDescriptor`'s counterpart) is a value of a type the core
-defines, a record of tuples and arrays, and not a type in R.
+**What the core may import: the intrinsics, and nothing else.** The core is beneath the library: once step 9
+compiles the library to WebAssembly, every library unit imports `wasm/core`, so the core can use no library unit's
+Quest code. That includes the helpers the rest of the compiler leans on (`maybe`, `vector`, `strutil`, `hashMap`):
+the core uses `case`, arrays, and loops instead. It reaches the host through the intrinsics' `put` and `fatal`, not
+`writer`, and raises the base's built-in exceptions by name through `wasm/intrinsics`' exception members (`int.error`
+and the rest, declared there as the base's globals).
+- The passes may add imports a module never wrote (`pipeline.implicitImports`). When the backend compiles the core,
+  it checks the unit's whole import list, implicit imports included, and reports any import but `wasm/intrinsics`
+  with the construct that caused it.
+
+**Compiling the core is a mode of the backend.** Every other unit the backend compiles imports `wasm/core`, and some
+constructs compile to calls of it: `is` at a type parameter, instantiation, conversion, and a raise's payload when it
+needs a descriptor. The core cannot import itself, so when the backend compiles a unit of `runtime/wasm/core` it
+adds no such import, and each of those constructs is a compile-time error there. The core is monomorphic (§4.2), so
+it writes none of them: its `is` is at known types, and the payloads it raises are strings.
+
+**Descriptors are Quest values, as tuples.** A descriptor (`QTypeDescriptor`'s counterpart) is a value of a tuple
+type the core defines, its kind first, and not a type in R.
 - R lists "the descriptors" (§2.11) because code would tell them apart by a cast; nothing does. Only the core makes
   and reads them, and a record's payload holds its own as an `Any` (`$record`'s layout field).
-- A recursive type's descriptor is cyclic, so its fields that point at descriptors are `var`, and the core fills
-  them in after making the descriptors.
+- A tuple and not a record, because a record held in a slot is a `$recBox` over a payload read through its dict
+  (§2.5): two indirections on paths that polymorphic `is`, hashing, and echo take for every value. A tuple's field is
+  a slot of its `$slots`, at a position fixed by its definition, so compiled code may later read a descriptor's kind
+  inline without knowing a record's layout.
+- A recursive type's descriptor is cyclic, so the slots that point at descriptors are `var` fields, filled in after
+  the descriptors are made.
 - A unit's initializer makes its static descriptors (`StaticData`) by calling the core's constructors: in functions
   of bounded size, within §2.11's limits, and before its top level runs.
+- **A unit exports its types' descriptors** as globals, `descriptor.NAME`, beside `record.payload` and
+  `record.dict`: a unit whose descriptor mentions an imported type imports the other unit's. That is part of each
+  unit's ABI (§5.3).
+- The core's instantiation is memoized by the descriptors it is given, so `List(T)` instantiated in two units is one
+  descriptor, and run-time subtyping can compare descriptors by identity.
 
-**How compiled code reaches the core.**
-- The core is a unit, `wasm/core`, imported by every unit the backend compiles, and preloaded after the base and
-  before the library.
-- Echo, a raise's payload, `is` at a type parameter, instantiation, and conversion become calls of its functions by
-  name, as calls of any unit are (§5.1).
-- The driver builds the core's units from `runtime/wasm/` with `--backend wasm` into the build directory, once, as
-  it builds the library's. A release will carry them built.
+**How compiled code reaches the runtime.**
+- The core is a unit, `wasm/core`, imported by every unit the backend compiles except its own, and preloaded after
+  the base and before the library.
+- `is` at a type parameter, instantiation, and conversion become calls of the core's functions by name, as calls of
+  any unit are (§5.1).
+- **Echo and printing are the upper layer's** (§4.2), since they need `Real`'s formatting and `util/bignum`. Echo
+  compiles to a call of the upper layer, which a unit that echoes imports; a unit the upper layer imports must not
+  echo, which the backend reports with the import's path.
+- **The uncaught report reaches upward through a hook.** The base reports an uncaught exception, and a payload is
+  printed by the upper layer above it. The core holds a `var` field for the printer, which the upper layer's
+  initializer sets; the report uses it when set, and the base's plain form (the exception's name and the site, as
+  now) when not, as when a library unit's initializer raises before the upper layer's has run.
+- The driver builds the runtime's units from `runtime/wasm/` with `--backend wasm` into the build directory, once,
+  as it builds the library's. A release will carry them built.
+
+**How the core is tested.** It runs nowhere but under wasm, so the run goldens alone would find its bugs late and far
+from their cause. Step 6 adds `tests/self-hosted/wasm/core/`: programs that call the core directly and print what it
+returns, in both engines, for descriptors of a recursive type and of an instance, the identity hash, run-time
+subtyping, and conversion. They are run goldens of their own, against expected text rather than native output,
+since nothing native can run them.
 
 **What it leaves for later.**
 - Calling a closure held as an `Any`, by its uniform entry, which proxies' and adapters' conversions need
@@ -542,11 +589,14 @@ defines, a record of tuples and arrays, and not a type in R.
 - Reals' bits, which §4.3's formatting needs: `bits(r: Real): Int` and its inverse join with step 8's connection.
 - More of either kind, added as the core needs them, each documented in the interface with its instructions.
 
-**What the review should settle:**
-1. **Descriptors as Quest values** rather than R types, which drops them from the ABI's type group.
+**The review settled** (2026-11-13):
+1. **Descriptors as Quest values** rather than R types, which drops them from the ABI's type group; as tuples, not
+   records.
 2. **The base kept** as a hand-built module beneath the core, rather than every non-Quest operation becoming an
    intrinsic.
 3. **`toAny` and `fromAny` at the static type argument** as the only polymorphism the core uses.
+4. **The core imports only the intrinsics**, checked when it is built; echo and printing are the upper layer's, and
+   the uncaught report reaches them through a hook.
 
 ### 4.3. `Real` (decision 5)
 
