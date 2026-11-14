@@ -159,4 +159,185 @@ export
                 result
             end
         end
+
+    (* ======================================================================
+     * The library's externals in Quest
+     * ====================================================================== *)
+
+    (* A Char's code, an Int's bits shifted right with zeros, and xor *)
+    let code(c: Char): Int = external "wasm.charCode"
+    let shrU(n: Int k: Int): Int = external "wasm.shrU"
+    let xor(a: Int b: Int): Int = external "wasm.xor"
+    (* SplitMix64's finalizer, quest_hash_mix64 *)
+    let mix(n: Int): Int = external "wasm.hashMix"
+    (* What a value is, as a slot holds it: an i31, an Int's box (and its
+     * value), a record's box (and its payload), an object with a hash (and
+     * its hash, 0 until set), an option (and its tag) *)
+    let isSmall(x: Any): Bool = external "wasm.isSmall"
+    let smallValue(x: Any): Int = external "wasm.smallValue"
+    let isBoxedInt(x: Any): Bool = external "wasm.isBoxedInt"
+    let boxedInt(x: Any): Int = external "wasm.boxedInt"
+    let isRecBox(x: Any): Bool = external "wasm.isRecBox"
+    let recPayload(x: Any): Any = external "wasm.recPayload"
+    let isObject(x: Any): Bool = external "wasm.isObject"
+    let hashOf(x: Any): Int = external "wasm.hashOf"
+    let setHash(x: Any h: Int): Ok = external "wasm.setHash"
+    let optionTag(x: Any): Int = external "wasm.optionTag"
+    let tupleSlot(x: Any i: Int): Any = external "wasm.tupleSlot"
+    let decimal(n: Int): String = external "wasm.decimal"
+    let convInt(n: Int): String = external "wasm.convInt"
+    let charString(c: Char): String = external "wasm.charString"
+
+    let stringError(): Ok = raise stringOp.error end
+
+    let checkSub(s: String start: Int size: Int): Ok =
+        if {start < 0} orif {size < 0} orif {{start + size} > stringOp.length(s)} then stringError() end
+
+    let catSub(s1: String start1: Int size1: Int s2: String start2: Int size2: Int): String =
+        begin
+            checkSub(s1 start1 size1)
+            checkSub(s2 start2 size2)
+            stringOp.getSub(s1 start1 size1) <> stringOp.getSub(s2 start2 size2)
+        end
+
+    let conc(a: Array(String)): String =
+        begin
+            let var total = 0
+            for i = 0 upto extent a - 1 do total := total + stringOp.length(a[i]) end
+            let s = stringOp.new(total ' ')
+            let var at = 0
+            for i = 0 upto extent a - 1 do
+                stringOp.setSub(s at a[i] 0 stringOp.length(a[i]))
+                at := at + stringOp.length(a[i])
+            end
+            s
+        end
+
+    (* How the first size1 bytes of s1 from start1 compare with those of s2:
+     * negative, zero, or positive, as memcmp then the lengths order them *)
+    let compare(s1: String start1: Int size1: Int s2: String start2: Int size2: Int): Int =
+        begin
+            let n = if size1 < size2 then size1 else size2 end
+            let var result = 0
+            let var i = 0
+            while {result is 0} andif {i < n} do
+                result := code(stringOp.getChar(s1 start1 + i)) - code(stringOp.getChar(s2 start2 + i))
+                i := i + 1
+            end
+            if result is 0 then size1 - size2 else result end
+        end
+
+    let equalSub(s1: String start1: Int size1: Int s2: String start2: Int size2: Int): Bool =
+        begin
+            checkSub(s1 start1 size1)
+            checkSub(s2 start2 size2)
+            compare(s1 start1 size1 s2 start2 size2) is 0
+        end
+
+    let precedes(s1: String s2: String): Bool =
+        compare(s1 0 stringOp.length(s1) s2 0 stringOp.length(s2)) <= 0
+
+    let precedesSub(s1: String start1: Int size1: Int s2: String start2: Int size2: Int): Bool =
+        begin
+            checkSub(s1 start1 size1)
+            checkSub(s2 start2 size2)
+            compare(s1 start1 size1 s2 start2 size2) <= 0
+        end
+
+    (* The objects' hashes, given out in order the first time each is asked
+     * for (docs/wasm-plan.md section 2.8) *)
+    let hashes = tuple let var next = 0 end
+
+    let objectHash(x: Any): Int =
+        begin
+            let h = hashOf(x)
+            if h isnot 0 then h
+            else
+                hashes.next := {hashes.next + 1} % 1073741824
+                if hashes.next is 0 then hashes.next := 1 end
+                setHash(x hashes.next)
+                hashes.next
+            end
+        end
+
+    (* quest_identity_hash: a value hashes by its bits (a scalar's), by its
+     * tag and its component (an option of at most one), or by its identity
+     * (an object's), so that values is takes as equal hash equally *)
+    let rec identityHash(d: Desc x: Any): Int =
+        if {d.kind is kindOption} andif not(isSmall(x)) then
+            let tag = optionTag(x)
+            let p = if {tag >= 0} andif {tag < extent d.parts} then d.parts[tag] else bases[kindNone] end
+            if {p.kind is kindNone} orif {p.kind is kindOk} orif {{p.kind is kindTuple} andif {extent p.parts is 0}} then
+                mix(xor(~7046029254386353131 tag))
+            elsif p.kind isnot kindTuple then mix(xor(tag identityHash(p tupleSlot(x 0))))
+            elsif extent p.parts is 1 then mix(xor(tag identityHash(p.parts[0] tupleSlot(x 0))))
+            else mix(objectHash(x))
+            end
+        elsif isSmall(x) then mix(smallValue(x))
+        elsif isBoxedInt(x) then mix(boxedInt(x))
+        elsif isRecBox(x) then mix(objectHash(recPayload(x)))
+        elsif isObject(x) then mix(objectHash(x))
+        else mix(0)
+        end
+
+    (* A string builder: its bytes, a string grown by doubling, and how many
+     * of them are used *)
+    Let Buffer = Tuple var bytes: String var length: Int end
+
+    let sbNew(): Buffer = tuple let var bytes = stringOp.new(64 ' ') let var length = 0 end
+
+    let reserve(b: Buffer n: Int): Ok =
+        if {b.length + n} > stringOp.length(b.bytes) then
+            let var size = stringOp.length(b.bytes) * 2
+            while size < {b.length + n} do size := size * 2 end
+            let more = stringOp.new(size ' ')
+            stringOp.setSub(more 0 b.bytes 0 b.length)
+            b.bytes := more
+        end
+
+    let sbAppendSub(b: Buffer s: String start: Int size: Int): Ok =
+        begin
+            checkSub(s start size)
+            reserve(b size)
+            stringOp.setSub(b.bytes b.length s start size)
+            b.length := b.length + size
+        end
+
+    let sbAppendString(b: Buffer s: String): Ok = sbAppendSub(b s 0 stringOp.length(s))
+
+    let sbAppendChar(b: Buffer c: Char): Ok =
+        begin
+            reserve(b 1)
+            stringOp.setChar(b.bytes b.length c)
+            b.length := b.length + 1
+        end
+
+    let sbAppendInt(b: Buffer n: Int): Ok = sbAppendString(b convInt(n))
+
+    let sbAppendBool(b: Buffer v: Bool): Ok = sbAppendString(b if v then "true" else "false" end)
+
+    (* A Word in decimal, unsigned: its bits halved, so that they are an Int
+     * that is not negative, then a tenth and a last digit *)
+    let sbAppendWord(b: Buffer w: Int): Ok =
+        if w >= 0 then sbAppendString(b decimal(w))
+        else
+            let q = shrU(w 1) / 5
+            let r = w - {q * 10}
+            sbAppendString(b decimal(q))
+            sbAppendString(b decimal(r))
+        end
+
+    let sbAppendRepeat(b: Buffer c: Char n: Int): Ok =
+        begin
+            if n < 0 then stringError() end
+            reserve(b n)
+            for i = 0 upto n - 1 do stringOp.setChar(b.bytes b.length + i c) end
+            b.length := b.length + n
+        end
+
+    let sbClear(b: Buffer): Ok = b.length := 0
+
+    let sbLength(b: Buffer): Int = b.length
+
+    let sbToString(b: Buffer): String = stringOp.getSub(b.bytes 0 b.length)
 end

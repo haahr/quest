@@ -42,12 +42,13 @@
   (type (func (param (ref $clos) eqref i64 eqref eqref) (result eqref)))
   (type (func (param (ref $clos) eqref i64 i64 eqref) (result eqref)))
   (type (func (param (ref $clos) eqref eqref eqref eqref) (result eqref)))
+  (type (func (param (ref $clos) i32) (result eqref)))
   (type (func (param (ref $clos) i64) (result i64)))
   (type (func (param (ref $clos) eqref) (result eqref)))
-  (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 42)))))
-  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 42)) (field $native (ref 41)))))
-  (type $tries.closure (sub final 44 (struct (field $hash (mut i32)) (field $uniform (ref 42)) (field $native (ref 41)))))
-  (type $tries.closure.1 (sub final 44 (struct (field $hash (mut i32)) (field $uniform (ref 42)) (field $native (ref 41)))))
+  (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 43)))))
+  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 43)) (field $native (ref 42)))))
+  (type $tries.closure (sub final 45 (struct (field $hash (mut i32)) (field $uniform (ref 43)) (field $native (ref 42)))))
+  (type $tries.closure.1 (sub final 45 (struct (field $hash (mut i32)) (field $uniform (ref 43)) (field $native (ref 42)))))
   (import "quest.runtime" "exception:int.error" (global $int.error (ref $exception)))
   (import "quest.runtime" "exception:real.error" (global $real.error (ref $exception)))
   (import "quest.runtime" "exception:word.error" (global $word.error (ref $exception)))
@@ -59,6 +60,12 @@
   (import "quest.runtime" "exception:writer.error" (global $writer.error (ref $exception)))
   (import "quest.runtime" "exception:reader.error" (global $reader.error (ref $exception)))
   (import "quest.runtime" "exception:system.error" (global $system.error (ref $exception)))
+  (import "writer" "record.payload" (global (mut eqref)))
+  (import "writer" "record.dict" (global (mut eqref)))
+  (import "conv" "record.payload" (global (mut eqref)))
+  (import "conv" "record.dict" (global (mut eqref)))
+  (import "int" "record.payload" (global (mut eqref)))
+  (import "int" "record.dict" (global (mut eqref)))
   (import "quest.runtime" "putString" (func $putString (type 18)))
   (import "quest.runtime" "putChar" (func $putChar (type 19)))
   (import "quest.runtime" "concat" (func $concat (type 18)))
@@ -82,6 +89,9 @@
   (import "quest.runtime" "exceptionOf" (func $exceptionOf (type 32)))
   (import "quest.runtime" "payloadOf" (func $payloadOf (type 32)))
   (import "quest.runtime" "error" (tag $error (type 33)))
+  (import "writer" "init" (func $writer.init (type 34)))
+  (import "conv" "init" (func $conv.init (type 34)))
+  (import "int" "init" (func $int.init (type 34)))
   (import "wasm/print" "init" (func $wasm/print.init (type 34)))
   (import "wasm/print" "show" (func $wasm/print.show (type 35)))
   (import "wasm/core" "init" (func $wasm/core.init (type 34)))
@@ -91,6 +101,7 @@
   (import "wasm/core" "setText" (func $wasm/core.setText (type 39)))
   (import "wasm/core" "instantiate" (func $wasm/core.instantiate (type 35)))
   (import "wasm/print" "echo" (func $wasm/print.echo (type 40)))
+  (import "conv" "bool" (func $conv.bool (type 41)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $quest_type_Int (mut eqref) ref.null none)
   (global $quest_type_Real (mut eqref) ref.null none)
@@ -108,7 +119,7 @@
   (global $tries.3 (mut eqref) ref.null none)
   (export "_start" (func $_start))
   (elem declare func $tries.uniform $tries $tries.uniform.1 $tries.1)
-  (func $tries (type 41) (param $closure (ref $clos)) (param $i i64) (result i64)
+  (func $tries (type 42) (param $closure (ref $clos)) (param $i i64) (result i64)
     (local $v i32)
     (local $v.1 i64)
     (local $v.2 i64)
@@ -175,7 +186,7 @@
     end
     unreachable
   )
-  (func $tries.1 (type 41) (param $closure (ref $clos)) (param $i i64) (result i64)
+  (func $tries.1 (type 42) (param $closure (ref $clos)) (param $i i64) (result i64)
     (local $v i32)
     (local $v.1 i64)
     (local $v.2 i64)
@@ -322,6 +333,9 @@
     call $wasm/core.init
     call $wasm/print.init
     call $descriptors
+    call $writer.init
+    call $conv.init
+    call $int.init
     i32.const 0
     i32.const 0
     i32.const 3
@@ -847,8 +861,9 @@
               call $exceptionOf
               ref.eq
               local.set $v.45
+              global.get $noClosure
               local.get $v.45
-              call $convBool
+              call $conv.bool
               local.set $v.46
               i32.const 1
               ref.i31
@@ -1015,14 +1030,14 @@
     call $wasm/core.base
     global.set $quest_type_bound_vars
   )
-  (func $tries.uniform (type 42) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+  (func $tries.uniform (type 43) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt
     call $tries
     call $boxInt
   )
-  (func $tries.uniform.1 (type 42) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+  (func $tries.uniform.1 (type 43) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt

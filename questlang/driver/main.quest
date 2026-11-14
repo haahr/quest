@@ -463,6 +463,97 @@ let keptImports(unit: nodes.Unit): Array(passes.ImplicitImport) =
  * codegen_c and run_c_compiled phases (and -o and compile) do: prints its C, or
  * compiles it, with the modules it imports (built by the engine), and runs it
  * or writes it to -o (or compile's output). compile --emit-c writes the C. *)
+(* The modules a WebAssembly module's import section names, each once: those it
+ * is instantiated after. The section's entries are functions, tables,
+ * memories, globals, and tags, laid out as WebAssembly 3.0's binary format
+ * has them; anything malformed ends the list early *)
+let wasmImports(bytes: String): Array(String) =
+    begin
+        let found = vector.new(:String)
+        let n = stringOp.length(bytes)
+        let var at = 8
+        let byte = fun(): Int
+            begin
+                let b = if at < n then ascii.val(stringOp.getChar(bytes at)) else 0 end
+                at := at + 1
+                b
+            end
+        let leb = fun(): Int
+            begin
+                let var result = 0
+                let var scale = 1
+                let var more = true
+                while more andif {at < n} do
+                    let b = byte()
+                    result := result + {{b % 128} * scale}
+                    scale := scale * 128
+                    more := b >= 128
+                end
+                result
+            end
+        let skip = fun(): Ok
+            begin
+                leb()
+                ok
+            end
+        let name = fun(): String
+            begin
+                let length = leb()
+                let s = if {at + length} <= n then stringOp.getSub(bytes at length) else "" end
+                at := at + length
+                s
+            end
+        (* a value type: a byte, or a reference type's prefix and its heap
+         * type *)
+        let valType = fun(): Ok
+            begin
+                let b = byte()
+                if {b is 99} orif {b is 100} then skip() end
+                ok
+            end
+        let limits = fun(): Ok
+            begin
+                let flags = byte()
+                skip()
+                if {flags % 2} is 1 then skip() end
+                ok
+            end
+        let var done = false
+        while not(done) andif {at < n} do
+            let id = byte()
+            let size = leb()
+            let next = at + size
+            if id is 2 then
+                let count = leb()
+                for k = 0 upto count - 1 do
+                    let moduleName = name()
+                    let field = name()
+                    let kind = byte()
+                    if kind is 0 then skip()
+                    elsif kind is 1 then
+                        valType()
+                        limits()
+                    elsif kind is 2 then limits()
+                    elsif kind is 3 then
+                        valType()
+                        let mutable = byte()
+                    elsif kind is 4 then
+                        let attribute = byte()
+                        skip()
+                    end
+                    let var seen = false
+                    for j = 0 upto vector.length(:String found) - 1 do
+                        if stringOp.equal(vector.get(:String found j) moduleName) then seen := true end
+                    end
+                    if not(seen) then vector.append(:String found moduleName) end
+                end
+                done := true
+            end
+            at := next
+        end
+        vector.toArray(:String found)
+    end;
+
 let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
     begin
         let located = fun(message: String): Ok
@@ -560,8 +651,9 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         maybe.some(:graph.Resolver e.units.resolver)) options.jobs system.args[0]) options.backends)
                     let objects = engine.buildModules(wasmEngine modules importer e.programDir)
                     (* The units' modules: each named by its canonical name, its
-                     * path in the build directory, with what it imports, which
-                     * its manifest records *)
+                     * path in the build directory, with the units it imports,
+                     * which its module's imports name: the ones its source
+                     * names, and the runtime's that the backend adds *)
                     let names = vector.new(:String)
                     let locations = vector.new(:String)
                     let needs = vector.new(:Array(String))
@@ -571,25 +663,9 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         if {stringOp.length(bytes) >= 4} andif stringOp.equal(stringOp.getSub(bytes 0 4) "\x00asm")
                             andif strutil.startsWith(o buildDir <> "/") andif strutil.endsWith(o ".o") then
                             let n = stringOp.length(buildDir) + 1
-                            let base = stringOp.getSub(o 0 {stringOp.length(o) - 2})
                             vector.append(:String names stringOp.getSub(o n {{stringOp.length(o) - n} - 2}))
                             vector.append(:String locations o)
-                            let qm = manifest.readQm(base <> ".qm")
-                            let imported = if maybe.isNone(:manifest.ModuleManifest qm) then array of :String end
-                                else
-                                    let refs = maybe.unwrap(:manifest.ModuleManifest qm).importedModules
-                                    let ns = array of(extent refs "")
-                                    for j = 0 upto extent refs - 1 do ns[j] := refs[j].name end
-                                    ns
-                                end
-                            (* every unit but the runtime's may import the
-                             * runtime's, which its manifest does not say *)
-                            let name = stringOp.getSub(o n {{stringOp.length(o) - n} - 2})
-                            let runtimeUnit = stringOp.equal(name "wasm/core") orif stringOp.equal(name "wasm/print")
-                            let all = array of(extent imported + 2 "wasm/core")
-                            for j = 0 upto extent imported - 1 do all[j] := imported[j] end
-                            all[extent imported + 1] := "wasm/print"
-                            vector.append(:Array(String) needs if runtimeUnit then imported else all end)
+                            vector.append(:Array(String) needs wasmImports(bytes))
                         end
                     end
                     (* In an order that puts each after those it imports, which

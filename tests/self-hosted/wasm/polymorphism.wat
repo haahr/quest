@@ -76,6 +76,12 @@
   (import "quest.runtime" "exception:system.error" (global $system.error (ref $exception)))
   (import "units/gen" "record.payload" (global (mut eqref)))
   (import "units/gen" "record.dict" (global (mut eqref)))
+  (import "writer" "record.payload" (global (mut eqref)))
+  (import "writer" "record.dict" (global (mut eqref)))
+  (import "string" "record.payload" (global (mut eqref)))
+  (import "string" "record.dict" (global (mut eqref)))
+  (import "conv" "record.payload" (global (mut eqref)))
+  (import "conv" "record.dict" (global (mut eqref)))
   (import "quest.runtime" "putString" (func $putString (type 18)))
   (import "quest.runtime" "putChar" (func $putChar (type 19)))
   (import "quest.runtime" "concat" (func $concat (type 18)))
@@ -100,6 +106,9 @@
   (import "quest.runtime" "payloadOf" (func $payloadOf (type 32)))
   (import "quest.runtime" "error" (tag $error (type 33)))
   (import "units/gen" "init" (func $units/gen.init (type 34)))
+  (import "writer" "init" (func $writer.init (type 34)))
+  (import "string" "init" (func $string.init (type 34)))
+  (import "conv" "init" (func $conv.init (type 34)))
   (import "wasm/print" "init" (func $wasm/print.init (type 34)))
   (import "wasm/print" "show" (func $wasm/print.show (type 35)))
   (import "wasm/core" "init" (func $wasm/core.init (type 34)))
@@ -405,6 +414,9 @@
     call $wasm/print.init
     call $descriptors
     call $units/gen.init
+    call $writer.init
+    call $string.init
+    call $conv.init
     global.get $pos.static
     local.set $pos
     global.get $nonEmpty.static

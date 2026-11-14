@@ -42,6 +42,7 @@
   (type (func (param (ref $clos) eqref i64 eqref eqref) (result eqref)))
   (type (func (param (ref $clos) eqref i64 i64 eqref) (result eqref)))
   (type (func (param (ref $clos) eqref eqref eqref eqref) (result eqref)))
+  (type (func (param (ref $clos) i32) (result eqref)))
   (type (func (param (ref $clos) i64 i64) (result i64 i64)))
   (type (func (param eqref) (result (ref $option))))
   (import "quest.runtime" "exception:int.error" (global $int.error (ref $exception)))
@@ -55,6 +56,12 @@
   (import "quest.runtime" "exception:writer.error" (global $writer.error (ref $exception)))
   (import "quest.runtime" "exception:reader.error" (global $reader.error (ref $exception)))
   (import "quest.runtime" "exception:system.error" (global $system.error (ref $exception)))
+  (import "writer" "record.payload" (global (mut eqref)))
+  (import "writer" "record.dict" (global (mut eqref)))
+  (import "conv" "record.payload" (global (mut eqref)))
+  (import "conv" "record.dict" (global (mut eqref)))
+  (import "string" "record.payload" (global (mut eqref)))
+  (import "string" "record.dict" (global (mut eqref)))
   (import "quest.runtime" "putString" (func $putString (type 18)))
   (import "quest.runtime" "putChar" (func $putChar (type 19)))
   (import "quest.runtime" "concat" (func $concat (type 18)))
@@ -78,6 +85,9 @@
   (import "quest.runtime" "exceptionOf" (func $exceptionOf (type 32)))
   (import "quest.runtime" "payloadOf" (func $payloadOf (type 32)))
   (import "quest.runtime" "error" (tag $error (type 33)))
+  (import "writer" "init" (func $writer.init (type 34)))
+  (import "conv" "init" (func $conv.init (type 34)))
+  (import "string" "init" (func $string.init (type 34)))
   (import "wasm/print" "init" (func $wasm/print.init (type 34)))
   (import "wasm/print" "show" (func $wasm/print.show (type 35)))
   (import "wasm/core" "init" (func $wasm/core.init (type 34)))
@@ -87,6 +97,7 @@
   (import "wasm/core" "setText" (func $wasm/core.setText (type 39)))
   (import "wasm/core" "instantiate" (func $wasm/core.instantiate (type 35)))
   (import "wasm/print" "echo" (func $wasm/print.echo (type 40)))
+  (import "conv" "bool" (func $conv.bool (type 41)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $quest_type_Int (mut eqref) ref.null none)
   (global $quest_type_Real (mut eqref) ref.null none)
@@ -107,7 +118,7 @@
   (global $divide.1 (mut eqref) ref.null none)
   (global $dict (ref $dict) i32.const 0 i32.const 1 i32.const 2 array.new_fixed $i32s 3 struct.new $dict)
   (export "_start" (func $_start))
-  (func $divide (type 41) (param $closure (ref $clos)) (param $n i64) (param $d i64) (result i64 i64)
+  (func $divide (type 42) (param $closure (ref $clos)) (param $n i64) (param $d i64) (result i64 i64)
     (local $v i32)
     (local $v.1 i64)
     (local $v.2 i64)
@@ -437,6 +448,9 @@
     call $wasm/core.init
     call $wasm/print.init
     call $descriptors
+    call $writer.init
+    call $conv.init
+    call $string.init
     i32.const 0
     i64.const 2
     call $boxInt
@@ -579,7 +593,7 @@
           block $inlined1.after
             block $inlined1 (result i64)
               local.get $v.10
-              block (type 42)
+              block (type 43)
                 br_on_cast 0 eqref (ref $option)
                 drop
                 i32.const 0
@@ -779,7 +793,7 @@
     array.get $slots
     local.set $v.28
     local.get $v.28
-    block (type 42)
+    block (type 43)
       br_on_cast 0 eqref (ref $option)
       drop
       i32.const 0
@@ -828,7 +842,7 @@
     local.get $t.4
     i32.const 1
     local.get $v.28
-    block (type 42)
+    block (type 43)
       br_on_cast 0 eqref (ref $option)
       drop
       i32.const 0
@@ -985,8 +999,9 @@
       end
     end
     local.set $v.40
+    global.get $noClosure
     local.get $v.40
-    call $convBool
+    call $conv.bool
     local.set $v.41
     i64.const 0
     local.get $shapes
@@ -1025,7 +1040,7 @@
     array.get $slots
     local.set $v.42
     local.get $v.42
-    block (type 42)
+    block (type 43)
       br_on_cast 0 eqref (ref $option)
       drop
       i32.const 0
@@ -1042,8 +1057,9 @@
     i32.const 0
     i32.eq
     local.set $v.43
+    global.get $noClosure
     local.get $v.43
-    call $convBool
+    call $conv.bool
     local.set $v.44
     i64.const 1
     local.get $shapes
@@ -1082,7 +1098,7 @@
     array.get $slots
     local.set $v.45
     local.get $v.45
-    block (type 42)
+    block (type 43)
       br_on_cast 0 eqref (ref $option)
       drop
       i32.const 0
@@ -1240,8 +1256,9 @@
       end
     end
     local.set $v.50
+    global.get $noClosure
     local.get $v.50
-    call $convBool
+    call $conv.bool
     local.set $v.51
     i32.const 0
     i32.const 1
@@ -1347,7 +1364,7 @@
     struct.new $option
     local.set $light
     local.get $light
-    block (type 42)
+    block (type 43)
       br_on_cast 0 eqref (ref $option)
       drop
       i32.const 0
@@ -1364,11 +1381,12 @@
     i32.const 1
     i32.eq
     local.set $v.61
+    global.get $noClosure
     local.get $v.61
-    call $convBool
+    call $conv.bool
     local.set $v.62
     local.get $light
-    block (type 42)
+    block (type 43)
       br_on_cast 0 eqref (ref $option)
       drop
       i32.const 0
@@ -1562,8 +1580,9 @@
       end
     end
     local.set $v.73
+    global.get $noClosure
     local.get $v.73
-    call $convBool
+    call $conv.bool
     local.set $v.74
     local.get $m
     local.set $t.25
@@ -1628,8 +1647,9 @@
       end
     end
     local.set $v.75
+    global.get $noClosure
     local.get $v.75
-    call $convBool
+    call $conv.bool
     local.set $v.76
     i32.const 0
     i32.const 1
@@ -2068,8 +2088,9 @@
     struct.new $string
     call $stringEqual
     local.set $v.123
+    global.get $noClosure
     local.get $v.123
-    call $convBool
+    call $conv.bool
     local.set $v.124
     i32.const 0
     i32.const 3

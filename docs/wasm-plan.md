@@ -1050,6 +1050,28 @@ only when the backend's files differ, until its time is known.
      program's calls of them still go through the runtime's table, until the library is compiled.
    - **Run goldens:** the modes pass 77, those of several units among them, the same in both engines. 220 are
      pending.
+
+   *The library, first part, done 2026-11-14:*
+   - **`lib/` is compiled by the wasm backend** like any unit (`choice.forFile` no longer sends it to C). A call of
+     one of its externals (`repr/externals`), from a program or from the library itself, is compiled in place by
+     the backend's table of externals: an instruction sequence (`Word`'s operations, `hash.mix` and `combine`,
+     `ascii`, `arrayOp.size`, `string`'s length), a call of the base (`string`'s, `conv`'s, `writer`'s), or a call
+     of `wasm/core`, whose Quest has `string`'s comparisons and joins, `util/stringbuilder`'s buffer, and
+     `hash.identityHash`. An external value is a built-in exception, a constant, or a stream.
+   - **What this target lacks** fails when it runs, with a message naming it, not when its unit is compiled: an
+     external the table has no entry for, and a module's function that uses what the backend cannot yet compile
+     (its body is that failure). So a library unit compiles whole, and a program runs until it reaches the
+     missing part. A program's own code, and the runtime's, still fail when compiled.
+   - **The runtime's units use the library only through the table:** they import no library unit, and a call of
+     one the backend does not compile itself fails as they are compiled.
+   - **Order:** the driver preloads the units in the order their modules' import sections give, which includes
+     the runtime's units that the backend adds.
+   - **`Real`, step 8's first part:** values as `f64`, boxed in `$boxReal`; constants; `+`, `-`, `*`, and `//`
+     with their `real.error` tests; comparisons; `real.int`, `floor`, `round`, `ceil`, `trunc`, `sqrt`, and `div`;
+     `Word`'s bits. `**`, the mathematical functions, and conversion to and from text still fail when run.
+   - **Run goldens:** the modes pass 116, the same in both engines; 181 are pending.
+   - **Still to come:** files, arguments, and the environment over WASI; `reader`; `conv.real` through
+     `util/realconv`; the externals' coverage test.
 10. **The compiler through the backend.** The driver's units compiled by the native compiler with `--backend wasm`
     and run in node, with the stack constrained to a browser's, to compile a small program, then the run suite's
     sources, then itself. Differences are found against the native compiler's IR dumps, stage by stage.

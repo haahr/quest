@@ -59,6 +59,12 @@
   (import "quest.runtime" "exception:writer.error" (global $writer.error (ref $exception)))
   (import "quest.runtime" "exception:reader.error" (global $reader.error (ref $exception)))
   (import "quest.runtime" "exception:system.error" (global $system.error (ref $exception)))
+  (import "writer" "record.payload" (global (mut eqref)))
+  (import "writer" "record.dict" (global (mut eqref)))
+  (import "conv" "record.payload" (global (mut eqref)))
+  (import "conv" "record.dict" (global (mut eqref)))
+  (import "string" "record.payload" (global (mut eqref)))
+  (import "string" "record.dict" (global (mut eqref)))
   (import "quest.runtime" "putString" (func $putString (type 18)))
   (import "quest.runtime" "putChar" (func $putChar (type 19)))
   (import "quest.runtime" "concat" (func $concat (type 18)))
@@ -82,6 +88,9 @@
   (import "quest.runtime" "exceptionOf" (func $exceptionOf (type 32)))
   (import "quest.runtime" "payloadOf" (func $payloadOf (type 32)))
   (import "quest.runtime" "error" (tag $error (type 33)))
+  (import "writer" "init" (func $writer.init (type 34)))
+  (import "conv" "init" (func $conv.init (type 34)))
+  (import "string" "init" (func $string.init (type 34)))
   (import "wasm/print" "init" (func $wasm/print.init (type 34)))
   (import "wasm/print" "show" (func $wasm/print.show (type 35)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
@@ -248,6 +257,9 @@
     (local $v.72 eqref)
     (local $v.73 eqref)
     (local $v.74 eqref)
+    call $writer.init
+    call $conv.init
+    call $string.init
     global.get $f.static
     local.set $f
     i64.const 15

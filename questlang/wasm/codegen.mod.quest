@@ -8,6 +8,7 @@ import
     questlang/repr/shapes : questlang/repr/Shapes
     questlang/repr/genericLayout : questlang/repr/GenericLayout
     questlang/repr/staticdata : questlang/repr/StaticData
+    questlang/repr/externals : questlang/repr/Externals
     questlang/ir/describe : questlang/ir/Describe
     questlang/wasm/model : questlang/wasm/Model
     questlang/wasm/ops : questlang/wasm/Ops
@@ -85,6 +86,9 @@ export
          * hold the unit's descriptors, by their symbol (staticdata) *)
         runtimeUnits: hashMap.T(String Int)
         descGlobals: hashMap.T(String Int)
+        (* Whether the unit is one of the runtime's (section 4.5), which uses
+         * the library only through the members the backend compiles itself *)
+        isRuntime: Bool
     end
 
     (* A name not given before among names: base, or base.k *)
@@ -134,9 +138,7 @@ export
             when repInt, repWord then model.i64
             when repBool, repChar then model.i32
             when repVoid, repPointer, repQVal then model.eqref
-            when repReal then
-                fail("a Real (step 8 connects util/realconv)")
-                model.f64
+            when repReal then model.f64
             when repRecord then model.eqref
             when repVariant then
                 fail("a variant (milestone 4)")
@@ -543,7 +545,7 @@ export
             when constOk then
                 emit(f model.i32Const(0))
                 emit(f i(ops.refI31))
-            when constReal then fail("a Real (step 8 connects util/realconv)")
+            when constReal with x then emit(f model.f64Const(x.r))
         end
 
     let atom(f: F a: ir.Atom): Ok =
@@ -602,6 +604,39 @@ export
             emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
             runtimeCall(f "raise")
             emit(f i(ops.unreachable))
+        end
+
+    (* The f64 on the stack, raising real.error at offset if it is a NaN *)
+    let notNaN(f: F offset: maybe.T(Int)): Ok =
+        begin
+            let r = scratch(f model.f64)
+            emit(f i1(ops.localTee r))
+            emit(f i1(ops.localGet r))
+            emit(f i(ops.f64Ne))
+            emit(f model.ifInst(empty ""))
+            raiseAt(f "real.error" offset)
+            emit(f model.endInst)
+            emit(f i1(ops.localGet r))
+        end
+
+    (* The f64 on the stack as an Int, raising real.error outside an i64's
+     * range or for a NaN (quest_real_to_int, section 2.10) *)
+    let realToInt(f: F): Ok =
+        begin
+            let r = scratch(f model.f64)
+            emit(f i1(ops.localTee r))
+            emit(f model.f64Const(~9223372036854775808.0))
+            emit(f i(ops.f64Ge))
+            emit(f i1(ops.localGet r))
+            emit(f model.f64Const(9223372036854775808.0))
+            emit(f i(ops.f64Lt))
+            emit(f i(ops.i32And))
+            emit(f i(ops.i32Eqz))
+            emit(f model.ifInst(empty ""))
+            raiseAt(f "real.error" maybe.none(:Int))
+            emit(f model.endInst)
+            emit(f i1(ops.localGet r))
+            emit(f i(ops.i64TruncSatF64S))
         end
 
     (* How the uncaught report writes a payload of type t (the runtime's show):
@@ -885,6 +920,7 @@ export
             case valType(t)
                 when valI64 then runtimeCall(f "boxInt")
                 when valI32 then emit(f i(ops.refI31))
+                when valF64 then emit(f i1(ops.structNew rt.index("boxReal")))
                 else ok
             end
         end
@@ -902,6 +938,9 @@ export
                 when valI32 then
                     castI31(f)
                     emit(f i(ops.i31GetU))
+                when valF64 then
+                    castTo(f rt.index("boxReal"))
+                    emit(f i2(ops.structGet rt.index("boxReal") 0))
                 else ok
             end
         end
@@ -1491,7 +1530,8 @@ export
                     when valI64 then emit(f i(ops.i64Eq))
                     when valI32 then emit(f i(ops.i32Eq))
                     when valRef then emit(f i(ops.refEq))
-                    else fail("is on a Real")
+                    when valF64 then emit(f i(ops.f64Eq))
+                    else fail("is on a value of no kind")
                 end
                 end
                 if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
@@ -1508,8 +1548,36 @@ export
             when primConcat then
                 atoms(f x.args)
                 runtimeCall(f "concat")
-            when primRealAdd, primRealSub, primRealMul, primRealDiv, primRealPow, primRealLt, primRealLe, primRealGt,
-                primRealGe then fail("the primitive " <> ir.primName(x.op) <> " (step 8 connects util/realconv)")
+            when primRealAdd, primRealSub, primRealMul, primRealDiv then
+                (* real.error for a zero divisor, and for a NaN result
+                 * (quest_real_result_at) *)
+                if x.op?primRealDiv then
+                    atom(f x.args[1])
+                    emit(f model.f64Const(0.0))
+                    emit(f i(ops.f64Eq))
+                    emit(f model.ifInst(empty ""))
+                    raiseAt(f "real.error" x.offset)
+                    emit(f model.endInst)
+                end
+                atoms(f x.args)
+                emit(f i(case x.op
+                    when primRealAdd then ops.f64Add when primRealSub then ops.f64Sub when primRealMul then ops.f64Mul
+                    else ops.f64Div
+                end))
+                notNaN(f x.offset)
+            when primRealLt then
+                atoms(f x.args)
+                emit(f i(ops.f64Lt))
+            when primRealLe then
+                atoms(f x.args)
+                emit(f i(ops.f64Le))
+            when primRealGt then
+                atoms(f x.args)
+                emit(f i(ops.f64Gt))
+            when primRealGe then
+                atoms(f x.args)
+                emit(f i(ops.f64Ge))
+            when primRealPow then pending(f "** on reals, which needs the mathematical functions (milestone 4)")
             when primExtent then
                 atoms(f x.args)
                 castTo(f rt.index("array"))
@@ -1518,51 +1586,460 @@ export
                 emit(f i(ops.i64ExtendI32U))
         end
 
-    (* A call of the library's lib.member, which step 9 links as a unit of
-     * its own: until then, the few that step 3's programs use, through the
-     * runtime or as instructions *)
-    let library(f: F lib: String member: String args: Array(ir.Atom)): Ok =
+    (* ======================================================================
+     * The library's externals (step 9)
+     * ====================================================================== *)
+
+    (* The C symbol of the library's member path.member, if it is an external
+     * function (repr/externals), which a call compiles to in place *)
+    let externalSymbol(path: String member: String): maybe.T(String) =
         begin
-            let name = lib <> "." <> member
+            let var found = maybe.none(:String)
+            for k = 0 upto extent externals.functions - 1 do
+                let e = externals.functions[k]
+                if stringOp.equal(e[0] path) andif stringOp.equal(e[1] member) then found := maybe.some(:String e[2]) end
+            end
+            found
+        end
+
+    (* The externals that are functions of wasm/core, in Quest: each symbol,
+     * the core's function, and its parameters' and result's representations
+     * (e an eqref, n an i64, b an i32) *)
+    let coreExternals = array of
+        array of "quest_string_cat_sub" "catSub" "ennenn" "e" end
+        array of "quest_string_conc" "conc" "e" "e" end
+        array of "quest_string_equal_sub" "equalSub" "ennenn" "b" end
+        array of "quest_string_precedes" "precedes" "ee" "b" end
+        array of "quest_string_precedes_sub" "precedesSub" "ennenn" "b" end
+        array of "quest_identity_hash" "identityHash" "ee" "n" end
+        array of "quest_sb_new" "sbNew" "" "e" end
+        array of "quest_sb_append_string" "sbAppendString" "ee" "e" end
+        array of "quest_sb_append_char" "sbAppendChar" "eb" "e" end
+        array of "quest_sb_append_int" "sbAppendInt" "en" "e" end
+        array of "quest_sb_append_bool" "sbAppendBool" "eb" "e" end
+        array of "quest_sb_append_word" "sbAppendWord" "en" "e" end
+        array of "quest_sb_append_sub" "sbAppendSub" "eenn" "e" end
+        array of "quest_sb_append_repeat" "sbAppendRepeat" "ebn" "e" end
+        array of "quest_sb_clear" "sbClear" "e" "e" end
+        array of "quest_sb_length" "sbLength" "e" "n" end
+        array of "quest_sb_to_string" "sbToString" "e" "e" end
+    end
+    let coreExternal(symbol: String): maybe.T(Array(String)) =
+        begin
+            let var found = maybe.none(:Array(String))
+            for k = 0 upto extent coreExternals - 1 do
+                if stringOp.equal(coreExternals[k][0] symbol) then found := maybe.some(:Array(String) coreExternals[k]) end
+            end
+            found
+        end
+    let repTypes(codes: String): Array(ValType) =
+        begin
+            let ts = array of(stringOp.length(codes) model.eqref)
+            for k = 0 upto stringOp.length(codes) - 1 do
+                let c = stringOp.getChar(codes k)
+                ts[k] := if c is 'n' then model.i64 elsif c is 'b' then model.i32 else model.eqref end
+            end
+            ts
+        end
+
+    (* SplitMix64's finalizer (quest_hash_mix64) of the i64 on the stack *)
+    let hashMix(f: F): Ok =
+        begin
+            let z = scratch(f model.i64)
+            let step = fun(shift: Int multiplier: Int): Ok
+                begin
+                    emit(f i1(ops.localTee z))
+                    emit(f i1(ops.localGet z))
+                    emit(f model.i64Const(shift))
+                    emit(f i(ops.i64ShrU))
+                    emit(f i(ops.i64Xor))
+                    if multiplier isnot 0 then
+                        emit(f model.i64Const(multiplier))
+                        emit(f i(ops.i64Mul))
+                    end
+                end
+            step(30 ~4658895280553007687)
+            step(27 ~7723592293110705685)
+            step(31 0)
+        end
+
+    (* The quoted text of a Char or a String (quest_conv_char and
+     * quest_conv_string): in quotes, escaped *)
+    let quoted(f: F args: Array(ir.Atom) quote: Char): Ok =
+        begin
+            literal(f stringOp.new(1 quote))
+            atoms(f args)
+            if quote is '\'' then runtimeCall(f "convChar") end
+            emit(f model.i32Const(ascii.val(quote)))
+            runtimeCall(f "escaped")
+            runtimeCall(f "concat")
+            literal(f stringOp.new(1 quote))
+            runtimeCall(f "concat")
+        end
+
+    (* A call of the library's external symbol (section 4.2): to the base,
+     * to the core, or an instruction sequence; one this target lacks fails
+     * when it is called *)
+    let externalCall(f: F symbol: String args: Array(ir.Atom) descs: Array(ir.Descriptor)
+        target: maybe.T(ir.Variable)): Ok =
+        begin
+            let named = fun(n: String): Bool stringOp.equal(symbol n)
             let through = fun(field: String): Ok begin atoms(f args) runtimeCall(f field) end
-            if stringOp.equal(name "writer.putString") then through("putString")
-            elsif stringOp.equal(name "writer.putChar") then through("putChar")
-            elsif stringOp.equal(name "conv.int") then through("convInt")
-            elsif stringOp.equal(name "conv.bool") then through("convBool")
-            elsif stringOp.equal(name "conv.char") orif stringOp.equal(name "conv.string") then
-                (* In quotes, escaped, as quest_conv_char and quest_conv_string
-                 * write them *)
-                let quote = if stringOp.equal(name "conv.char") then '\'' else '"' end
-                literal(f stringOp.new(1 quote))
+            let okValue = fun(): Ok begin emit(f model.i32Const(0)) emit(f i(ops.refI31)) end
+            let binary = fun(o: model.Op): Ok begin atoms(f args) emit(f i(o)) end
+            let core = coreExternal(symbol)
+            if maybe.isSome(:Array(String) core) then
+                emit(f i1(ops.globalGet f.g.noClosure))
+                descriptors(f descs)
+                if named("quest_identity_hash") then boxedAtom(f args[0]) else atoms(f args) end
+                runtimeUnitCall(f "wasm/core." <> maybe.unwrap(:Array(String) core)[1])
+            (* string *)
+            elsif named("quest_string_alloc") then through("stringNew")
+            elsif named("quest_string_get_char") then through("stringGetChar")
+            elsif named("quest_string_set_char") then through("stringSetChar")
+            elsif named("quest_string_get_sub") then through("stringGetSub")
+            elsif named("quest_string_set_sub") then through("stringSetSub")
+            elsif named("quest_string_concat") then through("concat")
+            elsif named("quest_string_equal") then through("stringEqual")
+            elsif named("quest_string_is_empty") orif named("quest_string_length") then
                 atoms(f args)
-                if quote is '\'' then runtimeCall(f "convChar") end
-                emit(f model.i32Const(ascii.val(quote)))
-                runtimeCall(f "escaped")
-                runtimeCall(f "concat")
-                literal(f stringOp.new(1 quote))
-                runtimeCall(f "concat")
-            elsif stringOp.equal(name "string.getChar") then through("stringGetChar")
-            elsif stringOp.equal(name "string.setChar") then through("stringSetChar")
-            elsif stringOp.equal(name "string.new") then through("stringNew")
-            elsif stringOp.equal(name "string.getSub") then through("stringGetSub")
-            elsif stringOp.equal(name "string.setSub") then through("stringSetSub")
-            elsif stringOp.equal(name "string.cat") then through("concat")
-            elsif stringOp.equal(name "string.equal") then through("stringEqual")
-            elsif stringOp.equal(name "string.isEmpty") then
-                atoms(f args)
-                emit(f option instRefCast of Inst with let type = tuple let nullable = false
-                    let heap = option heapIndex of model.HeapType with let index = rt.index("string") end end
-                end)
+                castTo(f rt.index("string"))
                 emit(f i2(ops.structGet rt.index("string") rt.field("string" "length")))
-                emit(f i(ops.i32Eqz))
-            elsif stringOp.equal(name "string.length") then
-                atoms(f args)
-                emit(f option instRefCast of Inst with let type = tuple let nullable = false
-                    let heap = option heapIndex of model.HeapType with let index = rt.index("string") end end
-                end)
-                emit(f i2(ops.structGet rt.index("string") rt.field("string" "length")))
+                if named("quest_string_is_empty") then emit(f i(ops.i32Eqz)) else emit(f i(ops.i64ExtendI32U)) end
+            (* conv *)
+            elsif named("quest_conv_int") then through("convInt")
+            elsif named("quest_conv_char") then quoted(f args '\'')
+            elsif named("quest_conv_string") then quoted(f args '"')
+            (* writer *)
+            elsif named("quest_writer_put_string") then through("putString")
+            elsif named("quest_writer_put_char") then through("putChar")
+            elsif named("quest_writer_put_substring") then
+                atom(f args[0])
+                atom(f args[1])
+                atom(f args[2])
+                atom(f args[3])
+                runtimeCall(f "stringGetSub")
+                runtimeCall(f "putString")
+            elsif named("quest_writer_flush") orif named("quest_writer_close") then okValue()
+            (* ascii, arrayOp, raised, system *)
+            elsif named("quest_ascii_char") then
+                atom(f args[0])
+                emit(f model.i64Const(256))
+                emit(f i(ops.i64GeU))
+                emit(f model.ifInst(empty ""))
+                raiseAt(f "ascii.error" maybe.none(:Int))
+                emit(f model.endInst)
+                atom(f args[0])
+                emit(f i(ops.i32WrapI64))
+            elsif named("quest_ascii_val") then
+                atom(f args[0])
                 emit(f i(ops.i64ExtendI32U))
-            else fail("the library's " <> name <> " (step 9)")
+            elsif named("quest_array_size") then
+                atom(f args[0])
+                castTo(f tArray)
+                emit(f i2(ops.structGet tArray fElems))
+                emit(f i(ops.arrayLen))
+                emit(f i(ops.i64ExtendI32U))
+            elsif named("quest_raised_reraise") then
+                atom(f args[0])
+                castTo(f rt.index("raised"))
+                emit(f i1(ops.throw 0))
+            elsif named("quest_system_exit") then
+                literal(f "")
+                atom(f args[0])
+                emit(f i(ops.i32WrapI64))
+                runtimeCall(f "fatal")
+                okValue()
+            elsif named("quest_system_is_terminal") then emit(f model.i32Const(0))
+            (* hash *)
+            elsif named("quest_hash_mix") then
+                atoms(f args)
+                hashMix(f)
+            elsif named("quest_hash_combine") then
+                (* h1 ^ (h2 + 0x9e3779b97f4a7c15 + (h1 << 6) + (h1 >> 2)) *)
+                atom(f args[0])
+                atom(f args[1])
+                emit(f model.i64Const(~7046029254386353131))
+                emit(f i(ops.i64Add))
+                atom(f args[0])
+                emit(f model.i64Const(6))
+                emit(f i(ops.i64Shl))
+                emit(f i(ops.i64Add))
+                atom(f args[0])
+                emit(f model.i64Const(2))
+                emit(f i(ops.i64ShrU))
+                emit(f i(ops.i64Add))
+                emit(f i(ops.i64Xor))
+            (* word *)
+            elsif named("quest_word_not_bits") then
+                atoms(f args)
+                emit(f model.i64Const(~1))
+                emit(f i(ops.i64Xor))
+            elsif named("quest_word_and_bits") then binary(ops.i64And)
+            elsif named("quest_word_or_bits") then binary(ops.i64Or)
+            elsif named("quest_word_xor_bits") then binary(ops.i64Xor)
+            elsif named("quest_word_add") then binary(ops.i64Add)
+            elsif named("quest_word_sub") then binary(ops.i64Sub)
+            elsif named("quest_word_mul") then binary(ops.i64Mul)
+            elsif named("quest_word_lt") then binary(ops.i64LtU)
+            elsif named("quest_word_le") then binary(ops.i64LeU)
+            elsif named("quest_word_gt") then binary(ops.i64GtU)
+            elsif named("quest_word_ge") then binary(ops.i64GeU)
+            elsif named("quest_word_to_int") orif named("quest_word_from_int") then atoms(f args)
+            elsif named("quest_word_pop_count_val") then
+                atoms(f args)
+                emit(f i(ops.i64Popcnt))
+            elsif named("quest_word_count_leading_zeros_val") then
+                atoms(f args)
+                emit(f i(ops.i64Clz))
+            elsif named("quest_word_count_trailing_zeros_val") then
+                atoms(f args)
+                emit(f i(ops.i64Ctz))
+            elsif named("quest_word_rotate_val") then binary(ops.i64Rotl)
+            elsif named("quest_word_div_val") orif named("quest_word_mod_val") then
+                atom(f args[1])
+                emit(f i(ops.i64Eqz))
+                emit(f model.ifInst(empty ""))
+                raiseAt(f "word.error" maybe.none(:Int))
+                emit(f model.endInst)
+                binary(if named("quest_word_div_val") then ops.i64DivU else ops.i64RemU end)
+            elsif named("quest_word_shift_val") then
+                (* 0 when |count| >= 64; left for a positive count, right with
+                 * zeros for a negative *)
+                let i64Result = option blockValue of model.BlockType with let type = model.i64 end
+                atom(f args[1])
+                emit(f model.i64Const(63))
+                emit(f i(ops.i64GtS))
+                atom(f args[1])
+                emit(f model.i64Const(~63))
+                emit(f i(ops.i64LtS))
+                emit(f i(ops.i32Or))
+                emit(f model.ifInst(i64Result ""))
+                emit(f model.i64Const(0))
+                emit(f model.elseInst)
+                atom(f args[0])
+                atom(f args[1])
+                emit(f model.i64Const(0))
+                emit(f i(ops.i64GeS))
+                emit(f model.ifInst(i64Result ""))
+                atom(f args[1])
+                emit(f i(ops.i64Shl))
+                emit(f model.elseInst)
+                emit(f model.i64Const(0))
+                atom(f args[1])
+                emit(f i(ops.i64Sub))
+                emit(f i(ops.i64ShrU))
+                emit(f model.endInst)
+                emit(f model.endInst)
+            elsif named("quest_word_extract_val") orif named("quest_word_replace_val") then
+                (* the field of width bits at pos, its width cut to the word *)
+                let replacing = named("quest_word_replace_val")
+                let w = args[0]
+                let pos = args[if replacing then 2 else 1 end]
+                let width = args[if replacing then 3 else 2 end]
+                let mask = scratch(f model.i64)
+                let i64Result = option blockValue of model.BlockType with let type = model.i64 end
+                atom(f pos)
+                emit(f model.i64Const(64))
+                emit(f i(ops.i64GeU))
+                atom(f width)
+                emit(f model.i64Const(0))
+                emit(f i(ops.i64LeS))
+                emit(f i(ops.i32Or))
+                emit(f model.ifInst(i64Result ""))
+                if replacing then atom(f w) else emit(f model.i64Const(0)) end
+                emit(f model.elseInst)
+                (* mask: width >= 64 - pos gives all the bits above pos *)
+                atom(f width)
+                emit(f model.i64Const(64))
+                atom(f pos)
+                emit(f i(ops.i64Sub))
+                emit(f i(ops.i64GeS))
+                emit(f model.ifInst(i64Result ""))
+                emit(f model.i64Const(~1))
+                atom(f pos)
+                emit(f i(ops.i64ShrU))
+                emit(f model.elseInst)
+                emit(f model.i64Const(1))
+                atom(f width)
+                emit(f i(ops.i64Shl))
+                emit(f model.i64Const(1))
+                emit(f i(ops.i64Sub))
+                emit(f model.endInst)
+                emit(f i1(ops.localSet mask))
+                if replacing then
+                    atom(f w)
+                    emit(f i1(ops.localGet mask))
+                    atom(f pos)
+                    emit(f i(ops.i64Shl))
+                    emit(f model.i64Const(~1))
+                    emit(f i(ops.i64Xor))
+                    emit(f i(ops.i64And))
+                    atom(f args[1])
+                    emit(f i1(ops.localGet mask))
+                    emit(f i(ops.i64And))
+                    atom(f pos)
+                    emit(f i(ops.i64Shl))
+                    emit(f i(ops.i64Or))
+                else
+                    atom(f w)
+                    atom(f pos)
+                    emit(f i(ops.i64ShrU))
+                    emit(f i1(ops.localGet mask))
+                    emit(f i(ops.i64And))
+                end
+                emit(f model.endInst)
+            elsif named("quest_word_mul_hi") then
+                (* the high 64 bits of the product, from 32-bit halves *)
+                let half = fun(a: ir.Atom high: Bool): Ok
+                    begin
+                        atom(f a)
+                        if high then
+                            emit(f model.i64Const(32))
+                            emit(f i(ops.i64ShrU))
+                        else
+                            emit(f model.i64Const(4294967295))
+                            emit(f i(ops.i64And))
+                        end
+                    end
+                let p1 = scratch(f model.i64)
+                let p2 = scratch(f model.i64)
+                half(args[0] false)
+                half(args[1] true)
+                emit(f i(ops.i64Mul))
+                emit(f i1(ops.localSet p1))
+                half(args[0] true)
+                half(args[1] false)
+                emit(f i(ops.i64Mul))
+                emit(f i1(ops.localSet p2))
+                (* p3 + (p1 >> 32) + (p2 >> 32) + carry, the carry the middle
+                 * sum's high half *)
+                half(args[0] true)
+                half(args[1] true)
+                emit(f i(ops.i64Mul))
+                emit(f i1(ops.localGet p1))
+                emit(f model.i64Const(32))
+                emit(f i(ops.i64ShrU))
+                emit(f i(ops.i64Add))
+                emit(f i1(ops.localGet p2))
+                emit(f model.i64Const(32))
+                emit(f i(ops.i64ShrU))
+                emit(f i(ops.i64Add))
+                half(args[0] false)
+                half(args[1] false)
+                emit(f i(ops.i64Mul))
+                emit(f model.i64Const(32))
+                emit(f i(ops.i64ShrU))
+                emit(f i1(ops.localGet p1))
+                emit(f model.i64Const(4294967295))
+                emit(f i(ops.i64And))
+                emit(f i(ops.i64Add))
+                emit(f i1(ops.localGet p2))
+                emit(f model.i64Const(4294967295))
+                emit(f i(ops.i64And))
+                emit(f i(ops.i64Add))
+                emit(f model.i64Const(32))
+                emit(f i(ops.i64ShrU))
+                emit(f i(ops.i64Add))
+            (* real *)
+            elsif named("quest_real_from_int") then
+                atoms(f args)
+                emit(f i(ops.f64ConvertI64S))
+            elsif named("quest_real_floor") orif named("quest_real_ceil") orif named("quest_real_trunc") then
+                atoms(f args)
+                emit(f i(if named("quest_real_floor") then ops.f64Floor elsif named("quest_real_ceil") then ops.f64Ceil
+                    else ops.f64Trunc end))
+                realToInt(f)
+            elsif named("quest_real_round") then
+                (* half away from zero, as C's round: the truncation, and one
+                 * more away from zero when what it drops is at least a half *)
+                let t = scratch(f model.f64)
+                atoms(f args)
+                emit(f i(ops.f64Trunc))
+                emit(f i1(ops.localTee t))
+                atoms(f args)
+                emit(f i1(ops.localGet t))
+                emit(f i(ops.f64Sub))
+                emit(f i(ops.f64Abs))
+                emit(f model.f64Const(0.5))
+                emit(f i(ops.f64Ge))
+                emit(f model.ifInst(option blockValue of model.BlockType with let type = model.f64 end ""))
+                emit(f model.f64Const(1.0))
+                atoms(f args)
+                emit(f i(ops.f64Copysign))
+                emit(f model.elseInst)
+                emit(f model.f64Const(0.0))
+                emit(f model.endInst)
+                emit(f i(ops.f64Add))
+                realToInt(f)
+            elsif named("quest_real_sqrt") then
+                atoms(f args)
+                emit(f i(ops.f64Sqrt))
+                notNaN(f maybe.none(:Int))
+            elsif named("quest_real_div") then
+                atom(f args[1])
+                emit(f model.f64Const(0.0))
+                emit(f i(ops.f64Eq))
+                emit(f model.ifInst(empty ""))
+                raiseAt(f "real.error" maybe.none(:Int))
+                emit(f model.endInst)
+                binary(ops.f64Div)
+                notNaN(f maybe.none(:Int))
+            elsif named("quest_word_to_real_val") then
+                atoms(f args)
+                emit(f i(ops.f64ReinterpretI64))
+            elsif named("quest_word_from_real_val") then
+                atoms(f args)
+                emit(f i(ops.i64ReinterpretF64))
+            else pending(f "the library's external " <> symbol <> ", which this target lacks for now")
+            end
+        end
+
+    (* An external value of the library: an exception the base defines, a
+     * constant, or a stream *)
+    let externalValue(f: F symbol: String): Ok =
+        begin
+            let named = fun(n: String): Bool stringOp.equal(symbol n)
+            let prefix = "(&quest_exc_"
+            if strutil.startsWith(symbol prefix) andif strutil.endsWith(symbol ")") then
+                (* the module's name, then the exception's, after its first _ *)
+                let inner = stringOp.getSub(symbol stringOp.length(prefix) {{stringOp.length(symbol)
+                    - stringOp.length(prefix)} - 1})
+                let var at = ~1
+                for k = 0 upto stringOp.length(inner) - 1 do if {at < 0} andif {stringOp.getChar(inner k) is '_'} then at := k end end
+                let name = if at < 0 then inner
+                    else stringOp.getSub(inner 0 at) <> "." <> stringOp.getSub(inner {at + 1}
+                        {{stringOp.length(inner) - at} - 1})
+                    end
+                let var known = false
+                for k = 0 upto extent runtime.builtinExceptions - 1 do
+                    if stringOp.equal(runtime.builtinExceptions[k] name) then known := true end
+                end
+                if known then emit(f i1(ops.globalGet builtinException(name)))
+                else pending(f "the library's exception " <> name <> ", which this target lacks for now")
+                end
+            elsif named("QUEST_REAL_MAX") then emit(f model.f64Const(1.7976931348623157e+308))
+            elsif named("QUEST_REAL_MIN") then emit(f model.f64Const(~1.7976931348623157e+308))
+            elsif named("QUEST_REAL_POS_EPSILON") then emit(f model.f64Const(2.220446049250313e-16))
+            elsif named("QUEST_REAL_NEG_EPSILON") then emit(f model.f64Const(~2.220446049250313e-16))
+            elsif named("QUEST_REAL_E") then emit(f model.f64Const(2.718281828459045))
+            elsif named("QUEST_REAL_PI") then emit(f model.f64Const(3.141592653589793))
+            elsif named("QUEST_REAL_INFINITY") then
+                emit(f model.f64Const(1.0))
+                emit(f model.f64Const(0.0))
+                emit(f i(ops.f64Div))
+            elsif named("QUEST_INT_MAX") then emit(f model.i64Const(9223372036854775807))
+            elsif named("QUEST_INT_MIN") then emit(f model.i64Const(~9223372036854775807 - 1))
+            elsif named("quest_writer_output") then
+                emit(f model.i32Const(1))
+                emit(f i(ops.refI31))
+            elsif named("quest_writer_err") then
+                emit(f model.i32Const(2))
+                emit(f i(ops.refI31))
+            elsif named("quest_reader_input") then
+                emit(f model.i32Const(0))
+                emit(f i(ops.refI31))
+            else pending(f "the library's external " <> symbol <> ", which this target lacks for now")
             end
         end
 
@@ -1654,8 +2131,16 @@ export
                 case maybe.unwrap(:ir.ModuleRef x.moduleRef)
                     when refImport with imp then
                         let member = maybe.unwrapOr(:String x.member "")
-                        if maybe.isSome(:String imp.i.libPath) then
-                            library(f maybe.unwrap(:String imp.i.libPath) member x.args)
+                        let symbol = if maybe.isSome(:String imp.i.libPath) then
+                                externalSymbol(maybe.unwrap(:String imp.i.libPath) member)
+                            else maybe.none(:String)
+                            end
+                        if maybe.isSome(:String symbol) then
+                            (* an external of the library, compiled in place *)
+                            externalCall(f maybe.unwrap(:String symbol) x.args x.descriptors maybe.none(:ir.Variable))
+                        elsif f.g.isRuntime andif maybe.isSome(:String imp.i.libPath) then
+                            fail("the runtime's call of the library's " <> imp.i.canonicalPath <> "." <> member
+                                <> ", which the backend does not compile itself")
                         else
                             (* the function the unit exports by name (section
                              * 5.1), at its interface type's signature *)
@@ -1760,6 +2245,17 @@ export
             emit(f i1(ops.arrayGet rt.index("i32s")))
         end
 
+    let knownLibraryMember(f: F x: ir.OpModuleMember): Bool =
+        begin
+            let name = case x.moduleRef
+                when refImport with imp then maybe.unwrapOr(:String imp.i.libPath "") <> "."
+                    <> maybe.unwrapOr(:String x.member "")
+                when refModule then ""
+            end
+            stringOp.equal(name "writer.output") orif stringOp.equal(name "writer.err")
+                orif maybe.isSome(:String libraryException(name))
+        end
+
     let libraryMember(f: F x: ir.OpModuleMember): Ok =
         begin
             let name = case x.moduleRef
@@ -1785,7 +2281,8 @@ export
     let member(f: F x: ir.OpModuleMember target: maybe.T(ir.Variable)): Ok =
         case x.moduleRef
             when refImport with imp then
-                if maybe.isSome(:String imp.i.libPath) then libraryMember(f x)
+                if maybe.isSome(:String imp.i.libPath) andif {f.g.isRuntime orif knownLibraryMember(f x)} then
+                    libraryMember(f x)
                 elsif maybe.isNone(:String x.member) then
                     (* the unit itself, its record *)
                     if not(hashMap.contains(:String :Int f.g.importRecords imp.i.canonicalPath)) then
@@ -2225,6 +2722,53 @@ export
                 emit(f i(ops.refI31))
                 atoms(f args)
                 runtimeCall(f "putString")
+            elsif named("convInt") then
+                atoms(f args)
+                runtimeCall(f "convInt")
+            elsif named("charCode") then
+                atoms(f args)
+                emit(f i(ops.i64ExtendI32U))
+            elsif named("shrU") then
+                atoms(f args)
+                emit(f i(ops.i64ShrU))
+            elsif named("xor") then
+                atoms(f args)
+                emit(f i(ops.i64Xor))
+            elsif named("hashMix") then
+                atoms(f args)
+                hashMix(f)
+            elsif named("isSmall") orif named("isBoxedInt") orif named("isRecBox") orif named("isObject") then
+                atom(f args[0])
+                let heap = if named("isSmall") then option heapI31 of model.HeapType end
+                    else heapOf(rt.index(if named("isBoxedInt") then "boxInt" elsif named("isRecBox") then "recBox"
+                        else "obj" end))
+                    end
+                emit(f option instRefTest of Inst with let type = tuple let nullable = false let heap = heap end end)
+            elsif named("smallValue") then
+                atom(f args[0])
+                castI31(f)
+                emit(f i(ops.i31GetS))
+                emit(f i(ops.i64ExtendI32S))
+            elsif named("boxedInt") then
+                atom(f args[0])
+                castTo(f rt.index("boxInt"))
+                emit(f i2(ops.structGet rt.index("boxInt") 0))
+            elsif named("recPayload") then
+                atom(f args[0])
+                castTo(f tRecBox)
+                emit(f i2(ops.structGet tRecBox 0))
+            elsif named("hashOf") then
+                atom(f args[0])
+                castTo(f rt.index("obj"))
+                emit(f i2(ops.structGet rt.index("obj") 0))
+                emit(f i(ops.i64ExtendI32U))
+            elsif named("setHash") then
+                atom(f args[0])
+                castTo(f rt.index("obj"))
+                atom(f args[1])
+                emit(f i(ops.i32WrapI64))
+                emit(f i2(ops.structSet rt.index("obj") 0))
+                okValue()
             else fail("the external " <> name <> ", which is no intrinsic")
             end
             ok
@@ -2292,9 +2836,9 @@ export
             when opBuiltin with x then emit(f i1(ops.globalGet builtinClosure(f.g x.name)))
             when opCallExternal with x then
                 if strutil.startsWith(x.symbol "wasm.") then intrinsic(f x target)
-                else fail("an external function (step 9)")
+                else externalCall(f x.symbol x.args x.descriptors target)
                 end
-            when opExternal then fail("an external value (step 9)")
+            when opExternal with x then externalValue(f x.symbol)
             when opMakeException with x then
                 emit(f model.i32Const(0))
                 literal(f x.name)
@@ -2813,19 +3357,35 @@ export
                     at := at + 1
                 end
             end
-            body(f fn.body)
-            emit(f i(ops.unreachable))
+            (* A module's function that uses what the backend cannot yet
+             * compile fails when it is called, not when its unit is
+             * compiled, so that the rest of the unit, a library's above all,
+             * runs (step 9); a program's, and the runtime's, fail here *)
+            let lenient = not(g.unit.isProgram) andif not(g.isRuntime)
+            let compiled = try
+                    begin
+                        body(f fn.body)
+                        emit(f i(ops.unreachable))
+                        f
+                    end
+                when unsupported with m then
+                    if not(lenient) then raise unsupported with m end end
+                    let pf = newF(g names sig.results fn.id)
+                    pending(pf fn.v.hint <> ": " <> m)
+                    pf
+                end
             let at = maybe.unwrap(:Int hashMap.get(:Int :Int g.functions fn.id)) - model.importedFunctions(g.m)
             let given = vector.get(:model.Function g.m.functions at)
             vector.set(:model.Function g.m.functions at tuple
-                let name = given.name let type = given.type let params = names let locals = f.declared let body = f.code
+                let name = given.name let type = given.type let params = names let locals = compiled.declared
+                let body = compiled.code
             end)
         end
 
     (* Whether an import is another unit, compiled to a module of its own,
      * rather than the library, whose members the runtime has until the
      * library is compiled *)
-    let isUnitImport(i: ir.Import): Bool = maybe.isNone(:String i.libPath)
+    let isUnitImport(runtimeUnit: Bool i: ir.Import): Bool = not(runtimeUnit andif maybe.isSome(:String i.libPath))
 
     (* A representation converted to another at an exported function's
      * boundary (section 5.1): an Int or a Bool boxed or unboxed, as an
@@ -2873,7 +3433,7 @@ export
             let records = hashMap.new(:String :Int stringOp.equal hash.string)
             for k = 0 upto extent unit.imports - 1 do
                 let i = unit.imports[k]
-                if isUnitImport(i) andif not(hashMap.contains(:String :Int records i.canonicalPath)) then
+                if isUnitImport(isRuntimeUnit(moduleName) i) andif not(hashMap.contains(:String :Int records i.canonicalPath)) then
                     hashMap.insert(:String :Int records i.canonicalPath model.importedGlobals(m))
                     for j = 0 upto 1 do
                         vector.append(:model.Import m.imports tuple
@@ -2920,6 +3480,7 @@ export
                 let importRecords = records
                 let runtimeUnits = hashMap.new(:String :Int stringOp.equal hash.string)
                 let descGlobals = hashMap.new(:String :Int stringOp.equal hash.string)
+                let isRuntime = isRuntimeUnit(moduleName)
             end
             (* Each function, and the types of what its closures capture: an
              * adapter's (ir/thunks), whose environment is the closure it
@@ -2982,7 +3543,7 @@ export
                 end
             for k = 0 upto extent unit.imports - 1 do
                 let i = unit.imports[k]
-                if isUnitImport(i) andif not(hashMap.contains(:String :Int g.importInits i.canonicalPath)) then
+                if isUnitImport(g.isRuntime i) andif not(hashMap.contains(:String :Int g.importInits i.canonicalPath)) then
                     hashMap.insert(:String :Int g.importInits i.canonicalPath
                         importFunction(i.canonicalPath "init" funcType(g noTypes noTypes)))
                 end
@@ -3033,7 +3594,10 @@ export
                                     when refImport with imp then
                                         let key = imp.i.canonicalPath <> "." <> maybe.unwrapOr(:String member "")
                                         let known = hashMap.contains(:String :Int g.importFunctions key)
-                                        if isUnitImport(imp.i) andif not(known)
+                                        let fast = maybe.isSome(:String imp.i.libPath) andif
+                                            maybe.isSome(:String externalSymbol(maybe.unwrap(:String imp.i.libPath)
+                                                maybe.unwrapOr(:String member "")))
+                                        if isUnitImport(g.isRuntime imp.i) andif not(known) andif not(fast)
                                             andif maybe.isSome(:ir.Type calleeType) then
                                             let sig = closureSig(maybe.unwrap(:ir.Type calleeType))
                                             hashMap.insert(:String :Int g.importFunctions key
@@ -3043,13 +3607,48 @@ export
                                     else ok
                                 end
                             end
+                        let coreFunction = fun(symbol: String): Ok
+                            if not(g.isRuntime) andif maybe.isSome(:Array(String) coreExternal(symbol)) then
+                                let e = maybe.unwrap(:Array(String) coreExternal(symbol))
+                                if not(hashMap.contains(:String :Int g.runtimeUnits "wasm/core." <> e[1])) then
+                                    runtimeImport("wasm/core" e[1] repTypes(e[2]) repTypes(e[3]))
+                                end
+                            end
                         case maybe.unwrap(:ir.Op op)
-                            when opCall with c then register(c.callee c.moduleRef c.member c.calleeType)
+                            when opCall with c then
+                                register(c.callee c.moduleRef c.member c.calleeType)
+                                if maybe.isNone(:ir.Variable c.callee) andif maybe.isSome(:ir.ModuleRef c.moduleRef) then
+                                    case maybe.unwrap(:ir.ModuleRef c.moduleRef)
+                                        when refImport with imp then
+                                            if maybe.isSome(:String imp.i.libPath) then
+                                                let sym = externalSymbol(maybe.unwrap(:String imp.i.libPath)
+                                                    maybe.unwrapOr(:String c.member ""))
+                                                if maybe.isSome(:String sym) then coreFunction(maybe.unwrap(:String sym)) end
+                                            end
+                                        else ok
+                                    end
+                                end
+                            when opCallExternal with c then coreFunction(c.symbol)
                             when opTypeApp with c then register(c.callee c.moduleRef c.member c.calleeType)
                             else ok
                         end
                     end
                 end
+            end
+            (* The core initialized before any of its functions is called *)
+            let usesCore = fun(): Bool
+                begin
+                    let var any = false
+                    for k = 0 upto extent coreExternals - 1 do
+                        if hashMap.contains(:String :Int g.runtimeUnits "wasm/core." <> coreExternals[k][1]) then
+                            any := true
+                        end
+                    end
+                    any
+                end
+            if usesCore() andif not(hashMap.contains(:String :Int g.runtimeUnits "wasm/core.init")) then
+                hashMap.insert(:String :Int g.runtimeUnits "wasm/core.init"
+                    importFunction("wasm/core" "init" funcType(g noTypes noTypes)))
             end
             (* Each function's index and type, before any is compiled, so that
              * a call, a tail call above all, knows its callee's signature
@@ -3094,15 +3693,19 @@ export
                 fill(df descIndex "descriptors" placeholder)
             end
             let initRuntime = fun(f: F): Ok
-                if described then
-                    emit(f i1(ops.call hashMap.find(:String :Int g.runtimeUnits "wasm/core.init")))
-                    emit(f i1(ops.call hashMap.find(:String :Int g.runtimeUnits "wasm/print.init")))
-                    emit(f i1(ops.call descIndex))
+                begin
+                    if hashMap.contains(:String :Int g.runtimeUnits "wasm/core.init") then
+                        emit(f i1(ops.call hashMap.find(:String :Int g.runtimeUnits "wasm/core.init")))
+                    end
+                    if described then
+                        emit(f i1(ops.call hashMap.find(:String :Int g.runtimeUnits "wasm/print.init")))
+                        emit(f i1(ops.call descIndex))
+                    end
                 end
             (* Each unit imported initialized, in the order of the imports *)
             let initImports = fun(f: F): Ok
                 for k = 0 upto extent unit.imports - 1 do
-                    if isUnitImport(unit.imports[k]) then
+                    if isUnitImport(g.isRuntime unit.imports[k]) then
                         emit(f i1(ops.call hashMap.find(:String :Int g.importInits unit.imports[k].canonicalPath)))
                     end
                 end
