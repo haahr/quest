@@ -1,0 +1,184 @@
+import word = "word" : Word
+import conv = "conv" : Conv
+import writer = "writer" : Writer
+import system = "system" : System
+main {
+  funs {
+    fun put(s: String): Ok {
+      let %1: writer.T = member writer.output @15:43
+      let %2: Ok = call writer.putString(%1, s) @15:26
+      return %2
+    }
+  }
+  funs {
+    fun bit2(x: Int): Int {
+      let %3: word.T = call word.fromInt(x) @16:49
+      let %4: word.T = call word.fromInt(4) @16:65
+      let %5: word.T = call word.andBits(%3, %4) @16:36
+      let %6: Int = call word.toInt(%5) @16:25
+      return %6
+    }
+  }
+  funs {
+    fun sign(x.1: Int): Int {
+      let %7: word.T = call word.fromInt(x.1) @17:49
+      let %8: Int = prim -(-9223372036854775807, 1) @17:78
+      let %9: word.T = call word.fromInt(%8) @17:65
+      let %10: word.T = call word.andBits(%7, %9) @17:36
+      let %11: Int = call word.toInt(%10) @17:25
+      return %11
+    }
+  }
+  funs {
+    fun greater(x.2: Int): Ok {
+      let %12: Int = call bit2(x.2) @19:30
+      let %13: Bool = prim >(%12, 0) @19:30
+      if %13 { @19:27
+        do call put("1") @19:47
+      } else {
+        do call put("0") @19:61
+      }
+      return ok
+    }
+  }
+  funs {
+    fun less(x.3: Int): Ok {
+      let %14: Int = call bit2(x.3) @20:27
+      let %15: Bool = prim <(%14, 0) @20:27
+      if %15 { @20:24
+        do call put("1") @20:44
+      } else {
+        do call put("0") @20:58
+      }
+      return ok
+    }
+  }
+  funs {
+    fun atLeast(x.4: Int): Ok {
+      let %16: Int = call bit2(x.4) @21:30
+      let %17: Bool = prim >=(%16, 0) @21:30
+      if %17 { @21:27
+        do call put("1") @21:48
+      } else {
+        do call put("0") @21:62
+      }
+      return ok
+    }
+  }
+  funs {
+    fun atMost(x.5: Int): Ok {
+      let %18: Int = call bit2(x.5) @22:29
+      let %19: Bool = prim <=(%18, 0) @22:29
+      if %19 { @22:26
+        do call put("1") @22:47
+      } else {
+        do call put("0") @22:61
+      }
+      return ok
+    }
+  }
+  funs {
+    fun equal(x.6: Int): Ok {
+      let %20: Int = call bit2(x.6) @23:28
+      let %21: Bool = prim is(%20, 0) @23:28
+      if %21 { @23:25
+        do call put("1") @23:46
+      } else {
+        do call put("0") @23:60
+      }
+      return ok
+    }
+  }
+  funs {
+    fun unequal(x.7: Int): Ok {
+      let %22: Int = call bit2(x.7) @24:30
+      let %23: Bool = prim isnot(%22, 0) @24:30
+      if %23 { @24:27
+        do call put("1") @24:51
+      } else {
+        do call put("0") @24:65
+      }
+      return ok
+    }
+  }
+  funs {
+    fun signLess(x.8: Int): Ok {
+      let %24: Int = call sign(x.8) @25:31
+      let %25: Bool = prim <(%24, 0) @25:31
+      if %25 { @25:28
+        do call put("1") @25:48
+      } else {
+        do call put("0") @25:62
+      }
+      return ok
+    }
+  }
+  funs {
+    fun signAtLeast(x.9: Int): Ok {
+      let %26: Int = call sign(x.9) @26:34
+      let %27: Bool = prim >=(%26, 0) @26:34
+      if %27 { @26:31
+        do call put("1") @26:52
+      } else {
+        do call put("0") @26:66
+      }
+      return ok
+    }
+  }
+  funs {
+    fun signGreater(x.10: Int): Ok {
+      let %28: Int = call sign(x.10) @27:34
+      let %29: Bool = prim >(%28, 0) @27:34
+      if %29 { @27:31
+        do call put("1") @27:51
+      } else {
+        do call put("0") @27:65
+      }
+      return ok
+    }
+  }
+  funs {
+    fun row(x.11: Int): Ok {
+      let %30: String = call conv.int(x.11) @32:13
+      let %31: String = prim <>(%30, ": ") @32:13
+      do call put(%31) @32:9
+      do call greater(x.11) @33:9
+      do call less(x.11) @33:20
+      do call atLeast(x.11) @33:28
+      do call atMost(x.11) @33:39
+      do call equal(x.11) @33:49
+      do call unequal(x.11) @33:58
+      do call put(" ") @34:9
+      do call signLess(x.11) @35:9
+      do call signAtLeast(x.11) @35:21
+      do call signGreater(x.11) @35:36
+      let %32: Ok = call put("\n") @36:9
+      return %32
+    }
+  }
+  let %33: Array(String) = member system.args @39:19
+  let base: Int = prim extent(%33) @39:12
+  var i: Int = 0 @40:1
+  let %34: Bool = prim <=(i, 9) @40:1
+  if %34 { @40:1
+    loop L1 {
+      let i.1: Int = i @40:1
+      let %35: Int = prim *(2, i.1) @40:27
+      let %36: Int = prim +(%35, base) @40:27
+      let %37: Int = prim -(%36, 2) @40:27
+      do call row(%37) @40:21
+      let %38: Bool = prim is(i, 9) @40:1
+      if %38 { @40:1
+        break L1 @40:1
+      }
+      let %39: Int = prim +(i, 1) @40:1
+      i := %39 @40:1
+    }
+  }
+  let %40: Int = prim -(0, base) @41:6
+  let %41: Int = prim -(%40, 4) @41:6
+  do call row(%41) @41:1
+  let %42: Int = prim +(-9223372036854775807, base) @42:5
+  do call row(%42) @42:1
+}
+

@@ -1,0 +1,42 @@
+(* Standard library: branches on one bit of a word compared with 0
+ *
+ * A branch on a single-bit and compared with 0 for equality is one test of
+ * the bit (tbz or tbnz on arm64), without the and; compared any other way
+ * (> 0, < 0, >= 0, <= 0), it compares the and's value, which must be
+ * computed. Bit 2 and bit 63, the sign bit, of values the compiler cannot
+ * fold, each way. Each arm writes, so that the branches stay branches rather
+ * than becoming selects. *)
+
+import word: Word;
+import conv: Conv;
+import writer: Writer;
+import system: System;
+
+let put(s: String): Ok = writer.putString(writer.output s);
+let bit2(x: Int): Int = word.toInt(word.andBits(word.fromInt(x) word.fromInt(4)));
+let sign(x: Int): Int = word.toInt(word.andBits(word.fromInt(x) word.fromInt(~9223372036854775807 - 1)));
+
+let greater(x: Int): Ok = if bit2(x) > 0 then put("1") else put("0") end;
+let less(x: Int): Ok = if bit2(x) < 0 then put("1") else put("0") end;
+let atLeast(x: Int): Ok = if bit2(x) >= 0 then put("1") else put("0") end;
+let atMost(x: Int): Ok = if bit2(x) <= 0 then put("1") else put("0") end;
+let equal(x: Int): Ok = if bit2(x) is 0 then put("1") else put("0") end;
+let unequal(x: Int): Ok = if bit2(x) isnot 0 then put("1") else put("0") end;
+let signLess(x: Int): Ok = if sign(x) < 0 then put("1") else put("0") end;
+let signAtLeast(x: Int): Ok = if sign(x) >= 0 then put("1") else put("0") end;
+let signGreater(x: Int): Ok = if sign(x) > 0 then put("1") else put("0") end;
+
+(* Each way for x: six digits for bit 2, then three for the sign bit *)
+let row(x: Int): Ok =
+    begin
+        put(conv.int(x) <> ": ")
+        greater(x) less(x) atLeast(x) atMost(x) equal(x) unequal(x)
+        put(" ")
+        signLess(x) signAtLeast(x) signGreater(x)
+        put("\n")
+    end;
+
+let base = extent system.args;
+for i = 0 upto 9 do row({{2 * i} + base} - 2) end;
+row({0 - base} - 4);
+row(~9223372036854775807 + base)

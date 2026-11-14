@@ -956,9 +956,15 @@ export
                         if maybe.isSome(:ssa.Inst defs[c]) andif isComparison(maybe.unwrap(:ssa.Inst defs[c]).op)
                                 andif here(c) then
                             fused[c] := true
-                            (* A bit compared with 0 *)
+                            (* A bit compared with 0 for equality, which the
+                             * branch tests with tbz or tbnz without the and.
+                             * Another comparison (> 0, say) compares the
+                             * and's value, so the and stays *)
                             let i = maybe.unwrap(:ssa.Inst defs[c])
-                            if {extent i.args > 1} andif maybe.isSome(:Bit bitOf(defs i.args[0])) andif here(i.args[0])
+                            let equality = ssa.isOp(i ssa.opEq) orif ssa.isOp(i ssa.opPeq) orif ssa.isOp(i ssa.opNe)
+                                orif ssa.isOp(i ssa.opPne)
+                            if equality andif {extent i.args > 1} andif maybe.isSome(:Bit bitOf(defs i.args[0]))
+                                    andif here(i.args[0])
                                     andif maybe.isSome(:ssa.Inst defs[i.args[1]])
                                     andif ssa.isOp(maybe.unwrap(:ssa.Inst defs[i.args[1]]) ssa.opConst)
                                     andif {maybe.unwrap(:ssa.Inst defs[i.args[1]]).imm is 0} then
