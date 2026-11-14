@@ -448,9 +448,11 @@ The two runtimes must agree to the byte on what programs print, which the shared
 functions, so a runtime module that imported a library unit would be imported by it in turn: `collections/hashmap`
 imports `util/hash`, whose `identityHash` is the runtime's.
 
-- **The core** imports no unit. It holds the exception tag, the built-in exceptions, the intrinsics' functions,
-  `is`, the identity hash, descriptors and their instantiation, run-time subtyping, conversion, proxies, view maps,
-  and the map of record tables. Its memo tables are written out over arrays, as the C runtime's are, not taken from
+- **The base**, beneath both, is not Quest: the module `questlang/wasm/runtime` builds from the model (steps 3 to 6).
+  It holds what Quest cannot say: the memory and the host's imports (§4.4), the exception tag and the built-in
+  exceptions, `Int`'s boxing, and copying bytes to and from strings. It shrinks to that as the core grows (§4.5).
+- **The core** imports no unit but the intrinsics (§4.5). It holds `is`, the identity hash, descriptors and their
+  instantiation, run-time subtyping, conversion, proxies, view maps, and the map of record tables. Its memo tables are written out over arrays, as the C runtime's are, not taken from
   `collections/`. Every external of `lib/` maps to an instruction sequence, a host call, or a function of the core.
   **Its code is monomorphic:** it defines descriptors and their instantiation, so it can use no type parameter
   whose descriptor would have to be instantiated to run it, and no `auto`, `inspect`, or `dynamic`. It is a
@@ -469,6 +471,82 @@ answers that there is no such symbol, as it does natively for a name the binary 
 `questlang/driver/interrupts` calls it at its top level, `driver/repl` imports that unit, and initialization runs
 every imported unit's top level, so a `code.symbol` that raised would end the driver before it began. Step 1
 lists every external the driver calls at a top level.
+
+### 4.5. The Intrinsics
+
+*Written 2026-11-13, after steps 6's exceptions and 9's units, for review before the core is built on it.*
+
+The core (§4.2) is Quest that must reach what no Quest type exposes: a value's kind, an object's slots and hash, a
+string's bytes. It does so through one unsound interface, `wasm/intrinsics`, whose members the backend compiles at
+each call. The core is written against it, and so are descriptors, printing, and later the library's externals.
+Changing it later means changing all of them.
+
+**An interface with no module.**
+- `wasm/intrinsics` is `runtime/wasm/intrinsics.int.quest`, an unsound interface ([modules.md](modules.md) §4.4).
+  Only an unsound module may import it.
+- No module implements it. The build knows it by its canonical name and links nothing for it, as the backend
+  already treats `lib/`'s members it compiles itself (step 3).
+- The backend compiles each call of one of its functions to an instruction sequence, or to a call of the base, at
+  the call site. A call costs what the instructions do.
+- Nothing native compiles it. It and the core are the wasm backend's alone, as `runtime/*.c` is the native
+  backends'.
+
+**Its types are the engine's references.**
+- They are abstract types with no bound, and the backend holds any such type as an `eqref` (§3.2). So declaring
+  them is all they need:
+  - `Any`, every value as a slot holds it;
+  - `Slots`, `$slots`;
+  - `Bytes`, `$bytes`.
+- A value crosses into and out of `Any` by two intrinsics, `toAny(A::TYPE x: A): Any` and
+  `fromAny(A::TYPE x: Any): A`.
+- The backend compiles each as §2.2's box or unbox **for the type argument at the call**, which the core always
+  writes out. So no descriptor is needed: the core stays monomorphic, as §4.2 requires. A call whose type argument
+  is a type parameter is a compile-time error in an unsound module, since only the core uses them.
+
+**The first set** is what the core's first part needs (step 6). Each is one to four instructions:
+
+| Group | Intrinsics |
+|---|---|
+| identity | `same(a b: Any): Bool` (`ref.eq`), `hashOf(x: Any): Int` and `setHash(x: Any h: Int): Ok` (an `$obj`'s field) |
+| kinds | `isSmall`, `isBoxedInt`, `isTuple`, `isOption`, `isString`, `isArray`, `isRecord`, `isClosure`, `isException` (each `x: Any`, a `ref.test`) |
+| small values | `smallValue(x: Any): Int` (`i31.get_s`), `small(n: Int): Any` (`ref.i31`, for a known range) |
+| slots | `slotsOf(x: Any): Slots` (a tuple's, option's, array's, or payload's), `slotCount(s: Slots): Int`, `slot(s: Slots i: Int): Any`, `setSlot(s: Slots i: Int v: Any): Ok`, `newSlots(n: Int): Slots` |
+| aggregates | `optionTag(x: Any): Int`, `newTuple(s: Slots): Any`, `newOption(tag: Int s: Slots): Any`, `newArray(s: Slots): Any` |
+| records | `payloadOf(r: Any): Any` and `dictOf(r: Any): Any` (a `$recBox`'s), `dictSlot(d: Any i: Int): Int`, `layoutOf(p: Any): Any` |
+| strings | `bytesOf(s: String): Bytes`, `byteCount(b: Bytes): Int`, `byte(b: Bytes i: Int): Int`, `setByte(b: Bytes i: Int v: Int): Ok`, `newString(n: Int): String` |
+| exceptions | `exceptionName(e: Any): String` |
+
+The core reaches the host and the built-in exceptions through the library's own members, `writer` and `int.error`,
+which the backend compiles to the base whether a sound module or the core calls them.
+
+**Descriptors are Quest values.** A descriptor (`QTypeDescriptor`'s counterpart) is a value of a type the core
+defines, a record of tuples and arrays, and not a type in R.
+- R lists "the descriptors" (§2.11) because code would tell them apart by a cast; nothing does. Only the core makes
+  and reads them, and a record's payload holds its own as an `Any` (`$record`'s layout field).
+- A recursive type's descriptor is cyclic, so its fields that point at descriptors are `var`, and the core fills
+  them in after making the descriptors.
+- A unit's initializer makes its static descriptors (`StaticData`) by calling the core's constructors: in functions
+  of bounded size, within §2.11's limits, and before its top level runs.
+
+**How compiled code reaches the core.**
+- The core is a unit, `wasm/core`, imported by every unit the backend compiles, and preloaded after the base and
+  before the library.
+- Echo, a raise's payload, `is` at a type parameter, instantiation, and conversion become calls of its functions by
+  name, as calls of any unit are (§5.1).
+- The driver builds the core's units from `runtime/wasm/` with `--backend wasm` into the build directory, once, as
+  it builds the library's. A release will carry them built.
+
+**What it leaves for later.**
+- Calling a closure held as an `Any`, by its uniform entry, which proxies' and adapters' conversions need
+  (milestone 4).
+- Reals' bits, which §4.3's formatting needs: `bits(r: Real): Int` and its inverse join with step 8's connection.
+- More of either kind, added as the core needs them, each documented in the interface with its instructions.
+
+**What the review should settle:**
+1. **Descriptors as Quest values** rather than R types, which drops them from the ABI's type group.
+2. **The base kept** as a hand-built module beneath the core, rather than every non-Quest operation becoming an
+   intrinsic.
+3. **`toAny` and `fromAny` at the static type argument** as the only polymorphism the core uses.
 
 ### 4.3. `Real` (decision 5)
 
