@@ -94,6 +94,11 @@ export
                 r.failure := ""
                 let results = repl.evaluate(r text sm bag)
                 if maybe.isSome(:Array(String) results) then
+                    (* An input that ran may have warnings, on standard error
+                     * as the REPL writes them *)
+                    writer.flush(writer.output)
+                    diagbag.renderAll(bag sm writer.err)
+                    writer.flush(writer.err)
                     let shown = maybe.unwrap(:Array(String) results)
                     for i = 0 upto {extent shown - 1} do
                         if stringOp.length(shown[i]) > 0 then
@@ -309,17 +314,58 @@ export
             end
         end
 
+    (* Answers a request, a line read from descriptor 3, writing its records
+     * to w *)
+    let serve(r: repl.T w: writer.T line: String): Ok =
+        if stringOp.length(strutil.strip(line)) > 0 then
+            let request = try maybe.some(:json.Value json.parse(line)) when json.error then maybe.none(:json.Value) end
+            let o = if maybe.isSome(:json.Value request) then
+                case maybe.unwrap(:json.Value request)
+                    when jObject with x then maybe.some(:json.Object x.o)
+                    else maybe.none(:json.Object)
+                end
+            else
+                maybe.none(:json.Object)
+            end
+            let has = fun(name: String): Bool
+                maybe.isSome(:json.Object o) andif maybe.isSome(:String member(maybe.unwrap(:json.Object o) name))
+            let text = fun(name: String): String maybe.unwrap(:String member(maybe.unwrap(:json.Object o) name))
+            if has("execute") then
+                (* One that arrived between cells is not this cell's *)
+                interrupts.clear()
+                execute(r w text("execute"))
+            elsif has("complete") then
+                complete(r w text("complete") cursorOf(maybe.unwrap(:json.Object o) text("complete")))
+                writeRecord(w array of "done" end array of json.string("ok") end)
+            elsif has("inspect") then
+                inspectName(r w text("inspect") cursorOf(maybe.unwrap(:json.Object o) text("inspect")))
+                writeRecord(w array of "done" end array of json.string("ok") end)
+            elsif has("isComplete") then
+                let status = if repl.incomplete(text("isComplete")) then "incomplete" else "complete" end
+                writeRecord(w array of "status" end array of json.string(status) end)
+                writeRecord(w array of "done" end array of json.string("ok") end)
+            else
+                writeRecord(w array of "error" "message" "rendered" end array of json.string("protocol")
+                    json.string("not a request: " <> line) json.string("not a request: " <> line <> "\n") end)
+                writeRecord(w array of "done" end array of json.string("error") end)
+            end
+        end
+
+    (* Says that descriptor 3 or 4 is not open, and exits *)
+    let closed(what: String): Ok =
+        begin
+            writer.putString(writer.err "quest: error: --kernel " <> what <> ", which is not open\n")
+            system.sysexit(2)
+        end
+
+    let records(): writer.T =
+        try writer.file("/dev/fd/4") when writer.error then closed("writes records to descriptor 4") writer.output end
+
     let runKernel(r: repl.T): Int =
         begin
-            let closed = fun(what: String): Ok
-                begin
-                    writer.putString(writer.err "quest: error: --kernel " <> what <> ", which is not open\n")
-                    system.sysexit(2)
-                end
             let requests = try reader.file("/dev/fd/3")
                 when reader.error then closed("reads requests from descriptor 3") reader.input end
-            let w = try writer.file("/dev/fd/4")
-                when writer.error then closed("writes records to descriptor 4") writer.output end
+            let w = records()
             (* An interrupt raises `interrupted` in the cell running, in code
              * the JIT compiles from now on and in the interpreter *)
             if interrupts.install() then
@@ -329,47 +375,38 @@ export
             let var reading = true
             while reading do
                 let line = readRequest(requests)
-                if maybe.isNone(:String line) then
-                    reading := false
-                elsif stringOp.length(strutil.strip(maybe.unwrap(:String line))) > 0 then
-                    let request = try maybe.some(:json.Value json.parse(maybe.unwrap(:String line)))
-                        when json.error then maybe.none(:json.Value) end
-                    let o = if maybe.isSome(:json.Value request) then
-                        case maybe.unwrap(:json.Value request)
-                            when jObject with x then maybe.some(:json.Object x.o)
-                            else maybe.none(:json.Object)
-                        end
-                    else
-                        maybe.none(:json.Object)
-                    end
-                    let has = fun(name: String): Bool
-                        maybe.isSome(:json.Object o)
-                            andif maybe.isSome(:String member(maybe.unwrap(:json.Object o) name))
-                    let text = fun(name: String): String maybe.unwrap(:String member(maybe.unwrap(:json.Object o) name))
-                    if has("execute") then
-                        (* One that arrived between cells is not this cell's *)
-                        interrupts.clear()
-                        execute(r w text("execute"))
-                    elsif has("complete") then
-                        complete(r w text("complete") cursorOf(maybe.unwrap(:json.Object o) text("complete")))
-                        writeRecord(w array of "done" end array of json.string("ok") end)
-                    elsif has("inspect") then
-                        inspectName(r w text("inspect") cursorOf(maybe.unwrap(:json.Object o) text("inspect")))
-                        writeRecord(w array of "done" end array of json.string("ok") end)
-                    elsif has("isComplete") then
-                        let status = if repl.incomplete(text("isComplete")) then "incomplete" else "complete" end
-                        writeRecord(w array of "status" end array of json.string(status) end)
-                        writeRecord(w array of "done" end array of json.string("ok") end)
-                    else
-                        writeRecord(w array of "error" "message" "rendered" end array of json.string("protocol")
-                            json.string("not a request: " <> maybe.unwrap(:String line))
-                            json.string("not a request: " <> maybe.unwrap(:String line) <> "\n") end)
-                        writeRecord(w array of "done" end array of json.string("error") end)
-                    end
-                end
+                if maybe.isNone(:String line) then reading := false else serve(r w maybe.unwrap(:String line)) end
             end
             writer.flush(writer.output)
             writer.flush(writer.err)
             0
+        end
+
+    (* The session a host's calls of request serve, once serving holds it *)
+    let held = vector.new(:Tuple r: repl.T w: writer.T end)
+
+    let serving(r: repl.T): Bool =
+        if stringOp.length(system.getEnv("QUEST_HOST_SESSION")) > 0 then
+            vector.append(:Tuple r: repl.T w: writer.T end held tuple let r = r let w = records() end)
+            true
+        else
+            false
+        end
+
+    let request(): Int =
+        if vector.length(:Tuple r: repl.T w: writer.T end held) is 0 then
+            0
+        else
+            let session = vector.get(:Tuple r: repl.T w: writer.T end held 0)
+            let requests = try reader.file("/dev/fd/3")
+                when reader.error then closed("reads requests from descriptor 3") reader.input end
+            let line = readRequest(requests)
+            reader.close(requests)
+            if maybe.isNone(:String line) then
+                0
+            else
+                serve(session.r session.w maybe.unwrap(:String line))
+                1
+            end
         end
 end

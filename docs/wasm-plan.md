@@ -22,8 +22,8 @@ the four disagree, this plan holds.
 
 §1 lists the decisions and whose they are. §2 to §6 are the design. §7 is what is given up. §8 has the steps, and
 §9 the results of step 0's probes (2026-11-13), on which the owner confirmed decisions 1 and 2, and §10 step 1's
-census of what the compiler uses. Milestone 1 is reached (2026-11-14); milestone 2's steps are drafted and
-await the owner's review.
+census of what the compiler uses. Milestone 1 is reached (2026-11-14); in milestone 2, step 11 is done and step
+12, the page, is next.
 
 ---
 
@@ -777,7 +777,9 @@ change neither (Opus's §3.2).
   the session (§6.3) on ordinary inputs, which is not acceptable; the remedies are fewer locals, the page's thread
   (twice the stack), and loops for the compiler's deepest recursions.
 - **The interpreter does not,** at its own limit of 1,000 calls: natively about 6 KB of stack for an interpreted
-  call whose body nests calls (Opus), so some 80 to 250 calls in a worker.
+  call whose body nests calls (Opus), so some 80 to 250 calls in a worker. Measured in step 11, with locals
+  reused: 753 calls of a simple body and 175 of a nested one in a worker's 512 KB, so a session sets the limit to
+  150.
 - **Compiled code does:** about 100 bytes for a small function's call in baseline code and about 30 when
   optimized, and about 8 bytes more for each live local in either (Opus's author, in V8: 580 bytes with 64 live
   locals, 2.1 KB with 256).
@@ -1133,8 +1135,8 @@ only when the backend's files differ, until its time is known.
 ### 8.2. Milestone 2: The Interpreter in a Page
 
 A checkpoint (decision 4): the driver of milestone 1, unchanged but for its entry, runs in a page's worker and
-interprets each input, with whatever depth the stack gives. Its steps, drafted 2026-11-14 on milestone 1's results,
-await the owner's review.
+interprets each input, with whatever depth the stack gives. Its steps were drafted 2026-11-14 on milestone 1's
+results, and the owner had step 11 built as drafted, with the interpreter's limit below a worker's stack.
 
 **Choices this draft makes,** each the owner's to confirm or change (§8.2.1 says why):
 
@@ -1187,6 +1189,45 @@ await the owner's review.
     pending list names with reasons; a session survives an overflow and an interrupt with its bindings; and the
     interpreter's depth in node at a worker's stack, with `--liftoff-only` and without, is recorded in §6.2 beside
     the native estimate (80 to 250 calls), with the limit chosen from it.
+
+    *Done 2026-11-14:*
+    - **The entry.** `questlang/driver/kernel` has `serve`, which answers one request (the body of `runKernel`'s
+      loop), and, for a host, `serving` and `request`. With `QUEST_HOST_SESSION` set, the driver under `--kernel`
+      or `-i` (after the file `-i` runs) holds its session and returns from `_start`; the host then calls the
+      kernel unit's exported `request` for each request, whose line it queues for the read of `/dev/fd/3` that
+      `request` makes. No `wasm/session` unit was needed: a unit's exported function takes its closure first, and
+      the runtime module now exports `noClosure`, a closure that captures nothing, for a host to pass.
+    - **The host:** `runtime/wasm/host.mjs`, WASI over mounts (node's files; a tree in memory, read only or not),
+      with `/dev/fd/3` and `/dev/fd/4` as the request and record streams. `runtime/wasm/session.mjs` instantiates
+      the driver over it, keeps the committed inputs, and replays them, their output suppressed, after an
+      engine's stack overflow or a trap. `runtime/wasm/session-node.mjs` runs that in a worker, speaks the
+      kernel's protocol on its own descriptors 3 and 4 (a SIGINT ends the worker and replays in a new one, the
+      input's error `interrupted`), or reads lines as the REPL does. `run.mjs` keeps `node:wasi` for programs.
+    - **The stack:** a node worker keeps 192 KB of its stack from V8, so `session-node.mjs` asks for 192 KB more
+      than the 512 KB it means. At first the interpreter reached 40 calls there: `treewalk`'s `evalExpr` had
+      1,211 locals, each a slot in a baseline frame. The locals' reuse §2.11 asked for was not built in milestone
+      1; it is now `questlang/wasm/locals`, run on every module the backend makes: each local gets a slot of its
+      type that no local live at the same time holds, liveness taken in the code's order and widened over loops.
+      `evalExpr` has 29 locals. Self-compilation is still byte-identical (199 modules) and takes the same time.
+    - **The interpreter's depth** in a worker's 512 KB, after the reuse: 753 calls of a function whose body is one
+      `if`, and 175 of one whose body nests a `let`, a tuple, a loop, and an `if` around the call; 1,571 of the
+      first in 1 MB; the same with `--liftoff-only`, since a first deep recursion runs in baseline code anyway.
+      Natively the estimate was 80 to 250.
+    - **The limit:** `QUEST_CALL_LIMIT` sets the interpreter's (`questlang/interpreter/primitives`), 1,000 when
+      unset; a session sets 150, below both shapes, so a deep recursion is an ordinary `stack.overflow`, rolled
+      back without a replay. A call whose body nests more still overflows the engine, and replays.
+    - **The core's count:** `wasm/core.updating()`, its updates of the descriptors' memo in progress, which
+      `Session.updating()` reads; unused until milestone 3.
+    - **Warnings:** the kernel now writes an input's warnings to standard error as the REPL does, so the
+      transcripts that have them agree, and a notebook shows them.
+    - **Tests:** `tests/self-hosted/wasm_session.py` (a unit check of `run_tests.py --self-hosted`) builds the
+      driver for wasm and runs, at a worker's stack: the REPL's 18 transcripts, all but `stack_overflow`, whose
+      frames repeat as many times as the limit allows; the kernel's protocol test, with `--session`, which leaves
+      out `system.run`'s cell and the cell of displays and `readLine`; and an overflow past the interpreter's
+      limit, replayed, with the earlier bindings kept and the failed input's lost.
+    - **Found on the way:** a module's top-level `let` whose value is an `if` fails the IR's check of scopes
+      (`QUEST_CHECK_IR=1`), on every backend: the binding and each one after it are "used outside its scope".
+      `primitives` avoids it with a function; the bug is not fixed here.
 12. **The page.** A worker, the loader, the prompt.
     - **Built** by `tools/wasm-page/build` into a directory: `index.html`; the page's script, which owns the
       prompt, a line editor of its own with history, and the transcript; the worker's script, which runs

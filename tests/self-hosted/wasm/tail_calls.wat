@@ -215,9 +215,6 @@
   (func $count (type 48) (param $closure (ref $clos)) (param $n i64) (param $acc i64) (result i64)
     (local $v i64)
     (local $v.1 i32)
-    (local $step i64)
-    (local $v.2 i32)
-    (local $v.3 i64)
     (local $v.4 i64)
     block $k4.after
       block $k4 (result i64)
@@ -269,26 +266,26 @@
         end
         br $k4.after
       end
-      local.set $step
+      local.set $v
       local.get $n
       i64.const 0
       i64.le_s
-      local.set $v.2
-      local.get $v.2
+      local.set $v.1
+      local.get $v.1
       if
         local.get $acc
         return
       else
         local.get $n
-        local.get $step
+        local.get $v
         i64.sub
-        local.set $v.3
+        local.set $v
         local.get $acc
         i64.const 1
         i64.add
         local.set $v.4
         global.get $noClosure
-        local.get $v.3
+        local.get $v
         local.get $v.4
         return_call $count
       end
@@ -299,33 +296,7 @@
     (local $v i64)
     (local $v.1 eqref)
     (local $v.2 eqref)
-    (local $v.3 eqref)
-    (local $v.4 eqref)
-    (local $v.5 i64)
-    (local $v.6 eqref)
-    (local $v.7 eqref)
-    (local $v.8 eqref)
-    (local $v.9 eqref)
     (local $v.10 i32)
-    (local $v.11 eqref)
-    (local $v.12 eqref)
-    (local $v.13 eqref)
-    (local $v.14 eqref)
-    (local $v.15 i32)
-    (local $v.16 eqref)
-    (local $v.17 eqref)
-    (local $v.18 eqref)
-    (local $v.19 eqref)
-    (local $v.20 i64)
-    (local $v.21 eqref)
-    (local $v.22 eqref)
-    (local $v.23 eqref)
-    (local $v.24 eqref)
-    (local $v.25 i64)
-    (local $v.26 eqref)
-    (local $v.27 eqref)
-    (local $v.28 eqref)
-    (local $v.29 eqref)
     call $writer.init
     call $conv.init
     global.get $sum.static
@@ -355,23 +326,23 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.3
+    local.set $v.1
     local.get $v.2
-    local.get $v.3
+    local.get $v.1
     call $putString
-    local.set $v.4
+    local.set $v.1
     global.get $noClosure
     i64.const 10
     i64.const 0
     call $sum
-    local.set $v.5
-    local.get $v.5
+    local.set $v
+    local.get $v
     call $convInt
-    local.set $v.6
+    local.set $v.1
     i32.const 1
     ref.i31
-    local.set $v.7
-    local.get $v.6
+    local.set $v.2
+    local.get $v.1
     i32.const 0
     i32.const 1
     i32.const 115
@@ -379,11 +350,11 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.8
-    local.get $v.7
-    local.get $v.8
+    local.set $v.1
+    local.get $v.2
+    local.get $v.1
     call $putString
-    local.set $v.9
+    local.set $v.1
     global.get $noClosure
     i64.const 1000001
     call $isEven
@@ -391,11 +362,11 @@
     global.get $noClosure
     local.get $v.10
     call $conv.bool
-    local.set $v.11
+    local.set $v.1
     i32.const 1
     ref.i31
-    local.set $v.12
-    local.get $v.11
+    local.set $v.2
+    local.get $v.1
     i32.const 0
     i32.const 1
     i32.const 116
@@ -403,23 +374,23 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.13
-    local.get $v.12
-    local.get $v.13
+    local.set $v.1
+    local.get $v.2
+    local.get $v.1
     call $putString
-    local.set $v.14
+    local.set $v.1
     global.get $noClosure
     i64.const 7
     call $isOdd
-    local.set $v.15
+    local.set $v.10
     global.get $noClosure
-    local.get $v.15
+    local.get $v.10
     call $conv.bool
-    local.set $v.16
+    local.set $v.1
     i32.const 1
     ref.i31
-    local.set $v.17
-    local.get $v.16
+    local.set $v.2
+    local.get $v.1
     i32.const 0
     i32.const 1
     i32.const 117
@@ -427,23 +398,23 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.18
-    local.get $v.17
-    local.get $v.18
+    local.set $v.1
+    local.get $v.2
+    local.get $v.1
     call $putString
-    local.set $v.19
+    local.set $v.1
     global.get $noClosure
     i64.const 3000000
     i64.const 0
     call $count
-    local.set $v.20
-    local.get $v.20
+    local.set $v
+    local.get $v
     call $convInt
-    local.set $v.21
+    local.set $v.1
     i32.const 1
     ref.i31
-    local.set $v.22
-    local.get $v.21
+    local.set $v.2
+    local.get $v.1
     i32.const 0
     i32.const 1
     i32.const 118
@@ -451,23 +422,23 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.23
-    local.get $v.22
-    local.get $v.23
+    local.set $v.1
+    local.get $v.2
+    local.get $v.1
     call $putString
-    local.set $v.24
+    local.set $v.1
     global.get $noClosure
     i64.const 10
     i64.const 0
     call $count
-    local.set $v.25
-    local.get $v.25
+    local.set $v
+    local.get $v
     call $convInt
-    local.set $v.26
+    local.set $v.1
     i32.const 1
     ref.i31
-    local.set $v.27
-    local.get $v.26
+    local.set $v.2
+    local.get $v.1
     i32.const 0
     i32.const 1
     i32.const 119
@@ -475,11 +446,11 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.28
-    local.get $v.27
-    local.get $v.28
+    local.set $v.1
+    local.get $v.2
+    local.get $v.1
     call $putString
-    local.set $v.29
+    local.set $v.1
   )
   (func $_start (type 45)
     (local $t (ref null $raised))

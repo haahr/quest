@@ -880,7 +880,11 @@ let interactive(e: env.T f: model.Frame bag: diagbag.T sm: location.SourceMap): 
         diagbag.renderAll(bag sm writer.err)
         writer.flush(writer.err)
         let r = repl.new(e f)
-        system.sysexit(if options.kernel then kernel.runKernel(r) else repl.run(r) end)
+        (* A host's session (with --kernel or -i) returns to the host, which
+         * calls kernel.request *)
+        if not(kernel.serving(r)) then
+            system.sysexit(if options.kernel then kernel.runKernel(r) else repl.run(r) end)
+        end
     end;
 
 (* Runs a program with the JIT (docs/jit.md), as one input, which prints its

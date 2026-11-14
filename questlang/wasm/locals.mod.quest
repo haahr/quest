@@ -1,0 +1,159 @@
+(* Quest Self-Hosted Compiler: The WebAssembly Locals' Reuse Implementation *)
+
+module locals : Locals
+import
+    questlang/wasm/model : questlang/wasm/Model
+    collections/vector : collections/Vector
+    collections/hashMap : collections/HashMap
+    util/hash : util/Hash
+    conv : Conv
+    stringOp = string : StringOp
+export
+    Let Inst = model.Inst
+
+    (* A key that two value types share exactly when they are the same type *)
+    let heapKey(h: model.HeapType): String =
+        case h
+            when heapAny then "any" when heapEq then "eq" when heapI31 then "i31" when heapStruct then "struct"
+            when heapArray then "array" when heapNone then "none" when heapFunc then "func"
+            when heapNoFunc then "nofunc" when heapExtern then "extern" when heapNoExtern then "noextern"
+            when heapExn then "exn" when heapNoExn then "noexn"
+            when heapIndex with x then conv.int(x.index)
+        end
+    let typeKey(t: model.ValType): String =
+        case t
+            when valI32 then "i32" when valI64 then "i64" when valF32 then "f32" when valF64 then "f64"
+            when valRef with r then if r.nullable then "null " <> heapKey(r.heap) else heapKey(r.heap) end
+        end
+
+    (* The local an instruction reads or writes, or ~1 *)
+    let localOf(inst: Inst): Int =
+        case inst
+            when instOp with x then
+                if {x.op.prefix is 0} andif {x.op.code >= 0x20} andif {x.op.code <= 0x22} then x.args[0] else ~1 end
+            else ~1
+        end
+    let isGet(inst: Inst): Bool =
+        case inst when instOp with x then {x.op.prefix is 0} andif {x.op.code is 0x20} else false end
+
+    let rewrite(inst: Inst index: Int): Inst =
+        case inst
+            when instOp with x then option instOp of model.Inst with let op = x.op let args = array of index end end
+            else inst
+        end
+
+    Def Range = Tuple start: Int stop: Int end
+
+    let reuseIn(f: model.Function): Ok =
+        begin
+            let nparams = extent f.params
+            let n = vector.length(:model.Local f.locals)
+            let body = f.body
+            let size = vector.length(:Inst body)
+            if n > 0 then
+                let first = array of(n ~1)
+                let last = array of(n ~1)
+                let readFirst = array of(n false)
+                (* The loops, in the order their ends come, so inner ones
+                 * first, and the structured instructions open *)
+                let loops = vector.new(:Range)
+                let opened = vector.new(:Int)
+                for i = 0 upto size - 1 do
+                    let inst = vector.get(:Inst body i)
+                    case inst
+                        when instBlock with b then
+                            vector.append(:Int opened if b.kind?kindLoop then i else ~1 end)
+                        when instTryTable then vector.append(:Int opened ~1)
+                        when instEnd then
+                            let start = vector.pop(:Int opened)
+                            if start >= 0 then vector.append(:Range loops tuple let start = start let stop = i end) end
+                        else
+                            let k = localOf(inst) - nparams
+                            if k >= 0 then
+                                if first[k] < 0 then
+                                    first[k] := i
+                                    readFirst[k] := isGet(inst)
+                                end
+                                last[k] := i
+                            end
+                    end
+                end
+                (* Live across a loop's repetition: the whole loop *)
+                for j = 0 upto vector.length(:Range loops) - 1 do
+                    let range = vector.get(:Range loops j)
+                    for k = 0 upto n - 1 do
+                        if {first[k] >= 0} andif {first[k] <= range.stop} andif {last[k] >= range.start} then
+                            let inside = {first[k] > range.start} andif {last[k] < range.stop}
+                            if not(inside) orif readFirst[k] then
+                                if range.start < first[k] then first[k] := range.start end
+                                if range.stop > last[k] then last[k] := range.stop end
+                            end
+                        end
+                    end
+                end
+                (* The locals by where they start; each takes the first slot
+                 * of its type free by then *)
+                let order = vector.new(:Int)
+                for k = 0 upto n - 1 do if first[k] >= 0 then vector.append(:Int order k) end end
+                let sorted = vector.toArray(:Int order)
+                let byStart = array of(size + 1 0)
+                for i = 0 upto extent sorted - 1 do byStart[first[sorted[i]]] := byStart[first[sorted[i]]] + 1 end
+                let var total = 0
+                for p = 0 upto size do
+                    let c = byStart[p]
+                    byStart[p] := total
+                    total := total + c
+                end
+                let ordered = array of(extent sorted 0)
+                for i = 0 upto extent sorted - 1 do
+                    let k = sorted[i]
+                    ordered[byStart[first[k]]] := k
+                    byStart[first[k]] := byStart[first[k]] + 1
+                end
+                let slotOf = array of(n ~1)
+                let slots = vector.new(:model.Local)
+                let slotEnds = vector.new(:Int)
+                (* The slots of each type *)
+                let ofType = hashMap.new(:String :vector.T(Int) stringOp.equal hash.string)
+                for i = 0 upto extent ordered - 1 do
+                    let k = ordered[i]
+                    let local = vector.get(:model.Local f.locals k)
+                    let key = typeKey(local.type)
+                    if not(hashMap.contains(:String :vector.T(Int) ofType key)) then
+                        let added = hashMap.insert(:String :vector.T(Int) ofType key vector.new(:Int))
+                    end
+                    let candidates = hashMap.find(:String :vector.T(Int) ofType key)
+                    let var found = ~1
+                    let var c = 0
+                    while {found < 0} andif {c < vector.length(:Int candidates)} do
+                        let s = vector.get(:Int candidates c)
+                        if vector.get(:Int slotEnds s) < first[k] then found := s end
+                        c := c + 1
+                    end
+                    if found < 0 then
+                        found := vector.length(:model.Local slots)
+                        vector.append(:model.Local slots local)
+                        vector.append(:Int slotEnds last[k])
+                        vector.append(:Int candidates found)
+                    else
+                        vector.set(:Int slotEnds found last[k])
+                    end
+                    slotOf[k] := found
+                end
+                for i = 0 upto size - 1 do
+                    let inst = vector.get(:Inst body i)
+                    let k = localOf(inst) - nparams
+                    if k >= 0 then vector.set(:Inst body i rewrite(inst nparams + slotOf[k])) end
+                end
+                vector.clear(:model.Local f.locals)
+                for s = 0 upto vector.length(:model.Local slots) - 1 do
+                    vector.append(:model.Local f.locals vector.get(:model.Local slots s))
+                end
+            end
+        end
+
+    let reuse(m: model.Module): Ok =
+        for i = 0 upto vector.length(:model.Function m.functions) - 1 do
+            reuseIn(vector.get(:model.Function m.functions i))
+        end
+end

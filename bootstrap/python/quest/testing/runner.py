@@ -148,7 +148,8 @@ SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 # and of the errors its builds report, against the bootstrap's; that its
 # parallel builds (-j) are its serial ones; that its compile command does
 # what the bootstrap's does; that the wasm backend's programs run in wasmtime
-# and node as natively; that lldb reads the arm64 backend's line tables;
+# and node as natively; that the driver compiled to wasm serves the REPL's
+# transcripts and the kernel's requests as a session in node; that lldb reads the arm64 backend's line tables;
 # that its kernel mode serves a Jupyter kernel's requests; and that the kernel
 # serves a notebook's
 UNIT_CHECKS = (
@@ -159,6 +160,7 @@ UNIT_CHECKS = (
     ("self-hosted/compile_command", ROOT_DIR / "tests" / "self-hosted" / "compile_command.py", ()),
     ("self-hosted/backends", ROOT_DIR / "tests" / "self-hosted" / "backends.py", ()),
     ("self-hosted/wasm_programs", ROOT_DIR / "tests" / "self-hosted" / "wasm_programs.py", ()),
+    ("self-hosted/wasm_session", ROOT_DIR / "tests" / "self-hosted" / "wasm_session.py", ()),
     ("self-hosted/line_tables", ROOT_DIR / "tests" / "self-hosted" / "line_tables.py", ()),
     ("self-hosted/fingerprints", ROOT_DIR / "tests" / "self-hosted" / "fingerprints.py", ()),
     ("self-hosted/encoder", ROOT_DIR / "tests" / "self-hosted" / "encoder.py", ()),

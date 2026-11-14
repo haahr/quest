@@ -834,6 +834,17 @@ export
 
             vector.append(:model.Export m.exports
                 tuple let field = "memory" let kind = option exportMemory of model.ExportKind end let index = 0 end)
+            (* A closure that captures nothing, for a host that calls a unit's
+             * exported function, whose first parameter is its closure, as a
+             * direct call passes its unit's own (docs/wasm-plan.md step 11) *)
+            vector.append(:model.Export m.exports tuple
+                let field = "noClosure" let kind = option exportGlobal of model.ExportKind end
+                let index = vector.length(:model.Global m.globals)
+            end)
+            vector.append(:model.Global m.globals tuple
+                let name = "noClosure" let type = model.ref(rt.index("clos")) let mutable = false
+                let init = array of c32(0) i1(ops.structNew rt.index("clos")) end
+            end)
             for k = 0 upto extent builtinExceptions - 1 do
                 vector.append(:model.Export m.exports tuple
                     let field = exceptionField(builtinExceptions[k])

@@ -245,21 +245,18 @@
   )
   (func $qa_adapt.1 (type 55) (param $closure (ref $clos)) (param $x eqref) (result i32)
     (local $orig eqref)
-    (local $x.1 eqref)
     global.get $nonEmpty.static
     local.set $orig
     local.get $x
-    local.set $x.1
+    local.set $orig
     global.get $noClosure
-    local.get $x.1
+    local.get $orig
     return_call $nonEmpty
     unreachable
   )
   (func $qa_adapt.2 (type 57) (param $closure (ref $clos)) (param $x eqref) (result eqref)
     (local $orig eqref)
     (local $x.1 i64)
-    (local $r i64)
-    (local $r.1 eqref)
     global.get $f.static
     local.set $orig
     local.get $x
@@ -268,19 +265,17 @@
     global.get $noClosure
     local.get $x.1
     call $f
-    local.set $r
-    local.get $r
+    local.set $x.1
+    local.get $x.1
     call $boxInt
-    local.set $r.1
-    local.get $r.1
+    local.set $orig
+    local.get $orig
     return
     unreachable
   )
   (func $qa_adapt.3 (type 56) (param $closure (ref $clos)) (param $x i64) (result i64)
     (local $orig eqref)
     (local $x.1 eqref)
-    (local $t eqref)
-    (local $r eqref)
     (local $r.1 i64)
     local.get $closure
     ref.cast (ref $qa_adapt.closure)
@@ -290,28 +285,28 @@
     call $boxInt
     local.set $x.1
     local.get $orig
-    local.set $t
-    local.get $t
+    local.set $orig
+    local.get $orig
     ref.test (ref 66)
     if (result eqref)
-      local.get $t
+      local.get $orig
       ref.cast (ref $clos)
       local.get $x.1
-      local.get $t
+      local.get $orig
       ref.cast (ref 66)
       struct.get 66 $native
       call_ref 57
     else
-      local.get $t
+      local.get $orig
       ref.cast (ref $clos)
       local.get $x.1
-      local.get $t
+      local.get $orig
       ref.cast (ref $closU1)
       struct.get $closU1 $uniform
       call_ref 57
     end
-    local.set $r
-    local.get $r
+    local.set $orig
+    local.get $orig
     call $unboxInt
     local.set $r.1
     local.get $r.1
@@ -320,29 +315,23 @@
   )
   (func $qa_adapt.4 (type 57) (param $closure (ref $clos)) (param $x eqref) (result eqref)
     (local $orig eqref)
-    (local $x.1 eqref)
-    (local $r eqref)
-    (local $r.1 eqref)
     global.get $f.static.1
     local.set $orig
     local.get $x
-    local.set $x.1
+    local.set $orig
     global.get $noClosure
-    local.get $x.1
+    local.get $orig
     call $f.1
-    local.set $r
-    local.get $r
-    local.set $r.1
-    local.get $r.1
+    local.set $orig
+    local.get $orig
+    local.set $orig
+    local.get $orig
     return
     unreachable
   )
   (func $qa_adapt.5 (type 57) (param $closure (ref $clos)) (param $x eqref) (result eqref)
     (local $orig eqref)
     (local $x.1 eqref)
-    (local $t eqref)
-    (local $r eqref)
-    (local $r.1 eqref)
     local.get $closure
     ref.cast (ref $qa_adapt.closure.1)
     struct.get $qa_adapt.closure.1 $c0
@@ -350,102 +339,38 @@
     local.get $x
     local.set $x.1
     local.get $orig
-    local.set $t
-    local.get $t
+    local.set $orig
+    local.get $orig
     ref.test (ref 66)
     if (result eqref)
-      local.get $t
+      local.get $orig
       ref.cast (ref $clos)
       local.get $x.1
-      local.get $t
+      local.get $orig
       ref.cast (ref 66)
       struct.get 66 $native
       call_ref 57
     else
-      local.get $t
+      local.get $orig
       ref.cast (ref $clos)
       local.get $x.1
-      local.get $t
+      local.get $orig
       ref.cast (ref $closU1)
       struct.get $closU1 $uniform
       call_ref 57
     end
-    local.set $r
-    local.get $r
-    local.set $r.1
-    local.get $r.1
+    local.set $orig
+    local.get $orig
+    local.set $orig
+    local.get $orig
     return
     unreachable
   )
   (func $main (type 45)
     (local $pos eqref)
-    (local $nonEmpty eqref)
-    (local $v eqref)
     (local $pos.1 eqref)
     (local $v.1 i64)
-    (local $v.2 eqref)
-    (local $v.3 eqref)
-    (local $v.4 eqref)
-    (local $v.5 eqref)
-    (local $v.6 eqref)
-    (local $nonEmpty.1 eqref)
-    (local $v.7 i64)
-    (local $v.8 eqref)
-    (local $v.9 eqref)
-    (local $v.10 eqref)
-    (local $v.11 eqref)
-    (local $v.12 eqref)
-    (local $v.13 eqref)
-    (local $v.14 eqref)
-    (local $v.15 eqref)
-    (local $v.16 eqref)
-    (local $v.17 eqref)
-    (local $v.18 eqref)
-    (local $v.19 eqref)
-    (local $v.20 eqref)
-    (local $v.21 eqref)
-    (local $v.22 eqref)
-    (local $v.23 i64)
-    (local $v.24 i64)
-    (local $v.25 eqref)
-    (local $v.26 eqref)
-    (local $v.27 eqref)
-    (local $v.28 eqref)
-    (local $f eqref)
-    (local $f.1 eqref)
-    (local $v.29 eqref)
-    (local $v.30 eqref)
-    (local $v.31 eqref)
-    (local $t eqref)
-    (local $v.32 i64)
-    (local $v.33 eqref)
-    (local $v.34 eqref)
-    (local $v.35 eqref)
-    (local $v.36 eqref)
-    (local $f.2 eqref)
-    (local $f.3 eqref)
-    (local $v.37 eqref)
-    (local $v.38 eqref)
-    (local $v.39 eqref)
-    (local $t.1 eqref)
-    (local $v.40 eqref)
-    (local $v.41 eqref)
-    (local $v.42 eqref)
-    (local $v.43 eqref)
-    (local $v.44 eqref)
-    (local $v.45 eqref)
-    (local $p eqref)
-    (local $p.1 eqref)
-    (local $p.2 eqref)
-    (local $v.46 i64)
-    (local $v.47 eqref)
     (local $v.48 eqref)
-    (local $v.49 eqref)
-    (local $v.50 eqref)
-    (local $v.51 eqref)
-    (local $v.52 eqref)
-    (local $v.53 eqref)
-    (local $bad eqref)
     call $wasm/core.init
     call $descriptors
     call $units/gen.init
@@ -455,7 +380,7 @@
     global.get $pos.static
     local.set $pos
     global.get $nonEmpty.static
-    local.set $nonEmpty
+    local.set $pos
     i32.const 0
     i64.const 1
     call $boxInt
@@ -465,22 +390,22 @@
     call $boxInt
     array.new_fixed $slots 3
     struct.new $array
-    local.set $v
+    local.set $pos
     global.get $qa_adapt.static
     local.set $pos.1
     global.get $noClosure
     global.get $quest_type_Int
-    local.get $v
+    local.get $pos
     local.get $pos.1
     call $units/gen.count
     local.set $v.1
     local.get $v.1
     call $convInt
-    local.set $v.2
+    local.set $pos
     i32.const 1
     ref.i31
-    local.set $v.3
-    local.get $v.2
+    local.set $pos.1
+    local.get $pos
     i32.const 0
     i32.const 1
     i32.const 47
@@ -488,11 +413,11 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.4
-    local.get $v.3
-    local.get $v.4
+    local.set $pos
+    local.get $pos.1
+    local.get $pos
     call $putString
-    local.set $v.5
+    local.set $pos
     i32.const 0
     i32.const 0
     i32.const 1
@@ -520,22 +445,22 @@
     struct.new $string
     array.new_fixed $slots 4
     struct.new $array
-    local.set $v.6
+    local.set $pos
     global.get $qa_adapt.static.1
-    local.set $nonEmpty.1
+    local.set $pos.1
     global.get $noClosure
     global.get $quest_type_String
-    local.get $v.6
-    local.get $nonEmpty.1
+    local.get $pos
+    local.get $pos.1
     call $units/gen.count
-    local.set $v.7
-    local.get $v.7
+    local.set $v.1
+    local.get $v.1
     call $convInt
-    local.set $v.8
+    local.set $pos
     i32.const 1
     ref.i31
-    local.set $v.9
-    local.get $v.8
+    local.set $pos.1
+    local.get $pos
     i32.const 0
     i32.const 1
     i32.const 51
@@ -543,40 +468,40 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.10
-    local.get $v.9
-    local.get $v.10
+    local.set $pos
+    local.get $pos.1
+    local.get $pos
     call $putString
-    local.set $v.11
+    local.set $pos
     i32.const 0
     i32.const 3
     i32.const 52
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
-    local.set $v.12
+    local.set $pos
     i32.const 0
     i32.const 2
     i32.const 55
     i32.const 2
     array.new_data $bytes $strings
     struct.new $string
-    local.set $v.13
+    local.set $pos.1
     global.get $noClosure
     global.get $quest_type_String
     i32.const 1
-    local.get $v.12
-    local.get $v.13
+    local.get $pos
+    local.get $pos.1
     call $units/gen.pick
-    local.set $v.14
-    local.get $v.14
-    local.set $v.15
-    local.get $v.15
-    local.set $v.16
+    local.set $pos
+    local.get $pos
+    local.set $pos
+    local.get $pos
+    local.set $pos
     i32.const 1
     ref.i31
-    local.set $v.17
-    local.get $v.16
+    local.set $pos.1
+    local.get $pos
     i32.const 0
     i32.const 1
     i32.const 57
@@ -584,36 +509,36 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.18
-    local.get $v.17
-    local.get $v.18
+    local.set $pos
+    local.get $pos.1
+    local.get $pos
     call $putString
-    local.set $v.19
+    local.set $pos
     i64.const 1
     call $boxInt
-    local.set $v.20
+    local.set $pos
     i64.const 2000000000000
     call $boxInt
-    local.set $v.21
+    local.set $pos.1
     global.get $noClosure
     global.get $quest_type_Int
     i32.const 0
-    local.get $v.20
-    local.get $v.21
+    local.get $pos
+    local.get $pos.1
     call $units/gen.pick
-    local.set $v.22
-    local.get $v.22
+    local.set $pos
+    local.get $pos
     call $unboxInt
-    local.set $v.23
-    local.get $v.23
-    local.set $v.24
-    local.get $v.24
+    local.set $v.1
+    local.get $v.1
+    local.set $v.1
+    local.get $v.1
     call $convInt
-    local.set $v.25
+    local.set $pos
     i32.const 1
     ref.i31
-    local.set $v.26
-    local.get $v.25
+    local.set $pos.1
+    local.get $pos
     i32.const 0
     i32.const 1
     i32.const 58
@@ -621,59 +546,59 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.27
-    local.get $v.26
-    local.get $v.27
+    local.set $pos
+    local.get $pos.1
+    local.get $pos
     call $putString
-    local.set $v.28
+    local.set $pos
     global.get $f.static
-    local.set $f
+    local.set $pos
     global.get $qa_adapt.static.2
-    local.set $f.1
+    local.set $pos
     global.get $noClosure
     global.get $quest_type_Int
-    local.get $f.1
+    local.get $pos
     call $units/gen.twice
-    local.set $v.29
+    local.set $pos
     i32.const 0
     ref.func $qa_adapt.uniform.2
     ref.func $qa_adapt.3
-    local.get $v.29
+    local.get $pos
     struct.new $qa_adapt.closure
-    local.set $v.30
-    local.get $v.30
-    local.set $v.31
-    local.get $v.31
-    local.set $t
-    local.get $t
+    local.set $pos
+    local.get $pos
+    local.set $pos
+    local.get $pos
+    local.set $pos
+    local.get $pos
     ref.test (ref 63)
     if (result i64)
-      local.get $t
+      local.get $pos
       ref.cast (ref $clos)
       i64.const 5
-      local.get $t
+      local.get $pos
       ref.cast (ref 63)
       struct.get 63 $native
       call_ref 56
     else
-      local.get $t
+      local.get $pos
       ref.cast (ref $clos)
       i64.const 5
       call $boxInt
-      local.get $t
+      local.get $pos
       ref.cast (ref $closU1)
       struct.get $closU1 $uniform
       call_ref 57
       call $unboxInt
     end
-    local.set $v.32
-    local.get $v.32
+    local.set $v.1
+    local.get $v.1
     call $convInt
-    local.set $v.33
+    local.set $pos
     i32.const 1
     ref.i31
-    local.set $v.34
-    local.get $v.33
+    local.set $pos.1
+    local.get $pos
     i32.const 0
     i32.const 1
     i32.const 59
@@ -681,34 +606,34 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.35
-    local.get $v.34
-    local.get $v.35
+    local.set $pos
+    local.get $pos.1
+    local.get $pos
     call $putString
-    local.set $v.36
+    local.set $pos
     global.get $f.static.1
-    local.set $f.2
+    local.set $pos
     global.get $qa_adapt.static.3
-    local.set $f.3
+    local.set $pos
     global.get $noClosure
     global.get $quest_type_String
-    local.get $f.3
+    local.get $pos
     call $units/gen.twice
-    local.set $v.37
+    local.set $pos
     i32.const 0
     ref.func $qa_adapt.5
     ref.func $qa_adapt.5
-    local.get $v.37
+    local.get $pos
     struct.new $qa_adapt.closure.1
-    local.set $v.38
-    local.get $v.38
-    local.set $v.39
-    local.get $v.39
-    local.set $t.1
-    local.get $t.1
+    local.set $pos
+    local.get $pos
+    local.set $pos
+    local.get $pos
+    local.set $pos
+    local.get $pos
     ref.test (ref 66)
     if (result eqref)
-      local.get $t.1
+      local.get $pos
       ref.cast (ref $clos)
       i32.const 0
       i32.const 2
@@ -716,12 +641,12 @@
       i32.const 2
       array.new_data $bytes $strings
       struct.new $string
-      local.get $t.1
+      local.get $pos
       ref.cast (ref 66)
       struct.get 66 $native
       call_ref 57
     else
-      local.get $t.1
+      local.get $pos
       ref.cast (ref $clos)
       i32.const 0
       i32.const 2
@@ -729,16 +654,16 @@
       i32.const 2
       array.new_data $bytes $strings
       struct.new $string
-      local.get $t.1
+      local.get $pos
       ref.cast (ref $closU1)
       struct.get $closU1 $uniform
       call_ref 57
     end
-    local.set $v.40
+    local.set $pos
     i32.const 1
     ref.i31
-    local.set $v.41
-    local.get $v.40
+    local.set $pos.1
+    local.get $pos
     i32.const 0
     i32.const 1
     i32.const 64
@@ -746,43 +671,43 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.42
-    local.get $v.41
-    local.get $v.42
+    local.set $pos
+    local.get $pos.1
+    local.get $pos
     call $putString
-    local.set $v.43
+    local.set $pos
     i64.const 7
     call $boxInt
-    local.set $v.44
+    local.set $pos
     i32.const 0
     i32.const 5
     i32.const 65
     i32.const 5
     array.new_data $bytes $strings
     struct.new $string
-    local.set $v.45
+    local.set $pos.1
     global.get $noClosure
     global.get $quest_type_Int
     global.get $quest_type_String
-    local.get $v.44
-    local.get $v.45
+    local.get $pos
+    local.get $pos.1
     call $units/gen.pair
-    local.set $p
-    local.get $p
-    local.set $p.1
-    local.get $p.1
-    local.set $p.2
-    local.get $p.2
+    local.set $pos
+    local.get $pos
+    local.set $pos
+    local.get $pos
+    local.set $pos
+    local.get $pos
     ref.cast (ref $tuple)
     struct.get $tuple $slots
     i32.const 0
     array.get $slots
     call $unboxInt
-    local.set $v.46
-    local.get $v.46
+    local.set $v.1
+    local.get $v.1
     call $convInt
-    local.set $v.47
-    local.get $p.2
+    local.set $pos.1
+    local.get $pos
     ref.cast (ref $tuple)
     struct.get $tuple $slots
     i32.const 1
@@ -796,15 +721,15 @@
     struct.new $string
     local.get $v.48
     call $concat
-    local.set $v.49
-    local.get $v.47
-    local.get $v.49
+    local.set $v.48
+    local.get $pos.1
+    local.get $v.48
     call $concat
-    local.set $v.50
+    local.set $pos.1
     i32.const 1
     ref.i31
-    local.set $v.51
-    local.get $v.50
+    local.set $v.48
+    local.get $pos.1
     i32.const 0
     i32.const 1
     i32.const 71
@@ -812,11 +737,11 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.52
-    local.get $v.51
-    local.get $v.52
+    local.set $pos.1
+    local.get $v.48
+    local.get $pos.1
     call $putString
-    local.set $v.53
+    local.set $pos.1
     i32.const 0
     i32.const 0
     i32.const 3
@@ -825,9 +750,9 @@
     array.new_data $bytes $strings
     struct.new $string
     struct.new $exception
-    local.set $bad
-    local.get $bad
-    local.get $p.2
+    local.set $pos.1
+    local.get $pos.1
+    local.get $pos
     i32.const 0
     i32.const 115
     i32.const 75

@@ -7,7 +7,9 @@ import
     tm = questlang/types/model : questlang/types/Model
     questlang/types/reduce : questlang/types/Reduce
     util/maybe : util/Maybe
+    util/strutil : util/Strutil
     stringOp = string : StringOp
+    system : System
     intOp = int : IntOp
     realOp = real : RealOp
 export
@@ -25,7 +27,13 @@ export
     let readlineInterrupted = model.exceptionValue("readline.interrupted")
     let variantError = model.exceptionValue("variant.tagMismatch")
     let stackOverflow = model.exceptionValue("stack.overflow")
-    let maxCallDepth = 1000
+    (* QUEST_CALL_LIMIT, when it is a positive number, else 1,000: a host
+     * whose stack holds fewer interpreted calls sets it lower, so that a deep
+     * recursion raises stack.overflow before the stack runs out
+     * (docs/wasm-plan.md step 11) *)
+    let callLimit(limit: maybe.T(Int)): Int =
+        if maybe.isSome(:Int limit) andif {maybe.unwrap(:Int limit) > 0} then maybe.unwrap(:Int limit) else 1000 end
+    let maxCallDepth = callLimit(strutil.tryToInt(system.getEnv("QUEST_CALL_LIMIT")))
 
     let intArithmetic(op: String a: Int b: Int offset: maybe.T(Int)): Int =
         try

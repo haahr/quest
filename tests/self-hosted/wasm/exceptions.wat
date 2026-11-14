@@ -157,9 +157,7 @@
   (func $tries (type 52) (param $closure (ref $clos)) (param $i i64) (result i64)
     (local $v i32)
     (local $v.1 i64)
-    (local $v.2 i64)
     (local $e eqref)
-    (local $v.3 i32)
     local.get $i
     i64.const 3
     i64.ge_s
@@ -196,8 +194,8 @@
             global.get $noClosure
             local.get $v.1
             call $tries
-            local.set $v.2
-            local.get $v.2
+            local.set $v.1
+            local.get $v.1
             return
           end
           unreachable
@@ -208,8 +206,8 @@
         global.get $stop
         call $exceptionOf
         ref.eq
-        local.set $v.3
-        local.get $v.3
+        local.set $v
+        local.get $v
         if
           local.get $i
           return
@@ -224,9 +222,7 @@
   (func $tries.1 (type 52) (param $closure (ref $clos)) (param $i i64) (result i64)
     (local $v i32)
     (local $v.1 i64)
-    (local $v.2 i64)
     (local $e eqref)
-    (local $v.3 i32)
     local.get $i
     i64.const 50
     i64.ge_s
@@ -263,8 +259,8 @@
             global.get $noClosure
             local.get $v.1
             call $tries.1
-            local.set $v.2
-            local.get $v.2
+            local.set $v.1
+            local.get $v.1
             return
           end
           unreachable
@@ -275,8 +271,8 @@
         global.get $stop
         call $exceptionOf
         ref.eq
-        local.set $v.3
-        local.get $v.3
+        local.set $v
+        local.get $v
         if
           local.get $i
           return
@@ -295,76 +291,10 @@
     (local $e eqref)
     (local $v i32)
     (local $x i64)
-    (local $v.1 i64)
-    (local $v.2 i32)
-    (local $r i64)
-    (local $v.3 eqref)
     (local $v.4 eqref)
-    (local $v.5 eqref)
-    (local $v.6 eqref)
-    (local $v.7 eqref)
-    (local $v.8 i64)
-    (local $e.1 eqref)
-    (local $v.9 i32)
-    (local $v.10 i64)
-    (local $v.11 eqref)
-    (local $v.12 eqref)
     (local $e.2 eqref)
-    (local $v.13 i32)
-    (local $v.14 i64)
-    (local $v.15 eqref)
-    (local $v.16 eqref)
-    (local $v.17 eqref)
-    (local $v.18 eqref)
-    (local $v.19 eqref)
-    (local $v.20 eqref)
-    (local $e.3 eqref)
-    (local $v.21 i64)
-    (local $v.22 eqref)
-    (local $v.23 eqref)
-    (local $v.24 eqref)
-    (local $v.25 eqref)
-    (local $e.4 eqref)
-    (local $v.26 i32)
-    (local $e.5 eqref)
-    (local $v.27 i32)
-    (local $x.1 i64)
-    (local $v.28 i64)
-    (local $v.29 i64)
-    (local $v.30 eqref)
-    (local $v.31 eqref)
-    (local $v.32 eqref)
-    (local $v.33 eqref)
-    (local $caught i64)
     (local $i i64)
-    (local $v.34 i32)
     (local $i.1 i64)
-    (local $v.35 i32)
-    (local $v.36 i64)
-    (local $e.6 eqref)
-    (local $v.37 i32)
-    (local $r.1 i64)
-    (local $v.38 i64)
-    (local $v.39 i32)
-    (local $v.40 i64)
-    (local $v.41 eqref)
-    (local $v.42 eqref)
-    (local $v.43 eqref)
-    (local $v.44 eqref)
-    (local $v.45 i32)
-    (local $v.46 eqref)
-    (local $v.47 eqref)
-    (local $v.48 eqref)
-    (local $v.49 eqref)
-    (local $v.50 i64)
-    (local $v.51 eqref)
-    (local $v.52 i64)
-    (local $v.53 eqref)
-    (local $v.54 eqref)
-    (local $v.55 eqref)
-    (local $v.56 eqref)
-    (local $v.57 eqref)
-    (local $v.58 eqref)
     call $wasm/core.init
     call $descriptors
     call $writer.init
@@ -440,8 +370,8 @@
             local.get $x
             i64.const 10
             i64.mul
-            local.set $v.1
-            local.get $v.1
+            local.set $x
+            local.get $x
             br $k2
           else
             local.get $e
@@ -449,8 +379,8 @@
             local.get $other
             call $exceptionOf
             ref.eq
-            local.set $v.2
-            local.get $v.2
+            local.set $v
+            local.get $v
             if
               i64.const 0
               br $k2
@@ -462,14 +392,14 @@
         end
         br $k2.after
       end
-      local.set $r
-      local.get $r
+      local.set $x
+      local.get $x
       call $convInt
-      local.set $v.3
+      local.set $e
       i32.const 1
       ref.i31
       local.set $v.4
-      local.get $v.3
+      local.get $e
       i32.const 0
       i32.const 1
       i32.const 358
@@ -477,15 +407,15 @@
       array.new_data $bytes $strings
       struct.new $string
       call $concat
-      local.set $v.5
+      local.set $e
       local.get $v.4
-      local.get $v.5
+      local.get $e
       call $putString
-      local.set $v.6
+      local.set $e
       block $inlined1.after
         block $inlined1 (result i64)
           global.get $int.error
-          local.set $v.7
+          local.set $e
           block
             block (result eqref)
               try_table (catch $error 0)
@@ -524,38 +454,38 @@
                   i64.const 0
                   i64.div_s
                 end
-                local.set $v.8
-                local.get $v.8
+                local.set $x
+                local.get $x
                 br $inlined1
               end
               unreachable
             end
-            local.set $e.1
-            local.get $e.1
+            local.set $v.4
+            local.get $v.4
             call $exceptionOf
-            local.get $v.7
+            local.get $e
             call $exceptionOf
             ref.eq
-            local.set $v.9
-            local.get $v.9
+            local.set $v
+            local.get $v
             if
               i64.const -1
               br $inlined1
             else
-              local.get $e.1
+              local.get $v.4
               throw $error
             end
           end
           br $inlined1.after
         end
-        local.set $v.10
-        local.get $v.10
+        local.set $x
+        local.get $x
         call $convInt
-        local.set $v.11
+        local.set $e
         block $inlined2.after
           block $inlined2 (result i64)
             global.get $int.error
-            local.set $v.12
+            local.set $v.4
             block
               block (result eqref)
                 try_table (catch $error 0)
@@ -567,11 +497,11 @@
               local.set $e.2
               local.get $e.2
               call $exceptionOf
-              local.get $v.12
+              local.get $v.4
               call $exceptionOf
               ref.eq
-              local.set $v.13
-              local.get $v.13
+              local.set $v
+              local.get $v
               if
                 i64.const -1
                 br $inlined2
@@ -582,27 +512,27 @@
             end
             br $inlined2.after
           end
-          local.set $v.14
-          local.get $v.14
+          local.set $x
+          local.get $x
           call $convInt
-          local.set $v.15
+          local.set $v.4
           i32.const 0
           i32.const 1
           i32.const 473
           i32.const 1
           array.new_data $bytes $strings
           struct.new $string
-          local.get $v.15
+          local.get $v.4
           call $concat
-          local.set $v.16
-          local.get $v.11
-          local.get $v.16
+          local.set $v.4
+          local.get $e
+          local.get $v.4
           call $concat
-          local.set $v.17
+          local.set $e
           i32.const 1
           ref.i31
-          local.set $v.18
-          local.get $v.17
+          local.set $v.4
+          local.get $e
           i32.const 0
           i32.const 1
           i32.const 474
@@ -610,11 +540,11 @@
           array.new_data $bytes $strings
           struct.new $string
           call $concat
-          local.set $v.19
-          local.get $v.18
-          local.get $v.19
+          local.set $e
+          local.get $v.4
+          local.get $e
           call $putString
-          local.set $v.20
+          local.set $e
           block $inlined3.after
             block $inlined3 (result i64)
               block
@@ -642,20 +572,20 @@
                   end
                   unreachable
                 end
-                local.set $e.3
+                local.set $e
                 i64.const 7
                 br $inlined3
               end
               br $inlined3.after
             end
-            local.set $v.21
-            local.get $v.21
+            local.set $x
+            local.get $x
             call $convInt
-            local.set $v.22
+            local.set $e
             i32.const 1
             ref.i31
-            local.set $v.23
-            local.get $v.22
+            local.set $v.4
+            local.get $e
             i32.const 0
             i32.const 1
             i32.const 589
@@ -663,11 +593,11 @@
             array.new_data $bytes $strings
             struct.new $string
             call $concat
-            local.set $v.24
-            local.get $v.23
-            local.get $v.24
+            local.set $e
+            local.get $v.4
+            local.get $e
             call $putString
-            local.set $v.25
+            local.set $e
             block $inlined6.after
               block $inlined6 (result i64)
                 block
@@ -698,19 +628,19 @@
                           end
                           unreachable
                         end
-                        local.set $e.4
-                        local.get $e.4
+                        local.set $e
+                        local.get $e
                         call $exceptionOf
                         local.get $other
                         call $exceptionOf
                         ref.eq
-                        local.set $v.26
-                        local.get $v.26
+                        local.set $v
+                        local.get $v
                         if
                           i64.const 0
                           br $inlined6
                         else
-                          local.get $e.4
+                          local.get $e
                           throw $error
                         end
                       end
@@ -718,40 +648,40 @@
                     end
                     unreachable
                   end
-                  local.set $e.5
-                  local.get $e.5
+                  local.set $e
+                  local.get $e
                   call $exceptionOf
                   local.get $bad
                   call $exceptionOf
                   ref.eq
-                  local.set $v.27
-                  local.get $v.27
+                  local.set $v
+                  local.get $v
                   if
-                    local.get $e.5
+                    local.get $e
                     call $payloadOf
                     call $unboxInt
-                    local.set $x.1
-                    local.get $x.1
+                    local.set $x
+                    local.get $x
                     i64.const 1000
                     i64.add
-                    local.set $v.28
-                    local.get $v.28
+                    local.set $x
+                    local.get $x
                     br $inlined6
                   else
-                    local.get $e.5
+                    local.get $e
                     throw $error
                   end
                 end
                 br $inlined6.after
               end
-              local.set $v.29
-              local.get $v.29
+              local.set $x
+              local.get $x
               call $convInt
-              local.set $v.30
+              local.set $e
               i32.const 1
               ref.i31
-              local.set $v.31
-              local.get $v.30
+              local.set $v.4
+              local.get $e
               i32.const 0
               i32.const 1
               i32.const 707
@@ -759,20 +689,20 @@
               array.new_data $bytes $strings
               struct.new $string
               call $concat
-              local.set $v.32
-              local.get $v.31
-              local.get $v.32
+              local.set $e
+              local.get $v.4
+              local.get $e
               call $putString
-              local.set $v.33
+              local.set $e
               i64.const 0
-              local.set $caught
+              local.set $x
               i64.const 1
               local.set $i
               local.get $i
               i64.const 10
               i64.le_s
-              local.set $v.34
-              local.get $v.34
+              local.set $v
+              local.get $v
               if
                 block $L1.exit
                   loop $L1
@@ -788,8 +718,8 @@
                                   local.get $i.1
                                   i64.const 3
                                   i64.gt_s
-                                  local.set $v.35
-                                  local.get $v.35
+                                  local.set $v
+                                  local.get $v
                                   if
                                     local.get $bad
                                     local.get $i.1
@@ -816,44 +746,44 @@
                                   end
                                   br $inlined7.after
                                 end
-                                local.set $v.36
-                                local.get $v.36
+                                local.set $i.1
+                                local.get $i.1
                                 br $k7
                               end
                               br 2
                             end
                             unreachable
                           end
-                          local.set $e.6
-                          local.get $e.6
+                          local.set $e
+                          local.get $e
                           call $exceptionOf
                           local.get $bad
                           call $exceptionOf
                           ref.eq
-                          local.set $v.37
-                          local.get $v.37
+                          local.set $v
+                          local.get $v
                           if
                             i64.const 100
                             br $k7
                           else
-                            local.get $e.6
+                            local.get $e
                             throw $error
                           end
                         end
                         br $k7.after
                       end
-                      local.set $r.1
-                      local.get $caught
-                      local.get $r.1
+                      local.set $i.1
+                      local.get $x
+                      local.get $i.1
                       i64.add
-                      local.set $v.38
-                      local.get $v.38
-                      local.set $caught
+                      local.set $i.1
+                      local.get $i.1
+                      local.set $x
                       local.get $i
                       i64.const 10
                       i64.eq
-                      local.set $v.39
-                      local.get $v.39
+                      local.set $v
+                      local.get $v
                       if
                         br $L1.exit
                       else
@@ -861,8 +791,8 @@
                       local.get $i
                       i64.const 1
                       i64.add
-                      local.set $v.40
-                      local.get $v.40
+                      local.set $i.1
+                      local.get $i.1
                       local.set $i
                     end
                     br $L1
@@ -870,13 +800,13 @@
                 end
               else
               end
-              local.get $caught
+              local.get $x
               call $convInt
-              local.set $v.41
+              local.set $bad
               i32.const 1
               ref.i31
-              local.set $v.42
-              local.get $v.41
+              local.set $e
+              local.get $bad
               i32.const 0
               i32.const 1
               i32.const 825
@@ -884,25 +814,25 @@
               array.new_data $bytes $strings
               struct.new $string
               call $concat
-              local.set $v.43
-              local.get $v.42
-              local.get $v.43
+              local.set $bad
+              local.get $e
+              local.get $bad
               call $putString
-              local.set $v.44
+              local.set $bad
               local.get $other
               call $exceptionOf
               local.get $other
               call $exceptionOf
               ref.eq
-              local.set $v.45
+              local.set $v
               global.get $noClosure
-              local.get $v.45
+              local.get $v
               call $conv.bool
-              local.set $v.46
+              local.set $bad
               i32.const 1
               ref.i31
-              local.set $v.47
-              local.get $v.46
+              local.set $other
+              local.get $bad
               i32.const 0
               i32.const 1
               i32.const 826
@@ -910,11 +840,11 @@
               array.new_data $bytes $strings
               struct.new $string
               call $concat
-              local.set $v.48
-              local.get $v.47
-              local.get $v.48
+              local.set $bad
+              local.get $other
+              local.get $bad
               call $putString
-              local.set $v.49
+              local.set $bad
               i32.const 0
               i32.const 0
               i32.const 4
@@ -929,36 +859,36 @@
               global.get $noClosure
               i64.const 0
               call $tries
-              local.set $v.50
-              local.get $v.50
+              local.set $x
+              local.get $x
               call $convInt
-              local.set $v.51
+              local.set $bad
               global.get $tries.static.1
               global.set $tries.3
               global.get $noClosure
               i64.const 0
               call $tries.1
-              local.set $v.52
-              local.get $v.52
+              local.set $x
+              local.get $x
               call $convInt
-              local.set $v.53
+              local.set $other
               i32.const 0
               i32.const 1
               i32.const 831
               i32.const 1
               array.new_data $bytes $strings
               struct.new $string
-              local.get $v.53
+              local.get $other
               call $concat
-              local.set $v.54
-              local.get $v.51
-              local.get $v.54
+              local.set $other
+              local.get $bad
+              local.get $other
               call $concat
-              local.set $v.55
+              local.set $bad
               i32.const 1
               ref.i31
-              local.set $v.56
-              local.get $v.55
+              local.set $other
+              local.get $bad
               i32.const 0
               i32.const 1
               i32.const 832
@@ -966,11 +896,11 @@
               array.new_data $bytes $strings
               struct.new $string
               call $concat
-              local.set $v.57
-              local.get $v.56
-              local.get $v.57
+              local.set $bad
+              local.get $other
+              local.get $bad
               call $putString
-              local.set $v.58
+              local.set $bad
               local.get $named
               i32.const 0
               i32.const 7

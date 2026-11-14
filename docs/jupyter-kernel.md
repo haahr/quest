@@ -48,7 +48,8 @@ descriptors says so and exits 2.
 Requests, each answered by its records and then `{"done": STATUS}`, STATUS `ok` or `error`:
 
 - `{"execute": CODE}` runs a cell as one input, the way the REPL runs a completed phrase: its phrases run in order,
-  each that isn't `ok` giving `{"result": TEXT}` (`formatInteractiveResult`'s text, `40 : Int`), and an input that
+  each that isn't `ok` giving `{"result": TEXT}` (`formatInteractiveResult`'s text, `40 : Int`), its warnings
+  rendered on standard error as the REPL writes them, and an input that
   fails is rolled back whole (repl.md §5) and gives `{"error": KIND, "message": M, "rendered": R, "line": L, "column":
   C}`. KIND is `syntax`, `type`, `compile` (a module the cell imports), `unsupported` (what the JIT can't compile), or
   the name of the exception raised (`int.error`, `interrupted`). R is the diagnostic as the REPL renders it, and L

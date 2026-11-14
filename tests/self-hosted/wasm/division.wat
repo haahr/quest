@@ -123,99 +123,7 @@
     (local $v.1 eqref)
     (local $v.2 eqref)
     (local $v.3 eqref)
-    (local $v.4 eqref)
-    (local $v.5 eqref)
-    (local $v.6 eqref)
-    (local $v.7 eqref)
-    (local $v.8 eqref)
-    (local $v.9 eqref)
-    (local $v.10 eqref)
-    (local $v.11 eqref)
-    (local $v.12 eqref)
-    (local $v.13 eqref)
-    (local $v.14 eqref)
-    (local $v.15 eqref)
-    (local $v.16 eqref)
-    (local $v.17 eqref)
-    (local $v.18 eqref)
-    (local $v.19 eqref)
-    (local $v.20 eqref)
-    (local $v.21 eqref)
-    (local $v.22 eqref)
-    (local $v.23 eqref)
-    (local $v.24 eqref)
-    (local $v.25 eqref)
-    (local $v.26 eqref)
-    (local $v.27 eqref)
-    (local $v.28 eqref)
-    (local $v.29 eqref)
-    (local $v.30 eqref)
-    (local $v.31 eqref)
-    (local $v.32 eqref)
-    (local $v.33 eqref)
-    (local $v.34 eqref)
-    (local $v.35 eqref)
-    (local $v.36 eqref)
-    (local $v.37 eqref)
-    (local $v.38 eqref)
-    (local $v.39 eqref)
-    (local $v.40 eqref)
-    (local $v.41 eqref)
-    (local $v.42 eqref)
-    (local $v.43 eqref)
-    (local $v.44 eqref)
-    (local $v.45 eqref)
-    (local $v.46 eqref)
-    (local $v.47 eqref)
-    (local $v.48 eqref)
-    (local $v.49 eqref)
-    (local $v.50 eqref)
-    (local $v.51 eqref)
-    (local $v.52 eqref)
-    (local $v.53 eqref)
-    (local $v.54 eqref)
-    (local $v.55 eqref)
-    (local $v.56 eqref)
-    (local $v.57 eqref)
-    (local $v.58 eqref)
-    (local $v.59 eqref)
-    (local $v.60 eqref)
-    (local $v.61 eqref)
-    (local $v.62 eqref)
-    (local $v.63 eqref)
-    (local $v.64 eqref)
-    (local $v.65 eqref)
-    (local $v.66 eqref)
-    (local $v.67 eqref)
-    (local $v.68 eqref)
-    (local $v.69 eqref)
-    (local $v.70 eqref)
-    (local $v.71 eqref)
-    (local $v.72 eqref)
-    (local $v.73 eqref)
-    (local $v.74 eqref)
-    (local $v.75 eqref)
-    (local $v.76 eqref)
-    (local $v.77 eqref)
-    (local $v.78 eqref)
-    (local $v.79 eqref)
     (local $v.80 i64)
-    (local $v.81 eqref)
-    (local $v.82 i64)
-    (local $v.83 eqref)
-    (local $v.84 eqref)
-    (local $v.85 eqref)
-    (local $v.86 eqref)
-    (local $v.87 eqref)
-    (local $v.88 eqref)
-    (local $v.89 eqref)
-    (local $v.90 eqref)
-    (local $v.91 eqref)
-    (local $v.92 eqref)
-    (local $s eqref)
-    (local $v.93 eqref)
-    (local $v.94 eqref)
-    (local $v.95 eqref)
     call $writer.init
     call $conv.init
     i64.const 7
@@ -238,41 +146,41 @@
     struct.new $string
     local.get $v.3
     call $concat
-    local.set $v.4
+    local.set $v.3
     local.get $v.2
-    local.get $v.4
+    local.get $v.3
     call $concat
-    local.set $v.5
+    local.set $v.2
     i32.const 0
     i32.const 3
     i32.const 12
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.5
+    local.get $v.2
     call $concat
-    local.set $v.6
+    local.set $v.2
     local.get $v.1
-    local.get $v.6
+    local.get $v.2
     call $concat
-    local.set $v.7
+    local.set $v.1
     i32.const 0
     i32.const 3
     i32.const 15
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.7
+    local.get $v.1
     call $concat
-    local.set $v.8
+    local.set $v.1
     local.get $v
-    local.get $v.8
+    local.get $v.1
     call $concat
-    local.set $v.9
+    local.set $v
     i32.const 1
     ref.i31
-    local.set $v.10
-    local.get $v.9
+    local.set $v.1
+    local.get $v
     i32.const 0
     i32.const 1
     i32.const 18
@@ -280,66 +188,66 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.11
-    local.get $v.10
-    local.get $v.11
+    local.set $v
+    local.get $v.1
+    local.get $v
     call $putString
-    local.set $v.12
+    local.set $v
     i64.const -7
     call $convInt
-    local.set $v.13
+    local.set $v
     i64.const 2
     call $convInt
-    local.set $v.14
+    local.set $v.1
     i64.const -3
     call $convInt
-    local.set $v.15
+    local.set $v.2
     i64.const -1
     call $convInt
-    local.set $v.16
+    local.set $v.3
     i32.const 0
     i32.const 12
     i32.const 19
     i32.const 12
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.16
+    local.get $v.3
     call $concat
-    local.set $v.17
-    local.get $v.15
-    local.get $v.17
+    local.set $v.3
+    local.get $v.2
+    local.get $v.3
     call $concat
-    local.set $v.18
+    local.set $v.2
     i32.const 0
     i32.const 3
     i32.const 31
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.18
+    local.get $v.2
     call $concat
-    local.set $v.19
-    local.get $v.14
-    local.get $v.19
+    local.set $v.2
+    local.get $v.1
+    local.get $v.2
     call $concat
-    local.set $v.20
+    local.set $v.1
     i32.const 0
     i32.const 3
     i32.const 34
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.20
+    local.get $v.1
     call $concat
-    local.set $v.21
-    local.get $v.13
-    local.get $v.21
+    local.set $v.1
+    local.get $v
+    local.get $v.1
     call $concat
-    local.set $v.22
+    local.set $v
     i32.const 1
     ref.i31
-    local.set $v.23
-    local.get $v.22
+    local.set $v.1
+    local.get $v
     i32.const 0
     i32.const 1
     i32.const 37
@@ -347,66 +255,66 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.24
-    local.get $v.23
-    local.get $v.24
+    local.set $v
+    local.get $v.1
+    local.get $v
     call $putString
-    local.set $v.25
+    local.set $v
     i64.const 7
     call $convInt
-    local.set $v.26
+    local.set $v
     i64.const -2
     call $convInt
-    local.set $v.27
+    local.set $v.1
     i64.const -3
     call $convInt
-    local.set $v.28
+    local.set $v.2
     i64.const 1
     call $convInt
-    local.set $v.29
+    local.set $v.3
     i32.const 0
     i32.const 12
     i32.const 38
     i32.const 12
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.29
+    local.get $v.3
     call $concat
-    local.set $v.30
-    local.get $v.28
-    local.get $v.30
+    local.set $v.3
+    local.get $v.2
+    local.get $v.3
     call $concat
-    local.set $v.31
+    local.set $v.2
     i32.const 0
     i32.const 3
     i32.const 50
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.31
+    local.get $v.2
     call $concat
-    local.set $v.32
-    local.get $v.27
-    local.get $v.32
+    local.set $v.2
+    local.get $v.1
+    local.get $v.2
     call $concat
-    local.set $v.33
+    local.set $v.1
     i32.const 0
     i32.const 3
     i32.const 53
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.33
+    local.get $v.1
     call $concat
-    local.set $v.34
-    local.get $v.26
-    local.get $v.34
+    local.set $v.1
+    local.get $v
+    local.get $v.1
     call $concat
-    local.set $v.35
+    local.set $v
     i32.const 1
     ref.i31
-    local.set $v.36
-    local.get $v.35
+    local.set $v.1
+    local.get $v
     i32.const 0
     i32.const 1
     i32.const 56
@@ -414,66 +322,66 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.37
-    local.get $v.36
-    local.get $v.37
+    local.set $v
+    local.get $v.1
+    local.get $v
     call $putString
-    local.set $v.38
+    local.set $v
     i64.const -9223372036854775808
     call $convInt
-    local.set $v.39
+    local.set $v
     i64.const -1
     call $convInt
-    local.set $v.40
+    local.set $v.1
     i64.const -9223372036854775808
     call $convInt
-    local.set $v.41
+    local.set $v.2
     i64.const 0
     call $convInt
-    local.set $v.42
+    local.set $v.3
     i32.const 0
     i32.const 12
     i32.const 57
     i32.const 12
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.42
+    local.get $v.3
     call $concat
-    local.set $v.43
-    local.get $v.41
-    local.get $v.43
+    local.set $v.3
+    local.get $v.2
+    local.get $v.3
     call $concat
-    local.set $v.44
+    local.set $v.2
     i32.const 0
     i32.const 3
     i32.const 69
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.44
+    local.get $v.2
     call $concat
-    local.set $v.45
-    local.get $v.40
-    local.get $v.45
+    local.set $v.2
+    local.get $v.1
+    local.get $v.2
     call $concat
-    local.set $v.46
+    local.set $v.1
     i32.const 0
     i32.const 3
     i32.const 72
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.46
+    local.get $v.1
     call $concat
-    local.set $v.47
-    local.get $v.39
-    local.get $v.47
+    local.set $v.1
+    local.get $v
+    local.get $v.1
     call $concat
-    local.set $v.48
+    local.set $v
     i32.const 1
     ref.i31
-    local.set $v.49
-    local.get $v.48
+    local.set $v.1
+    local.get $v
     i32.const 0
     i32.const 1
     i32.const 75
@@ -481,66 +389,66 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.50
-    local.get $v.49
-    local.get $v.50
+    local.set $v
+    local.get $v.1
+    local.get $v
     call $putString
-    local.set $v.51
+    local.set $v
     i64.const -9223372036854775808
     call $convInt
-    local.set $v.52
+    local.set $v
     i64.const 1
     call $convInt
-    local.set $v.53
+    local.set $v.1
     i64.const -9223372036854775808
     call $convInt
-    local.set $v.54
+    local.set $v.2
     i64.const 0
     call $convInt
-    local.set $v.55
+    local.set $v.3
     i32.const 0
     i32.const 12
     i32.const 76
     i32.const 12
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.55
+    local.get $v.3
     call $concat
-    local.set $v.56
-    local.get $v.54
-    local.get $v.56
+    local.set $v.3
+    local.get $v.2
+    local.get $v.3
     call $concat
-    local.set $v.57
+    local.set $v.2
     i32.const 0
     i32.const 3
     i32.const 88
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.57
+    local.get $v.2
     call $concat
-    local.set $v.58
-    local.get $v.53
-    local.get $v.58
+    local.set $v.2
+    local.get $v.1
+    local.get $v.2
     call $concat
-    local.set $v.59
+    local.set $v.1
     i32.const 0
     i32.const 3
     i32.const 91
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.59
+    local.get $v.1
     call $concat
-    local.set $v.60
-    local.get $v.52
-    local.get $v.60
+    local.set $v.1
+    local.get $v
+    local.get $v.1
     call $concat
-    local.set $v.61
+    local.set $v
     i32.const 1
     ref.i31
-    local.set $v.62
-    local.get $v.61
+    local.set $v.1
+    local.get $v
     i32.const 0
     i32.const 1
     i32.const 94
@@ -548,66 +456,66 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.63
-    local.get $v.62
-    local.get $v.63
+    local.set $v
+    local.get $v.1
+    local.get $v
     call $putString
-    local.set $v.64
+    local.set $v
     i64.const 0
     call $convInt
-    local.set $v.65
+    local.set $v
     i64.const -1
     call $convInt
-    local.set $v.66
+    local.set $v.1
     i64.const 0
     call $convInt
-    local.set $v.67
+    local.set $v.2
     i64.const 0
     call $convInt
-    local.set $v.68
+    local.set $v.3
     i32.const 0
     i32.const 12
     i32.const 95
     i32.const 12
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.68
+    local.get $v.3
     call $concat
-    local.set $v.69
-    local.get $v.67
-    local.get $v.69
+    local.set $v.3
+    local.get $v.2
+    local.get $v.3
     call $concat
-    local.set $v.70
+    local.set $v.2
     i32.const 0
     i32.const 3
     i32.const 107
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.70
+    local.get $v.2
     call $concat
-    local.set $v.71
-    local.get $v.66
-    local.get $v.71
+    local.set $v.2
+    local.get $v.1
+    local.get $v.2
     call $concat
-    local.set $v.72
+    local.set $v.1
     i32.const 0
     i32.const 3
     i32.const 110
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.72
+    local.get $v.1
     call $concat
-    local.set $v.73
-    local.get $v.65
-    local.get $v.73
+    local.set $v.1
+    local.get $v
+    local.get $v.1
     call $concat
-    local.set $v.74
+    local.set $v
     i32.const 1
     ref.i31
-    local.set $v.75
-    local.get $v.74
+    local.set $v.1
+    local.get $v
     i32.const 0
     i32.const 1
     i32.const 113
@@ -615,17 +523,17 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.76
-    local.get $v.75
-    local.get $v.76
+    local.set $v
+    local.get $v.1
+    local.get $v
     call $putString
-    local.set $v.77
+    local.set $v
     i64.const 1
     call $convInt
-    local.set $v.78
+    local.set $v
     i64.const 0
     call $convInt
-    local.set $v.79
+    local.set $v.1
     i64.const 0
     i64.eqz
     if
@@ -664,7 +572,7 @@
     local.set $v.80
     local.get $v.80
     call $convInt
-    local.set $v.81
+    local.set $v.2
     i64.const 0
     i64.eqz
     if
@@ -698,53 +606,53 @@
       i64.const 0
       i64.rem_s
     end
-    local.set $v.82
-    local.get $v.82
+    local.set $v.80
+    local.get $v.80
     call $convInt
-    local.set $v.83
+    local.set $v.3
     i32.const 0
     i32.const 12
     i32.const 336
     i32.const 12
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.83
+    local.get $v.3
     call $concat
-    local.set $v.84
-    local.get $v.81
-    local.get $v.84
+    local.set $v.3
+    local.get $v.2
+    local.get $v.3
     call $concat
-    local.set $v.85
+    local.set $v.2
     i32.const 0
     i32.const 3
     i32.const 348
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.85
+    local.get $v.2
     call $concat
-    local.set $v.86
-    local.get $v.79
-    local.get $v.86
+    local.set $v.2
+    local.get $v.1
+    local.get $v.2
     call $concat
-    local.set $v.87
+    local.set $v.1
     i32.const 0
     i32.const 3
     i32.const 351
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.87
+    local.get $v.1
     call $concat
-    local.set $v.88
-    local.get $v.78
-    local.get $v.88
+    local.set $v.1
+    local.get $v
+    local.get $v.1
     call $concat
-    local.set $v.89
+    local.set $v
     i32.const 1
     ref.i31
-    local.set $v.90
-    local.get $v.89
+    local.set $v.1
+    local.get $v
     i32.const 0
     i32.const 1
     i32.const 354
@@ -752,22 +660,22 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.91
-    local.get $v.90
-    local.get $v.91
+    local.set $v
+    local.get $v.1
+    local.get $v
     call $putString
-    local.set $v.92
+    local.set $v
     i32.const 0
     i32.const 11
     i32.const 355
     i32.const 11
     array.new_data $bytes $strings
     struct.new $string
-    local.set $s
+    local.set $v
     i32.const 1
     ref.i31
-    local.set $v.93
-    local.get $s
+    local.set $v.1
+    local.get $v
     i32.const 0
     i32.const 1
     i32.const 366
@@ -775,11 +683,11 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.94
-    local.get $v.93
-    local.get $v.94
+    local.set $v
+    local.get $v.1
+    local.get $v
     call $putString
-    local.set $v.95
+    local.set $v
   )
   (func $_start (type 45)
     (local $t (ref null $raised))

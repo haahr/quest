@@ -1,0 +1,189 @@
+// The driver compiled to wasm, as a session in node (docs/wasm-plan.md step
+// 11), standing in for `quest` where the tests run one:
+//
+//     node --no-warnings session-node.mjs [--stack-kb N] DRIVER.wasm --kernel [ARG...]
+//     node --no-warnings session-node.mjs [--stack-kb N] DRIVER.wasm -i [FILE] [ARG...]
+//
+// DRIVER.wasm is the driver's program module, DRIVER.wasm.runtime.wasm and
+// DRIVER.wasm.units beside it, as the driver's -o writes them. The session
+// runs in a worker whose stack is N KB (512 by default, a Chromium worker's),
+// interpreting each input (the driver is given --no-jit).
+//
+// With --kernel it speaks the kernel's protocol (docs/jupyter-kernel.md
+// section 2): requests from descriptor 3, records to descriptor 4, a SIGINT
+// ending the input running, as `interrupted`, by ending the worker and
+// replaying the session in a new one (section 6.4 of the plan). With -i it
+// reads lines from standard input as the REPL does, writing its prompts and
+// results, so that the REPL's transcripts run against it.
+
+import fs from "node:fs";
+import net from "node:net";
+import path from "node:path";
+import process from "node:process";
+import readline from "node:readline";
+import {Worker, isMainThread, parentPort, workerData} from "node:worker_threads";
+import {NodeMount} from "./host.mjs";
+import {Session, Exited, decodeRecord, failure, requestLine} from "./session.mjs";
+
+if (isMainThread) await main(); else serve();
+
+// ---------------------------------------------------------------------------
+// The worker: a Session, its writes made directly to the process's
+// descriptors, so that a cell's output and its records keep their order
+
+function serve() {
+  const {modules, args, env, cwd, kernel, committed} = workerData;
+  const write = fd => b => fs.writeSync(fd, b);
+  const session = new Session({
+    modules, args, env, cwd, mounts: {"/": new NodeMount(fs, "/")},
+    stdout: write(1), stderr: write(2), record: kernel ? write(4) : null,
+  });
+  const post = message => parentPort.postMessage(message);
+  try {
+    session.start();
+    // A replacement for a worker that was ended: the inputs that committed
+    session.committed = committed;
+    if (committed.length > 0) session.replay();
+    post({started: true});
+  } catch (e) {
+    if (e instanceof Exited) post({exited: e.status}); else throw e;
+    return;
+  }
+  parentPort.on("message", ({line}) => {
+    try {
+      const records = session.request(line);
+      post({records, committed: session.committed});
+    } catch (e) {
+      if (e instanceof Exited) post({exited: e.status}); else throw e;
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The main thread: the options, the worker, and the protocol or the REPL
+
+async function main() {
+  const argv = process.argv.slice(2);
+  let stackKb = 512;
+  if (argv[0] === "--stack-kb") { stackKb = Number(argv[1]); argv.splice(0, 2); }
+  const [driver, ...rest] = argv;
+  if (!driver) {
+    process.stderr.write("usage: node session-node.mjs [--stack-kb N] DRIVER.wasm (--kernel | -i [FILE]) [ARG...]\n");
+    process.exit(2);
+  }
+  const kernel = rest.includes("--kernel");
+  const compile = file => new WebAssembly.Module(fs.readFileSync(file));
+  const units = fs.readFileSync(driver + ".units", "utf8").split(/\s+/).filter(Boolean).map(entry => {
+    const at = entry.indexOf("=");
+    return {name: entry.slice(0, at), module: compile(entry.slice(at + 1))};
+  });
+  const modules = {runtime: compile(driver + ".runtime.wasm"), units, program: compile(driver)};
+  const env = {...process.env, PWD: process.cwd()};
+  // --no-jit first, before a file -i runs and its arguments
+  const args = ["--no-jit", ...rest.filter(a => a !== "--no-jit")];
+  // A worker, started and given the committed inputs to replay
+  let committed = [];
+  let worker = null;
+  let waiting = null;
+  const startWorker = () => new Promise(resolve => {
+    worker = new Worker(new URL(import.meta.url), {
+      workerData: {modules, args, env, cwd: process.cwd(), kernel, committed},
+      // node keeps 192 KB of a worker's stack from V8 (kStackBufferSize), so
+      // that V8 has the N KB that a browser's worker gives it
+      resourceLimits: {stackSizeMb: (stackKb + 192) / 1024},
+    });
+    waiting = message => {
+      if (message.exited !== undefined) process.exit(message.exited);
+      resolve();
+    };
+    worker.on("message", message => {
+      const w = waiting;
+      waiting = null;
+      if (w) w(message);
+    });
+    worker.on("error", e => { process.stderr.write(`quest: the session's worker failed: ${e.stack || e}\n`); process.exit(70); });
+  });
+  await startWorker();
+  // After the driver has checked its options, as natively, where it opens
+  // descriptor 3 itself. node holds descriptors of its own, pipes too, where
+  // none was given it, which a socket refuses (ENOTTY).
+  let requests = null;
+  if (kernel) {
+    try {
+      requests = new net.Socket({fd: 3, readable: true, writable: false});
+    } catch {
+      process.stderr.write("quest: error: --kernel reads requests from descriptor 3, which is not open\n");
+      process.exit(2);
+    }
+  }
+
+  // One request: its records; an interrupt (interrupt()) ends it as one
+  let running = null;
+  const request = line => new Promise(resolve => {
+    running = {resolve};
+    waiting = message => {
+      running = null;
+      // process.exit ends the worker too
+      if (message.exited !== undefined) process.exit(message.exited);
+      committed = message.committed;
+      resolve(message.records);
+    };
+    worker.postMessage({line});
+  });
+  const interrupt = async () => {
+    if (!running) return;  // between inputs, forgotten
+    const {resolve} = running;
+    running = null;
+    waiting = null;
+    await worker.terminate();
+    await startWorker();
+    const records = failure("interrupted", "interrupted");
+    if (kernel) fs.writeSync(4, records.map(r => requestLine(r)).join("\n") + "\n");
+    resolve(records);
+  };
+  process.on("SIGINT", () => { interrupt(); });
+
+  if (kernel) {
+    // A socket, not a file stream: a file stream's blocking read in node's
+    // thread pool keeps the process from exiting
+    const lines = readline.createInterface({input: requests});
+    for await (const line of lines) {
+      if (line.trim() !== "") await request(line);
+    }
+  } else {
+    await repl(request);
+  }
+  await worker.terminate();
+  process.exit(0);
+}
+
+// The REPL's loop (questlang/driver/repl's run), reading standard input
+// without editing: its prompts, results, and errors as the REPL writes them
+async function repl(request) {
+  const out = s => fs.writeSync(1, s);
+  const lines = [];
+  out(">>  ");
+  const input = readline.createInterface({input: process.stdin, terminal: false});
+  for await (const line of input) {
+    lines.push(line);
+    const text = lines.join("\n");
+    const status = decodeRecord((await request(requestLine({isComplete: text}))).find(r => "status" in r));
+    if (status.status === "complete") {
+      lines.length = 0;
+      if (text.trim() !== "") {
+        const records = (await request(requestLine({execute: text}))).map(decodeRecord);
+        for (const r of records) {
+          if ("result" in r) {
+            const [first, ...more] = r.result.split("\n");
+            out(`==  ${first}\n`);
+            for (const m of more) out(`    ${m}\n`);
+          } else if ("error" in r) {
+            fs.writeSync(2, r.rendered);
+          }
+        }
+      }
+    }
+    out(lines.length === 0 ? ">>  " : "    ");
+  }
+  out("\n");
+}

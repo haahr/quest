@@ -155,16 +155,8 @@
   (export "_start" (func $_start))
   (func $divide (type 52) (param $closure (ref $clos)) (param $n i64) (param $d i64) (result i64 i64)
     (local $v i32)
-    (local $v.1 i64)
     (local $v.2 i64)
-    (local $v.3 i64)
-    (local $t i64)
-    (local $t.1 i64)
-    (local $v.4 i64)
-    (local $q i64)
-    (local $r i64)
-    (local $v.5 i64)
-    (local $v.6 i64)
+    (local $v.1 i64)
     local.get $n
     local.get $d
     i64.lt_s
@@ -182,27 +174,27 @@
       local.get $n
       local.get $d
       i64.sub
-      local.set $v.3
+      local.set $v.2
       global.get $noClosure
-      local.get $v.3
+      local.get $v.2
       local.get $d
       call $divide
-      local.set $t.1
-      local.set $t
-      local.get $t
-      local.set $v.4
-      local.get $v.4
+      local.set $v.2
+      local.set $v.1
+      local.get $v.1
+      local.set $v.1
+      local.get $v.1
       i64.const 1
       i64.add
-      local.set $q
-      local.get $t.1
-      local.set $r
-      local.get $q
-      local.get $r
-      local.set $v.6
-      local.set $v.5
-      local.get $v.5
-      local.get $v.6
+      local.set $v.1
+      local.get $v.2
+      local.set $v.2
+      local.get $v.1
+      local.get $v.2
+      local.set $v.2
+      local.set $v.1
+      local.get $v.1
+      local.get $v.2
       return
     end
     unreachable
@@ -210,276 +202,20 @@
   (func $main (type 45)
     (local $v eqref)
     (local $t (ref null $slots))
-    (local $v.1 eqref)
     (local $v.2 eqref)
-    (local $t.1 (ref null $slots))
-    (local $v.3 eqref)
     (local $v.4 eqref)
     (local $v.5 eqref)
-    (local $t.2 (ref null $slots))
-    (local $v.6 eqref)
-    (local $shapes eqref)
     (local $v.7 i64)
-    (local $v.8 i64)
     (local $i i64)
     (local $v.9 i32)
     (local $i.1 i64)
-    (local $v.10 eqref)
     (local $t.3 (ref null $option))
-    (local $c eqref)
-    (local $v.11 i64)
     (local $v.12 i64)
-    (local $v.13 i64)
-    (local $v.14 i64)
-    (local $q eqref)
-    (local $v.15 i64)
-    (local $v.16 i64)
-    (local $v.17 i64)
-    (local $p eqref)
-    (local $v.18 i64)
-    (local $v.19 i64)
-    (local $v.20 i64)
-    (local $v.21 i64)
-    (local $v.22 eqref)
-    (local $v.23 eqref)
-    (local $v.24 eqref)
-    (local $v.25 eqref)
-    (local $v.26 i32)
-    (local $v.27 i64)
-    (local $v.28 eqref)
-    (local $t.4 (ref null $slots))
-    (local $pt eqref)
-    (local $v.29 i64)
-    (local $v.30 eqref)
-    (local $v.31 i64)
-    (local $v.32 eqref)
-    (local $v.33 eqref)
-    (local $v.34 eqref)
-    (local $v.35 eqref)
-    (local $v.36 eqref)
-    (local $v.37 eqref)
-    (local $v.38 eqref)
-    (local $v.39 eqref)
-    (local $t.5 eqref)
-    (local $t.6 eqref)
-    (local $t.7 i32)
-    (local $t.8 i32)
-    (local $v.40 i32)
-    (local $v.41 eqref)
-    (local $v.42 eqref)
-    (local $v.43 i32)
-    (local $v.44 eqref)
-    (local $v.45 eqref)
-    (local $t.9 i32)
-    (local $v.46 i64)
-    (local $v.47 eqref)
     (local $v.48 eqref)
-    (local $v.49 eqref)
-    (local $t.10 eqref)
-    (local $t.11 eqref)
-    (local $t.12 i32)
-    (local $t.13 i32)
-    (local $v.50 i32)
-    (local $v.51 eqref)
-    (local $v.52 eqref)
-    (local $v.53 eqref)
-    (local $v.54 eqref)
-    (local $v.55 eqref)
-    (local $v.56 eqref)
-    (local $v.57 eqref)
-    (local $v.58 eqref)
-    (local $v.59 eqref)
-    (local $v.60 eqref)
-    (local $t.14 i32)
-    (local $light eqref)
-    (local $v.61 i32)
-    (local $v.62 eqref)
-    (local $t.15 i32)
-    (local $v.63 i64)
-    (local $v.64 eqref)
-    (local $v.65 eqref)
-    (local $v.66 eqref)
-    (local $v.67 eqref)
-    (local $v.68 eqref)
-    (local $v.69 eqref)
-    (local $v.70 eqref)
-    (local $t.16 (ref null $slots))
-    (local $m eqref)
-    (local $v.71 eqref)
-    (local $t.17 (ref null $slots))
-    (local $n eqref)
-    (local $v.72 eqref)
-    (local $t.18 (ref null $slots))
-    (local $o eqref)
-    (local $t.19 eqref)
-    (local $t.20 eqref)
-    (local $t.21 i32)
     (local $t.22 i32)
-    (local $t.23 eqref)
-    (local $t.24 eqref)
-    (local $v.73 i32)
-    (local $v.74 eqref)
-    (local $t.25 eqref)
-    (local $t.26 eqref)
-    (local $t.27 i32)
-    (local $t.28 i32)
-    (local $t.29 eqref)
-    (local $t.30 eqref)
-    (local $v.75 i32)
-    (local $v.76 eqref)
-    (local $v.77 eqref)
-    (local $v.78 eqref)
-    (local $v.79 eqref)
-    (local $v.80 eqref)
-    (local $v.81 eqref)
-    (local $b eqref)
-    (local $t.31 eqref)
-    (local $v.82 eqref)
-    (local $v.83 eqref)
-    (local $v.84 eqref)
-    (local $v.85 eqref)
-    (local $v.86 eqref)
-    (local $v.87 eqref)
-    (local $v.88 eqref)
-    (local $v.89 eqref)
-    (local $v.90 eqref)
-    (local $v.91 eqref)
-    (local $qr i64)
-    (local $qr.1 i64)
-    (local $qr2 i64)
-    (local $qr2.1 i64)
-    (local $v.92 i64)
-    (local $v.93 eqref)
-    (local $v.94 i64)
-    (local $v.95 eqref)
-    (local $v.96 i64)
-    (local $v.97 eqref)
-    (local $v.98 i64)
-    (local $v.99 eqref)
-    (local $v.100 eqref)
-    (local $v.101 eqref)
-    (local $v.102 eqref)
-    (local $v.103 eqref)
-    (local $v.104 eqref)
-    (local $v.105 eqref)
-    (local $v.106 eqref)
-    (local $v.107 eqref)
-    (local $v.108 eqref)
-    (local $a eqref)
-    (local $i.2 i64)
-    (local $v.109 i32)
-    (local $i.3 i64)
-    (local $v.110 i64)
-    (local $v.111 i32)
-    (local $v.112 i64)
-    (local $v.113 i64)
-    (local $v.114 eqref)
-    (local $v.115 i64)
-    (local $v.116 eqref)
-    (local $v.117 eqref)
-    (local $v.118 eqref)
-    (local $v.119 eqref)
-    (local $v.120 eqref)
-    (local $v.121 eqref)
-    (local $str eqref)
-    (local $v.122 eqref)
-    (local $v.123 i32)
-    (local $v.124 eqref)
-    (local $v.125 i32)
-    (local $v.126 eqref)
-    (local $v.127 eqref)
-    (local $v.128 eqref)
-    (local $v.129 eqref)
-    (local $v.130 eqref)
-    (local $v.131 eqref)
-    (local $v.132 eqref)
-    (local $v.133 eqref)
-    (local $v.134 eqref)
-    (local $v.135 eqref)
-    (local $t.32 eqref)
-    (local $p_box eqref)
     (local $t.33 (ref null $recBox))
-    (local $p.1 eqref)
-    (local $p.2 eqref)
-    (local $t.34 eqref)
-    (local $v.136 i64)
-    (local $v.137 i64)
-    (local $t.35 eqref)
-    (local $t.36 eqref)
-    (local $v.138 eqref)
     (local $t.37 eqref)
-    (local $v.139 i64)
-    (local $v.140 eqref)
     (local $t.38 eqref)
-    (local $v.141 i64)
-    (local $v.142 eqref)
-    (local $v.143 eqref)
-    (local $v.144 eqref)
-    (local $v.145 eqref)
-    (local $v.146 eqref)
-    (local $v.147 eqref)
-    (local $v.148 eqref)
-    (local $v.149 eqref)
-    (local $t.39 eqref)
-    (local $box eqref)
-    (local $t.40 (ref null $recBox))
-    (local $v.150 eqref)
-    (local $v.151 eqref)
-    (local $ps eqref)
-    (local $box.1 eqref)
-    (local $t.41 (ref null $recBox))
-    (local $v.152 eqref)
-    (local $v.153 eqref)
-    (local $t.42 eqref)
-    (local $v.154 eqref)
-    (local $box.2 eqref)
-    (local $t.43 (ref null $recBox))
-    (local $v.155 eqref)
-    (local $v.156 eqref)
-    (local $q.1 eqref)
-    (local $q.2 eqref)
-    (local $t.44 eqref)
-    (local $v.157 i64)
-    (local $t.45 eqref)
-    (local $v.158 i64)
-    (local $t.46 eqref)
-    (local $v.159 i64)
-    (local $t.47 eqref)
-    (local $v.160 i64)
-    (local $v.161 i64)
-    (local $v.162 i64)
-    (local $v.163 i64)
-    (local $v.164 eqref)
-    (local $t.48 eqref)
-    (local $v.165 i64)
-    (local $t.49 eqref)
-    (local $v.166 i64)
-    (local $t.50 eqref)
-    (local $v.167 i64)
-    (local $t.51 eqref)
-    (local $v.168 i64)
-    (local $v.169 i64)
-    (local $v.170 i64)
-    (local $v.171 i64)
-    (local $v.172 eqref)
-    (local $v.173 eqref)
-    (local $v.174 eqref)
-    (local $v.175 eqref)
-    (local $v.176 eqref)
-    (local $v.177 eqref)
-    (local $v.178 eqref)
-    (local $t.52 eqref)
-    (local $v.179 eqref)
-    (local $v.180 eqref)
-    (local $v.181 eqref)
-    (local $v.182 eqref)
-    (local $v.183 eqref)
-    (local $v.184 eqref)
-    (local $v.185 i64)
-    (local $v.186 eqref)
-    (local $v.187 eqref)
-    (local $v.188 eqref)
-    (local $v.189 eqref)
     call $wasm/core.init
     call $descriptors
     call $writer.init
@@ -506,7 +242,7 @@
     ref.as_non_null
     i32.const 0
     struct.new $option
-    local.set $v.1
+    local.set $v
     i32.const 0
     i64.const 5
     call $boxInt
@@ -516,7 +252,7 @@
     i32.const 0
     i32.const 1
     array.new_default $slots
-    local.tee $t.1
+    local.tee $t
     i32.const 0
     local.get $v.2
     ref.cast (ref $tuple)
@@ -524,11 +260,11 @@
     i32.const 0
     i32.const 1
     array.copy $slots $slots
-    local.get $t.1
+    local.get $t
     ref.as_non_null
     i32.const 3
     struct.new $option
-    local.set $v.3
+    local.set $v.2
     i32.const 0
     array.new_fixed $slots 0
     i32.const 1
@@ -545,7 +281,7 @@
     i32.const 0
     i32.const 2
     array.new_default $slots
-    local.tee $t.2
+    local.tee $t
     i32.const 0
     local.get $v.5
     ref.cast (ref $tuple)
@@ -553,20 +289,20 @@
     i32.const 0
     i32.const 2
     array.copy $slots $slots
-    local.get $t.2
+    local.get $t
     ref.as_non_null
     i32.const 2
     struct.new $option
-    local.set $v.6
+    local.set $v.5
     i32.const 0
-    local.get $v.1
-    local.get $v.3
+    local.get $v
+    local.get $v.2
     local.get $v.4
-    local.get $v.6
+    local.get $v.5
     array.new_fixed $slots 4
     struct.new $array
-    local.set $shapes
-    local.get $shapes
+    local.set $v
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     array.len
@@ -575,11 +311,11 @@
     local.get $v.7
     i64.const 1
     i64.sub
-    local.set $v.8
+    local.set $v.7
     i64.const 0
     local.set $i
     local.get $i
-    local.get $v.8
+    local.get $v.7
     i64.le_s
     local.set $v.9
     local.get $v.9
@@ -589,7 +325,7 @@
           local.get $i
           local.set $i.1
           local.get $i.1
-          local.get $shapes
+          local.get $v
           ref.cast (ref $array)
           struct.get $array $elems
           array.len
@@ -617,16 +353,16 @@
             call $raise
             unreachable
           end
-          local.get $shapes
+          local.get $v
           ref.cast (ref $array)
           struct.get $array $elems
           local.get $i.1
           i32.wrap_i64
           array.get $slots
-          local.set $v.10
+          local.set $v.2
           block $inlined1.after
             block $inlined1 (result i64)
-              local.get $v.10
+              local.get $v.2
               block (type 53)
                 br_on_cast 0 eqref (ref $option)
                 drop
@@ -652,76 +388,76 @@
                           br_table 0 3 2 1 4
                         end
                         local.get $t.3
-                        local.set $c
-                        local.get $c
+                        local.set $v.2
+                        local.get $v.2
                         ref.cast (ref $tuple)
                         struct.get $tuple $slots
                         i32.const 0
                         array.get $slots
                         call $unboxInt
-                        local.set $v.11
-                        local.get $c
+                        local.set $i.1
+                        local.get $v.2
                         ref.cast (ref $tuple)
                         struct.get $tuple $slots
                         i32.const 0
                         array.get $slots
                         call $unboxInt
                         local.set $v.12
-                        local.get $v.11
+                        local.get $i.1
                         local.get $v.12
                         i64.mul
-                        local.set $v.13
+                        local.set $i.1
                         i64.const 3
-                        local.get $v.13
+                        local.get $i.1
                         i64.mul
-                        local.set $v.14
-                        local.get $v.14
+                        local.set $i.1
+                        local.get $i.1
                         br $inlined1
                       end
                       local.get $t.3
-                      local.set $q
-                      local.get $q
+                      local.set $v.2
+                      local.get $v.2
                       ref.cast (ref $tuple)
                       struct.get $tuple $slots
                       i32.const 0
                       array.get $slots
                       call $unboxInt
-                      local.set $v.15
-                      local.get $q
+                      local.set $i.1
+                      local.get $v.2
                       ref.cast (ref $tuple)
                       struct.get $tuple $slots
                       i32.const 0
                       array.get $slots
                       call $unboxInt
-                      local.set $v.16
-                      local.get $v.15
-                      local.get $v.16
+                      local.set $v.12
+                      local.get $i.1
+                      local.get $v.12
                       i64.mul
-                      local.set $v.17
-                      local.get $v.17
+                      local.set $i.1
+                      local.get $i.1
                       br $inlined1
                     end
                     local.get $t.3
-                    local.set $p
-                    local.get $p
+                    local.set $v.2
+                    local.get $v.2
                     ref.cast (ref $tuple)
                     struct.get $tuple $slots
                     i32.const 0
                     array.get $slots
                     call $unboxInt
-                    local.set $v.18
-                    local.get $p
+                    local.set $i.1
+                    local.get $v.2
                     ref.cast (ref $tuple)
                     struct.get $tuple $slots
                     i32.const 1
                     array.get $slots
                     call $unboxInt
-                    local.set $v.19
-                    local.get $v.18
-                    local.get $v.19
+                    local.set $v.12
+                    local.get $i.1
+                    local.get $v.12
                     i64.add
-                    local.set $v.20
-                    local.get $v.20
+                    local.set $i.1
+                    local.get $i.1
                     br $inlined1
                   end
                   i64.const 0
@@ -749,14 +485,14 @@
               end
               br $inlined1.after
             end
-            local.set $v.21
-            local.get $v.21
+            local.set $i.1
+            local.get $i.1
             call $convInt
-            local.set $v.22
+            local.set $v.2
             i32.const 1
             ref.i31
-            local.set $v.23
-            local.get $v.22
+            local.set $v.4
+            local.get $v.2
             i32.const 0
             i32.const 1
             i32.const 445
@@ -764,16 +500,16 @@
             array.new_data $bytes $strings
             struct.new $string
             call $concat
-            local.set $v.24
-            local.get $v.23
-            local.get $v.24
+            local.set $v.2
+            local.get $v.4
+            local.get $v.2
             call $putString
-            local.set $v.25
+            local.set $v.2
             local.get $i
-            local.get $v.8
+            local.get $v.7
             i64.eq
-            local.set $v.26
-            local.get $v.26
+            local.set $v.9
+            local.get $v.9
             if
               br $L1.exit
             else
@@ -781,8 +517,8 @@
             local.get $i
             i64.const 1
             i64.add
-            local.set $v.27
-            local.get $v.27
+            local.set $i.1
+            local.get $i.1
             local.set $i
           end
           br $L1
@@ -791,7 +527,7 @@
     else
     end
     i64.const 3
-    local.get $shapes
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     array.len
@@ -819,14 +555,14 @@
       call $raise
       unreachable
     end
-    local.get $shapes
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     i64.const 3
     i32.wrap_i64
     array.get $slots
-    local.set $v.28
-    local.get $v.28
+    local.set $v.2
+    local.get $v.2
     block (type 53)
       br_on_cast 0 eqref (ref $option)
       drop
@@ -867,15 +603,15 @@
     i32.const 0
     i32.const 3
     array.new_default $slots
-    local.set $t.4
-    local.get $t.4
+    local.set $t
+    local.get $t
     i32.const 0
     i32.const 3
     ref.i31
     array.set $slots
-    local.get $t.4
+    local.get $t
     i32.const 1
-    local.get $v.28
+    local.get $v.2
     block (type 53)
       br_on_cast 0 eqref (ref $option)
       drop
@@ -893,47 +629,47 @@
     i32.const 0
     i32.const 2
     array.copy $slots $slots
-    local.get $t.4
+    local.get $t
     ref.as_non_null
     struct.new $tuple
-    local.set $pt
-    local.get $pt
+    local.set $v.2
+    local.get $v.2
     ref.cast (ref $tuple)
     struct.get $tuple $slots
     i32.const 1
     array.get $slots
     call $unboxInt
-    local.set $v.29
-    local.get $v.29
+    local.set $v.7
+    local.get $v.7
     call $convInt
-    local.set $v.30
-    local.get $pt
+    local.set $v.4
+    local.get $v.2
     ref.cast (ref $tuple)
     struct.get $tuple $slots
     i32.const 2
     array.get $slots
     call $unboxInt
-    local.set $v.31
-    local.get $v.31
+    local.set $v.7
+    local.get $v.7
     call $convInt
-    local.set $v.32
+    local.set $v.2
     i32.const 0
     i32.const 1
     i32.const 776
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.32
+    local.get $v.2
     call $concat
-    local.set $v.33
-    local.get $v.30
-    local.get $v.33
+    local.set $v.2
+    local.get $v.4
+    local.get $v.2
     call $concat
-    local.set $v.34
+    local.set $v.2
     i32.const 1
     ref.i31
-    local.set $v.35
-    local.get $v.34
+    local.set $v.4
+    local.get $v.2
     i32.const 0
     i32.const 1
     i32.const 777
@@ -941,13 +677,13 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.36
-    local.get $v.35
-    local.get $v.36
+    local.set $v.2
+    local.get $v.4
+    local.get $v.2
     call $putString
-    local.set $v.37
+    local.set $v.2
     i64.const 2
-    local.get $shapes
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     array.len
@@ -975,45 +711,45 @@
       call $raise
       unreachable
     end
-    local.get $shapes
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     i64.const 2
     i32.wrap_i64
     array.get $slots
-    local.set $v.38
+    local.set $v.2
     i32.const 0
     array.new_fixed $slots 0
     i32.const 1
     struct.new $option
-    local.set $v.39
-    local.get $v.38
-    local.set $t.5
-    local.get $v.39
-    local.set $t.6
-    local.get $t.5
-    local.get $t.6
+    local.set $v.4
+    local.get $v.2
+    local.set $v.2
+    local.get $v.4
+    local.set $v.4
+    local.get $v.2
+    local.get $v.4
     ref.eq
     if (result i32)
       i32.const 1
     else
-      local.get $t.5
+      local.get $v.2
       ref.cast (ref $option)
       struct.get $option $tag
-      local.tee $t.7
-      local.get $t.6
+      local.tee $v.9
+      local.get $v.4
       ref.cast (ref $option)
       struct.get $option $tag
       i32.eq
       if (result i32)
-        local.get $t.7
-        local.set $t.8
+        local.get $v.9
+        local.set $v.9
         block (result i32)
           block
             block
               block
                 block
-                  local.get $t.8
+                  local.get $v.9
                   br_table 0 1 2 3 3
                 end
                 i32.const 0
@@ -1032,13 +768,13 @@
         i32.const 0
       end
     end
-    local.set $v.40
+    local.set $v.9
     global.get $noClosure
-    local.get $v.40
+    local.get $v.9
     call $conv.bool
-    local.set $v.41
+    local.set $v.2
     i64.const 0
-    local.get $shapes
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     array.len
@@ -1066,14 +802,14 @@
       call $raise
       unreachable
     end
-    local.get $shapes
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     i64.const 0
     i32.wrap_i64
     array.get $slots
-    local.set $v.42
-    local.get $v.42
+    local.set $v.4
+    local.get $v.4
     block (type 53)
       br_on_cast 0 eqref (ref $option)
       drop
@@ -1090,13 +826,13 @@
     struct.get $option $tag
     i32.const 0
     i32.eq
-    local.set $v.43
+    local.set $v.9
     global.get $noClosure
-    local.get $v.43
+    local.get $v.9
     call $conv.bool
-    local.set $v.44
+    local.set $v.4
     i64.const 1
-    local.get $shapes
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     array.len
@@ -1124,14 +860,14 @@
       call $raise
       unreachable
     end
-    local.get $shapes
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     i64.const 1
     i32.wrap_i64
     array.get $slots
-    local.set $v.45
-    local.get $v.45
+    local.set $v.5
+    local.get $v.5
     block (type 53)
       br_on_cast 0 eqref (ref $option)
       drop
@@ -1146,13 +882,13 @@
       unreachable
     end
     struct.get $option $tag
-    local.set $t.9
+    local.set $v.9
     block (result i32)
       block
         block
           block
             block
-              local.get $t.9
+              local.get $v.9
               br_table 0 1 2 3 3
             end
             i32.const 0
@@ -1168,12 +904,12 @@
       br 0
     end
     i64.extend_i32_u
-    local.set $v.46
-    local.get $v.46
+    local.set $v.7
+    local.get $v.7
     call $convInt
-    local.set $v.47
+    local.set $v.5
     i64.const 0
-    local.get $shapes
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     array.len
@@ -1201,7 +937,7 @@
       call $raise
       unreachable
     end
-    local.get $shapes
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     i64.const 0
@@ -1209,7 +945,7 @@
     array.get $slots
     local.set $v.48
     i64.const 1
-    local.get $shapes
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     array.len
@@ -1237,40 +973,40 @@
       call $raise
       unreachable
     end
-    local.get $shapes
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     i64.const 1
     i32.wrap_i64
     array.get $slots
-    local.set $v.49
+    local.set $v
     local.get $v.48
-    local.set $t.10
-    local.get $v.49
-    local.set $t.11
-    local.get $t.10
-    local.get $t.11
+    local.set $v.48
+    local.get $v
+    local.set $v
+    local.get $v.48
+    local.get $v
     ref.eq
     if (result i32)
       i32.const 1
     else
-      local.get $t.10
+      local.get $v.48
       ref.cast (ref $option)
       struct.get $option $tag
-      local.tee $t.12
-      local.get $t.11
+      local.tee $v.9
+      local.get $v
       ref.cast (ref $option)
       struct.get $option $tag
       i32.eq
       if (result i32)
-        local.get $t.12
-        local.set $t.13
+        local.get $v.9
+        local.set $v.9
         block (result i32)
           block
             block
               block
                 block
-                  local.get $t.13
+                  local.get $v.9
                   br_table 0 1 2 3 3
                 end
                 i32.const 0
@@ -1289,54 +1025,54 @@
         i32.const 0
       end
     end
-    local.set $v.50
+    local.set $v.9
     global.get $noClosure
-    local.get $v.50
+    local.get $v.9
     call $conv.bool
-    local.set $v.51
+    local.set $v
     i32.const 0
     i32.const 1
     i32.const 1450
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.51
+    local.get $v
     call $concat
-    local.set $v.52
-    local.get $v.47
-    local.get $v.52
+    local.set $v
+    local.get $v.5
+    local.get $v
     call $concat
-    local.set $v.53
+    local.set $v
     i32.const 0
     i32.const 1
     i32.const 1451
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.53
+    local.get $v
     call $concat
-    local.set $v.54
-    local.get $v.44
-    local.get $v.54
+    local.set $v
+    local.get $v.4
+    local.get $v
     call $concat
-    local.set $v.55
+    local.set $v
     i32.const 0
     i32.const 1
     i32.const 1452
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.55
+    local.get $v
     call $concat
-    local.set $v.56
-    local.get $v.41
-    local.get $v.56
+    local.set $v
+    local.get $v.2
+    local.get $v
     call $concat
-    local.set $v.57
+    local.set $v
     i32.const 1
     ref.i31
-    local.set $v.58
-    local.get $v.57
+    local.set $v.2
+    local.get $v
     i32.const 0
     i32.const 1
     i32.const 1453
@@ -1344,11 +1080,11 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.59
-    local.get $v.58
-    local.get $v.59
+    local.set $v
+    local.get $v.2
+    local.get $v
     call $putString
-    local.set $v.60
+    local.set $v
     i32.const 0
     i64.const 2
     i64.const 3
@@ -1378,12 +1114,12 @@
     array.new_fixed $slots 0
     i64.const 2
     i32.wrap_i64
-    local.set $t.14
+    local.set $v.9
     block (result i32)
       block
         block
           block
-            local.get $t.14
+            local.get $v.9
             br_table 0 1 2 2
           end
           i32.const 2
@@ -1396,8 +1132,8 @@
       br 0
     end
     struct.new $option
-    local.set $light
-    local.get $light
+    local.set $v
+    local.get $v
     block (type 53)
       br_on_cast 0 eqref (ref $option)
       drop
@@ -1414,12 +1150,12 @@
     struct.get $option $tag
     i32.const 1
     i32.eq
-    local.set $v.61
+    local.set $v.9
     global.get $noClosure
-    local.get $v.61
+    local.get $v.9
     call $conv.bool
-    local.set $v.62
-    local.get $light
+    local.set $v.2
+    local.get $v
     block (type 53)
       br_on_cast 0 eqref (ref $option)
       drop
@@ -1434,12 +1170,12 @@
       unreachable
     end
     struct.get $option $tag
-    local.set $t.15
+    local.set $v.9
     block (result i32)
       block
         block
           block
-            local.get $t.15
+            local.get $v.9
             br_table 0 1 2 2
           end
           i32.const 1
@@ -1452,27 +1188,27 @@
       br 0
     end
     i64.extend_i32_u
-    local.set $v.63
-    local.get $v.63
+    local.set $v.7
+    local.get $v.7
     call $convInt
-    local.set $v.64
+    local.set $v
     i32.const 0
     i32.const 1
     i32.const 1725
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.64
+    local.get $v
     call $concat
-    local.set $v.65
-    local.get $v.62
-    local.get $v.65
+    local.set $v
+    local.get $v.2
+    local.get $v
     call $concat
-    local.set $v.66
+    local.set $v
     i32.const 1
     ref.i31
-    local.set $v.67
-    local.get $v.66
+    local.set $v.2
+    local.get $v
     i32.const 0
     i32.const 1
     i32.const 1726
@@ -1480,97 +1216,97 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.68
-    local.get $v.67
-    local.get $v.68
+    local.set $v
+    local.get $v.2
+    local.get $v
     call $putString
-    local.set $v.69
+    local.set $v
     i32.const 0
     i64.const 4
     call $boxInt
     array.new_fixed $slots 1
     struct.new $tuple
-    local.set $v.70
+    local.set $v
     i32.const 0
     i32.const 1
     array.new_default $slots
-    local.tee $t.16
+    local.tee $t
     i32.const 0
-    local.get $v.70
+    local.get $v
     ref.cast (ref $tuple)
     struct.get $tuple $slots
     i32.const 0
     i32.const 1
     array.copy $slots $slots
-    local.get $t.16
+    local.get $t
     ref.as_non_null
     i32.const 1
     struct.new $option
-    local.set $m
+    local.set $v
     i32.const 0
     i64.const 4
     call $boxInt
     array.new_fixed $slots 1
     struct.new $tuple
-    local.set $v.71
+    local.set $v.2
     i32.const 0
     i32.const 1
     array.new_default $slots
-    local.tee $t.17
+    local.tee $t
     i32.const 0
-    local.get $v.71
+    local.get $v.2
     ref.cast (ref $tuple)
     struct.get $tuple $slots
     i32.const 0
     i32.const 1
     array.copy $slots $slots
-    local.get $t.17
+    local.get $t
     ref.as_non_null
     i32.const 1
     struct.new $option
-    local.set $n
+    local.set $v.2
     i32.const 0
     i64.const 5
     call $boxInt
     array.new_fixed $slots 1
     struct.new $tuple
-    local.set $v.72
+    local.set $v.4
     i32.const 0
     i32.const 1
     array.new_default $slots
-    local.tee $t.18
+    local.tee $t
     i32.const 0
-    local.get $v.72
+    local.get $v.4
     ref.cast (ref $tuple)
     struct.get $tuple $slots
     i32.const 0
     i32.const 1
     array.copy $slots $slots
-    local.get $t.18
+    local.get $t
     ref.as_non_null
     i32.const 1
     struct.new $option
-    local.set $o
-    local.get $m
-    local.set $t.19
-    local.get $n
-    local.set $t.20
-    local.get $t.19
-    local.get $t.20
+    local.set $v.4
+    local.get $v
+    local.set $v.5
+    local.get $v.2
+    local.set $v.2
+    local.get $v.5
+    local.get $v.2
     ref.eq
     if (result i32)
       i32.const 1
     else
-      local.get $t.19
+      local.get $v.5
       ref.cast (ref $option)
       struct.get $option $tag
-      local.tee $t.21
-      local.get $t.20
+      local.tee $v.9
+      local.get $v.2
       ref.cast (ref $option)
       struct.get $option $tag
       i32.eq
       if (result i32)
-        local.get $t.21
+        local.get $v.9
         local.set $t.22
         block (result i32)
           block
@@ -1584,25 +1320,25 @@
           i32.const 0
           br 0
         end
-        local.get $t.21
+        local.get $v.9
         i32.const 1
         i32.eq
         if (result i32)
-          local.get $t.19
+          local.get $v.5
           ref.cast (ref $option)
           struct.get $option $slots
           i32.const 0
           array.get $slots
-          local.get $t.20
+          local.get $v.2
           ref.cast (ref $option)
           struct.get $option $slots
           i32.const 0
           array.get $slots
-          local.set $t.24
-          local.set $t.23
-          local.get $t.23
+          local.set $v.2
+          local.set $v.5
+          local.get $v.5
           call $unboxInt
-          local.get $t.24
+          local.get $v.2
           call $unboxInt
           i64.eq
         else
@@ -1613,36 +1349,36 @@
         i32.const 0
       end
     end
-    local.set $v.73
+    local.set $v.9
     global.get $noClosure
-    local.get $v.73
+    local.get $v.9
     call $conv.bool
-    local.set $v.74
-    local.get $m
-    local.set $t.25
-    local.get $o
-    local.set $t.26
-    local.get $t.25
-    local.get $t.26
+    local.set $v.2
+    local.get $v
+    local.set $v
+    local.get $v.4
+    local.set $v.4
+    local.get $v
+    local.get $v.4
     ref.eq
     if (result i32)
       i32.const 1
     else
-      local.get $t.25
+      local.get $v
       ref.cast (ref $option)
       struct.get $option $tag
-      local.tee $t.27
-      local.get $t.26
+      local.tee $v.9
+      local.get $v.4
       ref.cast (ref $option)
       struct.get $option $tag
       i32.eq
       if (result i32)
-        local.get $t.27
-        local.set $t.28
+        local.get $v.9
+        local.set $t.22
         block (result i32)
           block
             block
-              local.get $t.28
+              local.get $t.22
               br_table 0 1 1
             end
             i32.const 1
@@ -1651,25 +1387,25 @@
           i32.const 0
           br 0
         end
-        local.get $t.27
+        local.get $v.9
         i32.const 1
         i32.eq
         if (result i32)
-          local.get $t.25
+          local.get $v
           ref.cast (ref $option)
           struct.get $option $slots
           i32.const 0
           array.get $slots
-          local.get $t.26
+          local.get $v.4
           ref.cast (ref $option)
           struct.get $option $slots
           i32.const 0
           array.get $slots
-          local.set $t.30
-          local.set $t.29
-          local.get $t.29
+          local.set $v
+          local.set $v.4
+          local.get $v.4
           call $unboxInt
-          local.get $t.30
+          local.get $v
           call $unboxInt
           i64.eq
         else
@@ -1680,28 +1416,28 @@
         i32.const 0
       end
     end
-    local.set $v.75
+    local.set $v.9
     global.get $noClosure
-    local.get $v.75
+    local.get $v.9
     call $conv.bool
-    local.set $v.76
+    local.set $v
     i32.const 0
     i32.const 1
     i32.const 1727
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.76
+    local.get $v
     call $concat
-    local.set $v.77
-    local.get $v.74
-    local.get $v.77
+    local.set $v
+    local.get $v.2
+    local.get $v
     call $concat
-    local.set $v.78
+    local.set $v
     i32.const 1
     ref.i31
-    local.set $v.79
-    local.get $v.78
+    local.set $v.2
+    local.get $v
     i32.const 0
     i32.const 1
     i32.const 1728
@@ -1709,34 +1445,34 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.80
-    local.get $v.79
-    local.get $v.80
+    local.set $v
+    local.get $v.2
+    local.get $v
     call $putString
-    local.set $v.81
+    local.set $v
     i32.const 0
     i32.const 3
     i32.const 1729
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
-    local.set $b
+    local.set $v
     i32.const 0
     i64.const 1
     call $boxInt
-    local.get $b
+    local.get $v
     i32.const 99
     ref.i31
     array.new_fixed $slots 3
     struct.new $tuple
-    local.set $t.31
-    local.get $t.31
+    local.set $v
+    local.get $v
     ref.cast (ref $tuple)
     struct.get $tuple $slots
     i32.const 1
     array.get $slots
-    local.set $v.82
-    local.get $v.82
+    local.set $v.2
+    local.get $v.2
     i32.const 0
     i32.const 1
     i32.const 1732
@@ -1744,22 +1480,22 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.83
-    local.get $t.31
+    local.set $v.2
+    local.get $v
     ref.cast (ref $tuple)
     struct.get $tuple $slots
     i32.const 1
-    local.get $v.83
+    local.get $v.2
     array.set $slots
     i64.const 1
     call $convInt
-    local.set $v.84
-    local.get $t.31
+    local.set $v.2
+    local.get $v
     ref.cast (ref $tuple)
     struct.get $tuple $slots
     i32.const 1
     array.get $slots
-    local.set $v.85
+    local.set $v
     i32.const 0
     i32.const 1
     i32.const 1733
@@ -1778,19 +1514,19 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.86
-    local.get $v.85
-    local.get $v.86
+    local.set $v.4
+    local.get $v
+    local.get $v.4
     call $concat
-    local.set $v.87
-    local.get $v.84
-    local.get $v.87
+    local.set $v
+    local.get $v.2
+    local.get $v
     call $concat
-    local.set $v.88
+    local.set $v
     i32.const 1
     ref.i31
-    local.set $v.89
-    local.get $v.88
+    local.set $v.2
+    local.get $v
     i32.const 0
     i32.const 1
     i32.const 1735
@@ -1798,88 +1534,88 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.90
-    local.get $v.89
-    local.get $v.90
+    local.set $v
+    local.get $v.2
+    local.get $v
     call $putString
-    local.set $v.91
+    local.set $v
     global.get $noClosure
     global.set $divide.1
     global.get $noClosure
     i64.const 47
     i64.const 5
     call $divide
-    local.set $qr.1
-    local.set $qr
+    local.set $v.7
+    local.set $i
     global.get $noClosure
     i64.const 100
     i64.const 7
     call $divide
-    local.set $qr2.1
-    local.set $qr2
-    local.get $qr
-    local.set $v.92
-    local.get $v.92
+    local.set $i.1
+    local.set $v.12
+    local.get $i
+    local.set $i
+    local.get $i
     call $convInt
-    local.set $v.93
-    local.get $qr.1
-    local.set $v.94
-    local.get $v.94
+    local.set $v
+    local.get $v.7
+    local.set $v.7
+    local.get $v.7
     call $convInt
-    local.set $v.95
-    local.get $qr2
-    local.set $v.96
-    local.get $v.96
+    local.set $v.2
+    local.get $v.12
+    local.set $v.7
+    local.get $v.7
     call $convInt
-    local.set $v.97
-    local.get $qr2.1
-    local.set $v.98
-    local.get $v.98
+    local.set $v.4
+    local.get $i.1
+    local.set $v.7
+    local.get $v.7
     call $convInt
-    local.set $v.99
+    local.set $v.5
     i32.const 0
     i32.const 1
     i32.const 1736
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.99
+    local.get $v.5
     call $concat
-    local.set $v.100
-    local.get $v.97
-    local.get $v.100
+    local.set $v.5
+    local.get $v.4
+    local.get $v.5
     call $concat
-    local.set $v.101
+    local.set $v.4
     i32.const 0
     i32.const 1
     i32.const 1737
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.101
+    local.get $v.4
     call $concat
-    local.set $v.102
-    local.get $v.95
-    local.get $v.102
+    local.set $v.4
+    local.get $v.2
+    local.get $v.4
     call $concat
-    local.set $v.103
+    local.set $v.2
     i32.const 0
     i32.const 1
     i32.const 1738
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.103
+    local.get $v.2
     call $concat
-    local.set $v.104
-    local.get $v.93
-    local.get $v.104
+    local.set $v.2
+    local.get $v
+    local.get $v.2
     call $concat
-    local.set $v.105
+    local.set $v
     i32.const 1
     ref.i31
-    local.set $v.106
-    local.get $v.105
+    local.set $v.2
+    local.get $v
     i32.const 0
     i32.const 1
     i32.const 1739
@@ -1887,11 +1623,11 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.107
-    local.get $v.106
-    local.get $v.107
+    local.set $v
+    local.get $v.2
+    local.get $v
     call $putString
-    local.set $v.108
+    local.set $v
     i64.const 5
     i64.const 0
     i64.lt_s
@@ -1937,25 +1673,25 @@
     i32.wrap_i64
     array.new $slots
     struct.new $array
-    local.set $a
+    local.set $v
     i64.const 0
-    local.set $i.2
-    local.get $i.2
+    local.set $v.7
+    local.get $v.7
     i64.const 4
     i64.le_s
-    local.set $v.109
-    local.get $v.109
+    local.set $v.9
+    local.get $v.9
     if
       block $L2.exit
         loop $L2
-          local.get $i.2
-          local.set $i.3
-          local.get $i.3
-          local.get $i.3
+          local.get $v.7
+          local.set $i
+          local.get $i
+          local.get $i
           i64.mul
-          local.set $v.110
-          local.get $i.3
-          local.get $a
+          local.set $i.1
+          local.get $i
+          local.get $v
           ref.cast (ref $array)
           struct.get $array $elems
           array.len
@@ -1983,36 +1719,36 @@
             call $raise
             unreachable
           end
-          local.get $a
+          local.get $v
           ref.cast (ref $array)
           struct.get $array $elems
-          local.get $i.3
+          local.get $i
           i32.wrap_i64
-          local.get $v.110
+          local.get $i.1
           call $boxInt
           array.set $slots
-          local.get $i.2
+          local.get $v.7
           i64.const 4
           i64.eq
-          local.set $v.111
-          local.get $v.111
+          local.set $v.9
+          local.get $v.9
           if
             br $L2.exit
           else
           end
-          local.get $i.2
+          local.get $v.7
           i64.const 1
           i64.add
-          local.set $v.112
-          local.get $v.112
-          local.set $i.2
+          local.set $i
+          local.get $i
+          local.set $v.7
           br $L2
         end
       end
     else
     end
     i64.const 4
-    local.get $a
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     array.len
@@ -2040,43 +1776,43 @@
       call $raise
       unreachable
     end
-    local.get $a
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     i64.const 4
     i32.wrap_i64
     array.get $slots
     call $unboxInt
-    local.set $v.113
-    local.get $v.113
+    local.set $v.7
+    local.get $v.7
     call $convInt
-    local.set $v.114
-    local.get $a
+    local.set $v.2
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     array.len
     i64.extend_i32_u
-    local.set $v.115
-    local.get $v.115
+    local.set $v.7
+    local.get $v.7
     call $convInt
-    local.set $v.116
+    local.set $v.4
     i32.const 0
     i32.const 1
     i32.const 2144
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.116
+    local.get $v.4
     call $concat
-    local.set $v.117
-    local.get $v.114
-    local.get $v.117
+    local.set $v.4
+    local.get $v.2
+    local.get $v.4
     call $concat
-    local.set $v.118
+    local.set $v.2
     i32.const 1
     ref.i31
-    local.set $v.119
-    local.get $v.118
+    local.set $v.4
+    local.get $v.2
     i32.const 0
     i32.const 1
     i32.const 2145
@@ -2084,16 +1820,16 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.120
-    local.get $v.119
-    local.get $v.120
+    local.set $v.2
+    local.get $v.4
+    local.get $v.2
     call $putString
-    local.set $v.121
+    local.set $v.2
     i64.const 3
     i32.const 120
     call $stringNew
-    local.set $str
-    local.get $str
+    local.set $v.2
+    local.get $v.2
     i64.const 1
     i32.const 121
     call $stringSetChar
@@ -2107,7 +1843,7 @@
     i64.const 2
     i64.const 3
     call $stringGetSub
-    local.set $v.122
+    local.set $v.4
     i32.const 0
     i32.const 2
     i32.const 2152
@@ -2121,11 +1857,11 @@
     array.new_data $bytes $strings
     struct.new $string
     call $stringEqual
-    local.set $v.123
+    local.set $v.9
     global.get $noClosure
-    local.get $v.123
+    local.get $v.9
     call $conv.bool
-    local.set $v.124
+    local.set $v.5
     i32.const 0
     i32.const 3
     i32.const 2156
@@ -2134,14 +1870,14 @@
     struct.new $string
     i64.const 2
     call $stringGetChar
-    local.set $v.125
+    local.set $v.9
     i32.const 0
     i32.const 1
     i32.const 2159
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.125
+    local.get $v.9
     call $convChar
     i32.const 39
     call $escaped
@@ -2153,50 +1889,50 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.126
+    local.set $v.48
     i32.const 0
     i32.const 1
     i32.const 2161
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.126
+    local.get $v.48
     call $concat
-    local.set $v.127
-    local.get $v.124
-    local.get $v.127
+    local.set $v.48
+    local.get $v.5
+    local.get $v.48
     call $concat
-    local.set $v.128
+    local.set $v.5
     i32.const 0
     i32.const 1
     i32.const 2162
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.128
+    local.get $v.5
     call $concat
-    local.set $v.129
-    local.get $v.122
-    local.get $v.129
+    local.set $v.5
+    local.get $v.4
+    local.get $v.5
     call $concat
-    local.set $v.130
+    local.set $v.4
     i32.const 0
     i32.const 1
     i32.const 2163
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.130
+    local.get $v.4
     call $concat
-    local.set $v.131
-    local.get $str
-    local.get $v.131
+    local.set $v.4
+    local.get $v.2
+    local.get $v.4
     call $concat
-    local.set $v.132
+    local.set $v.2
     i32.const 1
     ref.i31
-    local.set $v.133
-    local.get $v.132
+    local.set $v.4
+    local.get $v.2
     i32.const 0
     i32.const 1
     i32.const 2164
@@ -2204,11 +1940,11 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.134
-    local.get $v.133
-    local.get $v.134
+    local.set $v.2
+    local.get $v.4
+    local.get $v.2
     call $putString
-    local.set $v.135
+    local.set $v.2
     i32.const 0
     ref.null none
     i32.const 0
@@ -2224,64 +1960,64 @@
     array.new_fixed $slots 3
     struct.new $record
     global.get $dict
-    local.set $t.32
+    local.set $v.2
     ref.cast (ref $record)
-    local.get $t.32
+    local.get $v.2
     ref.cast (ref $dict)
     struct.new $recBox
-    local.set $p_box
-    local.get $p_box
+    local.set $v.2
+    local.get $v.2
     ref.cast (ref $recBox)
     local.tee $t.33
     struct.get $recBox $payload
     local.get $t.33
     struct.get $recBox $dict
-    local.set $p.2
-    local.set $p.1
-    local.get $p.1
-    local.get $p.2
-    local.set $t.34
+    local.set $v.4
+    local.set $v.5
+    local.get $v.5
+    local.get $v.4
+    local.set $v.48
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.34
+    local.get $v.48
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 2
     array.get $i32s
     array.get $slots
     call $unboxInt
-    local.set $v.136
-    local.get $v.136
+    local.set $v.7
+    local.get $v.7
     i64.const 10
     i64.add
-    local.set $v.137
-    local.get $p.1
-    local.get $p.2
-    local.set $t.35
+    local.set $v.7
+    local.get $v.5
+    local.get $v.4
+    local.set $v.48
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.35
+    local.get $v.48
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 2
     array.get $i32s
-    local.get $v.137
+    local.get $v.7
     call $boxInt
     array.set $slots
-    local.get $p.1
-    local.get $p.2
-    local.set $t.36
+    local.get $v.5
+    local.get $v.4
+    local.set $v.48
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.36
+    local.get $v.48
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 0
     array.get $i32s
     array.get $slots
-    local.set $v.138
-    local.get $p.1
-    local.get $p.2
+    local.set $v.48
+    local.get $v.5
+    local.get $v.4
     local.set $t.37
     ref.cast (ref $record)
     struct.get $record $slots
@@ -2292,12 +2028,12 @@
     array.get $i32s
     array.get $slots
     call $unboxInt
-    local.set $v.139
-    local.get $v.139
+    local.set $v.7
+    local.get $v.7
     call $convInt
-    local.set $v.140
-    local.get $p.1
-    local.get $p.2
+    local.set $t.37
+    local.get $v.5
+    local.get $v.4
     local.set $t.38
     ref.cast (ref $record)
     struct.get $record $slots
@@ -2308,40 +2044,40 @@
     array.get $i32s
     array.get $slots
     call $unboxInt
-    local.set $v.141
-    local.get $v.141
+    local.set $v.7
+    local.get $v.7
     call $convInt
-    local.set $v.142
+    local.set $t.38
     i32.const 0
     i32.const 1
     i32.const 2166
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.142
+    local.get $t.38
     call $concat
-    local.set $v.143
-    local.get $v.140
-    local.get $v.143
+    local.set $t.38
+    local.get $t.37
+    local.get $t.38
     call $concat
-    local.set $v.144
+    local.set $t.37
     i32.const 0
     i32.const 1
     i32.const 2167
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.144
+    local.get $t.37
     call $concat
-    local.set $v.145
-    local.get $v.138
-    local.get $v.145
+    local.set $t.37
+    local.get $v.48
+    local.get $t.37
     call $concat
-    local.set $v.146
+    local.set $v.48
     i32.const 1
     ref.i31
-    local.set $v.147
-    local.get $v.146
+    local.set $t.37
+    local.get $v.48
     i32.const 0
     i32.const 1
     i32.const 2168
@@ -2349,11 +2085,11 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.148
-    local.get $v.147
-    local.get $v.148
+    local.set $v.48
+    local.get $t.37
+    local.get $v.48
     call $putString
-    local.set $v.149
+    local.set $v.48
     i32.const 0
     ref.null none
     i32.const 0
@@ -2369,28 +2105,28 @@
     array.new_fixed $slots 3
     struct.new $record
     global.get $dict
-    local.set $t.39
+    local.set $v.48
     ref.cast (ref $record)
-    local.get $t.39
+    local.get $v.48
     ref.cast (ref $dict)
     struct.new $recBox
-    local.set $box
-    local.get $box
+    local.set $v.48
+    local.get $v.48
     ref.cast (ref $recBox)
-    local.tee $t.40
+    local.tee $t.33
     struct.get $recBox $payload
-    local.get $t.40
+    local.get $t.33
     struct.get $recBox $dict
-    local.set $v.151
-    local.set $v.150
+    local.set $t.37
+    local.set $t.37
     i32.const 0
-    local.get $p_box
-    local.get $box
+    local.get $v.2
+    local.get $v.48
     array.new_fixed $slots 2
     struct.new $array
-    local.set $ps
+    local.set $v.2
     i64.const 1
-    local.get $ps
+    local.get $v.2
     ref.cast (ref $array)
     struct.get $array $elems
     array.len
@@ -2418,35 +2154,35 @@
       call $raise
       unreachable
     end
-    local.get $ps
+    local.get $v.2
     ref.cast (ref $array)
     struct.get $array $elems
     i64.const 1
     i32.wrap_i64
     array.get $slots
-    local.set $box.1
-    local.get $box.1
+    local.set $v.48
+    local.get $v.48
     ref.cast (ref $recBox)
-    local.tee $t.41
+    local.tee $t.33
     struct.get $recBox $payload
-    local.get $t.41
+    local.get $t.33
     struct.get $recBox $dict
-    local.set $v.153
-    local.set $v.152
-    local.get $v.152
-    local.get $v.153
-    local.set $t.42
+    local.set $v.48
+    local.set $t.37
+    local.get $t.37
+    local.get $v.48
+    local.set $v.48
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.42
+    local.get $v.48
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 0
     array.get $i32s
     array.get $slots
-    local.set $v.154
+    local.set $v.48
     i64.const 1
-    local.get $ps
+    local.get $v.2
     ref.cast (ref $array)
     struct.get $array $elems
     array.len
@@ -2474,180 +2210,180 @@
       call $raise
       unreachable
     end
-    local.get $ps
+    local.get $v.2
     ref.cast (ref $array)
     struct.get $array $elems
     i64.const 1
     i32.wrap_i64
     array.get $slots
-    local.set $box.2
-    local.get $box.2
+    local.set $v.2
+    local.get $v.2
     ref.cast (ref $recBox)
-    local.tee $t.43
+    local.tee $t.33
     struct.get $recBox $payload
-    local.get $t.43
+    local.get $t.33
     struct.get $recBox $dict
-    local.set $v.156
-    local.set $v.155
-    local.get $v.155
-    local.get $v.156
-    local.set $q.2
-    local.set $q.1
-    local.get $q.1
-    local.get $q.2
-    local.set $t.44
+    local.set $v.2
+    local.set $t.37
+    local.get $t.37
+    local.get $v.2
+    local.set $v.2
+    local.set $t.37
+    local.get $t.37
+    local.get $v.2
+    local.set $t.38
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.44
+    local.get $t.38
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 1
     array.get $i32s
     array.get $slots
     call $unboxInt
-    local.set $v.157
-    local.get $q.1
-    local.get $q.2
-    local.set $t.45
+    local.set $v.7
+    local.get $t.37
+    local.get $v.2
+    local.set $t.38
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.45
+    local.get $t.38
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 1
     array.get $i32s
     array.get $slots
     call $unboxInt
-    local.set $v.158
-    local.get $q.1
-    local.get $q.2
-    local.set $t.46
+    local.set $i
+    local.get $t.37
+    local.get $v.2
+    local.set $t.38
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.46
+    local.get $t.38
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 2
     array.get $i32s
     array.get $slots
     call $unboxInt
-    local.set $v.159
-    local.get $q.1
-    local.get $q.2
-    local.set $t.47
+    local.set $i.1
+    local.get $t.37
+    local.get $v.2
+    local.set $v.2
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.47
+    local.get $v.2
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 2
     array.get $i32s
     array.get $slots
     call $unboxInt
-    local.set $v.160
-    local.get $v.159
-    local.get $v.160
+    local.set $v.12
+    local.get $i.1
+    local.get $v.12
     i64.mul
-    local.set $v.161
-    local.get $v.158
-    local.get $v.161
+    local.set $i.1
+    local.get $i
+    local.get $i.1
     i64.add
-    local.set $v.162
-    local.get $v.157
-    local.get $v.162
+    local.set $i
+    local.get $v.7
+    local.get $i
     i64.mul
-    local.set $v.163
-    local.get $v.163
+    local.set $v.7
+    local.get $v.7
     call $convInt
-    local.set $v.164
-    local.get $p.1
-    local.get $p.2
-    local.set $t.48
+    local.set $v.2
+    local.get $v.5
+    local.get $v.4
+    local.set $t.37
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.48
+    local.get $t.37
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 1
     array.get $i32s
     array.get $slots
     call $unboxInt
-    local.set $v.165
-    local.get $p.1
-    local.get $p.2
-    local.set $t.49
+    local.set $v.7
+    local.get $v.5
+    local.get $v.4
+    local.set $t.37
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.49
+    local.get $t.37
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 1
     array.get $i32s
     array.get $slots
     call $unboxInt
-    local.set $v.166
-    local.get $p.1
-    local.get $p.2
-    local.set $t.50
+    local.set $i
+    local.get $v.5
+    local.get $v.4
+    local.set $t.37
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.50
+    local.get $t.37
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 2
     array.get $i32s
     array.get $slots
     call $unboxInt
-    local.set $v.167
-    local.get $p.1
-    local.get $p.2
-    local.set $t.51
+    local.set $i.1
+    local.get $v.5
+    local.get $v.4
+    local.set $t.37
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.51
+    local.get $t.37
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 2
     array.get $i32s
     array.get $slots
     call $unboxInt
-    local.set $v.168
-    local.get $v.167
-    local.get $v.168
+    local.set $v.12
+    local.get $i.1
+    local.get $v.12
     i64.mul
-    local.set $v.169
-    local.get $v.166
-    local.get $v.169
+    local.set $i.1
+    local.get $i
+    local.get $i.1
     i64.add
-    local.set $v.170
-    local.get $v.165
-    local.get $v.170
+    local.set $i
+    local.get $v.7
+    local.get $i
     i64.mul
-    local.set $v.171
-    local.get $v.171
+    local.set $v.7
+    local.get $v.7
     call $convInt
-    local.set $v.172
+    local.set $t.37
     i32.const 0
     i32.const 1
     i32.const 2397
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.172
+    local.get $t.37
     call $concat
-    local.set $v.173
-    local.get $v.164
-    local.get $v.173
+    local.set $t.37
+    local.get $v.2
+    local.get $t.37
     call $concat
-    local.set $v.174
-    local.get $v.154
-    local.get $v.174
+    local.set $v.2
+    local.get $v.48
+    local.get $v.2
     call $concat
-    local.set $v.175
+    local.set $v.2
     i32.const 1
     ref.i31
-    local.set $v.176
-    local.get $v.175
+    local.set $v.48
+    local.get $v.2
     i32.const 0
     i32.const 1
     i32.const 2398
@@ -2655,34 +2391,34 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.177
-    local.get $v.176
-    local.get $v.177
+    local.set $v.2
+    local.get $v.48
+    local.get $v.2
     call $putString
-    local.set $v.178
-    local.get $p.1
-    local.get $p.2
-    local.set $t.52
+    local.set $v.2
+    local.get $v.5
+    local.get $v.4
+    local.set $v.2
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.52
+    local.get $v.2
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 0
     array.get $i32s
     array.get $slots
-    local.set $v.179
+    local.set $v.2
     i64.const 9
     call $convInt
-    local.set $v.180
-    local.get $v.179
-    local.get $v.180
+    local.set $v.4
+    local.get $v.2
+    local.get $v.4
     call $concat
-    local.set $v.181
+    local.set $v.2
     i32.const 1
     ref.i31
-    local.set $v.182
-    local.get $v.181
+    local.set $v.4
+    local.get $v.2
     i32.const 0
     i32.const 1
     i32.const 2399
@@ -2690,13 +2426,13 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.183
-    local.get $v.182
-    local.get $v.183
+    local.set $v.2
+    local.get $v.4
+    local.get $v.2
     call $putString
-    local.set $v.184
+    local.set $v.2
     i64.const 5
-    local.get $a
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     array.len
@@ -2724,21 +2460,21 @@
       call $raise
       unreachable
     end
-    local.get $a
+    local.get $v
     ref.cast (ref $array)
     struct.get $array $elems
     i64.const 5
     i32.wrap_i64
     array.get $slots
     call $unboxInt
-    local.set $v.185
-    local.get $v.185
+    local.set $v.7
+    local.get $v.7
     call $convInt
-    local.set $v.186
+    local.set $v
     i32.const 1
     ref.i31
-    local.set $v.187
-    local.get $v.186
+    local.set $v.2
+    local.get $v
     i32.const 0
     i32.const 1
     i32.const 2514
@@ -2746,11 +2482,11 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $v.188
-    local.get $v.187
-    local.get $v.188
+    local.set $v
+    local.get $v.2
+    local.get $v
     call $putString
-    local.set $v.189
+    local.set $v
   )
   (func $_start (type 45)
     (local $t (ref null $raised))

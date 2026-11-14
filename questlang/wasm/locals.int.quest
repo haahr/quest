@@ -1,0 +1,25 @@
+(* Quest Self-Hosted Compiler: The WebAssembly Locals' Reuse Interface
+ *
+ * The backend declares a local for each variable of the IR, and V8's baseline
+ * code gives every declared local a slot in the frame, whether or not it is
+ * live: 8 bytes each, so a function of a thousand locals takes 8 KB of stack
+ * for each call that is active. In a browser's worker, of 512 KB, the
+ * interpreter's evalExpr, of some 1,200, allows about 40 interpreted calls
+ * (docs/wasm-plan.md sections 2.11, 6.2, and 9.4). So, after the code is made,
+ * the locals that are never live together share one, by type. *)
+
+interface Locals
+import
+    questlang/wasm/model : questlang/wasm/Model
+export
+    (* Each of m's functions' locals other than its parameters given a slot,
+     * one of its type that no local live at the same time holds, the slots
+     * its new locals, and its code rewritten to them. A local is live from its
+     * first use to its last, in the code's order, and across the whole of any
+     * loop it is live in at the loop's repetition: one live before the loop
+     * and in it, or in it and after it, or read in it before it is set. The
+     * backend's code sets a local before it reads it on every path, as the
+     * IR binds a variable before using it, which is what makes the code's
+     * order enough. A local never used is dropped. *)
+    reuse(m: model.Module): Ok
+end

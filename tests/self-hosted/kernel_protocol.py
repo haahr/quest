@@ -11,7 +11,12 @@ run_tests.py --self-hosted runs it (docs/testing.md). A driver that cannot host
 the JIT, a whole-program build (docs/jit.md section 3.10), is checked with
 --no-jit alone.
 
-    python tests/self-hosted/kernel_protocol.py DRIVER
+With --session, DRIVER is the driver compiled to wasm as a session in node
+(runtime/wasm/session-node.mjs, docs/wasm-plan.md step 11), checked
+interpreted, less what a session lacks: system.run, and io/readline's lines,
+which step 12 gives it.
+
+    python tests/self-hosted/kernel_protocol.py [--session] DRIVER
 """
 
 from __future__ import annotations
@@ -49,7 +54,7 @@ def hosts_jit(driver: str) -> bool:
     return "cannot host the JIT" not in ran.stderr
 
 
-def check_cells(driver: str, options: list[str], label: str, scratch: Path) -> list[str]:
+def check_cells(driver: str, options: list[str], label: str, scratch: Path, session: bool = False) -> list[str]:
     c = Checker(label)
     s = Session([driver, *options], cwd=str(scratch), env=ENVIRONMENT)
     try:
@@ -72,14 +77,15 @@ def check_cells(driver: str, options: list[str], label: str, scratch: Path) -> l
             [("stderr", "two\n"), ("stdout", "one é\n")], ["7 : Int"]))
 
         # Standard output is line-buffered: a line arrives while the cell runs
+        # (a session has no system.run)
         times: dict[str, float] = {}
         start = time.monotonic()
-        reply = s.execute('import system: System\nwriter.putString(writer.output "started\\n")\n'
-                          'system.run(array of "sleep" "1" end); ok',
-                          lambda name, text: times.setdefault(text, time.monotonic()))
+        reply = None if session else s.execute(
+            'import system: System\nwriter.putString(writer.output "started\\n")\n'
+            'system.run(array of "sleep" "1" end); ok', lambda name, text: times.setdefault(text, time.monotonic()))
         done = time.monotonic()
         arrived = times.get("started\n")
-        if arrived is None or done - arrived < 0.5:
+        if not session and (arrived is None or done - arrived < 0.5):
             c.problems.append(f"{label}: a line written before a second's sleep arrived "
                               f"{'never' if arrived is None else f'{arrived - start:.2f}s in, of {done - start:.2f}s'}")
 
@@ -135,9 +141,10 @@ def check_cells(driver: str, options: list[str], label: str, scratch: Path) -> l
 
         # io/display's values, in order with the output, images in base64; and
         # io/readline's lines, asked of the session, and the end of the input
+        # (not yet in a session)
         events: list[tuple] = []
         prompts = {"name? ": "Zoë"}
-        reply = s.execute(
+        reply = None if session else s.execute(
             'import io/display : io/Display\nimport io/readline : io/Readline\nimport reader: Reader\n'
             'writer.putString(writer.output "x\\n")\ndisplay.html("<b>é</b>")\n'
             'display.png("Man")\ndisplay.png("Ma")\ndisplay.png("M")\n'
@@ -146,7 +153,7 @@ def check_cells(driver: str, options: list[str], label: str, scratch: Path) -> l
             'reader.more(reader.input)',
             lambda name, text: events.append(("stream", name, text)), lambda bundle: events.append(("display", bundle)),
             lambda prompt: events.append(("input", prompt)) or prompts.get(prompt))
-        c.expect("display and input", (events, reply.results), ([
+        c.expect("display and input", session or (events, reply.results), session or ([
             ("stream", "stdout", "x\n"),
             ("display", {"text/html": "<b>é</b>", "text/plain": "<b>é</b>"}),
             ("display", {"image/png": "TWFu", "text/plain": "<image/png, 3 bytes>"}),
@@ -208,19 +215,25 @@ def check_usage(driver: str) -> list[str]:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+    arguments = sys.argv[1:]
+    session = arguments[:1] == ["--session"]
+    if session:
+        arguments = arguments[1:]
+    if len(arguments) != 1:
         print(__doc__)
         sys.exit(2)
-    driver = str(Path(sys.argv[1]).resolve())
+    driver = str(Path(arguments[0]).resolve())
     found = check_usage(driver)
     modes = [(["--no-jit"], "interpreted")]
-    if hosts_jit(driver):
+    if session:
+        print("a session: kernel mode checked interpreted alone")
+    elif hosts_jit(driver):
         modes.insert(0, ([], "jit"))
     else:
         print("the driver cannot host the JIT: kernel mode checked interpreted alone")
     for options, label in modes:
         with tempfile.TemporaryDirectory() as d:
-            found += check_cells(driver, options, label, Path(d))
+            found += check_cells(driver, options, label, Path(d), session)
     for problem in found:
         print(problem)
     print(f"kernel protocol: {len(found)} problems")
