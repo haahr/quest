@@ -23,6 +23,12 @@ export
     let appendScript = "entry=$(printf '[%s] %s' \"$(date +%Y-%m-%dT%H:%M:%S)\" \"$1\"); "
         <> "if [ -n \"$0\" ]; then printf '%s\\n' \"$entry\" >> \"$0\"; fi; printf '%s' \"$entry\""
 
+    (* Where no shell can run (a WebAssembly build, docs/wasm-plan.md step
+     * 10), no entry is appended to the log file; a verbose entry is still
+     * printed, without its time *)
+    let shell(args: Array(String) otherwise: String): String =
+        try system.run(args).stdout when system.error then otherwise end
+
     (* Entries not yet appended to the log file. Starting a shell for each one
      * took a tenth of a build's time, so when not verbose a shell appends them
      * in batches, each stamped with the time of its batch *)
@@ -41,7 +47,7 @@ export
             for i = 0 upto {vector.length(:String pending) - 1} do
                 vector.append(:String args vector.get(:String pending i))
             end
-            system.run(vector.toArray(:String args))
+            shell(vector.toArray(:String args) "")
             vector.clear(:String pending)
         end
 
@@ -50,7 +56,8 @@ export
             let file = maybe.unwrapOr(:String l.logFile "")
             if l.verbose orif stringOp.isEmpty(file) then
                 if not(stringOp.isEmpty(file)) then flushTo(file) end
-                let entry = system.run(array of "sh" "-c" appendScript file tag <> ": " <> message end).stdout
+                let entry = shell(array of "sh" "-c" appendScript file tag <> ": " <> message end
+                    tag <> ": " <> message)
                 if l.verbose then
                     writer.putString(writer.err entry <> "\n")
                     writer.flush(writer.err)
