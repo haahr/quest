@@ -408,7 +408,18 @@ export
             cStrings(bufferAt count)
         end
 
-    let environment(): Array(String) =
+    (* The environment, read once: WASI's does not change as a program runs *)
+    let environ = tuple let var read = false let var all = array of :String end end
+
+    let rec environment(): Array(String) =
+        if environ.read then environ.all
+        else
+            environ.all := readEnvironment()
+            environ.read := true
+            environ.all
+        end
+
+    and readEnvironment(): Array(String) =
         begin
             environSizesGet(results results + 4)
             let count = load32(results)

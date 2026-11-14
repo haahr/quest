@@ -2619,3 +2619,42 @@ Time against the C backend's, at a load of 2.2 to 3.8, without value numbering (
   dereferenced before the loop could pass; and the even-odd, psdes-random, and md5 gaps above, which value numbering
   does not reach.
 
+---
+
+## 25. The compiler on WebAssembly (2026-11-14)
+
+Milestone 1 of [wasm-plan.md](wasm-plan.md) (step 10): the self-hosted driver, compiled by the native compiler with
+`--backend wasm` (198 modules), compiles itself with `--backend wasm` in node 26.13 and in wasmtime 50.0.1, and
+writes the same 198 modules, byte for byte, as the native compiler does. Each run builds into a fresh directory with
+`-j 1` (the target runs no processes, so the build is sequential), on a machine at load about 2.8, twice for the
+native and node runs. The scripts are in the session's scratchpad, not the tree; the commands are those of §8.1
+step 10 there.
+
+| Run | Wall | User | Maximum resident |
+|---|---|---|---|
+| Native (arm64-built driver), `--backend wasm` | 34.2, 34.5 s | 32.3, 32.5 s | 3.50, 3.42 GB |
+| node, default stack (984 KB) | 56.2, 56.3 s | 66.9, 66.9 s | 3.54, 3.94 GB |
+| node, the environment cached (below) | 55.6 s | 67.0 s | 3.47 GB |
+| wasmtime, `-C collector=copying` | 789.8 s | 753.4 s | 4.50 GB |
+| Native, `--backend arm64` (for scale) | 79.4 s | 74.2 s | 4.70 GB |
+
+**node takes 1.63 of the native compiler's wall time** for the same work; its user time includes V8's compiling
+threads. wasmtime's copying collector is 14 times slower than node, and was not investigated: the suite's modes use
+it for the run goldens, which are small.
+
+**What the time goes to** (node's `--cpu-prof`, 0.5 ms samples, 57.3 s), by function, self time:
+
+- **Boxing `Int`s** (§2.4, §9.5): the base's `unboxInt` 6.5 percent and `boxInt` 3.5, about 10 in all, for the
+  `Int`s that slots hold: vectors' and hash maps' elements, tuples' components, and the generic code's values.
+- **The adapters** (§3.2) the represent pass makes, `qa_adapt.*` in `collections/vector` and `util/maybe`: about 8
+  percent, nearly all of them adapters this target does not need, around `vector.append`, `get`, and
+  `maybe.unwrap`.
+- **Calls across units:** `collections/vector`'s `append` (9.9) and `get` (6.6), and `hashmap`'s `findIndex` (4.8),
+  `insert` (3.5), and `get` (1.2), are the hottest functions; natively the specializer and the inliner make most of
+  them part of their callers, but here each unit is its own module, called through its export.
+- **The collector**, 8.8 percent; calls into JavaScript (`wasm-to-js`, WASI's), 4.0.
+- **`getEnv`**, 2.0 percent, read the whole environment through WASI at every call; the core now reads it once.
+
+**The stack:** the least `--stack-size` with which the driver compiles a unit to wasm in node, found by bisection,
+is 126 KB for a recursive Fibonacci program and 296 KB for `questlang/syntax/tokenizer.mod.quest`, the same with
+`--liftoff-only` as without; both within a worker's 512 KB (§6.2).

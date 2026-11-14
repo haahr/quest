@@ -1093,7 +1093,7 @@ only when the backend's files differ, until its time is known.
      and `dynamic`'s serialization.
    - **An exception the base does not define** (`readline.endOfInput`) is made by the unit's initializer, once,
      with the C runtime's name for it.
-   - **Run goldens:** the modes pass 186, the same in both engines; 109 are pending, `os/process`'s among them.
+   - **Run goldens:** the modes pass 186, the same in both engines; 110 are pending, `os/process`'s among them.
      wasmtime inherits the environment (`-S inherit-env=y`).
 10. **The compiler through the backend.** The driver's units compiled by the native compiler with `--backend wasm`
     and run in node, with the stack constrained to a browser's, to compile a small program, then the run suite's
@@ -1109,6 +1109,24 @@ only when the backend's files differ, until its time is known.
     *The heap:* natively the self-compilation peaks at 3.1 GB resident, and here every tuple is two objects. node's
     default heap limit will need raising (`--max-old-space-size`), or the build run as a process for each unit,
     interfaces first, which also gives back the parallelism that `os/process` cannot.
+
+    *Done 2026-11-14, milestone 1 reached:*
+    - **Self-compilation:** the driver, compiled by the native compiler with `--backend wasm`, compiles itself with
+      `--backend wasm -j 1` in node (its default stack) and in wasmtime, and writes the same 198 modules as the
+      native compiler, byte for byte. Before that it wrote the same typecheck dump, described IR, and wasm and
+      arm64 code as the native compiler for a small program, and the same modules for a program of two units.
+    - **What it took, besides steps 2 to 9:** a caught exception as a value of `raised.T`; the library's exceptions
+      the base lacks made by their units' initializers; and the build logger, which appends to its log file through
+      a shell, leaving the file alone where no shell can run.
+    - **Measured** ([benchmarks.md](benchmarks.md) §22): node takes 1.63 of the native compiler's wall time (55.6 s
+      against 34.2), at about the same peak resident memory (3.5 GB); node's default heap limit did not need
+      raising. Boxing `Int`s takes about 10 percent, the unneeded adapters about 8, and calls across units are the
+      hottest functions. wasmtime with the copying collector takes 790 s.
+    - **The stack:** 126 KB compiles a small program and 296 KB the tokenizer's unit, in node, with `--liftoff-only`
+      or without: within a worker's 512 KB. Step 7's measurement of the stack per level of the compiler's large
+      recursive functions is this one's upper bound for now; a deeper input is milestone 2's to measure.
+    - **The host:** `runtime/wasm/run.mjs` ends a run at `proc_exit` by unwinding to its top, so that node exits as
+      after a script and writes `--cpu-prof`'s profile.
 
 ### 8.2. Milestone 2: The Interpreter in a Page
 

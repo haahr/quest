@@ -35,13 +35,21 @@ const wasi = new WASI({
   preopens: {"/": "/", ".": process.cwd()},
   returnOnExit: false,
 });
-const runtime = await WebAssembly.instantiate(fs.readFileSync(runtimePath),
-                                              {wasi_snapshot_preview1: wasi.wasiImport});
+// proc_exit ends the run by unwinding to here, so that node exits as it
+// does after a script, writing what it writes then (--cpu-prof's profile)
+class Exit { constructor(code) { this.code = code; } }
+const wasiImports = {...wasi.wasiImport, proc_exit(code) { throw new Exit(code); }};
+const runtime = await WebAssembly.instantiate(fs.readFileSync(runtimePath), {wasi_snapshot_preview1: wasiImports});
 wasi.initialize(runtime.instance);
-const imports = {"quest.runtime": runtime.instance.exports};
+const modules = {"quest.runtime": runtime.instance.exports};
 for (const unit of units) {
-  const instance = await WebAssembly.instantiate(fs.readFileSync(unit.path), imports);
-  imports[unit.name] = instance.instance.exports;
+  const instance = await WebAssembly.instantiate(fs.readFileSync(unit.path), modules);
+  modules[unit.name] = instance.instance.exports;
 }
-const program = await WebAssembly.instantiate(fs.readFileSync(programPath), imports);
-program.instance.exports._start();
+const program = await WebAssembly.instantiate(fs.readFileSync(programPath), modules);
+try {
+  program.instance.exports._start();
+} catch (e) {
+  if (!(e instanceof Exit)) throw e;
+  process.exitCode = e.code;
+}
