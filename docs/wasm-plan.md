@@ -1094,6 +1094,7 @@ only when the backend's files differ, until its time is known.
    - **An exception the base does not define** (`readline.endOfInput`) is made by the unit's initializer, once,
      with the C runtime's name for it.
    - **Run goldens:** the modes pass 186, the same in both engines; 110 are pending, `os/process`'s among them.
+     After step 10, 191; 105 pending.
      wasmtime inherits the environment (`-S inherit-env=y`).
 10. **The compiler through the backend.** The driver's units compiled by the native compiler with `--backend wasm`
     and run in node, with the stack constrained to a browser's, to compile a small program, then the run suite's
