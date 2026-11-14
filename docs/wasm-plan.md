@@ -22,7 +22,8 @@ the four disagree, this plan holds.
 
 §1 lists the decisions and whose they are. §2 to §6 are the design. §7 is what is given up. §8 has the steps, and
 §9 the results of step 0's probes (2026-11-13), on which the owner confirmed decisions 1 and 2, and §10 step 1's
-census of what the compiler uses. Steps 0 to 5 are done, and step 8's native half; step 6 is next.
+census of what the compiler uses. Milestone 1 is reached (2026-11-14); milestone 2's steps are drafted and
+await the owner's review.
 
 ---
 
@@ -1131,12 +1132,93 @@ only when the backend's files differ, until its time is known.
 
 ### 8.2. Milestone 2: The Interpreter in a Page
 
-A checkpoint (decision 4).
+A checkpoint (decision 4): the driver of milestone 1, unchanged but for its entry, runs in a page's worker and
+interprets each input, with whatever depth the stack gives. Its steps, drafted 2026-11-14 on milestone 1's results,
+await the owner's review.
 
-11. **The session's entries and the JavaScript host** (§6.1, §4.4, §5.2), with recovery by replay (§6.3, §6.4); the
-    interpreter's REPL transcripts in node against the wasm driver.
-12. **The page:** the worker, the loader, the prompt; the interpreter's depth measured in a Chromium worker and
-    recorded (§6.2). Checked by hand in a Chromium browser, the only kind promised for now.
+**Choices this draft makes,** each the owner's to confirm or change (§8.2.1 says why):
+
+- **The session's protocol is the kernel's** ([jupyter-kernel.md](jupyter-kernel.md) §2): one entry takes one JSON
+  request (`execute`, `complete`, `inspect`, `isComplete`), and the records go out on descriptor 4 as they do now.
+  No second protocol is written, and the kernel's own test checks the session.
+- **One host in JavaScript,** `runtime/wasm/host.mjs`, implements the part of WASI's first preview that the base
+  imports, over a table of mounts. node runs the session on it, backed by node's files, and the page runs on it,
+  backed by archives and requests. So node's tests test the page's host. `run.mjs` keeps `node:wasi` for programs.
+- **The page is a directory of static files** that a tool builds; any static server serves it, `python3 -m
+  http.server` for checking. Deploying it anywhere is not part of this milestone.
+
+11. **The session in node.** The driver as a session that a host calls, and the host's recovery, all in node.
+    - **The entry.** `questlang/driver/kernel` has a function that answers one request, the body of `runKernel`'s
+      loop, which the loop calls. The driver under `--kernel` on this backend reads no descriptor 3: its top level
+      registers that function with a runtime unit, `wasm/session`, and returns without exiting. The runtime module
+      exports `request(length)`, which reads the request from the buffer and calls the function registered. The
+      interpreter serves the inputs (`--no-jit` is implied: the native JIT needs `os/code`).
+    - **Output in order.** Writes to descriptors 1, 2, and 4 reach the host as `fd_write` calls, in the order made,
+      so a cell's output and its records interleave as they do through the kernel's pipes. The kernel's
+      `writer.file("/dev/fd/4")` is a path the host maps to the record stream.
+    - **The host** (`runtime/wasm/host.mjs`): WASI over mounts, each a directory of a kind: node's file system,
+      for node; an archive in memory, read only; a list of URL prefixes, read by synchronous request (§5.2); and
+      the session's own files, in memory, for what an input writes. The clock, the arguments, and the environment
+      (`QUEST_HOME` names the library's mount). The loader: the runtime, then the units in their `.units` order,
+      then the driver, then `_start`.
+    - **The session's client** (`runtime/wasm/session.mjs`), the page's logic without the page: it keeps the
+      committed inputs, calls `request`, and recovers. A `RangeError` or a trap during `execute` is a stack
+      overflow (§6.3): the core runtime's count of shared tables being updated is zero in an input's compiled
+      code, but in this milestone every input runs in the interpreter, so every overflow replays: a new instance,
+      the committed inputs run again with their output suppressed, and the failed input's error is
+      `stack.overflow`. An interrupt is a timeout that ends a `worker_threads` worker and replays the same way.
+    - **The core's count** (§6.3): `wasm/core` counts its updates of the descriptors' memo in progress, in a global
+      the runtime exports, so that milestone 3's host can tell an input's overflow from the runtime's.
+    - **Tests in node:** `session.mjs` also speaks the kernel's protocol on its own descriptors 3 and 4, so
+      `tests/self-hosted/kernel_protocol.py` runs against it as a driver, with `--no-jit`, less what has no
+      counterpart (displays and `readLine` through descriptor 3, which come in step 12 as host calls; a SIGINT,
+      replaced by its timeout). The REPL's transcripts (`tests/repl/`) run through a loop in `session.mjs` that
+      reads lines, asks `isComplete`, and writes the REPL's prompts and results, against the same goldens. Both
+      run in a worker with a worker's stack (`resourceLimits.stackSizeMb`, 0.5), and with `--liftoff-only`,
+      as a page's first inputs run. Its own tests: an input that recurses past the stack, and one that loops
+      forever, each followed by an input that sees the earlier bindings.
+    *Done when* the kernel's protocol test and the transcripts pass in node at a worker's stack, but for those a
+    pending list names with reasons; a session survives an overflow and an interrupt with its bindings; and the
+    interpreter's depth in node at a worker's stack, with `--liftoff-only` and without, is recorded in §6.2 beside
+    the native estimate (80 to 250 calls).
+12. **The page.** A worker, the loader, the prompt.
+    - **Built** by `tools/wasm-page/build` into a directory: `index.html`; the page's script, which owns the
+      prompt, a line editor of its own with history, and the transcript; the worker's script, which runs
+      `session.mjs`'s logic over `host.mjs`; the driver's modules as one archive (§5.1); and the library's sources,
+      with or without the release's `.qi` files, as another (§5.2).
+    - **Files:** `/quest/lib` is the library's archive; other URL prefixes may be given in the page's query, each
+      mounted at `/remote/N` and named in `QUEST_PATH`; the current directory is the session's own files, which
+      start empty and last as long as the page.
+    - **What a page lacks:** `io/display` writes its record and the page shows its HTML, image, or text; `readLine`
+      asks the page through a host call and gets the end of input, since a worker cannot wait for a person without
+      shared memory (§6.4).
+    - **Interrupts:** a button, and Ctrl-C at the prompt, end the worker and replay (§6.4).
+    - **Measured** in a Chromium browser, by hand: the archives' sizes, compressed and not; start-up to the first
+      prompt (fetching, compiling, instantiating, the driver's initializers); the first input's latency and the
+      next's, with the `.qi` files in the archive and without, which decides whether they ship (§5.2); the
+      interpreter's depth in a worker, against step 11's node figure; and a replay's time after ten inputs.
+    *Done when* the transcripts of `tests/repl/` give their goldens when typed or pasted into the page in a
+    Chromium browser, the only kind promised for now; an overflow and an interrupt recover there; and §6.2 and
+    §5.2 record the measurements, with the `.qi` question decided on them.
+
+#### 8.2.1. Why These Choices
+
+- **The kernel's protocol.** §6.1's entries (initialize, whether an input is complete, evaluate, abandon) are the
+  kernel's requests already, with completion and inspection besides, and the kernel's code answers them through
+  `driver/repl`, whose `evaluate` already rolls a failed input back. The alternative, exports for each entry with
+  their arguments in the buffer, needs a decoder of its own on each side for the same records. The cost is JSON
+  for each request, which is small beside an interpreted input. Milestone 3's three-call evaluation (compile, the
+  host runs the module, commit or abandon) becomes three more requests.
+- **One host.** The page cannot use `node:wasi`, and the host is the part of the page most likely to be wrong:
+  paths under mounts, file descriptors, directories listed, errors' numbers. Running node's tests over the page's
+  host finds those in `tools/check`, not by hand. Programs keep `node:wasi`, so the run goldens still compare two
+  independent WASI implementations, wasmtime's and node's.
+- **Every interpreter overflow replays.** §6.3 decided that an overflow in the interpreter replays, since its
+  structures may be half updated. With every input interpreted, that is every deep recursion, which is why the
+  interpreter is a checkpoint and the JIT follows.
+- **`readLine` ends at once in the page.** A worker can block on a person only through `Atomics.wait` on shared
+  memory, which needs cross-origin isolation (decision 11). A prompt for a line is milestone 3's, or later's, to
+  design with the JIT's three calls.
 
 ### 8.3. Milestone 3: Each Interaction a Module
 
