@@ -153,14 +153,16 @@ export
             when repReal then model.f64
             when repRecord then model.eqref
             when repVariant then
-                fail("a variant (milestone 4)")
+                fail("a variant as one value")
                 model.eqref
         end
 
     (* The values a value of type t is held as: two for a record, its payload
-     * and its view's table (section 2.5), and two for a location, a slot
-     * array and an index in it (section 2.6), else one *)
+     * and its view's table, and two for a variant, its tag and its payload
+     * (section 2.5); two for a location, a slot array and an index in it
+     * (section 2.6); else one *)
     let isRecord(t: ir.Type): Bool = layout.representationKind(t)?repRecord
+    let isVariant(t: ir.Type): Bool = layout.representationKind(t)?repVariant
     let locationParts = array of model.refNull(rt.index("slots")) model.i32 end
     let isLocation(t: ir.Type): Bool =
         begin
@@ -169,6 +171,7 @@ export
         end
     let parts(t: ir.Type): Array(ValType) =
         if isRecord(t) then array of model.eqref model.eqref end
+        elsif isVariant(t) then array of model.i32 model.eqref end
         elsif isLocation(t) then locationParts
         else array of valType(t) end
         end
@@ -277,13 +280,23 @@ export
     let componentType(s: shapes.Shape i: Int): ir.Type = shapes.componentShape(s.components[i]).type
 
     (* The representations of an unboxed tuple's components (ir/unbox): each
-     * is a value of its own, never allocated *)
+     * is its parts, never allocated *)
     let componentTypes(t: ir.Type): Array(ValType) =
         begin
             let s = shapeOf(t)
-            let ts = array of(extent s.components model.i64)
-            for k = 0 upto extent s.components - 1 do ts[k] := valType(componentType(s k)) end
-            ts
+            let ts = vector.new(:ValType)
+            for k = 0 upto extent s.components - 1 do
+                let ps = parts(componentType(s k))
+                for j = 0 upto extent ps - 1 do vector.append(:ValType ts ps[j]) end
+            end
+            vector.toArray(:ValType ts)
+        end
+    (* Where an unboxed tuple's component index begins among its values *)
+    let componentOffset(s: shapes.Shape index: Int): Int =
+        begin
+            let var at = 0
+            for k = 0 upto index - 1 do at := at + extent parts(componentType(s k)) end
+            at
         end
 
     (* The values variable v is held as: a located variable's location, an
@@ -941,8 +954,10 @@ export
     let tRecord = rt.index("record")
     let tDict = rt.index("dict")
     let tRecBox = rt.index("recBox")
+    let tVarBox = rt.index("varBox")
     let box(f: F t: ir.Type): Ok =
-        if isRecord(t) then
+        if isVariant(t) then emit(f i1(ops.structNew tVarBox))
+        elsif isRecord(t) then
             (* the pair, in its box *)
             let dict = scratch(f model.eqref)
             emit(f i1(ops.localSet dict))
@@ -959,7 +974,14 @@ export
             end
         end
     let unbox(f: F t: ir.Type): Ok =
-        if isRecord(t) then
+        if isVariant(t) then
+            let b = scratch(f model.refNull(tVarBox))
+            castTo(f tVarBox)
+            emit(f i1(ops.localTee b))
+            emit(f i2(ops.structGet tVarBox 0))
+            emit(f i1(ops.localGet b))
+            emit(f i2(ops.structGet tVarBox 1))
+        elsif isRecord(t) then
             let b = scratch(f model.refNull(tRecBox))
             castTo(f tRecBox)
             emit(f i1(ops.localTee b))
@@ -1027,6 +1049,13 @@ export
             emit(f i2(ops.arrayNewFixed tSlots 1))
             emit(f model.i32Const(0))
             setParts(f v)
+        end
+    (* A variant atom's two parts, its tag and its payload, its box unboxed
+     * if it is one *)
+    let variantAtom(f: F a: ir.Atom): Ok =
+        begin
+            atom(f a)
+            if isBoxedVar(a) then unbox(f ir.atomType(a)) end
         end
     (* A record atom's two parts, its box unboxed if it is one *)
     let recordAtom(f: F a: ir.Atom): Ok =
@@ -1109,7 +1138,8 @@ export
             let s = shapeOf(ir.atomType(x.tup))
             let held = ir.atomVarOf(x.tup)
             if maybe.isSome(:ir.Variable held) andif maybe.unwrap(:ir.Variable held).unboxed then
-                emit(f i1(ops.localGet local(f maybe.unwrap(:ir.Variable held)) + x.index))
+                let first = local(f maybe.unwrap(:ir.Variable held)) + componentOffset(s x.index)
+                for j = 0 upto extent parts(componentType(s x.index)) - 1 do emit(f i1(ops.localGet first + j)) end
             else
                 atom(f x.tup)
                 accessAs(f tTuple x.access)
@@ -1125,10 +1155,11 @@ export
     let optionShape(t: ir.Type): shapes.Shape =
         begin
             let s = shapeOf(t)
-            if shapes.kindIs(s shapes.shapeVariant) then fail("a variant (milestone 4)") end
+            if shapes.kindIs(s shapes.shapeVariant) then fail("an option's operation on a variant") end
             if not(shapes.kindIs(s shapes.shapeOption)) then fail("a tag of a value of no option type") end
             s
         end
+    let isVariantShape(t: ir.Type): Bool = shapes.kindIs(shapeOf(t) shapes.shapeVariant)
 
     (* A case's tag: its index among the shape's cases, which are in name
      * order (docs/c-representation.md section 5.3) *)
@@ -1138,7 +1169,7 @@ export
             for k = 0 upto extent s.cases - 1 do
                 if stringOp.equal(maybe.unwrapOr(:String s.cases[k].name "") tag) then index := k end
             end
-            if index < 0 then fail("an option of no case " <> tag) end
+            if index < 0 then fail("an option or variant of no case " <> tag) end
             index
         end
 
@@ -1257,6 +1288,23 @@ export
 
     (* opt!tag: a new tuple of the case's ordinal and then its components,
      * after a test of the tag that raises variant.tagMismatch *)
+    (* v!tag on a variant: its payload, after a test of the tag that raises
+     * variant.tagMismatch *)
+    let variantPayload(f: F x: ir.OpPayload t: ir.Type target: maybe.T(ir.Variable)): Ok =
+        begin
+            let s = shapeOf(ir.atomType(x.value))
+            let held = scratch(f model.eqref)
+            variantAtom(f x.value)
+            emit(f i1(ops.localSet held))
+            emit(f model.i32Const(tagIndex(s x.tag)))
+            emit(f i(ops.i32Ne))
+            emit(f model.ifInst(empty ""))
+            raiseAt(f "variant.tagMismatch" x.offset)
+            emit(f model.endInst)
+            emit(f i1(ops.localGet held))
+            unboxFor(f t target)
+        end
+
     let payload(f: F x: ir.OpPayload t: ir.Type): Ok =
         begin
             if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
@@ -1378,6 +1426,13 @@ export
             emit(f i1(ops.localSet y))
             emit(f i1(ops.localSet x))
             let s = shapeOf(t)
+            (* a variant or a record in a slot is its box, compared as the C
+             * runtime compares its boxed word (quest_val_is) *)
+            if isVariant(t) orif isRecord(t) then
+                emit(f i1(ops.localGet x))
+                emit(f i1(ops.localGet y))
+                emit(f i(ops.refEq))
+            else
             case valType(t)
                 when valI64 then
                     emit(f i1(ops.localGet x))
@@ -1397,6 +1452,7 @@ export
                     emit(f i1(ops.localGet x))
                     emit(f i1(ops.localGet y))
                     emit(f i(ops.refEq))
+            end
             end
         end
 
@@ -2713,7 +2769,23 @@ export
             (* nothing this backend compiles makes a proxy (section 10.1), so
              * a value that might be one is its original *)
             when planUnproxy then atom(f x.value)
-            when planRecordView, planVariantTags, planView, planRuntime, planCopy then
+            when planVariantTags then
+                let table = maybe.unwrap(:ir.TagMap x.plan.tagMap)
+                let sourceS = shapeOf(table.source)
+                let targetS = shapeOf(table.target)
+                let tags = array of(extent sourceS.cases 0)
+                for k = 0 upto extent sourceS.cases - 1 do
+                    tags[k] := tagIndex(targetS maybe.unwrapOr(:String sourceS.cases[k].name ""))
+                end
+                let held = scratch(f model.eqref)
+                variantAtom(f x.value)
+                emit(f i1(ops.localSet held))
+                mapI32(f tags)
+                emit(f i1(ops.localGet held))
+                if maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).boxed then
+                    box(f x.plan.target)
+                end
+            when planRecordView, planView, planRuntime, planCopy then
                 fail("the conversion " <> ir.planKindName(x.plan.kind) <> " (milestone 4)")
         end
 
@@ -3002,6 +3074,15 @@ export
                 castTo(f tOption)
                 emit(f i2(ops.structGet tOption fTag))
                 emit(f i(ops.i64ExtendI32U))
+            elsif named("variantTag") then
+                atom(f args[0])
+                castTo(f tVarBox)
+                emit(f i2(ops.structGet tVarBox 0))
+                emit(f i(ops.i64ExtendI32U))
+            elsif named("variantPayload") then
+                atom(f args[0])
+                castTo(f tVarBox)
+                emit(f i2(ops.structGet tVarBox 1))
             elsif named("exceptionName") then
                 atom(f args[0])
                 castTo(f tException)
@@ -3112,11 +3193,21 @@ export
             when opMakeOption with x then makeOption(f x targetType())
             when opIsTag with x then
                 if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
-                let s = optionShape(ir.atomType(x.value))
-                tagOf(f x.value x.access)
-                emit(f model.i32Const(tagIndex(s x.tag)))
+                if isVariantShape(ir.atomType(x.value)) then
+                    variantAtom(f x.value)
+                    emit(f i(ops.drop))
+                    emit(f model.i32Const(tagIndex(shapeOf(ir.atomType(x.value)) x.tag)))
+                else
+                    let s = optionShape(ir.atomType(x.value))
+                    tagOf(f x.value x.access)
+                    emit(f model.i32Const(tagIndex(s x.tag)))
+                end
                 emit(f i(ops.i32Eq))
-            when opPayload with x then payload(f x targetType())
+            when opPayload with x then
+                if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
+                if isVariantShape(ir.atomType(x.value)) then variantPayload(f x targetType() target)
+                else payload(f x targetType())
+                end
             when opOrdinal with x then
                 if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
                 let s = optionShape(ir.atomType(x.value))
@@ -3155,7 +3246,16 @@ export
                 if maybe.isSome(:ir.Variable target) then unboxFor(f maybe.unwrap(:ir.Variable target).type target) end
             (* the handler's state, a $raised, which raised.reraise throws *)
             when opCaughtException with x then atom(f x.exc)
-            when opMakeVariant then fail("a variant (milestone 4)")
+            when opMakeVariant with x then
+                (* its tag, in its type's numbering, and its payload as a
+                 * slot holds it; a case with none holds ok *)
+                emit(f model.i32Const(tagIndex(shapeOf(targetType()) x.tag)))
+                if maybe.isSome(:ir.Atom x.payload) then boxedAtom(f maybe.unwrap(:ir.Atom x.payload))
+                else
+                    emit(f model.i32Const(0))
+                    emit(f i(ops.refI31))
+                end
+                if maybe.unwrap(:ir.Variable target).boxed then box(f targetType()) end
             when opMakeAuto then fail("an auto value (milestone 4)")
             (* Locations (section 2.6): a slot array and an index *)
             when opAddrVar with x then
@@ -3582,11 +3682,21 @@ export
     and switch(f: F x: ir.StmtSwitch): Ok =
         begin
             if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
-            let s = optionShape(ir.atomType(x.value))
+            let isV = isVariantShape(ir.atomType(x.value))
+            let s = if isV then shapeOf(ir.atomType(x.value)) else optionShape(ir.atomType(x.value)) end
             let opt = scratch(f model.refNull(tOption))
-            atom(f x.value)
-            accessAs(f tOption x.access)
-            emit(f i1(ops.localSet opt))
+            (* a variant's tag and payload *)
+            let vTag = if isV then scratch(f model.i32) else 0 end
+            let vPayload = if isV then scratch(f model.eqref) else 0 end
+            if isV then
+                variantAtom(f x.value)
+                emit(f i1(ops.localSet vPayload))
+                emit(f i1(ops.localSet vTag))
+            else
+                atom(f x.value)
+                accessAs(f tOption x.access)
+                emit(f i1(ops.localSet opt))
+            end
             let base = "switch" <> conv.int(vector.length(:Inst f.code))
             let m = extent x.cases
             emit(f model.blockInst(empty ""))
@@ -3601,15 +3711,23 @@ export
             for k = 0 upto m - 1 do
                 for j = 0 upto extent x.cases[k].tags - 1 do targets[tagIndex(s x.cases[k].tags[j])] := k end
             end
-            emit(f i1(ops.localGet opt))
-            emit(f i2(ops.structGet tOption fTag))
+            if isV then emit(f i1(ops.localGet vTag))
+            else
+                emit(f i1(ops.localGet opt))
+                emit(f i2(ops.structGet tOption fTag))
+            end
             emit(f option instBrTable of Inst with let labels = targets let default = m end)
             for k = 0 upto m - 1 do
                 close(f)
                 let c = x.cases[k]
                 if maybe.isSome(:ir.Variable c.binder) then
                     let binder = maybe.unwrap(:ir.Variable c.binder)
-                    if not(shapes.kindIs(shapes.shape(binder.type) shapes.shapeOk)) then
+                    if isV then
+                        (* the variant's payload, whatever its type *)
+                        emit(f i1(ops.localGet vPayload))
+                        unboxFor(f binder.type maybe.some(:ir.Variable binder))
+                        store(f binder)
+                    elsif not(shapes.kindIs(shapes.shape(binder.type) shapes.shapeOk)) then
                         emit(f i1(ops.localGet opt))
                         if not(shapes.kindIs(shapes.shape(binder.type) shapes.shapeTuple)) then
                             emit(f i2(ops.structGet tOption fSlots))

@@ -1607,6 +1607,20 @@ stands, not redesigned.
     variant, `?` and `!`, `is`, printing and echo, and a variant's descriptor (`variant_tags`). The closure
     signature already has a variant's two values (§3.2).
     *Done when* the variants' group passes in both lists, but for those that also need step 17 or 18.
+    *Done 2026-11-14:*
+    - **Built** in `wasm/codegen`: a variant is two values, an `i32` tag in its type's numbering (its cases' name
+      order, as C numbers them) and an `eqref` payload as a slot holds it (`ok` for a case without one), and in a
+      slot a `$varBox` of the two. Its tag is tested (`?`) and its payload taken (`!`, raising
+      `variant.tagMismatch`); a `case` branches on the tag and binds the payload; a `variantTags` conversion maps
+      the tag through a table of the source's cases to the target's (`br_table` of constants), the payload as it
+      is. A variant in a slot compared with `is`, inside a single-word option, is its box, as C compares its boxed
+      word. An unboxed tuple (`ir/unbox`) now holds each component as its parts, so a variant or record component
+      is two values. `wasm/print` writes a variant as `quest_put_value` does (`variant TAG with PAYLOAD end`),
+      through two intrinsics, `wasm.variantTag` and `wasm.variantPayload`. Descriptors needed nothing new: the
+      static data already describes a variant's cases.
+    - **Checked:** in the compiled list 11 tests pass, in the JIT's 14 (the variants' group's, and
+      `variant_assert_tag_mismatch`'s error test); the rest of the group now stops at views or at `auto` and
+      `dynamic`, and is listed under them, which empties the JIT list's variants group.
 17. **Records' views, subtyping, and proxies.** The rest of §4.2's core: run-time subtyping; conversion
     (`quest_convert`, the `view`, `runtime`, `copy`, `cast`, and `unproxy` plans); a record seen at a type whose
     table is known only at run time, through the map of record tables; a record's field stored at another type;

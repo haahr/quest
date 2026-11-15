@@ -31,6 +31,9 @@ export
     let arraySlot(x: core.Any i: Int): core.Any = external "wasm.arraySlot"
     let recordField(x: core.Any i: Int): core.Any = external "wasm.recordField"
     let optionTag(x: core.Any): Int = external "wasm.optionTag"
+    (* A variant's tag and payload, from its $varBox *)
+    let variantTag(x: core.Any): Int = external "wasm.variantTag"
+    let variantPayload(x: core.Any): core.Any = external "wasm.variantPayload"
     let exceptionName(x: core.Any): String = external "wasm.exceptionName"
     (* The base's: an Int in decimal (- for negatives) and in hexadecimal, a
      * string's bytes escaped between quotes, a Char as a string, and bytes
@@ -108,6 +111,16 @@ export
                     if {p.kind is core.kindNone} orif {p.kind is core.kindOk} then head <> " end"
                     elsif p.kind is core.kindTuple then head <> {" with " <> {tupleText(v p v true) <> " end"}}
                     else head <> {" with " <> {show(tupleSlot(v 0) p) <> " end"}}
+                    end
+                end
+            elsif k is core.kindVariant then
+                let tag = variantTag(v)
+                if {tag < 0} orif {tag >= extent d.parts} then "<val>"
+                else
+                    let p = d.parts[tag]
+                    let head = "variant " <> d.labels[tag]
+                    if {p.kind is core.kindNone} orif {p.kind is core.kindOk} then head <> " end"
+                    else head <> {" with " <> {show(variantPayload(v) p) <> " end"}}
                     end
                 end
             elsif k is core.kindArray then
