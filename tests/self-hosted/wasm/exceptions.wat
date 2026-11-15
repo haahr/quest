@@ -70,11 +70,12 @@
   (type (func (param (ref $clos) eqref eqref eqref i64) (result eqref)))
   (type (func (param (ref $clos) eqref eqref i64 i64) (result eqref)))
   (type (func (param (ref $clos) i32) (result eqref)))
+  (type (func (param (ref $clos)) (result eqref)))
   (type (func (param (ref $clos) i64) (result i64)))
   (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 51)))))
-  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 69)))))
-  (type $tries.closure (sub final 71 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 69)))))
-  (type $tries.closure.1 (sub final 71 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 69)))))
+  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 70)))))
+  (type $tries.closure (sub final 72 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 70)))))
+  (type $tries.closure.1 (sub final 72 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 70)))))
   (import "quest.runtime" "exception:int.error" (global $int.error (ref $exception)))
   (import "quest.runtime" "exception:real.error" (global $real.error (ref $exception)))
   (import "quest.runtime" "exception:word.error" (global $word.error (ref $exception)))
@@ -175,7 +176,9 @@
   (import "wasm/core" "viewRecordField" (func $wasm/core.viewRecordField (type 66)))
   (import "wasm/core" "viewOptionComponent" (func $wasm/core.viewOptionComponent (type 67)))
   (import "wasm/core" "viewOptionPayload" (func $wasm/core.viewOptionPayload (type 50)))
+  (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 50)))
   (import "conv" "bool" (func $conv.bool (type 68)))
+  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 69)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $quest_type_Int (mut eqref) ref.null none)
   (global $quest_type_Real (mut eqref) ref.null none)
@@ -193,7 +196,7 @@
   (global $tries.3 (mut eqref) ref.null none)
   (export "_start" (func $_start))
   (elem declare func $tries.uniform $tries $tries.uniform.1 $tries.1)
-  (func $tries (type 69) (param $closure (ref $clos)) (param $i i64) (result i64)
+  (func $tries (type 70) (param $closure (ref $clos)) (param $i i64) (result i64)
     (local $v i32)
     (local $v.1 i64)
     (local $e eqref)
@@ -258,7 +261,7 @@
     end
     unreachable
   )
-  (func $tries.1 (type 69) (param $closure (ref $clos)) (param $i i64) (result i64)
+  (func $tries.1 (type 70) (param $closure (ref $clos)) (param $i i64) (result i64)
     (local $v i32)
     (local $v.1 i64)
     (local $e eqref)
@@ -448,8 +451,18 @@
       call $concat
       local.set $e
       local.get $v.4
-      local.get $e
-      call $putString
+      local.tee $v.4
+      ref.test (ref i31)
+      if (result eqref)
+        local.get $v.4
+        local.get $e
+        call $putString
+      else
+        global.get $noClosure
+        local.get $v.4
+        local.get $e
+        call $wasm/core.writerPutString
+      end
       local.set $e
       block $inlined1.after
         block $inlined1 (result i64)
@@ -581,8 +594,18 @@
           call $concat
           local.set $e
           local.get $v.4
-          local.get $e
-          call $putString
+          local.tee $v.4
+          ref.test (ref i31)
+          if (result eqref)
+            local.get $v.4
+            local.get $e
+            call $putString
+          else
+            global.get $noClosure
+            local.get $v.4
+            local.get $e
+            call $wasm/core.writerPutString
+          end
           local.set $e
           block $inlined3.after
             block $inlined3 (result i64)
@@ -634,8 +657,18 @@
             call $concat
             local.set $e
             local.get $v.4
-            local.get $e
-            call $putString
+            local.tee $v.4
+            ref.test (ref i31)
+            if (result eqref)
+              local.get $v.4
+              local.get $e
+              call $putString
+            else
+              global.get $noClosure
+              local.get $v.4
+              local.get $e
+              call $wasm/core.writerPutString
+            end
             local.set $e
             block $inlined6.after
               block $inlined6 (result i64)
@@ -730,8 +763,18 @@
               call $concat
               local.set $e
               local.get $v.4
-              local.get $e
-              call $putString
+              local.tee $v.4
+              ref.test (ref i31)
+              if (result eqref)
+                local.get $v.4
+                local.get $e
+                call $putString
+              else
+                global.get $noClosure
+                local.get $v.4
+                local.get $e
+                call $wasm/core.writerPutString
+              end
               local.set $e
               i64.const 0
               local.set $x
@@ -855,8 +898,18 @@
               call $concat
               local.set $bad
               local.get $e
-              local.get $bad
-              call $putString
+              local.tee $e
+              ref.test (ref i31)
+              if (result eqref)
+                local.get $e
+                local.get $bad
+                call $putString
+              else
+                global.get $noClosure
+                local.get $e
+                local.get $bad
+                call $wasm/core.writerPutString
+              end
               local.set $bad
               local.get $other
               call $exceptionOf
@@ -881,8 +934,18 @@
               call $concat
               local.set $bad
               local.get $other
-              local.get $bad
-              call $putString
+              local.tee $other
+              ref.test (ref i31)
+              if (result eqref)
+                local.get $other
+                local.get $bad
+                call $putString
+              else
+                global.get $noClosure
+                local.get $other
+                local.get $bad
+                call $wasm/core.writerPutString
+              end
               local.set $bad
               i32.const 0
               i32.const 0
@@ -937,8 +1000,18 @@
               call $concat
               local.set $bad
               local.get $other
-              local.get $bad
-              call $putString
+              local.tee $other
+              ref.test (ref i31)
+              if (result eqref)
+                local.get $other
+                local.get $bad
+                call $putString
+              else
+                global.get $noClosure
+                local.get $other
+                local.get $bad
+                call $wasm/core.writerPutString
+              end
               local.set $bad
               local.get $named
               i32.const 0
@@ -974,6 +1047,9 @@
     block $uncaught (result eqref)
       try_table (catch $error $uncaught)
         call $main
+        global.get $noClosure
+        call $wasm/core.flushWriters
+        drop
       end
       return
     end
@@ -993,6 +1069,9 @@
       struct.get $raised $desc
       call $wasm/print.show
     end
+    global.get $noClosure
+    call $wasm/core.flushWriters
+    drop
     call $uncaught
   )
   (func $descriptors (type 49)

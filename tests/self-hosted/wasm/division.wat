@@ -55,6 +55,7 @@
   (type (func (param (ref $clos) eqref) (result eqref)))
   (type (func (param (ref $clos) eqref) (result i64)))
   (type (func (param (ref $clos) eqref i64) (result eqref)))
+  (type (func (param (ref $clos)) (result eqref)))
   (import "quest.runtime" "exception:int.error" (global $int.error (ref $exception)))
   (import "quest.runtime" "exception:real.error" (global $real.error (ref $exception)))
   (import "quest.runtime" "exception:word.error" (global $word.error (ref $exception)))
@@ -131,6 +132,9 @@
   (import "wasm/core" "proxyElement" (func $wasm/core.proxyElement (type 53)))
   (import "wasm/core" "proxyOptionElement" (func $wasm/core.proxyOptionElement (type 53)))
   (import "wasm/core" "proxyOptionPayload" (func $wasm/core.proxyOptionPayload (type 51)))
+  (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 50)))
+  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 54)))
+  (import "wasm/core" "init" (func $wasm/core.init (type 49)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (export "_start" (func $_start))
   (func $main (type 49)
@@ -139,6 +143,7 @@
     (local $v.2 eqref)
     (local $v.3 eqref)
     (local $v.80 i64)
+    call $wasm/core.init
     call $writer.init
     call $conv.init
     i64.const 7
@@ -205,8 +210,18 @@
     call $concat
     local.set $v
     local.get $v.1
-    local.get $v
-    call $putString
+    local.tee $v.1
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.1
+      local.get $v
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.1
+      local.get $v
+      call $wasm/core.writerPutString
+    end
     local.set $v
     i64.const -7
     call $convInt
@@ -272,8 +287,18 @@
     call $concat
     local.set $v
     local.get $v.1
-    local.get $v
-    call $putString
+    local.tee $v.1
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.1
+      local.get $v
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.1
+      local.get $v
+      call $wasm/core.writerPutString
+    end
     local.set $v
     i64.const 7
     call $convInt
@@ -339,8 +364,18 @@
     call $concat
     local.set $v
     local.get $v.1
-    local.get $v
-    call $putString
+    local.tee $v.1
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.1
+      local.get $v
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.1
+      local.get $v
+      call $wasm/core.writerPutString
+    end
     local.set $v
     i64.const -9223372036854775808
     call $convInt
@@ -406,8 +441,18 @@
     call $concat
     local.set $v
     local.get $v.1
-    local.get $v
-    call $putString
+    local.tee $v.1
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.1
+      local.get $v
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.1
+      local.get $v
+      call $wasm/core.writerPutString
+    end
     local.set $v
     i64.const -9223372036854775808
     call $convInt
@@ -473,8 +518,18 @@
     call $concat
     local.set $v
     local.get $v.1
-    local.get $v
-    call $putString
+    local.tee $v.1
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.1
+      local.get $v
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.1
+      local.get $v
+      call $wasm/core.writerPutString
+    end
     local.set $v
     i64.const 0
     call $convInt
@@ -540,8 +595,18 @@
     call $concat
     local.set $v
     local.get $v.1
-    local.get $v
-    call $putString
+    local.tee $v.1
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.1
+      local.get $v
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.1
+      local.get $v
+      call $wasm/core.writerPutString
+    end
     local.set $v
     i64.const 1
     call $convInt
@@ -677,8 +742,18 @@
     call $concat
     local.set $v
     local.get $v.1
-    local.get $v
-    call $putString
+    local.tee $v.1
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.1
+      local.get $v
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.1
+      local.get $v
+      call $wasm/core.writerPutString
+    end
     local.set $v
     i32.const 0
     i32.const 11
@@ -700,8 +775,18 @@
     call $concat
     local.set $v
     local.get $v.1
-    local.get $v
-    call $putString
+    local.tee $v.1
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.1
+      local.get $v
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.1
+      local.get $v
+      call $wasm/core.writerPutString
+    end
     local.set $v
   )
   (func $_start (type 49)
@@ -709,6 +794,9 @@
     block $uncaught (result eqref)
       try_table (catch $error $uncaught)
         call $main
+        global.get $noClosure
+        call $wasm/core.flushWriters
+        drop
       end
       return
     end
@@ -728,6 +816,9 @@
       struct.get $raised $desc
       call $wasm/print.show
     end
+    global.get $noClosure
+    call $wasm/core.flushWriters
+    drop
     call $uncaught
   )
   (data $strings ", remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/division.quest:6:94/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/division.quest:7:17, remainder  =  / \0anot reached\0a")

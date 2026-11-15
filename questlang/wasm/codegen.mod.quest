@@ -2103,6 +2103,10 @@ export
         array of "quest_filestats_stat" "fileStat" "eb" "e" end
         array of "quest_writer_file" "writerFile" "e" "e" end
         array of "quest_writer_close" "writerClose" "e" "e" end
+        array of "quest_writer_put_string" "writerPutString" "ee" "e" end
+        array of "quest_writer_put_char" "writerPutChar" "eb" "e" end
+        array of "quest_writer_put_substring" "writerPutSubString" "eenn" "e" end
+        array of "quest_writer_flush" "writerFlush" "e" "e" end
         array of "quest_reader_input" "readerInput" "" "e" end
         array of "quest_reader_file" "readerFile" "e" "e" end
         array of "quest_reader_more" "readerMore" "e" "b" end
@@ -2252,6 +2256,25 @@ export
                 emit(f i1(ops.globalGet f.g.noClosure))
                 atoms(f args)
                 runtimeUnitCall(f "util/realmath." <> maybe.unwrap(:Array(String) realmath)[1])
+            elsif {named("quest_writer_put_string") orif named("quest_writer_put_char")} andif not(f.g.isCore) then
+                (* a standard stream's writer, an i31ref, written by the
+                 * runtime at once; a file's by the core, which buffers *)
+                let w = scratch(f model.eqref)
+                atom(f args[0])
+                emit(f i1(ops.localTee w))
+                emit(f option instRefTest of Inst with
+                    let type = tuple let nullable = false let heap = option heapI31 of model.HeapType end end
+                end)
+                emit(f model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
+                emit(f i1(ops.localGet w))
+                atom(f args[1])
+                runtimeCall(f if named("quest_writer_put_string") then "putString" else "putChar" end)
+                emit(f model.elseInst)
+                emit(f i1(ops.globalGet f.g.noClosure))
+                emit(f i1(ops.localGet w))
+                atom(f args[1])
+                runtimeUnitCall(f "wasm/core." <> maybe.unwrap(:Array(String) core)[1])
+                emit(f model.endInst)
             elsif maybe.isSome(:Array(String) core) then
                 emit(f i1(ops.globalGet f.g.noClosure))
                 descriptors(f descs)
@@ -2275,17 +2298,7 @@ export
             elsif named("quest_conv_int") then through("convInt")
             elsif named("quest_conv_char") then quoted(f args '\'')
             elsif named("quest_conv_string") then quoted(f args '"')
-            (* writer *)
-            elsif named("quest_writer_put_string") then through("putString")
-            elsif named("quest_writer_put_char") then through("putChar")
-            elsif named("quest_writer_put_substring") then
-                atom(f args[0])
-                atom(f args[1])
-                atom(f args[2])
-                atom(f args[3])
-                runtimeCall(f "stringGetSub")
-                runtimeCall(f "putString")
-            elsif named("quest_writer_flush") then okValue()
+            (* writer: the core's (coreExternals) *)
             (* ascii, arrayOp, raised, system *)
             elsif named("quest_ascii_char") then
                 atom(f args[0])
@@ -2310,6 +2323,12 @@ export
                 castTo(f rt.index("raised"))
                 emit(f i1(ops.throw 0))
             elsif named("quest_system_exit") then
+                (* the files' writers flushed first, as C's exit does *)
+                if hashMap.contains(:String :Int f.g.runtimeUnits "wasm/core.flushWriters") then
+                    emit(f i1(ops.globalGet f.g.noClosure))
+                    runtimeUnitCall(f "wasm/core.flushWriters")
+                    emit(f i(ops.drop))
+                end
                 literal(f "")
                 atom(f args[0])
                 emit(f i(ops.i32WrapI64))
@@ -3861,6 +3880,10 @@ export
                 emit(f i(ops.refI31))
                 atoms(f args)
                 runtimeCall(f "putString")
+            elsif named("putTo") orif named("putCharTo") then
+                (* to a standard stream's writer, its descriptor *)
+                atoms(f args)
+                runtimeCall(f if named("putTo") then "putString" else "putChar" end)
             elsif named("convInt") then
                 atoms(f args)
                 runtimeCall(f "convInt")
@@ -5416,10 +5439,15 @@ export
                     end
                 end
             end
+            (* A program's _start flushes the files' writers when it ends *)
+            if g.unit.isProgram andif not(g.isRuntime)
+                andif not(hashMap.contains(:String :Int g.runtimeUnits "wasm/core.flushWriters")) then
+                runtimeImport("wasm/core" "flushWriters" repTypes("") repTypes("e"))
+            end
             (* The core initialized before any of its functions is called *)
             let usesCore = fun(): Bool
                 begin
-                    let var any = false
+                    let var any = hashMap.contains(:String :Int g.runtimeUnits "wasm/core.flushWriters")
                     for k = 0 upto extent coreExternals - 1 do
                         if hashMap.contains(:String :Int g.runtimeUnits "wasm/core." <> coreExternals[k][1]) then
                             any := true
@@ -5624,6 +5652,12 @@ export
                 end
             else
             (* The program's top level *)
+            let flushWriters = fun(f: F): Ok
+                if hashMap.contains(:String :Int g.runtimeUnits "wasm/core.flushWriters") then
+                    emit(f i1(ops.globalGet g.noClosure))
+                    runtimeUnitCall(f "wasm/core.flushWriters")
+                    emit(f i(ops.drop))
+                end
             let mainF = newF(g array of :String end noTypes ~1)
             initRuntime(mainF)
             initImports(mainF)
@@ -5643,6 +5677,7 @@ export
                 end
             end)
             emit(start i1(ops.call mainIndex))
+            flushWriters(start)
             emit(start model.endInst)
             emit(start i(ops.returnOp))
             emit(start model.endInst)
@@ -5666,6 +5701,7 @@ export
             emit(start i2(ops.structGet tRaised rt.field("raised" "desc")))
             runtimeUnitCall(start "wasm/print.show")
             emit(start model.endInst)
+            flushWriters(start)
             runtimeCall(start "uncaught")
             fill(start mainIndex + 1 "_start" placeholder)
             vector.append(:model.Export m.exports tuple

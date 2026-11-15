@@ -70,6 +70,7 @@
   (type (func (param (ref $clos) eqref eqref eqref i64) (result eqref)))
   (type (func (param (ref $clos) eqref eqref i64 i64) (result eqref)))
   (type (func (param (ref $clos) i32) (result eqref)))
+  (type (func (param (ref $clos)) (result eqref)))
   (type (func (param (ref $clos) i64 i64) (result i64 i64)))
   (type (func (param eqref) (result (ref $option))))
   (import "quest.runtime" "exception:int.error" (global $int.error (ref $exception)))
@@ -172,7 +173,9 @@
   (import "wasm/core" "viewRecordField" (func $wasm/core.viewRecordField (type 66)))
   (import "wasm/core" "viewOptionComponent" (func $wasm/core.viewOptionComponent (type 67)))
   (import "wasm/core" "viewOptionPayload" (func $wasm/core.viewOptionPayload (type 50)))
+  (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 50)))
   (import "conv" "bool" (func $conv.bool (type 68)))
+  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 69)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $quest_type_Int (mut eqref) ref.null none)
   (global $quest_type_Real (mut eqref) ref.null none)
@@ -193,7 +196,7 @@
   (global $divide.1 (mut eqref) ref.null none)
   (global $dict (ref $dict) i32.const 0 i32.const 1 i32.const 2 array.new_fixed $i32s 3 ref.null none struct.new $dict)
   (export "_start" (func $_start))
-  (func $divide (type 69) (param $closure (ref $clos)) (param $n i64) (param $d i64) (result i64 i64)
+  (func $divide (type 70) (param $closure (ref $clos)) (param $n i64) (param $d i64) (result i64 i64)
     (local $v i32)
     (local $v.2 i64)
     (local $v.1 i64)
@@ -252,9 +255,9 @@
     (local $t.3 (ref null $option))
     (local $v.12 i64)
     (local $v.48 eqref)
-    (local $t.30 (ref null $recBox))
-    (local $t.34 eqref)
-    (local $t.35 eqref)
+    (local $t.39 (ref null $recBox))
+    (local $t.43 eqref)
+    (local $t.44 eqref)
     call $wasm/core.init
     call $descriptors
     call $writer.init
@@ -403,7 +406,7 @@
             block $inlined1 (result i64)
               local.get $v.2
               local.tee $v.2
-              block (type 70)
+              block (type 71)
                 br_on_cast 0 eqref (ref $option)
                 local.set $v.4
                 global.get $noClosure
@@ -548,8 +551,18 @@
             call $concat
             local.set $v.2
             local.get $v.4
-            local.get $v.2
-            call $putString
+            local.tee $v.4
+            ref.test (ref i31)
+            if (result eqref)
+              local.get $v.4
+              local.get $v.2
+              call $putString
+            else
+              global.get $noClosure
+              local.get $v.4
+              local.get $v.2
+              call $wasm/core.writerPutString
+            end
             local.set $v.2
             local.get $i
             local.get $v.7
@@ -656,7 +669,7 @@
     local.get $t
     i32.const 1
     local.get $v.2
-    block (type 70)
+    block (type 71)
       br_on_cast 0 eqref (ref $option)
       local.set $v.2
       global.get $noClosure
@@ -718,8 +731,18 @@
     call $concat
     local.set $v.2
     local.get $v.4
-    local.get $v.2
-    call $putString
+    local.tee $v.4
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.4
+      local.get $v.2
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.4
+      local.get $v.2
+      call $wasm/core.writerPutString
+    end
     local.set $v.2
     i64.const 2
     local.get $v
@@ -1037,8 +1060,18 @@
     call $concat
     local.set $v
     local.get $v.2
-    local.get $v
-    call $putString
+    local.tee $v.2
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.2
+      local.get $v
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.2
+      local.get $v
+      call $wasm/core.writerPutString
+    end
     local.set $v
     i32.const 0
     i64.const 2
@@ -1169,8 +1202,18 @@
     call $concat
     local.set $v
     local.get $v.2
-    local.get $v
-    call $putString
+    local.tee $v.2
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.2
+      local.get $v
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.2
+      local.get $v
+      call $wasm/core.writerPutString
+    end
     local.set $v
     i32.const 0
     i64.const 4
@@ -1284,8 +1327,18 @@
     call $concat
     local.set $v
     local.get $v.2
-    local.get $v
-    call $putString
+    local.tee $v.2
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.2
+      local.get $v
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.2
+      local.get $v
+      call $wasm/core.writerPutString
+    end
     local.set $v
     i32.const 0
     i32.const 3
@@ -1373,8 +1426,18 @@
     call $concat
     local.set $v
     local.get $v.2
-    local.get $v
-    call $putString
+    local.tee $v.2
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.2
+      local.get $v
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.2
+      local.get $v
+      call $wasm/core.writerPutString
+    end
     local.set $v
     global.get $noClosure
     global.set $divide.1
@@ -1462,8 +1525,18 @@
     call $concat
     local.set $v
     local.get $v.2
-    local.get $v
-    call $putString
+    local.tee $v.2
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.2
+      local.get $v
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.2
+      local.get $v
+      call $wasm/core.writerPutString
+    end
     local.set $v
     i64.const 5
     i64.const 0
@@ -1659,8 +1732,18 @@
     call $concat
     local.set $v.2
     local.get $v.4
-    local.get $v.2
-    call $putString
+    local.tee $v.4
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.4
+      local.get $v.2
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.4
+      local.get $v.2
+      call $wasm/core.writerPutString
+    end
     local.set $v.2
     i64.const 3
     i32.const 120
@@ -1779,8 +1862,18 @@
     call $concat
     local.set $v.2
     local.get $v.4
-    local.get $v.2
-    call $putString
+    local.tee $v.4
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.4
+      local.get $v.2
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.4
+      local.get $v.2
+      call $wasm/core.writerPutString
+    end
     local.set $v.2
     i32.const 0
     global.get $QT_record_e453bc1b6cf6d2db
@@ -1805,9 +1898,9 @@
     local.set $v.2
     local.get $v.2
     ref.cast (ref $recBox)
-    local.tee $t.30
+    local.tee $t.39
     struct.get $recBox $payload
-    local.get $t.30
+    local.get $t.39
     struct.get $recBox $dict
     local.set $v.4
     local.set $v.5
@@ -1855,10 +1948,10 @@
     local.set $v.48
     local.get $v.5
     local.get $v.4
-    local.set $t.34
+    local.set $t.43
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.34
+    local.get $t.43
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 1
@@ -1868,13 +1961,13 @@
     local.set $v.7
     local.get $v.7
     call $convInt
-    local.set $t.34
+    local.set $t.43
     local.get $v.5
     local.get $v.4
-    local.set $t.35
+    local.set $t.44
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.35
+    local.get $t.44
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 2
@@ -1884,36 +1977,36 @@
     local.set $v.7
     local.get $v.7
     call $convInt
-    local.set $t.35
+    local.set $t.44
     i32.const 0
     i32.const 1
     i32.const 1809
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $t.35
+    local.get $t.44
     call $concat
-    local.set $t.35
-    local.get $t.34
-    local.get $t.35
+    local.set $t.44
+    local.get $t.43
+    local.get $t.44
     call $concat
-    local.set $t.34
+    local.set $t.43
     i32.const 0
     i32.const 1
     i32.const 1810
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $t.34
+    local.get $t.43
     call $concat
-    local.set $t.34
+    local.set $t.43
     local.get $v.48
-    local.get $t.34
+    local.get $t.43
     call $concat
     local.set $v.48
     i32.const 1
     ref.i31
-    local.set $t.34
+    local.set $t.43
     local.get $v.48
     i32.const 0
     i32.const 1
@@ -1923,9 +2016,19 @@
     struct.new $string
     call $concat
     local.set $v.48
-    local.get $t.34
-    local.get $v.48
-    call $putString
+    local.get $t.43
+    local.tee $t.43
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $t.43
+      local.get $v.48
+      call $putString
+    else
+      global.get $noClosure
+      local.get $t.43
+      local.get $v.48
+      call $wasm/core.writerPutString
+    end
     local.set $v.48
     i32.const 0
     global.get $QT_record_e453bc1b6cf6d2db
@@ -1950,12 +2053,12 @@
     local.set $v.48
     local.get $v.48
     ref.cast (ref $recBox)
-    local.tee $t.30
+    local.tee $t.39
     struct.get $recBox $payload
-    local.get $t.30
+    local.get $t.39
     struct.get $recBox $dict
-    local.set $t.34
-    local.set $t.34
+    local.set $t.43
+    local.set $t.43
     i32.const 0
     local.get $v.2
     local.get $v.48
@@ -2000,13 +2103,13 @@
     local.set $v.48
     local.get $v.48
     ref.cast (ref $recBox)
-    local.tee $t.30
+    local.tee $t.39
     struct.get $recBox $payload
-    local.get $t.30
+    local.get $t.39
     struct.get $recBox $dict
     local.set $v.48
-    local.set $t.34
-    local.get $t.34
+    local.set $t.43
+    local.get $t.43
     local.get $v.48
     local.set $v.48
     ref.cast (ref $record)
@@ -2056,22 +2159,22 @@
     local.set $v.2
     local.get $v.2
     ref.cast (ref $recBox)
-    local.tee $t.30
+    local.tee $t.39
     struct.get $recBox $payload
-    local.get $t.30
+    local.get $t.39
     struct.get $recBox $dict
     local.set $v.2
-    local.set $t.34
-    local.get $t.34
+    local.set $t.43
+    local.get $t.43
     local.get $v.2
     local.set $v.2
-    local.set $t.34
-    local.get $t.34
+    local.set $t.43
+    local.get $t.43
     local.get $v.2
-    local.set $t.35
+    local.set $t.44
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.35
+    local.get $t.44
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 1
@@ -2079,12 +2182,12 @@
     array.get $slots
     call $unboxInt.1
     local.set $v.7
-    local.get $t.34
+    local.get $t.43
     local.get $v.2
-    local.set $t.35
+    local.set $t.44
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.35
+    local.get $t.44
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 1
@@ -2092,12 +2195,12 @@
     array.get $slots
     call $unboxInt.1
     local.set $i
-    local.get $t.34
+    local.get $t.43
     local.get $v.2
-    local.set $t.35
+    local.set $t.44
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.35
+    local.get $t.44
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 2
@@ -2105,7 +2208,7 @@
     array.get $slots
     call $unboxInt.1
     local.set $i.1
-    local.get $t.34
+    local.get $t.43
     local.get $v.2
     local.set $v.2
     ref.cast (ref $record)
@@ -2135,10 +2238,10 @@
     local.set $v.2
     local.get $v.5
     local.get $v.4
-    local.set $t.34
+    local.set $t.43
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.34
+    local.get $t.43
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 1
@@ -2148,10 +2251,10 @@
     local.set $v.7
     local.get $v.5
     local.get $v.4
-    local.set $t.34
+    local.set $t.43
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.34
+    local.get $t.43
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 1
@@ -2161,10 +2264,10 @@
     local.set $i
     local.get $v.5
     local.get $v.4
-    local.set $t.34
+    local.set $t.43
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.34
+    local.get $t.43
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 2
@@ -2174,10 +2277,10 @@
     local.set $i.1
     local.get $v.5
     local.get $v.4
-    local.set $t.34
+    local.set $t.43
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.34
+    local.get $t.43
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 2
@@ -2199,18 +2302,18 @@
     local.set $v.7
     local.get $v.7
     call $convInt
-    local.set $t.34
+    local.set $t.43
     i32.const 0
     i32.const 1
     i32.const 2040
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $t.34
+    local.get $t.43
     call $concat
-    local.set $t.34
+    local.set $t.43
     local.get $v.2
-    local.get $t.34
+    local.get $t.43
     call $concat
     local.set $v.2
     local.get $v.48
@@ -2230,8 +2333,18 @@
     call $concat
     local.set $v.2
     local.get $v.48
-    local.get $v.2
-    call $putString
+    local.tee $v.48
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.48
+      local.get $v.2
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.48
+      local.get $v.2
+      call $wasm/core.writerPutString
+    end
     local.set $v.2
     local.get $v.5
     local.get $v.4
@@ -2265,8 +2378,18 @@
     call $concat
     local.set $v.2
     local.get $v.4
-    local.get $v.2
-    call $putString
+    local.tee $v.4
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.4
+      local.get $v.2
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.4
+      local.get $v.2
+      call $wasm/core.writerPutString
+    end
     local.set $v.2
     i64.const 5
     local.get $v
@@ -2321,8 +2444,18 @@
     call $concat
     local.set $v
     local.get $v.2
-    local.get $v
-    call $putString
+    local.tee $v.2
+    ref.test (ref i31)
+    if (result eqref)
+      local.get $v.2
+      local.get $v
+      call $putString
+    else
+      global.get $noClosure
+      local.get $v.2
+      local.get $v
+      call $wasm/core.writerPutString
+    end
     local.set $v
   )
   (func $_start (type 49)
@@ -2330,6 +2463,9 @@
     block $uncaught (result eqref)
       try_table (catch $error $uncaught)
         call $main
+        global.get $noClosure
+        call $wasm/core.flushWriters
+        drop
       end
       return
     end
@@ -2349,6 +2485,9 @@
       struct.get $raised $desc
       call $wasm/print.show
     end
+    global.get $noClosure
+    call $wasm/core.flushWriters
+    drop
     call $uncaught
   )
   (func $descriptors (type 49)

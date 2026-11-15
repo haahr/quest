@@ -1813,19 +1813,100 @@ export
 
     let writerError(): Ok = raise writer.error end
 
+    (* A writer: a standard stream's, its descriptor (an i31ref), written at
+     * once, since a host reads what an input wrote when it ends; or a file's,
+     * its descriptor and the bytes written and not yet given to WASI, given
+     * 64 KB at a time, when it is flushed or closed, and when the program
+     * ends (flushWriters), as C's stdio buffers them. A byte at a time, a
+     * call into the host each, the MLton benchmarks ray and output1 took 50
+     * and 37 times as long as natively (benchmarks.md section 22). The files'
+     * writers open, the first count of them *)
+    Let FileWriter = Tuple fd: Int pending: Buffer var open: Bool end
+    let fileWriterAny(w: FileWriter): Any = external "wasm.toAny"
+    let anyFileWriter(x: Any): FileWriter = external "wasm.fromAny"
+    let putStringTo(w: Any s: String): Ok = external "wasm.putTo"
+    let putCharTo(w: Any c: Char): Ok = external "wasm.putCharTo"
+    let openWriters = tuple let var all = array of(8 nullAny()) let var count = 0 end
+    let pendingLimit = 65536
+
+    let flushWriter(w: FileWriter): Ok =
+        if w.pending.length > 0 then
+            putStringTo(intAny(w.fd) sbToString(w.pending))
+            sbClear(w.pending)
+        end
+
     let writerFile(name: String): Any =
         begin
             let fd = open(name 9)
             if fd < 0 then writerError() end
-            intAny(fd)
+            let w = tuple let fd = fd let pending = sbNew() let var open = true end
+            if openWriters.count is extent openWriters.all then
+                let more = array of(2 * openWriters.count nullAny())
+                for k = 0 upto openWriters.count - 1 do more[k] := openWriters.all[k] end
+                openWriters.all := more
+            end
+            openWriters.all[openWriters.count] := fileWriterAny(w)
+            openWriters.count := openWriters.count + 1
+            fileWriterAny(w)
         end
 
-    let writerClose(w: Any): Ok =
+    (* w's file writer, if it is open, else writer.error *)
+    let openFile(w: Any): FileWriter =
         begin
-            let fd = anyInt(w)
-            if fd > 2 then fdClose(fd) end
-            ok
+            let f = anyFileWriter(w)
+            if not(f.open) then writerError() end
+            f
         end
+
+    let writerPutString(w: Any s: String): Ok =
+        if isSmall(w) then putStringTo(w s)
+        else
+            let f = openFile(w)
+            sbAppendString(f.pending s)
+            if f.pending.length >= pendingLimit then flushWriter(f) end
+        end
+
+    let writerPutChar(w: Any c: Char): Ok =
+        if isSmall(w) then putCharTo(w c)
+        else
+            let f = openFile(w)
+            sbAppendChar(f.pending c)
+            if f.pending.length >= pendingLimit then flushWriter(f) end
+        end
+
+    let writerPutSubString(w: Any s: String start: Int size: Int): Ok =
+        if isSmall(w) then putStringTo(w stringOp.getSub(s start size))
+        else
+            let f = openFile(w)
+            sbAppendSub(f.pending s start size)
+            if f.pending.length >= pendingLimit then flushWriter(f) end
+        end
+
+    let writerFlush(w: Any): Ok = if not(isSmall(w)) then flushWriter(openFile(w)) end
+
+    (* A file's writer closed is flushed, and no longer among those open *)
+    let writerClose(w: Any): Ok =
+        if not(isSmall(w)) then
+            let f = anyFileWriter(w)
+            if f.open then
+                flushWriter(f)
+                fdClose(f.fd)
+                f.open := false
+                let var k = 0
+                while {k < openWriters.count} andif not(same0(openWriters.all[k] w)) do k := k + 1 end
+                if k < openWriters.count then
+                    openWriters.count := openWriters.count - 1
+                    openWriters.all[k] := openWriters.all[openWriters.count]
+                    openWriters.all[openWriters.count] := nullAny()
+                end
+            end
+        end
+
+    (* Every file writer open, flushed: a program's _start calls it when the
+     * program ends, by returning, by an uncaught exception, or by
+     * system.exit *)
+    let flushWriters(): Ok =
+        for k = 0 upto openWriters.count - 1 do flushWriter(anyFileWriter(openWriters.all[k])) end
 
     (* A reader: its file descriptor, the bytes read and not yet taken, and
      * whether it is closed *)
