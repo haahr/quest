@@ -7,8 +7,11 @@ lasting results are the process and its tools; the edits themselves are redone, 
 
 ## 1. Where It Stands (2026-11-15)
 
-- **§2.1, the report,** is done on branch `questlang/report-inferable` (local): `--report-inferable[=equal|exact]`,
-  described in [type-system.md](type-system.md) §6.9.
+- **§2.1, the report,** is on main (`2d416c77`): `--report-inferable[=equal|exact]`, described in
+  [type-system.md](type-system.md) §6.9.
+- **§2.2, the tools,** are `tools/omit-type-args` and `tools/compare-codegen` ([testing.md](testing.md) §2.9). A
+  trial run in `exact` mode at `fcaa43a9` omitted 3,757 calls inferable from their arguments and 434 that need their
+  expected type, none restored, and every unit's assembly compared equal; its edits were discarded.
 - **A first removal,** with the report's first form (the environment variable `QUEST_REPORT_INFERABLE`, exact type
   nodes), is on branch `questlang/infer-type-args` (local), to be abandoned (§2.4): `566fef29` omits the 3,756 calls
   inferable from their value arguments alone, and `2ce3ff3d` the 434 inferable only with the expected type, found
