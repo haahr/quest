@@ -1132,9 +1132,25 @@ export
             emit(f i1(ops.structNew tTuple))
         end
 
+    (* Through a view map (section 4.2's core, quest_view_map): a call of
+     * the core's that takes the map, the map's variable's value *)
+    let viewMapOf(f: F m: maybe.T(ir.Variable)): Ok = atomParts(f ir.atomOfVar(maybe.unwrap(:ir.Variable m)))
+
+    (* The value on the stack, part i of a value read through a view map,
+     * converted to the bound's type for it *)
+    let viewPartOnStack(f: F m: maybe.T(ir.Variable) i: Int): Ok =
+        begin
+            let v = scratch(f model.eqref)
+            emit(f i1(ops.localSet v))
+            emit(f i1(ops.globalGet f.g.noClosure))
+            viewMapOf(f m)
+            emit(f model.i64Const(i))
+            emit(f i1(ops.localGet v))
+            runtimeUnitCall(f "wasm/core.viewPart")
+        end
+
     let tupleField(f: F x: ir.OpTupleField target: maybe.T(ir.Variable)): Ok =
         begin
-            if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
             let s = shapeOf(ir.atomType(x.tup))
             let held = ir.atomVarOf(x.tup)
             if maybe.isSome(:ir.Variable held) andif maybe.unwrap(:ir.Variable held).unboxed then
@@ -1146,6 +1162,7 @@ export
                 emit(f i2(ops.structGet tTuple fSlots))
                 emit(f model.i32Const(x.index))
                 emit(f i1(ops.arrayGet tSlots))
+                if maybe.isSome(:ir.Variable x.viewMap) then viewPartOnStack(f x.viewMap x.index) end
                 unboxFor(f componentType(s x.index) target)
             end
         end
@@ -1286,6 +1303,40 @@ export
             emit(f i2(ops.structGet tOption fTag))
         end
 
+    (* The tag of a value of a bounded type parameter, held at its type
+     * argument's view, in its bound's numbering: through the view map *)
+    let viewTag(f: F value: ir.Atom m: maybe.T(ir.Variable)): Ok =
+        begin
+            let tag = scratch(f model.i32)
+            if isVariantShape(ir.atomType(value)) then
+                variantAtom(f value)
+                emit(f i(ops.drop))
+            else
+                atom(f value)
+                castTo(f tOption)
+                emit(f i2(ops.structGet tOption fTag))
+            end
+            emit(f i1(ops.localSet tag))
+            emit(f i1(ops.globalGet f.g.noClosure))
+            viewMapOf(f m)
+            emit(f i1(ops.localGet tag))
+            emit(f i(ops.i64ExtendI32U))
+            runtimeUnitCall(f "wasm/core.viewIndex")
+            emit(f i(ops.i32WrapI64))
+        end
+
+    (* Component j of the payload of the bound's case b of an option, read
+     * through a view map, converted to the bound's type for it *)
+    let viewOptionComponent(f: F opt: Int m: maybe.T(ir.Variable) b: Int j: Int): Ok =
+        begin
+            emit(f i1(ops.globalGet f.g.noClosure))
+            emit(f i1(ops.localGet opt))
+            viewMapOf(f m)
+            emit(f model.i64Const(b))
+            emit(f model.i64Const(j))
+            runtimeUnitCall(f "wasm/core.viewOptionComponent")
+        end
+
     (* opt!tag: a new tuple of the case's ordinal and then its components,
      * after a test of the tag that raises variant.tagMismatch *)
     (* v!tag on a variant: its payload, after a test of the tag that raises
@@ -1294,22 +1345,31 @@ export
         begin
             let s = shapeOf(ir.atomType(x.value))
             let held = scratch(f model.eqref)
-            variantAtom(f x.value)
-            emit(f i1(ops.localSet held))
+            let viewed = maybe.isSome(:ir.Variable x.viewMap)
+            if viewed then
+                variantAtom(f x.value)
+                emit(f i1(ops.localSet held))
+                emit(f i(ops.drop))
+                viewTag(f x.value x.viewMap)
+            else
+                variantAtom(f x.value)
+                emit(f i1(ops.localSet held))
+            end
             emit(f model.i32Const(tagIndex(s x.tag)))
             emit(f i(ops.i32Ne))
             emit(f model.ifInst(empty ""))
             raiseAt(f "variant.tagMismatch" x.offset)
             emit(f model.endInst)
             emit(f i1(ops.localGet held))
+            if viewed then viewPartOnStack(f x.viewMap tagIndex(s x.tag)) end
             unboxFor(f t target)
         end
 
     let payload(f: F x: ir.OpPayload t: ir.Type): Ok =
         begin
-            if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
             let s = optionShape(ir.atomType(x.value))
-            tagOf(f x.value x.access)
+            let viewed = maybe.isSome(:ir.Variable x.viewMap)
+            if viewed then viewTag(f x.value x.viewMap) else tagOf(f x.value x.access) end
             emit(f model.i32Const(tagIndex(s x.tag)))
             emit(f i(ops.i32Ne))
             emit(f model.ifInst(empty ""))
@@ -1328,7 +1388,18 @@ export
             emit(f i(ops.refI31))
             emit(f i1(ops.arraySet tSlots))
             let count = if form.count < {n - 1} then form.count else n - 1 end
-            if count > 0 then
+            if viewed then
+                (* each component through the view map *)
+                let opt = scratch(f model.eqref)
+                atom(f x.value)
+                emit(f i1(ops.localSet opt))
+                for j = 0 upto count - 1 do
+                    emit(f i1(ops.localGet slots))
+                    emit(f model.i32Const(j + 1))
+                    viewOptionComponent(f opt x.viewMap tagIndex(s x.tag) j)
+                    emit(f i1(ops.arraySet tSlots))
+                end
+            elsif count > 0 then
                 emit(f i1(ops.localGet slots))
                 emit(f model.i32Const(1))
                 atom(f x.value)
@@ -2712,11 +2783,41 @@ export
             fieldSlotOnStack(f ir.atomType(base) name)
         end
 
+    (* The payload's slots and the slot of the bound's field name, of a
+     * record held at its type argument's view, through the view map *)
+    let viewFieldSlot(f: F base: ir.Atom name: String m: maybe.T(ir.Variable)): Ok =
+        begin
+            let dict = scratch(f model.eqref)
+            recordAtom(f base)
+            emit(f i1(ops.localSet dict))
+            castTo(f rt.index("record"))
+            emit(f i2(ops.structGet rt.index("record") rt.field("record" "slots")))
+            emit(f i1(ops.globalGet f.g.noClosure))
+            emit(f i1(ops.localGet dict))
+            viewMapOf(f m)
+            emit(f model.i64Const(fieldIndex(shapeOf(ir.atomType(base)) name)))
+            runtimeUnitCall(f "wasm/core.viewRecordSlot")
+            emit(f i(ops.i32WrapI64))
+        end
+
     let recordField(f: F x: ir.OpRecordField target: maybe.T(ir.Variable)): Ok =
         begin
-            if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
             let c = maybe.unwrap(:shapes.Component shapes.component(shapeOf(ir.atomType(x.recordAtom)) x.name))
-            if x.stored then
+            if maybe.isSome(:ir.Variable x.viewMap) then
+                (* the bound's field, through the map of the type argument's
+                 * fields, converted from the type it is stored at *)
+                let payload = scratch(f model.eqref)
+                let dict = scratch(f model.eqref)
+                recordAtom(f x.recordAtom)
+                emit(f i1(ops.localSet dict))
+                emit(f i1(ops.localSet payload))
+                emit(f i1(ops.globalGet f.g.noClosure))
+                emit(f i1(ops.localGet payload))
+                emit(f i1(ops.localGet dict))
+                viewMapOf(f x.viewMap)
+                emit(f model.i64Const(fieldIndex(shapeOf(ir.atomType(x.recordAtom)) x.name)))
+                runtimeUnitCall(f "wasm/core.viewRecordField")
+            elsif x.stored then
                 if maybe.isNone(:ir.Descriptor x.descriptor) then fail("a stored field without its descriptor") end
                 let dict = scratch(f model.eqref)
                 let value = scratch(f model.eqref)
@@ -2803,6 +2904,95 @@ export
             n
         end
 
+    (* The value on the stack, as a slot holds it, converted by plan to the
+     * target's slot form: by descriptors in the core (view, runtime); a
+     * record's box seen at the target's type, its table the core's; a
+     * variant's box with its tag in the target's numbering; a copy of a
+     * tuple, each component converted by its own plan; a closure wrapped in
+     * an adapter's; and nothing for the plans that only change a value's
+     * representation outside a slot (box, unbox, cast, unproxy) *)
+    let rec slotConvert(f: F plan: ir.Plan): Ok =
+        case plan.kind
+            when planView, planRuntime then
+                if extent plan.descriptors < 2 then fail("a conversion by descriptors without them") end
+                let v = scratch(f model.eqref)
+                emit(f i1(ops.localSet v))
+                emit(f i1(ops.globalGet f.g.noClosure))
+                emit(f i1(ops.localGet v))
+                descriptor(f plan.descriptors[0])
+                descriptor(f plan.descriptors[1])
+                runtimeUnitCall(f "wasm/core.convert")
+            when planRecordView then
+                if extent plan.descriptors < 1 then fail("a record view without its descriptor") end
+                let payload = scratch(f model.eqref)
+                castTo(f tRecBox)
+                emit(f i2(ops.structGet tRecBox 0))
+                emit(f i1(ops.localSet payload))
+                emit(f i1(ops.localGet payload))
+                emit(f i1(ops.globalGet f.g.noClosure))
+                emit(f i1(ops.localGet payload))
+                descriptor(f plan.descriptors[0])
+                runtimeUnitCall(f "wasm/core.viewDict")
+                castTo(f tDict)
+                emit(f i1(ops.structNew tRecBox))
+            when planVariantTags then
+                let table = maybe.unwrap(:ir.TagMap plan.tagMap)
+                let sourceS = shapeOf(table.source)
+                let targetS = shapeOf(table.target)
+                let tags = array of(extent sourceS.cases 0)
+                for k = 0 upto extent sourceS.cases - 1 do
+                    tags[k] := tagIndex(targetS maybe.unwrapOr(:String sourceS.cases[k].name ""))
+                end
+                let held = scratch(f model.eqref)
+                unbox(f plan.source)
+                emit(f i1(ops.localSet held))
+                mapI32(f tags)
+                emit(f i1(ops.localGet held))
+                box(f plan.target)
+            when planCopy then copyTuple(f plan)
+            when planAdapt then
+                if maybe.isNone(:ir.Function plan.thunk) then fail("an adapt plan without its adapter") end
+                let fn = maybe.unwrap(:ir.Function plan.thunk)
+                if capturedDescriptors(fn) > 0 then fail("an adapter whose closure supplies descriptors") end
+                let own = ownType(f.g fn)
+                let u = uniformEntry(f.g fn)
+                let native = hashMap.find(:Int :Int f.g.functions fn.id)
+                declare(f.g u)
+                declare(f.g native)
+                let v = scratch(f model.eqref)
+                emit(f i1(ops.localSet v))
+                emit(f model.i32Const(0))
+                emit(f i1(ops.refFunc u))
+                emit(f i1(ops.refFunc native))
+                emit(f i1(ops.localGet v))
+                emit(f i1(ops.structNew own))
+            when planBox, planUnbox, planSlotBox, planSlotUnbox, planCast, planUnproxy then ok
+        end
+
+    (* A new tuple of the tuple on the stack's components, each converted by
+     * plan's field for it, or as it is (a copy plan, quest_convert's
+     * copy where a proxy is not wanted) *)
+    and copyTuple(f: F plan: ir.Plan): Ok =
+        begin
+            let targetS = shapeOf(plan.target)
+            let n = if extent targetS.components < extent plan.fields then extent targetS.components
+                else extent plan.fields
+                end
+            let slots = scratch(f model.refNull(tSlots))
+            accessAs(f tTuple anyIndirect(plan.access))
+            emit(f i2(ops.structGet tTuple fSlots))
+            emit(f i1(ops.localSet slots))
+            emit(f model.i32Const(0))
+            for i = 0 upto n - 1 do
+                emit(f i1(ops.localGet slots))
+                emit(f model.i32Const(i))
+                emit(f i1(ops.arrayGet tSlots))
+                if maybe.isSome(:ir.Plan plan.fields[i]) then slotConvert(f maybe.unwrap(:ir.Plan plan.fields[i])) end
+            end
+            emit(f i2(ops.arrayNewFixed tSlots n))
+            emit(f i1(ops.structNew tTuple))
+        end
+
     (* A value converted as its plan says (docs/ir.md section 8.3): to and
      * from a slot's form, which for a record is its box; a cast between
      * references changes nothing here *)
@@ -2866,7 +3056,10 @@ export
                     box(f x.plan.target)
                 end
             when planView, planRuntime, planCopy then
-                fail("the conversion " <> ir.planKindName(x.plan.kind) <> " (milestone 4)")
+                (* in the slot form, converted there, and back *)
+                boxedAtom(f x.value)
+                slotConvert(f x.plan)
+                unboxFor(f x.plan.target target)
         end
 
     (* A built-in operator as a value (opBuiltin), as the C runtime's
@@ -3265,6 +3458,21 @@ export
                 castTo(f rt.index("i32s"))
                 atom(f args[1])
                 emit(f i1(ops.structNew tDict))
+            elsif named("dictIndex") then
+                atom(f args[0])
+                castTo(f tDict)
+                emit(f i2(ops.structGet tDict 0))
+                atom(f args[1])
+                emit(f i(ops.i32WrapI64))
+                emit(f i1(ops.arrayGet rt.index("i32s")))
+                emit(f i(ops.i64ExtendI32U))
+            elsif named("recordSlot") then
+                atom(f args[0])
+                castTo(f tRecord)
+                emit(f i2(ops.structGet tRecord rt.field("record" "slots")))
+                atom(f args[1])
+                emit(f i(ops.i32WrapI64))
+                emit(f i1(ops.arrayGet tSlots))
             elsif named("dictStored") then
                 atom(f args[0])
                 castTo(f tDict)
@@ -3318,8 +3526,10 @@ export
             when opTupleField with x then tupleField(f x target)
             when opMakeOption with x then makeOption(f x targetType())
             when opIsTag with x then
-                if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
-                if isVariantShape(ir.atomType(x.value)) then
+                if maybe.isSome(:ir.Variable x.viewMap) then
+                    viewTag(f x.value x.viewMap)
+                    emit(f model.i32Const(tagIndex(shapeOf(ir.atomType(x.value)) x.tag)))
+                elsif isVariantShape(ir.atomType(x.value)) then
                     variantAtom(f x.value)
                     emit(f i(ops.drop))
                     emit(f model.i32Const(tagIndex(shapeOf(ir.atomType(x.value)) x.tag)))
@@ -3330,14 +3540,14 @@ export
                 end
                 emit(f i(ops.i32Eq))
             when opPayload with x then
-                if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
                 if isVariantShape(ir.atomType(x.value)) then variantPayload(f x targetType() target)
                 else payload(f x targetType())
                 end
             when opOrdinal with x then
-                if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
                 let s = optionShape(ir.atomType(x.value))
-                tagOf(f x.value x.access)
+                if maybe.isSome(:ir.Variable x.viewMap) then viewTag(f x.value x.viewMap)
+                else tagOf(f x.value x.access)
+                end
                 (* The tag numbers the shape's cases, by name; the ordinal
                  * counts the static type's, as written *)
                 let ordinals = array of(extent s.cases 0)
@@ -3392,10 +3602,10 @@ export
                 emit(f i2(ops.arrayNewFixed tSlots 1))
                 emit(f model.i32Const(0))
             when opAddrField with x then
-                if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
-                fieldSlot(f x.base x.name)
+                if maybe.isSome(:ir.Variable x.viewMap) then viewFieldSlot(f x.base x.name x.viewMap)
+                else fieldSlot(f x.base x.name)
+                end
             when opAddrComponent with x then
-                if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
                 atom(f x.base)
                 accessAs(f tTuple x.access)
                 emit(f i2(ops.structGet tTuple fSlots))
@@ -3642,7 +3852,6 @@ export
                 operation(f x.value maybe.none(:ir.Variable))
                 for k = 1 upto resultCount(f x.value) do emit(f i(ops.drop)) end
             when sStoreComponent with x then
-                if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
                 atom(f x.base)
                 accessAs(f tTuple x.access)
                 emit(f i2(ops.structGet tTuple fSlots))
@@ -3779,8 +3988,9 @@ export
                 boxedAtom(f x.value)
                 emit(f i1(ops.arraySet tSlots))
             when sStoreField with x then
-                if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
-                fieldSlot(f x.base x.name)
+                if maybe.isSome(:ir.Variable x.viewMap) then viewFieldSlot(f x.base x.name x.viewMap)
+                else fieldSlot(f x.base x.name)
+                end
                 boxedAtom(f x.value)
                 emit(f i1(ops.arraySet tSlots))
             when sLetRec with x then
@@ -3807,7 +4017,7 @@ export
      * shares its components, or its one component *)
     and switch(f: F x: ir.StmtSwitch): Ok =
         begin
-            if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
+            let viewed = maybe.isSome(:ir.Variable x.viewMap)
             let isV = isVariantShape(ir.atomType(x.value))
             let s = if isV then shapeOf(ir.atomType(x.value)) else optionShape(ir.atomType(x.value)) end
             let opt = scratch(f model.refNull(tOption))
@@ -3837,7 +4047,8 @@ export
             for k = 0 upto m - 1 do
                 for j = 0 upto extent x.cases[k].tags - 1 do targets[tagIndex(s x.cases[k].tags[j])] := k end
             end
-            if isV then emit(f i1(ops.localGet vTag))
+            if viewed then viewTag(f x.value x.viewMap)
+            elsif isV then emit(f i1(ops.localGet vTag))
             else
                 emit(f i1(ops.localGet opt))
                 emit(f i2(ops.structGet tOption fTag))
@@ -3848,10 +4059,26 @@ export
                 let c = x.cases[k]
                 if maybe.isSome(:ir.Variable c.binder) then
                     let binder = maybe.unwrap(:ir.Variable c.binder)
+                    let b = tagIndex(s c.tags[0])
                     if isV then
                         (* the variant's payload, whatever its type *)
                         emit(f i1(ops.localGet vPayload))
+                        if viewed then viewPartOnStack(f x.viewMap b) end
                         unboxFor(f binder.type maybe.some(:ir.Variable binder))
+                        store(f binder)
+                    elsif viewed andif not(shapes.kindIs(shapes.shape(binder.type) shapes.shapeOk)) then
+                        (* the case's components through the map, a new tuple
+                         * of them, or the one component *)
+                        let n = caseForm(s c.tags[0]).count
+                        if shapes.kindIs(shapes.shape(binder.type) shapes.shapeTuple) then
+                            emit(f model.i32Const(0))
+                            for j = 0 upto n - 1 do viewOptionComponent(f opt x.viewMap b j) end
+                            emit(f i2(ops.arrayNewFixed tSlots n))
+                            emit(f i1(ops.structNew tTuple))
+                        else
+                            viewOptionComponent(f opt x.viewMap b 0)
+                            if not(binder.boxed) then unbox(f binder.type) end
+                        end
                         store(f binder)
                     elsif not(shapes.kindIs(shapes.shape(binder.type) shapes.shapeOk)) then
                         emit(f i1(ops.localGet opt))
@@ -3967,6 +4194,16 @@ export
             let lenient = not(g.unit.isProgram) andif not(g.isRuntime)
             let compiled = try
                     begin
+                        (* its view maps, one for each bounded type parameter
+                         * whose values it reads through the bound *)
+                        for k = 0 upto extent fn.viewMaps - 1 do
+                            let m = fn.viewMaps[k]
+                            emit(f i1(ops.globalGet g.noClosure))
+                            atomParts(f ir.atomOfVar(m.descriptor))
+                            descriptor(f m.bound)
+                            runtimeUnitCall(f "wasm/core.viewMap")
+                            emit(f i1(ops.localSet local(f m.v)))
+                        end
                         body(f fn.body)
                         emit(f i(ops.unreachable))
                         f
@@ -4251,6 +4488,12 @@ export
                 runtimeImport("wasm/core" "viewDict" array of e e end array of e end)
                 runtimeImport("wasm/core" "storedField" array of e e n e end array of e end)
                 runtimeImport("wasm/core" "convert" array of e e e end array of e end)
+                runtimeImport("wasm/core" "viewMap" array of e e end array of e end)
+                runtimeImport("wasm/core" "viewIndex" array of e n end array of n end)
+                runtimeImport("wasm/core" "viewPart" array of e n e end array of e end)
+                runtimeImport("wasm/core" "viewRecordSlot" array of e e n end array of n end)
+                runtimeImport("wasm/core" "viewRecordField" array of e e e n end array of e end)
+                runtimeImport("wasm/core" "viewOptionComponent" array of e e n n end array of e end)
                 if echoes then runtimeImport("wasm/print" "echo" array of e e e e end array of e end) end
             end
             let allBodies = walk.unitBodies(unit)

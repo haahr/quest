@@ -431,6 +431,181 @@ export
             end
         end
 
+
+    (* A view map (quest_view_map, docs/c-representation.md section 5.1):
+     * generic code holds a value of a type parameter bounded by a record,
+     * tuple, variant, or option type at its type argument's view, actual,
+     * and reads it through the bound by the map. index: a record's, for each
+     * of the bound's fields in name order, the field's index among actual's;
+     * a variant's or option's, for each of actual's tags, the bound's for its
+     * case. from and to: the types parts read through the bound are
+     * converted from and to (none in from where they agree): a record's and
+     * a tuple's, for each of the bound's fields or components; a variant's,
+     * for each of the bound's cases, its payload; an option's, for each
+     * component of each of the bound's cases, flattened, case b's first at
+     * start[b] *)
+    Def ViewMap = Tuple
+        actual: Desc
+        bound: Desc
+        index: Array(Int)
+        from: Array(Desc)
+        to: Array(Desc)
+        start: Array(Int)
+    end
+    let anyViewMap(x: Any): ViewMap = external "wasm.fromAny"
+    let viewMapAny(m: ViewMap): Any = external "wasm.toAny"
+    let viewMaps = tuple let var items = array of :ViewMap end let var count = 0 end
+
+    (* The type a part read through the bound is converted from: none where
+     * actual's agrees with the bound's (quest_view_from) *)
+    let viewFrom(actual: Desc bound: Desc): Desc =
+        begin
+            let agrees = {actual is bound} orif {actual.kind is kindNone} orif {bound.kind is kindNone}
+            if agrees orif isSubtype(bound actual) then bases[kindNone] else actual end
+        end
+
+    (* An option's case's components: its payload's parts if it is a tuple,
+     * else the payload itself, else none *)
+    let caseComponents(payload: Desc): Array(Desc) =
+        if payload.kind is kindNone then array of :Desc end
+        elsif storedType(payload).kind is kindTuple then storedType(payload).parts
+        else array of payload end
+        end
+
+    let fillViewMap(actual: Desc bound: Desc): ViewMap =
+        begin
+            let none = bases[kindNone]
+            let a = actual
+            let b = bound
+            if {a.kind is kindRecord} andif {b.kind is kindRecord} then
+                let n = extent b.parts
+                let index = array of(n ~1)
+                let from = array of(n none)
+                for k = 0 upto n - 1 do
+                    let j = partNamed(a b.labels[k])
+                    if j < 0 then dynamicError() end
+                    index[k] := j
+                    from[k] := viewFrom(a.parts[j] b.parts[k])
+                end
+                tuple let actual = a let bound = b let index = index let from = from let to = b.parts
+                    let start = array of :Int end end
+            elsif {a.kind is kindTuple} andif {b.kind is kindTuple} then
+                let n = extent b.parts
+                let from = array of(n none)
+                for k = 0 upto n - 1 do
+                    if k < extent a.parts then from[k] := viewFrom(a.parts[k] b.parts[k]) end
+                end
+                tuple let actual = a let bound = b let index = array of :Int end let from = from let to = b.parts
+                    let start = array of :Int end end
+            elsif {{a.kind is kindVariant} orif {a.kind is kindOption}} andif {b.kind is a.kind} then
+                let index = array of(extent a.parts 0)
+                for i = 0 upto extent a.parts - 1 do
+                    let j = partNamed(b a.labels[i])
+                    if j < 0 then dynamicError() end
+                    index[i] := j
+                end
+                if a.kind is kindVariant then
+                    let n = extent b.parts
+                    let from = array of(n none)
+                    for k = 0 upto n - 1 do
+                        let i = partNamed(a b.labels[k])
+                        if i >= 0 then from[k] := viewFrom(a.parts[i] b.parts[k]) end
+                    end
+                    tuple let actual = a let bound = b let index = index let from = from let to = b.parts
+                        let start = array of :Int end end
+                else
+                    let nb = extent b.parts
+                    let start = array of(nb + 1 0)
+                    let var total = 0
+                    for k = 0 upto nb - 1 do
+                        start[k] := total
+                        total := total + extent caseComponents(b.parts[k])
+                    end
+                    start[nb] := total
+                    let from = array of(total none)
+                    let to = array of(total none)
+                    for k = 0 upto nb - 1 do
+                        let tb = caseComponents(b.parts[k])
+                        let i = partNamed(a b.labels[k])
+                        let ta = if i >= 0 then caseComponents(a.parts[i]) else array of :Desc end end
+                        for j = 0 upto extent tb - 1 do
+                            to[start[k] + j] := tb[j]
+                            if j < extent ta then from[start[k] + j] := viewFrom(ta[j] tb[j]) end
+                        end
+                    end
+                    tuple let actual = a let bound = b let index = index let from = from let to = to
+                        let start = start end
+                end
+            else
+                dynamicError()
+                tuple let actual = a let bound = b let index = array of :Int end let from = array of :Desc end
+                    let to = array of :Desc end let start = array of :Int end end
+            end
+        end
+
+    (* The view map of actual at bound, made once *)
+    let viewMap(actual0: Desc bound0: Desc): Any =
+        begin
+            let actual = storedType(actual0)
+            let bound = storedType(bound0)
+            let var found = ~1
+            for i = 0 upto viewMaps.count - 1 do
+                let m = viewMaps.items[i]
+                if {found < 0} andif {m.actual is actual} andif {m.bound is bound} then found := i end
+            end
+            if found >= 0 then viewMapAny(viewMaps.items[found])
+            else
+                let m = fillViewMap(actual bound)
+                instances.updating := instances.updating + 1
+                if viewMaps.count >= extent viewMaps.items then
+                    let more = array of({2 * viewMaps.count} + 16 m)
+                    for i = 0 upto viewMaps.count - 1 do more[i] := viewMaps.items[i] end
+                    viewMaps.items := more
+                end
+                viewMaps.items[viewMaps.count] := m
+                viewMaps.count := viewMaps.count + 1
+                instances.updating := instances.updating - 1
+                viewMapAny(m)
+            end
+        end
+
+    (* Through a view map: entry i of its index (a record's field's index
+     * among actual's, a tag in the bound's numbering); part i, as a slot
+     * holds it, converted from actual's type for it to the bound's
+     * (quest_view_part) *)
+    let viewIndex(m: Any i: Int): Int = anyViewMap(m).index[i]
+    let viewPart(m0: Any i: Int v: Any): Any =
+        begin
+            let m = anyViewMap(m0)
+            if m.from[i].kind is kindNone then v else convert(v m.from[i] m.to[i]) end
+        end
+
+    (* Through the view map of a record type: the slot in the payload of
+     * the bound's field k, and the field's value converted to the bound's
+     * type for it, from the type the payload stores it at or actual's
+     * (quest_view_record_field) *)
+    let dictIndex(d: Any i: Int): Int = external "wasm.dictIndex"
+    let payloadSlot(payload: Any i: Int): Any = external "wasm.recordSlot"
+    let viewRecordSlot(dict: Any m: Any k: Int): Int = dictIndex(dict anyViewMap(m).index[k])
+    let viewRecordField(payload: Any dict: Any m0: Any k: Int): Any =
+        begin
+            let m = anyViewMap(m0)
+            let j = m.index[k]
+            let v = payloadSlot(payload dictIndex(dict j))
+            let stored = dictStored(dict)
+            let ds = if isNull(stored) then array of :Desc end else anyDescs(stored) end
+            if {j < extent ds} andif {ds[j].kind isnot kindNone} then convert(v ds[j] m.to[k])
+            else viewPart(m0 k v)
+            end
+        end
+
+    (* Through the view map of an option type: component j of the payload of
+     * the option opt, of the bound's case b, converted to the bound's type
+     * for it (quest_view_option_component) *)
+    let optionSlot(opt: Any j: Int): Any = external "wasm.tupleSlot"
+    let viewOptionComponent(opt: Any m0: Any b: Int j: Int): Any =
+        viewPart(m0 {anyViewMap(m0).start[b] + j} optionSlot(opt j))
+
     (* ======================================================================
      * The library's externals in Quest
      * ====================================================================== *)
