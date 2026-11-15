@@ -1,0 +1,26 @@
+(* Quest Self-Hosted Compiler: The Native Backends, for WebAssembly
+ *
+ * The wasm variant of codegen/native, which a driver compiled to WebAssembly
+ * takes: it has no native backend, so that the SSA's and the native
+ * backends' units are left out of it (docs/wasm-plan.md step 22). A unit
+ * compiled to C or arm64 raises unsupported; the SSA has no interrupt checks
+ * to set, its JIT being the wasm one. *)
+
+module native : Native
+import
+    questlang/ir/nodes : questlang/ir/Nodes
+    util/maybe : util/Maybe
+export
+    let unsupported: Exception(String) = exception unsupported: String end
+
+    Let Datum = Tuple symbol: String text: String end
+
+    let unitCode(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String datum: maybe.T(Datum)): String =
+        raise unsupported with
+            "the " <> backend <> " backend: this driver was compiled to WebAssembly, and compiles only to it"
+        end
+
+    let cFlags(backend: String): Array(String) = array of :String end
+
+    let setInterruptChecks(on: Bool): Ok = ok
+end

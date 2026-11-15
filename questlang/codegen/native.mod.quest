@@ -1,0 +1,59 @@
+(* Quest Self-Hosted Compiler: The Native Backends Implementation *)
+
+module native : Native
+import
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/codegen/c/printer : questlang/codegen/c/Printer
+    questlang/repr/syntax : questlang/repr/Syntax
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    ssaBuild = questlang/ssa/build : questlang/ssa/Build
+    ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
+    ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
+    questlang/codegen/c/ssac : questlang/codegen/c/Ssac
+    arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+export
+    let unsupported: Exception(String) = exception unsupported: String end
+
+    Let Datum = Tuple symbol: String text: String end
+
+    let unitCode(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String datum: maybe.T(Datum)): String =
+        if stringOp.equal(backend "ssac") orif stringOp.equal(backend "arm64") then
+            try
+                let built = ssaPipeline.build(unit)
+                if maybe.isSome(:Datum datum) then
+                    let d = maybe.unwrap(:Datum datum)
+                    vector.append(:ssa.Data built.data tuple
+                        let symbol = d.symbol let exported = true let writable = false
+                        let contents = option contentsText of ssa.Contents with let text = d.text end
+                    end)
+                end
+                ssaPipeline.lower(built)
+                if stringOp.equal(backend "ssac") then
+                    ssac.printUnit(built)
+                else
+                    arm64.assembleUnit(built)
+                end
+            when ssaBuild.unsupported with m then raise unsupported with "ssa: unsupported: " <> m end
+            when ssaVerify.verifyError with m then raise unsupported with m end
+            when ssac.unsupported with m then raise unsupported with m end
+            when arm64.unsupported with m then raise unsupported with m end
+            end
+        else
+            let c: String = try printer.printC(unit interfaceHeader) when printer.unsupported with m then
+                raise unsupported with m end end
+            if maybe.isSome(:Datum datum) then
+                let d = maybe.unwrap(:Datum datum)
+                c <> "\nconst char " <> d.symbol <> "[] = " <> syntax.cString(d.text) <> ";\n"
+            else
+                c
+            end
+        end
+
+    let cFlags(backend: String): Array(String) =
+        if stringOp.equal(backend "ssac") then ssac.cFlags else array of :String end end
+
+    let setInterruptChecks(on: Bool): Ok = ssaPipeline.setInterruptChecks(on)
+end

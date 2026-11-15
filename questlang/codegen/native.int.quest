@@ -1,0 +1,28 @@
+(* Quest Self-Hosted Compiler: The Native Backends
+ *
+ * What codegen/backend and the driver need of the native backends: a unit's C
+ * (codegen/c/printer), its SSA's C (ssac) or arm64 assembly, and the SSA's
+ * interrupt checks. A variant of its own leaves them out: native.wasm, which
+ * a driver compiled to WebAssembly takes (docs/build-process.md section 6.4),
+ * has none, so that the SSA's and the native backends' units are not in it,
+ * nor in the page's archive (docs/wasm-plan.md step 22). *)
+
+interface Native
+import
+    questlang/ir/nodes : questlang/ir/Nodes
+    util/maybe : util/Maybe
+export
+    (* A native backend's failure, or the absence of the native backends *)
+    unsupported: Exception(String)
+
+    (* A unit's code for backend c, ssac, or arm64: its C, or its assembly,
+     * with a datum exported if given, a symbol and the C string it names *)
+    Def Datum = Tuple symbol: String text: String end
+    unitCode(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String datum: maybe.T(Datum)): String
+
+    (* The C compiler's flags backend's C needs *)
+    cFlags(backend: String): Array(String)
+
+    (* Whether the SSA's code checks for an interrupt, as the kernel's does *)
+    setInterruptChecks(on: Bool): Ok
+end

@@ -628,7 +628,9 @@ own, `NAME.VARIANT.mod.quest` beside `NAME.mod.quest`, that implements the same 
 the interface, so they compile the same whichever variant the build takes, and only the variant taken is compiled
 and linked. The driver's JIT is the first: `questlang/jit/target.mod.quest` compiles inputs to arm64 and loads them
 into the driver's process, `target.wasm.mod.quest` compiles them to WebAssembly for a JavaScript host to load, and
-`target.none.mod.quest` has no JIT (docs/wasm-plan.md step 13).
+`target.none.mod.quest` has no JIT (docs/wasm-plan.md step 13). `questlang/codegen/native` (the C printer, ssac, and
+arm64) and `questlang/driver/ssaphases` (the SSA phases) each have a `wasm` variant with none of them, so that a
+driver compiled to WebAssembly leaves the SSA's and the native backends' units out (docs/wasm-plan.md step 22).
 
 - **The choice** (`codegen/choice`'s `variantFor`): `--variant UNIT=VARIANT`, the last that names the unit, VARIANT
   letters and digits; otherwise the name of the backend that compiles the unit (`--backend`, `--unit-backend`). A

@@ -1,4 +1,5 @@
-(* Quest Self-Hosted Compiler: The Backends' Entry Points Implementation *)
+(* Quest Self-Hosted Compiler: The Backends' Entry Points Implementation: the
+ * wasm backend's here, the native ones' through codegen/native *)
 
 module backend : Backend
 import
@@ -9,16 +10,9 @@ import
     questlang/ir/lower : questlang/ir/Lower
     questlang/ir/verify : questlang/ir/Verify
     passes = questlang/ir/pipeline : questlang/ir/Pipeline
-    questlang/codegen/c/printer : questlang/codegen/c/Printer
     questlang/repr/symbols : questlang/repr/Symbols
     questlang/repr/shapes : questlang/repr/Shapes
-    questlang/repr/syntax : questlang/repr/Syntax
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    ssaBuild = questlang/ssa/build : questlang/ssa/Build
-    ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
-    ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
-    questlang/codegen/c/ssac : questlang/codegen/c/Ssac
-    arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
+    questlang/codegen/native : questlang/codegen/Native
     wasm = questlang/wasm/codegen : questlang/wasm/Codegen
     questlang/wasm/encode : questlang/wasm/Encode
     wasmPrinter = questlang/wasm/printer : questlang/wasm/Printer
@@ -50,42 +44,18 @@ export
             encode.encode(wasmModule(unit)) <> if maybe.isSome(:Datum datum) then
                 encode.customSection("quest.fingerprint" maybe.unwrap(:Datum datum).text)
             else "" end
-        elsif stringOp.equal(backend "ssac") orif stringOp.equal(backend "arm64") then
-            try
-                let built = ssaPipeline.build(unit)
-                if maybe.isSome(:Tuple symbol: String text: String end datum) then
-                    let d = maybe.unwrap(:Tuple symbol: String text: String end datum)
-                    vector.append(:ssa.Data built.data tuple
-                        let symbol = d.symbol let exported = true let writable = false
-                        let contents = option contentsText of ssa.Contents with let text = d.text end
-                    end)
-                end
-                ssaPipeline.lower(built)
-                if stringOp.equal(backend "ssac") then
-                    ssac.printUnit(built)
-                else
-                    arm64.assembleUnit(built)
-                end
-            when ssaBuild.unsupported with m then raise unsupported with "ssa: unsupported: " <> m end
-            when ssaVerify.verifyError with m then raise unsupported with m end
-            when ssac.unsupported with m then raise unsupported with m end
-            when arm64.unsupported with m then raise unsupported with m end
-            end
         else
-            let c: String = try printer.printC(unit interfaceHeader) when printer.unsupported with m then
-                raise unsupported with m end end
-            if maybe.isSome(:Tuple symbol: String text: String end datum) then
-                let d = maybe.unwrap(:Tuple symbol: String text: String end datum)
-                c <> "\nconst char " <> d.symbol <> "[] = " <> syntax.cString(d.text) <> ";\n"
-            else
-                c
+            (* the native backends' (codegen/native), which a driver compiled
+             * to WebAssembly leaves out *)
+            try native.unitCode(unit interfaceHeader backend datum)
+                when native.unsupported with m then raise unsupported with m end
             end
         end
 
     let unitToC(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String): String =
         unitWithDatum(unit interfaceHeader backend maybe.none(:Tuple symbol: String text: String end))
 
-    let cFlags(backend: String): Array(String) = if stringOp.equal(backend "ssac") then ssac.cFlags else array of :String end end
+    let cFlags(backend: String): Array(String) = native.cFlags(backend)
 
     let programToC(program: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool printResult:
         Bool backend: String)

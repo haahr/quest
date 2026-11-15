@@ -82,12 +82,7 @@ import
     questlang/ir/represent : questlang/ir/Represent
     questlang/ir/describe : questlang/ir/Describe
     questlang/ir/thunks : questlang/ir/Thunks
-    ssaBuild = questlang/ssa/build : questlang/ssa/Build
-    ssaNodes = questlang/ssa/nodes : questlang/ssa/Nodes
-    ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
-    ssaParser = questlang/ssa/parser : questlang/ssa/Parser
-    ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
-    ssaPrinter = questlang/ssa/printer : questlang/ssa/Printer
+    ssaDumps = questlang/driver/ssaPhases : questlang/driver/SsaPhases
     questlang/interpreter/irInterp : questlang/interpreter/IrInterp
     cBackend = questlang/codegen/backend : questlang/codegen/Backend
     questlang/codegen/choice : questlang/codegen/Choice
@@ -346,9 +341,6 @@ let reportingInternal(A::TYPE bag: diagbag.T failed: A body: All() A): A =
         when represent.unsupportedConversion with m then internal(m)
         when represent.rejectedConversion with m then internal(m)
         when describe.unsupportedDescriptor with m then internal(m)
-        when ssaBuild.unsupported with m then internal("ssa: unsupported: " <> m)
-        when ssaVerify.verifyError with m then internal(m)
-        when ssaParser.readError with m then internal("ssa: " <> m)
         when irInterp.irInterpreterError with m then internal(m)
         when cBackend.unsupported with m then internal(m)
         end
@@ -364,18 +356,10 @@ let lowerOnly(program: typedAst.Program e: env.T sm: location.SourceMap bag: dia
             begin
                 let unit = lowered(program e sm false last)
                 if reaches("ssa_built") then
-                    let built = ssaPipeline.run(unit fun(name: String u: ssaNodes.Unit): Ok
-                        if shows("ssa_" <> name) then dump(ssaPrinter.formatUnit(u)) end)
-                    if shows("ssa") then
-                        let text = ssaPrinter.formatUnit(built)
-                        (* The SSA's text reads back as itself (ssa/parser) *)
-                        if verify.irChecksEnabled()
-                            andif not(stringOp.equal(ssaPrinter.formatUnit(ssaParser.readUnit(text)) text))
-                            then
-                            internalError(bag "ssa: the SSA does not read back as printed")
-                        end
-                        dump(text)
-                    end
+                    (* driver/ssaphases, which a driver compiled to WebAssembly
+                     * leaves out *)
+                    let failure = ssaDumps.run(unit shows dump verify.irChecksEnabled())
+                    if not(stringOp.isEmpty(failure)) then internalError(bag failure) end
                 end
             end)
     end;

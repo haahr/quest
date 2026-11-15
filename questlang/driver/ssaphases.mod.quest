@@ -1,0 +1,32 @@
+(* Quest Self-Hosted Compiler: The Driver's SSA Phases Implementation *)
+
+module ssaPhases : SsaPhases
+import
+    questlang/ir/nodes : questlang/ir/Nodes
+    ssaBuild = questlang/ssa/build : questlang/ssa/Build
+    ssaNodes = questlang/ssa/nodes : questlang/ssa/Nodes
+    ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
+    ssaParser = questlang/ssa/parser : questlang/ssa/Parser
+    ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
+    ssaPrinter = questlang/ssa/printer : questlang/ssa/Printer
+    stringOp = string : StringOp
+export
+    let run(unit: nodes.Unit shows: All(name: String) Bool dump: All(text: String) Ok checks: Bool): String =
+        try
+            let built = ssaPipeline.run(unit fun(name: String u: ssaNodes.Unit): Ok
+                if shows("ssa_" <> name) then dump(ssaPrinter.formatUnit(u)) end)
+            let var failure = ""
+            if shows("ssa") then
+                let text = ssaPrinter.formatUnit(built)
+                (* The SSA's text reads back as itself (ssa/parser) *)
+                if checks andif not(stringOp.equal(ssaPrinter.formatUnit(ssaParser.readUnit(text)) text)) then
+                    failure := "ssa: the SSA does not read back as printed"
+                end
+                dump(text)
+            end
+            failure
+        when ssaBuild.unsupported with m then "ssa: unsupported: " <> m
+        when ssaVerify.verifyError with m then m
+        when ssaParser.readError with m then "ssa: " <> m
+        end
+end
