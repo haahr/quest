@@ -21,20 +21,21 @@ import
 export
     Let Type = tm.Type
     Let Value = model.Value
-    let formatVersion = 1
-    let wordType = "uint64_t"
     let none = maybe.none(:Int)
-    let fail(A::TYPE): A = model.raiseException(:A model.dynamicError none)
     let intEqual(a: Int b: Int): Bool = a is b
     let intKey(i: Int): String = conv.int(i)
     Let Ref = dynamicJson.Ref
-    let builtin(name: String): Ref = tuple let name = name let index = ~1 end
-    let nodeRef(index: Int): Ref = tuple let name = "" let index = index end
+    let formatVersion = dynamicJson.formatVersion
+    let wordType = dynamicJson.wordType
+    let fail = dynamicJson.fail
+    let builtin = dynamicJson.builtin
+    let nodeRef = dynamicJson.nodeRef
+    let isBuiltin = dynamicJson.isBuiltin
+    let isVarLabel = dynamicJson.isVarLabel
+    let items = dynamicJson.items
+    let text = dynamicJson.text
+    (* An object read with an @id, and the type it was read at *)
     Let Seen = Tuple value: Value readAt: Ref end
-    let isBuiltin(r: Ref): Bool = stringOp.length(r.name) > 0
-    let isVarLabel(label: String): Bool = strutil.startsWith(label "var ") orif stringOp.equal(label "var")
-    let items(v: json.Value): vector.T(json.Value) = case v when jArray with x then x.items else fail(:vector.T(json.Value)) end
-    let text(v: json.Value): String = case v when jString with x then x.s else fail(:String) end
 
     let arity(k0: tm.Kind): Int =
         begin

@@ -46,6 +46,29 @@ export
         binders: vector.T(Int)
     end
     newGraph(): Graph
+
+    (* The format's version, which a document's "quest" member records *)
+    formatVersion: Int
+    (* The C type of Word.T, the one external type the format encodes *)
+    wordType: String
+    (* Raises dynamic.error, for a value, type, or document the format cannot
+     * handle *)
+    fail(A::TYPE): A
+    (* A built-in type's ref, by name, and a node's, by index; whether a ref
+     * names a built-in type, and whether it names that one *)
+    builtin(name: String): Ref
+    nodeRef(index: Int): Ref
+    isBuiltin(r: Ref): Bool
+    isRef(r: Ref name: String): Bool
+    (* Whether a field's label marks it var ("var" or "var name") *)
+    isVarLabel(label: String): Bool
+    (* A JSON array's items, and a JSON string's text; fail for anything
+     * else *)
+    items(v: json.Value): vector.T(json.Value)
+    text(v: json.Value): String
+    (* A ref's node in g, and its kind ("" for a built-in type) *)
+    nodeOf(g: Graph r: Ref): Node
+    kindOf(g: Graph r: Ref): String
     (* How the table refers to t, adding the nodes of t and its parts to g the
      * first time they are met; raises dynamic.error for a type the format
      * cannot encode *)
