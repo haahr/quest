@@ -23,7 +23,8 @@ the four disagree, this plan holds.
 §1 lists the decisions and whose they are. §2 to §6 are the design. §7 is what is given up. §8 has the steps, and
 §9 the results of step 0's probes (2026-11-13), on which the owner confirmed decisions 1 and 2, and §10 step 1's
 census of what the compiler uses. Milestones 1 and 2 are reached (2026-11-14): the compiler compiles itself in
-node, and the REPL runs in a page, interpreting; milestone 3, the JIT in the page, is next.
+node, and the REPL runs in a page, interpreting. Milestone 3's steps, the JIT in node and then in the page, are
+drafted (§8.3) and await the owner's review.
 
 ---
 
@@ -1320,13 +1321,110 @@ step 12.
 
 ### 8.3. Milestone 3: Each Interaction a Module
 
-13. **The JIT:** an input is a unit, compiled in the session to a module, its bytes passed through the buffer and
-    loaded by the host, linked to the driver's modules and to earlier inputs'. Redefinition in place
-    ([repl.md](repl.md) §6) needs nothing new: the lowering already holds a binding that may be redefined in a box,
-    a one-component `var` tuple that the input's record points to ([jit.md](jit.md) §3.2), which here is a
-    `$tuple` of one slot; a later input reaches it through the record and stores to it. A failed input is not
-    committed. The
-    fingerprint check carries over, with the target in it. The JIT's transcripts in node, then by hand in the page.
+The REPL people use: an input is compiled in the session to a module, which the host loads beside the driver's and
+the earlier inputs' modules, and its code runs as compiled code, not interpreted. Its steps were drafted 2026-11-14
+on milestone 2's results.
+
+**What carries over from the native JIT** ([jit.md](jit.md) §3): everything up to a unit. `ir/lower`'s
+`lowerPhrases` makes an input a phrase unit, a module `qj_<n>` whose record holds its bindings; a later input
+imports it and reads them as members. `jit/session`'s bookkeeping is the same: the earlier inputs' bindings
+(`lower.Earlier`), their sources by name, and the module files compiled and loaded once (§3.4 there). Redefinition
+in place ([repl.md](repl.md) §6) needs nothing new: the lowering already holds a binding that may be redefined in a
+box, a one-component `var` tuple that the input's record points to, which here is a `$tuple` of one slot; a later
+input reaches it through the record and stores to it. A failed input is not committed. **What does not:** the arm64
+backend, its encoder and loader, `os/code`'s calls and raw memory, the frames read from the native stack, and the
+echo capture's C functions.
+
+**Choices this draft makes,** each the owner's to confirm or change (§8.3.1 says why):
+
+- **The driver calls the host to run an input, in one request,** in place of §6.1's three. The driver compiles the
+  input, then calls a host import that instantiates its module and calls its entry. The host catches an engine's
+  stack overflow or a trap at that import's boundary, so it unwinds only the input's frames, and those of the
+  library and runtime it called, as §6.1 wanted; the driver's frames below are intact, and the import gives the
+  failure back to the driver, which rolls the input back as it rolls back any raise. §6.1 and §6.3 are revised to
+  say so when step 13 is built.
+- **A module's bytes cross as a file,** written by the driver with its writer to a mount of the host's
+  (`/quest-jit`), whose path the import takes: no new way of moving bytes across the boundary.
+- **The JIT's target is chosen at run time:** `jit/session` keeps what is common and calls one of two targets,
+  arm64's (today's code) or wasm's, by an external the backends answer as constants, as `quest_readline_editing`
+  is answered now. The driver for wasm compiles both, as it compiles every unit of the driver now.
+- **A host without the JIT** (wasmtime, which runs the program suite) gets the host's imports as stubs, and the
+  driver interprets there, as a native driver that cannot host the JIT refuses `--jit`.
+
+13. **The JIT in node.** Inputs compiled to modules and run by the host, in node, with no page.
+    - **The target:** `jit/session`'s arm64 parts move behind an interface, `jit/target` (compile a unit and load
+      it; call an input's entry; whether the driver has a unit, and its fingerprint; set `system.args`), with two
+      implementations: `jit/arm64` (today's, through `os/code` and `jit/loader`) and `jit/wasm`. An external,
+      `quest_jit_target`, gives `"arm64"` from the C runtime and `"wasm"` from the wasm backend's code, and picks
+      one. Natively nothing changes: the arm64 goldens and the JIT's suites stay as they are.
+    - **Phrase units in the wasm backend:** a phrase unit's entry, `qj_<n>_entry`, exported, runs its imports'
+      initializers and its own, as a module's `init` does; with capture, the runtime's `wasm/print` writes what the
+      phrases show to a buffer of its own rather than to standard output (`print.capture` and `print.captured`, in
+      place of `quest_echo_capture` and `quest_echo_captured`), and `jit/wasm` reads it after the entry returns,
+      from the one runtime instance the driver and the inputs share. A declared module's name begins with its
+      input's, as natively.
+    - **Fingerprints:** each module unit the wasm backend compiles exports `qh_<unit>`, its interface's fingerprint
+      ([jit.md](jit.md) §3.3.1), with the target in what it digests (§5.3); the host reads it from the driver's
+      instance, and `jit/wasm` compares it with the interface an input was compiled against, as `checkImport`
+      does now.
+    - **The host's imports** (`quest.host`, which only `jit/wasm` imports): `load(path name)`, which compiles the
+      module at path in the host's mount, instantiates it with the runtime, the driver's units, and the units
+      loaded before, by name, and keeps the instance under name; `run(name)`, which calls its entry and gives 0, or
+      1 for an engine's stack overflow and 2 for a trap, after which the host reads the core's count of updates
+      (`core.updating`, step 11): not zero, and the session is replayed once the request ends (§6.3); and
+      `has(unit)` and `fingerprint(unit)`. A Quest exception the entry raises is not caught by the host: it crosses
+      the host's frame, as WebAssembly's exceptions do, to `jit/wasm`'s handler, which reads its raise site from
+      the exception. The imports are in `runtime/wasm/jit.mjs`, which `session.mjs` and `run.mjs` both use, so
+      that `node run.mjs DRIVER FILE` runs a file through the JIT as `quest FILE` does natively. The backend writes
+      a module of stubs beside the runtime's (`TARGET.host.wasm`), each giving "no JIT", for wasmtime to preload.
+    - **Traces:** decision 12 holds, so an input's uncaught exception shows its raise site and `<main>`, not the
+      frames between: the transcripts that list frames are pending under the JIT, with that reason.
+    - **`system.args`** is set through an intrinsic of the core's, not through raw memory as `os/value` sets it.
+    - **The default:** the driver on this target runs the JIT unless given `--no-jit`, as natively. A session
+      replays by compiling its committed inputs again (§6.3): correct, and measured in step 14.
+    - **Tests in node:** `self-hosted/wasm_session` runs the REPL's transcripts and the kernel's protocol a second
+      time with the JIT, with the skips their `jit` phase already names and a pending list of its own, and its
+      recovery checks with the JIT: an overflow in an input's own code rolled back without a replay, the earlier
+      bindings kept; one while the compiler runs, replayed; an interrupt. A runner mode, `wasm-jit`, runs the run
+      goldens through `run.mjs` and the driver's JIT, one input each, as `jit-files` runs them natively, with a
+      pending list of its own.
+    *Done when* the transcripts and the kernel's protocol pass in node with the JIT at a worker's stack, but for
+    the pending list's; the recovery checks pass; `wasm-jit` passes but for its pending list, whose entries are
+    grouped by reason; and the arm64 JIT's suites and goldens are unchanged.
+14. **The JIT in the page.**
+    - **Built** as step 12's page, the JIT on by default; the module files an input imports from a URL prefix are
+      compiled in the session, as natively.
+    - **Checked** in Chromium: `check.html` runs the transcripts with the JIT, as `--check` does headless, and, by
+      hand, an overflow in an input (no replay) and in the compiler (a replay), an interrupt, and redefinition.
+    - **Measured** in Chromium, by hand: an input's latency with the JIT, the first and the next, against the
+      interpreter's from step 12; the compiler's stack in a worker as it compiles inputs, in baseline code, since
+      the first inputs compile cold (step 10's 296 KB for the tokenizer was taken before the locals' reuse); the
+      depth of compiled recursion in a worker; and a replay's time after ten inputs, compiling each again. If
+      replay is slow, the refinement of §6.3, keeping each committed input's module and admitting it again without
+      compiling it, is decided on that measure.
+    *Done when* the transcripts give their goldens in the page with the JIT, but for the pending list's; the
+    recoveries work there; and §6.2 and §6.3 record the measurements, with the refinement decided.
+
+#### 8.3.1. Why These Choices
+
+- **One request, the host called from inside it.** §6.1's three calls were meant to keep the compiler's frames off
+  the stack while an input runs, so that an overflow there need not replay. A host import gets the same: an
+  engine's overflow unwinds to the nearest JavaScript frame that catches it, which is the import's, and the frames
+  below it, the driver's REPL loop and `jit/wasm`, were not running and are intact. What three calls cost and this
+  does not: the session's state split across requests (an input compiled, waiting to be committed or abandoned),
+  and a Quest exception carried from the host back to the driver, which a JSON record cannot hold. What it costs:
+  the driver's frames under the input, a few kilobytes of a worker's 512, taken from a deep recursion's room.
+  `jit/session` keeps its shape, where `run` gives an outcome, and natively nothing moves.
+- **Bytes as a file.** The writer and the host's mounts already move a file's bytes in chunks through the small
+  buffer; an import that took bytes would be a second way. A module of a few hundred kilobytes is written once.
+- **A target chosen at run time.** The language has no build-time choice of an implementation by backend; the
+  build's `choice` assigns units to backends, not implementations to interfaces. A constant answered by the backend
+  costs a comparison per input, and the arm64 code it does not call is in the wasm driver already.
+- **Stubs for wasmtime.** Every import a module names must be supplied when it is instantiated, and the driver
+  imports `jit/wasm`. wasmtime runs the self-compilation and the program suite, neither of which uses the JIT, and
+  it cannot run a JavaScript host; stubs keep its runs as they are.
+- **No frames.** Frames would need a count at each function's entry or a shadow stack, a cost in every unit; the
+  interpreter shows them, and decision 12 put them later.
 
 ### 8.4. Milestone 4: The Rest
 
