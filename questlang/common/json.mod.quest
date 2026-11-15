@@ -2,6 +2,7 @@
 
 module json : Json
 import
+    questlang/common/pyRepr : questlang/common/PyRepr
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
@@ -36,16 +37,8 @@ export
         tuple let names = vector.new(:String) let members = hashMap.new(:String :Value stringOp.equal hash.string) end
     let object(o: Object): Value = option jObject of Value with let o = o end
 
-    (* A number as conv writes it, with Python's - for Cardelli's ~ *)
-    let signed(s: String): String =
-        if {stringOp.length(s) > 0} andif {stringOp.getChar(s 0) is '~'} then
-            "-" <> stringOp.getSub(s 1 {stringOp.length(s) - 1})
-        else
-            s
-        end
-
-    let int(n: Int): Value = number(signed(conv.int(n)) true)
-    let real(r: Real): Value = number(signed(conv.real(r)) false)
+    let int(n: Int): Value = number(pyRepr.number(conv.int(n)) true)
+    let real(r: Real): Value = number(pyRepr.number(conv.real(r)) false)
 
     let put(o: Object name: String v: Value): Ok =
         begin

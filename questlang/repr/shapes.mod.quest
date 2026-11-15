@@ -13,6 +13,7 @@ import
     util/maybe : util/Maybe
     util/sort : util/Sort
     stringOp = string : StringOp
+    questlang/common/strings : questlang/common/Strings
 export
     Let Type = model.Type
 
@@ -166,12 +167,6 @@ export
 
     let same(a: Shape b: Shape): Bool = a.id is b.id
 
-    let isOneOf(s: String items: Array(String)): Bool =
-        begin
-            let var found = false
-            for i = 0 upto {extent items - 1} do if stringOp.equal(s items[i]) then found := true end end
-            found
-        end
 
     let sameKind(a: ShapeKind b: ShapeKind): Bool = kindIndex(a) is kindIndex(b)
     let kindIs(s: Shape k: ShapeKind): Bool = sameKind(s.kind k)
@@ -243,11 +238,11 @@ export
         begin
             let t = reduce.normalizeType(reduce.resolveTypeBound(t0))
             case t.form
-                when typeVariable with x then isOneOf(x.name array of "Word.T" "word.T" end)
+                when typeVariable with x then strings.isOneOf(x.name array of "Word.T" "word.T" end)
                 when typePath with x then
-                    stringOp.equal(x.fieldName "T") andif isOneOf(x.rootName array of "Word" "word" end)
+                    stringOp.equal(x.fieldName "T") andif strings.isOneOf(x.rootName array of "Word" "word" end)
                 when typeExternal with x then
-                    isOneOf(x.name array of "Word.T" "word.T" end) orif stringOp.equal(x.cType "uint64_t")
+                    strings.isOneOf(x.name array of "Word.T" "word.T" end) orif stringOp.equal(x.cType "uint64_t")
                 else false
             end
         end

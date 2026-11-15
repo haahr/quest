@@ -2,6 +2,7 @@
 
 module options : Options
 import
+    questlang/common/strings : questlang/common/Strings
     questlang/common/files : questlang/common/Files
     questlang/modules/units : questlang/modules/Units
     questlang/codegen/choice : questlang/codegen/Choice
@@ -52,16 +53,6 @@ export
      * runs (run_ir_STAGE) *)
     let irStages = array of "core" "simplified" "specialized" "closed" "represented" "described" end
 
-    let phases = array of
-        "tokenize" "parse" "desugar" "typecheck"
-        "ir_core" "ir_simplified" "ir_specialized" "ir_closed" "ir_represented" "ir_described"
-        "run_ir_core" "run_ir_simplified" "run_ir_specialized" "run_ir_closed" "run_ir_represented" "run_ir_described"
-        "interpret"
-        "codegen_c" "codegen_arm64" "run_c_compiled"
-        "ssa_built" "ssa_escape" "ssa_promote" "ssa_constants" "ssa_valueNumbers" "ssa_selects" "ssa_tables"
-        "ssa_accumulate" "ssa_tailCalls" "ssa_tailJumps" "ssa_trampolines" "ssa"
-    end
-
     (* The SSA's phases (docs/ssa.md): the builder's, each pass's
      * (questlang/ssa/pipeline), and the last *)
     let ssaPhases = array of
@@ -73,11 +64,17 @@ export
      * and its run *)
     let cPhases = array of "codegen_c" "codegen_arm64" "run_c_compiled" end
 
-    let isOneOf(s: String xs: Array(String)): Bool =
+    (* Every phase --stop-after and --dump-after name: the front end's, the
+     * IR's dumps and runs, the interpreter's, the backends', and the SSA's *)
+    let phases =
         begin
-            let var found = false
-            for i = 0 upto {extent xs - 1} do if stringOp.equal(xs[i] s) then found := true end end
-            found
+            let all = vector.fromArray(:String array of "tokenize" "parse" "desugar" "typecheck" end)
+            for i = 0 upto {extent irStages - 1} do vector.append(:String all "ir_" <> irStages[i]) end
+            for i = 0 upto {extent irStages - 1} do vector.append(:String all "run_ir_" <> irStages[i]) end
+            vector.append(:String all "interpret")
+            for i = 0 upto {extent cPhases - 1} do vector.append(:String all cPhases[i]) end
+            for i = 0 upto {extent ssaPhases - 1} do vector.append(:String all ssaPhases[i]) end
+            vector.toArray(:String all)
         end
 
     (* Object files given to link with the program *)
@@ -204,26 +201,26 @@ export
             while i < extent system.args do
                 let arg = system.args[i]
                 let valued = {i + 1} < extent system.args
-                if isOneOf(arg array of "--stop-after" "--stop_after" end) andif valued then
+                if strings.isOneOf(arg array of "--stop-after" "--stop_after" end) andif valued then
                     stopAfter := system.args[i + 1]
                     stopGiven := true
                     i := i + 2
-                elsif isOneOf(arg array of "--build-dir" "--build_dir" end) andif valued then
+                elsif strings.isOneOf(arg array of "--build-dir" "--build_dir" end) andif valued then
                     buildDir := maybe.some(:String system.args[i + 1])
                     i := i + 2
-                elsif isOneOf(arg array of "--dump-after" "--dump_after" end) andif valued then
+                elsif strings.isOneOf(arg array of "--dump-after" "--dump_after" end) andif valued then
                     vector.append(:String dumpAfter system.args[i + 1])
                     i := i + 2
-                elsif isOneOf(arg array of "-o" "--output" end) andif valued then
+                elsif strings.isOneOf(arg array of "-o" "--output" end) andif valued then
                     output := maybe.some(:String system.args[i + 1])
                     i := i + 2
-                elsif isOneOf(arg array of "-I" "--include" end) andif valued then
+                elsif strings.isOneOf(arg array of "-I" "--include" end) andif valued then
                     vector.append(:String includePaths system.args[i + 1])
                     i := i + 2
-                elsif isOneOf(arg array of "-c" "--compile-only" end) then
+                elsif strings.isOneOf(arg array of "-c" "--compile-only" end) then
                     compileOnly := true
                     i := i + 1
-                elsif isOneOf(arg array of "-v" "--verbose" end) then
+                elsif strings.isOneOf(arg array of "-v" "--verbose" end) then
                     verbose := true
                     i := i + 1
                 elsif {stringOp.equal(arg "-j")} andif valued then
@@ -234,7 +231,7 @@ export
                     end
                     jobs := maybe.unwrap(:Int n)
                     i := i + 2
-                elsif isOneOf(arg array of "--whole-program" "--whole_program" end) then
+                elsif strings.isOneOf(arg array of "--whole-program" "--whole_program" end) then
                     wholeProgram := true
                     i := i + 1
                 elsif stringOp.equal(arg "--backend") andif valued then
@@ -253,12 +250,12 @@ export
                     end
                     vector.append(:choice.Override unitBackends maybe.unwrap(:choice.Override o))
                     i := i + 2
-                elsif isOneOf(arg array of "--expected-exit" "--expected_exit" end) andif valued andif not(compileMode) then
+                elsif strings.isOneOf(arg array of "--expected-exit" "--expected_exit" end) andif valued andif not(compileMode) then
                     (* What a compiled program's exit status must be; the
                      * interpreter's is the program's own *)
                     expectedExit := strutil.toInt(system.args[i + 1])
                     i := i + 2
-                elsif isOneOf(arg array of "-e" "--eval" "--code" "--command" end) andif valued then
+                elsif strings.isOneOf(arg array of "-e" "--eval" "--code" "--command" end) andif valued then
                     code := maybe.some(:String system.args[i + 1])
                     i := i + 2
                 elsif stringOp.equal(arg "--show-offsets") andif not(compileMode) then
@@ -270,10 +267,10 @@ export
                 elsif stringOp.equal(arg "--echo") then
                     echo := true
                     i := i + 1
-                elsif isOneOf(arg array of "--print-result" "--print_result" end) then
+                elsif strings.isOneOf(arg array of "--print-result" "--print_result" end) then
                     printResult := true
                     i := i + 1
-                elsif isOneOf(arg array of "-i" "--interactive" end) andif not(compileMode) then
+                elsif strings.isOneOf(arg array of "-i" "--interactive" end) andif not(compileMode) then
                     interactive := true
                     i := i + 1
                 elsif stringOp.equal(arg "--kernel") andif not(compileMode) then
@@ -300,7 +297,7 @@ export
                     compiling(arg)
                     nogc := true
                     i := i + 1
-                elsif isOneOf(arg array of "-h" "--help" end) then
+                elsif strings.isOneOf(arg array of "-h" "--help" end) then
                     writer.putString(writer.output usageText)
                     system.sysexit(0)
                 elsif isObjectFile(arg) then
@@ -340,7 +337,7 @@ export
             end
             (* compile neither runs the program nor interprets it *)
             let allowed = fun(phase: String): Bool
-                isOneOf(phase phases) andif not(compileMode andif {strutil.startsWith(phase "run_")
+                strings.isOneOf(phase phases) andif not(compileMode andif {strutil.startsWith(phase "run_")
                     orif stringOp.equal(phase "interpret")})
             if not(allowed(stopAfter)) then usage("unknown phase '" <> stopAfter <> "'") end
             for j = 0 upto {vector.length(:String dumpAfter) - 1} do
@@ -351,7 +348,7 @@ export
             (* codegen_arm64 compiles the program with arm64, unless a backend
              * is given (which must then be arm64, checked once the program's
              * backend is known) *)
-            if {stringOp.equal(stopAfter "codegen_arm64") orif isOneOf("codegen_arm64" vector.toArray(:String dumpAfter))}
+            if {stringOp.equal(stopAfter "codegen_arm64") orif strings.isOneOf("codegen_arm64" vector.toArray(:String dumpAfter))}
                 andif not(backendGiven) then
                 backend := "arm64"
             end
@@ -359,7 +356,7 @@ export
              * given; compile's own last phase is codegen_c, which means only
              * that it writes the binary, through any backend *)
             if {{stopGiven andif stringOp.equal(stopAfter "codegen_c")}
-                orif isOneOf("codegen_c" vector.toArray(:String dumpAfter)) orif emitC} andif not(backendGiven) then
+                orif strings.isOneOf("codegen_c" vector.toArray(:String dumpAfter)) orif emitC} andif not(backendGiven) then
                 backend := "c"
             end
             (* With neither a file nor a program, the REPL starts on an empty

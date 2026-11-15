@@ -24,6 +24,7 @@ import
     util/hash : util/Hash
     util/maybe : util/Maybe
     stringOp = string : StringOp
+    questlang/common/strings : questlang/common/Strings
 export
     Let Value = model.Value
     Let Frame = model.Frame
@@ -196,12 +197,6 @@ export
                 <> " and " <> model.typeName(w) offset)
         end
 
-    let isOneOf(op: String ops: Array(String)): Bool =
-        begin
-            let var found = false
-            for i = 0 upto {extent ops - 1} do if stringOp.equal(op ops[i]) then found := true end end
-            found
-        end
 
     let intArithmeticOps = array of "+" "-" "*" "/" "mod" "%" end
     let intRelationalOps = array of "<" "<=" ">" ">=" end
@@ -210,19 +205,19 @@ export
 
     (* An operator applied to the values of its operands *)
     let infix(op: String left: Value right: Value offset: maybe.T(Int)): Value =
-        if isOneOf(op intArithmeticOps) then
+        if strings.isOneOf(op intArithmeticOps) then
             let a = intOperand(op left right offset)
             let b = intOperand(op right left offset)
             model.intValue(primitives.intArithmetic(op a b offset))
-        elsif isOneOf(op intRelationalOps) then
+        elsif strings.isOneOf(op intRelationalOps) then
             let a = intOperand(op left right offset)
             let b = intOperand(op right left offset)
             model.boolValue(primitives.intRelational(op a b offset))
-        elsif isOneOf(op realArithmeticOps) then
+        elsif strings.isOneOf(op realArithmeticOps) then
             let a = realOperand(op left right offset)
             let b = realOperand(op right left offset)
             model.realValue(primitives.realArithmetic(op a b offset))
-        elsif isOneOf(op realRelationalOps) then
+        elsif strings.isOneOf(op realRelationalOps) then
             let a = realOperand(op left right offset)
             let b = realOperand(op right left offset)
             model.boolValue(primitives.realRelational(op a b offset))

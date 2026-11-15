@@ -2,6 +2,7 @@
 
 module layout : Layout
 import
+    questlang/common/strings : questlang/common/Strings
     questlang/types/model : questlang/types/Model
     questlang/types/canonical : questlang/types/Canonical
     questlang/modules/abstractTypes : questlang/modules/AbstractTypes
@@ -22,12 +23,6 @@ export
     let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
-    let isOneOf(s: String items: Array(String)): Bool =
-        begin
-            let var found = false
-            for i = 0 upto {extent items - 1} do if stringOp.equal(s items[i]) then found := true end end
-            found
-        end
 
     let startsWith(s: String prefix: String): Bool = strutil.startsWith(s prefix)
     let endsWith(s: String suffix: String): Bool = strutil.endsWith(s suffix)
@@ -262,8 +257,8 @@ export
             (* The writer and reader libraries' abstract types, which the
              * runtime implements as structs of its own *)
             when shapeTypevar then
-                if isOneOf(s.name array of "Writer.T" "writer.T" end) then "QWriter"
-                elsif isOneOf(s.name array of "Reader.T" "reader.T" end) then "QReader"
+                if strings.isOneOf(s.name array of "Writer.T" "writer.T" end) then "QWriter"
+                elsif strings.isOneOf(s.name array of "Reader.T" "reader.T" end) then "QReader"
                 else "QVal" end
             when shapeTuple then
                 let tags = vector.new(:String)
@@ -300,8 +295,8 @@ export
         repVoid repInt repWord repBool repChar repReal repRecord repVariant repPointer repQVal
     end
 
-    let isWriter(s: Shape): Bool = isOneOf(s.name array of "Writer.T" "writer.T" end)
-    let isReader(s: Shape): Bool = isOneOf(s.name array of "Reader.T" "reader.T" end)
+    let isWriter(s: Shape): Bool = strings.isOneOf(s.name array of "Writer.T" "writer.T" end)
+    let isReader(s: Shape): Bool = strings.isOneOf(s.name array of "Reader.T" "reader.T" end)
 
     let rec shapeRepresentationKind(s0: Shape): Representation =
         begin
