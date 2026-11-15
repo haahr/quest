@@ -347,8 +347,8 @@ Only value numbering removes values that become dead; parameters no load reads s
 slots, and linear scan none.
 
 The passes share their analyses: `ssa/cfg` (predecessors, successors, reverse postorder, the dominator tree with
-preorder and postorder numbers, dominance frontiers, and loop depths) and `ssa/liveness` (each block's live-in and
-live-out values, which the register allocator uses); `nodes` has the mutators (`targets`, `mapTargets`, `mapBlocks`,
+preorder and postorder numbers, dominance frontiers, and loop depths); the register allocator computes liveness on
+the machine layer's instructions (`codegen/machine/machine`), not on the SSA. `nodes` has the mutators (`targets`, `mapTargets`, `mapBlocks`,
 `replaceUses`). The driver dumps the SSA after the builder (`--dump-after ssa_built`), after each pass (`ssa_escape`,
 `ssa_promote`, `ssa_constants`, `ssa_valueNumbers`, `ssa_selects`, `ssa_tables`, `ssa_accumulate`, `ssa_tailCalls`,
 `ssa_tailJumps`, `ssa_trampolines`), and at the end

@@ -120,7 +120,7 @@ questlang/
 │   └── externals            # The standard library's external C functions and types
 │
 ├── ssa/                     # The native backends' SSA (docs/ssa.md): nodes, build, statics, runtimeFunctions,
-│   │                        # cfg, liveness, scalars, barriers, verify, printer, parser, pipeline
+│   │                        # cfg, scalars, barriers, verify, printer, parser, pipeline
 │   ├── build/               # The SSA built from the described IR: values, descriptors, calls, aggregates, control,
 │   │                        # adapters, unit, representation
 │   └── passes/              # Its passes: escape, promote, constants, valueNumbers, selects, tables, accumulate,

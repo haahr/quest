@@ -32,7 +32,7 @@ aggregate types: a record or variant value, 16 bytes in the C representation, is
 integer, a symbol, and a source position (`Inst` in [`nodes.int.quest`](nodes.int.quest)). Loads and stores also carry
 a width (8, 4, or 1 bytes), and calls carry a `Signature` saying how C passes each argument and result: in a word, in
 a floating-point register, as half of a 16-byte pair, as a byte, or through memory. The uniform shape means that the
-passes that care only about structure (the verifier, renaming, liveness) walk the argument and result arrays without
+passes that care only about structure (the verifier, renaming, use counts) walk the argument and result arrays without
 knowing what each opcode means.
 
 **Blocks take parameters instead of φ nodes.** A block has a list of parameter values, its instructions, and one
@@ -138,8 +138,6 @@ Several modules here serve the builder, the passes, and the backends alike.
   `runtime/quest_runtime.h`.
 - [`statics.mod.quest`](statics.mod.quest) lays out type descriptors and object layouts as words of static data,
   matching the runtime's C structs, from the backend-independent descriptions in [`../repr`](../repr).
-- [`liveness.mod.quest`](liveness.mod.quest) computes the values live into and out of each block. The register
-  allocator does not use it: the machine layer computes liveness over its own instructions.
 
 ## Checking
 

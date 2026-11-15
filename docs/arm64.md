@@ -600,7 +600,7 @@ pass. Cross-module inlining, in whole programs, makes abstract ids affordable th
   allocates a new string.
 - **Iteration, not recursion, over graphs:** compiled Quest uses about 2 KB of stack per call, so reverse postorder,
   dominators (Cooper, Harvey, and Kennedy's iterative algorithm), and liveness use explicit worklists.
-- **A bitset library** (`lib/collections/bitset`) for liveness (`ssa/liveness`, `codegen/machine/machine`). A library
+- **A bitset library** (`lib/collections/bitset`) for liveness (`codegen/machine/machine`). A library
   module reaches `questlang/` only after a release that has it (release-compiler.md §2).
 
 ### 3.16. Line tables
