@@ -1058,155 +1058,16 @@ export
             end
         end
 
-    (* Where the slots of dead values are cleared, for a target whose
-     * collector scans every word of a frame conservatively
-     * (docs/arm64-performance-review.md section 3.2): there a slot still
-     * holding a dead value's pointer keeps what it points to alive. A value
-     * is cleared where it dies: after the instruction that last reads it, or
-     * at the start of a branch's target it is not live into though it is live
-     * at the branch. Only a value the lowering clears (one that may be a
-     * pointer) that has a slot is, and only where a call, in which a
-     * collection can happen, may follow before the function returns, and not
-     * in a cold block. (arm64's lowering clears nothing, since its frame maps
-     * tell the collector which slots are live; regalloc_scan tests this.)
-     * after holds, for each block's instructions, the values (by index)
-     * cleared after each; atStart, those cleared at each block's start. *)
-    Let Clears = Tuple after: Array(Array(Array(Int))) atStart: Array(Array(Int)) end
-
-    let clears(f: Function a: Allocation lowering: machine.Lowering): Clears =
-        begin
-            let nBlocks = vector.length(:machine.Block f.blocks)
-            let nValues = machine.virtuals(f)
-            let after = array of(nBlocks array of :Array(Int) end)
-            let atStart = array of(nBlocks array of :Int end)
-            (* Nothing is cleared in a cold block, from which every path
-             * raises: the raise ends the function soon, and a collection on
-             * the way keeps the dead values only that long *)
-            let cold(b: Int): Bool = a.frequency[b] is 1
-            let liveIn = array of(nBlocks bitset.new(nValues))
-            for b = 0 upto {nBlocks - 1} do
-                liveIn[b] := bitset.new(nValues)
-                for k = 0 upto {extent a.liveIn[b] - 1} do add(liveIn[b] a.liveIn[b][k]) end
-            end
-            let clearable = array of(nValues false)
-            for v = 0 upto {nValues - 1} do
-                clearable[v] := needsSlot(a v) andif lowering.clears(f.firstVirtual + v)
-            end
-            (* Whether a call may come after a block's jth instruction, before
-             * the function returns: in the block, or in a block it may go to
-             * from there (the jth's own target among them, as for the jump that
-             * ends the block, but not a branch's, whose values die on the path
-             * that falls through), to a fixed point. A cold block's call does
-             * not count: it raises, which ends the function soon, so a failed
-             * check's path clears nothing on its way to the raise *)
-            let callIn = array of(nBlocks false)
-            let callsAfter(b: Int j: Int): Bool =
-                begin
-                    let insts = machine.block(f b).insts
-                    let var found = false
-                    (* A branch's target is not on the path its values die
-                     * on, which falls through to what follows it *)
-                    if j >= 0 then
-                        let i = vector.get(:machine.Inst insts j)
-                        if {i.target >= 0} andif callIn[i.target] andif not(machine.isKind(i machine.kindBranch)) then
-                            found := true
-                        end
-                    end
-                    for k = {j + 1} upto {vector.length(:machine.Inst insts) - 1} do
-                        let i = vector.get(:machine.Inst insts k)
-                        if machine.isKind(i machine.kindCall) orif {{i.target >= 0} andif callIn[i.target]} then
-                            found := true
-                        end
-                    end
-                    found
-                end
-            let var changed = true
-            while changed do
-                changed := false
-                for b = 0 upto {nBlocks - 1} do
-                    if not(callIn[b]) andif {a.blockStart[b] >= 0} andif not(cold(b)) andif callsAfter(b ~1) then
-                        callIn[b] := true
-                        changed := true
-                    end
-                end
-            end
-            (* Each block backward, from what is live at its end (what its
-             * jump's target has live in, or nothing at a return): a value an
-             * instruction reads, or a branch's target has live in, that is not
-             * live after the instruction dies there *)
-            for b = 0 upto {nBlocks - 1} do
-                let insts = machine.block(f b).insts
-                let n = vector.length(:machine.Inst insts)
-                after[b] := array of(n array of :Int end)
-                if {a.blockStart[b] >= 0} andif not(cold(b)) then
-                    let live = bitset.new(nValues)
-                    for j = {n - 1} downto 0 do
-                        let i = vector.get(:machine.Inst insts j)
-                        let dies = vector.new(:Int)
-                        let reads = bitset.new(nValues)
-                        (* A jump's target's parameters are not live into it,
-                         * but one passed as an argument (a loop's invariant,
-                         * back to its header) does not die there: the edge
-                         * stores it again *)
-                        let redefined = bitset.new(nValues)
-                        if machine.isKind(i machine.kindJump) then
-                            bitset.assign(live liveIn[i.target])
-                            let params = machine.block(f i.target).params
-                            for k = 0 upto {vector.length(:Int params) - 1} do
-                                add(redefined machine.index(f vector.get(:Int params k)))
-                            end
-                        end
-                        if machine.isKind(i machine.kindBranch) then
-                            (* What is live after the branch but not in its
-                             * target dies at the target's start *)
-                            if callIn[i.target] andif not(cold(i.target)) then
-                                let gone = vector.new(:Int)
-                                let es = bitset.elements(live)
-                                for k = 0 upto {extent es - 1} do
-                                    if clearable[es[k]] andif not(bitset.contains(liveIn[i.target] es[k])) then
-                                        vector.append(:Int gone es[k])
-                                    end
-                                end
-                                atStart[i.target] := vector.toArray(:Int gone)
-                            end
-                            bitset.unionWith(reads liveIn[i.target])
-                        end
-                        for k = 0 upto {extent i.operands - 1} do
-                            let o = i.operands[k]
-                            if machine.isVirtual(f o.reg) then
-                                let v = machine.index(f o.reg)
-                                if o.defines then begin let ignored = bitset.remove(live v) end
-                                else add(reads v) end
-                            end
-                        end
-                        let rs = bitset.elements(reads)
-                        for k = 0 upto {extent rs - 1} do
-                            let dead = not(bitset.contains(live rs[k])) andif not(bitset.contains(redefined rs[k]))
-                            if clearable[rs[k]] andif dead then vector.append(:Int dies rs[k]) end
-                        end
-                        if not(machine.isKind(i machine.kindReturn)) andif callsAfter(b j) then
-                            after[b][j] := vector.toArray(:Int dies)
-                        end
-                        bitset.unionWith(live reads)
-                    end
-                end
-            end
-            tuple let after = after let atStart = atStart end
-        end
-
     (* Slots are shared as registers are, by intervals that do not intersect,
      * but over each value's whole lifetime, from its first position to its
      * last, holes and all: a value in memory is stored once, where it is
      * defined, and its slot must hold it until its last read. rewrite writes
-     * a slot at two places outside that: a parameter's, on each jump into its
-     * block (at the jump, where the jump's arguments are read, which may
-     * share it otherwise); and a clear, after the instruction where its value
-     * dies (where the instruction's results are stored), or at the start of a
-     * branch's target (where what is live into the target is held). Each
-     * lifetime is stretched to cover those. Then, in order of their first
+     * a parameter's slot outside that, on each jump into its block (at the
+     * jump, where the jump's arguments are read, which may share it
+     * otherwise), so each lifetime is stretched to cover those. Then, in order of their first
      * positions, each value takes the first slot of its kind whose values
      * have all ended before it starts, or a new one. *)
-    let shareSlots(f: Function a: Allocation lowering: machine.Lowering kind: All(v: Int) Int): Array(Int) =
+    let shareSlots(f: Function a: Allocation kind: All(v: Int) Int): Array(Int) =
         begin
             let nBlocks = vector.length(:machine.Block f.blocks)
             let nValues = machine.virtuals(f)
@@ -1221,16 +1082,13 @@ export
                     if p < first[v] then first[v] := p end
                     if p > last[v] then last[v] := p end
                 end
-            let cleared = clears(f a lowering)
             for b = 0 upto {nBlocks - 1} do
                 let bs = a.blockStart[b]
                 if bs >= 0 then
-                    for k = 0 upto {extent cleared.atStart[b] - 1} do reach(cleared.atStart[b][k] bs) end
                     let insts = machine.block(f b).insts
                     for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
                         let i = vector.get(:machine.Inst insts j)
                         let p = bs + {2 * {j + 1}}
-                        for k = 0 upto {extent cleared.after[b][j] - 1} do reach(cleared.after[b][j][k] p + 1) end
                         if machine.isKind(i machine.kindJump) then
                             let params = machine.block(f i.target).params
                             for k = 0 upto {vector.length(:Int params) - 1} do
@@ -1270,9 +1128,6 @@ export
     let rewrite(f: Function a: Allocation lowering: machine.Lowering): Ok =
         begin
             let nBlocks = vector.length(:machine.Block f.blocks)
-            let cleared = clears(f a lowering)
-            let clearAll(w: Rewriter vs: Array(Int)): Ok =
-                for k = 0 upto {extent vs - 1} do emitAll(w lowering.clear(f.firstVirtual + vs[k])) end
             let nothing = machine.inst(machine.kindOrdinary array of :machine.Operand end ~1 ~1)
             let defs = array of(machine.virtuals(f) nothing)
             (* Where each branch target's one branch is. A branch's edge has no
@@ -1305,7 +1160,6 @@ export
                 (* A block not reached is left empty *)
                 if bs >= 0 then
                     if branchAt[b] >= 0 then edge(w branchAt[b] b array of :Int end) end
-                    clearAll(w cleared.atStart[b])
                     for j = 0 upto {vector.length(:machine.Inst blk.insts) - 1} do
                         let i = vector.get(:machine.Inst blk.insts j)
                         let p = bs + {2 * {j + 1}}
@@ -1332,14 +1186,9 @@ export
                                 let args = array of(extent i.operands 0)
                                 for k = 0 upto {extent args - 1} do args[k] := i.operands[k].reg end
                                 edge(w p i.target args)
-                                clearAll(w cleared.after[b][j])
                                 emit(w machine.inst(i.kind array of :machine.Operand end i.op i.target))
-                            when kindMove then
-                                move(w i p)
-                                clearAll(w cleared.after[b][j])
-                            when kindOrdinary, kindBranch, kindCall, kindReturn then
-                                ordinary(w i p)
-                                clearAll(w cleared.after[b][j])
+                            when kindMove then move(w i p)
+                            when kindOrdinary, kindBranch, kindCall, kindReturn then ordinary(w i p)
                         end
                     end
                 end

@@ -55,7 +55,6 @@ def is_type_contractive(
     qtype: QType,
     recursive_var_ids: set[int],
     env: Optional[Any] = None,
-    seen_aliases: Optional[set[int]] = None,
     depth: int = 0,
 ) -> bool:
     """Verifies that `qtype` is contractive in all variable IDs in
@@ -78,18 +77,13 @@ def is_type_contractive(
         raise TypeRecursionLimitExceeded(
             f"Type contractiveness check exceeded recursion depth of {MAX_TYPE_EXPANSION_DEPTH}"
         )
-    seen = seen_aliases or set()
     qtype_lazy = qtype.evaluate_lazily(env)
 
     match qtype_lazy:
+        # evaluate_lazily has followed the variable's definition, if it has
+        # one, so this variable has none
         case QTypeVar(symbol_id=sym_id):
-            if sym_id in recursive_var_ids:
-                return False
-            if env is not None:
-                sym = env.lookup_type_by_id(sym_id)
-                if sym is not None and sym.definition is not None and sym_id not in seen:
-                    return is_type_contractive(sym.definition, recursive_var_ids, env, seen | {sym_id}, depth + 1)
-            return True
+            return sym_id not in recursive_var_ids
 
         # An unsolved metavariable (evaluate_lazily looks through a solved
         # one) is not a recursive variable, so it is contractive
@@ -98,23 +92,23 @@ def is_type_contractive(
 
         case QRecType(symbol_id=inner_id, body=inner_body):
             return (
-                is_type_contractive(inner_body, {inner_id}, env, seen, depth + 1)
-                and is_type_contractive(inner_body, recursive_var_ids, env, seen, depth + 1)
+                is_type_contractive(inner_body, {inner_id}, env, depth + 1)
+                and is_type_contractive(inner_body, recursive_var_ids, env, depth + 1)
             )
 
         case QRecGroupType(bindings=bindings, active_index=active_idx):
             all_group_ids = {b[1] for b in bindings}
             active_body = bindings[active_idx][3]
-            return is_type_contractive(active_body, recursive_var_ids | all_group_ids, env, seen, depth + 1)
+            return is_type_contractive(active_body, recursive_var_ids | all_group_ids, env, depth + 1)
 
         case QAllType(quantifiers=quants, body=body):
-            return is_type_contractive(body, recursive_var_ids, env, seen, depth + 1)
+            return is_type_contractive(body, recursive_var_ids, env, depth + 1)
 
         case QTypeApp(constructor=ctor):
             # evaluate_lazily has already beta-reduced applications of type
             # functions, so the constructor here is opaque; the application is
             # contractive if the constructor is.
-            return is_type_contractive(ctor.evaluate_lazily(env), recursive_var_ids, env, seen, depth + 1)
+            return is_type_contractive(ctor.evaluate_lazily(env), recursive_var_ids, env, depth + 1)
 
         case (
             QRecordType()

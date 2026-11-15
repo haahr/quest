@@ -21,10 +21,6 @@ export
         defIndex: Array(Int)
         isConst: Array(Bool)
         constant: Array(Int)
-        (* Each block's parameters' values, and the block of each parameter's
-         * value (~1 for others) and its index *)
-        paramBlock: Array(Int)
-        paramIndex: Array(Int)
         (* The candidates: each one's value and size, and whether it is still
          * thought not to escape, and if it does, why *)
         allocValue: Array(Int)
@@ -327,17 +323,10 @@ export
             let defIndex = array of(nValues ~1)
             let isConst = array of(nValues false)
             let constant = array of(nValues 0)
-            let paramBlock = array of(nValues ~1)
-            let paramIndex = array of(nValues ~1)
             let values = vector.new(:Int)
             let sizes = vector.new(:Int)
             for b = 0 upto {nBlocks - 1} do
                 let blk = ssa.block(f b)
-                for k = 0 upto {vector.length(:Int blk.params) - 1} do
-                    let p = vector.get(:Int blk.params k)
-                    paramBlock[p] := b
-                    paramIndex[p] := k
-                end
                 for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
                     let i = vector.get(:ssa.Inst blk.insts k)
                     for r = 0 upto {extent i.results - 1} do
@@ -373,7 +362,6 @@ export
             end
             let s = tuple
                 let f = f let defBlock = defBlock let defIndex = defIndex let isConst = isConst let constant = constant
-                let paramBlock = paramBlock let paramIndex = paramIndex
                 let allocValue = vector.toArray(:Int values) let allocBytes = allocBytes
                 let alive = array of(n true) let reasons = array of(n "")
                 let ptr = array of(nValues ~1) let off = array of(nValues 0)

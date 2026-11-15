@@ -44,12 +44,10 @@ export
      * application iff its (opaque, since evaluation reduces applications of
      * type operators) constructor is; Rec(X') B iff B is in X' and in X.
      *
-     * Given an environment, a type variable that has a definition is checked
-     * through it; seen holds the variables whose definitions are being
-     * followed, so a definition that leads back to its own variable is not
-     * followed again. depth counts the nested calls, against
+     * Given an environment, evaluation follows type variables' definitions
+     * through it. depth counts the nested calls, against
      * maxTypeExpansionDepth. *)
-    let rec contractive(t: Type ids: Ids e: maybe.T(env.T) seen: Ids depth: Int): Bool =
+    let rec contractive(t: Type ids: Ids e: maybe.T(env.T) depth: Int): Bool =
         begin
             if depth > maxTypeExpansionDepth then
                 diagnostics.raiseError(:Ok tuple
@@ -70,44 +68,31 @@ export
             let lookup = if maybe.isSome(:env.T e) then symbols.lookup else model.noLookup end
             let lazy = model.evaluateLazily(t lookup)
             case lazy.form
-                when typeVariable with x then
-                    if has(ids x.symbolId) then
-                        false
-                    elsif maybe.isSome(:env.T e) then
-                        let sym = env.lookupTypeById(maybe.unwrap(:env.T e) x.symbolId)
-                        if maybe.isSome(:symbols.TypeSymbol sym) andif
-                            maybe.isSome(:Type maybe.unwrap(:symbols.TypeSymbol sym).definition) andif
-                            not(has(seen x.symbolId)) then
-                            contractive(maybe.unwrap(:Type maybe.unwrap(:symbols.TypeSymbol sym).definition) ids e
-                                plus(seen x.symbolId) {depth + 1})
-                        else
-                            true
-                        end
-                    else
-                        true
-                    end
+                (* Evaluation has followed the variable's definition, if it
+                 * has one, so this variable has none *)
+                when typeVariable with x then not(has(ids x.symbolId))
                 (* An unsolved metavariable (evaluateLazily looks through a
                  * solved one) is not a recursive variable, so it is
                  * contractive *)
                 when typeMeta then true
                 when typeRec with x then
-                    contractive(x.body plus(newIds() x.symbolId) e seen {depth + 1}) andif
-                        contractive(x.body ids e seen {depth + 1})
+                    contractive(x.body plus(newIds() x.symbolId) e {depth + 1}) andif
+                        contractive(x.body ids e {depth + 1})
                 when typeRecGroup with x then
                     begin
                         let groupIds = newIds()
                         for i = 0 upto {extent x.bindings - 1} do
                             hashMap.insert(:Int :Bool groupIds x.bindings[i].symbolId true)
                         end
-                        contractive(x.bindings[x.activeIndex].body union(ids groupIds) e seen {depth + 1})
+                        contractive(x.bindings[x.activeIndex].body union(ids groupIds) e {depth + 1})
                     end
-                when typeAll with x then contractive(x.body ids e seen {depth + 1})
-                when typeApp with x then contractive(model.evaluateLazily(x.constructor lookup) ids e seen {depth + 1})
+                when typeAll with x then contractive(x.body ids e {depth + 1})
+                when typeApp with x then contractive(model.evaluateLazily(x.constructor lookup) ids e {depth + 1})
                 else true
             end
         end
 
-    let isTypeContractive(t: Type ids: Ids e: maybe.T(env.T)): Bool = contractive(t ids e newIds() 0)
+    let isTypeContractive(t: Type ids: Ids e: maybe.T(env.T)): Bool = contractive(t ids e 0)
 
     let checkTypeContractive(t: Type ids: Ids varName: String offset: Int e: maybe.T(env.T)): Ok =
         if not(isTypeContractive(t ids e)) then

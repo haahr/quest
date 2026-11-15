@@ -102,8 +102,9 @@ export
             v
         end
 
-    (* Values separated by commas, up to close (not read) or the end *)
-    let values(l: Line close: String): Array(Int) =
+    (* Values separated by commas, none if the next character is not a %
+     * (a closing parenthesis, say, which is left unread) *)
+    let values(l: Line): Array(Int) =
         begin
             let vs = vector.new(:Int)
             skip(l)
@@ -139,7 +140,7 @@ export
         begin
             let b = blockNumber(l)
             expect(l "(")
-            let args = values(l ")")
+            let args = values(l)
             expect(l ")")
             nodes.target(b args)
         end
@@ -265,18 +266,18 @@ export
                     when opCall then
                         let symbol = word(l)
                         expect(l "(")
-                        let args = values(l ")")
+                        let args = values(l)
                         expect(l ")")
                         call(o args symbol)
                     when opCallIndirect then
-                        let args = values(l "")
+                        let args = values(l)
                         call(o args "")
                     when opNull, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr,
                         opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul,
                         opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
                         opBitsReal, opSext8, opZext8, opCopy, opLoad, opStore, opPtrAdd, opToVal, opFromVal,
                         opSelect, opUnproxy then
-                        make(o values(l "") 0 "" 0 false)
+                        make(o values(l) 0 "" 0 false)
                 end
             end
         end
@@ -331,7 +332,7 @@ export
                         let default = target(l)
                     end)
                 elsif stringOp.equal(name "return") then
-                    some(option termReturn of nodes.Terminator with let values = values(l "") end)
+                    some(option termReturn of nodes.Terminator with let values = values(l) end)
                 elsif stringOp.equal(name "tail") then
                     some(option termTailCall of nodes.Terminator with let call = instruction(f l pending) end)
                 elsif stringOp.equal(name "try") then

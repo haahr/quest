@@ -562,7 +562,7 @@ export
             when descStatic with x then staticDescriptorOf(p x.d)
             when descInstantiate with x then
                 let form = staticForm(p x.template)
-                if eq(form.kind "base") orif eq(form.kind "bound_var") then
+                if eq(form.kind "base") then
                     types.cExpr(form)
                 else
                     let args = vector.new(:String)
@@ -854,7 +854,6 @@ export
     let makeTuple(p: P t: Type fields: vector.T(Field)): String =
         begin
             let struct = layout.shapeTag(shapeOf(t))
-            cType(t)
             let tmp = temp(p struct <> " *")
             let sized = embeddedBoxes(p tmp "sizeof(" <> struct <> ")" fields)
             emit(p tmp <> " = (" <> struct <> " *)quest_alloc(" <> sized.size <> ", "
@@ -1460,7 +1459,6 @@ export
         begin
             let ts = shapeOf(tupleType)
             let struct = layout.shapeTag(ts)
-            cType(tupleType)
             let tmp = temp(p struct <> " *")
             emit(p tmp <> " = (" <> struct <> " *)quest_alloc(sizeof(" <> struct <> "), "
                 <> layoutRef(p objectLayout.tupleLayout(ts struct noBoxes)) <> ");")
@@ -1490,7 +1488,6 @@ export
      * proxy's payload type (proxied where a component changes view) *)
     let optionCasePayload(opt: String tupleType: Type tagAccess: nodes.Access access: Array(nodes.Access)): String =
         begin
-            cType(tupleType)
             let struct = layout.shapeTag(shapeOf(tupleType))
             let own(o: String): String = "((" <> struct <> " *)((const char *)(" <> o <> ") + sizeof(int64_t)))"
             let var proxied = false
@@ -2488,7 +2485,6 @@ export
                         andif shapes.sameKind(binderKind shapes.shapeTuple) then
                         (* A bounded type parameter's value: its payload, viewed
                          * at the bound's payload type *)
-                        cType(binder.type)
                         let struct = layout.shapeTag(shapeOf(binder.type))
                         assign(p binder "((" <> struct <> " *)quest_view_option_payload(" <> v <> ", "
                             <> name(p maybe.unwrap(:Variable x.viewMap)) <> "))")

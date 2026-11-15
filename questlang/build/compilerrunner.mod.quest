@@ -156,12 +156,8 @@ export
             for i = 0 upto {extent base - 1} do vector.append(:String command base[i]) end
             vector.append(:String command "-I" <> runtimeDir())
             for i = 0 upto {extent includePaths - 1} do vector.append(:String command "-I" <> includePaths[i]) end
-            (* Only the collector's compiling flags; linking is separate *)
             let gc = gcFlags(nogc)
-            for i = 0 upto {extent gc - 1} do
-                if strutil.startsWith(gc[i] "-I")
-                    orif strutil.startsWith(gc[i] "-D") then vector.append(:String command gc[i]) end
-            end
+            for i = 0 upto {extent gc - 1} do vector.append(:String command gc[i]) end
             for i = 0 upto {extent extraFlags - 1} do vector.append(:String command extraFlags[i]) end
             vector.append(:String command "-c")
             vector.append(:String command c)
@@ -333,8 +329,6 @@ export
             vector.append(:String command output)
             (* The libraries' linker flags; the runtime's objects were compiled
              * with the rest *)
-            let gc = gcFlags(nogc)
-            for i = 0 upto {extent gc - 1} do if isLinkerFlag(gc[i]) then vector.append(:String command gc[i]) end end
             let rl = readlineFlags()
             for i = 0 upto {extent rl - 1} do if isLinkerFlag(rl[i]) then vector.append(:String command rl[i]) end end
             appendAll(command extraFlags)

@@ -20,7 +20,6 @@ export
     Let Type = tm.Type
     Let Value = model.Value
 
-    let formatVersion = 1
     (* Graphs larger than this come from types that are not regular (their
      * unfoldings never repeat) *)
     let maxTypeNodes = 100000
@@ -36,10 +35,7 @@ export
     let builtin(name: String): Ref = tuple let name = name let index = ~1 end
     let nodeRef(index: Int): Ref = tuple let name = "" let index = index end
 
-    (* An object read with an @id, and the type it was read at *)
-    Let Seen = Tuple value: Value readAt: Ref end
     let isBuiltin(r: Ref): Bool = stringOp.length(r.name) > 0
-    let isRef(r: Ref name: String): Bool = stringOp.equal(r.name name)
 
     (* The built-in types a ref may name *)
     let builtinNames = array of "Ok" "Bool" "Char" "String" "Int" "Real" "Dynamic" end
@@ -68,8 +64,6 @@ export
         if strutil.startsWith(label "var ") then stringOp.getSub(label 4 {stringOp.length(label) - 4})
         elsif stringOp.equal(label "var") then ""
         else label end
-
-    let isVarLabel(label: String): Bool = strutil.startsWith(label "var ") orif stringOp.equal(label "var")
 
     let mentions(t: Type symbolId: Int): Bool =
         begin
@@ -279,7 +273,6 @@ export
         end
 
     let nodeOf(g: Graph r: Ref): Node = vector.get(:Node g.nodes r.index)
-    let kindOf(g: Graph r: Ref): String = if isBuiltin(r) then "" else nodeOf(g r).shape.kind end
 
     let placeholder: Node = tuple let shape = shape("" array of :String end array of :Bool end "" 0) let children = array of :Ref end end
 
@@ -607,8 +600,5 @@ export
             end
             tuple let types = json.arrayValue(table) let index = index end
         end
-
-    let items(v: json.Value): vector.T(json.Value) = case v when jArray with x then x.items else fail(:vector.T(json.Value)) end
-    let text(v: json.Value): String = case v when jString with x then x.s else fail(:String) end
 
 end

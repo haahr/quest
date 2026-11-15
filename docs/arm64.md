@@ -339,21 +339,14 @@ the SSA's values, and it reads no register's name: a target (`codegen/machine/ta
   address in the frame.
 - **The frame** is the outgoing arguments' area, the stack slots, then a slot for each register stored in memory.
 - **Dead values' slots are left as they are** (2026-11-05; they were cleared from 2026-11-01,
-  arm64-performance-review.md §3.2). While the collector scanned frames whole, a slot that still held a dead value's
-  pointer kept what it pointed to alive (in mlyacc, whose whole program is `main`, hundreds of them did), so
-  `rewrite` stored zero to a slot where its value died, if a call might follow and the target's `Lowering` said the
-  value might be a pointer. A collection now scans, of a frame, the slots its call's map says are live (§3.13), so a
-  dead pointer keeps nothing, and arm64's `Lowering` asks for no clears; `rewrite` still makes them for a target that
-  asks (the allocator's test target does). For such a target, a value that dies at a branch, on the path that falls
-  through, is cleared only if a call may follow on that path, not on the branch's target's, and a cold block's call
-  is not one that may follow (2026-11-05, [benchmarks.md](benchmarks.md) §20.1): under frames scanned whole, a failed
-  bounds check's path cleared every pointer live into the passing one before jumping to the raise, 1,541 clears in
-  ratio-regions' `preflowPush` rather than 33. Since arm64 asks for none, this changes none of its code;
-  `regalloc_scan` case 14 shows it.
+  arm64-performance-review.md §3.2, and the allocator's code for clearing them was removed 2026-11-14). While the
+  collector scanned frames whole, a slot that still held a dead value's pointer kept what it pointed to alive (in
+  mlyacc, whose whole program is `main`, hundreds of them did), so `rewrite` stored zero to a slot where its value
+  died, if a call might follow. A collection now scans, of a frame, the slots its call's map says are live (§3.13), so
+  a dead pointer keeps nothing.
 - **A value never read is never stored** (2026-11-01). Its piece may be in memory, a loop header's parameter that
   only the back edge defines when the header has more parameters than registers, say; but nothing would read its slot,
-  and since it dies at no read, nothing would clear it, so the back edge stored a dead pointer each time round, as in
-  mlyacc's `main`.
+  so the back edge stored a dead pointer each time round, as in mlyacc's `main`.
 - **Spill slots shared by type** (2026-11-01, arm64-performance-review.md §3.2, item 3b). `regalloc.shareSlots`
   gives values of one kind (for arm64, one SSA type: `int`, `ptr`, `val`, or `real`) one slot where their lifetimes,
   from first position to last, do not overlap, so a frame holds the most values in memory at once rather than every

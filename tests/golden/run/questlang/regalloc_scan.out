@@ -208,35 +208,6 @@ b3:
 	load [%1] =r1
 	add =a0 r1 a0
 	ret a0
-== a dead value's slot cleared before a later call
-b0:
-	mov =%0 a0
-	add =%1 %0 %0
-	call g
-	add =%2 %0 %1
-	call g
-	add =%3 %2 %2
-	mov =a0 %3
-	ret a0
-%0: s1 at 3
-%1: r1 at 5, memory at 7, r1 at 8 (stored)
-%2: s1 at 9
-%3: a0 at 13
-move at 8: %1 memory -> r1
-callee-saved used: s1
-slots: %1 in 0
-rewritten:
-b0:
-	mov =s1 a0
-	add =r1 s1 s1
-	store [%1] r1
-	call g
-	load [%1] =r1
-	add =s1 s1 r1
-	clear [%1]
-	call g
-	add =a0 s1 s1
-	ret a0
 == slots shared after their values die
 b0:
 	mov =%0 a0
@@ -270,14 +241,12 @@ b0:
 	call g
 	load [%2] =r1
 	add =r1 s1 r1
-	clear [%2]
 	add =s1 r1 r1
 	add =r1 r1 r1
 	store [%5] r1
 	call g
 	load [%5] =r1
 	add =s1 s1 r1
-	clear [%5]
 	call g
 	mov =a0 s1
 	ret a0
@@ -322,7 +291,6 @@ b0:
 	store [%3] r1
 	call g
 	load [%3] =r1
-	clear [%3]
 	b -> b1
 b1(%1 %2):
 	add =r1 r1 s1
@@ -405,11 +373,8 @@ b2:
 	mov =t2 r1
 	mov =r1 a0
 	mov =a0 t2
-	clear [%6]
-	clear [%7]
 	b -> b1
 b3:
-	clear [%1]
 	b -> b2
 b4:
 	load [%1] =a0
@@ -492,7 +457,6 @@ b0:
 	b -> b2
 b1:
 	add =r1 r1 s1
-	clear [%1]
 	call g
 	brk
 b2:
@@ -533,47 +497,5 @@ b1:
 	call g
 	brk
 b2:
-	mov =a0 s1
-	ret a0
-== a value dying on a fall-through followed by a call
-b0:
-	mov =%0 a0
-	add =%1 %0 %0
-	call g
-	cbnz %1 -> b1
-	b -> b2
-b1:
-	add =%2 %1 %0
-	call g
-	mov =a0 %0
-	ret a0
-b2:
-	call g
-	mov =a0 %0
-	ret a0
-%0: s1 at 3
-%1: r1 at 5, memory at 7, r1 at 8 (stored)
-%2: r1 at 23
-move at 8: %1 memory -> r1
-callee-saved used: s1
-slots: %1 in 0
-rewritten:
-b0:
-	mov =s1 a0
-	add =r1 s1 s1
-	store [%1] r1
-	call g
-	load [%1] =r1
-	cbnz r1 -> b1
-	clear [%1]
-	b -> b2
-b1:
-	add =r1 r1 s1
-	clear [%1]
-	call g
-	mov =a0 s1
-	ret a0
-b2:
-	call g
 	mov =a0 s1
 	ret a0

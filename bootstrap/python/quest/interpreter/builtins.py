@@ -1284,7 +1284,6 @@ EXTERNAL_VALUES: dict[str, QValue] = {
     # Word
     "(&quest_exc_word_error)": WORD_ERROR_EXC,
     "quest_exc_word_error": WORD_ERROR_EXC,
-    "64": QInt(64),
 
     # System
     "(&quest_exc_system_error)": SYSTEM_ERROR_EXC,

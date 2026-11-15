@@ -11,9 +11,8 @@
  * the interval used furthest away is spilled until its next use; a loop's
  * values stay in their registers through it; reals take registers of their
  * own class; a constant is made again rather than stored; what a block a
- * raise enters uses is in memory at its start; a dead value's slot is
- * cleared where a call may follow; values whose lifetimes do not overlap
- * share a slot; and a value read in a loop keeps a register over one read
+ * raise enters uses is in memory at its start; values whose lifetimes do
+ * not overlap share a slot; and a value read in a loop keeps a register over one read
  * only after it. Each virtual register's pieces
  * are shown with the positions they start at, then the moves to pieces that
  * start inside blocks, the blocks' frequencies (where some are in loops), the
@@ -158,12 +157,9 @@ let showCold(title: String f: machine.Function cold: All(b: Int) Bool): Ok =
             let store = fun(src: Int v: Int): Array(machine.Inst)
                 array of make(ordinary "store [" <> name(f v) <> "]" array of rd(src) end ~1) end
             let scratch = array of array of 5 6 7 end array of 8 9 end end
-            let clears = fun(v: Int): Bool true
-            let clear = fun(v: Int): Array(machine.Inst)
-                array of make(ordinary "clear [" <> name(f v) <> "]" array of :machine.Operand end ~1) end
         end
         (* The slots, shared by values of a class *)
-        let slots = regalloc.shareSlots(f a lowering fun(r: Int): Int targets.index(machine.virtualClass(f r)))
+        let slots = regalloc.shareSlots(f a fun(r: Int): Int targets.index(machine.virtualClass(f r)))
         let var shown = ""
         for v = 0 upto {extent slots - 1} do
             if slots[v] >= 0 then shown := shown <> " %" <> conv.int(v) <> " in " <> conv.int(slots[v]) end
@@ -295,26 +291,9 @@ add(tried handler t3 t1 t0);
 ret(tried handler t3);
 show("a block a raise enters" tried);
 
-(* 8. A dead value's slot is cleared: two values live across a call, one in
- * memory; it dies at its next use, and since another call follows, its slot
- * is cleared there, so that a collection in that call does not see it. The
- * value live to the end, after the last call, is not *)
-let dead = machine.newFunction(extent toy.registers);
-let d0 = entry(dead);
-let d1 = fresh(dead);
-let d2 = fresh(dead);
-let d3 = fresh(dead);
-add(dead 0 d1 d0 d0);
-call(dead 0);
-add(dead 0 d2 d0 d1);
-call(dead 0);
-add(dead 0 d3 d2 d2);
-ret(dead 0 d3);
-show("a dead value's slot cleared before a later call" dead);
-
-(* 9. Slots shared: a value in memory across one call, and another across a
- * second call, defined after the first is dead and its slot cleared, which
- * takes the first's slot *)
+(* 8. Slots shared: a value in memory across one call, and another across a
+ * second call, defined after the first is dead, which takes the first's
+ * slot *)
 let shared = machine.newFunction(extent toy.registers);
 let e0 = entry(shared);
 let e = array of(6 0);
@@ -331,11 +310,10 @@ call(shared 0);
 ret(shared 0 e[5]);
 show("slots shared after their values die" shared);
 
-(* 10. Values that die at a jump: two values live across a call, one in
- * memory, are passed to a block that calls again; they die at the jump, so
- * the one in memory is cleared there, after the edge's moves. A loop's
- * parameter in memory, passed back to its header unchanged, is not: the back
- * edge has just stored it again *)
+(* 9. Values that die at a jump: two values live across a call, one in
+ * memory, are passed to a block that calls again, whose parameters are
+ * stored on the jump into it; and a loop's parameter in memory, passed back
+ * to its header unchanged, which the back edge stores again *)
 let jumped = machine.newFunction(extent toy.registers);
 let j0 = entry(jumped);
 let jNext = machine.newBlock(jumped);
@@ -364,10 +342,9 @@ jump(jumped jBody jHead array of jn ji end);
 ret(jumped jExit jk);
 show("values that die at a jump, and a loop's invariant that does not" jumped);
 
-(* 11. A value never read: a loop's header has four parameters, more than
+(* 10. A value never read: a loop's header has four parameters, more than
  * the registers, and one of them only the back edge defines, which nothing
- * reads. Its piece is in memory, but it is never stored, so no slot holds a
- * value no clear would reach *)
+ * reads. Its piece is in memory, but it is never stored *)
 let unread = machine.newFunction(extent toy.registers);
 let u0 = entry(unread);
 let uHead = machine.newBlock(unread);
@@ -392,7 +369,7 @@ call(unread uBody);
 jump(unread uBody uHead array of uf ub uc ug end);
 ret(unread uExit ua);
 show("a value never read, in memory but never stored" unread);
-(* 12. Spill weights: in a loop, a value live across the call in its body
+(* 11. Spill weights: in a loop, a value live across the call in its body
  * needs the callee-saved register, which a value read only after the loop
  * holds. The loop's reads weigh more, so the loop's value takes the register,
  * and the other is in memory from there. It is in the register again at the
@@ -423,9 +400,9 @@ add(weighed wExit wr wOuter wi);
 ret(weighed wExit wr);
 show("a loop's value kept in a register over one read after the loop" weighed);
 
-(* 13. A cold block, from which every path raises: a value in memory dies in
- * it, before the call that raises, and its slot is not cleared, as it is
- * when the same block is not cold *)
+(* 12. A cold block, from which every path raises: its frequency is 1, the
+ * least, so that its reads weigh least in choosing what to spill; the same
+ * block not cold has its predecessor's *)
 let raising = machine.newFunction(extent toy.registers);
 let k0 = entry(raising);
 let kRaise = machine.newBlock(raising);
@@ -456,24 +433,3 @@ call(raisingCold cRaise);
 put(raisingCold cRaise machine.kindReturn "brk" none);
 ret(raisingCold cOn c0);
 showCold("the same block, cold" raisingCold fun(b: Int): Bool b is cRaise);
-
-(* 14. A value in memory that dies on a branch's fall-through: its slot is
- * cleared there when a call follows on that path, and not when none does
- * (the branch's own target calls, in both, which is not the path it dies on:
- * case 13's first function shows the second) *)
-let fallsToCall = machine.newFunction(extent toy.registers);
-let f0 = entry(fallsToCall);
-let fOn = machine.newBlock(fallsToCall);
-let fCall = machine.newBlock(fallsToCall);
-let f1 = fresh(fallsToCall);
-let f2 = fresh(fallsToCall);
-add(fallsToCall 0 f1 f0 f0);
-call(fallsToCall 0);
-branch(fallsToCall 0 f1 fOn);
-jump(fallsToCall 0 fCall noArgs);
-add(fallsToCall fOn f2 f1 f0);
-call(fallsToCall fOn);
-ret(fallsToCall fOn f0);
-call(fallsToCall fCall);
-ret(fallsToCall fCall f0);
-show("a value dying on a fall-through followed by a call" fallsToCall);
