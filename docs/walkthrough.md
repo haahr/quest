@@ -1,12 +1,12 @@
 # The Life of argmax: A Walk Through the Quest Compiler
 
-This document follows one small Quest program through every phase of the compiler, from the characters of its
-source file to the C code that runs it. At each phase it says what the phase is for, shows what the phase produces
-for the program, and explains what changed. It is written for a reader who knows Python but not compilers, and not
-languages like ML or Haskell whose type systems Quest resembles.
+This document follows one small Quest program through every phase of the compiler, from the characters of its source
+file to the C code, and the arm64 machine code, that runs it. At each phase it says what the phase is for, shows what
+the phase produces for the program, and explains what changed. It is written for a reader who knows Python but not
+compilers, and not languages like ML or Haskell whose type systems Quest resembles.
 
-The program is in [examples/argmax/](../examples/argmax/). The outputs are the bootstrap compiler's, whose path
-ends in C, and every phase's output can be reproduced with
+The program is in [examples/argmax/](../examples/argmax/). Through §13 the outputs are the bootstrap compiler's,
+whose path ends in C, and every phase's output can be reproduced with
 
 ```
 ./questboot --stop-after PHASE examples/argmax/argmax.quest
@@ -14,10 +14,10 @@ ends in C, and every phase's output can be reproduced with
 
 where PHASE is one of the names in the section headings. The self-hosted compiler, `./quest`, the one programs are
 normally run and built with, has the same phases through `typecheck` and the same IR passes, with a simplifier
-(`ir_simplified`) among them, but by default it goes on from the IR to SSA and arm64 assembly (§2), so its later
-outputs differ from these. The outputs below are excerpts: `...` on a line of its own stands for lines left out, and
-`...` within a line for text left out. A test (`tests/python/test_walkthrough.py`) checks every excerpt against what
-the bootstrap prints today, so they cannot drift from it unnoticed.
+(`ir_simplified`) among them, but by default it goes on from the IR to SSA and arm64 assembly (§2). §14 to §17 show
+its outputs for those phases. The outputs below are excerpts: `...` on a line of its own stands for lines left out,
+and `...` within a line for text left out. A test (`tests/python/test_walkthrough.py`) checks every excerpt against
+what the compilers print today, so they cannot drift from it unnoticed.
 
 ---
 
@@ -152,7 +152,7 @@ end
 ```
 
 This is the reason to use a module: the program depends only on the interface. The module is compiled on its own
-(§14), and replacing it with a real scoring function needs no change to argmax.quest, nor recompiling it, as long
+(§18), and replacing it with a real scoring function needs no change to argmax.quest, nor recompiling it, as long
 as the interface stays the same.
 
 The program uses it like this:
@@ -207,11 +207,14 @@ closer to the machine. Quest's are:
 | `desugar` | syntax tree | core syntax tree | rewrites shorthand forms into basic ones |
 | `typecheck` | core syntax tree | typed tree | works out every expression's type, and rejects programs whose types don't fit |
 | `ir_core` | typed tree | IR | flattens the tree into simple steps (the *intermediate representation*) |
+| `ir_simplified` | IR | IR | inlines small functions and removes what that makes unneeded (self-hosted only) |
 | `ir_specialized` | IR | IR | makes copies of generic functions for the types they are used at |
 | `ir_closed` | IR | IR | moves every function to the top level, packaging what it uses |
 | `ir_represented` | IR | IR | decides how each value is stored, and converts between storage forms |
 | `ir_described` | IR | IR | turns types needed while running into data |
 | `codegen_c` | IR | C source | prints the IR as C |
+| `ssa` | IR | SSA | translates the IR into a graph of blocks of instructions, and optimizes it (self-hosted only) |
+| `codegen_arm64` | SSA | assembly | chooses arm64 instructions and registers (self-hosted only) |
 
 After `typecheck` the road forks. The interpreter (`interpret`) runs the typed tree directly. The compiler goes on
 through the IR to C, which a C compiler (clang or gcc) turns into a native program. Each phase's output is checked
@@ -221,7 +224,7 @@ That is the bootstrap's road, which this document follows. The self-hosted compi
 after `ir_described` for SSA form, a graph of instructions that its optimizations work on (the `ssa_*` phases,
 [ssa.md](ssa.md)), and from there prints arm64 assembly (`codegen_arm64`, [arm64.md](arm64.md)), which the JIT runs
 in memory or `quest compile` assembles into a program. Its C backend (`--backend c`) prints C from the IR as the
-bootstrap does.
+bootstrap does. §14 to §17 follow that road.
 
 The sections below follow the longest-string use through each phase, and turn to the candidate use where it differs.
 
@@ -923,13 +926,242 @@ descriptors of `String` and `Int` before the arguments, and the result is unwrap
 
 ---
 
-## 14. Building and Running
+## 14. The Self-Hosted Compiler's Road
+
+Everything so far is the bootstrap's output. `./quest`, the compiler programs are normally built and run with, has the
+same phases through `typecheck` and prints the same text for them, but from the IR on it does more: it simplifies the
+IR before specializing it, and instead of printing C it translates the IR into SSA form, optimizes that, and selects
+arm64 instructions from it. The next three sections show what it makes of argmax, with
+
+```
+./quest --stop-after PHASE examples/argmax/argmax.quest
+```
+
+Its numbers for values, blocks, and registers come from counters inside the compiler, so they change whenever the
+compiler does; the test that checks these excerpts ignores them.
+
+## 15. ir_simplified: Inlining
+
+The bootstrap made a copy of `argmax` for each use (§8) and kept the generic one for calls it could not specialize
+(§12). The self-hosted compiler's simplifier, which runs between `ir_core` and `ir_specialized`, goes further: it
+*inlines* a small function at its calls, replacing each call by a copy of the function's body with the arguments in
+place of the parameters. `argmax` is small and called twice, so after `ir_simplified` there is no `argmax` at all, and
+the program's top level contains its loop twice, once for each use. The longest-string use:
+
+<!-- excerpt: self-hosted examples/argmax/argmax.quest ir_simplified -->
+```
+...
+  let %1: Fun(string: String): Int = member string.length @31:28
+  let %2: Fun(a: Int b: Int): Bool = builtin > @31:43
+  let key: Fun(e: String): Int = %1 @31:15
+  let isGreater: Fun(x: Int y: Int): Bool = %2 @31:15
+  let n: Int = prim extent(words) @15:17
+  let %3: Bool = prim is(n, 0) @16:12
+  if %3 { @16:9
+    raise empty @16:24
+  }
+  var best: Int = 0 @17:9
+  let %4: String = index(words, 0) @18:31
+  let %5: Int = call key(%4) @18:27
+  var bestKey: Int = %5 @18:9
+  let %6: Int = prim -(n, 1) @19:24
+  var i: Int = 1 @19:9
+  let %7: Bool = prim <=(i, %6) @19:9
+  if %7 { @19:9
+    loop L1_1 {
+      let i.1: Int = i @19:9
+      let %8: String = index(words, i.1) @20:25
+      let k: Int = call key(%8) @20:21
+      let %9: Bool = call isGreater(k, bestKey) @21:16
+      if %9 { @21:13
+        best := i.1 @22:17
+        bestKey := k @23:17
+      }
+      let %10: Bool = prim is(i, %6) @19:9
+      if %10 { @19:9
+        break L1_1 @19:9
+      }
+      let %11: Int = prim +(i, 1) @19:9
+      i := %11 @19:9
+    }
+  }
+  let element: String = index(words, best) @26:46
+...
+```
+
+The parameters `E` and `K` are gone with the function: `E` is `String` and `K` is `Int` throughout, so nothing needs
+to be specialized or converted, and the uniform words of §10 never appear. The `@20:25` at the end of each line is
+the source position it came from (line 20, column 25), which the compiler keeps so that a run-time error, and a
+debugger, can point at the source. Each step also records its position after inlining, so the loop's lines still point
+into `argmax`, not into the call.
+
+Two things are left as calls: `key` and `isGreater`. `string.length` is a function in another module, compiled on its
+own, so its body is not available to inline, and `>` is used as a value, so it is a closure the runtime provides. Both
+remain *calls through a closure*: a call of a value that holds a pointer to code and the environment the code needs.
+
+## 16. ssa: Instructions in a Graph
+
+The IR's structured `if` and `loop` suit the C backend, which prints them as C's `if` and `for`, but a backend that
+writes machine code needs something closer to the machine: the program as a graph of *basic blocks*, straight runs of
+instructions that end in a jump or a branch, over values that each have exactly one definition. That is *static single
+assignment* (SSA) form ([ssa.md](ssa.md)). A variable assigned in a loop, like `best`, cannot be one SSA value, so
+each block takes *parameters*, and every jump to it passes their values: the loop's head block receives the current
+`best`, `bestKey`, and `i`, and the jump back from the loop's end passes the next ones.
+
+Every value in the SSA has one of four types: `int` (a 64-bit integer, which `Bool` and `Char` widen to), `real`, `ptr`
+(a pointer the garbage collector must see), and `val` (a word whose kind the code does not know, the SSA's version of
+§10's uniform word). Here is the first use's loop after all the SSA's passes (`--stop-after ssa`), with the blocks that
+only raise errors left out:
+
+<!-- excerpt: self-hosted examples/argmax/argmax.quest ssa -->
+```
+...
+b11(%240: int, %243: int, %246: int):
+  @20:25
+  %69: ptr = null
+  %70: int = peq %6, %69
+  branch %70, b14(), b13()
+...
+b13():
+  @20:25
+  %73: int = ult %246, %31
+  branch %73, b15(), b16()
+...
+b15():
+  @20:25
+  %75: int = const 8
+  %76: int = mul %246, %75
+  %78: ptr = ptrAdd %6, %75
+  %79: ptr = ptrAdd %78, %76
+  %80: val = load8 %79 + 0
+  %81: ptr = fromVal %80
+  @20:21
+  %82: ptr = load8 %29 + 0 invariant
+  %83: ptr = load8 %29 + 8 invariant
+  %84: int = callIndirect %82, %83, %81
+  @21:16
+  %85: ptr = load8 %30 + 0 invariant
+  %86: ptr = load8 %30 + 8 invariant
+  %89: int = callIndirect %85, %86, %84, %243 result narrow
+  %90: int = zext8 %89
+  @21:13
+  %255: int = select %90, %246, %240
+  %256: int = select %90, %84, %243
+  jump b17(%255, %256)
+...
+b17(%241: int, %244: int):
+  @19:9
+  %95: int = eq %246, %60
+  branch %95, b18(), b19()
+...
+b20():
+  @19:9
+  %98: int = const 1
+  %99: int = add %246, %98
+  jump b11(%241, %244, %99)
+...
+```
+
+Block `b11` is the loop's head. Its parameters are `best` (`%240`), `bestKey` (`%243`), and `i` (`%246`); the jump
+into the loop passes `0`, the first key, and `1`, and the jump at the end of `b20` passes the new `best`, the new
+`bestKey`, and `i + 1`. Elsewhere in the function, `%6` is the `words` array, `%31` its length, `%60` is `n - 1`, and
+`%29` and `%30` are the closures for `key` and `isGreater`.
+
+Reading `words[i]` is three blocks. `b11` checks that the array pointer is not null and `b13` that `i` is below the
+length (`ult`, an unsigned comparison, which also rejects a negative `i`); each failure branches to a block that
+raises Quest's array error. `b15` then computes the element's address: an array is its length followed by its
+elements, eight bytes each, so element `i` is at `8 + 8 * i`. The element is a `val`, a uniform word, since the
+array's representation does not depend on its element type, and `fromVal` reinterprets it as the pointer to a string
+it is known to be here.
+
+A call through a closure loads two words from the closure, the code and its environment, and calls the code with the
+environment as an extra first argument (`callIndirect`). The loads are marked `invariant`: a closure never changes
+once made, which lets the optimizer treat repeated loads of it as the same value. `result narrow` and `zext8` say that
+`isGreater` returns a `Bool` in the low byte of a register, which is widened to a full word.
+
+The IR's `if isGreater(...) then best := i; bestKey := k end` has become two `select`s, which choose a value by a
+condition without branching (`select %90, %246, %240` is `%90 ? i : best`). That is *if-conversion*, done by one of
+the SSA's passes (`ssa_selects`): a branch whose outcome is hard to predict, as a comparison of data usually is, costs
+more on a modern processor than computing both choices. The candidate use's loop keeps its branch: its `bestKey` is a
+`Real`, and the pass makes no selects of reals. Each pass can be stopped after, so `--stop-after ssa_built` shows the
+loop as the SSA's builder made it, with the branch, and `--stop-after ssa_selects` shows it after if-conversion.
+
+## 17. codegen_arm64: Machine Instructions
+
+The last phase chooses arm64 instructions for each SSA instruction, gives each value a register (or, when there are
+not enough, a slot in the stack frame), and prints assembly, which the system's assembler turns into an object file.
+The same loop:
+
+<!-- excerpt: self-hosted examples/argmax/argmax.quest codegen_arm64 -->
+```
+...
+Lf1_b12:
+	.loc 1 20 25
+	cbz x20, Lf1_b15
+Lf1_b14:
+	cmp x27, x23
+	b.hs Lf1_b17
+Lf1_b16:
+	add x12, x20, #8
+	ldr x12, [x12, x27, lsl #3]
+	.loc 1 20 21
+	ldp x13, x0, [x21]
+	mov x1, x12
+	blr x13
+	mov x28, x0
+	.loc 1 21 16
+	ldp x12, x0, [x22]
+	mov x1, x28
+	mov x2, x26
+	blr x12
+	and x12, x0, #0xff
+	.loc 1 21 13
+	cmp x12, #0
+	csel x13, x27, x24, ne
+	cmp x12, #0
+	csel x12, x28, x26, ne
+Lf1_b18:
+	.loc 1 19 9
+	cmp x27, x25
+	b.eq Lf1_b13
+Lf1_b21:
+	add x27, x27, #1
+	mov x24, x13
+	mov x26, x12
+	b Lf1_b12
+...
+```
+
+arm64 has 31 general registers, `x0` to `x30`. Values that must survive a call live in the *callee-saved* registers
+`x19` to `x28`, which a called function must restore before it returns: here `x20` holds the array, `x21` and `x22`
+the two closures, `x23` the length, `x25` is `n - 1`, and the loop's three block parameters are `x24` (`best`), `x26`
+(`bestKey`), and `x27` (`i`). Arguments go in `x0`, `x1`, `x2`, ... and a result comes back in `x0`, as the platform's
+calling convention says, so the C functions of the runtime and Quest's compiled functions can call each other.
+
+Each SSA instruction is a few machine instructions, and some SSA instructions fold together:
+
+- The null check is `cbz` (compare and branch if zero), and the bounds check `cmp` then `b.hs` (branch if higher or
+  same, unsigned): both jump to blocks that raise, which the backend lays out at the end of the function, away from
+  the loop.
+- The element's load is one `ldr` with a scaled index: `[x12, x27, lsl #3]` is the address `x12 + x27 * 8`.
+- A call through a closure is `ldp`, which loads the code into `x13` and the environment into `x0` (the first
+  argument) in one instruction, then the arguments, then `blr` (branch with link to register).
+- The two `select`s are `csel`, conditional select, each after a `cmp` that sets the flags it tests.
+- The block parameters are registers: the jump back to `b11` is the `mov`s that put the new `best` and `bestKey`
+  where the loop's head expects them, and a `b` to the head.
+
+The `.loc` lines tie instructions to source lines and columns, which a debugger uses to show where a program is.
+`./quest compile` assembles and links this into a program; the JIT (`./quest examples/argmax/argmax.quest`) encodes
+the same instructions into memory and runs them there ([jit.md](jit.md)).
+
+## 18. Building and Running
 
 `./questboot -o argmax examples/argmax/argmax.quest` builds a program (`./quest compile -o argmax ...` with the
-self-hosted compiler). The driver finds what argmax.quest imports and
-compiles each module on its own, from its own source, into an object file: the library's `arrayOp` and `string`,
-and `scoring`. It checks each against the interface the program imported it by, then compiles argmax.quest to C and
-the C to an object file with the system's C compiler, and links them all together with the run-time system. A
+self-hosted compiler). The driver finds what argmax.quest imports and compiles each module on its own, from its own
+source, into an object file: the library's `arrayOp` and `string`, and `scoring`. It checks each against the interface
+the program imported it by, then compiles argmax.quest to an object file, by way of C and the system's C compiler for
+the bootstrap, or by way of arm64 assembly and the system's assembler for `./quest`, and links them all together with
+the run-time system. A
 module compiled once is reused until its source changes. Replacing scoring.mod.quest with a real scoring function
 recompiles only it, and relinks.
 
@@ -948,7 +1180,7 @@ That the two agree is what the test suite checks for every test program, and for
 
 ---
 
-## 15. Further Reading
+## 19. Further Reading
 
 - [pipeline.md](pipeline.md): the phases and the driver's options.
 - [syntax.md](syntax.md) and [type-system.md](type-system.md): the language.

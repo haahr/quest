@@ -102,7 +102,8 @@ in each phase's directory (`tests/golden/typecheck/examples/argmax/argmax.out`),
 every IR stage, not a subset, so a change to any phase's output for an example is noticed. `-k examples/` selects
 them.
 `tests/python/test_walkthrough.py` checks that the excerpts walkthrough.md shows, each marked with the file and phase
-it comes from, are what the compiler prints; a change that makes an excerpt stale fails it, and the document is
+it comes from, are what the compiler prints: the bootstrap for most, `./quest` for the SSA and arm64 excerpts, whose
+value, block, and register numbers it ignores. A change that makes an excerpt stale fails it, and the document is
 updated with the goldens.
 
 ### 2.2. Standard Output and Execution Discipline
