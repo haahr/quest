@@ -933,6 +933,26 @@ export
             end
         end
 
+    (* The unit's functions' machine code, as the encoder takes them, and
+     * their frames, for assembleUnit and encodeUnit alike *)
+    Let Compiled = Tuple machines: Array(encode.Function) frames: Array(maybe.T(Frame)) end
+    let compiled(u: ssa.Unit defined: hashMap.T(String Bool)): Compiled =
+        begin
+            let machines = array of(vector.length(:Function u.functions) tuple
+                let symbol = "" let exported = false let code = vector.new(:minst.Inst) let endLabel = ""
+            end)
+            let frames = array of(vector.length(:Function u.functions) maybe.none(:Frame))
+            for k = 0 upto {vector.length(:Function u.functions) - 1} do
+                let f = vector.get(:Function u.functions k)
+                let made = machineCode(f k defined)
+                machines[k] := tuple
+                    let symbol = f.symbol let exported = f.exported let code = made.code let endLabel = endLabel(k)
+                end
+                frames[k] := made.frame
+            end
+            tuple let machines = machines let frames = frames end
+        end
+
     let assembleUnit(u: ssa.Unit): String =
         begin
             let defined = definedSymbols(u)
@@ -946,18 +966,11 @@ export
             appendAll(asm.files(files))
             let debugged = {extent files > 0} andif {stringOp.length(files[0]) > 0}
                 andif not(vector.empty(:Function u.functions))
-            let machines = array of(vector.length(:Function u.functions) tuple
-                let symbol = "" let exported = false let code = vector.new(:minst.Inst) let endLabel = ""
-            end)
-            let frames = array of(vector.length(:Function u.functions) maybe.none(:Frame))
+            let made = compiled(u defined)
+            let machines = made.machines
+            let frames = made.frames
             for k = 0 upto {vector.length(:Function u.functions) - 1} do
-                let f = vector.get(:Function u.functions k)
-                let made = machineCode(f k defined)
-                machines[k] := tuple
-                    let symbol = f.symbol let exported = f.exported let code = made.code let endLabel = endLabel(k)
-                end
-                frames[k] := made.frame
-                let fl = function(f k machines[k].code)
+                let fl = function(vector.get(:Function u.functions k) k machines[k].code)
                 for j = 0 upto {vector.length(:String fl) - 1} do
                     vector.append(:String lines vector.get(:String fl j))
                 end
@@ -1003,21 +1016,9 @@ export
 
     let encodeUnit(u: ssa.Unit): encode.Encoded =
         begin
-            let defined = definedSymbols(u)
-            let machines = array of(vector.length(:Function u.functions) tuple
-                let symbol = "" let exported = false let code = vector.new(:minst.Inst) let endLabel = ""
-            end)
-            let frames = array of(vector.length(:Function u.functions) maybe.none(:Frame))
-            for k = 0 upto {vector.length(:Function u.functions) - 1} do
-                let f = vector.get(:Function u.functions k)
-                let made = machineCode(f k defined)
-                machines[k] := tuple
-                    let symbol = f.symbol let exported = f.exported let code = made.code let endLabel = endLabel(k)
-                end
-                frames[k] := made.frame
-            end
-            encode.unit(machines dataBesidesFrames(u) vector.toArray(:String u.files)
-                if hasFrames(u) then maybe.some(:encode.Frames frameTable(frames))
+            let made = compiled(u definedSymbols(u))
+            encode.unit(made.machines dataBesidesFrames(u) vector.toArray(:String u.files)
+                if hasFrames(u) then maybe.some(:encode.Frames frameTable(made.frames))
                 else maybe.none(:encode.Frames) end)
         end
 end

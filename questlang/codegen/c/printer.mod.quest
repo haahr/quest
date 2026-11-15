@@ -1303,6 +1303,23 @@ export
      * those of a fused tuple (fusedTuples), the payload tuple never made, or
      * else read from the payload tuple as o.access says, or for a case whose
      * payload is not a tuple, the payload itself, in .val *)
+    (* The tag of an option made with ordinal(value): the ordinal, checked to
+     * be one of the type's cases, counts in its cases as written, and the tag
+     * numbers the shape's, ordered by name, so it goes through a table unless
+     * the two orders agree *)
+    let ordinalTag(p: P o: nodes.OpMakeOption os: Shape value: Atom): String =
+        begin
+            let checked = syntax.call("quest_check_option_ordinal_at"
+                strings(array of atom(p value) lit(extent os.cases) site(p o.offset) end))
+            let tags = array of(extent o.cases 0)
+            let var identity = true
+            for i = 0 upto {extent o.cases - 1} do
+                tags[i] := tagIndexOf(os o.cases[i])
+                if not(tags[i] is i) then identity := false end
+            end
+            if identity then checked else syntax.indexTable(tags) <> "[" <> checked <> "]" end
+        end
+
     let makeAllocatedOption(p: P o: nodes.OpMakeOption os: Shape struct: String): String =
         begin
             let tmp = temp(p struct <> " *")
@@ -1314,16 +1331,7 @@ export
                 (* The ordinal counts in the type's cases as written; the tag
                  * numbers the shape's, ordered by name *)
                 let ordinalValue = maybe.unwrap(:Atom o.ordinalAtom)
-                let checked = syntax.call("quest_check_option_ordinal_at"
-                    strings(array of atom(p ordinalValue) lit(extent os.cases) site(p o.offset) end))
-                let tags = array of(extent o.cases 0)
-                let var identity = true
-                for i = 0 upto {extent o.cases - 1} do
-                    tags[i] := tagIndexOf(os o.cases[i])
-                    if not(tags[i] is i) then identity := false end
-                end
-                let mapped = if identity then checked else syntax.indexTable(tags) <> "[" <> checked <> "]" end
-                emit(p tmp <> "->tag = " <> mapped <> ";")
+                emit(p tmp <> "->tag = " <> ordinalTag(p o os ordinalValue) <> ";")
                 (* The payload is stored as the case of a constant ordinal
                  * stores it, and otherwise as the first case does, whose
                  * components the union overlays on the other cases' *)
@@ -1418,15 +1426,7 @@ export
                 "((" <> struct <> " *)&" <> optionTable(p struct extent os.cases) <> "["
                     <> cInt(tagIndex(os o.tag)) <> "])"
             elsif maybe.isSome(:Atom o.ordinalAtom) andif allWithout then
-                let checked = syntax.call("quest_check_option_ordinal_at"
-                    strings(array of atom(p maybe.unwrap(:Atom o.ordinalAtom)) lit(extent os.cases) site(p o.offset) end))
-                let tags = array of(extent o.cases 0)
-                let var identity = true
-                for i = 0 upto {extent o.cases - 1} do
-                    tags[i] := tagIndexOf(os o.cases[i])
-                    if not(tags[i] is i) then identity := false end
-                end
-                let mapped = if identity then checked else syntax.indexTable(tags) <> "[" <> checked <> "]" end
+                let mapped = ordinalTag(p o os maybe.unwrap(:Atom o.ordinalAtom))
                 "((" <> struct <> " *)&" <> optionTable(p struct extent os.cases) <> "[" <> mapped <> "])"
             else
                 makeAllocatedOption(p o os struct)
