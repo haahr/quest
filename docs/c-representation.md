@@ -864,7 +864,7 @@ unbounded generic functions called with 16-byte record fat pointers (`QRecordVal
   the canonical uniform `QVal` implementation without code bloat.
   A function defined as an external C function (`let new(A::TYPE a: A): T = external "quest_value_new"`) is never
   specialized: the C function takes its type parameters' values as `QVal` words, so the call converts to them.
-- **IR Cloning & Type Substitution**: When the specialize pass (`ir/specialize.py`, [ir.md](ir.md) §8.2) meets a call
+- **IR Cloning & Type Substitution**: When the specialize pass (`ir/specialize.py`, [ir.md](ir.md) §8.1) meets a call
   `f(:Point p)` of a function the unit defines, it clones the function with the type parameter `A` (the quantifier
   of the function's own type, which its parameters and body refer to) substituted by `Point`, in the same `funs`
   statement as the original (a module's clone is also its member `<name>_spec<n>`). The clone's local functions are

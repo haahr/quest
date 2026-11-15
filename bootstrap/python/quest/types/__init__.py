@@ -5,15 +5,16 @@ Importing the package also makes == on any type raise (the loop at the end).
 
 This package provides:
 - quest.types.model: QType, QKind, primitive and composite type representations.
-- quest.types.env: Symbol, ValueSymbol, TypeSymbol, KindSymbol, Scope, and
-  Environment.
+- quest.types.symbols: Symbol, ValueSymbol, TypeSymbol, KindSymbol, and Scope.
+- quest.types.env: Environment, re-exporting the symbols and scopes.
 - quest.types.subtyping: Equi-recursive subtyping proofs, subkinding, and cache.
 - quest.types.kinds: Kind checking, kind synthesis, and operator signatures.
 - quest.types.contractiveness: Recursive type contractiveness (C \succ X)
   verification.
 - quest.types.dump: Canonical S-expression and compact alias-aware formatters.
-- quest.types.canonical: Reduced types, and the canonical (minimal graph) forms
-  of recursive types.
+- quest.types.reduce: Reduced types (type operator applications reduced and
+  recursive types unfolded at a type's head) and queries on option types.
+- quest.types.canonical: The canonical (minimal graph) forms of recursive types.
 """
 
 from __future__ import annotations

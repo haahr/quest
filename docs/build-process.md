@@ -829,7 +829,7 @@ artifacts as a serial one, and the same `build.log` entries in the same order; o
   stops at its first failure and writes the error to its standard output; the engine raises it again in its turn, so
   the error reported is a serial build's (the first in queue order), reported as a serial build reports it.
 - **Workers write interfaces' artifacts atomically.** Two children may rebuild the same stale interface at once: each
-  writes a `.qi` and a header to a temporary file of its own and renames it into place (`paths.writeAtomically`), so
+  writes a `.qi` and a header to a temporary file of its own and renames it into place (`files.writeAtomically`), so
   neither reads half of a file the other writes. Only one process writes each module's artifacts.
 - **A unit's C does not depend on what was compiled before it.** A module abstract type's descriptor is named by its
   global name (`os/process.T`) whether or not the process has elaborated its module, which a child may not have done

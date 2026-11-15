@@ -658,9 +658,10 @@ would need `else` for the rest. What is specific to a target happens after the S
    (`kindOrdinary`, `kindMove`, `kindJump`, `kindBranch`, `kindCall`, `kindReturn`); the target's `Op` sits in a table
    beside them, indexed by instruction, which shared code never reads. A physical operand is fixed, and moves (and a
    jump's arguments with its target's parameters) are the allocator's hints. The register allocator, liveness over
-   virtual registers, parallel moves, frame layout, and branch relaxation work on that shape; when they must make an
-   instruction (a move, a spill, a reload, a jump), they ask the target through a record of its functions
-   (`Lowering`: a move, a load and a store of a virtual register's slot, and the scratch registers).
+   virtual registers, and parallel moves work on that shape; when they must make an instruction (a move, a spill, a
+   reload, a jump), they ask the target through a record of its functions (`Lowering`: a move, a load and a store of
+   a virtual register's slot, and the scratch registers). Frame layout (`codegen/arm64/codegen`) and branch relaxation
+   (`codegen/arm64/peephole`) are the target's own.
 
 **A target description** (`codegen/machine/target`) gives the shared code a target's registers (numbers, classes,
 names), which are allocatable, caller-saved, and callee-saved, its argument and result registers by class, its scratch

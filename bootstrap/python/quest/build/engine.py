@@ -160,8 +160,8 @@ def compile_unit_file(
 ) -> None:
     """Compiles a unit file alone, as `quest -c` does: an interface file to its
     .qi and C header, a module file to its .qm, .mod.c, and .o
-    (docs/build-process.md §2). Its artifacts go in build_dir, else beside
-    output, else beside the file (§3.1).
+    (docs/build-process.md §2). Its artifacts go beside output, else under
+    build_dir, else beside the file (§3.1).
     """
     kind = file_unit_kind(file_path)
     out_dir = output.parent if output is not None else None

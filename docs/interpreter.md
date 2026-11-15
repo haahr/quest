@@ -28,7 +28,7 @@ is a case of `model.Value`, a frame is `model.Frame`, and the standard library's
 rather than reimplementing it. Its output, errors, and dynamic documents are the bootstrap's; where its insides differ
 is in [compiler-organization.md](compiler-organization.md) §6.
 
-- **Values.** A scalar holds its Quest value; a string, reader, writer, string builder, or list holds the native
+- **Values.** A scalar holds its Quest value; a string, reader, writer, string builder, or process holds the native
   object, so `is` on interpreted values is `is` on what they hold. Records, tuples, arrays, closures, auto values,
   exception values, and type values are tuples whose identity is the interpreted value's. References are cells with
   `var` fields.
@@ -39,7 +39,7 @@ is in [compiler-organization.md](compiler-organization.md) §6.
   (`stringOp.error`); the implementation catches it and raises the interpreted one, which the interpreted library binds
   to `error` through the same table, so the program's `try` catches it. Only what acts on interpreted values
   themselves is the interpreter's own: `dynamic.copy`, `extern`, and `intern`, the identity hash of what `is`
-  compares, `list`, and `system.args`.
+  compares, and `system.args`.
 
 ```
                               ┌─────────────────────────┐

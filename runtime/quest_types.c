@@ -101,7 +101,7 @@ const QTypeDescriptor quest_type_bound_vars[Q_MAX_BOUND_VARS] = {
     Q_BOUND_VAR(30), Q_BOUND_VAR(31),
 };
 
-/* Global Interning Table for Type Descriptors */
+/* A copy of s in the heap, or NULL for NULL */
 static char *quest_dup_str(const char *s) {
     if (s == NULL) return NULL;
     size_t len = strlen(s);

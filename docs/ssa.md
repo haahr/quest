@@ -136,11 +136,11 @@ handler (`call` of the runtime, or the native handler's pop), as the C printer p
 
 `questlang/ssa/build` builds a unit's SSA from its described IR (thunks included, [ir.md](ir.md) §8.4.1), doing for
 each operation what the C printer prints ([arm64.md](arm64.md) §7.2). Its modules, in `questlang/ssa/build/`, each
-use only those before them: `values` (representations, the builder's state, emitting, variables, atoms, words, and
-aggregates' components), `descriptors`, `calls` (primitives, calls, and modules' members), `aggregates`
-(conversions, tuples, records, variants and options, arrays, and type applications), `control` (operations and
-statements), `adapters` (exported functions and function types' adapters), and `unit` (functions, static data,
-registration, and the unit).
+use only those before them: `values` (representations, the builder's state, emitting, variables, atoms, and words),
+`representation` (slots, aggregates' components, proxies, and allocation), `descriptors`, `calls` (primitives, calls,
+and modules' members), `aggregates` (conversions, tuples, records, variants and options, arrays, and type
+applications), `control` (operations and statements), `adapters` (exported functions and function types' adapters),
+and `unit` (functions, static data, registration, and the unit).
 
 - **Variables.** Each variable has one binding (`values.Binding`): SSA values, a stack slot, the location a `var` or
   `out` parameter points to, a handler's copy of the exception state, or a global. An IR variable of a value is the
@@ -318,7 +318,8 @@ internal error.
   tests its record once, before its loop, rather than before each field the loop loads. Escape analysis and scalar
   replacement take an `unproxy` of one of an allocation's pointers as that pointer, since a fresh object is never a
   proxy; `selects` does not speculate one, since it may load. `ssa_unproxies` shows the merge and the lowering.
-- **`ssa/passes/interrupts`**, after them and only when the Jupyter kernel's driver asks (`pipeline.setInterruptChecks`,
+- **`ssa/passes/interrupts`**, at the end of `pipeline.run`, after the passes and before `pipeline.lower` (so before
+  unproxies and inline allocation), and only when the Jupyter kernel's driver asks (`pipeline.setInterruptChecks`,
   under `--kernel`, for the code its JIT compiles; [jupyter-kernel.md](jupyter-kernel.md) §5), checks the runtime's
   interrupt flag at each function's entry and each loop's head (a block a back edge goes to): it splits the block,
   loading `quest_interrupt_pending` and branching to a block that calls `quest_interrupt_raise`, or on to the block's

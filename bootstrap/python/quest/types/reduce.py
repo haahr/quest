@@ -1,8 +1,9 @@
 """Reduced types: type operator applications reduced and recursive types
 unfolded at a type's head, a bounded type's bound followed, and the queries on
 option types the backends make (an option's cases in order, how is compares its
-values). The checker keeps types as written and uses none of these
-(docs/type-system.md §2.2); canonical.py builds canonical forms on them.
+values). The checker keeps types as written (docs/type-system.md §2.2) and
+uses only collect_fun_quantifiers, in typechecker/bindings.py; canonical.py
+builds canonical forms on them.
 
 The self-hosted counterpart is questlang/types/reduce.
 """
