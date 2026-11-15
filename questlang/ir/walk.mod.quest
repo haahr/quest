@@ -636,4 +636,61 @@ export
             end
             vector.toArray(:nodes.Body found)
         end
+
+    let statementCall(st: Stmt): maybe.T(nodes.OpCall) =
+        begin
+            let callOf(o: nodes.Op): maybe.T(nodes.OpCall) =
+                case o when opCall with c then maybe.some(:nodes.OpCall c) else maybe.none(:nodes.OpCall) end
+            case st
+                when sLet with x then callOf(x.value)
+                when sDo with x then callOf(x.value)
+                else maybe.none(:nodes.OpCall)
+            end
+        end
+
+    let countBodyUses(b: Body uses: hashMap.T(Int Int) pinned: hashMap.T(Int Bool)): Ok =
+        begin
+            let stmts = walkStatements(b true)
+            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
+                let st = vector.get(:Stmt stmts i)
+                let used = statementUses(st)
+                for j = 0 upto {extent used - 1} do
+                    case used[j]
+                        when atomVar with x then
+                            begin
+                                hashMap.insert(:Int :Int uses x.v.id 1 + maybe.unwrapOr(:Int hashMap.get(:Int :Int uses x.v.id) 0))
+                                ok
+                            end
+                        when atomConst then ok
+                    end
+                end
+                case st
+                    when sLetRec with x then
+                        for j = 0 upto {extent x.vars - 1} do
+                            begin hashMap.insert(:Int :Bool pinned x.vars[j].id true) ok end
+                        end
+                    else ok
+                end
+            end
+        end
+
+    let countUses(unit: nodes.Unit uses: hashMap.T(Int Int) pinned: hashMap.T(Int Bool)): Ok =
+        begin
+            hashMap.clear(:Int :Int uses)
+            hashMap.clear(:Int :Bool pinned)
+            let pin(id: Int): Ok = begin hashMap.insert(:Int :Bool pinned id true) ok end
+            let pinMembers(m: nodes.Members): Ok =
+                for i = 0 upto {vector.length(:String m.names) - 1} do
+                    let v = nodes.member(m vector.get(:String m.names i))
+                    if maybe.isSome(:Variable v) then pin(maybe.unwrap(:Variable v).id) end
+                end
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                let m = vector.get(:nodes.Module unit.modules i)
+                pinMembers(m.members)
+                if maybe.isSome(:nodes.Members m.exports) then pinMembers(maybe.unwrap(:nodes.Members m.exports)) end
+                if maybe.isSome(:Variable m.recordVar) then pin(maybe.unwrap(:Variable m.recordVar).id) end
+            end
+            let all = unitBodies(unit)
+            for b = 0 upto {extent all - 1} do countBodyUses(all[b] uses pinned) end
+        end
 end

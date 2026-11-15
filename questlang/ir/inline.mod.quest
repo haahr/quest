@@ -38,12 +38,7 @@ export
         size: Int
     end
 
-    let isCall(s: Stmt): Bool =
-        case s
-            when sLet with x then case x.value when opCall then true else false end
-            when sDo with x then case x.value when opCall then true else false end
-            else false
-        end
+    let isCall(s: Stmt): Bool = maybe.isSome(:nodes.OpCall walk.statementCall(s))
 
     let callSize = 2
 
@@ -218,19 +213,10 @@ export
     (* The call a statement makes of the function v names, if it makes one *)
     let callOfVariable(st: Stmt v: Variable): maybe.T(nodes.OpCall) =
         begin
-            let o = case st
-                when sLet with x then maybe.some(:nodes.Op x.value)
-                when sDo with x then maybe.some(:nodes.Op x.value)
-                else maybe.none(:nodes.Op)
-            end
-            if maybe.isSome(:nodes.Op o) then
-                case maybe.unwrap(:nodes.Op o)
-                    when opCall with c then
-                        if maybe.isSome(:Variable c.callee) andif nodes.same(maybe.unwrap(:Variable c.callee) v) then
-                            maybe.some(:nodes.OpCall c)
-                        else maybe.none(:nodes.OpCall) end
-                    else maybe.none(:nodes.OpCall)
-                end
+            let c = walk.statementCall(st)
+            if maybe.isSome(:nodes.OpCall c) andif maybe.isSome(:Variable maybe.unwrap(:nodes.OpCall c).callee)
+                andif nodes.same(maybe.unwrap(:Variable maybe.unwrap(:nodes.OpCall c).callee) v)
+            then c
             else maybe.none(:nodes.OpCall) end
         end
 

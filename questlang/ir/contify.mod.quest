@@ -29,22 +29,13 @@ export
 
     (* The function a statement calls, if it calls one by its variable *)
     let callee(st: Stmt): maybe.T(Variable) =
-        case st
-            when sLet with x then case x.value when opCall with c then c.callee else maybe.none(:Variable) end
-            when sDo with x then case x.value when opCall with c then c.callee else maybe.none(:Variable) end
-            else maybe.none(:Variable)
+        begin
+            let c = walk.statementCall(st)
+            if maybe.isSome(:nodes.OpCall c) then maybe.unwrap(:nodes.OpCall c).callee else maybe.none(:Variable) end
         end
 
     (* A statement's call, which it is known to make *)
-    let callIn(st: Stmt): nodes.OpCall =
-        begin
-            let found = case st
-                when sLet with x then case x.value when opCall with c then maybe.some(:nodes.OpCall c) else maybe.none(:nodes.OpCall) end
-                when sDo with x then case x.value when opCall with c then maybe.some(:nodes.OpCall c) else maybe.none(:nodes.OpCall) end
-                else maybe.none(:nodes.OpCall)
-            end
-            maybe.unwrap(:nodes.OpCall found)
-        end
+    let callIn(st: Stmt): nodes.OpCall = maybe.unwrap(:nodes.OpCall walk.statementCall(st))
 
     let calls(st: Stmt f: nodes.Function): Bool =
         begin

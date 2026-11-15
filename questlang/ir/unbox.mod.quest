@@ -40,21 +40,11 @@ export
         begin hashMap.insert(:Int :Int m id 1 + maybe.unwrapOr(:Int hashMap.get(:Int :Int m id) 0)) ok end
     let countOf(m: hashMap.T(Int Int) v: Variable): Int = maybe.unwrapOr(:Int hashMap.get(:Int :Int m v.id) 0)
 
-    let pin(f: Facts m: nodes.Members): Ok =
-        for i = 0 upto {vector.length(:String m.names) - 1} do
-            let v = nodes.member(m vector.get(:String m.names i))
-            if maybe.isSome(:Variable v) then begin hashMap.insert(:Int :Bool f.pinned maybe.unwrap(:Variable v).id true) ok end end
-        end
-
     let gather(f: Facts b: Body): Ok =
         begin
             let stmts = walk.walkStatements(b true)
             for i = 0 upto {vector.length(:Stmt stmts) - 1} do
                 let st = vector.get(:Stmt stmts i)
-                let used = walk.statementUses(st)
-                for j = 0 upto {extent used - 1} do
-                    case used[j] when atomVar with x then bump(f.uses x.v.id) when atomConst then ok end
-                end
                 let op = case st
                     when sLet with x then
                         begin
@@ -62,11 +52,6 @@ export
                             maybe.some(:Op x.value)
                         end
                     when sDo with x then maybe.some(:Op x.value)
-                    when sLetRec with x then
-                        begin
-                            for k = 0 upto {extent x.vars - 1} do hashMap.insert(:Int :Bool f.pinned x.vars[k].id true) end
-                            maybe.none(:Op)
-                        end
                     else maybe.none(:Op)
                 end
                 if maybe.isSome(:Op op) then
@@ -152,16 +137,9 @@ export
                 let calls = vector.new(:Stmt)
                 let pinned = hashMap.new(:Int :Bool intEqual hash.int)
             end
-            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
-                let m = vector.get(:nodes.Module unit.modules i)
-                pin(f m.members)
-                if maybe.isSome(:nodes.Members m.exports) then pin(f maybe.unwrap(:nodes.Members m.exports)) end
-            end
-            gather(f unit.main)
-            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do gather(f vector.get(:nodes.Module unit.modules i).init) end
-            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
-                gather(f vector.get(:nodes.Function unit.functions i).body)
-            end
+            walk.countUses(unit f.uses f.pinned)
+            let all = walk.unitBodies(unit)
+            for b = 0 upto {extent all - 1} do gather(f all[b]) end
             for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
                 let fun1 = vector.get(:nodes.Function unit.functions i)
                 let closures = maybe.unwrapOr(:vector.T(Variable) hashMap.get(:Int :vector.T(Variable) f.closures fun1.id)
