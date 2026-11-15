@@ -565,6 +565,16 @@ there, so its self-hosted compiler (about six minutes to build from the bootstra
 when no program's C differs, 1 when some does, and 2 when one does not compile. Use it to confirm that a change meant
 to leave the C alone does (a refactoring, a change to the front end), and to review what a backend change does to it.
 
+`tools/compare-codegen` asks the other question: whether an edit of `questlang/`'s source changes what one compiler
+makes of it. It compiles every `questlang/` unit (`--stop-after codegen_arm64`, or `--phase`) from a revision's
+exported tree and from the working tree with the same compiler (the working tree's stage 2, or `--compiler`), and
+prints the units whose output differs once the tree's path, `.loc` lines, and the source positions in run-time error
+strings are set aside, with the same exit statuses. `tools/omit-type-args` uses it: it omits the written type
+arguments that inference finds ([type-system.md](type-system.md) §6.9) throughout `questlang/`, in two commits (the
+calls inferable from their arguments, then those that need their expected type, restoring any the build rejects),
+and then compares, since omitting a type argument must change no code. Their parts that need no compiler are
+tested by `tests/python/test_omit_type_args.py`.
+
 ## 3. Diagnostic & Error Testing Framework (`tests/errors/`)
 
 ### 3.1. Design Motivation
