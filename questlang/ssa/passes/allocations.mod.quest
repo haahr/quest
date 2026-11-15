@@ -65,16 +65,16 @@ export
             tuple let isConst = isConst let value = value end
         end
 
-    (* The symbol the value v of f is the address of, if an opSymbol defines
-     * it (a layout's address), else "" *)
-    let symbolOf(f: Function v: Int): String =
+    (* The symbol each value of f is the address of, if an opSymbol defines it
+     * (a layout's address), else "" *)
+    let symbolsOf(f: Function): Array(String) =
         begin
-            let var found = ""
+            let found = array of(vector.length(:ssa.Type f.types) "")
             for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
                 let blk = ssa.block(f b)
                 for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
                     let i = vector.get(:ssa.Inst blk.insts k)
-                    if ssa.isOp(i ssa.opSymbol) andif {i.results[0] is v} then found := i.symbol end
+                    if ssa.isOp(i ssa.opSymbol) then found[i.results[0]] := i.symbol end
                 end
             end
             found
@@ -187,6 +187,9 @@ export
     let inlineFunction(f: Function spaces: hashMap.T(String Int)): Ok =
         begin
             let cs = constants(f)
+            (* Found before the expansions, whose values name no symbol *)
+            let symbols = symbolsOf(f)
+            let symbolOf(v: Int): String = if v < extent symbols then symbols[v] else "" end
             let var b = 0
             (* The blocks the expansions add hold the rest of a block, and are
              * reached in turn *)
@@ -198,7 +201,7 @@ export
                     let i = vector.get(:ssa.Inst blk.insts k)
                     if ssa.isOp(i ssa.opCall) andif eq(i.symbol "quest_alloc") andif {extent i.args is 2}
                         andif {extent i.results is 1} andif cs.isConst[i.args[0]] then
-                        let space = hashMap.get(:String :Int spaces symbolOf(f i.args[1]))
+                        let space = hashMap.get(:String :Int spaces symbolOf(i.args[1]))
                         expand(f b k cs.value[i.args[0]] maybe.unwrapOr(:Int space 0))
                         expanded := true
                     end
