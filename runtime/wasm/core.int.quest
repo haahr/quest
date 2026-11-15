@@ -30,6 +30,9 @@ export
         labels: Array(String)
         positions: Array(Int)
         texts: Array(String)
+        (* each part's flags: 1 var, 2 out, 4 a function's result (a
+         * function type's parts are its parameters and then its result) *)
+        flags: Array(Int)
     end
 
     (* The kinds, which the backend's (wasm/codegen) numbering matches; none
@@ -62,6 +65,8 @@ export
     newDesc(kind: Int name: String n: Int m: Int): Desc
     (* Sets d's part i, and its label *)
     setPart(d: Desc i: Int part: Desc label: String): Ok
+    (* Sets the flags of d's part i: 1 var, 2 out, 4 a function's result *)
+    setFlags(d: Desc i: Int flags: Int): Ok
     (* Sets d's type component i *)
     setText(d: Desc i: Int position: Int text: String): Ok
     (* The template t (a descriptor with holes, each named ?N for the Nth
@@ -101,6 +106,9 @@ export
      * payload; and a tuple's or option's tag and components, a proxy's or
      * not *)
     unproxy(v: Any): Any
+    (* An auto value's witness, and dynamic.copy (quest_dynamic_copy) *)
+    autoWitness(x: Any): Desc
+    dynamicCopy(d: Any): Any
     proxyTag(p: Any): Int
     proxyElement(p: Any i: Int): Any
     proxyOptionElement(p: Any i: Int): Any

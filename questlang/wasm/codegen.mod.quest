@@ -101,6 +101,10 @@ export
          * is taken, each held in a slot array of its own from its
          * declaration; by id (locatedVariables) *)
         located: hashMap.T(Int Bool)
+        (* The names of record types' descriptors, as the C backend gives
+         * them: each ends with a digest of the record's shape, so that two
+         * records whose fields lay out alike are not one descriptor *)
+        naming: staticdata.RecordNaming
     end
 
     (* A name not given before among names: base, or base.k *)
@@ -781,12 +785,12 @@ export
                 vector.append(:ir.Type if d.echo then echoed else plain end d.type)
             end
             let collected = try
-                    staticdata.collectDescriptors(plain echoed maybe.none(:staticdata.RecordNaming)
+                    staticdata.collectDescriptors(plain echoed maybe.some(:staticdata.RecordNaming g.naming)
                         hashMap.new(:String :Bool stringOp.equal hash.string))
                 when staticdata.missingDescriptor with msg then
                     fail("a descriptor: " <> msg)
                     staticdata.collectDescriptors(vector.new(:ir.Type) vector.new(:ir.Type)
-                        maybe.none(:staticdata.RecordNaming) hashMap.new(:String :Bool stringOp.equal hash.string))
+                        maybe.some(:staticdata.RecordNaming g.naming) hashMap.new(:String :Bool stringOp.equal hash.string))
                 end
             let forms = vector.new(:staticdata.DescriptorForm)
             for k = 0 upto extent staticdata.descriptorKinds - 1 do
@@ -808,13 +812,14 @@ export
         else raise unsupported with "the descriptor " <> symbol <> ", which the unit does not make" end
         end
 
-    let formOf(d: ir.StaticDescriptor): staticdata.DescriptorForm =
+    let formOf(g: G d: ir.StaticDescriptor): staticdata.DescriptorForm =
         try
-            let echo = if d.echo then staticdata.echoDescriptorForm(d.type maybe.none(:staticdata.RecordNaming))
+            let naming = maybe.some(:staticdata.RecordNaming g.naming)
+            let echo = if d.echo then staticdata.echoDescriptorForm(d.type naming)
                 else maybe.none(:staticdata.DescriptorForm)
                 end
             if maybe.isSome(:staticdata.DescriptorForm echo) then maybe.unwrap(:staticdata.DescriptorForm echo)
-            else staticdata.descriptorForm(d.type maybe.none(:staticdata.RecordNaming))
+            else staticdata.descriptorForm(d.type naming)
             end
         when staticdata.missingDescriptor with msg then raise unsupported with "a descriptor: " <> msg end
         end
@@ -823,14 +828,14 @@ export
      * descriptor variable's and an instantiation come with step 7 *)
     let rec descriptor(f: F d: ir.Descriptor): Ok =
         case d
-            when descStatic with x then emit(f i1(ops.globalGet descGlobal(f formOf(x.d).symbol)))
+            when descStatic with x then emit(f i1(ops.globalGet descGlobal(f formOf(f.g x.d).symbol)))
             when descVar with x then atomParts(f ir.atomOfVar(x.v))
             when descInstantiate with x then
                 (* the template's, its holes filled by the core *)
-                let form = try staticdata.descriptorForm(x.template maybe.none(:staticdata.RecordNaming))
+                let form = try staticdata.descriptorForm(x.template maybe.some(:staticdata.RecordNaming f.g.naming))
                     when staticdata.missingDescriptor with msg then
                         fail("a descriptor: " <> msg)
-                        staticdata.descriptorForm(x.template maybe.none(:staticdata.RecordNaming))
+                        staticdata.descriptorForm(x.template maybe.some(:staticdata.RecordNaming f.g.naming))
                     end
                 if stringOp.equal(form.kind "base") then emit(f i1(ops.globalGet descGlobal(f form.symbol)))
                 else
@@ -847,25 +852,42 @@ export
     (* Descriptor operands, each an eqref, in order *)
     and descriptors(f: F ds: Array(ir.Descriptor)): Ok = for k = 0 upto extent ds - 1 do descriptor(f ds[k]) end
 
-    (* A part of a descriptor: its label and the descriptor it refers to *)
-    Def Part = Tuple label: String ref: staticdata.Ref end
+    (* A part of a descriptor: its label, the descriptor it refers to, and its
+     * flags, as wasm/core reads them (1 var, 2 out, 4 a function's result, 8
+     * a quantifier's bound) *)
+    Def Part = Tuple label: String ref: staticdata.Ref flags: Int end
 
     let partsOf(d: staticdata.Descriptor): Array(Part) =
         begin
-            let part = fun(label: maybe.T(String) r: staticdata.Ref): Part
-                tuple let label = maybe.unwrapOr(:String label "") let ref = r end
+            let flagged = fun(label: maybe.T(String) r: staticdata.Ref flags: Int): Part
+                tuple let label = maybe.unwrapOr(:String label "") let ref = r let flags = flags end
+            let part = fun(label: maybe.T(String) r: staticdata.Ref): Part flagged(label r 0)
             let components = fun(cs: Array(staticdata.Component)): Array(Part)
                 begin
                     let ps = array of(extent cs part(maybe.none(:String) staticdata.nullRef))
-                    for j = 0 upto extent cs - 1 do ps[j] := part(cs[j].name cs[j].type) end
+                    for j = 0 upto extent cs - 1 do ps[j] := flagged(cs[j].name cs[j].type if cs[j].isVar then 1 else 0 end) end
                     ps
                 end
             let cases = fun(cs: Array(staticdata.Case)): Array(Part)
                 begin
                     let ps = array of(extent cs part(maybe.none(:String) staticdata.nullRef))
                     for j = 0 upto extent cs - 1 do
-                        ps[cs[j].tagIndex] := part(maybe.some(:String cs[j].name) cs[j].payload)
+                        ps[cs[j].tagIndex] := flagged(maybe.some(:String cs[j].name) cs[j].payload
+                            if cs[j].isVar then 1 else 0 end)
                     end
+                    ps
+                end
+            (* a function type's parameters, each by its mode, then its
+             * result *)
+            let function = fun(params: Array(staticdata.FunParam) result: staticdata.Ref bs: Array(staticdata.Ref)): Array(Part)
+                begin
+                    let n = extent params
+                    let ps = array of({n + 1} + extent bs flagged(maybe.none(:String) result 4))
+                    for j = 0 upto n - 1 do
+                        let mode = if params[j].isVar then 1 elsif params[j].isOut then 2 else 0 end
+                        ps[j] := flagged(maybe.none(:String) params[j].type mode)
+                    end
+                    for j = 0 upto extent bs - 1 do ps[{n + 1} + j] := flagged(maybe.none(:String) bs[j] 8) end
                     ps
                 end
             case d.payload
@@ -875,6 +897,14 @@ export
                 when payloadVariant with x then cases(x.cases)
                 when payloadArray with x then array of part(maybe.none(:String) x.element) end
                 when payloadException with x then array of part(maybe.none(:String) x.payloadType) end
+                when payloadAuto with x then components(x.components)
+                when payloadFun with x then function(x.params x.result x.bounds)
+                when payloadOpaque with x then
+                    (* an abstract type operator's application: its
+                     * arguments *)
+                    let ps = array of(extent x.args part(maybe.none(:String) staticdata.nullRef))
+                    for j = 0 upto extent x.args - 1 do ps[j] := part(maybe.none(:String) x.args[j]) end
+                    ps
                 else array of :Part end
             end
         end
@@ -899,12 +929,12 @@ export
                 emit(f i1(ops.globalSet descGlobal(f baseSymbols[k])))
             end
             let partOf = fun(t: ir.Type): staticdata.DescriptorForm
-                staticdata.descriptorForm(t maybe.none(:staticdata.RecordNaming))
+                staticdata.descriptorForm(t maybe.some(:staticdata.RecordNaming f.g.naming))
             let described = vector.new(:staticdata.Descriptor)
             for k = 0 upto vector.length(:staticdata.DescriptorForm forms) - 1 do
                 let form = vector.get(:staticdata.DescriptorForm forms k)
                 vector.append(:staticdata.Descriptor described
-                    staticdata.describeDescriptor(form maybe.none(:staticdata.RecordNaming) partOf))
+                    staticdata.describeDescriptor(form maybe.some(:staticdata.RecordNaming f.g.naming) partOf))
             end
             for k = 0 upto vector.length(:staticdata.Descriptor described) - 1 do
                 let d = vector.get(:staticdata.Descriptor described k)
@@ -933,6 +963,14 @@ export
                     literal(f ps[j].label)
                     callCore("setPart")
                     emit(f i(ops.drop))
+                    if ps[j].flags isnot 0 then
+                        noClosure()
+                        emit(f i1(ops.globalGet at))
+                        emit(f model.i64Const(j))
+                        emit(f model.i64Const(ps[j].flags))
+                        callCore("setFlags")
+                        emit(f i(ops.drop))
+                    end
                 end
                 let ts = textsOf(d)
                 for j = 0 upto extent ts - 1 do
@@ -1882,6 +1920,7 @@ export
     let coreExternals = array of
         array of "quest_string_cat_sub" "catSub" "ennenn" "e" end
         array of "quest_string_conc" "conc" "e" "e" end
+        array of "quest_dynamic_copy" "dynamicCopy" "e" "e" end
         array of "quest_string_equal_sub" "equalSub" "ennenn" "b" end
         array of "quest_string_precedes" "precedes" "ee" "b" end
         array of "quest_string_precedes_sub" "precedesSub" "ennenn" "b" end
@@ -2802,7 +2841,7 @@ export
             let made = if maybe.isNone(:ir.Descriptor x.descriptor) then false
                 else
                     case maybe.unwrap(:ir.Descriptor x.descriptor)
-                        when descStatic with d then hashMap.contains(:String :Int f.g.descGlobals formOf(d.d).symbol)
+                        when descStatic with d then hashMap.contains(:String :Int f.g.descGlobals formOf(f.g d.d).symbol)
                         else true
                     end
                 end
@@ -3218,6 +3257,114 @@ export
             n
         end
 
+    (* The adapters of closures seen at a function supertype (the core's
+     * convert, quest_convert's meta->adapt), made in wasm/core when its
+     * adaptClosure is first compiled: for each uniform arity n up to
+     * maxAdapted, a closure type $adaptN, a subtype of $closU(n), that holds
+     * the closure adapted and the two function types, and its uniform entry,
+     * which converts each argument by the core's adaptArg, calls the closure
+     * through its uniform entry, and converts the result by adaptResult; and
+     * the function that makes one for an arity, or for a greater arity gives
+     * the closure as it is. The index of that function *)
+    let maxAdapted = 8
+    let adapters(g: G): Int =
+        if hashMap.contains(:String :Int g.runtimeFunctions "adaptClosure") then
+            hashMap.find(:String :Int g.runtimeFunctions "adaptClosure")
+        else
+            let helper = fun(name: String): Int
+                begin
+                    let var found = ~1
+                    for k = 0 upto vector.length(:ir.Function g.unit.functions) - 1 do
+                        let fn = vector.get(:ir.Function g.unit.functions k)
+                        if {found < 0} andif stringOp.equal(fn.v.hint name) then
+                            found := hashMap.find(:Int :Int g.functions fn.id)
+                        end
+                    end
+                    if found < 0 then fail("the core's " <> name) end
+                    found
+                end
+            let adaptArg = helper("adaptArg")
+            let adaptResult = helper("adaptResult")
+            let types = array of(maxAdapted + 1 0)
+            let entries = array of(maxAdapted + 1 0)
+            for n = 0 upto maxAdapted do
+                let t = addType(g structSub("adapt" <> conv.int(n) true closU(g n) array of
+                    hashField fieldOf("uniform" model.ref(uniformType(g n)) false)
+                    fieldOf("orig" model.eqref false) fieldOf("from" model.eqref false) fieldOf("to" model.eqref false)
+                end))
+                types[n] := t
+                let names = array of(n + 1 "")
+                names[0] := "closure"
+                for k = 1 upto n do names[k] := "a" <> conv.int(k - 1) end
+                let f = newF(g names array of model.eqref end ~1)
+                let state = scratch(f model.refNull(t))
+                let result = scratch(f model.eqref)
+                emit(f i1(ops.localGet 0))
+                castTo(f t)
+                emit(f i1(ops.localSet state))
+                (* the closure adapted, then each argument converted *)
+                emit(f i1(ops.localGet state))
+                emit(f i2(ops.structGet t 2))
+                castTo(f tClos)
+                for k = 0 upto n - 1 do
+                    emit(f i1(ops.globalGet g.noClosure))
+                    emit(f i1(ops.localGet state))
+                    emit(f i2(ops.structGet t 3))
+                    emit(f i1(ops.localGet state))
+                    emit(f i2(ops.structGet t 4))
+                    emit(f model.i64Const(k))
+                    emit(f i1(ops.localGet k + 1))
+                    emit(f i1(ops.call adaptArg))
+                end
+                emit(f i1(ops.localGet state))
+                emit(f i2(ops.structGet t 2))
+                castTo(f closU(g n))
+                emit(f i2(ops.structGet closU(g n) 1))
+                emit(f i1(ops.callRef uniformType(g n)))
+                emit(f i1(ops.localSet result))
+                emit(f i1(ops.globalGet g.noClosure))
+                emit(f i1(ops.localGet state))
+                emit(f i2(ops.structGet t 3))
+                emit(f i1(ops.localGet state))
+                emit(f i2(ops.structGet t 4))
+                emit(f i1(ops.localGet result))
+                emit(f i1(ops.call adaptResult))
+                let at = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
+                vector.append(:model.Function g.m.functions tuple
+                    let name = fresh(g.names "adapt" <> conv.int(n) <> ".uniform") let type = uniformType(g n)
+                    let params = names let locals = f.declared let body = f.code
+                end)
+                declare(g at)
+                entries[n] := at
+            end
+            (* adaptClosure(v from to n): an adapter of arity n *)
+            let names = array of "v" "from" "to" "n" end
+            let f = newF(g names array of model.eqref end ~1)
+            for n = 0 upto maxAdapted do
+                emit(f i1(ops.localGet 3))
+                emit(f model.i64Const(n))
+                emit(f i(ops.i64Eq))
+                emit(f model.ifInst(empty ""))
+                emit(f model.i32Const(0))
+                emit(f i1(ops.refFunc entries[n]))
+                emit(f i1(ops.localGet 0))
+                emit(f i1(ops.localGet 1))
+                emit(f i1(ops.localGet 2))
+                emit(f i1(ops.structNew types[n]))
+                emit(f i(ops.returnOp))
+                emit(f model.endInst)
+            end
+            emit(f i1(ops.localGet 0))
+            let index = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
+            vector.append(:model.Function g.m.functions tuple
+                let name = fresh(g.names "adaptClosure")
+                let type = funcType(g array of model.eqref model.eqref model.eqref model.i64 end array of model.eqref end)
+                let params = names let locals = f.declared let body = f.code
+            end)
+            hashMap.insert(:String :Int g.runtimeFunctions "adaptClosure" index)
+            index
+        end
+
     (* A closure of x.code with its captures: its static closure if it has
      * none; inside a recursive value's body, a capture of a value not yet
      * bound is left to fill in (sLetRec) *)
@@ -3577,6 +3724,17 @@ export
                 atom(f args[0])
                 emit(f i(ops.i32WrapI64))
                 emit(f i1(ops.structNew tOption))
+            elsif named("autoDesc") orif named("autoPayload") then
+                atom(f args[0])
+                castTo(f rt.index("auto"))
+                emit(f i2(ops.structGet rt.index("auto") if named("autoDesc") then 1 else 2 end))
+            elsif named("newAuto") then
+                emit(f model.i32Const(0))
+                atoms(f args)
+                emit(f i1(ops.structNew rt.index("auto")))
+            elsif named("adaptClosure") then
+                atoms(f args)
+                emit(f i1(ops.call adapters(f.g)))
             elsif named("dictStored") then
                 atom(f args[0])
                 castTo(f tDict)
@@ -3607,7 +3765,18 @@ export
             else raise unsupported with "an aggregate made and not bound" end
             end
         case o
-            when opAtom with x then atom(f x.atom)
+            when opAtom with x then
+                atom(f x.atom)
+                (* a record or variant copied between a variable that holds it
+                 * boxed (a var parameter's, whose slot holds it so) and one
+                 * that does not *)
+                if maybe.isSome(:ir.Variable target) then
+                    let v = maybe.unwrap(:ir.Variable target)
+                    let boxedHere = isBoxedVar(x.atom)
+                    if {isRecord(v.type) orif isVariant(v.type)} andif {boxedHere isnot v.boxed} then
+                        if boxedHere then unbox(f v.type) else box(f v.type) end
+                    end
+                end
             when opPrim with x then prim(f x)
             when opCall with x then call(f x)
             when opModuleMember with x then member(f x target)
@@ -3696,7 +3865,13 @@ export
                     emit(f i(ops.refI31))
                 end
                 if maybe.unwrap(:ir.Variable target).boxed then box(f targetType()) end
-            when opMakeAuto then fail("an auto value (milestone 4)")
+            when opMakeAuto with x then
+                (* its witness's descriptor and its other components' tuple *)
+                if maybe.isNone(:ir.Descriptor x.descriptor) then fail("an auto value without its witness") end
+                emit(f model.i32Const(0))
+                descriptor(f maybe.unwrap(:ir.Descriptor x.descriptor))
+                boxedAtom(f x.payload)
+                emit(f i1(ops.structNew rt.index("auto")))
             (* Locations (section 2.6): a slot array and an index *)
             when opAddrVar with x then
                 if not(isLocated(f x.v)) then fail("the address of " <> x.v.hint <> ", which is not located") end
@@ -4112,13 +4287,111 @@ export
                     emit(f i2(ops.structSet pt.own pt.field))
                 end
             when sFuns then fail("a function not closure-converted")
-            when sInspect then fail("an inspect (milestone 4)")
+            when sInspect with x then inspectAuto(f x)
         end
 
     (* A switch on an option's tag (variants are milestone 4's): a block for
      * each case, inside one for else and one for the end, entered by a
      * br_table on the tag; a case's binder is the option itself, which
      * shares its components, or its one component *)
+    (* inspect (an auto value's type component tested, docs/ir.md section
+     * 5): a case matches when the witness is a subtype of its type, or for
+     * an exact case equal to it, as the core's isSubtype says. Its binders get
+     * the components at the case's type: for an exact case, the stored ones,
+     * shared or converted by one plan (every layout is one here, so the
+     * stored is the case's); else a new tuple, each converted by the arm's
+     * descriptors where it has them. With no else, raises dynamic.error *)
+    and inspectAuto(f: F x: ir.StmtInspect): Ok =
+        begin
+            let value = scratch(f model.refNull(rt.index("auto")))
+            let witness = scratch(f model.eqref)
+            let stored = scratch(f model.eqref)
+            atom(f x.value)
+            castTo(f rt.index("auto"))
+            emit(f i1(ops.localTee value))
+            emit(f i2(ops.structGet rt.index("auto") 1))
+            emit(f i1(ops.localSet witness))
+            emit(f i1(ops.localGet value))
+            emit(f i2(ops.structGet rt.index("auto") 2))
+            emit(f i1(ops.localSet stored))
+            if maybe.isSome(:ir.DescriptorParam x.witness) then
+                emit(f i1(ops.localGet witness))
+                emit(f i1(ops.localSet local(f maybe.unwrap(:ir.DescriptorParam x.witness).v)))
+            end
+            emit(f model.blockInst(empty ""))
+            open(f "inspect.after" option labelIf of LabelKind end)
+            for ci = 0 upto extent x.cases - 1 do
+                let c = x.cases[ci]
+                if maybe.isNone(:ir.Descriptor c.descriptor) then fail("an inspect case without its descriptor") end
+                let match = maybe.unwrap(:ir.Descriptor c.descriptor)
+                emit(f i1(ops.globalGet f.g.noClosure))
+                emit(f i1(ops.localGet witness))
+                descriptor(f match)
+                runtimeUnitCall(f "wasm/core.isSubtype")
+                if c.exact then
+                    emit(f i1(ops.globalGet f.g.noClosure))
+                    descriptor(f match)
+                    emit(f i1(ops.localGet witness))
+                    runtimeUnitCall(f "wasm/core.isSubtype")
+                    emit(f i(ops.i32And))
+                end
+                emit(f model.ifInst(empty ""))
+                open(f "" option labelIf of LabelKind end)
+                if extent c.binders > 0 then
+                    let arm = maybe.unwrap(:ir.InspectArm c.arm)
+                    if arm.exact then
+                        emit(f i1(ops.localGet stored))
+                        if not(arm.shared) andif maybe.isSome(:ir.Plan arm.plan) then
+                            slotConvert(f maybe.unwrap(:ir.Plan arm.plan))
+                        end
+                    else
+                        (* a new tuple of the components, each converted *)
+                        let slots = scratch(f model.refNull(tSlots))
+                        emit(f i1(ops.localGet stored))
+                        castTo(f tTuple)
+                        emit(f i2(ops.structGet tTuple fSlots))
+                        emit(f i1(ops.localSet slots))
+                        emit(f model.i32Const(0))
+                        let n = extent arm.descriptors
+                        for j = 0 upto n - 1 do
+                            if maybe.isSome(:ir.DescriptorPair arm.descriptors[j]) then
+                                let pr = maybe.unwrap(:ir.DescriptorPair arm.descriptors[j])
+                                emit(f i1(ops.globalGet f.g.noClosure))
+                                emit(f i1(ops.localGet slots))
+                                emit(f model.i32Const(j))
+                                emit(f i1(ops.arrayGet tSlots))
+                                descriptor(f pr.source)
+                                descriptor(f pr.target)
+                                runtimeUnitCall(f "wasm/core.convert")
+                            else
+                                emit(f i1(ops.localGet slots))
+                                emit(f model.i32Const(j))
+                                emit(f i1(ops.arrayGet tSlots))
+                            end
+                        end
+                        emit(f i2(ops.arrayNewFixed tSlots n))
+                        emit(f i1(ops.structNew tTuple))
+                    end
+                    let a = scratch(f model.eqref)
+                    emit(f i1(ops.localSet a))
+                    for j = 0 upto extent c.binders - 1 do
+                        emit(f i1(ops.localGet a))
+                        if not(c.binders[j].boxed) then unbox(f c.binders[j].type) end
+                        store(f c.binders[j])
+                    end
+                end
+                body(f c.body)
+                if not(ir.terminated(c.body)) then
+                    emit(f i1(ops.br depth(f "inspect.after" option labelIf of LabelKind end)))
+                end
+                close(f)
+            end
+            if maybe.isSome(:ir.Body x.elseBody) then body(f maybe.unwrap(:ir.Body x.elseBody))
+            else raiseAt(f "dynamic.error" x.offset)
+            end
+            close(f)
+        end
+
     and switch(f: F x: ir.StmtSwitch): Ok =
         begin
             let viewed = maybe.isSome(:ir.Variable x.viewMap)
@@ -4498,6 +4771,7 @@ export
                 let isCore = stringOp.equal(moduleName "wasm/core")
                 let isPhrase = maybe.isSome(:ir.Phrase unit.phrase)
                 let located = locatedVariables(unit)
+                let naming = staticdata.newRecordNaming()
             end
             (* Each function, and the types of what its closures capture: an
              * adapter's (ir/thunks), whose environment is the closure it
@@ -4624,11 +4898,13 @@ export
                 runtimeImport("wasm/core" "newDesc" array of n e n n end array of e end)
                 runtimeImport("wasm/core" "setPart" array of e n e e end array of e end)
                 runtimeImport("wasm/core" "setText" array of e n n e end array of e end)
+                runtimeImport("wasm/core" "setFlags" array of e n n end array of e end)
                 runtimeImport("wasm/core" "instantiate" array of e e end array of e end)
                 (* records' tables and views (step 17) *)
                 runtimeImport("wasm/core" "viewDict" array of e e end array of e end)
                 runtimeImport("wasm/core" "storedField" array of e e n e end array of e end)
                 runtimeImport("wasm/core" "convert" array of e e e end array of e end)
+                runtimeImport("wasm/core" "isSubtype" array of e e end array of model.i32 end)
                 runtimeImport("wasm/core" "viewMap" array of e e end array of e end)
                 runtimeImport("wasm/core" "viewIndex" array of e n end array of n end)
                 runtimeImport("wasm/core" "viewPart" array of e n e end array of e end)

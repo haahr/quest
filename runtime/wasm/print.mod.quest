@@ -73,6 +73,11 @@ export
             if nesting.depth < nestingMax then nesting.items[nesting.depth] := fromInt(0) end
         end
 
+    (* The witnesses of the auto values being written, innermost last, which
+     * a component of the type parameter's type is written at *)
+    let witnesses = tuple let var items = array of :core.Desc end let var count = 0 end
+    let autoPayload(x: core.Any): core.Any = external "wasm.autoPayload"
+
     let rec show(v: core.Any d: core.Desc): String =
         begin
             let k = d.kind
@@ -133,6 +138,24 @@ export
                     text <> " end"
                 end
             elsif k is core.kindException then "exception " <> exceptionName(v)
+            elsif k is core.kindAuto then
+                let w = core.autoWitness(v)
+                if witnesses.count >= extent witnesses.items then
+                    let more = array of({2 * witnesses.count} + 4 w)
+                    for i = 0 upto witnesses.count - 1 do more[i] := witnesses.items[i] end
+                    witnesses.items := more
+                end
+                witnesses.items[witnesses.count] := w
+                witnesses.count := witnesses.count + 1
+                let payload = autoPayload(v)
+                let var text = "auto :" <> w.name <> " with"
+                for i = 0 upto extent d.parts - 1 do
+                    text := text <> " " <> d.labels[i] <> "=" <> show(tupleSlot(payload i) d.parts[i])
+                end
+                witnesses.count := witnesses.count - 1
+                text <> " end"
+            elsif {k is core.kindBoundVar} andif {witnesses.count > 0} then
+                show(v witnesses.items[witnesses.count - 1])
             elsif k is core.kindOpaque then
                 if stringOp.equal(d.name "Word.T") orif stringOp.equal(d.name "word.T") then
                     "16#" <> {hex(toInt(v)) <> "#"}

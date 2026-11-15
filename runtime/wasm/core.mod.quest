@@ -20,6 +20,8 @@ export
         labels: Array(String)
         positions: Array(Int)
         texts: Array(String)
+        (* each part's flags: 1 var, 2 out, 4 a function's result *)
+        flags: Array(Int)
     end
 
     let kindNone = 0
@@ -53,6 +55,7 @@ export
         tuple
             let kind = kind let name = names[kind] let parts = array of :Desc end let labels = array of :String end
             let positions = array of :Int end let texts = array of :String end
+            let flags = array of :Int end
         end
 
     let bases: Array(Desc) =
@@ -68,6 +71,7 @@ export
         tuple
             let kind = kind let name = name let parts = array of(n bases[kindNone]) let labels = array of(n "")
             let positions = array of(m 0) let texts = array of(m "")
+            let flags = array of(n 0)
         end
 
     let setPart(d: Desc i: Int part: Desc label: String): Ok =
@@ -75,6 +79,8 @@ export
             d.parts[i] := part
             d.labels[i] := label
         end
+
+    let setFlags(d: Desc i: Int flags: Int): Ok = d.flags[i] := flags
 
     let setText(d: Desc i: Int position: Int text: String): Ok =
         begin
@@ -135,7 +141,10 @@ export
                 instances.copies[instances.ncopied] := c
                 instances.ncopied := instances.ncopied + 1
                 for i = 0 upto extent d.texts - 1 do setText(c i d.positions[i] d.texts[i]) end
-                for i = 0 upto extent d.parts - 1 do setPart(c i copy(d.parts[i] args) d.labels[i]) end
+                for i = 0 upto extent d.parts - 1 do
+                    setPart(c i copy(d.parts[i] args) d.labels[i])
+                    c.flags[i] := d.flags[i]
+                end
                 c
             end
         end
@@ -218,6 +227,9 @@ export
             found
         end
 
+    (* Whether d's part i is var *)
+    let isVar(d: Desc i: Int): Bool = {i < extent d.flags} andif {d.flags[i] is 1}
+
     (* The pairs whose proofs are in progress, which are assumed to hold
      * (quest_is_subtype's trail: descriptors of recursive types are cyclic) *)
     Def Pair = Tuple sub: Desc sup: Desc end
@@ -250,9 +262,7 @@ export
             end
         end
 
-    (* By sup's kind, as quest_is_subtype compares them; a var part's
-     * invariance is not checked, since descriptors here do not say which
-     * parts are var *)
+    (* By sup's kind, as quest_is_subtype compares them *)
     and subtypeParts(sub: Desc sup: Desc): Bool =
         begin
             let k = sup.kind
@@ -266,6 +276,10 @@ export
                     for i = 0 upto extent sup.parts - 1 do
                         let named = not(stringOp.isEmpty(sup.labels[i]))
                         if named andif not(stringOp.equal(sub.labels[i] sup.labels[i])) then match := false
+                        elsif isVar(sup i) then
+                            if not(isVar(sub i)) orif {match andif not(both(sub.parts[i] sup.parts[i]))} then
+                                match := false
+                            end
                         elsif match andif not(isSubtype(sub.parts[i] sup.parts[i])) then match := false
                         end
                     end
@@ -278,6 +292,10 @@ export
                     for j = 0 upto extent sup.parts - 1 do
                         let i = partNamed(sub sup.labels[j])
                         if i < 0 then match := false
+                        elsif isVar(sup j) then
+                            if not(isVar(sub i)) orif {match andif not(both(sub.parts[i] sup.parts[j]))} then
+                                match := false
+                            end
                         elsif match andif not(isSubtype(sub.parts[i] sup.parts[j])) then match := false
                         end
                     end
@@ -297,6 +315,8 @@ export
                             let tNone = tp.kind is kindNone
                             if sNone orif tNone then
                                 if sNone isnot tNone then match := false end
+                            elsif isVar(sub i) orif isVar(sup j) then
+                                if match andif not(both(sp tp)) then match := false end
                             elsif match andif not(isSubtype(sp tp)) then match := false
                             end
                         end
@@ -306,8 +326,35 @@ export
             elsif {k is kindArray} orif {k is kindException} then
                 {sub.kind is k} andif {extent sub.parts is extent sup.parts}
                     andif {{extent sup.parts is 0} orif both(sub.parts[0] sup.parts[0])}
-            elsif {k is kindOpaque} orif {k is kindFun} then
-                {sub.kind is k} andif stringOp.equal(sub.name sup.name)
+            elsif k is kindFun then
+                (* as many parameters, each of the same mode: contravariant
+                 * value parameters, invariant var ones, covariant out ones and
+                 * result *)
+                if {sub.kind isnot kindFun} orif {extent sub.parts isnot extent sup.parts} then false
+                else
+                    let var match = true
+                    for i = 0 upto extent sup.parts - 1 do
+                        let mode = sup.flags[i]
+                        if sub.flags[i] isnot mode then match := false
+                        elsif not(match) then ok
+                        elsif mode is 1 then match := both(sub.parts[i] sup.parts[i])
+                        elsif {mode is 2} orif {mode is 4} then match := isSubtype(sub.parts[i] sup.parts[i])
+                        else match := isSubtype(sup.parts[i] sub.parts[i])
+                        end
+                    end
+                    match
+                end
+            elsif k is kindOpaque then
+                (* the same name, and an application's arguments equal *)
+                if {sub.kind isnot k} orif not(stringOp.equal(sub.name sup.name))
+                    orif {extent sub.parts isnot extent sup.parts} then false
+                else
+                    let var match = true
+                    for i = 0 upto extent sup.parts - 1 do
+                        if match andif not(both(sub.parts[i] sup.parts[i])) then match := false end
+                    end
+                    match
+                end
             else false
             end
         end
@@ -610,6 +657,21 @@ export
     (* A tuple's or option's tag and components, a proxy's or not *)
     let tagAt(v: Any): Int = if isProxy(v) then proxyTag(v) else optionTagOf(v) end
 
+    (* A function type's descriptor: its parameters (flags 0, 1 var, 2 out),
+     * its result (4), its quantifiers' bounds (8). Its uniform entry takes a
+     * descriptor for each quantifier, then each parameter *)
+    let countFlagged(d: Desc which: All(flags: Int) Bool): Int =
+        begin
+            let var n = 0
+            for i = 0 upto extent d.flags - 1 do if which(d.flags[i]) then n := n + 1 end end
+            n
+        end
+    let funQuantifiers(d: Desc): Int = countFlagged(d fun(x: Int): Bool x is 8)
+    let funArity(d: Desc): Int = countFlagged(d fun(x: Int): Bool {x isnot 4} andif {x isnot 8})
+    (* A closure of type from seen at to, through an adapter of uniform arity
+     * n (made by the backend), or as it is past the most it makes *)
+    let adaptClosure(v: Any from: Desc to: Desc n: Int): Any = external "wasm.adaptClosure"
+
     (* A variant's box seen at variant type to, from from: its tag renumbered
      * to to's for the case of the same name, and its payload converted when
      * the cases' types differ (quest_variant_adapt) *)
@@ -643,6 +705,9 @@ export
                 newRecBox(payload viewDict(payload to))
             elsif {from is to} orif {from.kind isnot to.kind} then v
             elsif to.kind is kindVariant then variantAdapt(v from to)
+            elsif to.kind is kindFun then
+                (* the same type: nothing to adapt; else an adapter *)
+                if isSubtype(to from) then v else adaptClosure(v from to funQuantifiers(to) + funArity(to)) end
             elsif {to.kind is kindTuple} orif {to.kind is kindOption} then
                 if not(isProxy(v)) andif viewEquivalent(from to) andif proxiesAgree(from to) then v
                 elsif mayBeProxied(to) then makeProxy(v from to)
@@ -674,6 +739,25 @@ export
     (* A copy of the tuple or option v, of type from, laid out as to, which
      * values are never proxies of: its components converted
      * (quest_copy_viewed) *)
+    (* An adapter's argument k (a descriptor for each quantifier, then the
+     * parameters): a value parameter's converted from the adapter's type to
+     * the closure's, contravariantly; a var or out parameter's location as
+     * it is; and the result converted from the closure's to the adapter's *)
+    and adaptArg(from: Desc to: Desc k: Int v: Any): Any =
+        begin
+            let q = funQuantifiers(to)
+            if k < q then v
+            else
+                let i = k - q
+                if {i < extent to.flags} andif {to.flags[i] is 0} then convert(v to.parts[i] from.parts[i]) else v end
+            end
+        end
+    and adaptResult(from: Desc to: Desc v: Any): Any =
+        begin
+            let r = funArity(to)
+            if {r < extent to.parts} andif {r < extent from.parts} then convert(v from.parts[r] to.parts[r]) else v end
+        end
+
     and copyViewed(v: Any from: Desc to: Desc): Any =
         if to.kind is kindTuple then
             let n = extent to.parts
@@ -904,6 +988,25 @@ export
 
     let viewOptionComponent(opt: Any m0: Any b: Int j: Int): Any =
         viewPart(m0 {anyViewMap(m0).start[b] + j} optionSlot(opt j))
+
+    (* ======================================================================
+     * Auto values (docs/c-representation.md section 8.1)
+     * ====================================================================== *)
+
+    (* An auto value's witness's descriptor, its other components' tuple, and
+     * a new one of the two *)
+    let autoDescAny(x: Any): Any = external "wasm.autoDesc"
+    let autoPayload(x: Any): Any = external "wasm.autoPayload"
+    let newAuto(d: Any payload: Any): Any = external "wasm.newAuto"
+    let autoWitness(x: Any): Desc = anyDesc(autoDescAny(x))
+
+    (* dynamic.copy: a new dynamic value of the same witness, its one
+     * component the same (quest_dynamic_copy) *)
+    let dynamicCopy(d: Any): Any =
+        begin
+            let one = array of(1 slotOf(autoPayload(d) 0))
+            newAuto(autoDescAny(d) newTupleOf(one))
+        end
 
     (* ======================================================================
      * The library's externals in Quest

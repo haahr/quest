@@ -14,6 +14,7 @@
     (type $array (sub final $obj (struct (field $hash (mut i32)) (field $elems (ref $slots)))))
     (type $varBox (struct (field $tag i32) (field $payload eqref)))
     (type $clos (sub $obj (struct (field $hash (mut i32)))))
+    (type $auto (sub final $obj (struct (field $hash (mut i32)) (field $desc eqref) (field $payload eqref))))
     (type $record (sub final $obj (struct (field $hash (mut i32)) (field $layout eqref) (field $slots (ref $slots)))))
     (type $dict (struct (field $indices (ref $i32s)) (field $stored eqref)))
     (type $recBox (struct (field $payload (ref $record)) (field $dict (ref $dict))))
@@ -56,8 +57,10 @@
   (type (func (param (ref $clos) i64 eqref i64 i64) (result eqref)))
   (type (func (param (ref $clos) eqref i64 eqref eqref) (result eqref)))
   (type (func (param (ref $clos) eqref i64 i64 eqref) (result eqref)))
+  (type (func (param (ref $clos) eqref i64 i64) (result eqref)))
   (type (func (param (ref $clos) eqref eqref i64 eqref) (result eqref)))
   (type (func (param (ref $clos) eqref eqref eqref) (result eqref)))
+  (type (func (param (ref $clos) eqref eqref) (result i32)))
   (type (func (param (ref $clos) eqref i64) (result i64)))
   (type (func (param (ref $clos) eqref i64 eqref) (result eqref)))
   (type (func (param (ref $clos) eqref eqref i64) (result i64)))
@@ -85,81 +88,83 @@
   (import "conv" "record.dict" (global (mut eqref)))
   (import "string" "record.payload" (global (mut eqref)))
   (import "string" "record.dict" (global (mut eqref)))
-  (import "quest.runtime" "putString" (func $putString (type 19)))
-  (import "quest.runtime" "putChar" (func $putChar (type 20)))
-  (import "quest.runtime" "concat" (func $concat (type 19)))
-  (import "quest.runtime" "convInt" (func $convInt (type 21)))
-  (import "quest.runtime" "convBool" (func $convBool (type 22)))
-  (import "quest.runtime" "convChar" (func $convChar (type 22)))
-  (import "quest.runtime" "raise" (func $raise (type 23)))
-  (import "quest.runtime" "uncaught" (func $uncaught (type 24)))
-  (import "quest.runtime" "decimal" (func $decimal (type 21)))
-  (import "quest.runtime" "hex" (func $hex (type 21)))
-  (import "quest.runtime" "escaped" (func $escaped (type 20)))
-  (import "quest.runtime" "boxInt" (func $boxInt (type 21)))
-  (import "quest.runtime" "unboxInt" (func $unboxInt (type 25)))
-  (import "quest.runtime" "fatal" (func $fatal (type 26)))
-  (import "quest.runtime" "stringGetChar" (func $stringGetChar (type 27)))
-  (import "quest.runtime" "stringSetChar" (func $stringSetChar (type 28)))
-  (import "quest.runtime" "stringNew" (func $stringNew (type 29)))
-  (import "quest.runtime" "stringGetSub" (func $stringGetSub (type 30)))
-  (import "quest.runtime" "stringSetSub" (func $stringSetSub (type 31)))
-  (import "quest.runtime" "stringEqual" (func $stringEqual (type 32)))
-  (import "quest.runtime" "exceptionOf" (func $exceptionOf (type 33)))
-  (import "quest.runtime" "payloadOf" (func $payloadOf (type 33)))
-  (import "quest.runtime" "raisedText" (func $raisedText (type 19)))
-  (import "quest.runtime" "memLoad8" (func $memLoad8 (type 34)))
-  (import "quest.runtime" "memStore8" (func $memStore8 (type 35)))
-  (import "quest.runtime" "memLoad32" (func $memLoad32 (type 34)))
-  (import "quest.runtime" "memStore32" (func $memStore32 (type 35)))
-  (import "quest.runtime" "memLoad64" (func $memLoad64 (type 34)))
-  (import "quest.runtime" "memStore64" (func $memStore64 (type 35)))
-  (import "quest.runtime" "memEnsure" (func $memEnsure (type 36)))
-  (import "quest.runtime" "memToString" (func $memToString (type 37)))
-  (import "quest.runtime" "stringToMem" (func $stringToMem (type 38)))
-  (import "quest.runtime" "wasi:args_sizes_get" (func $wasi:args_sizes_get (type 39)))
-  (import "quest.runtime" "wasi:args_get" (func $wasi:args_get (type 39)))
-  (import "quest.runtime" "wasi:environ_sizes_get" (func $wasi:environ_sizes_get (type 39)))
-  (import "quest.runtime" "wasi:environ_get" (func $wasi:environ_get (type 39)))
-  (import "quest.runtime" "wasi:fd_prestat_get" (func $wasi:fd_prestat_get (type 39)))
-  (import "quest.runtime" "wasi:fd_prestat_dir_name" (func $wasi:fd_prestat_dir_name (type 40)))
-  (import "quest.runtime" "wasi:path_open" (func $wasi:path_open (type 41)))
-  (import "quest.runtime" "wasi:fd_read" (func $wasi:fd_read (type 42)))
-  (import "quest.runtime" "wasi:fd_close" (func $wasi:fd_close (type 34)))
-  (import "quest.runtime" "wasi:path_filestat_get" (func $wasi:path_filestat_get (type 43)))
-  (import "quest.runtime" "wasi:path_create_directory" (func $wasi:path_create_directory (type 40)))
-  (import "quest.runtime" "wasi:path_unlink_file" (func $wasi:path_unlink_file (type 40)))
-  (import "quest.runtime" "wasi:path_remove_directory" (func $wasi:path_remove_directory (type 40)))
-  (import "quest.runtime" "wasi:path_rename" (func $wasi:path_rename (type 44)))
-  (import "quest.runtime" "wasi:fd_readdir" (func $wasi:fd_readdir (type 43)))
-  (import "quest.runtime" "error" (tag $error (type 45)))
-  (import "writer" "init" (func $writer.init (type 46)))
-  (import "conv" "init" (func $conv.init (type 46)))
-  (import "string" "init" (func $string.init (type 46)))
-  (import "wasm/print" "init" (func $wasm/print.init (type 46)))
-  (import "wasm/print" "show" (func $wasm/print.show (type 47)))
-  (import "wasm/core" "unproxy" (func $wasm/core.unproxy (type 48)))
-  (import "wasm/core" "proxyTag" (func $wasm/core.proxyTag (type 49)))
-  (import "wasm/core" "proxyElement" (func $wasm/core.proxyElement (type 50)))
-  (import "wasm/core" "proxyOptionElement" (func $wasm/core.proxyOptionElement (type 50)))
-  (import "wasm/core" "proxyOptionPayload" (func $wasm/core.proxyOptionPayload (type 48)))
-  (import "wasm/core" "init" (func $wasm/core.init (type 46)))
-  (import "wasm/core" "base" (func $wasm/core.base (type 51)))
-  (import "wasm/core" "newDesc" (func $wasm/core.newDesc (type 52)))
-  (import "wasm/core" "setPart" (func $wasm/core.setPart (type 53)))
-  (import "wasm/core" "setText" (func $wasm/core.setText (type 54)))
-  (import "wasm/core" "instantiate" (func $wasm/core.instantiate (type 47)))
-  (import "wasm/core" "viewDict" (func $wasm/core.viewDict (type 47)))
-  (import "wasm/core" "storedField" (func $wasm/core.storedField (type 55)))
-  (import "wasm/core" "convert" (func $wasm/core.convert (type 56)))
-  (import "wasm/core" "viewMap" (func $wasm/core.viewMap (type 47)))
-  (import "wasm/core" "viewIndex" (func $wasm/core.viewIndex (type 57)))
-  (import "wasm/core" "viewPart" (func $wasm/core.viewPart (type 58)))
-  (import "wasm/core" "viewRecordSlot" (func $wasm/core.viewRecordSlot (type 59)))
-  (import "wasm/core" "viewRecordField" (func $wasm/core.viewRecordField (type 60)))
-  (import "wasm/core" "viewOptionComponent" (func $wasm/core.viewOptionComponent (type 61)))
-  (import "wasm/core" "viewOptionPayload" (func $wasm/core.viewOptionPayload (type 47)))
-  (import "conv" "bool" (func $conv.bool (type 62)))
+  (import "quest.runtime" "putString" (func $putString (type 20)))
+  (import "quest.runtime" "putChar" (func $putChar (type 21)))
+  (import "quest.runtime" "concat" (func $concat (type 20)))
+  (import "quest.runtime" "convInt" (func $convInt (type 22)))
+  (import "quest.runtime" "convBool" (func $convBool (type 23)))
+  (import "quest.runtime" "convChar" (func $convChar (type 23)))
+  (import "quest.runtime" "raise" (func $raise (type 24)))
+  (import "quest.runtime" "uncaught" (func $uncaught (type 25)))
+  (import "quest.runtime" "decimal" (func $decimal (type 22)))
+  (import "quest.runtime" "hex" (func $hex (type 22)))
+  (import "quest.runtime" "escaped" (func $escaped (type 21)))
+  (import "quest.runtime" "boxInt" (func $boxInt (type 22)))
+  (import "quest.runtime" "unboxInt" (func $unboxInt (type 26)))
+  (import "quest.runtime" "fatal" (func $fatal (type 27)))
+  (import "quest.runtime" "stringGetChar" (func $stringGetChar (type 28)))
+  (import "quest.runtime" "stringSetChar" (func $stringSetChar (type 29)))
+  (import "quest.runtime" "stringNew" (func $stringNew (type 30)))
+  (import "quest.runtime" "stringGetSub" (func $stringGetSub (type 31)))
+  (import "quest.runtime" "stringSetSub" (func $stringSetSub (type 32)))
+  (import "quest.runtime" "stringEqual" (func $stringEqual (type 33)))
+  (import "quest.runtime" "exceptionOf" (func $exceptionOf (type 34)))
+  (import "quest.runtime" "payloadOf" (func $payloadOf (type 34)))
+  (import "quest.runtime" "raisedText" (func $raisedText (type 20)))
+  (import "quest.runtime" "memLoad8" (func $memLoad8 (type 35)))
+  (import "quest.runtime" "memStore8" (func $memStore8 (type 36)))
+  (import "quest.runtime" "memLoad32" (func $memLoad32 (type 35)))
+  (import "quest.runtime" "memStore32" (func $memStore32 (type 36)))
+  (import "quest.runtime" "memLoad64" (func $memLoad64 (type 35)))
+  (import "quest.runtime" "memStore64" (func $memStore64 (type 36)))
+  (import "quest.runtime" "memEnsure" (func $memEnsure (type 37)))
+  (import "quest.runtime" "memToString" (func $memToString (type 38)))
+  (import "quest.runtime" "stringToMem" (func $stringToMem (type 39)))
+  (import "quest.runtime" "wasi:args_sizes_get" (func $wasi:args_sizes_get (type 40)))
+  (import "quest.runtime" "wasi:args_get" (func $wasi:args_get (type 40)))
+  (import "quest.runtime" "wasi:environ_sizes_get" (func $wasi:environ_sizes_get (type 40)))
+  (import "quest.runtime" "wasi:environ_get" (func $wasi:environ_get (type 40)))
+  (import "quest.runtime" "wasi:fd_prestat_get" (func $wasi:fd_prestat_get (type 40)))
+  (import "quest.runtime" "wasi:fd_prestat_dir_name" (func $wasi:fd_prestat_dir_name (type 41)))
+  (import "quest.runtime" "wasi:path_open" (func $wasi:path_open (type 42)))
+  (import "quest.runtime" "wasi:fd_read" (func $wasi:fd_read (type 43)))
+  (import "quest.runtime" "wasi:fd_close" (func $wasi:fd_close (type 35)))
+  (import "quest.runtime" "wasi:path_filestat_get" (func $wasi:path_filestat_get (type 44)))
+  (import "quest.runtime" "wasi:path_create_directory" (func $wasi:path_create_directory (type 41)))
+  (import "quest.runtime" "wasi:path_unlink_file" (func $wasi:path_unlink_file (type 41)))
+  (import "quest.runtime" "wasi:path_remove_directory" (func $wasi:path_remove_directory (type 41)))
+  (import "quest.runtime" "wasi:path_rename" (func $wasi:path_rename (type 45)))
+  (import "quest.runtime" "wasi:fd_readdir" (func $wasi:fd_readdir (type 44)))
+  (import "quest.runtime" "error" (tag $error (type 46)))
+  (import "writer" "init" (func $writer.init (type 47)))
+  (import "conv" "init" (func $conv.init (type 47)))
+  (import "string" "init" (func $string.init (type 47)))
+  (import "wasm/print" "init" (func $wasm/print.init (type 47)))
+  (import "wasm/print" "show" (func $wasm/print.show (type 48)))
+  (import "wasm/core" "unproxy" (func $wasm/core.unproxy (type 49)))
+  (import "wasm/core" "proxyTag" (func $wasm/core.proxyTag (type 50)))
+  (import "wasm/core" "proxyElement" (func $wasm/core.proxyElement (type 51)))
+  (import "wasm/core" "proxyOptionElement" (func $wasm/core.proxyOptionElement (type 51)))
+  (import "wasm/core" "proxyOptionPayload" (func $wasm/core.proxyOptionPayload (type 49)))
+  (import "wasm/core" "init" (func $wasm/core.init (type 47)))
+  (import "wasm/core" "base" (func $wasm/core.base (type 52)))
+  (import "wasm/core" "newDesc" (func $wasm/core.newDesc (type 53)))
+  (import "wasm/core" "setPart" (func $wasm/core.setPart (type 54)))
+  (import "wasm/core" "setText" (func $wasm/core.setText (type 55)))
+  (import "wasm/core" "setFlags" (func $wasm/core.setFlags (type 56)))
+  (import "wasm/core" "instantiate" (func $wasm/core.instantiate (type 48)))
+  (import "wasm/core" "viewDict" (func $wasm/core.viewDict (type 48)))
+  (import "wasm/core" "storedField" (func $wasm/core.storedField (type 57)))
+  (import "wasm/core" "convert" (func $wasm/core.convert (type 58)))
+  (import "wasm/core" "isSubtype" (func $wasm/core.isSubtype (type 59)))
+  (import "wasm/core" "viewMap" (func $wasm/core.viewMap (type 48)))
+  (import "wasm/core" "viewIndex" (func $wasm/core.viewIndex (type 60)))
+  (import "wasm/core" "viewPart" (func $wasm/core.viewPart (type 61)))
+  (import "wasm/core" "viewRecordSlot" (func $wasm/core.viewRecordSlot (type 62)))
+  (import "wasm/core" "viewRecordField" (func $wasm/core.viewRecordField (type 63)))
+  (import "wasm/core" "viewOptionComponent" (func $wasm/core.viewOptionComponent (type 64)))
+  (import "wasm/core" "viewOptionPayload" (func $wasm/core.viewOptionPayload (type 48)))
+  (import "conv" "bool" (func $conv.bool (type 65)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $quest_type_Int (mut eqref) ref.null none)
   (global $quest_type_Real (mut eqref) ref.null none)
@@ -170,7 +175,7 @@
   (global $quest_type_Word (mut eqref) ref.null none)
   (global $quest_type_EmptyTuple (mut eqref) ref.null none)
   (global $quest_type_bound_vars (mut eqref) ref.null none)
-  (global $QRecord_name_String_x_Int_y_Int (mut eqref) ref.null none)
+  (global $QT_record_e453bc1b6cf6d2db (mut eqref) ref.null none)
   (global $QTuple_Int_90c1d29a40761138 (mut eqref) ref.null none)
   (global $QTuple_Int_Int_586d0a3b5f6d6e01 (mut eqref) ref.null none)
   (global $QTuple_Int_bf55836b2befd5ab (mut eqref) ref.null none)
@@ -180,7 +185,7 @@
   (global $divide.1 (mut eqref) ref.null none)
   (global $dict (ref $dict) i32.const 0 i32.const 1 i32.const 2 array.new_fixed $i32s 3 ref.null none struct.new $dict)
   (export "_start" (func $_start))
-  (func $divide (type 63) (param $closure (ref $clos)) (param $n i64) (param $d i64) (result i64 i64)
+  (func $divide (type 66) (param $closure (ref $clos)) (param $n i64) (param $d i64) (result i64 i64)
     (local $v i32)
     (local $v.2 i64)
     (local $v.1 i64)
@@ -226,7 +231,7 @@
     end
     unreachable
   )
-  (func $main (type 46)
+  (func $main (type 47)
     (local $v eqref)
     (local $t (ref null $slots))
     (local $v.2 eqref)
@@ -391,7 +396,7 @@
             block $inlined1 (result i64)
               local.get $v.2
               local.tee $v.2
-              block (type 64)
+              block (type 67)
                 br_on_cast 0 eqref (ref $option)
                 local.set $v.4
                 global.get $noClosure
@@ -644,7 +649,7 @@
     local.get $t
     i32.const 1
     local.get $v.2
-    block (type 64)
+    block (type 67)
       br_on_cast 0 eqref (ref $option)
       local.set $v.2
       global.get $noClosure
@@ -751,7 +756,7 @@
     struct.new $option
     local.set $v.4
     local.get $v.2
-    block (type 64)
+    block (type 67)
       br_on_cast 0 eqref (ref $option)
       local.set $v.2
       global.get $noClosure
@@ -761,7 +766,7 @@
     end
     local.set $v.2
     local.get $v.4
-    block (type 64)
+    block (type 67)
       br_on_cast 0 eqref (ref $option)
       local.set $v.4
       global.get $noClosure
@@ -1020,7 +1025,7 @@
     array.get $slots
     local.set $v
     local.get $v.48
-    block (type 64)
+    block (type 67)
       br_on_cast 0 eqref (ref $option)
       local.set $v.48
       global.get $noClosure
@@ -1030,7 +1035,7 @@
     end
     local.set $v.48
     local.get $v
-    block (type 64)
+    block (type 67)
       br_on_cast 0 eqref (ref $option)
       local.set $v
       global.get $noClosure
@@ -1339,7 +1344,7 @@
     struct.new $option
     local.set $v.4
     local.get $v
-    block (type 64)
+    block (type 67)
       br_on_cast 0 eqref (ref $option)
       local.set $v.5
       global.get $noClosure
@@ -1349,7 +1354,7 @@
     end
     local.set $v.5
     local.get $v.2
-    block (type 64)
+    block (type 67)
       br_on_cast 0 eqref (ref $option)
       local.set $v.2
       global.get $noClosure
@@ -1422,7 +1427,7 @@
     call $conv.bool
     local.set $v.2
     local.get $v
-    block (type 64)
+    block (type 67)
       br_on_cast 0 eqref (ref $option)
       local.set $v
       global.get $noClosure
@@ -1432,7 +1437,7 @@
     end
     local.set $v
     local.get $v.4
-    block (type 64)
+    block (type 67)
       br_on_cast 0 eqref (ref $option)
       local.set $v.4
       global.get $noClosure
@@ -2029,7 +2034,7 @@
     call $putString
     local.set $v.2
     i32.const 0
-    global.get $QRecord_name_String_x_Int_y_Int
+    global.get $QT_record_e453bc1b6cf6d2db
     i32.const 0
     i32.const 1
     i32.const 1808
@@ -2174,7 +2179,7 @@
     call $putString
     local.set $v.48
     i32.const 0
-    global.get $QRecord_name_String_x_Int_y_Int
+    global.get $QT_record_e453bc1b6cf6d2db
     i32.const 0
     i32.const 1
     i32.const 1812
@@ -2571,7 +2576,7 @@
     call $putString
     local.set $v
   )
-  (func $_start (type 46)
+  (func $_start (type 47)
     (local $t (ref null $raised))
     block $uncaught (result eqref)
       try_table (catch $error $uncaught)
@@ -2597,7 +2602,7 @@
     end
     call $uncaught
   )
-  (func $descriptors (type 46)
+  (func $descriptors (type 47)
     global.get $noClosure
     i64.const 1
     call $wasm/core.base
@@ -2645,7 +2650,7 @@
     i64.const 3
     i64.const 0
     call $wasm/core.newDesc
-    global.set $QRecord_name_String_x_Int_y_Int
+    global.set $QT_record_e453bc1b6cf6d2db
     global.get $noClosure
     i64.const 9
     i32.const 0
@@ -2719,7 +2724,7 @@
     call $wasm/core.newDesc
     global.set $QOption_none_some_QTuple_Int_end_9e75d53e4132c43a
     global.get $noClosure
-    global.get $QRecord_name_String_x_Int_y_Int
+    global.get $QT_record_e453bc1b6cf6d2db
     i64.const 0
     global.get $quest_type_String
     i32.const 0
@@ -2731,7 +2736,7 @@
     call $wasm/core.setPart
     drop
     global.get $noClosure
-    global.get $QRecord_name_String_x_Int_y_Int
+    global.get $QT_record_e453bc1b6cf6d2db
     i64.const 1
     global.get $quest_type_Int
     i32.const 0
@@ -2743,7 +2748,7 @@
     call $wasm/core.setPart
     drop
     global.get $noClosure
-    global.get $QRecord_name_String_x_Int_y_Int
+    global.get $QT_record_e453bc1b6cf6d2db
     i64.const 2
     global.get $quest_type_Int
     i32.const 0
@@ -2753,6 +2758,12 @@
     array.new_data $bytes $strings
     struct.new $string
     call $wasm/core.setPart
+    drop
+    global.get $noClosure
+    global.get $QT_record_e453bc1b6cf6d2db
+    i64.const 2
+    i64.const 1
+    call $wasm/core.setFlags
     drop
     global.get $noClosure
     global.get $QTuple_Int_90c1d29a40761138
