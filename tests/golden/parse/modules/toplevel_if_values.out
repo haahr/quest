@@ -1,0 +1,86 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('ifvalues') 'IfValues')
+      )
+    )
+    (InterfaceDecl
+      :name 'Local'
+      :signatures (
+        (FieldSig
+          :name 'small'
+          :type_sig (TypePath ('Int'))
+          :mode VALUE
+        )
+        (FieldSig
+          :name 'big'
+          :type_sig (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+    )
+    (ModuleDecl
+      :name 'local'
+      :interface_name 'Local'
+      :bindings (
+        (LetValueBinding
+          :name 'small'
+          :value (ExprIf
+            :cond (ExprInfix
+              :left (ExprInfix
+                :left (ExprInt 2 '2')
+                :op '<'
+                :right (ExprInt 1 '1')
+              )
+              :op 'orif'
+              :right (ExprInfix
+                :left (ExprInt 1 '1')
+                :op '<'
+                :right (ExprInt 0 '0')
+              )
+            )
+            :then_branch (ExprInt 1 '1')
+            :else_branch (ExprInt 2 '2')
+          )
+        )
+        (LetValueBinding
+          :name 'big'
+          :value (ExprInfix
+            :left (ExprId 'small')
+            :op '*'
+            :right (ExprInt 10 '10')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprInfix
+        :left (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'ifvalues')
+            :field 'twice'
+          )
+          :args (
+            (ExprSelect
+              :target (ExprId 'ifvalues')
+              :field 'limit'
+            )
+          )
+        )
+        :op '+'
+        :right (ExprInfix
+          :left (ExprSelect
+            :target (ExprId 'local')
+            :field 'big'
+          )
+          :op '+'
+          :right (ExprSelect
+            :target (ExprId 'ifvalues')
+            :field 'scale'
+          )
+        )
+      )
+    )
+  )
+)

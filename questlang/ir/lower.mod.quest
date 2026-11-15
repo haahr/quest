@@ -214,6 +214,10 @@ export
         (* Whether the unit is an interactive input's phrase unit, whose slots
          * are held in boxes (boxesSlot) *)
         var boxSlots: Bool
+        (* Where each lowered module's initializer ends, by module id: its
+         * init, or the continuation of a join it made (an if's value at its
+         * top level), which the statements after its bindings go in *)
+        moduleEnds: hashMap.T(Int Body)
     end
 
     let newLowerer(e: env.T sourceMap: maybe.T(location.SourceMap) file: Int echo: Bool printResult: Bool): Lowerer =
@@ -243,6 +247,7 @@ export
                 let earlierImports = hashMap.new(:String :nodes.Import stringOp.equal hash.string)
                 let var modulePrefix = ""
                 let var boxSlots = false
+                let moduleEnds = hashMap.new(:Int :Body intEqual hash.int)
             end
         end
 
@@ -1990,8 +1995,9 @@ export
                 let init = nodes.newBody()
                 let members = nodes.newMembers()
                 let savedFrame = l.frame
+                let var last = init
                 l.frame := diagnostics.initFrame(m.name)
-                inBody(l init fun(): Ok
+                inBody(l init fun(): Ok begin
                     for i = 0 upto {extent m.bindings - 1} do
                         let mb = m.bindings[i]
                         case mb.form
@@ -2017,9 +2023,12 @@ export
                                     else ok
                                 end
                         end
-                    end)
+                    end
+                    last := l.body
+                end)
                 l.frame := savedFrame
                 let lowered = nodes.newModule(l.modulePrefix <> m.name m.interfaceName init members)
+                hashMap.insert(:Int :Body l.moduleEnds lowered.id last)
                 if maybe.isSome(:Int m.symbolId) then
                     hashMap.insert(:Int :nodes.ModuleRef l.moduleRefs maybe.unwrap(:Int m.symbolId)
                         option refModule of nodes.ModuleRef with let m = lowered end)
@@ -2048,9 +2057,13 @@ export
             nodes.newUnit(main modules vector.toArray(:nodes.Import l.imports) l.sourceMap)
         end
 
+    (* The body a module's initializer ends in, which statements after its
+     * bindings are appended to *)
+    let moduleEnd(l: Lowerer m: nodes.Module): Body = hashMap.find(:Int :Body l.moduleEnds m.id)
+
     (* Ends a module's initializer by making its record: of its members, or of
      * its exports *)
-    let addModuleRecord(m: nodes.Module): Ok =
+    let addModuleRecord(l: Lowerer m: nodes.Module): Ok =
         begin
             let fields = maybe.unwrapOr(:nodes.Members m.exports m.members)
             let recordFields = vector.new(:model.RecordField)
@@ -2064,20 +2077,25 @@ export
             let recordType = model.recordType(vector.toArray(:model.RecordField recordFields) maybe.none(:String))
             let rv = fresh(m.name <> "_record" recordType false)
             m.recordVar := some(rv)
-            vector.append(:Stmt m.init.statements nodes.letStmt(rv nodes.makeRecord(vector.toArray(:nodes.FieldAtom atoms))))
+            vector.append(:Stmt moduleEnd(l m).statements
+                nodes.letStmt(rv nodes.makeRecord(vector.toArray(:nodes.FieldAtom atoms))))
         end
 
     let lowerProgram(prog: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool printResult: Bool):
             nodes.Unit =
         begin
-            let unit = program(newLowerer(e sourceMap 0 echo printResult) prog)
-            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do addModuleRecord(vector.get(:nodes.Module unit.modules i)) end
+            let l = newLowerer(e sourceMap 0 echo printResult)
+            let unit = program(l prog)
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                addModuleRecord(l vector.get(:nodes.Module unit.modules i))
+            end
             unit
         end
 
     let lowerModuleFile(b: Binding e: env.T sourceMap: maybe.T(location.SourceMap) file: Int): nodes.Unit =
         begin
-            let unit = program(newLowerer(e sourceMap file false false) tuple let offset = b.offset let phrases = array of b end end)
+            let l = newLowerer(e sourceMap file false false)
+            let unit = program(l tuple let offset = b.offset let phrases = array of b end end)
             let m = vector.get(:nodes.Module unit.modules 0)
             let exports = nodes.newMembers()
             case b.form
@@ -2101,7 +2119,8 @@ export
                                     nodes.addMember(exports sym.name mv)
                                 else
                                     let exported = fresh(sym.name sym.type false)
-                                    vector.append(:Stmt m.init.statements nodes.letStmt(exported nodes.opOfVar(mv)))
+                                    vector.append(:Stmt moduleEnd(l m).statements
+                                        nodes.letStmt(exported nodes.opOfVar(mv)))
                                     nodes.addMember(exports sym.name exported)
                                 end
                             else ok
@@ -2110,7 +2129,7 @@ export
                 else ok
             end
             m.exports := maybe.some(:nodes.Members exports)
-            addModuleRecord(m)
+            addModuleRecord(l m)
             unit.isProgram := false
             unit
         end
@@ -2173,7 +2192,7 @@ export
                                      * inputs *)
                                     let dm = lowerModule(l phrase)
                                     dm.exports := maybe.some(:nodes.Members dm.members)
-                                    addModuleRecord(dm)
+                                    addModuleRecord(l dm)
                                     vector.append(:nodes.Module modules dm)
                                 end
                             when bindInterface then ok

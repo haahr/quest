@@ -219,6 +219,10 @@ class _Lowerer:
         # component, which the frame and the closures share
         self.captured: set[int] = set()
         self.boxes: dict[int, ir.Var] = {}
+        # Where each lowered module's initializer ends, by id(module): its
+        # init, or the continuation of a join it made (an if's value at its
+        # top level), which the statements after its bindings go in
+        self.module_ends: dict[int, ir.Body] = {}
 
     # Building
 
@@ -1126,8 +1130,10 @@ class _Lowerer:
                         for member in (b.members if isinstance(b, (TypedLetValueGroup, TypedLetTypeGroup)) else (b,)):
                             if isinstance(member, TypedLetValue):
                                 members[member.name] = self.vars[member.symbol.symbol_id]
+            last = self.body
         self.frame = saved_frame
         module = ir.Module(m.name, m.interface_name, init, members)
+        self.module_ends[id(module)] = last
         if m.symbol_id is not None:
             self.module_refs[m.symbol_id] = module
         return module
@@ -1159,7 +1165,8 @@ def _display(t: QType) -> str:
 def lower_module_file(mod: TypedModule, env: Environment) -> ir.Unit:
     """Lowers a module file's typed module to a Core IR unit of the module
     alone, with its exports."""
-    unit = _Lowerer(env, False, False).program(TypedProgram(phrases=(mod,)))
+    lowerer = _Lowerer(env, False, False)
+    unit = lowerer.program(TypedProgram(phrases=(mod,)))
     module = unit.modules[0]
     exports: dict[str, ir.Var] = {}
     for name, symbol in mod.scope.values.items():
@@ -1173,20 +1180,20 @@ def lower_module_file(mod: TypedModule, env: Environment) -> ir.Unit:
             exports[name] = member
         else:
             export = ir.Var(name, symbol.type_val)
-            module.init.statements.append(ir.Let(export, member))
+            lowerer.module_ends[id(module)].statements.append(ir.Let(export, member))
             exports[name] = export
     module.exports = exports
-    _add_module_record(module)
+    _add_module_record(lowerer, module)
     return unit
 
 
-def _add_module_record(module: ir.Module) -> None:
+def _add_module_record(lowerer: _Lowerer, module: ir.Module) -> None:
     """Ends a module's initializer by making its record: of its members, or of
     its exports (docs/ir.md §3)."""
     fields = module.members if module.exports is None else module.exports
     rec_t = QRecordType(tuple(QRecordField(name=n, type_val=v.type) for n, v in fields.items()))
     module.record = ir.Var(f"{module.name}_record", rec_t)
-    module.init.statements.append(
+    lowerer.module_ends[id(module)].statements.append(
         ir.Let(module.record, ir.MakeRecord(tuple((n, v, False) for n, v in fields.items())))
     )
 
@@ -1201,7 +1208,8 @@ def lower_program(
     """Lowers a typed program to a Core IR unit."""
     if options is not None:
         echo = options.echo
-    unit = _Lowerer(env, echo, print_result).program(prog)
+    lowerer = _Lowerer(env, echo, print_result)
+    unit = lowerer.program(prog)
     for module in unit.modules:
-        _add_module_record(module)
+        _add_module_record(lowerer, module)
     return unit

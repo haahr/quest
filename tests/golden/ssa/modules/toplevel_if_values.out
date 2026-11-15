@@ -1,0 +1,98 @@
+function qv_mod_local_init() {
+b0():
+  %0: ptr = symbol qv_mod_local_initialized
+  %1: int = load1 %0 + 0
+  branch %1, b1(), b2()
+b1():
+  return
+b2():
+  %2: ptr = symbol qv_mod_local_initialized
+  %3: int = const 1
+  store1 %2 + 0, %3
+  %4: int = const 2
+  @16:15
+  %8: int = const 10
+  %9: int = mul %4, %8
+  %10: ptr = symbol g_big
+  store8 %10 + 0, %9
+  %11: int = const 40
+  %12: ptr = symbol quest_layout_record_QRecord_big_Int_small_Int_1377102546f379d9
+  %13: ptr = call quest_alloc(%11, %12)
+  %14: int = const 16
+  %15: ptr = ptrAdd %13, %14
+  %16: ptr = symbol quest_type_QT_record_d7db2b5834f920b3
+  store8 %15 + 0, %16
+  %20: ptr = ptrAdd %15, %14
+  store8 %20 + 0, %4
+  %22: int = load8 %10 + 0
+  %23: int = const 8
+  %24: ptr = ptrAdd %15, %23
+  store8 %24 + 0, %22
+  %25: ptr = symbol offsetdict_record_d7db2b5834f920b3_record_d7db2b5834f920b3
+  store8 %13 + 0, %15
+  store8 %13 + 8, %25
+  %26: ptr = load8 %13 + 0
+  %28: ptr = symbol g_local_record
+  store8 %28 + 0, %26
+  store8 %28 + 8, %25
+  %30: ptr = load8 %28 + 0
+  %32: ptr = symbol qm_local
+  store8 %32 + 0, %30
+  store8 %32 + 8, %25
+  return
+}
+
+function qr_register_dicts() {
+b0():
+  %0: ptr = symbol qr_roots
+  call quest_register_roots(%0)
+  %1: ptr = symbol qr_frames
+  call quest_register_frames(%1)
+  %2: ptr = symbol qr_funcs
+  %3: int = const 2
+  call quest_register_funcs(%2, %3)
+  %4: ptr = symbol quest_type_QT_record_d7db2b5834f920b3
+  %6: ptr = symbol offsetdict_record_d7db2b5834f920b3_record_d7db2b5834f920b3
+  tail call quest_register_record_dict(%4, %4, %6)
+}
+
+function main exported(%0: int, %1: ptr) int32 [0]: int result int32 {
+b0(%0: int, %1: ptr):
+  call quest_gc_init()
+  call quest_builtins_init(%0, %1) int32 [0]
+  call qr_register_dicts()
+  call qv_mod_tests__source__modules__ifvalues_init()
+  call qv_mod_local_init()
+  @19:16
+  %2: ptr = symbol qm_tests__source__modules__ifvalues
+  %3: ptr = load8 %2 + 0
+  %4: ptr = load8 %2 + 8
+  %5: int = load8 %4 + 0
+  %6: ptr = ptrAdd %3, %5
+  %7: int = load8 %6 + 0
+  @19:1
+  %8: int = call qv_tests__source__modules__ifvalues_twice(%7)
+  %9: int = const 0
+  return %9
+}
+
+data qm_local writable zero 16
+data qv_mod_local_initialized writable zero 8
+data g_small words [2]
+data g_big writable zero 8
+data g_local_record writable zero 16
+data qs_1 text "big"
+data qs_2 text "small"
+data qs_3 text "Record small: Int big: Int end"
+data qrec_desc_QT_record_d7db2b5834f920b3 words [2, qs_1, quest_type_Int, 8, 0, qs_2, quest_type_Int, 16, 0]
+data quest_type_QT_record_d7db2b5834f920b3 words [7, qs_3, 24, 8, quest_is_subtype, qrec_desc_QT_record_d7db2b5834f920b3]
+data offsetdict_record_d7db2b5834f920b3_record_d7db2b5834f920b3 words [8, 16, 0]
+data qs_4 text "local.<init>"
+data qs_5 text "<main>"
+data qr_frames words [0]
+data qr_funcs words [qv_mod_local_init, qs_4, main, qs_5]
+data qs_6 text "record_QRecord_big_Int_small_Int_1377102546f379d9"
+data qlk_record_QRecord_big_Int_small_Int_1377102546f379d9 words [65793]
+data quest_layout_record_QRecord_big_Int_small_Int_1377102546f379d9 words [qs_6, 0, 40, 21474836480, qlk_record_QRecord_big_Int_small_Int_1377102546f379d9]
+data qr_roots words [qm_local, 2, g_local_record, 2, 0, 0]
+
