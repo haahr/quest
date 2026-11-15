@@ -4,7 +4,7 @@ module scalars : Scalars
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/cfg : questlang/ssa/Cfg
-    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    questlang/ssa/passes/proxyFold : questlang/ssa/passes/ProxyFold
     collections/vector : collections/Vector
     collections/hashMap : collections/HashMap
     util/hash : util/Hash
@@ -15,7 +15,6 @@ export
     Def Verdict = Tuple value: Int constant: Bool left: Bool reason: String end
 
     let intEqual(a: Int b: Int): Bool = a is b
-    let proxyTag(): Int = runtimeLayout.constant("QUEST_PROXY_TAG")
 
     (* A word of a group's layout: nothing known of it (no member stores it
      * and nothing loads it), a value of one type, or a pointer to an object
@@ -32,10 +31,7 @@ export
      * by their words together. *)
     Let State = Tuple
         f: Function
-        defBlock: Array(Int)
-        defIndex: Array(Int)
-        isConst: Array(Bool)
-        constant: Array(Int)
+        d: proxyFold.Defs
         (* Each origin: the value it makes, whether it is static data, its
          * size in words, the static words from its address on, and for an
          * allocation, the value each word is stored by the stores that
@@ -65,10 +61,8 @@ export
         reach: Array(Bool)
     end
 
-    let defOf(s: State v: Int): ssa.Inst = vector.get(:ssa.Inst ssa.block(s.f s.defBlock[v]).insts s.defIndex[v])
-    let definedBy(s: State v: Int op: ssa.Opcode): Bool =
-        {v >= 0} andif {s.defBlock[v] >= 0} andif ssa.isOp(defOf(s v) op)
-    let isConstant(s: State v: Int n: Int): Bool = s.isConst[v] andif {s.constant[v] is n}
+    let defOf(s: State v: Int): ssa.Inst = proxyFold.defOf(s.d v)
+    let definedBy(s: State v: Int op: ssa.Opcode): Bool = proxyFold.definedBy(s.d v op)
 
     let rec find(s: State a: Int): Int =
         if s.parent[a] is a then a
@@ -85,12 +79,6 @@ export
             end end
         end
 
-    (* A write barrier (collector.md section 3.5) keeps no pointer, so passing
-     * it one of a group's pointers is no use of the object, and the barrier
-     * goes with the object, as in ssa/passes/escape *)
-    let isBarrier(symbol: String): Bool =
-        stringOp.equal(symbol "quest_barrier") orif stringOp.equal(symbol "quest_barrier_slot")
-
     let kill(s: State a: Int reason: String): Ok =
         if not(s.dead[a]) then begin s.dead[a] := true s.reasons[a] := reason end end
 
@@ -103,54 +91,12 @@ export
 
     let live(s: State v: Int): Bool = {v >= 0} andif {s.ptr[v] >= 0} andif not(s.dead[s.ptr[v]])
 
-    (* Whether v tests one of the groups' pointers for being a proxy:
-     * and(ptrToInt(p), QUEST_PROXY_TAG) *)
-    let isProxyTest(s: State v: Int): Bool =
-        if definedBy(s v ssa.opAnd) then
-            let i = defOf(s v)
-            let test(x: Int c: Int): Bool =
-                isConstant(s c proxyTag()) andif definedBy(s x ssa.opPtrToInt) andif live(s defOf(s x).args[0])
-            test(i.args[0] i.args[1]) orif test(i.args[1] i.args[0])
-        else false end
-
-    let reachable(s: State): Ok =
-        begin
-            let n = vector.length(:ssa.Block s.f.blocks)
-            for b = 0 upto {n - 1} do s.reach[b] := false end
-            let work = vector.new(:Int)
-            let visit(b: Int): Ok = if not(s.reach[b]) then begin s.reach[b] := true vector.append(:Int work b) end end
-            if n > 0 then visit(0) end
-            while not(vector.empty(:Int work)) do
-                let term = ssa.block(s.f vector.pop(:Int work)).term
-                let folded =
-                    case term
-                        when termBranch with x then
-                            if isProxyTest(s x.cond) then begin visit(x.ifFalse.block) true end else false end
-                        when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then
-                            false
-                    end
-                if not(folded) then
-                    let succs = ssa.successors(term)
-                    for k = 0 upto {extent succs - 1} do visit(succs[k]) end
-                end
-            end
-        end
+    (* Whether v tests one of the groups' pointers for being a proxy, which
+     * folds: no origin is one *)
+    let isProxyTest(s: State v: Int): Bool = proxyFold.isProxyTest(s.d v fun(p: Int): Bool live(s p))
 
     let takenTargets(s: State term: ssa.Terminator): Array(ssa.Target) =
-        case term
-            when termBranch with x then
-                if isProxyTest(s x.cond) then array of :ssa.Target x.ifFalse end else ssa.targets(term) end
-            when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then
-                ssa.targets(term)
-        end
-
-    (* The word an access at offset base + imm of width bytes is, ~1 if it is
-     * not a whole aligned word *)
-    let wordOf(base: Int imm: Int width: Int): Int =
-        begin
-            let o = base + imm
-            if {width is 8} andif {o >= 0} andif {{o % 8} is 0} then o / 8 else ~1 end
-        end
+        proxyFold.takenTargets(term fun(v: Int): Bool isProxyTest(s v))
 
     (* ======================================================================
      * Origins
@@ -181,7 +127,7 @@ export
             vector.append(:Int s.originWords words)
             vector.append(:Array(ssa.Word) s.originData data)
             vector.append(:Array(Int) s.stores array of(words ~1))
-            vector.append(:Int s.lastStore s.defIndex[v])
+            vector.append(:Int s.lastStore s.d.defIndex[v])
         end
 
     (* The words of a static datum from byte addend on *)
@@ -199,9 +145,7 @@ export
             let nValues = vector.length(:ssa.Type f.types)
             let nBlocks = vector.length(:ssa.Block f.blocks)
             let s = tuple
-                let f = f
-                let defBlock = array of(nValues ~1) let defIndex = array of(nValues ~1)
-                let isConst = array of(nValues false) let constant = array of(nValues 0)
+                let f = f let d = proxyFold.definitions(f)
                 let originValue = vector.new(:Int) let originDatum = vector.new(:Bool)
                 let originWords = vector.new(:Int) let originData = vector.new(:Array(ssa.Word))
                 let stores = vector.new(:Array(Int)) let lastStore = vector.new(:Int)
@@ -210,20 +154,6 @@ export
                 let var parent = array of(0 0) let var dead = array of(0 false) let var reasons = array of(0 "")
                 let ptr = array of(nValues ~1) let off = array of(nValues 0)
                 let reach = array of(nBlocks true)
-            end
-            for b = 0 upto {nBlocks - 1} do
-                let blk = ssa.block(f b)
-                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                    let i = vector.get(:ssa.Inst blk.insts k)
-                    for r = 0 upto {extent i.results - 1} do
-                        s.defBlock[i.results[r]] := b
-                        s.defIndex[i.results[r]] := k
-                    end
-                    if ssa.isOp(i ssa.opConst) then
-                        s.isConst[i.results[0]] := true
-                        s.constant[i.results[0]] := i.imm
-                    end
-                end
             end
             let constants = constantWords(u)
             let datumAt(v: Int): maybe.T(Tuple symbol: String addend: Int end) =
@@ -236,19 +166,19 @@ export
                 for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
                     let i = vector.get(:ssa.Inst blk.insts k)
                     if ssa.isOp(i ssa.opCall) andif stringOp.equal(i.symbol "quest_alloc") andif {extent i.args is 2}
-                        andif {extent i.results is 1} andif s.isConst[i.args[0]] andif {s.constant[i.args[0]] > 0} then
-                        addOrigin(s i.results[0] false {{s.constant[i.args[0]] + 7} / 8} array of :ssa.Word end)
+                        andif {extent i.results is 1} andif s.d.isConst[i.args[0]] andif {s.d.constant[i.args[0]] > 0} then
+                        addOrigin(s i.results[0] false {{s.d.constant[i.args[0]] + 7} / 8} array of :ssa.Word end)
                     elsif ssa.isOp(i ssa.opSymbol) andif {{i.imm % 8} is 0} andif {i.imm >= 0}
                         andif hashMap.contains(:String :Array(ssa.Word) constants i.symbol) then
                         let ws = wordsFrom(hashMap.find(:String :Array(ssa.Word) constants i.symbol) i.imm)
                         addOrigin(s i.results[0] true extent ws ws)
-                    elsif ssa.isOp(i ssa.opPtrAdd) andif s.isConst[i.args[1]] then
+                    elsif ssa.isOp(i ssa.opPtrAdd) andif s.d.isConst[i.args[1]] then
                         (* A constant's address plus an offset is another
                          * constant's (a case's, in a table of them) *)
                         let d = datumAt(i.args[0])
                         if maybe.isSome(:Tuple symbol: String addend: Int end d) then
                             let at = maybe.unwrap(:Tuple symbol: String addend: Int end d)
-                            let addend = at.addend + s.constant[i.args[1]]
+                            let addend = at.addend + s.d.constant[i.args[1]]
                             if {addend >= 0} andif {{addend % 8} is 0} then
                                 let ws = wordsFrom(hashMap.find(:String :Array(ssa.Word) constants at.symbol) addend)
                                 addOrigin(s i.results[0] true extent ws ws)
@@ -273,10 +203,10 @@ export
                     let blk = ssa.block(f b)
                     for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
                         let i = vector.get(:ssa.Inst blk.insts k)
-                        if ssa.isOp(i ssa.opPtrAdd) andif {s.exact[i.args[0]] >= 0} andif s.isConst[i.args[1]]
+                        if ssa.isOp(i ssa.opPtrAdd) andif {s.exact[i.args[0]] >= 0} andif s.d.isConst[i.args[1]]
                             andif {s.exact[i.results[0]] < 0} then
                             s.exact[i.results[0]] := s.exact[i.args[0]]
-                            s.exactOff[i.results[0]] := s.exactOff[i.args[0]] + s.constant[i.args[1]]
+                            s.exactOff[i.results[0]] := s.exactOff[i.args[0]] + s.d.constant[i.args[1]]
                             changed := true
                         elsif ssa.isOp(i ssa.opUnproxy) andif {s.exact[i.args[0]] >= 0}
                             andif {s.exact[i.results[0]] < 0} then
@@ -298,11 +228,11 @@ export
                     if {ssa.isOp(i ssa.opStore) orif ssa.isOp(i ssa.opLoad)} andif {s.exact[i.args[0]] >= 0} then
                         let a = s.exact[i.args[0]]
                         let v = vector.get(:Int s.originValue a)
-                        let w = wordOf(s.exactOff[i.args[0]] i.imm i.width)
+                        let w = proxyFold.wordOf(s.exactOff[i.args[0]] i.imm i.width)
                         let ws = vector.get(:Array(Int) s.stores a)
                         if {w < 0} orif {w >= extent ws} then kill(s a "accessed other than by whole words")
                         elsif ssa.isOp(i ssa.opStore) then
-                            if s.defBlock[v] isnot b then kill(s a "stored to after it is made")
+                            if s.d.defBlock[v] isnot b then kill(s a "stored to after it is made")
                             elsif ws[w] >= 0 then kill(s a "a word stored twice")
                             else begin ws[w] := i.args[1] vector.set(:Int s.lastStore a k) end end
                         end
@@ -315,7 +245,7 @@ export
                     let i = vector.get(:ssa.Inst blk.insts k)
                     if ssa.isOp(i ssa.opLoad) andif {s.exact[i.args[0]] >= 0} then
                         let a = s.exact[i.args[0]]
-                        if {s.defBlock[vector.get(:Int s.originValue a)] is b} andif {k < vector.get(:Int s.lastStore a)}
+                        if {s.d.defBlock[vector.get(:Int s.originValue a)] is b} andif {k < vector.get(:Int s.lastStore a)}
                         then kill(s a "read before it is initialized") end
                     end
                 end
@@ -328,8 +258,8 @@ export
                     let v = ws[w]
                     if {v >= 0} andif {s.exact[v] >= 0} then
                         let h = s.exact[v]
-                        let here = s.defBlock[vector.get(:Int s.originValue a)]
-                        if {s.defBlock[vector.get(:Int s.originValue h)] is here}
+                        let here = s.d.defBlock[vector.get(:Int s.originValue a)]
+                        if {s.d.defBlock[vector.get(:Int s.originValue h)] is here}
                             andif {vector.get(:Int s.lastStore h) > vector.get(:Int s.lastStore a)} then
                             kill(s a "initialized before an object it holds")
                         end
@@ -379,8 +309,8 @@ export
                             let i = vector.get(:ssa.Inst blk.insts k)
                             if ssa.isOp(i ssa.opPtrAdd) then
                                 let p = i.args[0]
-                                if live(s p) andif s.isConst[i.args[1]] andif {s.originOf[i.results[0]] < 0} then
-                                    if setPointer(s i.results[0] s.ptr[p] {s.off[p] + s.constant[i.args[1]]}) then
+                                if live(s p) andif s.d.isConst[i.args[1]] andif {s.originOf[i.results[0]] < 0} then
+                                    if setPointer(s i.results[0] s.ptr[p] {s.off[p] + s.d.constant[i.args[1]]}) then
                                         changed := true
                                     end
                                 end
@@ -393,7 +323,7 @@ export
                                 (* A word that the group's allocations store
                                  * pointers in holds a pointer of theirs *)
                                 let p = i.args[0]
-                                let w = wordOf(s.off[p] i.imm i.width)
+                                let w = proxyFold.wordOf(s.off[p] i.imm i.width)
                                 if w >= 0 then
                                     let g = find(s s.ptr[p])
                                     for a = 0 upto {n - 1} do
@@ -480,17 +410,17 @@ export
                             if live(s v) then
                                 let a = s.ptr[v]
                                 if ssa.isOp(i ssa.opLoad) andif {j is 0} then
-                                    if wordOf(s.off[v] i.imm i.width) < 0 then killGroup(s a "read other than by words")
+                                    if proxyFold.wordOf(s.off[v] i.imm i.width) < 0 then killGroup(s a "read other than by words")
                                     end
                                 elsif ssa.isOp(i ssa.opStore) andif {j is 0} then
                                     (* Only an allocation's initializing
                                      * stores *)
                                     let e = s.exact[v]
-                                    let w = wordOf(s.exactOff[v] i.imm i.width)
+                                    let w = proxyFold.wordOf(s.exactOff[v] i.imm i.width)
                                     let initializes = {e >= 0} andif {w >= 0} andif
                                         {w < extent vector.get(:Array(Int) s.stores e)} andif
                                         {vector.get(:Array(Int) s.stores e)[w] is i.args[1]} andif
-                                        {s.defBlock[vector.get(:Int s.originValue e)] is b}
+                                        {s.d.defBlock[vector.get(:Int s.originValue e)] is b}
                                     if not(initializes) then killGroup(s a "stored to") end
                                 elsif ssa.isOp(i ssa.opStore) andif {j is 1} then
                                     (* Into another of the groups' objects, as
@@ -499,7 +429,7 @@ export
                                         killGroup(s a "stored")
                                     end
                                 elsif ssa.isOp(i ssa.opUnproxy) then ok
-                                elsif ssa.isOp(i ssa.opPtrAdd) andif {j is 0} andif s.isConst[i.args[1]] then
+                                elsif ssa.isOp(i ssa.opPtrAdd) andif {j is 0} andif s.d.isConst[i.args[1]] then
                                     (* A constant's address plus an offset
                                      * is another constant's, which needs
                                      * the address if it is left *)
@@ -510,7 +440,7 @@ export
                                     if not(onlyProxyTests(i.results[0])) then
                                         killGroup(s a "converted to an integer")
                                     end
-                                elsif ssa.isCall(i) andif isBarrier(i.symbol) then ok
+                                elsif ssa.isCall(i) andif proxyFold.isBarrier(i.symbol) then ok
                                 elsif ssa.isCall(i) then killGroup(s a "passed to " <> i.symbol)
                                 else killGroup(s a "used by " <> ssa.opcodeName(i.op)) end
                             end
@@ -595,7 +525,7 @@ export
                     for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
                         let i = vector.get(:ssa.Inst blk.insts k)
                         if ssa.isOp(i ssa.opLoad) andif live(s i.args[0]) then
-                            let w = wordOf(s.off[i.args[0]] i.imm i.width)
+                            let w = proxyFold.wordOf(s.off[i.args[0]] i.imm i.width)
                             if w >= 0 then grow(find(s s.ptr[i.args[0]]) w + 1) end
                         end
                     end
@@ -636,7 +566,7 @@ export
                     for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
                         let i = vector.get(:ssa.Inst blk.insts k)
                         if ssa.isOp(i ssa.opLoad) andif live(s i.args[0]) then
-                            let w = wordOf(s.off[i.args[0]] i.imm i.width)
+                            let w = proxyFold.wordOf(s.off[i.args[0]] i.imm i.width)
                             if w >= 0 then valueNote(hashMap.find(:Int :Layout result find(s s.ptr[i.args[0]])) w i.results[0]) end
                         end
                     end
@@ -682,16 +612,7 @@ export
             let var before = ~1
             while {n > 0} andif {before isnot countDead()} do
                 before := countDead()
-                for b = 0 upto {nBlocks - 1} do s.reach[b] := true end
-                let var settled = false
-                while not(settled) do
-                    pointers(s)
-                    let old = array of(nBlocks false)
-                    for b = 0 upto {nBlocks - 1} do old[b] := s.reach[b] end
-                    reachable(s)
-                    settled := true
-                    for b = 0 upto {nBlocks - 1} do if old[b] isnot s.reach[b] then settled := false end end
-                end
+                proxyFold.settle(s.d s.reach fun(): Ok pointers(s) fun(v: Int): Bool isProxyTest(s v))
                 check(s)
                 if countDead() is before then
                     let ls = layouts(s)
@@ -808,27 +729,6 @@ export
      * Replacement
      * ====================================================================== *)
 
-    let zeroOf(f: Function insts: vector.T(ssa.Inst) t: ssa.Type loc: ssa.Loc): Int =
-        begin
-            let v = ssa.newValue(f t)
-            let add(op: ssa.Opcode args: Array(Int) result: Int): Ok =
-                begin
-                    let i = ssa.inst(op args array of result end)
-                    i.loc := loc
-                    vector.append(:ssa.Inst insts i)
-                end
-            case t
-                when typeInt then add(ssa.opConst array of :Int end v)
-                when typePtr then add(ssa.opNull array of :Int end v)
-                when typeReal then add(ssa.opRealConst array of :Int end v)
-                when typeVal then
-                    let z = ssa.newValue(f ssa.typeInt)
-                    add(ssa.opConst array of :Int end z)
-                    add(ssa.opToVal array of z end v)
-            end
-            v
-        end
-
     (* The types of a group's values, in order *)
     let rec leafTypes(ls: hashMap.T(Int Layout) g: Int into: vector.T(ssa.Type)): Ok =
         begin
@@ -925,7 +825,7 @@ export
                                 let types = vector.new(:ssa.Type)
                                 leafTypes(ls h types)
                                 for k = 0 upto {vector.length(:ssa.Type types) - 1} do
-                                    vector.append(:Int result zeroOf(f insts vector.get(:ssa.Type types k) loc))
+                                    vector.append(:Int result proxyFold.zeroOf(f insts vector.get(:ssa.Type types k) loc))
                                 end
                             end
                         let datum = vector.get(:Bool s.originDatum o)
@@ -950,7 +850,7 @@ export
                                 elsif not(datum) andif {w < extent stored} andif {stored[w] >= 0} then
                                     vector.append(:Int result stored[w])
                                 else
-                                    vector.append(:Int result zeroOf(f insts t loc))
+                                    vector.append(:Int result proxyFold.zeroOf(f insts t loc))
                                 end
                             elsif l.kind[w] is wordNested then
                                 if not(datum) andif {w < extent stored} andif {stored[w] >= 0} then
@@ -991,7 +891,7 @@ export
                                 base[result] := base[i.args[0]]
                             elsif ssa.isOp(i ssa.opLoad) andif isPointer(i.args[0]) then
                                 let p = i.args[0]
-                                let w = wordOf(s.off[p] i.imm i.width)
+                                let w = proxyFold.wordOf(s.off[p] i.imm i.width)
                                 let start = leafStart(ls groupOf(p) w)
                                 let vs = valuesOf(p)
                                 if isPointer(result) then
@@ -1003,7 +903,7 @@ export
                                     renamed[result] := vs[start]
                                 end
                             elsif ssa.isOp(i ssa.opPtrToInt) andif isPointer(i.args[0]) then ok
-                            elsif ssa.isCall(i) andif isBarrier(i.symbol) andif isPointer(i.args[0]) then ok
+                            elsif ssa.isCall(i) andif proxyFold.isBarrier(i.symbol) andif isPointer(i.args[0]) then ok
                             elsif {result >= 0} andif proxyTest[result] then
                                 let zero = ssa.instruction(ssa.opConst array of :Int end i.results 0 "" 0 false
                                     ssa.emptySignature)

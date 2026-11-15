@@ -1,0 +1,132 @@
+(* Quest Self-Hosted Compiler: The SSA's Proxy Folding Implementation *)
+
+module proxyFold : ProxyFold
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    collections/vector : collections/Vector
+    stringOp = string : StringOp
+export
+    Def Defs = Tuple
+        f: ssa.Function
+        defBlock: Array(Int)
+        defIndex: Array(Int)
+        isConst: Array(Bool)
+        constant: Array(Int)
+    end
+
+    let definitions(f: ssa.Function): Defs =
+        begin
+            let nValues = vector.length(:ssa.Type f.types)
+            let d = tuple
+                let f = f
+                let defBlock = array of(nValues ~1) let defIndex = array of(nValues ~1)
+                let isConst = array of(nValues false) let constant = array of(nValues 0)
+            end
+            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    for r = 0 upto {extent i.results - 1} do
+                        d.defBlock[i.results[r]] := b
+                        d.defIndex[i.results[r]] := k
+                    end
+                    if ssa.isOp(i ssa.opConst) then
+                        d.isConst[i.results[0]] := true
+                        d.constant[i.results[0]] := i.imm
+                    end
+                end
+            end
+            d
+        end
+
+    let defOf(d: Defs v: Int): ssa.Inst = vector.get(:ssa.Inst ssa.block(d.f d.defBlock[v]).insts d.defIndex[v])
+    let definedBy(d: Defs v: Int op: ssa.Opcode): Bool =
+        {v >= 0} andif {d.defBlock[v] >= 0} andif ssa.isOp(defOf(d v) op)
+    let isConstant(d: Defs v: Int n: Int): Bool = d.isConst[v] andif {d.constant[v] is n}
+
+    let isProxyTest(d: Defs v: Int tracked: All(p: Int) Bool): Bool =
+        if definedBy(d v ssa.opAnd) then
+            let i = defOf(d v)
+            let test(x: Int c: Int): Bool =
+                isConstant(d c runtimeLayout.constant("QUEST_PROXY_TAG")) andif definedBy(d x ssa.opPtrToInt)
+                    andif tracked(defOf(d x).args[0])
+            test(i.args[0] i.args[1]) orif test(i.args[1] i.args[0])
+        else false end
+
+    let reachable(d: Defs reach: Array(Bool) isTest: All(v: Int) Bool): Ok =
+        begin
+            let n = vector.length(:ssa.Block d.f.blocks)
+            for b = 0 upto {n - 1} do reach[b] := false end
+            let work = vector.new(:Int)
+            let visit(b: Int): Ok = if not(reach[b]) then begin reach[b] := true vector.append(:Int work b) end end
+            if n > 0 then visit(0) end
+            while not(vector.empty(:Int work)) do
+                let term = ssa.block(d.f vector.pop(:Int work)).term
+                let folded =
+                    case term
+                        when termBranch with x then
+                            if isTest(x.cond) then begin visit(x.ifFalse.block) true end else false end
+                        when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then
+                            false
+                    end
+                if not(folded) then
+                    let succs = ssa.successors(term)
+                    for k = 0 upto {extent succs - 1} do visit(succs[k]) end
+                end
+            end
+        end
+
+    let takenTargets(term: ssa.Terminator isTest: All(v: Int) Bool): Array(ssa.Target) =
+        case term
+            when termBranch with x then
+                if isTest(x.cond) then array of :ssa.Target x.ifFalse end else ssa.targets(term) end
+            when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then
+                ssa.targets(term)
+        end
+
+    let settle(d: Defs reach: Array(Bool) pointers: All() Ok isTest: All(v: Int) Bool): Ok =
+        begin
+            let nBlocks = extent reach
+            for b = 0 upto {nBlocks - 1} do reach[b] := true end
+            let var settled = false
+            while not(settled) do
+                pointers()
+                let old = array of(nBlocks false)
+                for b = 0 upto {nBlocks - 1} do old[b] := reach[b] end
+                reachable(d reach isTest)
+                settled := true
+                for b = 0 upto {nBlocks - 1} do if old[b] isnot reach[b] then settled := false end end
+            end
+        end
+
+    let isBarrier(symbol: String): Bool =
+        stringOp.equal(symbol "quest_barrier") orif stringOp.equal(symbol "quest_barrier_slot")
+
+    let wordOf(base: Int imm: Int width: Int): Int =
+        begin
+            let o = base + imm
+            if {width is 8} andif {o >= 0} andif {{o % 8} is 0} then o / 8 else ~1 end
+        end
+
+    let zeroOf(f: ssa.Function insts: vector.T(ssa.Inst) t: ssa.Type loc: ssa.Loc): Int =
+        begin
+            let v = ssa.newValue(f t)
+            let add(op: ssa.Opcode args: Array(Int) result: Int): Ok =
+                begin
+                    let i = ssa.inst(op args array of result end)
+                    i.loc := loc
+                    vector.append(:ssa.Inst insts i)
+                end
+            case t
+                when typeInt then add(ssa.opConst array of :Int end v)
+                when typePtr then add(ssa.opNull array of :Int end v)
+                when typeReal then add(ssa.opRealConst array of :Int end v)
+                when typeVal then
+                    let z = ssa.newValue(f ssa.typeInt)
+                    add(ssa.opConst array of :Int end z)
+                    add(ssa.opToVal array of z end v)
+            end
+            v
+        end
+end

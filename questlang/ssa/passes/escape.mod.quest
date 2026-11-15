@@ -3,7 +3,8 @@
 module escape : Escape
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    questlang/ssa/passes/proxyFold : questlang/ssa/passes/ProxyFold
     collections/vector : collections/Vector
     stringOp = string : StringOp
     conv : Conv
@@ -15,12 +16,7 @@ export
     (* What the analysis knows of a function's values and allocations *)
     Let State = Tuple
         f: Function
-        (* Each value's defining instruction, by block and index (~1 for a
-         * parameter); whether it is a constant (opConst), and its value *)
-        defBlock: Array(Int)
-        defIndex: Array(Int)
-        isConst: Array(Bool)
-        constant: Array(Int)
+        d: proxyFold.Defs
         (* The candidates: each one's value and size, and whether it is still
          * thought not to escape, and if it does, why *)
         allocValue: Array(Int)
@@ -39,64 +35,15 @@ export
         reach: Array(Bool)
     end
 
-    let proxyTag(): Int = runtimeLayout.constant("QUEST_PROXY_TAG")
+    let defOf(s: State v: Int): ssa.Inst = proxyFold.defOf(s.d v)
 
-    let defOf(s: State v: Int): ssa.Inst =
-        vector.get(:ssa.Inst ssa.block(s.f s.defBlock[v]).insts s.defIndex[v])
-
-    let definedBy(s: State v: Int op: ssa.Opcode): Bool =
-        {v >= 0} andif {s.defBlock[v] >= 0} andif ssa.isOp(defOf(s v) op)
-
-    let isConstant(s: State v: Int n: Int): Bool = s.isConst[v] andif {s.constant[v] is n}
-
-    (* Whether v tests a candidate's pointer for being a proxy:
-     * and(ptrToInt(p), QUEST_PROXY_TAG), p one of its pointers *)
+    (* Whether v tests a candidate's pointer for being a proxy, which folds:
+     * the candidate is not one *)
     let isProxyTest(s: State v: Int): Bool =
-        if definedBy(s v ssa.opAnd) then
-            let i = defOf(s v)
-            let test(x: Int c: Int): Bool =
-                isConstant(s c proxyTag()) andif definedBy(s x ssa.opPtrToInt) andif
-                    begin
-                        let p = defOf(s x).args[0]
-                        {s.ptr[p] >= 0} andif s.alive[s.ptr[p]]
-                    end
-            test(i.args[0] i.args[1]) orif test(i.args[1] i.args[0])
-        else false end
+        proxyFold.isProxyTest(s.d v fun(p: Int): Bool {s.ptr[p] >= 0} andif s.alive[s.ptr[p]])
 
-    (* The blocks reached from the entry, a branch on a proxy test of a
-     * candidate going only where it is false *)
-    let reachable(s: State): Ok =
-        begin
-            let n = vector.length(:ssa.Block s.f.blocks)
-            for b = 0 upto {n - 1} do s.reach[b] := false end
-            let work = vector.new(:Int)
-            let visit(b: Int): Ok = if not(s.reach[b]) then begin s.reach[b] := true vector.append(:Int work b) end end
-            if n > 0 then visit(0) end
-            while not(vector.empty(:Int work)) do
-                let term = ssa.block(s.f vector.pop(:Int work)).term
-                let folded =
-                    case term
-                        when termBranch with x then
-                            if isProxyTest(s x.cond) then begin visit(x.ifFalse.block) true end else false end
-                        when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then
-                            false
-                    end
-                if not(folded) then
-                    let succs = ssa.successors(term)
-                    for k = 0 upto {extent succs - 1} do visit(succs[k]) end
-                end
-            end
-        end
-
-    (* The targets of a reached block's terminator that are taken: a branch
-     * folded by a proxy test takes only its false one *)
     let takenTargets(s: State term: ssa.Terminator): Array(ssa.Target) =
-        case term
-            when termBranch with x then
-                if isProxyTest(s x.cond) then array of :ssa.Target x.ifFalse end else ssa.targets(term) end
-            when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then
-                ssa.targets(term)
-        end
+        proxyFold.takenTargets(term fun(v: Int): Bool isProxyTest(s v))
 
     let setPointer(s: State v: Int a: Int offset: Int): Bool =
         if s.ptr[v] < 0 then begin s.ptr[v] := a s.off[v] := offset true end
@@ -109,13 +56,6 @@ export
             end
         else false end
 
-    (* A write barrier (collector.md section 3.5) only logs the object or
-     * marks the slot's card: it keeps no pointer, so passing one of an
-     * allocation's pointers to it is no escape, and an allocation made a
-     * slot needs none (a slot is a root and has no header word), so the
-     * transformation drops them *)
-    let isBarrier(symbol: String): Bool =
-        stringOp.equal(symbol "quest_barrier") orif stringOp.equal(symbol "quest_barrier_slot")
     let escapes(s: State a: Int reason: String): Ok =
         if s.alive[a] then begin s.alive[a] := false s.reasons[a] := reason end end
 
@@ -123,9 +63,8 @@ export
      * offset base) reads or writes, ~1 if it is not a whole aligned word *)
     let wordAt(s: State a: Int base: Int imm: Int width: Int): Int =
         begin
-            let o = base + imm
-            if {width is 8} andif {o >= 0} andif {{o % 8} is 0} andif {{o + 8} <= s.allocBytes[a]} then o / 8
-            else ~1 end
+            let w = proxyFold.wordOf(base imm width)
+            if {w >= 0} andif {{{w + 1} * 8} <= s.allocBytes[a]} then w else ~1 end
         end
 
     (* The candidates' pointers, to a fixed point over the blocks reached: the
@@ -154,8 +93,8 @@ export
                             let i = vector.get(:ssa.Inst blk.insts k)
                             if ssa.isOp(i ssa.opPtrAdd) then
                                 let p = i.args[0]
-                                if {s.ptr[p] >= 0} andif s.isConst[i.args[1]] then
-                                    if setPointer(s i.results[0] s.ptr[p] {s.off[p] + s.constant[i.args[1]]}) then
+                                if {s.ptr[p] >= 0} andif s.d.isConst[i.args[1]] then
+                                    if setPointer(s i.results[0] s.ptr[p] {s.off[p] + s.d.constant[i.args[1]]}) then
                                         changed := true
                                     end
                                 end
@@ -273,11 +212,11 @@ export
                                     end
                                 elsif ssa.isOp(i ssa.opStore) andif {j is 1} then
                                     if s.ptr[i.args[0]] isnot a then escapes(s a "stored") end
-                                elsif ssa.isOp(i ssa.opPtrAdd) andif {j is 0} andif s.isConst[i.args[1]] then ok
+                                elsif ssa.isOp(i ssa.opPtrAdd) andif {j is 0} andif s.d.isConst[i.args[1]] then ok
                                 elsif ssa.isOp(i ssa.opUnproxy) then ok
                                 elsif ssa.isOp(i ssa.opPtrToInt) then
                                     if not(onlyProxyTests(i.results[0])) then escapes(s a "converted to an integer") end
-                                elsif ssa.isCall(i) andif isBarrier(i.symbol) then ok
+                                elsif ssa.isCall(i) andif proxyFold.isBarrier(i.symbol) then ok
                                 elsif ssa.isCall(i) then escapes(s a "passed to " <> i.symbol)
                                 else escapes(s a "used by " <> ssa.opcodeName(i.op)) end
                             end
@@ -319,26 +258,11 @@ export
         begin
             let nValues = vector.length(:ssa.Type f.types)
             let nBlocks = vector.length(:ssa.Block f.blocks)
-            let defBlock = array of(nValues ~1)
-            let defIndex = array of(nValues ~1)
-            let isConst = array of(nValues false)
-            let constant = array of(nValues 0)
+            let d = proxyFold.definitions(f)
+            let isConst = d.isConst
+            let constant = d.constant
             let values = vector.new(:Int)
             let sizes = vector.new(:Int)
-            for b = 0 upto {nBlocks - 1} do
-                let blk = ssa.block(f b)
-                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                    let i = vector.get(:ssa.Inst blk.insts k)
-                    for r = 0 upto {extent i.results - 1} do
-                        defBlock[i.results[r]] := b
-                        defIndex[i.results[r]] := k
-                    end
-                    if ssa.isOp(i ssa.opConst) then
-                        isConst[i.results[0]] := true
-                        constant[i.results[0]] := i.imm
-                    end
-                end
-            end
             for b = 0 upto {nBlocks - 1} do
                 let blk = ssa.block(f b)
                 for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
@@ -361,7 +285,7 @@ export
                 selfOff[a] := array of({{allocBytes[a] + 7} / 8} 0)
             end
             let s = tuple
-                let f = f let defBlock = defBlock let defIndex = defIndex let isConst = isConst let constant = constant
+                let f = f let d = d
                 let allocValue = vector.toArray(:Int values) let allocBytes = allocBytes
                 let alive = array of(n true) let reasons = array of(n "")
                 let ptr = array of(nValues ~1) let off = array of(nValues 0)
@@ -381,16 +305,7 @@ export
                 before := countAlive()
                 (* Reaching depends on the pointers, a parameter's binding on
                  * reaching *)
-                for b = 0 upto {nBlocks - 1} do s.reach[b] := true end
-                let var settled = false
-                while not(settled) do
-                    pointers(s)
-                    let old = array of(nBlocks false)
-                    for b = 0 upto {nBlocks - 1} do old[b] := s.reach[b] end
-                    reachable(s)
-                    settled := true
-                    for b = 0 upto {nBlocks - 1} do if old[b] isnot s.reach[b] then settled := false end end
-                end
+                proxyFold.settle(s.d s.reach fun(): Ok pointers(s) fun(v: Int): Bool isProxyTest(s v))
                 check(s)
             end
             s
@@ -408,28 +323,6 @@ export
                 end
             end
             verdicts
-        end
-
-    (* A zero of type t, made by instructions at loc appended to insts *)
-    let zeroOf(f: Function insts: vector.T(ssa.Inst) t: ssa.Type loc: ssa.Loc): Int =
-        begin
-            let v = ssa.newValue(f t)
-            let add(op: ssa.Opcode args: Array(Int) result: Int): Ok =
-                begin
-                    let i = ssa.inst(op args array of result end)
-                    i.loc := loc
-                    vector.append(:ssa.Inst insts i)
-                end
-            case t
-                when typeInt then add(ssa.opConst array of :Int end v)
-                when typePtr then add(ssa.opNull array of :Int end v)
-                when typeReal then add(ssa.opRealConst array of :Int end v)
-                when typeVal then
-                    let n = ssa.newValue(f ssa.typeInt)
-                    add(ssa.opConst array of :Int end n)
-                    add(ssa.opToVal array of n end v)
-            end
-            v
         end
 
     let typeCode = ssa.typeCode
@@ -512,7 +405,7 @@ export
                                 vector.append(:ssa.Inst kept slot)
                                 for w = 0 upto {words - 1} do
                                     if not(s.selfHas[a][w]) then
-                                        let zero = zeroOf(f kept typeOfCode(wordType[a][w]) i.loc)
+                                        let zero = proxyFold.zeroOf(f kept typeOfCode(wordType[a][w]) i.loc)
                                         let width = if wordWide[a][w] then 8 else 1 end
                                         let store = ssa.instruction(ssa.opStore array of result zero end
                                             array of :Int end {w * 8} "" width false ssa.emptySignature)
@@ -523,7 +416,7 @@ export
                             elsif {result >= 0} andif isPointer(result) then ok
                             elsif ssa.isOp(i ssa.opStore) andif isPointer(i.args[1]) then ok
                             elsif ssa.isOp(i ssa.opPtrToInt) andif isPointer(i.args[0]) then ok
-                            elsif ssa.isCall(i) andif isBarrier(i.symbol) andif isPointer(i.args[0]) then ok
+                            elsif ssa.isCall(i) andif proxyFold.isBarrier(i.symbol) andif isPointer(i.args[0]) then ok
                             elsif {result >= 0} andif proxyTest[result] then
                                 let zero = ssa.instruction(ssa.opConst array of :Int end i.results 0 "" 0 false
                                     ssa.emptySignature)
@@ -572,22 +465,9 @@ export
                         vector.append(:Int params vector.get(:Int left j))
                     end
                 end
-                (* The blocks only a proxy's arm reached, dropped, the rest
-                 * renumbered in order *)
-                let number = array of(nBlocks ~1)
-                let blocks = vector.new(:ssa.Block)
-                for b = 0 upto {nBlocks - 1} do
-                    if s.reach[b] then
-                        number[b] := vector.length(:ssa.Block blocks)
-                        vector.append(:ssa.Block blocks ssa.block(f b))
-                    end
-                end
-                vector.clear(:ssa.Block f.blocks)
-                for b = 0 upto {vector.length(:ssa.Block blocks) - 1} do
-                    let blk = vector.get(:ssa.Block blocks b)
-                    blk.term := ssa.mapBlocks(blk.term fun(x: Int): Int number[x])
-                    vector.append(:ssa.Block f.blocks blk)
-                end
+                (* The blocks only a proxy's arm reached, now unreached,
+                 * since the folded branches are jumps *)
+                cfg.dropUnreached(f)
             end
             removed
         end
