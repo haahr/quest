@@ -14,7 +14,7 @@
     (type $varBox (struct (field $tag i32) (field $payload eqref)))
     (type $clos (sub $obj (struct (field $hash (mut i32)))))
     (type $record (sub final $obj (struct (field $hash (mut i32)) (field $layout eqref) (field $slots (ref $slots)))))
-    (type $dict (struct (field $indices (ref $i32s))))
+    (type $dict (struct (field $indices (ref $i32s)) (field $stored eqref)))
     (type $recBox (struct (field $payload (ref $record)) (field $dict (ref $dict))))
     (type $exception (sub final $obj (struct (field $hash (mut i32)) (field $name (ref $string)))))
     (type $raised (struct (field $exception (ref $exception)) (field $payload eqref) (field $site eqref) (field $text eqref) (field $kind i32) (field $desc eqref)))
@@ -52,13 +52,15 @@
   (type (func (param (ref $clos) i64 eqref i64 i64) (result eqref)))
   (type (func (param (ref $clos) eqref i64 eqref eqref) (result eqref)))
   (type (func (param (ref $clos) eqref i64 i64 eqref) (result eqref)))
+  (type (func (param (ref $clos) eqref eqref i64 eqref) (result eqref)))
+  (type (func (param (ref $clos) eqref eqref eqref) (result eqref)))
   (type (func (param (ref $clos) i32) (result eqref)))
   (type (func (param (ref $clos) i64) (result i64)))
   (type (func (param (ref $clos) eqref) (result eqref)))
-  (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 53)))))
-  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 53)) (field $native (ref 52)))))
-  (type $tries.closure (sub final 55 (struct (field $hash (mut i32)) (field $uniform (ref 53)) (field $native (ref 52)))))
-  (type $tries.closure.1 (sub final 55 (struct (field $hash (mut i32)) (field $uniform (ref 53)) (field $native (ref 52)))))
+  (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 55)))))
+  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 55)) (field $native (ref 54)))))
+  (type $tries.closure (sub final 57 (struct (field $hash (mut i32)) (field $uniform (ref 55)) (field $native (ref 54)))))
+  (type $tries.closure.1 (sub final 57 (struct (field $hash (mut i32)) (field $uniform (ref 55)) (field $native (ref 54)))))
   (import "quest.runtime" "exception:int.error" (global $int.error (ref $exception)))
   (import "quest.runtime" "exception:real.error" (global $real.error (ref $exception)))
   (import "quest.runtime" "exception:word.error" (global $word.error (ref $exception)))
@@ -137,7 +139,10 @@
   (import "wasm/core" "setPart" (func $wasm/core.setPart (type 49)))
   (import "wasm/core" "setText" (func $wasm/core.setText (type 50)))
   (import "wasm/core" "instantiate" (func $wasm/core.instantiate (type 46)))
-  (import "conv" "bool" (func $conv.bool (type 51)))
+  (import "wasm/core" "viewDict" (func $wasm/core.viewDict (type 46)))
+  (import "wasm/core" "storedField" (func $wasm/core.storedField (type 51)))
+  (import "wasm/core" "convert" (func $wasm/core.convert (type 52)))
+  (import "conv" "bool" (func $conv.bool (type 53)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $quest_type_Int (mut eqref) ref.null none)
   (global $quest_type_Real (mut eqref) ref.null none)
@@ -155,7 +160,7 @@
   (global $tries.3 (mut eqref) ref.null none)
   (export "_start" (func $_start))
   (elem declare func $tries.uniform $tries $tries.uniform.1 $tries.1)
-  (func $tries (type 52) (param $closure (ref $clos)) (param $i i64) (result i64)
+  (func $tries (type 54) (param $closure (ref $clos)) (param $i i64) (result i64)
     (local $v i32)
     (local $v.1 i64)
     (local $e eqref)
@@ -220,7 +225,7 @@
     end
     unreachable
   )
-  (func $tries.1 (type 52) (param $closure (ref $clos)) (param $i i64) (result i64)
+  (func $tries.1 (type 54) (param $closure (ref $clos)) (param $i i64) (result i64)
     (local $v i32)
     (local $v.1 i64)
     (local $e eqref)
@@ -995,14 +1000,14 @@
     call $wasm/core.base
     global.set $quest_type_bound_vars
   )
-  (func $tries.uniform (type 53) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+  (func $tries.uniform (type 55) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt
     call $tries
     call $boxInt
   )
-  (func $tries.uniform.1 (type 53) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+  (func $tries.uniform.1 (type 55) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt

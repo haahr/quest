@@ -2616,6 +2616,9 @@ export
                     vector.append(:Inst init model.i32Const(at))
                 end
                 vector.append(:Inst init i2(ops.arrayNewFixed rt.index("i32s") extent vs))
+                (* no field stored at another type: only the core's tables,
+                 * made from descriptors, say otherwise *)
+                vector.append(:Inst init option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
                 vector.append(:Inst init i1(ops.structNew tDict))
                 let n = model.importedGlobals(f.g.m) + vector.length(:model.Global f.g.m.globals)
                 vector.append(:model.Global f.g.m.globals tuple
@@ -2631,15 +2634,38 @@ export
      * table; boxed if target is held boxed *)
     let makeRecord(f: F x: ir.OpMakeRecord target: maybe.T(ir.Variable)): Ok =
         begin
-            if x.runtimeOffsets orif maybe.isNone(:ir.OffsetTable x.offsets) then
-                fail("a record seen at a type whose table is known only at run time (milestone 4)")
+            let runtime = x.runtimeOffsets orif maybe.isNone(:ir.OffsetTable x.offsets)
+            if runtime andif {maybe.isNone(:ir.Descriptor x.viewDescriptor) orif maybe.isNone(:ir.Descriptor x.descriptor)}
+            then fail("a record whose table is known only at run time, without its descriptors") end
+            (* its fields in name order: its layout's *)
+            let names = array of(extent x.fields "")
+            for k = 0 upto extent x.fields - 1 do names[k] := x.fields[k].name end
+            for k = 0 upto extent names - 1 do
+                for j = 0 upto {extent names - 2} - k do
+                    if stringOp.precedes(names[j + 1] names[j]) then
+                        let held = names[j]
+                        names[j] := names[j + 1]
+                        names[j + 1] := held
+                    end
+                end
             end
-            let table = maybe.unwrap(:ir.OffsetTable x.offsets)
-            let ls = shapes.sortedComponents(shapeOf(table.layout))
             emit(f model.i32Const(0))
-            emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
-            for k = 0 upto extent ls - 1 do
-                let name = maybe.unwrapOr(:String ls[k].name "")
+            (* the descriptor of its own type, its layout, which its tables
+             * are made for (quest_record_layout) *)
+            let made = if maybe.isNone(:ir.Descriptor x.descriptor) then false
+                else
+                    case maybe.unwrap(:ir.Descriptor x.descriptor)
+                        when descStatic with d then hashMap.contains(:String :Int f.g.descGlobals formOf(d.d).symbol)
+                        else true
+                    end
+                end
+            (* none where the unit makes no descriptor for it, a record no
+             * view needs (a closure's captures) *)
+            if made then descriptor(f maybe.unwrap(:ir.Descriptor x.descriptor))
+            else emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
+            end
+            for k = 0 upto extent names - 1 do
+                let name = names[k]
                 let var found = false
                 for j = 0 upto extent x.fields - 1 do
                     if stringOp.equal(x.fields[j].name name) then
@@ -2649,12 +2675,33 @@ export
                 end
                 if not(found) then fail("a record without its layout's field " <> name) end
             end
-            emit(f i2(ops.arrayNewFixed tSlots extent ls))
+            emit(f i2(ops.arrayNewFixed tSlots extent names))
             emit(f i1(ops.structNew tRecord))
-            emit(f i1(ops.globalGet dict(f table.view table.layout)))
+            if runtime then
+                let payload = scratch(f model.eqref)
+                emit(f i1(ops.localTee payload))
+                emit(f i1(ops.globalGet f.g.noClosure))
+                emit(f i1(ops.localGet payload))
+                descriptor(f maybe.unwrap(:ir.Descriptor x.viewDescriptor))
+                runtimeUnitCall(f "wasm/core.viewDict")
+            else
+                let table = maybe.unwrap(:ir.OffsetTable x.offsets)
+                emit(f i1(ops.globalGet dict(f table.view table.layout)))
+            end
             if maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).boxed then
                 box(f maybe.unwrap(:ir.Variable target).type)
             end
+        end
+
+    (* The index of field name among the record type's, in name order *)
+    let fieldIndex(vs: shapes.Shape name: String): Int =
+        begin
+            let fields = shapes.sortedComponents(vs)
+            let var k = ~1
+            for j = 0 upto extent fields - 1 do
+                if stringOp.equal(maybe.unwrapOr(:String fields[j].name "") name) then k := j end
+            end
+            k
         end
 
     (* The payload's slots and the slot of field name of the record base,
@@ -2667,11 +2714,27 @@ export
 
     let recordField(f: F x: ir.OpRecordField target: maybe.T(ir.Variable)): Ok =
         begin
-            if x.stored then fail("a record's field stored at another type (milestone 4)") end
             if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
-            fieldSlot(f x.recordAtom x.name)
-            emit(f i1(ops.arrayGet tSlots))
             let c = maybe.unwrap(:shapes.Component shapes.component(shapeOf(ir.atomType(x.recordAtom)) x.name))
+            if x.stored then
+                if maybe.isNone(:ir.Descriptor x.descriptor) then fail("a stored field without its descriptor") end
+                let dict = scratch(f model.eqref)
+                let value = scratch(f model.eqref)
+                recordAtom(f x.recordAtom)
+                emit(f i1(ops.localTee dict))
+                fieldSlotOnStack(f ir.atomType(x.recordAtom) x.name)
+                emit(f i1(ops.arrayGet tSlots))
+                emit(f i1(ops.localSet value))
+                emit(f i1(ops.globalGet f.g.noClosure))
+                emit(f i1(ops.localGet value))
+                emit(f i1(ops.localGet dict))
+                emit(f model.i64Const(fieldIndex(shapeOf(ir.atomType(x.recordAtom)) x.name)))
+                descriptor(f maybe.unwrap(:ir.Descriptor x.descriptor))
+                runtimeUnitCall(f "wasm/core.storedField")
+            else
+                fieldSlot(f x.recordAtom x.name)
+                emit(f i1(ops.arrayGet tSlots))
+            end
             unboxFor(f shapes.componentShape(c).type target)
         end
 
@@ -2785,7 +2848,24 @@ export
                 if maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).boxed then
                     box(f x.plan.target)
                 end
-            when planRecordView, planView, planRuntime, planCopy then
+            when planRecordView then
+                if extent x.plan.descriptors < 1 then fail("a record view without its descriptor") end
+                let payload = scratch(f model.eqref)
+                let dict = scratch(f model.eqref)
+                recordAtom(f x.value)
+                emit(f i(ops.drop))
+                emit(f i1(ops.localSet payload))
+                emit(f i1(ops.globalGet f.g.noClosure))
+                emit(f i1(ops.localGet payload))
+                descriptor(f x.plan.descriptors[0])
+                runtimeUnitCall(f "wasm/core.viewDict")
+                emit(f i1(ops.localSet dict))
+                emit(f i1(ops.localGet payload))
+                emit(f i1(ops.localGet dict))
+                if maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).boxed then
+                    box(f x.plan.target)
+                end
+            when planView, planRuntime, planCopy then
                 fail("the conversion " <> ir.planKindName(x.plan.kind) <> " (milestone 4)")
         end
 
@@ -3144,6 +3224,52 @@ export
                 atom(f args[0])
                 castTo(f tRecBox)
                 emit(f i2(ops.structGet tRecBox 0))
+            elsif named("recDict") then
+                atom(f args[0])
+                castTo(f tRecBox)
+                emit(f i2(ops.structGet tRecBox 1))
+            elsif named("newRecBox") then
+                atom(f args[0])
+                castTo(f tRecord)
+                atom(f args[1])
+                castTo(f tDict)
+                emit(f i1(ops.structNew tRecBox))
+            elsif named("recordLayout") then
+                atom(f args[0])
+                castTo(f tRecord)
+                emit(f i2(ops.structGet tRecord rt.field("record" "layout")))
+            elsif named("newVarBox") then
+                atom(f args[0])
+                emit(f i(ops.i32WrapI64))
+                atom(f args[1])
+                emit(f i1(ops.structNew tVarBox))
+            elsif named("isNull") then
+                atom(f args[0])
+                emit(f i(ops.refIsNull))
+            elsif named("nullAny") then emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
+            elsif named("newI32s") then
+                atom(f args[0])
+                emit(f i(ops.i32WrapI64))
+                emit(f i1(ops.arrayNewDefault rt.index("i32s")))
+            elsif named("setI32") then
+                atom(f args[0])
+                castTo(f rt.index("i32s"))
+                atom(f args[1])
+                emit(f i(ops.i32WrapI64))
+                atom(f args[2])
+                emit(f i(ops.i32WrapI64))
+                emit(f i1(ops.arraySet rt.index("i32s")))
+                okValue()
+            elsif named("newDict") then
+                atom(f args[0])
+                castTo(f rt.index("i32s"))
+                atom(f args[1])
+                emit(f i1(ops.structNew tDict))
+            elsif named("dictStored") then
+                atom(f args[0])
+                castTo(f tDict)
+                emit(f i2(ops.structGet tDict 1))
+            elsif named("dynamicError") then raiseAt(f "dynamic.error" maybe.none(:Int))
             elsif named("hashOf") then
                 atom(f args[0])
                 castTo(f rt.index("obj"))
@@ -4121,6 +4247,10 @@ export
                 runtimeImport("wasm/core" "setPart" array of e n e e end array of e end)
                 runtimeImport("wasm/core" "setText" array of e n n e end array of e end)
                 runtimeImport("wasm/core" "instantiate" array of e e end array of e end)
+                (* records' tables and views (step 17) *)
+                runtimeImport("wasm/core" "viewDict" array of e e end array of e end)
+                runtimeImport("wasm/core" "storedField" array of e e n e end array of e end)
+                runtimeImport("wasm/core" "convert" array of e e e end array of e end)
                 if echoes then runtimeImport("wasm/print" "echo" array of e e e e end array of e end) end
             end
             let allBodies = walk.unitBodies(unit)

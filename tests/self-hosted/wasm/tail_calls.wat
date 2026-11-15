@@ -14,7 +14,7 @@
     (type $varBox (struct (field $tag i32) (field $payload eqref)))
     (type $clos (sub $obj (struct (field $hash (mut i32)))))
     (type $record (sub final $obj (struct (field $hash (mut i32)) (field $layout eqref) (field $slots (ref $slots)))))
-    (type $dict (struct (field $indices (ref $i32s))))
+    (type $dict (struct (field $indices (ref $i32s)) (field $stored eqref)))
     (type $recBox (struct (field $payload (ref $record)) (field $dict (ref $dict))))
     (type $exception (sub final $obj (struct (field $hash (mut i32)) (field $name (ref $string)))))
     (type $raised (struct (field $exception (ref $exception)) (field $payload eqref) (field $site eqref) (field $text eqref) (field $kind i32) (field $desc eqref)))

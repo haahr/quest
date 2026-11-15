@@ -169,6 +169,268 @@ export
             end
         end
 
+
+    (* ======================================================================
+     * Subtyping, record tables, and conversion (quest_types.c's
+     * quest_is_subtype, quest_views.c's quest_record_dict and quest_convert,
+     * docs/wasm-plan.md step 17)
+     *
+     * A slot holds every value in one form here, so no two layouts of a type
+     * differ: what a value seen at another type may need is only its view, a
+     * record's table, a variant's tag in the other type's numbering.
+     * ====================================================================== *)
+
+    (* What a value is, as a slot holds it: a record's box (its payload, the
+     * payload's layout, and the table it is seen through), a variant's box
+     * (its tag and payload), and a null reference *)
+    let recordLayoutAny(payload: Any): Any = external "wasm.recordLayout"
+    let recordPayload(x: Any): Any = external "wasm.recPayload"
+    let recDict(x: Any): Any = external "wasm.recDict"
+    let newRecBox(payload: Any dict: Any): Any = external "wasm.newRecBox"
+    let variantTag(x: Any): Int = external "wasm.variantTag"
+    let variantPayload(x: Any): Any = external "wasm.variantPayload"
+    let newVarBox(tag: Int payload: Any): Any = external "wasm.newVarBox"
+    let isNull(x: Any): Bool = external "wasm.isNull"
+    let nullAny(): Any = external "wasm.nullAny"
+    (* A table ($dict): its indices, an array of i32s, and its stored types,
+     * an array of descriptors or null *)
+    let newI32s(n: Int): Any = external "wasm.newI32s"
+    let setI32(a: Any i: Int v: Int): Ok = external "wasm.setI32"
+    let newDict(indices: Any stored: Any): Any = external "wasm.newDict"
+    let dictStored(d: Any): Any = external "wasm.dictStored"
+    let descsAny(ds: Array(Desc)): Any = external "wasm.toAny"
+    let anyDescs(x: Any): Array(Desc) = external "wasm.fromAny"
+    let anyDesc(x: Any): Desc = external "wasm.fromAny"
+    (* dynamic.error, which a view of a value at a type it is not raises *)
+    let dynamicError(): Ok = external "wasm.dynamicError"
+
+    (* A stored type's descriptor stands for its part, where it has one *)
+    let storedType(d: Desc): Desc =
+        if {d.kind is kindStored} andif {extent d.parts > 0} then d.parts[0] else d end
+
+    (* The index of d's part labeled label, or ~1 *)
+    let partNamed(d: Desc label: String): Int =
+        begin
+            let var found = ~1
+            for i = 0 upto extent d.parts - 1 do
+                if {found < 0} andif stringOp.equal(d.labels[i] label) then found := i end
+            end
+            found
+        end
+
+    (* The pairs whose proofs are in progress, which are assumed to hold
+     * (quest_is_subtype's trail: descriptors of recursive types are cyclic) *)
+    Def Pair = Tuple sub: Desc sup: Desc end
+    let trail = tuple let var items = array of :Pair end let var count = 0 end
+
+    let rec isSubtype(sub0: Desc sup0: Desc): Bool =
+        begin
+            let sub = storedType(sub0)
+            let sup = storedType(sup0)
+            if sub is sup then true
+            else
+                let var assumed = false
+                for i = 0 upto trail.count - 1 do
+                    if {trail.items[i].sub is sub} andif {trail.items[i].sup is sup} then assumed := true end
+                end
+                if assumed then true
+                else
+                    let pair = tuple let sub = sub let sup = sup end
+                    if trail.count >= extent trail.items then
+                        let more = array of({2 * trail.count} + 16 pair)
+                        for i = 0 upto trail.count - 1 do more[i] := trail.items[i] end
+                        trail.items := more
+                    end
+                    trail.items[trail.count] := pair
+                    trail.count := trail.count + 1
+                    let result = subtypeParts(sub sup)
+                    trail.count := trail.count - 1
+                    result
+                end
+            end
+        end
+
+    (* By sup's kind, as quest_is_subtype compares them; a var part's
+     * invariance is not checked, since descriptors here do not say which
+     * parts are var *)
+    and subtypeParts(sub: Desc sup: Desc): Bool =
+        begin
+            let k = sup.kind
+            let both = fun(a: Desc b: Desc): Bool isSubtype(a b) andif isSubtype(b a)
+            if {k is kindTuple} then
+                if sub.kind isnot kindTuple then false
+                elsif extent sup.parts is 0 then true
+                elsif extent sub.parts < extent sup.parts then false
+                else
+                    let var match = true
+                    for i = 0 upto extent sup.parts - 1 do
+                        let named = not(stringOp.isEmpty(sup.labels[i]))
+                        if named andif not(stringOp.equal(sub.labels[i] sup.labels[i])) then match := false
+                        elsif match andif not(isSubtype(sub.parts[i] sup.parts[i])) then match := false
+                        end
+                    end
+                    match
+                end
+            elsif k is kindRecord then
+                if sub.kind isnot kindRecord then false
+                else
+                    let var match = true
+                    for j = 0 upto extent sup.parts - 1 do
+                        let i = partNamed(sub sup.labels[j])
+                        if i < 0 then match := false
+                        elsif match andif not(isSubtype(sub.parts[i] sup.parts[j])) then match := false
+                        end
+                    end
+                    match
+                end
+            elsif {k is kindVariant} orif {k is kindOption} then
+                if {sub.kind isnot kindVariant} andif {sub.kind isnot kindOption} then false
+                else
+                    let var match = true
+                    for i = 0 upto extent sub.parts - 1 do
+                        let j = partNamed(sup sub.labels[i])
+                        if j < 0 then match := false
+                        else
+                            let sp = sub.parts[i]
+                            let tp = sup.parts[j]
+                            let sNone = sp.kind is kindNone
+                            let tNone = tp.kind is kindNone
+                            if sNone orif tNone then
+                                if sNone isnot tNone then match := false end
+                            elsif match andif not(isSubtype(sp tp)) then match := false
+                            end
+                        end
+                    end
+                    match
+                end
+            elsif {k is kindArray} orif {k is kindException} then
+                {sub.kind is k} andif {extent sub.parts is extent sup.parts}
+                    andif {{extent sup.parts is 0} orif both(sub.parts[0] sup.parts[0])}
+            elsif {k is kindOpaque} orif {k is kindFun} then
+                {sub.kind is k} andif stringOp.equal(sub.name sup.name)
+            else false
+            end
+        end
+
+    let sameType(a: Desc b: Desc): Bool = isSubtype(a b) andif isSubtype(b a)
+
+    (* Whether a part stored at type stored must be converted to be read at
+     * type viewed (quest_stored_type_differs): its view differs *)
+    let storedDiffers(stored: Desc viewed: Desc): Bool =
+        if stored is viewed then false
+        else
+            let k = storedType(viewed).kind
+            if {k is kindRecord} orif {k is kindVariant} orif {k is kindOption} orif {k is kindTuple}
+                orif {k is kindFun} then not(sameType(stored viewed))
+            else false
+            end
+        end
+
+    (* The record tables made, each by its view and its layout: the map of
+     * record tables (quest_record_dict) *)
+    Def DictEntry = Tuple view: Desc layout: Desc dict: Any end
+    let dicts = tuple let var items = array of :DictEntry end let var count = 0 end
+
+    (* The table for a payload laid out as layout, seen at view: for each of
+     * view's fields, in name order, its slot in the payload (whose slots are
+     * in layout's name order), and the type each field is stored at where it
+     * differs from view's; dynamic.error if layout lacks a field of view's *)
+    let buildDict(view: Desc layout: Desc): Any =
+        begin
+            let n = extent view.parts
+            let indices = newI32s(n)
+            let none = bases[kindNone]
+            let stored = array of(n none)
+            let var differs = false
+            for j = 0 upto n - 1 do
+                let i = partNamed(layout view.labels[j])
+                if i < 0 then dynamicError() end
+                setI32(indices j i)
+                if storedDiffers(layout.parts[i] view.parts[j]) then
+                    stored[j] := layout.parts[i]
+                    differs := true
+                end
+            end
+            newDict(indices if differs then descsAny(stored) else nullAny() end)
+        end
+
+    let recordDict(view: Desc layout: Desc): Any =
+        begin
+            let var found = ~1
+            for i = 0 upto dicts.count - 1 do
+                let e = dicts.items[i]
+                if {found < 0} andif {e.view is view} andif {e.layout is layout} then found := i end
+            end
+            if found >= 0 then dicts.items[found].dict
+            else
+                let dict = buildDict(view layout)
+                let made = tuple let view = view let layout = layout let dict = dict end
+                instances.updating := instances.updating + 1
+                if dicts.count >= extent dicts.items then
+                    let more = array of({2 * dicts.count} + 16 made)
+                    for i = 0 upto dicts.count - 1 do more[i] := dicts.items[i] end
+                    dicts.items := more
+                end
+                dicts.items[dicts.count] := made
+                dicts.count := dicts.count + 1
+                instances.updating := instances.updating - 1
+                dict
+            end
+        end
+
+    (* The table for the record payload seen at view, from the payload's own
+     * layout, which it was made with *)
+    let viewDict(payload: Any view: Desc): Any = recordDict(storedType(view) anyDesc(recordLayoutAny(payload)))
+
+    (* A variant's box seen at variant type to, from from: its tag renumbered
+     * to to's for the case of the same name, and its payload converted when
+     * the cases' types differ (quest_variant_adapt) *)
+    let rec variantAdapt(v: Any from: Desc to: Desc): Any =
+        begin
+            let tag = variantTag(v)
+            let j = if {tag >= 0} andif {tag < extent from.parts} then partNamed(to from.labels[tag]) else ~1 end
+            if j < 0 then
+                dynamicError()
+                v
+            else
+                let fp = from.parts[tag]
+                let tp = to.parts[j]
+                let payload = if {fp.kind is kindNone} orif {tp.kind is kindNone} orif {fp is tp} then variantPayload(v)
+                    else convert(variantPayload(v) fp tp)
+                    end
+                newVarBox(j payload)
+            end
+        end
+
+    (* v, as a slot holds it, of type from, seen at type to (quest_convert):
+     * a record's box with the table for its payload at to; a variant's box
+     * adapted; anything else as it is, until tuples', options', and
+     * functions' views are built *)
+    and convert(v: Any from0: Desc to0: Desc): Any =
+        begin
+            let from = storedType(from0)
+            let to = storedType(to0)
+            if {to.kind is kindRecord} andif {from.kind is kindRecord} then
+                let payload = recordPayload(v)
+                newRecBox(payload viewDict(payload to))
+            elsif {from is to} orif {from.kind isnot to.kind} then v
+            elsif to.kind is kindVariant then variantAdapt(v from to)
+            else v
+            end
+        end
+
+    (* A record field read as its payload stores it, v, seen at to through
+     * the table dict, which says whether it is stored at another type *)
+    let storedField(v: Any dict: Any i: Int to: Desc): Any =
+        begin
+            let stored = dictStored(dict)
+            if isNull(stored) then v
+            else
+                let ds = anyDescs(stored)
+                if {i >= extent ds} orif {ds[i].kind is kindNone} then v else convert(v ds[i] to) end
+            end
+        end
+
     (* ======================================================================
      * The library's externals in Quest
      * ====================================================================== *)

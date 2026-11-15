@@ -14,7 +14,7 @@
     (type $varBox (struct (field $tag i32) (field $payload eqref)))
     (type $clos (sub $obj (struct (field $hash (mut i32)))))
     (type $record (sub final $obj (struct (field $hash (mut i32)) (field $layout eqref) (field $slots (ref $slots)))))
-    (type $dict (struct (field $indices (ref $i32s))))
+    (type $dict (struct (field $indices (ref $i32s)) (field $stored eqref)))
     (type $recBox (struct (field $payload (ref $record)) (field $dict (ref $dict))))
     (type $exception (sub final $obj (struct (field $hash (mut i32)) (field $name (ref $string)))))
     (type $raised (struct (field $exception (ref $exception)) (field $payload eqref) (field $site eqref) (field $text eqref) (field $kind i32) (field $desc eqref)))
@@ -52,6 +52,8 @@
   (type (func (param (ref $clos) i64 eqref i64 i64) (result eqref)))
   (type (func (param (ref $clos) eqref i64 eqref eqref) (result eqref)))
   (type (func (param (ref $clos) eqref i64 i64 eqref) (result eqref)))
+  (type (func (param (ref $clos) eqref eqref i64 eqref) (result eqref)))
+  (type (func (param (ref $clos) eqref eqref eqref) (result eqref)))
   (type (func (param (ref $clos) i32) (result eqref)))
   (type (func (param (ref $clos) i64 i64) (result i64 i64)))
   (type (func (param eqref) (result (ref $option))))
@@ -133,7 +135,10 @@
   (import "wasm/core" "setPart" (func $wasm/core.setPart (type 49)))
   (import "wasm/core" "setText" (func $wasm/core.setText (type 50)))
   (import "wasm/core" "instantiate" (func $wasm/core.instantiate (type 46)))
-  (import "conv" "bool" (func $conv.bool (type 51)))
+  (import "wasm/core" "viewDict" (func $wasm/core.viewDict (type 46)))
+  (import "wasm/core" "storedField" (func $wasm/core.storedField (type 51)))
+  (import "wasm/core" "convert" (func $wasm/core.convert (type 52)))
+  (import "conv" "bool" (func $conv.bool (type 53)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $quest_type_Int (mut eqref) ref.null none)
   (global $quest_type_Real (mut eqref) ref.null none)
@@ -152,9 +157,9 @@
   (global $QOption_circle_QTuple_In_54aeab0eecb1911c_af955c1b1c25c023 (mut eqref) ref.null none)
   (global $QOption_none_some_QTuple_Int_end_9e75d53e4132c43a (mut eqref) ref.null none)
   (global $divide.1 (mut eqref) ref.null none)
-  (global $dict (ref $dict) i32.const 0 i32.const 1 i32.const 2 array.new_fixed $i32s 3 struct.new $dict)
+  (global $dict (ref $dict) i32.const 0 i32.const 1 i32.const 2 array.new_fixed $i32s 3 ref.null none struct.new $dict)
   (export "_start" (func $_start))
-  (func $divide (type 52) (param $closure (ref $clos)) (param $n i64) (param $d i64) (result i64 i64)
+  (func $divide (type 54) (param $closure (ref $clos)) (param $n i64) (param $d i64) (result i64 i64)
     (local $v i32)
     (local $v.2 i64)
     (local $v.1 i64)
@@ -364,7 +369,7 @@
           block $inlined1.after
             block $inlined1 (result i64)
               local.get $v.2
-              block (type 53)
+              block (type 55)
                 br_on_cast 0 eqref (ref $option)
                 drop
                 i32.const 0
@@ -564,7 +569,7 @@
     array.get $slots
     local.set $v.2
     local.get $v.2
-    block (type 53)
+    block (type 55)
       br_on_cast 0 eqref (ref $option)
       drop
       i32.const 0
@@ -613,7 +618,7 @@
     local.get $t
     i32.const 1
     local.get $v.2
-    block (type 53)
+    block (type 55)
       br_on_cast 0 eqref (ref $option)
       drop
       i32.const 0
@@ -811,7 +816,7 @@
     array.get $slots
     local.set $v.4
     local.get $v.4
-    block (type 53)
+    block (type 55)
       br_on_cast 0 eqref (ref $option)
       drop
       i32.const 0
@@ -869,7 +874,7 @@
     array.get $slots
     local.set $v.5
     local.get $v.5
-    block (type 53)
+    block (type 55)
       br_on_cast 0 eqref (ref $option)
       drop
       i32.const 0
@@ -1135,7 +1140,7 @@
     struct.new $option
     local.set $v
     local.get $v
-    block (type 53)
+    block (type 55)
       br_on_cast 0 eqref (ref $option)
       drop
       i32.const 0
@@ -1157,7 +1162,7 @@
     call $conv.bool
     local.set $v.2
     local.get $v
-    block (type 53)
+    block (type 55)
       br_on_cast 0 eqref (ref $option)
       drop
       i32.const 0
@@ -1947,7 +1952,7 @@
     call $putString
     local.set $v.2
     i32.const 0
-    ref.null none
+    global.get $QRecord_name_String_x_Int_y_Int
     i32.const 0
     i32.const 1
     i32.const 2165
@@ -2092,7 +2097,7 @@
     call $putString
     local.set $v.48
     i32.const 0
-    ref.null none
+    global.get $QRecord_name_String_x_Int_y_Int
     i32.const 0
     i32.const 1
     i32.const 2169
