@@ -24,7 +24,7 @@ the four disagree, this plan holds.
 §9 the results of step 0's probes (2026-11-13), on which the owner confirmed decisions 1 and 2, and §10 step 1's
 census of what the compiler uses. Milestones 1, 2, and 3 are reached (2026-11-14): the compiler compiles itself in
 node, the REPL runs in a page, and each input there is compiled to a module and run as compiled code (steps 13 and
-14). Milestone 4's steps (§8.4) are drafted, with questions for the owner in §8.4.1.
+14). Milestone 4's steps (§8.4) are drafted, with the owner's answers (§8.4.1), and are being built.
 
 ---
 
@@ -1551,7 +1551,7 @@ echo capture's C functions.
 ### 8.4. Milestone 4: The Rest
 
 The language entire on this target, then its speed, the page's size, and the other browsers. Its steps were drafted
-2026-11-14 on milestone 3's results; the order and the open questions (§8.4.1) are the owner's.
+2026-11-14 on milestone 3's results, and the owner answered its questions the same day (§8.4.1).
 
 **Where it starts.** The run suite has 105 pending for `wasm` and `wasm-node`, and 115 for `wasm-jit`
 (`tests/self-hosted/pending-wasm.txt` and `pending-wasm-jit.txt`). The second list is grouped by what each test
@@ -1638,32 +1638,34 @@ stands, not redesigned.
     synchronous request) is recorded, and its stack in a worker measured as step 12 measured Chromium's (§6.2).
     *Done when* §6.2 and a new note in §6 record each browser's results, and the page says which it supports.
 
-#### 8.4.1. Why These Choices, and What Is Open
+#### 8.4.1. Why These Choices
+
+**The owner's answers, 2026-11-14:** (1) the order stands, the language first; (2) the tail recursion's remedy is
+(a), a function's call of itself in tail position compiled as a loop, with the limit for mutual recursion in V8
+recorded in this target's documentation (§6.4); (3) steps 21 and 22 are in this milestone; (4) Safari and a recent
+Firefox are tested if they can be. After step 23, the work is rebased onto `main` and its conflicts resolved.
+
 
 - **The order follows the dependencies.** Locations stand alone and are the smallest change, so they come first
   and clear the kernel's finding. Variants come before views because a view's conversion remaps variants' tags,
   and `dynamic` comes after both because its serialization walks every kind of value. `Real`'s mathematics stands
   apart and could move anywhere; it is late because only five tests wait for it. Speed comes after the language,
   so that the profile is taken over code that compiles everything, and the page and the browsers last, since
-  they change nothing the suites check. **Open:** whether the owner wants another order, such as speed or the
-  page's start-up before the language's rest.
+  they change nothing the suites check. The owner kept this order.
 - **Ported, not redesigned.** The C runtime's conversion, views, and proxies are known to be right against the
   goldens; porting them to Quest over the intrinsics keeps the two runtimes printing alike (§4.2). The core's rule
   stands: monomorphic, with no `auto`, `inspect`, or `dynamic` inside it.
-- **Step 13's finding 1, the endless tail recursion that cannot be interrupted.** **Open:** whether to take a
-  remedy in step 20, and which. (a) A function's call of itself in tail position compiled as a loop: V8 checks
-  for termination at loops' back edges, so the worker can be ended; it covers self-recursion only, not mutual
-  recursion through `return_call`. (b) A count at each function's entry, which also gives a catchable
+- **Step 13's finding 1, the endless tail recursion that cannot be interrupted.** The remedies, for step 20:
+  (a) A function's call of itself in tail position compiled as a loop: V8 checks for termination at loops' back
+  edges, so the worker can be ended; it covers self-recursion only, not mutual recursion through `return_call`. (b) A count at each function's entry, which also gives a catchable
   `stack.overflow` (§6.3's later addition), at a cost in every call. (c) Neither: the page's interrupt then fails
-  only on an endless tail recursion, and the user reloads. The draft proposes (a).
+  only on an endless tail recursion, and the user reloads. The owner chose (a).
 - **Speed only where measured.** The profile asked for two things, and the others in §8.4's old list (typed
-  arrays, specialization, flat tuples) wait for a profile that asks for them. **Open:** whether milestone 4
-  includes speed at all, or the language alone.
+  arrays, specialization, flat tuples) wait for a profile that asks for them. The owner included step 21.
 - **The page's size.** 3.9 MB compressed is most of a real network's start-up, and three quarters of a local
-  start-up is the initializers. **Open:** whether step 22 is wanted now, and whether a page that loads in a
-  second locally is enough for this milestone.
-- **Which browsers are promised.** **Open:** whether Firefox and Safari are promised once step 23 finds them
-  working, or only recorded. Chromium stays the one that the checks run.
+  start-up is the initializers. The owner included step 22.
+- **Which browsers.** Safari and a recent Firefox are tested where this machine has them (the owner's answer);
+  Chromium stays the one that the checks run.
 - **Not in this milestone:** §7's accepted differences stay accepted: `os/process`, `os/code`, `os/value`, and
   readline absent, and tracebacks the raise site only (decision 12). The native JIT's failure on an earlier
   input's tuple field (step 13's finding 3) is a bug of both JITs' shared code, to be fixed apart from this plan.
