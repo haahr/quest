@@ -1882,6 +1882,117 @@ Firefox are tested if they can be. After step 23, the work is rebased onto `main
   readline absent, and tracebacks the raise site only (decision 12). The native JIT's failure on an earlier
   input's tuple field (step 13's finding 3) is a bug of both JITs' shared code, to be fixed apart from this plan.
 
+### 8.5. Milestone 5: The Review's Fixes
+
+[wasm-review.md](wasm-review.md) reviewed this backend to step 20 (`bc0d67bc`). Each finding was checked again
+after steps 21 to 23 and the rebase onto `main` (`20d7316a`, 2026-11-15): run where a program could show it
+(**still**, or **fixed**, with what fixed it), else marked **unchanged** where its code has not changed since the
+review, and so stands. The owner's answers of 2026-11-15 are in §8.5.1. Each fix comes with a test in a shared
+phase where it can (a run golden, which every wasm mode then runs), else in `tests/self-hosted/wasm_session.py` or
+`wasm_page.mjs`: none of the review's findings was caught by a test.
+
+**Already fixed:** a closed writer writes (§1.2, 2: `writer.error` now, the core's file writers having a closed flag,
+step 21); an `Ok`-returning tail recursion under the JIT (§2.1, 4: the tail calls at the end of a branch, step 21);
+boxing an `Int` as a call into another module (§3, 2: each unit's own, step 21); the page's tests in other browsers
+(§5's "not covered": step 23). Masked, to be fixed still: a write to `/dev/fd/4` (§2.2, 7) now waits in a file
+writer's buffer, and would end the session when flushed.
+
+24. **Recovery made sound** (review §2.2, 1, 2, 6, 7; all still). The subtype trail cleared when an input is rolled
+    back, and every table the runtime keeps across calls (`wasm/core`'s caches, the trail, the registry) either
+    under §6.3's count, so that an overflow inside an update replays, or made safe to leave half done. The hosts'
+    file calls (`host.mjs`'s `NodeMount` and `MemoryMount`, `worker.mjs`'s `getSync`) rethrow an engine's overflow
+    (`isStackOverflow`) instead of making it an error number. A Quest exception that escapes the driver replays,
+    as an overflow does, with its name. A file opened on the session's own descriptors (3, 4) raises
+    `writer.error`, as natively.
+    *Done when* the review's programs for each give the native answer or `stack.overflow`, each a case in
+    `wasm_session.py`.
+25. **Boxed and proxied values in the code generator** (§2.1, 1 to 3; all still). A record or variant held boxed
+    is unboxed wherever its parts are wanted (`sReturn`, `sJump`, `sAssign`, `sVarDecl`), not only in `opAtom`'s
+    paths. Every access through a view map takes a proxy: `tupleField`, `sStoreComponent`, `opAddrComponent`,
+    `viewTag`, `switch`, and `payload`'s viewed path, and `wasm/core`'s `viewOptionComponent` unproxies as its
+    sibling does. `viewMap`, `makeProxy`, `mayBeProxied`, and `proxiesAgreeIn` take the stored type's concrete
+    representation, as `quest_view_map` and `quest_proxied_type` do.
+    *Done when* the review's programs run as natively, each a run golden.
+26. **The dynamic runtime as the C it ports** (§2.4, 1 to 10; 1 and 4 still, 8's first case gives `dynamic.error`
+    now, the rest unchanged). Adapters of any arity, made on demand past the ones built in, where today a closure
+    past 8 parameters is left unconverted; `core.convert` for auto values (`quest_convert_auto`); an option's
+    identity hash by its single-word case only; a depth count in `readValue` and `concrete`, so that a cyclic
+    table raises; echo's three arms; a quantifier's bound compared for equality; the abstract representation's
+    check counting parts as C does; the JSON reader's literals, numbers, saturation, and first key as C's;
+    `dynamic.intern` on a closed reader `dynamic.error`; and serialization's recursion over a list as a loop.
+    *Done when* the review's cases agree with native, each a run golden or error test.
+27. **Output, files, and traps** (§1.1 to §1.3; all still where run). The identity hash of a boxed `Real` by its
+    bits. The base's `write` loops until all is written, retries on "try again", and raises `writer.error` on
+    failure; `session-node.mjs` likewise (node cut a pipe at 64 KB, still). Late standard input in node read as it
+    comes. Paths as natively (`//tmp` found, `""` neither a file nor a directory: still). `putSubString` out of
+    range `writer.error`; `getSubString`'s short read keeps what it read; `reader.file` of a directory as natively.
+    Every byte array's size tested before it is made (`stringNew`, `concat`, ...), as an array's is (still: a string
+    of 2³² is of length 0). A program with no string literal a valid module (still: an unused data segment index),
+    which unblocks the test of `sysexit(200)` in wasmtime, whose status above 125 the driver maps as natively.
+    *Done when* each is a run golden or error test passing in wasm and wasm-node.
+28. **An accumulating recursion as a loop** (§3, 1; still: `depth(1000000)` overflows; the owner's answer). The
+    SSA's `accumulate` pass's rule, a recursion whose result is combined with an operation and a constant after
+    its call, made a loop with an accumulator for this target too: in the IR, so that both backends could share
+    it, or in the wasm backend after the IR, whichever the step's reading of `ssa/passes/accumulate` makes
+    smaller. The tail loops of step 20 are the model.
+    *Done when* `stdlib`'s and the MLton suite's accumulating recursions (`depth`, `fib`'s and `tak`'s shapes) run
+    as deep in wasm as natively, a run golden among them.
+29. **Replay that says what it lost** (§2.2, 3, 5, 8, 9, 10; §4, 6 and 7; unchanged). A replay that loses an input
+    reports it, with the names no longer bound, and the session goes on (the owner's answer). The kernel's reply,
+    records and commit, one message, so that an interrupt at a cell's end cannot put later replies out of step
+    (the race `kernel_protocol.py --session` met under load, seen again on 2026-11-15). A replay inside a replay
+    stays quiet; `-i`'s output not printed again by a new worker; `isComplete`'s overflow a status, not
+    "complete"; a driver that exits while starting reported so; the committed list not posted with every reply;
+    and a replay itself interruptible.
+    *Done when* each is a case in `wasm_session.py` or `wasm_page.mjs`.
+30. **The page** (§2.3; §2.2, 4; unchanged). Output batched for each frame and appended as nodes, so that a loop that
+    prints does not freeze the page; Restart frees the old request; a flushed file visible; `MemoryMount.rename`
+    testing its target as a file system does; the page's scripts and archives tied by a build stamp, a mismatch
+    reloading; `?path=` and `?load=` naming another origin asking the user first, a same-origin prefix not (the
+    owner's answer); and heap exhaustion: in node a worker limit and a replay on its exit, and in a browser, which
+    ends the tab, documented in §7.
+    *Done when* each is a case in `wasm_page.mjs` or the page's check, and a loop of 20,000 lines prints in Chrome
+    in under a second.
+31. **The driver and stale objects** (§1.4; unchanged). `--backend wasm FILE` without a phase runs the program as
+    WebAssembly, in `--wasm-engine`'s engine, or is refused, rather than run the native JIT without a word.
+    wasmtime is given §8.1's 8 MB of stack, and a program's overflow is reported as `stack.overflow`. Each wasm
+    object carries a stamp of the runtime's types (a custom section), so that an object an earlier compiler built
+    is stale and rebuilt, rather than failing at instantiation; the page's archive carries the same stamp.
+    *Done when* each is a test: a run of `--backend wasm FILE`, and a build directory from an earlier runtime.
+32. **`Real`** (§4, 1 to 3; unchanged). `real.format`'s `'g'` on an exact tie in the exponent form is C's rule on
+    both targets, natively through `util/realconv` or a corrected tie, so that both print `9.8e+03` (the owner's
+    answer; Apple's `snprintf` gives `9.80e+03`); the plan's and `realmath`'s statements of accuracy corrected
+    (`tan` within 3 ulp of libm, `sinh` and `tanh` within 2), and `stdlib/realmath_operations`'s bound for `tan`
+    made 3; reading a `Real` of many digits not quadratic; and `isUnitImport`'s exemption of `util/realconv` and
+    `util/realmath` by name replaced by a rule (a unit that takes `real` only as externals).
+    *Done when* a run golden has the ties, and reading 400,000 digits takes well under a second.
+33. **The rest** (§3, 7; §4, 4, 5, 8 to 11; unchanged). The self loop after the prologue, and a tail call inside a
+    `try` found by the label's kind, not its name; `wasm/core`'s caches hashed rather than scanned, emptied when
+    nothing refers to their entries; `realText`'s digits derived once; and the encoder's and printer's three edges
+    agreed. An `out` argument with a conversion its callee does not assign is the IR's fault on both targets
+    (review §7), for a plan of its own.
+    *Done when* each is kept or not on a test or a measure.
+
+Not in this milestone: the review's §7, faults of shared and native code it found on the way (a bounded quantifier
+in an interface, the native compiler on a `var` record raised as a payload, and the rest), checked again and planned
+in [shared-faults-plan.md](shared-faults-plan.md).
+
+#### 8.5.1. Why These Choices
+
+**The owner's answers, 2026-11-15:** (1) a replay that loses an input reports what it lost, and the session goes
+on; (2) the page asks before loading from another origin's prefix; (3) an accumulating recursion becomes a loop on
+this target, in this milestone; (4) `real.format`'s ties are C's rule on both targets, the native one corrected.
+
+- **Order.** The review's own (its §6): wrong answers after an error that looks handled first (24), then whole units
+  that fail to load (25), then the runtime's departures from C (26), then the rest by how often a program meets
+  them.
+- **A test with each fix.** The review found these by programs of its own because the suites have none: each step
+  adds the program that showed its fault.
+- **Accumulation in this milestone.** A browser worker's stack makes every accumulating recursion past a few
+  thousand calls fail, where natively it runs a hundred million deep; it is the commonest difference a user of the
+  page would meet.
+
+
 ---
 
 ## 9. Step 0's Results (2026-11-13)
