@@ -91,7 +91,10 @@ export
 
     let equal(a: Type b: Type): Bool = model.same(a b) orif subtyping.isTypeEqual(a b lookupNone)
 
-    (* The type variables in each type met, by the type's id *)
+    (* The type variables in each type met, by the type's id, while a unit is
+     * represented: representUnit clears it, so that a process that compiles
+     * many units (the REPL, the JIT, a driver build) does not keep every
+     * type's *)
     let typeVarsMemo = hashMap.new(:Int :Array(Type) intEqual hash.int)
 
     (* The type variables t0 mentions, each once, in the order first met; a
@@ -1331,6 +1334,7 @@ export
             end
             slots.decideSlots(unit)
             unit.stage := "represented"
+            hashMap.clear(:Int :Array(Type) typeVarsMemo)
             unit
         end
 end
