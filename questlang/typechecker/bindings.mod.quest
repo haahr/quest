@@ -262,11 +262,11 @@ export
                             end
                             env.scoped(:typedAst.Expr e "poly_fun" fun(s: symbols.Scope): typedAst.Expr
                                 begin
-                                    let metaMap = model.newSubst()
+                                    let renaming = model.newSubst()
                                     let quants = vector.new(:model.Quantifier)
                                     for idx = 0 upto {extent all.quantifiers - 1} do
                                         let q = all.quantifiers[idx]
-                                        let bound = model.substituteInKind(q.bound metaMap)
+                                        let bound = model.substituteInKind(q.bound renaming)
                                         let name = if nWritten > 0 then vector.get(:ast.TypeFormal written idx).name else q.name end
                                         if nWritten > 0 then
                                             let w = vector.get(:ast.TypeFormal written idx)
@@ -281,13 +281,13 @@ export
                                         end
                                         let symId = env.freshSymbolId(e)
                                         symbols.declareType(e.currentScope symbols.newTypeSymbol(name symId bound maybe.none(:Type)))
-                                        hashMap.insert(:Int :Type metaMap q.symbolId
+                                        hashMap.insert(:Int :Type renaming q.symbolId
                                             model.typeVariable(name symId maybe.some(:model.Kind bound)))
                                         vector.append(:model.Quantifier quants tuple
                                             let name = name let symbolId = symId let bound = bound
                                         end)
                                     end
-                                    let innerExp = model.substitute(all.body metaMap)
+                                    let innerExp = model.substitute(all.body renaming)
                                     let hasParams = not(vector.empty(:ast.FormalParam x.params))
                                     let innerExpr = if nWritten > 0 then
                                         if hasParams then

@@ -22,10 +22,8 @@ export
     let internal(A::TYPE what: String expr: ast.Expr): A =
         diagnostics.fail(:A "internal: not " <> what expr.span.startOffset)
 
-    let isAuto(t: Type): Bool = case t.form when typeAuto then true else false end
-
     (* The auto type of an inspect target *)
-    let inspectedAutoType(target: typedAst.Expr e: env.T): maybe.T(model.Type) =
+    let inspectedAutoType(target: typedAst.Expr): maybe.T(model.Type) =
         begin
             let t = model.evaluateLazily(target.type symbols.lookup)
             case t.form when typeAuto then maybe.some(:model.Type t) else maybe.none(:model.Type) end
@@ -63,7 +61,7 @@ export
                 begin
                     let targetTyped = checker.synthExpr(c x.target e loopDepth)
                     let autoType = model.evaluateLazily(targetTyped.type symbols.lookup)
-                    if not(isAuto(autoType)) then
+                    if not(isAutoType(autoType)) then
                         diagnostics.fail(:Ok "Target of inspect must have an Auto type (such as Dynamic), got '" <>
                             model.show(autoType) <> "'" x.target.span.startOffset)
                     end
@@ -132,7 +130,7 @@ export
                         let target = targetTyped
                         let branches = vector.toArray(:typedAst.InspectBranch branches)
                         let elseBranch = elseTyped
-                        let autoType = inspectedAutoType(targetTyped e)
+                        let autoType = inspectedAutoType(targetTyped)
                     end)
                 end
             else internal(:typedAst.Expr "an inspect" expr)

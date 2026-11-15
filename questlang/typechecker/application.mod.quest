@@ -268,7 +268,7 @@ export
 
     (* Whether metavariable m is solved: prune gives m itself only while it is
      * unsolved *)
-    let pruned(m: Type): Bool = not(model.same(model.prune(m) m))
+    let isSolved(m: Type): Bool = not(model.same(model.prune(m) m))
 
     (* Elaborates a call f(args) of a polymorphic function,
      * f: All(A::K) Fun(x: A): R, finding its type arguments.
@@ -440,7 +440,7 @@ export
                 begin
                     let var found = false
                     for i = 0 upto {vector.length(:checker.PendingTypeArg typeArgs) - 1} do
-                        if not(pruned(vector.get(:checker.PendingTypeArg typeArgs i).meta)) then found := true end
+                        if not(isSolved(vector.get(:checker.PendingTypeArg typeArgs i).meta)) then found := true end
                     end
                     found
                 end
@@ -452,7 +452,7 @@ export
             end
 
             let unsolved = vector.filter(:checker.PendingTypeArg typeArgs
-                fun(p: checker.PendingTypeArg): Bool not(pruned(p.meta)))
+                fun(p: checker.PendingTypeArg): Bool not(isSolved(p.meta)))
             if not(vector.empty(:checker.PendingTypeArg unsolved)) then
                 let defers = maybe.isSome(:vector.T(checker.PendingTypeArg) enclosing) andif
                     maybe.isSome(:Type expected) andif {extent model.unsolvedMetas(maybe.unwrap(:Type expected)) > 0}
