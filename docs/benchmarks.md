@@ -17,7 +17,9 @@ commit (§11), measures the Jupyter kernel's interrupt checks (§12), times the 
 (§13), measures the SSA's loops of accumulated recursion and mutual tail calls (§14), times the library's
 arbitrary-precision integers (§15), measures the collector's steps (§16 to §19) and those closing part of the gap to
 MLton (§20), compares the C and arm64 backends again and records the switch of the default to arm64 (§21), records the
-arm64-built compiler's gap to the C-built one narrowed (§22), and times the reuse of a case binder's box (§23).
+arm64-built compiler's gap to the C-built one narrowed (§22), times the reuse of a case binder's box (§23), keeps
+the arm64 performance review (§24), and measures the compiler compiled to WebAssembly, and the MLton suite on it
+(§25).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -2659,3 +2661,120 @@ it for the run goldens, which are small.
 **The stack:** the least `--stack-size` with which the driver compiles a unit to wasm in node, found by bisection,
 is 126 KB for a recursive Fibonacci program and 296 KB for `questlang/syntax/tokenizer.mod.quest`, the same with
 `--liftoff-only` as without; both within a worker's 512 KB (§6.2).
+
+### 25.1. Step 21: what the profile asked for (2026-11-15)
+
+Step 21 of [wasm-plan.md](wasm-plan.md) took up what §25's profile named, measured each change, and ran the MLton
+suite in node for the first time. Each timing below was taken after three minutes with the load average below 5,
+the drivers alternating; the scripts are in the session's scratchpad, not the tree.
+
+**Self-compilation in node**, `--backend wasm -j 1` into a fresh build directory, each change against the driver
+before it (median of three alternating runs, wall time):
+
+| Change | Before | After | Profile |
+|---|--:|--:|---|
+| Adapters this target does not need left out (part 1, `6639236b`) | 64.7 s | 60.8 s | adapters 11.0% → 1.3% |
+| Each unit's own `boxInt` and `unboxInt` (part 2, `6ae4d2fe`) | 58.4 s | 45.1 s | boxing 10.2% → inlined |
+
+- **The adapters:** on this target a pointer and a `QVal` are one `eqref`, so a closure whose parts are only boxed
+  or unboxed between the two (`stringOp.equal` and `hash.string` given to a hash map, most often) already has the
+  generic caller's signature. The represent pass leaves those adapters out when the unit's backend says so
+  (`shapes.referencesAlike`). An adapter that converts an `Int` stays: without it the closure's uniform entry would
+  box as much.
+- **The boxes:** an `Int` boxed or unboxed called the runtime module's `boxInt` or `unboxInt`, another instance's
+  export, which V8 does not inline. Each unit now has its own copies, which it does. Counted before the change
+  (Liftoff only, so that each frame keeps its caller), the boxes came from hash maps' `insert`, `get`, and
+  `findIndex`, `vector.append`, vectors' constructors, and `hexDigest`; a third had no caller recorded, the frames
+  of tail calls. None was removed: making each one cheap took the whole tenth.
+- **Not taken:** typed arrays, specialization on scalar type arguments, and flat tuples. After both changes the
+  profile is led by the collector (12.7%) and the calls across units into `vector` and `hashMap` (`append` 8.7,
+  `get` 7.4, `findIndex` 5.7, `insert` 4.4), which none of the three addresses.
+
+**Self-compilation at the end** (`b2ccb26f`, two runs each, alternating), beside the arm64-built compiler doing
+the same work:
+
+| Run | Wall | User | Maximum resident |
+|---|--:|--:|--:|
+| Native (arm64-built stage 2), `--backend wasm` | 38.9, 40.0 s | 36.3, 37.2 s | 3.59, 3.60 GB |
+| node | 47.8, 47.3 s | 58.3, 60.5 s | 3.47, 3.48 GB |
+
+node takes **1.21** of the native compiler's wall time, against 1.63 in step 10; the native time is above §25's
+34.2 s since the compiler has grown by milestone 4's code. **The run suite** (`--phase run_c_compiled -j 1`, the
+300 programs): wasmtime 44.2 s wall, node 60.5 s, each starting a fresh engine per program.
+
+**The MLton suite in node** (`benchmarks/mlton/run.py --backend wasm`, new in step 21: built to WebAssembly and run
+by `runtime/wasm/run.mjs` with 7800 KB of stack, `--scale 0.25`, one run each):
+
+- **Checked** against MLton's output: 45 of 46 agree. raytrace's image differs in 396 of its 120,000 pixels, edge
+  pixels whose rays a last bit of `sin` or `acos` decides: built natively with its mathematical functions taken
+  from `util/realmath`, it writes the WebAssembly build's image byte for byte, so the difference is msun's against
+  Apple's libm (§4.3 of the plan), not this target's.
+- **Found:** two faults of the wasm backend, fixed in part 3 (`48d6267d`): `isnot` on tuples or options that may be
+  proxies computed `is` (logic's occurs check failed at its first unification; `language/isnot_shared_tuples`),
+  and a call at the end of an `if`'s arm, a switch's case, or a join's body was never a tail call (mandelbrot's and
+  zern's loops overflowed). DLXSimulator and simple recurse deeper than node's default 984 KB of stack, natively
+  under a raised limit too; run.py gives node 7800 KB.
+- **Writing files** was the worst of it: ray took 50 and output1 37 times as long as natively, nearly all of it in
+  WASI's `fd_write`, called for every character. Part 4 (`b2ccb26f`) buffers a file's writer in the core, 64 KB at
+  a time, flushed when it is closed or flushed and when the program ends; ray went from 518 to 18 s and output1
+  from 1893 to 33 s. A standard stream's writer is written at once, since a host reads what an input wrote when it
+  ends.
+
+**The suite in node at the end** (`b2ccb26f`), beside MLton (timed in the same run as the first, at the same
+counts) and arm64 whole (§20.3's `quest-arm64-whole-eb7a20e2.jsonl`), seconds:
+
+| Program | n | MLton | wasm, node | ratio | arm64 whole | wasm / arm64 |
+|---|--:|--:|--:|--:|--:|--:|
+| DLXSimulator | 2 | 4.72 | 25.47 | 5.4 | 11.22 | 2.3 |
+| barnes-hut | 8192 | 4.43 | 22.11 | 5.0 | 9.31 | 2.4 |
+| boyer | 3072 | 5.40 | 141.08 | 26.1 | 19.19 | 7.4 |
+| checksum | 3072 | 9.89 | 99.88 | 10.1 | 28.98 | 3.4 |
+| count-graphs | 3 | 4.50 | 38.75 | 8.6 | 10.21 | 3.8 |
+| even-odd | 6 | 4.02 | 2.51 | 0.6 | 2.13 | 1.2 |
+| fft | 4 | 4.05 | 65.40 | 16.1 | 5.33 | 12.3 |
+| fib | 8 | 14.49 | 4.88 | 0.3 | 4.85 | 1.0 |
+| flat-array | 12288 | 8.10 | 127.27 | 15.7 | 42.05 | 3.0 |
+| hamlet | 96 | 10.30 | 16.54 | 1.6 | 8.45 | 2.0 |
+| imp-for | 1024 | 4.19 | 146.07 | 34.9 | 5.32 | 27.4 |
+| knuth-bendix | 768 | 8.91 | 260.09 | 29.2 | 24.52 | 10.6 |
+| lexgen | 384 | 3.57 | 16.04 | 4.5 | 6.44 | 2.5 |
+| life | 8 | 7.81 | 30.78 | 3.9 | 8.49 | 3.6 |
+| logic | 64 | 6.78 | 17.43 | 2.6 | 9.50 | 1.8 |
+| mandelbrot | 2 | 3.21 | 12.07 | 3.8 | 5.12 | 2.4 |
+| matrix-multiply | 48 | 5.13 | 83.88 | 16.4 | 6.97 | 12.0 |
+| md5 | 3 | 7.66 | 20.46 | 2.7 | 19.08 | 1.1 |
+| mlyacc | 768 | 5.85 | 14.27 | 2.4 | 6.28 | 2.3 |
+| model-elimination | 1 | 7.52 | 82.64 | 11.0 | 13.22 | 6.2 |
+| mpuz | 32 | 4.49 | 22.30 | 5.0 | 8.09 | 2.8 |
+| nucleic | 1024 | 4.71 | 13.12 | 2.8 | 5.96 | 2.2 |
+| output1 | 3 | 6.78 | 31.73 | 4.7 | 51.91 | 0.6 |
+| peek | 48 | 2.57 | 308.71 | 120.1 | 75.99 | 4.1 |
+| pidigits | 1024 | 1.14 | 26.44 | 23.1 | 12.61 | 2.1 |
+| psdes-random | 6 | 11.62 | 104.14 | 9.0 | 13.03 | 8.0 |
+| ratio-regions | 384 | 1.28 | 14.84 | 11.6 | 2.32 | 6.4 |
+| ray | 384 | 6.35 | 17.95 | 2.8 | 10.45 | 1.7 |
+| raytrace | 24 | 6.53 | 16.69 | 2.6 | 7.73 | 2.2 |
+| simple | 256 | 10.53 | 20.42 | 1.9 | 7.16 | 2.9 |
+| smith-normal-form | 48 | 4.21 | 681.16 | 161.6 | 99.02 | 6.9 |
+| string-concat | 64 | 2.07 | 13.21 | 6.4 | 4.28 | 3.1 |
+| tailfib | 128 | 3.01 | 12.32 | 4.1 | 2.22 | 5.5 |
+| tailmerge | 6144 | 5.46 | 158.67 | 29.0 | 18.80 | 8.4 |
+| tak | 8 | 13.27 | 5.35 | 0.4 | 6.00 | 0.9 |
+| tensor | 2 | 7.51 | 79.61 | 10.6 | 16.54 | 4.8 |
+| tsp | 4 | 4.16 | 25.47 | 6.1 | 10.76 | 2.4 |
+| tyan | 96 | 5.64 | 17.88 | 3.2 | 6.63 | 2.7 |
+| vector-rev | 24 | 4.23 | 67.74 | 16.0 | 8.65 | 7.8 |
+| vector32-concat | 12 | 2.69 | 52.43 | 19.5 | 6.76 | 7.8 |
+| vector64-concat | 8 | 2.14 | 34.71 | 16.2 | 4.61 | 7.5 |
+| vliw | 256 | 5.31 | 11.61 | 2.2 | 6.34 | 1.8 |
+| wc-input1 | 4096 | 9.26 | 70.81 | 7.6 | 75.49 | 0.9 |
+| wc-scanStream | 8192 | 5.73 | 540.32 | 94.3 | 27.43 | 19.7 |
+| zebra | 16 | 2.94 | 37.36 | 12.7 | 11.02 | 3.4 |
+| zern | 4096 | 3.44 | 31.89 | 9.3 | 4.77 | 6.7 |
+
+Over the 46 programs, the geometric means: **7.20 times MLton's time** (8.91 at the first timing, before part 4)
+and **3.53 times arm64's** (4.37). fib, tak, md5, wc-input1, and output1 are level with native or faster;
+what is left above ten times native is imp-for (27), wc-scanStream (20), matrix-multiply and fft (12), and
+knuth-bendix (11), each of its own code: wc-scanStream's time is its loop, inlined into `main`. They wait for a
+profile of their own. The data are in `benchmarks/mlton/baselines/2026-11-15/`: `quest-wasm-node-48d6267d.jsonl`
+(the first timing, with MLton's) and `quest-wasm-node-b2ccb26f.jsonl`.

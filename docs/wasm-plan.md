@@ -1162,7 +1162,7 @@ only when the backend's files differ, until its time is known.
     - **What it took, besides steps 2 to 9:** a caught exception as a value of `raised.T`; the library's exceptions
       the base lacks made by their units' initializers; and the build logger, which appends to its log file through
       a shell, leaving the file alone where no shell can run.
-    - **Measured** ([benchmarks.md](benchmarks.md) §22): node takes 1.63 of the native compiler's wall time (55.6 s
+    - **Measured** ([benchmarks.md](benchmarks.md) §25): node takes 1.63 of the native compiler's wall time (55.6 s
       against 34.2), at about the same peak resident memory (3.5 GB); node's default heap limit did not need
       raising. Boxing `Int`s takes about 10 percent, the unneeded adapters about 8, and calls across units are the
       hottest functions. wasmtime with the copying collector takes 790 s. Since step 13 the driver that wasmtime
@@ -1430,7 +1430,7 @@ echo capture's C functions.
     - **The default:** the driver on this target runs the JIT unless given `--no-jit`, as natively. A session
       replays by compiling its committed inputs again (§6.3): correct, and measured in step 14. The driver that
       wasmtime runs, for its self-compilation, is built with `--variant questlang/jit/target=none`, and the
-      instructions for that run (§8.1's step 10, [benchmarks.md](benchmarks.md) §22) say so.
+      instructions for that run (§8.1's step 10, [benchmarks.md](benchmarks.md) §25) say so.
     - **Tests in node:** `self-hosted/wasm_session` runs the REPL's transcripts and the kernel's protocol a second
       time with the JIT, with the skips their `jit` phase already names and a pending list of its own, and its
       recovery checks with the JIT: an overflow in an input's own code rolled back without a replay, the earlier
@@ -1764,10 +1764,27 @@ stands, not redesigned.
     adapters this target does not need (about 8%, §3.2), and calls across units as the hottest functions. So:
     the adapters left out where the closure signatures already agree, by a model of this target in the represent
     pass (§4.1), and the `Int` boxes that remain found and counted before any is removed. Self-compilation in node
-    is profiled again before and after, beside arm64's, in [benchmarks.md](benchmarks.md) §22, and the run suite's
+    is profiled again before and after, beside arm64's, in [benchmarks.md](benchmarks.md) §25, and the run suite's
     programs are timed in node and wasmtime. Typed arrays (§2.4), specialization on scalar type arguments (§4.1),
     and flat tuples (§2.3) are taken only if the new profile shows them leading.
     *Done when* benchmarks.md records the profiles before and after, and each change is kept or not on its measure.
+    *Done 2026-11-15* ([benchmarks.md](benchmarks.md) §25.1):
+    - **The adapters** this target does not need are left out: where a pointer and a `QVal` are one `eqref`, a
+      closure only boxed or unboxed between them has the generic signature already (`shapes.referencesAlike`, set
+      per unit by the backend that runs the passes). Self-compilation in node 64.7 to 60.8 s; kept.
+    - **The `Int` boxes**, counted first: hash maps' `insert`, `get`, and `findIndex`, `vector.append`, vectors'
+      constructors, and `hexDigest`. Each unit now has its own `boxInt` and `unboxInt`, which V8 inlines, where it
+      called the runtime's across instances. 58.4 to 45.1 s; kept. None is removed.
+    - **The MLton suite in node:** `benchmarks/mlton/run.py --backend wasm` (node or wasmtime, 7800 KB of node's
+      stack). 45 of 46 agree with MLton; raytrace's image differs by msun's last bits against libm's, proven by a
+      native build on `util/realmath`. It found two faults, fixed: `isnot` on proxied tuples and options was `is`
+      (`language/isnot_shared_tuples`), and a call ending an `if`'s arm, a case, or a join's body was no tail call.
+      And it found files written a byte at a time through WASI: a file's writer is now buffered in the core and
+      flushed on close, on flush, and when the program ends (ray 518 to 18 s, output1 1893 to 33 s).
+    - **Measured at the end:** self-compilation 47.5 s in node against 39.4 s natively (1.21, from 1.63); the
+      suite 7.20 times MLton and 3.53 times arm64 (geometric means over the 46).
+    - **Not taken:** typed arrays, specialization on scalar type arguments, and flat tuples; the profile is now led
+      by the collector (12.7%) and the calls across units into `vector` and `hashMap`, which none of them addresses.
 22. **The page's size and start-up.** Step 12 measured 3.9 MB compressed and about a second to the prompt
     locally, three quarters of it the driver's initializers, run cold. This step measures where the initializers'
     time goes, by unit, and what merging the modules (§5.1) saves in size and in compiling; and it tries what the
