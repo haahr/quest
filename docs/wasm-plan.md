@@ -24,7 +24,7 @@ the four disagree, this plan holds.
 §9 the results of step 0's probes (2026-11-13), on which the owner confirmed decisions 1 and 2, and §10 step 1's
 census of what the compiler uses. Milestones 1 and 2 are reached (2026-11-14): the compiler compiles itself in
 node, and the REPL runs in a page, interpreting. Milestone 3's steps, the JIT in node and then in the page, are
-drafted (§8.3) and await the owner's review.
+drafted (§8.3) with the owner's answers; step 13 is next.
 
 ---
 
@@ -1354,8 +1354,9 @@ echo capture's C functions.
   file. So the arm64 JIT
   is `jit/target.mod.quest`, today's code; the wasm JIT is `target.wasm.mod.quest`; and a driver with no JIT is
   `target.none.mod.quest`, which refuses `--jit` and interprets. Only the variant chosen is compiled and linked.
-- **A driver run where no host can run its inputs** (wasmtime): open, for the owner; §8.3.1 sets out the
-  question.
+- **A driver run where no host can run its inputs** (wasmtime) is built with no JIT, `--variant
+  questlang/jit/target=none` (the owner's answer, (b) of §8.3.1): a second build of the driver, made only when
+  wasmtime runs it, by hand.
 
 13. **The JIT in node.** Inputs compiled to modules and run by the host, in node, with no page.
     - **Variants:** `modules/paths` finds a unit's variant beside its file, and the build engine, the module
@@ -1392,7 +1393,9 @@ echo capture's C functions.
       frames between: the transcripts that list frames are pending under the JIT, with that reason.
     - **`system.args`** is set through an intrinsic of the core's, not through raw memory as `os/value` sets it.
     - **The default:** the driver on this target runs the JIT unless given `--no-jit`, as natively. A session
-      replays by compiling its committed inputs again (§6.3): correct, and measured in step 14.
+      replays by compiling its committed inputs again (§6.3): correct, and measured in step 14. The driver that
+      wasmtime runs, for its self-compilation, is built with `--variant questlang/jit/target=none`, and the
+      instructions for that run (§8.1's step 10, [benchmarks.md](benchmarks.md) §22) say so.
     - **Tests in node:** `self-hosted/wasm_session` runs the REPL's transcripts and the kernel's protocol a second
       time with the JIT, with the skips their `jit` phase already names and a pending list of its own, and its
       recovery checks with the JIT: an overflow in an input's own code rolled back without a replay, the earlier
@@ -1437,16 +1440,16 @@ echo capture's C functions.
   variant implements, so they compile alike whichever is chosen, and only the one chosen is linked: a wasm driver
   carries no arm64 loader, and a native one no wasm JIT (each still compiles for every backend). The default by backend keeps `--backend wasm` making a
   driver that works with no flag more; `--variant` makes the others, such as one with no JIT.
-- **A driver run where no host can run its inputs (open).** With the `wasm` variant, the driver's module imports
-  the host's functions (`quest.host`'s `load`, `run`, and the rest), and an engine refuses to instantiate a module
-  whose imports are not all supplied. node and the page supply them; wasmtime cannot, since they are JavaScript's,
-  and wasmtime runs the driver built for wasm in one check, its self-compilation (step 10's 790 s, run by hand, not
-  by `tools/check`). The program suite in wasmtime is unaffected: programs do not import the JIT. The ways out:
-  (a) wasmtime is given a module of stubs, each answering "no JIT", and the driver interprets there; (b) the
-  driver for wasmtime is built with `--variant questlang/jit/target=none`, a second build of the driver, made
-  only when wasmtime runs it; (c) the driver no longer runs in wasmtime, node alone running its self-compilation.
-  The draft would take (b): the variants make it a flag, no stub module is kept in step with the imports, and the
-  build it adds is made only by hand.
+- **A driver run where no host can run its inputs: (b), the owner's answer.** With the `wasm` variant, the driver's
+  module imports the host's functions (`quest.host`'s `load`, `run`, and the rest), and an engine refuses to
+  instantiate a module whose imports are not all supplied. node and the page supply them; wasmtime cannot, since
+  they are JavaScript's, and wasmtime runs the driver built for wasm in one check, its self-compilation (step 10's
+  790 s, run by hand, not by `tools/check`). The program suite in wasmtime is unaffected: programs do not import the
+  JIT. The ways out: (a) wasmtime is given a module of stubs, each answering "no JIT", and the driver interprets
+  there; (b) the driver for wasmtime is built with `--variant questlang/jit/target=none`, a second build of the
+  driver, made only when wasmtime runs it; (c) the driver no longer runs in wasmtime, node alone running its
+  self-compilation. (b) was taken: the variants make it a flag, no stub module is kept in step with the imports, and
+  the build it adds is made only by hand.
 - **No frames.** Frames would need a count at each function's entry or a shadow stack, a cost in every unit; the
   interpreter shows them, and decision 12 put them later.
 
