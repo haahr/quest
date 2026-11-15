@@ -284,7 +284,10 @@ node (`--wasm-engine node`, through `runtime/wasm/run.mjs`); `tests/self-hosted/
 yet pass, each test under the step of the plan that adds what it needs. `wasm-jit` runs the run goldens' programs
 as `jit-files` does, with the driver compiled to wasm, in node, its JIT compiling each to a module (wasm-plan.md step
 13); `tests/self-hosted/pending-wasm-jit.txt` lists what it does not yet pass, by what each needs. Each is skipped
-where its engine is not installed. The
+where its engine is not installed. `tools/check` runs `wasm-node` always, and `wasm` and `wasm-jit` only for a change to
+the wasm backend's own files (its `WASM_PATHS`: `questlang/wasm/`, `runtime/wasm/`, `questlang/jit/`, a `.wasm`
+variant, `lib/`, `tools/wasm-page/`, and the wasm tests) or with `--all`: the two add the engines' differences and the
+driver compiled to wasm, which `self-hosted/wasm_selfcompile` builds for every change. The
 questlang tests `ssac_print` and `arm64_assemble` print a unit of the SSA built by hand as C and as assembly, whose
 goldens `tests/python/test_ssac.py` compiles and `tests/python/test_arm64.py` assembles. `wasm_encode` prints a corpus
 of WebAssembly modules built by hand (`questlang/wasm`) as text, each followed by its encoder's bytes in comments;
@@ -302,7 +305,8 @@ which takes minutes.
 `run_c_compiled` compiles and runs every run program and run-time error test with the self-hosted driver, and runs the
 checks of its unit files, builds, and ABI corpus (`self-hosted/abi_corpus`, `self-hosted/unit_artifacts`,
 `self-hosted/build_errors`, `self-hosted/parallel_build`, `self-hosted/compile_command`, `self-hosted/backends`,
-`self-hosted/variants`, `self-hosted/wasm_programs`, `self-hosted/wasm_session`, `self-hosted/line_tables`).
+`self-hosted/variants`, `self-hosted/wasm_programs`, `self-hosted/wasm_session`, `self-hosted/wasm_selfcompile`,
+`self-hosted/line_tables`).
 `self-hosted/variants` builds a program whose module has variants (build-process.md §6.4) with each choice of one,
 in one build directory, and runs it. `self-hosted/wasm_programs` runs the programs in
 `tests/self-hosted/wasm` with the wasm backend in wasmtime and node, which must do what the arm64 backend's builds do,
@@ -314,8 +318,11 @@ for those it names as pending, the kernel's protocol (`kernel_protocol.py --sess
 a stack overflow, interpreted by replay (wasm-plan.md step 11), with the JIT in an input's own code without one and
 in the compiler by one (step 13); and it builds the page (`tools/wasm-page/build`, step 12) from the same driver and
 checks it in node (`tests/self-hosted/wasm_page.mjs`): its archives, and its worker's session, with the JIT and
-interpreted (step 14). The page in a browser is checked by `tools/wasm-page/build --check`, in headless Chrome, which
-no suite runs: its `check.html` runs the transcripts with the JIT, and `check.html?jit=0` interpreted. The
+interpreted (step 14). `self-hosted/wasm_selfcompile` builds the driver with `--backend wasm`, has that driver, in
+node, build the driver again, and requires the two builds to be the same, every unit's module and the program's and
+the runtime's byte for byte (wasm-plan.md steps 10 and 22). The page in a browser is checked by
+`tools/wasm-page/build --check`, which no suite runs, in headless Chrome or Firefox or in Safari (`--browser`): its
+`check.html` runs the transcripts with the JIT, and `check.html?jit=0` interpreted. The
 generated C has no goldens: `tools/c-diff` shows how a
 change alters it (§2.9). `run_c_compiled` builds into a directory of its own under each worker's (`self-hosted-units`), so that they don't reuse the bootstrap's fresh
 artifacts. The self-hosted driver builds the questlang tests once, one after another, into a shared directory

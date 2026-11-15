@@ -26,7 +26,9 @@ backend (stage 2's whole-program build writes stage 2's whole-program code), and
 the backends' suite (the self-hosted suite's compiled tests through the SSA's C
 printer, ssac, for every unit; through the native arm64 backend, for every unit,
 and for the program's alone; and whole programs through arm64:
-docs/arm64.md section 4), whose compiled tests run under the collector's
+docs/arm64.md section 4; and the wasm backend in node, and for a change to its
+own files, WASM_PATHS, in wasmtime and as the driver compiled to wasm runs
+each program by its JIT), whose compiled tests run under the collector's
 `incremental` mode (a full collection's marking always under way in slices of
 one object, each cycle's marks checked against a stop-the-world marking:
 docs/collector.md section 7). Every suite adds, at once, the bootstrap's
@@ -82,6 +84,23 @@ PTY_TESTS = "tests/python/test_readline_terminal.py"
 # pending lists, and the docs
 SELF_HOSTED_ONLY_PATHS = ("questlang/", "tests/golden/self-hosted/", "tests/golden/ir_", "tests/golden/ssa/",
                           "tests/self-hosted/", "docs/")
+
+
+# The paths a change may touch and need the wasm backend's own modes, wasm
+# (wasmtime) and wasm-jit (the driver compiled to wasm, its JIT running each
+# program in node): its code generator and runtime, the JIT, a module's wasm
+# variant, the library its externals table covers, the page, and its own
+# tests. Every other change runs wasm-node alone of the three, which compiles
+# every program as they do, and the self-hosted checks' wasm self-compilation
+# (tests/self-hosted/wasm_selfcompile.py), which builds the wasm-jit mode's
+# driver and must find it compiling itself to what the native compiler writes.
+WASM_PATHS = ("questlang/wasm/", "runtime/wasm/", "questlang/jit/", "lib/", "tools/wasm-page/",
+              "tests/self-hosted/pending-wasm", "tests/self-hosted/wasm")
+
+
+def wasm_file(path: str) -> bool:
+    """Whether a changed file needs every wasm mode"""
+    return path.startswith(WASM_PATHS) or path.endswith(".wasm.mod.quest")
 
 
 def self_hosted_only_file(path: str) -> bool:
@@ -297,10 +316,12 @@ def main() -> int:
 
     if args.light:
         return light(args.seed, cores)
+    every_wasm_mode = True
     if args.self_hosted_only or args.all:
         self_hosted_only = args.self_hosted_only
     else:
         changed = changed_files()
+        every_wasm_mode = changed is None or any(wasm_file(f) for f in changed)
         others = None if changed is None else [f for f in changed if not self_hosted_only_file(f)]
         self_hosted_only = others == []
         if changed is None:
@@ -325,9 +346,14 @@ def main() -> int:
     # The JIT's modes run by hand: the stress tier runs jit-files, and the
     # self-hosted suite's jit_hosts check runs the REPL's transcripts (jit's
     # tests) through --jit in an arm64-built driver. So does c-whole: the
-    # self-hosted suite runs the C backend, and arm64-whole whole programs
+    # self-hosted suite runs the C backend, and arm64-whole whole programs.
+    # wasm (wasmtime) and wasm-jit when the change touches the wasm backend's
+    # own code (WASM_PATHS), or with --all or --self-hosted-only
+    wasm_modes = "wasm,wasm-node,wasm-jit" if every_wasm_mode else "wasm-node"
+    if not every_wasm_mode:
+        print("The wasm modes: wasm-node alone, the change touching none of the wasm backend's own files")
     backends = [*run_tests, "--self-hosted", "--seed", args.seed, "--backend",
-                "ssac,arm64,arm64-program,arm64-whole,wasm,wasm-node,wasm-jit"]
+                "ssac,arm64,arm64-program,arm64-whole," + wasm_modes]
     unit = [python, "-m", "unittest"]
     unit_environment = {"PYTHONPATH": str(ROOT_DIR / "bootstrap" / "python")}
     # Every compiled program the suites run, the compilers among them, checks
