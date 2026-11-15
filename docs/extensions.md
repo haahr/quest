@@ -1,8 +1,8 @@
 # Necessary Extensions to the Core Language
 
 This document specifies practical extensions to Cardelli's Quest language necessary for building command-line
-utilities, file processors, operating system integrations, and in particular the **Step 5 Self-Hosted Compiler**
-(`./quest`, written in Quest).
+utilities, file processors, operating system integrations, and in particular the self-hosted compiler (`questlang/`,
+which `./quest` runs).
 
 ---
 
@@ -28,12 +28,14 @@ and native interoperation mechanisms that were absent from the original formal s
 
 ## The `System` Interface & Module
 
-These facilities are unified under the standard `System` interface and provided by the builtin `system` module.
+These facilities are unified under the standard `System` interface and provided by the builtin `system` module
+(`lib/system.int.quest`; the comments here are abridged). The rest of the operating system is in `lib/os/`
+([libraries.md](libraries.md) §4): `os/fileStats`, `os/process`, and `os/path`.
 
 ```quest
 interface System
 export
-    error: Exception(Ok)
+    error: Exception
     (* Raised when an operating system operation encounters an unrecoverable failure. *)
 
     args: Array(String)
@@ -93,7 +95,7 @@ end
 ```
 
 ### Runtime Initialization Contract
-When compiling a Quest program to native code via the C backend:
+When compiling a Quest program to native code (by either backend; the arm64 backend's `main` makes the same calls):
 1. The emitted C `main` function captures POSIX `(int argc, char **argv)`:
    ```c
    int main(int argc, char **argv) {
@@ -104,9 +106,9 @@ When compiling a Quest program to native code via the C backend:
    ```
 2. `quest_builtins_init(argc, argv)` initializes standard I/O streams and populates `quest_system_args` as a
    length-prefixed `QArray` of length `argc`, populating each index with a `QString` copy of `argv[i]`.
-3. In the Python bootstrap interpreter, `system.args` holds the program name (the source file, `<string>` for `-e`,
-   `<stdin>`, or `<repl>` for the REPL without a file) followed by the arguments after the source file, or after a `--` that precedes it, and
-   `system.sysexit` invokes `sys.exit(code)`.
+3. In the interpreters, `system.args` holds the program name (the source file, `<string>` for `-e`, `<stdin>`, or
+   `<repl>` for the REPL without a file) followed by the arguments after the source file, or after a `--` that
+   precedes it; in the bootstrap's, `system.sysexit` invokes `sys.exit(code)`.
 
 ---
 
@@ -214,8 +216,7 @@ Single underscores (`_`) continue to separate module prefixes from member names,
 *Typeful Programming* writes integers in decimal only. Quest also reads `0x` or `0X` followed by hexadecimal digits,
 of either case, as an integer (`0xFF` is 255, `~0x10` is -16), for code that works with bit patterns, such as the arm64
 encoder's opcodes (`codegen/arm64/encode`). The range is decimal's: a hexadecimal integer must fit in 64 bits as a
-signed number, so `0xFFFFFFFFFFFFFFFF` is out of range rather than ~1, and `0x` without digits is an error. Before
-this extension, `0xab` was the integer 0 followed by the identifier `xab`.
+signed number, so `0xFFFFFFFFFFFFFFFF` is out of range rather than ~1, and `0x` without digits is an error.
 
 ---
 
@@ -290,11 +291,11 @@ use no semicolons at all; the tests use both forms, so that both stay accepted.
 The reason is cost. These options are what the paper's programs and the suite use as enumerations and optional
 values (`nil`, `none`, `some`), and making a new object for each, only so that `is` can tell them apart, was much of
 the allocation in the MLton benchmarks ([benchmarks.md](benchmarks.md) §3.6 and §8). A case without components is
-now a constant shared by every use.
+a constant shared by every use ([c-representation.md](c-representation.md) §5.3).
 
 The single-word rule anticipates representing such options by their component
-([option-values.md](option-values.md)), which is deferred. If that representation is not adopted, the rule
-is to be withdrawn, leaving only the rule for cases without components.
+([option-values.md](option-values.md)), a design deferred on 2026-11-01. Whether to adopt it is open; if it is
+dropped, the rule is withdrawn, leaving only the rule for cases without components.
 
 ---
 
@@ -337,6 +338,9 @@ logical shift, arithmetic, and machine-level representation conversions with zer
 interface Word export
     (* Abstract 64-bit unsigned word type *)
     T::TYPE
+
+    (* Raised by div and mod for a zero divisor, and by toReal for a NaN bit pattern *)
+    error: Exception
 
     (* Number of bits in Word.T *)
     bits: Int
@@ -382,6 +386,9 @@ interface Word export
 
     (* Unsigned 64-bit multiplication modulo 2^64 *)
     mul(w1: T w2: T): T
+
+    (* The high 64 bits of the unsigned 128-bit product *)
+    mulHi(w1: T w2: T): T
 
     (* Unsigned 64-bit division; raises error if w2 is 0 *)
     div(w1: T w2: T): T

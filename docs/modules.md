@@ -284,8 +284,9 @@ The Quest driver (`quest`) and compiler pipeline support include paths using the
 # Search current directory first, then ./lib and ./interfaces:
 quest -I ./lib -I ./interfaces main.quest
 
-# In interactive REPL mode:
-quest -i -I ./lib
+# The REPL (with no program, at a terminal), or -i to enter it after running a program:
+quest -I ./lib
+quest -i -I ./lib main.quest
 
 # Native C compilation mode:
 quest compile -I ./lib main.quest -o main_app
@@ -297,7 +298,10 @@ quest compile -I ./lib main.quest -o main_app
 
 Quest compiles modules through its intermediate representation ([ir.md](ir.md)), supporting both **separate
 compilation** (the default for all file-backed modules) and **whole-program compilation** (`--whole-program` or inline
-`module` declarations in a single source file). Both modes share the same core semantic and representation invariants:
+`module` declarations in a single source file). Both modes share the same core semantic and representation invariants.
+This section and the next two describe them in the C backend's terms; the arm64 backend, the default, defines the same
+symbols with the same layouts in assembly, so that units compiled by either link together
+([arm64.md](arm64.md) §3.12):
 
 1. **Acyclic Dependency Enforcement (Cardelli §7.1):**
    - As Cardelli explicitly specifies (*Typeful Programming* §7.1, p. 55): *"The import dependencies of both
@@ -342,9 +346,11 @@ standard library modules, and hybrid Quest/C modules through a single pipeline:
 ### 8.1. Declarative Module Architecture
 - Standard library modules reside on disk in `lib/` as regular Quest units (`.int.quest` and `.mod.quest`), compiled to
   pre-built `.qi`, `.int.h`, `.mod.c`, `.o`, and `.qm` artifacts on demand.
-- The tree-walking and IR interpreters bridge external C symbols to Python (`quest/interpreter/builtins.py`): external
-  C symbol names map to Python functions (`EXTERNAL_FUNCTIONS`) and to constants and exceptions (`EXTERNAL_VALUES`).
-  Only `dynamic` (`Dynamic`) remains a purely runtime-synthesized module without a `.mod.quest` implementation file.
+- The bootstrap's tree-walking and IR interpreters bridge external C symbols to Python
+  (`bootstrap/python/quest/interpreter/builtins.py`): external C symbol names map to Python functions
+  (`EXTERNAL_FUNCTIONS`) and to constants and exceptions (`EXTERNAL_VALUES`). The self-hosted interpreter calls the
+  compiled library's own functions (`questlang/interpreter/builtins`). Every standard library module, `dynamic`
+  included, has a `.mod.quest`; `dynamic`'s operations that traverse values generically are externals of the runtime.
 - Within a `.mod.quest` file, declarations can be pure Quest bindings or `external "..."` bindings (`TypedExternal` /
   `ir.External`) that bind directly to C runtime types, functions, or global values.
 
@@ -354,8 +360,8 @@ The IR and C backend optimize module member calls while preserving Cardelli's fi
    - Within the same compilation unit (or when calling an `external` C function binding), known function calls bypass
      closure allocation and call the underlying static IR function (`qf_<name>`) or C runtime symbol directly.
    - Across separately compiled modules, calling an exported function or polymorphic value on an imported module
-     (`m.f(...)`) emits a direct call to the module's exported C wrapper function `qv_<clean>_<member>(...)`
-     (`ir.ImportCall`).
+     (`m.f(...)`, an `ir.Call` whose `module` is an `ir.Import`) emits a direct call to the module's exported C wrapper
+     function `qv_<clean>_<member>(...)`.
 2. **First-Class Concrete Value Records:**
    - When a module is used as a first-class value (e.g. `let r = m` or passed to a function expecting the interface
      record type) or when accessing a non-function value field (`m.x`), code accesses `qm_<clean>`.
@@ -436,6 +442,7 @@ Compiling an interface (`quest -c counter.int.quest`) generates two artifacts:
          abi: Int
          deps: Array(InterfaceDep)
          imports: Array(String)
+         isUnsound: Bool
          name: String
          producer: String
          source: String
@@ -469,7 +476,8 @@ Compiling a module implementation (`quest -c counter.mod.quest`) produces three 
        the signature computed by `module_function_signature` (`codegen/c/declarations.py`) from the interface's types.
        Each wrapper invokes the corresponding exported closure stored by the module.
 2. **Relocatable Object File (`<name>.o`):**
-   - Produced by invoking the host C compiler (`clang -c <name>.mod.c -o <name>.o -I runtime -I <include_paths>`).
+   - Produced by invoking the host C compiler (`clang -c <name>.mod.c -o <name>.o -I runtime -I <include_paths>`). An
+     arm64 unit writes `<name>.mod.s` in place of `<name>.mod.c` and assembles it with `clang -c`.
 3. **Module Build Manifest (`<name>.qm`):**
    - Records the module's canonical name, implemented interface, source/object paths, and direct module/interface
      dependencies for incremental build checking and transitive linking ([build-process.md §4](build-process.md)).
@@ -494,7 +502,7 @@ When a client compilation unit (another `.mod.quest` or a main `.quest` program)
      - `extern void qv_mod_<clean>_init(void);`
      - `extern <Ret> qv_<clean>_<member>(<Params>);` for every function and polymorphic value in `I`, using the exact
        same `module_function_signature(clean, member, type, c_type)` helper used when compiling `<mod>.mod.c`.
-   - Direct calls `m.f(x)` lower to `ir.ImportCall` and emit `qv_<clean>_f(...)`.
+   - Direct calls `m.f(x)` lower to an `ir.Call` of the imported module's member and emit `qv_<clean>_f(...)`.
    - Non-function value fields `m.v` (and first-class uses of `m` itself) read from `qm_<clean>`; they are not exported
      as separate C global variables.
 3. **Linking:**
@@ -513,7 +521,7 @@ When compiling hierarchical interfaces and modules:
    `util/calc.mod.c`, `util/calc.o`, and `util/calc.qm`.
 2. **C Symbol Mangling:**
    Because C identifiers cannot contain forward slashes, directory delimiters in canonical module names are mangled
-   to `__` (double underscore) via `mangle_module_name` ([name-mangling.md §2.5](name-mangling.md)):
+   to `__` (double underscore) via `mangle_module_name` ([name-mangling.md §4.1](name-mangling.md)):
    - Module record: `qm_util__calc`
    - Initializer: `qv_mod_util__calc_init`
    - Initialized flag: `qv_mod_util__calc_initialized`
@@ -542,11 +550,11 @@ Module and interface dependencies are tracked through `.qm` module manifests (se
    - `imported_interfaces`: the canonical names, source paths, modification timestamps (`mtime`), and resolution
      paths/directories of the module's own interface and all directly or transitively imported interfaces.
 2. **Incremental Rebuild & Transitive Linker Resolution:**
-   When building or linking a program, the build engine (`quest/build/engine.py`) walks the `imported_modules` graph
-   starting from the root compilation unit's direct imports, checks whether any module's `.o` or `.qm` is missing or
-   stale relative to its `.mod.quest` source or the interfaces recorded in `imported_interfaces`, rebuilds stale units
-   in topological order, and passes the transitive closure of `.o` files to the host C linker
-   ([build-process.md §7](build-process.md)).
+   When building or linking a program, the build engine (`build/engine.py`, `questlang/build/engine`) walks the
+   `imported_modules` graph starting from the root compilation unit's direct imports, checks whether any module's `.o`
+   or `.qm` is missing or stale relative to its `.mod.quest` source or the interfaces recorded in
+   `imported_interfaces`, rebuilds stale units in topological order, and passes the transitive closure of `.o` files
+   to the host C linker ([build-process.md §7](build-process.md)).
 
 ---
 

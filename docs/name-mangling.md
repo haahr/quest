@@ -5,7 +5,9 @@ This document specifies the name mangling and symbol generation rules of the C b
 [`layout.py`](../bootstrap/python/quest/repr/layout.py), which every backend shares, and the C backend's
 [`c/types.py`](../bootstrap/python/quest/codegen/c/types.py),
 [`c/declarations.py`](../bootstrap/python/quest/codegen/c/declarations.py), and
-[`c/printer.py`](../bootstrap/python/quest/codegen/c/printer.py)).
+[`c/printer.py`](../bootstrap/python/quest/codegen/c/printer.py)). The self-hosted compiler's modules of the same
+names (`questlang/repr/symbols`, `questlang/repr/layout`, `questlang/codegen/c/`) make the same names, and its SSA's
+backends name what they share with C as the C backend does (§9).
 
 It serves as the definitive reference for understanding any symbol, struct, typedef, parameter, or temporary variable
 generated during Quest C code generation (`codegen_c`).
@@ -131,10 +133,7 @@ importers call directly (`module_function_signature` in `c/declarations.py`):
 
 The module's own functions and values are internal, named as a program's are (§5).
 
-### 4.5. Module Payload Pointer
-During module initialization, the record payload is populated via a local typed pointer, `_payload`.
-
-### 4.7. Interface C Header Files
+### 4.5. Interface C Header Files
 To avoid collision with C runtime and system headers (e.g. `<string.h>`):
 - **Pattern:** `<interface_stem>.int.h`, included by its canonical path (e.g. `#include "util/path.int.h"`)
   - E.g. `string.int.h`, `path.int.h`, `calc.int.h`
@@ -170,7 +169,11 @@ with `qf_` (with a suffix when two share a name):
 - **External C functions as closures:** `qx_<symbol>`, with static closure `qx_<symbol>_closure`
 - **Function type descriptor and adapter:** `quest_type_fun_<digest>`, `quest_adapt_fun_<digest>`, and its thunk
   `quest_thunk_fun_<digest>`, where `<digest>` is 16 hex digits of a SHA-256 of the function type's text
-- **Record offset table registration:** `qr_register_dicts`
+- **Record offset table registration:** `qr_register_dicts`, which registers the unit's tables: its functions' names
+  for tracebacks (`qr_funcs`), its roots (`qr_roots`: the globals that may hold a pointer, and the module records), and
+  the offset tables of the records it views at supertypes
+- **Object layouts** (what the collector reads of an allocation's words, `repr/objectlayout.py`):
+  `quest_layout_<tag>`, the runtime's own among them (`quest_layout_closure`, `quest_layout_array_pointer`, ...)
 
 ---
 
@@ -185,7 +188,8 @@ with `qf_` (with a suffix when two share a name):
     every C unit: interface headers define record structs under include guards named after them, and one unit
     includes headers generated in other compilations.
   - Structural fallback: `struct QRecord_<fld1>_<t1>_<fld2>_<t2>`
-- **Record Header:** All record structs start with `QRecordHeader header;` (storing the descriptor of the record's layout).
+- **Record Header:** All record structs start with `QRecordHeader header;` (storing the descriptor of the record's
+  layout).
 - **Record Field Mangling:** Every record field name is prefixed with `qf_`:
   - `qf_<field_name>`
   - E.g. `qf_x`, `qf_name`, `qf_default`, `qf_return`
@@ -226,7 +230,8 @@ Quest supports Cardelli record width and depth subtyping via static offset dicti
   - E.g. `struct OffsetDict_record_<digest> { size_t offset_x; size_t offset_y; };`
 - **Static dictionary instance:**
   - `static const OffsetDict_<target> offsetdict_<target>_<source> = { offsetof(...), ... };`
-  - E.g. `static const OffsetDict_record_<d1> offsetdict_record_<d1>_record_<d2> = { offsetof(struct QT_record_<d2>, qf_x), ... };`
+  - E.g. `static const OffsetDict_record_<d1> offsetdict_record_<d1>_record_<d2> =
+    { offsetof(struct QT_record_<d2>, qf_x), ... };`
 
 ### 6.6. Variant Tag Remapping Tables
 When a variant is coerced to a supertype variant:
@@ -295,3 +300,19 @@ declared at the function's start. Exception handlers are `_qh`, `_qh_2`, ...
 | **Type Descriptor Param** | `descriptor_<quant>` | `T` | `descriptor_T` |
 | **Module Export Param** | `qv_p_<param_name>` | `a: Int` | `qv_p_a` |
 | **Local Temporary** | `_t<n>` | temp var | `_t1` |
+
+---
+
+## 9. The SSA's Backends (the Self-Hosted Compiler)
+
+The units arm64 and `ssac` compile ([ssa.md](ssa.md) §5) link with C units and the runtime, so the names they share
+are §3 to §6's: globals, functions and their static closures, module records, initializers and their flags, exported
+functions, descriptors, offset tables, tag maps, layouts, and the tables of §5.4. What only they make:
+
+- **String literals:** `qs_<n>`, the literal's text, numbered in the unit (`ssa/build/values`).
+- **Switch tables:** `qt_<function>_<n>`, the read-only table a switch of constants becomes (`ssa/passes/tables`).
+- **Layout kinds:** `qlk_<tag>`, the kinds of `quest_layout_<tag>`'s words, packed eight to a word (`ssa/statics`).
+- **The frame table:** `qr_frames`, the collector's maps of the unit's frames (an empty table the builder makes and
+  arm64 fills, [arm64.md](arm64.md) §3.13).
+- **REPL inputs:** the JIT compiles each input as a module of its own, `qj_<n>`, and the modules it declares as
+  `qj_<n>_<name>` ([ir.md](ir.md) §3).

@@ -5,15 +5,19 @@ source file to the C code that runs it. At each phase it says what the phase is 
 for the program, and explains what changed. It is written for a reader who knows Python but not compilers, and not
 languages like ML or Haskell whose type systems Quest resembles.
 
-The program is in [examples/argmax/](../examples/argmax/). Every phase's output can be reproduced with
+The program is in [examples/argmax/](../examples/argmax/). The outputs are the bootstrap compiler's, whose path
+ends in C, and every phase's output can be reproduced with
 
 ```
-./quest --stop-after PHASE examples/argmax/argmax.quest
+./questboot --stop-after PHASE examples/argmax/argmax.quest
 ```
 
-where PHASE is one of the names in the section headings. The outputs below are excerpts: `...` on a line of its own
-stands for lines left out, and `...` within a line for text left out. A test (`tests/python/test_walkthrough.py`)
-checks every excerpt against what the compiler prints today, so they cannot drift from it unnoticed.
+where PHASE is one of the names in the section headings. The self-hosted compiler, `./quest`, the one programs are
+normally run and built with, has the same phases through `typecheck` and the same IR passes, with a simplifier
+(`ir_simplified`) among them, but by default it goes on from the IR to SSA and arm64 assembly (§2), so its later
+outputs differ from these. The outputs below are excerpts: `...` on a line of its own stands for lines left out, and
+`...` within a line for text left out. A test (`tests/python/test_walkthrough.py`) checks every excerpt against what
+the bootstrap prints today, so they cannot drift from it unnoticed.
 
 ---
 
@@ -212,6 +216,12 @@ closer to the machine. Quest's are:
 After `typecheck` the road forks. The interpreter (`interpret`) runs the typed tree directly. The compiler goes on
 through the IR to C, which a C compiler (clang or gcc) turns into a native program. Each phase's output is checked
 before the next phase starts, so a mistake in the compiler tends to be caught where it is made.
+
+That is the bootstrap's road, which this document follows. The self-hosted compiler's default road leaves the IR
+after `ir_described` for SSA form, a graph of instructions that its optimizations work on (the `ssa_*` phases,
+[ssa.md](ssa.md)), and from there prints arm64 assembly (`codegen_arm64`, [arm64.md](arm64.md)), which the JIT runs
+in memory or `quest compile` assembles into a program. Its C backend (`--backend c`) prints C from the IR as the
+bootstrap does.
 
 The sections below follow the longest-string use through each phase, and turn to the candidate use where it differs.
 
@@ -915,7 +925,8 @@ descriptors of `String` and `Int` before the arguments, and the result is unwrap
 
 ## 14. Building and Running
 
-`./quest -o argmax examples/argmax/argmax.quest` builds a program. The driver finds what argmax.quest imports and
+`./questboot -o argmax examples/argmax/argmax.quest` builds a program (`./quest compile -o argmax ...` with the
+self-hosted compiler). The driver finds what argmax.quest imports and
 compiles each module on its own, from its own source, into an object file: the library's `arrayOp` and `string`,
 and `scoring`. It checks each against the interface the program imported it by, then compiles argmax.quest to C and
 the C to an object file with the system's C compiler, and links them all together with the run-time system. A
@@ -943,6 +954,8 @@ That the two agree is what the test suite checks for every test program, and for
 - [syntax.md](syntax.md) and [type-system.md](type-system.md): the language.
 - [ir.md](ir.md): the IR and its passes in full, including the rules for specialization (§8.1) and representations
   (§4.2).
+- [ssa.md](ssa.md), [arm64.md](arm64.md), and [jit.md](jit.md): the self-hosted compiler's road from the IR to
+  machine code.
 - [c-representation.md](c-representation.md): how values are laid out in compiled code, and type descriptors.
 - [modules.md](modules.md) and [build-process.md](build-process.md): interfaces, modules, and separate compilation.
 - [interpreter.md](interpreter.md): the interpreter.

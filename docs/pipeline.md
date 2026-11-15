@@ -1,7 +1,9 @@
 # Compiler Phase Pipeline Framework and Driver Architecture
 
-This document describes the compiler phase pipeline framework, phase naming conventions, execution modes, and the
-command-line driver interface (`quest` / `quest_driver.py`).
+This document describes the bootstrap compiler's phase pipeline framework (`bootstrap/python/quest/pipeline.py`), the
+phases' names, its execution modes, and the command lines of the two drivers: the bootstrap's (`./questboot`, which
+runs `bootstrap/python/quest_driver.py`), §1 to §4, and the self-hosted compiler's (`./quest`, `questlang/driver/`),
+which takes the same command line with more phases and options, §5.
 
 ---
 
@@ -79,7 +81,10 @@ All compiler phases are named by their **Verb / Action Form**:
   side effects.
 - `ir_core`, `ir_specialized`, `ir_closed`, `ir_represented`, `ir_described`: lowering the typed AST to the IR and
   the IR's passes ([ir.md](ir.md) §8, §9): specialization, closure conversion, representation, and descriptors. Each
-  stage is verified when `QUEST_CHECK_IR=1`; `run_ir_<stage>` runs a stage in the IR interpreter.
+  stage is verified when `QUEST_CHECK_IR=1`; `run_ir_<stage>` runs a stage in the IR interpreter. The self-hosted
+  driver has `ir_simplified` too, between `ir_core` and `ir_specialized` ([ir.md](ir.md) §8.6).
+- `ssa_built`, `ssa_<pass>`, `ssa` (the self-hosted driver's alone): the SSA after its builder, after each of its
+  passes, and at the end ([ssa.md](ssa.md) §4.1).
 - `codegen_c`: C code generation, printing the described IR as portable C99 source.
 - `codegen_arm64` (the self-hosted driver's alone): the program's arm64 assembly, as the arm64 backend writes it
   for `clang -c`. It compiles the program with arm64 unless `--backend` or `--unit-backend` chooses another, which
@@ -98,7 +103,7 @@ All compiler phases are named by their **Verb / Action Form**:
 ## 3. Core Framework Components (`bootstrap/python/quest/pipeline.py`)
 
 ### 3.1. `CompilerOptions` (`bootstrap/python/quest/config/options.py`)
-Encapsulates runtime configuration:
+Encapsulates the options of one run of the pipeline, among them:
 - `stop_after: Optional[str]`: Pipeline phase to halt after (implicitly dumping output).
 - `dump_after: set[str]`: Intermediate phase outputs to dump to stdout while continuing pipeline execution.
 - `include_paths: list[Path]`: Search directories for imported interfaces and modules (`-I`).
@@ -111,6 +116,10 @@ Encapsulates runtime configuration:
 - `print_result: bool`: When true, compiled binaries print Cardelli-format output for the final top-level phrase.
 - `unit: Optional[str]`: `"interface"` or `"module"` when the source is a unit file, whose phases compile it as the
   unit compilers do (§4.3).
+- `build_dir`, `extra_objects`, `whole_program`: where units' artifacts are built ([build-process.md](build-process.md)
+  §3), the objects named on the command line, and `--whole-program` ([build-process.md](build-process.md) §1.2).
+- `target_args`, `expected_exit`: the arguments `run_c_compiled` runs the binary with, and the status it must exit
+  with.
 
 ### 3.2. `CompilerContext`
 Maintains shared state across phases:
@@ -146,97 +155,97 @@ class Phase(ABC):
 
 ---
 
-## 4. Command-Line Interface (`quest` / `quest/driver/`)
+## 4. Command-Line Interface (`questboot` / `quest/driver/`)
 
-The compiler driver provides two primary subcommands: interpreter mode (the default) and native C compilation.
+The bootstrap's driver provides two primary subcommands: interpreter mode (the default) and native C compilation.
 
-### 4.1. Default Mode: Interpretation & REPL (`quest`)
+### 4.1. Default Mode: Interpretation & REPL (`questboot`)
 ```bash
 # Start interactive REPL directly:
-quest
+questboot
 
 # Execute Quest file silently via interpreter:
-quest file.quest
+questboot file.quest
 
 # Echo top-level bindings and expression results in batch execution:
-quest --echo file.quest
+questboot --echo file.quest
 
 # Execute file, then drop into interactive REPL:
-quest -i file.quest
+questboot -i file.quest
 
 # Stop after a specific phase and print its canonical output:
-quest --stop-after tokenize file.quest
-quest --stop-after parse file.quest
-quest --stop-after desugar file.quest
-quest --stop-after typecheck file.quest
-quest --stop-after interpret file.quest
-quest --stop-after run_c_compiled file.quest
+questboot --stop-after tokenize file.quest
+questboot --stop-after parse file.quest
+questboot --stop-after desugar file.quest
+questboot --stop-after typecheck file.quest
+questboot --stop-after interpret file.quest
+questboot --stop-after run_c_compiled file.quest
 
 # Dump intermediate outputs while continuing:
-quest --dump-after parse --stop-after typecheck file.quest
+questboot --dump-after parse --stop-after typecheck file.quest
 
 # Execute inline code string:
-quest -e "let x = 10 + 20; x"
+questboot -e "let x = 10 + 20; x"
 
 # Add search paths for imports:
-quest -I ./lib -I ./interfaces main.quest
+questboot -I ./lib -I ./interfaces main.quest
 ```
 
-### 4.2. Compilation Mode: Native Executable & C Emitter (`quest compile`)
+### 4.2. Compilation Mode: Native Executable & C Emitter (`questboot compile`)
 ```bash
 # Compile Quest source to native binary (defaults to ./file):
-quest compile file.quest
+questboot compile file.quest
 
 # Compile with explicit output binary name:
-quest compile file.quest -o my_app
+questboot compile file.quest -o my_app
 
 # Compile binary that prints the final phrase result (interactive Cardelli format):
-quest compile file.quest --print-result -o my_app
+questboot compile file.quest --print-result -o my_app
 
 # Emit C source code to stdout without invoking host compiler:
-quest compile file.quest --emit-c
+questboot compile file.quest --emit-c
 
 # Emit C source code to an explicit .c file:
-quest compile file.quest --emit-c -o out.c
+questboot compile file.quest --emit-c -o out.c
 
 # Compile with the collector never collecting (allocation only):
-quest compile file.quest --nogc -o my_app
+questboot compile file.quest --nogc -o my_app
 
 # Compile inline code string to native binary:
-quest compile -e "let x = 42; x" -o test_bin
+questboot compile -e "let x = 42; x" -o test_bin
 
 # Stop after intermediate compilation phase:
-quest compile --stop-after typecheck file.quest
-quest compile --dump-after typecheck --stop-after codegen_c file.quest
+questboot compile --stop-after typecheck file.quest
+questboot compile --dump-after typecheck --stop-after codegen_c file.quest
 ```
 
-### 4.3. Separate Compilation & Object Linking (`quest -c`, `*.o`)
+### 4.3. Separate Compilation & Object Linking (`questboot -c`, `*.o`)
 ```bash
 # Compile an interface to C header (.int.h) and serialized type metadata (.qi):
-quest -c counter.int.quest
+questboot -c counter.int.quest
 
 # Compile a module implementation to C source (.mod.c) and object file (.o):
-quest -c counter.mod.quest -I ./interfaces
+questboot -c counter.mod.quest -I ./interfaces
 
 # Compile client program and link against precompiled .o modules:
-quest main.quest counter.o -o my_app
+questboot main.quest counter.o -o my_app
 
 # Compile client program with auto-discovery of .o modules in include paths:
-quest main.quest -I ./modules -o my_app
+questboot main.quest -I ./modules -o my_app
 
 # Dump a phase of a unit file, writing none of its artifacts:
-quest --stop-after typecheck counter.int.quest
-quest --stop-after codegen_c counter.mod.quest
+questboot --stop-after typecheck counter.int.quest
+questboot --stop-after codegen_c counter.mod.quest
 ```
 
-`--stop-after` and `--dump-after` run a unit file's phases as the unit compilers compile it, in both modes: an
-interface file's phases are `tokenize`, `parse`, `desugar` and `typecheck`, and a module file's continue through the
-IR's stages to `codegen_c`, where it is lowered as a unit with its exports (`lower_module_file`) and printed as the
-`.mod.c` its compilation writes. A unit does not run alone, so the phases that run code are errors. `--stop-after` writes none of
-the unit's artifacts (the units it imports are built in the build directory, as for a program's phases); with
-`--dump-after` alone, the unit is compiled after its phases are dumped. Both modes handle a unit file in one place
-(`run_unit_file` in `quest/driver/main.py`), classifying the file by its kind in the unit graph (`file_unit_kind`,
-[build-process.md §2.1](build-process.md)) and compiling it with `compile_unit_file` (`build/engine.py`).
+`--stop-after` and `--dump-after` run a unit file's phases as the unit compilers compile it, in both modes: an interface
+file's phases are `tokenize`, `parse`, `desugar` and `typecheck`, and a module file's continue through the IR's stages
+to `codegen_c`, where it is lowered as a unit with its exports (`lower_module_file`) and printed as the `.mod.c` its
+compilation writes. A unit does not run alone, so the phases that run code are errors. `--stop-after` writes none of the
+unit's artifacts (the units it imports are built in the build directory, as for a program's phases); with `--dump-after`
+alone, the unit is compiled after its phases are dumped. Both modes handle a unit file in one place (`run_unit_file` in
+`quest/driver/main.py`), classifying the file by its kind in the unit graph (`file_unit_kind`, [build-process.md
+§2.1](build-process.md)) and compiling it with `compile_unit_file` (`build/engine.py`).
 
 ### Exit Codes
 - `0`: Successful compilation / execution (or successful early dump).
@@ -245,7 +254,32 @@ the unit's artifacts (the units it imports are built in the build directory, as 
 
 ---
 
+## 5. The Self-Hosted Driver (`quest` / `questlang/driver/`)
+
+`./quest` runs the self-hosted compiler, whose driver (`questlang/driver/main`, with its command line in
+`questlang/driver/options`, and `quest --help` its usage) takes the command line of §4, `compile` included, with these
+differences:
+
+- **A program runs compiled.** `quest file.quest`, `-e`, and `-i` compile the program by the JIT ([jit.md](jit.md))
+  and run it; `--no-jit` interprets it, as `questboot` does. With neither a file nor `-e`, it enters the REPL at a
+  terminal ([repl.md](repl.md)), and otherwise runs standard input. `--kernel` serves a Jupyter kernel
+  ([jupyter-kernel.md](jupyter-kernel.md)).
+- **Backends.** A compiled program's units are compiled by arm64, the default, or by the C backend or `ssac`
+  (`--backend B`, or `--unit-backend U=B` for one unit, `main` being the program's; `codegen/choice`,
+  [arm64.md](arm64.md) §3.12).
+- **More phases:** `ir_simplified` and `run_ir_simplified`, the SSA's phases, and `codegen_arm64` (§2), each of which
+  `--stop-after` and `--dump-after` name.
+- **The build:** `-j N` compiles N modules at once in worker processes (`build/workers`), `--build-dir` names the
+  build directory (`.build` by default), and `-v` reports what the build does
+  ([build-process.md](build-process.md)).
+
+There is no framework of `Phase` objects: `questlang/driver/main` runs the phases in order and prints the output of
+each one that `--stop-after` or `--dump-after` names (`shows`).
+
+---
+
 ## See Also
+- [ir.md](ir.md) and [ssa.md](ssa.md): the IR's stages and passes, and the SSA's.
 - [codegen-c.md](codegen-c.md): C Code Generator architecture, AST lowering, and compiler runner.
 - [c-representation.md](c-representation.md): C representation, `QVal` union, and runtime ABI design.
 - [README.md](../README.md): Project overview and quickstart.

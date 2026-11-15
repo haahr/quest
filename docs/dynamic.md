@@ -52,11 +52,10 @@ component cannot be selected, which would leave an `inspect` binder no way to re
 
 ## 2. Wire Format, Version 1
 
-> **Status:** implemented in both backends (`bootstrap/python/quest/values/dynamic_json.py` and its writer and reader,
-> `runtime/quest_serialization.c`). It replaced an
-> unversioned predecessor in which `@type` was a Quest type expression printed as a string: printing a recursive type
-> shares nothing (a single `syntax_ast` type printed as 5 MB), both readers needed a Quest type parser (the C runtime
-> had only a partial one), and nested dynamics repeated their whole type. Files in the old form are not read.
+The interpreter (`bootstrap/python/quest/values/dynamic_json.py` and its writer and reader) and compiled code
+(`runtime/quest_serialization.c`) implement it. Types are structured nodes in a table, not Quest type expressions
+printed as strings, because printing a recursive type shares nothing (a single `syntax_ast` type printed as 5 MB),
+reading one would need a Quest type parser in every reader, and nested dynamics would repeat their whole type.
 
 A serialized dynamic value is one JSON document that holds a **type table** and a **value**. Every type the
 document mentions is written once, as structured JSON, in the table; types and values refer to table entries by
@@ -116,8 +115,8 @@ since parameter names do not affect function types. `Out(T)` does not occur in t
 
 Variant and option cases are listed in the order of their names, which is how compiled code numbers them
 (types listing the same cases in different orders are equal, [type-system.md](type-system.md) §6.8); a reader
-accepts them in any order. An option case with components (`cons with head: Int tail: L end`) refers to a tuple node for them; a case
-without, and a variant case without a payload, has `null`.
+accepts them in any order. An option case with components (`cons with head: Int tail: L end`) refers to a tuple
+node for them; a case without, and a variant case without a payload, has `null`.
 
 **Recursive types are cycles in the table.** Quest's recursive types are equi-recursive: two types are equal
 when their infinite unfoldings are, and a recursive type is a finite graph with type constructors at the nodes
@@ -154,9 +153,10 @@ references to a parameter would need different indices in different unfoldings (
 type that passes through it and mentions an outer auto type's parameter) is not regular in this form and is not
 encodable.
 
-**Not encodable yet.** Polymorphic types (`All`), tuple types with type components (abstract tuples), and type
+**Not encodable.** Polymorphic types (`All`), tuple types with type components (abstract tuples), and type
 operators themselves have binders that this table does not express. Nor are external types other than `uint64_t`.
-`dynamic.extern` raises `dynamic.error` for a type containing one. A later version can add binder nodes.
+`dynamic.extern` raises `dynamic.error` for a type containing one. A later version of the format could add binder
+nodes.
 
 ### 2.3. Abstract Types
 
@@ -284,9 +284,9 @@ Static descriptors carry the full structure of their type (record and tuple labe
 payloads, function parameters and results), so the C writer produces the type table from them. The opaque
 descriptor of a module's abstract type is named by its global name (§2.3), and its representation is found
 through the module's registration (§3.5). A descriptor's `.name` is used only in diagnostics (and, for
-opaque types, in comparisons), so it is the type printed and cut off at 80 characters
-(`descriptor_display_name`). Static descriptors are no longer registered with the runtime or looked up by name,
-and the runtime no longer parses type strings.
+opaque types, in comparisons), so it is the type printed and cut off at 80 characters (`short_type_name` in
+`quest/types/dump.py`, `shortTypeName` in `questlang/types/dump`). Static descriptors are not registered with the
+runtime or looked up by name, and the runtime parses no type strings.
 
 ### 3.4. `.qi` Files
 

@@ -10,9 +10,10 @@ rules, prompt formatting, terminal handling, and error recovery.
 The Quest REPL provides an interactive top-level environment for evaluating Quest expressions, defining variables and
 functions, importing modules, and experimenting with types.
 
-Both drivers have one, and they behave the same: the bootstrap's (`bootstrap/python/quest/repl.py`, in Python) and the
-self-hosted compiler's (`questlang/driver/repl`, in Quest, compiled with the driver). Each reads its input through
-`io/readline` (§4) and interprets each input in the tree-walking interpreter; the same transcripts test both
+Both drivers have one, and they behave the same: the bootstrap's (`bootstrap/python/quest/driver/repl.py`, in
+Python) and the self-hosted compiler's (`questlang/driver/repl`, in Quest, compiled with the driver). Each reads its
+input through `io/readline` (§4). The bootstrap's interprets each input in the tree-walking interpreter; the
+self-hosted one compiles it with the JIT, or interprets it with `--no-jit` (§2.1). The same transcripts test both
 (docs/testing.md §2.7). Section 8 describes how the two are built.
 
 Key features:
@@ -79,7 +80,7 @@ program's. `{"execute": CODE}` runs CODE as one input, as a completed phrase run
 `result` records, an input that fails is rolled back (§5) and reported as an `error` record, and a `done` record ends
 the request. `complete`, `inspect` and `isComplete` requests answer from the session's environment, for completion,
 inspection, and complete input. With `QUEST_KERNEL` set, as the kernel sets it, `io/display` and `io/readline` use the
-same descriptors for a notebook's displays and lines (new-libraries.md §3.1, §3.2). A cell has no continuation lines:
+same descriptors for a notebook's displays and lines (libraries.md §3.1, §3.2). A cell has no continuation lines:
 one that ends in the middle of a phrase is a syntax error. `--kernel` takes neither a file nor `-e`, and `--no-jit`
 interprets the cells. Standard output is line-buffered when `QUEST_LINE_BUFFERED` is set, which the kernel does, so that
 a cell's lines arrive while it runs.
@@ -172,7 +173,7 @@ with `"==  "` and subsequent lines are indented with 4 spaces (`"    "`):
 ## 4. Terminal Support & History
 
 ### 4.1. Line Editing and History
-The REPL reads its input through `io/readline` ([new-libraries.md](new-libraries.md) §3.1), whose line editor is
+The REPL reads its input through `io/readline` ([libraries.md](libraries.md) §3.1), whose line editor is
 Python's `readline` module in the bootstrap and GNU readline or libedit in compiled code. Arrow keys (`Up`/`Down`)
 move through the history, and the usual Emacs editing keys (`Ctrl-A`, `Ctrl-E`, `Ctrl-K`) work. Each non-blank line
 typed is added to the history, which is read from `~/.quest_history` at the start of the session and written back,
@@ -193,8 +194,10 @@ If a phrase fails during parsing, typechecking, or runtime evaluation:
 2. The environment is restored to its exact state prior to that phrase.
 3. The session remains active and prompts for the next command.
 
-The rollback (`QuestREPL.evaluate`, and `evaluate` in `questlang/driver/repl`) restores the type checker's environment and the runtime environment: their
-bindings, the frame evaluation continues in, and the units the input loaded. The REPL keeps one unit graph
+The rollback (`QuestREPL.evaluate`, and `evaluate` in `questlang/driver/repl`) restores the type checker's
+environment and the runtime environment: their bindings, the frame evaluation continues in, and the units the input
+loaded. On the JIT, the session likewise forgets the failed input's bindings and the module files it loaded
+([jit.md](jit.md) §3.4, §3.7). The REPL keeps one unit graph
 (`docs/build-process.md` §2.1) for its whole session, which holds the interfaces and modules loaded so far, with their
 typed forms; the runtime environment holds that same graph, and the values of the modules the interpreter has run
 (`module_values`). An input that fails forgets the units it loaded and the modules it ran, so that importing a module
@@ -254,7 +257,7 @@ type, a `var` for a non-`var`, or a name that is not a slot (a module's, an impo
 - **A `var` slot** is redefined by `let var x = e`, which stores to it as `x := e` does; functions still may not name a
   global `var`.
 - **Modules' bodies are closed**: they cannot name the bindings around them, so no module names a slot, and a module's
-  members are never slots. A module declared again replaces the first, as before (§5).
+  members are never slots. A module declared again replaces the first (§5).
 - **Types are not redefined**: `Let T = ...` again shadows, and a function whose type names the old `T`, redefined
   with the new one, shadows too.
 
@@ -298,7 +301,7 @@ So a file run with `-i` is slower than the same file run as a program; a program
 
 - **`Ctrl-D` (EOF):** On an empty input line, exits the REPL cleanly with exit code `0`.
 - **`Ctrl-C` (Interrupt):** Cancels the current multi-line input buffer without terminating the session, returning to
-  `">>  "`.
+  `">>  "`. While an input runs on the JIT, `Ctrl-C` ends the session, as a fault does ([jit.md](jit.md) §1).
 
 ---
 
@@ -306,17 +309,17 @@ So a file run with `-i` is slower than the same file run as a program; a program
 
 The two REPLs are the same loop over the same steps; only their languages differ.
 
-| Step | Bootstrap (`quest/repl.py`) | Self-hosted (`questlang/driver/repl`) |
+| Step | Bootstrap (`quest/driver/repl.py`) | Self-hosted (`questlang/driver/repl`) |
 | :--- | :--- | :--- |
 | Completeness | `check_input_completeness` | `incomplete`: an unclosed comment or string, or a syntax error at the end of the input |
 | Snapshots | `Environment.snapshot`, `RuntimeEnvironment.snapshot` (the unit graph inside) | `env.snapshot`, `graph.snapshot`, `treewalk.snapshot` |
 | Sessions | `UnitGraph.new_session` | `graph.newSession` |
-| Running | `compile_phrase`, then the interpret phase's phrase results | `treewalk.evalProgramPhrasesIn`, which also gives the frame the next input runs in |
+| Running | `compile_phrase`, then the interpret phase's phrase results | `session.run` on the JIT (`questlang/jit/session`); with `--no-jit`, `treewalk.evalProgramPhrasesIn`, which also gives the frame the next input runs in |
 | Input | `io/readline` through the interpreter's Python `readline` | `io/readline` through `runtime/quest_readline.c` |
 
 The self-hosted snapshots leave out two things the bootstrap's record, neither observable: a symbol counter (the
 bootstrap's ids come from a global allocator that no restore resets, so they are never reused either) and a frame's
 parent (which cannot change in `model.Frame`). The two `io/readline`s differ too: the self-hosted interpreter's is
 the compiled library, built with GNU readline or libedit, and the bootstrap's is Python's `readline`, with the same
-history file format ([new-libraries.md](new-libraries.md) §3.1). Each driver decides for itself whether standard input
+history file format ([libraries.md](libraries.md) §3.1). Each driver decides for itself whether standard input
 is a terminal: Python's `isatty` in the bootstrap's, `system.isTerminal` in the self-hosted one.

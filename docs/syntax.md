@@ -29,7 +29,12 @@ Tree:
   [ Core AST ]    The same dataclasses, without the sugar; the type checker's input
 ```
 
-The formal EBNF grammar specification is preserved in [grammar.txt](grammar.txt).
+The paths are the bootstrap's, under `bootstrap/python/quest/`. The self-hosted compiler has the same stages in
+`questlang/syntax/` (`tokens`, `tokenizer`, `ast`, `astprint`, `desugar`, and the parser in four modules,
+`parser/engine`, `parser/grammar`, `parser/actions`, and `parser`), with the same grammar, ASTs, and error messages,
+which shared golden tests check.
+
+The formal EBNF grammar is [grammar.txt](grammar.txt).
 
 ---
 
@@ -52,12 +57,14 @@ coordinates on demand:
    - Idiomatic Quest style uses camelCase (e.g. `x`, `point2D`, `addFive`, `List`), never snake_case.
    - Case-sensitive: `val`, `Val`, and `VAL` are distinct identifiers.
 2. **Keywords:**
-   - Reserved keywords must be written in exact casing:
-      - Level 0/Value/Phrase keywords are lowercase: `let`, `var`, `out`, `fun`, `if`, `then`, `else`, `try`,
-        `raise`, `not`, `extent`, `ordinal`, `of`, `for`, `while`, `loop`, `exit`, `case`, `inspect`,
-        `auto`, `interface`, `module`, `import`, `export`, `unsound`, `external`.
-     - Level 1/2 capital keywords are capitalized: `Let`, `Rec`, `All`, `Tuple`, `Record`, `Option`, `Variant`,
-       `Auto`, `Array`, `Var`, `Out`, `TYPE`, `POWER`, `DEF`, `ALL`.
+   - Reserved keywords must be written in exact casing (`KEYWORDS` in `syntax/tokens.py`):
+     - Value and phrase keywords are lowercase: `and`, `andif`, `array`, `as`, `auto`, `begin`, `case`, `do`,
+       `downto`, `else`, `elsif`, `end`, `exception`, `exit`, `export`, `extent`, `external`, `false`, `for`, `fun`,
+       `if`, `import`, `inspect`, `interface`, `is`, `isnot`, `let`, `loop`, `module`, `not`, `of`, `ok`, `option`,
+       `ordinal`, `orif`, `out`, `raise`, `rec`, `record`, `then`, `true`, `try`, `tuple`, `unsound`, `upto`, `var`,
+       `variant`, `when`, `while`, `with`.
+     - Type keywords are capitalized: `All`, `Array`, `Auto`, `Def`, `Exception`, `Fun`, `Let`, `Option`, `Out`,
+       `Rec`, `Record`, `Tuple`, `Var`, `Variant`; kind keywords are upper case: `TYPE`, `POWER`, `ALL`, `DEF`.
      - Note the distinction between parameter mode `out` (lowercase) and type operator `Out` (capitalized).
 3. **Symbolic Identifiers & Operators (`SYMBOLIC_INFIX`):**
    - Composed of characters from `!@#$%&*_+=-|\`:<>/?^~`.
@@ -75,8 +82,9 @@ coordinates on demand:
   range, not ~1.
 - **Reals (`REAL_LIT`):** Decimal floats with fractional and/or exponential parts (`3.14`, `2.0e-5`, `1.0E+3`).
   Negative reals are prefixed with a tilde `~` (e.g. `~3.14`, `~2.0e-5`).
-- **Strings (`STRING_LIT`):** Delimited by double quotes `"..."`. Supports escapes `\n`, `\t`, `\"`, `\\`, and
-  embedded character codes, hexadecimal `\xH` or `\xHH` and decimal `\d`, `\dd`, or `\ddd`.
+- **Strings (`STRING_LIT`):** Delimited by double quotes `"..."`. Supports escapes `\n`, `\t`, `\r`, `\b`, `\f`,
+  `\"`, `\'`, `\\`, and embedded character codes, hexadecimal `\xH` or `\xHH` and decimal `\d`, `\dd`, or `\ddd`;
+  any other escape is an error (`Unknown escape sequence`).
 - **Characters (`CHAR_LIT`):** Delimited by single quotes `'a'`, with the same escapes.
 - **Characters are bytes**, as in Typeful Programming, whose `ascii.char` takes codes 0 to 255: only the ASCII range,
   0 to 127, has a defined meaning, and Quest does not support UTF-8 (README.md). A source file is read a character per
@@ -114,10 +122,11 @@ keyword-introduced optional clause such as `Optional(P(KW_WITH), VALUE)` yields 
 ### 3.2. Uniform Right-Associativity & Non-Overloaded Operators
 In Quest, all infix operators share uniform precedence and are strictly **right-associative**:
 ```quest
-a + b * c    ==>   a + (b * c)
-2 * x + y    ==>   2 * (x + y)
+a + b * c    ==>   a + {b * c}
+2 * x + y    ==>   2 * {x + y}
 ```
-To enforce explicit order of operations, sub-expressions must be grouped with parentheses: `(2 * x) + y`.
+To enforce explicit order of operations, sub-expressions are grouped with braces: `{2 * x} + y`. Parentheses after a
+value are an application, not a grouping.
 
 Quest does not overload operators across types; distinct operators exist for different types (Cardelli §4.2):
 - **Integer arithmetic:** `+`, `-`, `*`, `/`, `%` / `mod`
@@ -144,8 +153,8 @@ Function applications evaluate space-separated phrases inside argument lists `f(
 
 ### 3.5. Listfix Postfix Syntax
 Quest supports listfix syntax for functions consuming array arguments:
-- `f of a1 ... an end` desugars to `f(array a1 ... an end)`
-- `f of(count init)` desugars to `f(array of(count init))`
+- `f of a1 ... an end` parses as `f(array of a1 ... an end)`
+- `f of(count init)` parses as `f(array of(count init))`
 - Explicit element type: `array of :Int 1 2 3 end` records the target element type.
 - List aggregates similarly use listfix syntax with the `list` constructor (`list of 1 2 3 end`, `list of end`).
 
@@ -169,7 +178,7 @@ Option types support both tag-based and ordinal-based operations (Cardelli §4.5
 ### 3.8. External Types and Value Bindings
 This implementation of Quest provides `external` syntax for declaring opaque native C data structures and native C
 symbols:
-- **External Types (`PRIMARY_TYPE`):** `type T = external "C_TYPE"` or `Let T = external "C_TYPE"`.
+- **External Types (`PRIMARY_TYPE`):** `Let T = external "C_TYPE"`.
   Binds `T` to an opaque C data type (e.g. `external "QWriter *"`).
 - **External Values (`PRIMARY_VALUE`):** `let x: Type = external "C_SYMBOL"`.
   Binds `x` to a C runtime symbol or constant (e.g. `let stdout: Handle = external "quest_writer_output"`).
@@ -193,6 +202,8 @@ See [type-system.md](type-system.md) §6.12 for the typing rules.
 Complex expressions (conditionals, loops, records, tuples, options) employ explicit terminating keywords:
 - `if ... then ... else ... end`
 - `while ... do ... end`
+- `for i = a upto b do ... end` and `for i = a downto b do ... end`: a `for` loop names exactly one direction, and
+  both bounds are inclusive (`ExprFor.is_downto`)
 - `try ... when ... else ... end`
 - `record ... end`, `tuple ... end`, `option ... end`
 
@@ -207,7 +218,7 @@ class `ASTNode(offset: int)`:
 
 ```
 ASTNode
-  ├── Phrase                  (Top-level statements & declarations)
+  ├── BindingNode             (Declarations and statements, in blocks and at top level)
   │     ├── LetValueBinding   (let [var] [rec] x [: T] = e)
   │     ├── LetValueBindingGroup (let [rec] x = e and y = e' ...: two or more LetValueBindings sharing rec,
   │     │                      declared simultaneously; with rec, mutually recursive)
@@ -215,16 +226,16 @@ ASTNode
   │     ├── TypeBindingGroup  (Let [Rec] T = Type and U = Type ...: two or more TypeBindings sharing Rec and Def,
   │     │                      declared simultaneously; with Rec, mutually recursive)
   │     ├── DefKindBinding    (DEF K = Kind)
-  │     ├── InterfaceDecl     (interface I [import ...] export ... end)
-  │     ├── ModuleDecl        (module M : I [import ...] export ... end)
-  │     ├── ImportDecl        (import M1, M2 : I)
-  │     └── TopExpr           (Expression evaluated at top level)
+  │     └── ExprStmt          (An expression as a statement)
+  ├── InterfaceDecl           (interface I [import ...] export ... end)
+  ├── ModuleDecl              (module M : I [import ...] export ... end)
+  ├── ImportPhrase            (import M1, M2 : I, ...: ImportItems)
   ├── Expr                    (Level 0 term expressions)
   │     ├── ExprInt, ExprReal, ExprString, ExprChar, ExprBool
-  │     ├── ExprIdent         (Variable lookup)
+  │     ├── ExprId            (Variable lookup)
   │     ├── ExprFun           (fun(params) body)
   │     ├── ExprApp           (Function / operator call)
-  │     ├── ExprIf, ExprWhile, ExprLoop, ExprTry, ExprRaise
+  │     ├── ExprIf, ExprWhile, ExprLoop, ExprFor, ExprTry, ExprRaise
   │     ├── ExprRecord        (record x = 1, y = 2 end)
   │     ├── ExprTuple         (tuple 1, 2, 3 end; components are TupleBindings, TupleBindingGroups for let ... and
   │     │                      ..., type bindings, and let rec declarations, which keep their annotations)

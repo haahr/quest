@@ -1,16 +1,18 @@
-# Plan: Single-Word Options as Pointers
+# Single-Word Options as Pointers (Deferred)
 
-The rest of options as values: an option of a type shaped like `maybe.T` held as its one component, or as a constant
-for its cases without components, rather than as a box. What is done, the language's rule
-([extensions.md](extensions.md), "Options as Values") and constants for cases without components
+A design, not adopted, for the rest of options as values: an option of a type shaped like `maybe.T` held as its one
+component, or as a constant for its cases without components, rather than as a box. What is adopted, the language's
+rule ([extensions.md](extensions.md), "Options as Values") and constants for cases without components
 ([c-representation.md](c-representation.md) §5.3), is measured in [benchmarks.md](benchmarks.md) §8.
 
-**Status (2026-11-01): deferred.** Escape analysis ([ssa.md](ssa.md) §4.2) removed most payload tuples; what still
-escapes in peek and zebra is mostly `maybe.some`'s box ([benchmarks.md](benchmarks.md) §9). This would not remove it:
-those are options of `Int`, which §2 leaves boxed ([mlton-performance-review.md](mlton-performance-review.md) §3.5).
-If this plan is dropped, the single-word rule of extensions.md is to be undone (its `is` by component in both
-compilers, the runtime, the interpreters, and the tests, and its paragraph in extensions.md), since without the
-representation it costs a comparison of components and buys nothing.
+**Deferred (2026-11-01).** Escape analysis ([ssa.md](ssa.md) §4.2) removed most payload tuples; what still escapes in
+peek and zebra is mostly `maybe.some`'s box ([benchmarks.md](benchmarks.md) §9). This representation would not remove
+it: those are options of `Int`, which §2 leaves boxed, since an `Int` has no spare value to stand for `none`. peek's
+boxes are stored in a `var` field of a cell, so only an option two words wide (tag and value) held unboxed in the
+field would remove them, a larger change than this one; options of `Int` stay boxed ([benchmarks.md](benchmarks.md)
+§20.1). Whether to adopt this design or drop it is open. If it is dropped, the single-word rule of extensions.md is
+to be undone (its `is` by component in both compilers, the runtime, the interpreters, and the tests, and its
+paragraph in extensions.md), since without the representation it costs a comparison of components and buys nothing.
 
 ---
 
@@ -37,7 +39,7 @@ representation it costs a comparison of components and buys nothing.
   converting one to the boxed layout is free.
 - **`case`, `?`, `!`, `ordinal`, and `opt!tag`** read the case by that comparison and the component as the value
   itself; a case binder is the component (no tuple to share).
-- **`is`** is pointer equality (unproxied, as now), which is the language's rule here.
+- **`is`** is pointer equality (unproxied), which is the language's rule here.
 - **The descriptor records the representation** (an option descriptor's flag), so that the runtime's generic paths
   (`is`, identity hash, conversion, proxies, echo, serialization) read such values.
 - **Upcasts:** to a single-word supertype (more cases without components, or the component at a supertype) the value
@@ -65,10 +67,10 @@ whole-program inlining ([ir.md](ir.md) §8.6) or specialization reaches it.
 - **Measurements** in benchmarks.md, dated: the suite through C and arm64, and the allocation counts of ratio-regions,
   peek, and zebra (`benchmarks/mlton/allocations.py`), before and after.
 
-## 5. Steps
+## 5. What Adopting It Takes
 
-1. **Single-word options as pointers** (§2, §3): layout, represent's plans and conversions, the descriptor flag and
-   the runtime's generic paths, both backend paths. *Done when* `maybe.some(:String)` allocates nothing in a
-   whole-program build, the suite passes in every mode, and benchmarks.md records the suite's times.
-2. **Docs:** c-representation.md's options section and runtime-design.md's identity bullets describe the nullable
-   layout, and extensions.md no longer calls the single-word rule provisional.
+- **The representation** (§2, §3): layout, represent's plans and conversions, the descriptor flag and the runtime's
+  generic paths, both backend paths, until `maybe.some(:String)` allocates nothing in a whole-program build, the
+  suite passes in every mode, and benchmarks.md records the suite's times.
+- **The documents:** c-representation.md's options section and runtime-design.md's identity bullets describe the
+  nullable layout, extensions.md no longer calls the single-word rule provisional, and this document is deleted.

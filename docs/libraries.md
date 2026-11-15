@@ -13,7 +13,9 @@ essential for writing complex applications and the self-hosted Quest compiler (`
 Hierarchical libraries are organized by domain under `lib/<category>/`:
 - Source files: `lib/<category>/<module>.int.quest` (interface) and
   `lib/<category>/<module>.mod.quest` (implementation).
-- Filenames are strictly lowercase (e.g. `opt.int.quest`, `stringbuilder.mod.quest`, `strutil.mod.quest`).
+- Filenames are strictly lowercase (e.g. `maybe.int.quest`, `stringbuilder.mod.quest`, `strutil.mod.quest`); an
+  import may name them in any case (`util/stringBuilder`, `collections/hashMap`), since a path is looked up in lower
+  case ([modules.md](modules.md) §2.1).
 - Import syntax:
   ```quest
   import category/module : category/Interface
@@ -22,8 +24,9 @@ Hierarchical libraries are organized by domain under `lib/<category>/`:
   ```quest
   import m = category/module : category/Interface
   ```
-- Compiled artifacts (`.qi`, `.int.h`, `.mod.c`, `.o`) are placed mirror-wise under `.build/<category>/` or alongside source.
-- Type functors follow Cardelli's convention: `Vector.T(A)`, `Opt.T(A)`, `StringBuilder.T`.
+- Compiled artifacts (`.qi`, `.int.h`, `.mod.c` or `.mod.s`, `.o`) are placed mirror-wise under `.build/<category>/`
+  ([build-process.md](build-process.md) §3).
+- Type functors follow Cardelli's convention: `vector.T(A)`, `maybe.T(A)`, `stringBuilder.T`.
 
 ---
 
@@ -212,11 +215,11 @@ end
 
 ---
 
-### 1.5. `util/argParse : util/ArgParse`
+### 1.5. `util/argparse : util/ArgParse`
 
 Command-line argument parser patterned after Python's `argparse.ArgumentParser`. Supports flags, string options,
 restricted choices, integer options, accumulating multi-value options, positional arguments, and `--` passthrough.
-Error messages are written to `writer.err` before raising `argParse.error`. Help generation (`-h`, `--help`) is
+Error messages are written to `writer.err` before raising `argparse.error`. Help generation (`-h`, `--help`) is
 automatically registered by default.
 
 #### Interface Summary
@@ -306,6 +309,102 @@ end
 
 ---
 
+### 1.7. `util/sort : util/Sort`
+
+Comparators, binary search, and sorting over arrays and vectors, in Quest alone. A comparator returns a negative
+number, 0, or a positive one as its first argument precedes, equals, or follows its second (`~1`, 0, or 1 for the
+library's own). `sort` is a 3-way quicksort pivoting on the middle element, in place and not stable: O(n log n)
+comparisons on most inputs, O(n * n) at worst. `tests/source/stdlib/sort_operations.quest` tests it.
+
+#### Interface Summary
+
+```quest
+interface Sort
+import
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+export
+    (* Comparators *)
+    intCompare(a: Int b: Int): Int
+    stringCompare(a: String b: String): Int
+    realCompare(a: Real b: Real): Int
+    reverse: All(A::TYPE) All(cmp: All(a: A b: A) Int) All(a: A b: A) Int
+
+    (* Python's bisect: the index at which key would be inserted after (Right) or before (Left) equal elements; each
+       also has a Vector variant (bisectRightVector) and a Range variant over [lo, hi) of an array *)
+    bisectRight: All(A::TYPE) All(arr: Array(A) key: A cmp: All(a: A b: A) Int) Int
+    bisectLeft: All(A::TYPE) All(arr: Array(A) key: A cmp: All(a: A b: A) Int) Int
+    ...
+
+    (* The index of an element equal to key, or none; also binarySearchVector *)
+    binarySearch: All(A::TYPE) All(arr: Array(A) key: A cmp: All(a: A b: A) Int) maybe.T(Int)
+    ...
+
+    (* In place, and as a new array or vector, leaving the argument unchanged *)
+    sort: All(A::TYPE) All(arr: Array(A) cmp: All(a: A b: A) Int) Ok
+    sortVector: All(A::TYPE) All(v: vector.T(A) cmp: All(a: A b: A) Int) Ok
+    sorted: All(A::TYPE) All(arr: Array(A) cmp: All(a: A b: A) Int) Array(A)
+    sortedVector: All(A::TYPE) All(v: vector.T(A) cmp: All(a: A b: A) Int) vector.T(A)
+end
+```
+
+---
+
+### 1.8. `util/bignum : util/Bignum`
+
+Integers of any size: SML's `IntInf`, with the word conversions, shifts, powers, greatest common divisors, and bitwise
+operations of two's complement integers. It is Quest alone, on 64-bit limbs with `word.mulHi`. Every operation makes
+a new value and none changes one, so values may be shared freely. A value that fits in an `Int` costs one small
+allocation, and its arithmetic is `Int`'s. The MLton benchmarks that need big integers use it
+([benchmarks.md](benchmarks.md) §15); `tests/source/stdlib/bignum_operations.quest` tests it.
+
+#### Interface Summary
+
+```quest
+interface Bignum
+import
+    util/maybe : util/Maybe
+    word : Word
+export
+    T::TYPE
+    overflow: Exception                 (* toInt and toWord of a value out of their range *)
+    divide: Exception                   (* division by zero, and pow of zero to a negative power *)
+
+    fromInt(n: Int): T
+    toInt(t: T): Int
+    fromWord(w: word.T): T
+    toWord(t: T): word.T
+    toString(t: T): String              (* decimal, ~ for negatives, as IntInf.toString *)
+    fromString(s: String): maybe.T(T)   (* as IntInf.fromString *)
+
+    add(a: T b: T): T
+    sub(a: T b: T): T
+    mul(a: T b: T): T
+    neg(a: T): T
+    abs(a: T): T
+    quot(a: T b: T): T                  (* truncating, with rem *)
+    rem(a: T b: T): T
+    div(a: T b: T): T                   (* flooring, with mod *)
+    mod(a: T b: T): T
+    pow(a: T n: Int): T
+    gcd(a: T b: T): T
+
+    equal(a: T b: T): Bool
+    less(a: T b: T): Bool
+    compare(a: T b: T): Int
+    sign(t: T): Int
+
+    andBits(a: T b: T): T               (* on the infinitely sign-extended two's complement *)
+    orBits(a: T b: T): T
+    xorBits(a: T b: T): T
+    notBits(t: T): T
+    shiftLeft(t: T count: Int): T
+    shiftRight(t: T count: Int): T      (* the floor of t / 2^count *)
+end
+```
+
+---
+
 ## 2. Collections (`lib/collections/`)
 
 ### 2.1. `collections/vector : collections/Vector`
@@ -315,7 +414,10 @@ Growable, dynamically-resizing array collection parameterized over element type 
 #### Interface Summary
 
 ```quest
-interface Vector export
+interface Vector
+import
+    util/maybe : util/Maybe
+export
     (* The polymorphic growable vector type constructor *)
     T::ALL(A::TYPE) TYPE
 
@@ -372,6 +474,12 @@ interface Vector export
 
     (* Iterate over all elements of a vector *)
     forEach: All(A::TYPE) All(v: T(A) action: All(elem: A) Ok) Ok
+
+    (* New vectors of f's results, of the elements pred holds for, and of f's some results; and a fold, in order *)
+    map: All(A::TYPE B::TYPE) All(v: T(A) f: All(elem: A) B) T(B)
+    filter: All(A::TYPE) All(v: T(A) pred: All(elem: A) Bool) T(A)
+    fold: All(A::TYPE Acc::TYPE) All(v: T(A) init: Acc f: All(acc: Acc elem: A) Acc) Acc
+    filterMap: All(A::TYPE B::TYPE) All(v: T(A) f: All(elem: A) maybe.T(B)) T(B)
 end
 ```
 
@@ -406,7 +514,7 @@ export
     T::ALL(K::TYPE) ALL(V::TYPE) TYPE
 
     (* Key-value pair entry *)
-    Entry::ALL(K::TYPE) ALL(V::TYPE) TYPE
+    Def Entry = Fun(K::TYPE V::TYPE) Record key: K value: V end
 
     (* Exception raised on lookup failure when using unwrap-style access *)
     error: Exception
@@ -503,6 +611,7 @@ Maintains insertion ordering and provides standard set membership, manipulation,
 interface HashSet
 import
     collections/vector : collections/Vector
+    util/maybe : util/Maybe
     word: Word
 export
     (* The polymorphic hash set type constructor *)

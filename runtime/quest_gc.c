@@ -1234,7 +1234,7 @@ static void quest_gc_flush_saved(const uintptr_t **saved) {
  *     is scanned conservatively, then only the frame's words the table says
  *     are live across the call, each as a pointer or an ambiguous word.
  *     Dead slots are skipped, so a stale pointer in one keeps nothing alive
- *     (docs/arm64-performance-review.md section 3.2).
+ *     (docs/arm64.md section 3.8).
  *   - Unmapped frame (C, the runtime, this walk, and an arm64 function that
  *     enters a try, whose handler reads slots liveness does not see): left
  *     to the conservative scan of the next range, which covers it whole.

@@ -1,22 +1,18 @@
-# Plan: The arm64 JIT
+# The arm64 JIT
 
-Step 7 of the [roadmap](roadmap.md): the self-hosted driver compiles each REPL input to arm64 machine code in its own
-process, links it against the units already in the driver, and runs it, instead of interpreting it. It uses the arm64
-backend's pipeline ([arm64.md](arm64.md)) unchanged up to machine instructions, and replaces the assembler and linker
-with an in-memory encoder and loader. It is written in Quest, in `questlang/`, and the bootstrap does not get it
-([testing.md](testing.md) §2.8), though it gets the language change the JIT needs (§3.11).
-
-**Status: all 8 steps done** (2026-11-01) (§7). Section 1 records the decisions, section 7 the steps.
+Step 7 of the [roadmap](roadmap.md): the self-hosted driver compiles each REPL input, `-e` program, and file it runs
+to arm64 machine code in its own process, links it against the units already in the driver, and runs it, instead of
+interpreting it. It uses the arm64 backend's pipeline ([arm64.md](arm64.md)) unchanged up to machine instructions, and
+replaces the assembler and linker with an in-memory encoder and loader. It is written in Quest, in `questlang/jit/`
+and `codegen/arm64/encode`, and the bootstrap does not have it ([testing.md](testing.md) §2.8), though it has the
+language change the JIT needs (§3.11). What remains open is in §6.
 
 ---
 
 ## 1. Decisions
 
-Decided 2026-10-31:
-
-- **What runs on it.** Eventually all of the REPL, and also `quest file.quest` and `-e`. While it is developed, only
-  with `--jit`; without it, the driver interprets as now. *Revised 2026-11-01:* the REPL, `-e`, and files run on it
-  by default (§3.10), files once a program's own modules could be imported (§3.4).
+- **What runs on it.** The REPL, `-e`, and files (`quest FILE`, and `-i FILE`) run on it by default; `--no-jit`
+  interprets instead (§3.10).
 - **The same process,** sharing the driver's heap, runtime, and library state.
 - **The driver is the library.** A phrase that imports a unit linked into the driver uses the driver's copy of it, its
   code and its state: `writer.output` is the compiler's own, and a phrase that imports `questlang/...` modules
@@ -29,50 +25,46 @@ Decided 2026-10-31:
   there is no hot-swapping (a redefinition with another type, or of a type); the roadmap's "dynamic patching and
   hot-swapping" is dropped. The REPL's output stays the interpreter's.
 - **Incremental** means that an input compiles only itself; what earlier inputs compiled stays loaded.
-- **A crash ends the session,** for now: a fault or a runaway recursion in a phrase ends the driver as it ends a
-  compiled program (exceptions.md §6). Ctrl-C likewise.
+- **A crash ends the session:** a fault or a runaway recursion in a phrase ends the driver as it ends a
+  compiled program (exceptions.md §6). Ctrl-C likewise. Surviving them is open work (§6).
 - **Self-hosted only,** and **runs in a binary built by either backend**: the JIT, and the code it writes, run in a
   binary whose units the C backend or the arm64 backend compiled (`QUEST_BACKEND=c` or `arm64`, for the driver). The
   host's units are reached only through the C ABI that both backends' objects share (§3.10).
 - **The same pipeline** as `--backend arm64`, with its optimizations, within an input. No separate fast path.
-
-Decided 2026-11-01:
-
 - **A host unit that does not match its source is refused:** importing it is an error, never a second copy compiled
   from source (§3.3).
 - **Frames by the frame-pointer chain,** for all compiled code, not only the JIT's (§3.9).
-- **Results printed by the interpreter's formatter,** from values that reflection reads out of native memory (§3.8).
-  *Replaced* during step 8: reflection could not follow proxies or show `Dynamic` values without redoing the
-  runtime's work, so results are printed by the runtime's own formatter, as a compiled program prints them (§3.8).
+- **Results printed by the runtime's own formatter,** as a compiled program prints them, not by the interpreter's
+  formatter from values read back by reflection, which could not follow proxies or show `Dynamic` values without
+  redoing the runtime's work (§3.8).
 - **The low-level primitives live in `os/`,** named for what they do rather than for the JIT, behind interfaces
-  marked `unsound`: Cardelli's scheme, which the language now enforces (§3.11), with `external` an unsound
+  marked `unsound`: Cardelli's scheme, which the language enforces (§3.11), with `external` an unsound
   operation (§3.11, "Externals").
 - **`os/value` is Cardelli's `Value`,** signature and all; what it lacks is in `os/code` (§3.11).
 - **Neither interpreter runs `os/value` or `os/code`** (§3.11).
-- **Differences from the interpreter** are accepted and documented, for now (§4). Printing an exception's payload in
-  the REPL is deferred: it needs an ABI change in every backend for one line of output (§6).
+- **Differences from the interpreter** are accepted and documented (§4).
 - **Kept simple** (after a review for complexity):
   - every separately compiled binary can host the JIT, with no host link mode, given one fingerprint symbol per module
     unit (§3.3, §3.10), a fingerprint of what JIT code depends on and nothing else (§3.3.1);
-  - the driver links all of `lib/`, so the JIT compiles no imported module from source at first (§3.4);
+  - the driver links all of `lib/`, so the JIT compiles from source only the user's own module files (§3.4);
   - the transcripts that show an accepted difference are skipped under `--jit` rather than given goldens of their own
     (§5);
-  - phrase units stay a unit kind of their own (§3.2), not modules in disguise. *Revised* in step 6, and kept by
-    the user's decision of 2026-11-01: a phrase unit is still a unit kind of its own (`nodes.Phrase`), but its top
-    level is the initializer of a module of its own, whose record holds its bindings (§3.2).
+  - a phrase unit is a unit kind of its own (`nodes.Phrase`), whose top level is the initializer of a module of its
+    own, whose record holds its bindings (§3.2).
 
 ## 2. Pipeline
 
 ```
-input text ──parse, typecheck (as now: env, unit graph, snapshots)──► typed phrases
+input text ──parse, typecheck (as the REPL does: env, unit graph, snapshots)──► typed phrases
    ──lower as a phrase unit (§3.2)──► IR ──passes──► SSA ──select, allocate──► minst
    ──encode (§3.5)──► code and data with relocations ──load (§3.6)──► executable memory
    ──call the input's entry (§3.7)──► results printed by the runtime (§3.8)
    ──captured, for the REPL──► "==  ..."
 ```
 
-Everything up to minst is the arm64 backend's, given a new kind of unit. The encoder, loader, and the REPL's use of
-them are new.
+Everything up to minst is the arm64 backend's, given a kind of unit of its own. The encoder, the loader, and the
+REPL's use of them are the JIT's. An input of the REPL transcripts takes 0.2 to 1.5 ms to compile, load, and run
+([benchmarks.md](benchmarks.md) §10, 2026-11-01).
 
 ## 3. Design
 
@@ -114,7 +106,7 @@ Why a module: a module's members are what the compiler already keeps whatever it
 representation is the one its record's layout fixes (an imported member is read by its record's offset table, at
 its index in name order, in its slot form). A global per binding, the first design, would have needed every pass to
 keep each top-level variable alive and in a representation that later units agree on, which nothing in the compiler
-ensures today.
+ensures.
 
 - **Namespaces stack.** An input sees every binding of the inputs before it, as the interpreter's frames do; the type
   checker's environment already provides that. The session keeps, for each symbol an input that ran bound, where it
@@ -124,7 +116,7 @@ ensures today.
 - **Reading an earlier binding.** In a later input, a variable whose symbol the input does not bind and the session
   knows is a member of that module: the input imports the module as a unit imports any module (a `nodes.Import` of
   `qj_<n>`, with the record's type), and reads the binding as an `opModuleMember`. A top-level function is reached
-  through the field holding its closure; calling its code directly, or inlining it, is a later optimization (§6).
+  through the field holding its closure; calling its code directly, or inlining it, is open work (§6).
   Rebindings are distinct symbols already (ir.md §2), so they are distinct fields; a redefinition is not a rebinding
   (below).
 - **Writing an earlier `var`.** Global `var`s cannot be captured by functions (the rule the REPL already reports), so
@@ -165,20 +157,21 @@ ensures today.
 
 ### 3.3. The driver as the library
 
-A phrase unit importing `util/strutil` is compiled as a separately compiled program unit importing it is now: it
+A phrase unit importing `util/strutil` is compiled as a separately compiled program unit importing it is: it
 references the module's record (`qm_util__strutil`) and initializer (`qv_mod_util__strutil_init`), and the loader
 looks them up in the running binary with `dlsym`. This needs no change to how binaries are linked: the runtime is
 compiled from its sources and linked as objects, not from an archive, so all of it is present; nothing is
-dead-stripped; and an executable's global symbols are exported. Today's stage 2 exports 2,157, among them every
-module's record, initializer, and `qv_` export, and links all of `questlang/` and all of `lib/` but `list` and
-`dynamic`, which the driver will import so that every library module is in it (§3.4).
+dead-stripped; and an executable's global symbols are exported, among them every module's record, initializer, and
+`qv_` export. Stage 2 links all of `questlang/` and all of `lib/`: `driver/main` imports the library modules it does
+not use itself (`list`, `dynamic`, `collections/hashSet`, `util/argparse`) so that every one is in it (§3.4).
 
 - **Agreement on interfaces.** The JIT compiles against the units' interfaces from source; the driver's copies were
   compiled from the source it was built from. Stage 2 is built from the tree by a compiler of the same source, and
   `./quest` rebuilds it when `lib/`, `questlang/`, or `runtime/` changes; a release reads the interfaces in its own
   `home/`. They can disagree only when a binary is run against a tree it was not built from. So each module unit, in
   both self-hosted backends, exports one more symbol, `qh_<unit>`, a constant string holding its interface's
-  fingerprint (§3.3.1). The JIT looks it up before using a unit and refuses the import if it differs from the
+  fingerprint (§3.3.1), emitted beside the module's record (as a C string by the C printer, as an SSA datum by
+  arm64). The JIT looks it up before using a unit and refuses the import if it differs from the
   fingerprint of the interface it compiled against: the error names the unit, says the binary was built from another
   version of its interface, and suggests rebuilding (`./quest` does). Compiling a second copy instead would silently
   give the phrase state of its own, and break the sharing of §1.
@@ -206,9 +199,9 @@ written as hex, of
 6. the fingerprints of the interfaces it imports, so that a change to a type it uses by name (a manifest type in
    another interface, `maybe.T` say) changes its fingerprint too.
 
-One function in `modules/` computes it (`modules/artifacts/fingerprint`), from the `.qi` that the compiler writes for the
-interface and the JIT loads, and from the fingerprints of the interfaces it imports, found as the loader finds them;
-the compiler calls it when it compiles a module unit, and the JIT when it imports one.
+One function in `modules/` computes it (`modules/artifacts/fingerprint`), from the `.qi` that the compiler writes for
+the interface and the JIT loads, and from the fingerprints of the interfaces it imports, found as the loader finds
+them; the compiler calls it when it compiles a module unit, and the JIT when it imports one.
 
 It leaves out everything that does not change what JIT code assumes: the interface file's comments, layout, and
 declaration order; every absolute path (the `.qi` records its source and its dependencies' directories, which differ
@@ -228,12 +221,12 @@ With all of `lib/` in the driver, the only units a phrase can import that the dr
 files; modules declared in an input (§3.2) are part of it. A unit is never both: if the host links it, the host's copy
 is used (§3.3); otherwise the JIT compiles the module file from source, and loads it once in the session.
 
-- **Compiling.** `modules/artifacts/moduleCompiler.moduleFileUnit` elaborates the file as a separately compiled module is
-  elaborated (in an environment of its own, its abstract types opaque, its imports known through their interfaces),
-  and lowers it to a unit of the module alone; the session compiles that unit as it does an input's, through the
-  passes, the SSA, and the arm64 backend, and loads it. Its record, initializer, and exports are the symbols a
-  separately compiled module's object would define, so an input that imports it refers to them as it refers to the
-  driver's, and the loader resolves them among the units loaded before (§3.6) rather than with `dlsym`.
+- **Compiling.** `modules/artifacts/moduleCompiler.moduleFileUnit` elaborates the file as a separately compiled module
+  is elaborated (in an environment of its own, its abstract types opaque, its imports known through their interfaces),
+  and lowers it to a unit of the module alone; the session compiles that unit as it does an input's, through the passes,
+  the SSA, and the arm64 backend, and loads it. Its record, initializer, and exports are the symbols a separately
+  compiled module's object would define, so an input that imports it refers to them as it refers to the driver's, and
+  the loader resolves them among the units loaded before (§3.6) rather than with `dlsym`.
 - **Order.** A module file's own imports of module files are loaded before it, depth first; each of its imports of
   the driver's modules is checked against the driver's fingerprints, as an input's are.
 - **Once.** A module file is loaded the first time an input imports it, and later inputs (and module files) that
@@ -254,23 +247,25 @@ in memory, not in a build directory: nothing a program run on the JIT does write
 
 - **Where.** The JIT's build directory is `common/memoryFiles`' root, `/<quest-memory>`, a path that is never a real
   directory. `modules/paths` (`readText`, `isFile`, `modifiedNs`, `writeAtomically`) and `config/abi`'s reader treat a
-  path under it as a text in the process, so the interface compiler, the loader, and `modules/artifacts/fingerprint` run as they
-  do with files, the same `.qi` text written, parsed, and digested.
+  path under it as a text in the process, so the interface compiler, the loader, and `modules/artifacts/fingerprint`
+  run as they do with files, the same `.qi` text written, parsed, and digested.
 - **Freshness.** A file in memory is newer than every file (`modifiedNs` is the greatest `Int`), so it is never
   rebuilt: within a process a unit, once loaded, stays loaded, as in the interpreter's REPL (§3.4).
 - **Cost.** Each run elaborates the interfaces it imports again, which a build directory would have kept: about 10 ms
   for a program that imports `util/maybe` and `collections/hashMap`, 1.5 ms for one that imports nothing.
-- `--build-dir DIR` keeps them in `DIR` instead, as before.
+- `--build-dir DIR` keeps them in `DIR` instead.
 
 ### 3.5. The encoder
 
 `codegen/arm64/encode` turns a unit's minst sequence and its static data into a code section (32-bit words) and a
-data section (bytes), each with a list of relocations (symbol, kind, offset). Each `Op` case gives its 32-bit word as the printer's gives
-its text; the encoder's cases sit beside the printer's in `codegen/arm64`, so that adding an instruction is one edit
-and the exhaustiveness check catches a case missing from either. What the assembler does now and the encoder must:
+data section (bytes), each with a list of relocations (symbol, kind, offset), and each function's offset and size.
+Each `Op` case gives its 32-bit word as the printer's gives its text (the printer's `expansion`); the encoder's cases
+sit beside the printer's in `codegen/arm64`, so that adding an instruction is one edit and the exhaustiveness check
+catches a case missing from either. What the encoder does in place of the assembler:
 
-- **Labels and branches:** two passes, offsets then words; `relaxBranches` already ensures that every conditional
-  branch reaches.
+- **Labels and branches:** two passes, offsets then words; `relaxBranches` ensures that every conditional branch
+  reaches. Labels are resolved, and so is a function's call of itself, as `as` resolves it (each function is an atom
+  of its own under `.subsections_via_symbols`); every other symbol is relocated.
 - **Symbol addresses** (`relocPage`, `relocGot`): `adrp` reaches ±4 GB, and the arena may be farther than that from
   the host's image. Within the arena, `adrp`/`add` is patched directly; a symbol in the host is reached through a GOT
   slot in the arena (`adrp`/`ldr`), which the loader fills with its address.
@@ -284,8 +279,10 @@ and the exhaustiveness check catches a case missing from either. What the assemb
 - **Unwind directives:** dropped, since frames need no unwind information (§3.9). **`.loc`:** kept as a table of
   positions by code offset, for a debugger (§3.12).
 
-The encoder is checked against the assembler: for every arm64 golden, the encoder's bytes equal the `__text` that
-`clang -c` makes of the printed assembly, relocations aside.
+The encoder is checked against the assembler: with `QUEST_CHECK_ENCODING=1` the backend appends a unit's encoding to
+its assembly as comments, and `tests/self-hosted/encoder.py` checks, for the run goldens' programs and the units they
+link, that the encoder's bytes equal the `__text` (and data) that `clang -c` makes of the printed assembly,
+relocations aside. Forms the backend can emit that no such program uses are encoded from the manual.
 
 ### 3.6. The loader
 
@@ -298,13 +295,14 @@ The encoder is checked against the assembler: for every arm64 golden, the encode
   filled the pages above the binary, the arena landed just under Darwin's shared cache (2 GB above the binary), and
   the data went past the cache, 7 GB away. So the collector maps its tables beside its heap (collector.md §3.1), and a
   region that still lands out of reach (not above the text and ending within 3.5 GB of it) is asked for again from
-  the first address, where the search finds any gap below. Nothing is freed: an input that fails leaves its code behind, unused.
+  the first address, where the search finds any gap below. Nothing is freed: an input that fails leaves its code
+  behind, unused.
 - **Symbols** (`jit/loader`): a unit's own symbols resolve first, then those the units before it export (the entries,
   the records), then the driver's (`dlsym`). A unit's other symbols (`qr_register_dicts`, its functions' names) are
   its own, so that units do not collide. A thread-local's slot holds the driver's own descriptor of it, which is what
   `dlsym` gives for a thread-local, so JIT code reads it as compiled code does; `os/code`'s `threadLocalGetter` is not
   needed.
-- **Registration,** done by the entry as it is by `main` now: function tables (`quest_register_funcs`), record offset
+- **Registration,** done by the entry as by a program's `main`: function tables (`quest_register_funcs`), record offset
   tables (`quest_register_record_dict`), and abstract types (`quest_register_abstract_type`). Type descriptors are
   interned by the runtime, so an input's descriptors are the host's when the types are the same. Two inputs may
   declare different modules of the same name (the REPL allows `module m ... end` twice), so a declared module's
@@ -333,8 +331,8 @@ handler whichever backend built the host.
   earlier input made; the session finds that input's source and reports the error in it, under its own name
   (`<repl>`, or the file's). The frames are those above `os/code`'s `call` (or the session's `run`, where a C-built
   driver keeps no frame of `call`'s), ending with `<main>`, the input's top level; the runtime's runs of one frame
-  are kept. The input is then rolled back as now: the environment forgets its bindings, and its code and record stay
-  in memory, unreachable. Writes it made to earlier inputs' `var`s stay, as in the interpreter
+  are kept. The input is then rolled back as the interpreter's is: the environment forgets its bindings, and its
+  code and record stay in memory, unreachable. Writes it made to earlier inputs' `var`s stay, as in the interpreter
   (`tests/golden/repl/rollback.out`).
 - **Output** goes through the runtime's writers, which the host shares, so the order of a phrase's output and the
   REPL's is kept.
@@ -355,33 +353,28 @@ them: through proxies, `Dynamic` values by their descriptors, cycles guarded.
   for the interpreter. While capturing, the printers write to a memory stream made `stdout`, so a program's own output
   is not captured.
 
-The first design read values back with reflection through `os/value` and formatted them with the interpreter's
-formatter; it was replaced in step 8, since it could not follow proxies (a tuple or option viewed at a supertype) or
-show a `Dynamic` value without redoing what the runtime already does (§1).
+Reading values back with reflection through `os/value` and formatting them with the interpreter's formatter was
+tried first and not kept, since it could not follow proxies (a tuple or option viewed at a supertype) or show a
+`Dynamic` value without redoing what the runtime already does (§1).
 
 ### 3.9. Frames
 
-An uncaught exception's frames come from `quest_raise_at`'s walk of the native stack (exceptions.md §5.3), which uses
-`_Unwind_Backtrace` to step from frame to frame, and `_Unwind_FindEnclosingFunction` and `dladdr` to find each
-frame's function. The unwinder cannot step through JIT code, which has no unwind entries, and `dladdr` has no symbols
-for it.
+An uncaught exception's frames come from `quest_raise_at`'s walk of the native stack (exceptions.md §5.3). The
+platform unwinder (`_Unwind_Backtrace`) cannot step through JIT code, which has no unwind entries, and `dladdr` has
+no symbols for it.
 
-The runtime walks the frame-pointer chain instead, for all compiled code. Every function on Darwin arm64 that calls
-another keeps a frame record (`x29` pointing at its caller's `x29` and the return address): the arm64 backend's
-functions always (arm64.md §3.10), and clang's, whose default on Darwin keeps frame pointers in non-leaf functions.
-A raise is a call, so every frame below it has a record. Each frame's function is found by `dladdr` for code in the
-binary, and in the loader's ranges (§3.6) for JIT code; the exact match against the registered function tables
-stays, as does the cache of each return address's function start (exceptions.md §5.3), which is right because
-code is never unloaded, in the binary or in the arena (§3.6). This is simpler than the walk it replaces as well as
-reaching JIT code:
+So on Darwin arm64 (`Q_FRAME_POINTER_WALK` in `runtime/quest_exceptions.c`) the runtime walks the frame-pointer chain,
+for all compiled code. Every function there that calls another keeps a frame record (`x29` pointing at its caller's
+`x29` and the return address): the arm64 backend's functions always (arm64.md §3.10), and clang's, whose default on
+Darwin keeps frame pointers in non-leaf functions. A raise is a call, so every frame below it has a record. Each
+frame's function start is found by `dladdr` for code in the binary, and in the loader's ranges (§3.6,
+`quest_code_add_function`) for JIT code, then matched exactly against the registered function tables; the cache of
+each return address's function start (`quest_function_start`, exceptions.md §5.3) is right because code is never
+unloaded, in the binary or in the arena (§3.6). The walk needs no unwind information, and compact unwind's
+adjacent-function problem does not affect stepping.
 
-- compact unwind's adjacent-function problem, which `quest_function_start` works around, no longer affects stepping;
-- no unwind information is needed for JIT code.
-
-The capture of exceptions.md §5.4 and the uncaught walk of §5.3 both change; the stack-overflow handler (§6) starts
-its walk from the faulting context's `x29`. Linux, which exceptions.md also describes, keeps the unwinder. Frames
-may differ from today's where the unwinder skipped a frame that the chain has (a C runtime function that calls back
-into Quest, say), so the run goldens that list frames are checked again.
+The capture of exceptions.md §5.4 and the uncaught walk of §5.3 both use the chain; the stack-overflow handler
+(exceptions.md §6) starts its walk from the faulting context's `x29`. Other platforms keep the unwinder.
 
 ### 3.10. The host binary and the driver
 
@@ -405,9 +398,10 @@ setjmp state of C-built code and the resume state of arm64 code (arm64.md §3.6)
 
 ### 3.11. Unsound interfaces and modules
 
-The grammar already has the marking (`["unsound"] "interface"` and `["unsound"] "module"`, in grammar.txt), and both
-parsers record it, but nothing checks it. *Typeful Programming* §9.3 gives the rules, after Cedar-Mesa's and
-Modula-3's unsafe modules. Both compilers check them (a change to the language, testing.md §2.8):
+The grammar has the marking (`["unsound"] "interface"` and `["unsound"] "module"`, in grammar.txt). *Typeful
+Programming* §9.3 gives the rules, after Cedar-Mesa's and Modula-3's unsafe modules. Both compilers check them (a
+language rule, testing.md §2.8; [modules.md](modules.md) §4.4), and a `.qi` records whether its interface is unsound
+(`isUnsound`):
 
 - a sound module, or a program, may not import an unsound interface; an unsound module may import any;
 - only an unsound module may implement an unsound interface;
@@ -415,19 +409,21 @@ Modula-3's unsafe modules. Both compilers check them (a change to the language, 
 - a sound interface may import an unsound one, since soundness can be compromised only by operations, not by types;
 - the top level (a program, the REPL) is implicitly sound.
 
-**Externals** (decided 2026-11-01). In Cardelli's system "the only unsound operations in Quest are provided by
+**Externals.** In Cardelli's system "the only unsound operations in Quest are provided by
 built-in unsound interfaces such as Value". Here `external` is one too, allowed only in unsound modules: it gives a C
 symbol whatever Quest type it is declared with, and nothing checks the declaration against the C, so a wrong one (a
 C function's signature, a `Bool` or `Char` at the wrong width, a pointer the collector cannot see) corrupts memory
 with no help from the type checker. An external declaration is `value.be` applied to a C symbol, and is treated the
 same. The marking makes that trust boundary explicit and checked: `grep unsound` lists every module whose
-correctness rests on hand-checked C. The eighteen modules of `lib/` that bind externals become `unsound module`s
-behind their sound interfaces, as Cardelli intended for low-level facilities, so neither their interfaces nor the
-programs that import them change. The four test programs that bind externals
-(`tests/source/language/external_values`, `inlined_calls`, `thunks`, and `tests/elaborate/types`) move them into
-small unsound modules.
+correctness rests on hand-checked C. The modules of `lib/` that bind externals are `unsound module`s behind sound
+interfaces, as Cardelli intended for low-level facilities, so the programs that import them need no marking. Test
+programs that bind externals (`tests/source/language/external_values`, `inlined_calls`, `thunks`) do so in small
+unsound modules. `external` covers types as well as values and functions, so an interface, even an unsound one, may
+declare no external type. The rules' errors are tested in `tests/errors/typecheck/unsound`, and their uses in
+`tests/source/modules/unsound_modules`.
 
-The new primitives are two unsound interfaces in `lib/os/`:
+The JIT's primitives are two unsound interfaces in `lib/os/` ([libraries.md](libraries.md) §4.4), whose
+natives are in `runtime/quest_code.c`:
 
 **`os/value`** is Cardelli's `Value` (*Typeful Programming*, appendix), with its signature unchanged:
 
@@ -447,12 +443,13 @@ end
 It fits this implementation exactly because every slot holds one word, the value's slot representation
 (c-representation.md, "Slots"): `new` gives that word (a record's or variant's box pointer, a real's bits, a
 string's pointer), and `be` takes it back. `fetch` and `store` address bytes, the "implementation-dependent units",
-and raise `error` for a null address or a displacement that is not a multiple of 8. That was enough for the first
-design's reflection (§3.8): a tuple's components and a record's offset table and fields are words, and a `Bool` or
-`Char` slot is a whole word too. The session uses it to read the string an input captured, and to give
-`system.args` to the driver's `system` record.
+and raise `error` for a null address or a displacement that is not a multiple of 8. A tuple's components and a
+record's offset table and fields are words, and a `Bool` or `Char` slot is a whole word too
+(`tests/source/stdlib/os_value` reads them). The session uses it to read the string an input captured, to give
+`system.args` to the driver's `system` record, and to link debugger objects (§3.12).
 
-**`os/code`** is new, and holds what has no counterpart in Cardelli's system:
+**`os/code`** holds what has no counterpart in Cardelli's system (`tests/source/stdlib/os_code` writes a hand-encoded
+function into a code region and calls it):
 
 - a code region: reserving one, writing words into it, making it executable (flushing the instruction cache);
 - the address of a symbol of the running binary, as a `value.T`;
@@ -461,8 +458,9 @@ design's reflection (§3.8): a tuple's components and a record's offset table an
 - the operations on the runtime the loader needs: registering collector roots and function ranges.
 
 Neither interpreter runs them: interpreting a program that imports `os/value` or `os/code`, in the bootstrap or in
-the self-hosted interpreter, is an error. The bootstrap's C backend compiles them, since it builds stage 1, which
-contains the JIT, though stage 1 cannot run it (§3.10).
+the self-hosted interpreter, is an error, given by the module's name (`tests/errors/run/os_value_interpreted`), not
+by builtins that name the natives, so that a release's interpreter needs none of them. The bootstrap's C backend
+compiles them, since it builds stage 1, which contains the JIT, though stage 1 cannot run it (§3.10).
 
 ### 3.12. Debugging
 
@@ -481,15 +479,16 @@ show the lines of JIT frames; there are no variable locations, as in the arm64 b
 - **The object.** For each unit, `jit/debugObject` writes a Mach-O arm64 object in memory: one section of code, at
   the address the loader put it at, so that nothing needs relocating; a symbol for each function; and DWARF 4, a
   compile unit with a subprogram per function and a line table, as `codegen/arm64/asm` writes for a unit assembled to a
-  file ([arm64.md](arm64.md) §3.16). The encoder keeps the `.loc` positions it used to drop (`Encoded.lines`). Each
+  file ([arm64.md](arm64.md) §3.16), from the `.loc` positions the encoder keeps (`Encoded.lines`). Each
   function's line sequence starts at its first instruction with its first position, so that a breakpoint on the
   function finds a line and lldb skips the prologue. The DWARF sections are at address 0: lldb reads an in-memory
   object's sections from the process at their addresses, but one at a small address from the object itself.
 - **The interface.** The runtime defines its two symbols, `__jit_debug_descriptor` and `__jit_debug_register_code`
   (`quest_code.c`); the session finds them with `os/code`'s `symbol`, links the object into the descriptor's list
   with `os/value`'s `store` (each object and its list entry a string's bytes, which the session keeps), and calls the
-  function with `os/code`'s `call`. Since a release builds stage 1 against its own `lib/`, the session uses no new
-  `os/code` function, and a driver whose runtime lacks the symbols describes nothing.
+  function with `os/code`'s `call`. Since a release builds stage 1 against its own `lib/`, the session uses no
+  `os/code` function made for debugging, and a driver whose runtime lacks the symbols describes nothing.
+  `tests/self-hosted/line_tables.py` checks the objects with lldb.
 - **Sources.** A unit's file is the input's file, for a program given as a file, or a module file's own. An input
   that has none (a REPL input, an `-e` program) is written to `input-N.quest` in a directory of the session's own
   under `TMPDIR`, which the session removes when it ends; a driver that is killed, or a program that calls
@@ -498,14 +497,14 @@ show the lines of JIT frames; there are no variable locations, as in the arm64 b
 
 ## 4. Differences From the Interpreter
 
-Compiled code already differs from the interpreters in two accepted ways (exceptions.md §2.4, §6), which the JIT
+Compiled code differs from the interpreters in two accepted ways (exceptions.md §2.4, §6), which the JIT
 inherits, and which show in the REPL transcripts:
 
 - it lists fewer frames, when the inliner or a tail call removes them;
 - runaway recursion ends the session rather than raising `stack.overflow` (`tests/golden/repl/stack_overflow.out`).
 
-Both are accepted and documented, here and in exceptions.md, for now. An uncaught exception's payload is shown as the
-interpreters show it (exceptions.md §2.1) since 2026-11-01, but for one of a module's abstract type.
+Both are accepted, here and in exceptions.md. An uncaught exception's payload is shown as the interpreters show it
+(exceptions.md §2.1), but for one of a module's abstract type, which compiled code shows as `<hidden>`.
 
 Running in the driver's own process adds two more, which the run goldens through `--jit` show:
 
@@ -517,132 +516,35 @@ Running in the driver's own process adds two more, which the run goldens through
 ## 5. Testing
 
 - **Unsound interfaces:** the checks of §3.11 in both compilers, with a test of each rule's error.
-- **Frames:** the run goldens that list frames, through the C, ssac, and arm64 backends, after the walk changes.
-- **Encoder:** byte-for-byte against `clang -c` on the arm64 goldens (§3.5), in the unit checks.
-- **The REPL transcripts** (`tests/source/repl`, `tests/golden/repl`) on the JIT, as a runner mode against the same
+- **The primitives:** `tests/source/stdlib/os_value` and `os_code`, compiled only (§3.11).
+- **Frames:** the run goldens that list frames, through the C, ssac, and arm64 backends.
+- **Fingerprints:** `tests/self-hosted/fingerprints.py` checks each unit's `qh_` digest against one it computes from
+  the `.qi` files (§3.3.1).
+- **Encoder:** byte-for-byte against `clang -c` (§3.5), `tests/self-hosted/encoder.py`.
+- **The REPL transcripts** (`tests/repl`, `tests/golden/repl`) on the JIT (`--backend jit`), against the same
   goldens; the `repl` phase runs them with `--no-jit`, checking the interpreter. A transcript that shows an accepted
-  difference (§4) is skipped under `--jit` by a marker in its source, as `@skip-phase run_c_compiled` skips a program;
-  today that is `stack_overflow`.
+  difference (§4) is skipped under `--jit` by a marker in its source (`@skip-phase: jit`), as
+  `@skip-phase run_c_compiled` skips a program; that is `stack_overflow`.
+- **Imports and hosts:** `tests/self-hosted/jit_hosts.py` checks a stale interface's refusal, an unchanged one, and the
+  user's own modules (§3.3, §3.4).
+- **Debugging:** `tests/self-hosted/line_tables.py` (§3.12).
 - **The run goldens** through `quest --jit FILE` (`--backend jit-files`), skipping the programs marked
   `@skip-phase: jit` or `@skip-phase: run_c_compiled`, whose differences the JIT shares with compiled code.
   `tests/self-hosted/pending-jit.txt` lists the rest of the differences (§4). The mode also runs `-e`'s transcript
   (`tests/eval`) on the JIT; the `interpret` phase runs it with `--no-jit`.
-- **Both hosts:** the transcripts through a C-built and an arm64-built stage 2 (`QUEST_BACKEND`).
+- **Both hosts:** the transcripts through a C-built and an arm64-built stage 2 (`QUEST_BACKEND`, in `jit_hosts.py`).
 - tools/check runs these with the backends suite.
 
-## 6. Later
+## 6. Open Work
 
-- Inlining and specializing earlier inputs' functions in later inputs. Calling them directly alone (exporting a
-  phrase unit's functions' code and calling it with a null environment, rather than loading the binding's closure)
-  was tried on 2026-11-01 and not kept: 200 million calls of an earlier `add1` took 0.27 s against 0.26 s, and 100
-  million of an earlier generic `twice` 1.78 s against 1.47 s, `twice`'s code byte for byte the same, its placement
-  differing. In one unit the same loops take 0.13 s and 0.06 s: the gap is inlining and specialization, which need the
-  earlier inputs' IR, not the call. Since interactive code's functions are slots (§3.2), this is now direct calls
-  and inlining of slots whose definition has not changed, undone when one does: the session would keep each input's
-  IR and each slot's dependents. Only if redefinition's cost (repl.md §6) matters in practice.
+- Inlining and specializing earlier inputs' functions in later inputs (parked). Calling them directly alone
+  (exporting a phrase unit's functions' code and calling it with a null environment, rather than loading the
+  binding's closure) was tried on 2026-11-01 and not kept: 200 million calls of an earlier `add1` took 0.27 s against
+  0.26 s, and 100 million of an earlier generic `twice` 1.78 s against 1.47 s, `twice`'s code byte for byte the same,
+  its placement differing. In one unit the same loops take 0.13 s and 0.06 s: the gap is inlining and
+  specialization, which need the earlier inputs' IR, not the call. Since interactive code's functions are slots
+  (§3.2), this means direct calls and inlining of slots whose definition has not changed, undone when one does: the
+  session would keep each input's IR and each slot's dependents. Only if redefinition's cost (repl.md §6) matters in
+  practice.
 - Redefining a function with another type, or a type, which earlier code would need checked or recompiled.
 - Surviving faults and runaway recursion, and Ctrl-C, in the REPL.
-
-## 7. Steps
-
-Each step ends with tools/check passing; its documentation changes with it. Steps 1 and 2 change the language and
-the runtime for every program, and come first so that the JIT is built on them.
-
-1. **`unsound`** (§3.11). Both compilers' type checkers enforce the rules, with `external` an unsound operation;
-   `lib/`'s eighteen modules that bind externals become `unsound module`s, and the four test programs' externals
-   move into unsound modules. A test of each rule's error, in both compilers (`tests/errors`). Documented in
-   modules.md and extensions.md; roadmap.md drops hot-swapping.
-   *Done* (2026-11-01). `external` covers types as well as values and functions, so an interface, even an unsound
-   one, may declare no external type, and `tests/elaborate/types`'s external type became a case of the error. A `.qi`
-   records `isUnsound`, an ABI change (59). The tests are `tests/errors/typecheck/unsound` and
-   `tests/source/modules/unsound_modules`; modules.md §4.4 documents the rules.
-2. **Frames by the frame-pointer chain** (§3.9). The runtime's capture and uncaught walk step by `x29`; the
-   stack-overflow handler starts from the faulting context. The run goldens that list frames are checked through the
-   C, ssac, and arm64 backends, and exceptions.md §5.3 describes the walk.
-   *Done* (2026-11-01). The walk is Darwin arm64's (`Q_FRAME_POINTER_WALK`), with function starts from `dladdr` alone;
-   other platforms keep the unwinder. Tracebacks through the C and arm64 backends, and the stack overflow's count of
-   frames, are unchanged, and no golden changed.
-3. **`os/value` and `os/code`** (§3.11): the interfaces, their unsound modules, and a C file in `runtime/`, with an
-   ABI bump. Both interpreters refuse a program that imports either, by the interface's name rather than through
-   builtins that name the new natives, so that the current release can still build stage 1. **A release follows this
-   step.** Tests: an unsound module that reads a tuple's and a record's
-   words through `os/value`; one that writes a hand-encoded function into a code region and calls it, and one whose
-   function raises and gets the exception back.
-   *Done* (2026-11-01, ABI 60). The natives are in `runtime/quest_code.c`; new-libraries.md §4.4 documents both
-   interfaces. Both interpreters refuse the modules `os/value` and `os/code` by name. Tests:
-   `tests/source/stdlib/os_value` and `os_code` (compiled only) and `tests/errors/run/os_value_interpreted`. Fixed
-   alongside: the self-hosted loader gave a separately compiled hierarchical module no external types, so `os/code`'s
-   `value.T` differed from `os/value`'s.
-4. **Hosts** (§3.3, §3.10): the fingerprint (§3.3.1) and each module unit's `qh_` symbol, in both self-hosted
-   backends; the driver imports `list` and `dynamic`. Tests: a program finds its units' fingerprints with `os/code`;
-   the fingerprint is unchanged by an interface's comments, declaration order, and location, and changed by a change
-   to an exported type, to a manifest type it imports, or to the ABI version.
-   *Done* (2026-11-01, ABI 61). `modules/artifacts/fingerprint` digests a `.qi` and, recursively, those of the interfaces it
-   imports; the module compiler passes the digest to the backend, which emits `qh_<unit>` as a C string beside the
-   module's record, through the C printer or as an SSA datum. Every module unit now exports a symbol it did not, so the
-   ABI changed, which also rebuilds every unit with one. Test: `tests/self-hosted/fingerprints.py`
-   (`self-hosted/fingerprints`), which checks the digest against one it computes from the `.qi` files, and so the
-   ABI version's part in it.
-5. **The encoder** (§3.5), beside the printer in `codegen/arm64`. A unit check encodes every arm64 golden's unit and
-   compares the code with the `__text` of the printed assembly assembled by `clang -c`, relocations aside, and the
-   data likewise.
-   *Done* (2026-11-01). `codegen/arm64/encode` gives each instruction's word beside the printer's spelling of it
-   (the printer now exports `expansion`), and lays out a unit's code and data with their relocations and each
-   function's offset and size. Labels are resolved; so is a function's call of itself, which `as` resolves too
-   (each function is an atom of its own under `.subsections_via_symbols`); every other symbol is relocated. With
-   `QUEST_CHECK_ENCODING=1` the backend appends the encoding to a unit's assembly as comments, which
-   `tests/self-hosted/encoder.py` (`self-hosted/encoder`) compares with `clang -c`'s object: 390 units, the run
-   goldens' programs and the units they link. The driver's own 151 units, built with arm64, agree too. Forms the
-   backend can emit but these programs do not (post-index loads, `ldrsw`, `movn`, `cmn`, shifts right by an
-   immediate) are encoded from the manual and checked once a program uses them.
-6. **The loader and phrase units: the REPL on `--jit`** (§3.2, §3.6–§3.9), after step 3's release: the arena, GOT
-   slots and stubs, thread-locals, registration, roots, and function ranges; phrase units, their entries, result
-   globals, and earlier inputs' globals; reflection; exceptions and rollback; `system.args`. A runner mode runs the
-   REPL transcripts through `--jit` against their goldens, and tools/check runs it.
-   *Done* (2026-11-01). `questlang/jit/` holds the loader, reflection, and the session (a sound interface, which
-   `driver/repl` uses with `--jit`, over an unsound module). An input is a module of its own whose record holds its
-   bindings (§3.2), rather than a global for each. An exception's site is located in the input whose code raised it,
-   whose source the unit names `<repl>#N`. `system.args` is also stored into the driver's `system` record, which
-   copied the runtime's array when it was initialized. The runner's `--backend jit` mode runs the transcripts, but for
-   those marked `@skip-phase: jit` (`rethrow`, `stack_overflow`, §4) and those pending for step 7
-   (`tests/self-hosted/pending-jit.txt`: `load`, `modules`); tools/check runs it with the backends. Fixed alongside:
-   the encoder's `movn` (no program had used one).
-7. **Imports and `-i`** (§3.3, §3.4): imports of the driver's units, refused when stale and, for the user's own
-   modules, refused for now; `-i FILE` as the first input. The transcripts through a C-built and an arm64-built
-   stage 2 (`QUEST_BACKEND`).
-   *Done* (2026-11-01). Before an input runs, the session checks each module it imports: one not in the driver
-   (`qm_`) is refused, as is one whose `qh_` differs from the fingerprint of the interface the input was compiled
-   against, saying to rebuild the driver. With `--jit` the REPL's environment compiles as a program's does, its
-   interfaces from `.qi` files in a build directory (`.build`, or `--build-dir`), which the fingerprints are of. A
-   driver without fingerprints (a whole-program build) refuses `--jit` at the start. `-i FILE` runs the file as the
-   first input, printing its last result as a program run does, and ends the driver with 1 if it fails. `modules`, which
-   imports the user's own modules, is skipped under `--jit`. `tests/self-hosted/jit_hosts.py` checks a stale
-   interface, an unchanged one, and a user's module, and runs the transcripts through an arm64-built driver.
-8. **Files and `-e`** through `--jit`, each one input. A runner mode runs the run goldens through `quest --jit`;
-   exceptions.md and this document list the differences that remain. The time to compile and load an input,
-   measured on the transcripts and a few programs, in benchmarks.md.
-   *Done* (2026-11-01, ABI 62). Results are printed by the runtime (§3.8), not by reflection, which is gone;
-   `jit/reflect`
-   with it. `--backend jit-files` runs the run goldens through `--jit`: all pass but those §4 and `pending-jit.txt`
-   list (40, 37 of them importing modules of their own), and tools/check runs it. Fixed alongside: the loader's
-   `adrp`, and the encoder's `adr`, for a negative distance (`/` truncates, so the high field was wrong), which
-   crashed every program whose code called back into an earlier page; a phrase unit's top-level `Ok` bindings, which
-   have no words to keep in its record; and the driver now links `collections/hashset` and `util/argparse`, the two
-   library modules it did not. benchmarks.md §10 has the times: an input of the transcripts takes 0.2 to 1.5 ms to
-   compile, load, and run.
-
-**Releases.** Stage 1 is the release compiling the tree's `questlang/` against its own `lib/` and `runtime/`
-(release-compiler.md §2), so a release is needed only when `questlang/` first uses something the release's `lib/` or
-`runtime/` lacks:
-
-- Steps 1 and 2 need none. `questlang/` binds no externals, and the release parses `unsound` without checking it.
-  Stage 1, which checks it, compiles the tree's marked `lib/`; step 2 changes only `runtime/`, which stage 2 links.
-- **Step 3 is followed by a release,** because step 6's `questlang/jit` is the first of `questlang/` to import
-  `os/value` and `os/code`. `QUEST_SEED=bootstrap` could bridge the gap instead, but tools/check seeds its
-  self-hosting check from the release.
-- Steps 4, 5, 7, and 8 need none: `list` and `dynamic` are already in the release's `lib/`, only a test program reads
-  the `qh_` symbols, and the rest is `questlang/` alone.
-- An optional release after step 8 puts the JIT in the release.
-
-After step 8, whether the JIT becomes the default for the REPL, for files, and for `-e` is decided from those
-measurements, as the default backend was. roadmap.md and the README's status table follow each step.

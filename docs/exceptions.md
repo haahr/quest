@@ -2,7 +2,8 @@
 
 This document specifies how an uncaught Quest exception is reported, with where it was raised and the Quest functions
 active at the time, in the tree-walking interpreter (`quest/interpreter/treewalk.py`), the IR interpreter
-(`quest/interpreter/ir_interp.py`), and compiled code (`quest/ir/`, `quest/codegen/c/`, and `runtime/`).
+(`quest/interpreter/ir_interp.py`), and compiled code (`quest/ir/`, `quest/codegen/c/`, and `runtime/`), and in their
+self-hosted counterparts in `questlang/` (whose arm64 backend passes raise sites as the C printer does).
 
 ---
 
@@ -12,9 +13,9 @@ active at the time, in the tree-walking interpreter (`quest/interpreter/treewalk
    checked operation (division, array index, variant tag), that raised the exception. This is the part users need
    most, and it is cheap and exact in every backend.
 2. **The active Quest functions, most recent first.** The interpreters report every frame. Compiled code reports an
-   ordered subsequence of them: the C compiler inlines functions and turns tail calls into jumps, and those frames are
-   lost. A frame compiled code cannot attribute with certainty is left out, never guessed. Fewer frames from compiled
-   code is accepted, not a bug to fix (§2.4).
+   ordered subsequence of them: the compiler's inliner and the C compiler inline functions and turn tail calls into
+   jumps, and those frames are lost. A frame compiled code cannot attribute with certainty is left out, never
+   guessed. Fewer frames from compiled code is accepted, not a bug to fix (§2.4).
 3. **No cost to code that does not raise, nor to raises that are caught.** Compiled function entry and return are
    unchanged: no shadow stack, no frame links. Entering a `try` costs a few stores (§5.2). A raise walks the stack only
    when the exception will not be caught.
@@ -38,8 +39,8 @@ tests/source/errors/run/divide_by_zero.quest:4:13: error: Exception: int.error
   in <main>
 ```
 
-The header and source line are what the interpreter prints today. The `in` lines are new: a `trace` field on
-`Diagnostic` (`quest/common/diagnostics.py`), rendered after the source line and any notes. Run-error goldens
+The `in` lines are a `trace` field on `Diagnostic` (`quest/common/diagnostics.py`), rendered after the source line
+and any notes. Run-error goldens
 (`tests/golden/errors/run/*.error`) match the substring `error: Exception: <name>`, which is unchanged.
 
 An exception raised inside an external C primitive (`quest_string_get_char`, say) has no raise site: the diagnostic
@@ -68,8 +69,7 @@ Exception: int.error
 
 The `at` line is omitted when there is no raise site. File names are `display_file_name` (`quest/common/location.py`)
 of the source file, fixed at compile time. The `run_c_compiled` phase parses this output into the diagnostic of
-§2.1, reading the named file for the source line (and rendering without it if the file cannot be read). This
-replaces today's `Diagnostic.make_error(stderr, 0)`, which places every compiled exception at `1:1`.
+§2.1, reading the named file for the source line (and rendering without it if the file cannot be read).
 
 ### 2.3. Frame Names
 
@@ -93,10 +93,11 @@ gives a module it declares. Compiler-generated functions (closure environments' 
 
 ### 2.4. Compiled Code Lists Fewer Frames
 
-The exception and its raise site are the same in every backend (compiled code omits a payload, §2.1). The frames
+The exception and its raise site are the same in every backend (but a payload of an abstract type, §2.1). The frames
 are not: compiled code lists an ordered subsequence of the interpreters' frames, often far fewer, and that is accepted.
-Generated C is compiled with `-O2`, and the frames of functions the C compiler inlines into their callers, or calls
-by a jump in tail position, do not exist at run time; recovering them would need either a shadow stack (a cost on
+The compiler's inliner ([inlining.md](inlining.md)), and the C compiler at `-O2` for generated C, inline functions
+into their callers, and the frames of functions inlined, or called by a jump in tail position, do not exist at run
+time; recovering them would need either a shadow stack (a cost on
 every call, against §1's third goal) or reading the C compiler's debug information for inlined code. For
 
 ```quest
@@ -152,9 +153,8 @@ to errors raised while elaborating it. Raise sites use the same two fields rathe
 - The tree-walking interpreter's scopes have the source map of the file whose code runs in them (`RuntimeEnvironment.
   source_map`: the program's, set by the interpret phase, or a module file's, set when the module is loaded). Every
   closure is applied by `run_closure`, which gives an error raised in the closure's body the source map of the scope
-  the closure was made in, unless the error has one already; so does a module's initialization. (Before, an
-  exception raised in `lib/dynamic.mod.quest` was rendered at its offset in the program's source, which could name a
-  line past the end of the program.)
+  the closure was made in, unless the error has one already; so does a module's initialization. So an exception
+  raised in `lib/dynamic.mod.quest` is rendered in that file, not at its offset in the program's source.
 - The IR interpreter sets `offset` from the raising node and the source map from the unit, for errors the operation
   raises that are not located already.
 - `ir.Reraise` and a non-matching `TypedTry` raise the original `QuestException` object, so its site is kept, and so
@@ -172,10 +172,10 @@ The C printer turns an offset into a string literal `"file:line:col"`, one per r
 - The checked operations and their cold helpers have `_at` versions that take the location
   (`quest_int_div_at`, `quest_check_array_bounds_at`, `quest_check_array_count_at`, `quest_real_divide_at`,
   `quest_check_option_ordinal_at`, `quest_raise_variant_error_at`, `quest_raise_dynamic_error_at`, ...). The literal
-  is referenced only on the failing branch, so the path that does not raise is the same compare-and-branch as before.
+  is referenced only on the failing branch, so the path that does not raise is a compare-and-branch alone.
 - The versions without `_at`, which the runtime's primitives use, raise with a null location.
 - A fatal run-time error with a site (an option ordinal out of bounds) prints the same `at` line after its message.
-- `QExceptionState` gains `const char *loc`, so a caught exception carries its raise site into the handler, and
+- `QExceptionState` has `const char *loc`, so a caught exception carries its raise site into the handler, and
   `ir.Reraise` prints `quest_reraise(state)`, which raises with the same location.
 
 ---
@@ -217,22 +217,22 @@ Compiled code finds the frames by walking the native stack, which is only possib
 avoid walking the stack for exceptions that are caught, a raise first asks whether a handler will catch the exception.
 
 A `try`'s handler compares the exception with each branch's pattern, in order, with `is`; with an `else` branch it
-catches everything. A pattern is an expression, evaluated today after the exception is caught. When every pattern is
+catches everything. A pattern is an expression, evaluated after the exception is caught. When every pattern is
 **pure** (an immutable variable, a constant such as a built-in exception, or a field of a module record) evaluating it
 before the try's body gives the same value, so the try can record what it catches when it is entered:
 
-- `ir.Try` gains `catching` and `catches`: `CATCH_LISTED` and the atoms of its patterns, evaluated before the try
+- `ir.Try` has `catching` and `catches`: `CATCH_LISTED` and the atoms of its patterns, evaluated before the try
   (`lower.py` hoists them); or `CATCH_ALL`, when it has an `else` branch; or `CATCH_ALL_TRACED`, when its `else`
   branch names the exception ([raised.md](raised.md) §5); or `CATCH_UNKNOWN`, when some pattern is not pure. The
-  handler still tests the patterns as now, against the hoisted atoms.
-- `QExceptionHandler` gains `const QException *const *catches` and `int n_catches`, with `-1` for `ALL`, `-2` for
+  handler still tests the patterns, against the hoisted atoms.
+- `QExceptionHandler` has `const QException *const *catches` and `int64_t n_catches`, with `-1` for `ALL`, `-2` for
   `UNKNOWN`, and `-3` for `ALL_TRACED`. Entering a `try` stores them, from a local array of the catch atoms that lives
-  as long as the try's block. The handler is popped on every way out of the block, as now.
+  as long as the try's block. The handler is popped on every way out of the block.
 
 `quest_raise_at` walks the handler chain from the innermost handler:
 
 - a handler that catches the exception, or catches everything (`ALL`): it **will be caught**. Set
-  `quest_current_exception` and `longjmp`, as now.
+  `quest_current_exception` and `longjmp`.
 - a handler that does not list it: go on to the next.
 - an `UNKNOWN` handler: it **might be caught**. Capture the frames (§5.4), then `longjmp`. An `ALL_TRACED` handler
   will catch it, but may give it to `raised.reraise`, which should report the frames of the raise, not its own; so it
@@ -284,7 +284,7 @@ is a call, so every frame below it has a record. For each frame:
   functions (`ip - 1`, because a call to a `noreturn` helper may be a function's last instruction);
 - the frame is attributed to the table entry whose address is **exactly** that start, and skipped if there is none.
 
-The walk needs no unwind information, so it steps through code that has none, as the JIT's will not
+The walk needs no unwind information, so it steps through code without any, such as the JIT's
 ([jit.md](jit.md) §3.9). A stripped binary has no local symbols, and its frames may be attributed to the nearest
 exported function before them; the driver does not strip binaries.
 

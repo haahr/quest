@@ -23,7 +23,7 @@ suites a change needs, at once (section 4.1).
      golden or error test instead (sections 2 and 3).
    - Run via:
      ```bash
-     PYTHONPATH=bootstrap/python python3 -m unittest discover -s tests/python
+     PYTHONPATH=bootstrap/python python3.11 -m unittest discover -s tests/python
      ```
 
 2. **Golden-File Compiler Tests (`tests/source/` and `tests/golden/`):**
@@ -725,8 +725,8 @@ the check. It says which, and why; `--all` and `--self-hosted-only` choose for i
   with the compiler under the suites' own checks), since the compiler under `stress` takes ten times as long and the
   JIT's suite, where compiler and test are one process, already runs it so. The suites' collections come megabytes
   apart, so a store whose barrier is wrong only when a collection falls inside one particular call passes them by
-  chance: three passing runs of the whole check left dozens of such stores in the compilers and the runtime
-  (collector.md step 4), which `stress`, a collection before every allocation, reports within a few hundred collections,
+  chance: three passing runs of the whole check left dozens of such stores in the compilers and the runtime,
+  which `stress`, a collection before every allocation, reports within a few hundred collections,
   with the allocating functions named by `sites`. A failure repeats: run the test's binary with the same variables, and
   `QUEST_GC_TRAP=k` under a debugger stops before the collection the report numbers.
 - **The suites do not interfere:** each builds into a temporary directory of its own, the runtime's cached objects

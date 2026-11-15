@@ -21,17 +21,18 @@ once. Each has a type:
 
 There is no aggregate type: a 16-byte value (a record's `QRecordVal`, a variant's `QVariantVal`) is two values. There
 is no boolean type: a comparison gives an `int` 0 or 1, and a branch tests an `int` for nonzero. `ptr` and `int` are
-apart so that a later collector could find pointers precisely (arm64.md §3.13); converting between them is explicit.
-`val` is apart from both for the same reason: a precise collector resolves a `val` by its descriptor
-(arm64.md §3.13). A `val` is an `int` in registers, and `toVal` and `fromVal` convert it.
+apart so that the collector's frame maps take a `ptr` as a pointer, precisely (arm64.md §3.13); converting between
+them is explicit. `val` is apart from both because its descriptor, not its type, says whether it is a pointer, so a
+frame map gives it as an ambiguous word, which the collector validates. A `val` is an `int` in registers, and `toVal`
+and `fromVal` convert it.
 
 ## 2. Instructions
 
-Every instruction has one shape (arm64.md §3.15): an opcode, an array of argument values, an array of result
-values, an immediate integer, a symbol, and a source position (`loc`: a file, by its number in the unit's `files`, a
-line, and a column, or none), for the native code's line table (arm64.md §3.16). The builder gives each instruction
-the position of the IR statement it builds (ir.md §5), or of the last one that had a position; a block's terminator has
-one too (`termLoc`), and a tail call its call's. Passes that care only about structure (the verifier, liveness, renaming,
+Every instruction has one shape (arm64.md §3.15): an opcode, an array of argument values, an array of result values, an
+immediate integer, a symbol, and a source position (`loc`: a file, by its number in the unit's `files`, a line, and a
+column, or none), for the native code's line table (arm64.md §3.16). The builder gives each instruction the position of
+the IR statement it builds (ir.md §5), or of the last one that had a position; a block's terminator has one too
+(`termLoc`), and a tail call its call's. Passes that care only about structure (the verifier, liveness, renaming,
 register allocation) walk the arrays; only the passes that care what an instruction means case on its opcode.
 
 | Opcode | Arguments → results | Meaning |
@@ -67,8 +68,8 @@ register allocation) walk the arrays; only the passes that care what an instruct
 ### 2.1. Loads and Stores
 
 A load or store names its width: 8 bytes (an `int`, `ptr`, or `real`), 4 (a C `int`, read sign-extended), or 1 (a C
-`bool` or a `QChar`: read zero- or sign-extended, as the instruction says; both are zero-extended now, since a `Char` is
-an unsigned byte, arm64.md §3.9). Its address is its pointer argument plus the
+`bool` or a `QChar`: read zero- or sign-extended, as the instruction says; the builder zero-extends both, since a
+`Char` is an unsigned byte, arm64.md §3.9). Its address is its pointer argument plus the
 immediate.
 
 A load is **invariant** (`Inst.invariant`) when nothing writes what it reads once the object it reads from is made, so
@@ -150,8 +151,7 @@ registration, and the unit).
   that a function or another top level names, or that is a module's member, export, or record (`walk.globalVariables`,
   [ir.md](ir.md) §8.2), is a global (`g_<name>`), as in C, however it is bound: a join's parameter (the value of a
   top-level `if`, `case`, or `try`) is stored to its global at the join, as any binding is, so that the program's
-  functions see it (once bound as a local, it left the global unset, which the compiler built by the arm64 backend found
-  at once: `language/global_joins`).
+  functions see it (`language/global_joins`).
 - **Memory.** Every aggregate slot is a word (`layout`); a box or a global holds a record or variant's 16 bytes; a
   location (a cell, what a `var` or `out` parameter points to) holds a record or variant as its box's pointer
   (`layout.shapeLocationRepresentation`). Offsets come from `repr/layout`, `repr/staticdata`, and
@@ -165,12 +165,12 @@ registration, and the unit).
 - **Thread-locals.** The handler chain and the current exception are the runtime's thread-local variables, whose
   addresses `threadLocal` takes: the native backend calls their accessor (arm64.md §3.6), which clobbers what a call
   does and is not rematerialized, and `ssac` takes the address with `&`; neither keeps a list of their names.
-- **Runtime helpers expanded inline,** as the C printer gets them from the header's `static inline` functions, so
-  that `ssac` and arm64 both gain: an option's tag and unproxying, by a test of the proxy bit (`representation.choose`), the
-  runtime called only for a proxy; real `+`, `-`, `*`, and `/` by their instruction and an `isNaN` test; `Int` `div`
-  and `mod` with the test for zero inline; and the bounds, count, and ordinal checks. Each check branches to a block
-  that computes the site and calls the runtime's raise (`values.check`), so that the common path computes no site.
-  The word module's operations, `static inline` in the header, are their instructions wherever they are called
+- **Runtime helpers expanded inline,** as the C printer gets them from the header's `static inline` functions, so that
+  `ssac` and arm64 both gain: an option's tag and unproxying, by a test of the proxy bit (`representation.choose`), the
+  runtime called only for a proxy; real `+`, `-`, `*`, and `/` by their instruction and an `isNaN` test; `Int` `div` and
+  `mod` with the test for zero inline; and the bounds, count, and ordinal checks. Each check branches to a block that
+  computes the site and calls the runtime's raise (`values.check`), so that the common path computes no site. The word
+  module's operations, `static inline` in the header, are their instructions wherever they are called
   (`calls.inlineExternal`): arithmetic, bitwise operations, unsigned comparisons, conversions, and shifts and rotations
   by a constant count; so is `ascii.val`, a conversion of a Char, which the SSA holds zero-extended. The other string
   and `ascii` helpers are calls in C too, and stay calls.
@@ -178,52 +178,52 @@ registration, and the unit).
   printer calls a library member's C function in place of its wrapper (`libraryExternal`,
   [c-representation.md](c-representation.md) §6.2), and clang inlines the word module's `static inline` primitives;
   the SSA would call the wrapper, out of line. So for an import that resolves to `lib/`, at a signature of words and
-  bytes, the builder makes `word`'s bitwise operations, arithmetic, conversions, and unsigned comparisons their
-  instructions, and `word.shift` a shift (by a constant, one instruction or none; otherwise branches for the
-  direction and for a count of 64 or more); `ascii.val` its argument and `ascii.char` a range check; and `string`'s
-  `length`, `getChar`, and `setChar` a load or a store after the runtime's null and bounds checks, raising through
-  `quest_raise_string_error` and `quest_raise_ascii_error` as the runtime does. The rest of the library's externals
-  call their C function, as the C printer does, and the others the wrapper. Through `ssac`, checksum took 3.65 times
-  the C backend's time and takes 0.17 (clang vectorizes its loop), md5 3.94 and 0.76, and psdes-random 4.09 and 1.01
-  ([benchmarks.md](benchmarks.md) §11).
+  bytes, the builder calls the C function the C printer would, which for `word`'s operations is then
+  `inlineExternal`'s instructions; `word.shift` by a count that is not a constant is a shift with branches for the
+  direction and for a count of 64 or more; `ascii.val` is its argument and `ascii.char` a range check; and `string`'s
+  `length`, `getChar`, and `setChar` are a load or a store after the runtime's null and bounds checks, raising
+  through `quest_raise_string_error` and `quest_raise_ascii_error` as the runtime does. The rest of the library's
+  externals call their C function, as the C printer does, and the others the wrapper. Through `ssac`, checksum takes
+  0.17 times the C backend's time (clang vectorizes its loop), md5 0.76, and psdes-random 1.01, where calling the
+  wrappers they took 3.65, 3.94, and 4.09 ([benchmarks.md](benchmarks.md) §11, 2026-11-02).
 - **Blocks the entry does not reach are dropped** when a function is finished, and the rest renumbered.
 
-What the builder does not yet build raises `unsupported`, naming the construct; `--stop-after ssa` reports it as an
+What the builder cannot build raises `unsupported`, naming the construct; `--stop-after ssa` reports it as an
 internal error.
 
-### 4.1. The Pipeline: Escape Analysis, Promotion, Scalars, Constants, Value Numbering, Selects, Tables, and Tail Calls
+### 4.1. The Pipeline and Its Passes
 
 `questlang/ssa/pipeline` builds a unit and then runs its passes, by name, in order, each on every function:
 
-- **`ssa/passes/escape`** makes each allocation that does not leave its function a stack slot (§4.2), which promotion then
-  makes values where it can.
-- **`ssa/passes/promote`** turns stack slots into values. A slot can be promoted when it is whole words and its address is
-  only loaded from and stored to, a word at a time or a word's first byte (a `Bool` or `Char` variable's), never
+- **`ssa/passes/escape`** makes each allocation that does not leave its function a stack slot (§4.2), which promotion
+  then makes values where it can.
+- **`ssa/passes/promote`** turns stack slots into values. A slot can be promoted when it is whole words and its address
+  is only loaded from and stored to, a word at a time or a word's first byte (a `Bool` or `Char` variable's), never
   passed, stored, or offset otherwise. Each word becomes a variable of one type, stored all at one width, and loaded
   whole only if stored whole. A block that the definitions reaching it differ at gets a parameter (Cytron et al.'s
-  placement at the iterated dominance frontier); then, along the dominator tree, a load becomes the value last
-  stored, or, for a byte, its `zext8` or `sext8`, and one before any store reads a zero made in the entry. The slots
-  left are renumbered. A function that enters a `try` keeps all its slots, since its handler must see what the body
-  stored (arm64.md §3.6); a variable captured by a closure is a heap cell, and one passed as a `var` argument keeps
-  its slot, its address escaping. `language/mutable_locals` covers each kind.
+  placement at the iterated dominance frontier); then, along the dominator tree, a load becomes the value last stored,
+  or, for a byte, its `zext8` or `sext8`, and one before any store reads a zero made in the entry. The slots left are
+  renumbered. A function that enters a `try` keeps all its slots, since its handler must see what the body stored
+  (arm64.md §3.6); a variable captured by a closure is a heap cell, and one passed as a `var` argument keeps its slot,
+  its address escaping. `language/mutable_locals` covers each kind.
 - **`ssa/scalars`** replaces the objects that block parameters merge, which escape analysis leaves, by the values of
   their words (§4.3): a loop that carries a tuple carries its components. It runs after promotion, which makes the
   variables a loop carries its parameters, and before `ssa/passes/constants`.
-- **`ssa/passes/constants`** makes constant the globals bound to constants. A global the unit does not export (another unit
-  could store to one it does), a word of static data that starts as zero, is constant when the unit stores to it once,
-  a whole word that is an `opConst` or a symbol's address, and otherwise only loads it, a whole word at a time, as the
-  type of that value; when nothing that could read it runs on any path from its function's entry to the store; and
+- **`ssa/passes/constants`** makes constant the globals bound to constants. A global the unit does not export (another
+  unit could store to one it does), a word of static data that starts as zero, is constant when the unit stores to it
+  once, a whole word that is an `opConst` or a symbol's address, and otherwise only loads it, a whole word at a time, as
+  the type of that value; when nothing that could read it runs on any path from its function's entry to the store; and
   when the store is in no loop. What could read it is a load of it, or a call of code that could: any call but of a
   function of the unit's own whose code, looked at in turn, could not; of a runtime function the effects table says
   writes no memory (Quest code is taken to write memory), as `quest_alloc_exception` for a module's exceptions; of one
   that registers types, functions, or dictionaries; or, from a module's initialization, of another module's. Modules
-  import one another in no cycle, so the modules a module's initialization initializes first reach none of its code.
-  The datum then holds the value from the start, read-only; the store goes, and each load becomes the value, which
-  value numbering then folds into what uses it. A module's member bound to a literal or to what the builder makes a
-  constant (a call of a standard library external it makes an instruction, as `word.fromInt(1)` for `util/bignum`'s
-  `oneW`) is such a global: the module's initialization stores it, guarded by the module's flag, and each use loaded
-  it, in every iteration of a loop that used it ([benchmarks.md](benchmarks.md) §15.5). Only a unit's own globals are
-  seen, so only those are folded: another unit loads an exported member as before. `ssa_constants` shows each case.
+  import one another in no cycle, so the modules a module's initialization initializes first reach none of its code. The
+  datum then holds the value from the start, read-only; the store goes, and each load becomes the value, which value
+  numbering then folds into what uses it. A module's member bound to a literal or to what the builder makes a constant
+  (a call of a standard library external it makes an instruction, as `word.fromInt(1)` for `util/bignum`'s `oneW`) is
+  such a global: the module's initialization stores it, guarded by the module's flag, and each use would load it, in
+  every iteration of a loop that uses it ([benchmarks.md](benchmarks.md) §15.5). Only a unit's own globals are seen, so
+  only those are folded: another unit loads an exported member. `ssa_constants` shows each case.
 - **`ssa/passes/valueNumbers`** removes redundant values along the dominator tree, in the manner of Briggs, Cooper, and
   Simpson: a pure instruction or a load whose equal dominates it becomes that equal, by a key of its opcode, immediate,
   symbol, result type, and arguments' numbers (a constant's by its value; commutative ones ordered; a load's address
@@ -240,15 +240,19 @@ internal error.
   symbols, and nulls: shared across a function, they were live longer and spilled (hamlet's stack accesses rose from
   8,129 to 10,022, mlyacc's from 4,522 to 5,713, and neither ran faster). The pure instructions and loads then left
   without uses are removed. `ssa_valuenumbers` shows each case.
-- **`ssa/passes/selects`** makes selects of branches (if-conversion): a branch whose two arms only pass values to one block,
-  each arm directly or through a block of its own (one with no parameters, reached only from the branch, that only
-  jumps on), becomes a jump to that block, each argument the arms pass differently a `select` by the branch's
+  Hoisting loop-invariant pure values and invariant loads to preheaders was tried after it (2026-11-03) and not kept:
+  it found almost nothing to move, since a loop's invariant loads sit behind null and bounds checks inside the loop,
+  and its constants are rematerialized.
+- **`ssa/passes/selects`** makes selects of branches (if-conversion): a branch whose two arms only pass values to one
+  block, each arm directly or through a block of its own (one with no parameters, reached only from the branch, that
+  only jumps on), becomes a jump to that block, each argument the arms pass differently a `select` by the branch's
   condition, at most two of them and none a `real`. An arm's block may have up to two instructions that can run before
   the branch whichever arm it takes: they write nothing, cannot trap, and read nothing the branch could change
   (arithmetic but division, comparisons, conversions, constants, and a load of static data at a symbol, a module's
-  global); they move into the branch's block. A carry in a loop of arbitrary-precision arithmetic (`util/bignum`'s `bit(word.lt(sum operand))`) is such a
-  branch, taken as often as not: arm64 mispredicted half of them, and now makes each a `cset` of the comparison's
-  flags; C's compiler already made it one ([benchmarks.md](benchmarks.md) §15). `ssa_selects` shows each case.
+  global); they move into the branch's block. A carry in a loop of arbitrary-precision arithmetic (`util/bignum`'s
+  `bit(word.lt(sum operand))`) is such a branch, taken as often as not, half of which arm64 mispredicted as a branch; it
+  makes each a `cset` of the comparison's flags, as C's compiler does ([benchmarks.md](benchmarks.md) §15).
+  `ssa_selects` shows each case.
 - **`ssa/passes/tables`** makes a switch of constants a load from a table. A switch whose arms (each a case's target,
   directly or through blocks with no parameters that only make constants and jump on) all pass arguments to one
   block, the join, with at least 4 cases, dense (their range at most twice their number), becomes a check of the value
@@ -274,13 +278,13 @@ internal error.
   second; a runaway `1 + f(n + 1)` loops forever rather than overflowing the stack, as clang already made it in C
   ([exceptions.md](exceptions.md) §6), and a traceback through the loop's levels shows one frame, as through tail calls
   (`repl/module_errors` subtracts, to keep its frames). `ssa_accumulate` shows each case.
-- **`ssa/passes/tailCalls`** marks calls in tail position (§3, arm64.md §3.7): a call whose block returns its results (or the
-  extension of its byte), or jumps, through blocks that do nothing else, to one that does. A block's parameters are
-  taken as what the jump passes them, so that a join's parameter that its block does not return (as a contified
+- **`ssa/passes/tailCalls`** marks calls in tail position (§3, arm64.md §3.7): a call whose block returns its results
+  (or the extension of its byte), or jumps, through blocks that do nothing else, to one that does. A block's parameters
+  are taken as what the jump passes them, so that a join's parameter that its block does not return (as a contified
   loop's exit leaves) does not keep the call from being a tail call: zern's `lp1` and `lp2`, which call each other
-  through their closures, were nested calls, 16,384 deep for each array they filled. The blocks a tail call leaves
-  unreached are dropped (`cfg.dropUnreached`, as the builder drops its own), since they may return a value that value
-  numbering put in place of their parameter, and that the call no longer defines.
+  through their closures, would otherwise be nested calls, 16,384 deep for each array they fill. The blocks a tail call
+  leaves unreached are dropped (`cfg.dropUnreached`, as the builder drops its own), since they may return a value that
+  value numbering put in place of their parameter, and that the call no longer defines.
 - **`ssa/passes/tailJumps`** makes loops of mutual tail calls ([benchmarks.md](benchmarks.md) §14). The unit's functions
   and the direct tail calls between them form a graph, whose strongly connected components (Tarjan's) are the groups
   of mutually tail-recursive functions. Into each function of a group of more than one are copied the other members it
@@ -306,28 +310,28 @@ internal error.
   frame by its function's exact start, the unit's table of names (`qr_funcs`) gets an entry for each such export, the
   last function copied into it that has a name, and the count `qr_register_dicts` registers grows to match.
   `ssa_trampolines` shows each case.
-- **`ssa/passes/unproxies`**, run by the SSA's backends after the passes (`pipeline.lower`, before inline allocation), lowers
-  each `unproxy` to the test the builder made before the SSA had the instruction: the block is split at it, and branches
+- **`ssa/passes/unproxies`**, run by the SSA's backends after the passes (`pipeline.lower`, before inline allocation),
+  lowers each `unproxy` to a test of the proxy bit: the block is split at it, and branches
   on the pointer's tag bit to a block that loads the proxy's original (an invariant load of `QProxy`'s `orig`, less the
   tag) or to one that passes the pointer on, both jumping to the rest of the block, whose parameter is the object. Until
   then an `unproxy` is a pure instruction, which value numbering merges along the dominator tree: hashmap's `findIndex`
-  tested its record before each field its loop loaded, and tests it once, before the loop. Escape analysis and scalar
+  tests its record once, before its loop, rather than before each field the loop loads. Escape analysis and scalar
   replacement take an `unproxy` of one of an allocation's pointers as that pointer, since a fresh object is never a
   proxy; `selects` does not speculate one, since it may load. `ssa_unproxies` shows the merge and the lowering.
-- **`ssa/passes/interrupts`**, after them and only when the Jupyter kernel's driver asks (`pipeline.setInterruptChecks`, under
-  `--kernel`, for the code its JIT compiles; [jupyter-kernel.md](jupyter-kernel.md) §5), checks the runtime's interrupt
-  flag at each function's entry and each loop's head (a block a back edge goes to): it splits the block, loading
-  `quest_interrupt_pending` and branching to a block that calls `quest_interrupt_raise`, or on to the block's old
-  instructions. It isn't in `passes`, so no phase dumps it, and no golden sees it.
-- **Inline allocation** (`ssa/passes/allocations`, `pipeline.inlineAllocation`), run by the SSA's backends after the passes:
-  arm64 and the JIT cannot get the collector's fast path from the runtime's header as the C printer does, and ssac's
-  printer calls every runtime function out of line, `quest_alloc` included (§8), which cost it a third of what C gained
-  on the allocation-heavy programs (benchmarks.md §16.2). Each call of `quest_alloc` of a constant size becomes the
-  sequence of docs/collector.md §3.4. The block is split at the call: it loads `quest_gc_check_flags` and the cursor and
-  limit of the object's space (`quest_gc_cursor`, `quest_gc_limit`; the noscan space's for a layout of scalars alone,
-  read from the unit's layout data) and branches, when a checking mode is on or the hole has no room, to a block that
-  calls `quest_gc_alloc_slow`, else to one that bumps the cursor and stores the header word (the layout's address) where
-  the cursor was; both jump to the rest of the block with the allocation's base, an `int`, which makes the object
+- **`ssa/passes/interrupts`**, after them and only when the Jupyter kernel's driver asks (`pipeline.setInterruptChecks`,
+  under `--kernel`, for the code its JIT compiles; [jupyter-kernel.md](jupyter-kernel.md) §5), checks the runtime's
+  interrupt flag at each function's entry and each loop's head (a block a back edge goes to): it splits the block,
+  loading `quest_interrupt_pending` and branching to a block that calls `quest_interrupt_raise`, or on to the block's
+  old instructions. It isn't in `passes`, so no phase dumps it, and no golden sees it.
+- **Inline allocation** (`ssa/passes/allocations`, `pipeline.inlineAllocation`), run by the SSA's backends after the
+  passes: arm64 and the JIT cannot get the collector's fast path from the runtime's header as the C printer does, and
+  ssac's printer calls every runtime function out of line, `quest_alloc` included (§8), which cost it a third of what C
+  gained on the allocation-heavy programs (benchmarks.md §16.2). Each call of `quest_alloc` of a constant size becomes
+  the sequence of docs/collector.md §3.4. The block is split at the call: it loads `quest_gc_check_flags` and the cursor
+  and limit of the object's space (`quest_gc_cursor`, `quest_gc_limit`; the noscan space's for a layout of scalars
+  alone, read from the unit's layout data) and branches, when a checking mode is on or the hole has no room, to a block
+  that calls `quest_gc_alloc_slow`, else to one that bumps the cursor and stores the header word (the layout's address)
+  where the cursor was; both jump to the rest of the block with the allocation's base, an `int`, which makes the object
   (`intToPtr` of the base plus 8, the call's result) and sets its start bit in `quest_gc_start_bits`. The slow path
   stores the header word itself, since while a full collection marks in slices it takes every allocation (the limits are
   hidden) and the word carries the collector's flags (collector.md §3.10). The base is never a `ptr` the rest of the
@@ -335,8 +339,8 @@ internal error.
   be the value live across later calls, and the collector takes a `ptr` in a frame for the object it is at, inside, or
   at the end of, which for the header's address is the object before (arm64.md §3.13).
   `QUEST_SKIP_PASSES=inlineAllocation` leaves the calls, which `quest_inline.o`'s definition of `quest_alloc` serves,
-  for measuring the inline path (docs/collector.md step 3). The questlang test `ssa_allocations` shows functions before
-  and after.
+  for measuring the inline path ([collector.md](collector.md) §3.4). The questlang test `ssa_allocations` shows
+  functions before and after.
 
 Only value numbering removes values that become dead; parameters no load reads stay, which the trivial allocator gives
 slots, and linear scan none.
@@ -359,7 +363,7 @@ pass is local and conservative, one function at a time with no summaries of othe
 repeating it. `benchmarks/mlton/allocations.py` counts a program's allocations by function, to see what it removes
 and what still escapes ([benchmarks.md](benchmarks.md) §9).
 
-**What escapes.** A candidate is a call of `quest_alloc` with a constant size and a layout's address (`vals.alloc`); `quest_array_new`,
+**What escapes.** A candidate is a call of `quest_alloc` with a constant size and a layout's address; `quest_array_new`,
 exceptions, and the runtime's other allocators are not. Its result is one of *its pointers*, and so is:
 
 - a `ptrAdd` of one of them by a constant;
@@ -369,15 +373,18 @@ exceptions, and the runtime's other allocators are not. Its result is one of *it
 - a block's parameter that every edge taken binds to that one value (as the merge after a folded proxy test is).
 
 The allocation does not escape when every use of each of its pointers is the address of a load or store at a constant
-offset within its size, such a store into a word holding its pointer, a proxy test (`vals.isProxy`:
+offset within its size, such a store into a word holding its pointer, a proxy test (`proxyFold.isProxyTest`:
 `and(ptrToInt(p), QUEST_PROXY_TAG)`), or an argument to a write barrier (`quest_barrier` among and after an
 aggregate's initializing stores when a call came between them and its allocation, `quest_barrier_slot` after a pointer
-store into a field or element; [collector.md](collector.md) §3.5), which keeps no pointer. A fresh allocation is never a proxy, so
-the test folds to zero, and the branches `vals.unproxy` and the tuple and option readers make on it go to their direct
-arm; the fold is the pass's own, since nothing else in the SSA knows that `quest_alloc` returns an aligned pointer.
+store into a field or element; [collector.md](collector.md) §3.5), which keeps no pointer. A fresh allocation is
+never a proxy, so the test folds to zero, and the branches the builder's `representation.unproxy` and the tuple and
+option readers make on it go to their direct arm. The fold is escape analysis's and scalar replacement's alone (§4.3),
+which share it in `ssa/passes/proxyFold` (the values' definitions, the proxy tests of the pointers each tracks, and
+the blocks reached once they fold), since nothing else in the SSA knows that `quest_alloc` returns an aligned
+pointer.
 Anything else is an escape: an argument to any other call (the runtime's included: `quest_option_is`, `quest_val_is`,
 a conversion), a value stored elsewhere, a return,
-a parameter bound to other values too, a comparison (`peq`, which could fold but does not yet), a `toVal`, any other
+a parameter bound to other values too, a comparison (`peq`, which could fold but does not), a `toVal`, any other
 `ptrToInt`, or an access of part of a word holding a pointer. Since the folds decide which blocks are reached, and a
 parameter's binding depends on the edges reached, the analysis starts with every candidate thought not to escape,
 finds its pointers and the blocks reached to a fixed point, drops those that escape, and repeats until none more does.
@@ -407,7 +414,7 @@ that fresh tuples and options keep their identity.
 `ssa/scalars` replaces by the values of their words the objects that escape analysis leaves because a block parameter
 merges them: wc-scanStream's loop carries its stream, a tuple of a chunk and a position, as a parameter bound to a new
 tuple on every edge, and its reader's inlined returns join an allocated option and a constant one, a datum of the
-unit's static data, at another ([mlton-performance-review.md](mlton-performance-review.md) §3.2). MLton's SSA passes
+unit's static data, at another ([benchmarks.md](benchmarks.md) §20). MLton's SSA passes
 tuples flattened (its `localFlatten` and `deepFlatten` passes); LLVM's SROA splits only allocas, which do not flow
 through phis.
 
@@ -445,11 +452,12 @@ functions and its **data**: each datum a symbol, whether other units refer to it
 its contents, 8-byte aligned: zeros (a global, a module's record and its initialized flag), a C string's text and its
 NUL (a literal, a name in a descriptor or the function table), or words, each an integer or a symbol's address plus a
 byte offset (a descriptor and what its extra field points at, an offset table, a tag map, a static closure, the function
-table, the layouts of the objects the unit allocates: a `quest_layout_<tag>` and its kinds `qlk_<tag>`, packed
-eight to a word, laid out by `ssa/statics` from `repr/objectLayout`, docs/collector.md §3.2, and the unit's root
-table `qr_roots`: the address and words of each global that may hold a pointer and of each module record, ended by
-a null slot, which `qr_register_dicts` registers). A store of a `ptr` or `val` word into an existing object is
-followed by a call of `quest_barrier` or `quest_barrier_slot`, with no other call between the two (docs/collector.md §3.5). Words lay out the runtime's structs on a little-endian target, a narrow field in the low bytes of its word.
+table, the layouts of the objects the unit allocates: a `quest_layout_<tag>` and its kinds `qlk_<tag>`, packed eight to
+a word, laid out by `ssa/statics` from `repr/objectLayout`, docs/collector.md §3.2, and the unit's root table
+`qr_roots`: the address and words of each global that may hold a pointer and of each module record, ended by a null
+slot, which `qr_register_dicts` registers). A store of a `ptr` or `val` word into an existing object is followed by a
+call of `quest_barrier` or `quest_barrier_slot`, with no other call between the two (docs/collector.md §3.5). Words lay
+out the runtime's structs on a little-endian target, a narrow field in the low bytes of its word.
 
 The builder makes, besides the IR's functions and the module initializers and `main`:
 
@@ -463,8 +471,8 @@ The builder makes, besides the IR's functions and the module initializers and `m
   unit views at supertypes;
 - a static closure (`<function>_closure`) of each function, and the data of globals and strings.
 
-What a unit refers to and does not define is another unit's or the runtime's; the runtime's thread-locals are
-`runtimeLayout.threadLocals`.
+What a unit refers to and does not define is another unit's or the runtime's; the runtime's thread-locals are the
+symbols its `threadLocal` instructions name (§4).
 
 ## 6. The Textual Form
 
@@ -491,9 +499,10 @@ b0(%0: ptr, %1: int):
 `questlang/ssa/parser` reads the text back into a unit, values keeping their numbers, so that printing what it reads
 prints what it read: with `QUEST_CHECK_IR=1` the driver reads back the SSA it prints and reports any difference, so
 every golden is checked to read back as itself. A pass is tested on SSA written as text: the questlang tests
-`ssa_promote`, `ssa_escape`, `ssa_constants`, `ssa_valuenumbers`, `ssa_selects`, `ssa_tables`, `ssa_accumulate`,
-`ssa_tailcalls`, and `ssa_tailjumps` read small functions, run their pass and the verifier, and print the functions
-before and after; and a program's SSA can be cut down to the functions that show a bug.
+`ssa_promote`, `ssa_escape`, `ssa_scalars`, `ssa_constants`, `ssa_valuenumbers`, `ssa_selects`, `ssa_tables`,
+`ssa_accumulate`, `ssa_tailcalls`, `ssa_tailjumps`, `ssa_trampolines`, `ssa_unproxies`, and `ssa_allocations` read small
+functions, run their pass and the verifier, and print the functions before and after; and a program's SSA can be cut
+down to the functions that show a bug.
 
 ## 7. The Verifier
 

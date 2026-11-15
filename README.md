@@ -90,9 +90,9 @@ The compilers were built in steps ([docs/roadmap.md](docs/roadmap.md)):
 - **Compilation:** the typed syntax tree is lowered to an A-normal-form IR and refined by small passes
   ([docs/ir.md](docs/ir.md)); the arm64 backend goes through an SSA form with linear-scan register allocation
   ([docs/arm64.md](docs/arm64.md)).
-- **Memory:** both compilers' programs allocate through a collector of Quest's own, precise, generational, and
-  incremental, with stack maps and write barriers ([docs/collector.md](docs/collector.md)); it replaced the Boehm
-  collector in 2026-11.
+- **Memory:** both compilers' programs allocate through a collector of Quest's own, a non-moving, generational Immix
+  heap with incremental marking, precise in the heap and, through stack maps, in arm64's frames, with write barriers
+  ([docs/collector.md](docs/collector.md)).
 - **Performance:** on the MLton benchmark suite, translated from Standard ML, programs compiled as whole programs by
   the arm64 backend take about 2.2 times as long as MLton's (geometric mean, 2026-11-06, against MLton's times of
   2026-10-28; [docs/benchmarks.md](docs/benchmarks.md) §20.3), from 0.34 (fib) to 34 (peek). Compiled unit by unit,
@@ -208,15 +208,13 @@ directory first and then on the search path (`-I` and `lib/`; [docs/modules.md](
 # Give arguments to an inline program, or the REPL, after --
 ./quest -e "import system: System; system.args" -- arg1 arg2
 
-# Compile a program to a native binary, by way of C
+# Compile a program to a native binary, by way of arm64 machine code
 ./quest compile program.quest -o my_app
 
-# Write the C instead, or compile with the collector never collecting
+# Compile by way of C instead, write the C, or compile with the collector never collecting
+./quest compile --backend c program.quest -o my_app
 ./quest compile program.quest --emit-c
 ./quest compile program.quest --nogc -o my_app
-
-# Compile to arm64 machine code instead of C
-./quest compile --backend arm64 program.quest -o my_app
 
 # Print a phase's output and stop: the tokens, the syntax tree, the typed tree, the first IR, the C
 ./quest --stop-after tokenize program.quest
@@ -233,7 +231,9 @@ As with `python script.py`, the driver's options come before the program file: e
 included, is the program's. (`quest compile`, which does not run the program, takes options anywhere, as does the
 driver for an interface or module file.)
 
-`./questboot` takes the same commands and options, except `--backend` and `-j N` (build N modules at once).
+`./questboot` takes the same commands and options, except the self-hosted compiler's own: `--backend` and
+`--unit-backend` (the bootstrap compiles through C alone), `-j N` (build N modules at once), `--jit` and `--no-jit`,
+and `--kernel`.
 
 ### Running Tests
 
@@ -299,7 +299,7 @@ program through every phase, then [docs/type-system.md](docs/type-system.md) and
 - [docs/grammar.txt](docs/grammar.txt): the grammar, in EBNF.
 - [docs/extensions.md](docs/extensions.md): additions to the language (`System`, `Word`, hierarchical modules, and
   `external` declarations).
-- [docs/new-libraries.md](docs/new-libraries.md): libraries beyond the paper's (collections, `util/maybe`,
+- [docs/libraries.md](docs/libraries.md): libraries beyond the paper's (collections, `util/maybe`,
   `util/stringBuilder`, `util/path`, `util/argParse`, and others).
 - [docs/raised.md](docs/raised.md): catching an exception of any type with `else with e then`, and raising it again.
 - [docs/dynamic.md](docs/dynamic.md): values packaged with their types (`auto`, `dynamic.T`), testing their types at
@@ -326,8 +326,8 @@ program through every phase, then [docs/type-system.md](docs/type-system.md) and
   representations fit together.
 - [docs/ir.md](docs/ir.md): the A-normal-form IR, its canonical shapes of types, and its passes (`lower`, `simplify`,
   `specialize`, `closure`, `represent`, `describe`).
-- [docs/inlining.md](docs/inlining.md): the plan for what remains of the IR optimizer (ir.md §8.6): tuning, and
-  workers.
+- [docs/inlining.md](docs/inlining.md): the inliner's settings and how they were chosen, and the open work on
+  workers (the IR optimizer itself is ir.md §8.6).
 - [docs/c-representation.md](docs/c-representation.md): the C runtime's ABI: value and slot representations, proxies,
   closures, and arrays.
 - [docs/codegen-c.md](docs/codegen-c.md): how the IR is printed as C99 and compiled.
@@ -336,6 +336,11 @@ program through every phase, then [docs/type-system.md](docs/type-system.md) and
   promotion, tail calls).
 - [docs/arm64.md](docs/arm64.md): the arm64 backend: instruction selection, register allocation, and assembly for
   Darwin.
+- [docs/jit.md](docs/jit.md): the arm64 JIT, which runs the REPL's inputs, `-e`, and files in the driver's process.
+- [docs/collector.md](docs/collector.md): the garbage collector: its heap, generations, incremental marking, write
+  barriers, roots, and the checking modes that test them.
+- [docs/option-values.md](docs/option-values.md): single-word options held as pointers, a representation designed
+  and deferred.
 - [docs/exceptions.md](docs/exceptions.md): how an uncaught exception is reported, with where it was raised and the
   functions active then, in the interpreters and in compiled code.
 
@@ -343,6 +348,7 @@ program through every phase, then [docs/type-system.md](docs/type-system.md) and
 - [docs/testing.md](docs/testing.md): the test suites: golden files, error tests, and the self-hosting check.
 - [docs/benchmarks.md](docs/benchmarks.md): the MLton benchmarks translated to Quest, and the measurements of each
   backend against MLton.
+- [docs/profiling.md](docs/profiling.md): finding out why compiled code runs as fast as it does (`tools/perf/`).
 - [docs/diagnostics.md](docs/diagnostics.md): how errors are reported.
 - [docs/instructions.md](docs/instructions.md): the guide for contributors, people and models: workflow, commands,
   conventions, and Quest syntax traps.

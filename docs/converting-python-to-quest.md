@@ -3,8 +3,8 @@
 Quest is the illustrative language from Luca Cardelli's *Typeful Programming* (1989, revised 1993). Cardelli notes that
 the language is partly speculative: only the features given syntax in the paper's appendix were implemented. The paper
 also names several built-in modules (`string:StringOp`, `conv:Conv`, `real:RealOp`, `arrayOp:ArrayOp`,
-`Reader`/`Writer`) without listing their operations. Where these rules call into those modules, the function names are
-assumed and marked as such.
+`Reader`/`Writer`) without listing all their operations. Their operations here are this implementation's, as
+`lib/*.int.quest` declares them.
 
 The rules target a Quest dialect with hierarchical module and interface names, using `/` as a separator when importing.
 Only the last component of a name is exposed in the program: `import collections/vector : collections/Vector` makes the
@@ -27,7 +27,16 @@ import util/maybe : util/Maybe                       (* Optional[T] *)
 import util/stringBuilder : util/StringBuilder       (* Fast string accumulator *)
 import util/strutil : util/Strutil                   (* String utilities *)
 import util/hash : util/Hash                         (* Universal & primitive hashing *)
+import util/sort : util/Sort                         (* sorted(), list.sort(), bisect *)
+import util/bignum : util/Bignum                     (* Python's arbitrary-precision int *)
+import util/argparse : util/ArgParse                 (* argparse *)
+import os/path : os/Path                             (* pathlib.Path *)
+import os/process : os/Process                       (* subprocess.Popen *)
 ```
+
+[libraries.md](libraries.md) describes these and the others under `lib/` (`util/path`, `os/fileStats`,
+`collections/bitset`, `io/readline`, `io/display`); the flat library's `system` (always in scope) has `args`,
+`getEnv`, `run`, and the file system over strings ([extensions.md](extensions.md)).
 
 Each library's main type is called `T`, following Quest convention, so you write `vector.T(Int)`, `hashMap.T(String
 Int)`, `hashSet.T(String)`, and `maybe.T(Int)`.
@@ -80,9 +89,10 @@ discover key equality by itself. For strings, pass `stringOp.equal` and `hash.st
 
 - **Iterators.** No generator or iterator protocol exists. The rules assume a type you define yourself:
   `Let Iter(A::TYPE)::TYPE = Tuple next():maybe.T(A) end`
-- **Output and formatting helpers.** `Writer` is available for output (`writer.write(writer.output str)`), while
-  conversions live in `Conv` (`conv.int`, `conv.real`, `conv.bool`), `util/strutil` (`strutil.split`, `strutil.join`,
-  `strutil.strip`, etc.), and `util/hash` (`hash.string`, `hash.int`, `hash.identityHash`).
+- **Output and formatting helpers.** There is no `print` or `format`. `Writer` is available for output
+  (`writer.putString(writer.output str)`), while conversions live in `Conv` (`conv.int`, `conv.real`, `conv.bool`),
+  `util/strutil` (`strutil.split`, `strutil.join`, `strutil.strip`, etc.), and `util/hash` (`hash.string`,
+  `hash.int`, `hash.identityHash`).
 
 ## Lexical and expression-level rules
 
@@ -103,12 +113,12 @@ operators are different symbols, and several Python spellings mean something els
 | `-3`, `-x` | `~3`, `{0-x}` | `~3.0` |
 | `a == b`, `a != b` | `a is b`, `a isnot b` | same |
 
-Python mixes ints and floats freely. In Quest you convert explicitly, for example `real.fromInt(n) // 2.0`. Also note
-that Python's `int` is arbitrary-precision and Quest's `Int` is not.
+Python mixes ints and floats freely. In Quest you convert explicitly, for example `real.int(n) // 2.0`. Also note
+that Python's `int` is arbitrary-precision and Quest's `Int` is 64 bits and wraps on overflow; use `util/bignum` where
+Python relies on big integers.
 
 Note on equality syntax: *Typeful Programming* specifies only `is` and `isnot` for identity and scalar equality; it does
-not define `==` or `!=`. While some bootstrap compiler phases historically permitted `==` and `!=` as synonyms, Quest
-code should strictly use `is` and `isnot`.
+not define `==` or `!=`. The type checker rejects `==` and `!=`, suggesting `is` and `isnot`.
 
 **3. Only use `is` for scalar equality.** `is`/`isnot` mean value equality for `Ok`, `Bool`, `Char`, `Int`, and `Real`.
 For strings and every other reference type they mean "same memory location." Python `s == "yes"` becomes
@@ -135,8 +145,8 @@ sb.str("header\n").int(42).char('\n')
 let result = sb.toString()
 ```
 
-The compiler's C backend writes C text in a form that translates line by line (`repr/syntax.py`, checked by
-`tests/python/test_c_text.py`):
+The compilers' C backends write C text in a form that translates line by line (the bootstrap's `repr/syntax.py`,
+checked by `tests/python/test_c_text.py`, and the self-hosted `questlang/repr/syntax`):
 
 - Every value it interpolates is already a string, so an f-string becomes a `<>` chain: `f"{arr}->data[{idx}] = {v};"`
   becomes `arr <> "->data[" <> idx <> "] = " <> v <> ";"`. Its braces are just characters (`f"{{ {args} }}"` is
@@ -144,15 +154,10 @@ The compiler's C backend writes C text in a form that translates line by line (`
 - A number goes through a C formatter: `c_int` for an index, a count, or a number in a name; `c_int_literal` for an
   `int64_t` constant (`5LL`, `(-5LL)`); `c_real` for a `double` (`conv.real`'s digits, with `-` for the sign, and
   `INFINITY`). Never `conv.int` alone for C, which writes negative numbers with `~`.
-- Lists are joined only by `comma`, `call`, `joined`, and `lines_text`. Ported, they take arrays, so a call's arguments
-  are an array literal:
+- Lists are joined only by `comma`, `call`, `joined`, and `lines_text` (`comma`, `call`, `joined`, and `linesText` in
+  Quest, which take a `vector.T(String)`).
 
-```quest
-let slot = syntax.call("quest_view_tuple_slot" array of base viewMap syntax.cInt(index) end)
-```
-
-A `printf`-style helper (`fmt("$->_$ = $;" array of b i v end)`) is an option for a line with many holes. The IR's text
-printer (`ir/printer.py`) follows the same rules if it is ported.
+The IR's text printers (`ir/printer.py`, `questlang/ir/printer`) follow the same rules.
 
 **7. Rename to Quest's case conventions.** Values and functions use lowerCamel (`word_count` becomes `wordCount`). Types
 and interfaces are Capitalized. Kinds are ALL CAPS. `let` binds values, `Let` binds types, and `DEF` binds kinds.
@@ -179,8 +184,8 @@ commas: `plus(3 4)`. Local `let` bindings may omit types.
   (`f(1)("foo")(true)`) add significant visual noise compared to `f(1 "foo" true)`.
 - **Keyword bindings:** Uncurried signatures allow calling with named `let` bindings
   (`f(let a=1 let b="foo" let c=true)`, Rule 10), which currying fragments.
-- **C ABI and performance:** The Quest compiler emits direct C function calls with arguments passed in registers.
-  Currying forces intermediate heap-allocated closures for each partially applied argument.
+- **Performance:** The Quest compilers emit direct calls with arguments passed in registers. Currying forces
+  intermediate heap-allocated closures for each partially applied argument.
 - **Direct Python mapping:** Python functions are uncurried; uncurried Quest preserves the 1-to-1 structure of
   signatures and call sites.
 
@@ -196,8 +201,8 @@ function (`newCounter()` / `newCounterFrom(n)`) or take a `maybe.T(A)`.
 **11. Translate `*args` to an array parameter plus listfix calls.** `def total(*xs)` becomes `let
 total(xs:Array(Int)):Int = ...`, and you call it with listfix syntax: `total of 1 2 3 end`.
 
-**12. Translate lambdas directly.** `lambda x: x + 1` becomes `fun(x:Int):Int x+1`. Closures over non-mutable locals
-work as in Python.
+**12. Translate lambdas directly.** `lambda x: x + 1` becomes `fun(x:Int):Int x+1`. Closures over locals work as in
+Python, local `var`s included (rule 23).
 
 **13. Make generics explicit.** A duck-typed function that works on "anything" takes a type parameter, curried in the
 first group: `def first(xs): return xs[0]` becomes `let first(A::TYPE)(xs:Array(A)):A = xs[0]`. Subsequent value
@@ -306,18 +311,16 @@ A local function may capture an enclosing function's `let var` and update it, as
 **24. Translate `None` and `Optional[T]` to `maybe.T(A)`.** Returning `None` from a procedure becomes returning `ok :
 Ok`. `Optional[int]` becomes `maybe.T(Int)`:
 
-```
-let found:maybe.T(Int) = option some of maybe.T(Int) with 5 end
-let missing:maybe.T(Int) = option none of maybe.T(Int) end
+```quest
+let found:maybe.T(Int) = maybe.some(5)
+let missing:maybe.T(Int) = maybe.none(:Int)
 
-case found
-when none then 0
-when some with arm then arm.some
-end
+if maybe.isSome(found) then maybe.unwrap(found) else 0 end
+maybe.unwrapOr(missing 0)
 ```
 
-If `util/Maybe` exports its own constructors or uses different tag names, use those instead of the raw `option ... of`
-form.
+`maybe.T` is abstract outside `util/maybe`, so it is built and taken apart only by these functions, not by `option`
+and `case`.
 
 **25. Translate `Enum`s, tagged unions, and sum types to options or variants.**
 Simple enums without payloads use tag-only options: `Let Day = Option mon tue wed thu fri sat sun end`, consumed with:
@@ -364,9 +367,9 @@ let describe(v:AnyVehicle):String =
   end
 ```
 
-The type after `auto :` can be a concrete type or a type parameter of the enclosing function (but not yet a larger
-type that mentions one, such as `Tuple x: A end`), and a branch is taken when the value's type is a subtype of the
-branch type.
+The type after `auto :` can be a concrete type or one that mentions type parameters of the enclosing function (`A`, or
+`Tuple x: A end`), and a branch is taken when the value's type is a subtype of the branch type (or equal to it, for
+an auto type whose components are not just immutable `A`s; [type-system.md](type-system.md) §6.12).
 
 ## Classes and objects
 

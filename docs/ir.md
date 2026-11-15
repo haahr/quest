@@ -5,8 +5,8 @@ This document specifies the intermediate representation between the typed AST an
 its printer writes the same textual form (§10). The IR's dumps are the self-hosted compiler's goldens, not the
 bootstrap's ([testing.md](testing.md) §2.8), so the two compilers' IR may differ where the self-hosted one optimizes.
 The IR is one data structure, refined by a sequence of small passes (nanopass style); each pass establishes invariants
-that the IR verifier checks. The C printer consumes the last stage. A future native AArch64 backend
-([roadmap.md](roadmap.md) step 6) would consume the same stage, adding its own late passes.
+that the IR verifier checks. The backends consume the last stage: the C printer (§8.5), and in the self-hosted
+compiler the SSA's builder, from which `ssac` and the arm64 backend, the default, compile ([ssa.md](ssa.md)).
 
 ---
 
@@ -14,12 +14,13 @@ that the IR verifier checks. The C printer consumes the last stage. A future nat
 
 ```
 source → tokens → AST → typed AST ─┬─→ interpreter
-                                   └─→ lower → Core IR → (simplify) → specialize → closure-convert → represent
-                                                → describe → C printer → C → clang
-                                                          └→ SSA → ssac (C) or arm64 (ssa.md)
+                                   └─→ lower → Core IR → (simplify) → specialize → closure-convert
+                                         → (unbox) → represent → describe → (thunks) → C printer → C → clang
+                                                                                    └→ SSA → ssac or arm64
 ```
 
-Lowering the typed AST into the IR and running small, single-responsibility passes ensures that:
+The passes in parentheses are the self-hosted compiler's alone (§8.4.1, §8.6, §8.7). Lowering the typed AST into
+the IR and running small, single-responsibility passes ensures that:
 
 - representation decisions and the conversions between representations are made once, by one pass, and are visible
   in the IR as explicit nodes (the C printer only prints);
@@ -119,9 +120,9 @@ whole program (§8.6), the self-hosted compiler's shapes see through a module's 
 their representations, substituted before the type is canonicalized, while its opaque shapes (`shapes.opaqueShape`),
 which descriptors, echo, static descriptors' identity, records' names, and the representations registered for
 dynamic values use, keep them opaque, so that what a program does is the same whole or not. Outside the module,
-`layout.abstractInstance` then gives no generic layout, and a plan between types of one shape is none. A bounded
-abstract type (`T::POWER(B)`) stays opaque, since outside its module it is seen at its bound, which numbers its cases
-and fields otherwise; so does every abstract type of a module compiled apart rather than merged (the prelinked
+`genericLayout.abstractInstance` then gives no generic layout, and a plan between types of one shape is none. A
+bounded abstract type (`T::POWER(B)`) stays opaque, since outside its module it is seen at its bound, which numbers
+its cases and fields otherwise; so does every abstract type of a module compiled apart rather than merged (the prelinked
 library modules, `conv`, `int`, `ascii`, `string`, `arrayOp`, `real`, and `list`), whose representations are
 registered as a module compiled apart's (`abstractTypes.setRegisteringApart`), which transparent shapes leave out.
 Variant and option types are equal whatever order they list their cases in, so their shapes (and canonical forms)
@@ -143,7 +144,7 @@ looks inside types as written.
 
 From the represented stage on (§9), every binder also has a **representation**, the ABI's class for its values:
 
-| Representation | C (today) | Used for |
+| Representation | C | Used for |
 |---|---|---|
 | `word` | `QVal` | a value of an unbounded type parameter, stored generically |
 | `int`, `real`, `bool`, `char` | `QInt`, `QReal`, `QBool`, `QChar` | scalars |
@@ -178,10 +179,11 @@ the traversals the passes share, and the IR's explicit traversal of nodes' field
 uses rather than reading the dataclasses' fields by reflection, so that the Quest port, which has no reflection,
 writes each traversal once (`tests/python/test_traversals.py` checks the tables against the dataclasses).
 
-**Variables are objects.** An IR variable (`Var`) has a name hint and its Quest type (with alias names, for
-printing); its shape is the type's, derived rather than stored, so that a pass rewriting types (specialization
-substitutes type arguments) cannot leave the two disagreeing. A function's result is likewise its result type. It is bound by exactly one binder, and every use refers to the same object, so identity never depends
-on names; the printer makes names distinct (`x`, `x.1`). Lowering maps each typed-AST symbol to its variable once.
+**Variables are objects.** An IR variable (`Var`) has a name hint and its Quest type (with alias names, for printing);
+its shape is the type's, derived rather than stored, so that a pass rewriting types (specialization substitutes type
+arguments) cannot leave the two disagreeing. A function's result is likewise its result type. A variable is bound by
+exactly one binder, and every use refers to the same object, so identity never depends on names; the printer makes names
+distinct (`x`, `x.1`). Lowering maps each typed-AST symbol to its variable once.
 
 **Atoms** are variables and constants (`Int`, `Real`, `Bool`, `Char`, `String`, `ok`). Operations take atoms only.
 
@@ -370,20 +372,21 @@ result, over the function's type parameters, also decided on its shape (so a tup
 a type operator's application, `Box(A)`, counts as one written out).
 
 In the self-hosted compiler the copying is `questlang/ir/clone`'s, which the inliner shares (giving its copies fresh
-labels too, since they sit in their callers). The clone has fresh binders throughout and is bound by the same `funs` statement as the original, so it is in scope
-wherever the original is and sees the same free variables (a local function's clone captures what the original does). A
-clone of a module's function is also a member of the module (`first_spec1`), which calls from outside the module name.
-Clones are specialized in turn, and shared by function and type arguments (by identity, never by name), so a recursive
-function's clone calls itself; clones made for calls in clones are bounded in depth (16), beyond which calls stay
-generic, since polymorphic recursion (a function of `A` calling itself at `List(A)`) would otherwise specialize without
-end. A `type_app` whose instance is not a function (a polymorphic value, such as `hashMap.newIdentityMap`) runs the
-function applied, so it is specialized as a call without arguments would be, and becomes a `call` of the clone, which
-takes no parameters, so that its result is laid out natively, as the specialized calls given it take it, rather than
-converted from the generic layout. A call of a module's member from outside the module is not specialized when, at its
-type arguments, the member's type as the interface gives it holds an application of one of the module's abstract types
-whose native layout differs from the generic one, as outside the module values of it have
-([c-representation.md](c-representation.md) §5.1): the clone would convert them at every call. Specialization runs
-*before* closure conversion: a clone's local functions are part of the clone, and are lifted with it.
+labels too, since they sit in their callers). The clone has fresh binders throughout and is bound by the same `funs`
+statement as the original, so it is in scope wherever the original is and sees the same free variables (a local
+function's clone captures what the original does). A clone of a module's function is also a member of the module
+(`first_spec1`), which calls from outside the module name. Clones are specialized in turn, and shared by function and
+type arguments (by identity, never by name), so a recursive function's clone calls itself; clones made for calls in
+clones are bounded in depth (16), beyond which calls stay generic, since polymorphic recursion (a function of `A`
+calling itself at `List(A)`) would otherwise specialize without end. A `type_app` whose instance is not a function (a
+polymorphic value, such as `hashMap.newIdentityMap`) runs the function applied, so it is specialized as a call without
+arguments would be, and becomes a `call` of the clone, which takes no parameters, so that its result is laid out
+natively, as the specialized calls given it take it, rather than converted from the generic layout. A call of a module's
+member from outside the module is not specialized when, at its type arguments, the member's type as the interface gives
+it holds an application of one of the module's abstract types whose native layout differs from the generic one, as
+outside the module values of it have ([c-representation.md](c-representation.md) §5.1): the clone would convert them at
+every call. Specialization runs *before* closure conversion: a clone's local functions are part of the clone, and are
+lifted with it.
 
 ### 8.2. Closure-convert
 
@@ -391,7 +394,7 @@ whose native layout differs from the generic one, as outside the module values o
 statement with lets of `closure f {captures...}`. A function's captures are its free variables (by identity) other than
 globals, in the order of their first use; globals are the variables the unit's top levels (its main body and its
 modules' initializers) bind outside loops, each bound at most once in a run, which lifted functions use directly. The
-self-hosted compiler's globals are fewer (`walk.globalVariables`, 2026-10-31): of those variables, the ones a function
+self-hosted compiler's globals are fewer (`walk.globalVariables`): of those variables, the ones a function
 names, another top level names, or that are a module's members, exports, or record; the rest are locals of the top level
 that binds them, kept in registers rather than memory, as a called-once function's loop variables are once it is inlined
 there (`02_expressions_control_flow`'s `testLoop`). Since closures do not capture mutable locals (the lowering boxes
@@ -417,8 +420,8 @@ calling `same`), which closure conversion makes a capture; the analysis runs to 
 is known too. The environment passed is read from the closure called, as for any known closure.
 `language/captured_known_calls` shows each case.
 
-`type_app` stays an operation, now on closures: instantiating a polymorphic closure binds its next type
-parameters, which the C printer emits as a runtime instantiation call using descriptor values (§7), converting
+`type_app` stays an operation, on closures from this stage on: instantiating a polymorphic closure binds its next
+type parameters, which the C printer emits as a runtime instantiation call using descriptor values (§7), converting
 arguments and result by the plans the represent pass records on it (§8.3).
 
 ### 8.3. Represent
@@ -533,19 +536,19 @@ plans, nested ones included (a copy's view fields, an adapter's fields). A thunk
 only its own type parameters' descriptors: a type there that mentions a type parameter of the enclosing function is
 rejected (`UnsupportedDescriptor`; no program does).
 
-A function whose body reads values of a type parameter bounded by a record, variant, option, or tuple type through
-the bound (a field, a component, a tag, a payload) gets a view map for it (`ir.ViewMapParam` in `Function.view_maps`, printed as
-`view_map` lines at the function's start: the type argument's view map at the bound, from the parameter's descriptor
-and the bound's), and each such operation the view map it reads through (`view_map`, printed `through ...`), since
-generic code holds those values at their own view ([c-representation.md](c-representation.md) §5.1).
+A function whose body reads values of a type parameter bounded by a record, variant, option, or tuple type through the
+bound (a field, a component, a tag, a payload) gets a view map for it (`ir.ViewMapParam` in `Function.view_maps`,
+printed as `view_map` lines at the function's start: the type argument's view map at the bound, from the parameter's
+descriptor and the bound's), and each such operation the view map it reads through (`view_map`, printed `through ...`),
+since generic code holds those values at their own view ([c-representation.md](c-representation.md) §5.1).
 
-The pass lists the unit's static data (`ir.StaticData`): the static descriptors its operations refer to (templates
-among them), the static offset tables of record literals (`ir.OffsetTable`: the view and the layout, registered with
-the runtime for dynamic values when both are closed; a module's record is a record literal, §3), and the tag maps of
-`variant_tags` plans (`ir.TagMap`), and the types whose aggregates C declares (`types`: those of the unit's
-variables, operations, and plans, of its record literals' own layouts and its inspect arms' payloads, of its imports'
-interfaces, and of its offset tables, `unit_types`); and each module's abstract types' registrations for dynamic
-values ([dynamic.md](dynamic.md) §2.3). An echo of a package with a prefix, whose line is known statically from its type as
+The pass lists the unit's static data (`ir.StaticData`): the static descriptors its operations refer to (templates among
+them), the static offset tables of record literals (`ir.OffsetTable`: the view and the layout, registered with the
+runtime for dynamic values when both are closed; a module's record is a record literal, §3), and the tag maps of
+`variant_tags` plans (`ir.TagMap`), and the types whose aggregates C declares (`types`: those of the unit's variables,
+operations, and plans, of its record literals' own layouts and its inspect arms' payloads, of its imports' interfaces,
+and of its offset tables, `unit_types`); and each module's abstract types' registrations for dynamic values
+([dynamic.md](dynamic.md) §2.3). An echo of a package with a prefix, whose line is known statically from its type as
 written, becomes an echo of its text.
 
 Descriptor operands are small pure expressions rather than values named by lets, by design, so where they are
@@ -557,16 +560,16 @@ one.)
 
 #### 8.4.1. Thunks (the Self-Hosted Compiler)
 
-In the self-hosted compiler, the described stage ends with `questlang/ir/thunks`, which makes the thunks the C
-printer used to make as it printed into functions of the unit, so that every backend (the C printer, and the SSA's
+In the self-hosted compiler, the described stage ends with `questlang/ir/thunks`, which makes the thunks (that the
+bootstrap's C printer makes as it prints) functions of the unit, so that every backend (the C printer, and the SSA's
 backends, [arm64.md](arm64.md) §7.5) compiles them as it compiles any function. The bootstrap has no such pass: its C
 printer makes its thunks itself.
 
 - **An `adapt` plan's adapter** is a function of the plan's target type (`qa_adapt`) whose environment is the closure
   it adapts, of the plan's source type: its `env` variable has that closure's type, unlike a lifted function's,
   whose environment is a struct of captures read by `env_field`. It takes the target's type parameters (the plan's
-  thunk parameters, now the function's descriptor parameters), passes them on to the closure, converting each
-  argument by the plan's fields and the result by the last (a call returning `Ok` returns `ok`, which is `Ok`'s
+  thunk parameters, which become the function's descriptor parameters), passes them on to the closure, converting
+  each argument by the plan's fields and the result by the last (a call returning `Ok` returns `ok`, which is `Ok`'s
   value where the result is a type parameter's). The plan names its adapter (`Plan.thunk`, printed `adapt by
   qa_adapt`) and keeps neither thunk parameters nor fields, which are the adapter's; a conversion by it is a new
   closure of the adapter whose environment is the converted closure. A conversion of a known function (a variable
@@ -612,7 +615,7 @@ value, which the slots pass gives it in their slot forms.
 
 The self-hosted compiler optimizes the Core IR before specialization, into the Simplified stage (§9). The bootstrap
 does not: it goes from Core to Specialized, and the behavior goldens stay shared while each compiler's IR goldens are
-its own ([testing.md](testing.md) §2.8). What remains to do is in [inlining.md](inlining.md).
+its own ([testing.md](testing.md) §2.8). Its settings, and open work on it, are in [inlining.md](inlining.md).
 
 **Why the Core IR.** Before specialize and closure conversion, functions are `funs` with free variables and types are
 explicit, with no representations or conversions yet. Inlining there removes what later passes would build: a
@@ -625,7 +628,8 @@ the runtime's helpers inline ([ssa.md](ssa.md) §4); clang inlines within a C un
 
 **Principles:**
 
-- **Always on.** No option enables it; tests and bisection leave passes out through `QUEST_SKIP_PASSES`.
+- **Always on.** No option enables or disables it (`QUEST_SKIP_PASSES` leaves out only the SSA's passes,
+  [ssa.md](ssa.md) §4.1); `QUEST_INLINE` overrides its bounds for measuring ([inlining.md](inlining.md) §1).
 - **Across modules only in whole programs** (`--whole-program`, [build-process.md](build-process.md) §1.2), whose
   modules are one unit (`driver/whole`). Separate compilation gets no unfoldings: `.qi` files and manifests carry no
   bodies, so an importer depends on interfaces alone and builds keep their parallelism.
@@ -672,16 +676,16 @@ inlined:
   its modules that its code can reach (`whole.dropUnreachable`, before the simplifier): from its main body and from
   what its modules' initializers do other than bind a member to a pure operation or a function, through the
   variables each uses and the members it names; the others' bindings are deleted, and a module whose record nothing
-  reads as a value has none. So the bound is measured from, and spent on, code that can run: before, copies into
-  library members imp-for never calls spent it before the simplifier reached main
+  reads as a value has none. So the bound is measured from, and spent on, code that can run; otherwise copies into
+  library members imp-for never calls spend it before the simplifier reaches its main body
   ([benchmarks.md](benchmarks.md) §20.1).
 
 A body whose one return is its end is spliced in place; any other becomes a join point's body, whose continuation is the
 rest of the caller's body, its returns jumps to it. In a whole program, a call of one of the unit's modules' members
 (`call m.x`) is inlined as a call of the member's function is, when the interface's type for the member is represented
-as the function's own (`layout.signatureRepresentation`), and the simplifier visits the modules' initializations before
-the main body. The variables of its module's that the function names are out of the caller's scope: each must be an
-immutable member that is not a function (whose calls would stop being known), and the copy reads it as the member
+as the function's own (`genericLayout.signatureRepresentation`), and the simplifier visits the modules' initializations
+before the main body. The variables of its module's that the function names are out of the caller's scope: each must be
+an immutable member that is not a function (whose calls would stop being known), and the copy reads it as the member
 (`let error.2 = member util/maybe.error`) at the call, as `maybe.unwrap`'s copy reads the exception it raises. Outside a
 whole program, where abstract types are opaque, the member must be of an exception's type, which is laid out alike
 inside and outside its module.

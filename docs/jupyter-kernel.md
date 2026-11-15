@@ -104,10 +104,10 @@ compiler's sources change shows `./quest` rebuilding its stages, as its output.
 
 `QUEST_KERNEL`, which the session sets, tells the library it runs in a kernel's driver.
 
-- **`io/display`** (new-libraries.md §3.2), Quest alone, writes a value's forms as a `{"display": {MIMETYPE: DATA}}`
+- **`io/display`** (libraries.md §3.2), Quest alone, writes a value's forms as a `{"display": {MIMETYPE: DATA}}`
   record to descriptor 4, after flushing the program's output; an image's data (but SVG's) is in base64. Outside a
   kernel it writes the `text/plain` form.
-- **`io/readline`'s `readLine`** (new-libraries.md §3.1), in the C runtime, writes `{"input": PROMPT}` to descriptor
+- **`io/readline`'s `readLine`** (libraries.md §3.1), in the C runtime, writes `{"input": PROMPT}` to descriptor
   4 and reads the reply from descriptor 3: `L` and the line, or `E` for the end of the input. The kernel answers with
   Jupyter's `input_request` when the cell allows input, and with `E` when it doesn't. The driver's standard input is
   `/dev/null`, so reading it otherwise ends at once, rather than waiting on a pipe nothing writes.
@@ -119,7 +119,7 @@ runs displays and reads through the kernel too.
 
 Jupyter interrupts a kernel with SIGINT, which ipykernel turns into `KeyboardInterrupt` in `do_execute`; the session
 sends SIGINT on to the driver. **Only a driver given `--kernel` installs a handler, or checks for one** (a decision of
-the user's, 2026-11-02). Everything else is as before and pays nothing: code the JIT compiles for the terminal REPL,
+the user's, 2026-11-02). Everything else pays nothing: code the JIT compiles for the terminal REPL,
 `-e` or a file; every binary `quest compile` writes; and the interpreter outside kernel mode. Ctrl-C keeps its
 default meaning there.
 
@@ -129,9 +129,9 @@ default meaning there.
 - **The driver** (`questlang/driver/interrupts`) finds them by name, through `os/code`'s `symbol`, installs the
   handler, and clears the flag before each cell, so an interrupt between cells is forgotten. A driver whose runtime
   lacks them, stage 1, built against the release's, runs without interrupts.
-- **The JIT's code** checks the flag at each function's entry and each loop's head: `ssa/passes/interrupts`, run after the
-  SSA's passes when the driver asks (`pipeline.setInterruptChecks`; ssa.md §4.1). `QUEST_SKIP_PASSES=interrupts`
-  leaves it out.
+- **The JIT's code** checks the flag at each function's entry and each loop's head: `ssa/passes/interrupts`, run
+  after the SSA's passes when the driver asks (`pipeline.setInterruptChecks`; ssa.md §4.1).
+  `QUEST_SKIP_PASSES=interrupts` leaves it out.
 - **The interpreter** (`--kernel --no-jit`) polls the flag at each loop iteration and call (`treewalk`'s
   `setInterruptPoll`). It has no tail calls, so a function that calls itself forever overflows its stack first.
 - **What isn't checked:** code already compiled, the driver's own modules and the library, so a cell stuck in a
@@ -139,8 +139,8 @@ default meaning there.
 - `interrupted` is the runtime's alone, declared by no interface, so a cell can't name it; a `try` with a catch-all
   branch catches it.
 
-**What the checks cost** (benchmarks.md §12): about 2.5 percent of a cell's running time in the six (life, mlyacc,
-zebra, and nucleic 2 to 3 percent; ray, unexplained, 10 percent less; hamlet not measurable this way).
+**What the checks cost** (benchmarks.md §12, 2026-11-03): about 2.5 percent of a cell's running time in the six
+(life, mlyacc, zebra, and nucleic 2 to 3 percent; ray, unexplained, 10 percent less; hamlet not measurable this way).
 
 ## 6. Highlighting
 

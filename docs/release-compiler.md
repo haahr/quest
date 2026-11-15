@@ -54,8 +54,8 @@ seconds.
      whole-program one among them (`--whole-program-fixed-point --fixed-point-only`, [testing.md](testing.md) §2.3),
      and the self-hosted suite runs with the whole-program build instead, the binary released.
   3. If both pass, write the new release into a directory of its own beside the releases (`new-COMMIT-PID`): stage 2
-     (or its whole-program build) as `quest`, `git archive` of the commit's `lib/` and `runtime/` as `home/`, and `release.json`, which records
-     the seed: `release COMMIT` or `bootstrap`.
+     (or its whole-program build) as `quest`, `git archive` of the commit's `lib/` and `runtime/` as `home/`, and
+     `release.json`, which records the seed: `release COMMIT` or `bootstrap`.
   4. Check it as `--verify` does: its digest, and a small program it builds against its own `home/` and runs.
   5. With the lock held, rename it to `COMMIT`, point `previous` at the old current release and `current` at the new
      one, and remove the releases neither names. Each link is replaced by renaming a new one over it, which is
@@ -107,7 +107,7 @@ Stage 2 is the new compiler. Each stage has its own build directory, and the eng
   too.
 - **A new library** in `lib/` that `questlang/` will use lands that way: a commit adding the interface and module,
   their natives in `runtime/` (with an ABI bump if there are any), both interpreters' builtins, goldens, a section in
-  [new-libraries.md](new-libraries.md), and a snapshot of the interface in the ABI corpus's inputs; then a release;
+  [libraries.md](libraries.md), and a snapshot of the interface in the ABI corpus's inputs; then a release;
   then a commit moving `questlang/`'s callers over. The self-hosted interpreter's builtins are the one use inside
   `questlang/` that cannot wait for the release, so until it is cut, `./quest` needs `QUEST_SEED=bootstrap`.
 

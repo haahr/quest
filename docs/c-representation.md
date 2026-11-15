@@ -1,10 +1,12 @@
 # Quest C Representation and Runtime ABI Design
 
 This document specifies the C representation of Quest values, types, aggregates, closures, environments, exceptions,
-and identifier mappings for **Step 4: Bootstrap C Transpiler** and the shared runtime in `runtime/`.
+and identifier mappings that both compilers' C backends print ([codegen-c.md](codegen-c.md)), and the shared runtime
+in `runtime/`.
 
-These representations are designed to be shared directly with the **Step 6: Native AArch64 Backend** and future
-64-bit architectures (such as x86-64).
+The native arm64 backend and the JIT compute the same layouts and call the same runtime ([arm64.md](arm64.md) §3.3,
+§7), so these representations are the contract between every backend's units; nothing in them is specific to arm64,
+and the C backend also targets x86-64 (Linux).
 
 ---
 
@@ -165,7 +167,7 @@ evaluated:
    non-generic functions. This preserves register allocation and zero-boxing overhead where types are known at compile
    time.
 
-### 3.5. ABI and Calling Convention Properties
+### 3.6. ABI and Calling Convention Properties
 - Under **AAPCS64** (macOS and Linux AArch64), `QVal` is an 8-byte composite type containing integer/pointer members;
   it is passed in a single **64-bit general-purpose register** (`x0`–`x7`) and returned in `x0`.
 - Under **System V AMD64** (x86-64), `QVal` is classified as `INTEGER` class and passed in `rdi`, `rsi`, `rdx`, etc.,
@@ -774,7 +776,7 @@ static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
    `(&qf_square_closure)` without allocating.
 3. **Exported Module Functions:** For each exported function of a module `mod`, a non-static wrapper
    `RetType qv_<mod>_<fn>(<descriptors>, <params>)` without an environment parameter is emitted at C file scope so
-   other compilation units can call it directly via `extern` declarations ([modules.md](modules.md) §5.3).
+   other compilation units can call it directly via `extern` declarations ([modules.md](modules.md) §8.2).
    A standard library module's function that the module defines as an external C function, monomorphic, of value
    parameters only, and of scalar and external types, is called by the self-hosted compiler's importers as that C
    function itself (`quest_word_xor_bits(a, b)` for `word.xorBits(a b)`), so the C compiler can inline it. The
@@ -1327,8 +1329,8 @@ document are unchanged.
 - `quest_alloc(size_t bytes, const QLayout *layout)`: an object of a fixed or array layout, zeroed.
 - `quest_alloc_sized(size_t bytes, const QLayout *layout)`: an object of a sized layout (a repeating element over a
   size known only at the call), zeroed, with its byte count recorded in the word before the header.
-- `quest_alloc_bytes(size_t bytes)`: pointer-free bytes (string buffers), which the collector never scans and which
-  are not zeroed.
+- `quest_alloc_bytes(size_t bytes)`: pointer-free bytes (string buffers), which the collector never scans, zeroed as
+  every allocation is (holes are zeroed as the allocator enters them).
 - `quest_alloc_words(size_t n)`: n words of unknown kind, for the runtime's structures that hold values of any type.
 
 A compiler's allocation site names a layout the unit defines (`quest_layout_<tag>`, computed by
@@ -1379,7 +1381,7 @@ never collects.
 
 ## 10. Shared `runtime/` Directory Structure & Implemented Functions
 
-The runtime files are located at the repository root and shared with future native code backends:
+The runtime files are located at the repository root and shared by every backend (C, arm64, and the JIT):
 ```
 runtime/
 ├── quest_runtime.h           /* Core ABI, QVal, QProxy, exceptions, the runtime's functions, inline helpers */
@@ -1397,7 +1399,7 @@ runtime/
 ├── quest_serialization.h     /* Dynamic serialization & deserialization API */
 ├── quest_serialization.c     /* dynamic.extern & dynamic.intern (docs/dynamic.md §2) */
 ├── quest_code.c              /* The JIT's primitives (docs/jit.md) */
-├── quest_readline.c          /* io/readline: line editing and history (docs/new-libraries.md §3.1) */
+├── quest_readline.c          /* io/readline: line editing and history (docs/libraries.md §3.1) */
 └── quest_inline.c            /* External definitions of the header's Q_INLINE helpers (docs/arm64.md §7.5) */
 ```
 
@@ -1411,7 +1413,8 @@ runtime/
   - `QString *quest_string_get_sub(const QString *s, int64_t start, int64_t len)`: Extracts substring slice.
   - `void quest_string_set_sub(QString *dest, int64_t d_start, const QString *src, int64_t s_start, int64_t len)`: Overwrites slice.
 - **Array Primitives:**
-  - `QArray *quest_array_new(int64_t len, QVal init_val)`: Allocates length-prefixed array with initial element values.
+  - `QArray *quest_array_new(int64_t len, QVal init_val, const QLayout *layout)`: Allocates length-prefixed array with
+    initial element values, its layout saying whether the elements are pointers, scalars, or ambiguous.
   - `void quest_check_array_bounds(const QArray *a, int64_t idx)`: Inline guard checking `idx >= 0 && idx < a->length`.
 - **Floating-Point Math:**
   - `double quest_real_add/sub/mul(double a, double b)`, `double quest_real_divide(double a, double b)`: Implement
@@ -1503,7 +1506,8 @@ When an interface `x.int.quest` is compiled (`quest -c x.int.quest`), the compil
 - [codegen-c.md](codegen-c.md): C Code Generator architecture, AST lowering, and compiler runner.
 - [pipeline.md](pipeline.md): Compiler pipeline passes and dual-pipeline CLI driver.
 - [runtime-design.md](runtime-design.md): Evidence Passing vs. Fat Pointers and AAPCS64 register ABI.
-- [roadmap.md](roadmap.md): 7-stage compiler implementation roadmap.
+- [roadmap.md](roadmap.md): The seven steps of the implementation, all complete.
+- [collector.md](collector.md): The collector that allocates and reclaims these objects.
 - [type-system.md](type-system.md): Quest higher-order subtyping and typing rules.
 - [interpreter.md](interpreter.md): Python interpreter architecture and standard library modules.
 

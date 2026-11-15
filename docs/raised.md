@@ -8,11 +8,10 @@ is the binder's type and whose function `raised.reraise` raises a caught excepti
 
 ## 1. Motivation
 
-A `try` catches an exception it does not know with `else`, but the `else` branch cannot refer to that exception, so
-it cannot raise it again. Code that must do something whenever its body fails, and then let the failure go on (the
-idiom other languages call `finally`), can only list the exceptions it expects and raise each again by hand, as
-`flushingLog` in `questlang/build/engine.mod.quest`, `loading` in `questlang/modules/loader.mod.quest`, and
-`inScope` in `questlang/modules/elaboration.mod.quest` did before this extension:
+A `try` catches an exception it does not know with `else`. Without a binder, the `else` branch cannot refer to that
+exception, so it cannot raise it again. Code that must do something whenever its body fails, and then let the failure
+go on (the idiom other languages call `finally`), could then only list the exceptions it expects and raise each again
+by hand:
 
 ```quest
 let result = try
@@ -27,7 +26,8 @@ This is wrong in two ways. An exception the list leaves out (`int.error`, `array
 `restore()`. And raising again is a new raise: the exception is reported at the handler, with the handler's frames,
 rather than where it was raised ([exceptions.md](exceptions.md) §1).
 
-With this extension:
+With a binder, as `flushingLog` in `questlang/build/engine.mod.quest`, `loading` in
+`questlang/modules/loader.mod.quest`, and `inScope` in `questlang/modules/elaboration.mod.quest` do:
 
 ```quest
 let result = try
@@ -52,9 +52,9 @@ TryBranches ::=
     ["else" ["with" ide [":" Type] "then"] Binding]
 ```
 
-`else with e then body` binds `e` in `body`. Without `with`, `else body` is unchanged. `with` cannot begin a
+`else with e then body` binds `e` in `body`; without `with`, `else body` binds nothing. `with` cannot begin a
 Binding, so the two forms are told apart by the token after `else`. (`else e then` would need lookahead past the
-binding `e`, which today is itself a valid `else` branch.)
+binding `e`, which is itself a valid `else` branch.)
 
 The annotation, if written, must be a type equal to `raised.T`.
 
@@ -95,7 +95,7 @@ can be passed to `raised.reraise`, stored in a variable declared `raised.T`, and
 is opaque: its exception and payload cannot be selected. (If they could, `raise r.exc with r.payload end` would type
 check, but would be a new raise, losing the original site and frames.)
 
-`raise` is unchanged: it raises an `Exception(T)`, and `raise e end` with `e: raised.T` is the existing error
+`raise` raises only an `Exception(T)`: `raise e end` with `e: raised.T` is the error
 "Cannot raise non-exception type 'raised.T'".
 
 ---
@@ -138,7 +138,7 @@ frames (§5).
 `reraise`'s result type `A` is only there so that a call can stand wherever a value is expected, since it does not
 return: Quest has no bottom type in its source language. Where the context fixes the type (a checked `let`, a
 function body with a declared result, an argument), `A` is inferred; in a position whose type is synthesized, such as
-an unannotated `let x = try ... end`, it is written: `raised.reraise(:A e)`, as `raise E as A end` is today.
+an unannotated `let x = try ... end`, it is written: `raised.reraise(:A e)`, as in `raise E as A end`.
 
 ### 4.3. Values of `raised.T`
 
@@ -164,9 +164,9 @@ The rules of [exceptions.md](exceptions.md) apply, with these additions:
   none yet (it was raised in that frame), as leaving the frame would have.
 - **Compiled code.** A `try` whose `else` names its exception records that it catches everything *and* must capture
   frames (`Q_CATCH_ALL_TRACED`): a raise into it captures them (§5.4 there) before jumping to the handler, as for a
-  handler with a pattern that is not pure (`Q_CATCH_UNKNOWN`, §5.1 there). The cost falls only on raises that such a handler catches. Without
-  it, an exception that `reraise` raises and nothing catches would print the frames active at the `reraise`, not at
-  the raise.
+  handler with a pattern that is not pure (`Q_CATCH_UNKNOWN`, §5.1 there). The cost falls only on raises that such a
+  handler catches. Without it, an exception that `reraise` raises and nothing catches would print the frames active at
+  the `reraise`, not at the raise.
 - `stack.overflow` cannot be caught in compiled code (§6 there), so it never reaches an `else with` there; in the
   interpreters it is caught and raised again like any other exception.
 
@@ -175,11 +175,13 @@ The rules of [exceptions.md](exceptions.md) apply, with these additions:
 ## 6. Representation
 
 - **Bootstrap interpreters** (tree-walking and IR): a value wrapping the caught `QuestException`.
-- **Self-hosted interpreters**: a new `Value` form holding the caught `model.runError`.
+- **Self-hosted interpreters**: a `Value` form, `vRaised` (`questlang/values/model.int.quest`), holding the caught
+  `model.runError`'s payload.
 - **Compiled code**: `QRaised *`, a pointer to a heap copy of the handler's `QExceptionState` (exception, payload,
   site, captured frames), allocated with `quest_alloc` when the binder is bound (`quest_raised_capture`, which the IR's
-  `caught_exception(e)` becomes). Nothing is allocated on any other path. `raised.reraise` is the runtime's `QVal quest_raised_reraise(const QTypeDescriptor *a, QRaised *r)`, which never
-  returns: it calls `quest_reraise(*r)`.
+  `caught_exception(e)` becomes). Nothing is allocated on any other path. `raised.reraise` is the runtime's
+  `QVal quest_raised_reraise(const QTypeDescriptor *a, QRaised *r)`, which never returns: it calls
+  `quest_reraise(r->state)`.
 
 ---
 

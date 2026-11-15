@@ -1,10 +1,10 @@
 # Quest Project Implementation Roadmap
 
-This document outlines the seven-stage architecture for the Quest programming language implementation,
-following a staged compiler methodology (inspired by Jeremy Siek's *Essentials of Compilation*).
-
-The ultimate project goal is a **fully self-hosted implementation written in Quest itself**, capable of compiling to
-native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for interactive execution.
+The seven steps of the Quest implementation, following a staged compiler methodology (inspired by Jeremy Siek's
+*Essentials of Compilation*): a bootstrap in Python (steps 1 to 4), and a **self-hosted implementation written in
+Quest** (steps 5 to 7) that compiles to native **AArch64 (ARM64)** machine code and runs interactive code on a **JIT
+compiler**. Every step is complete; open work is in [tasklist.md](tasklist.md) and the reference documents' open-work
+sections.
 
 ---
 
@@ -31,14 +31,14 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
 | SELF-HOSTING & NATIVE TARGETING IN QUEST (Located in questlang/)                  |
 |                                                                                   |
 |  [Step 5] Self-Hosted Front-End, Typechecker, & C Compiler [COMPLETE]             |
-|       │   • Compile self-hosted Quest using Python bootstrap C emitter            |
-|       │   • Achieve self-compilation loop: Quest compiles Quest                   |
+|       │   • Built first by the Python bootstrap, then by a release of itself      |
+|       │   • Self-compilation fixed point: Quest compiles Quest                    |
 |       ▼                                                                           |
 |  [Step 6] Self-Hosted Native AArch64 Compiler (Nanopass Pipeline) [COMPLETE]      |
-|       │   • Direct code generation, an alternative to C emission                  |
+|       │   • Direct code generation; the default backend                           |
 |       ▼                                                                           |
 |  [Step 7] Native AArch64 JIT & Interactive Incremental Runtime [COMPLETE]         |
-|           • In-process dynamic code emission and execution for REPL               |
+|           • In-process code emission and execution for the REPL, -e, and files    |
 +-----------------------------------------------------------------------------------+
 ```
 
@@ -85,8 +85,8 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   (`treewalk.py`), IR interpreter (`ir_interp.py`), shared primitive operations (`primitives.py`) and formatting
   (`formatting.py`), exceptions (`try...when...else`, `raise`), `auto` / `inspect` dynamic type reflection, and
   Cardelli standard library bridges (`builtins.py`).
-- **Interactive REPL (`quest/repl.py`):** Persistent multi-line REPL with transactional `UnitGraph` rollback on error
-  and batch `--echo` / `-i` modes.
+- **Interactive REPL (`quest/driver/repl.py`):** Persistent multi-line REPL with transactional `UnitGraph` rollback on
+  error and batch `--echo` / `-i` modes.
 - Interpreter architecture in [interpreter.md](interpreter.md); REPL guide in [repl.md](repl.md).
 
 ### Step 4: Bootstrap C Compiler (Python) — *Complete*
@@ -99,8 +99,8 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   1-word boxed aggregate slots (`slot_representation`), tagged `QProxy` views on depth-upcast tuples and options,
   native pointer lowering (`T *`) for `var`/`out` parameters, runtime type descriptors (`QTypeDescriptor`), and
   portable C99 emission (`codegen/c/`).
-- **Runtime & Separate Compilation (`runtime/`, `quest/modules/`, `quest/build/`):** C99 runtime with a garbage
-  collector (Boehm's until 2026-11, now Quest's own, [collector.md](collector.md); `--nogc` never collects),
+- **Runtime & Separate Compilation (`runtime/`, `quest/modules/`, `quest/build/`):** C99 runtime with Quest's own
+  garbage collector ([collector.md](collector.md); `--nogc` never collects),
   `setjmp`/`longjmp` exceptions with `<unwind.h>` native stack tracebacks, JSOG dynamic graph serialization
   (`dynamic.extern` / `dynamic.intern`), separate compilation of interfaces (`.int.h`, `.qi`) and modules (`.mod.c`,
   `.o`, `.qm`), and incremental build/dependency resolution (`BuildEngine`).
@@ -109,47 +109,44 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   [extensions.md](extensions.md).
 
 ### Step 5: Self-Hosted Compiler & Interpreter (Written in Quest) — *Complete*
-- Port the compiler and interpreter into idiomatic, modular Quest under `questlang/`
-  ([compiler-organization.md](compiler-organization.md)). Done, in five milestones: the front end, the type checker
-  (which reports several errors, [diagnostics.md](diagnostics.md) §4.5), the tree-walking interpreter and the REPL,
-  the IR and its interpreter, and the C backend, build artifacts, and build engine.
-- Implement collection, utility, and operating-system libraries in Quest (`collections/vector`, `collections/hashMap`,
+- The compiler and interpreter in idiomatic, modular Quest under `questlang/`
+  ([compiler-organization.md](compiler-organization.md)): the front end, the type checker (which reports several
+  errors, [diagnostics.md](diagnostics.md) §4.5), the tree-walking interpreter and the REPL, the IR and its
+  interpreter, and the C backend, build artifacts, and build engine.
+- Collection, utility, and operating-system libraries in Quest (`collections/vector`, `collections/hashMap`,
   `collections/hashSet`, `util/maybe`, `util/stringBuilder`, `util/strutil`, `util/path`, `util/argParse`, `util/hash`,
-  `io/readline`, `os/fileStats`, `os/process`; see [new-libraries.md](new-libraries.md)). Done.
-- Compile the self-hosted Quest compiler using the Python bootstrap C compiler and validate the bootstrap fixed-point:
-  `Quest(Quest) == Quest`. Done: the self-hosted compiler's build of itself writes the artifacts its seed's build
-  wrote, and rebuilds itself as the same binary (`run_tests.py --self-hosting`). `./quest` runs it, built by a
-  released self-hosted compiler ([release-compiler.md](release-compiler.md)), compiling modules in parallel.
+  `io/readline`, `os/fileStats`, `os/process`; see [libraries.md](libraries.md)).
+- The fixed point `Quest(Quest) == Quest`: the self-hosted compiler's build of itself writes the artifacts its seed's
+  build wrote, and rebuilds itself as the same binary (`run_tests.py --self-hosting`). `./quest` runs it, built by a
+  released self-hosted compiler ([release-compiler.md](release-compiler.md)), compiling modules in parallel; the
+  bootstrap builds the first release.
 - It is the primary compiler: the two compilers share what programs do, not how they compile them
   ([testing.md](testing.md) §2.8). The bootstrap is kept so that the compiler can be rebuilt from nothing, and the
   self-hosting check confirms that it still builds the compiler the release does.
-- Give the self-hosted driver the bootstrap's commands and options: the interpreter and REPL, `compile` (with
+- The self-hosted driver takes the bootstrap's commands and options: the interpreter and REPL, `compile` (with
   `--emit-c`, `--nogc`, and `-c`), separate compilation of units, and every phase's `--stop-after` and `--dump-after`.
   `self-hosted/compile_command` checks that the two drivers' commands do the same.
 
 ### Step 6: Native AArch64 Code Generator (Written in Quest) — *Complete*
-- A native arm64 backend for Darwin, an alternative to C emission whose objects link with the C backend's, unit by
-  unit; the plan is [arm64.md](arm64.md):
-  1. *Shared lowering and layout, taken out of the C printer*
-  2. *Low-level SSA with block arguments, and an SSA-to-C printer as an oracle*
-  3. *Instruction selection (machine SSA over virtual registers)*
-  4. *Register allocation (a trivial allocator, then linear scan on SSA)*
-  5. *Frames, tail calls, exceptions, and assembly emission*
+- A native arm64 backend for Darwin whose objects link with the C backend's, unit by unit
+  ([arm64.md](arm64.md)): lowering and layout shared with the C printer, a low-level SSA with block arguments and its
+  passes ([ssa.md](ssa.md)), an SSA-to-C printer (`ssac`) as an oracle, instruction selection into machine SSA over
+  virtual registers, linear-scan register allocation, and frames, tail calls, exceptions, stack maps for the
+  collector, and assembly emission.
 - Follows the evidence-passing object model and AAPCS64 register conventions in [runtime-design.md](runtime-design.md).
-- Done: every step of arm64.md, which is now the backend's reference. arm64 is the default backend, for programs,
-  the compiler, and releases, since 2026-11-12 (arm64.md §1, [benchmarks.md](benchmarks.md) §21).
+- arm64 is the default backend, for programs, the compiler, and releases, since 2026-11-12 (arm64.md §1,
+  [benchmarks.md](benchmarks.md) §21); `--backend c` compiles through C.
 
 ### Step 7: Native AArch64 JIT & Interactive Incremental Runtime — *Complete*
-- In-process dynamic code emission and execution for the REPL, and later for files and `-e`, with the interpreters'
-  semantics: interactive code redefines a name of the same type in place ([repl.md](repl.md) §6), and otherwise a
-  rebinding shadows (no hot-swapping).
-- Planned in [jit.md](jit.md). Done: step 1, `unsound` interfaces and modules ([modules.md](modules.md) §4.4); step 2,
-  frames by the frame-pointer chain; step 3, `os/value` and `os/code` ([new-libraries.md](new-libraries.md) §4.4);
-  step 4, interface fingerprints in every module unit (`qh_`); step 5, the arm64 encoder;
-  step 6, the REPL on `--jit`; step 7, imports and `-i`;
-  step 8, files and `-e` ([benchmarks.md](benchmarks.md) §10 has the times). Since 2026-11-01 the REPL, `-e`, and
-  files run on it by default, and it compiles the user's own modules. What jit.md leaves for later (inlining
-  across inputs, redefinition with another type, surviving faults) goes beyond this step.
+- In-process code emission and execution for the REPL, `-e`, and files, the default way the driver runs them
+  (`--no-jit` interprets), with the interpreters' semantics: interactive code redefines a name of the same type in
+  place ([repl.md](repl.md) §6), and otherwise a rebinding shadows (no hot-swapping).
+- Described in [jit.md](jit.md): `unsound` interfaces and modules ([modules.md](modules.md) §4.4), frames found by
+  the frame-pointer chain, `os/value` and `os/code` ([libraries.md](libraries.md) §4.4), interface
+  fingerprints in every module unit (`qh_`), an in-memory arm64 encoder and loader in place of the assembler and
+  linker, and the user's own modules compiled and loaded as units ([benchmarks.md](benchmarks.md) §10 has the times).
+  What jit.md leaves for later (inlining across inputs, redefinition with another type, surviving faults) is open
+  work there.
 
 ---
 

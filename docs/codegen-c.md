@@ -1,8 +1,11 @@
 # C Code Generator and Host Compilation Architecture (`codegen_c`)
 
-This document specifies the C the compiler generates and the host compiler driver (`bootstrap/python/quest/codegen/`).
-How a program gets there, the IR and its passes, is [ir.md](ir.md); the representations of values in C are
-[c-representation.md](c-representation.md).
+This document specifies the C the compiler generates and the host compiler driver, by the bootstrap's modules
+(`bootstrap/python/quest/codegen/`, `bootstrap/python/quest/build/compiler_runner.py`). The self-hosted compiler's C
+backend has the same modules in Quest (`questlang/codegen/c/`: `printer`, `declarations`, `headers`, `types`; and
+`questlang/build/compilerRunner`) and prints the same C, except where its own passes (ir.md §8.6, §8.7) change what
+it is given; `tools/c-diff` shows its C ([testing.md](testing.md) §2.9). How a program gets there, the IR and its
+passes, is [ir.md](ir.md); the representations of values in C are [c-representation.md](c-representation.md).
 
 ---
 
@@ -39,9 +42,14 @@ the C runtime and link with the C backend's:
   (which name structs and descriptors), type digests and identity keys, representations (`representation`, named by
   the runtime's C types, and `signature_representation` for calls), slot representations (`slot_representation`: as
   an aggregate's slot or a `QVal` holds a value, a record or variant boxed) and location representations
-  (`location_representation`: as a `var` parameter's location holds it), and whether generic code's layout agrees
-  with the native one (`generic_layout_agrees`). The IR's represent pass decides its plans from these. Reduced types and the
-  canonical forms of recursive types, which shapes are built from, are `types/canonical.py`'s.
+  (`location_representation`: as a `var` parameter's location holds it). The IR's represent pass decides its plans
+  from these. Reduced types and the canonical forms of recursive types, which shapes are built from, are
+  `types/canonical.py`'s.
+- **`generic_layout.py`:** Whether generic code's layout of a value agrees with the native one
+  (`generic_layout_agrees`), which decides where values are converted, and the layouts of module abstract types'
+  applications.
+- **`digests.py`:** Digests of types, standing for their printed text, which name structs, descriptors, and layouts
+  where layout tags would conflate types.
 - **`descriptors.py`:** Runtime descriptors' type-level forms: placeholders for bound type parameters and template
   holes, and the canonical function and auto types that descriptors compare.
 - **`shapes.py`, `written.py`, `objectlayout.py`:** Types as the passes see them, the types of a type's components
@@ -49,13 +57,13 @@ the C runtime and link with the C backend's:
 - **`symbols.py`:** The names units link against (identifier and module mangling).
 - **`syntax.py`:** The spelling of C text: literals, and the forms the C backend repeats.
 
-What every backend shares besides (`codegen/`):
-- **`backend.py`:** The IR's passes after lowering (`run_passes`), and the modules a unit uses without importing them.
+What every backend shares besides: `ir/pipeline.py`, the IR's passes after lowering (`run_passes`), and the modules a
+unit uses without importing them (`implicit_imports`).
 
-The C backend (`codegen/c/`):
-- **`backend.py`:** Its entry points, `program_to_c` and `module_file_to_c` (lowering, passes, printing), used by
-  `module_compiler.py` and `BuildEngine`; the pipeline runs the same steps as phases (`ir_core` ...
-  `ir_described`, then `codegen_c`).
+The C backend (`codegen/backend.py` and `codegen/c/`):
+- **`codegen/backend.py`:** Its entry points, `program_to_c` and `module_file_to_c` (lowering, passes, printing),
+  used by `modules/artifacts/module_compiler.py` and `BuildEngine` (`build/engine.py`); the pipeline runs the same
+  steps as phases (`ir_core` ... `ir_described`, then `codegen_c`).
 - **`printer.py`:** `CPrinter`, printing a described IR unit as C: the descriptors it is given (descriptor variables,
   static descriptors, instantiated templates) and the unit's static data (static descriptors, offset tables, tag
   maps), which declarations.py declares.
@@ -255,9 +263,10 @@ pointer-based field access.
   ordering dependencies.
 
 ### 6.2. Heap Allocation, Embedded Boxes, & Member Initialization
-Tuples and records (`ir.MakeTuple`, `ir.MakeRecord`) are heap-allocated via `quest_alloc` (managed by the collector or
-standard `calloc` in `--nogc` mode), each site naming the layout of the object it makes (a static `QLayout` of the
-unit, `quest_layout_<tag>`, saying which of its words are pointers; [c-representation.md](c-representation.md) §9):
+Tuples and records (`ir.MakeTuple`, `ir.MakeRecord`) are heap-allocated via `quest_alloc`, the collector's inline
+allocation ([collector.md](collector.md) §3.4), each site naming the layout of the object it makes (a static `QLayout`
+of the unit, `quest_layout_<tag>`, saying which of its words are pointers; [c-representation.md](c-representation.md)
+§9):
 ```c
 /* origin = tuple let x = 0 let y = 0.0 end */
 g_origin = (QTuple_Int_Real *)quest_alloc(sizeof(QTuple_Int_Real), &quest_layout_QTuple_Int_Real);
@@ -283,8 +292,8 @@ tuple and option reads (`ir.TupleField`, `ir.IsTag`, `ir.Payload`, `ir.Ordinal`)
     any proxy tag via `((TupleStruct *)quest_unproxy(l_p))->_0`.
   - **`proxy`** (the tuple or option type may hold a `QProxy` from a depth upcast,
     [runtime-design.md §2.3](runtime-design.md)): tests `quest_is_proxy(l_p)` first; on the fast path reads `l_p->_0`
-    directly, and on the proxy path calls `quest_proxy_field(l_p, 0, is_mutable)` to convert on demand (memoizing
-    immutable components in `proxy->cache`).
+    directly, and on the proxy path calls `quest_proxy_element(l_p, 0)` to convert on demand (memoizing immutable
+    components in `proxy->cache`).
 - **Record Selection (`ir.RecordField` on `QRecordVal`):**
   - Looks up the byte offset in the fat pointer's `.dict` (`((const OffsetDict_Target *)l_r.dict)->offset_x`). If the
     field's type could differ by depth subtyping, checks `dict->stored_types` via `quest_record_field_value`.
@@ -293,6 +302,11 @@ tuple and option reads (`ir.TupleField`, `ir.IsTag`, `ir.Payload`, `ir.Ordinal`)
     `*((QInt *)((char *)l_r.val + ((const OffsetDict_Target *)l_r.dict)->offset_y)) = 42LL;`.
   - Assigning to a mutable tuple component writes to the unproxied root tuple (`quest_unproxy(l_t)`) via
     `quest_proxy_store(l_t, index, val_word)` when the tuple type may be proxied, or `l_t->_0 = val` when direct.
+- **Write barriers:** a store of a word that may be a pointer into an object that already exists (a field, a
+  component, an array's element, a location) is followed by `quest_barrier(obj)` or `quest_barrier_slot(slot)`, with
+  nothing called between the two; an object whose initializing stores have a call between them is logged before each
+  later call and after its last store (`begin_init`). [c-representation.md](c-representation.md) §9 gives the rule,
+  and [collector.md](collector.md) §3.5 the reasons.
 
 ---
 
@@ -434,19 +448,19 @@ typedef struct QVariantVal {
 Cardelli's structural subtyping is lowered to explicit conversion plans (`ir.Convert`) by `ir/represent.py`
 ([ir.md §8.4](ir.md)):
 
-### 10.1. Tuple & Option Subtyping (`cast` vs. `view` / `proxy_tuple`)
+### 10.1. Tuple & Option Subtyping (`cast` vs. `view`)
 - **Prefix Tuple & Index-Preserving Option Subtyping (`cast`):** When a wider tuple is coerced to a prefix tuple and all
   kept components have the same representation, or when an option is coerced to a supertype option where every subtype
   case keeps the same alphabetical tag index and payload representation (e.g. `Option a b end <: Option a b c end`),
   `ir.Convert` uses a direct pointer `cast` `(TargetStruct *)l_src`, accompanied by memoized `static_assert` checks on
   tuple field offsets.
-- **View-Changing Upcasts via Tagged Proxies (`view` / `proxy_tuple` / `proxy_option`):** When a tuple or option is
+- **View-Changing Upcasts via Tagged Proxies (`view`):** When a tuple or option is
   upcast to a supertype where a component changes representation (e.g. a record component gets a narrower offset
   dictionary, a variant component remaps tags, or a closure component is wrapped in an adapter thunk) or where an
   option's alphabetical tag indices shift (e.g. `Option b c end <: Option a b c end`), copying the aggregate would break
   object identity (`is`) and disconnect mutable `var` components. Instead, the value is wrapped in a tagged `QProxy`
-  ([runtime-design.md §2.3](runtime-design.md)) via `quest_make_tuple_proxy`, `quest_make_option_proxy`, or
-  `quest_convert`.
+  ([runtime-design.md §2.3](runtime-design.md)) by a `view` plan, `quest_make_proxy(v, from, to)` through
+  `quest_convert` ([c-representation.md](c-representation.md) §5.8).
 
 ### 10.2. Evidence-Passing Record Subtyping (`record_dict` / `record_view`)
 - **Object Header:** Every concrete record structure begins with `QRecordHeader header;` at offset 0, set at
@@ -613,7 +627,7 @@ The compiler runner, which lives with the build engine since every backend's obj
 under which it allocates but never collects.
 
 `detect_readline_flags()` locates the line editor `runtime/quest_readline.c` uses (GNU readline, then libedit, else
-`-DQUEST_NOREADLINE`; `QUEST_READLINE` chooses one), as [new-libraries.md](new-libraries.md) §3.1 describes.
+`-DQUEST_NOREADLINE`; `QUEST_READLINE` chooses one), as [libraries.md](libraries.md) §3.1 describes.
 
 ### 11.3. Compilation Invocation
 The runtime's C files (`quest_runtime.c` and the six split from it, `quest_serialization.c`, `quest_readline.c`,

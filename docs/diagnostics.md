@@ -43,8 +43,9 @@ known, the "imported here" labels, and whether it is silent (§4.5). Its interpr
 
 **A diagnostic** is what is printed. The bootstrap's `Diagnostic` has:
 
-- `severity`: `FATAL`, `ERROR`, `WARNING`, or `INFO`. Only errors and fatal errors are reported today; nothing emits a
-  warning or an informational diagnostic.
+- `severity`: `FATAL`, `ERROR`, `WARNING`, or `INFO`. The one warning is the REPL's, for a top-level `let` that
+  shadows an interactive slot ([repl.md](repl.md) §6; `Diagnostic.make_warning`, and the self-hosted checker's
+  `warnings`); nothing emits an informational diagnostic.
 - `message`, and a `primary_label`: the offset and length the caret marks.
 - `secondary_labels`: other places, each in its own file (`DiagnosticLabel.source_map`), such as the import that
   loaded the file the error is in.
@@ -103,7 +104,7 @@ with `try ... when exc with p then ... end`; the standard library raises its own
 | `arrayOp.error` | an index out of bounds, or a negative array size |
 | `variant.tagMismatch` | extracting an option's or variant's case (`!`) when the value is another case |
 | `dynamic.error` | `dynamic.be` on a type mismatch, and `copy`, `intern`, and `extern` failures |
-| `stack.overflow` | a call that would go too deep |
+| `stack.overflow` | a call that would go too deep, in the interpreters (compiled code ends, [exceptions.md](exceptions.md) §6) |
 
 An uncaught exception is reported as a located error at the site it was raised, with the source line, followed by the
 Quest functions running there, most recent first ([exceptions.md](exceptions.md) §2):
@@ -118,7 +119,8 @@ stack.mod.quest:18:9: error: Exception: stack.underflow
 ```
 
 Every backend reports the same exception and site. The interpreters list every frame; compiled code lists only some
-of them, those the C compiler did not inline or turn into jumps (exceptions.md §2.4).
+of them, those that inlining (the compiler's own or the C compiler's) and tail calls did not remove (exceptions.md
+§2.4).
 
 The interpreters keep the names of the running Quest functions on `RuntimeEnvironment.call_stack`, and an error
 leaving a function records them in `QuestCompilerError.frames`, which the driver renders as `Diagnostic.trace`.
@@ -129,8 +131,9 @@ Compiled code walks the native stack instead, naming functions from the tables e
 An offset means nothing without the file it is in, and an error found while loading an imported interface or module is
 in that file, not the one being compiled. So the unit's file travels with the error:
 
-- **The unit's file.** Each place that reads a unit from source (`module_loader.load_interface` and `load_module`,
-  `interface_compiler.compile_interface_file`, and `module_compiler.compile_module_file`) parses and elaborates it
+- **The unit's file.** Each place that reads a unit from source (`load_interface` and `load_module` in
+  `modules/loader.py`, `compile_interface_file` in `modules/artifacts/interface_compiler.py`, and
+  `compile_module_file` in `modules/artifacts/module_compiler.py`) parses and elaborates it
   inside `diagnostics.in_unit(source_map)` (through `Environment.unit_source` where there is an environment). A
   `QuestCompilerError` leaving it records that unit's `SourceMap`, unless an inner unit already did.
 - **The imports that led there.** Each import is elaborated inside `diagnostics.at_import(offset, source_map)`, with

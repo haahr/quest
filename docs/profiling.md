@@ -2,9 +2,8 @@
 
 How to find out why a compiled Quest program runs as fast as it does: which backend's code is slower and by how
 much, where in the code the time goes, and what the collector is doing. The tools are in `tools/perf/`, and run
-with Homebrew's Python (`python3.11`) on macOS on arm64. [arm64-performance-review.md](arm64-performance-review.md)
-is an example of their use. For whole suites, use `benchmarks/mlton/run.py` ([benchmarks.md](benchmarks.md)), and for
-the compiler's own speed, `tests/perf/measure.py` ([testing.md](testing.md)).
+with Homebrew's Python (`python3.11`) on macOS on arm64. For whole suites, use `benchmarks/mlton/run.py`
+([benchmarks.md](benchmarks.md)), and for the compiler's own speed, `tests/perf/measure.py` ([testing.md](testing.md)).
 
 ## 1. The approach
 
@@ -59,8 +58,8 @@ in the kernel. On a loaded machine, differences under about 5 percent are noise;
 thread of its own wakes every millisecond, records the program counter of each of the program's threads that is
 running, as `sample` does, and names each sample's image and symbol at exit. It does not use `SIGPROF`: macOS posts a
 profiling timer's signal when the thread next returns to user mode, usually from a system call, so a program that
-calls the system now and then had its samples piled on the calls (wc-scanStream showed 88 percent in `read`, where it
-spends 2).
+calls the system now and then would have its samples piled on the calls (wc-scanStream showed 88 percent in `read`,
+where it spends 2).
 
 ```bash
 python3.11 tools/perf/profile.py .build/perf/life.arm64
@@ -82,11 +81,11 @@ Reading it:
   memory.
 - **Compare within a binary, not totals across runs.** A process migrates between performance and efficiency cores,
   so the totals of two runs differ by more than their code does; `timeit.py` compares totals.
-- **Kernel samples are left out** unless `--kernel` is given. A thread blocked in the kernel, such as an idle marker
-  thread of the collector's, is not sampled at all; a kernel sample is of a thread running a system call, at its
-  user program counter in `libsystem_kernel`.
+- **Kernel samples are left out** unless `--kernel` is given. A thread blocked in the kernel is not sampled at all;
+  a kernel sample is of a thread running a system call, at its user program counter in `libsystem_kernel`.
 - **The count of samples is wall time,** a sample a millisecond for each running thread, so a loaded machine, on
-  which the program waits for a core, gives fewer, and the collector's marker threads add theirs while they mark.
+  which the program waits for a core, gives fewer, and a program with more threads more. Quest's collector marks on
+  the program's own thread ([collector.md](collector.md) §3.10), so its samples are the program's.
 
 ## 5. Instruction mix
 
@@ -110,11 +109,14 @@ python3.11 tools/perf/gcstats.py .build/perf/mlyacc.c .build/perf/mlyacc.ssac .b
 ```
 
 runs each with `QUEST_GC_STATS=each` and summarizes: full and minor collections, the time each kind's pauses
-took, bytes allocated, the live data at full collections (median and largest), and the largest heap. Builds from the same SSA allocate the same, so
-when their live data differ, the build with more is keeping dead objects alive: the collector scans the stack and
-registers conservatively, and a stack slot holding a dead value's pointer keeps what it points to. In mlyacc at
-`6f7cb100` (under the Boehm collector), arm64's live data was 3.5 times ssac's, and marking took twice as long.
-Running at `--count 1` shows whether the retention is within one iteration or of earlier ones.
+took, bytes allocated, the live data at full collections (median and largest), and the largest heap. Builds from the
+same SSA allocate the same, so when their live data differ, the build with more is keeping dead objects alive: a
+frame the collector scans conservatively (a C-built unit's, the runtime's, an arm64 function's that enters a `try`)
+keeps alive what any of its words points to, a dead value's pointer left in a stack slot included. An arm64 frame
+with a map is scanned precisely, by the words live across its call ([arm64.md](arm64.md) §3.13), so its dead slots
+keep nothing; `QUEST_GC_MAPS=0` scans every frame whole, to compare. In mlyacc at `6f7cb100` (2026-11-01, under the
+Boehm collector, which scanned every frame whole), arm64's live data was 3.5 times ssac's, and marking took twice as
+long. Running at `--count 1` shows whether the retention is within one iteration or of earlier ones.
 
 The live data at the collector's own collections is a poor measure, though: it collects where its heuristics say,
 which depend on what the program keeps alive, so two builds (and two runs of one build: mlyacc's 96 iterations took
@@ -143,18 +145,23 @@ the heap but holds no value live across the call the frame is in: what a precise
 values live across the call are (their slots, as offsets from `sp`, and their registers) and the frame's size below
 its saved registers; the code is the same as without it. A word is DEAD if it is in one of the frame's own slots, and
 SAVED if it is a callee-saved register the frame saved for its caller, whose own annotation says whether it is live.
-The annotated assembly then shows where a DEAD word's slot was written and where its value should have been cleared.
+The annotated assembly then shows where a DEAD word's slot was written. A DEAD word costs only where the frame is
+scanned whole: in a frame with a map, the collector reads only the live words, so the tool matters for frames
+without one, and for comparing with `QUEST_GC_MAPS=0`.
 `tools/perf/lldb_frames.py` has the lldb command (`deadroots`), which stops at the collection
 (`QUEST_GC_COLLECT_TRAP`, a breakpoint on `quest_gc_trap`) and reads the heap's range from the runtime's
 `quest_gc_heap_lo` and `quest_gc_high_water`.
 
-This found the two leaks of arm64-performance-review.md §4's actuals: values dying as a jump's argument were never
-cleared, and a loop header's parameters that nothing reads were stored by the back edge every time round. With them
-fixed, mlyacc's `main` had no DEAD words.
+Under Boehm, when the backend cleared dead values' slots (2026-11-01), this found two leaks: values dying as a jump's
+argument were never cleared, and a loop header's parameters that nothing reads were stored by the back edge every time
+round ([arm64.md](arm64.md) §3.8). With them fixed, mlyacc's `main` had no DEAD words.
 
 ## 7. Unwind information
 
-A program that raises and catches often walks its stack at each raise (exceptions.md §5). Each frame described by
-DWARF CFI rather than a compact unwind entry costs libunwind a parse. `objdump --unwind-info BINARY` lists each
-function's encoding; on arm64, `0x03...` is DWARF, `0x04...` a frame, and `0x02...` frameless. A Quest function with
-`0x03` is one the linker could not compact, and samples in `libunwind.dylib` in §4's profile show what it costs.
+A program that raises and catches often walks its stack at each raise (exceptions.md §5). On macOS on arm64 the walk
+follows the frame records and reads no unwind information (exceptions.md §5.3); elsewhere it uses the platform's
+unwinder, and so do the stack-overflow handler's backtrace and debuggers. To libunwind, each frame described by DWARF
+CFI rather than a compact unwind entry costs a parse. `objdump --unwind-info BINARY` lists each function's encoding;
+on arm64, `0x03...` is DWARF, `0x04...` a frame, and `0x02...` frameless. A Quest function with `0x03` is one the
+linker could not compact ([arm64.md](arm64.md) §3.10 says how the backend's prologues avoid it), and samples in
+`libunwind.dylib` in §4's profile show what it costs.

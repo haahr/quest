@@ -307,16 +307,12 @@ A `.qm` file records the build manifest for an implementation module or main rou
 The recorded paths let a later build check that each import still resolves to the recorded source (§7.1, rule 4).
 Every entry is written from the unit graph's resolution of the import (§2.1), the one its compilation used.
 
-### 4.4. Builtin Runtime Modules (`BUILTIN_RUNTIME_MODULES`)
-Certain core modules are implemented directly in the native C runtime (`runtime/`, with
-`BuiltinModuleRegistry` providing the interpreter runtime symbol bridge) rather than as Quest source files:
-- **Registry Set:** `BUILTIN_RUNTIME_MODULES = { "dynamic" }`.
-- **Interface Exposure:** Each runtime module defines a standard Quest interface (`dynamic.int.quest`), producing
-  `dynamic.qi` and `dynamic.int.h` for static typechecking.
-- **No Implementation Artifacts:** Runtime modules do not have a `.mod.quest` source file or a separate `.o` object
-  file; their implementations are permanently linked into the Quest runtime library.
-- **Build Engine Behavior:** When an imported module belongs to `BUILTIN_RUNTIME_MODULES`, the build engine does not
-  attempt to compile a `.mod.quest` or locate a separate `.o` file to link.
+### 4.4. Standard Library Modules
+Every module of the standard library, `dynamic` included, has a `.mod.quest` in `lib/` and is compiled and linked like
+any other module; operations that must traverse values generically are externals of the C runtime (`dynamic`'s
+`quest_dynamic_*`, for example). The modules in `STANDARD_LIBRARY_MODULES` (`modules/stdlib.py`, self-hosted
+`questlang/modules/stdlib`) differ only in how they are found: every unit sees them without an import, and the type
+checker loads their interfaces on demand through `BuiltinModuleRegistry` ([type-system.md](type-system.md) §5.1).
 
 ---
 
@@ -480,9 +476,8 @@ self-hosted compiler's, which its suite regenerates with the self-hosted driver 
 (`self-hosted/abi_corpus`).
 
 The self-hosted compiler (`questlang/`, run by `./quest`) writes its artifacts in the same places, under the same
-rules, and with the same engine (`questlang/build/engine`, a port of this document's `BuildEngine`). Until the two
-compilers diverged, it wrote the same artifacts as the bootstrap, up to the producer. Now they may differ, as
-optimizations go into the self-hosted compiler alone, so neither compiler uses the other's artifacts
+rules, and with the same engine (`questlang/build/engine`, a port of this document's `BuildEngine`). The two compilers'
+artifacts differ, since optimizations go into the self-hosted compiler alone, so neither compiler uses the other's
 (§5.2.1). `run_tests.py --self-hosting` checks the self-hosted compiler's fixed point, and that the bootstrap still
 builds the compiler the release does (docs/testing.md §2.3).
 
@@ -890,9 +885,11 @@ circular module implementation dependencies are strictly invalid.
 ### 8.3. Native Linking
 Once the queue is empty, the driver invokes the host C compiler / linker:
 ```sh
-clang -o app .build/main.main.o .build/util/path.o .build/util/strutil.o ... runtime/quest_runtime.o -lgc
+clang RUNTIME/quest_runtime.o ... RUNTIME/quest_gc.o .build/main.main.o .build/util/path.o ... -o app -lreadline
 ```
-Passing all discovered `.o` files in `linked_objects`.
+passing the runtime's objects (compiled once into a cache keyed by the runtime's sources,
+[codegen-c.md](codegen-c.md) §11.3), all discovered `.o` files in `linked_objects`, and the line editor's library
+(GNU readline's, or libedit's) (`linkObjects` in `questlang/build/compilerrunner`).
 
 ---
 

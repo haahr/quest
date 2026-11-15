@@ -1,8 +1,9 @@
 # Quest Compiled Runtime Architecture (`runtime-design.md`)
 
-This document explains the runtime representation and object model used by the Quest compiler—both in the current C99
-backend ([c-representation.md](c-representation.md)) and in the planned native AArch64 backend ([roadmap.md](roadmap.md)
-Steps 6–7).
+This document explains the runtime representation and object model shared by Quest's backends: the C backends
+([c-representation.md](c-representation.md), [codegen-c.md](codegen-c.md)), the native arm64 backend
+([arm64.md](arm64.md)), and the JIT built on it ([jit.md](jit.md)), all of which link with the C runtime in
+`runtime/`.
 
 If you are familiar with compiling either ML-family languages (which have parametric polymorphism and algebraic data
 types, but no subtyping) or object-oriented languages (which have nominal subtyping and method tables, but usually not
@@ -48,9 +49,9 @@ Quest combines five language features that pull data representations in differen
 ## 2. The Four Pillars of the Runtime Representation
 
 Quest resolves the tension between fast monomorphic code, uniform polymorphic code, structural subtyping, and mutable
-object identity through four cooperating mechanisms. The representation pass (`quest/ir/represent.py`,
-[ir.md §8.4](ir.md)) and descriptor pass (`quest/ir/describe.py`, [ir.md §8.5](ir.md)) make all four explicit before
-code emission:
+object identity through four cooperating mechanisms. The representation pass (`ir/represent`,
+[ir.md §8.3](ir.md)) and descriptor pass (`ir/describe`, [ir.md §8.4](ir.md)) make all four explicit before code
+emission, in both compilers (`questlang/ir/`, and the bootstrap's `bootstrap/python/quest/ir/`):
 
 | Mechanism | Size | Role |
 | :--- | :--- | :--- |
@@ -67,7 +68,7 @@ Let's look at how each piece works and why it was chosen over the alternatives.
 
 In registers, local variables, function parameters, and return values, most Quest types occupy a single 64-bit word:
 - Scalars (`Int`, `Real`, `Bool`, `Char`, `Ok`, `Word.T`) sit directly in a register.
-- Heap aggregates (`Tuple`, `Option`, `Array`, `String`, `QClosure *`, `QAutoVal *`) are 64-bit heap pointers.
+- Heap aggregates (`Tuple`, `Option`, `Array`, `String`, `QClosure *`, `QAuto *`) are 64-bit heap pointers.
 
 **Records** (`QRecordVal`) and **Variants** (`QVariantVal`), however, are represented in value positions as **16-byte
 two-word structs** passed and returned in two registers (`x0` and `x1` on AArch64):
@@ -102,10 +103,11 @@ incompatible memory layouts. Passing an array or tuple of records to a polymorph
 deep copy on entry and copying back on exit—and for a mutable `Array(R)` or a tuple with a `var` field, copying breaks
 aliasing and mutability!
 
-Quest solves this cleanly with **uniform 1-word aggregate slots** (`slot_representation` in `quest/repr/layout.py`):
+Quest solves this cleanly with **uniform 1-word aggregate slots** (`repr/layout`'s `slotRepresentation`, the
+bootstrap's `slot_representation`):
 - **Every aggregate slot is one 64-bit word (8 bytes).**
   - In a native aggregate slot, a record has C type `QRecordVal *` and a variant has C type `QVariantVal *`—a pointer to
-    an immutable 16-byte heap box (`quest_box_record` / `quest_box_variant`).
+    an immutable 16-byte heap box (`quest_record_box` / `quest_variant_box`).
   - `Bool` and `Char` use 64-bit `QBoolSlot` (`uint64_t`) and `QCharSlot` (`uint64_t`) in aggregate slots and `var`
     locations so that taking the address of a mutable slot (`:var Bool`) yields the same 8-byte cell width as `QVal *`.
   - In a generic (`QVal`) slot, a record or variant is that exact same pointer stored in `qval.p`, and a `Bool` or
@@ -121,7 +123,7 @@ Quest solves this cleanly with **uniform 1-word aggregate slots** (`slot_represe
     in the bound's representation and reads their bound's fields or cases through a memoized `QViewMap`
     (`quest_view_map(descriptor_A, &quest_type_B)`). Passing a `Tuple(R)`, `Option(R)`, `Record`, or `Array(R)` to
     polymorphic code requires no element-by-element copying and preserves `var` aliasing and `is` identity directly.
-  - Even when allocating an aggregate with `N` boxed record/variant slots, `ir/represent.py` coalesces the struct and
+  - Even when allocating an aggregate with `N` boxed record/variant slots, `ir/represent` coalesces the struct and
     its `N` 16-byte boxes into a **single contiguous allocation** (`embedded` boxes), avoiding extra allocator calls.
 
 ---
@@ -155,47 +157,52 @@ conversion function. Turning every tuple and option into a 16-byte fat pointer w
 every tuple and `maybe.T(A)` option in the language just for the rare case of a depth-upcast tuple/option.
 
 Instead, Quest keeps tuples and options as **single 8-byte pointers**, and uses a **low-bit pointer tag
-(`QUEST_PROXY_TAG = 1`)** when a view-changing upcast occurs (`QProxy` in `runtime/quest_runtime.h`):
+(`QUEST_PROXY_TAG = 1`)** when a view-changing upcast occurs (`QProxy` in `runtime/quest_runtime.h`;
+[c-representation.md](c-representation.md) §5.8 has the details):
 
 ```c
 #define QUEST_PROXY_TAG ((uintptr_t)1)
 
 typedef struct QProxy {
-    void *orig;                  /* Root unproxied heap tuple or option (for `is`, hash, and var writes) */
-    void *stored;                /* Immediate wrapped tuple/option at the representation `view` expects */
-    QVal (*view)(void *stored, int64_t index, const void *tags);  /* Per-component view converter */
-    const void *tags;            /* Optional tag-remap table for variant components */
-    QVal *cache;                 /* Memoized converted values for immutable components */
-    uint8_t *cached;             /* Per-slot memoization flags */
+    const void            *orig;    /* The original tuple or option, never a proxy (for `is`, hash, var writes) */
+    const QTypeDescriptor *stored;  /* The type the original's components are stored at */
+    const QTypeDescriptor *view;    /* The type the proxy is used at */
+    const int64_t         *tags;    /* An option's: for each tag of the stored type, the view's tag for its case */
+    QVal                  *cache;   /* The immutable components read so far, converted */
+    uint8_t               *cached;  /* Which of them have been */
 } QProxy;
 ```
 
 How `QProxy` works across the runtime:
-1. **Creation (`quest_make_tuple_proxy` / `quest_make_option_proxy` / `quest_convert`):**
-   When a `Convert` in `ir/represent.py` upcasts a tuple or option and at least one component changes view or an option
-   case's index shifts (or when a value of a bounded type parameter `A <: B` is explicitly upcast to its bound `B` via
-   `quest_convert`), it allocates a `QProxy` and returns `(T *)((uintptr_t)proxy | QUEST_PROXY_TAG)`.
-   - `proxy->orig` always chases through any inner proxy to point directly to the underlying concrete heap object.
+1. **Creation (`quest_make_proxy`, through `quest_convert`):**
+   When a `Convert` in `ir/represent` upcasts a tuple or option and at least one component changes view or an option
+   case's index shifts (or when a value of a bounded type parameter `A <: B` is explicitly upcast to its bound `B`), a
+   `view` plan calls `quest_make_proxy(v, from, to)`, which allocates a `QProxy` and returns
+   `(T *)((uintptr_t)proxy | QUEST_PROXY_TAG)`.
+   - `proxy->orig` always points to the underlying concrete heap object: upcasting a proxy makes a new proxy of its
+     original, so proxies never chain.
    - Pure width subtyping on a tuple (dropping trailing components where all kept components have identical
      representations) or an option upcast where all subtype cases keep their indices and payload views (e.g.
      `Option a b end <: Option a b c end`) does **not** allocate a proxy—it is a plain C pointer cast!
 2. **Reading (`via proxy` vs. `direct`):**
-   - If a tuple/option type can never hold a proxy (`type_may_be_proxied(T)` is false—e.g., `Tuple Int String end`,
-     whose components have no subtypes), `ir/represent.py` marks every `Field` and `Tag` access as **`direct`**: a
-     single C struct load `p->_0` with zero tag checks!
-   - If `type_may_be_proxied(T)` is true, `Field` and `Tag` are marked **`proxy`**:
-     - Fast path (`!quest_is_proxy(p)`): a single low-bit test (`((uintptr_t)p & 1) == 0`, ~3–6% overhead in tight
-       loops) followed by a direct load `p->_0`.
-     - Slow path (`quest_is_proxy(p)`): calls `quest_proxy_field(p, i, is_mutable)` (or `quest_option_tag(p)`). For an
-       **immutable** component, the converted view is computed once by `proxy->view` and memoized in `proxy->cache[i]`
-       (so repeated projections return the identical converted pointer, preserving `t.f is t.f`). For a **mutable**
-       (`var`) component, `view` re-reads the live slot from `stored` every time so mutations are immediately visible!
+   - If a tuple/option type can never hold a proxy (`mayBeProxied` in `repr/layout` is false—e.g.,
+     `Tuple Int String end`, whose components have no subtypes), `ir/represent` marks every component and tag access
+     as **`direct`**: a single C struct load `p->_0` with zero tag checks!
+   - Otherwise the access is marked **`proxy`**:
+     - Fast path (`!quest_is_proxy(p)`): a single low-bit test (`((uintptr_t)p & 1) == 0`) followed by a direct load
+       `p->_0`.
+     - Slow path (`quest_is_proxy(p)`): calls `quest_proxy_element(p, i)` (for an option, `quest_proxy_tag(p)` and
+       `quest_proxy_option_element(p, i)`), which reads the component from the original and converts it from the
+       stored type to the view's. An **immutable** component, once converted, is memoized in `proxy->cache[i]` (so
+       repeated projections return the identical converted pointer, preserving `t.f is t.f`); a **mutable** (`var`)
+       component is read from the original every time, so mutations are immediately visible!
 3. **Writing (`quest_proxy_store`) and `@t.f` (`via original`):**
    - Because Quest's `Var(T)` is invariant in `T`, a `var` component can only be *written* or taken by reference
      (`@t.f`) at its exact original type `T` (mutable fields can only be forgotten to read-only fields on depth upcast,
      never widened mutably).
-   - Therefore, any write or `@t.f` address calculation simply strips the proxy via `quest_unproxy(p)` (`proxy->orig`)
-     and accesses the root struct at offset `_i` (`via original`)!
+   - Therefore, any write or `@t.f` address calculation strips the proxy via `quest_unproxy(p)` (`proxy->orig`) and
+     accesses the root struct at offset `_i` (`via original`), or goes through `quest_proxy_store` and
+     `quest_proxy_slot`!
 4. **Object Identity (`is` and `hash.identityHash`):**
    - Pointer equality (`quest_val_is`) and `quest_identity_hash` call `quest_unproxy(p)` on both operands before
      comparing addresses. Thus `tSup is tSub` is always `true` in $O(1)$ time.
@@ -209,7 +216,7 @@ How `QProxy` works across the runtime:
 ### 2.4. Runtime Type Descriptors (`QTypeDescriptor`)
 
 For `auto` values, `dynamic.T`, `inspect` typecase, and existential tuple witnesses, the compiler reifies static types
-into runtime `QTypeDescriptor` graphs (`runtime/quest_runtime.h`, materialized by `quest/ir/describe.py`):
+into runtime `QTypeDescriptor` graphs (`runtime/quest_types.h`, materialized by `ir/describe`):
 - **Closed types** become `static const QTypeDescriptor` globals emitted once per compilation unit.
 - **Polymorphic functions** that construct descriptors mentioning a type parameter `A` receive an implicit
   `const QTypeDescriptor *descriptor_A` argument (or closure environment field) and instantiate a parameterized
@@ -225,63 +232,55 @@ into runtime `QTypeDescriptor` graphs (`runtime/quest_runtime.h`, materialized b
 Quest is a garbage-collected language with mutable references (`var`) and cyclic data structures (such as recursive
 functions, doubly-linked structures, and self-referential records).
 
-1. **The collector is the runtime's own** (`runtime/quest_gc.c`, designed in [collector.md](collector.md)): a
-   mark-region heap of 32 KB blocks of 128-byte lines in one reserved range, with its metadata beside it (a block table,
-   a mark byte per line, and bitmaps of the objects' starts and marks). Every allocation (`quest_alloc(size, layout)`
-   and its variants, [c-representation.md](c-representation.md) §9) prepends a header word naming the object's
-   **layout** ([collector.md](collector.md) §3.2), which says for each word whether it is a pointer, a scalar, or
-   ambiguous (a `val` word of generic code), bumps the cursor of the object's space (its layout's: pointer-bearing, or
+1. **The collector is the runtime's own** (`runtime/quest_gc.c`, [collector.md](collector.md)): a mark-region heap
+   (Immix) of 32 KB blocks of 128-byte lines in one reserved range, with its metadata beside it (a block table, a mark
+   byte per line, bitmaps of the objects' starts and marks, and a card table). Every allocation (`quest_alloc(size,
+   layout)` and its variants, [c-representation.md](c-representation.md) §9) prepends a header word naming the
+   object's **layout** ([collector.md](collector.md) §3.2), which says for each word whether it is a pointer, a
+   scalar, or ambiguous (a `val` word of generic code), bumps the cursor of the object's space (pointer-bearing, or
    pointer-free, which a collection never scans) through the current hole of free lines, and sets the object's start
-   bit; the slow path finds the next hole, or collects. A collection stops the world when the blocks in use reach their
-   target (twice those in use after the last collection, and at least `QUEST_GC_MIN_HEAP` megabytes, 64 by default),
-   marks from the roots (each unit's root table, the runtime's listed statics and thread-locals, the JIT's data regions,
-   and the stack and registers: a frame of arm64 code by its map of the words live across its call, from the unit's
-   frame table, [arm64.md](arm64.md) §3.13, and every other frame conservatively) by the layouts, validating an
-   ambiguous word against the start bits, and
-   keeps only the live objects' start bits (decision 14) before classifying each block by its live lines. Objects never
-   move. The collector is generational by sticky mark bits ([collector.md](collector.md) §3.5): a full collection clears
-   every mark; a *minor* one, every `QUEST_GC_NURSERY` megabytes of blocks taken (64 by default; 0 for full collections
-   alone; doubled while more than a quarter of the young bytes survive a minor collection, up to a quarter of the heap's
-   target and then off, with one minor collection every eighth full one to see whether that still holds, and halved back
-   while under a sixteenth survives), keeps them, so that marking from the roots stops at every old object and visits
-   the young ones alone, and sweeps only the blocks allocated into since the last collection. The write barriers the
-   backends emit after a pointer store into an existing object, both inline in `quest_runtime.h`, are the object's
-   (`quest_barrier`: the header's old byte says a collection has marked the object, and its logged byte that it is in
-   the log already; the object is logged) and the slot's (`quest_barrier_slot`, for an array's element or a slot whose
-   object has no header at a fixed distance: when the slot's line is marked, an old object's, its card, 512 bytes of the
-   heap, is marked dirty); the minor collection scans the logged objects whole and the dirty cards' old objects' words
-   as roots. The stores that initialize an object need none, unless a call between its allocation and its stores may
-   have collected, after which the backends log it before each later call and after its last store; the runtime's own
-   operations that build many objects hold collections off meanwhile (`quest_gc_hold`); the JIT's raw word store
-   (`quest_value_store`) marks the slot's card. `QUEST_GC_STATS=1` prints a summary at exit (`each`, a line per
-   collection too, a minor one's with its phases' times); `QUEST_GC_CHECK=layouts` walks every live object by its layout
-   after each full collection, and the young blocks' after each minor one, forcing a full one every 64 MB allocated
-   (`QUEST_GC_CHECK_INTERVAL` sets the bytes; at least four times the heap's size) and at exit; `roots` checks that
-   every heap pointer in the data segment lies in a unit's root table or a root the runtime lists; `poison` fills
-   reclaimed lines with a pattern that is never a pointer; `barriers` scans every old object that is not logged before
-   each minor collection, and reports a pointer at a young object as a store without a barrier; `stress` collects before
-   every allocation, thinning as the heap grows, so that those checks run a few allocations after a fault, and `sites`
-   names the functions that allocated the objects a failing check reports ([collector.md](collector.md) §7); `report`
-   prints the counts per layout, ambiguous words among them, the objects logged, and the cards marked.
-2. **`--nogc`:** compiling with `--nogc` defines `-DQUEST_NOGC`, under which the collector allocates but never
+   bit; the slow path finds the next hole, or collects. Objects never move.
+2. **Roots and precision:** a collection marks by the layouts from each unit's root table, the runtime's listed
+   statics and thread-locals, the JIT's data regions, and the stack and registers: a frame of arm64 code by its map of
+   the words live across its call (from the unit's frame table, [arm64.md](arm64.md) §3.13), and every other frame
+   conservatively. An ambiguous word is validated against the start bits, which keep only live objects' bits after
+   every collection ([collector.md](collector.md) §3.6), so nothing dead is ever scanned.
+3. **Generations** by sticky mark bits ([collector.md](collector.md) §3.5): a full collection clears every mark; a
+   *minor* one, every `QUEST_GC_NURSERY` megabytes of blocks taken (64 by default, adapting to what survives;
+   [collector.md](collector.md) §3.6), keeps them, so that marking stops at every old object and visits the young
+   ones alone, and sweeps only the blocks allocated into since the last collection. The write barriers the backends
+   emit after a pointer store into an existing object, both inline in `quest_runtime.h`, are the object's
+   (`quest_barrier`, which logs an old object for the next minor collection to scan) and the slot's
+   (`quest_barrier_slot`, for an array's element or a slot with no header at a fixed distance, which marks a 512-byte
+   card of an old object dirty). Stores that initialize an object need none unless a call between its allocation and
+   its stores may have collected; the runtime's operations that build many objects hold collections off meanwhile
+   (`quest_gc_hold`).
+4. **Pauses:** a full collection stops the world, unless the last one took over 10 ms (`QUEST_GC_PAUSE`), in which
+   case it is marked incrementally, in slices in the allocation slow path between which the program runs
+   ([collector.md](collector.md) §3.10). On the compiler's own build the longest pause is a minor collection's, about
+   30 ms (2026-11-05).
+5. **Checking and statistics:** `QUEST_GC_CHECK` selects the checking modes that the test suites run under (`layouts`,
+   `roots`, `poison`, `barriers`, `stress`, `incremental`, ...; [collector.md](collector.md) §7), and
+   `QUEST_GC_STATS=1` prints what the collector did (`each`, a line per collection too).
+6. **`--nogc`:** compiling with `--nogc` defines `-DQUEST_NOGC`, under which the collector allocates but never
    collects, for debugging.
 
 ---
 
 ## 4. Target ABI & AArch64 Register Mapping
 
-Both the C99 backend (via the platform C compiler) and the planned native AArch64 backend (Steps 6–7) follow the
-standard ARM64 **AAPCS64** calling convention:
+Both the C backends (via the platform C compiler) and the native arm64 backend follow Apple's ARM64 **AAPCS64**
+calling convention ([arm64.md](arm64.md) §3.3):
 
 | Register(s) | AAPCS64 Role | Quest Runtime Usage |
 | :--- | :--- | :--- |
 | `x0` – `x7` | Argument & Return | Closure `env` in `x0`, then descriptors & value args; returns in `x0`/`(x0, x1)`. |
 | `d0` – `d7` | FP Arg & Return | Unboxed `Real` (`double`) args & results; boxed only at polymorphic boundaries. |
 | `x8` | Indirect Result | Unused for Quest types, since all Quest values and fat pointers are $\le 16$ bytes. |
-| `x9` – `x15` | Caller-Saved Temps | Expression evaluation scratch registers and offset dictionary lookups. |
-| `x16`, `x17` | Scratch (`IP0`/`IP1`) | Linker veneers and indirect call trampolines. |
+| `x9` – `x15` | Caller-Saved Temps | arm64: `x9`–`x11` scratch within an instruction sequence; `x12`–`x15` allocated. |
+| `x16`, `x17` | Scratch (`IP0`/`IP1`) | Linker veneers; scratch only within a sequence. |
 | `x18` | Platform Register | Reserved by macOS / OS ABI (**never touched** by generated code). |
-| `x19` – `x28` | Callee-Saved Regs | Live-across-call locals allocated by the graph-coloring register allocator. |
+| `x19` – `x28` | Callee-Saved Regs | Values live across calls, from arm64's linear-scan allocator ([arm64.md](arm64.md) §3.8). |
 | `x29` (`fp`) | Frame Pointer | Frame link; kept on every stack frame for unwinding ([exceptions.md](exceptions.md)). |
 | `x30` (`lr`) | Link Register | Return address. |
 | `sp` | Stack Pointer | 16-byte aligned at all call boundaries. |
@@ -303,4 +302,5 @@ function values require zero heap allocation when they capture no local variable
 - [c-representation.md](c-representation.md): Concrete C99 struct definitions, conversion plans, and runtime APIs.
 - [codegen-c.md](codegen-c.md): How the C printer emits C99 from the `ir_described` stage.
 - [dynamic.md](dynamic.md): Runtime type descriptors, `auto`/`inspect`, and cyclic JSOG serialization.
-- [exceptions.md](exceptions.md): Zero-overhead exception handling and native stack tracebacks.
+- [exceptions.md](exceptions.md): Exception tracebacks, in the interpreters and in compiled code.
+- [collector.md](collector.md): The collector: heap, layouts, barriers, generations, incremental marking.

@@ -16,8 +16,10 @@ The tree-walking interpreter executes typed Quest abstract syntax trees (`TypedP
 compilation or machine code generation. It serves three primary purposes:
 
 1. **Bootstrap Ground Truth:** Provides immediate operational semantics validating the typechecker and grammar.
-2. **Interactive Development:** Powers the interactive REPL and single-phrase execution (`quest -e "..."`).
-3. **Reference Verification:** Acts as an executable specification to verify subsequent native ARM64 code generation.
+2. **Interactive Development:** Powers the bootstrap's REPL and `quest -e "..."`, and the self-hosted driver's with
+   `--no-jit` (the self-hosted driver compiles them with the JIT by default, [jit.md](jit.md)).
+3. **Reference Verification:** Acts as an executable specification that compiled code is checked against (the shared
+   run goldens, [testing.md](testing.md)).
 
 The interpreter consumes the typed AST produced by `typecheck` and produces runtime Quest values (`QValue`).
 
@@ -80,8 +82,8 @@ is in [compiler-organization.md](compiler-organization.md) §6.
 
 ## 2. Runtime Value Hierarchy (`QValue`)
 
-All runtime Quest values derive from the abstract base class `QValue` in `quest/values/model.py`. Every `QValue` provides
-a human-readable `type_name` and a `to_str(visited)` method supporting cycle detection.
+All runtime Quest values derive from the abstract base class `QValue` in `quest/values/model.py`. Every `QValue`
+provides a human-readable `type_name` and a `to_str(visited)` method supporting cycle detection.
 
 ### 2.1. Primitive Values
 
@@ -127,8 +129,9 @@ a human-readable `type_name` and a `to_str(visited)` method supporting cycle det
     `QArray`, updating `array.elements[index]` in place upon assignment.
   - **`QTupleElementRef(tuple_val: QTuple, index: int)`:** A specialized `QRef` subclass pointing to a component of a
     `QTuple`, updating the underlying element in place upon assignment.
-- **`QDynamicVal(value: QValue, type_val: Any)` & `QExceptionVal(name: str, payload: Optional[QValue])`:**
-  - Envelopes for dynamic typing (`dynamic.new(:T v)`) and runtime exception tagging.
+- **`QAutoVal(value: QValue, type_val: Any)` & `QExceptionVal(name: str, payload: Optional[QValue])`:**
+  - Envelopes for auto values, dynamic ones (`dynamic.new(:T v)`, an auto value of type `Auto A::TYPE with a:A end`)
+    included, and for runtime exception tagging.
 
 ---
 
@@ -150,8 +153,7 @@ The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and
   - Monadic operators: `not` (boolean negation), `extent` (array size), `ordinal` (option tag index).
   - Dyadic arithmetic and comparison operators: `+`, `-`, `*`, `/`, `%`, `mod`, `<`, `<=`, `>`, `>=`,
     `++`, `--`, `**`, `//`, `^^`, `<<`, `<<=`, `>>`, `>>=`, `<>`, `/\`, `\/`, `is`, `isnot`.
-  - Pre-linked standard library module records: `arrayOp`, `ascii`, `conv`, `dynamic`, `int`, `list`, `reader`,
-    `real`, `string`, `writer`.
+  - Not the standard library's pre-linked modules, which are resolved on demand (§4.11).
 
 ### 3.2. Evaluation Rules
 
@@ -217,7 +219,7 @@ The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and
 
 ### 4.1. Batch Mode vs. Interactive / REPL Output Semantics
 - **Batch Mode (Default):**
-  - Completely silent by default (Option A).
+  - Completely silent by default.
   - Emits only explicit runtime I/O side effects (e.g. from `writer.putString`).
   - Top-level bindings and expressions execute silently when executing files.
   - With `--echo`, every top-level phrase's result is printed in the interactive notation below; with `-i`, the file
@@ -305,7 +307,7 @@ The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and
     - Without payload (or Ok): `Exception: <name>`
 - **Dynamic Type Reflection & `dynamic.error`:**
   - Dynamic packaging via `dynamic.new(:Type val)` (or inferred `dynamic.new(val)`) creates a
-    `QDynamicVal(value, type_val)`.
+    `QAutoVal(value, type_val)`.
   - Type narrowing via `dynamic.be(:Type d)` dynamically validates that `d`'s packaged type is a subtype of the target
     type, returning the unwrapped value or raising `dynamic.error` (`DYNAMIC_ERROR_EXC`) on mismatch.
   - Type inspection via `inspect dyn when Type with b then ... else ... end` checks subtyping dynamically.
@@ -314,10 +316,11 @@ The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and
 
 ### 4.11. Standard Library Modules & Import System
 - **Module Pre-linking & Import Semantics (Cardelli §11.3):**
-  - Standard library modules (`arrayOp`, `ascii`, `conv`, `dynamic`, `int`, `list`, `reader`, `real`, `string`,
-    `word`, `writer`) and their interfaces (`ArrayOp`, `Ascii`, `Conv`, `Dynamic`, `IntOp`, `List`, `Reader`, `RealOp`,
-    `StringOp`, `Word`, `Writer`) are pre-linked at the top level and in the interactive REPL. They can be used directly
-    without an `import` statement outside of modules.
+  - Standard library modules (`arrayOp`, `ascii`, `conv`, `int`, `list`, `reader`, `real`, `string`, `system`,
+    `word`, `writer`) and their interfaces (`ArrayOp`, `Ascii`, `Conv`, `IntOp`, `List`, `Reader`, `RealOp`,
+    `StringOp`, `System`, `Word`, `Writer`) are pre-linked at the top level and in the interactive REPL
+    (`STANDARD_LIBRARY_MODULES` in `quest/modules/stdlib.py`, `questlang/modules/stdlib`). They can be used directly
+    without an `import` statement outside of modules; every other library module (`dynamic`, say) is imported.
   - Standalone modules (`module ... end`) are isolated from top-level pre-linked module records and must explicitly
     import any required modules using `import mod: Interface`.
   - Standard library interfaces and prelinked modules are resolved on-demand from disk (`lib/`) via the

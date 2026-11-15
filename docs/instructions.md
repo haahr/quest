@@ -42,11 +42,11 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
 - **Before a push or a commit:** `tools/check` runs, at once, the self-hosting check seeded from the release (which
   ends with the self-hosted suite), the backends' suite (the self-hosted suite through `ssac` and `arm64`,
   [arm64.md](arm64.md) §4), the bootstrap's suite, and the unit tests, with the cores split between them, and then
-  the terminal tests alone. For a change to the self-hosted compiler alone (`questlang/`, its own goldens, and the
-  docs and any Markdown file: how it compiles, or a refactoring), it runs only the self-hosting checks and the backends' suite; it decides
-  from the files that differ from `origin/main` (testing.md §4.1), and `--all` overrides it. Anything either
-  compiler shares (the language, `lib/`, `runtime/`, what programs do or what errors say, the tests) needs the full
-  `tools/check` ([testing.md](testing.md) §4.1).
+  the terminal tests alone. For a change to the self-hosted compiler alone (`questlang/` or its own goldens: how it
+  compiles, or a refactoring), it runs only the self-hosting checks and the backends' suite, and a Markdown file adds
+  no suites; it decides from the files that differ from `origin/main` (testing.md §4.1), and `--all` overrides it.
+  Anything either compiler shares (the language, `lib/`, `runtime/`, what programs do or what errors say, the tests)
+  needs the full `tools/check` ([testing.md](testing.md) §4.1).
 - **The compiler:** `./quest PROGRAM` runs the self-hosted compiler, which is the default; `./quest --stop-after PHASE
   file.quest` prints a phase, with `PHASE` one of `tokenize`, `parse`, `desugar`, `typecheck`, `ir_STAGE`,
   `interpret`, `codegen_c` (prints the C), `codegen_arm64` (prints the arm64 assembly), `run_c_compiled`; `--echo`
@@ -116,7 +116,7 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
   identity (`is`), and key dictionaries by `type_identity_key` (C backend) or by canonical objects, not by types.
 - **Types reach code generation unreduced:** alias nodes, applications of type operators (`Box(A)`), and recursive
   types. Below lowering, ask the type's shape (`repr/shapes.py`); elsewhere, reduce with `normalize_type`
-  (`types/canonical.py`) before structural tests such as `isinstance(t, QTupleType)`; a test on the unreduced type
+  (`types/reduce.py`) before structural tests such as `isinstance(t, QTupleType)`; a test on the unreduced type
   silently skips `Box(A)`.
 - **Invariant checks run in tests.** `QUEST_CHECK_CANONICAL=1` (C canonical forms), `QUEST_CHECK_SCOPES=1`
   (well-scoped typed programs), and `QUEST_CHECK_IR=1` (verified IR) are set by the test runners and the unit tests'
@@ -153,9 +153,10 @@ has traps that cost time:
   extra `end` usually shows up as an unexpected token later on.
 - **Type arguments are explicit or inferred:** `f(:Int x)`; a polymorphic constant is applied to types alone
   (`nil(:Int)`).
-- **No semicolons except after a top-level phrase,** where they are optional ([extensions.md](extensions.md#semicolons)).
-  `begin let a = 1; a end`, `f(1; 2)`, and `Record x: Int; y: Int end` are syntax errors. The style in `lib/`,
-  `questlang/`, and `examples/` is to write none at all; tests may end top-level phrases with them.
+- **No semicolons except after a top-level phrase,** where they are optional
+  ([extensions.md](extensions.md#semicolons)). `begin let a = 1; a end`, `f(1; 2)`, and `Record x: Int; y: Int end` are
+  syntax errors. The style in `lib/`, `questlang/`, and `examples/` is to write none at all; tests may end top-level
+  phrases with them.
 
 ## 6. Tests
 
@@ -226,24 +227,29 @@ See [testing.md](testing.md) for the framework. In practice:
 
 ## 9. Current Direction
 
-- The C backend lowers typed ASTs through the five-pass intermediate representation ([ir.md](ir.md)): ANF with
-  structured control flow and join points (`ir_core` $\to$ `ir_specialized` $\to$ `ir_closed` $\to$ `ir_represented`
-  $\to$ `ir_described`), with representations, 1-word slot boxing, and tagged proxies decided by `ir/represent.py` and
-  runtime descriptors materialized by `ir/describe.py`.
-- Compiled code uses native representations in locals/parameters/returns (including 16-byte `QRecordVal` and
-  `QVariantVal`), uniform 1-word boxed slots (`slot_representation`) in all aggregates, own views with `QViewMap` for
-  bounded type parameters, and tagged `QProxy` views for depth-upcast tuples and options
-  ([runtime-design.md](runtime-design.md), [c-representation.md](c-representation.md)).
-- Open bugs and planned follow-up work for the compiler are tracked in [tasklist.md](tasklist.md).
-- The self-hosted compiler compiles itself to a fixed point ([roadmap.md](roadmap.md) step 5), seeded by a release
-  ([release-compiler.md](release-compiler.md)). It is the
-  primary compiler; the bootstrap is kept so that the compiler can be rebuilt from nothing ([testing.md](testing.md)
-  §2.8):
+- **The self-hosted compiler is primary** ([roadmap.md](roadmap.md)): `questlang/`, built by a release of itself
+  ([release-compiler.md](release-compiler.md)), compiles itself to a fixed point. The bootstrap is kept so that the
+  compiler can be rebuilt from nothing ([testing.md](testing.md) §2.8).
+- **Its pipeline:** the typed tree is lowered to the A-normal-form IR and refined through its stages (`ir_core`
+  $\to$ `ir_simplified` $\to$ `ir_specialized` $\to$ `ir_closed` $\to$ `ir_represented` $\to$ `ir_described`;
+  [ir.md](ir.md) §8, §9), where `ir/represent` decides representations, one-word slots, and proxies, and `ir/describe`
+  materializes runtime descriptors ([runtime-design.md](runtime-design.md), [c-representation.md](c-representation.md)).
+  From the described IR, the default backend, arm64, builds the SSA ([ssa.md](ssa.md)), runs its passes, selects
+  machine instructions, allocates registers by linear scan, and writes Darwin assembly ([arm64.md](arm64.md)); the
+  C backend prints the IR as C99 ([codegen-c.md](codegen-c.md)), and `ssac` prints the SSA as C, as a check on it.
+  Programs, `-e`, and the REPL run on the JIT, which encodes arm64 code in memory ([jit.md](jit.md)); `--no-jit`
+  interprets.
+- **The runtime** (`runtime/`, C) is shared by every backend and both compilers, and allocates through Quest's own
+  collector, a non-moving generational Immix with incremental marking ([collector.md](collector.md)).
+- **The bootstrap** (`bootstrap/python/quest/`) interprets, and compiles through the same IR (without the simplifier)
+  to C only.
+- Open bugs and planned work are tracked in [tasklist.md](tasklist.md).
+- **What each compiler gets:**
   - **Both compilers get** language changes, `lib/` changes, and fixes to bugs in what programs do or what errors
     they report. Each such change comes with a test in a shared phase (a run, error, or front-end test), which both
     suites run, so that a change made in one alone fails the other's.
-  - **The self-hosted compiler alone gets** optimizations and other changes to how it compiles (its IR and C), with
-    goldens of its own (`--self-hosted --update-golden`).
+  - **The self-hosted compiler alone gets** optimizations and other changes to how it compiles (its IR, SSA, C, and
+    arm64), with goldens of its own (`--self-hosted --update-golden`).
   - **The runtime is shared:** a change to it must keep the bootstrap's C working.
   - **`questlang/` uses only what the bootstrap compiles,** as well as what the release does, so that the bootstrap
     can still build it.

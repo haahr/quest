@@ -12,10 +12,12 @@ Quest has two sets of benchmarks:
 
 This document describes the MLton suite, records the baseline taken on 2026-10-28, lists what profiling the slowest
 benchmarks found and what could be done about it, compares the C and arm64 backends (§4 to §6), measures the inliner
-(§7), times every backend and the inliner's settings at one commit (§11), measures the Jupyter kernel's interrupt checks
-(§12), times the SSA's backends after the arm64 review (§13), measures the SSA's loops of accumulated recursion and
-mutual tail calls (§14), times the library's arbitrary-precision integers (§15), records the arm64-built
-compiler's gap to the C-built one narrowed (§22), and times the reuse of a case binder's box (§23).
+(§7), options as values, escape analysis, and the JIT (§8 to §10), times every backend and the inliner's settings at one
+commit (§11), measures the Jupyter kernel's interrupt checks (§12), times the SSA's backends after the arm64 review
+(§13), measures the SSA's loops of accumulated recursion and mutual tail calls (§14), times the library's
+arbitrary-precision integers (§15), measures the collector's steps (§16 to §19) and those closing part of the gap to
+MLton (§20), compares the C and arm64 backends again and records the switch of the default to arm64 (§21), records the
+arm64-built compiler's gap to the C-built one narrowed (§22), and times the reuse of a case binder's box (§23).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -328,6 +330,9 @@ its end.
 - Linking libgc statically removes the stubs. A generational or bump-allocating collector is the larger step that
   would close the rest of the gap.
 
+*Done* differently (2026-11-04 to 2026-11-05, §16 to §19): Quest's own collector ([collector.md](collector.md))
+replaced libgc, allocating by bumping a pointer through a block's holes.
+
 ### 3.2. Local functions allocate their closures, and call themselves through them
 
 A local function that captures variables is a heap-allocated environment plus a heap-allocated closure, created each
@@ -347,6 +352,11 @@ own closure (`((T (*)(...))(l_loop->fn))(l_loop->env, ...)`), so clang cannot tu
   directly alone, with the heap closure, gained 4 percent.
 - **One allocation per closure**: the closure and its environment can be one object (the code pointer as the
   environment's first word), halving closure allocations everywhere.
+
+*Done* in part: the inliner and contification (§7, [ir.md](ir.md) §8.6) turn such local loops into loops (mandelbrot
+0.15 of its time through C), the arm64 backend makes self tail calls jumps ([arm64.md](arm64.md) §3.7), and escape
+analysis (§9) removes allocations that do not leave their function. A closure and its environment are still two
+objects.
 
 ### 3.3. Nothing is inlined across modules
 
@@ -374,7 +384,8 @@ the suite's counts on a loaded machine (two runs each):
 
 md5 gained more than LTO gave it. The compiler's own build (`-j 8`, from nothing) went from 37 and 36 seconds to 26
 and 26. Calls of exported Quest functions (`qv_util__maybe_none`) still go through closures, and nothing is inlined
-that is not a runtime primitive.
+that is not a runtime primitive. The self-hosted compiler (2026-10-31, §7) since calls exported functions directly,
+and inlines across modules in whole programs ([ir.md](ir.md) §8.6).
 
 ### 3.4. Character I/O locks the stream for every character
 
@@ -397,6 +408,9 @@ and model-elimination raise and catch constantly. Options:
 - The exception state is `_Thread_local`, which on macOS is a call to `_tlv_get_addr` at every try and raise (7
   percent of knuth-bendix's samples). With plain globals (tried): knuth-bendix 44.3 to 40.1 seconds, boyer 10.9 to
   10.1, model-elimination 47.2 to 46.1. Quest programs have one thread.
+
+*Done* for native code: an arm64 `try` stores where to resume instead of calling `_setjmp` ([arm64.md](arm64.md)
+§3.6). C's `try` still calls `_setjmp`, and the exception state stays thread-local in both.
 
 ### 3.6. Payload-free option cases allocate
 
@@ -499,7 +513,7 @@ The C backend's 5.24 against 5.05 on 2026-10-28 is mixed:
 Without the four benchmarks §1.3 sets aside, the mean improved, from 6.49 to 6.12.
 
 The arm64 numbers are the baseline against which interval splitting, rematerialization, and allocation in `try`
-functions (arm64.md §3.8) are to be measured.
+functions (arm64.md §3.8) are measured (§4.3).
 
 ### 4.3. With splitting
 
@@ -532,7 +546,7 @@ machine to themselves.
 ## 5. Choosing the default backend (2026-10-30)
 
 Step 12 asks for the measurements from which the default backend is decided. The user decides; this section gives the
-numbers and a recommendation. Releases are built with C until then.
+numbers and a recommendation. Releases are built with C until then. (arm64 became the default on 2026-11-12: §21.4.)
 
 ### 5.1. The compiler as each backend compiles it
 
@@ -555,7 +569,7 @@ through each backend), so the rows differ only in speed.
 From §4, at a quarter of MLton's counts, the MLton suite's programs compiled by the arm64 backend take 2.09 times as
 long as by the C backend (geometric mean against MLton 11.01 and 5.24). Building them takes 0.93 times as long: most
 of a build is the front end and linking. The suite through `ssac` is yet to be timed (an overnight job, the
-measurement step 15 needs).
+measurement step 15 needs; first timed in §6.3).
 
 ### 5.3. Recommendation
 
@@ -774,7 +788,7 @@ time is `quest-c-zebra-3fc7b821.jsonl`.
 
 Escape analysis ([ssa.md](ssa.md) §4.2), which makes the allocations that do not leave their function stack
 slots in the SSA, measured by allocations rather than time: the allocations are what it changes, and its effect on
-them is large and exact, so the suite's times are left to a later retake. Counted by `allocations.py` at `--scale
+them is large and exact, so the suite's times are left to a later retake (§11). Counted by `allocations.py` at `--scale
 0.25` (ratio-regions n=384, peek n=48, zebra n=16), with `eb84b59b`'s compiler, the pass skipped
 (`QUEST_SKIP_PASSES=escape`) and run; C's counts, which the pass does not change, are with the C printer's payload
 fixes (§8).
@@ -838,12 +852,13 @@ inputs, and well under what a person notices.
 A file is one input, so the JIT compiles all of it before running it. It costs more than interpreting a program
 that does little (`thunks` compiles many generic functions and their thunks), and about the same where the program
 does some work (`sort_operations`); a program that runs long would gain what compiled code gains over the
-interpreter. Whether the JIT becomes the default is decided from these (jit.md §7).
+interpreter. Whether the JIT becomes the default was decided from these: it is, for the REPL, `-e`, and files (jit.md
+§1).
 
 ## 11. Every backend, and the inliner's settings (2026-11-02)
 
 The whole suite through every backend at one commit, `9a08223f` (ABI 63), after the arm64 performance review's first
-two batches ([arm64-performance-review.md](arm64-performance-review.md) §4), escape analysis (§9), and options as
+two batches (§24.3), escape analysis (§9), and options as
 values (§8); the six programs that review follows, timed again on an idle machine; and the inliner's settings, each
 varied alone ([inlining.md](inlining.md) §1).
 
@@ -903,7 +918,7 @@ Each backend's time against C's (below 1 is faster), for the programs furthest f
 - **The SSA's backends have caught up.** ssac takes 0.47 of its time at §6.3 and now runs as fast as C (0.98), ahead
   of it on 24 of the 46; arm64 takes 0.66 of its time at §7.2, and 1.46 of C's. C itself is where §8.2 left it.
 - **On the six, arm64 is level with C:** the geometric mean of their ratios is 1.04 here, and 1.06 in five rounds
-  of `timeit.py` ([arm64-performance-review.md](arm64-performance-review.md) §4, the baseline). The rest of arm64's
+  of `timeit.py` (§24.3, the baseline). The rest of arm64's
   distance from C is in a few programs. Without the four, three (md5, checksum, and psdes-random) are 46 percent of
   it, by the sum of the logarithms of the ratios, and with even-odd, string-concat, zern, and mpuz, 80 percent; the
   other 35 take 1.08 of C's time.
@@ -970,7 +985,7 @@ Each default is near the best of its range:
 
 Under `--kernel`, the code the JIT compiles checks the interrupt flag at each function's entry and loop head
 ([jupyter-kernel.md](jupyter-kernel.md) §5). Nothing else compiles them, so only a kernel's cells pay. Each of the six
-of [arm64-performance-review.md](arm64-performance-review.md) ran as one cell, at `--scale 0.25`'s count, in a fresh
+of the arm64 performance review (§24) ran as one cell, at `--scale 0.25`'s count, in a fresh
 session with the checks and in one with `QUEST_SKIP_PASSES=interrupts`, alternating, three rounds, the best of each.
 A cell's time includes compiling the program, so the time of the same cell at a count of 0 was subtracted. The load
 average was 3 to 5.
@@ -993,7 +1008,7 @@ average was 3 to 5.
 ## 13. The SSA's backends after the review's batches (2026-11-03)
 
 The suite through C, ssac, and arm64 at `42ba562c`, after the arm64 performance review's batches 4 to 7
-([arm64-performance-review.md](arm64-performance-review.md) §4): block layout, register-offset and paired loads and
+(§24.3): block layout, register-offset and paired loads and
 stores, the library's inlined externals as instructions in the SSA and other externals called directly from it, and
 value numbering ([ssa.md](ssa.md) §4.1).
 
@@ -1177,7 +1192,7 @@ to 2.58 through ssac, and from 3.63 to 3.48 through arm64.
   `quest_array_new` with `quest_alloc`, scanned, and the element type is not known at that call. (No compiler emits
   `quest_alloc_atomic`, though [collector.md](collector.md) §1 lists `Array(Int)` among its uses.) The collector's
   step 1, which gives every allocation a layout, is where an array of scalars gets one without pointers; the plan
-  leaves it to that.
+  leaves it to that. (Step 1 did, `fc39f38f`: `quest_layout_array_scalar`, `runtime/quest_gc.h`.)
 - **`word.copy`**, a `memmove` of limbs: the library's copies take linear time against the multiplications' and
   divisions' quadratic time, and the profiles put the time in those loops, so it was not added.
 
@@ -1224,26 +1239,26 @@ smith-normal-form through arm64 is 1.5 times C's 70.05 s, from 1.7; through ssac
 
 ## 16. The collector (2026-11-04)
 
-The suite on the collector of [collector.md](collector.md) step 3 against §13's Boehm times: the stop-the-world
+The suite on the collector of [collector.md](collector.md) §8.3 against §13's Boehm times: the stop-the-world
 mark-region collector of `runtime/quest_gc.c` with its bump allocation, the inline allocation sequence of
 `ssa/passes/allocations` ([ssa.md](ssa.md) §4.1) in the SSA's backends, and the noscan space for layouts of scalars alone.
 
 ### 16.1. How they were taken
 
-As §13.1 (`run.py time --clean --scale 0.25 --timeout 1800`, one run each, `--backend c`, `ssac`, and `arm64`, in
-that order), then arm64 again under `QUEST_SKIP_PASSES=inlineAllocation`, which leaves each allocation a call of
-`quest_alloc` for the runtime's slow path. The compiler was `./quest` from the working tree that became step 3's
-commit, stage 2 built by C, with ssac still calling the runtime's `quest_alloc` out of line (§16.2 says what
-inlining it there changed, measured apart). The machine was loaded throughout by another build and its check (load
-averages 4 to 19 at the starts of the runs, against §13's 1.5 to 3.2), so `run.py` now records each run's processor
-time (user and system, from `getrusage` of the child) beside its wall time, and the tables give both. A wall ratio
-divides by §13's wall time under its lighter load; the processor ratio divides the after side's processor time by the
-same before wall time, since §13 recorded none, so the two bracket the truth and the processor one is the fairer
-where they differ. Neither is a clean measurement; the suite is to be retaken on an idle machine after step 4. The
-times are in `benchmarks/mlton/baselines/2026-11-04/`: `quest-c-step3.jsonl`, `quest-ssac-step3.jsonl`,
-`quest-arm64-step3.jsonl`, and `quest-arm64-calls-step3.jsonl`. A wall time under a second is the first run of a
-fresh binary rather than the program (tailfib's 0.23 s is 0.00 s of processor time), so the four small programs'
-wall ratios say nothing, and their processor ratios little.
+As §13.1 (`run.py time --clean --scale 0.25 --timeout 1800`, one run each, `--backend c`, `ssac`, and `arm64`, in that
+order), then arm64 again under `QUEST_SKIP_PASSES=inlineAllocation`, which leaves each allocation a call of
+`quest_alloc` for the runtime's slow path. The compiler was `./quest` from the working tree that became step 3's commit,
+stage 2 built by C, with ssac still calling the runtime's `quest_alloc` out of line (§16.2 says what inlining it there
+changed, measured apart). The machine was loaded throughout by another build and its check (load averages 4 to 19 at the
+starts of the runs, against §13's 1.5 to 3.2), so `run.py` now records each run's processor time (user and system, from
+`getrusage` of the child) beside its wall time, and the tables give both. A wall ratio divides by §13's wall time under
+its lighter load; the processor ratio divides the after side's processor time by the same before wall time, since §13
+recorded none, so the two bracket the truth and the processor one is the fairer where they differ. Neither is a clean
+measurement; the suite is to be retaken on an idle machine after step 4 (§17). The times are in
+`benchmarks/mlton/baselines/2026-11-04/`: `quest-c-step3.jsonl`, `quest-ssac-step3.jsonl`, `quest-arm64-step3.jsonl`,
+and `quest-arm64-calls-step3.jsonl`. A wall time under a second is the first run of a fresh binary rather than the
+program (tailfib's 0.23 s is 0.00 s of processor time), so the four small programs' wall ratios say nothing, and their
+processor ratios little.
 
 ### 16.2. Programs
 
@@ -1312,7 +1327,7 @@ The ratio of step 3's time to §13's, by wall time and by processor time, ordere
   2,048), twice each, were 10.5 and 10.6 s against 9.5 and 10.2 for logic and 16.7 and 16.8 against 11.6 and 11.7 for
   wc-scanStream, so 0.93 and 0.70; the ssac column above is without the pass.
 - **Two losses are code placement, the rest the load's.** imp-for (C 1.85, arm64 1.11 by processor time) allocates 1.1
-  billion one-word boxes and little else (collector.md step 1's table), and matrix-multiply (C 1.39) allocates almost
+  billion one-word boxes and little else (collector.md §8.1's table), and matrix-multiply (C 1.39) allocates almost
   nothing (183 MB in 8 s: three collections, 0.6 ms of pauses). Both compile to the same C as before but for the
   allocation, and timed back to back against the Boehm release compiler's builds of them (`3ad3867e`, the commit before
   step 1, in its own tree) they took 10.4 s against 5.6 and 7.8 against 5.7. Neither time is the allocation sequence's.
@@ -1408,7 +1423,7 @@ should count a recyclable block's holes as free when it sets the target.
 
 ## 17. Generations (2026-11-05)
 
-The suite on the collector of [collector.md](collector.md) step 4 against §16's step 3 times: sticky mark bits, minor
+The suite on the collector of [collector.md](collector.md) §8.4 against §16's step 3 times: sticky mark bits, minor
 collections every nursery of blocks taken (64 MB, adapting to what survives), the object barrier logging and the slot
 barrier marking cards, and the full collections as before.
 
@@ -1523,7 +1538,7 @@ collections alone cost instead is memory: barnes-hut's heap reaches 451 MB for 3
 live line counts as in use and the target is twice the blocks in use, against 67 MB at 8 MB and 211 MB at 64. The
 default is now 64 MB, the heap's least size (so a heap whose blocks in use stay under half of that has full collections
 alone), which takes most of the loss back here and all of it on the compiler's build (§17.3). The rest is what moving
-the young survivors would recover ([collector.md](collector.md) step 7).
+the young survivors would recover ([collector.md](collector.md) §9.1).
 
 - **ssac's losses are the inline allocation sequence's, and so are its gains.** model-elimination (1.33) and
   psdes-random (1.22) do not move with the nursery, and a profile shows no barrier in them. ssac's suite has the
@@ -1587,7 +1602,7 @@ them of the 43.4 GB allocated, 4.0 percent; 247,000 objects logged and 589,000 c
 at once (step 3: 9.9 GB); and 1,067 MB live at the end in 2,259 MB of lines, 2.1 bytes of lines for a live byte, as in
 step 3. The allocation went into 87 million holes, half a kilobyte each. With the 8 MB nursery the same build had 1,949
 minor collections pausing 3.06 s (10 ms the longest) and 9 full ones pausing 2.30 s. The longest pause is still a full
-collection's, most of a second, which is step 6's to shorten.
+collection's, most of a second, which is step 6's to shorten (§19.3: 12 ms).
 
 A REPL session, the transcripts of `tests/repl` replayed twenty times through `./quest -i` (4.4 GB allocated in 2.1 s):
 22 minor collections pausing 38.5 ms in all and 8 full ones pausing 14.7 ms, 3.4 ms the longest of either; 13.1 MB live
@@ -1596,7 +1611,7 @@ collections pausing 166 ms and 2 full ones, in 121 MB.
 
 ## 18. Stack maps (2026-11-05)
 
-The arm64 backend on the collector of [collector.md](collector.md) step 5 against §17's step 4: each frame of native
+The arm64 backend on the collector of [collector.md](collector.md) §8.5 against §17's step 4: each frame of native
 code scanned by the map of its call, the words live across it and no others ([arm64.md](arm64.md) §3.13), and dead
 values' slots no longer cleared.
 
@@ -1628,14 +1643,14 @@ processor time:
 - **Level with step 4:** the geometric mean over the 46 is 1.00 by either time, and the 37 programs not shown are within
   0.99 to 1.02. The maps cost a running program nothing, being read only at a collection, and what the backend no longer
   does, clearing a dead value's slot, was a store in a few loops: mpuz, a fifth of whose `assign` samples were those
-  stores (arm64-performance-review.md §4), takes 0.91 of its time. zebra's 0.82 is step 4's run at the slower of its two
+  stores (§24.3), takes 0.91 of its time. zebra's 0.82 is step 4's run at the slower of its two
   speeds (§17.2). tailfib's 1.11 is two seconds of a loop whose code is the same, twelve bytes further on (the three
   instructions that register the frame table come before it in the unit): built by both compilers and run twice each, it
   took 2.96 and 2.99 s against 3.04 and 3.22.
 
 - **psdes-random's 1.22 is a pair of stores.** The same binary takes 19.8 to 20.2 s run after run, and step 4's
   compiler's code for it 16.1 s against the same runtime, so it is the code. With the object's own address the base of
-  both of a tuple's stores (collector.md step 5: the allocation's base is no longer a pointer), the backend's pairing
+  both of a tuple's stores (collector.md §8.5: the allocation's base is no longer a pointer), the backend's pairing
   merges them into one `stp`, where step 4 had two stores from two bases, and the loop that follows loads one of the two
   words alone, which the processor does not forward from a pair's store. ssa.md §4.1 records the same hazard from the
   loads' side, on the same program. The commit after this one leaves such a pair of stores apart ([arm64.md](arm64.md)
@@ -1666,7 +1681,7 @@ driver in one process (`-j 1`) under `QUEST_GC_STATS=1`: step 4's, step 5's, and
 
 ## 19. Incremental marking (2026-11-05)
 
-The collector of [collector.md](collector.md) step 6 against §18's step 5: a full collection that the heap's growth asks
+The collector of [collector.md](collector.md) §8.6 against §18's step 5: a full collection that the heap's growth asks
 for marks in slices between which the program runs, and allocations during it take the slow path.
 
 ### 19.1. How they were taken
@@ -1819,12 +1834,12 @@ Quest code, and `ssa/passes/selects` makes the same 32 selects there.
 
 ## 20. Closing part of the gap to MLton (2026-11-06)
 
-Five changes from [mlton-performance-review.md](mlton-performance-review.md) §4, items 1 to 5, and one the suite
-called for, each removing work MLton does not do on peek, wc-scanStream, ratio-regions, or zebra, made as the steps of
-a plan (`docs/mlton-gap.md`, retired into this section; its step 1 was the plan itself, `83827cce`). They are the
-self-hosted compiler's alone: optimizations, not fixes, so the bootstrap does not follow ([testing.md](testing.md)
-§2.8). They were made and first measured under Boehm, then replayed onto the collector of §16 to §19; every time
-below was taken after the replay, under the collector.
+Five changes from the MLton performance review (`2e475381`, 2026-11-03, deleted once done), items 1 to 5, and one the
+suite called for, each removing work MLton does not do on peek, wc-scanStream, ratio-regions, or zebra, made as the
+steps of a plan (`docs/mlton-gap.md`, retired into this section; its step 1 was the plan itself, `83827cce`). They are
+the self-hosted compiler's alone: optimizations, not fixes, so the bootstrap does not follow ([testing.md](testing.md)
+§2.8). They were made and first measured under Boehm, then replayed onto the collector of §16 to §19; every time below
+was taken after the replay, under the collector.
 
 The times are in `benchmarks/mlton/baselines/2026-11-06/`: the four at each commit through C and arm64
 (`quest-c-whole-four-COMMIT.jsonl`, `quest-arm64-whole-four-COMMIT.jsonl`), the suite through arm64
@@ -1869,12 +1884,13 @@ pop in Boehm. Each step was measured on the four before the next was begun.
    made zebra slower, their copies of `maybe.none` and `maybe.unwrap`, counted at their whole size, spending the
    growth bound before `isConsistent`; the bound now counts a copy's size less the call's (2). §11.3's settings were
    measured with the whole size, so the suite below measures this too.
-7. **Clears at a branch** (`250c480e`, [arm64.md](arm64.md) §3.8, `regalloc_scan` case 14): for a target that asks
-   for clears, a value dying at a branch, on the path that falls through, is cleared only if a call may follow on
-   that path, and a cold block's call is not one. Under Boehm, whose frames were scanned whole, a failed bounds
-   check's path cleared every pointer live into the passing one, and `preflowPush` had 1,541 clears rather than 33.
-   Under the collector, a frame's map says which slots are live, arm64 asks for no clears, and **this step changes no
-   arm64 code**: it measures as noise below, and is kept for the targets that ask.
+7. **Clears at a branch** (`250c480e`, [arm64.md](arm64.md) §3.8, `regalloc_scan` case 14): for a target that asks for
+   clears, a value dying at a branch, on the path that falls through, is cleared only if a call may follow on that path,
+   and a cold block's call is not one. Under Boehm, whose frames were scanned whole, a failed bounds check's path
+   cleared every pointer live into the passing one, and `preflowPush` had 1,541 clears rather than 33. Under the
+   collector, a frame's map says which slots are live, arm64 asks for no clears, and **this step changes no arm64
+   code**: it measures as noise below. (The clears were removed on 2026-11-14, `cdee9e7e`, since no target asks for
+   them.)
 8. **Unreachable members of a whole program** (`97dd6562`, `whole.dropUnreachable`, ir.md §8.6), added on 2026-11-05
    when the suite found imp-for through arm64 1.87 times slower after steps 2 to 7 (under Boehm): steps 2 and 3 made
    more of the library inlinable, and copies into members imp-for never calls spent nearly all the growth bound
@@ -2275,3 +2291,331 @@ geometric mean of 0.999 against the first run, those before them 1.007.
 
 Every benchmark is within 0.976 to 1.035 of its time before, the noise of one run (the largest moves: mlyacc 1.035,
 fft 1.030, tailfib and even-odd 1.023, vliw 0.977).
+
+## 24. The arm64 performance review and its items (2026-11-01 to 2026-11-03)
+
+A review of why programs compiled by the arm64 backend ran slower than the same programs compiled through C by clang,
+at `6f7cb100` (options as values, and the traceback cache), on the six benchmarks near the median (life, ray, hamlet,
+mlyacc, zebra, nucleic), and the items it recommended, made in batches with their estimated and actual cost. The
+lasting results are described where the code is: spill weights, slot sharing, chain layout, and selection in
+[arm64.md](arm64.md) §3, invariant loads and value numbering in [ssa.md](ssa.md) §2.1 and §4.1, escape analysis in
+ssa.md §4.2, and what was tried and not kept in arm64.md §6.1. The clears of dead slots it added (item 3a) were removed
+on 2026-11-14 (`cdee9e7e`) once the collector's stack maps made dead slots harmless (§18).
+
+### 24.1. What the review found
+
+At `6f7cb100`, programs compiled by arm64 ran 1.2 to 1.95 times as long as the same programs compiled by the C backend.
+The gap in run time is the product of two factors:
+
+- **The SSA, compiled by clang (`ssac`), against the C backend:** 1.00 to 1.04 for four of the six, but 1.34 for
+  hamlet and 1.58 for zebra. That part is in the SSA's builder, not the code generator: the C printer reads and
+  builds options' payloads in place, and the SSA's builder does not (zebra allocates 4.76 GB through the SSA, 2.75 GB
+  through C).
+- **arm64 against clang on the same SSA:** 1.18 to 1.54. That part is the code generator.
+
+The generated code loses its run time to six things, in order of what they cost. None is a single missing pass.
+Each comes from a design choice that is reasonable for a first native backend but that LLVM made differently, and
+for reasons that apply here.
+
+1. **Spill decisions that ignore how often code runs.** Linear scan spills whatever has the furthest next use. It
+   neither knows nor cares that one use is in a loop and the other is not, and a value live across a call on a cold
+   path is treated as if it crossed a call on every path. In life's hottest loop, the list cursor goes through a
+   stack slot on every iteration, a store-to-load round trip on the loop-carried dependence chain. clang keeps it in
+   a register.
+2. **Dead values left in spill slots, in a program scanned by a conservative collector.** Every spilled value has its
+   own slot for the life of the frame, and keeps it after it dies. In mlyacc, `main`'s frame is 7.7 KB (clang's: 1 KB),
+   and at a collection 519 to 717 of its words point into the heap (clang's: about 80). The collector keeps all of them
+   alive: mlyacc's live pointer data is 2.6 MB rather than 0.75 MB, and marking takes 570 ms rather than 271 ms. That is
+   about half of mlyacc's code-generation gap, and no LLVM-style measurement would have found it, because it costs
+   nothing in the function where the slots are.
+3. **Block layout in the builder's order.** Every check (a bounds check, a NaN check, an option's tag) puts its
+   cold raising block between the check and the code that follows it. The hot path therefore jumps over the cold
+   block every time: a taken unconditional branch per check. ray's `psRaytrace` has 193 `b`s to clang's 25.
+4. **No redundancy elimination on the SSA.** No value numbering, no load elimination, no hoisting. nucleic's
+   `tfoCombine` loads each field of its two matrices four times, and clang loads each once. The fields are
+   immutable, a fact Quest knows and LLVM has to prove.
+5. **Instruction selection by expansion, one SSA instruction at a time.** No `ldp`/`stp` outside prologues (clang:
+   300 to 11,000 per program), no register-offset or shifted addressing (clang: 66 to 388), `adrp`, `add`, `ldr`
+   for every global (406 to 1,072 per program; clang folds the `add`), a `Bool` result masked again after every
+   call, a `ldr` then a `mov` where one `ldr` would do (136 to 3,588), and real constants built in four `mov`s and
+   an `fmov`. In total, 1.2 to 1.75 times clang's instructions for the same SSA.
+6. **Unwind information the linker cannot compact.** The prologue stores each callee-saved pair in the opposite
+   order to the one Darwin's compact unwind format requires, so every function that saves a callee-saved register
+   (372 of zebra's) falls back to DWARF CFI. Each frame a raise walks through then has libunwind parse an FDE:
+   zebra spends 121 samples in libunwind to clang's none.
+
+
+How it was measured, and the two factors:
+
+
+Each benchmark was built `--whole-program` by stage 2 at `6f7cb100` with each backend: `c`; `ssac` (the SSA printed as
+C, compiled by clang `-O2`); and `arm64`. Times are user time, the least of three alternating rounds. The load average
+was falling from a peak of about 40 to about 6 while they ran, so differences under about 5 percent are noise.
+
+The tools, and how to use them, are in [profiling.md](profiling.md): `tools/perf/variants.py` builds the three
+variants, `timeit.py` times them, `profile.py` samples the program counter (macOS's `sample` attributes time only to
+functions, and Instruments needs Xcode) and attributes the samples to symbols and instructions, `asmstats.py`
+compares the instruction mix, and `gcstats.py` summarizes the collector's statistics. A process migrates between
+performance and efficiency cores, so the profiles are used to see *where* time goes within a function, never to
+compare totals between runs. Frames and stack contents at a collection are from lldb, with a breakpoint on
+`GC_stopped_mark` (profiling.md §6).
+
+
+Seconds, and each one's time over C's:
+
+| Benchmark | C | ssac | arm64 | ssac / C | arm64 / ssac | arm64 / C |
+|---|--:|--:|--:|--:|--:|--:|
+| life | 1.58 | 1.60 | 2.47 | 1.01 | **1.54** | 1.57 |
+| ray | 1.97 | 2.04 | 2.40 | 1.04 | 1.18 | 1.22 |
+| hamlet | 1.28 | 1.71 | 2.05 | **1.34** | 1.20 | 1.61 |
+| mlyacc | 1.61 | 1.66 | 2.36 | 1.03 | **1.42** | 1.47 |
+| zebra | 1.47 | 2.32 | 2.86 | **1.58** | 1.23 | 1.95 |
+| nucleic | 1.78 | 1.77 | 2.13 | 0.99 | 1.20 | 1.20 |
+
+### 24.2. The items, estimated and actual
+
+| | Change | Where | Lines | Checks | Expected |
+|---|---|---|--:|--:|---|
+| 1 | Pairs stored in compact unwind's order | `codegen.prologue`, `restore` | 10 | 1 | raise-heavy programs (zebra) |
+| 2 | Cold blocks last | `select` (`layout`), or after it | 10 to 100 | 1 to 2 | ray, nucleic: most of 1.2 |
+| 3a | Dead pointers' spill slots cleared | `regalloc.rewrite`, from its liveness | 100 | 2 | mlyacc: about half of 1.42 |
+| 3b | Spill slots shared, pointers apart from the rest | `codegen.compile`, what `regalloc` exposes | 100 | 1 to 2 | smaller frames |
+| 4a | Static block frequencies; spill weights by frequency | `codegen` (from `ssa/cfg`), `regalloc` | 100 | 1 to 2 | part of life's 1.54 |
+| 4b | Splitting around cold calls | `regalloc` | 100 to 1,000 | 2 to 4 | the rest of life's; mlyacc |
+| 5 | Value numbering and hoisting of pure values and immutable loads | a new `ssa` pass; `ssa/build` | 100 to 1,000 | 2 to 4 | nucleic; every program; ssac too |
+| 6 | `ldp`/`stp` and post-index; register-offset addresses; `adrp` + `ldr`; no re-extension | `select`, a post-allocation pass | 100 each | 1 to 2 each | a few percent each |
+| 7 | Chain layout and loop rotation | after 2, with 4a's frequencies | 100 | 1 to 2 | a few percent |
+| 8 | Options' payloads in the SSA, as in the C printer | escape analysis, done ([ssa.md](ssa.md) §4.2) | — | — | zebra 1.58, hamlet 1.34 (ssac and arm64) |
+| 9 | What else keeps mlyacc's heap alive | to be found, with `tools/perf/retention.py` | — | — | mlyacc: 1.31 MB live, against C's 0.73 |
+
+
+**Lines** is the order of magnitude of the compiler's (and runtime's) lines added and removed, not counting tests and
+goldens. **Checks** is how many runs of `tools/check` the change was expected to take to push: one when it is right the
+first time, more for each fix a run finds. Each run of every suite took about 30 minutes, which was most of the time a
+change took. They were estimated from comparable commits:
+
+- arm64.md's codegen item 1 (`c5aa1ab0`, helpers expanded in the builder): 145 lines; item 2 (`ccd9e7eb`, four selection
+  patterns and branch inversion): 378, about 100 a pattern. The traceback cache (`3fc7b821`): 20. Items 1 and 2
+  were checked together, in two or three runs of `tools/check` (one spoiled by an edit made while it ran).
+- The allocator's interval splitting (`b75ee0fa`, arm64 step 11): 947 lines; linear scan itself (`70b4d698`): 497;
+  moving it onto machine functions (`ba4150c3`): 1,762. The coalescing trial, not kept: about 200.
+- The C printer's payload fixes (`193a3f11`): 211.
+- `ssa/cfg` already has the dominator tree and loop depths, so 4a's frequencies are little more than loop depth and
+  a walk for blocks that only reach `unreachable`, plus the use of them in the spill choice. Item 5 needs the
+  builder to mark loads of immutable memory, which is in `ssa/build`.
+
+
+To check the estimates, each item's commit recorded its actual lines (`git show --numstat`, without `tests/`
+and `.out` files) and its runs of `tools/check`, beside the estimate (4b was not made; see §24.3).
+
+| | Lines, actual | Checks, actual | Commit |
+|---|--:|--:|---|
+| 1 | 19 | 1, with 2 and 3a | `a9f50a2c` |
+| 2 | 59 | 1, with 1 and 3a | `c117f3f8` |
+| 3a | 143 | 1, with 1 and 2 | `b6c56e08` |
+| 3b | 147 | 1, with 4a and the fixes | `cdf4cf76` |
+| 4a | 352 | 1, with 3b and the fixes | `df46c85c` |
+| 4b | | | |
+| 5 | 77, 342, 8, and 149 (invariant marks, value numbering, constants within a block, ordinary loads); hoisting 317, not kept | 1, with the batch | `1f438be9`, `e913387c`, `76344a73`, `21f39190` |
+| 6 | 25, 73, 148, and 155 (`adrp` + `ldr`, no re-extension, register offsets, `ldp`/`stp`); post-index not made | 1, with 7 and the SSA's two | `94ff0a37`, `94b14de7`, `7dfe2ff1`, `8d37e163` |
+| 7 | 80 (chains); rotation tried and not kept | 1, with 6 and the SSA's two | `4626369d` |
+
+### 24.3. The batches
+
+The first batch (items 1, 2, and 3a, 2026-11-01) passed `tools/check` in one run of every suite (40 minutes, since it
+changes tests' goldens, which the self-hosted compiler's suites alone do not cover). Its estimates held: each item
+within its order of magnitude, and one run against the one to five estimated. Two of its results differed from what
+the review predicted. Item 1's gain on zebra (0.89 of its time, measured before `418db1c2`) is mostly gone, since that
+commit walks a raise's frames by the frame-pointer chain rather than libunwind; it still removes DWARF unwind
+information from every binary. Item 3a cleared `main`'s frame (90 to 126 heap pointers at a collection, against 519
+to 717 before and clang's 78 to 81), but mlyacc's median live data fell only from 2.6 MB to 2.0 MB, against clang's
+0.77: what else keeps the rest alive (slots not yet written, callee-saved registers, or something not yet seen) is
+open. Timings were taken on a machine loaded by other suites and are to be taken again.
+
+The second batch (items 3b and 4a, 2026-11-01) came with three fixes that measuring it found, each a commit of its
+own: a value dying as a jump's argument was never cleared, since the test of whether a call may follow looked only
+at the instructions after the jump, of which there are none (`5b2acd1f`, 25 lines); a loop header's parameter that
+nothing reads, in memory because the header had more parameters than registers, was stored by the back edge every
+time round and never cleared, since it dies at no read (`2c972461`, 11 lines); and raising blocks cleared slots
+just before raising (`5f74f6c4`, 10 lines). They were found with `tools/perf/retention.py` and the backend's
+`QUEST_LIVE_SLOTS=1` annotations (`1ab6c5c7`, 86 lines of compiler and 272 of tools; docs/profiling.md section 6),
+after the collector's own statistics proved misleading: it collects at different points in each build and run.
+Clearing dead values' callee-saved registers was tried and not kept: it changed mlyacc's live data by under 1%. 4a's
+estimate was low (352 lines against 100), a third of it moving definitions above their first use. Results against the
+C backend, five rounds, at a load of 2 to 22: life 1.33 (1.55 with 3b alone), mlyacc 1.29 (1.34), nucleic 1.13
+(1.14), ray 1.14, zebra 1.87, hamlet 1.00 of 3b's. mlyacc's median live data at forced collections is 1.31 MB, against
+1.48 MB with 3b alone and 0.73 MB under C; `main`'s frame holds no dead pointers at the points checked, and what keeps
+the rest alive (perhaps callee-saved registers saved by deeper frames) is open. In life's `qf_nthgen`, 4a takes
+the stack loads from 74 to 34 and the stores from 116 to 59 (clang: 7 and 7). These timings predate escape
+analysis (`88b91256` to `0093eb23`, item 8), which takes zebra to 0.41 of its allocations through the SSA, so zebra's
+and hamlet's, at least, are to be taken again.
+
+
+The rest came in batches 3 to 7, each pushed after one run of `tools/check`, with each of its items measured alone
+before that run. Batch 6, splitting around cold calls (4b) or proxy stubs that preserve the caller-saved registers,
+was deferred by the classification below, and not taken.
+
+**The classification** (2026-11-01, at `e72fc0cb`) built life and mlyacc with the allocator told that some calls
+clobber no register, which is wrong code, only counted: calls in cold blocks (what 4b could gain at most), proxy
+helpers' calls (what the stubs could), and every call. Stack loads and stores are weighted by their blocks'
+frequencies, and set against `tools/perf/profile.py`'s samples:
+
+- **4b, splitting around cold calls, gains nothing.** With cold blocks' calls clobbering nothing, both programs'
+  code is the same, byte for byte: a cold block raises, so nothing is live after its calls. Proxies' slow paths
+  return, and so are not cold by 4a's definition; what 4b would do for them is what the stubs would.
+- **mlyacc's gap is not spills.** Its hottest compiled functions (`qf_union`, `qf_length_3`, `qf_graphShift`) have
+  none, and the collector has 51% of its samples. `main` has most of its spills by the static frequencies, and none
+  of its samples. Its levers are item 9 and instruction selection.
+- **life's `qf_nthgen` has three times the spills it had before escape analysis,** which turns its tuples into
+  separate values: 74 reloads, 76 stores, and 49 clears, against 28, 33, and 21 with the pass skipped (the 34 above
+  was before the rebase onto it). Proxy calls that preserved every register would leave 40 reloads; calls that
+  clobbered nothing, 16. The pass takes life's allocations from 220 million to 123 million, and mlyacc's from 212
+  million to 127 million (at `--scale 0.05`).
+- **Those spills cost little time.** The new reloads are at loop depth 2 (64 against 16); the innermost loop's are 6
+  either way, since 4a took cause 1's spills out of it. Of `qf_nthgen`'s 785 samples, 4 are on reloads. 176 are on two
+  clears in the inner loop, but each follows a branch on a chain of loads, which is most likely the loads' latency
+  counted at the next instruction; batch 3 times them to tell.
+
+**The baseline** (batch 3's timings, 2026-11-01, at `2b619714`): `tools/perf/timeit.py`, five rounds at a
+thirty-second of the suite's counts, at a load of 6 falling to 2. Escape analysis is in both of the SSA's backends and
+not in C's, so `ssac` is now faster than C on four of the six, and the code generator's own factor is arm64 against
+`ssac`:
+
+| | arm64 / C | arm64 / `ssac` | `ssac` / C | arm64 / C, second batch |
+|---|--:|--:|--:|--:|
+| life | 1.15 | 1.45 | 0.80 | 1.33 |
+| ray | 0.72 | 1.05 | 0.69 | 1.14 |
+| hamlet | 1.28 | 1.29 | 0.99 | — |
+| mlyacc | 1.00 | 1.27 | 0.78 | 1.29 |
+| zebra | 1.38 | 1.24 | 1.11 | 1.87 |
+| nucleic | 1.00 | 1.14 | 0.88 | 1.13 |
+
+- **Item 8 has done its part:** zebra's and hamlet's `ssac` / C, 1.58 and 1.34 in §24.1, are 1.11 and 0.99, so what
+  remains of their arm64 / C is the code generator's.
+- **Escape analysis is worth its spills on arm64:** life without it (`QUEST_SKIP_PASSES=escape`) takes 1.33 of C's
+  time, against 1.16 with it, the same five rounds.
+- **The inner loop's clears cost about 2%:** life with `qf_nthgen`'s clears left out takes 1.14 of C's time, within
+  the noise at this load. The samples on them were the loads' latency. Batch 6 stays deferred.
+
+Taken again on 2026-11-02 at `9a08223f`, five rounds on an idle machine (load 1.2 to 1.7; §11), the
+six's ratios are the same to within 0.01: arm64 / C life 1.15, ray 0.72, hamlet 1.27, mlyacc 0.99, zebra 1.38,
+nucleic 0.99, and arm64 / `ssac` 1.44, 1.05, 1.30, 1.27, 1.24, 1.13. The load the baseline was taken at did not
+skew it. Across the whole suite, though, the six are no longer where arm64's distance from C is: they take 1.04 of
+C's time, and the suite 1.46, most of the difference in md5, checksum, and psdes-random (which `ssac` is as slow on,
+so the cause is before the code generator) and in zern, string-concat, mpuz, and the vector concatenations (which
+it is not). Batches 4 and 5 are to be measured on those as well as the six.
+
+**Batches 4 and 5** (2026-11-02, pushed at `f5bf8f64` after one `tools/check` run, rebased onto 35f49904) were
+timed on the twelve, five rounds at a thirty-second of the suite's counts, at a load of 1.2 to 2.2, each change
+against the commit before it. Two changes outside the review's items, which the six added programs pointed to, came
+with them, each in `ssa/`, so `ssac` gains too:
+
+- `7e837cfd` (189 lines): a call of an external through its thunk (`qx_`) calls the external itself, as clang makes
+  it by inlining the thunk, and an importer calls a library external's C function, as the C printer does; and the
+  word module's operations, `static inline` in the runtime's header, are their instructions (ssa.md §4). md5,
+  checksum, and psdes-random spent their loops calling them, through thunks: the cause before the code generator
+  that §11 found, and string-concat's and mpuz's `getChar` and `ascii.val` went through thunks too.
+- `4e69c67e` (40 lines): a call followed by a jump to a block that only returns is a tail call though the jump
+  passes the block parameters it does not return. zern's two loops, closures that call each other, nested a call per
+  element, 16,384 deep, and the collector scanned the stack.
+
+Time against the C backend's, before batch 4 (`568c3a56`), after batch 5 (`8d37e163`), and after both SSA changes
+(`4e69c67e`), and `ssac`'s before and after them:
+
+| | before 4 | after 5 | now | `ssac` before | `ssac` now |
+|---|--:|--:|--:|--:|--:|
+| life | 1.14 | 0.90 | 0.91 | 0.79 | 0.80 |
+| ray | 0.72 | 0.70 | 0.69 | 0.69 | 0.69 |
+| hamlet | 1.28 | 1.16 | 0.87 | 0.97 | 0.87 |
+| mlyacc | 0.99 | 0.93 | 0.92 | 0.78 | 0.78 |
+| zebra | 1.38 | 0.94 | 0.94 | 1.11 | 1.11 |
+| nucleic | 0.99 | 0.94 | 0.94 | 0.88 | 0.88 |
+| psdes-random | 3.90 | 3.83 | 1.36 | 2.92 | 1.02 |
+| checksum | 4.47 | 4.31 | 0.60 | 2.70 | 0.60 |
+| md5 | 6.18 | 6.22 | 1.16 | 3.33 | 1.12 |
+| zern | 2.92 | 2.91 | 1.16 | 0.98 | 1.00 |
+| string-concat | 1.76 | 1.50 | 0.64 | 1.00 | 0.64 |
+| mpuz | 1.85 | 1.40 | 1.07 | 0.94 | 0.71 |
+| geometric mean | 1.83 | 1.64 | 0.91 | 1.21 | 0.83 |
+
+- **Chain layout is batch 4's and 5's gain:** life 1.14 to 0.91, zebra 1.38 to 0.94, mpuz 1.85 to 1.40, hamlet
+  1.28 to 1.16, string-concat 1.76 to 1.50, alone. Unconditional branches fell 27 to 30% in every program.
+- **The rest of item 6 is neutral in time,** each within 1 to 2% alone, though together they take 7 to 10% of the
+  instructions: `adrp` + `ldr` (life 682 fewer, mlyacc 1,257), no re-extension (3 to 55 masks a program), register
+  offsets (an element in 2 instructions rather than 5; life 78 such operands, clang 66), and pairs (life 221 outside
+  the frame, clang 393). They are worth keeping as smaller code that frees registers, not as speed.
+- **Not kept:** loop rotation (adds 53 to 119 static branches, saves no taken branch here, and took zebra from 0.94 to
+  1.00); post-index forms (1 to 18 candidates a binary); and functions without a frame record when they call nothing
+  but in tail position (more than half of life's, but no program moved: even-odd stayed at 7.8, the push and pop
+  overlapping its branches).
+- **What is left,** past batch 7's value numbering: even-odd (7.8, against `ssac`'s 1.0), which clang turns into a
+  loop; psdes-random's 1.36 (its time is the collector's and first stores to new pairs, which `ssac` has as well);
+  mpuz's 1.07 against `ssac`'s 0.71, a fifth of whose `assign` samples are 3a's clears of dead slots; and md5's
+  shifts by a count not constant (12 calls a binary), which could be inline branches.
+
+**Batch 7's baseline** (its plan's step 1, 2026-11-02, at `568b3252`, after
+35f49904's library operations in the SSA, which made md5's shifts by a count not constant inline branches): the
+thirteen, five rounds at a thirty-second of the suite's counts, at a load of 2.6 to 4.4. Time against the C
+backend's:
+
+| | life | ray | hamlet | mlyacc | zebra | nucleic | psdes-random | checksum | md5 | zern | string-concat | mpuz | even-odd |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| arm64 | 0.89 | 0.68 | 0.94 | 0.90 | 0.94 | 0.93 | 1.35 | 0.60 | 1.17 | 1.15 | 0.64 | 1.07 | 7.88 |
+| `ssac` | 0.79 | 0.68 | 0.92 | 0.78 | 1.11 | 0.88 | 1.02 | 0.60 | 1.12 | 0.99 | 0.64 | 0.71 | 1.00 |
+
+- **The ratios are the batches' "now" to within 0.03** but hamlet's (0.87 then, 0.92 and 0.94 now, both backends
+  alike, so the C build's time, at this load). 35f49904 moved none of the thirteen at a thirty-second of their
+  counts: 7e837cfd had already taken their loops' word operations out of their thunks.
+- **`tfoCombine` makes 89 loads through arm64** (548 instructions, 14 stack accesses past the prologue's and the
+  epilogue's), against 38 through both clang builds (C 347 instructions, `ssac` 302): the SSA's 70 loads and the
+  allocator's reloads. Over each program's Quest functions, arm64 makes 2,210 loads (checksum, mostly the library's)
+  to 27,674 (hamlet), and 101 to 163 `cset`s, the counts step 3 must not raise.
+- **The compiler builds its driver** (`-j 8`, a fresh build directory, at a load of 4 to 8) in 30 s through C and 26
+  s through arm64, which the new passes add to.
+
+**Batch 7** (2026-11-03): item 5 as a plan of five steps, each committed and measured alone, the thirteen five rounds
+at a thirty-second of the suite's counts against the step before. The design is in [ssa.md](ssa.md) §2.1 (invariant
+loads) and §4.1 (the pass):
+
+1. The baseline above.
+2. **Invariant loads** (`1f438be9`): the builder marks the loads of what nothing writes once it is made (a closure's
+   code and environment, an array's and a string's length, a proxy's original, an option's tag, offset tables). A
+   field's static type is not enough, since `Tuple var a: A end <: Tuple a: A end`; `language/var_field_views`
+   checks that a `var` field read through an immutable view is not taken as invariant.
+3. **`ssa/passes/valueNumbers`** (`e913387c`, `76344a73`): dominator-tree value numbering of pure values and invariant
+   loads, copies, and trivial block parameters, then the instructions left without uses removed. Comparisons, `and`s,
+   `mul`s, and `ptrAdd`s are numbered only within their block, since arm64 fuses them into their use there (the `cset`
+   counts did not move). Constants numbered across the function were live longer and spilled (stack accesses: hamlet
+   8,129 to 10,022, mlyacc 4,522 to 5,713, at no gain), so they are numbered within a block, and keyed by value in their
+   uses. It exposed a latent bug: a tail call left unreachable blocks returning a value it no longer defined, so
+   `tailCalls` now drops them (`cfg.dropUnreached`).
+4. **Ordinary loads** (`21f39190`), within a memory generation that a store, a call that may write (not
+   `quest_alloc`), and a try's handler start anew; and a store's value, read back. `tfoCombine` makes 38 loads, as
+   clang does, where it made 89. psdes-random first took 1.89 of C's time rather than 1.37: removing a redundant load
+   of a pair's second word left the first loaded by a lone `ldr` after the `stp` that stored it, where the pairs pass
+   had made an `ldp` (1,251 and 694 samples on the two such `ldr`s, against about 180 on the `ldp`; instructions
+   retired the same, cycles 34% more). A word whose neighbor its block loads is now kept for the pair, and psdes-random
+   takes 1.39.
+5. **Hoisting** (317 lines, not kept): loop-invariant pure values and invariant loads moved to preheaders, made where
+   needed. It found almost nothing to move once value numbering had run, since a loop's invariant loads sit behind
+   null and bounds checks inside the loop (`dominatesExits` fails), and its constants are rematerialized; the
+   thirteen's code was the same but in zebra and hamlet, and no time moved.
+
+Time against the C backend's, at a load of 2.2 to 3.8, without value numbering (`QUEST_SKIP_PASSES`) and with it:
+
+| | life | ray | hamlet | mlyacc | zebra | nucleic | psdes-random | checksum | md5 | zern | string-concat | mpuz | even-odd |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| arm64 before | 0.90 | 0.69 | 0.88 | 0.92 | 0.95 | 0.93 | 1.35 | 0.60 | 1.16 | 1.14 | 0.64 | 1.07 | 7.81 |
+| arm64 after | 0.90 | 0.68 | 0.89 | 0.92 | 0.93 | 0.93 | 1.35 | 0.60 | 1.17 | 1.14 | 0.64 | 1.00 | 7.80 |
+| `ssac` before | 0.80 | 0.69 | 0.89 | 0.78 | 1.12 | 0.88 | 1.03 | 0.60 | 1.12 | 0.98 | 0.64 | 0.70 | 1.00 |
+| `ssac` after | 0.79 | 0.69 | 0.87 | 0.78 | 1.09 | 0.88 | 1.03 | 0.60 | 1.12 | 0.99 | 0.64 | 0.71 | 1.00 |
+
+- **The gain is small and narrow:** mpuz 1.07 to 1.00 and zebra 0.95 to 0.93 through arm64, zebra 1.12 to 1.09 and
+  hamlet 0.89 to 0.87 through `ssac`; the rest within 0.01. Loads fall 1 to 4% a program (mlyacc 16,101 to 15,872)
+  and instructions up to 1.3%. nucleic's `tfoCombine` loads as clang's does, but nucleic did not move: cause 4's
+  redundancy was not where its time is.
+- **What is left:** a join starts a new memory generation, so a load after an `if` without an `else` is not reused
+  (the plan's question; no benchmark here showed one hot); hoisting's guard, which a load of a pointer already
+  dereferenced before the loop could pass; and the even-odd, psdes-random, and md5 gaps above, which value numbering
+  does not reach.
+

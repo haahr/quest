@@ -1,9 +1,9 @@
 # Organization of the Self-Hosted Quest Compiler and Interpreter
 
 This document specifies the directory, module, and type architecture for the **self-hosted Quest compiler and
-interpreter** (`questlang`). The self-hosted system replaces the Python bootstrap implementation
-(`bootstrap/python/quest/`) with clean, modular Quest code organized as an acyclic directed graph of interfaces
-(`.int.quest`) and module implementations (`.mod.quest`).
+interpreter** (`questlang`), the primary compiler, written in Quest as an acyclic directed graph of interfaces
+(`.int.quest`) and module implementations (`.mod.quest`). The Python bootstrap (`bootstrap/python/quest/`), which it
+was ported from, builds it when there is no release and shares its behavior goldens (§2).
 
 ---
 
@@ -44,6 +44,9 @@ questlang/
 │   ├── keys                 # Integer keys for the type tables (the bootstrap keys them by tuples)
 │   ├── json                 # JSON text, as the dynamic format and the build's artifacts use it
 │   ├── files                # Paths and files: joining, components, text and times, atomic writes
+│   ├── memoryfiles          # Artifacts kept in memory rather than on disk, for the JIT (docs/jit.md §3.4.1)
+│   ├── pyrepr               # Python's repr of strings, lists, and tuples, as the bootstrap's messages show them
+│   ├── strings              # String helpers beyond lib/util/strutil's (isOneOf)
 │   └── sha256               # SHA-256, for layout tags, type digests, and fingerprints
 │
 ├── syntax/                  # Concrete syntax and parsing
@@ -101,7 +104,10 @@ questlang/
 │   └── irinterp             # IR interpreter
 │
 ├── ir/                      # IR lowering and passes (docs/ir.md)
-│   └── nodes, walk, captures, lower, specialize, closure, represent, slots, describe, thunks, verifycore, verify, printer
+│   ├── nodes, walk, captures, lower, printer, describe   # The IR, its traversals, lowering, and printing
+│   ├── simplify, inline, clone, contify                  # The simplifier, the inliner, and contification (ir.md §8.6)
+│   ├── specialize, closure, unbox, represent, slots, thunks   # The passes after it (ir.md §8.1 to §8.4.1, §8.7)
+│   └── pipeline, verifycore, verify                      # The passes in order, and the verifier
 │
 ├── repr/                    # The representation of values, which the IR's passes and every backend share
 │   ├── shapes, written      # Types as the passes see them; the types of a type's components as written
@@ -113,23 +119,30 @@ questlang/
 │   ├── symbols, syntax      # The names units link against; the spelling of C text
 │   └── externals            # The standard library's external C functions and types
 │
-├── ssa/                     # The native backends' SSA (docs/ssa.md): nodes, build, statics, verify, printer
-│   ├── build/               # The SSA built from the described IR
-│   └── passes/              # Its optimizations: escape, promote, constants, valueNumbers, selects, accumulate,
-│                            # tailCalls, tailJumps, interrupts, allocations
+├── ssa/                     # The native backends' SSA (docs/ssa.md): nodes, build, statics, runtimeFunctions,
+│   │                        # cfg, liveness, scalars, barriers, verify, printer, parser, pipeline
+│   ├── build/               # The SSA built from the described IR: values, descriptors, calls, aggregates, control,
+│   │                        # adapters, unit, representation
+│   └── passes/              # Its passes: escape, promote, constants, valueNumbers, selects, tables, accumulate,
+│                            # tailCalls, tailJumps, trampolines, unproxies, interrupts, allocations, and
+│                            # proxyFold, what escape and scalars share
 │
-├── codegen/                 # Backends: the shared layer and the C backend
+├── codegen/                 # Backends: the shared layer, the native backend, and the C backend
 │   ├── backend
 │   ├── choice               # The backend each unit is compiled by
 │   ├── machine/             # A native backend's target-independent half: target, machine, regalloc
-│   ├── arm64/               # The native backend: codegen (instructions, frames, calls), asm (Darwin's spellings),
-│   │                        # peephole (branch relaxation, ldp and stp pairs)
+│   ├── arm64/               # The native backend: select (instruction selection), minst (its instructions),
+│   │                        # target (registers), codegen (frames, calls, the unit), peephole (branch relaxation,
+│   │                        # ldp and stp pairs), printer and asm (Darwin's spellings), encode (for the JIT)
 │   └── c/                   # declarations, headers, printer, types; ssac, the SSA's C printer (docs/arm64.md
 │                            # §3.14)
 │
+├── jit/                     # The JIT (docs/jit.md): session, loader, debugobject
+│
 ├── config/                  # The ABI version and artifacts' format
 ├── build/                   # The build engine and its log; compilerrunner, the host C compiler and linker;
-│                            # headers, interfaces' C headers kept beside their .qi files
+│                            # headers, interfaces' C headers kept beside their .qi files; workers, the
+│                            # processes of a parallel build (-j)
 │
 └── driver/                  # Compiler driver (the bootstrap's driver/, and its pipeline)
     ├── main                 # Main routine: every phase, -e, -i, and the bootstrap's compiling options
@@ -137,7 +150,8 @@ questlang/
     ├── whole                # A whole program: its modules merged into one unit
     ├── repl                 # The REPL: input completeness, rollback, the loop over io/readline
     ├── binaryerrors         # A compiled program's error output made a diagnostic
-    └── kernel               # Kernel mode: the Jupyter kernel's protocol over a REPL session
+    ├── kernel               # Kernel mode: the Jupyter kernel's protocol over a REPL session
+    └── interrupts           # The kernel's interrupts (docs/jupyter-kernel.md §5)
 ```
 
 The self-hosted compiler compiles itself to a fixed point, and it is the primary compiler: the two compilers agree
@@ -154,8 +168,8 @@ from Python's `hashlib`, for layout tags and type digests.)
 The AST is one module, `questlang/syntax/ast` (interface `Ast`, in [ast.int.quest](../questlang/syntax/ast.int.quest)).
 It mirrors the bootstrap parser's AST (`bootstrap/python/quest/syntax/ast.py`) node for node, so that
 `questlang/syntax/astprint` can print it in the same canonical S-expression form as the bootstrap `ast_dump`, and the
-two can be compared on every parseable Quest file ([testing.md](testing.md) §2.3). The interface declares its types with `Def`, so that importers
-see their structure; the module defines them with `Let`.
+two can be compared on every parseable Quest file ([testing.md](testing.md) §2.3). The interface declares its types with
+`Def`, so that importers see their structure; the module defines them with `Let`.
 
 In Quest, type names must be alphanumeric and cannot contain underscores (`_`). Furthermore, the term "Kind" has a
 precise, formal meaning in Quest's type system (kinds are the "types of types", such as `TYPE`). To avoid semantic
@@ -399,7 +413,8 @@ Layer 6: modules/abstracttypes, loader, elaboration, stdlib
 Layer 7: typechecker/checker → bindings, application, aggregates, tuples, control, exceptions, autovalues →
          typecheck, scoping
 Layer 8: types/reduce → canonical → values/model → dynamicjson → interpreter/primitives, builtins,
-         formatting → treewalk | repr/* → ir/* → ssa/* → codegen/*, modules' artifacts, config/*, build/*
+         formatting → treewalk | repr/* → ir/* → ssa/* → codegen/* → jit/*, modules' artifacts, config/*,
+         build/*
 Layer 9: driver/*
 ```
 
@@ -451,15 +466,15 @@ further:
   timestamped and appended by `sh` with `date` (`build/logger`). Temporary files are made by `mktemp`, and a program's
   C goes into a temporary directory of its own. A compiled program runs without the bootstrap's 10-second timeout. An
   error that is not a compiler error (a C compiler's failure, say) is reported at the program's first character,
-  without the bootstrap's Python traceback. `--dump-after` is ported for the C phases only.
+  without the bootstrap's Python traceback.
 - **The REPL's snapshots** record no symbol counter and no frame parent, neither of which the self-hosted compiler can
-  observe ([repl.md](repl.md) §7).
+  observe ([repl.md](repl.md) §8).
 
 ---
 
 ## 7. Conventions, and Modules Left Whole
 
-The layout above is the one the restructuring of 2026-11-12 settled (the comment review's structure suggestions):
+The layout above follows these conventions:
 
 - **File names are lowercase,** new ones too, while unit paths keep their camelCase:
   `questlang/modules/artifacts/interfaceCompiler` is `interfacecompiler.mod.quest`.
@@ -467,7 +482,8 @@ The layout above is the one the restructuring of 2026-11-12 settled (the comment
   the bootstrap has the module (§2); a split of what only the self-hosted compiler has (the SSA, the arm64 backend,
   the JIT) is its own.
 - **A new `lib/` module waits for a release before `questlang/` uses it,** since stage 1 compiles `questlang/` against
-  the release's own `lib/` ([release-compiler.md](release-compiler.md)): `os/path` was added, released, and then used.
+  the release's own `lib/` ([release-compiler.md](release-compiler.md)), which is why `common/strings` is not in
+  `lib/`.
 - **A move renames the moved module's C symbols** (`mangleModuleName`: `questlang/repr/layout` is
   `questlang__repr__layout`) but not the scheme, so it needs no ABI bump; nor does moving text between the runtime's
   headers, whose digest in the ABI corpus covers `quest_runtime.h` and the two it includes.

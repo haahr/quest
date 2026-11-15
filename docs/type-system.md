@@ -101,9 +101,9 @@ place during inference. Several parts of the type checker depend on how type obj
   2. Coinductive subtyping (`is_subtype`) already handles equi-recursive types and higher-order type operators directly
      via the trail $\Sigma$ in a few milliseconds; running partition-refinement canonicalization on every type
      constructed during elaboration would add substantial overhead on non-recursive code.
-  Instead, `canonicalize_type` (`quest/types/canonical.py`) and `shape_of` (`quest/repr/shapes.py`) compute canonical
-  minimal regular trees on demand (and cache them per type) when lowering to the IR and C backend, where equivalent
-  recursive types must map to a single C struct and runtime type descriptor.
+  Instead, `canonical_type` (`types/canonical.py`) and `shape` (`repr/shapes.py`) compute canonical minimal regular
+  trees on demand (and cache them per type) when lowering to the IR and the backends, where equivalent recursive types
+  must map to a single C struct and runtime type descriptor.
 - **Substitution preserves sharing.** Every type node, component (fields, parameters, quantifiers), and kind records at
   construction (`__post_init__`) its free variables, `_fv`: the symbol ids a substitution could replace inside it,
   following exactly the binder rules of its `_substitute_full` method. It also records `_has_meta`, whether it contains
@@ -288,7 +288,7 @@ component each. A `let rec`, alone or joined by `and`, declares its members, typ
 their values are checked, so its functions may call one another; `let x = ... and y = ...` computes every member's
 value before any of their labels is bound (§6.10). Each member is a component of its own, so a tuple checked against
 a tuple type matches the members against the type's components one by one. A `TypedTuple` lists the components
-declared together (`rec_groups`, `simultaneous_groups`), which the interpreter and the C emitter evaluate as they do
+declared together (`rec_groups`, `simultaneous_groups`), which the interpreters and the lowering evaluate as they do
 the same declarations in a block.
 
 ### 4.2. Extended Subsignatures (`is_subtype`)
@@ -408,8 +408,10 @@ The typechecking environment employs a two-tier root architecture:
 - **`base_scope`:** Declares primitive language types (`Int`, `Real`, `Bool`, `Char`, `String`, `Array`), kinds
   (`TYPE`, `POWER`), built-in operators, and exception constants.
 - **`global_scope`:** Inherits from `base_scope` and binds the pre-linked standard library module records
-  (`arrayOp`, `ascii`, `conv`, `dynamic`, `int`, `list`, `reader`, `real`, `string`, `word`, `writer`) and their
-  interfaces (`ArrayOp`, `Ascii`, `Conv`, `Dynamic`, `IntOp`, `List`, `Reader`, `RealOp`, `StringOp`, `Word`, `Writer`).
+  (`arrayOp`, `ascii`, `conv`, `int`, `list`, `reader`, `real`, `string`, `system`, `word`, `writer`) and their
+  interfaces (`ArrayOp`, `Ascii`, `Conv`, `IntOp`, `List`, `Reader`, `RealOp`, `StringOp`, `System`, `Word`,
+  `Writer`), `STANDARD_LIBRARY_MODULES` in `modules/stdlib.py` (`questlang/modules/stdlib`). Every other library
+  module, `dynamic` included, is imported.
 - **Module Isolation:** Top-level expressions and REPL sessions execute in `global_scope`, allowing direct access to
   standard library modules without `import`. However, standalone module declarations (`module ... end`) have their
   internal elaboration scopes parented directly to `base_scope`. Consequently, modules cannot access pre-linked
@@ -501,14 +503,14 @@ These are *Typeful Programming*'s rules (§4.8), with one for parameters, which 
   in a block, a loop's body, a branch, or a tuple is local, wherever it is.
 - **A closure may capture a local `var` variable**, read it, and assign it. The function's frame and every closure
   that captures the variable share it: the lowering holds such a variable in a box, a tuple of one `var` component
-  (`_captured_mutables` in `ir/lower.py`, `capturedMutables` in `questlang/ir/lower`), and the variables no closure
-  captures stay unboxed in their frames.
+  (`captured_mutables` in `ir/captures.py`, `capturedMutables` in `questlang/ir/captures`), and the variables no
+  closure captures stay unboxed in their frames.
 - **Capturing `var` or `out` parameters inside closures is prohibited:** such a parameter is the address of the
   caller's location, which may not outlive the call.
 
 ### 6.3. Strict Non-Overloaded Operators and Numeric Non-Coercion
 Quest disallows implicit numeric coercions: `Int` and `Real` are disjoint types. Arithmetic between differing numeric
-types requires explicit conversion operations (`conv.real(n)`).
+types requires explicit conversion operations (`real.int(n)`, `real.floor(r)`).
 
 Quest does not overload operators across types; distinct operators exist for each primitive type (Cardelli §4.2):
 - **Integer arithmetic:** `+`, `-`, `*`, `/`, `%`, `mod` : `Int, Int -> Int`
@@ -733,7 +735,7 @@ be imported (see [dynamic.md](dynamic.md), which also notes a discrepancy in Car
 name):
 - **Creation (`dynamic.new`):** `new(A::TYPE a:A): T = auto :A with a end`.
   - Explicit: `dynamic.new(:Type val)`; inferred: `dynamic.new(val)` packages `val` at its static type.
-  - Legacy bare `dynamic(x)` function syntax is not supported.
+  - There is no bare `dynamic(x)` form.
 - **Narrowing (`dynamic.be`):** `be(A::TYPE d:T): A = inspect d when A with x then x.a else raise error as A end
   end`: the value, if `d`'s type component is a subtype of `TargetType`, and otherwise `dynamic.error`.
 - **Dynamic Inspection:** `inspect d when T1 with v then e1 else e2 end` is an inspect on an auto value: `v` is the
@@ -751,7 +753,9 @@ name):
     abstract type outside. This keeps the type opaque to clients while letting the module's own code inspect it.
 
 #### 6.11.1. Intensional Type Analysis vs. Pure Type Erasure
-In a pure type erasure model (such as standard System $F_{<:}$ or ML), type parameters are discarded at compile time, leaving runtime code to operate exclusively on untyped representations. However, `Dynamic` requires **Intensional Type Analysis (ITA)** (Harper & Morrisett 1995), because `dynamic.new` and `dynamic.be` inspect types at runtime:
+In a pure type erasure model (such as standard System $F_{<:}$ or ML), type parameters are discarded at compile time,
+leaving runtime code to operate exclusively on untyped representations. However, `Dynamic` requires **Intensional Type
+Analysis (ITA)** (Harper & Morrisett 1995), because `dynamic.new` and `dynamic.be` inspect types at runtime:
 - **Why Erasure Breaks Generic Wrappers:**
   Consider a polymorphic wrapper:
   ```quest
@@ -759,7 +763,13 @@ In a pure type erasure model (such as standard System $F_{<:}$ or ML), type para
   ```
   If `A` were erased, `dynamicWrapper` would have no runtime knowledge of `A` and could not package `a` with its type descriptor.
 - **Comparison with Java RTTI vs. Erasure:**
-  In Java, generic methods are implemented via erasure (`<T> void foo(T x)` erases `T` to `Object`). Java's dynamic operations (`instanceof`, reflection, `getClass()`) do not inspect erased generic parameters; they rely on reified class metadata (`java.lang.Class<T>`) stored in every object's heap header. When Java code needs dynamic operations on an abstract type parameter, it cannot write `new T()` or `x instanceof T`; it forces the programmer to pass an explicit runtime type token (`Class<T> typeToken`). In Quest, `dynamic.new(A::TYPE a:A)` specifies `A` as a formal type parameter, so the compiler automatically passes runtime type descriptors (`const QTypeDescriptor *descriptor_A`) to all quantified functions.
+  In Java, generic methods are implemented via erasure (`<T> void foo(T x)` erases `T` to `Object`). Java's dynamic
+  operations (`instanceof`, reflection, `getClass()`) do not inspect erased generic parameters; they rely on reified
+  class metadata (`java.lang.Class<T>`) stored in every object's heap header. When Java code needs dynamic operations on
+  an abstract type parameter, it cannot write `new T()` or `x instanceof T`; it forces the programmer to pass an
+  explicit runtime type token (`Class<T> typeToken`). In Quest, `dynamic.new(A::TYPE a:A)` specifies `A` as a formal
+  type parameter, so the compiler automatically passes runtime type descriptors (`const QTypeDescriptor *descriptor_A`)
+  to all quantified functions.
 
 ### 6.12. Auto Types and Inspect (Cardelli §4.6, §6.7)
 An auto type `Auto A::K with S end` (`QAutoType`) is the union of the signatures `S[T/A]` over all closed types `T` of
@@ -823,7 +833,7 @@ here: dynamic values are auto values, and the `dynamic` module is written with `
 
 ### 6.13. List Module and Type Operator (`list: List`)
 The `list` module provides functional, immutable linked lists conforming to interface `List`:
-- **Higher-Kinded Abstract Type:** `List.T :: ALL(A::TYPE)::TYPE`.
+- **Higher-Kinded Abstract Type:** `List.T :: ALL(A::TYPE) TYPE`.
 - **Operations:**
   - `list.nil(:A) : list.T(A)`: Empty list.
   - `list.cons(:A)(x: A l: list.T(A)) : list.T(A)`: Prepends element `x`.
@@ -831,7 +841,7 @@ The `list` module provides functional, immutable linked lists conforming to inte
   - `list.head(:A)(l: list.T(A)) : A`: First element; raises `list.error` if empty.
   - `list.tail(:A)(l: list.T(A)) : list.T(A)`: Tail sublist; raises `list.error` if empty.
   - `list.length(:A)(l: list.T(A)) : Int`: Element count.
-  - `list.enum(:A)(l: list.T(A)) : Array(A)`: Converts list to an array.
+  - `list.enum(:A)(a: Array(A)) : list.T(A)`: The list of an array's elements, in order.
   - `list.error : Exception`: Raised on invalid operations (e.g. `head` or `tail` on an empty list).
 
 ### 6.14. String Substring Precedence (`StringOp.precedesSub`)

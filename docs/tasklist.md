@@ -30,26 +30,6 @@ import, and a case under `tests/self-hosted/build-errors` shows it (`build_error
 
 ---
 
-## Objects compiled with and without the collector share a build directory
-
-**Problem.** A build's staleness check (`unit_staleness`) compares an object with its sources and imports, but not
-with whether it was compiled for the collector, so a build with `--nogc` reuses objects that a build without it left
-in the same build directory, and the reverse. The objects disagree about allocation, and the link fails (`_GC_init`
-undefined) or the program mixes allocators. Both compilers do it.
-
-**Reproduce.** In an empty directory holding `p.quest` (`1 + 1`), `./quest compile p.quest`, then `./quest compile
---nogc p.quest -o n`: the link fails. `./questboot` fails the same way.
-
-**Where to start.** `_unit_staleness` in `bootstrap/python/quest/build/engine.py` and `unitStaleness` in
-`questlang/build/engine.mod.quest`. Record the collector setting in each unit's `.qm` and treat a unit as stale when
-it differs (an ABI change, since the manifest format changes), or keep the two kinds of object apart, in a
-subdirectory of the build directory for `--nogc`, as the runtime's objects already are by their flags.
-
-**Done when.** Builds with and without `--nogc` can alternate in one build directory, in both compilers, and a test
-does it.
-
----
-
 ## tools/check may run more processes than the machine has cores
 
 **Problem.** `tools/check` runs its suites at once, each with a share of the cores as its `-j`, and each suite's
@@ -141,3 +121,120 @@ pass belongs in `questlang/ssa/passes/`, and `runtimeLayout` is now `questlang/r
 
 **Done when.** A variant makes the compiler or the suite faster, measured as §22.1 measures, and is kept, or the idea
 is dropped and the branch with it.
+
+---
+
+## The collector's growth target counts a recyclable block as wholly in use
+
+**Problem.** After a full collection the heap may grow to `Q_GC_GROWTH` times the blocks in use
+(the target `quest_gc_sweep` sets in `runtime/quest_gc.c`), and a recyclable block with one live line counts as a
+block in use, so a heap of mostly empty recyclable blocks collects more often than its live data warrants
+([benchmarks.md](benchmarks.md) §16.3).
+
+**Where to start.** The target's computation after the sweep, which could count a recyclable block's free lines
+(its holes) as free, as the allocator does.
+
+**Done when.** The target counts holes as free, and the suite and the compiler's timings (benchmarks.md §16.1) are no
+worse.
+
+---
+
+## Character I/O locks the stream for every character
+
+**Problem.** `reader.getChar` and `reader.more` call `fgetc`, and `writer.putChar` calls `fputc`
+(`runtime/quest_stdlib.c`), each locking and unlocking the stream; that is most of wc-input1's and output1's time.
+`getc_unlocked` in the reader, tried, made wc-input1 five times faster ([benchmarks.md](benchmarks.md) §3.4).
+
+**Where to start.** The reader's and writer's character functions in `runtime/quest_stdlib.c`, with the stream's
+locking taken once per call into the library rather than per character, or dropped where a stream has one thread.
+
+**Done when.** The reader and writer use the unlocked calls (or an equivalent buffer of their own), and wc-input1 and
+output1 are measured again.
+
+---
+
+## A closure and its environment are two allocations
+
+**Problem.** A closure that escapes is a `QClosure` and a separate environment object, so making one allocates
+twice ([benchmarks.md](benchmarks.md) §3.2). Inlining, contification, and escape analysis remove many closures, but
+not those that are stored or returned.
+
+**Where to start.** The closure's layout in `questlang/repr/layout` and its construction in the SSA builder
+(`questlang/ssa/build/`), with the runtime's `QClosure` (`runtime/quest_runtime.h`, an ABI change).
+
+**Done when.** A closure is one object, its environment inline, in both backends, or the idea is dropped with its
+measurement.
+
+---
+
+## Single-word options as pointers: adopt the design or undo its rule
+
+**Problem.** The language compares single-word options by component ([extensions.md](extensions.md), "Options as
+Values") so that they could be held as nullable pointers, but that representation was deferred (2026-11-01): what
+still allocates in the suite is options of `Int`, which it would leave boxed. Until it is adopted, the rule costs a
+comparison of components and buys nothing.
+
+**Where to start.** [option-values.md](option-values.md): its design, and what adopting or dropping it takes.
+
+**Done when.** The representation is built, or the single-word `is` rule is undone in both compilers, the runtime,
+the interpreters, the tests, and extensions.md, and option-values.md is deleted.
+
+---
+
+## The collector never moves objects
+
+**Problem.** Minor collections leave small survivors scattered over nearly every block they filled, and their sticky
+marks keep those lines until the next full collection, so allocation hops between ever smaller holes; only moving the
+survivors gives the blocks back whole ([collector.md](collector.md) §3.6). Live lines are about twice live bytes after
+the compiler's build and a long REPL session (collector.md §8.4, 2026-11-05). The owner chose on 2026-11-05 not to
+take evacuation for now.
+
+**Where to start.** The design in [collector.md](collector.md) §9.1 (evacuation after marking through a bounded slot
+log, metadata allocated pinned at birth) and §9.2 (the three-state identity hash, serialization holding moves off);
+the header's reserved bits in `runtime/quest_gc.h`.
+
+**Done when.** The criteria of collector.md §9.1 are met, or the idea is dropped with its measurement.
+
+---
+
+## Generic allocation sites have no precise layouts
+
+**Problem.** An aggregate allocated in generic code (`Tuple A Int end` in a polymorphic function, `Array(A)`'s
+elements) has ambiguous words, which the collector validates and which would pin their referents if objects moved
+([collector.md](collector.md) §3.3). Worth doing only after evacuation, on its measured pinned fraction (decision 13).
+
+**Where to start.** [collector.md](collector.md) §9.2: descriptor parameters (`DescriptorParam`) extended to
+functions that allocate such aggregates, and an inline cache of the layout at the site; `repr/objectLayout` in both
+compilers. An ABI change.
+
+**Done when.** The criteria of collector.md §9.2 are met, or the idea is dropped.
+
+---
+
+## Incremental marking runs on the mutator's core
+
+**Problem.** A full collection's cycle marks in slices inside the allocation slow path ([collector.md](collector.md)
+§3.10). A marker thread would take that work off the mutator, at the cost of fences in the barrier's slow path and a
+protocol for the shared bitmaps. No workload has shown the need (the compiler's build takes the same time with cycles
+as without, collector.md §8.6, 2026-11-05); the owner chose on 2026-11-05 not to take it for now.
+
+**Where to start.** [collector.md](collector.md) §9.3; write the protocol down before coding; a `concurrent` checking
+mode beside `incremental` in `runtime/quest_gc.c`.
+
+**Done when.** A measured workload shows the mutator paying for marking and the thread recovers it, or the idea is
+dropped.
+
+---
+
+## Quest has no allocation-free check or typed overlay on raw memory
+
+**Problem.** A module cannot be checked to allocate nothing, and unsound code reads raw memory by hand-computed
+offsets (`os/value.fetch`, the JIT's session reading record payloads). Both are what a collector written in Quest
+would need ([collector.md](collector.md) §3.11, §9.4), and both are useful on their own: for inlined externals and
+loops that must not allocate, and for readable `os/value` code.
+
+**Where to start.** The IR after escape analysis, for the check; *Typeful Programming* §9.2 (`Still` values) for the
+overlay.
+
+**Done when.** Either facility exists with tests, or the idea is dropped.
+

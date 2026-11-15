@@ -111,7 +111,7 @@ class TestArm64(unittest.TestCase):
     def test_compact_unwind(self) -> None:
         # Every function, those that save pairs included, has a compact unwind
         # entry rather than DWARF CFI, which libunwind interprets at each frame
-        # a raise walks (docs/arm64-performance-review.md section 3.6)
+        # it walks (docs/arm64.md section 3.10)
         result, _, unwind = self.assemble_with_unwind(GOLDEN.read_text())
         self.assertEqual(result.returncode, 0, result.stdout)
         encodings = re.findall(r"compact encoding:\s*(0x[0-9a-f]+)", unwind)
