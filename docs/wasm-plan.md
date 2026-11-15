@@ -22,9 +22,9 @@ the four disagree, this plan holds.
 
 §1 lists the decisions and whose they are. §2 to §6 are the design. §7 is what is given up. §8 has the steps, and
 §9 the results of step 0's probes (2026-11-13), on which the owner confirmed decisions 1 and 2, and §10 step 1's
-census of what the compiler uses. Milestones 1 and 2 are reached (2026-11-14): the compiler compiles itself in
-node, and the REPL runs in a page, interpreting. In milestone 3, step 13, the JIT in node, is done, and step 14,
-the JIT in the page, is next.
+census of what the compiler uses. Milestones 1, 2, and 3 are reached (2026-11-14): the compiler compiles itself in
+node, the REPL runs in a page, and each input there is compiled to a module and run as compiled code (steps 13 and
+14). Milestone 4 (§8.4) is the rest, its order to be chosen.
 
 ---
 
@@ -789,7 +789,13 @@ change neither (Opus's §3.2).
   150. In a Chromium worker (step 12): 734 and 169.
 - **Compiled code does:** about 100 bytes for a small function's call in baseline code and about 30 when
   optimized, and about 8 bytes more for each live local in either (Opus's author, in V8: 580 bytes with 64 live
-  locals, 2.1 KB with 256).
+  locals, 2.1 KB with 256). Measured in a Chromium worker with the JIT (step 14): an input's recursion that is not
+  in tail position (`1 + down(n - 1)`) reaches 5,297 calls, the driver's frames below it included, and further
+  overflows in the input's own code, rolled back with no replay.
+- **The compiler, cold, fits ordinary inputs** (step 14): the transcripts and every input measured compiled in a
+  new worker, cold. What does not fit is the front end's nesting, shared with the interpreter: a chain of 498
+  additions is the longest a new session's first input takes, about 1 KB of stack a level, as natively (0.9 KB),
+  and both modes stop at the same length. Longer chains overflow in the compiler and replay (§6.3).
 
 So the interpreter in a page is a checkpoint (decision 4): it shows the driver running in a page, with shallow
 recursion, and the JIT follows at once as the REPL people use. The interpreter is not rewritten for this target.
@@ -827,7 +833,10 @@ on what was running:
   page keeps the driver's compiled modules and gives them to the new worker, which only instantiates them: built
   with the page. After milestone 3, the page can keep each committed input's module and `.qi` text too, and a new
   entry of the driver can admit an input again from those, running its code without compiling it: a refinement,
-  once replay from source is seen to be slow.
+  once replay from source is seen to be slow. *Decided in step 14: not taken.* With the JIT, an overflow's replay of
+  18 committed inputs, each compiled again, takes 64 to 141 ms in Chromium (about 4 to 8 ms an input), and an
+  interrupt's, which starts a new worker, 106 to 689 ms, as the interpreter's, 72 to 729 ms: a new worker's start,
+  the driver's initializers run cold, is most of it, and compiling the inputs again is not.
 - **Under wasmtime or node, a program:** the run ends, as compiled code's overflow ends it natively.
 
 A count at each function's entry that raises a catchable `stack.overflow` first (Fable's A8) is a later addition.
@@ -1484,6 +1493,28 @@ echo capture's C functions.
       compiling it, is decided on that measure.
     *Done when* the transcripts give their goldens in the page with the JIT, but for the pending list's; the
     recoveries work there; and §6.2 and §6.3 record the measurements, with the refinement decided.
+
+    *Done 2026-11-14:*
+    - **Built:** the page passes the driver no `--no-jit`, so each input is compiled by the session's JIT
+      (`target.wasm`, step 13) and run by the worker's `jit.mjs`, which step 13 already copied; `?jit=0` in the
+      page's query, or the option `jit: false` to `PageSession`, interprets. A module file an input imports from a
+      URL prefix is compiled in the session, as natively.
+    - **Checked** in Chromium: `check.html` runs the transcripts with the JIT, and `check.html?jit=0` interpreted;
+      `tools/wasm-page/build --check` runs both in headless Chrome. With the JIT 14 give their goldens, and 3 are
+      pending: `earlier_function_error` and `module_errors` (decision 12's frames, as in node) and `stack_overflow`
+      (`@skip-phase: jit`); interpreted, 16, and `stack_overflow` pending, as in step 12. By a measuring page in the
+      desktop app's Chromium and in Chrome headless with fresh profiles: an overflow in an input's own code rolled
+      back with no replay, its store to an earlier array kept and its binding not committed; one in the compiler
+      (3,000 chained additions) by a replay, the store undone; redefinition (a function redefined, and an earlier
+      input's caller seeing the new one); and an interrupt of an endless loop, after which the 18 committed inputs
+      are bound again. In node, `tests/self-hosted/wasm_page.mjs` runs its session with the JIT and interpreted.
+    - **Measured** in Chrome headless, each run a fresh profile, from a server on the same machine:
+      - an input's latency with the JIT: 41 to 43 ms for the first (`let x = 1 + 1`), the compiler running cold,
+        then 5 ms and 2 ms; interpreted, 5, 2, and 0 ms. An input importing one library module, 15 ms with the JIT
+        and 26 to 28 ms interpreted. In the desktop app's pane, its first load, the first input took 265 ms and the
+        next 74 ms, the machine in use; later loads, with V8's caches warm, 12 to 16 ms;
+      - the compiler's stack, cold, and compiled recursion's depth in a worker (§6.2);
+      - a replay's time (§6.3), which decided the refinement there: not taken.
 
 #### 8.3.1. Why These Choices
 

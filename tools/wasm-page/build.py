@@ -119,9 +119,9 @@ CHROME = ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "googl
 
 
 def check_in_chrome(out: Path) -> bool:
-    """Runs out's check.html in headless Chrome: whether every transcript
-    passed. check.mjs logs its outcome to the console, which Chrome writes to
-    its standard error."""
+    """Runs out's check.html in headless Chrome, with the JIT and then
+    interpreted: whether every transcript passed in each. check.mjs logs its
+    outcome to the console, which Chrome writes to its standard error."""
     chrome = next((c for c in CHROME if shutil.which(c) or Path(c).exists()), None)
     if chrome is None:
         sys.exit("build: --check needs Google Chrome or Chromium")
@@ -132,24 +132,28 @@ def check_in_chrome(out: Path) -> bool:
     handler = functools.partial(Quiet, directory=str(out))
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    url = f"http://127.0.0.1:{server.server_address[1]}/check.html"
-    with tempfile.TemporaryDirectory() as profile, tempfile.TemporaryFile("w+") as log:
-        browser = subprocess.Popen([chrome, "--headless=new", f"--user-data-dir={profile}", "--no-first-run",
-                                    "--enable-logging=stderr", "--v=0", url], stdout=log, stderr=log)
-        outcome = None
-        deadline = time.monotonic() + 600
-        while outcome is None and time.monotonic() < deadline and browser.poll() is None:
-            time.sleep(1)
-            log.seek(0)
-            outcome = re.search(r'questCheck: ([^"]*)"', log.read())
-        browser.kill()
-        browser.wait()
+    passed = True
+    for query in ("", "?jit=0"):
+        url = f"http://127.0.0.1:{server.server_address[1]}/check.html{query}"
+        with tempfile.TemporaryDirectory() as profile, tempfile.TemporaryFile("w+") as log:
+            browser = subprocess.Popen([chrome, "--headless=new", f"--user-data-dir={profile}", "--no-first-run",
+                                        "--enable-logging=stderr", "--v=0", url], stdout=log, stderr=log)
+            outcome = None
+            deadline = time.monotonic() + 600
+            while outcome is None and time.monotonic() < deadline and browser.poll() is None:
+                time.sleep(1)
+                log.seek(0)
+                outcome = re.search(r'questCheck: ([^"]*)"', log.read())
+            browser.kill()
+            browser.wait()
+        if outcome is None:
+            print(f"check: check.html{query} gave no outcome")
+            passed = False
+            continue
+        print(f"check: {outcome.group(1)}")
+        passed = passed and re.match(r"\w+: \d+ passed, 0 failed$", outcome.group(1)) is not None
     server.shutdown()
-    if outcome is None:
-        print("check: check.html gave no outcome")
-        return False
-    print(f"check: {outcome.group(1)}")
-    return re.match(r"\d+ passed, 0 failed$", outcome.group(1)) is not None
+    return passed
 
 
 def kb(n: int) -> str:

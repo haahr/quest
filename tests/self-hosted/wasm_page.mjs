@@ -1,8 +1,9 @@
-// Checks a page that tools/wasm-page/build wrote (docs/wasm-plan.md step 12)
-// in node, without a browser: its archives unpacked and the driver's modules
-// compiled as the page does (page.mjs's load), and its worker's session
-// (worker.mjs's serve) run in this thread, with a URL prefix read from a
-// directory rather than a server. tests/self-hosted/wasm_session.py runs it.
+// Checks a page that tools/wasm-page/build wrote (docs/wasm-plan.md steps 12
+// and 14) in node, without a browser: its archives unpacked and the driver's
+// modules compiled as the page does (page.mjs's load), and its worker's
+// session (worker.mjs's serve) run in this thread, with the JIT and then
+// interpreted, with a URL prefix read from a directory rather than a server.
+// tests/self-hosted/wasm_session.py runs it.
 //
 //     node wasm_page.mjs PAGE TESTS_REPL
 //
@@ -48,7 +49,7 @@ const get = url => {
 
 // A session as the page starts one: the worker's messages, and the page's
 // copy of its files, which each change it posts is made to
-function start(files, committed) {
+function start(files, committed, jit) {
   const messages = [];
   const copy = new MemoryMount(files);
   const post = m => {
@@ -57,7 +58,7 @@ function start(files, committed) {
   };
   const handle = serve({
     modules, lib, files, committed, prefixes: [prefix],
-    args: ["--no-jit", "-i", "/remote/0/files/functions.quest", "one"],
+    args: [...(jit ? [] : ["--no-jit"]), "-i", "/remote/0/files/functions.quest", "one"],
     env: {QUEST_HOME: "/quest", QUEST_KERNEL: "1", PWD: "/work"},
   }, post, get);
   const text = kind => messages.filter(m => m[kind]).map(m => new TextDecoder().decode(m[kind])).join("");
@@ -70,27 +71,36 @@ function start(files, committed) {
   return {messages, copy, text, execute};
 }
 
-const first = start(new Map([["work", null]]), []);
-expect("the session starts", first.messages.some(m => m.started), true);
-expect("-i runs the file from the URL prefix", first.text("stdout"), "\"loaded\" : String\n");
-expect("the prefix's file is fetched", fetched.includes(prefix + "files/functions.quest"), true);
-expect("a function the file defined", first.execute("add1(100)").records.map(r => r.result), ["101 : Int", undefined]);
-first.execute("let kept = 7");
-first.execute('import writer: Writer\nlet w = writer.file("note.txt")\nwriter.putString(w "hi")\nwriter.close(w)');
-expect("a file written is in the page's copy", new TextDecoder().decode(first.copy.read("work/note.txt")), "hi");
-const shown = first.execute('import io/display: io/Display\ndisplay.html("<p>hi</p>")').messages
-  .filter(m => m.record).map(m => new TextDecoder().decode(m.record)).join("");
-expect("a display is a record", shown.includes('{"display":{"text/html":"<p>hi</p>"'), true);
-expect("a failure does not commit", first.execute("1 / 0").records.at(-1), {done: "error"});
-const {committed} = first.execute("kept + 1");
+for (const jit of [true, false]) {
+  const mode = jit ? "jit" : "interpreted";
+  fetched.length = 0;
+  const first = start(new Map([["work", null]]), [], jit);
+  expect(`${mode}: the session starts`, first.messages.some(m => m.started), true);
+  expect(`${mode}: -i runs the file from the URL prefix`, first.text("stdout"), "\"loaded\" : String\n");
+  expect(`${mode}: the prefix's file is fetched`, fetched.includes(prefix + "files/functions.quest"), true);
+  expect(`${mode}: a function the file defined`, first.execute("add1(100)").records.map(r => r.result),
+         ["101 : Int", undefined]);
+  first.execute("let kept = 7");
+  first.execute('import writer: Writer\nlet w = writer.file("note.txt")\nwriter.putString(w "hi")\nwriter.close(w)');
+  expect(`${mode}: a file written is in the page's copy`, new TextDecoder().decode(first.copy.read("work/note.txt")),
+         "hi");
+  const shown = first.execute('import io/display: io/Display\ndisplay.html("<p>hi</p>")').messages
+    .filter(m => m.record).map(m => new TextDecoder().decode(m.record)).join("");
+  expect(`${mode}: a display is a record`, shown.includes('{"display":{"text/html":"<p>hi</p>"'), true);
+  expect(`${mode}: a failure does not commit`, first.execute("1 / 0").records.at(-1), {done: "error"});
+  const {committed} = first.execute("kept + 1");
 
-// A new worker, as after an interrupt: the page's files and the inputs that
-// committed, replayed without their output
-const second = start(first.copy.entries, committed);
-expect("a replay writes nothing", second.text("stdout"), "\"loaded\" : String\n");
-expect("the bindings after a replay", second.execute("kept + add1(1)").records.map(r => r.result), ["9 : Int", undefined]);
-expect("the files after a replay", second.execute('import reader: Reader\nreader.getString(reader.file("note.txt") 2)')
-  .records.map(r => r.result), ['"hi" : String', undefined]);
+  // A new worker, as after an interrupt: the page's files and the inputs that
+  // committed, replayed without their output
+  const second = start(first.copy.entries, committed, jit);
+  expect(`${mode}: a replay writes nothing`, second.text("stdout"), "\"loaded\" : String\n");
+  expect(`${mode}: the bindings after a replay`, second.execute("kept + add1(1)").records.map(r => r.result),
+         ["9 : Int", undefined]);
+  expect(`${mode}: the files after a replay`,
+         second.execute('import reader: Reader\nreader.getString(reader.file("note.txt") 2)')
+           .records.map(r => r.result),
+         ['"hi" : String', undefined]);
+}
 
 for (const p of problems) console.log(p);
 console.log(`wasm page: ${problems.length} problems`);

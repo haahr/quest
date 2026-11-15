@@ -23,6 +23,8 @@ const options = {
   prefixes: query.getAll("path"),
   load: query.get("load") || undefined,
   args: (query.get("args") || "").split(/\s+/).filter(Boolean),
+  // ?jit=0 interprets each input
+  jit: query.get("jit") !== "0",
 };
 
 // What the native REPL would have written, for comparing with a transcript's

@@ -313,8 +313,9 @@ browser worker's 512 KB of stack), interpreted and with its JIT: the REPL's tran
 for those it names as pending, the kernel's protocol (`kernel_protocol.py --session`), and a session's recovery from
 a stack overflow, interpreted by replay (wasm-plan.md step 11), with the JIT in an input's own code without one and
 in the compiler by one (step 13); and it builds the page (`tools/wasm-page/build`, step 12) from the same driver and
-checks it in node (`tests/self-hosted/wasm_page.mjs`): its archives, and its worker's session. The page in a browser
-is checked by `tools/wasm-page/build --check`, in headless Chrome, which no suite runs. The
+checks it in node (`tests/self-hosted/wasm_page.mjs`): its archives, and its worker's session, with the JIT and
+interpreted (step 14). The page in a browser is checked by `tools/wasm-page/build --check`, in headless Chrome, which
+no suite runs: its `check.html` runs the transcripts with the JIT, and `check.html?jit=0` interpreted. The
 generated C has no goldens: `tools/c-diff` shows how a
 change alters it (§2.9). `run_c_compiled` builds into a directory of its own under each worker's (`self-hosted-units`), so that they don't reuse the bootstrap's fresh
 artifacts. The self-hosted driver builds the questlang tests once, one after another, into a shared directory

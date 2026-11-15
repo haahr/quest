@@ -41,6 +41,8 @@ export async function load(base = new URL(".", import.meta.url)) {
 }
 
 // A session, given what load gives. options:
+//   jit        false to interpret each input, rather than compile it (the
+//              default, step 14)
 //   args       the program's arguments (system.args after <repl>)
 //   load       a file for -i to run first, a path in the session
 //   env        more of the driver's environment
@@ -63,10 +65,11 @@ export class PageSession {
     this.timings = {};
   }
 
-  // The driver's arguments: interpreted, interactive, a file to run first
+  // The driver's arguments: the JIT or not, interactive, a file to run first
   arguments() {
     const o = this.options, args = o.args || [];
-    return ["--no-jit", "-i", ...(o.load ? [o.load] : args.length > 0 ? ["--"] : []), ...args];
+    return [...(o.jit === false ? ["--no-jit"] : []), "-i", ...(o.load ? [o.load] : args.length > 0 ? ["--"] : []),
+            ...args];
   }
 
   environment() {

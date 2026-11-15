@@ -1,8 +1,9 @@
-// The REPL's transcripts (tests/repl) run in the page (docs/wasm-plan.md step
-// 12), each in a session of its own, against their goldens, as
+// The REPL's transcripts (tests/repl) run in the page (docs/wasm-plan.md steps
+// 12 and 14), each in a session of its own, against their goldens, as
 // tests/self-hosted/wasm_session.py runs them in node: the page that
 // tools/wasm-page/build --tests writes, check.html, shows the outcome, and
-// window.questCheck holds it.
+// window.questCheck holds it. The inputs are compiled by the JIT, or with
+// check.html?jit=0 interpreted.
 //
 // Each transcript's lines go to the REPL's loop as if typed, a line at a
 // time; tests/repl is the session's URL prefix /remote/0, so that an @load
@@ -11,11 +12,21 @@
 
 import {load, PageSession} from "./page.mjs";
 
-// The transcripts a page does not reproduce, each with its reason, as in
-// tests/self-hosted/wasm_session.py
+const jit = new URLSearchParams(location.search).get("jit") !== "0";
+const mode = jit ? "jit" : "interpreted";
+
+// The transcripts a page does not reproduce in each mode, each with its
+// reason, as in tests/self-hosted/wasm_session.py; under the JIT, those
+// marked @skip-phase: jit too
 const pendingTranscripts = {
-  stack_overflow: "the frames' count depends on the call limit (QUEST_CALL_LIMIT)",
-};
+  interpreted: {
+    stack_overflow: "the frames' count depends on the call limit (QUEST_CALL_LIMIT)",
+  },
+  jit: {
+    earlier_function_error: "a traceback is the raise site only (decision 12)",
+    module_errors: "a traceback is the raise site only (decision 12)",
+  },
+}[mode];
 
 // A directive's text, as tests' comments give it: (* @NAME: TEXT *)
 const directive = (text, name) => text.match(new RegExp(`\\(\\*\\s*@${name}:\\s*([^*]+?)\\s*\\*\\)`, "i"))?.[1];
@@ -36,7 +47,7 @@ async function transcript(loaded, name, source) {
   }
   let stdout = "", stderr = "", exit = 0;
   const session = new PageSession(loaded, {
-    args, env, load: loadFile && `/remote/0/${loadFile}`, prefixes: [new URL("tests/repl/", location.href).href],
+    jit, args, env, load: loadFile && `/remote/0/${loadFile}`, prefixes: [new URL("tests/repl/", location.href).href],
     stdout: t => { stdout += t; }, stderr: t => { stderr += t; }, exited: s => { exit = s; },
   });
   const repl = session.repl(t => { stdout += t; }, t => { stderr += t; });
@@ -71,9 +82,15 @@ try {
   const loaded = await load();
   say(`Loaded: ${JSON.stringify(loaded.timings)} ms; archives ${JSON.stringify(loaded.sizes)} bytes`);
   const names = await (await fetch("tests/transcripts.json")).json();
+  say(`Mode: ${mode}`);
   for (const name of names) {
     if (name in pendingTranscripts) { say(`[PENDING] ${name}: ${pendingTranscripts[name]}`, "note"); continue; }
     const source = await (await fetch(`tests/repl/${name}.quest`)).text();
+    if (jit && /\b(jit)\b/.test(directive(source, "skip-phase") || "")) {
+      result.pending.push(name);
+      say(`[PENDING] ${name}: marked @skip-phase: jit`, "note");
+      continue;
+    }
     const expected = await (await fetch(`tests/golden/repl/${name}.out`)).text();
     const {text, time} = await transcript(loaded, name, source);
     if (text === expected) {
@@ -91,5 +108,5 @@ try {
 }
 result.done = true;
 // For a browser run headless, which logs the console
-console.log(`questCheck: ${result.passed} passed, ${result.failed.length} failed` +
+console.log(`questCheck: ${mode}: ${result.passed} passed, ${result.failed.length} failed` +
             `${result.failed.map(f => ` ${f.name}`).join("")}${result.error ? `; ${result.error}` : ""}`);
