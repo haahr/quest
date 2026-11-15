@@ -28,6 +28,7 @@ import
     wasm = questlang/wasm/codegen : questlang/wasm/Codegen
     questlang/wasm/encode : questlang/wasm/Encode
     questlang/wasm/model : questlang/wasm/Model
+    questlang/repr/shapes : questlang/repr/Shapes
     raised : Raised
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
@@ -139,7 +140,10 @@ export
     let load(t: T unit: nodes.Unit): Ok =
         begin
             let bytes = try
-                encode.encode(wasm.unitModule(passes.runPasses(unit)))
+                begin
+                    shapes.setReferencesAlike(true)
+                    encode.encode(wasm.unitModule(passes.runPasses(unit)))
+                end
                 (* The IR passes' failures, which are the compiler's (a rejected
                  * conversion, the program's, is raised as its error) *)
                 when closure.capturesMutable with x then fail(:String x)

@@ -22,7 +22,10 @@ writes. Builds go to .build/ here: the conversions are built by ./quest, the
 self-hosted compiler (or --compiler, such as ./questboot), the originals by
 mlton. With --interpret, the conversions are not built but run by the
 compiler's tree-walking interpreter (--stop-after interpret); with --jit, by
-its JIT (docs/jit.md), each run compiling the program again. A build
+its JIT (docs/jit.md), each run compiling the program again. With --backend
+wasm, a conversion is built to WebAssembly modules (docs/wasm-plan.md) and run
+by node (runtime/wasm/run.mjs), or by wasmtime with --wasm-engine wasmtime, as
+the driver runs them; --node-stack sets node's stack. A build
 directory reused across compiler changes can keep units the new compiler would
 build differently, so --clean removes all of .build/ first; use it whenever the
 compiler has changed since the last run.
@@ -135,7 +138,8 @@ def build_conversion(name: str, compiler: list[str], backend: str | None = None,
     """The Quest build of the conversion, with backend if one is named, and as a
     whole program (its modules' IR merged, docs/build-process.md section 1.2) if
     whole, into a build directory of its own; BUILD_SECONDS records how long it
-    took."""
+    took. For wasm, the path is the program's module, beside which the driver
+    writes its units' and the runtime's, and their list (wasm_command)."""
     out_dir = BUILD_DIR / (("quest" if backend is None else f"quest-{backend}") + ("-whole" if whole else ""))
     out_dir.mkdir(parents=True, exist_ok=True)
     binary = out_dir / name
@@ -150,6 +154,22 @@ def build_conversion(name: str, compiler: list[str], backend: str | None = None,
     if proc.returncode != 0:
         raise BuildError(proc.stderr.strip() or proc.stdout.strip())
     return binary
+
+
+def wasm_command(program: Path, engine: str, node_stack: int | None) -> list[str]:
+    """The command that runs a program built with --backend wasm, as the driver
+    runs one (questlang/driver/main.quest): in node through run.mjs, each unit
+    a module given by name, or in wasmtime, each preloaded."""
+    units = Path(f"{program}.units").read_text().split()
+    runtime = f"{program}.runtime.wasm"
+    if engine == "node":
+        stack = [] if node_stack is None else [f"--stack-size={node_stack}"]
+        modules = [arg for unit in units for arg in ("--module", unit)]
+        return ["node", "--no-warnings", *stack, str(ROOT / "runtime" / "wasm" / "run.mjs"), *modules, runtime,
+                str(program)]
+    preloads = [arg for unit in ["quest.runtime=" + runtime, *units] for arg in ("--preload", unit)]
+    return ["wasmtime", "run", "-W", "gc=y,function-references=y,tail-call=y,exceptions=y", "-C", "collector=copying",
+            "--dir", ".", *preloads, str(program)]
 
 
 def deep_stack() -> None:
@@ -349,7 +369,11 @@ def main() -> int:
     parser.add_argument("--count", type=int, help="run every program at this count (time)")
     parser.add_argument("--mlton", action="store_true", help="also time the originals (time)")
     parser.add_argument("--mlton-only", action="store_true", help="time only the originals (time)")
-    parser.add_argument("--backend", help="build the conversions with this backend: c, ssac, or arm64 (check, time)")
+    parser.add_argument("--backend",
+                        help="build the conversions with this backend: c, ssac, arm64, or wasm (check, time)")
+    parser.add_argument("--wasm-engine", choices=("node", "wasmtime"), default="node",
+                        help="what runs the conversions with --backend wasm (check, time)")
+    parser.add_argument("--node-stack", type=int, help="node's --stack-size, in KB, with --backend wasm")
     parser.add_argument("--whole-program", action="store_true",
                         help="build the conversions as whole programs, their modules' IR merged (check, time)")
     parser.add_argument("--interpret", action="store_true",
@@ -369,13 +393,18 @@ def main() -> int:
         shutil.rmtree(BUILD_DIR, ignore_errors=True)
     # Programs run in a scratch directory, so a compiler named by a path is named by its absolute one
     compiler = [str(Path(args.compiler).resolve()) if "/" in args.compiler else args.compiler]
+    wasm = args.backend == "wasm"
     system = Path(args.compiler).name + (" interpret" if args.interpret else "") + (" jit" if args.jit else "") + \
-        (f" {args.backend}" if args.backend else "") + (" whole" if args.whole_program else "")
+        (f" {args.backend}" if args.backend else "") + (f" {args.wasm_engine}" if wasm else "") + \
+        (" whole" if args.whole_program else "")
 
     def conversion(name: str) -> Path | list[str]:
         if args.jit:
             return jitted(name, compiler)
-        return interpreted(name, compiler) if args.interpret else build_conversion(name, compiler, args.backend, args.whole_program)
+        if args.interpret:
+            return interpreted(name, compiler)
+        built = build_conversion(name, compiler, args.backend, args.whole_program)
+        return wasm_command(built, args.wasm_engine, args.node_stack) if wasm else built
 
     failed = []
     for name in names:

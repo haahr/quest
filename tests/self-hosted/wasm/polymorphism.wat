@@ -78,18 +78,15 @@
   (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 51)))))
   (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 71)))))
   (type $pos.closure (sub final 75 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 71)))))
-  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 72)))))
-  (type $nonEmpty.closure (sub final 77 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 72)))))
   (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 73)))))
-  (type $f.closure (sub final 79 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 73)))))
-  (type $qa_adapt.closure (sub final 79 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 73)) (field $c0 (mut eqref)))))
+  (type $f.closure (sub final 77 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 73)))))
+  (type $qa_adapt.closure (sub final 77 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 73)) (field $c0 (mut eqref)))))
   (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 51)))))
-  (type $f.closure.1 (sub final 82 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 51)))))
-  (type $qa_adapt.closure.1 (sub final 82 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 51)) (field $c0 (mut eqref)))))
-  (type $qa_adapt.closure.2 (sub final 77 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 72)))))
-  (type $qa_adapt.closure.3 (sub final 77 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 72)))))
-  (type $qa_adapt.closure.4 (sub final 82 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 51)))))
-  (type $qa_adapt.closure.5 (sub final 82 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 51)))))
+  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 72)))))
+  (type $nonEmpty.closure (sub final 81 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 72)))))
+  (type $qa_adapt.closure.1 (sub final 81 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 72)))))
+  (type $qa_adapt.closure.2 (sub final 80 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 51)))))
+  (type $f.closure.1 (sub final 80 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 51)))))
   (type (func (param eqref) (result (ref $tuple))))
   (import "quest.runtime" "exception:int.error" (global $int.error (ref $exception)))
   (import "quest.runtime" "exception:real.error" (global $real.error (ref $exception)))
@@ -210,15 +207,13 @@
   (global $quest_type_bound_vars (mut eqref) ref.null none)
   (global $QTuple_Int_String_c1d595445c9f41f3 (mut eqref) ref.null none)
   (global $pos.static (ref $pos.closure) i32.const 0 ref.func $pos.uniform ref.func $pos struct.new $pos.closure)
-  (global $nonEmpty.static (ref $nonEmpty.closure) i32.const 0 ref.func $nonEmpty.uniform ref.func $nonEmpty struct.new $nonEmpty.closure)
   (global $f.static (ref $f.closure) i32.const 0 ref.func $f.uniform ref.func $f struct.new $f.closure)
+  (global $nonEmpty.static (ref $nonEmpty.closure) i32.const 0 ref.func $nonEmpty.uniform ref.func $nonEmpty struct.new $nonEmpty.closure)
+  (global $qa_adapt.static (ref $qa_adapt.closure.1) i32.const 0 ref.func $qa_adapt.uniform ref.func $qa_adapt struct.new $qa_adapt.closure.1)
+  (global $qa_adapt.static.1 (ref $qa_adapt.closure.2) i32.const 0 ref.func $qa_adapt.1 ref.func $qa_adapt.1 struct.new $qa_adapt.closure.2)
   (global $f.static.1 (ref $f.closure.1) i32.const 0 ref.func $f.1 ref.func $f.1 struct.new $f.closure.1)
-  (global $qa_adapt.static (ref $qa_adapt.closure.2) i32.const 0 ref.func $qa_adapt.uniform ref.func $qa_adapt struct.new $qa_adapt.closure.2)
-  (global $qa_adapt.static.1 (ref $qa_adapt.closure.3) i32.const 0 ref.func $qa_adapt.uniform.1 ref.func $qa_adapt.1 struct.new $qa_adapt.closure.3)
-  (global $qa_adapt.static.2 (ref $qa_adapt.closure.4) i32.const 0 ref.func $qa_adapt.2 ref.func $qa_adapt.2 struct.new $qa_adapt.closure.4)
-  (global $qa_adapt.static.3 (ref $qa_adapt.closure.5) i32.const 0 ref.func $qa_adapt.4 ref.func $qa_adapt.4 struct.new $qa_adapt.closure.5)
   (export "_start" (func $_start))
-  (elem declare func $pos.uniform $pos $nonEmpty.uniform $nonEmpty $f.uniform $f $f.1 $qa_adapt.uniform $qa_adapt $qa_adapt.uniform.1 $qa_adapt.1 $qa_adapt.2 $qa_adapt.uniform.2 $qa_adapt.3 $qa_adapt.4 $qa_adapt.5)
+  (elem declare func $pos.uniform $pos $f.uniform $f $nonEmpty.uniform $nonEmpty $qa_adapt.uniform $qa_adapt $qa_adapt.1 $qa_adapt.uniform.1 $qa_adapt.2 $f.1)
   (func $pos (type 71) (param $closure (ref $clos)) (param $n i64) (result i32)
     (local $v i32)
     local.get $n
@@ -283,18 +278,7 @@
     return_call $pos
     unreachable
   )
-  (func $qa_adapt.1 (type 72) (param $closure (ref $clos)) (param $x eqref) (result i32)
-    (local $orig eqref)
-    global.get $nonEmpty.static
-    local.set $orig
-    local.get $x
-    local.set $orig
-    global.get $noClosure
-    local.get $orig
-    return_call $nonEmpty
-    unreachable
-  )
-  (func $qa_adapt.2 (type 51) (param $closure (ref $clos)) (param $x eqref) (result eqref)
+  (func $qa_adapt.1 (type 51) (param $closure (ref $clos)) (param $x eqref) (result eqref)
     (local $orig eqref)
     (local $x.1 i64)
     global.get $f.static
@@ -313,7 +297,7 @@
     return
     unreachable
   )
-  (func $qa_adapt.3 (type 73) (param $closure (ref $clos)) (param $x i64) (result i64)
+  (func $qa_adapt.2 (type 73) (param $closure (ref $clos)) (param $x i64) (result i64)
     (local $orig eqref)
     (local $x.1 eqref)
     (local $r.1 i64)
@@ -327,14 +311,14 @@
     local.get $orig
     local.set $orig
     local.get $orig
-    ref.test (ref 82)
+    ref.test (ref 80)
     if (result eqref)
       local.get $orig
       ref.cast (ref $clos)
       local.get $x.1
       local.get $orig
-      ref.cast (ref 82)
-      struct.get 82 $native
+      ref.cast (ref 80)
+      struct.get 80 $native
       call_ref 51
     else
       local.get $orig
@@ -353,64 +337,11 @@
     return
     unreachable
   )
-  (func $qa_adapt.4 (type 51) (param $closure (ref $clos)) (param $x eqref) (result eqref)
-    (local $orig eqref)
-    global.get $f.static.1
-    local.set $orig
-    local.get $x
-    local.set $orig
-    global.get $noClosure
-    local.get $orig
-    call $f.1
-    local.set $orig
-    local.get $orig
-    local.set $orig
-    local.get $orig
-    return
-    unreachable
-  )
-  (func $qa_adapt.5 (type 51) (param $closure (ref $clos)) (param $x eqref) (result eqref)
-    (local $orig eqref)
-    (local $x.1 eqref)
-    local.get $closure
-    ref.cast (ref $qa_adapt.closure.1)
-    struct.get $qa_adapt.closure.1 $c0
-    local.set $orig
-    local.get $x
-    local.set $x.1
-    local.get $orig
-    local.set $orig
-    local.get $orig
-    ref.test (ref 82)
-    if (result eqref)
-      local.get $orig
-      ref.cast (ref $clos)
-      local.get $x.1
-      local.get $orig
-      ref.cast (ref 82)
-      struct.get 82 $native
-      call_ref 51
-    else
-      local.get $orig
-      ref.cast (ref $clos)
-      local.get $x.1
-      local.get $orig
-      ref.cast (ref $closU1)
-      struct.get $closU1 $uniform
-      call_ref 51
-    end
-    local.set $orig
-    local.get $orig
-    local.set $orig
-    local.get $orig
-    return
-    unreachable
-  )
   (func $main (type 49)
     (local $pos eqref)
+    (local $v eqref)
     (local $pos.1 eqref)
     (local $v.1 i64)
-    (local $v.48 eqref)
     call $wasm/core.init
     call $descriptors
     call $units/gen.init
@@ -430,22 +361,22 @@
     call $boxInt
     array.new_fixed $slots 3
     struct.new $array
-    local.set $pos
+    local.set $v
     global.get $qa_adapt.static
     local.set $pos.1
     global.get $noClosure
     global.get $quest_type_Int
-    local.get $pos
+    local.get $v
     local.get $pos.1
     call $units/gen.count
     local.set $v.1
     local.get $v.1
     call $convInt
-    local.set $pos
+    local.set $v
     i32.const 1
     ref.i31
     local.set $pos.1
-    local.get $pos
+    local.get $v
     i32.const 0
     i32.const 1
     i32.const 47
@@ -453,11 +384,11 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $pos
+    local.set $v
     local.get $pos.1
-    local.get $pos
+    local.get $v
     call $putString
-    local.set $pos
+    local.set $v
     i32.const 0
     i32.const 0
     i32.const 1
@@ -485,13 +416,11 @@
     struct.new $string
     array.new_fixed $slots 4
     struct.new $array
-    local.set $pos
-    global.get $qa_adapt.static.1
-    local.set $pos.1
+    local.set $v
     global.get $noClosure
     global.get $quest_type_String
+    local.get $v
     local.get $pos
-    local.get $pos.1
     call $units/gen.count
     local.set $v.1
     local.get $v.1
@@ -499,7 +428,7 @@
     local.set $pos
     i32.const 1
     ref.i31
-    local.set $pos.1
+    local.set $v
     local.get $pos
     i32.const 0
     i32.const 1
@@ -509,7 +438,7 @@
     struct.new $string
     call $concat
     local.set $pos
-    local.get $pos.1
+    local.get $v
     local.get $pos
     call $putString
     local.set $pos
@@ -526,12 +455,12 @@
     i32.const 2
     array.new_data $bytes $strings
     struct.new $string
-    local.set $pos.1
+    local.set $v
     global.get $noClosure
     global.get $quest_type_String
     i32.const 1
     local.get $pos
-    local.get $pos.1
+    local.get $v
     call $units/gen.pick
     local.set $pos
     local.get $pos
@@ -540,7 +469,7 @@
     local.set $pos
     i32.const 1
     ref.i31
-    local.set $pos.1
+    local.set $v
     local.get $pos
     i32.const 0
     i32.const 1
@@ -550,7 +479,7 @@
     struct.new $string
     call $concat
     local.set $pos
-    local.get $pos.1
+    local.get $v
     local.get $pos
     call $putString
     local.set $pos
@@ -559,12 +488,12 @@
     local.set $pos
     i64.const 2000000000000
     call $boxInt
-    local.set $pos.1
+    local.set $v
     global.get $noClosure
     global.get $quest_type_Int
     i32.const 0
     local.get $pos
-    local.get $pos.1
+    local.get $v
     call $units/gen.pick
     local.set $pos
     local.get $pos
@@ -577,7 +506,7 @@
     local.set $pos
     i32.const 1
     ref.i31
-    local.set $pos.1
+    local.set $v
     local.get $pos
     i32.const 0
     i32.const 1
@@ -587,13 +516,13 @@
     struct.new $string
     call $concat
     local.set $pos
-    local.get $pos.1
+    local.get $v
     local.get $pos
     call $putString
     local.set $pos
     global.get $f.static
     local.set $pos
-    global.get $qa_adapt.static.2
+    global.get $qa_adapt.static.1
     local.set $pos
     global.get $noClosure
     global.get $quest_type_Int
@@ -601,8 +530,8 @@
     call $units/gen.twice
     local.set $pos
     i32.const 0
-    ref.func $qa_adapt.uniform.2
-    ref.func $qa_adapt.3
+    ref.func $qa_adapt.uniform.1
+    ref.func $qa_adapt.2
     local.get $pos
     struct.new $qa_adapt.closure
     local.set $pos
@@ -611,14 +540,14 @@
     local.get $pos
     local.set $pos
     local.get $pos
-    ref.test (ref 79)
+    ref.test (ref 77)
     if (result i64)
       local.get $pos
       ref.cast (ref $clos)
       i64.const 5
       local.get $pos
-      ref.cast (ref 79)
-      struct.get 79 $native
+      ref.cast (ref 77)
+      struct.get 77 $native
       call_ref 73
     else
       local.get $pos
@@ -637,7 +566,7 @@
     local.set $pos
     i32.const 1
     ref.i31
-    local.set $pos.1
+    local.set $v
     local.get $pos
     i32.const 0
     i32.const 1
@@ -647,31 +576,21 @@
     struct.new $string
     call $concat
     local.set $pos
-    local.get $pos.1
+    local.get $v
     local.get $pos
     call $putString
     local.set $pos
     global.get $f.static.1
-    local.set $pos
-    global.get $qa_adapt.static.3
     local.set $pos
     global.get $noClosure
     global.get $quest_type_String
     local.get $pos
     call $units/gen.twice
     local.set $pos
-    i32.const 0
-    ref.func $qa_adapt.5
-    ref.func $qa_adapt.5
-    local.get $pos
-    struct.new $qa_adapt.closure.1
-    local.set $pos
     local.get $pos
     local.set $pos
     local.get $pos
-    local.set $pos
-    local.get $pos
-    ref.test (ref 82)
+    ref.test (ref 80)
     if (result eqref)
       local.get $pos
       ref.cast (ref $clos)
@@ -682,8 +601,8 @@
       array.new_data $bytes $strings
       struct.new $string
       local.get $pos
-      ref.cast (ref 82)
-      struct.get 82 $native
+      ref.cast (ref 80)
+      struct.get 80 $native
       call_ref 51
     else
       local.get $pos
@@ -702,7 +621,7 @@
     local.set $pos
     i32.const 1
     ref.i31
-    local.set $pos.1
+    local.set $v
     local.get $pos
     i32.const 0
     i32.const 1
@@ -712,7 +631,7 @@
     struct.new $string
     call $concat
     local.set $pos
-    local.get $pos.1
+    local.get $v
     local.get $pos
     call $putString
     local.set $pos
@@ -725,16 +644,16 @@
     i32.const 5
     array.new_data $bytes $strings
     struct.new $string
-    local.set $pos.1
+    local.set $v
     global.get $noClosure
     global.get $quest_type_Int
     global.get $quest_type_String
     local.get $pos
-    local.get $pos.1
+    local.get $v
     call $units/gen.pair
     local.set $pos
     local.get $pos
-    block (type 89)
+    block (type 86)
       br_on_cast 0 eqref (ref $tuple)
       local.set $pos
       global.get $noClosure
@@ -754,30 +673,30 @@
     local.set $v.1
     local.get $v.1
     call $convInt
-    local.set $pos.1
+    local.set $v
     local.get $pos
     ref.cast (ref $tuple)
     struct.get $tuple $slots
     i32.const 1
     array.get $slots
-    local.set $v.48
+    local.set $pos.1
     i32.const 0
     i32.const 1
     i32.const 70
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $v.48
-    call $concat
-    local.set $v.48
     local.get $pos.1
-    local.get $v.48
     call $concat
     local.set $pos.1
+    local.get $v
+    local.get $pos.1
+    call $concat
+    local.set $v
     i32.const 1
     ref.i31
-    local.set $v.48
-    local.get $pos.1
+    local.set $pos.1
+    local.get $v
     i32.const 0
     i32.const 1
     i32.const 71
@@ -785,11 +704,11 @@
     array.new_data $bytes $strings
     struct.new $string
     call $concat
-    local.set $pos.1
-    local.get $v.48
+    local.set $v
     local.get $pos.1
+    local.get $v
     call $putString
-    local.set $pos.1
+    local.set $v
     i32.const 0
     i32.const 0
     i32.const 3
@@ -798,8 +717,8 @@
     array.new_data $bytes $strings
     struct.new $string
     struct.new $exception
-    local.set $pos.1
-    local.get $pos.1
+    local.set $v
+    local.get $v
     local.get $pos
     i32.const 0
     i32.const 115
@@ -925,18 +844,18 @@
     call $pos
     ref.i31
   )
-  (func $nonEmpty.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
-    local.get $closure
-    local.get $a0
-    call $nonEmpty
-    ref.i31
-  )
   (func $f.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt
     call $f
     call $boxInt
+  )
+  (func $nonEmpty.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+    local.get $closure
+    local.get $a0
+    call $nonEmpty
+    ref.i31
   )
   (func $qa_adapt.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
@@ -947,14 +866,8 @@
   (func $qa_adapt.uniform.1 (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
-    call $qa_adapt.1
-    ref.i31
-  )
-  (func $qa_adapt.uniform.2 (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
-    local.get $closure
-    local.get $a0
     call $unboxInt
-    call $qa_adapt.3
+    call $qa_adapt.2
     call $boxInt
   )
   (data $strings "!Tuple first: Int second: String endfirstsecond\0aabc\0ayesno\0a\0a\0ahihi\0aseven \0abad/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/polymorphism.quest:22:1Tuple first: Int second: String end")

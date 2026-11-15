@@ -11,6 +11,7 @@ import
     passes = questlang/ir/pipeline : questlang/ir/Pipeline
     questlang/codegen/c/printer : questlang/codegen/c/Printer
     questlang/repr/symbols : questlang/repr/Symbols
+    questlang/repr/shapes : questlang/repr/Shapes
     questlang/repr/syntax : questlang/repr/Syntax
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     ssaBuild = questlang/ssa/build : questlang/ssa/Build
@@ -92,6 +93,7 @@ export
         begin
             let lowered = lower.lowerProgram(program e sourceMap echo printResult)
             if verify.irChecksEnabled() then verify.checkUnit(lowered) end
+            shapes.setReferencesAlike(stringOp.equal(backend "wasm"))
             let unit = passes.runPasses(lowered)
             tuple let c = unitToC(unit maybe.none(:String) backend) let unit = unit end
         end
@@ -109,6 +111,7 @@ export
                     symbol := symbols.fingerprintIdent(symbols.mangleModuleName(md.name))
                 end
             end
+            shapes.setReferencesAlike(stringOp.equal(backend "wasm"))
             unitWithDatum(passes.runPasses(unit) interfaceHeader backend
                 maybe.some(:Tuple symbol: String text: String end tuple let symbol = symbol let text = fingerprint end))
         end

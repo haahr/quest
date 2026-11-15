@@ -271,6 +271,23 @@ export
             end
         end
 
+    (* Whether each of an adapter's fields converts nothing, or only boxes or
+     * unboxes between a QVal and a pointer (no record, variant, or scalar),
+     * which change nothing where the two are held alike *)
+    let referencesOnly(fields: Array(maybe.T(Plan))): Bool =
+        begin
+            let held = fun(t: Type): Bool
+                case layout.representationKind(t) when repPointer, repQVal then true else false end
+            let var only = true
+            for i = 0 upto extent fields - 1 do
+                if maybe.isSome(:Plan fields[i]) then
+                    let p = maybe.unwrap(:Plan fields[i])
+                    if not(boxing(fields[i]) andif held(p.source) andif held(p.target)) then only := false end
+                end
+            end
+            only
+        end
+
     (* The pairs of shapes being planned (with their layouts), and of function
      * types being adapted, for recursive types, which are compared
      * coinductively *)
@@ -411,6 +428,14 @@ export
                 let var allNone = true
                 for i = 0 upto {extent fields - 1} do if maybe.isSome(:Plan fields[i]) then allNone := false end end
                 if allNone andif eq(genericLayout.signatureRepresentation(source) genericLayout.signatureRepresentation(target)) then
+                    none
+                elsif shapes.referencesAlike() andif referencesOnly(fields)
+                    andif {extent written.quantified(source).quantifiers is extent written.quantified(target).quantifiers}
+                then
+                    (* Where a reference and a QVal are held alike, a closure
+                     * whose parts are only boxed or unboxed between the two
+                     * has target's signature already: its callers call it as
+                     * it is, at no adapter's cost *)
                     none
                 else
                     (* The thunk takes target's type parameters, which the
