@@ -594,6 +594,28 @@ export
      *
      * Finally m is declared as a value, a record of its exported values, from
      * which m.f selects. *)
+    (* Declares localName in scope as the module modPath, which implements the
+     * interface ifacePath (whose scope is ifaceScope), and returns its symbol,
+     * of the module's record type. Its source is loaded first, unless the
+     * unit is compiled to C, where the module is typed through its interface,
+     * or it is typed already. It is registered by its path and its local
+     * name *)
+    let bindImportedModule(localName: String modPath: String ifacePath: String ifaceScope: Scope scope: Scope e: env.T):
+        symbols.ValueSymbol =
+        begin
+            if not(e.compilingC) andif maybe.isNone(:typedAst.Binding graph.typedModule(e.units modPath)) then
+                loadModule(modPath ifacePath e)
+                ok
+            end
+            let modScope = separatelyCompiledModuleScope(modPath ifaceScope e)
+            let modType = buildRecordTypeFromScope(modScope maybe.some(:String localName))
+            env.registerModule(e modPath modScope)
+            if not(stringOp.equal(localName modPath)) then env.registerModule(e localName modScope) end
+            let sym = symbols.valueSymbol(localName modType)
+            symbols.declareValue(scope sym)
+            sym
+        end
+
     let elaborateModule(decl: ast.ModuleDecl offset: Int e: env.T): typedAst.Binding =
         begin
             let found = env.lookupInterface(e decl.interfaceName)
@@ -641,22 +663,9 @@ export
                                     symbols.declareKind(internalScope maybe.unwrap(:symbols.KindSymbol kindSym))
                                     ok
                                 else
-                                    (* Compiled to C, the module is known
-                                     * through its interface alone *)
-                                    if not(e.compilingC)
-                                        andif maybe.isNone(:typedAst.Binding graph.typedModule(e.units modPath)) then
-                                        loadModule(modPath ifacePath e)
-                                        ok
-                                    end
-                                    let modScope = separatelyCompiledModuleScope(modPath source e)
-                                    let modType = buildRecordTypeFromScope(modScope maybe.some(:String localName))
-                                    env.registerModule(e modPath modScope)
-                                    if not(same) then env.registerModule(e localName modScope) end
-                                    let sym = symbols.valueSymbol(localName modType)
+                                    let sym = bindImportedModule(localName modPath ifacePath source internalScope e)
                                     vector.set(:maybe.T(symbols.ValueSymbol) syms {vector.length(:maybe.T(symbols.ValueSymbol) syms) - 1}
                                         maybe.some(:symbols.ValueSymbol sym))
-                                    symbols.declareValue(internalScope sym)
-                                    ok
                                 end
                             end
                         end
@@ -803,19 +812,7 @@ export
                             for j = 0 upto {vector.length(:String item.names) - 1} do
                                 let localName = vector.get(:String item.names j)
                                 let modPath = vector.get(:String modPaths j)
-                                (* Compiled to C, the module is typed through
-                                 * its interface, without loading its source *)
-                                if not(e.compilingC)
-                                    andif maybe.isNone(:typedAst.Binding graph.typedModule(e.units modPath)) then
-                                    loadModule(modPath ifacePath e)
-                                    ok
-                                end
-                                let modScope = separatelyCompiledModuleScope(modPath ifaceScope e)
-                                let modType = buildRecordTypeFromScope(modScope maybe.some(:String localName))
-                                env.registerModule(e modPath modScope)
-                                if not(stringOp.equal(localName modPath)) then env.registerModule(e localName modScope) end
-                                let sym = symbols.valueSymbol(localName modType)
-                                symbols.declareValue(e.currentScope sym)
+                                let sym = bindImportedModule(localName modPath ifacePath ifaceScope e.currentScope e)
                                 vector.append(:maybe.T(Int) ids maybe.some(:Int sym.symbolId))
                             end
                             vector.append(:typedAst.ImportItem items importItem(item

@@ -582,17 +582,9 @@ export
                 else maybe.none(:String)
             end
             if maybe.isSome(:String build) then
-                let b = maybe.unwrap(:String build)
-                if not(contains(vector.toArray(:String e.includePaths) b)) then
-                    (* First: imported interfaces are loaded from their (fresh
-                     * or rebuilt) artifacts in the build directory *)
-                    let others = vector.copy(:String e.includePaths)
-                    vector.clear(:String e.includePaths)
-                    vector.append(:String e.includePaths b)
-                    for i = 0 upto {vector.length(:String others) - 1} do
-                        vector.append(:String e.includePaths vector.get(:String others i))
-                    end
-                end
+                (* First: imported interfaces are loaded from their (fresh
+                 * or rebuilt) artifacts in the build directory *)
+                env.searchFirst(e maybe.unwrap(:String build))
                 e.buildDir := build
             end
             e.currentDir := maybe.some(:String files.parent(file))
