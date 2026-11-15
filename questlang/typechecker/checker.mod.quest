@@ -115,21 +115,10 @@ export
     ): typedAst.Expr =
         checks.requireSubtype(expr.span.startOffset synthExpr(c expr e loopDepth) expected e typeDesc)
 
-    (* Whether a scope's var variables are local to it: a block's, a function's,
-     * a tuple's, an inspect, case, or try branch's, a for loop's *)
-    let localScope(name: String): Bool =
-        begin
-            let prefixed(p: String): Bool =
-                {stringOp.length(name) >= stringOp.length(p)} andif stringOp.equal(stringOp.getSub(name 0 stringOp.length(p)) p)
-            stringOp.equal(name "block") orif stringOp.equal(name "fun") orif stringOp.equal(name "poly_fun")
-                orif stringOp.equal(name "tuple_check") orif stringOp.equal(name "tuple_synth")
-                orif stringOp.equal(name "inspect_branch") orif stringOp.equal(name "auto_value")
-                orif prefixed("case_") orif prefixed("try_") orif prefixed("for_")
-        end
-
     (* Whether sym is a global var variable, which functions may not refer to
      * directly (Typeful Programming section 4.8): one a unit's or a module's
-     * top level declares, outside any block, function, or tuple. The scope that
+     * top level declares, outside any local scope (env.localScoped: a block,
+     * function, tuple, branch, or for loop). The scope that
      * declares it is the first one, out from the current scope, that has its
      * name, since it was just looked up by its name. *)
     let isGlobalVar(c: T sym: symbols.ValueSymbol): Bool =
@@ -150,7 +139,7 @@ export
             let var isGlobal = true
             while isGlobal andif maybe.isSome(:symbols.Scope scope) do
                 let s = maybe.unwrap(:symbols.Scope scope)
-                if localScope(s.name) then isGlobal := false end
+                if s.isLocal then isGlobal := false end
                 scope := s.parent
             end
             isGlobal

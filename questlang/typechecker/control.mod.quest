@@ -171,7 +171,7 @@ export
                         end
                         first
                     end
-                    env.scoped(:Arm e "case_" <> binder fun(s: symbols.Scope): Arm
+                    env.localScoped(:Arm e "case_" <> binder fun(s: symbols.Scope): Arm
                         begin
                             let sym = symbols.newValueSymbol(binder binderT false false false c.functionDepth 0)
                             symbols.declareValue(e.currentScope sym)
@@ -469,7 +469,7 @@ export
                     let startTyped = checker.checkExpr(c x.start model.intType e loopDepth)
                     let stopTyped = checker.checkExpr(c x.stop model.intType e loopDepth)
                     Let Loop = Tuple sym: symbols.ValueSymbol body: typedAst.Expr end
-                    let looped = env.scoped(:Loop e "for_" <> x.varName fun(s: symbols.Scope): Loop
+                    let looped = env.localScoped(:Loop e "for_" <> x.varName fun(s: symbols.Scope): Loop
                         begin
                             let sym = symbols.newValueSymbol(x.varName model.intType false false false c.functionDepth 0)
                             symbols.declareValue(e.currentScope sym)
@@ -497,7 +497,7 @@ export
     let elaborateBlock(c: checker.T x0: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
         case x0.form
             when exprBlock with x then
-                env.scoped(:typedAst.Expr e "block" fun(blockScope: symbols.Scope): typedAst.Expr
+                env.localScoped(:typedAst.Expr e "block" fun(blockScope: symbols.Scope): typedAst.Expr
                     begin
                         let offset = x0.span.startOffset
                         let n = vector.length(:ast.Decl x.bindings)
