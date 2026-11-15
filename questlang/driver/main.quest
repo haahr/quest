@@ -315,39 +315,57 @@ let lowered(program: typedAst.Program e: env.T sm: location.SourceMap printResul
         unit
     end;
 
-(* Lowers the program through the last IR stage it goes through, dumping the
- * stages shown, as the bootstrap's ir_STAGE phases do *)
-let lowerOnly(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
+(* An internal error: the compiler's own failure, not the program's, which has
+ * no location in it *)
+let internalError(bag: diagbag.T message: String): Ok =
+    diagbag.add(bag diagnostics.error(message location.span("" ~1 ~1)));
+
+(* body, with what lowering, the IR passes, the SSA, the IR interpreter, or a
+ * backend raises on failing (each an internal error) reported to bag; failed
+ * is the result then *)
+let reportingInternal(A::TYPE bag: diagbag.T failed: A body: All() A): A =
     begin
-        let internal = fun(message: String): Ok diagbag.add(bag diagnostics.error(message location.span("" ~1 ~1)))
-        let var last = irStages[0]
-        for i = 0 upto {extent irStages - 1} do if reaches("ir_" <> irStages[i]) then last := irStages[i] end end
+        let internal = fun(message: String): A begin internalError(bag message) failed end
         try
-            let unit = lowered(program e sm false last)
-            if reaches("ssa_built") then
-                let built = ssaPipeline.run(unit fun(name: String u: ssaNodes.Unit): Ok
-                    if shows("ssa_" <> name) then dump(ssaPrinter.formatUnit(u)) end)
-                if shows("ssa") then
-                    let text = ssaPrinter.formatUnit(built)
-                    (* The SSA's text reads back as itself (ssa/parser) *)
-                    if verify.irChecksEnabled()
-                        andif not(stringOp.equal(ssaPrinter.formatUnit(ssaParser.readUnit(text)) text))
-                        then
-                        internal("ssa: the SSA does not read back as printed")
-                    end
-                    dump(text)
-                end
-            end
-        when ssaBuild.unsupported with m then internal("ssa: unsupported: " <> m)
-        when ssaVerify.verifyError with m then internal(m)
-        when ssaParser.readError with m then internal("ssa: " <> m)
+            body()
         when lower.loweringError with m then internal(m)
         when verify.verifyError with m then internal(m)
         when closure.capturesMutable with m then internal(m)
         when represent.unsupportedConversion with m then internal(m)
         when represent.rejectedConversion with m then internal(m)
         when describe.unsupportedDescriptor with m then internal(m)
+        when ssaBuild.unsupported with m then internal("ssa: unsupported: " <> m)
+        when ssaVerify.verifyError with m then internal(m)
+        when ssaParser.readError with m then internal("ssa: " <> m)
+        when irInterp.irInterpreterError with m then internal(m)
+        when cBackend.unsupported with m then internal(m)
         end
+    end;
+
+(* Lowers the program through the last IR stage it goes through, dumping the
+ * stages shown, as the bootstrap's ir_STAGE phases do *)
+let lowerOnly(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
+    begin
+        let var last = irStages[0]
+        for i = 0 upto {extent irStages - 1} do if reaches("ir_" <> irStages[i]) then last := irStages[i] end end
+        reportingInternal(:Ok bag ok fun(): Ok
+            begin
+                let unit = lowered(program e sm false last)
+                if reaches("ssa_built") then
+                    let built = ssaPipeline.run(unit fun(name: String u: ssaNodes.Unit): Ok
+                        if shows("ssa_" <> name) then dump(ssaPrinter.formatUnit(u)) end)
+                    if shows("ssa") then
+                        let text = ssaPrinter.formatUnit(built)
+                        (* The SSA's text reads back as itself (ssa/parser) *)
+                        if verify.irChecksEnabled()
+                            andif not(stringOp.equal(ssaPrinter.formatUnit(ssaParser.readUnit(text)) text))
+                            then
+                            internalError(bag "ssa: the SSA does not read back as printed")
+                        end
+                        dump(text)
+                    end
+                end
+            end)
     end;
 
 (* Where compile writes the binary, or with --emit-c and no -o, nowhere (the C
@@ -435,26 +453,16 @@ let keptImports(unit: nodes.Unit): Array(passes.ImplicitImport) =
  * or writes it to -o (or compile's output). compile --emit-c writes the C. *)
 let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
     begin
-        let internal = fun(message: String): Ok diagbag.add(bag diagnostics.error(message location.span("" ~1 ~1)))
         let located = fun(message: String): Ok
             diagbag.add(bag diagnostics.error(message location.span(location.file(sm) 0 1)))
-        let translated = try
-            begin
-                let unit = lowered(program e sm compiledPrintsResult "described")
-                maybe.some(:Tuple c: String unit: nodes.Unit end
-                    tuple let c = cBackend.unitToC(unit maybe.none(:String) programBackend) let unit = unit end)
-            end
-        when lower.loweringError with m then begin internal(m) maybe.none(:Tuple c: String unit: nodes.Unit end) end
-        when verify.verifyError with m then begin internal(m) maybe.none(:Tuple c: String unit: nodes.Unit end) end
-        when closure.capturesMutable with m then begin internal(m) maybe.none(:Tuple c: String unit: nodes.Unit end) end
-        when represent.unsupportedConversion with m then
-            begin internal(m) maybe.none(:Tuple c: String unit: nodes.Unit end) end
-        when represent.rejectedConversion with m then
-            begin internal(m) maybe.none(:Tuple c: String unit: nodes.Unit end) end
-        when describe.unsupportedDescriptor with m then
-            begin internal(m) maybe.none(:Tuple c: String unit: nodes.Unit end) end
-        when cBackend.unsupported with m then begin internal(m) maybe.none(:Tuple c: String unit: nodes.Unit end) end
-        end
+        Let Translated = maybe.T(Tuple c: String unit: nodes.Unit end)
+        let translated = reportingInternal(:Translated bag maybe.none(:Tuple c: String unit: nodes.Unit end)
+            fun(): Translated
+                begin
+                    let unit = lowered(program e sm compiledPrintsResult "described")
+                    maybe.some(:Tuple c: String unit: nodes.Unit end
+                        tuple let c = cBackend.unitToC(unit maybe.none(:String) programBackend) let unit = unit end)
+                end)
         if maybe.isSome(:Tuple c: String unit: nodes.Unit end translated) then
             let t = maybe.unwrap(:Tuple c: String unit: nodes.Unit end translated)
             if shows("codegen_c") orif shows("codegen_arm64") then dump(t.c) end
@@ -561,23 +569,16 @@ let runFrame(e: env.T sm: location.SourceMap): model.Frame =
  * every phrase's, with --echo) *)
 let runIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T stage: String): Ok =
     begin
-        let internal = fun(message: String): Ok diagbag.add(bag diagnostics.error(message location.span("" ~1 ~1)))
-        try
-            let unit = lowered(program e sm true stage)
-            let f = runFrame(e sm)
-            try
-                irInterp.runUnit(unit f)
-            when model.runError with err then
-                diagbag.add(bag repl.runErrorDiagnostic(err options.file))
-            end
-        when lower.loweringError with m then internal(m)
-        when verify.verifyError with m then internal(m)
-        when irInterp.irInterpreterError with m then internal(m)
-        when closure.capturesMutable with m then internal(m)
-        when represent.unsupportedConversion with m then internal(m)
-        when represent.rejectedConversion with m then internal(m)
-        when describe.unsupportedDescriptor with m then internal(m)
-        end
+        reportingInternal(:Ok bag ok fun(): Ok
+            begin
+                let unit = lowered(program e sm true stage)
+                let f = runFrame(e sm)
+                try
+                    irInterp.runUnit(unit f)
+                when model.runError with err then
+                    diagbag.add(bag repl.runErrorDiagnostic(err options.file))
+                end
+            end)
     end;
 
 (* Runs a type-checked program, as the bootstrap's interpret phase does: the
