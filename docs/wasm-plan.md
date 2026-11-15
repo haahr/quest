@@ -1585,6 +1585,23 @@ stands, not redesigned.
     by its record's field (step 13's finding 2).
     *Done when* the locations' group passes in both lists, and a kernel session (`kernel_protocol.py --session`)
     reads and assigns an earlier input's `var` with the JIT.
+    *Done 2026-11-14:*
+    - **Built** in `wasm/codegen` as §2.6 has it: a location is two values, a `(ref null $slots)` and an `i32`,
+      wherever it is held (a variable of type `Var(T)` or `Out(T)`, a parameter, a closure signature's place).
+      The unit's located variables (`locatedVariables`: each `var` and `out` parameter, and each variable whose
+      address is taken) hold their location rather than their value: a read is an `array.get` and an unbox, an
+      assignment a box and an `array.set`, and a declaration makes the variable's own slot array of one. The
+      addresses (`addr`, `cell`, a record's field, a tuple's component, an array's element after its bounds test),
+      `load`, and `store_at` are the pairs §2.6 lists, with no dispatch. A parameter whose declared type is a
+      location (`o: Out(Int)`) is laid out as one too. A location crosses a uniform entry packed in a slot array of
+      two, its slot array and its index as an `i31`: only that path allocates.
+    - **Checked:** in the compiled list 5 tests pass (`cardelli_syntax`, `closure_captured_vars`,
+      `lvalues_references`, `scalar_slots`, `module_calls_module`), and in the JIT's list 11 (those and
+      `cardelli_operators`, `inlined_calls`, `mutable_locals`, `partial_type_application`, `tail_calls`,
+      `try_mutable_locals`). The others of the group now stop at variants or views and are listed under them.
+      A kernel session with the JIT reads, assigns, and passes `@v` to an earlier input's `var` (step 13's finding
+      2): the phrase units' records hold their variables, as natively. `wasm`, `wasm-node`, and `wasm-jit` pass
+      but for their lists (100 and 104 pending), and so do `self-hosted/wasm_session` and `wasm_programs`.
 16. **Variants.** §2.5's pair, an `i32` tag in the type's numbering and an `eqref` payload, boxed in an immutable
     `$varBox` in a slot; the tag maps (`(array i32)`) that remap a variant seen at another type; `case` over a
     variant, `?` and `!`, `is`, printing and echo, and a variant's descriptor (`variant_tags`). The closure

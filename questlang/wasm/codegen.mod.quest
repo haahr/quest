@@ -96,6 +96,11 @@ export
          * section 3.2), whose echoes are written with print's echoText, so
          * that they can be captured (docs/wasm-plan.md step 13) *)
         isPhrase: Bool
+        (* The variables held in a location (section 2.6): var and out
+         * parameters, given their location, and the variables whose address
+         * is taken, each held in a slot array of its own from its
+         * declaration; by id (locatedVariables) *)
+        located: hashMap.T(Int Bool)
     end
 
     (* A name not given before among names: base, or base.k *)
@@ -153,10 +158,20 @@ export
         end
 
     (* The values a value of type t is held as: two for a record, its payload
-     * and its view's table (section 2.5), else one *)
+     * and its view's table (section 2.5), and two for a location, a slot
+     * array and an index in it (section 2.6), else one *)
     let isRecord(t: ir.Type): Bool = layout.representationKind(t)?repRecord
+    let locationParts = array of model.refNull(rt.index("slots")) model.i32 end
+    let isLocation(t: ir.Type): Bool =
+        begin
+            let s = layout.resolvedShape(shapes.shape(t))
+            shapes.kindIs(s shapes.shapeCell) orif shapes.kindIs(s shapes.shapeOut)
+        end
     let parts(t: ir.Type): Array(ValType) =
-        if isRecord(t) then array of model.eqref model.eqref end else array of valType(t) end end
+        if isRecord(t) then array of model.eqref model.eqref end
+        elsif isLocation(t) then locationParts
+        else array of valType(t) end
+        end
 
     let sameType(a: ValType b: ValType): Bool =
         case a
@@ -271,10 +286,12 @@ export
             ts
         end
 
-    (* The values variable v is held as: an unboxed tuple's components, a
-     * boxed record's box, or its type's parts *)
-    let varParts(v: ir.Variable): Array(ValType) =
-        if v.unboxed then componentTypes(v.type)
+    (* The values variable v is held as: a located variable's location, an
+     * unboxed tuple's components, a boxed record's box, or its type's
+     * parts *)
+    let varParts(g: G v: ir.Variable): Array(ValType) =
+        if hashMap.contains(:Int :Bool g.located v.id) then locationParts
+        elsif v.unboxed then componentTypes(v.type)
         elsif v.boxed then array of model.eqref end
         else parts(v.type)
         end
@@ -284,7 +301,7 @@ export
     let global(f: F v: ir.Variable): Int =
         if hashMap.contains(:Int :Int f.g.globals v.id) then hashMap.find(:Int :Int f.g.globals v.id)
         else
-                let ts = varParts(v)
+                let ts = varParts(f.g v)
                 let n = model.importedGlobals(f.g.m) + vector.length(:model.Global f.g.m.globals)
                 for k = 0 upto extent ts - 1 do
                     let init = case ts[k]
@@ -372,8 +389,9 @@ export
             let ps = vector.new(:ValType)
             for k = 0 upto q.count - 1 do vector.append(:ValType ps model.eqref) end
             for k = 0 upto extent s.params - 1 do
-                if not(stringOp.equal(s.params[k].mode "value")) then fail("a var or out parameter (milestone 4)") end
-                let pp = parts(s.params[k].shape.type)
+                let pp = if stringOp.equal(s.params[k].mode "value") then parts(s.params[k].shape.type)
+                    else locationParts
+                    end
                 for j = 0 upto extent pp - 1 do vector.append(:ValType ps pp[j]) end
             end
             tuple let params = vector.toArray(:ValType ps) let results = parts(shapes.result(s).type) end
@@ -505,7 +523,7 @@ export
         if hashMap.contains(:Int :Int f.locals v.id) then hashMap.find(:Int :Int f.locals v.id)
         else
                 let n = f.nparams + vector.length(:model.Local f.declared)
-                let ts = varParts(v)
+                let ts = varParts(f.g v)
                 for k = 0 upto extent ts - 1 do
                     vector.append(:model.Local f.declared tuple let name = fresh(f.names v.hint) let type = ts[k] end)
                 end
@@ -513,16 +531,34 @@ export
                 n
         end
 
-    (* Stores the values on the stack in v, each of its parts *)
-    let store(f: F v: ir.Variable): Ok =
+    let isLocated(f: F v: ir.Variable): Bool = hashMap.contains(:Int :Bool f.g.located v.id)
+
+    (* Stores the values on the stack in v's own parts: a located variable's
+     * location itself *)
+    let setParts(f: F v: ir.Variable): Ok =
         begin
-            let n = extent varParts(v)
+            let n = extent varParts(f.g v)
             if isGlobal(f v) then
                 let first = global(f v)
                 for k = n - 1 downto 0 do emit(f i1(ops.globalSet first + k)) end
             else
                 let first = local(f v)
                 for k = n - 1 downto 0 do emit(f i1(ops.localSet first + k)) end
+            end
+        end
+
+    (* Pushes v's own parts: a located variable's location itself *)
+    let getParts(f: F v: ir.Variable): Ok =
+        begin
+            let n = extent varParts(f.g v)
+            if isGlobal(f v) then
+                let first = global(f v)
+                for k = 0 upto n - 1 do emit(f i1(ops.globalGet first + k)) end
+            elsif not(hashMap.contains(:Int :Int f.locals v.id)) then
+                fail("the variable " <> v.hint <> ", which has no value here")
+            else
+                let first = hashMap.find(:Int :Int f.locals v.id)
+                for k = 0 upto n - 1 do emit(f i1(ops.localGet first + k)) end
             end
         end
 
@@ -556,24 +592,14 @@ export
             when constReal with x then emit(f model.f64Const(x.r))
         end
 
-    let atom(f: F a: ir.Atom): Ok =
+    (* The atom's own parts: a located variable's location, not its value
+     * (atom reads that) *)
+    let atomParts(f: F a: ir.Atom): Ok =
         case a
-            when atomVar with x then
-                let v = x.v
-                let n = extent varParts(v)
-                if isGlobal(f v) then
-                    let first = global(f v)
-                    for k = 0 upto n - 1 do emit(f i1(ops.globalGet first + k)) end
-                elsif not(hashMap.contains(:Int :Int f.locals v.id)) then
-                    fail("the variable " <> v.hint <> ", which has no value here")
-                else
-                    let first = hashMap.find(:Int :Int f.locals v.id)
-                    for k = 0 upto n - 1 do emit(f i1(ops.localGet first + k)) end
-                end
+            when atomVar with x then getParts(f x.v)
             when atomConst with x then constant(f x.c)
         end
 
-    let atoms(f: F args: Array(ir.Atom)): Ok = for k = 0 upto extent args - 1 do atom(f args[k]) end
 
     let atomType(a: ir.Atom): ValType = valType(ir.atomType(a))
 
@@ -785,7 +811,7 @@ export
     let rec descriptor(f: F d: ir.Descriptor): Ok =
         case d
             when descStatic with x then emit(f i1(ops.globalGet descGlobal(f formOf(x.d).symbol)))
-            when descVar with x then atom(f ir.atomOfVar(x.v))
+            when descVar with x then atomParts(f ir.atomOfVar(x.v))
             when descInstantiate with x then
                 (* the template's, its holes filled by the core *)
                 let form = try staticdata.descriptorForm(x.template maybe.none(:staticdata.RecordNaming))
@@ -955,16 +981,53 @@ export
     (* Whether the atom is a variable held boxed (a record in its box) *)
     let isBoxedVar(a: ir.Atom): Bool =
         case a when atomVar with x then x.v.boxed else false end
+    (* A slot's value, read as the variable target holds it: unboxed unless
+     * target is held boxed *)
+    let unboxFor(f: F t: ir.Type target: maybe.T(ir.Variable)): Ok =
+        if maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).boxed then ok else unbox(f t) end
+    (* The atom's value: a located variable's read through its location *)
+    let atom(f: F a: ir.Atom): Ok =
+        begin
+            atomParts(f a)
+            case a
+                when atomVar with x then
+                    if isLocated(f x.v) then
+                        emit(f i1(ops.arrayGet tSlots))
+                        unboxFor(f x.v.type maybe.some(:ir.Variable x.v))
+                    end
+                else ok
+            end
+        end
+    let atoms(f: F args: Array(ir.Atom)): Ok = for k = 0 upto extent args - 1 do atom(f args[k]) end
     (* The atom, as a slot holds it: boxed unless it is a box already *)
     let boxedAtom(f: F a: ir.Atom): Ok =
         begin
             atom(f a)
             if not(isBoxedVar(a)) then box(f ir.atomType(a)) end
         end
-    (* A slot's value, read as the variable target holds it: unboxed unless
-     * target is held boxed *)
-    let unboxFor(f: F t: ir.Type target: maybe.T(ir.Variable)): Ok =
-        if maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).boxed then ok else unbox(f t) end
+
+    (* Stores the value on the stack in v: a located variable's written
+     * through its location, as a slot holds it *)
+    let store(f: F v: ir.Variable): Ok =
+        if isLocated(f v) then
+            if not(v.boxed) then box(f v.type) end
+            let value = scratch(f model.eqref)
+            emit(f i1(ops.localSet value))
+            getParts(f v)
+            emit(f i1(ops.localGet value))
+            emit(f i1(ops.arraySet tSlots))
+        else setParts(f v)
+        end
+
+    (* A located variable's location at its declaration: a slot array of its
+     * own, holding the value on the stack, and index 0 (section 2.6) *)
+    let declareLocated(f: F v: ir.Variable): Ok =
+        begin
+            if not(v.boxed) then box(f v.type) end
+            emit(f i2(ops.arrayNewFixed tSlots 1))
+            emit(f model.i32Const(0))
+            setParts(f v)
+        end
     (* A record atom's two parts, its box unboxed if it is one *)
     let recordAtom(f: F a: ir.Atom): Ok =
         begin
@@ -2187,6 +2250,32 @@ export
             end
         end
 
+    (* A location through a uniform entry, whose parameters are each one
+     * eqref: its slot array and its index, an i31, in a slot array of two;
+     * and the location again from that *)
+    let packLocation(f: F): Ok =
+        begin
+            emit(f i(ops.refI31))
+            emit(f i2(ops.arrayNewFixed tSlots 2))
+        end
+    let unpackLocation(f: F): Ok =
+        begin
+            let packed = scratch(f model.refNull(tSlots))
+            castTo(f tSlots)
+            emit(f i1(ops.localTee packed))
+            emit(f model.i32Const(0))
+            emit(f i1(ops.arrayGet tSlots))
+            castTo(f tSlots)
+            emit(f i1(ops.localGet packed))
+            emit(f model.i32Const(1))
+            emit(f i1(ops.arrayGet tSlots))
+            castI31(f)
+            emit(f i(ops.i31GetU))
+        end
+    let isLocatedParam(s: shapes.Shape k: Int): Bool =
+        shapes.kindIs(s shapes.shapeFun)
+            andif {not(stringOp.equal(s.params[k].mode "value")) orif isLocation(s.params[k].shape.type)}
+
     (* A call through a closure (section 3.1): the native entry, if the
      * closure is of the callee type's signature, else the uniform entry,
      * the arguments boxed and the result unboxed; as a tail call, when tail *)
@@ -2216,7 +2305,14 @@ export
             emit(f i1(ops.localGet held))
             castTo(f tClos)
             descriptors(f x.descriptors)
-            for k = 0 upto extent x.args - 1 do boxedAtom(f x.args[k]) end
+            let body = quantified(c.type).body
+            for k = 0 upto extent x.args - 1 do
+                if isLocatedParam(body k) then
+                    atom(f x.args[k])
+                    packLocation(f)
+                else boxedAtom(f x.args[k])
+                end
+            end
             emit(f i1(ops.localGet held))
             castTo(f u)
             emit(f i2(ops.structGet u 1))
@@ -2545,7 +2641,11 @@ export
                     emit(f i1(ops.localGet 0))
                     for k = 0 upto n - 1 do
                         emit(f i1(ops.localGet k + 1))
-                        if k >= q.count then unbox(f s.params[k - q.count].shape.type) end
+                        if k >= q.count then
+                            if isLocatedParam(s k - q.count) then unpackLocation(f)
+                            else unbox(f s.params[k - q.count].shape.type)
+                            end
+                        end
                     end
                     let result = if shapes.kindIs(s shapes.shapeFun) then shapes.result(s).type else s.type end
                     let plain = {extent sig.results is 1} andif sig.results[0]?valRef andif not(isRecord(result))
@@ -3057,8 +3157,30 @@ export
             when opCaughtException with x then atom(f x.exc)
             when opMakeVariant then fail("a variant (milestone 4)")
             when opMakeAuto then fail("an auto value (milestone 4)")
-            when opAddrVar, opAddrCell, opAddrField, opAddrComponent, opAddrElement, opLoad then
-                fail("a location (milestone 4)")
+            (* Locations (section 2.6): a slot array and an index *)
+            when opAddrVar with x then
+                if not(isLocated(f x.v)) then fail("the address of " <> x.v.hint <> ", which is not located") end
+                getParts(f x.v)
+            when opAddrCell with x then
+                boxedAtom(f x.init)
+                emit(f i2(ops.arrayNewFixed tSlots 1))
+                emit(f model.i32Const(0))
+            when opAddrField with x then
+                if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
+                fieldSlot(f x.base x.name)
+            when opAddrComponent with x then
+                if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
+                atom(f x.base)
+                accessAs(f tTuple x.access)
+                emit(f i2(ops.structGet tTuple fSlots))
+                emit(f model.i32Const(x.index))
+            when opAddrElement with x then
+                checkIndex(f x.base x.index x.offset)
+                elements(f x.base x.index)
+            when opLoad with x then
+                atom(f x.address)
+                emit(f i1(ops.arrayGet tSlots))
+                unboxFor(f shapes.element(shapeOf(ir.atomType(x.address))).type target)
         end
         end
 
@@ -3308,7 +3430,16 @@ export
                 emit(f i1(ops.arraySet tSlots))
             when sSwitch with x then switch(f x)
             when sVarDecl with x then
-                if maybe.isSome(:ir.Atom x.init) then
+                if isLocated(f x.v) then
+                    if maybe.isSome(:ir.Atom x.init) then atom(f maybe.unwrap(:ir.Atom x.init))
+                    else
+                        (* no value until it is assigned: a slot that holds
+                         * none, which its box would have been *)
+                        emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
+                        if not(x.v.boxed) then unbox(f x.v.type) end
+                    end
+                    declareLocated(f x.v)
+                elsif maybe.isSome(:ir.Atom x.init) then
                     atom(f maybe.unwrap(:ir.Atom x.init))
                     store(f x.v)
                 elsif not(isGlobal(f x.v)) then
@@ -3341,7 +3472,7 @@ export
                 hashMap.insert(:String :Bool f.returning x.label returnsParam(f x))
                 let joined = vector.new(:ValType)
                 for k = 0 upto extent x.params - 1 do
-                    let ps = varParts(x.params[k])
+                    let ps = varParts(f.g x.params[k])
                     for j = 0 upto extent ps - 1 do vector.append(:ValType joined ps[j]) end
                 end
                 let types = vector.toArray(:ValType joined)
@@ -3417,7 +3548,10 @@ export
                 close(f)
             when sEcho with x then echo(f x)
             when sEchoText with x then output(f fun(): Ok literal(f x.text <> "\n"))
-            when sStoreAt then fail("a location (milestone 4)")
+            when sStoreAt with x then
+                atom(f x.address)
+                boxedAtom(f x.value)
+                emit(f i1(ops.arraySet tSlots))
             when sStoreField with x then
                 if maybe.isSome(:ir.Variable x.viewMap) then fail("a bounded type parameter's view (milestone 4)") end
                 fieldSlot(f x.base x.name)
@@ -3508,10 +3642,22 @@ export
             let name = name let type = type let params = array of :String end let locals = f.declared let body = f.code
         end)
 
+    (* Parameter k's parts: its variable's, or a location's where the
+     * function's type gives the parameter a location's type (o: Out(Int)),
+     * as its callers see it *)
+    let paramParts(g: G fn: ir.Function k: Int): Array(ValType) =
+        begin
+            let body = quantified(fn.v.type).body
+            if shapes.kindIs(body shapes.shapeFun) andif {k < extent body.params}
+                andif isLocation(body.params[k].shape.type) then locationParts
+            else varParts(g fn.params[k].v)
+            end
+        end
+
     (* A function's parameters' and result's representations, its signature
      * (section 3.2 of the plan), or unsupported for what step 3 does not
      * compile *)
-    let signature(fn: ir.Function): Signature =
+    let signature(g: G fn: ir.Function): Signature =
         begin
             (* The closure first (section 3.1), then the descriptors of the
              * type parameters its callers supply, then each parameter's
@@ -3520,9 +3666,9 @@ export
             vector.append(:ValType params model.ref(tClos))
             for k = 0 upto quantified(fn.v.type).count - 1 do vector.append(:ValType params model.eqref) end
             for k = 0 upto extent fn.params - 1 do
-                if not(stringOp.equal(fn.params[k].mode "value")) then fail("a var or out parameter (milestone 4)") end
-                if fn.params[k].v.boxed then fail("a parameter held boxed") end
-                let ps = varParts(fn.params[k].v)
+                let located = not(stringOp.equal(fn.params[k].mode "value"))
+                if fn.params[k].v.boxed andif not(located) then fail("a parameter held boxed") end
+                let ps = paramParts(g fn k)
                 for j = 0 upto extent ps - 1 do vector.append(:ValType params ps[j]) end
             end
             let results = if fn.unboxedResult then componentTypes(fn.resultType) else parts(fn.resultType) end
@@ -3532,7 +3678,7 @@ export
     (* A function of the unit, whose index and type are already given *)
     let function(g: G fn: ir.Function): Ok =
         begin
-            let sig = signature(fn)
+            let sig = signature(g fn)
             let names = array of(extent sig.params "")
             let f = newF(g names sig.results fn.id)
             names[0] := fresh(f.names "closure")
@@ -3565,7 +3711,7 @@ export
             end
             for k = 0 upto extent fn.params - 1 do
                 hashMap.insert(:Int :Int f.locals fn.params[k].v.id at)
-                for j = 0 upto extent varParts(fn.params[k].v) - 1 do
+                for j = 0 upto extent paramParts(g fn k) - 1 do
                     names[at] := fresh(f.names fn.params[k].v.hint)
                     at := at + 1
                 end
@@ -3624,6 +3770,38 @@ export
                 when valI32 then emit(f i(ops.refI31))
                 else fail("a conversion at a unit's boundary")
             end
+        end
+
+    (* The unit's variables held in a location (section 2.6): each var and
+     * out parameter, and each variable whose address is taken (@x) *)
+    let locatedVariables(unit: ir.Unit): hashMap.T(Int Bool) =
+        begin
+            let found = hashMap.new(:Int :Bool intEqual hash.int)
+            for k = 0 upto vector.length(:ir.Function unit.functions) - 1 do
+                let fn = vector.get(:ir.Function unit.functions k)
+                for j = 0 upto extent fn.params - 1 do
+                    if not(stringOp.equal(fn.params[j].mode "value")) then
+                        hashMap.insert(:Int :Bool found fn.params[j].v.id true)
+                    end
+                end
+            end
+            let bodies = walk.unitBodies(unit)
+            for b = 0 upto extent bodies - 1 do
+                let ss = walk.walkStatements(bodies[b] true)
+                for k = 0 upto vector.length(:ir.Stmt ss) - 1 do
+                    case vector.get(:ir.Stmt ss k)
+                        when sLet with x then
+                            case x.value
+                                when opAddrVar with y then
+                                    hashMap.insert(:Int :Bool found y.v.id true)
+                                    ok
+                                else ok
+                            end
+                        else ok
+                    end
+                end
+            end
+            found
         end
 
     let unitModule(unit: ir.Unit): model.Module =
@@ -3705,6 +3883,7 @@ export
                 let isRuntime = isRuntimeUnit(moduleName)
                 let isCore = stringOp.equal(moduleName "wasm/core")
                 let isPhrase = maybe.isSome(:ir.Phrase unit.phrase)
+                let located = locatedVariables(unit)
             end
             (* Each function, and the types of what its closures capture: an
              * adapter's (ir/thunks), whose environment is the closure it
@@ -3972,7 +4151,7 @@ export
             let placeholder = funcType(g noTypes noTypes)
             for k = 0 upto vector.length(:ir.Function unit.functions) - 1 do
                 let fn = vector.get(:ir.Function unit.functions k)
-                let sig = signature(fn)
+                let sig = signature(g fn)
                 hashMap.insert(:Int :Int g.functions fn.id base + k)
                 vector.append(:model.Function m.functions tuple
                     let name = fresh(g.names fn.v.hint) let type = funcType(g sig.params sig.results)
@@ -4080,7 +4259,7 @@ export
                                 let fn = hashMap.find(:Int :ir.OpMakeClosure g.known v.id).code
                                 let native = hashMap.find(:Int :Int g.functions fn.id)
                                 let outer = closureSig(interfaceType)
-                                let inner = signature(fn)
+                                let inner = signature(g fn)
                                 let innerParams = array of(extent inner.params - 1 model.i64)
                                 for j = 1 upto extent inner.params - 1 do innerParams[j - 1] := inner.params[j] end
                                 if sameTypes(outer.params innerParams) andif sameTypes(outer.results inner.results) then
@@ -4089,7 +4268,8 @@ export
                                     (* converted to its interface's types *)
                                     if {extent outer.params isnot extent innerParams}
                                         orif {extent outer.results isnot 1} orif {extent inner.results isnot 1} then
-                                        fail("an exported function whose interface type differs in its parts")
+                                        fail("an exported function whose interface type differs in its parts: "
+                                            <> sigText(g outer) <> " against " <> sigText(g inner))
                                     end
                                     let names = array of(extent outer.params + 1 "")
                                     let wf = newF(g names outer.results ~1)
