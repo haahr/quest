@@ -27,6 +27,15 @@ typedef struct QSubtypePair {
 Q_NORETURN void quest_fail_at(const char *loc);
 void quest_install_stack_guard(void);
 
+/* quest_exceptions.c: a fatal error, one no handler catches, with its message
+ * and the site loc of its cause, if known: it ends the program, as
+ * quest_fail_at does, unless it is in code that os/code's call runs
+ * (quest_code.c), whose handler quest_fatal_handler then is: it ends that
+ * call, as an exception named "fatal: " and the message, so that the JIT
+ * reports it as the program compiled would, and a REPL goes on */
+Q_NORETURN void quest_fatal(const char *message, const char *loc);
+extern Q_THREAD_LOCAL QExceptionHandler *quest_fatal_handler;
+
 /* quest_print.c: formats r without its sign, as the interpreter does; and
  * appends a character of a char or string literal, escaped */
 void quest_format_real(double r, char *out, size_t n);

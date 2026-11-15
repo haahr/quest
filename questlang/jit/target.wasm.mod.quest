@@ -4,9 +4,10 @@
  * (docs/wasm-plan.md step 13): a unit compiled to a WebAssembly module by
  * the wasm backend, its bytes given to the host, which compiles the module
  * and instantiates it beside the driver's and the units loaded before; and
- * an input's entry run by the host, which catches an engine's stack overflow
- * or a trap at its own frame, so that the driver's frames below are intact
- * and the input fails as if it had raised. A Quest exception the input
+ * an input's entry run by the host, which catches an engine's stack overflow,
+ * a trap, or a fatal error (which the runtime holds while the input runs) at
+ * its own frame, so that the driver's frames below are intact and the input
+ * fails as if it had raised. A Quest exception the input
  * raises crosses the host's frame to the handler here.
  *
  * The host's functions are quest.host's imports (wasm.host.NAME), each of
@@ -38,7 +39,7 @@ export
     Let T = Tuple e: env.T end
     Let Ran = Option
         ran with shown: String end
-        raised with name: String site: String frames: Array(String) end
+        raised with name: String site: String frames: Array(String) fatal: Bool end
     end
 
     let unsupported: Exception(String) = exception unsupported: String end
@@ -65,6 +66,32 @@ export
     (* A raised exception's name, and its raise's site *)
     let raisedName(r: raised.T): String = external "wasm.raisedName"
     let raisedSite(r: raised.T): String = external "wasm.raisedSite"
+    let fatalReport(): String = external "wasm.fatalReport"
+
+    (* A fatal error's report, as the runtime writes it: its message, its
+     * first line, and its site, from its second line, "  at SITE", if it has
+     * one *)
+    let reportParts(report: String): Array(String) =
+        begin
+            let n = stringOp.length(report)
+            let line = fun(from: Int): Int
+                begin
+                    let var k = from
+                    while {k < n} andif {stringOp.getChar(report k) isnot '\n'} do k := k + 1 end
+                    k
+                end
+            let first = line(0)
+            let message = stringOp.getSub(report 0 first)
+            let var site = ""
+            if {first + 6} <= n then
+                let second = line(first + 1)
+                let text = stringOp.getSub(report first + 1 {second - first} - 1)
+                if {stringOp.length(text) > 5} andif stringOp.equal(stringOp.getSub(text 0 5) "  at ") then
+                    site := stringOp.getSub(text 5 {stringOp.length(text) - 5})
+                end
+            end
+            array of message site end
+        end
 
     (* The driver's own record of system, and a field of a record set, by
      * its index in name order: a record's payload is no Quest value, and is
@@ -140,15 +167,23 @@ export
                     option ran of Ran with let shown = shown() end
                 else
                     let discarded = shown()
-                    option raised of Ran with
-                        let name = if status is 1 then "stack.overflow" else "trap" end
-                        let site = "" let frames = array of "<main>" end
+                    if status is 3 then
+                        let parts = reportParts(fatalReport())
+                        option raised of Ran with
+                            let name = parts[0] let site = parts[1] let frames = array of "<main>" end let fatal = true
+                        end
+                    else
+                        option raised of Ran with
+                            let name = if status is 1 then "stack.overflow" else "trap" end
+                            let site = "" let frames = array of "<main>" end let fatal = false
+                        end
                     end
                 end
             else with r then
                 let discarded = shown()
                 option raised of Ran with
                     let name = raisedName(r) let site = raisedSite(r) let frames = array of "<main>" end
+                    let fatal = false
                 end
             end
         end

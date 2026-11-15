@@ -119,9 +119,12 @@ To see every frame, run the program with the interpreter (`--stop-after interpre
 
 A program or REPL input that the JIT runs (by default, unless `--no-jit`; [jit.md](jit.md)) is compiled code, so it
 reports exceptions as §2.1 and §2.4 describe, perhaps with fewer frames, and runaway recursion ends the driver (§6).
-Running in the driver's process, it also differs in two ways of its own: a fatal runtime error (an option's ordinal out
-of bounds) ends the driver with the runtime's message, whose site names the input as `<repl>#N`; and the frames it lists
-stop at the input's `<main>`, leaving out the driver's. jit.md §4 lists these with the rest.
+Running in the driver's process, it also differs in a way of its own: the frames it lists stop at the input's `<main>`,
+leaving out the driver's. A fatal runtime error (an option's ordinal out of bounds) is reported as the compiled
+program's is, at its site in the input's file, and ends the input, not the driver: `os/code`'s call, which runs the
+input, returns it as an exception named `fatal: ` and the message (`quest_fatal`), which no handler in the input
+catches; on WebAssembly the runtime holds it while the host runs an input, and traps. jit.md §4 lists the differences
+with the rest.
 
 ---
 

@@ -7,6 +7,7 @@
  * Darwin arm64's (MAP_JIT); elsewhere reserving one raises value.error. */
 
 #include "quest_runtime.h"
+#include "quest_runtime_internal.h"
 
 #include <dlfcn.h>
 #include <string.h>
@@ -212,7 +213,8 @@ void quest_code_roots(QRootVisitor add) {
 /* Calls entry under a handler that catches every exception with its frames,
    as a try whose else branch names the exception does: whatever backend built
    the code that raises, the handler's resume is null, so the raise jumps to
-   its env_jmp */
+   its env_jmp. A fatal error in it jumps there too, as an exception of its
+   own (quest_fatal) */
 bool quest_code_call(void *entry) {
     QExceptionHandler h;
     h.prev = quest_current_exception_handler;
@@ -221,13 +223,17 @@ bool quest_code_call(void *entry) {
     h.resume = NULL;
     h.sp = NULL;
     h.fp = NULL;
+    QExceptionHandler *outer = quest_fatal_handler;
     quest_current_exception_handler = &h;
+    quest_fatal_handler = &h;
     if (Q_SETJMP(h.env_jmp) == 0) {
         ((void (*)(void))entry)();
         quest_current_exception_handler = h.prev;
+        quest_fatal_handler = outer;
         return false;
     }
     quest_current_exception_handler = h.prev;
+    quest_fatal_handler = outer;
     quest_code_raised = quest_raised_capture(&quest_current_exception);
     return true;
 }

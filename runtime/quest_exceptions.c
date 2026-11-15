@@ -348,6 +348,36 @@ Q_NORETURN void quest_fail_at(const char *loc) {
     quest_fail_with(loc, NULL);
 }
 
+Q_THREAD_LOCAL QExceptionHandler *quest_fatal_handler = NULL;
+
+Q_NORETURN void quest_fatal(const char *message, const char *loc) {
+    QExceptionHandler *h = quest_fatal_handler;
+    if (h == NULL) {
+        fprintf(stderr, "%s\n", message);
+        quest_fail_at(loc);
+    }
+    /* An exception of its own, named for the message, which the call's
+       raised keeps: never freed, as fatal errors are few */
+    static const char prefix[] = "fatal: ";
+    size_t n = strlen(message);
+    char  *name = malloc(sizeof prefix + n);
+    QException *exc = malloc(sizeof *exc);
+    if (name == NULL || exc == NULL) {
+        fprintf(stderr, "%s\n", message);
+        quest_fail_at(loc);
+    }
+    memcpy(name, prefix, sizeof prefix - 1);
+    memcpy(name + sizeof prefix - 1, message, n + 1);
+    exc->name = name;
+    quest_current_exception = (QExceptionState){
+        .exc = exc, .payload = Q_OK_VAL, .loc = loc, .trace = quest_capture_trace(),
+        .payload_type = NULL, .payload_text = NULL,
+    };
+    /* the call's own handler, past any of the code's */
+    quest_current_exception_handler = h;
+    Q_LONGJMP(h->env_jmp, 1);
+}
+
 /* Whether a handler from h out will catch exc (docs/exceptions.md §5.1): 1 if
    one will, 0 if none will, -1 if one might (its patterns are computed when it
    runs) or will and needs the frames (an else branch naming the exception,
@@ -469,8 +499,10 @@ void quest_raise_dynamic_error(void) {
 }
 
 void quest_option_ordinal_error_at(int64_t n, int64_t count, const char *loc) {
-    fprintf(stderr, "Option ordinal %lld out of bounds (0 <= ordinal < %lld)\n", (long long)n, (long long)count);
-    quest_fail_at(loc);
+    char message[128];
+    snprintf(message, sizeof message, "Option ordinal %lld out of bounds (0 <= ordinal < %lld)", (long long)n,
+             (long long)count);
+    quest_fatal(message, loc);
 }
 
 void quest_option_ordinal_error(int64_t n, int64_t count) {

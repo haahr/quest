@@ -128,10 +128,10 @@ export
                     let sp = if maybe.isSome(:Int x.offset) then
                         location.span(file maybe.unwrap(:Int x.offset) maybe.unwrap(:Int x.offset) + 1)
                     else location.span("" ~1 ~1) end
-                    let d = diagnostics.error("Exception: " <> x.name sp)
+                    let d = diagnostics.error(if x.fatal then x.name else "Exception: " <> x.name end sp)
                     if extent x.frames > 0 then diagnostics.setTrace(d x.frames) end
                     r.errorSource := x.sourceMap
-                    r.failure := x.name
+                    r.failure := if x.fatal then "error" else x.name end
                     diagbag.add(bag d)
                     maybe.none(:Array(String))
             end

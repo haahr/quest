@@ -636,11 +636,12 @@ static QVal quest_convert_auto(QVal v, const QTypeDescriptor *from, const QTypeD
 
 void quest_layout_conversion_error(const QTypeDescriptor *from, const QTypeDescriptor *to) {
     (void)from;
-    fprintf(stderr,
-            "Runtime error: a value used at type %s was laid out by generic code, and converting it would copy "
-            "mutable data\n",
-            to != NULL && to->name != NULL ? to->name : "?");
-    quest_fail_at(NULL);
+    char message[512];
+    snprintf(message, sizeof message,
+             "Runtime error: a value used at type %s was laid out by generic code, and converting it would copy "
+             "mutable data",
+             to != NULL && to->name != NULL ? to->name : "?");
+    quest_fatal(message, NULL);
 }
 
 /* How a value stored as a type parameter is held: as a value of its own type

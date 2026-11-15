@@ -862,7 +862,11 @@ checks for termination at loops' back edges and at no tail call: an endless loop
 calls itself forever in tail position never does, node's process kept from exiting too. So a compiled input that
 recurses forever in tail position cannot be interrupted. The remedies are the backend's, to compile a function's
 call of itself in tail position as a loop (the engine then checks it), or a count of calls at each function's
-entry; neither is built.
+entry. *Built in step 20,* the first: a function's call of itself in tail position sets its parameters and
+branches to a loop around its code, and the page's interrupt ends such a recursion at once. **Mutual recursion is
+not covered:** two or more functions that call each other forever in tail position still do so by `return_call`,
+which V8 does not check, so an interrupt cannot end the worker, and the user must reload the page. Covering them
+takes the second remedy, a count at every function's entry, at a cost in every call.
 
 *The cost of replay grows with the session:* stopping an endless loop runs every earlier input again, the long
 ones at their full length, and their effects outside the session (a request made, a file in the page's store
@@ -1734,6 +1738,28 @@ stands, not redesigned.
     *Done when* each list holds only §7's absences (`os/process`, `os/value`, `os/fileStats`' modes, readline)
     and decision 12's frames, each with its reason, and the kernel's interrupt of a tail recursion runs in a
     session if the remedy is taken.
+    *Done 2026-11-15:*
+    - **Built-in operators as values:** every one the C runtime has a trampoline for, `Real`'s (`^^` by
+      `util/realmath`), `<>`, and `Bool`'s eager `/\` and `\/` beside `Int`'s, each a static closure with a native
+      and a uniform entry. `language/real_values` then showed `word.toReal` of a NaN's bits returning it, not raising
+      `word.error` as the C runtime does; fixed.
+    - **A recursive value's capture of a record** (or a variant), two parts, filled in by two fields.
+    - **A fatal runtime error under either JIT** is reported as the compiled program's is and ends the input, not the
+      driver (exceptions.md §2.5, jit.md §4). Natively, `quest_fatal` returns from `os/code`'s call as an exception
+      named `fatal: ` and the message, which no handler in the input sees, so that the release-built stage 1 needs no
+      new function; on WebAssembly, the runtime holds a fatal error's report while the host runs an input
+      (`holdFatal`, `fatalReport`) and traps, the host returns 3, and the target reports it. `system.exit`, whose
+      report is empty, still exits.
+    - **`questlang/types_judgments`** differs under the wasm JIT as under the native one, for the native JIT's
+      documented reason (jit.md §4): the test's unbound type variable, symbol 299, is found in the running compiler's
+      tables. It stays pending in both JIT lists with that reason.
+    - **Self tail calls as loops (remedy (a))**, §6.4: the page's interrupt ends an endless self recursion. Checked
+      in node, the wasm JIT's driver in a worker thread on `let rec count(n: Int): Int = count(n + 1)`: before, the
+      worker survived `terminate()` and kept node from exiting; after, it ended 7 ms after it. A mutual recursion
+      still cannot be ended, as §6.4 says.
+    - **Checked:** wasm and wasm-node 299/299, wasm-jit 298/298, jit-files 296/296, jit 16/16, arm64 299/299. The
+      lists hold §7's absences (`os/code`, `os/filestats`' modes, `os/process`, `os/value`, readline, and
+      `system_run`), and in both JIT lists `types_judgments`.
 21. **Speed, as the profile asks.** Step 10's profile named boxing `Int`s (about 10% of self-compilation) and the
     adapters this target does not need (about 8%, §3.2), and calls across units as the hottest functions. So:
     the adapters left out where the closure signatures already agree, by a model of this target in the represent

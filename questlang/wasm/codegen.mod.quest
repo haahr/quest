@@ -203,8 +203,9 @@ export
     Def Label = Tuple name: String kind: LabelKind end
 
     (* A capture to fill in: the closure, in local holder, of own type own,
-     * its field, and the atom it captures *)
-    Def Patch = Tuple holder: Int own: Int field: Int atom: ir.Atom end
+     * the fields from field on that hold its parts (two for a record or a
+     * variant), and the atom it captures *)
+    Def Patch = Tuple holder: Int own: Int field: Int parts: Array(ValType) atom: ir.Atom end
 
     (* What compiling one function keeps: its code, its locals by variable
      * id, its locals after its parameters, their names, the labels open,
@@ -226,7 +227,14 @@ export
         fnId: Int
         deferred: hashMap.T(Int Bool)
         patches: vector.T(Patch)
+        (* Whether a call of the function itself in tail position branched
+         * to the loop around its code (selfLabel) *)
+        var selfTail: Bool
     end
+
+    (* The label of the loop around a function's code, which no IR label is
+     * named *)
+    let selfLabel = "<self>"
 
 
     let newF(g: G params: Array(String) results: Array(ValType) fnId: Int): F =
@@ -245,6 +253,7 @@ export
                 let fnId = fnId
                 let deferred = hashMap.new(:Int :Bool intEqual hash.int)
                 let patches = vector.new(:Patch)
+                let var selfTail = false
             end
         end
 
@@ -262,6 +271,16 @@ export
         begin
             vector.pop(:Label f.labels)
             emit(f model.endInst)
+        end
+
+    (* Whether a label named name is open *)
+    let hasLabel(f: F name: String): Bool =
+        begin
+            let var found = false
+            for k = 0 upto vector.length(:Label f.labels) - 1 do
+                if stringOp.equal(vector.get(:Label f.labels k).name name) then found := true end
+            end
+            found
         end
 
     (* The depth of a branch to the label named name of kind kind *)
@@ -2483,8 +2502,17 @@ export
                 binary(ops.f64Div)
                 notNaN(f maybe.none(:Int))
             elsif named("quest_word_to_real_val") then
+                (* word.error for a NaN's bits, which are no Real's *)
+                let r = scratch(f model.f64)
                 atoms(f args)
                 emit(f i(ops.f64ReinterpretI64))
+                emit(f i1(ops.localTee r))
+                emit(f i1(ops.localGet r))
+                emit(f i(ops.f64Ne))
+                emit(f model.ifInst(empty ""))
+                raiseAt(f "word.error" maybe.none(:Int))
+                emit(f model.endInst)
+                emit(f i1(ops.localGet r))
             elsif named("quest_word_from_real_val") then
                 atoms(f args)
                 emit(f i(ops.i64ReinterpretF64))
@@ -3276,21 +3304,42 @@ export
 
     (* A built-in operator as a value (opBuiltin), as the C runtime's
      * trampolines are (qv_sym_plus_closure): a static closure of $closS for
-     * its signature, whose native entry computes it, division and remainder
-     * raising int.error with no site, and whose uniform entry unboxes and
-     * boxes. The Int operators; Real's wait for step 8 *)
+     * its signature, whose native entry computes it and whose uniform entry
+     * unboxes and boxes. Int's arithmetic and comparisons, division and
+     * remainder raising int.error with no site; Real's, raising real.error
+     * as the operators do, ^^ by util/realmath (which the unit imports when
+     * it sees the operator, as for the primitive); String's <>; and Bool's
+     * eager /\ and \/ *)
     let builtinClosure(g: G name: String): Int =
         if hashMap.contains(:String :Int g.builtins name) then hashMap.find(:String :Int g.builtins name)
         else
             let named = fun(n: String): Bool stringOp.equal(name n)
-            let compares = named("<") orif named("<=") orif named(">") orif named(">=")
-            let arithmetic = named("+") orif named("-") orif named("*") orif named("/") orif named("%")
-                orif named("mod")
-            if not(compares orif arithmetic) then
+            let isOneOf = fun(ns: Array(String)): Bool
+                begin
+                    let var found = false
+                    for k = 0 upto extent ns - 1 do if named(ns[k]) then found := true end end
+                    found
+                end
+            let intCompares = isOneOf(array of "<" "<=" ">" ">=" end)
+            let intArithmetic = isOneOf(array of "+" "-" "*" "/" "%" "mod" end)
+            let realCompares = isOneOf(array of "<<" "<<=" ">>" ">>=" end)
+            let realArithmetic = isOneOf(array of "++" "--" "**" "//" "^^" end)
+            let logical = isOneOf(array of "/\\" "\\/" end)
+            let concat = named("<>")
+            if not(intCompares orif intArithmetic orif realCompares orif realArithmetic orif logical orif concat) then
                 fail("the built-in " <> name <> " as a value")
             end
-            let result = if compares then model.i32 else model.i64 end
-            let sig = tuple let params = array of model.i64 model.i64 end let results = array of result end end
+            let operand = if intCompares orif intArithmetic then model.i64
+                elsif realCompares orif realArithmetic then model.f64
+                elsif logical then model.i32
+                else model.eqref
+                end
+            let result = if intCompares orif realCompares orif logical then model.i32
+                elsif intArithmetic then model.i64
+                elsif realArithmetic then model.f64
+                else model.eqref
+                end
+            let sig = tuple let params = array of operand operand end let results = array of result end end
             let s = closS(g sig 2)
             (* The native entry *)
             let nf = newF(g array of "closure" "a" "b" end sig.results ~1)
@@ -3313,12 +3362,32 @@ export
                 emit(nf i(ops.returnOp))
                 emit(nf model.endInst)
             end
+            if named("//") then
+                emit(nf i1(ops.localGet 2))
+                emit(nf model.f64Const(0.0))
+                emit(nf i(ops.f64Eq))
+                emit(nf model.ifInst(empty ""))
+                raiseAt(nf "real.error" maybe.none(:Int))
+                emit(nf model.endInst)
+            end
+            if named("^^") then emit(nf i1(ops.globalGet g.noClosure)) end
             emit(nf i1(ops.localGet 1))
             emit(nf i1(ops.localGet 2))
-            emit(nf i(if named("+") then ops.i64Add elsif named("-") then ops.i64Sub elsif named("*") then ops.i64Mul
-                elsif named("/") then ops.i64DivS elsif named("%") orif named("mod") then ops.i64RemS
-                elsif named("<") then ops.i64LtS elsif named("<=") then ops.i64LeS elsif named(">") then ops.i64GtS
-                else ops.i64GeS end))
+            if named("^^") then runtimeUnitCall(nf "util/realmath.pow")
+            elsif concat then runtimeCall(nf "concat")
+            else
+                emit(nf i(if named("+") then ops.i64Add elsif named("-") then ops.i64Sub elsif named("*") then ops.i64Mul
+                    elsif named("/") then ops.i64DivS elsif named("%") orif named("mod") then ops.i64RemS
+                    elsif named("<") then ops.i64LtS elsif named("<=") then ops.i64LeS elsif named(">") then ops.i64GtS
+                    elsif named(">=") then ops.i64GeS
+                    elsif named("++") then ops.f64Add elsif named("--") then ops.f64Sub elsif named("**") then ops.f64Mul
+                    elsif named("//") then ops.f64Div
+                    elsif named("<<") then ops.f64Lt elsif named("<<=") then ops.f64Le elsif named(">>") then ops.f64Gt
+                    elsif named(">>=") then ops.f64Ge
+                    elsif named("/\\") then ops.i32And
+                    else ops.i32Or end))
+                if realArithmetic then notNaN(nf maybe.none(:Int)) end
+            end
             let native = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
             vector.append(:model.Function g.m.functions tuple
                 let name = fresh(g.names "builtin" <> name) let type = nativeType(g sig)
@@ -3330,10 +3399,24 @@ export
             emit(uf i1(ops.localGet 0))
             for k = 1 upto 2 do
                 emit(uf i1(ops.localGet k))
-                runtimeCall(uf "unboxInt")
+                case operand
+                    when valI64 then runtimeCall(uf "unboxInt")
+                    when valF64 then
+                        castTo(uf rt.index("boxReal"))
+                        emit(uf i2(ops.structGet rt.index("boxReal") 0))
+                    when valI32 then
+                        castI31(uf)
+                        emit(uf i(ops.i31GetU))
+                    else ok
+                end
             end
             emit(uf i1(ops.call native))
-            if compares then emit(uf i(ops.refI31)) else runtimeCall(uf "boxInt") end
+            case result
+                when valI64 then runtimeCall(uf "boxInt")
+                when valF64 then emit(uf i1(ops.structNew rt.index("boxReal")))
+                when valI32 then emit(uf i(ops.refI31))
+                else ok
+            end
             let uniform = native + 1
             vector.append(:model.Function g.m.functions tuple
                 let name = fresh(g.names "builtin" <> name <> ".uniform") let type = uniformType(g 2)
@@ -3491,18 +3574,20 @@ export
                     end
                     if pending then
                         let ps = parts(ir.atomType(a))
-                        if extent ps isnot 1 then fail("a recursive value's record capture") end
-                        case ps[0]
-                            when valI64 then emit(f model.i64Const(0))
-                            when valI32 then emit(f model.i32Const(0))
-                            when valF64 then emit(f model.f64Const(0.0))
-                            else
-                                emit(f option instRefNull of Inst with
-                                    let heap = option heapNone of model.HeapType end
-                                end)
+                        for j = 0 upto extent ps - 1 do
+                            case ps[j]
+                                when valI64 then emit(f model.i64Const(0))
+                                when valI32 then emit(f model.i32Const(0))
+                                when valF64 then emit(f model.f64Const(0.0))
+                                else
+                                    emit(f option instRefNull of Inst with
+                                        let heap = option heapNone of model.HeapType end
+                                    end)
+                            end
                         end
-                        vector.append(:Patch later
-                            tuple let holder = 0 let own = own let field = captureField(f.g fn k) let atom = a end)
+                        vector.append(:Patch later tuple
+                            let holder = 0 let own = own let field = captureField(f.g fn k) let parts = ps let atom = a
+                        end)
                     else atom(f a)
                     end
                 end
@@ -3513,7 +3598,8 @@ export
                     for k = 0 upto vector.length(:Patch later) - 1 do
                         let pt = vector.get(:Patch later k)
                         vector.append(:Patch f.patches
-                            tuple let holder = holder let own = pt.own let field = pt.field let atom = pt.atom end)
+                            tuple let holder = holder let own = pt.own let field = pt.field let parts = pt.parts
+                                let atom = pt.atom end)
                     end
                 end
             end
@@ -3602,6 +3688,18 @@ export
                 literal(f "")
                 emit(f model.elseInst)
                 emit(f i1(ops.localGet site))
+                emit(f model.endInst)
+            elsif named("fatalReport") then
+                (* the report of the fatal error the runtime kept while it held
+                 * them (holdFatal), "" if none *)
+                runtimeCall(f "fatalReport")
+                let report = scratch(f model.eqref)
+                emit(f i1(ops.localTee report))
+                emit(f i(ops.refIsNull))
+                emit(f model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
+                literal(f "")
+                emit(f model.elseInst)
+                emit(f i1(ops.localGet report))
                 emit(f model.endInst)
             elsif named("importedRecord") then
                 (* the payload of the record of a unit this one imports, named
@@ -4198,7 +4296,15 @@ export
                     if returnsResult(f maybe.unwrap(:Found found).v next) andif sameTypes(results f.results) then
                         closureArg(f c)
                         atoms(f c.args)
-                        emit(f i1(ops.returnCall d))
+                        if {f.fnId >= 0} andif hasLabel(f selfLabel)
+                            andif {maybe.unwrapOr(:Int hashMap.get(:Int :Int f.g.functions f.fnId) ~1) is d} then
+                            (* itself: its parameters set, last first, and a
+                             * branch to the loop around its code *)
+                            for k = 0 upto f.nparams - 1 do emit(f i1(ops.localSet {f.nparams - 1} - k)) end
+                            emit(f i1(ops.br depth(f selfLabel option labelRepeat of LabelKind end)))
+                            f.selfTail := true
+                        else emit(f i1(ops.returnCall d))
+                        end
                         true
                     else false
                     end
@@ -4394,10 +4500,25 @@ export
                 for k = 0 upto extent x.vars - 1 do hashMap.delete(:Int :Bool f.deferred x.vars[k].id) end
                 while vector.length(:Patch f.patches) > first do
                     let pt = vector.pop(:Patch f.patches)
-                    emit(f i1(ops.localGet pt.holder))
-                    castTo(f pt.own)
-                    atom(f pt.atom)
-                    emit(f i2(ops.structSet pt.own pt.field))
+                    let n = extent pt.parts
+                    if n is 1 then
+                        emit(f i1(ops.localGet pt.holder))
+                        castTo(f pt.own)
+                        atom(f pt.atom)
+                        emit(f i2(ops.structSet pt.own pt.field))
+                    else
+                        (* each part from a local of its own, set in its field *)
+                        let held = array of(n 0)
+                        for j = 0 upto n - 1 do held[j] := scratch(f pt.parts[j]) end
+                        atom(f pt.atom)
+                        for j = 0 upto n - 1 do emit(f i1(ops.localSet held[{n - 1} - j])) end
+                        for j = 0 upto n - 1 do
+                            emit(f i1(ops.localGet pt.holder))
+                            castTo(f pt.own)
+                            emit(f i1(ops.localGet held[j]))
+                            emit(f i2(ops.structSet pt.own pt.field + j))
+                        end
+                    end
                 end
             when sFuns then fail("a function not closure-converted")
             when sInspect with x then inspectAuto(f x)
@@ -4672,6 +4793,15 @@ export
             let names = array of(extent sig.params "")
             let f = newF(g names sig.results fn.id)
             names[0] := fresh(f.names "closure")
+            (* A loop around its code, to which a call of itself in tail
+             * position branches, its parameters set, rather than return_call:
+             * V8 checks for termination at a loop's back edge, not at a tail
+             * call, so that the page can end the worker running an endless
+             * self recursion (step 13's finding 1, remedy (a)); a mutual
+             * recursion's tail calls still cannot be interrupted there
+             * (docs/wasm-plan.md step 20). Left out if no such call is compiled *)
+            emit(f model.loopInst(empty selfLabel))
+            open(f selfLabel option labelRepeat of LabelKind end)
             if maybe.isSome(:ir.Variable fn.env) andif not(isAdapter(fn)) then
                 hashMap.insert(:Int :Int f.locals maybe.unwrap(:ir.Variable fn.env).id 0)
             end
@@ -4724,7 +4854,21 @@ export
                             emit(f i1(ops.localSet local(f m.v)))
                         end
                         body(f fn.body)
+                        close(f)
                         emit(f i(ops.unreachable))
+                        if not(f.selfTail) then
+                            (* the loop's instruction, first, and its end, at
+                             * the end but for unreachable, dropped *)
+                            let n = vector.length(:Inst f.code)
+                            let kept = vector.new(:Inst)
+                            for k = 1 upto n - 1 do
+                                if k isnot {n - 2} then vector.append(:Inst kept vector.get(:Inst f.code k)) end
+                            end
+                            vector.clear(:Inst f.code)
+                            for k = 0 upto vector.length(:Inst kept) - 1 do
+                                vector.append(:Inst f.code vector.get(:Inst kept k))
+                            end
+                        end
                         f
                     end
                 when unsupported with m then
@@ -5189,6 +5333,7 @@ export
                                 end
                             when opExternal with c then coreFunction(c.symbol)
                             when opPrim with c then if c.op?primRealPow then realmathImport("pow" 2) end
+                            when opBuiltin with c then if stringOp.equal(c.name "^^") then realmathImport("pow" 2) end
                             when opTypeApp with c then register(c.callee c.moduleRef c.member c.calleeType)
                             else ok
                         end

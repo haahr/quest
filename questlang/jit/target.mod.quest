@@ -61,7 +61,7 @@ export
     end
     Let Ran = Option
         ran with shown: String end
-        raised with name: String site: String frames: Array(String) end
+        raised with name: String site: String frames: Array(String) fatal: Bool end
     end
 
     let unsupported: Exception(String) = exception unsupported: String end
@@ -335,8 +335,12 @@ export
             let raised = code.call(symbolAt(t.symbols name <> "_entry"))
             if maybe.isSome(:raised.T raised) then
                 let r = maybe.unwrap(:raised.T raised)
+                let name = code.exceptionName(r)
+                (* a fatal error, as os/code's call names one *)
+                let fatal = strutil.startsWith(name "fatal: ")
                 option raised of Ran with
-                    let name = code.exceptionName(r) let site = code.raiseSite(r) let frames = framesOf(code.frames(r))
+                    let name = if fatal then stringOp.getSub(name 7 {stringOp.length(name) - 7}) else name end
+                    let site = code.raiseSite(r) let frames = framesOf(code.frames(r)) let fatal = fatal
                 end
             else
                 let shown = if capture then value.be(:String value.fetch(symbolAt(t.symbols name <> "_echo") 0))

@@ -509,12 +509,14 @@ inherits, and which show in the REPL transcripts:
 Both are accepted, here and in exceptions.md. An uncaught exception's payload is shown as the interpreters show it
 (exceptions.md §2.1), but for one of a module's abstract type, which compiled code shows as `<hidden>`.
 
-Running in the driver's own process adds two more, which the run goldens through `--jit` show:
+Running in the driver's own process adds one more, which the run goldens through `--jit` show:
 
-- a fatal runtime error (an option's ordinal out of bounds, say), which ends a compiled program, ends the driver,
-  with the runtime's message and the input's internal source name (`<repl>#N`) as its site;
 - a program that calls the compiler's own modules (the questlang tests) calls the running compiler's, and sees its
   state (§1, "the driver is the library").
+
+A fatal runtime error (an option's ordinal out of bounds, say), which ends a compiled program, ended the driver until
+2026-11-15, with the input's internal source name (`<repl>#N`) as its site. It now ends the input, reported as the
+compiled program reports it (exceptions.md §2.5), and a REPL goes on.
 
 ## 5. Testing
 

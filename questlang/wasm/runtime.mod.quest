@@ -68,6 +68,12 @@ export
          * "Exception: ": its name, and its payload, as shown writes it (or
          * the base's show, if shown is null), and its type *)
         entry("raisedText" array of model.eqref model.eqref end array of model.eqref end)
+        (* Fatal errors held (nonzero) or not: while the JIT's host runs an
+         * input, fatal keeps its report, for fatalReport, and traps, so that
+         * the input fails and the driver goes on (docs/wasm-plan.md step 20);
+         * starting to hold clears the report kept. The report kept, or null *)
+        entry("holdFatal" array of model.i32 end none)
+        entry("fatalReport" none array of model.eqref end)
         (* Memory, for the core's calls of WASI: a byte, a 32-bit word, and a
          * 64-bit one, read and written at an address; the memory grown to
          * hold an address; n bytes from an address as a new string; a
@@ -108,6 +114,8 @@ export
         "dynamic.error" "writer.error" "reader.error" "system.error" "value.error" "readline.error"
     end
     let exceptionField(name: String): String = "exception:" <> name
+    (* holdFatal's globals, after the exceptions' and noClosure *)
+    let heldGlobal = extent builtinExceptions + 1
 
     (* ======================================================================
      * Building
@@ -526,8 +534,15 @@ export
             end)
             (* A fatal error's report, which no handler catches, and the
              * status the program ends with, as the C runtime's quest_fail_at
-             * (1) and its collector's out of memory (70) end a program *)
+             * (1) and its collector's out of memory (70) end a program; or
+             * while fatal errors are held, the report kept and a trap. Not
+             * system.exit's, whose report is empty *)
             add("fatal" typeOf[13] array of "report" "status" end array of :model.Local end array of
+                i1(ops.globalGet heldGlobal) model.ifInst(empty "")
+                i1(ops.localGet 0) castTo(tString) i2(ops.structGet tString sLength) model.ifInst(empty "")
+                i1(ops.localGet 0) i1(ops.globalSet heldGlobal + 1) i(ops.unreachable)
+                model.endInst
+                model.endInst
                 c32(2) i(ops.refI31) i1(ops.localGet 0) i1(ops.call putString) i(ops.drop)
                 i1(ops.localGet 1) i1(ops.call procExit)
             end)
@@ -670,6 +685,16 @@ export
                         i1(ops.localGet 3)
                     end
                 end))
+            add("holdFatal" typeOf[23] array of "held" end array of :model.Local end array of
+                i1(ops.localGet 0) i1(ops.globalSet heldGlobal)
+                i1(ops.localGet 0) model.ifInst(empty "")
+                option instRefNull of Inst with let heap = option heapNone of model.HeapType end end
+                i1(ops.globalSet heldGlobal + 1)
+                model.endInst
+            end)
+            add("fatalReport" typeOf[24] array of :String end array of :model.Local end array of
+                i1(ops.globalGet heldGlobal + 1)
+            end)
             (* Memory's helpers: an address is an i64, wrapped *)
             let k0 = extent fixedExports - 9
             let addr = array of i1(ops.localGet 0) i(ops.i32WrapI64) end
@@ -876,6 +901,16 @@ export
             vector.append(:model.Global m.globals tuple
                 let name = "noClosure" let type = model.ref(rt.index("clos")) let mutable = false
                 let init = array of c32(0) i1(ops.structNew rt.index("clos")) end
+            end)
+            (* holdFatal's: whether fatal errors are held, and the report kept *)
+            vector.append(:model.Global m.globals tuple
+                let name = "fatalHeld" let type = model.i32 let mutable = true let init = array of c32(0) end
+            end)
+            vector.append(:model.Global m.globals tuple
+                let name = "fatalReport" let type = model.eqref let mutable = true
+                let init = array of
+                    option instRefNull of Inst with let heap = option heapNone of model.HeapType end end
+                end
             end)
             for k = 0 upto extent builtinExceptions - 1 do
                 vector.append(:model.Export m.exports tuple

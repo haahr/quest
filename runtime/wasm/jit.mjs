@@ -14,10 +14,12 @@
 //
 // Each function takes a string as its bytes in the runtime's memory, at
 // and n, and gives an Int (an i32): load the length of its error's message,
-// written at at, or 0; run 0, 1 for an engine's stack overflow, or 2 for a
-// trap, each caught here, at the host's frame, so that only the input's
-// frames are unwound. A Quest exception the input raises is not caught: it
-// crosses this frame to the driver's handler.
+// written at at, or 0; run 0, 1 for an engine's stack overflow, 2 for a
+// trap, or 3 for a fatal error, which the runtime holds while an input runs
+// (its holdFatal: it keeps the report and traps), each caught here, at the
+// host's frame, so that only the input's frames are unwound. A Quest
+// exception the input raises is not caught: it crosses this frame to the
+// driver's handler.
 
 const decoder = new TextDecoder();
 const encoder = new TextEncoder();
@@ -109,6 +111,8 @@ export class Jit {
   }
 
   run(name) {
+    const runtime = this.units["quest.runtime"];
+    runtime.holdFatal(1);
     try {
       const entry = this.units[name].init;
       if (typeof entry !== "function") throw new Error(`${name} exports no init: ${Object.keys(this.units[name])}`);
@@ -118,7 +122,9 @@ export class Jit {
       const overflow = e instanceof RangeError;
       if (!overflow && !(e instanceof WebAssembly.RuntimeError)) throw e;
       if (this.core && Number(this.core.updating(this.noClosure)) !== 0) this.mustReplay = true;
-      return overflow ? 1 : 2;
+      return overflow ? 1 : runtime.fatalReport() !== null ? 3 : 2;
+    } finally {
+      runtime.holdFatal(0);
     }
   }
 }
