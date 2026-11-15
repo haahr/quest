@@ -14,6 +14,7 @@ import
     util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
     conv : Conv
+    raised : Raised
 export
     (* ======================================================================
      * 1. S-Expressions
@@ -522,7 +523,11 @@ export
     let dumpWithOffsets(node: ast.Program): String =
         begin
             options.offsets := true
-            let text = show(program(node))
+            let text = try
+                show(program(node))
+            else with r then
+                begin options.offsets := false raised.reraise(:String r) end
+            end
             options.offsets := false
             text
         end

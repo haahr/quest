@@ -29,6 +29,28 @@ class TokenizerError(QuestCompilerError):
     etc.)."""
 
 
+# Letters and digits are ASCII's (docs/syntax.md §2.2): the source is read as
+# Latin-1, one character a byte, so str.isalpha and str.isdigit would take
+# bytes such as 0xe9 (é) and 0xb2 (²) for them
+def _is_digit(c: str) -> bool:
+    return "0" <= c <= "9"
+
+
+def _is_alpha(c: str) -> bool:
+    return "a" <= c <= "z" or "A" <= c <= "Z"
+
+
+def _is_alnum(c: str) -> bool:
+    return _is_alpha(c) or _is_digit(c)
+
+
+def _char_repr(c: str) -> str:
+    """c as the tokenizer's messages show it: as Python's repr does, except
+    that a character from 127 up is always \\xNN, as the self-hosted
+    tokenizer's charRepr writes it"""
+    return f"'\\x{ord(c):02x}'" if ord(c) >= 127 else repr(c)
+
+
 # Single-character escapes: \n \t \r \b \f \\ \' \"
 SIMPLE_ESCAPES: dict[str, str] = {
     "n": "\n",
@@ -153,12 +175,12 @@ class Tokenizer:
             if not INT_MIN <= number_value <= INT_MAX:
                 raise TokenizerError(f"Integer literal '{lexeme}' out of range", start, len(lexeme))
             return Token(TokenKind.INT_LIT, lexeme, number_value, start)
-        self._skip_while(str.isdigit)
+        self._skip_while(_is_digit)
 
         # Check for decimal point followed by a digit: e.g. 2.0 or ~2.0
-        if self._peek() == "." and self._peek(1).isdigit():
+        if self._peek() == "." and _is_digit(self._peek(1)):
             self.cursor += 1  # Consume '.'
-            self._skip_while(str.isdigit)
+            self._skip_while(_is_digit)
 
             # Optional exponent: e.g. 2.0e-5, 3.14E+2, ~5.1E~4
             if self._peek() in ("e", "E"):
@@ -166,13 +188,13 @@ class Tokenizer:
                 self.cursor += 1
                 if self._peek() in ("+", "-", "~"):
                     self.cursor += 1
-                if not self._peek().isdigit():
+                if not _is_digit(self._peek()):
                     raise TokenizerError(
                         "Malformed real exponent",
                         exponent_start,
                         self.cursor - exponent_start,
                     )
-                self._skip_while(str.isdigit)
+                self._skip_while(_is_digit)
 
             kind, convert, what = TokenKind.REAL_LIT, float, "real"
         else:
@@ -207,9 +229,9 @@ class Tokenizer:
                     self.cursor - escape_start,
                 )
             return chr(int(hex_digits, 16))
-        if char.isdigit():
+        if _is_digit(char):
             # Decimal character code \ddd (up to 3 decimal digits)
-            char_code = int(char + self._skip_while(str.isdigit, limit=2))
+            char_code = int(char + self._skip_while(_is_digit, limit=2))
             if char_code > 255:
                 raise TokenizerError(
                     f"Character code {char_code} out of byte range",
@@ -259,14 +281,14 @@ class Tokenizer:
 
     def _lex_ident_or_keyword(self) -> Token:
         start = self.cursor
-        lexeme = self._skip_while(str.isalnum)
+        lexeme = self._skip_while(_is_alnum)
         return Token(KEYWORDS.get(lexeme, TokenKind.IDENT), lexeme, None, start)
 
     def _lex_symbolic_or_punctuation(self) -> Token:
         start = self.cursor
         # Stop before ~ followed by a digit (the start of a negative number
         # literal)
-        while self._peek() in SYMBOLIC_CHARS and not (self._peek() == "~" and self._peek(1).isdigit()):
+        while self._peek() in SYMBOLIC_CHARS and not (self._peek() == "~" and _is_digit(self._peek(1))):
             self.cursor += 1
 
         lexeme = self.source_text[start:self.cursor]
@@ -295,7 +317,7 @@ class Tokenizer:
             return Token(TokenKind.DOT, ".", None, start)
 
         # 3. Numeric literals (unsigned or negative with Cardelli tilde ~)
-        if char.isdigit() or (char == "~" and self._peek(1).isdigit()):
+        if _is_digit(char) or (char == "~" and _is_digit(self._peek(1))):
             return self._lex_number()
 
         # 4. Character literal
@@ -307,7 +329,7 @@ class Tokenizer:
             return self._lex_string()
 
         # 6. Alphanumeric identifiers and keywords
-        if char.isalpha():
+        if _is_alpha(char):
             return self._lex_ident_or_keyword()
 
         # 7. Symbolic operators and reserved punctuation
@@ -316,7 +338,7 @@ class Tokenizer:
 
         # 8. Unrecognized character
         self.cursor += 1
-        raise TokenizerError(f"Unexpected character {char!r}", start, 1)
+        raise TokenizerError(f"Unexpected character {_char_repr(char)}", start, 1)
 
     def tokenize_all(self) -> list[Token]:
         """Eagerly consumes and returns all tokens up to and including EOF."""

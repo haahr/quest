@@ -31,6 +31,7 @@ import
     stringOp = string : StringOp
     writer : Writer
     system : System
+    raised : Raised
 export
     Let ModuleCompileResult = Tuple c: String o: String qm: String end
     Let ModuleImport = Tuple name: String source: String offset: Int end
@@ -92,37 +93,45 @@ export
 
     (* A module elaborated, as it is compiled: its typed module, named
      * canonically, the modules and interfaces it imports, as its manifest
-     * records them, its interface's canonical name, and whether abstract types
-     * were transparent before, which restore puts back *)
+     * records them, and its interface's canonical name *)
     Let Elaborated = Tuple
         typed: typedAst.Binding
         modules: vector.T(manifest.ImportedModuleRef)
         interfaces: vector.T(manifest.ImportedInterfaceRef)
         targetName: String
-        wasTransparent: Bool
     end
+    (* A module elaborated and lowered, for moduleFileUnit *)
+    Let Lowered = Tuple x: Elaborated unit: nodes.Unit end
 
-    let restore(x: Elaborated): Ok =
+    (* body, compiling a module file. A module file is compiled for other
+     * units, which see its abstract types opaquely, even in a whole program's
+     * process (one of the library's prelinked modules, which the program keeps
+     * importing): while body runs, the process's abstract types are opaque in
+     * shapes, and the representations registered are a module compiled
+     * apart's, never transparent. Both are put back as they were when body
+     * returns or raises, so that later compilations in the process (a driver
+     * build's, the REPL's) are not left with them *)
+    let compilingApart(A::TYPE body: All() A): A =
         begin
-            abstractTypes.setRegisteringApart(false)
-            shapes.setTransparentAbstractTypes(x.wasTransparent)
+            let wasTransparent = shapes.transparentAbstractTypes()
+            let wasApart = abstractTypes.registeringApart()
+            let restore(): Ok =
+                begin
+                    abstractTypes.setRegisteringApart(wasApart)
+                    shapes.setTransparentAbstractTypes(wasTransparent)
+                end
+            shapes.setTransparentAbstractTypes(false)
+            abstractTypes.setRegisteringApart(true)
+            let result = try body() else with r then begin restore() raised.reraise(:A r) end end
+            restore()
+            result
         end
 
     (* Steps 1 to 3 of compiling the module decl to a module file, in e, which
-     * it sets up for C compilation. Until the caller passes the result to
-     * restore, the process's abstract types are opaque in shapes and the
-     * representations registered are a module compiled apart's *)
+     * it sets up for C compilation; within compilingApart *)
     let elaborate(decl: ast.ModuleDecl offset: Int e: env.T canonicalName: String buildDir: maybe.T(String)):
         Elaborated =
         begin
-            (* A module file is compiled for other units, which see its abstract
-             * types opaquely, even in a whole program's process (one of the
-             * library's prelinked modules, which the program keeps importing):
-             * its shapes are opaque, and its representations, registered as a
-             * module compiled apart's, are never transparent *)
-            let wasTransparent = shapes.transparentAbstractTypes()
-            shapes.setTransparentAbstractTypes(false)
-            abstractTypes.setRegisteringApart(true)
             (* Compiled to C: modules are known through their interfaces *)
             e.compilingC := true
             e.compilingUnit := true
@@ -190,7 +199,6 @@ export
             end
             tuple
                 let typed = typed let modules = modules let interfaces = interfaces let targetName = targetName
-                let wasTransparent = wasTransparent
             end
         end
 
@@ -247,7 +255,6 @@ export
                 files.absolute(oFile) vector.toArray(:manifest.ImportedModuleRef x.modules)
                 vector.toArray(:manifest.ImportedInterfaceRef vector.concat(:manifest.ImportedInterfaceRef x.interfaces
                     vector.fromArray(:manifest.ImportedInterfaceRef indirect))) backend) qmFile)
-            restore(x)
             tuple let c = cFile let o = oFile let qm = qmFile end
         end
 
@@ -336,17 +343,23 @@ export
                 else
                     files.absolute(maybe.unwrap(:String outputDir))
                 end
-                compileModule(m.decl m.offset m.e outDir m.searchPaths compiler nogc extraFlags m.sm m.stem m.canon
-                    m.modPath buildDir backends)
+                compilingApart(:ModuleCompileResult fun(): ModuleCompileResult
+                    compileModule(m.decl m.offset m.e outDir m.searchPaths compiler nogc extraFlags m.sm m.stem m.canon
+                        m.modPath buildDir backends))
             end)
 
     let moduleFileUnit(file: String includePaths: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)
         res: maybe.T(graph.Resolver)): ModuleUnit =
         withModuleFile(:ModuleUnit file includePaths buildDir programDir res fun(m: ModuleFile): ModuleUnit
             begin
-                let x = elaborate(m.decl m.offset m.e m.canon buildDir)
-                let unit = lower.lowerModuleFile(x.typed m.e maybe.some(:location.SourceMap m.sm) 0)
-                restore(x)
+                let lowered = compilingApart(:Lowered fun(): Lowered
+                    begin
+                        let x = elaborate(m.decl m.offset m.e m.canon buildDir)
+                        let unit = lower.lowerModuleFile(x.typed m.e maybe.some(:location.SourceMap m.sm) 0)
+                        tuple let x = x let unit = unit end
+                    end)
+                let x = lowered.x
+                let unit = lowered.unit
                 (* x.modules has an entry for each name of each import item,
                  * in order *)
                 let imports = vector.new(:ModuleImport)

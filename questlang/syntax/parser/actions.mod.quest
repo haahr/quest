@@ -942,17 +942,20 @@ export
             end)
         end
 
-    let exprFor(ctx: Ctx args: Args): Val =
+    (* for ident = Value upto (or downto) Value do Binding end *)
+    let forLoop(ctx: Ctx args: Args isDownto: Bool): Val =
         begin
             let t = tok(args[0])
             mkExpr(at(ctx t) option exprFor of ExprForm with
                 let varName = tok(args[1]).lexeme
                 let start = ex(args[2])
-                let isDownto = present(args[3])
-                let stop = ex(args[4])
-                let body = body(ctx args[5] t.span.startOffset)
+                let isDownto = isDownto
+                let stop = ex(args[3])
+                let body = body(ctx args[4] t.span.startOffset)
             end)
         end
+    let exprFor(ctx: Ctx args: Args): Val = forLoop(ctx args false)
+    let exprForDownto(ctx: Ctx args: Args): Val = forLoop(ctx args true)
 
     let exprFun(ctx: Ctx args: Args): Val =
         vExpr(curriedFun(ctx items(args[1]) optTy(args[2]) ex(args[3]) tok(args[0]).span.startOffset))

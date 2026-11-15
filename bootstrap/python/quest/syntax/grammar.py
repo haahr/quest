@@ -933,28 +933,28 @@ def build_quest_grammar() -> None:
     )
 
     # for ide = Binding (upto | downto) Binding do Binding end
-    PRIMARY_VALUE.add_rule(
-        (
-            T(TK.KW_FOR),
-            T(TK.IDENT),
-            P(TK.EQUAL),
-            VALUE,
-            Opt(P(TK.KW_UPTO)),
-            Opt(T(TK.KW_DOWNTO)),
-            VALUE,
-            P(TK.KW_DO),
-            BINDING,
-            P(TK.KW_END),
-        ),
-        lambda for_token, ident_token, start_val, downto_token, stop_val, body_bindings: ast.ExprFor(
-            var_name=ident_token.lexeme,
-            start=start_val,
-            is_downto=bool(downto_token),
-            stop=stop_val,
-            body=_body(body_bindings, for_token.offset),
-            offset=for_token.offset,
-        ),
-    )
+    for direction, is_downto in ((TK.KW_UPTO, False), (TK.KW_DOWNTO, True)):
+        PRIMARY_VALUE.add_rule(
+            (
+                T(TK.KW_FOR),
+                T(TK.IDENT),
+                P(TK.EQUAL),
+                VALUE,
+                P(direction),
+                VALUE,
+                P(TK.KW_DO),
+                BINDING,
+                P(TK.KW_END),
+            ),
+            lambda for_token, ident_token, start_val, stop_val, body_bindings, is_downto=is_downto: ast.ExprFor(
+                var_name=ident_token.lexeme,
+                start=start_val,
+                is_downto=is_downto,
+                stop=stop_val,
+                body=_body(body_bindings, for_token.offset),
+                offset=for_token.offset,
+            ),
+        )
 
     # fun { ( Signature ) } [: Type] Value
     PRIMARY_VALUE.add_rule(

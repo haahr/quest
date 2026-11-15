@@ -281,9 +281,15 @@ export
                         x.functions := vector.toArray(:nodes.Function functions)
                     else ok
                 end
+                (* Only a member gets a member: a function bound inside a
+                 * statement of the module's initializer (an if's arm, say)
+                 * has the module as its owner too, but no member name *)
                 if maybe.isSome(:nodes.Module definition.owner) then
                     let m = maybe.unwrap(:nodes.Module definition.owner)
-                    nodes.addMember(m.members memberName(m f.v) <> "_spec" <> conv.int(n + 1) cloned.v)
+                    let name = memberName(m f.v)
+                    if not(stringOp.isEmpty(name)) then
+                        nodes.addMember(m.members name <> "_spec" <> conv.int(n + 1) cloned.v)
+                    end
                 end
                 hashMap.insert(:Int :Definition sp.definitions cloned.v.id
                     tuple let function = cloned let funs = definition.funs let owner = definition.owner let enclosing = definition.enclosing end)

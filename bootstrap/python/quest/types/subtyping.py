@@ -650,7 +650,7 @@ def is_subkind(sub: QKind, sup: QKind, env: Optional[Any] = None) -> bool:
             if not is_subkind(sup_lazy.param_kind, sub_lazy.param_kind, env):
                 return False
             renamed_sup_res = sup_lazy.result_kind.substitute_types({
-                sup_lazy.param_id: QTypeVar(sub_lazy.param_name, sup_lazy.param_id)
+                sup_lazy.param_id: QTypeVar(sub_lazy.param_name, sub_lazy.param_id)
             }).substitute_kinds({
                 sup_lazy.param_id: QKindVar(sub_lazy.param_name, sub_lazy.param_id)
             })

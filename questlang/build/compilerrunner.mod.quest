@@ -16,6 +16,7 @@ import
     conv : Conv
     writer : Writer
     system : System
+    raised : Raised
 export
     let failure: Exception(String) = exception failure: String end
 
@@ -285,28 +286,39 @@ export
         begin
             let cc = if maybe.isSome(:String compiler) then maybe.unwrap(:String compiler) else findCCompiler() end
             let dir = runtimeDir()
+            (* Built before the temporary directory is made, so that a failure
+             * building them leaves nothing behind *)
+            let runtime = runtimeObjects(cc nogc extraFlags)
             (* The source, in a temporary file of its own *)
             let tempDir = temporary(true files.join(maybe.unwrapOr(:String nonEmpty(system.getEnv("TMPDIR")) "/tmp")
                 "questXXXXXXXX"))
             let cFile = files.join(tempDir if assembly then "program.s" else "program.c" end)
-            let w = writer.file(cFile)
-            writer.putString(w source)
-            writer.close(w)
+            let removeTemporary(): Ok = begin removeQuietly(cFile) system.removeDirectory(tempDir) end
             let command = vector.new(:String)
             vector.append(:String command cc)
             appendAll(command baseCFlags(cc))
             vector.append(:String command "-I" <> dir)
-            appendAll(command extraFlags)
             vector.append(:String command cFile)
-            appendAll(command runtimeObjects(cc nogc array of :String end))
+            appendAll(command runtime)
             appendAll(command extraObjects)
             vector.append(:String command "-o")
             vector.append(:String command output)
             appendAll(command gcFlags(nogc))
             appendAll(command readlineFlags())
-            let r = system.run(vector.toArray(:String command))
-            removeQuietly(cFile)
-            system.removeDirectory(tempDir)
+            (* Last, as the bootstrap passes them, so that a library they name
+             * comes after the objects that use it *)
+            appendAll(command extraFlags)
+            let r = try
+                begin
+                    let w = writer.file(cFile)
+                    writer.putString(w source)
+                    writer.close(w)
+                    system.run(vector.toArray(:String command))
+                end
+            else with x then
+                begin removeTemporary() raised.reraise(:Tuple code: Int stdout: String stderr: String end x) end
+            end
+            removeTemporary()
             if not(r.code is 0) then
                 raise failure with
                     "C compilation failed with exit code " <> pyInt(r.code) <> ":\n"

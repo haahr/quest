@@ -380,6 +380,9 @@ class TypeElaborator(
                     sym = env.lookup_value(target.name)
                     if sym is None:
                         raise TypeError(f"Undefined variable '{target.name}'", offset=target.offset)
+                    # The same rules as a plain use: a closure may not
+                    # capture a var parameter, nor a function read a global var
+                    self._check_capturable(sym, target.offset)
                     if not sym.is_var and not isinstance(sym.type_val, QVarType):
                         raise TypeError(
                             f"Cannot dereference non-variable symbol '{target.name}'",

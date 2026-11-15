@@ -101,34 +101,35 @@ export
             copied
         end
 
-    (* Makes the count of entries qr_register_dicts registers n, by setting
-     * the constant that ssa/build/unit's registration passes
-     * quest_register_funcs as its second argument *)
+    (* Makes the count of entries qr_register_dicts registers n: the second
+     * argument ssa/build/unit's registration passes quest_register_funcs
+     * becomes a constant of its own, n, made just before the call. (The
+     * constant it passed may be shared: value numbering gives one value to
+     * equal constants, so changing it in place could change another use.) *)
     let count(u: ssa.Unit n: Int): Ok =
         for k = 0 upto {vector.length(:Function u.functions) - 1} do
             let f = vector.get(:Function u.functions k)
             if stringOp.equal(f.symbol "qr_register_dicts") then
-                let defs = array of(vector.length(:ssa.Type f.types) ~1)
-                let insts = vector.new(:ssa.Inst)
                 for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
                     let blk = ssa.block(f b)
-                    for j = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                        let i = vector.get(:ssa.Inst blk.insts j)
-                        if ssa.isOp(i ssa.opConst) then
-                            defs[i.results[0]] := vector.length(:ssa.Inst insts)
-                            vector.append(:ssa.Inst insts i)
-                        end
-                    end
-                end
-                for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
-                    let blk = ssa.block(f b)
+                    let rebuilt = vector.new(:ssa.Inst)
                     for j = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
                         let i = vector.get(:ssa.Inst blk.insts j)
                         if ssa.isOp(i ssa.opCall) andif stringOp.equal(i.symbol "quest_register_funcs")
-                            andif {defs[i.args[1]] >= 0}
+                            andif {extent i.args > 1}
                         then
-                            vector.get(:ssa.Inst insts defs[i.args[1]]).imm := n
+                            let v = ssa.newValue(f ssa.typeInt)
+                            let c = ssa.inst(ssa.opConst array of :Int end array of v end)
+                            c.imm := n
+                            c.loc := i.loc
+                            vector.append(:ssa.Inst rebuilt c)
+                            i.args[1] := v
                         end
+                        vector.append(:ssa.Inst rebuilt i)
+                    end
+                    vector.clear(:ssa.Inst blk.insts)
+                    for j = 0 upto {vector.length(:ssa.Inst rebuilt) - 1} do
+                        vector.append(:ssa.Inst blk.insts vector.get(:ssa.Inst rebuilt j))
                     end
                 end
             end

@@ -565,7 +565,9 @@ export
                 when exprVar with x then lookup(f x.name offset)
                 when exprVarCell with x then model.cellValue(evalExpr(x.value f))
                 when exprDerefCell with x then
-                    case evalExpr(x.target f) when vRef with r then model.deref(r.r) else evalExpr(x.target f) end
+                    (* Evaluated once: the target may have effects *)
+                    let v = evalExpr(x.target f)
+                    case v when vRef with r then model.deref(r.r) else v end
                 when exprSelectRef with x then
                     case unwrapRefs(evalExpr(x.target f))
                         when vRecord with r then

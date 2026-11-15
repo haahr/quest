@@ -244,6 +244,10 @@ export
                                     diagnostics.fail(:Ok "Undefined variable '" <> id.name <> "'" targetOffset)
                                 end
                                 let sym = maybe.unwrap(:symbols.ValueSymbol found)
+                                (* The same rules as a plain use: a closure may
+                                 * not capture a var parameter, nor a function
+                                 * read a global var *)
+                                checker.checkCapturable(c sym targetOffset)
                                 let element = case sym.type.form when typeVar with v then maybe.some(:Type v.element) else none end
                                 if not(sym.isVar) andif maybe.isNone(:Type element) then
                                     diagnostics.fail(:Ok "Cannot dereference non-variable symbol '" <> id.name <> "'" targetOffset)
