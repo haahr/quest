@@ -373,7 +373,7 @@
             try_table (catch $error 0)
               local.get $bad
               i64.const 5
-              call $boxInt
+              call $boxInt.1
               i32.const 0
               i32.const 114
               i32.const 241
@@ -404,7 +404,7 @@
           if
             local.get $e
             call $payloadOf
-            call $unboxInt
+            call $unboxInt.1
             local.set $x
             local.get $x
             i64.const 10
@@ -647,7 +647,7 @@
                           try_table (catch $error 0)
                             local.get $bad
                             i64.const 9
-                            call $boxInt
+                            call $boxInt.1
                             i32.const 0
                             i32.const 114
                             i32.const 590
@@ -698,7 +698,7 @@
                   if
                     local.get $e
                     call $payloadOf
-                    call $unboxInt
+                    call $unboxInt.1
                     local.set $x
                     local.get $x
                     i64.const 1000
@@ -762,7 +762,7 @@
                                   if
                                     local.get $bad
                                     local.get $i.1
-                                    call $boxInt
+                                    call $boxInt.1
                                     i32.const 0
                                     i32.const 114
                                     i32.const 708
@@ -1033,19 +1033,45 @@
     call $wasm/core.base
     global.set $quest_type_bound_vars
   )
+  (func $boxInt.1 (type 22) (param $n i64) (result eqref)
+    local.get $n
+    i64.const 1073741824
+    i64.add
+    i64.const 2147483648
+    i64.lt_u
+    if (result eqref)
+      local.get $n
+      i32.wrap_i64
+      ref.i31
+    else
+      local.get $n
+      struct.new $boxInt
+    end
+  )
+  (func $unboxInt.1 (type 26) (param $e eqref) (result i64)
+    block $small (result (ref i31))
+      local.get $e
+      br_on_cast $small eqref (ref i31)
+      ref.cast (ref $boxInt)
+      struct.get $boxInt $value
+      return
+    end
+    i31.get_s
+    i64.extend_i32_s
+  )
   (func $tries.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
-    call $unboxInt
+    call $unboxInt.1
     call $tries
-    call $boxInt
+    call $boxInt.1
   )
   (func $tries.uniform.1 (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
-    call $unboxInt
+    call $unboxInt.1
     call $tries.1
-    call $boxInt
+    call $boxInt.1
   )
   (data $strings "/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/exceptions.quest:32:28/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/exceptions.quest:32:28badothernamed/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/exceptions.quest:10:36Int\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/exceptions.quest:13:26 \0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/exceptions.quest:15:20\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/exceptions.quest:10:36Int\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/exceptions.quest:10:36Int\0a\0astop \0athe end/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/exceptions.quest:36:1String")
 )

@@ -639,8 +639,69 @@ export
 
     let atomType(a: ir.Atom): ValType = valType(ir.atomType(a))
 
+    (* The unit's own copy of the runtime's boxInt or unboxInt (an Int in an
+     * i31ref when it fits, else in a $boxInt), made the first time it is
+     * called: the runtime's are another instance's, whose calls V8 cannot
+     * inline, and boxing is a tenth of self-compilation's time
+     * (benchmarks.md section 22). Its index *)
+    let intBoxing(g: G field: String): Int =
+        begin
+            let key = "own." <> field
+            if hashMap.contains(:String :Int g.runtimeFunctions key) then hashMap.find(:String :Int g.runtimeFunctions key)
+            else
+                let tBoxInt = rt.index("boxInt")
+                let i31 = option heapI31 of model.HeapType end
+                let boxing = stringOp.equal(field "boxInt")
+                let results = array of if boxing then model.eqref else model.i64 end end
+                let f = newF(g array of if boxing then "n" else "e" end end results ~1)
+                if boxing then
+                    emit(f i1(ops.localGet 0))
+                    emit(f model.i64Const(0x40000000))
+                    emit(f i(ops.i64Add))
+                    emit(f model.i64Const(0x80000000))
+                    emit(f i(ops.i64LtU))
+                    emit(f model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
+                    emit(f i1(ops.localGet 0))
+                    emit(f i(ops.i32WrapI64))
+                    emit(f i(ops.refI31))
+                    emit(f model.elseInst)
+                    emit(f i1(ops.localGet 0))
+                    emit(f i1(ops.structNew tBoxInt))
+                    emit(f model.endInst)
+                else
+                    emit(f model.blockInst(option blockValue of model.BlockType with
+                        let type = model.refTo(false i31)
+                    end "small"))
+                    emit(f i1(ops.localGet 0))
+                    emit(f option instBrOnCast of Inst with
+                        let fail = false let label = 0
+                        let from = tuple let nullable = true let heap = option heapEq of model.HeapType end end
+                        let to = tuple let nullable = false let heap = i31 end
+                    end)
+                    emit(f option instRefCast of Inst with
+                        let type = tuple let nullable = false
+                            let heap = option heapIndex of model.HeapType with let index = tBoxInt end end
+                    end)
+                    emit(f i2(ops.structGet tBoxInt 0))
+                    emit(f i(ops.returnOp))
+                    emit(f model.endInst)
+                    emit(f i(ops.i31GetS))
+                    emit(f i(ops.i64ExtendI32S))
+                end
+                let index = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
+                vector.append(:model.Function g.m.functions tuple
+                    let name = fresh(g.names field) let type = funcType(g array of if boxing then model.i64 else model.eqref end end results)
+                    let params = array of if boxing then "n" else "e" end end let locals = f.declared let body = f.code
+                end)
+                hashMap.insert(:String :Int g.runtimeFunctions key index)
+                index
+            end
+        end
+
     let runtimeCall(f: F field: String): Ok =
-        if hashMap.contains(:String :Int f.g.runtimeFunctions field) then
+        if stringOp.equal(field "boxInt") orif stringOp.equal(field "unboxInt") then
+            emit(f i1(ops.call intBoxing(f.g field)))
+        elsif hashMap.contains(:String :Int f.g.runtimeFunctions field) then
             emit(f i1(ops.call hashMap.find(:String :Int f.g.runtimeFunctions field)))
         else fail("the runtime's " <> field)
         end
@@ -3417,7 +3478,7 @@ export
                 when valI32 then emit(uf i(ops.refI31))
                 else ok
             end
-            let uniform = native + 1
+            let uniform = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
             vector.append(:model.Function g.m.functions tuple
                 let name = fresh(g.names "builtin" <> name <> ".uniform") let type = uniformType(g 2)
                 let params = array of "closure" "a" "b" end let locals = uf.declared let body = uf.code

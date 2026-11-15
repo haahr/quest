@@ -271,7 +271,7 @@
     global.get $pos.static
     local.set $orig
     local.get $x
-    call $unboxInt
+    call $unboxInt.1
     local.set $x.1
     global.get $noClosure
     local.get $x.1
@@ -284,14 +284,14 @@
     global.get $f.static
     local.set $orig
     local.get $x
-    call $unboxInt
+    call $unboxInt.1
     local.set $x.1
     global.get $noClosure
     local.get $x.1
     call $f
     local.set $x.1
     local.get $x.1
-    call $boxInt
+    call $boxInt.1
     local.set $orig
     local.get $orig
     return
@@ -306,7 +306,7 @@
     struct.get $qa_adapt.closure $c0
     local.set $orig
     local.get $x
-    call $boxInt
+    call $boxInt.1
     local.set $x.1
     local.get $orig
     local.set $orig
@@ -331,7 +331,7 @@
     end
     local.set $orig
     local.get $orig
-    call $unboxInt
+    call $unboxInt.1
     local.set $r.1
     local.get $r.1
     return
@@ -354,11 +354,11 @@
     local.set $pos
     i32.const 0
     i64.const 1
-    call $boxInt
+    call $boxInt.1
     i64.const -2
-    call $boxInt
+    call $boxInt.1
     i64.const 3
-    call $boxInt
+    call $boxInt.1
     array.new_fixed $slots 3
     struct.new $array
     local.set $v
@@ -484,10 +484,10 @@
     call $putString
     local.set $pos
     i64.const 1
-    call $boxInt
+    call $boxInt.1
     local.set $pos
     i64.const 2000000000000
-    call $boxInt
+    call $boxInt.1
     local.set $v
     global.get $noClosure
     global.get $quest_type_Int
@@ -497,7 +497,7 @@
     call $units/gen.pick
     local.set $pos
     local.get $pos
-    call $unboxInt
+    call $unboxInt.1
     local.set $v.1
     local.get $v.1
     local.set $v.1
@@ -553,12 +553,12 @@
       local.get $pos
       ref.cast (ref $clos)
       i64.const 5
-      call $boxInt
+      call $boxInt.1
       local.get $pos
       ref.cast (ref $closU1)
       struct.get $closU1 $uniform
       call_ref 51
-      call $unboxInt
+      call $unboxInt.1
     end
     local.set $v.1
     local.get $v.1
@@ -636,7 +636,7 @@
     call $putString
     local.set $pos
     i64.const 7
-    call $boxInt
+    call $boxInt.1
     local.set $pos
     i32.const 0
     i32.const 5
@@ -669,7 +669,7 @@
     struct.get $tuple $slots
     i32.const 0
     array.get $slots
-    call $unboxInt
+    call $unboxInt.1
     local.set $v.1
     local.get $v.1
     call $convInt
@@ -837,19 +837,45 @@
     call $wasm/core.setPart
     drop
   )
+  (func $unboxInt.1 (type 26) (param $e eqref) (result i64)
+    block $small (result (ref i31))
+      local.get $e
+      br_on_cast $small eqref (ref i31)
+      ref.cast (ref $boxInt)
+      struct.get $boxInt $value
+      return
+    end
+    i31.get_s
+    i64.extend_i32_s
+  )
   (func $pos.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
-    call $unboxInt
+    call $unboxInt.1
     call $pos
     ref.i31
+  )
+  (func $boxInt.1 (type 22) (param $n i64) (result eqref)
+    local.get $n
+    i64.const 1073741824
+    i64.add
+    i64.const 2147483648
+    i64.lt_u
+    if (result eqref)
+      local.get $n
+      i32.wrap_i64
+      ref.i31
+    else
+      local.get $n
+      struct.new $boxInt
+    end
   )
   (func $f.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
-    call $unboxInt
+    call $unboxInt.1
     call $f
-    call $boxInt
+    call $boxInt.1
   )
   (func $nonEmpty.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
@@ -866,9 +892,9 @@
   (func $qa_adapt.uniform.1 (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
-    call $unboxInt
+    call $unboxInt.1
     call $qa_adapt.2
-    call $boxInt
+    call $boxInt.1
   )
   (data $strings "!Tuple first: Int second: String endfirstsecond\0aabc\0ayesno\0a\0a\0ahihi\0aseven \0abad/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/polymorphism.quest:22:1Tuple first: Int second: String end")
 )

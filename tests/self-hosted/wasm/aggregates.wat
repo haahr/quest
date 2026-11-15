@@ -262,7 +262,7 @@
     call $string.init
     i32.const 0
     i64.const 2
-    call $boxInt
+    call $boxInt.1
     array.new_fixed $slots 1
     struct.new $tuple
     local.set $v
@@ -284,7 +284,7 @@
     local.set $v
     i32.const 0
     i64.const 5
-    call $boxInt
+    call $boxInt.1
     array.new_fixed $slots 1
     struct.new $tuple
     local.set $v.2
@@ -311,9 +311,9 @@
     local.set $v.4
     i32.const 0
     i64.const 7
-    call $boxInt
+    call $boxInt.1
     i64.const 1000000000000
-    call $boxInt
+    call $boxInt.1
     array.new_fixed $slots 2
     struct.new $tuple
     local.set $v.5
@@ -440,14 +440,14 @@
                         struct.get $tuple $slots
                         i32.const 0
                         array.get $slots
-                        call $unboxInt
+                        call $unboxInt.1
                         local.set $i.1
                         local.get $v.2
                         ref.cast (ref $tuple)
                         struct.get $tuple $slots
                         i32.const 0
                         array.get $slots
-                        call $unboxInt
+                        call $unboxInt.1
                         local.set $v.12
                         local.get $i.1
                         local.get $v.12
@@ -467,14 +467,14 @@
                       struct.get $tuple $slots
                       i32.const 0
                       array.get $slots
-                      call $unboxInt
+                      call $unboxInt.1
                       local.set $i.1
                       local.get $v.2
                       ref.cast (ref $tuple)
                       struct.get $tuple $slots
                       i32.const 0
                       array.get $slots
-                      call $unboxInt
+                      call $unboxInt.1
                       local.set $v.12
                       local.get $i.1
                       local.get $v.12
@@ -490,14 +490,14 @@
                     struct.get $tuple $slots
                     i32.const 0
                     array.get $slots
-                    call $unboxInt
+                    call $unboxInt.1
                     local.set $i.1
                     local.get $v.2
                     ref.cast (ref $tuple)
                     struct.get $tuple $slots
                     i32.const 1
                     array.get $slots
-                    call $unboxInt
+                    call $unboxInt.1
                     local.set $v.12
                     local.get $i.1
                     local.get $v.12
@@ -677,7 +677,7 @@
     struct.get $tuple $slots
     i32.const 1
     array.get $slots
-    call $unboxInt
+    call $unboxInt.1
     local.set $v.7
     local.get $v.7
     call $convInt
@@ -687,7 +687,7 @@
     struct.get $tuple $slots
     i32.const 2
     array.get $slots
-    call $unboxInt
+    call $unboxInt.1
     local.set $v.7
     local.get $v.7
     call $convInt
@@ -1174,7 +1174,7 @@
     local.set $v
     i32.const 0
     i64.const 4
-    call $boxInt
+    call $boxInt.1
     array.new_fixed $slots 1
     struct.new $tuple
     local.set $v
@@ -1196,7 +1196,7 @@
     local.set $v
     i32.const 0
     i64.const 4
-    call $boxInt
+    call $boxInt.1
     array.new_fixed $slots 1
     struct.new $tuple
     local.set $v.2
@@ -1218,7 +1218,7 @@
     local.set $v.2
     i32.const 0
     i64.const 5
-    call $boxInt
+    call $boxInt.1
     array.new_fixed $slots 1
     struct.new $tuple
     local.set $v.4
@@ -1296,7 +1296,7 @@
     local.set $v
     i32.const 0
     i64.const 1
-    call $boxInt
+    call $boxInt.1
     local.get $v
     i32.const 99
     ref.i31
@@ -1505,7 +1505,7 @@
     end
     i32.const 0
     i64.const 0
-    call $boxInt
+    call $boxInt.1
     i64.const 5
     i32.wrap_i64
     array.new $slots
@@ -1562,7 +1562,7 @@
           local.get $i
           i32.wrap_i64
           local.get $i.1
-          call $boxInt
+          call $boxInt.1
           array.set $slots
           local.get $v.7
           i64.const 4
@@ -1619,7 +1619,7 @@
     i64.const 4
     i32.wrap_i64
     array.get $slots
-    call $unboxInt
+    call $unboxInt.1
     local.set $v.7
     local.get $v.7
     call $convInt
@@ -1791,9 +1791,9 @@
     array.new_data $bytes $strings
     struct.new $string
     i64.const 3
-    call $boxInt
+    call $boxInt.1
     i64.const 4
-    call $boxInt
+    call $boxInt.1
     array.new_fixed $slots 3
     struct.new $record
     global.get $dict
@@ -1822,7 +1822,7 @@
     i32.const 2
     array.get $i32s
     array.get $slots
-    call $unboxInt
+    call $unboxInt.1
     local.set $v.7
     local.get $v.7
     i64.const 10
@@ -1839,7 +1839,7 @@
     i32.const 2
     array.get $i32s
     local.get $v.7
-    call $boxInt
+    call $boxInt.1
     array.set $slots
     local.get $v.5
     local.get $v.4
@@ -1864,7 +1864,7 @@
     i32.const 1
     array.get $i32s
     array.get $slots
-    call $unboxInt
+    call $unboxInt.1
     local.set $v.7
     local.get $v.7
     call $convInt
@@ -1880,7 +1880,7 @@
     i32.const 2
     array.get $i32s
     array.get $slots
-    call $unboxInt
+    call $unboxInt.1
     local.set $v.7
     local.get $v.7
     call $convInt
@@ -1936,9 +1936,9 @@
     array.new_data $bytes $strings
     struct.new $string
     i64.const 1
-    call $boxInt
+    call $boxInt.1
     i64.const 1
-    call $boxInt
+    call $boxInt.1
     array.new_fixed $slots 3
     struct.new $record
     global.get $dict
@@ -2077,7 +2077,7 @@
     i32.const 1
     array.get $i32s
     array.get $slots
-    call $unboxInt
+    call $unboxInt.1
     local.set $v.7
     local.get $t.34
     local.get $v.2
@@ -2090,7 +2090,7 @@
     i32.const 1
     array.get $i32s
     array.get $slots
-    call $unboxInt
+    call $unboxInt.1
     local.set $i
     local.get $t.34
     local.get $v.2
@@ -2103,7 +2103,7 @@
     i32.const 2
     array.get $i32s
     array.get $slots
-    call $unboxInt
+    call $unboxInt.1
     local.set $i.1
     local.get $t.34
     local.get $v.2
@@ -2116,7 +2116,7 @@
     i32.const 2
     array.get $i32s
     array.get $slots
-    call $unboxInt
+    call $unboxInt.1
     local.set $v.12
     local.get $i.1
     local.get $v.12
@@ -2144,7 +2144,7 @@
     i32.const 1
     array.get $i32s
     array.get $slots
-    call $unboxInt
+    call $unboxInt.1
     local.set $v.7
     local.get $v.5
     local.get $v.4
@@ -2157,7 +2157,7 @@
     i32.const 1
     array.get $i32s
     array.get $slots
-    call $unboxInt
+    call $unboxInt.1
     local.set $i
     local.get $v.5
     local.get $v.4
@@ -2170,7 +2170,7 @@
     i32.const 2
     array.get $i32s
     array.get $slots
-    call $unboxInt
+    call $unboxInt.1
     local.set $i.1
     local.get $v.5
     local.get $v.4
@@ -2183,7 +2183,7 @@
     i32.const 2
     array.get $i32s
     array.get $slots
-    call $unboxInt
+    call $unboxInt.1
     local.set $v.12
     local.get $i.1
     local.get $v.12
@@ -2303,7 +2303,7 @@
     i64.const 5
     i32.wrap_i64
     array.get $slots
-    call $unboxInt
+    call $unboxInt.1
     local.set $v.7
     local.get $v.7
     call $convInt
@@ -2650,6 +2650,32 @@
     struct.new $string
     call $wasm/core.setPart
     drop
+  )
+  (func $boxInt.1 (type 22) (param $n i64) (result eqref)
+    local.get $n
+    i64.const 1073741824
+    i64.add
+    i64.const 2147483648
+    i64.lt_u
+    if (result eqref)
+      local.get $n
+      i32.wrap_i64
+      ref.i31
+    else
+      local.get $n
+      struct.new $boxInt
+    end
+  )
+  (func $unboxInt.1 (type 26) (param $e eqref) (result i64)
+    block $small (result (ref i31))
+      local.get $e
+      br_on_cast $small eqref (ref i31)
+      ref.cast (ref $boxInt)
+      struct.get $boxInt $value
+      return
+    end
+    i31.get_s
+    i64.extend_i32_s
   )
   (data $strings "Record x: Int var y: Int name: String endTuple r: Int endTuple x: Int y: Int endTuple side: Int endTuple v: Int endOption circle: Tuple r: Int end empty point: Tuple x: Int y: Int end square: Tup...Option none some: Tuple v: Int end endnamexyrxysidevcircleemptypointsquarenonesome/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:25:55\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:26:10/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:26:10 \0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:28:15/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:28:75/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:29:25/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:29:57/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:29:70   \0aOption ordinal  out of bounds (0 <= ordinal < 3)\0a  at /Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:31:13\0a \0a \0atwo!''\0a   \0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:54:9quest: out of memory: an array of more than 134217720 elements\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:55:21/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:56:14 \0aabcdefabababc''   \0ap  \0aq/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:68:5/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:68:33 \0a\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:71:14\0a")
 )

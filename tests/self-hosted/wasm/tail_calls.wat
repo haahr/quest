@@ -502,37 +502,63 @@
     end
     call $uncaught
   )
+  (func $unboxInt.1 (type 26) (param $e eqref) (result i64)
+    block $small (result (ref i31))
+      local.get $e
+      br_on_cast $small eqref (ref i31)
+      ref.cast (ref $boxInt)
+      struct.get $boxInt $value
+      return
+    end
+    i31.get_s
+    i64.extend_i32_s
+  )
+  (func $boxInt.1 (type 22) (param $n i64) (result eqref)
+    local.get $n
+    i64.const 1073741824
+    i64.add
+    i64.const 2147483648
+    i64.lt_u
+    if (result eqref)
+      local.get $n
+      i32.wrap_i64
+      ref.i31
+    else
+      local.get $n
+      struct.new $boxInt
+    end
+  )
   (func $sum.uniform (type 50) (param $closure (ref $clos)) (param $a0 eqref) (param $a1 eqref) (result eqref)
     local.get $closure
     local.get $a0
-    call $unboxInt
+    call $unboxInt.1
     local.get $a1
-    call $unboxInt
+    call $unboxInt.1
     call $sum
-    call $boxInt
+    call $boxInt.1
   )
   (func $isEven.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
-    call $unboxInt
+    call $unboxInt.1
     call $isEven
     ref.i31
   )
   (func $isOdd.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
-    call $unboxInt
+    call $unboxInt.1
     call $isOdd
     ref.i31
   )
   (func $count.uniform (type 50) (param $closure (ref $clos)) (param $a0 eqref) (param $a1 eqref) (result eqref)
     local.get $closure
     local.get $a0
-    call $unboxInt
+    call $unboxInt.1
     local.get $a1
-    call $unboxInt
+    call $unboxInt.1
     call $count
-    call $boxInt
+    call $boxInt.1
   )
   (data $strings "/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/tail_calls.quest:11:24\0a\0a\0a\0a\0a\0a")
 )
