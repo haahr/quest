@@ -37,13 +37,31 @@ let override(unit: String backend: String): choice.Override = tuple let unit = u
 let mixed = tuple
     let default = "ssac"
     let overrides = array of override("main" "c") override("geometry" "c") override("geometry" "ssac") end
+    let variants = array of :choice.Alternative end
 end;
 let units = array of "main" "geometry" "writer" end;
 for i = 0 upto {extent units - 1} do emit(units[i] <> " by " <> choice.forUnit(mixed units[i])) end;
 emit("standard all c: " <> yes(choice.allC(choice.standard)));
 emit("mixed all c: " <> yes(choice.allC(mixed)));
 emit("c with one ssac unit all c: " <> yes(choice.allC(tuple
-    let default = "c" let overrides = array of override("main" "ssac") end
+    let default = "c" let overrides = array of override("main" "ssac") end let variants = array of :choice.Alternative end
 end)));
 emit("arguments: " <> strutil.join(" " vector.fromArray(:String choice.arguments(mixed))));
 emit("standard arguments: " <> strutil.join(" " vector.fromArray(:String choice.arguments(choice.standard))));
+(* Variants (docs/build-process.md section 6.4): the last --variant naming a
+ * unit, else its backend's name *)
+let alternative(unit: String name: String): choice.Alternative = tuple let unit = unit let name = name end;
+let varied = tuple
+    let default = "wasm" let overrides = array of override("main" "c") end
+    let variants = array of alternative("questlang/jit/target" "arm64") alternative("questlang/jit/target" "none") end
+end;
+let units2 = array of "main" "questlang/jit/target" "writer" end;
+for i = 0 upto {extent units2 - 1} do emit(units2[i] <> " as " <> choice.variantFor(varied units2[i])) end;
+emit("variant arguments: " <> strutil.join(" " vector.fromArray(:String choice.arguments(varied))));
+let parsed = array of "u=wasm" "u=" "=none" "u=no-dash" "u=x9" end;
+for i = 0 upto {extent parsed - 1} do
+    let v = choice.parseVariant(parsed[i])
+    emit("'" <> parsed[i] <> "': " <> if maybe.isSome(:choice.Alternative v) then
+        maybe.unwrap(:choice.Alternative v).unit <> " as " <> maybe.unwrap(:choice.Alternative v).name
+    else "not a variant" end)
+end;

@@ -59,13 +59,17 @@ export
     (* The resolutions made so far, by kind, path, directory, and roots: each
      * import is searched for on disk once, and every importer of a path from
      * one directory shares one Resolved (and so its names). newSession
-     * forgets them *)
-    Def Resolver = Tuple memo: hashMap.T(String Resolved) end
+     * forgets them. variantOf names the variant a module's source is chosen as
+     * (paths.variantFile), by its canonical name: none ("") unless a build
+     * sets it, before it resolves anything *)
+    Def Resolver = Tuple memo: hashMap.T(String Resolved) var variantOf: All(unit: String) String end
     newResolver(): Resolver
     (* The unit an import of path from fromDir names, searched for in fromDir,
      * then roots.searchPaths, then $QUEST_LIB and the library (docs/modules.md
      * §2.2); found or not, the result is memoized *)
     resolveInterface(res: Resolver path: String fromDir: maybe.T(String) roots: Roots): Resolved
+    (* A module's source is its variant's file, if res.variant names one it
+     * has *)
     resolveModule(res: Resolver path: String fromDir: maybe.T(String) roots: Roots): Resolved
     (* The unit in a file given directly, rather than imported *)
     resolveFile(res: Resolver file: String roots: Roots): Resolved

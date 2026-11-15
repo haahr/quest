@@ -1,15 +1,18 @@
 """Checks the driver compiled to wasm as a session in node (docs/wasm-plan.md
-step 11): the driver built with DRIVER --backend wasm -o, then run by
+steps 11 and 13): the driver built with DRIVER --backend wasm -o, then run by
 runtime/wasm/session-node.mjs in a worker with a Chromium worker's stack
-(512 KB), interpreting each input.
+(512 KB), interpreting each input (--no-jit) and compiling each with its JIT.
 
 - The REPL's transcripts (tests/repl, docs/testing.md section 2.7) against
-  their goldens, but for PENDING_TRANSCRIPTS;
-- the kernel's protocol (kernel_protocol.py), interpreted, less what a
-  session lacks (its --session);
-- a session's recovery: an input that overflows the stack past the
-  interpreter's limit, and one interrupted, each rolled back by a replay, with
-  the bindings before it kept;
+  their goldens, interpreted and with the JIT, but for those
+  PENDING_TRANSCRIPTS names, and under the JIT those marked
+  @skip-phase: jit;
+- the kernel's protocol (kernel_protocol.py), interpreted and with the JIT,
+  less what a session lacks (its --session);
+- a session's recovery: interpreted, an input that overflows the stack past
+  the interpreter's limit, rolled back by a replay; with the JIT, an
+  overflow in an input's own code, rolled back with no replay, and one in
+  the compiler, by a replay; each with the bindings before it kept;
 - the page (step 12) that tools/wasm-page/build writes from the same driver,
   its archives and its worker's session run in node (wasm_page.mjs).
 
@@ -36,6 +39,7 @@ sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 sys.path.insert(0, str(ROOT_DIR / "tools" / "jupyter"))
 
 from quest.common.location import BYTE_ENCODING  # noqa: E402
+from quest.testing.directives import parse_test_directives  # noqa: E402
 from quest.testing.transcripts import discover_repl_tests, repl_transcript  # noqa: E402
 from quest.testing.layout import TESTS_REPL_GOLDEN_DIR  # noqa: E402
 from quest_session import Session  # noqa: E402
@@ -46,10 +50,20 @@ PAGE_CHECK = Path(__file__).resolve().parent / "wasm_page.mjs"
 BUILD_PAGE = ROOT_DIR / "tools" / "wasm-page" / "build.py"
 TIMEOUT = 300
 
-# The transcripts a session does not reproduce, each with its reason
+# The transcripts a session does not reproduce, in each mode, each with its
+# reason
 PENDING_TRANSCRIPTS = {
-    # The interpreter's limit is lower here, so the frames repeat fewer times
-    "stack_overflow": "the frames' count depends on the call limit (QUEST_CALL_LIMIT)",
+    "interpreted": {
+        # The interpreter's limit is lower here, so the frames repeat fewer
+        # times
+        "stack_overflow": "the frames' count depends on the call limit (QUEST_CALL_LIMIT)",
+    },
+    "jit": {
+        # An uncaught exception shows its raise's site and <main> alone
+        # (decision 12, docs/wasm-plan.md section 2.9)
+        "earlier_function_error": "a traceback is the raise site only (decision 12)",
+        "module_errors": "a traceback is the raise site only (decision 12)",
+    },
 }
 
 
@@ -70,19 +84,21 @@ def wrapper(driver_wasm: Path, into: Path) -> Path:
     return script
 
 
-def check_transcripts(command: list[str]) -> list[str]:
+def check_transcripts(command: list[str], mode: str) -> list[str]:
     problems = []
     for source in discover_repl_tests():
-        if source.stem in PENDING_TRANSCRIPTS:
+        if source.stem in PENDING_TRANSCRIPTS[mode]:
+            continue
+        if mode == "jit" and "jit" in parse_test_directives(source).skipped_phases:
             continue
         try:
             actual, _ = repl_transcript(source, command, TIMEOUT)
         except subprocess.TimeoutExpired:
-            problems.append(f"repl/{source.stem}: timed out")
+            problems.append(f"repl/{source.stem} ({mode}): timed out")
             continue
         expected = (TESTS_REPL_GOLDEN_DIR / f"{source.stem}.out").read_text(encoding=BYTE_ENCODING)
         if actual != expected:
-            problems.append(f"repl/{source.stem}: differs\n--- expected\n{expected}--- actual\n{actual}")
+            problems.append(f"repl/{source.stem} ({mode}): differs\n--- expected\n{expected}--- actual\n{actual}")
     return problems
 
 
@@ -100,6 +116,33 @@ def check_recovery(command: list[str], scratch: Path) -> list[str]:
         after = (s.execute("a").results, s.execute("lost").status)
         if after != (["10 : Int"], "error"):
             problems.append(f"the session after an overflow: {after}")
+    finally:
+        s.kill()
+    # With the JIT: an overflow in an input's own code, caught by the host at
+    # its frame, rolls the input back with no replay, so that what it stored
+    # in an earlier input's array stays, as a raise's store does; and one in
+    # the compiler, on a phrase whose operators chain past what its stack
+    # holds, replays the inputs that committed, which made the array afresh.
+    # (An array, since an earlier input's own var, read in kernel mode, is a
+    # location, which the wasm backend lacks until milestone 4, and an
+    # earlier input's tuple's field is not yet read by the JIT on either
+    # target.)
+    s = Session(command, cwd=str(scratch), env=environment)
+    try:
+        s.execute("let held = array of 1 end")
+        reply = s.execute("let lost = 1\nlet rec down(n: Int): Int = 1 + down(n + 1)\nheld[0] := 2\ndown(0)")
+        got = (reply.status, reply.error and reply.error["error"])
+        if got != ("error", "stack.overflow"):
+            problems.append(f"an overflow in an input's code: {got}")
+        after = (s.execute("held[0]").results, s.execute("lost").status)
+        if after != (["2 : Int"], "error"):
+            problems.append(f"the session after an overflow in an input's code (no replay): {after}")
+        reply = s.execute("held[0] := 3\n" + "1 + " * 3000 + "1")
+        got = (reply.status, reply.error and reply.error["error"])
+        if got != ("error", "stack.overflow"):
+            problems.append(f"an overflow in the compiler: {got}")
+        if s.execute("held[0]").results != ["1 : Int"]:
+            problems.append(f"the session after an overflow in the compiler (a replay): {s.execute('held[0]').results}")
     finally:
         s.kill()
     return problems
@@ -127,7 +170,8 @@ def check(driver: str, driver_wasm: str | None) -> list[str]:
         into = Path(d)
         target = Path(driver_wasm) if driver_wasm else build(driver, into)
         quest = wrapper(target, into)
-        problems = check_transcripts([str(quest)])
+        problems = check_transcripts([str(quest), "--no-jit"], "interpreted")
+        problems += check_transcripts([str(quest)], "jit")
         protocol = subprocess.run([sys.executable, str(KERNEL_PROTOCOL), "--session", str(quest)],
                                   capture_output=True, text=True, timeout=TIMEOUT * 4)
         if protocol.returncode != 0:

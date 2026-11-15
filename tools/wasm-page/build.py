@@ -44,7 +44,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 HERE = Path(__file__).resolve().parent
 PAGE_FILES = ["index.html", "style.css", "ui.mjs", "page.mjs", "worker.mjs"]
 CHECK_FILES = ["check.html", "check.mjs"]
-HOST_FILES = ["host.mjs", "session.mjs", "repl.mjs", "archive.mjs"]
+HOST_FILES = ["host.mjs", "session.mjs", "jit.mjs", "repl.mjs", "archive.mjs"]
 
 
 def archive(members: list[tuple[str, bytes]]) -> bytes:

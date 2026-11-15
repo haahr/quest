@@ -42,7 +42,13 @@ export
      * callers handle one exception whatever the backend. *)
     let unitWithDatum(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String
         datum: maybe.T(Tuple symbol: String text: String end)): String =
-        if stringOp.equal(backend "wasm") then encode.encode(wasmModule(unit))
+        if stringOp.equal(backend "wasm") then
+            (* A module unit's fingerprint, for a host's JIT to compare
+             * (docs/wasm-plan.md step 13), in a custom section *)
+            Let Datum = Tuple symbol: String text: String end
+            encode.encode(wasmModule(unit)) <> if maybe.isSome(:Datum datum) then
+                encode.customSection("quest.fingerprint" maybe.unwrap(:Datum datum).text)
+            else "" end
         elsif stringOp.equal(backend "ssac") orif stringOp.equal(backend "arm64") then
             try
                 let built = ssaPipeline.build(unit)

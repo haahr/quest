@@ -908,20 +908,26 @@ let jitRun(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagba
             end
         end
         flushDumps()
-        if options.kernel then
+        if {options.kernel orif options.interactive} andif kernel.serving(r) then
+            (* A host's session, which calls kernel.request (docs/wasm-plan.md
+             * step 11) *)
+            writer.flush(writer.output)
+            diagbag.renderAll(bag sm writer.err)
+            writer.flush(writer.err)
+        elsif options.kernel then
             let status = kernel.runKernel(r)
             finished()
             system.sysexit(status)
-        end
-        if options.interactive then
+        elsif options.interactive then
             writer.flush(writer.output)
             diagbag.renderAll(bag sm writer.err)
             writer.flush(writer.err)
             let status = repl.run(r)
             finished()
             system.sysexit(status)
+        else
+            finished()
         end
-        finished()
     end;
 
 (* Compiles a unit file alone, as the bootstrap's compile_unit_file does *)
@@ -1003,6 +1009,10 @@ let run(): Ok =
                 if reaches("typecheck") then
                     stdlib.install()
                     let e = env.new()
+                    (* Each module's variant, as the build chooses it
+                     * (docs/build-process.md section 6.4), before anything
+                     * is resolved *)
+                    e.units.resolver.variantOf := fun(unit: String): String choice.variantFor(options.backends unit)
                     let dir = if options.fromFile then files.parent(files.absolute(options.file))
                         else files.absolute(".") end
                     e.currentDir := maybe.some(:String dir)

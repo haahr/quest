@@ -92,6 +92,10 @@ export
          * the backend compiles itself *)
         isRuntime: Bool
         isCore: Bool
+        (* Whether the unit is a phrase unit, a JIT's input (docs/jit.md
+         * section 3.2), whose echoes are written with print's echoText, so
+         * that they can be captured (docs/wasm-plan.md step 13) *)
+        isPhrase: Bool
     end
 
     (* A name not given before among names: base, or base.k *)
@@ -2784,6 +2788,78 @@ export
                     end
                 end
                 if results is 0 then okValue() end
+            elsif strutil.startsWith(name "wasm.host.") then
+                (* the host's function, its Ints as i32s *)
+                for k = 0 upto extent args - 1 do
+                    atom(f args[k])
+                    emit(f i(ops.i32WrapI64))
+                end
+                runtimeUnitCall(f "quest.host." <> stringOp.getSub(name 10 {stringOp.length(name) - 10}))
+                emit(f i(ops.i64ExtendI32S))
+            elsif named("print.capture") orif named("print.captured") then
+                emit(f i1(ops.globalGet f.g.noClosure))
+                runtimeUnitCall(f "wasm/print." <> stringOp.getSub(name 11 {stringOp.length(name) - 11}))
+            elsif named("raisedName") then
+                (* a raised exception's text, as the uncaught report writes
+                 * it: its name, and its payload, by its descriptor if it has
+                 * one (print's show), with its type *)
+                let tRaised = rt.index("raised")
+                let state = scratch(f model.eqref)
+                atom(f args[0])
+                emit(f i1(ops.localTee state))
+                emit(f i1(ops.localGet state))
+                castTo(f tRaised)
+                emit(f i2(ops.structGet tRaised rt.field("raised" "desc")))
+                emit(f i(ops.refIsNull))
+                emit(f model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
+                emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
+                emit(f model.elseInst)
+                emit(f i1(ops.globalGet f.g.noClosure))
+                emit(f i1(ops.localGet state))
+                castTo(f tRaised)
+                emit(f i2(ops.structGet tRaised rt.field("raised" "payload")))
+                emit(f i1(ops.localGet state))
+                castTo(f tRaised)
+                emit(f i2(ops.structGet tRaised rt.field("raised" "desc")))
+                runtimeUnitCall(f "wasm/print.show")
+                emit(f model.endInst)
+                runtimeCall(f "raisedText")
+            elsif named("raisedSite") then
+                (* a raise's site, "" if none *)
+                let tRaised = rt.index("raised")
+                atom(f args[0])
+                castTo(f tRaised)
+                emit(f i2(ops.structGet tRaised rt.field("raised" "site")))
+                let site = scratch(f model.eqref)
+                emit(f i1(ops.localTee site))
+                emit(f i(ops.refIsNull))
+                emit(f model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
+                literal(f "")
+                emit(f model.elseInst)
+                emit(f i1(ops.localGet site))
+                emit(f model.endInst)
+            elsif named("importedRecord") then
+                (* the payload of the record of a unit this one imports, named
+                 * by a constant *)
+                let unitName = case args[0]
+                    when atomConst with c then
+                        case c.c.value when constString with s then s.s else "" end
+                    else ""
+                end
+                if not(hashMap.contains(:String :Int f.g.importRecords unitName)) then
+                    fail("importedRecord of a unit not imported: " <> unitName)
+                end
+                emit(f i1(ops.globalGet hashMap.find(:String :Int f.g.importRecords unitName)))
+            elsif named("recordSet") then
+                (* a record's field, by its index in name order, set *)
+                let tRecord = rt.index("record")
+                atom(f args[0])
+                castTo(f tRecord)
+                emit(f i2(ops.structGet tRecord rt.field("record" "slots")))
+                indexArg()
+                boxedAtom(f args[2])
+                emit(f i1(ops.arraySet tSlots))
+                okValue()
             elsif named("toAny") then boxedAtom(f args[0])
             elsif named("fromAny") then
                 atom(f args[0])
@@ -2988,7 +3064,12 @@ export
 
     (* Writes text to standard output, through the runtime *)
     let output(f: F text: All() Ok): Ok =
-        begin
+        if f.g.isPhrase then
+            emit(f i1(ops.globalGet f.g.noClosure))
+            text()
+            runtimeUnitCall(f "wasm/print.echoText")
+            emit(f i(ops.drop))
+        else
             emit(f model.i32Const(1))
             emit(f i(ops.refI31))
             text()
@@ -3550,7 +3631,11 @@ export
             (* A module file's module is its unit's last, after any it
              * defines inline *)
             let nmodules = vector.length(:ir.Module unit.modules)
-            let moduleName = if unit.isProgram orif {nmodules is 0} then "main"
+            (* A phrase unit, though a program's, is compiled as a module's,
+             * its init the input's entry, which the JIT's host calls
+             * (docs/wasm-plan.md step 13) *)
+            let asProgram = unit.isProgram andif maybe.isNone(:ir.Phrase unit.phrase)
+            let moduleName = if asProgram orif {nmodules is 0} then "main"
                 else vector.get(:ir.Module unit.modules {nmodules - 1}).name
                 end
             let m = model.newModule(moduleName)
@@ -3619,6 +3704,7 @@ export
                 let descGlobals = hashMap.new(:String :Int stringOp.equal hash.string)
                 let isRuntime = isRuntimeUnit(moduleName)
                 let isCore = stringOp.equal(moduleName "wasm/core")
+                let isPhrase = maybe.isSome(:ir.Phrase unit.phrase)
             end
             (* Each function, and the types of what its closures capture: an
              * adapter's (ir/thunks), whose environment is the closure it
@@ -3717,11 +3803,18 @@ export
                     end
                 end
             end
-            let printed = {described andif echoes} orif {unit.isProgram andif not(isRuntimeUnit(moduleName))}
+            let printed = {described andif echoes} orif {asProgram andif not(isRuntimeUnit(moduleName))}
             if printed then
                 hashMap.insert(:String :Int g.runtimeUnits "wasm/print.init"
                     importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
                 runtimeImport("wasm/print" "show" array of e e end array of e end)
+            end
+            if g.isPhrase then
+                if not(hashMap.contains(:String :Int g.runtimeUnits "wasm/print.init")) then
+                    hashMap.insert(:String :Int g.runtimeUnits "wasm/print.init"
+                        importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
+                end
+                runtimeImport("wasm/print" "echoText" array of e end array of e end)
             end
             if described then
                 hashMap.insert(:String :Int g.runtimeUnits "wasm/core.init"
@@ -3808,7 +3901,40 @@ export
                                         else ok
                                     end
                                 end
-                            when opCallExternal with c then coreFunction(c.symbol)
+                            when opCallExternal with c then
+                                coreFunction(c.symbol)
+                                (* The host's functions (docs/wasm-plan.md step
+                                 * 13), each of Ints as i32s; and print's
+                                 * capture *)
+                                let hostPrefix = "wasm.host."
+                                if strutil.startsWith(c.symbol hostPrefix) then
+                                    let field = stringOp.getSub(c.symbol stringOp.length(hostPrefix)
+                                        {stringOp.length(c.symbol) - stringOp.length(hostPrefix)})
+                                    if not(hashMap.contains(:String :Int g.runtimeUnits "quest.host." <> field)) then
+                                        hashMap.insert(:String :Int g.runtimeUnits "quest.host." <> field
+                                            importFunction("quest.host" field funcType(g
+                                                array of(extent c.args model.i32) array of model.i32 end)))
+                                    end
+                                elsif stringOp.equal(c.symbol "wasm.raisedName") then
+                                    if not(hashMap.contains(:String :Int g.runtimeUnits "wasm/print.show")) then
+                                        runtimeImport("wasm/print" "show" array of e e end array of e end)
+                                    end
+                                    if not(hashMap.contains(:String :Int g.runtimeUnits "wasm/print.init")) then
+                                        hashMap.insert(:String :Int g.runtimeUnits "wasm/print.init"
+                                            importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
+                                    end
+                                elsif stringOp.equal(c.symbol "wasm.print.capture") orif
+                                    stringOp.equal(c.symbol "wasm.print.captured") then
+                                    let field = stringOp.getSub(c.symbol 11 {stringOp.length(c.symbol) - 11})
+                                    if not(hashMap.contains(:String :Int g.runtimeUnits "wasm/print." <> field)) then
+                                        runtimeImport("wasm/print" field noTypes array of e end)
+                                    end
+                                    (* print initialized before its capture *)
+                                    if not(hashMap.contains(:String :Int g.runtimeUnits "wasm/print.init")) then
+                                        hashMap.insert(:String :Int g.runtimeUnits "wasm/print.init"
+                                            importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
+                                    end
+                                end
                             when opExternal with c then coreFunction(c.symbol)
                             when opTypeApp with c then register(c.callee c.moduleRef c.member c.calleeType)
                             else ok
@@ -3856,13 +3982,13 @@ export
             (* The top level's and _start's (a module's init), before the
              * uniform entries that compiling the functions makes *)
             let mainIndex = base + vector.length(:ir.Function unit.functions)
-            for k = 0 upto if unit.isProgram then 1 else 0 end do
+            for k = 0 upto if asProgram then 1 else 0 end do
                 vector.append(:model.Function m.functions tuple
                     let name = "" let type = placeholder let params = array of :String end
                     let locals = vector.new(:model.Local) let body = vector.new(:Inst)
                 end)
             end
-            let descIndex = mainIndex + if unit.isProgram then 2 else 1 end
+            let descIndex = mainIndex + if asProgram then 2 else 1 end
             let forms = if described then descriptorGlobals(g) else vector.new(:staticdata.DescriptorForm) end
             if described then
                 vector.append(:model.Function m.functions tuple
@@ -3889,7 +4015,8 @@ export
                         emit(f i1(ops.call hashMap.find(:String :Int g.runtimeUnits "util/realconv.init")))
                     end
                     if described then emit(f i1(ops.call descIndex)) end
-                    if described andif echoes then
+                    if {described andif echoes} orif g.isPhrase
+                        orif hashMap.contains(:String :Int g.runtimeUnits "wasm/print.capture") then
                         emit(f i1(ops.call hashMap.find(:String :Int g.runtimeUnits "wasm/print.init")))
                     end
                 end
@@ -3900,7 +4027,7 @@ export
                         emit(f i1(ops.call hashMap.find(:String :Int g.importInits unit.imports[k].canonicalPath)))
                     end
                 end
-            if not(unit.isProgram) then
+            if not(asProgram) then
                 (* A module's init, guarded by a flag, as in C (section 5.1);
                  * its record's globals, which its body sets, exported, and
                  * its functions at their interface types' signatures *)
@@ -3920,6 +4047,8 @@ export
                 initRuntime(initF)
                 initImports(initF)
                 for k = 0 upto nmodules - 1 do body(initF vector.get(:ir.Module unit.modules k).init) end
+                (* and a phrase unit's top level, as the native entry runs it *)
+                if g.isPhrase then body(initF unit.main) end
                 fill(initF mainIndex "init" placeholder)
                 let exportFunction = fun(field: String index: Int): Ok
                     vector.append(:model.Export m.exports tuple
@@ -3935,45 +4064,71 @@ export
                         let kind = option exportGlobal of model.ExportKind end let index = first + j
                     end)
                 end
-                let members = maybe.unwrapOr(:ir.Members mod.exports mod.members)
-                let recordShape = shapeOf(recordVar.type)
-                for k = 0 upto vector.length(:String members.names) - 1 do
-                    let name = vector.get(:String members.names k)
-                    let v = maybe.unwrap(:ir.Variable ir.member(members name))
-                    let c = shapes.component(recordShape name)
-                    let isFunction = hashMap.contains(:Int :ir.OpMakeClosure g.known v.id)
-                    if maybe.isSome(:shapes.Component c) andif isFunction then
-                        let interfaceType = shapes.componentShape(maybe.unwrap(:shapes.Component c)).type
-                        let fn = hashMap.find(:Int :ir.OpMakeClosure g.known v.id).code
-                        let native = hashMap.find(:Int :Int g.functions fn.id)
-                        let outer = closureSig(interfaceType)
-                        let inner = signature(fn)
-                        let innerParams = array of(extent inner.params - 1 model.i64)
-                        for j = 1 upto extent inner.params - 1 do innerParams[j - 1] := inner.params[j] end
-                        if sameTypes(outer.params innerParams) andif sameTypes(outer.results inner.results) then
-                            exportFunction(name native)
-                        else
-                            (* converted to and from the interface's types *)
-                            if {extent outer.params isnot extent innerParams} orif {extent outer.results isnot 1}
-                                orif {extent inner.results isnot 1} then
-                                fail("an exported function whose interface type differs in its parts")
+                (* The functions of a module's record, at their interface types'
+                 * signatures, exported with prefix before their names *)
+                let exportMembers = fun(mod: ir.Module prefix: String): Ok
+                    begin
+                        let members = maybe.unwrapOr(:ir.Members mod.exports mod.members)
+                        let recordShape = shapeOf(maybe.unwrap(:ir.Variable mod.recordVar).type)
+                        for k = 0 upto vector.length(:String members.names) - 1 do
+                            let name = vector.get(:String members.names k)
+                            let v = maybe.unwrap(:ir.Variable ir.member(members name))
+                            let c = shapes.component(recordShape name)
+                            let isFunction = hashMap.contains(:Int :ir.OpMakeClosure g.known v.id)
+                            if maybe.isSome(:shapes.Component c) andif isFunction then
+                                let interfaceType = shapes.componentShape(maybe.unwrap(:shapes.Component c)).type
+                                let fn = hashMap.find(:Int :ir.OpMakeClosure g.known v.id).code
+                                let native = hashMap.find(:Int :Int g.functions fn.id)
+                                let outer = closureSig(interfaceType)
+                                let inner = signature(fn)
+                                let innerParams = array of(extent inner.params - 1 model.i64)
+                                for j = 1 upto extent inner.params - 1 do innerParams[j - 1] := inner.params[j] end
+                                if sameTypes(outer.params innerParams) andif sameTypes(outer.results inner.results) then
+                                    exportFunction(prefix <> name native)
+                                else
+                                    (* converted to its interface's types *)
+                                    if {extent outer.params isnot extent innerParams}
+                                        orif {extent outer.results isnot 1} orif {extent inner.results isnot 1} then
+                                        fail("an exported function whose interface type differs in its parts")
+                                    end
+                                    let names = array of(extent outer.params + 1 "")
+                                    let wf = newF(g names outer.results ~1)
+                                    emit(wf i1(ops.localGet 0))
+                                    for j = 0 upto extent outer.params - 1 do
+                                        emit(wf i1(ops.localGet j + 1))
+                                        convertRep(wf outer.params[j] innerParams[j])
+                                    end
+                                    emit(wf i1(ops.call native))
+                                    convertRep(wf inner.results[0] outer.results[0])
+                                    let at = model.importedFunctions(m) + vector.length(:model.Function m.functions)
+                                    vector.append(:model.Function m.functions tuple
+                                        let name = fresh(g.names name <> ".export") let type = nativeType(g outer)
+                                        let params = names
+                                        let locals = wf.declared let body = wf.code
+                                    end)
+                                    exportFunction(prefix <> name at)
+                                end
                             end
-                            let names = array of(extent outer.params + 1 "")
-                            let wf = newF(g names outer.results ~1)
-                            emit(wf i1(ops.localGet 0))
-                            for j = 0 upto extent outer.params - 1 do
-                                emit(wf i1(ops.localGet j + 1))
-                                convertRep(wf outer.params[j] innerParams[j])
+                        end
+                    end
+                exportMembers(mod "")
+                (* A phrase unit's declared modules, which later inputs import
+                 * by their names (qj_N_k), exported as NAME.FIELD, which the
+                 * host gives them as the module NAME's (docs/wasm-plan.md
+                 * step 13) *)
+                if g.isPhrase then
+                    for k = 0 upto nmodules - 2 do
+                        let declared = vector.get(:ir.Module unit.modules k)
+                        if maybe.isSome(:ir.Variable declared.recordVar) then
+                            let at = global(initF maybe.unwrap(:ir.Variable declared.recordVar))
+                            for j = 0 upto 1 do
+                                vector.append(:model.Export m.exports tuple
+                                    let field = declared.name
+                                        <> if j is 0 then ".record.payload" else ".record.dict" end
+                                    let kind = option exportGlobal of model.ExportKind end let index = at + j
+                                end)
                             end
-                            emit(wf i1(ops.call native))
-                            convertRep(wf inner.results[0] outer.results[0])
-                            let at = model.importedFunctions(m) + vector.length(:model.Function m.functions)
-                            vector.append(:model.Function m.functions tuple
-                                let name = fresh(g.names name <> ".export") let type = nativeType(g outer)
-                                let params = names
-                                let locals = wf.declared let body = wf.code
-                            end)
-                            exportFunction(name at)
+                            exportMembers(declared declared.name <> ".")
                         end
                     end
                 end

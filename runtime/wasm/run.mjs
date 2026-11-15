@@ -14,6 +14,7 @@
 import fs from "node:fs";
 import process from "node:process";
 import { WASI } from "node:wasi";
+import { Jit } from "./jit.mjs";
 
 const args = process.argv.slice(2);
 const units = [];
@@ -41,12 +42,15 @@ class Exit { constructor(code) { this.code = code; } }
 const wasiImports = {...wasi.wasiImport, proc_exit(code) { throw new Exit(code); }};
 const runtime = await WebAssembly.instantiate(fs.readFileSync(runtimePath), {wasi_snapshot_preview1: wasiImports});
 wasi.initialize(runtime.instance);
-const modules = {"quest.runtime": runtime.instance.exports};
+// The units linked by the JIT's host (jit.mjs), so that the driver compiled to
+// wasm runs a file through its JIT, as it does natively
+const jit = new Jit();
+jit.attachRuntime(runtime.instance);
 for (const unit of units) {
-  const instance = await WebAssembly.instantiate(fs.readFileSync(unit.path), modules);
-  modules[unit.name] = instance.instance.exports;
+  const module = new WebAssembly.Module(fs.readFileSync(unit.path));
+  jit.addUnit(unit.name, module, new WebAssembly.Instance(module, jit.importObject()).exports);
 }
-const program = await WebAssembly.instantiate(fs.readFileSync(programPath), modules);
+const program = await WebAssembly.instantiate(fs.readFileSync(programPath), jit.importObject());
 try {
   program.instance.exports._start();
 } catch (e) {

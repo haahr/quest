@@ -168,7 +168,12 @@ export
             let backends = backends
             let reportInferable = reportInferable
         end
-    let withBackends(eng: T backends: choice.T): T = changed(eng eng.jobs eng.driver backends eng.reportInferable)
+    (* Its resolver chooses each module's variant by backends from now on *)
+    let withBackends(eng: T backends: choice.T): T =
+        begin
+            eng.resolver.variantOf := fun(unit: String): String choice.variantFor(backends unit)
+            changed(eng eng.jobs eng.driver backends eng.reportInferable)
+        end
     let parallel(eng: T jobs: Int driver: String): T = changed(eng jobs driver eng.backends eng.reportInferable)
     let reportingInferable(eng: T mode: String): T = changed(eng eng.jobs eng.driver eng.backends mode)
 
@@ -678,17 +683,25 @@ export
                      * without one names its modules only by their canonical
                      * names *)
                     let recorded = recordedSource(item)
-                    let src = if maybe.isSome(:String recorded) andif system.isFile(maybe.unwrap(:String recorded)) then
+                    let found = if maybe.isSome(:String recorded)
+                        andif system.isFile(maybe.unwrap(:String recorded)) then
                         recorded
                     else
                         paths.findCanonicalModuleSource(item search programDir)
                     end
-                    let canon = if maybe.isSome(:String src) then
-                        graph.canonicalName(graph.resolveFile(eng.resolver maybe.unwrap(:String src)
+                    let canon = if maybe.isSome(:String found) then
+                        graph.canonicalName(graph.resolveFile(eng.resolver maybe.unwrap(:String found)
                             graph.rootsOf(search programDir)))
                     else
                         paths.lower(item)
                     end
+                    (* Its variant's file, the one the build chooses now
+                     * (docs/build-process.md section 6.4), whatever the
+                     * importer recorded *)
+                    let src = if maybe.isSome(:String found) then
+                        maybe.some(:String
+                            paths.chooseVariant(maybe.unwrap(:String found) eng.resolver.variantOf(canon)))
+                    else found end
                     let targetDir = graph.unitArtifactDir(str(eng.buildDir) canon)
                     system.makeDirectory(targetDir)
                     let artifactStem = graph.artifactStem(canon)

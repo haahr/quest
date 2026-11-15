@@ -12,9 +12,9 @@ the JIT, a whole-program build (docs/jit.md section 3.10), is checked with
 --no-jit alone.
 
 With --session, DRIVER is the driver compiled to wasm as a session in node
-(runtime/wasm/session-node.mjs, docs/wasm-plan.md step 11), checked
-interpreted, less what a session lacks: system.run, and io/readline's lines,
-which step 12 gives it.
+(runtime/wasm/session-node.mjs, docs/wasm-plan.md steps 11 and 13), checked
+with its JIT and interpreted, less what a session lacks: system.run, and
+io/readline's lines.
 
     python tests/self-hosted/kernel_protocol.py [--session] DRIVER
 """
@@ -167,7 +167,11 @@ def check_cells(driver: str, options: list[str], label: str, scratch: Path, sess
         # doesn't make, its stack overflowing first), as `interrupted`, rolled
         # back; the session goes on
         cells = [("a loop", "let lost = 1\nlet var i = 0\nwhile true do i := i + 1 end")]
-        if label == "jit":
+        # Not in a session: a worker running WebAssembly's tail calls in a
+        # loop (return_call) cannot be ended, as V8 checks for termination
+        # at loops' back edges and not at tail calls (docs/wasm-plan.md step
+        # 13)
+        if label == "jit" and not session:
             cells.append(("a recursion", "let lost = 1\nlet rec spin(n: Int): Int = spin(n + 1)\nspin(0)"))
         for what, cell in cells:
             timer = threading.Timer(1.0, os.kill, (s.process.pid, signal.SIGINT))
@@ -226,7 +230,7 @@ if __name__ == "__main__":
     found = check_usage(driver)
     modes = [(["--no-jit"], "interpreted")]
     if session:
-        print("a session: kernel mode checked interpreted alone")
+        modes.insert(0, ([], "jit"))
     elif hosts_jit(driver):
         modes.insert(0, ([], "jit"))
     else:

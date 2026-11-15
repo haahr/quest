@@ -64,6 +64,10 @@ export
         entry("stringEqual" array of model.eqref model.eqref end array of model.i32 end)
         entry("exceptionOf" array of model.eqref end array of model.eqref end)
         entry("payloadOf" array of model.eqref end array of model.eqref end)
+        (* A raised exception's text, as the uncaught report writes it after
+         * "Exception: ": its name, and its payload, as shown writes it (or
+         * the base's show, if shown is null), and its type *)
+        entry("raisedText" array of model.eqref model.eqref end array of model.eqref end)
         (* Memory, for the core's calls of WASI: a byte, a 32-bit word, and a
          * 64-bit one, read and written at an address; the memory grown to
          * hold an address; n bytes from an address as a new string; a
@@ -638,6 +642,34 @@ export
             add("payloadOf" typeOf[21] array of "state" end array of :model.Local end array of
                 i1(ops.localGet 0) castTo(tRaised) i2(ops.structGet tRaised 1)
             end)
+            add("raisedText" typeOf[22] array of "state" "shown" end
+                array of local("s" model.refNull(tRaised)) local("report" model.eqref) local("kind" model.i32) end
+                cat(array of
+                    array of
+                        i1(ops.localGet 0) castTo(tRaised) i1(ops.localSet 2)
+                        i1(ops.localGet 2) i2(ops.structGet tRaised 0) i2(ops.structGet tException 1)
+                        i1(ops.localSet 3)
+                        i1(ops.localGet 2) i2(ops.structGet tRaised 4) i1(ops.localTee 4)
+                        model.ifInst(empty "")
+                        i1(ops.localGet 3)
+                    end
+                    pieceString(withText)
+                    array of
+                        i1(ops.call concat)
+                        i1(ops.localGet 1) i(ops.refIsNull)
+                        model.ifInst(option blockValue of model.BlockType with let type = model.eqref end "")
+                        i1(ops.localGet 2) i2(ops.structGet tRaised 1) i1(ops.localGet 4) i1(ops.call show)
+                        model.elseInst i1(ops.localGet 1) model.endInst
+                        i1(ops.call concat)
+                    end
+                    pieceString(colonText)
+                    array of
+                        i1(ops.call concat) i1(ops.localGet 2) i2(ops.structGet tRaised 3) i1(ops.call concat)
+                        i1(ops.localSet 3)
+                        model.endInst
+                        i1(ops.localGet 3)
+                    end
+                end))
             (* Memory's helpers: an address is an i64, wrapped *)
             let k0 = extent fixedExports - 9
             let addr = array of i1(ops.localGet 0) i(ops.i32WrapI64) end

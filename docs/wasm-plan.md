@@ -23,8 +23,8 @@ the four disagree, this plan holds.
 §1 lists the decisions and whose they are. §2 to §6 are the design. §7 is what is given up. §8 has the steps, and
 §9 the results of step 0's probes (2026-11-13), on which the owner confirmed decisions 1 and 2, and §10 step 1's
 census of what the compiler uses. Milestones 1 and 2 are reached (2026-11-14): the compiler compiles itself in
-node, and the REPL runs in a page, interpreting. Milestone 3's steps, the JIT in node and then in the page, are
-drafted (§8.3) with the owner's answers; step 13 is next.
+node, and the REPL runs in a page, interpreting. In milestone 3, step 13, the JIT in node, is done, and step 14,
+the JIT in the page, is next.
 
 ---
 
@@ -761,10 +761,11 @@ The driver runs in a worker. It exports entry points, modeled on the kernel's se
 what it printed; abandon an input. The page owns the loop, the prompt, and line editing; `io/readline` is not used.
 Compiling a module is synchronous in a worker at any size.
 
-With the JIT, evaluating is three calls by the host, not one: the driver compiles the input and returns its
-module's bytes; the host loads the module and calls its code itself; the driver then commits the input, or abandons
-it. So no frame of the compiler is on the stack while an input's code runs, and an error the host catches there
-unwinds only the input's frames and those of the library and runtime it called (§6.3).
+With the JIT, evaluating is still one request (step 13, the owner's choice in place of three): the driver compiles
+the input, gives the host its module's bytes, and calls the host to load the module and to run it. The host runs the
+input's code inside its own function, which catches an engine's stack overflow or a trap, so an error caught there
+unwinds only the input's frames and those of the library and runtime it called (§6.3); the driver's frames below
+are intact, and the input fails as if it had raised.
 
 ### 6.2. The Stack
 
@@ -803,8 +804,9 @@ No handler in a module sees the overflow: wasmtime traps, and V8 gives JavaScrip
 that would roll a failed input back does not run. The host catches the error at the entry, and what it does depends
 on what was running:
 
-- **An input's compiled code:** the session's bindings change only when an input commits, so the host calls the
-  entry that abandons the input, reports `stack.overflow`, and the session goes on. What the input had already
+- **An input's compiled code:** the session's bindings change only when an input commits, so the host's function
+  that ran the input gives the driver the overflow, the driver rolls the input back as it does a raise, reporting
+  `stack.overflow`, and the session goes on. What the input had already
   done to earlier inputs' state stays done: a store to an earlier `var`, to an array's element, to a string, as
   after a raise today ([jit.md](jit.md) §3.2). This is better than native, where the session ends.
 
@@ -812,7 +814,8 @@ on what was running:
   shared tables (the descriptors' memo, the map of record tables): a point where no Quest raise can occur, and
   nothing rolls it back. So the core runtime (§4.2) counts, in a global, the updates of shared tables in progress,
   and makes each update visible by one final store where it can. The host reads the count after catching the
-  error: zero, and it abandons the input as above; not zero, and it replays the session as below. A user's own
+  error: zero, and the input is abandoned as above; not zero, and the session is replayed as below, once the
+  request ends. A user's own
   data structure caught half updated is the user's, as it is when an interpreter raises `stack.overflow` today.
   (The alternative, reading the error's stack text for a runtime function's name, depends on each engine's format
   and replays for every overflow inside a library call, most of which harm nothing.)
@@ -833,6 +836,13 @@ A count at each function's entry that raises a catchable `stack.overflow` first 
 
 A running call cannot be stopped from outside, only its worker ended. The page ends the worker and replays, as
 §6.3 does. The page needs no cross-origin isolation, so any static host can serve it.
+
+*Found in step 13:* V8 cannot end a worker that runs WebAssembly's tail calls in a loop (`return_call`), as it
+checks for termination at loops' back edges and at no tail call: an endless loop ends at once, and a function that
+calls itself forever in tail position never does, node's process kept from exiting too. So a compiled input that
+recurses forever in tail position cannot be interrupted. The remedies are the backend's, to compile a function's
+call of itself in tail position as a loop (the engine then checks it), or a count of calls at each function's
+entry; neither is built.
 
 *The cost of replay grows with the session:* stopping an endless loop runs every earlier input again, the long
 ones at their full length, and their effects outside the session (a request made, a file in the page's store
@@ -1131,7 +1141,8 @@ only when the backend's files differ, until its time is known.
     - **Measured** ([benchmarks.md](benchmarks.md) §22): node takes 1.63 of the native compiler's wall time (55.6 s
       against 34.2), at about the same peak resident memory (3.5 GB); node's default heap limit did not need
       raising. Boxing `Int`s takes about 10 percent, the unneeded adapters about 8, and calls across units are the
-      hottest functions. wasmtime with the copying collector takes 790 s.
+      hottest functions. wasmtime with the copying collector takes 790 s. Since step 13 the driver that wasmtime
+      runs is built with `--variant questlang/jit/target=none`, with no JIT: the wasm JIT's host is JavaScript's.
     - **The stack:** 126 KB compiles a small program and 296 KB the tokenizer's unit, in node, with `--liftoff-only`
       or without: within a worker's 512 KB. Step 7's measurement of the stack per level of the compiler's large
       recursive functions is this one's upper bound for now; a deeper input is milestone 2's to measure.
@@ -1407,6 +1418,59 @@ echo capture's C functions.
     *Done when* the transcripts and the kernel's protocol pass in node with the JIT at a worker's stack, but for
     the pending list's; the recovery checks pass; `wasm-jit` passes but for its pending list, whose entries are
     grouped by reason; and the arm64 JIT's suites and goldens are unchanged.
+
+    *Done 2026-11-14:*
+    - **Variants** ([build-process.md](build-process.md) §6.4): `codegen/choice` holds them beside the backends
+      (`variants`, `variantFor`, `parseVariant`, `--variant` in `arguments`); `modules/graph`'s resolver chooses
+      (`variantOf`, set by the driver, the engine's `withBackends`, and the build's workers), through
+      `paths.chooseVariant`; `paths.stripUnitSuffix` drops a variant's name, so its unit and artifacts are its
+      module's. `tests/self-hosted/variants.py` (a unit check) builds a program in one build directory with each
+      choice of variant and backend, serially and with `-j 4`, and the interpreter.
+    - **The target:** `questlang/jit/target` (an interface of its own, not unsound): its own file is the arm64 code
+      that was `jit/session`'s, moved; `target.wasm.mod.quest` and `target.none.mod.quest` are its variants.
+      `jit/session` keeps the inputs' bookkeeping and loses its arm64 imports, and is an ordinary module now. The
+      wasm driver links no `jit/loader` or `jit/debugObject`. Natively nothing changes.
+    - **Phrase units in the wasm backend:** compiled as modules though marked programs, their init the entry (the
+      modules' initializers and then the unit's top level, as the native entry runs them); their echoes written
+      with `wasm/print`'s `echoText`, which captures while a capture is on (`print.capture`, `print.captured`); the
+      modules an input declares exported as `qj_N_k.FIELD`, which the host gives later inputs as the module
+      `qj_N_k`.
+    - **Fingerprints:** a module unit's module ends in a custom section, `quest.fingerprint`
+      (`encode.customSection`), which the host reads (`WebAssembly.Module.customSections`). The digest is the
+      native one: the target is not in it yet, as §5.3 has it, which matters only where artifacts of two targets
+      could meet, and none do: the JIT compares an interface's fingerprint with its host's units alone. No ABI
+      bump: each build writes the runtime's module afresh, and a unit compiled before simply does not import
+      `raisedText`.
+    - **Intrinsics for the target:** `wasm.host.NAME` (an import of `quest.host`, its Ints as i32s),
+      `wasm.print.capture` and `captured`, `wasm.raisedName` (the runtime's new `raisedText`, as the uncaught
+      report writes an exception, its payload by print's `show`) and `raisedSite`, `wasm.importedRecord` and
+      `wasm.recordSet` (system.args set in the driver's own system record, by its field's index in name order).
+      Strings cross to the host as bytes at 1 MB in the linear memory (`wasm.base.stringToMem`).
+    - **The host:** `runtime/wasm/jit.mjs`, a linker over every unit's exports by name; `give`, `load`, `run`,
+      `has` (the driver's own units alone: a unit the JIT loaded is loaded again after an input that loaded it
+      fails), and `fingerprint`. `session.mjs` and `run.mjs` instantiate the driver through it, so `node run.mjs
+      DRIVER FILE` runs a file through the JIT; `session-node.mjs` passes `--no-jit` only when given it; the page
+      copies `jit.mjs` and still passes `--no-jit` (step 14).
+    - **The driver:** a host's session (`QUEST_HOST_SESSION`) is served after the JIT's first input as after the
+      interpreter's (`main.quest`'s `jitRun`).
+    - **Tests:** `self-hosted/wasm_session` runs the transcripts and the kernel's protocol interpreted and with
+      the JIT (pending under the JIT: `earlier_function_error` and `module_errors`, whose frames decision 12
+      leaves out; the kernel's interrupt of a tail recursion, below), and the JIT's recovery: an overflow in an
+      input's own code rolled back with no replay (an array it stored to keeps the store), and one in the
+      compiler (3,000 chained additions) by a replay. The runner's `wasm-jit` mode runs the run goldens through
+      `run.mjs` and the JIT, as `jit-files` does natively, in `tools/check`'s backends suite: 182 of 298 pass, and
+      `tests/self-hosted/pending-wasm-jit.txt` lists the 115 others by what each needs, nearly all milestone 4's
+      (variants 36, `auto`/`inspect`/`dynamic` 27, views 20, `var` parameters 18). The questlang test
+      `codegen_choice` covers the variants' choice. Self-compilation in node is still byte-identical (198
+      modules); the `.wat` goldens gain the import of `raisedText`; the no-JIT driver runs in wasmtime.
+    - **Found:** (1) V8 cannot end a worker in a loop of tail calls (§6.4), so the kernel's interrupt of an endless
+      tail recursion is left out in a session. (2) In kernel mode, where top-level bindings are not slots, an
+      earlier input's `var` read by a later one is a location, which this backend lacks until milestone 4; the REPL
+      (`-i`) boxes its bindings and is not affected. (3) An earlier input's tuple's field, read by a later input,
+      fails under the JIT on both targets: natively the SSA's builder raises `arrayOp.error`
+      (`values.toWord`), in the release too, and here the backend finds the record type without the field. (4)
+      `questlang/types_judgments` under the wasm JIT reports no unbound type variable where the program compiled
+      does; pending, to find.
 14. **The JIT in the page.**
     - **Built** as step 12's page, the JIT on by default; the module files an input imports from a URL prefix are
       compiled in the session, as natively.

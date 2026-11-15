@@ -1,0 +1,34 @@
+(* Quest Self-Hosted Compiler: The JIT's Target Implementation, None
+ *
+ * The none variant of jit/target (docs/build-process.md section 6.4): a
+ * driver built with --variant questlang/jit/target=none has no JIT, and
+ * interprets its inputs. The driver that wasmtime runs is one
+ * (docs/wasm-plan.md step 13), since wasmtime cannot be the host that the
+ * wasm variant needs. *)
+
+module target : Target
+import
+    questlang/common/location : questlang/common/Location
+    questlang/types/env : questlang/types/Env
+    questlang/ir/nodes : questlang/ir/Nodes
+    collections/hashMap : collections/HashMap
+    util/maybe : util/Maybe
+export
+    Let T = Ok
+    Let Ran = Option
+        ran with shown: String end
+        raised with name: String site: String frames: Array(String) end
+    end
+
+    let unsupported: Exception(String) = exception unsupported: String end
+
+    let why = "this driver was built without the JIT (--variant questlang/jit/target=none)"
+
+    let refusal(): maybe.T(String) = maybe.some(:String why)
+    let new(e: env.T args: Array(String) sources: hashMap.T(String location.SourceMap)): T = ok
+    let has(t: T canonical: String): Bool = false
+    let fingerprint(t: T canonical: String): String = ""
+    let load(t: T unit: nodes.Unit): Ok = raise unsupported with why end
+    let run(t: T name: String capture: Bool): Ran = raise unsupported with why end
+    let finish(t: T): Ok = ok
+end

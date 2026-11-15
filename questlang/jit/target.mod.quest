@@ -1,0 +1,347 @@
+(* Quest Self-Hosted Compiler: The JIT's Target Implementation, for arm64
+ *
+ * The plain variant of jit/target, which the native backends' units take:
+ * a unit compiled by the arm64 backend's pipeline, encoded
+ * (codegen/arm64/encode), loaded into the driver's own process (jit/loader),
+ * and its entry called under a handler that catches every exception
+ * (os/code). *)
+
+unsound module target : Target
+import
+    questlang/common/location : questlang/common/Location
+    questlang/types/env : questlang/types/Env
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/modules/elaboration : questlang/modules/Elaboration
+    mangling = questlang/repr/symbols : questlang/repr/Symbols
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/closure : questlang/ir/Closure
+    questlang/ir/represent : questlang/ir/Represent
+    irDescribe = questlang/ir/describe : questlang/ir/Describe
+    passes = questlang/ir/pipeline : questlang/ir/Pipeline
+    ssaBuild = questlang/ssa/build : questlang/ssa/Build
+    ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
+    ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
+    arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
+    questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
+    questlang/jit/loader : questlang/jit/Loader
+    questlang/jit/debugObject : questlang/jit/DebugObject
+    questlang/common/files : questlang/common/Files
+    os/value : os/Value
+    os/code : os/Code
+    raised : Raised
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    util/strutil : util/Strutil
+    util/stringBuilder : util/StringBuilder
+    words = word : Word
+    stringOp = string : StringOp
+    ascii : Ascii
+    conv : Conv
+    system : System
+    writer : Writer
+export
+    Let T = Tuple
+        e: env.T
+        loader: loader.T
+        (* The session's sources, by name, for a debugger *)
+        sources: hashMap.T(String location.SourceMap)
+        (* The symbols of the unit loaded last, its own and those it exports *)
+        var symbols: hashMap.T(String value.T)
+        (* Whether the session describes its code to a debugger
+         * (QUEST_JIT_DEBUG=1, docs/jit.md section 3.12), and what it
+         * described: the objects and their list entries, kept for as long as
+         * the code is, and the directory and files holding inputs' sources *)
+        debugging: Bool
+        described: vector.T(String)
+        var sourceDir: String
+        sourceFiles: vector.T(String)
+    end
+    Let Ran = Option
+        ran with shown: String end
+        raised with name: String site: String frames: Array(String) end
+    end
+
+    let unsupported: Exception(String) = exception unsupported: String end
+    let fail(A::TYPE m: String): A = raise unsupported with m end
+
+    (* The number text is, as decimal digits, if it is one *)
+    let number(text: String): maybe.T(Int) =
+        begin
+            let var n = 0
+            let var valid = stringOp.length(text) > 0
+            for i = 0 upto {stringOp.length(text) - 1} do
+                let d = ascii.val(stringOp.getChar(text i)) - 48
+                if {d < 0} orif {d > 9} then valid := false else n := {10 * n} + d end
+            end
+            if valid then maybe.some(:Int n) else maybe.none(:Int) end
+        end
+
+    (* An input's code names its source <repl>#N *)
+    let sourcePrefix = "<repl>#"
+
+    (* The arena: every bl within 128 MB reaches *)
+    let codeBytes = 134217728
+    let dataBytes = 67108864
+
+    (* system.args, an external value, is copied into the driver's system
+     * record when system is initialized, from the runtime's array: both are
+     * made args, the record's field at its index in name order *)
+    let setArgs(e: env.T args: Array(String)): Ok =
+        begin
+            code.setArgs(args)
+            let at = code.symbol("qm_system")
+            if maybe.isSome(:value.T at) then
+                let scope = elaboration.loadInterface("System" e)
+                let names = hashMap.keys(:String :symbols.ValueSymbol scope.values)
+                let var index = 0
+                for i = 0 upto {vector.length(:String names) - 1} do
+                    if sort.stringCompare(vector.get(:String names i) "args") < 0 then index := index + 1 end
+                end
+                let systemRecord = maybe.unwrap(:value.T at)
+                let offset = value.be(:Int value.fetch(value.fetch(systemRecord 8) 8 * index))
+                value.store(value.fetch(systemRecord 0) offset value.new(:Array(String) args))
+            end
+        end
+
+    (* A driver whose modules carry fingerprints (docs/jit.md section 3.10):
+     * this one's own JIT module does if any does *)
+    let hostSymbol = mangling.fingerprintIdent(mangling.mangleModuleName("questlang/jit/target"))
+
+    let refusal(): maybe.T(String) =
+        if maybe.isSome(:value.T code.symbol(hostSymbol)) then maybe.none(:String)
+        else maybe.some(:String "this driver cannot host the JIT: its modules carry no fingerprints (a whole-program "
+            <> "build drops them)") end
+
+    let new(e: env.T args: Array(String) sources: hashMap.T(String location.SourceMap)): T =
+        begin
+            setArgs(e args)
+            tuple
+                let e = e
+                let loader = loader.new(codeBytes dataBytes)
+                let sources = sources
+                let var symbols = hashMap.new(:String :value.T stringOp.equal hash.string)
+                let debugging = stringOp.equal(system.getEnv("QUEST_JIT_DEBUG") "1")
+                let described = vector.new(:String)
+                let var sourceDir = ""
+                let sourceFiles = vector.new(:String)
+            end
+        end
+
+    (* The frames the runtime prints of the input's code: those above
+     * os/code's call (or this module's runInput or run, where a C-built
+     * driver keeps no frame of call's), and the driver's below them, each
+     * "  in NAME", a run of one written once and then "  ... NAME repeated N
+     * more times". The input's top level is <main>, which its entry, running
+     * a module the input declared, does not show *)
+    let framesOf(text: String): Array(String) =
+        begin
+            let frames = vector.new(:String)
+            let lines = strutil.split(text "\n")
+            let var done = false
+            for i = 0 upto {vector.length(:String lines) - 1} do
+                let line = vector.get(:String lines i)
+                if stringOp.equal(line "  in os/code.call")
+                    orif stringOp.equal(line "  in questlang/jit/target.run")
+                    orif stringOp.equal(line "  in questlang/jit/session.runInput")
+                    orif stringOp.equal(line "  in questlang/jit/session.run") then
+                    done := true
+                end
+                if done then
+                    ok
+                elsif strutil.startsWith(line "  in ") then
+                    vector.append(:String frames stringOp.getSub(line 5 stringOp.length(line) - 5))
+                elsif strutil.startsWith(line "  ... ") andif strutil.endsWith(line " more times") then
+                    let rest = stringOp.getSub(line 6 stringOp.length(line) - 17)
+                    let at = strutil.rfind(rest " repeated ")
+                    let count = if at > 0 then number(stringOp.getSub(rest at + 10 {stringOp.length(rest) - at} - 10))
+                        else maybe.none(:Int) end
+                    if maybe.isSome(:Int count) then
+                        let name = stringOp.getSub(rest 0 at)
+                        for k = 1 upto maybe.unwrap(:Int count) do vector.append(:String frames name) end
+                    end
+                end
+            end
+            let n = vector.length(:String frames)
+            if {n is 0} orif not(stringOp.equal(vector.get(:String frames n - 1) "<main>")) then
+                vector.append(:String frames "<main>")
+            end
+            vector.toArray(:String frames)
+        end
+
+    (* The C string of n characters at a symbol's address, read a word at a
+     * time, since fetch takes aligned addresses *)
+    let cString(at: value.T n: Int): String =
+        begin
+            let start = value.be(:Int at)
+            let b = stringBuilder.new()
+            for i = 0 upto {n - 1} do
+                let addr = start + i
+                let w = value.be(:words.T value.fetch(value.new(:Int addr - {addr % 8}) 0))
+                b.char(ascii.char(words.toInt(words.extract(w 8 * {addr % 8} 8))))
+            end
+            b.toString()
+        end
+
+    (* Whether the driver links the module canonical names *)
+    let has(t: T canonical: String): Bool =
+        maybe.isSome(:value.T code.symbol(mangling.moduleRecordIdent(mangling.mangleModuleName(canonical))))
+
+    let symbolAt(symbols: hashMap.T(String value.T) name: String): value.T =
+        begin
+            let found = hashMap.get(:String :value.T symbols name)
+            if maybe.isNone(:value.T found) then raise unsupported with "the unit defines no " <> name end end
+            maybe.unwrap(:value.T found)
+        end
+
+    (* The GDB JIT interface's descriptor and the function a debugger breaks
+     * on, which the runtime defines (quest_code.c), if the driver has them *)
+    let descriptorSymbol = "__jit_debug_descriptor"
+    let breakSymbol = "__jit_debug_register_code"
+
+    (* A string's characters' address: its QString's data (word 2) *)
+    let bytesOf(text: String): value.T = value.fetch(value.new(:String text) 16)
+    let word(n: Int): value.T = value.new(:Int n)
+
+    (* Adds object to the interface's list of objects, as its first, and
+     * calls the function a debugger breaks on, with the action JIT_REGISTER_FN
+     * (1). Its entry, of the next and previous entries, the object's address,
+     * and its size, is a string's bytes. *)
+    let register(t: T object: String): Ok =
+        begin
+            let descriptor = code.symbol(descriptorSymbol)
+            let breaks = code.symbol(breakSymbol)
+            if maybe.isSome(:value.T descriptor) andif maybe.isSome(:value.T breaks) then
+                let d = maybe.unwrap(:value.T descriptor)
+                let holder = stringOp.new(32 ascii.char(0))
+                vector.append(:String t.described object)
+                vector.append(:String t.described holder)
+                let entry = bytesOf(holder)
+                let first = value.fetch(d 16)
+                value.store(entry 0 first)
+                value.store(entry 8 word(0))
+                value.store(entry 16 bytesOf(object))
+                value.store(entry 24 word(stringOp.length(object)))
+                if value.be(:Int first) isnot 0 then value.store(first 8 entry) end
+                value.store(d 16 entry)
+                value.store(d 8 entry)
+                (* version 1, action 1 *)
+                value.store(d 0 word(4294967297))
+                code.call(maybe.unwrap(:value.T breaks))
+                ok
+            end
+        end
+
+    (* The source of code that has no file of its own, written to a file
+     * named name in a directory of the session's own under TMPDIR, which
+     * finish removes; its path *)
+    let writeSource(t: T name: String text: String): String =
+        begin
+            if stringOp.length(t.sourceDir) is 0 then
+                (* Named by a number taken from an address in this process,
+                 * which another driver rarely shares, and the first suffix
+                 * -N not yet taken *)
+                let tmp = system.getEnv("TMPDIR")
+                let base = files.join(if stringOp.length(tmp) > 0 then tmp else "/tmp" end
+                    "quest-jit-" <> conv.int(value.be(:Int bytesOf(name)) % 1000000007))
+                let var n = 0
+                while system.isDirectory(base <> "-" <> conv.int(n)) do n := n + 1 end
+                t.sourceDir := base <> "-" <> conv.int(n)
+                system.makeDirectory(t.sourceDir)
+            end
+            let path = files.join(t.sourceDir name)
+            let w = writer.file(path)
+            writer.putString(w text)
+            writer.close(w)
+            vector.append(:String t.sourceFiles path)
+            path
+        end
+
+    let finish(t: T): Ok =
+        begin
+            for i = 0 upto {vector.length(:String t.sourceFiles) - 1} do
+                try system.removeFile(vector.get(:String t.sourceFiles i)) when system.error then ok end
+            end
+            if stringOp.length(t.sourceDir) > 0 then
+                try system.removeDirectory(t.sourceDir) when system.error then ok end
+            end
+        end
+
+    (* Where a debugger finds the source of a unit's file: an input's (named
+     * <repl>#N in its code) is its file, if it has one, else its text written
+     * to input-N.quest in the session's own directory (writeSource); a module
+     * file's is itself *)
+    let debugFile(t: T file: String): String =
+        begin
+            let slash = strutil.rfind(file "/")
+            let base = stringOp.getSub(file slash + 1 {stringOp.length(file) - slash} - 1)
+            let original = if strutil.startsWith(base sourcePrefix) then
+                hashMap.get(:String :location.SourceMap t.sources base) else maybe.none(:location.SourceMap) end
+            if maybe.isNone(:location.SourceMap original) then
+                file
+            else
+                let sm = maybe.unwrap(:location.SourceMap original)
+                let named = files.absolute(location.file(sm))
+                if system.isFile(named) then named
+                else writeSource(t "input-" <> stringOp.getSub(base stringOp.length(sourcePrefix)
+                    {stringOp.length(base) - stringOp.length(sourcePrefix)}) <> ".quest" location.text(sm)) end
+            end
+        end
+
+    (* A unit loaded, described to a debugger, if the session describes its
+     * code (docs/jit.md section 3.12) *)
+    let describe(t: T e: encode.Encoded symbols: hashMap.T(String value.T)): Ok =
+        if t.debugging andif {extent e.functions > 0} then
+            let start = value.be(:Int symbolAt(symbols e.functions[0].name)) - e.functions[0].offset
+            let files = array of(extent e.files "")
+            for i = 0 upto {extent files - 1} do files[i] := debugFile(t e.files[i]) end
+            register(t debugObject.object(e start files))
+        end
+
+    let fingerprint(t: T canonical: String): String =
+        begin
+            let found = code.symbol(mangling.fingerprintIdent(mangling.mangleModuleName(canonical)))
+            if maybe.isSome(:value.T found) then cString(maybe.unwrap(:value.T found) 64) else "" end
+        end
+
+    let load(t: T unit: nodes.Unit): Ok =
+        begin
+            let encoded = try
+                let built = ssaPipeline.build(passes.runPasses(unit))
+                ssaPipeline.lower(built)
+                arm64.encodeUnit(built)
+                (* The IR passes' failures, which are the compiler's (a rejected
+                 * conversion, the program's, is raised as its error) *)
+                when closure.capturesMutable with x then fail(:encode.Encoded x)
+                when represent.unsupportedConversion with x then fail(:encode.Encoded x)
+                when represent.rejectedConversion with x then fail(:encode.Encoded x)
+                when irDescribe.unsupportedDescriptor with x then fail(:encode.Encoded x)
+                when ssaBuild.unsupported with x then fail(:encode.Encoded "ssa: unsupported: " <> x)
+                when ssaVerify.verifyError with x then fail(:encode.Encoded x)
+                when arm64.unsupported with x then fail(:encode.Encoded x)
+                when encode.unencodable with x then fail(:encode.Encoded "encoding: " <> x)
+                end
+            let symbols = try loader.load(t.loader encoded)
+                when loader.loadError with x then fail(:hashMap.T(String value.T) x)
+                end
+            describe(t encoded symbols)
+            t.symbols := symbols
+        end
+
+    let run(t: T name: String capture: Bool): Ran =
+        begin
+            let raised = code.call(symbolAt(t.symbols name <> "_entry"))
+            if maybe.isSome(:raised.T raised) then
+                let r = maybe.unwrap(:raised.T raised)
+                option raised of Ran with
+                    let name = code.exceptionName(r) let site = code.raiseSite(r) let frames = framesOf(code.frames(r))
+                end
+            else
+                let shown = if capture then value.be(:String value.fetch(symbolAt(t.symbols name <> "_echo") 0))
+                    else "" end
+                option ran of Ran with let shown = shown end
+            end
+        end
+end

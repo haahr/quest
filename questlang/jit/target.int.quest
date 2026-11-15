@@ -1,0 +1,55 @@
+(* Quest Self-Hosted Compiler: The JIT's Target Interface
+ *
+ * What jit/session needs of the machine its inputs run on (docs/jit.md
+ * section 3; docs/wasm-plan.md step 13): a unit compiled and loaded beside
+ * the driver, an input's entry called, and the driver's own units and their
+ * fingerprints. The build chooses the implementation as one of its module's
+ * variants (docs/build-process.md section 6.4): this module's own file, for
+ * the native backends, compiles to arm64 and loads into the driver's process
+ * (os/code, jit/loader); its wasm variant, which the wasm backend's units
+ * take, compiles to WebAssembly and has the host load and run each module;
+ * its none variant has no JIT, and the driver interprets. *)
+
+interface Target
+import
+    questlang/common/location : questlang/common/Location
+    questlang/types/env : questlang/types/Env
+    questlang/ir/nodes : questlang/ir/Nodes
+    collections/hashMap : collections/HashMap
+    util/maybe : util/Maybe
+export
+    T::TYPE
+
+    (* What cannot be compiled, loaded, or run, naming it *)
+    unsupported: Exception(String)
+
+    (* Why this driver cannot host the JIT, if it cannot *)
+    refusal(): maybe.T(String)
+    (* A target whose inputs are elaborated in e, whose programs see args as
+     * system.args, and whose sources (the session's, by the names their code
+     * gives them) it may show a debugger *)
+    new(e: env.T args: Array(String) sources: hashMap.T(String location.SourceMap)): T
+
+    (* Whether the driver has the module canonical, and the fingerprint of the
+     * interface it was built with (docs/jit.md section 3.3.1), "" if none *)
+    has(t: T canonical: String): Bool
+    fingerprint(t: T canonical: String): String
+
+    (* Compiles a unit, which the IR's checks have passed, and loads it after
+     * those loaded before; the modules it imports are the driver's or loaded *)
+    load(t: T unit: nodes.Unit): Ok
+
+    (* What an input's entry came to: what its phrases showed, if they were
+     * captured, or the exception it raised, with where it was raised
+     * (FILE:LINE:COL, the name its code gives the file), and the frames
+     * running there, most recent first, down to the input's own <main> *)
+    Def Ran = Option
+        ran with shown: String end
+        raised with name: String site: String frames: Array(String) end
+    end
+    (* Runs the entry of input name (qj_N), the last unit loaded *)
+    run(t: T name: String capture: Bool): Ran
+
+    (* Ends a target: removes what it wrote for a debugger *)
+    finish(t: T): Ok
+end

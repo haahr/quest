@@ -65,9 +65,13 @@ export
             name
         end
 
-    Let Resolver = Tuple memo: hashMap.T(String Resolved) end
+    Let Resolver = Tuple memo: hashMap.T(String Resolved) var variantOf: All(unit: String) String end
 
-    let newResolver(): Resolver = tuple let memo = hashMap.new(:String :Resolved stringOp.equal hash.string) end
+    let newResolver(): Resolver =
+        tuple
+            let memo = hashMap.new(:String :Resolved stringOp.equal hash.string)
+            let var variantOf = fun(unit: String): String ""
+        end
 
     (* The memo's key of a resolution *)
     let keyOf(kind: String path: String fromDir: maybe.T(String) roots: Roots): String =
@@ -113,8 +117,16 @@ export
 
     let resolveModule(res: Resolver path: String fromDir: maybe.T(String) roots: Roots): Resolved =
         memoized(res keyOf("module" path fromDir roots) fun(): Resolved
-            resolved(option moduleUnit of units.UnitKind end path fromDir roots
-                paths.resolveModuleFile(path fromDir roots.searchPaths) maybe.none(:String)))
+            begin
+                let own = paths.resolveModuleFile(path fromDir roots.searchPaths)
+                let r = resolved(option moduleUnit of units.UnitKind end path fromDir roots own maybe.none(:String))
+                (* Its variant's file has its canonical name *)
+                if maybe.isSome(:String own) then
+                    let chosen = paths.chooseVariant(maybe.unwrap(:String own) res.variantOf(canonicalName(r)))
+                    resolved(option moduleUnit of units.UnitKind end path fromDir roots maybe.some(:String chosen)
+                        maybe.none(:String))
+                else r end
+            end)
 
     let resolveFile(res: Resolver file: String roots: Roots): Resolved =
         memoized(res keyOf("file" file maybe.none(:String) roots) fun(): Resolved

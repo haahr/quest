@@ -100,6 +100,7 @@
   (import "quest.runtime" "stringEqual" (func $stringEqual (type 31)))
   (import "quest.runtime" "exceptionOf" (func $exceptionOf (type 32)))
   (import "quest.runtime" "payloadOf" (func $payloadOf (type 32)))
+  (import "quest.runtime" "raisedText" (func $raisedText (type 18)))
   (import "quest.runtime" "memLoad8" (func $memLoad8 (type 33)))
   (import "quest.runtime" "memStore8" (func $memStore8 (type 34)))
   (import "quest.runtime" "memLoad32" (func $memLoad32 (type 33)))

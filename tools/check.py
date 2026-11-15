@@ -327,7 +327,7 @@ def main() -> int:
     # tests) through --jit in an arm64-built driver. So does c-whole: the
     # self-hosted suite runs the C backend, and arm64-whole whole programs
     backends = [*run_tests, "--self-hosted", "--seed", args.seed, "--backend",
-                "ssac,arm64,arm64-program,arm64-whole,wasm,wasm-node"]
+                "ssac,arm64,arm64-program,arm64-whole,wasm,wasm-node,wasm-jit"]
     unit = [python, "-m", "unittest"]
     unit_environment = {"PYTHONPATH": str(ROOT_DIR / "bootstrap" / "python")}
     # Every compiled program the suites run, the compilers among them, checks

@@ -1,0 +1,157 @@
+(* Quest Self-Hosted Compiler: The JIT's Target Implementation, for wasm
+ *
+ * The wasm variant of jit/target, which the wasm backend's units take
+ * (docs/wasm-plan.md step 13): a unit compiled to a WebAssembly module by
+ * the wasm backend, its bytes given to the host, which compiles the module
+ * and instantiates it beside the driver's and the units loaded before; and
+ * an input's entry run by the host, which catches an engine's stack overflow
+ * or a trap at its own frame, so that the driver's frames below are intact
+ * and the input fails as if it had raised. A Quest exception the input
+ * raises crosses the host's frame to the handler here.
+ *
+ * The host's functions are quest.host's imports (wasm.host.NAME), each of
+ * Ints, and a string crosses to it as its bytes in the runtime's linear
+ * memory, at area (runtime/wasm/jit.mjs). *)
+
+unsound module target : Target
+import
+    questlang/common/location : questlang/common/Location
+    questlang/types/env : questlang/types/Env
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/modules/elaboration : questlang/modules/Elaboration
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/closure : questlang/ir/Closure
+    questlang/ir/represent : questlang/ir/Represent
+    irDescribe = questlang/ir/describe : questlang/ir/Describe
+    passes = questlang/ir/pipeline : questlang/ir/Pipeline
+    wasm = questlang/wasm/codegen : questlang/wasm/Codegen
+    questlang/wasm/encode : questlang/wasm/Encode
+    questlang/wasm/model : questlang/wasm/Model
+    raised : Raised
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    stringOp = string : StringOp
+    system : System
+export
+    Let T = Tuple e: env.T end
+    Let Ran = Option
+        ran with shown: String end
+        raised with name: String site: String frames: Array(String) end
+    end
+
+    let unsupported: Exception(String) = exception unsupported: String end
+    let fail(A::TYPE m: String): A = raise unsupported with m end
+
+    (* Where a string crosses to the host: past the core's buffers, which are
+     * not in use while the host is called *)
+    let area = 1048576
+
+    let toMemory(s: String at: Int): Ok = external "wasm.base.stringToMem"
+    let fromMemory(at: Int n: Int): String = external "wasm.base.memToString"
+
+    (* The host's functions (runtime/wasm/jit.mjs) *)
+    let hostGive(at: Int n: Int): Int = external "wasm.host.give"
+    let hostLoad(at: Int n: Int): Int = external "wasm.host.load"
+    let hostRun(at: Int n: Int): Int = external "wasm.host.run"
+    let hostHas(at: Int n: Int): Int = external "wasm.host.has"
+    let hostFingerprint(at: Int n: Int): Int = external "wasm.host.fingerprint"
+
+    (* What a phrase unit's echoes write, captured (wasm/print) *)
+    let startCapture(): Ok = external "wasm.print.capture"
+    let captured(): String = external "wasm.print.captured"
+
+    (* A raised exception's name, and its raise's site *)
+    let raisedName(r: raised.T): String = external "wasm.raisedName"
+    let raisedSite(r: raised.T): String = external "wasm.raisedSite"
+
+    (* The driver's own record of system, and a field of a record set, by
+     * its index in name order: a record's payload is no Quest value, and is
+     * typed here as a String, which no conversion touches *)
+    let systemRecord(unit: String): String = external "wasm.importedRecord"
+    let recordSet(payload: String index: Int value: Array(String)): Ok = external "wasm.recordSet"
+
+    (* A string's bytes at area, for a host's function: its length *)
+    let put(s: String): Int =
+        begin
+            toMemory(s area)
+            stringOp.length(s)
+        end
+
+    let refusal(): maybe.T(String) = maybe.none(:String)
+
+    (* system.args, made args in the driver's own system record, which the
+     * inputs read: its field at its index in name order, as the arm64
+     * target sets it *)
+    let setArgs(e: env.T args: Array(String)): Ok =
+        begin
+            let scope = elaboration.loadInterface("System" e)
+            let names = hashMap.keys(:String :symbols.ValueSymbol scope.values)
+            let var index = 0
+            for i = 0 upto {vector.length(:String names) - 1} do
+                if sort.stringCompare(vector.get(:String names i) "args") < 0 then index := index + 1 end
+            end
+            recordSet(systemRecord("system") index args)
+        end
+
+    let new(e: env.T args: Array(String) sources: hashMap.T(String location.SourceMap)): T =
+        begin
+            setArgs(e args)
+            tuple let e = e end
+        end
+
+    let has(t: T canonical: String): Bool = hostHas(area put(canonical)) is 1
+
+    let fingerprint(t: T canonical: String): String =
+        begin
+            let n = hostFingerprint(area put(canonical))
+            if n > 0 then fromMemory(area n) else "" end
+        end
+
+    let load(t: T unit: nodes.Unit): Ok =
+        begin
+            let bytes = try
+                encode.encode(wasm.unitModule(passes.runPasses(unit)))
+                (* The IR passes' failures, which are the compiler's (a rejected
+                 * conversion, the program's, is raised as its error) *)
+                when closure.capturesMutable with x then fail(:String x)
+                when represent.unsupportedConversion with x then fail(:String x)
+                when represent.rejectedConversion with x then fail(:String x)
+                when irDescribe.unsupportedDescriptor with x then fail(:String x)
+                when wasm.unsupported with x then fail(:String "wasm: unsupported: " <> x)
+                when model.malformed with x then fail(:String "wasm: malformed: " <> x)
+                end
+            let n = vector.length(:nodes.Module unit.modules)
+            if n is 0 then fail(:Ok "a unit with no module") end
+            let name = vector.get(:nodes.Module unit.modules n - 1).name
+            let given = hostGive(area put(bytes))
+            let failed = hostLoad(area put(name))
+            if failed > 0 then fail(:Ok fromMemory(area failed)) end
+        end
+
+    let run(t: T name: String capture: Bool): Ran =
+        begin
+            let shown = fun(): String if capture then captured() else "" end
+            if capture then startCapture() end
+            try
+                let status = hostRun(area put(name))
+                if status is 0 then
+                    option ran of Ran with let shown = shown() end
+                else
+                    let discarded = shown()
+                    option raised of Ran with
+                        let name = if status is 1 then "stack.overflow" else "trap" end
+                        let site = "" let frames = array of "<main>" end
+                    end
+                end
+            else with r then
+                let discarded = shown()
+                option raised of Ran with
+                    let name = raisedName(r) let site = raisedSite(r) let frames = array of "<main>" end
+                end
+            end
+        end
+
+    let finish(t: T): Ok = begin let unused = system.getEnv("QUEST_JIT_DEBUG") ok end
+end

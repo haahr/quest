@@ -6,14 +6,21 @@
  * canonical name, a program as main). The backends are c, the C printer's,
  * ssac, the SSA's C printer's, arm64, the native backend's, whose units are
  * assembly (.s where the others write .c), and wasm, whose units are
- * WebAssembly modules (.wasm). *)
+ * WebAssembly modules (.wasm).
+ *
+ * It also chooses each module's variant (docs/build-process.md section 6.4):
+ * a module may have files beside its own, NAME.VARIANT.mod.quest, each
+ * implementing its interface. --variant UNIT=VARIANT chooses one for a
+ * unit; without it, a unit takes the variant named for the backend that
+ * compiles it, if it has one, and otherwise its own file. *)
 
 interface Choice
 import
     util/maybe : util/Maybe
 export
     Def Override = Tuple unit: String backend: String end
-    Def T = Tuple default: String overrides: Array(Override) end
+    Def Alternative = Tuple unit: String name: String end
+    Def T = Tuple default: String overrides: Array(Override) variants: Array(Alternative) end
     (* The backends there are *)
     backends: Array(String)
     isBackend(name: String): Bool
@@ -28,10 +35,16 @@ export
      * library is: forUnit's, the library's as well since the wasm backend
      * compiles it (docs/wasm-plan.md, step 9) *)
     forFile(c: T unit: String library: Bool): String
+    (* The variant a unit's source is chosen as: the last --variant naming
+     * it, or the name of its backend *)
+    variantFor(c: T unit: String): String
     (* Whether every unit is compiled by the C printer *)
     allC(c: T): Bool
     (* --unit-backend's value, UNIT=BACKEND, if it is one *)
     parseOverride(s: String): maybe.T(Override)
+    (* --variant's value, UNIT=VARIANT, if it is one: VARIANT a name of
+     * letters and digits *)
+    parseVariant(s: String): maybe.T(Alternative)
     (* The options that make another driver's choice c *)
     arguments(c: T): Array(String)
     (* Whether a backend writes assembly rather than C *)

@@ -156,6 +156,35 @@ export
             end
         end
 
+    (* A capture, what it holds in pieces, joined when it ends *)
+    let capturing = tuple let var on = false let var pieces = array of :String end let var count = 0 end
+
+    let echoText(text: String): Ok =
+        if capturing.on then
+            if capturing.count is extent capturing.pieces then
+                let more = array of({2 * capturing.count} + 8 "")
+                for i = 0 upto capturing.count - 1 do more[i] := capturing.pieces[i] end
+                capturing.pieces := more
+            end
+            capturing.pieces[capturing.count] := text
+            capturing.count := capturing.count + 1
+        else put(text) end
+
+    let capture(): Ok =
+        begin
+            capturing.on := true
+            capturing.count := 0
+        end
+
+    let captured(): String =
+        begin
+            capturing.on := false
+            let var text = ""
+            for i = 0 upto capturing.count - 1 do text := text <> capturing.pieces[i] end
+            capturing.count := 0
+            text
+        end
+
     let echo(prefix: String v: core.Any d: core.Desc suffix: String): Ok =
-        put(prefix <> {show(v d) <> {suffix <> "\n"}})
+        echoText(prefix <> {show(v d) <> {suffix <> "\n"}})
 end

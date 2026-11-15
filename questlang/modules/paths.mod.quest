@@ -72,9 +72,25 @@ export
                 if not(found) andif strutil.endsWith(filename unitSuffixes[i]) then
                     result := stringOp.getSub(filename 0 {stringOp.length(filename) - stringOp.length(unitSuffixes[i])})
                     found := true
+                    (* A variant's file, NAME.VARIANT.mod.quest *)
+                    let dot = strutil.rfind(result ".")
+                    if {i is 1} andif {dot > 0} then result := stringOp.getSub(result 0 dot) end
                 end
             end
             result
+        end
+
+    let chooseVariant(moduleFile: String name: String): String =
+        if not(strutil.endsWith(moduleFile ".mod.quest")) then
+            moduleFile
+        else
+            let base = files.baseName(moduleFile)
+            let dir = stringOp.getSub(moduleFile 0 {stringOp.length(moduleFile) - stringOp.length(base)})
+            let own = dir <> stripUnitSuffix(base) <> ".mod.quest"
+            let chosen = dir <> stripUnitSuffix(base) <> "." <> name <> ".mod.quest"
+            if {stringOp.length(name) > 0} andif system.isFile(chosen) then chosen
+            elsif system.isFile(own) then own
+            else moduleFile end
         end
 
     let lastSegment(name: String): String =

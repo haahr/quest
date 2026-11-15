@@ -125,17 +125,23 @@ BACKEND_MODES = {
     # in wasmtime and in node
     "wasm": ["--backend", "wasm"],
     "wasm-node": ["--backend", "wasm", "--wasm-engine", "node"],
+    # The run goldens' programs, each one input of the JIT of the driver
+    # compiled to WebAssembly, run in node (docs/wasm-plan.md step 13)
+    "wasm-jit": ["--jit"],
 }
 SSAC_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-ssac.txt"
 ARM64_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-arm64.txt"
 WHOLE_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-whole.txt"
 JIT_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-jit.txt"
 WASM_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-wasm.txt"
+WASM_JIT_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-wasm-jit.txt"
 # The engine each mode runs its programs in, without which it is skipped
-BACKEND_ENGINES = {"wasm": "wasmtime", "wasm-node": "node"}
+BACKEND_ENGINES = {"wasm": "wasmtime", "wasm-node": "node", "wasm-jit": "node"}
 BACKEND_PENDING = {mode: WHOLE_PENDING if mode.endswith("-whole") else SSAC_PENDING if mode.startswith("ssac")
-                   else JIT_PENDING if mode.startswith("jit") else WASM_PENDING if mode.startswith("wasm")
-                   else ARM64_PENDING for mode in BACKEND_MODES}
+                   else JIT_PENDING if mode.startswith("jit") else WASM_JIT_PENDING if mode == "wasm-jit"
+                   else WASM_PENDING if mode.startswith("wasm") else ARM64_PENDING for mode in BACKEND_MODES}
+# The modes that run the run goldens' programs as inputs of a JIT
+JIT_FILE_MODES = ("jit-files", "wasm-jit")
 # The phases that compile a program, which a backend's mode runs; the jit mode
 # runs the REPL's transcripts, but those marked @skip-phase: jit, which show a
 # difference the JIT is allowed (docs/jit.md section 4)
@@ -147,7 +153,8 @@ SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 # ABI corpus (tests/abi/corpus-self-hosted), and that lib/'s modules compile;
 # and of the errors its builds report, against the bootstrap's; that its
 # parallel builds (-j) are its serial ones; that its compile command does
-# what the bootstrap's does; that the wasm backend's programs run in wasmtime
+# what the bootstrap's does; that a build chooses a module's variants;
+# that the wasm backend's programs run in wasmtime
 # and node as natively; that the driver compiled to wasm serves the REPL's
 # transcripts and the kernel's requests as a session in node; that lldb reads the arm64 backend's line tables;
 # that its kernel mode serves a Jupyter kernel's requests; and that the kernel
@@ -159,6 +166,7 @@ UNIT_CHECKS = (
     ("self-hosted/parallel_build", ROOT_DIR / "tests" / "self-hosted" / "parallel_build.py", ()),
     ("self-hosted/compile_command", ROOT_DIR / "tests" / "self-hosted" / "compile_command.py", ()),
     ("self-hosted/backends", ROOT_DIR / "tests" / "self-hosted" / "backends.py", ()),
+    ("self-hosted/variants", ROOT_DIR / "tests" / "self-hosted" / "variants.py", ()),
     ("self-hosted/wasm_programs", ROOT_DIR / "tests" / "self-hosted" / "wasm_programs.py", ()),
     ("self-hosted/wasm_session", ROOT_DIR / "tests" / "self-hosted" / "wasm_session.py", ()),
     ("self-hosted/line_tables", ROOT_DIR / "tests" / "self-hosted" / "line_tables.py", ()),
@@ -733,6 +741,29 @@ def main() -> int:
             shutil.rmtree(temp_build_dir, ignore_errors=True)
 
 
+def build_wasm_jit_driver(driver_command: list[str], build_dir: Path) -> Path:
+    """The self-hosted driver compiled to WebAssembly by driver_command, in
+    build_dir, and an executable that runs it in node (runtime/wasm/run.mjs),
+    as the wasm-jit mode's driver: its path. Its build directory starts
+    afresh, since units are not rebuilt when the compiler changes."""
+    into = build_dir / "wasm-jit-driver"
+    shutil.rmtree(into, ignore_errors=True)
+    into.mkdir(parents=True)
+    target = into / "quest.wasm"
+    built = subprocess.run([*driver_command, "--backend", "wasm", "--build-dir", str(into / "build"), "-o", str(target),
+                            str(ROOT_DIR / "questlang" / "driver" / "main.quest")],
+                           capture_output=True, text=True, env={**os.environ, "QUEST_HOME": str(ROOT_DIR)}, cwd=into)
+    if built.returncode != 0:
+        raise RuntimeError(f"the driver did not compile to WebAssembly:\n{built.stdout}{built.stderr}")
+    modules = " ".join(f'--module "{entry}"' for entry in Path(f"{target}.units").read_text().split())
+    wrapper = into / "quest"
+    run = ROOT_DIR / "runtime" / "wasm" / "run.mjs"
+    wrapper.write_text(f'#!/bin/sh\nQUEST_HOME="${{QUEST_HOME:-{ROOT_DIR}}}" exec node --no-warnings '
+                       f'"{run}" {modules} "{target}.runtime.wasm" "{target}" "$@"\n')
+    wrapper.chmod(0o755)
+    return wrapper
+
+
 def run_all_tests(
     args: argparse.Namespace,
     available_phases: list[str],
@@ -822,7 +853,11 @@ def run_all_tests(
             driver_command = [str(build_self_hosted_driver(python_executable, build_dir))]
         pending = self_hosted_pending()
         if args.backend != "c":
-            mode_phases = {"jit": JIT_PHASES, "jit-files": JIT_FILE_PHASES}.get(args.backend, BACKEND_PHASES)
+            mode_phases = {"jit": JIT_PHASES, "jit-files": JIT_FILE_PHASES,
+                           "wasm-jit": JIT_FILE_PHASES}.get(args.backend, BACKEND_PHASES)
+            if args.backend == "wasm-jit":
+                print("Compiling the self-hosted driver to WebAssembly, for its JIT in node...")
+                driver_command = [str(build_wasm_jit_driver(driver_command, build_dir))]
             phases_to_run = [phase for phase in phases_to_run if phase in mode_phases]
             driver_args.extend(BACKEND_MODES[args.backend])
             pending |= self_hosted_pending(BACKEND_PENDING[args.backend])
@@ -928,7 +963,7 @@ def run_all_tests(
                         if phase in ("ssa", *SELF_HOSTED_IR_DUMP_PHASES) and "ir_core" in skipped_phases:
                             # The SSA is dumped for the programs whose IR is
                             skipped_phases = skipped_phases | {phase}
-                        if args.backend == "jit-files" and skipped_phases & {"jit", "run_c_compiled"}:
+                        if args.backend in JIT_FILE_MODES and skipped_phases & {"jit", "run_c_compiled"}:
                             # A difference the JIT is allowed, or one compiled
                             # code shows, which the JIT does too (docs/jit.md
                             # section 4)
@@ -977,7 +1012,7 @@ def run_all_tests(
                     # transcript: its interpreter, and in the jit-files mode
                     # its JIT, -e's default
                     if phase == "interpret" and runs_eval:
-                        eval_jit = args.backend == "jit-files"
+                        eval_jit = args.backend in JIT_FILE_MODES
                         eval_command = [*driver_command, *([] if eval_jit else ["--no-jit"])]
                         phase_tasks.append(PhaseTask(
                             test_id="self-hosted/eval",

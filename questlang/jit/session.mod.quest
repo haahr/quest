@@ -1,6 +1,6 @@
 (* Quest Self-Hosted Compiler: The JIT Session Implementation *)
 
-unsound module session : Session
+module session : Session
 import
     questlang/common/location : questlang/common/Location
     questlang/common/diagnostics : questlang/common/Diagnostics
@@ -10,45 +10,26 @@ import
     questlang/modules/artifacts/fingerprint : questlang/modules/artifacts/Fingerprint
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/artifacts/moduleCompiler : questlang/modules/artifacts/ModuleCompiler
-    mangling = questlang/repr/symbols : questlang/repr/Symbols
     tm = questlang/types/model : questlang/types/Model
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/typechecker/typecheck : questlang/typechecker/Typecheck
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/lower : questlang/ir/Lower
     questlang/ir/verify : questlang/ir/Verify
-    questlang/ir/closure : questlang/ir/Closure
-    questlang/ir/represent : questlang/ir/Represent
-    irDescribe = questlang/ir/describe : questlang/ir/Describe
-    passes = questlang/ir/pipeline : questlang/ir/Pipeline
-    ssaBuild = questlang/ssa/build : questlang/ssa/Build
-    ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
-    ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
-    arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
-    questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
-    questlang/jit/loader : questlang/jit/Loader
-    questlang/jit/debugObject : questlang/jit/DebugObject
-    questlang/common/files : questlang/common/Files
-    os/value : os/Value
-    os/code : os/Code
     raised : Raised
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    util/sort : util/Sort
     util/strutil : util/Strutil
-    util/stringBuilder : util/StringBuilder
-    words = word : Word
     stringOp = string : StringOp
     ascii : Ascii
     conv : Conv
-    system : System
-    writer : Writer
+    questlang/jit/target : questlang/jit/Target
 export
     Let T = Tuple
         e: env.T
-        loader: loader.T
+        target: target.T
         var count: Int
         (* The bindings of the inputs that ran, by symbol *)
         earlier: hashMap.T(Int lower.Earlier)
@@ -59,14 +40,6 @@ export
          * running loaded *)
         loaded: hashMap.T(String Bool)
         loadedNow: vector.T(String)
-        (* Whether the session describes its code to a debugger
-         * (QUEST_JIT_DEBUG=1, docs/jit.md section 3.12), and what it
-         * described: the objects and their list entries, kept for as long as
-         * the code is, and the directory and files holding inputs' sources *)
-        debugging: Bool
-        described: vector.T(String)
-        var sourceDir: String
-        sourceFiles: vector.T(String)
     end
     Let Outcome = Option
         ran with shown: Array(String) end
@@ -78,59 +51,26 @@ export
         end
     end
 
-    let unsupported: Exception(String) = exception unsupported: String end
+    let unsupported: Exception(String) = target.unsupported
     let fail(A::TYPE m: String): A = raise unsupported with m end
 
-    (* The arena: every bl within 128 MB reaches *)
-    let codeBytes = 134217728
-    let dataBytes = 67108864
-
-    (* system.args, an external value, is copied into the driver's system
-     * record when system is initialized, from the runtime's array: both are
-     * made args, the record's field at its index in name order *)
-    let setArgs(e: env.T args: Array(String)): Ok =
-        begin
-            code.setArgs(args)
-            let at = code.symbol("qm_system")
-            if maybe.isSome(:value.T at) then
-                let scope = elaboration.loadInterface("System" e)
-                let names = hashMap.keys(:String :symbols.ValueSymbol scope.values)
-                let var index = 0
-                for i = 0 upto {vector.length(:String names) - 1} do
-                    if sort.stringCompare(vector.get(:String names i) "args") < 0 then index := index + 1 end
-                end
-                let systemRecord = maybe.unwrap(:value.T at)
-                let offset = value.be(:Int value.fetch(value.fetch(systemRecord 8) 8 * index))
-                value.store(value.fetch(systemRecord 0) offset value.new(:Array(String) args))
-            end
-        end
-
-    (* A driver whose modules carry fingerprints (docs/jit.md section 3.10):
-     * this one's own JIT module does if any does *)
-    let hostSymbol = mangling.fingerprintIdent(mangling.mangleModuleName("questlang/jit/session"))
-
-    let refusal(): maybe.T(String) =
-        if maybe.isSome(:value.T code.symbol(hostSymbol)) then maybe.none(:String)
-        else maybe.some(:String "this driver cannot host the JIT: its modules carry no fingerprints (a whole-program "
-            <> "build drops them)") end
+    let refusal(): maybe.T(String) = target.refusal()
 
     let new(e: env.T args: Array(String)): T =
         begin
-            setArgs(e args)
+            let sources = hashMap.new(:String :location.SourceMap stringOp.equal hash.string)
             tuple
                 let e = e
-                let loader = loader.new(codeBytes dataBytes)
+                let target = target.new(e args sources)
                 let var count = 0
                 let earlier = hashMap.new(:Int :lower.Earlier fun(a: Int b: Int): Bool a is b hash.int)
-                let sources = hashMap.new(:String :location.SourceMap stringOp.equal hash.string)
+                let sources = sources
                 let loaded = hashMap.new(:String :Bool stringOp.equal hash.string)
                 let loadedNow = vector.new(:String)
-                let debugging = stringOp.equal(system.getEnv("QUEST_JIT_DEBUG") "1")
-                let described = vector.new(:String)
-                let var sourceDir = ""
-                let sourceFiles = vector.new(:String)
             end
         end
+
+    let finish(s: T): Ok = target.finish(s.target)
 
     (* The value symbols an input binds at its top level, which its record
      * holds (as lowerPhrases makes it): not a redefinition's, which stores to
@@ -212,63 +152,6 @@ export
             end
         end
 
-    (* The frames the runtime prints of the input's code: those above
-     * os/code's call (or this module's runInput or run, where a C-built
-     * driver keeps no frame of call's), and the driver's below them, each
-     * "  in NAME", a run of one written once and then "  ... NAME repeated N
-     * more times". The input's top level is <main>, which its entry, running
-     * a module the input declared, does not show *)
-    let framesOf(text: String): Array(String) =
-        begin
-            let frames = vector.new(:String)
-            let lines = strutil.split(text "\n")
-            let var done = false
-            for i = 0 upto {vector.length(:String lines) - 1} do
-                let line = vector.get(:String lines i)
-                if stringOp.equal(line "  in os/code.call") orif stringOp.equal(line "  in questlang/jit/session.runInput")
-                    orif stringOp.equal(line "  in questlang/jit/session.run") then
-                    done := true
-                end
-                if done then
-                    ok
-                elsif strutil.startsWith(line "  in ") then
-                    vector.append(:String frames stringOp.getSub(line 5 stringOp.length(line) - 5))
-                elsif strutil.startsWith(line "  ... ") andif strutil.endsWith(line " more times") then
-                    let rest = stringOp.getSub(line 6 stringOp.length(line) - 17)
-                    let at = strutil.rfind(rest " repeated ")
-                    let count = if at > 0 then number(stringOp.getSub(rest at + 10 {stringOp.length(rest) - at} - 10))
-                        else maybe.none(:Int) end
-                    if maybe.isSome(:Int count) then
-                        let name = stringOp.getSub(rest 0 at)
-                        for k = 1 upto maybe.unwrap(:Int count) do vector.append(:String frames name) end
-                    end
-                end
-            end
-            let n = vector.length(:String frames)
-            if {n is 0} orif not(stringOp.equal(vector.get(:String frames n - 1) "<main>")) then
-                vector.append(:String frames "<main>")
-            end
-            vector.toArray(:String frames)
-        end
-
-    (* The C string of n characters at a symbol's address, read a word at a
-     * time, since fetch takes aligned addresses *)
-    let cString(at: value.T n: Int): String =
-        begin
-            let start = value.be(:Int at)
-            let b = stringBuilder.new()
-            for i = 0 upto {n - 1} do
-                let addr = start + i
-                let w = value.be(:words.T value.fetch(value.new(:Int addr - {addr % 8}) 0))
-                b.char(ascii.char(words.toInt(words.extract(w 8 * {addr % 8} 8))))
-            end
-            b.toString()
-        end
-
-    (* Whether the driver links the module canonical names *)
-    let inDriver(canonical: String): Bool =
-        maybe.isSome(:value.T code.symbol(mangling.moduleRecordIdent(mangling.mangleModuleName(canonical))))
-
     (* A module of the driver's own that an input or a module file imports is
      * the driver's copy (docs/jit.md section 3.3), whose interface must be the
      * one the driver was built with: its fingerprint, qh_, is that of the
@@ -279,156 +162,25 @@ export
             orif hashMap.contains(:String :Bool s.loaded imp.canonicalPath) then
             ok
         else
-            let clean = mangling.mangleModuleName(imp.canonicalPath)
-            if not(inDriver(imp.canonicalPath)) then
+            let built = target.fingerprint(s.target imp.canonicalPath)
+            if not(target.has(s.target imp.canonicalPath)) then
                 fail(:Ok "module '" <> imp.canonicalPath <> "' is neither in the driver nor loaded")
             end
-            let found = code.symbol(mangling.fingerprintIdent(clean))
-            let built = if maybe.isSome(:value.T found) then cString(maybe.unwrap(:value.T found) 64) else "" end
             if not(stringOp.equal(built fingerprint.ofInterface(imp.interfacePath s.e))) then
                 fail(:Ok "the driver was built from another version of the interface of module '" <> imp.canonicalPath
                     <> "'; rebuild the driver (./quest rebuilds it)")
             end
         end
 
-    let symbolAt(symbols: hashMap.T(String value.T) name: String): value.T =
-        begin
-            let found = hashMap.get(:String :value.T symbols name)
-            if maybe.isNone(:value.T found) then raise unsupported with "the unit defines no " <> name end end
-            maybe.unwrap(:value.T found)
-        end
-
-    (* The GDB JIT interface's descriptor and the function a debugger breaks
-     * on, which the runtime defines (quest_code.c), if the driver has them *)
-    let descriptorSymbol = "__jit_debug_descriptor"
-    let breakSymbol = "__jit_debug_register_code"
-
-    (* A string's characters' address: its QString's data (word 2) *)
-    let bytesOf(text: String): value.T = value.fetch(value.new(:String text) 16)
-    let word(n: Int): value.T = value.new(:Int n)
-
-    (* Adds object to the interface's list of objects, as its first, and
-     * calls the function a debugger breaks on, with the action JIT_REGISTER_FN
-     * (1). Its entry, of the next and previous entries, the object's address,
-     * and its size, is a string's bytes. *)
-    let register(s: T object: String): Ok =
-        begin
-            let descriptor = code.symbol(descriptorSymbol)
-            let breaks = code.symbol(breakSymbol)
-            if maybe.isSome(:value.T descriptor) andif maybe.isSome(:value.T breaks) then
-                let d = maybe.unwrap(:value.T descriptor)
-                let holder = stringOp.new(32 ascii.char(0))
-                vector.append(:String s.described object)
-                vector.append(:String s.described holder)
-                let entry = bytesOf(holder)
-                let first = value.fetch(d 16)
-                value.store(entry 0 first)
-                value.store(entry 8 word(0))
-                value.store(entry 16 bytesOf(object))
-                value.store(entry 24 word(stringOp.length(object)))
-                if value.be(:Int first) isnot 0 then value.store(first 8 entry) end
-                value.store(d 16 entry)
-                value.store(d 8 entry)
-                (* version 1, action 1 *)
-                value.store(d 0 word(4294967297))
-                code.call(maybe.unwrap(:value.T breaks))
-                ok
-            end
-        end
-
-    (* The source of code that has no file of its own, written to a file
-     * named name in a directory of the session's own under TMPDIR, which
-     * finish removes; its path *)
-    let writeSource(s: T name: String text: String): String =
-        begin
-            if stringOp.length(s.sourceDir) is 0 then
-                (* Named by a number taken from an address in this process,
-                 * which another driver rarely shares, and the first suffix
-                 * -N not yet taken *)
-                let tmp = system.getEnv("TMPDIR")
-                let base = files.join(if stringOp.length(tmp) > 0 then tmp else "/tmp" end
-                    "quest-jit-" <> conv.int(value.be(:Int bytesOf(name)) % 1000000007))
-                let var n = 0
-                while system.isDirectory(base <> "-" <> conv.int(n)) do n := n + 1 end
-                s.sourceDir := base <> "-" <> conv.int(n)
-                system.makeDirectory(s.sourceDir)
-            end
-            let path = files.join(s.sourceDir name)
-            let w = writer.file(path)
-            writer.putString(w text)
-            writer.close(w)
-            vector.append(:String s.sourceFiles path)
-            path
-        end
-
-    let finish(s: T): Ok =
-        begin
-            for i = 0 upto {vector.length(:String s.sourceFiles) - 1} do
-                try system.removeFile(vector.get(:String s.sourceFiles i)) when system.error then ok end
-            end
-            if stringOp.length(s.sourceDir) > 0 then
-                try system.removeDirectory(s.sourceDir) when system.error then ok end
-            end
-        end
-
-    (* Where a debugger finds the source of a unit's file: an input's (named
-     * <repl>#N in its code) is its file, if it has one, else its text written
-     * to input-N.quest in the session's own directory (writeSource); a module
-     * file's is itself *)
-    let debugFile(s: T file: String): String =
-        begin
-            let base = stringOp.getSub(file strutil.rfind(file "/") + 1 {stringOp.length(file) - strutil.rfind(file "/")} - 1)
-            let original = if strutil.startsWith(base sourcePrefix) then
-                hashMap.get(:String :location.SourceMap s.sources base) else maybe.none(:location.SourceMap) end
-            if maybe.isNone(:location.SourceMap original) then
-                file
-            else
-                let sm = maybe.unwrap(:location.SourceMap original)
-                let named = files.absolute(location.file(sm))
-                if system.isFile(named) then named
-                else writeSource(s "input-" <> stringOp.getSub(base stringOp.length(sourcePrefix)
-                    {stringOp.length(base) - stringOp.length(sourcePrefix)}) <> ".quest" location.text(sm)) end
-            end
-        end
-
-    (* A unit loaded, described to a debugger, if the session describes its
-     * code (docs/jit.md section 3.12) *)
-    let describe(s: T e: encode.Encoded symbols: hashMap.T(String value.T)): Ok =
-        if s.debugging andif {extent e.functions > 0} then
-            let start = value.be(:Int symbolAt(symbols e.functions[0].name)) - e.functions[0].offset
-            let files = array of(extent e.files "")
-            for i = 0 upto {extent files - 1} do files[i] := debugFile(s e.files[i]) end
-            register(s debugObject.object(e start files))
-        end
-
-    (* A unit compiled, encoded, and loaded, with the addresses of its
-     * symbols; the modules it imports are the driver's or loaded *)
-    let compileAndLoad(s: T unit: nodes.Unit): hashMap.T(String value.T) =
+    (* A unit checked, compiled, and loaded; the modules it imports are the
+     * driver's or loaded *)
+    let compileAndLoad(s: T unit: nodes.Unit): Ok =
         begin
             if verify.irChecksEnabled() then
                 try verify.checkUnit(unit) when verify.verifyError with x then fail(:Ok x) end
             end
             for i = 0 upto {extent unit.imports - 1} do checkImport(s unit.imports[i]) end
-            let encoded = try
-                let built = ssaPipeline.build(passes.runPasses(unit))
-                ssaPipeline.lower(built)
-                arm64.encodeUnit(built)
-                (* The IR passes' failures, which are the compiler's (a rejected
-                 * conversion, the program's, is raised as its error) *)
-                when closure.capturesMutable with x then fail(:encode.Encoded x)
-                when represent.unsupportedConversion with x then fail(:encode.Encoded x)
-                when represent.rejectedConversion with x then fail(:encode.Encoded x)
-                when irDescribe.unsupportedDescriptor with x then fail(:encode.Encoded x)
-                when ssaBuild.unsupported with x then fail(:encode.Encoded "ssa: unsupported: " <> x)
-                when ssaVerify.verifyError with x then fail(:encode.Encoded x)
-                when arm64.unsupported with x then fail(:encode.Encoded x)
-                when encode.unencodable with x then fail(:encode.Encoded "encoding: " <> x)
-                end
-            let symbols = try loader.load(s.loader encoded)
-                when loader.loadError with x then fail(:hashMap.T(String value.T) x)
-                end
-            describe(s encoded symbols)
-            symbols
+            target.load(s.target unit)
         end
 
     (* body, with an error it raises in another file than file labeled as
@@ -450,7 +202,7 @@ export
      * hook the module system would otherwise call back to; the input's is put
      * back after. *)
     let rec loadModuleFile(s: T canonical: String source: String): Ok =
-        if inDriver(canonical) orif hashMap.contains(:String :Bool s.loaded canonical) then
+        if target.has(s.target canonical) orif hashMap.contains(:String :Bool s.loaded canonical) then
             ok
         else
             let e = s.e
@@ -502,7 +254,8 @@ export
      * imports it *)
     let loadImported(s: T imp: nodes.Import program: typedAst.Program file: String): Ok =
         if strutil.startsWith(imp.canonicalPath "qj_") orif {stringOp.length(imp.interfacePath) is 0}
-            orif inDriver(imp.canonicalPath) orif hashMap.contains(:String :Bool s.loaded imp.canonicalPath) then
+            orif target.has(s.target imp.canonicalPath)
+            orif hashMap.contains(:String :Bool s.loaded imp.canonicalPath) then
             ok
         else
             let source = env.resolveModule(s.e imp.canonicalPath).source
@@ -599,41 +352,43 @@ export
              * the modules the input declares *)
             let m = vector.get(:nodes.Module unit.modules vector.length(:nodes.Module unit.modules) - 1)
             let recordType = maybe.unwrap(:nodes.Variable m.recordVar).type
-            let symbols = compileAndLoad(s unit)
-            let raised = code.call(symbolAt(symbols name <> "_entry"))
-            if maybe.isSome(:raised.T raised) then
-                let r = maybe.unwrap(:raised.T raised)
-                let where = located(s code.raiseSite(r))
-                option raised of Outcome with
-                    let name = code.exceptionName(r) let sourceMap = where.sourceMap let offset = where.offset
-                    let frames = framesOf(code.frames(r))
-                end
-            else
-                let shown = if capture then
-                    shownByPhrase(value.be(:String value.fetch(symbolAt(symbols name <> "_echo") 0)))
-                else array of :String end end
-                (* Its bindings, for the inputs after it *)
-                let bound = boundSymbols(program)
-                for i = 0 upto {vector.length(:symbols.ValueSymbol bound) - 1} do
-                    let sym = vector.get(:symbols.ValueSymbol bound i)
-                    hashMap.insert(:Int :lower.Earlier s.earlier sym.symbolId tuple
-                        let holder = name let field = lower.phraseField(sym.symbolId) let recordType = recordType
-                        let isVar = sym.isVar let boxed = lower.boxesSlot(s.e sym)
-                    end)
-                end
-                (* And the modules it declared and imported *)
-                for i = 0 upto {extent program.phrases - 1} do
-                    case program.phrases[i].form
-                        when bindImport with x then
-                            for k = 0 upto {extent x.items - 1} do rememberImport(s unit x.items[k]) end
-                        when bindModule with x then
-                            if maybe.isSome(:Int x.symbolId) then
-                                rememberModule(s unit maybe.unwrap(:Int x.symbolId) name <> "_" <> x.name)
-                            end
-                        else ok
+            compileAndLoad(s unit)
+            case target.run(s.target name capture)
+                when raised with r then
+                    begin
+                        let where = located(s r.site)
+                        option raised of Outcome with
+                            let name = r.name let sourceMap = where.sourceMap let offset = where.offset
+                            let frames = r.frames
+                        end
                     end
-                end
-                option ran of Outcome with let shown = shown end
+                when ran with x then
+                    begin
+                        let shown = if capture then shownByPhrase(x.shown) else array of :String end end
+                        (* Its bindings, for the inputs after it *)
+                        let bound = boundSymbols(program)
+                        for i = 0 upto {vector.length(:symbols.ValueSymbol bound) - 1} do
+                            let sym = vector.get(:symbols.ValueSymbol bound i)
+                            hashMap.insert(:Int :lower.Earlier s.earlier sym.symbolId tuple
+                                let holder = name let field = lower.phraseField(sym.symbolId)
+                                let recordType = recordType
+                                let isVar = sym.isVar let boxed = lower.boxesSlot(s.e sym)
+                            end)
+                        end
+                        (* And the modules it declared and imported *)
+                        for i = 0 upto {extent program.phrases - 1} do
+                            case program.phrases[i].form
+                                when bindImport with x then
+                                    for k = 0 upto {extent x.items - 1} do rememberImport(s unit x.items[k]) end
+                                when bindModule with x then
+                                    if maybe.isSome(:Int x.symbolId) then
+                                        rememberModule(s unit maybe.unwrap(:Int x.symbolId) name <> "_" <> x.name)
+                                    end
+                                else ok
+                            end
+                        end
+                        option ran of Outcome with let shown = shown end
+                    end
             end
         end
 

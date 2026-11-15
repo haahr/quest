@@ -70,9 +70,12 @@ REPL's use of them are the JIT's. An input of the REPL transcripts takes 0.2 to 
 
 ### 3.1. Where the JIT lives
 
-- `questlang/jit/`: `loader` (the code arena, symbol resolution, relocation, registration) and `session` (the REPL's
-  state: earlier inputs' records); the encoder is `codegen/arm64/encode`. The modules that use the unsound primitives
-  are `unsound` modules.
+- `questlang/jit/`: `loader` (the code arena, symbol resolution, relocation, registration), `target` (compiling a
+  unit and loading it, calling an input's entry, the driver's units and their fingerprints), and `session` (the
+  REPL's state: earlier inputs' records); the encoder is `codegen/arm64/encode`. `target` is what differs by
+  machine: its own file is arm64's, and its variants ([build-process.md](build-process.md) §6.4) are WebAssembly's
+  (`target.wasm`, [wasm-plan.md](wasm-plan.md) step 13) and none (`target.none`, no JIT). The modules that use the
+  unsound primitives are `unsound` modules.
 - Two unsound interfaces in `lib/os/`, with a C file in `runtime/`, for what Quest cannot do (§3.11).
 - `driver/repl` chooses between `treewalk.evalProgramPhrasesIn` and the JIT for its running step; snapshots, rollback,
   completeness, and printing stay its own.

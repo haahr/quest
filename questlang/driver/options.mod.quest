@@ -124,6 +124,7 @@ export
         "  --expected-exit N    the status a compiled program must exit with"
         "  --backend B          compile every unit with B: arm64 (the default), c, ssac, or wasm"
         "  --unit-backend U=B   compile unit U (main, the program's) with B"
+        "  --variant U=V        compile module U from its variant V, U.V.mod.quest"
         "  --wasm-engine E      run a wasm program in E: wasmtime (the default) or node"
         "  --whole-program      compile the program and its modules as one unit"
         "  -o FILE              write the binary to FILE"
@@ -176,6 +177,7 @@ export
             let var backendGiven = false
             let var wasmEngine = "wasmtime"
             let unitBackends = vector.new(:choice.Override)
+            let variants = vector.new(:choice.Alternative)
             let var expectedExit = 0
             let dumpAfter = vector.new(:String)
             let extraObjects = vector.new(:String)
@@ -268,6 +270,14 @@ export
                             <> system.args[i + 1] <> "'")
                     end
                     vector.append(:choice.Override unitBackends maybe.unwrap(:choice.Override o))
+                    i := i + 2
+                elsif stringOp.equal(arg "--variant") andif valued then
+                    let v = choice.parseVariant(system.args[i + 1])
+                    if maybe.isNone(:choice.Alternative v) then
+                        usage("--variant takes UNIT=VARIANT, VARIANT letters and digits, not '" <> system.args[i + 1]
+                            <> "'")
+                    end
+                    vector.append(:choice.Alternative variants maybe.unwrap(:choice.Alternative v))
                     i := i + 2
                 elsif strings.isOneOf(arg array of "--expected-exit" "--expected_exit" end) andif valued andif not(compileMode) then
                     (* What a compiled program's exit status must be; the
@@ -421,7 +431,10 @@ export
                 let verbose = verbose
                 let jobs = jobs
                 let wholeProgram = wholeProgram
-                let backends = tuple let default = backend let overrides = vector.toArray(:choice.Override unitBackends) end
+                let backends = tuple
+                    let default = backend let overrides = vector.toArray(:choice.Override unitBackends)
+                    let variants = vector.toArray(:choice.Alternative variants)
+                end
                 let wasmEngine = wasmEngine
                 let expectedExit = expectedExit
                 let dumpAfter = vector.toArray(:String dumpAfter)

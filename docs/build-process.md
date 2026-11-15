@@ -621,6 +621,31 @@ Because separate compilation decouples the compilation of an importing unit from
   compilation with a fatal type error (`Type error: '<importer>' imports module '<mod>' as interface '<expected>', but
   module '<mod>' implements interface '<actual>'`) before generating binary code or invoking the linker.
 
+### 6.4. A Module's Variants
+
+A module may have more than one implementation, chosen when it is built: a **variant** is a file beside the module's
+own, `NAME.VARIANT.mod.quest` beside `NAME.mod.quest`, that implements the same interface. Its importers see only
+the interface, so they compile the same whichever variant the build takes, and only the variant taken is compiled
+and linked. The driver's JIT is the first: `questlang/jit/target.mod.quest` compiles inputs to arm64 and loads them
+into the driver's process, `target.wasm.mod.quest` compiles them to WebAssembly for a JavaScript host to load, and
+`target.none.mod.quest` has no JIT (docs/wasm-plan.md step 13).
+
+- **The choice** (`codegen/choice`'s `variantFor`): `--variant UNIT=VARIANT`, the last that names the unit, VARIANT
+  letters and digits; otherwise the name of the backend that compiles the unit (`--backend`, `--unit-backend`). A
+  variant named that may not exist, and then the module's own file is used: a unit the wasm backend compiles takes
+  `wasm` if it has one, and a native backend's units, having no `c`, `ssac`, or `arm64` variants, their own files.
+- **The name:** a variant's unit has its module's canonical name, the variant's part of the file name dropped
+  (`paths.stripUnitSuffix`), and its artifacts are its module's (`target.qm`, `target.o`), so that a build holds one
+  of them at a time.
+- **Resolution:** the resolver chooses (`graph.resolveModule`, through `paths.chooseVariant`), so that the build,
+  its workers (which get `--variant` with the other options, `choice.arguments`), the module compiler, and the
+  driver's own environment all find the same file. The driver sets its resolver's choice before it resolves
+  anything; a resolver no build configures chooses nothing, and finds every module's own file.
+- **Staleness:** a unit records the source it was compiled from, so a unit compiled from another variant than the
+  one now chosen is stale, and its importers are too, by the rule of section 7.1: changing the variant rebuilds it.
+- **The bootstrap** knows nothing of variants: it compiles the modules' own files, so the stage it builds has the
+  arm64 JIT.
+
 ---
 
 ## 7. The Queue-Driven Full Build Process

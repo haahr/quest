@@ -11,6 +11,7 @@
 // writes to descriptor 4, the program's output as writes to 1 and 2.
 
 import {Host, Exit} from "./host.mjs";
+import {Jit} from "./jit.mjs";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -98,12 +99,16 @@ export class Session {
     });
     const runtime = new WebAssembly.Instance(o.modules.runtime, {wasi_snapshot_preview1: this.host.wasiImport});
     this.host.attach(runtime);
-    const imports = {"quest.runtime": runtime.exports};
-    for (const unit of o.modules.units) imports[unit.name] = new WebAssembly.Instance(unit.module, imports).exports;
-    const program = new WebAssembly.Instance(o.modules.program, imports);
+    // The JIT's host (jit.mjs), which links each unit as it is instantiated
+    this.jit = new Jit();
+    this.jit.attachRuntime(runtime);
+    for (const unit of o.modules.units) {
+      this.jit.addUnit(unit.name, unit.module, new WebAssembly.Instance(unit.module, this.jit.importObject()).exports);
+    }
+    const program = new WebAssembly.Instance(o.modules.program, this.jit.importObject());
     this.noClosure = runtime.exports.noClosure.value;
-    this.kernel = imports["questlang/driver/kernel"];
-    this.core = imports["wasm/core"];
+    this.kernel = this.jit.units["questlang/driver/kernel"];
+    this.core = this.jit.units["wasm/core"];
     try {
       program.exports._start();
     } catch (e) {
@@ -134,17 +139,18 @@ export class Session {
       return records;
     }
     const records = this.records;
+    // An input whose overflow or trap the JIT's host caught part way through
+    // an update of the runtime's shared tables: a new session (section 6.3)
+    if (this.jit.mustReplay) this.replay();
     const parsed = JSON.parse(line);
     const done = records.find(r => "done" in r);
     if (parsed.execute !== undefined && done && done.done === "ok") this.committed.push(line);
     return records;
   }
 
-  // How many updates of the runtime's shared tables an overflow interrupted:
-  // with the JIT (milestone 3), zero lets an overflow in an input's own code
-  // abandon the input alone; here every input is interpreted, and every
-  // overflow replays
-  updating() { return this.core.updating(this.noClosure); }
+  // How many updates of the runtime's shared tables are in progress: the
+  // JIT's host reads it after an overflow in an input's code (jit.mjs)
+  updating() { return Number(this.core.updating(this.noClosure)); }
 
   // A new instance, the committed inputs run again with their output
   // suppressed

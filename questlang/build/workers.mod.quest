@@ -303,6 +303,7 @@ export
             let cflags = vector.new(:String)
             let var backend = "c"
             let overrides = vector.new(:choice.Override)
+            let variants = vector.new(:choice.Alternative)
             let var i = 1
             (* Each option but --nogc takes a value *)
             while i < extent args do
@@ -333,6 +334,11 @@ export
                 elsif eq(arg "--unit-backend") then
                     let o = choice.parseOverride(value)
                     if maybe.isSome(:choice.Override o) then vector.append(:choice.Override overrides maybe.unwrap(:choice.Override o)) end
+                elsif eq(arg "--variant") then
+                    let v = choice.parseVariant(value)
+                    if maybe.isSome(:choice.Alternative v) then
+                        vector.append(:choice.Alternative variants maybe.unwrap(:choice.Alternative v))
+                    end
                 end
                 let step = if eq(arg "--nogc") then 1 else 2 end
                 i := i + step
@@ -342,8 +348,12 @@ export
             files.setWorkerTag("." <> worker)
             stdlib.install()
             (* One resolver for the batch, as a serial build has one for all *)
+            let backends = tuple
+                let default = backend let overrides = vector.toArray(:choice.Override overrides)
+                let variants = vector.toArray(:choice.Alternative variants)
+            end
             let resolver = graph.newResolver()
-            let backends = tuple let default = backend let overrides = vector.toArray(:choice.Override overrides) end
+            resolver.variantOf := fun(unit: String): String choice.variantFor(backends unit)
             let var failed = maybe.none(:String)
             for b = 0 upto {vector.length(:String sources) - 1} do
                 if maybe.isNone(:String failed) then

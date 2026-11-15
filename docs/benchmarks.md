@@ -2628,7 +2628,8 @@ Milestone 1 of [wasm-plan.md](wasm-plan.md) (step 10): the self-hosted driver, c
 writes the same 198 modules, byte for byte, as the native compiler does. Each run builds into a fresh directory with
 `-j 1` (the target runs no processes, so the build is sequential), on a machine at load about 2.8, twice for the
 native and node runs. The scripts are in the session's scratchpad, not the tree; the commands are those of §8.1
-step 10 there.
+step 10 there. Since step 13 the driver that wasmtime runs is built with `--variant questlang/jit/target=none`, since
+the wasm JIT needs a JavaScript host; node's is the plain build.
 
 | Run | Wall | User | Maximum resident |
 |---|---|---|---|

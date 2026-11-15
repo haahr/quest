@@ -7,7 +7,8 @@
 // DRIVER.wasm is the driver's program module, DRIVER.wasm.runtime.wasm and
 // DRIVER.wasm.units beside it, as the driver's -o writes them. The session
 // runs in a worker whose stack is N KB (512 by default, a Chromium worker's),
-// interpreting each input (the driver is given --no-jit).
+// compiling each input with the driver's JIT (step 13), or interpreting it
+// with --no-jit.
 //
 // With --kernel it speaks the kernel's protocol (docs/jupyter-kernel.md
 // section 2): requests from descriptor 3, records to descriptor 4, a SIGINT
@@ -81,7 +82,7 @@ async function main() {
   const modules = {runtime: compile(driver + ".runtime.wasm"), units, program: compile(driver)};
   const env = {...process.env, PWD: process.cwd()};
   // --no-jit first, before a file -i runs and its arguments
-  const args = ["--no-jit", ...rest.filter(a => a !== "--no-jit")];
+  const args = rest.includes("--no-jit") ? ["--no-jit", ...rest.filter(a => a !== "--no-jit")] : rest;
   // A worker, started and given the committed inputs to replay
   let committed = [];
   let worker = null;
