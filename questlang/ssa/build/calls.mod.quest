@@ -358,20 +358,19 @@ export
         end
 
     (* A call of one of the standard library's external functions that C
-     * inlines (runtime/quest_runtime.h's word primitives, and the string's
-     * and ascii's that read or write a byte), as the instructions it is: the
-     * C backend calls the C function itself (the C printer's libraryExternal),
+     * inlines, as the instructions it is, where inlineExternal does not
+     * already make them: a word shift by a count that is not a constant, and
+     * the string's and ascii's operations that read or write a byte. The C
+     * backend calls the C function itself (the C printer's libraryExternal),
      * which clang inlines, and the SSA would otherwise call the module's
-     * wrapper. The rest, and a shift by a count that is not a constant, call
-     * the wrapper. *)
+     * wrapper. The rest of word's operations are inlineExternal's, through
+     * libraryExternal's symbol for them (callOp) *)
     let libraryOperation(fn: vals.Fn imp: ir.Import member: String o: ir.OpCall): maybe.T(Array(Int)) =
         begin
             let none = maybe.none(:Array(Int))
             let one(v: Int): maybe.T(Array(Int)) = maybe.some(:Array(Int) array of v end)
             let x(): Int = vals.atom1(fn o.args[0])
             let y(): Int = vals.atom1(fn o.args[1])
-            let binary(op: ssa.Opcode): maybe.T(Array(Int)) = one(vals.binary(fn op x() y()))
-            let negated(v: Int): Int = vals.binary(fn ssa.opXor v vals.constant(fn 1))
             let noSite = fun(): Array(Int) array of :Int end
             (* A string's byte at an index, after the check of
              * quest_string_get_char and quest_string_set_char: a null string,
@@ -388,32 +387,11 @@ export
             else
                 let lib = maybe.unwrap(:String imp.libPath)
                 if vals.eq(lib "word") then
-                    if named("andBits") then binary(ssa.opAnd)
-                    elsif named("orBits") then binary(ssa.opOr)
-                    elsif named("xorBits") then binary(ssa.opXor)
-                    elsif named("notBits") then one(vals.binary(fn ssa.opXor x() vals.constant(fn ~1)))
-                    elsif named("add") then binary(ssa.opAdd)
-                    elsif named("sub") then binary(ssa.opSub)
-                    elsif named("mul") then binary(ssa.opMul)
-                    elsif named("fromInt") orif named("toInt") then one(x())
-                    elsif named("lt") then binary(ssa.opUlt)
-                    elsif named("gt") then one(vals.binary(fn ssa.opUlt y() x()))
-                    elsif named("le") then one(negated(vals.binary(fn ssa.opUlt y() x())))
-                    elsif named("ge") then one(negated(vals.binary(fn ssa.opUlt x() y())))
-                    elsif named("shift") then
+                    if named("shift") andif maybe.isNone(:Int intConstant(o.args[1])) then
                         (* quest_word_shift: left by a positive count, right by
-                         * a negative one, 0 by one of 64 or more either way;
-                         * by a constant, one instruction or none *)
-                        let w = x()
-                        let count = intConstant(o.args[1])
-                        if maybe.isSome(:Int count) then
-                            let n = maybe.unwrap(:Int count)
-                            if {n >= 64} orif {n <= ~64} then one(vals.constant(fn 0))
-                            elsif n > 0 then one(vals.binary(fn ssa.opShl w vals.constant(fn n)))
-                            elsif n < 0 then one(vals.binary(fn ssa.opLshr w vals.constant(fn 0 - n)))
-                            else one(w)
-                            end
-                        else
+                         * a negative one, 0 by one of 64 or more either way *)
+                        begin
+                            let w = x()
                             let n = y()
                             let shifted(op: ssa.Opcode by: Int): Array(Int) =
                                 representation.choose(fn vals.binary(fn ssa.opUlt by vals.constant(fn 64)) array of vals.tInt end
@@ -556,25 +534,28 @@ export
             representation.readSlot(fn vals.indexPtr(fn val offset) fieldType)
         end
 
+    (* The record of the module named name, as its two words: its value and
+     * its offset table *)
+    let moduleRecord(fn: vals.Fn name: String): Array(Int) =
+        begin
+            let recordAt = vals.symbolAt(fn symbols.moduleRecordIdent(symbols.mangleModuleName(name)))
+            array of
+                vals.loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "val") vals.tPtr)
+                vals.loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "dict") vals.tPtr)
+            end
+        end
+
     let moduleMember(fn: vals.Fn r: ir.ModuleRef member: maybe.T(String)): Array(Int) =
         case r
             when refModule with x then
                 if maybe.isNone(:String member) then
-                    let recordAt = vals.symbolAt(fn symbols.moduleRecordIdent(symbols.mangleModuleName(x.m.name)))
-                    array of
-                        vals.loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "val") vals.tPtr)
-                        vals.loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "dict") vals.tPtr)
-                    end
+                    moduleRecord(fn x.m.name)
                 else
                     vals.read(fn maybe.unwrap(:Variable ir.member(x.m.members maybe.unwrap(:String member))))
                 end
             when refImport with x then
                 if maybe.isNone(:String member) then
-                    let recordAt = vals.symbolAt(fn symbols.moduleRecordIdent(symbols.mangleModuleName(x.i.canonicalPath)))
-                    array of
-                        vals.loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "val") vals.tPtr)
-                        vals.loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "dict") vals.tPtr)
-                    end
+                    moduleRecord(fn x.i.canonicalPath)
                 else
                     importedMember(fn x.i maybe.unwrap(:String member))
                 end
