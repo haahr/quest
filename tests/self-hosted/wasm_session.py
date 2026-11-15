@@ -9,7 +9,9 @@ runtime/wasm/session-node.mjs in a worker with a Chromium worker's stack
   session lacks (its --session);
 - a session's recovery: an input that overflows the stack past the
   interpreter's limit, and one interrupted, each rolled back by a replay, with
-  the bindings before it kept.
+  the bindings before it kept;
+- the page (step 12) that tools/wasm-page/build writes from the same driver,
+  its archives and its worker's session run in node (wasm_page.mjs).
 
 Skipped, reporting nothing wrong, where node is missing.
 run_tests.py --self-hosted runs it (docs/testing.md).
@@ -40,6 +42,8 @@ from quest_session import Session  # noqa: E402
 
 SESSION = ROOT_DIR / "runtime" / "wasm" / "session-node.mjs"
 KERNEL_PROTOCOL = Path(__file__).resolve().parent / "kernel_protocol.py"
+PAGE_CHECK = Path(__file__).resolve().parent / "wasm_page.mjs"
+BUILD_PAGE = ROOT_DIR / "tools" / "wasm-page" / "build.py"
 TIMEOUT = 300
 
 # The transcripts a session does not reproduce, each with its reason
@@ -101,6 +105,20 @@ def check_recovery(command: list[str], scratch: Path) -> list[str]:
     return problems
 
 
+def check_page(driver_wasm: Path, into: Path) -> list[str]:
+    """The page built from driver_wasm, checked in node"""
+    page = into / "page"
+    built = subprocess.run([sys.executable, str(BUILD_PAGE), "--driver-wasm", str(driver_wasm), "-o", str(page)],
+                           capture_output=True, text=True, timeout=TIMEOUT)
+    if built.returncode != 0:
+        return [f"the page's build:\n{built.stdout}{built.stderr}"]
+    run = subprocess.run(["node", "--no-warnings", str(PAGE_CHECK), str(page), str(ROOT_DIR / "tests" / "repl")],
+                         capture_output=True, text=True, timeout=TIMEOUT)
+    if run.returncode != 0:
+        return [f"the page:\n{run.stdout}{run.stderr}"]
+    return []
+
+
 def check(driver: str, driver_wasm: str | None) -> list[str]:
     if shutil.which("node") is None:
         print("node is missing: the session is not checked")
@@ -117,6 +135,7 @@ def check(driver: str, driver_wasm: str | None) -> list[str]:
         scratch = into / "scratch"
         scratch.mkdir()
         problems += check_recovery([str(quest)], scratch)
+        problems += check_page(target, into)
     return problems
 
 

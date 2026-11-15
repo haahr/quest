@@ -23,7 +23,8 @@ import process from "node:process";
 import readline from "node:readline";
 import {Worker, isMainThread, parentPort, workerData} from "node:worker_threads";
 import {NodeMount} from "./host.mjs";
-import {Session, Exited, decodeRecord, failure, requestLine} from "./session.mjs";
+import {Repl} from "./repl.mjs";
+import {Session, Exited, failure, requestLine} from "./session.mjs";
 
 if (isMainThread) await main(); else serve();
 
@@ -157,33 +158,11 @@ async function main() {
   process.exit(0);
 }
 
-// The REPL's loop (questlang/driver/repl's run), reading standard input
-// without editing: its prompts, results, and errors as the REPL writes them
+// The REPL's loop (repl.mjs) over standard input, read without editing
 async function repl(request) {
-  const out = s => fs.writeSync(1, s);
-  const lines = [];
-  out(">>  ");
+  const r = new Repl(request, s => fs.writeSync(1, s), s => fs.writeSync(2, s));
+  r.begin();
   const input = readline.createInterface({input: process.stdin, terminal: false});
-  for await (const line of input) {
-    lines.push(line);
-    const text = lines.join("\n");
-    const status = decodeRecord((await request(requestLine({isComplete: text}))).find(r => "status" in r));
-    if (status.status === "complete") {
-      lines.length = 0;
-      if (text.trim() !== "") {
-        const records = (await request(requestLine({execute: text}))).map(decodeRecord);
-        for (const r of records) {
-          if ("result" in r) {
-            const [first, ...more] = r.result.split("\n");
-            out(`==  ${first}\n`);
-            for (const m of more) out(`    ${m}\n`);
-          } else if ("error" in r) {
-            fs.writeSync(2, r.rendered);
-          }
-        }
-      }
-    }
-    out(lines.length === 0 ? ">>  " : "    ");
-  }
-  out("\n");
+  for await (const line of input) await r.line(line);
+  r.end();
 }

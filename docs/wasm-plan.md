@@ -22,8 +22,8 @@ the four disagree, this plan holds.
 
 §1 lists the decisions and whose they are. §2 to §6 are the design. §7 is what is given up. §8 has the steps, and
 §9 the results of step 0's probes (2026-11-13), on which the owner confirmed decisions 1 and 2, and §10 step 1's
-census of what the compiler uses. Milestone 1 is reached (2026-11-14); in milestone 2, step 11 is done and step
-12, the page, is next.
+census of what the compiler uses. Milestones 1 and 2 are reached (2026-11-14): the compiler compiles itself in
+node, and the REPL runs in a page, interpreting; milestone 3, the JIT in the page, is next.
 
 ---
 
@@ -697,7 +697,8 @@ data, since their order is the loader's.
 
 **The page's driver is these same modules,** about 290 of them, instantiated at about 10 µs each. They are served
 as one archive, fetched once and cut into modules by the loader, since 290 requests would cost far more than the
-instantiation; what compiling them costs at start-up is measured in step 12. The IR's whole-program build is not
+instantiation; step 12 measured what that costs at start-up: about a fifth of a second to compile the 199 modules
+in a Chromium page, and some three quarters of a second for the driver's initializers, run cold. The IR's whole-program build is not
 used for the driver: it sees through abstract types to their representations, so its layouts would disagree with an
 input compiled apart (Opus's §8.2). Merging the modules at the WebAssembly level, which keeps every export, is a
 later optimization of size and start-up.
@@ -732,7 +733,11 @@ source, with its externals bound to the driver's compiled library, as natively. 
 session's memory, from the interfaces, as the native JIT makes them (about 10 ms for a program's, natively). A
 `.qi` holds nothing of a target (§5.3), so the library's archive can carry the release's `.qi` files beside the
 sources, and save a session's first inputs the elaboration of every interface they reach, which for an input that
-imports the compiler's own units is some 150 of them. Step 12 measures the first input's latency and decides.
+imports the compiler's own units is some 150 of them. Step 12 measured the first input's latency and decided: the
+`.qi` files are not shipped. A first input that imports eleven of the library's modules took 364 to 381 ms in four
+sessions without them, and 369 to 397 ms with them, the interpreter's own elaboration and loading of the modules
+being what costs. The question returns with milestone 3, whose compiler reads `.qi` files, and with inputs that
+import more.
 
 ### 5.3. Artifacts
 
@@ -779,14 +784,14 @@ change neither (Opus's §3.2).
 - **The interpreter does not,** at its own limit of 1,000 calls: natively about 6 KB of stack for an interpreted
   call whose body nests calls (Opus), so some 80 to 250 calls in a worker. Measured in step 11, with locals
   reused: 753 calls of a simple body and 175 of a nested one in a worker's 512 KB, so a session sets the limit to
-  150.
+  150. In a Chromium worker (step 12): 734 and 169.
 - **Compiled code does:** about 100 bytes for a small function's call in baseline code and about 30 when
   optimized, and about 8 bytes more for each live local in either (Opus's author, in V8: 580 bytes with 64 live
   locals, 2.1 KB with 256).
 
 So the interpreter in a page is a checkpoint (decision 4): it shows the driver running in a page, with shallow
 recursion, and the JIT follows at once as the REPL people use. The interpreter is not rewritten for this target.
-Step 12 measures its depth in WebAssembly, which the native figure only estimates.
+Steps 11 and 12 measured its depth in WebAssembly, which the native figure only estimated.
 
 Tests under node constrain the stack to a browser's (`--stack-size`, or a worker's `resourceLimits`), or they pass
 where a browser fails.
@@ -1136,7 +1141,8 @@ only when the backend's files differ, until its time is known.
 
 A checkpoint (decision 4): the driver of milestone 1, unchanged but for its entry, runs in a page's worker and
 interprets each input, with whatever depth the stack gives. Its steps were drafted 2026-11-14 on milestone 1's
-results, and the owner had step 11 built as drafted, with the interpreter's limit below a worker's stack.
+results, and the owner had step 11 built as drafted, with the interpreter's limit below a worker's stack, and then
+step 12.
 
 **Choices this draft makes,** each the owner's to confirm or change (§8.2.1 says why):
 
@@ -1247,6 +1253,49 @@ results, and the owner had step 11 built as drafted, with the interpreter's limi
     *Done when* the transcripts of `tests/repl/` give their goldens when typed or pasted into the page in a
     Chromium browser, the only kind promised for now; an overflow and an interrupt recover there; and §6.2 and
     §5.2 record the measurements, with the `.qi` question decided on them.
+
+    *Done 2026-11-14:*
+    - **Built** by `tools/wasm-page/build` (`build.py`), which compiles the driver with `--backend wasm` (43 s with
+      `./quest`), or takes one built (`--driver-wasm`), into a directory: `index.html` and `style.css`; `ui.mjs`,
+      the prompt; `page.mjs`, which loads the archives, compiles the modules once, and runs a session's worker;
+      `worker.mjs`, the worker; `host.mjs` and `session.mjs` of step 11 unchanged but for a mount over URL
+      prefixes; `repl.mjs`, the REPL's loop, which `session-node.mjs` now uses too; and the two archives,
+      `driver.qar.gz` and `lib.qar.gz`, in a format of their own (`runtime/wasm/archive.mjs`: an index in JSON, the
+      members' bytes, gzip that the page undoes with `DecompressionStream`). `--tests` adds `check.html`, which
+      runs the REPL's transcripts in the page against their goldens, and `--check` runs it in headless Chrome.
+    - **Files:** `/` is the session's own files, in memory in the worker, the current directory `/work`; each change
+      is posted to the page, whose copy a worker started after an interrupt begins with, so that they last as long
+      as the page. `QUEST_HOME` is `/quest`, with the library's archive at `/quest/lib`. A `path=URL` in the
+      page's query is mounted at `/remote/N` and named in `QUEST_PATH`, read by synchronous request, each file at
+      most once; `load=PATH` and `args=` are `-i`'s file and the program's arguments.
+    - **The prompt:** a line at a time, as the native REPL reads them, so a paste of several lines is several
+      lines; a line typed while an input runs waits its turn. History on the arrows; Tab completes through the
+      protocol's `complete`. Ctrl-C, or the button, interrupts an input (a new worker, the session replayed), and
+      at the prompt discards the phrase in progress. Displays show as they come: HTML in a frame sandboxed without
+      scripts, SVG and other images as images.
+    - **`readLine`** raises `readline.error` on this target, as it did, rather than giving the end of input as the
+      draft said: the end of input is `readline.endOfInput`, an exception made by the readline unit's initializer,
+      which the code generated for the external cannot reach. Either way no line is read; a prompt for one waits
+      for milestone 3.
+    - **Checked** in the desktop app's Chromium and in Google Chrome, headless, with a profile of its own: the
+      REPL's 16 transcripts give their goldens, typed a line at a time, `stack_overflow` pending as in node; by
+      hand, an interrupt of an endless loop, an overflow at the interpreter's limit (rolled back), one past it
+      (replayed, in 46 ms after ten inputs), displays, paste, completion. In node,
+      `tests/self-hosted/wasm_page.mjs`, run by `self-hosted/wasm_session`, checks the page's build: its archives,
+      and its worker's session, with a URL prefix, a file written and copied, a display, and a replay in a new
+      worker that keeps the bindings and the files.
+    - **Measured** in Chromium, from a server on the same machine:
+      - the archives: the driver's modules 16.9 MB, 3.9 MB compressed; the library 265 KB, 54 KB compressed (327 KB
+        and 60 KB with the `.qi` files);
+      - start-up, a page's first: fetching 21 ms, unpacking 31, compiling 118, and the session's start, which
+        instantiates the modules and runs the driver's initializers, cold, 761 ms; about a second to the prompt
+        locally, so that a real network's 3.9 MB is what start-up waits for;
+      - an input's latency: 9 ms for the first (`let x = 1 + 1`), 1 ms for the next; an input importing one library
+        module, 68 ms, and eleven, about 375 ms, with the `.qi` files or without, so they are not shipped (§5.2);
+      - the interpreter's depth in a worker: 734 calls of the simple body and 169 of the nested one, against node's
+        753 and 175, so the limit of 150 stands (§6.2);
+      - a replay: 117 ms for an interrupt after ten inputs (a new worker, the modules already compiled, the inputs
+        run again), 46 ms for an overflow's (the same worker, a new instance).
 
 #### 8.2.1. Why These Choices
 

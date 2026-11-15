@@ -307,7 +307,9 @@ units they import are in `tests/self-hosted/wasm/units`, imported as `units/NAME
 the driver with `--backend wasm` and runs it as a session in node (`runtime/wasm/session-node.mjs`, in a worker with a
 browser worker's 512 KB of stack): the REPL's transcripts against their goldens, but for those it names as pending,
 the kernel's protocol (`kernel_protocol.py --session`), and a session's recovery from a stack overflow by replay
-(wasm-plan.md step 11). The
+(wasm-plan.md step 11); and it builds the page (`tools/wasm-page/build`, step 12) from the same driver and checks it
+in node (`tests/self-hosted/wasm_page.mjs`): its archives, and its worker's session. The page in a browser is
+checked by `tools/wasm-page/build --check`, in headless Chrome, which no suite runs. The
 generated C has no goldens: `tools/c-diff` shows how a
 change alters it (§2.9). `run_c_compiled` builds into a directory of its own under each worker's (`self-hosted-units`), so that they don't reuse the bootstrap's fresh
 artifacts. The self-hosted driver builds the questlang tests once, one after another, into a shared directory

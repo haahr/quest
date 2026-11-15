@@ -47,20 +47,26 @@ export function normalize(path) {
 
 // A mount over a directory tree held in memory: a Map from each path relative
 // to the mount ("" the mount's own) to a Uint8Array for a file or null for a
-// directory. readOnly refuses every change.
+// directory. readOnly refuses every change. files gives the entries to start
+// with, the same map (a Map or an object), or a file's text as a string; a
+// change made is also given to changed, as the method's name and arguments,
+// so that a copy elsewhere (a page's, of a worker's files) can make it too.
 export class MemoryMount {
-  constructor(files = {}, readOnly = false) {
+  constructor(files = {}, readOnly = false, changed = null) {
     this.entries = new Map([["", null]]);
     this.readOnly = readOnly;
+    this.changed = changed;
     this.time = BigInt(Date.now()) * 1000000n;
-    for (const [rel, bytes] of Object.entries(files)) {
+    for (const [rel, bytes] of files instanceof Map ? files : Object.entries(files)) {
       const parts = rel.split("/");
       for (let i = 1; i < parts.length; i++) this.entries.set(parts.slice(0, i).join("/"), null);
-      this.entries.set(rel, typeof bytes === "string" ? encoder.encode(bytes) : bytes);
+      if (rel !== "") this.entries.set(rel, typeof bytes === "string" ? encoder.encode(bytes) : bytes);
     }
   }
   parent(rel) { return rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : ""; }
   changing() { if (this.readOnly) throw new Errno(E.ROFS); }
+  // Tells changed of a change made
+  made(...change) { if (this.changed) this.changed(change); }
   stat(rel) {
     if (!this.entries.has(rel)) return null;
     const e = this.entries.get(rel);
@@ -78,6 +84,7 @@ export class MemoryMount {
     if (this.entries.get(this.parent(rel)) !== null) throw new Errno(E.NOENT);
     if (this.entries.get(rel) === null) throw new Errno(E.ISDIR);
     this.entries.set(rel, bytes);
+    this.made("write", rel, bytes);
   }
   list(rel) {
     if (this.entries.get(rel) !== null) throw new Errno(this.entries.has(rel) ? E.NOTDIR : E.NOENT);
@@ -95,6 +102,7 @@ export class MemoryMount {
     if (this.entries.has(rel)) throw new Errno(E.EXIST);
     if (this.entries.get(this.parent(rel)) !== null) throw new Errno(E.NOENT);
     this.entries.set(rel, null);
+    this.made("mkdir", rel);
   }
   unlink(rel) {
     this.changing();
@@ -102,12 +110,14 @@ export class MemoryMount {
     if (e === undefined) throw new Errno(E.NOENT);
     if (e === null) throw new Errno(E.ISDIR);
     this.entries.delete(rel);
+    this.made("unlink", rel);
   }
   rmdir(rel) {
     this.changing();
     if (this.entries.get(rel) !== null) throw new Errno(this.entries.has(rel) ? E.NOTDIR : E.NOENT);
     if (this.list(rel).length > 0) throw new Errno(E.NOTEMPTY);
     this.entries.delete(rel);
+    this.made("rmdir", rel);
   }
   rename(rel, toRel) {
     this.changing();
@@ -120,7 +130,47 @@ export class MemoryMount {
         this.entries.set(toRel + key.slice(rel.length), value);
       }
     }
+    this.made("rename", rel, toRel);
   }
+}
+
+// A mount over a URL prefix, read only (docs/wasm-plan.md section 5.2): a
+// file's path relative to the mount, appended to the prefix, is the URL it is
+// fetched from, at most once. get(url) fetches synchronously, giving the
+// bytes, or null when the server has no such file; any other failure throws
+// an Errno. A page's worker gets with a synchronous XMLHttpRequest, which
+// fetch cannot be. The mount itself is a directory, and so is nothing else:
+// a server lists no directory, and so lists nothing here.
+export class UrlMount {
+  constructor(prefix, get) {
+    this.prefix = prefix.endsWith("/") ? prefix : prefix + "/";
+    this.get = get;
+    this.fetched = new Map();
+  }
+  fetch(rel) {
+    if (!this.fetched.has(rel)) this.fetched.set(rel, this.get(this.prefix + rel));
+    return this.fetched.get(rel);
+  }
+  stat(rel) {
+    if (rel === "") return {type: "directory", size: 0, mtimeNs: 0n};
+    const bytes = this.fetch(rel);
+    return bytes === null ? null : {type: "file", size: bytes.length, mtimeNs: 0n};
+  }
+  read(rel) {
+    const bytes = rel === "" ? undefined : this.fetch(rel);
+    if (bytes === undefined) throw new Errno(E.ISDIR);
+    if (bytes === null) throw new Errno(E.NOENT);
+    return bytes;
+  }
+  list(rel) {
+    if (rel !== "") throw new Errno(this.fetch(rel) === null ? E.NOENT : E.NOTDIR);
+    return [];
+  }
+  write() { throw new Errno(E.ROFS); }
+  mkdir() { throw new Errno(E.ROFS); }
+  unlink() { throw new Errno(E.ROFS); }
+  rmdir() { throw new Errno(E.ROFS); }
+  rename() { throw new Errno(E.ROFS); }
 }
 
 // A mount over node's files under root, given node's fs module (so that this
