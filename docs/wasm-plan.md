@@ -24,7 +24,7 @@ the four disagree, this plan holds.
 §9 the results of step 0's probes (2026-11-13), on which the owner confirmed decisions 1 and 2, and §10 step 1's
 census of what the compiler uses. Milestones 1, 2, and 3 are reached (2026-11-14): the compiler compiles itself in
 node, the REPL runs in a page, and each input there is compiled to a module and run as compiled code (steps 13 and
-14). Milestone 4 (§8.4) is the rest, its order to be chosen.
+14). Milestone 4's steps (§8.4) are drafted, with questions for the owner in §8.4.1.
 
 ---
 
@@ -1550,18 +1550,123 @@ echo capture's C functions.
 
 ### 8.4. Milestone 4: The Rest
 
-In an order chosen then:
+The language entire on this target, then its speed, the page's size, and the other browsers. Its steps were drafted
+2026-11-14 on milestone 3's results; the order and the open questions (§8.4.1) are the owner's.
 
-- `var` and `out` parameters (§2.6);
-- the rest of `auto`, `inspect`, and `dynamic`;
-- the mathematical functions in Quest (§4.3), and `real.format`;
-- variants, records' views, bounded quantifiers, proxies, and the runtime they need: subtyping, `quest_convert`,
-  view maps, the map of record tables (§10.1);
-- the run suite's pending list worked down;
-- whatever step 10's profile asked for: typed arrays (§2.4), adapters at polymorphic calls (§3.2), specialization
-  on scalar type arguments (§4.1), flat tuples (§2.3);
-- the page's size and start-up time, and merging modules (§5.1);
-- Safari and Firefox, neither checked nor promised until then.
+**Where it starts.** The run suite has 105 pending for `wasm` and `wasm-node`, and 115 for `wasm-jit`
+(`tests/self-hosted/pending-wasm.txt` and `pending-wasm-jit.txt`). The second list is grouped by what each test
+needs, and the first is the same tests compiled, less those that need only what the JIT adds. By what they need,
+counting a test once for each list it is in:
+
+| What a test needs | Tests (`wasm-jit`) | Step |
+|---|---|---|
+| variants | 36 | 16 |
+| `auto`, `inspect`, and `dynamic` | 28 | 18 |
+| records' views, subtyping, and proxies | 21 | 17 |
+| `var` and `out` parameters, and locations | 19 | 15 |
+| `Real`'s mathematical functions and `real.format` | 5 | 19 |
+| a built-in operator as a value; a recursive value's record capture; an option's ordinal out of bounds (as the native JIT's); `types_judgments`' difference | 9 | 20 |
+| `os/process`, `os/value`, `os/fileStats`' modes, readline (§7) | 7 | none: accepted |
+
+The groups overlap where a test needs two things; a test is under the first of its needs that a step provides, and
+it passes when the last does. Every step below removes from both lists the tests it makes pass, and its *done when*
+is those of its group that need nothing a later step adds.
+
+**What carries over:** the IR already lowers each of these (the C and arm64 backends compile them), and the
+represent pass already plans their conversions. What each step adds is this backend's half, and the core's
+functions that the C runtime has (§4.2): written in Quest over the intrinsics, monomorphic, ported from the C as it
+stands, not redesigned.
+
+15. **Locations.** `var` and `out` parameters, `@`, and `var(e)`, as §2.6 has them: every address a pair of a
+    `(ref $slots)` and an `i32`, a local whose address is taken kept in a one-element slot array from its
+    declaration, and the callee reading and writing through the pair with no dispatch. A module's top-level `var`
+    whose address its unit takes lives in a slot array its global holds; one other units see is a field of the
+    module's record. So the kernel's mode, whose top-level bindings are not slots, reads an earlier input's `var`
+    by its record's field (step 13's finding 2).
+    *Done when* the locations' group passes in both lists, and a kernel session (`kernel_protocol.py --session`)
+    reads and assigns an earlier input's `var` with the JIT.
+16. **Variants.** §2.5's pair, an `i32` tag in the type's numbering and an `eqref` payload, boxed in an immutable
+    `$varBox` in a slot; the tag maps (`(array i32)`) that remap a variant seen at another type; `case` over a
+    variant, `?` and `!`, `is`, printing and echo, and a variant's descriptor (`variant_tags`). The closure
+    signature already has a variant's two values (§3.2).
+    *Done when* the variants' group passes in both lists, but for those that also need step 17 or 18.
+17. **Records' views, subtyping, and proxies.** The rest of §4.2's core: run-time subtyping; conversion
+    (`quest_convert`, the `view`, `runtime`, `copy`, `cast`, and `unproxy` plans); a record seen at a type whose
+    table is known only at run time, through the map of record tables; a record's field stored at another type;
+    bounded quantifiers, whose type parameter carries a view map, and a bound's representation in signatures
+    (§3.2); and proxies, whose path at a read (§2.3) has been a pending stub since step 4. Natively these are the
+    C runtime's `quest_views.c` (conversion, views, and proxies), which is ported.
+    *Done when* the views' group passes in both lists, but for those that also need step 18, and the variants'
+    that waited for it.
+18. **`auto`, `inspect`, and `dynamic`.** An `auto` value and `inspect` (`opMakeAuto`, `sInspect`), and
+    `lib/dynamic`'s externals: `copy`, `intern`, `extern`, and the serialization. The serialization is the core's
+    upper layer (§4.2), since it may import the library; the interpreter's Quest version (`values/dynamicjson`) is
+    the model where it serves, and the C runtime's (`quest_serialization.c`) is the reference, byte for byte, which
+    the shared goldens check.
+    *Done when* the `dynamic` group passes in both lists, and with it every test of steps 16 and 17 that waited.
+19. **`Real`'s mathematics.** §4.3's second half: the mathematical functions ported to Quest from musl's or
+    FreeBSD's `msun`, in a unit of the library beside `util/realconv` (and, like it, written and tested natively
+    against libc first); `**` on reals; and `real.format`, a third formatter over `realconv`'s exact digits. A
+    golden whose printed results differ from Apple's libm in the last bit is recorded for this target or exempt,
+    each named (§7, 6).
+    *Done when* the `Real` group passes in both lists, and the tests of the functions against libc pass natively
+    within the error bound the port states.
+20. **What is left of the lists.** A built-in operator passed as a value; a recursive value's capture of a record;
+    an option's ordinal out of bounds, which is pending on the native JIT too and is fixed in both; and
+    `questlang/types_judgments`, which under the wasm JIT reports no unbound type variable where the program
+    compiled does: a difference to find first. And, if the owner takes it (§8.4.1), step 13's finding 1: a
+    function's call of itself in tail position compiled as a loop, so that V8 can end the worker it runs in.
+    *Done when* each list holds only §7's absences (`os/process`, `os/value`, `os/fileStats`' modes, readline)
+    and decision 12's frames, each with its reason, and the kernel's interrupt of a tail recursion runs in a
+    session if the remedy is taken.
+21. **Speed, as the profile asks.** Step 10's profile named boxing `Int`s (about 10% of self-compilation) and the
+    adapters this target does not need (about 8%, §3.2), and calls across units as the hottest functions. So:
+    the adapters left out where the closure signatures already agree, by a model of this target in the represent
+    pass (§4.1), and the `Int` boxes that remain found and counted before any is removed. Self-compilation in node
+    is profiled again before and after, beside arm64's, in [benchmarks.md](benchmarks.md) §22, and the run suite's
+    programs are timed in node and wasmtime. Typed arrays (§2.4), specialization on scalar type arguments (§4.1),
+    and flat tuples (§2.3) are taken only if the new profile shows them leading.
+    *Done when* benchmarks.md records the profiles before and after, and each change is kept or not on its measure.
+22. **The page's size and start-up.** Step 12 measured 3.9 MB compressed and about a second to the prompt
+    locally, three quarters of it the driver's initializers, run cold. This step measures where the initializers'
+    time goes, by unit, and what merging the modules (§5.1) saves in size and in compiling; and it tries what the
+    measure points to: the initializers' tables built lazily, units the REPL never calls left out of the archive,
+    or modules merged at the WebAssembly level, keeping every export.
+    *Done when* §5.1 and step 12's figures are measured again, and each change is kept or not on its measure.
+23. **Other browsers.** `check.html` run in Firefox and Safari, both modes, and the page used by hand. Each
+    engine's support for what this target uses (WasmGC, tail calls, exceptions with `exnref`, a worker's
+    synchronous request) is recorded, and its stack in a worker measured as step 12 measured Chromium's (§6.2).
+    *Done when* §6.2 and a new note in §6 record each browser's results, and the page says which it supports.
+
+#### 8.4.1. Why These Choices, and What Is Open
+
+- **The order follows the dependencies.** Locations stand alone and are the smallest change, so they come first
+  and clear the kernel's finding. Variants come before views because a view's conversion remaps variants' tags,
+  and `dynamic` comes after both because its serialization walks every kind of value. `Real`'s mathematics stands
+  apart and could move anywhere; it is late because only five tests wait for it. Speed comes after the language,
+  so that the profile is taken over code that compiles everything, and the page and the browsers last, since
+  they change nothing the suites check. **Open:** whether the owner wants another order, such as speed or the
+  page's start-up before the language's rest.
+- **Ported, not redesigned.** The C runtime's conversion, views, and proxies are known to be right against the
+  goldens; porting them to Quest over the intrinsics keeps the two runtimes printing alike (§4.2). The core's rule
+  stands: monomorphic, with no `auto`, `inspect`, or `dynamic` inside it.
+- **Step 13's finding 1, the endless tail recursion that cannot be interrupted.** **Open:** whether to take a
+  remedy in step 20, and which. (a) A function's call of itself in tail position compiled as a loop: V8 checks
+  for termination at loops' back edges, so the worker can be ended; it covers self-recursion only, not mutual
+  recursion through `return_call`. (b) A count at each function's entry, which also gives a catchable
+  `stack.overflow` (§6.3's later addition), at a cost in every call. (c) Neither: the page's interrupt then fails
+  only on an endless tail recursion, and the user reloads. The draft proposes (a).
+- **Speed only where measured.** The profile asked for two things, and the others in §8.4's old list (typed
+  arrays, specialization, flat tuples) wait for a profile that asks for them. **Open:** whether milestone 4
+  includes speed at all, or the language alone.
+- **The page's size.** 3.9 MB compressed is most of a real network's start-up, and three quarters of a local
+  start-up is the initializers. **Open:** whether step 22 is wanted now, and whether a page that loads in a
+  second locally is enough for this milestone.
+- **Which browsers are promised.** **Open:** whether Firefox and Safari are promised once step 23 finds them
+  working, or only recorded. Chromium stays the one that the checks run.
+- **Not in this milestone:** §7's accepted differences stay accepted: `os/process`, `os/code`, `os/value`, and
+  readline absent, and tracebacks the raise site only (decision 12). The native JIT's failure on an earlier
+  input's tuple field (step 13's finding 3) is a bug of both JITs' shared code, to be fixed apart from this plan.
 
 ---
 
