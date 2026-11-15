@@ -366,21 +366,27 @@ export
             end
         end
 
-    let countReturns(b: Body): Int =
+    (* How many returns a function's body has (not counting those of the
+     * functions it binds) *)
+    let rec countReturns(b: Body): Int =
         begin
-            let counted = tuple let var n = 0 end
-            returns(b fun(a: Atom pos: Int): Stmt
-                begin
-                    counted.n := counted.n + 1
-                    option sReturn of Stmt with let var pos = pos let var value = a end
-                end)
-            counted.n
+            let var n = 0
+            for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
+                let s = vector.get(:Stmt b.statements i)
+                case s
+                    when sReturn then n := n + 1
+                    else
+                        let inner = walk.statementBodies(s)
+                        for k = 0 upto {extent inner - 1} do n := n + countReturns(inner[k]) end
+                end
+            end
+            n
         end
 
     Def Read = Tuple v: Variable op: nodes.Op end
 
-    let expand(f: nodes.Function typeArgs: Array(model.Type) args: Array(Atom) byRef: Array(maybe.T(Variable))
-        reads: Array(Read) into: maybe.T(Variable) pos: Int rest: Array(Stmt) labels: clone.Labels): Array(Stmt) =
+    (* A cloner of f's body at typeArgs, its labels counted by labels *)
+    let clonerAt(f: nodes.Function typeArgs: Array(model.Type) labels: clone.Labels): clone.Cloner =
         begin
             let subst = model.newSubst()
             for i = 0 upto {extent f.typeParams - 1} do
@@ -388,7 +394,25 @@ export
                     hashMap.insert(:Int :model.Type subst f.typeParams[i].symbolId typeArgs[i])
                 end
             end
-            let c = clone.newRelabelingCloner(subst labels)
+            clone.newRelabelingCloner(subst labels)
+        end
+
+    (* Binds each of reads' variables, in the copy c makes, to a local of its
+     * own, by a let of its operation at pos appended to bound *)
+    let bindReads(c: clone.Cloner reads: Array(Read) pos: Int bound: vector.T(Stmt)): Ok =
+        for i = 0 upto {extent reads - 1} do
+            let v = reads[i].v
+            let local = nodes.newVar(v.hint clone.ty(c v.type) false)
+            clone.bindVar(c v local)
+            let binding = nodes.letStmt(local reads[i].op)
+            nodes.positionAt(binding pos)
+            vector.append(:Stmt bound binding)
+        end
+
+    let expand(f: nodes.Function typeArgs: Array(model.Type) args: Array(Atom) byRef: Array(maybe.T(Variable))
+        reads: Array(Read) into: maybe.T(Variable) pos: Int rest: Array(Stmt) labels: clone.Labels): Array(Stmt) =
+        begin
+            let c = clonerAt(f typeArgs labels)
             let result = maybe.unwrapOr(:Variable into nodes.newVar("r" clone.ty(c f.resultType) false))
             let bound = vector.new(:Stmt)
             for i = 0 upto {extent f.params - 1} do
@@ -401,14 +425,7 @@ export
                     vector.append(:Stmt bound binding)
                 end
             end
-            for i = 0 upto {extent reads - 1} do
-                let v = reads[i].v
-                let local = nodes.newVar(v.hint clone.ty(c v.type) false)
-                clone.bindVar(c v local)
-                let binding = nodes.letStmt(local reads[i].op)
-                nodes.positionAt(binding pos)
-                vector.append(:Stmt bound binding)
-            end
+            bindReads(c reads pos bound)
             clone.bindAll(c f.body)
             let body = clone.copyBody(c f.body)
             let n = vector.length(:Stmt body.statements)
@@ -449,23 +466,10 @@ export
     let specialize(f: nodes.Function static: Array(Bool) typeArgs: Array(model.Type) args: Array(Atom)
         reads: Array(Read) into: maybe.T(Variable) pos: Int rest: Array(Stmt) labels: clone.Labels): Array(Stmt) =
         begin
-            let subst = model.newSubst()
-            for i = 0 upto {extent f.typeParams - 1} do
-                if i < extent typeArgs then
-                    hashMap.insert(:Int :model.Type subst f.typeParams[i].symbolId typeArgs[i])
-                end
-            end
-            let c = clone.newRelabelingCloner(subst labels)
+            let c = clonerAt(f typeArgs labels)
             let result = maybe.unwrapOr(:Variable into nodes.newVar("r" clone.ty(c f.resultType) false))
             let bound = vector.new(:Stmt)
-            for i = 0 upto {extent reads - 1} do
-                let v = reads[i].v
-                let local = nodes.newVar(v.hint clone.ty(c v.type) false)
-                clone.bindVar(c v local)
-                let binding = nodes.letStmt(local reads[i].op)
-                nodes.positionAt(binding pos)
-                vector.append(:Stmt bound binding)
-            end
+            bindReads(c reads pos bound)
             (* The local function's parameters, and the arguments it is called
              * with, the static ones left out: each of those stands for its
              * argument, a variable, or one bound to a constant before the
