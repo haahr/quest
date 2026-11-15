@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
-import quest.syntax.ast as A  # noqa: E402
+from quest.syntax.astprint import ast_dump  # noqa: E402
 from quest.syntax.grammar import parse_quest_program  # noqa: E402
 from quest.syntax.parser import ParserError  # noqa: E402
 from quest.syntax.tokenizer import Tokenizer  # noqa: E402
@@ -70,7 +70,7 @@ def expected(name: str, text: str) -> str:
     """What the bootstrap gives for a case: its AST, or its syntax error."""
     tok = Tokenizer(text, name)
     try:
-        return A.ast_dump(parse_quest_program(tok.tokenize_all(), tok.source_map), show_offsets=True)
+        return ast_dump(parse_quest_program(tok.tokenize_all(), tok.source_map), show_offsets=True)
     except ParserError as e:
         return f"error at {e.offset}-{e.offset + e.length}: {e.message}"
 
