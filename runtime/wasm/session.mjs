@@ -38,13 +38,29 @@ export function decodeRecord(record) {
 }
 
 // The interpreter's limit on active calls in a session, unless the
-// environment gives one: below what a worker's 512 KB holds, so that a deep
+// environment gives one: below what the engine's worker holds, so that a deep
 // recursion raises the interpreter's own stack.overflow, which rolls its input
 // back, rather than overflow the engine's stack, which replays the session.
-// The stack a call takes depends on its body: 753 calls of a function whose
-// body is one if fit, and 175 of one whose body nests a let, a tuple, a loop,
-// and an if around the call (docs/wasm-plan.md section 6.2).
-export const callLimit = 150;
+// The stack a call takes depends on its body, and on how warm the code is: the
+// limit is about two thirds of the depth of a function whose body nests a let,
+// a tuple, a loop, and an if around the call, called in a new session, in each
+// engine's worker (docs/wasm-plan.md section 6.2): Chromium's 181, Firefox's
+// 378, Safari's 117 (which varies, one run overflowing at 100), and node's 175
+// at the 512 KB a session's worker gets. An engine not known takes the least.
+export const callLimits = {chromium: 150, firefox: 250, node: 150, other: 80};
+
+// The engine running here, by its user agent: node, Firefox, Chromium (whose
+// user agent names Chrome, as Edge's does), or another (Safari's names only
+// Safari)
+export function engine() {
+  const agent = globalThis.navigator?.userAgent || "";
+  if (globalThis.process?.versions?.node) return "node";
+  if (/Firefox\//.test(agent)) return "firefox";
+  if (/Chrome\/|Chromium\//.test(agent)) return "chromium";
+  return "other";
+}
+
+export const callLimit = callLimits[engine()];
 
 // Thrown by start or request when the driver exits: its status
 export class Exited extends Error {

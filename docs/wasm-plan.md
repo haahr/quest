@@ -797,7 +797,7 @@ change neither (Opus's §3.2).
 - **The interpreter does not,** at its own limit of 1,000 calls: natively about 6 KB of stack for an interpreted
   call whose body nests calls (Opus), so some 80 to 250 calls in a worker. Measured in step 11, with locals
   reused: 753 calls of a simple body and 175 of a nested one in a worker's 512 KB, so a session sets the limit to
-  150. In a Chromium worker (step 12): 734 and 169.
+  150. In a Chromium worker (step 12): 734 and 169. The limit is now the engine's (below, step 23).
 - **Compiled code does:** about 100 bytes for a small function's call in baseline code and about 30 when
   optimized, and about 8 bytes more for each live local in either (Opus's author, in V8: 580 bytes with 64 live
   locals, 2.1 KB with 256). Measured in a Chromium worker with the JIT (step 14): an input's recursion that is not
@@ -823,8 +823,13 @@ where a browser fails.
 | Firefox 160 | 96,893 | 1,619, 1,198 | 1,060 / 1,060 |
 | Safari 26.6.2 | 24,779 | 575, 348 | 349 / 466 |
 
-Every one is past the session's call limit of 150 and the inputs people type; Chromium's worker is the smallest
-for compiled recursion and Safari's for the compiler's nesting.
+The nested body there is lighter than step 11's. Step 11's (a tuple, a `let`, a loop, and an `if` around the call),
+called once in a new session so that its code runs cold, reaches 181 calls in Chrome, 378 in Firefox, and 117 in
+Safari, whose depth varies (one session overflowed at 100); called again in a warm session, deeper (128 in Safari,
+431 in Firefox). So **the session's call limit is the engine's** (`session.mjs`'s `callLimits`, the owner's choice
+of 2026-11-15): about two thirds of the cold depth, 150 in Chromium, 250 in Firefox, 150 in node, and 80 in Safari
+and any engine not known. Checked in each browser, three new sessions each: step 11's body called ten short of the
+limit returns, and far past it raises the interpreter's own `stack.overflow`, never the engine's.
 
 ### 6.3. When the Stack Overflows (decision 10)
 
