@@ -1,0 +1,97 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  let wOut: writer.T = member writer.output @9:12
+  funs {
+    fun printInt(n: Int): Ok {
+      let %1: String = call conv.int(n) @12:31
+      do call writer.putString(wOut, %1) @12:9
+      let %2: Ok = call writer.putString(wOut, "\n") @13:9
+      return %2
+    }
+  }
+  funs {
+    fun ord [A::<: O](o: A): Int {
+      let %3: Int = ordinal(o) in (none some) @22:29
+      return %3
+    }
+  }
+  funs {
+    fun get [A::<: O](o.1: A): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        switch tag(o.1) { @23:29
+          case some (p: Tuple x: Small end): {
+            let %4: Small = tuple_field(p, 0) @23:58
+            let %5: Int = record_field(%4, a) @23:58
+            jump k1(%5) @23:29
+          }
+          case none: {
+            jump k1(0) @23:29
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun extract [A::<: O](o.2: A): Int {
+      join k2(r.1: Int) {
+        return r.1
+      } in {
+        let %6: Bool = is_tag(o.2, some) @24:36
+        if %6 { @24:33
+          let %7: Tuple Int x: Small end = payload(o.2, some) #1 @24:48
+          let %8: Small = tuple_field(%7, 1) @24:48
+          let %9: Int = record_field(%8, a) @24:48
+          jump k2(%9) @24:33
+        } else {
+          jump k2(0) @24:33
+        }
+      }
+    }
+  }
+  let x: Record a: Int b: Int end = record(a = 12, b = 13) @25:35
+  let %10: Tuple x: Big end = tuple(x) @25:13
+  let qs: S = option(some, %10) @25:13
+  let %11: Int = call ord [S](qs) @26:10
+  do call printInt(%11) @26:1
+  let %12: Int = call get [S](qs) @27:10
+  do call printInt(%12) @27:1
+  let %13: Int = call extract [S](qs) @28:10
+  do call printInt(%13) @28:1
+  funs {
+    fun sizeOf [A::<: V](v: A): Int {
+      join k3(r.2: Int) {
+        return r.2
+      } in {
+        switch tag(v) { @33:32
+          case a (s: Small): {
+            let %14: Int = record_field(s, a) @33:58
+            jump k3(%14) @33:32
+          }
+          case b (n.1: Int): {
+            jump k3(n.1) @33:32
+          }
+          case z: {
+            jump k3(0) @33:32
+          }
+        }
+      }
+    }
+  }
+  let %15: W = variant(b, 9) @34:20
+  let %16: Int = call sizeOf [W](%15) @34:10
+  do call printInt(%16) @34:1
+  let %17: W = variant(z, ok) @35:20
+  let %18: Int = call sizeOf [W](%17) @35:10
+  do call printInt(%18) @35:1
+  let x.1: Record a: Int end = record(a = 4) @38:35
+  let %19: Tuple x: Small end = tuple(x.1) @38:13
+  let qo: O = option(some, %19) @38:13
+  let %20: Int = call ord [O](qo) @39:10
+  do call printInt(%20) @39:1
+  let %21: Int = call get [O](qo) @40:10
+  do call printInt(%21) @40:1
+}
+

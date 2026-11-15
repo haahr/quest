@@ -1,0 +1,40 @@
+(* Language: a function of a type parameter bounded by an option or variant type, called directly at a type argument
+   that numbers the cases otherwise, reads its values through the bound: ordinal, case, ?, and ! use the bound's cases
+   (docs/ir.md section 8.1: such a call is not specialized, since a clone would apply the bound's numbering to the
+   argument's values). bounded_parameters_own_view calls the same functions through first-class values. *)
+
+import writer: Writer;
+import conv: Conv;
+
+let wOut = writer.output;
+let printInt(n: Int): Ok =
+    begin
+        writer.putString(wOut conv.int(n))
+        writer.putString(wOut "\n")
+    end;
+
+Let Small = Record a: Int end;
+Let Big = Record a: Int b: Int end;
+
+(* Options: the type argument has only the case some, which it numbers 0, the bound 1 *)
+Let O = Option none some with x: Small end end;
+Let S = Option some with x: Big end end;
+let ord(A <: O o: A): Int = ordinal(o);
+let get(A <: O o: A): Int = case o when some with p then p.x.a when none then 0 end;
+let extract(A <: O o: A): Int = if o?some then o!some.x.a else 0 end;
+let qs: S = option some of S with record a = 12 b = 13 end end;
+printInt(ord(:S qs));
+printInt(get(:S qs));
+printInt(extract(:S qs));
+
+(* Variants: the type argument numbers b 0, the bound 1 *)
+Let V = Variant a: Small b: Int z: Ok end;
+Let W = Variant b: Int z: Ok end;
+let sizeOf(A <: V v: A): Int = case v when a with s then s.a when b with n then n when z then 0 end;
+printInt(sizeOf(:W variant b of W with 9 end));
+printInt(sizeOf(:W variant z of W with ok end));
+
+(* At the bound itself, the numbering is the same, and the call may be specialized *)
+let qo: O = option some of O with record a = 4 end end;
+printInt(ord(:O qo));
+printInt(get(:O qo));

@@ -369,7 +369,12 @@ descriptor; the enclosing function's own clones specialize the call in turn), an
 [c-representation.md](c-representation.md) §6.4.3 holds: a type argument that is or holds (in tuples, options,
 arrays, or cells) a record or variant, decided on its shape; or a `var` or `out` parameter, or a tuple parameter or
 result, over the function's type parameters, also decided on its shape (so a tuple type written through an alias or
-a type operator's application, `Box(A)`, counts as one written out).
+a type operator's application, `Box(A)`, counts as one written out). A call is not specialized when a type parameter's
+bound is or holds an option or variant and its argument is of another shape (`renumbers_cases`): lowering records, on
+the operations that read or make an option or variant (an ordinal, a switch's cases, a payload), the cases of its
+type as written, the bound's in the function, and the argument's numbering may differ (`Option some ... end` numbers
+`some` 0, `Option none some ... end` 1); generic code reads such values through the bound, converting them, but a
+clone would apply the bound's numbering to the argument's values.
 
 In the self-hosted compiler the copying is `questlang/ir/clone`'s, which the inliner shares (giving its copies fresh
 labels too, since they sit in their callers). The clone has fresh binders throughout and is bound by the same `funs`

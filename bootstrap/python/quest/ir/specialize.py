@@ -35,26 +35,48 @@ from quest.types import QFunType, QParam, QType
 MAX_DEPTH = 16
 
 
-def holds_record_or_variant(s: Shape, seen: Optional[set[int]] = None) -> bool:
+def holds(s: Shape, kinds: frozenset[str], seen: Optional[set[int]] = None) -> bool:
     """Whether values of shape s are, or hold (in tuples, options, arrays, and
-    cells), records or variants: values that generic code holds boxed, and
-    generic layouts box (a type parameter bounded by a record is viewed as its
-    bound, a record)."""
+    cells), values of one of kinds (a type parameter bounded by one is viewed
+    as its bound)."""
     seen = seen if seen is not None else set()
     if id(s) in seen:
         return False
     seen.add(id(s))
+    if s.kind in kinds:
+        return True
     match s.kind:
-        case "record" | "variant":
-            return True
         case "typevar":
-            return s.bound is not None and holds_record_or_variant(s.bound, seen)
+            return s.bound is not None and holds(s.bound, kinds, seen)
         case "tuple":
-            return any(holds_record_or_variant(c.shape, seen) for c in s.components)
+            return any(holds(c.shape, kinds, seen) for c in s.components)
         case "option":
-            return any(c.shape is not None and holds_record_or_variant(c.shape, seen) for c in s.cases)
+            return any(c.shape is not None and holds(c.shape, kinds, seen) for c in s.cases)
         case "array" | "cell" | "out":
-            return holds_record_or_variant(s.element, seen)
+            return holds(s.element, kinds, seen)
+    return False
+
+
+def holds_record_or_variant(s: Shape) -> bool:
+    """Whether values of shape s are, or hold, records or variants: values that
+    generic code holds boxed, and generic layouts box."""
+    return holds(s, frozenset({"record", "variant"}))
+
+
+def renumbers_cases(f: ir.Function, type_args: tuple[QType, ...]) -> bool:
+    """Whether a call of f at type_args would give a clone the bound's case
+    numbering of a value of another numbering: a type parameter bounded by a
+    type that is or holds an option or variant, whose argument is of another
+    shape. Lowering records, on the operations that read or make an option or
+    variant (an ordinal, a switch's cases, a payload), the cases of its type as
+    written, which in f is the bound's; generic code reads values of the
+    parameter's type through the bound, converting them
+    (docs/c-representation.md section 5.1), but a clone would apply the bound's
+    numbering to values of the argument's."""
+    for tp, t in zip(f.type_params, type_args):
+        if tp.bound is not None and not is_type_operator(t) and shape(t) is not tp.bound \
+                and holds(tp.bound, frozenset({"option", "variant"})):
+            return True
     return False
 
 
@@ -70,6 +92,8 @@ def should_specialize(f: ir.Function, type_args: tuple[QType, ...]) -> bool:
     # A function defined as an external C function stays generic: the C
     # function takes its type parameters' values in their slot form, a word
     if any(isinstance(s, ir.Let) and isinstance(s.value, ir.CallExternal) for s in f.body.statements):
+        return False
+    if renumbers_cases(f, type_args):
         return False
     # A type operator (the argument of a higher-kinded type parameter) is not
     # the type of values, and has no shape

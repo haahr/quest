@@ -50,18 +50,23 @@ export
             found
         end
 
-    let holdsRecordOrVariant(s0: Shape): Bool =
+    (* Whether values of shape s0 are, or hold (in tuples, options, arrays,
+     * and cells), values of a shape wanted says yes to (a type parameter
+     * bounded by one is viewed as its bound) *)
+    let holds(s0: Shape wanted: All(s: Shape) Bool): Bool =
         begin
             let seen = newIds()
             let rec holds(s: Shape): Bool =
                 if hashMap.contains(:Int :Bool seen s.id) then
                     false
+                elsif wanted(s) then
+                    true
                 else
                     hashMap.insert(:Int :Bool seen s.id true)
                     let kind = s.kind
                     case kind
                         when shapeRecord, shapeVariant then
-                            true
+                            false
                         when shapeTypevar then
                             maybe.isSome(:Shape s.bound) andif holds(maybe.unwrap(:Shape s.bound))
                         when shapeTuple then
@@ -87,6 +92,37 @@ export
                     end
                 end
             holds(s0)
+        end
+
+    (* Whether values of shape s are, or hold, records or variants: values that
+     * generic code holds boxed, and generic layouts box *)
+    let holdsRecordOrVariant(s: Shape): Bool =
+        holds(s fun(t: Shape): Bool shapes.kindIs(t shapes.shapeRecord) orif shapes.kindIs(t shapes.shapeVariant))
+
+    (* Whether a call of f at typeArgs would give a clone the bound's case
+     * numbering of a value of another numbering: a type parameter bounded by
+     * a type that is or holds an option or variant, whose argument is of
+     * another shape. Lowering records, on the operations that read or make an
+     * option or variant (an ordinal, a switch's cases, a payload), the cases
+     * of its type as written, which in f is the bound's; generic code reads
+     * values of the parameter's type through the bound, converting them
+     * (docs/c-representation.md section 5.1), but a clone would apply the
+     * bound's numbering to values of the argument's. *)
+    let renumbersCases(f: nodes.Function typeArgs: Array(Type)): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent f.typeParams - 1} do
+                let bound = f.typeParams[i].bound
+                if not(found) andif {i < extent typeArgs} andif maybe.isSome(bound)
+                    andif not(written.isTypeOperator(typeArgs[i])) then
+                    let b = maybe.unwrap(bound)
+                    if {shapes.shape(typeArgs[i]).id isnot b.id} andif holds(b fun(t: Shape): Bool
+                        shapes.kindIs(t shapes.shapeOption) orif shapes.kindIs(t shapes.shapeVariant)) then
+                        found := true
+                    end
+                end
+            end
+            found
         end
 
     let shouldSpecialize(f: nodes.Function typeArgs: Array(Type)): Bool =
@@ -118,7 +154,7 @@ export
                         andif mentionsAny(p.v.type ids) then found := true end
                 end
             end
-            not(isExternal) andif {found orif
+            not(isExternal) andif not(renumbersCases(f typeArgs)) andif {found orif
                 {shapes.kindIs(shapes.shape(f.resultType) shapes.shapeTuple) andif mentionsAny(f.resultType ids)}}
         end
 
