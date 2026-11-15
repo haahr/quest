@@ -1629,6 +1629,36 @@ stands, not redesigned.
     C runtime's `quest_views.c` (conversion, views, and proxies), which is ported.
     *Done when* the views' group passes in both lists, but for those that also need step 18, and the variants'
     that waited for it.
+    *Done 2026-11-14:*
+    - **What on this target views need, and what not:** every slot holds a value in one form (§2.2), so no two
+      layouts of a type differ, and C's layout equivalence, stored representations, and conversions between
+      layouts have nothing to do here. What a value seen at another type may need is its view: a record's table, a
+      variant's or option's tags in the other type's numbering, a tuple's or option's components seen so. The core
+      (§4.2) does that from descriptors, ported from `quest_types.c` and `quest_views.c` as they stand:
+      `isSubtype` (structural, coinductive, as `quest_is_subtype`; a var part's invariance is not checked, since
+      descriptors here do not say which parts are var), the map of record tables (`recordDict`, `viewDict`), the
+      stored types a table records where a payload stores a field at another type (`storedField`), `convert`
+      (`quest_convert`: a record's box with its table at the target, a variant adapted, a tuple or option proxied
+      or copied), view maps (`viewMap` and its reads), and proxies.
+    - **Records:** a `$record` carries its layout's descriptor, where the unit makes one (a closure's capture
+      record, which no view needs, carries none); a `$dict` gains `stored`, null for every static table; a record
+      whose table is known only at run time takes the core's.
+    - **Bounded quantifiers:** a function fetches each view map where it begins (`Function.viewMaps`), and a read
+      of a field, component, tag, or payload through the bound, a store into a field, and an address go through it.
+    - **Conversions:** `view` and `runtime` by descriptors in the core, from a value's slot form; `copy` a new tuple
+      of components each converted by its plan at slot level (`slotConvert`), where box, unbox, and cast are
+      nothing; `unproxy` a proxy's original.
+    - **Proxies:** a `$proxy` (a subtype of `$tupleLike`) holds the core's state, `Proxied`: the original, the type
+      its components are stored at, the type it is seen at, an option's tags. An access the represent pass marks
+      original or proxy tests for a `$tuple` first, and only on a miss calls the core (`unproxy`, `proxyTag`,
+      `proxyElement`, `proxyOptionElement`, `proxyOptionPayload`), as C tests its tag bit; `is` compares
+      originals; printing and the identity hash read through proxies.
+    - **Checked:** 30 tests of the compiled list pass and 29 of the JIT's (21 and 20 with records' tables, 8 and 8
+      with view maps and the conversions, `option_payload_sharing` with proxies). The rest of the group, and the
+      variants' that waited for it, now stop at `auto`, `inspect`, or `dynamic`, and are listed under them, but
+      `option_identity`: `is` on an abstract type's values compares them as its representation's, which needs the
+      registry of abstract types' representations (`quest_register_abstract_type`) that `dynamic` needs too, so
+      it moves to step 18.
 18. **`auto`, `inspect`, and `dynamic`.** An `auto` value and `inspect` (`opMakeAuto`, `sInspect`), and
     `lib/dynamic`'s externals: `copy`, `intern`, `extern`, and the serialization. The serialization is the core's
     upper layer (§4.2), since it may import the library; the interpreter's Quest version (`values/dynamicjson`) is

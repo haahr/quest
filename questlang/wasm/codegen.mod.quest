@@ -1075,8 +1075,9 @@ export
         end
 
     (* The eqref on the stack as a reference to the struct t, which access
-     * says may be a proxy: a cast, or a test that, finding a proxy, fails as
-     * pending (step 4 of the plan) *)
+     * says may be a proxy: a cast, or a test that, finding a proxy, takes
+     * its original (the core's unproxy); in the runtime's own units, which
+     * meet no proxy, it fails as pending *)
     let accessAs(f: F t: Int access: ir.Access): Ok =
         case access
             when direct then castTo(f t)
@@ -1090,8 +1091,17 @@ export
                     let from = tuple let nullable = true let heap = option heapEq of model.HeapType end end
                     let to = tuple let nullable = false let heap = heapOf(t) end
                 end)
-                emit(f i(ops.drop))
-                pending(f "a proxy")
+                if f.g.isRuntime then
+                    emit(f i(ops.drop))
+                    pending(f "a proxy")
+                else
+                    let v = scratch(f model.eqref)
+                    emit(f i1(ops.localSet v))
+                    emit(f i1(ops.globalGet f.g.noClosure))
+                    emit(f i1(ops.localGet v))
+                    runtimeUnitCall(f "wasm/core.unproxy")
+                    castTo(f t)
+                end
                 emit(f model.endInst)
         end
 
@@ -1132,6 +1142,33 @@ export
             emit(f i1(ops.structNew tTuple))
         end
 
+    (* The eqref on the stack, which may be a proxy, read: a field of the
+     * struct t (or element index of its slots, if index >= 0) when it is
+     * one, else the core's function through, as an i32 tag or an eqref *)
+    let proxyAware(f: F t: Int field: Int index: Int through: String): Ok =
+        begin
+            let v = scratch(f model.eqref)
+            let result = if index >= 0 then model.eqref else model.i32 end
+            emit(f i1(ops.localTee v))
+            emit(f option instRefTest of Inst with let type = tuple let nullable = false let heap = heapOf(t) end end)
+            emit(f model.ifInst(option blockValue of model.BlockType with let type = result end ""))
+            emit(f i1(ops.localGet v))
+            castTo(f t)
+            if index >= 0 then
+                emit(f i2(ops.structGet t fSlots))
+                emit(f model.i32Const(index))
+                emit(f i1(ops.arrayGet tSlots))
+            else emit(f i2(ops.structGet t field))
+            end
+            emit(f model.elseInst)
+            emit(f i1(ops.globalGet f.g.noClosure))
+            emit(f i1(ops.localGet v))
+            if index >= 0 then emit(f model.i64Const(index)) end
+            runtimeUnitCall(f through)
+            if index < 0 then emit(f i(ops.i32WrapI64)) end
+            emit(f model.endInst)
+        end
+
     (* Through a view map (section 4.2's core, quest_view_map): a call of
      * the core's that takes the map, the map's variable's value *)
     let viewMapOf(f: F m: maybe.T(ir.Variable)): Ok = atomParts(f ir.atomOfVar(maybe.unwrap(:ir.Variable m)))
@@ -1158,10 +1195,14 @@ export
                 for j = 0 upto extent parts(componentType(s x.index)) - 1 do emit(f i1(ops.localGet first + j)) end
             else
                 atom(f x.tup)
-                accessAs(f tTuple x.access)
-                emit(f i2(ops.structGet tTuple fSlots))
-                emit(f model.i32Const(x.index))
-                emit(f i1(ops.arrayGet tSlots))
+                if x.access?proxy andif not(f.g.isRuntime) then
+                    proxyAware(f tTuple fSlots x.index "wasm/core.proxyElement")
+                else
+                    accessAs(f tTuple x.access)
+                    emit(f i2(ops.structGet tTuple fSlots))
+                    emit(f model.i32Const(x.index))
+                    emit(f i1(ops.arrayGet tSlots))
+                end
                 if maybe.isSome(:ir.Variable x.viewMap) then viewPartOnStack(f x.viewMap x.index) end
                 unboxFor(f componentType(s x.index) target)
             end
@@ -1204,6 +1245,13 @@ export
                 else tuple let count = 1 let isTuple = false end
                 end
             end
+        end
+
+    let anyProxy(access: Array(ir.Access)): Bool =
+        begin
+            let var a = false
+            for k = 0 upto extent access - 1 do if access[k]?proxy then a := true end end
+            a
         end
 
     let anyIndirect(access: Array(ir.Access)): ir.Access =
@@ -1299,8 +1347,11 @@ export
     let tagOf(f: F value: ir.Atom access: ir.Access): Ok =
         begin
             atom(f value)
-            accessAs(f tOption access)
-            emit(f i2(ops.structGet tOption fTag))
+            if access?proxy andif not(f.g.isRuntime) then proxyAware(f tOption fTag ~1 "wasm/core.proxyTag")
+            else
+                accessAs(f tOption access)
+                emit(f i2(ops.structGet tOption fTag))
+            end
         end
 
     (* The tag of a value of a bounded type parameter, held at its type
@@ -1397,6 +1448,18 @@ export
                     emit(f i1(ops.localGet slots))
                     emit(f model.i32Const(j + 1))
                     viewOptionComponent(f opt x.viewMap tagIndex(s x.tag) j)
+                    emit(f i1(ops.arraySet tSlots))
+                end
+            elsif {count > 0} andif anyProxy(x.components) andif not(f.g.isRuntime) then
+                (* each component through the proxy, if it is one *)
+                let opt = scratch(f model.eqref)
+                atom(f x.value)
+                emit(f i1(ops.localSet opt))
+                for j = 0 upto count - 1 do
+                    emit(f i1(ops.localGet slots))
+                    emit(f model.i32Const(j + 1))
+                    emit(f i1(ops.localGet opt))
+                    proxyAware(f tOption fSlots j "wasm/core.proxyOptionElement")
                     emit(f i1(ops.arraySet tSlots))
                 end
             elsif count > 0 then
@@ -1673,9 +1736,13 @@ export
                 elsif shapes.kindIs(shapeOf(ir.atomType(x.args[0])) shapes.shapeOption) then
                     let a = scratch(f model.eqref)
                     let b = scratch(f model.eqref)
+                    (* options that may be proxies: their originals *)
+                    let originals = not(x.access?direct) andif not(f.g.isRuntime)
                     atom(f x.args[0])
+                    if originals then accessAs(f tOption ir.original) end
                     emit(f i1(ops.localSet a))
                     atom(f x.args[1])
+                    if originals then accessAs(f tOption ir.original) end
                     emit(f i1(ops.localSet b))
                     optionIs(f shapeOf(ir.atomType(x.args[0])) a b 0)
                     if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
@@ -1722,6 +1789,15 @@ export
                     emit(f model.i32Const(0))
                     emit(f model.endInst)
                     emit(f model.endInst)
+                elsif x.access?original andif not(f.g.isRuntime) then
+                    (* tuples or options that may be proxies: their
+                     * originals *)
+                    for k = 0 upto 1 do
+                        atom(f x.args[k])
+                        accessAs(f tTuple ir.original)
+                    end
+                    emit(f i(ops.refEq))
+                    if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
                 else
                 atoms(f x.args)
                 case atomType(x.args[0])
@@ -2909,8 +2985,8 @@ export
      * record's box seen at the target's type, its table the core's; a
      * variant's box with its tag in the target's numbering; a copy of a
      * tuple, each component converted by its own plan; a closure wrapped in
-     * an adapter's; and nothing for the plans that only change a value's
-     * representation outside a slot (box, unbox, cast, unproxy) *)
+     * an adapter's; a proxy's original; and nothing for the plans that only
+     * change a value's representation outside a slot (box, unbox, cast) *)
     let rec slotConvert(f: F plan: ir.Plan): Ok =
         case plan.kind
             when planView, planRuntime then
@@ -2966,7 +3042,8 @@ export
                 emit(f i1(ops.refFunc native))
                 emit(f i1(ops.localGet v))
                 emit(f i1(ops.structNew own))
-            when planBox, planUnbox, planSlotBox, planSlotUnbox, planCast, planUnproxy then ok
+            when planUnproxy then if not(f.g.isRuntime) then accessAs(f tTuple ir.original) end
+            when planBox, planUnbox, planSlotBox, planSlotUnbox, planCast then ok
         end
 
     (* A new tuple of the tuple on the stack's components, each converted by
@@ -3019,9 +3096,10 @@ export
                 emit(f i1(ops.refFunc native))
                 atom(f x.value)
                 emit(f i1(ops.structNew own))
-            (* nothing this backend compiles makes a proxy (section 10.1), so
-             * a value that might be one is its original *)
-            when planUnproxy then atom(f x.value)
+            (* a tuple or option that may be a proxy, as its original *)
+            when planUnproxy then
+                atom(f x.value)
+                if not(f.g.isRuntime) then accessAs(f tTuple ir.original) end
             when planVariantTags then
                 let table = maybe.unwrap(:ir.TagMap x.plan.tagMap)
                 let sourceS = shapeOf(table.source)
@@ -3473,6 +3551,32 @@ export
                 atom(f args[1])
                 emit(f i(ops.i32WrapI64))
                 emit(f i1(ops.arrayGet tSlots))
+            elsif named("isProxy") then
+                atom(f args[0])
+                emit(f option instRefTest of Inst with let type = tuple let nullable = false
+                    let heap = heapOf(rt.index("proxy")) end end)
+            elsif named("newProxy") then
+                emit(f model.i32Const(0))
+                atom(f args[0])
+                emit(f i1(ops.structNew rt.index("proxy")))
+            elsif named("proxyState") then
+                atom(f args[0])
+                castTo(f rt.index("proxy"))
+                emit(f i2(ops.structGet rt.index("proxy") 1))
+            elsif named("newTuple") then
+                emit(f model.i32Const(0))
+                atom(f args[0])
+                castTo(f tArray)
+                emit(f i2(ops.structGet tArray fElems))
+                emit(f i1(ops.structNew tTuple))
+            elsif named("newOption") then
+                emit(f model.i32Const(0))
+                atom(f args[1])
+                castTo(f tArray)
+                emit(f i2(ops.structGet tArray fElems))
+                atom(f args[0])
+                emit(f i(ops.i32WrapI64))
+                emit(f i1(ops.structNew tOption))
             elsif named("dictStored") then
                 atom(f args[0])
                 castTo(f tDict)
@@ -4024,12 +4128,16 @@ export
             (* a variant's tag and payload *)
             let vTag = if isV then scratch(f model.i32) else 0 end
             let vPayload = if isV then scratch(f model.eqref) else 0 end
+            (* the value itself, which may be a proxy *)
+            let raw = scratch(f model.eqref)
+            let proxied = x.access?proxy andif not(isV) andif not(f.g.isRuntime)
             if isV then
                 variantAtom(f x.value)
                 emit(f i1(ops.localSet vPayload))
                 emit(f i1(ops.localSet vTag))
             else
                 atom(f x.value)
+                if not(f.g.isRuntime) then emit(f i1(ops.localTee raw)) end
                 accessAs(f tOption x.access)
                 emit(f i1(ops.localSet opt))
             end
@@ -4049,6 +4157,9 @@ export
             end
             if viewed then viewTag(f x.value x.viewMap)
             elsif isV then emit(f i1(ops.localGet vTag))
+            elsif proxied then
+                emit(f i1(ops.localGet raw))
+                proxyAware(f tOption fTag ~1 "wasm/core.proxyTag")
             else
                 emit(f i1(ops.localGet opt))
                 emit(f i2(ops.structGet tOption fTag))
@@ -4067,16 +4178,38 @@ export
                         unboxFor(f binder.type maybe.some(:ir.Variable binder))
                         store(f binder)
                     elsif viewed andif not(shapes.kindIs(shapes.shape(binder.type) shapes.shapeOk)) then
-                        (* the case's components through the map, a new tuple
-                         * of them, or the one component *)
-                        let n = caseForm(s c.tags[0]).count
+                        (* the case's payload through the map, itself, or a
+                         * proxy of it where its components change view, so
+                         * that its var components are shared; or its one
+                         * component *)
                         if shapes.kindIs(shapes.shape(binder.type) shapes.shapeTuple) then
-                            emit(f model.i32Const(0))
-                            for j = 0 upto n - 1 do viewOptionComponent(f opt x.viewMap b j) end
-                            emit(f i2(ops.arrayNewFixed tSlots n))
-                            emit(f i1(ops.structNew tTuple))
+                            emit(f i1(ops.globalGet f.g.noClosure))
+                            emit(f i1(ops.localGet if f.g.isRuntime then opt else raw end))
+                            viewMapOf(f x.viewMap)
+                            runtimeUnitCall(f "wasm/core.viewOptionPayload")
                         else
                             viewOptionComponent(f opt x.viewMap b 0)
+                            if not(binder.boxed) then unbox(f binder.type) end
+                        end
+                        store(f binder)
+                    elsif proxied andif anyProxy(c.components)
+                        andif not(shapes.kindIs(shapes.shape(binder.type) shapes.shapeOk)) then
+                        (* through a proxy, the original's payload seen at the
+                         * case's type: a proxy of it, or its one component *)
+                        if shapes.kindIs(shapes.shape(binder.type) shapes.shapeTuple) then
+                            emit(f i1(ops.localGet raw))
+                            emit(f option instRefTest of Inst with let type = tuple let nullable = false
+                                let heap = heapOf(tOption) end end)
+                            emit(f model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
+                            emit(f i1(ops.localGet opt))
+                            emit(f model.elseInst)
+                            emit(f i1(ops.globalGet f.g.noClosure))
+                            emit(f i1(ops.localGet raw))
+                            runtimeUnitCall(f "wasm/core.proxyOptionPayload")
+                            emit(f model.endInst)
+                        else
+                            emit(f i1(ops.localGet raw))
+                            proxyAware(f tOption fSlots 0 "wasm/core.proxyOptionElement")
                             if not(binder.boxed) then unbox(f binder.type) end
                         end
                         store(f binder)
@@ -4476,6 +4609,14 @@ export
                 end
                 runtimeImport("wasm/print" "echoText" array of e end array of e end)
             end
+            (* the core's proxies, which an access that may meet one calls *)
+            if not(isRuntimeUnit(moduleName)) then
+                runtimeImport("wasm/core" "unproxy" array of e end array of e end)
+                runtimeImport("wasm/core" "proxyTag" array of e end array of n end)
+                runtimeImport("wasm/core" "proxyElement" array of e n end array of e end)
+                runtimeImport("wasm/core" "proxyOptionElement" array of e n end array of e end)
+                runtimeImport("wasm/core" "proxyOptionPayload" array of e end array of e end)
+            end
             if described then
                 hashMap.insert(:String :Int g.runtimeUnits "wasm/core.init"
                     importFunction("wasm/core" "init" funcType(g noTypes noTypes)))
@@ -4494,6 +4635,7 @@ export
                 runtimeImport("wasm/core" "viewRecordSlot" array of e e n end array of n end)
                 runtimeImport("wasm/core" "viewRecordField" array of e e e n end array of e end)
                 runtimeImport("wasm/core" "viewOptionComponent" array of e e n n end array of e end)
+                runtimeImport("wasm/core" "viewOptionPayload" array of e e end array of e end)
                 if echoes then runtimeImport("wasm/print" "echo" array of e e e e end array of e end) end
             end
             let allBodies = walk.unitBodies(unit)

@@ -9,6 +9,7 @@
     (type $tupleLike (sub $obj (struct (field $hash (mut i32)))))
     (type $tuple (sub $tupleLike (struct (field $hash (mut i32)) (field $slots (ref $slots)))))
     (type $option (sub final $tuple (struct (field $hash (mut i32)) (field $slots (ref $slots)) (field $tag i32))))
+    (type $proxy (sub final $tupleLike (struct (field $hash (mut i32)) (field $state eqref))))
     (type $string (sub final $obj (struct (field $hash (mut i32)) (field $length i32) (field $bytes (ref $bytes)))))
     (type $array (sub final $obj (struct (field $hash (mut i32)) (field $elems (ref $slots)))))
     (type $varBox (struct (field $tag i32) (field $payload eqref)))
@@ -48,12 +49,20 @@
   (type (func (param eqref)))
   (type (func))
   (type (func (param (ref $clos) eqref eqref) (result eqref)))
+  (type (func (param (ref $clos) eqref) (result eqref)))
+  (type (func (param (ref $clos) eqref) (result i64)))
+  (type (func (param (ref $clos) eqref i64) (result eqref)))
   (type (func (param (ref $clos) i64) (result eqref)))
   (type (func (param (ref $clos) i64 eqref i64 i64) (result eqref)))
   (type (func (param (ref $clos) eqref i64 eqref eqref) (result eqref)))
   (type (func (param (ref $clos) eqref i64 i64 eqref) (result eqref)))
   (type (func (param (ref $clos) eqref eqref i64 eqref) (result eqref)))
   (type (func (param (ref $clos) eqref eqref eqref) (result eqref)))
+  (type (func (param (ref $clos) eqref i64) (result i64)))
+  (type (func (param (ref $clos) eqref i64 eqref) (result eqref)))
+  (type (func (param (ref $clos) eqref eqref i64) (result i64)))
+  (type (func (param (ref $clos) eqref eqref eqref i64) (result eqref)))
+  (type (func (param (ref $clos) eqref eqref i64 i64) (result eqref)))
   (type (func (param (ref $clos) i32) (result eqref)))
   (type (func (param (ref $clos) i64 i64) (result i64 i64)))
   (type (func (param eqref) (result (ref $option))))
@@ -76,69 +85,81 @@
   (import "conv" "record.dict" (global (mut eqref)))
   (import "string" "record.payload" (global (mut eqref)))
   (import "string" "record.dict" (global (mut eqref)))
-  (import "quest.runtime" "putString" (func $putString (type 18)))
-  (import "quest.runtime" "putChar" (func $putChar (type 19)))
-  (import "quest.runtime" "concat" (func $concat (type 18)))
-  (import "quest.runtime" "convInt" (func $convInt (type 20)))
-  (import "quest.runtime" "convBool" (func $convBool (type 21)))
-  (import "quest.runtime" "convChar" (func $convChar (type 21)))
-  (import "quest.runtime" "raise" (func $raise (type 22)))
-  (import "quest.runtime" "uncaught" (func $uncaught (type 23)))
-  (import "quest.runtime" "decimal" (func $decimal (type 20)))
-  (import "quest.runtime" "hex" (func $hex (type 20)))
-  (import "quest.runtime" "escaped" (func $escaped (type 19)))
-  (import "quest.runtime" "boxInt" (func $boxInt (type 20)))
-  (import "quest.runtime" "unboxInt" (func $unboxInt (type 24)))
-  (import "quest.runtime" "fatal" (func $fatal (type 25)))
-  (import "quest.runtime" "stringGetChar" (func $stringGetChar (type 26)))
-  (import "quest.runtime" "stringSetChar" (func $stringSetChar (type 27)))
-  (import "quest.runtime" "stringNew" (func $stringNew (type 28)))
-  (import "quest.runtime" "stringGetSub" (func $stringGetSub (type 29)))
-  (import "quest.runtime" "stringSetSub" (func $stringSetSub (type 30)))
-  (import "quest.runtime" "stringEqual" (func $stringEqual (type 31)))
-  (import "quest.runtime" "exceptionOf" (func $exceptionOf (type 32)))
-  (import "quest.runtime" "payloadOf" (func $payloadOf (type 32)))
-  (import "quest.runtime" "raisedText" (func $raisedText (type 18)))
-  (import "quest.runtime" "memLoad8" (func $memLoad8 (type 33)))
-  (import "quest.runtime" "memStore8" (func $memStore8 (type 34)))
-  (import "quest.runtime" "memLoad32" (func $memLoad32 (type 33)))
-  (import "quest.runtime" "memStore32" (func $memStore32 (type 34)))
-  (import "quest.runtime" "memLoad64" (func $memLoad64 (type 33)))
-  (import "quest.runtime" "memStore64" (func $memStore64 (type 34)))
-  (import "quest.runtime" "memEnsure" (func $memEnsure (type 35)))
-  (import "quest.runtime" "memToString" (func $memToString (type 36)))
-  (import "quest.runtime" "stringToMem" (func $stringToMem (type 37)))
-  (import "quest.runtime" "wasi:args_sizes_get" (func $wasi:args_sizes_get (type 38)))
-  (import "quest.runtime" "wasi:args_get" (func $wasi:args_get (type 38)))
-  (import "quest.runtime" "wasi:environ_sizes_get" (func $wasi:environ_sizes_get (type 38)))
-  (import "quest.runtime" "wasi:environ_get" (func $wasi:environ_get (type 38)))
-  (import "quest.runtime" "wasi:fd_prestat_get" (func $wasi:fd_prestat_get (type 38)))
-  (import "quest.runtime" "wasi:fd_prestat_dir_name" (func $wasi:fd_prestat_dir_name (type 39)))
-  (import "quest.runtime" "wasi:path_open" (func $wasi:path_open (type 40)))
-  (import "quest.runtime" "wasi:fd_read" (func $wasi:fd_read (type 41)))
-  (import "quest.runtime" "wasi:fd_close" (func $wasi:fd_close (type 33)))
-  (import "quest.runtime" "wasi:path_filestat_get" (func $wasi:path_filestat_get (type 42)))
-  (import "quest.runtime" "wasi:path_create_directory" (func $wasi:path_create_directory (type 39)))
-  (import "quest.runtime" "wasi:path_unlink_file" (func $wasi:path_unlink_file (type 39)))
-  (import "quest.runtime" "wasi:path_remove_directory" (func $wasi:path_remove_directory (type 39)))
-  (import "quest.runtime" "wasi:path_rename" (func $wasi:path_rename (type 43)))
-  (import "quest.runtime" "wasi:fd_readdir" (func $wasi:fd_readdir (type 42)))
-  (import "quest.runtime" "error" (tag $error (type 44)))
-  (import "writer" "init" (func $writer.init (type 45)))
-  (import "conv" "init" (func $conv.init (type 45)))
-  (import "string" "init" (func $string.init (type 45)))
-  (import "wasm/print" "init" (func $wasm/print.init (type 45)))
-  (import "wasm/print" "show" (func $wasm/print.show (type 46)))
-  (import "wasm/core" "init" (func $wasm/core.init (type 45)))
-  (import "wasm/core" "base" (func $wasm/core.base (type 47)))
-  (import "wasm/core" "newDesc" (func $wasm/core.newDesc (type 48)))
-  (import "wasm/core" "setPart" (func $wasm/core.setPart (type 49)))
-  (import "wasm/core" "setText" (func $wasm/core.setText (type 50)))
-  (import "wasm/core" "instantiate" (func $wasm/core.instantiate (type 46)))
-  (import "wasm/core" "viewDict" (func $wasm/core.viewDict (type 46)))
-  (import "wasm/core" "storedField" (func $wasm/core.storedField (type 51)))
-  (import "wasm/core" "convert" (func $wasm/core.convert (type 52)))
-  (import "conv" "bool" (func $conv.bool (type 53)))
+  (import "quest.runtime" "putString" (func $putString (type 19)))
+  (import "quest.runtime" "putChar" (func $putChar (type 20)))
+  (import "quest.runtime" "concat" (func $concat (type 19)))
+  (import "quest.runtime" "convInt" (func $convInt (type 21)))
+  (import "quest.runtime" "convBool" (func $convBool (type 22)))
+  (import "quest.runtime" "convChar" (func $convChar (type 22)))
+  (import "quest.runtime" "raise" (func $raise (type 23)))
+  (import "quest.runtime" "uncaught" (func $uncaught (type 24)))
+  (import "quest.runtime" "decimal" (func $decimal (type 21)))
+  (import "quest.runtime" "hex" (func $hex (type 21)))
+  (import "quest.runtime" "escaped" (func $escaped (type 20)))
+  (import "quest.runtime" "boxInt" (func $boxInt (type 21)))
+  (import "quest.runtime" "unboxInt" (func $unboxInt (type 25)))
+  (import "quest.runtime" "fatal" (func $fatal (type 26)))
+  (import "quest.runtime" "stringGetChar" (func $stringGetChar (type 27)))
+  (import "quest.runtime" "stringSetChar" (func $stringSetChar (type 28)))
+  (import "quest.runtime" "stringNew" (func $stringNew (type 29)))
+  (import "quest.runtime" "stringGetSub" (func $stringGetSub (type 30)))
+  (import "quest.runtime" "stringSetSub" (func $stringSetSub (type 31)))
+  (import "quest.runtime" "stringEqual" (func $stringEqual (type 32)))
+  (import "quest.runtime" "exceptionOf" (func $exceptionOf (type 33)))
+  (import "quest.runtime" "payloadOf" (func $payloadOf (type 33)))
+  (import "quest.runtime" "raisedText" (func $raisedText (type 19)))
+  (import "quest.runtime" "memLoad8" (func $memLoad8 (type 34)))
+  (import "quest.runtime" "memStore8" (func $memStore8 (type 35)))
+  (import "quest.runtime" "memLoad32" (func $memLoad32 (type 34)))
+  (import "quest.runtime" "memStore32" (func $memStore32 (type 35)))
+  (import "quest.runtime" "memLoad64" (func $memLoad64 (type 34)))
+  (import "quest.runtime" "memStore64" (func $memStore64 (type 35)))
+  (import "quest.runtime" "memEnsure" (func $memEnsure (type 36)))
+  (import "quest.runtime" "memToString" (func $memToString (type 37)))
+  (import "quest.runtime" "stringToMem" (func $stringToMem (type 38)))
+  (import "quest.runtime" "wasi:args_sizes_get" (func $wasi:args_sizes_get (type 39)))
+  (import "quest.runtime" "wasi:args_get" (func $wasi:args_get (type 39)))
+  (import "quest.runtime" "wasi:environ_sizes_get" (func $wasi:environ_sizes_get (type 39)))
+  (import "quest.runtime" "wasi:environ_get" (func $wasi:environ_get (type 39)))
+  (import "quest.runtime" "wasi:fd_prestat_get" (func $wasi:fd_prestat_get (type 39)))
+  (import "quest.runtime" "wasi:fd_prestat_dir_name" (func $wasi:fd_prestat_dir_name (type 40)))
+  (import "quest.runtime" "wasi:path_open" (func $wasi:path_open (type 41)))
+  (import "quest.runtime" "wasi:fd_read" (func $wasi:fd_read (type 42)))
+  (import "quest.runtime" "wasi:fd_close" (func $wasi:fd_close (type 34)))
+  (import "quest.runtime" "wasi:path_filestat_get" (func $wasi:path_filestat_get (type 43)))
+  (import "quest.runtime" "wasi:path_create_directory" (func $wasi:path_create_directory (type 40)))
+  (import "quest.runtime" "wasi:path_unlink_file" (func $wasi:path_unlink_file (type 40)))
+  (import "quest.runtime" "wasi:path_remove_directory" (func $wasi:path_remove_directory (type 40)))
+  (import "quest.runtime" "wasi:path_rename" (func $wasi:path_rename (type 44)))
+  (import "quest.runtime" "wasi:fd_readdir" (func $wasi:fd_readdir (type 43)))
+  (import "quest.runtime" "error" (tag $error (type 45)))
+  (import "writer" "init" (func $writer.init (type 46)))
+  (import "conv" "init" (func $conv.init (type 46)))
+  (import "string" "init" (func $string.init (type 46)))
+  (import "wasm/print" "init" (func $wasm/print.init (type 46)))
+  (import "wasm/print" "show" (func $wasm/print.show (type 47)))
+  (import "wasm/core" "unproxy" (func $wasm/core.unproxy (type 48)))
+  (import "wasm/core" "proxyTag" (func $wasm/core.proxyTag (type 49)))
+  (import "wasm/core" "proxyElement" (func $wasm/core.proxyElement (type 50)))
+  (import "wasm/core" "proxyOptionElement" (func $wasm/core.proxyOptionElement (type 50)))
+  (import "wasm/core" "proxyOptionPayload" (func $wasm/core.proxyOptionPayload (type 48)))
+  (import "wasm/core" "init" (func $wasm/core.init (type 46)))
+  (import "wasm/core" "base" (func $wasm/core.base (type 51)))
+  (import "wasm/core" "newDesc" (func $wasm/core.newDesc (type 52)))
+  (import "wasm/core" "setPart" (func $wasm/core.setPart (type 53)))
+  (import "wasm/core" "setText" (func $wasm/core.setText (type 54)))
+  (import "wasm/core" "instantiate" (func $wasm/core.instantiate (type 47)))
+  (import "wasm/core" "viewDict" (func $wasm/core.viewDict (type 47)))
+  (import "wasm/core" "storedField" (func $wasm/core.storedField (type 55)))
+  (import "wasm/core" "convert" (func $wasm/core.convert (type 56)))
+  (import "wasm/core" "viewMap" (func $wasm/core.viewMap (type 47)))
+  (import "wasm/core" "viewIndex" (func $wasm/core.viewIndex (type 57)))
+  (import "wasm/core" "viewPart" (func $wasm/core.viewPart (type 58)))
+  (import "wasm/core" "viewRecordSlot" (func $wasm/core.viewRecordSlot (type 59)))
+  (import "wasm/core" "viewRecordField" (func $wasm/core.viewRecordField (type 60)))
+  (import "wasm/core" "viewOptionComponent" (func $wasm/core.viewOptionComponent (type 61)))
+  (import "wasm/core" "viewOptionPayload" (func $wasm/core.viewOptionPayload (type 47)))
+  (import "conv" "bool" (func $conv.bool (type 62)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $quest_type_Int (mut eqref) ref.null none)
   (global $quest_type_Real (mut eqref) ref.null none)
@@ -159,7 +180,7 @@
   (global $divide.1 (mut eqref) ref.null none)
   (global $dict (ref $dict) i32.const 0 i32.const 1 i32.const 2 array.new_fixed $i32s 3 ref.null none struct.new $dict)
   (export "_start" (func $_start))
-  (func $divide (type 54) (param $closure (ref $clos)) (param $n i64) (param $d i64) (result i64 i64)
+  (func $divide (type 63) (param $closure (ref $clos)) (param $n i64) (param $d i64) (result i64 i64)
     (local $v i32)
     (local $v.2 i64)
     (local $v.1 i64)
@@ -205,7 +226,7 @@
     end
     unreachable
   )
-  (func $main (type 45)
+  (func $main (type 46)
     (local $v eqref)
     (local $t (ref null $slots))
     (local $v.2 eqref)
@@ -218,10 +239,10 @@
     (local $t.3 (ref null $option))
     (local $v.12 i64)
     (local $v.48 eqref)
-    (local $t.22 i32)
-    (local $t.33 (ref null $recBox))
-    (local $t.37 eqref)
-    (local $t.38 eqref)
+    (local $t.37 i32)
+    (local $t.50 (ref null $recBox))
+    (local $t.54 eqref)
+    (local $t.55 eqref)
     call $wasm/core.init
     call $descriptors
     call $writer.init
@@ -369,18 +390,14 @@
           block $inlined1.after
             block $inlined1 (result i64)
               local.get $v.2
-              block (type 55)
+              local.tee $v.2
+              block (type 64)
                 br_on_cast 0 eqref (ref $option)
-                drop
-                i32.const 0
-                i32.const 51
-                i32.const 394
-                i32.const 51
-                array.new_data $bytes $strings
-                struct.new $string
-                i32.const 1
-                call $fatal
-                unreachable
+                local.set $v.4
+                global.get $noClosure
+                local.get $v.4
+                call $wasm/core.unproxy
+                ref.cast (ref $option)
               end
               local.set $t.3
               block
@@ -389,8 +406,19 @@
                     block
                       block
                         block
-                          local.get $t.3
-                          struct.get $option $tag
+                          local.get $v.2
+                          local.tee $v.2
+                          ref.test (ref $option)
+                          if (result i32)
+                            local.get $v.2
+                            ref.cast (ref $option)
+                            struct.get $option $tag
+                          else
+                            global.get $noClosure
+                            local.get $v.2
+                            call $wasm/core.proxyTag
+                            i32.wrap_i64
+                          end
                           br_table 0 3 2 1 4
                         end
                         local.get $t.3
@@ -474,13 +502,13 @@
                 ref.i31
                 i32.const 0
                 i32.const 0
-                i32.const 445
+                i32.const 394
                 i32.const 0
                 array.new_data $bytes $strings
                 struct.new $string
                 i32.const 0
                 i32.const 0
-                i32.const 445
+                i32.const 394
                 i32.const 0
                 array.new_data $bytes $strings
                 struct.new $string
@@ -501,7 +529,7 @@
             local.get $v.2
             i32.const 0
             i32.const 1
-            i32.const 445
+            i32.const 394
             i32.const 1
             array.new_data $bytes $strings
             struct.new $string
@@ -546,13 +574,13 @@
       ref.i31
       i32.const 0
       i32.const 114
-      i32.const 446
+      i32.const 395
       i32.const 114
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
       i32.const 0
-      i32.const 560
+      i32.const 509
       i32.const 0
       array.new_data $bytes $strings
       struct.new $string
@@ -569,20 +597,18 @@
     array.get $slots
     local.set $v.2
     local.get $v.2
-    block (type 55)
-      br_on_cast 0 eqref (ref $option)
-      drop
-      i32.const 0
-      i32.const 51
-      i32.const 560
-      i32.const 51
-      array.new_data $bytes $strings
-      struct.new $string
-      i32.const 1
-      call $fatal
-      unreachable
+    local.tee $v.4
+    ref.test (ref $option)
+    if (result i32)
+      local.get $v.4
+      ref.cast (ref $option)
+      struct.get $option $tag
+    else
+      global.get $noClosure
+      local.get $v.4
+      call $wasm/core.proxyTag
+      i32.wrap_i64
     end
-    struct.get $option $tag
     i32.const 2
     i32.ne
     if
@@ -591,13 +617,13 @@
       ref.i31
       i32.const 0
       i32.const 114
-      i32.const 611
+      i32.const 509
       i32.const 114
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
       i32.const 0
-      i32.const 725
+      i32.const 623
       i32.const 0
       array.new_data $bytes $strings
       struct.new $string
@@ -618,18 +644,13 @@
     local.get $t
     i32.const 1
     local.get $v.2
-    block (type 55)
+    block (type 64)
       br_on_cast 0 eqref (ref $option)
-      drop
-      i32.const 0
-      i32.const 51
-      i32.const 725
-      i32.const 51
-      array.new_data $bytes $strings
-      struct.new $string
-      i32.const 1
-      call $fatal
-      unreachable
+      local.set $v.2
+      global.get $noClosure
+      local.get $v.2
+      call $wasm/core.unproxy
+      ref.cast (ref $option)
     end
     struct.get $option $slots
     i32.const 0
@@ -661,7 +682,7 @@
     local.set $v.2
     i32.const 0
     i32.const 1
-    i32.const 776
+    i32.const 623
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -678,7 +699,7 @@
     local.get $v.2
     i32.const 0
     i32.const 1
-    i32.const 777
+    i32.const 624
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -702,13 +723,13 @@
       ref.i31
       i32.const 0
       i32.const 114
-      i32.const 778
+      i32.const 625
       i32.const 114
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
       i32.const 0
-      i32.const 892
+      i32.const 739
       i32.const 0
       array.new_data $bytes $strings
       struct.new $string
@@ -730,8 +751,24 @@
     struct.new $option
     local.set $v.4
     local.get $v.2
+    block (type 64)
+      br_on_cast 0 eqref (ref $option)
+      local.set $v.2
+      global.get $noClosure
+      local.get $v.2
+      call $wasm/core.unproxy
+      ref.cast (ref $option)
+    end
     local.set $v.2
     local.get $v.4
+    block (type 64)
+      br_on_cast 0 eqref (ref $option)
+      local.set $v.4
+      global.get $noClosure
+      local.get $v.4
+      call $wasm/core.unproxy
+      ref.cast (ref $option)
+    end
     local.set $v.4
     local.get $v.2
     local.get $v.4
@@ -793,13 +830,13 @@
       ref.i31
       i32.const 0
       i32.const 114
-      i32.const 892
+      i32.const 739
       i32.const 114
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
       i32.const 0
-      i32.const 1006
+      i32.const 853
       i32.const 0
       array.new_data $bytes $strings
       struct.new $string
@@ -816,20 +853,18 @@
     array.get $slots
     local.set $v.4
     local.get $v.4
-    block (type 55)
-      br_on_cast 0 eqref (ref $option)
-      drop
-      i32.const 0
-      i32.const 51
-      i32.const 1006
-      i32.const 51
-      array.new_data $bytes $strings
-      struct.new $string
-      i32.const 1
-      call $fatal
-      unreachable
+    local.tee $v.4
+    ref.test (ref $option)
+    if (result i32)
+      local.get $v.4
+      ref.cast (ref $option)
+      struct.get $option $tag
+    else
+      global.get $noClosure
+      local.get $v.4
+      call $wasm/core.proxyTag
+      i32.wrap_i64
     end
-    struct.get $option $tag
     i32.const 0
     i32.eq
     local.set $v.9
@@ -851,13 +886,13 @@
       ref.i31
       i32.const 0
       i32.const 114
-      i32.const 1057
+      i32.const 853
       i32.const 114
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
       i32.const 0
-      i32.const 1171
+      i32.const 967
       i32.const 0
       array.new_data $bytes $strings
       struct.new $string
@@ -874,20 +909,18 @@
     array.get $slots
     local.set $v.5
     local.get $v.5
-    block (type 55)
-      br_on_cast 0 eqref (ref $option)
-      drop
-      i32.const 0
-      i32.const 51
-      i32.const 1171
-      i32.const 51
-      array.new_data $bytes $strings
-      struct.new $string
-      i32.const 1
-      call $fatal
-      unreachable
+    local.tee $v.5
+    ref.test (ref $option)
+    if (result i32)
+      local.get $v.5
+      ref.cast (ref $option)
+      struct.get $option $tag
+    else
+      global.get $noClosure
+      local.get $v.5
+      call $wasm/core.proxyTag
+      i32.wrap_i64
     end
-    struct.get $option $tag
     local.set $v.9
     block (result i32)
       block
@@ -928,13 +961,13 @@
       ref.i31
       i32.const 0
       i32.const 114
-      i32.const 1222
+      i32.const 967
       i32.const 114
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
       i32.const 0
-      i32.const 1336
+      i32.const 1081
       i32.const 0
       array.new_data $bytes $strings
       struct.new $string
@@ -964,13 +997,13 @@
       ref.i31
       i32.const 0
       i32.const 114
-      i32.const 1336
+      i32.const 1081
       i32.const 114
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
       i32.const 0
-      i32.const 1450
+      i32.const 1195
       i32.const 0
       array.new_data $bytes $strings
       struct.new $string
@@ -987,8 +1020,24 @@
     array.get $slots
     local.set $v
     local.get $v.48
+    block (type 64)
+      br_on_cast 0 eqref (ref $option)
+      local.set $v.48
+      global.get $noClosure
+      local.get $v.48
+      call $wasm/core.unproxy
+      ref.cast (ref $option)
+    end
     local.set $v.48
     local.get $v
+    block (type 64)
+      br_on_cast 0 eqref (ref $option)
+      local.set $v
+      global.get $noClosure
+      local.get $v
+      call $wasm/core.unproxy
+      ref.cast (ref $option)
+    end
     local.set $v
     local.get $v.48
     local.get $v
@@ -1038,7 +1087,7 @@
     local.set $v
     i32.const 0
     i32.const 1
-    i32.const 1450
+    i32.const 1195
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1051,7 +1100,7 @@
     local.set $v
     i32.const 0
     i32.const 1
-    i32.const 1451
+    i32.const 1196
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1064,7 +1113,7 @@
     local.set $v
     i32.const 0
     i32.const 1
-    i32.const 1452
+    i32.const 1197
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1081,7 +1130,7 @@
     local.get $v
     i32.const 0
     i32.const 1
-    i32.const 1453
+    i32.const 1198
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1099,7 +1148,7 @@
     if
       i32.const 0
       i32.const 15
-      i32.const 1454
+      i32.const 1199
       i32.const 15
       array.new_data $bytes $strings
       struct.new $string
@@ -1108,7 +1157,7 @@
       call $concat
       i32.const 0
       i32.const 154
-      i32.const 1469
+      i32.const 1214
       i32.const 154
       array.new_data $bytes $strings
       struct.new $string
@@ -1140,20 +1189,18 @@
     struct.new $option
     local.set $v
     local.get $v
-    block (type 55)
-      br_on_cast 0 eqref (ref $option)
-      drop
-      i32.const 0
-      i32.const 51
-      i32.const 1623
-      i32.const 51
-      array.new_data $bytes $strings
-      struct.new $string
-      i32.const 1
-      call $fatal
-      unreachable
+    local.tee $v.2
+    ref.test (ref $option)
+    if (result i32)
+      local.get $v.2
+      ref.cast (ref $option)
+      struct.get $option $tag
+    else
+      global.get $noClosure
+      local.get $v.2
+      call $wasm/core.proxyTag
+      i32.wrap_i64
     end
-    struct.get $option $tag
     i32.const 1
     i32.eq
     local.set $v.9
@@ -1162,20 +1209,18 @@
     call $conv.bool
     local.set $v.2
     local.get $v
-    block (type 55)
-      br_on_cast 0 eqref (ref $option)
-      drop
-      i32.const 0
-      i32.const 51
-      i32.const 1674
-      i32.const 51
-      array.new_data $bytes $strings
-      struct.new $string
-      i32.const 1
-      call $fatal
-      unreachable
+    local.tee $v
+    ref.test (ref $option)
+    if (result i32)
+      local.get $v
+      ref.cast (ref $option)
+      struct.get $option $tag
+    else
+      global.get $noClosure
+      local.get $v
+      call $wasm/core.proxyTag
+      i32.wrap_i64
     end
-    struct.get $option $tag
     local.set $v.9
     block (result i32)
       block
@@ -1200,7 +1245,7 @@
     local.set $v
     i32.const 0
     i32.const 1
-    i32.const 1725
+    i32.const 1368
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1217,7 +1262,7 @@
     local.get $v
     i32.const 0
     i32.const 1
-    i32.const 1726
+    i32.const 1369
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1294,8 +1339,24 @@
     struct.new $option
     local.set $v.4
     local.get $v
+    block (type 64)
+      br_on_cast 0 eqref (ref $option)
+      local.set $v.5
+      global.get $noClosure
+      local.get $v.5
+      call $wasm/core.unproxy
+      ref.cast (ref $option)
+    end
     local.set $v.5
     local.get $v.2
+    block (type 64)
+      br_on_cast 0 eqref (ref $option)
+      local.set $v.2
+      global.get $noClosure
+      local.get $v.2
+      call $wasm/core.unproxy
+      ref.cast (ref $option)
+    end
     local.set $v.2
     local.get $v.5
     local.get $v.2
@@ -1313,11 +1374,11 @@
       i32.eq
       if (result i32)
         local.get $v.9
-        local.set $t.22
+        local.set $t.37
         block (result i32)
           block
             block
-              local.get $t.22
+              local.get $t.37
               br_table 0 1 1
             end
             i32.const 1
@@ -1361,8 +1422,24 @@
     call $conv.bool
     local.set $v.2
     local.get $v
+    block (type 64)
+      br_on_cast 0 eqref (ref $option)
+      local.set $v
+      global.get $noClosure
+      local.get $v
+      call $wasm/core.unproxy
+      ref.cast (ref $option)
+    end
     local.set $v
     local.get $v.4
+    block (type 64)
+      br_on_cast 0 eqref (ref $option)
+      local.set $v.4
+      global.get $noClosure
+      local.get $v.4
+      call $wasm/core.unproxy
+      ref.cast (ref $option)
+    end
     local.set $v.4
     local.get $v
     local.get $v.4
@@ -1380,11 +1457,11 @@
       i32.eq
       if (result i32)
         local.get $v.9
-        local.set $t.22
+        local.set $t.37
         block (result i32)
           block
             block
-              local.get $t.22
+              local.get $t.37
               br_table 0 1 1
             end
             i32.const 1
@@ -1429,7 +1506,7 @@
     local.set $v
     i32.const 0
     i32.const 1
-    i32.const 1727
+    i32.const 1370
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1446,7 +1523,7 @@
     local.get $v
     i32.const 0
     i32.const 1
-    i32.const 1728
+    i32.const 1371
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1458,7 +1535,7 @@
     local.set $v
     i32.const 0
     i32.const 3
-    i32.const 1729
+    i32.const 1372
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
@@ -1481,7 +1558,7 @@
     local.get $v.2
     i32.const 0
     i32.const 1
-    i32.const 1732
+    i32.const 1375
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1504,7 +1581,7 @@
     local.set $v
     i32.const 0
     i32.const 1
-    i32.const 1733
+    i32.const 1376
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1515,7 +1592,7 @@
     call $concat
     i32.const 0
     i32.const 1
-    i32.const 1734
+    i32.const 1377
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1535,7 +1612,7 @@
     local.get $v
     i32.const 0
     i32.const 1
-    i32.const 1735
+    i32.const 1378
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1581,7 +1658,7 @@
     local.set $v.5
     i32.const 0
     i32.const 1
-    i32.const 1736
+    i32.const 1379
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1594,7 +1671,7 @@
     local.set $v.4
     i32.const 0
     i32.const 1
-    i32.const 1737
+    i32.const 1380
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1607,7 +1684,7 @@
     local.set $v.2
     i32.const 0
     i32.const 1
-    i32.const 1738
+    i32.const 1381
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1624,7 +1701,7 @@
     local.get $v
     i32.const 0
     i32.const 1
-    i32.const 1739
+    i32.const 1382
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1643,13 +1720,13 @@
       ref.i31
       i32.const 0
       i32.const 113
-      i32.const 1740
+      i32.const 1383
       i32.const 113
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
       i32.const 0
-      i32.const 1853
+      i32.const 1496
       i32.const 0
       array.new_data $bytes $strings
       struct.new $string
@@ -1664,7 +1741,7 @@
     if
       i32.const 0
       i32.const 63
-      i32.const 1853
+      i32.const 1496
       i32.const 63
       array.new_data $bytes $strings
       struct.new $string
@@ -1710,13 +1787,13 @@
             ref.i31
             i32.const 0
             i32.const 114
-            i32.const 1916
+            i32.const 1559
             i32.const 114
             array.new_data $bytes $strings
             struct.new $string
             i32.const 0
             i32.const 0
-            i32.const 2030
+            i32.const 1673
             i32.const 0
             array.new_data $bytes $strings
             struct.new $string
@@ -1767,13 +1844,13 @@
       ref.i31
       i32.const 0
       i32.const 114
-      i32.const 2030
+      i32.const 1673
       i32.const 114
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
       i32.const 0
-      i32.const 2144
+      i32.const 1787
       i32.const 0
       array.new_data $bytes $strings
       struct.new $string
@@ -1804,7 +1881,7 @@
     local.set $v.4
     i32.const 0
     i32.const 1
-    i32.const 2144
+    i32.const 1787
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1821,7 +1898,7 @@
     local.get $v.2
     i32.const 0
     i32.const 1
-    i32.const 2145
+    i32.const 1788
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1842,7 +1919,7 @@
     drop
     i32.const 0
     i32.const 6
-    i32.const 2146
+    i32.const 1789
     i32.const 6
     array.new_data $bytes $strings
     struct.new $string
@@ -1852,13 +1929,13 @@
     local.set $v.4
     i32.const 0
     i32.const 2
-    i32.const 2152
+    i32.const 1795
     i32.const 2
     array.new_data $bytes $strings
     struct.new $string
     i32.const 0
     i32.const 2
-    i32.const 2154
+    i32.const 1797
     i32.const 2
     array.new_data $bytes $strings
     struct.new $string
@@ -1870,7 +1947,7 @@
     local.set $v.5
     i32.const 0
     i32.const 3
-    i32.const 2156
+    i32.const 1799
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
@@ -1879,7 +1956,7 @@
     local.set $v.9
     i32.const 0
     i32.const 1
-    i32.const 2159
+    i32.const 1802
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1890,7 +1967,7 @@
     call $concat
     i32.const 0
     i32.const 1
-    i32.const 2160
+    i32.const 1803
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1898,7 +1975,7 @@
     local.set $v.48
     i32.const 0
     i32.const 1
-    i32.const 2161
+    i32.const 1804
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1911,7 +1988,7 @@
     local.set $v.5
     i32.const 0
     i32.const 1
-    i32.const 2162
+    i32.const 1805
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1924,7 +2001,7 @@
     local.set $v.4
     i32.const 0
     i32.const 1
-    i32.const 2163
+    i32.const 1806
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1941,7 +2018,7 @@
     local.get $v.2
     i32.const 0
     i32.const 1
-    i32.const 2164
+    i32.const 1807
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1955,7 +2032,7 @@
     global.get $QRecord_name_String_x_Int_y_Int
     i32.const 0
     i32.const 1
-    i32.const 2165
+    i32.const 1808
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1974,9 +2051,9 @@
     local.set $v.2
     local.get $v.2
     ref.cast (ref $recBox)
-    local.tee $t.33
+    local.tee $t.50
     struct.get $recBox $payload
-    local.get $t.33
+    local.get $t.50
     struct.get $recBox $dict
     local.set $v.4
     local.set $v.5
@@ -2024,10 +2101,10 @@
     local.set $v.48
     local.get $v.5
     local.get $v.4
-    local.set $t.37
+    local.set $t.54
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.37
+    local.get $t.54
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 1
@@ -2037,13 +2114,13 @@
     local.set $v.7
     local.get $v.7
     call $convInt
-    local.set $t.37
+    local.set $t.54
     local.get $v.5
     local.get $v.4
-    local.set $t.38
+    local.set $t.55
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.38
+    local.get $t.55
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 2
@@ -2053,46 +2130,46 @@
     local.set $v.7
     local.get $v.7
     call $convInt
-    local.set $t.38
+    local.set $t.55
     i32.const 0
     i32.const 1
-    i32.const 2166
+    i32.const 1809
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $t.38
+    local.get $t.55
     call $concat
-    local.set $t.38
-    local.get $t.37
-    local.get $t.38
+    local.set $t.55
+    local.get $t.54
+    local.get $t.55
     call $concat
-    local.set $t.37
+    local.set $t.54
     i32.const 0
     i32.const 1
-    i32.const 2167
+    i32.const 1810
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $t.37
+    local.get $t.54
     call $concat
-    local.set $t.37
+    local.set $t.54
     local.get $v.48
-    local.get $t.37
+    local.get $t.54
     call $concat
     local.set $v.48
     i32.const 1
     ref.i31
-    local.set $t.37
+    local.set $t.54
     local.get $v.48
     i32.const 0
     i32.const 1
-    i32.const 2168
+    i32.const 1811
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
     call $concat
     local.set $v.48
-    local.get $t.37
+    local.get $t.54
     local.get $v.48
     call $putString
     local.set $v.48
@@ -2100,7 +2177,7 @@
     global.get $QRecord_name_String_x_Int_y_Int
     i32.const 0
     i32.const 1
-    i32.const 2169
+    i32.const 1812
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -2119,12 +2196,12 @@
     local.set $v.48
     local.get $v.48
     ref.cast (ref $recBox)
-    local.tee $t.33
+    local.tee $t.50
     struct.get $recBox $payload
-    local.get $t.33
+    local.get $t.50
     struct.get $recBox $dict
-    local.set $t.37
-    local.set $t.37
+    local.set $t.54
+    local.set $t.54
     i32.const 0
     local.get $v.2
     local.get $v.48
@@ -2145,13 +2222,13 @@
       ref.i31
       i32.const 0
       i32.const 113
-      i32.const 2170
+      i32.const 1813
       i32.const 113
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
       i32.const 0
-      i32.const 2283
+      i32.const 1926
       i32.const 0
       array.new_data $bytes $strings
       struct.new $string
@@ -2169,13 +2246,13 @@
     local.set $v.48
     local.get $v.48
     ref.cast (ref $recBox)
-    local.tee $t.33
+    local.tee $t.50
     struct.get $recBox $payload
-    local.get $t.33
+    local.get $t.50
     struct.get $recBox $dict
     local.set $v.48
-    local.set $t.37
-    local.get $t.37
+    local.set $t.54
+    local.get $t.54
     local.get $v.48
     local.set $v.48
     ref.cast (ref $record)
@@ -2201,13 +2278,13 @@
       ref.i31
       i32.const 0
       i32.const 114
-      i32.const 2283
+      i32.const 1926
       i32.const 114
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
       i32.const 0
-      i32.const 2397
+      i32.const 2040
       i32.const 0
       array.new_data $bytes $strings
       struct.new $string
@@ -2225,22 +2302,22 @@
     local.set $v.2
     local.get $v.2
     ref.cast (ref $recBox)
-    local.tee $t.33
+    local.tee $t.50
     struct.get $recBox $payload
-    local.get $t.33
+    local.get $t.50
     struct.get $recBox $dict
     local.set $v.2
-    local.set $t.37
-    local.get $t.37
+    local.set $t.54
+    local.get $t.54
     local.get $v.2
     local.set $v.2
-    local.set $t.37
-    local.get $t.37
+    local.set $t.54
+    local.get $t.54
     local.get $v.2
-    local.set $t.38
+    local.set $t.55
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.38
+    local.get $t.55
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 1
@@ -2248,12 +2325,12 @@
     array.get $slots
     call $unboxInt
     local.set $v.7
-    local.get $t.37
+    local.get $t.54
     local.get $v.2
-    local.set $t.38
+    local.set $t.55
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.38
+    local.get $t.55
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 1
@@ -2261,12 +2338,12 @@
     array.get $slots
     call $unboxInt
     local.set $i
-    local.get $t.37
+    local.get $t.54
     local.get $v.2
-    local.set $t.38
+    local.set $t.55
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.38
+    local.get $t.55
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 2
@@ -2274,7 +2351,7 @@
     array.get $slots
     call $unboxInt
     local.set $i.1
-    local.get $t.37
+    local.get $t.54
     local.get $v.2
     local.set $v.2
     ref.cast (ref $record)
@@ -2304,10 +2381,10 @@
     local.set $v.2
     local.get $v.5
     local.get $v.4
-    local.set $t.37
+    local.set $t.54
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.37
+    local.get $t.54
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 1
@@ -2317,10 +2394,10 @@
     local.set $v.7
     local.get $v.5
     local.get $v.4
-    local.set $t.37
+    local.set $t.54
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.37
+    local.get $t.54
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 1
@@ -2330,10 +2407,10 @@
     local.set $i
     local.get $v.5
     local.get $v.4
-    local.set $t.37
+    local.set $t.54
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.37
+    local.get $t.54
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 2
@@ -2343,10 +2420,10 @@
     local.set $i.1
     local.get $v.5
     local.get $v.4
-    local.set $t.37
+    local.set $t.54
     ref.cast (ref $record)
     struct.get $record $slots
-    local.get $t.37
+    local.get $t.54
     ref.cast (ref $dict)
     struct.get $dict $indices
     i32.const 2
@@ -2368,18 +2445,18 @@
     local.set $v.7
     local.get $v.7
     call $convInt
-    local.set $t.37
+    local.set $t.54
     i32.const 0
     i32.const 1
-    i32.const 2397
+    i32.const 2040
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
-    local.get $t.37
+    local.get $t.54
     call $concat
-    local.set $t.37
+    local.set $t.54
     local.get $v.2
-    local.get $t.37
+    local.get $t.54
     call $concat
     local.set $v.2
     local.get $v.48
@@ -2392,7 +2469,7 @@
     local.get $v.2
     i32.const 0
     i32.const 1
-    i32.const 2398
+    i32.const 2041
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -2427,7 +2504,7 @@
     local.get $v.2
     i32.const 0
     i32.const 1
-    i32.const 2399
+    i32.const 2042
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -2451,13 +2528,13 @@
       ref.i31
       i32.const 0
       i32.const 114
-      i32.const 2400
+      i32.const 2043
       i32.const 114
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
       i32.const 0
-      i32.const 2514
+      i32.const 2157
       i32.const 0
       array.new_data $bytes $strings
       struct.new $string
@@ -2483,7 +2560,7 @@
     local.get $v
     i32.const 0
     i32.const 1
-    i32.const 2514
+    i32.const 2157
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -2494,7 +2571,7 @@
     call $putString
     local.set $v
   )
-  (func $_start (type 45)
+  (func $_start (type 46)
     (local $t (ref null $raised))
     block $uncaught (result eqref)
       try_table (catch $error $uncaught)
@@ -2520,7 +2597,7 @@
     end
     call $uncaught
   )
-  (func $descriptors (type 45)
+  (func $descriptors (type 46)
     global.get $noClosure
     i64.const 1
     call $wasm/core.base
@@ -2814,6 +2891,6 @@
     call $wasm/core.setPart
     drop
   )
-  (data $strings "Record x: Int var y: Int name: String endTuple r: Int endTuple x: Int y: Int endTuple side: Int endTuple v: Int endOption circle: Tuple r: Int end empty point: Tuple x: Int y: Int end square: Tup...Option none some: Tuple v: Int end endnamexyrxysidevcircleemptypointsquarenonesome/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:25:55wasm: a proxy, which this backend does not yet run\0a\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:26:10wasm: a proxy, which this backend does not yet run\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:26:10wasm: a proxy, which this backend does not yet run\0a \0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:28:15/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:28:75wasm: a proxy, which this backend does not yet run\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:29:25wasm: a proxy, which this backend does not yet run\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:29:57/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:29:70   \0aOption ordinal  out of bounds (0 <= ordinal < 3)\0a  at /Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:31:13\0awasm: a proxy, which this backend does not yet run\0awasm: a proxy, which this backend does not yet run\0a \0a \0atwo!''\0a   \0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:54:9quest: out of memory: an array of more than 134217720 elements\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:55:21/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:56:14 \0aabcdefabababc''   \0ap  \0aq/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:68:5/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:68:33 \0a\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:71:14\0a")
+  (data $strings "Record x: Int var y: Int name: String endTuple r: Int endTuple x: Int y: Int endTuple side: Int endTuple v: Int endOption circle: Tuple r: Int end empty point: Tuple x: Int y: Int end square: Tup...Option none some: Tuple v: Int end endnamexyrxysidevcircleemptypointsquarenonesome/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:25:55\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:26:10/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:26:10 \0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:28:15/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:28:75/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:29:25/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:29:57/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:29:70   \0aOption ordinal  out of bounds (0 <= ordinal < 3)\0a  at /Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:31:13\0a \0a \0atwo!''\0a   \0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:54:9quest: out of memory: an array of more than 134217720 elements\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:55:21/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:56:14 \0aabcdefabababc''   \0ap  \0aq/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:68:5/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:68:33 \0a\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:71:14\0a")
 )
 

@@ -382,6 +382,234 @@ export
      * layout, which it was made with *)
     let viewDict(payload: Any view: Desc): Any = recordDict(storedType(view) anyDesc(recordLayoutAny(payload)))
 
+
+    (* ======================================================================
+     * Proxies (quest_views.c's quest_make_proxy, quest_proxy_element, and
+     * the rest; docs/c-representation.md section 5.8): a tuple or option
+     * seen at a supertype at which a component changes view is not copied,
+     * so that it keeps its identity and its var components; it is a proxy,
+     * which holds the original, the type its components are stored at, the
+     * type it is seen at, and an option's tags in that type's numbering, and
+     * converts each component as it is read
+     * ====================================================================== *)
+
+    Def Proxied = Tuple orig: Any stored: Desc view: Desc tags: Array(Int) end
+    let isProxy(x: Any): Bool = external "wasm.isProxy"
+    let newProxy(state: Any): Any = external "wasm.newProxy"
+    let proxyStateAny(p: Any): Any = external "wasm.proxyState"
+    let proxiedAny(s: Proxied): Any = external "wasm.toAny"
+    let anyProxied(x: Any): Proxied = external "wasm.fromAny"
+    let slotOf(x: Any i: Int): Any = external "wasm.tupleSlot"
+    let optionTagOf(x: Any): Int = external "wasm.optionTag"
+    let newTupleOf(slots: Array(Any)): Any = external "wasm.newTuple"
+    let newOptionOf(tag: Int slots: Array(Any)): Any = external "wasm.newOption"
+    let proxied(p: Any): Proxied = anyProxied(proxyStateAny(p))
+
+    (* The object a value is: a proxy's original *)
+    let unproxy(v: Any): Any = if isProxy(v) then proxied(v).orig else v end
+
+    (* The descriptors a walk is in, which a cyclic descriptor meets again *)
+    Def Walk = Tuple var items: Array(Desc) var count: Int end
+    let newWalk(): Walk = tuple let var items = array of(16 bases[kindNone]) let var count = 0 end
+    let walking(w: Walk d: Desc): Bool =
+        begin
+            let var found = false
+            for i = 0 upto w.count - 1 do if w.items[i] is d then found := true end end
+            found
+        end
+    let enterWalk(w: Walk d: Desc): Ok =
+        begin
+            if w.count >= extent w.items then
+                let more = array of(2 * w.count d)
+                for i = 0 upto w.count - 1 do more[i] := w.items[i] end
+                w.items := more
+            end
+            w.items[w.count] := d
+            w.count := w.count + 1
+        end
+
+    (* Whether a value of type d may be a proxy, as the compiler decides it
+     * (quest_may_be_proxied): a tuple one of whose components may change
+     * view, an option of two or more cases or one of whose payloads'
+     * components may. A component may change view when it is view-sensitive
+     * (a record, variant, or auto value, a value stored as a type parameter,
+     * a function whose type mentions a view-sensitive type, or a tuple or
+     * option that may be a proxy) or may hold a proxy (a tuple, an option
+     * with a payload) *)
+    let holdsProxies(d: Desc): Bool =
+        if d.kind is kindTuple then true
+        elsif d.kind is kindOption then
+            let var any = false
+            for i = 0 upto extent d.parts - 1 do if d.parts[i].kind isnot kindNone then any := true end end
+            any
+        else false
+        end
+
+    let rec mayBeProxiedIn(d: Desc w: Walk): Bool =
+        if walking(w d) then false
+        else
+            enterWalk(w d)
+            let result = if d.kind is kindTuple then
+                    let var any = false
+                    for i = 0 upto extent d.parts - 1 do
+                        if not(any) andif {holdsProxies(d.parts[i]) orif viewSensitive(d.parts[i] w)} then
+                            any := true
+                        end
+                    end
+                    any
+                elsif d.kind is kindOption then
+                    if extent d.parts >= 2 then true
+                    else
+                        let var any = false
+                        for i = 0 upto extent d.parts - 1 do
+                            let p = d.parts[i]
+                            if not(any) andif {p.kind is kindTuple} andif mayBeProxiedIn(p w) then any := true end
+                        end
+                        any
+                    end
+                else false
+                end
+            w.count := w.count - 1
+            result
+        end
+
+    and viewSensitive(d: Desc w: Walk): Bool =
+        begin
+            let k = d.kind
+            if {k is kindRecord} orif {k is kindVariant} orif {k is kindAuto} orif {k is kindStored}
+                orif {k is kindBoundVar} orif {k is kindHole} then true
+            elsif {k is kindTuple} orif {k is kindOption} then mayBeProxiedIn(d w)
+            else false
+            end
+        end
+
+    let mayBeProxied(d: Desc): Bool = mayBeProxiedIn(storedType(d) newWalk())
+
+    (* Whether values of type a can be used at type b as they are, as far as
+     * their views go (quest_layout_equivalent, here, where every slot holds
+     * a value in one form): the same type, or tuples whose components are,
+     * a prefix of a's, or records, variants, and options whose fields or
+     * cases are, by name and position *)
+    let equivTrail = tuple let var items = array of :Pair end let var count = 0 end
+    let rec viewEquivalent(a0: Desc b0: Desc): Bool =
+        begin
+            let a = storedType(a0)
+            let b = storedType(b0)
+            if a is b then true
+            else
+                let var assumed = false
+                for i = 0 upto equivTrail.count - 1 do
+                    if {equivTrail.items[i].sub is a} andif {equivTrail.items[i].sup is b} then assumed := true end
+                end
+                if assumed then true
+                else
+                    let pair = tuple let sub = a let sup = b end
+                    if equivTrail.count >= extent equivTrail.items then
+                        let more = array of({2 * equivTrail.count} + 16 pair)
+                        for i = 0 upto equivTrail.count - 1 do more[i] := equivTrail.items[i] end
+                        equivTrail.items := more
+                    end
+                    equivTrail.items[equivTrail.count] := pair
+                    equivTrail.count := equivTrail.count + 1
+                    let k = b.kind
+                    let result = if a.kind isnot k then false
+                        elsif k is kindTuple then
+                            let var same = extent a.parts >= extent b.parts
+                            for i = 0 upto extent b.parts - 1 do
+                                if same andif not(viewEquivalent(a.parts[i] b.parts[i])) then same := false end
+                            end
+                            same
+                        elsif {k is kindRecord} orif {k is kindVariant} orif {k is kindOption} then
+                            let var same = extent a.parts is extent b.parts
+                            for i = 0 upto extent b.parts - 1 do
+                                if same andif not(stringOp.equal(a.labels[i] b.labels[i])) then same := false end
+                                if same andif {{a.parts[i].kind is kindNone} isnot {b.parts[i].kind is kindNone}} then
+                                    same := false
+                                end
+                                if same andif {a.parts[i].kind isnot kindNone}
+                                    andif not(viewEquivalent(a.parts[i] b.parts[i])) then same := false end
+                            end
+                            same
+                        else sameType(a b)
+                        end
+                    equivTrail.count := equivTrail.count - 1
+                    result
+                end
+            end
+        end
+
+    (* Whether a tuple or option of type from can be used at to as it is, as
+     * far as proxies go: no component, at any depth through tuples and
+     * options, of a type whose values may be proxies is used at a type whose
+     * values never are (quest_proxies_agree) *)
+    let rec proxiesAgreeIn(from0: Desc to0: Desc depth: Int): Bool =
+        begin
+            let from = storedType(from0)
+            let to = storedType(to0)
+            if {from is to} orif {depth >= 64} then true
+            elsif {to.kind isnot kindTuple} andif {to.kind isnot kindOption} then true
+            elsif from.kind isnot to.kind then true
+            elsif {depth > 0} andif not(mayBeProxied(to)) andif mayBeProxied(from) then false
+            elsif to.kind is kindTuple then
+                let var agree = true
+                for i = 0 upto extent to.parts - 1 do
+                    if agree andif {i < extent from.parts} andif not(proxiesAgreeIn(from.parts[i] to.parts[i] depth + 1))
+                    then agree := false end
+                end
+                agree
+            else
+                let var agree = true
+                for i = 0 upto extent from.parts - 1 do
+                    let j = partNamed(to from.labels[i])
+                    if agree andif {j >= 0} andif {from.parts[i].kind isnot kindNone} andif {to.parts[j].kind isnot kindNone}
+                        andif not(proxiesAgreeIn(from.parts[i] to.parts[j] depth + 1)) then agree := false end
+                end
+                agree
+            end
+        end
+    let proxiesAgree(from: Desc to: Desc): Bool = proxiesAgreeIn(from to 0)
+
+    (* The tuple or option v, of type from, seen at to as a proxy, or as its
+     * original where nothing changes view *)
+    let makeProxy(v: Any from0: Desc to0: Desc): Any =
+        begin
+            let orig = unproxy(v)
+            let from = storedType(if isProxy(v) then proxied(v).stored else from0 end)
+            let to = storedType(to0)
+            if {from is to} orif {viewEquivalent(from to) andif proxiesAgree(from to)} then orig
+            else
+                let tags = if to.kind is kindOption then array of(extent from.parts ~1) else array of :Int end end
+                if to.kind is kindOption then
+                    for i = 0 upto extent from.parts - 1 do tags[i] := partNamed(to from.labels[i]) end
+                end
+                newProxy(proxiedAny(tuple let orig = orig let stored = from let view = to let tags = tags end))
+            end
+        end
+
+    (* Component i of a payload's type: its tuple's component, or itself *)
+    let elementType(payload: Desc i: Int): Desc =
+        if storedType(payload).kind is kindTuple then storedType(payload).parts[i] else payload end
+
+    (* Through a proxy: an option's tag in the proxy's type's numbering, a
+     * tuple's component i, and an option's payload's component i, each read
+     * from the original and converted from the type it is stored at *)
+    let proxyTag(p: Any): Int =
+        begin
+            let s = proxied(p)
+            s.tags[optionTagOf(s.orig)]
+        end
+    (* An option's case's payload, seen through a proxy, as its case binder
+     * is: the original's payload, itself proxied where it changes view *)
+    let proxyOptionPayload(p: Any): Any =
+        begin
+            let s = proxied(p)
+            let tag = optionTagOf(s.orig)
+            makeProxy(s.orig s.stored.parts[tag] s.view.parts[s.tags[tag]])
+        end
+
+    (* A tuple's or option's tag and components, a proxy's or not *)
+    let tagAt(v: Any): Int = if isProxy(v) then proxyTag(v) else optionTagOf(v) end
+
     (* A variant's box seen at variant type to, from from: its tag renumbered
      * to to's for the case of the same name, and its payload converted when
      * the cases' types differ (quest_variant_adapt) *)
@@ -415,9 +643,68 @@ export
                 newRecBox(payload viewDict(payload to))
             elsif {from is to} orif {from.kind isnot to.kind} then v
             elsif to.kind is kindVariant then variantAdapt(v from to)
+            elsif {to.kind is kindTuple} orif {to.kind is kindOption} then
+                if not(isProxy(v)) andif viewEquivalent(from to) andif proxiesAgree(from to) then v
+                elsif mayBeProxied(to) then makeProxy(v from to)
+                elsif isProxy(v) andif viewEquivalent(proxied(v).stored to) then proxied(v).orig
+                else copyViewed(v from to)
+                end
             else v
             end
         end
+
+    and proxyElement(p: Any i: Int): Any =
+        begin
+            let s = proxied(p)
+            let fe = s.stored.parts[i]
+            let te = s.view.parts[i]
+            if fe is te then slotOf(s.orig i) else convert(slotOf(s.orig i) fe te) end
+        end
+    and proxyOptionElement(p: Any i: Int): Any =
+        begin
+            let s = proxied(p)
+            let tag = optionTagOf(s.orig)
+            let fc = s.stored.parts[tag]
+            let tc = s.view.parts[s.tags[tag]]
+            convert(slotOf(s.orig i) elementType(fc i) elementType(tc i))
+        end
+    and elementAt(v: Any i: Int): Any = if isProxy(v) then proxyElement(v i) else slotOf(v i) end
+    and optionElementAt(v: Any i: Int): Any = if isProxy(v) then proxyOptionElement(v i) else slotOf(v i) end
+
+    (* A copy of the tuple or option v, of type from, laid out as to, which
+     * values are never proxies of: its components converted
+     * (quest_copy_viewed) *)
+    and copyViewed(v: Any from: Desc to: Desc): Any =
+        if to.kind is kindTuple then
+            let n = extent to.parts
+            let slots = array of(n v)
+            for i = 0 upto n - 1 do
+                slots[i] := if i < extent from.parts then convert(elementAt(v i) from.parts[i] to.parts[i])
+                    else elementAt(v i)
+                    end
+            end
+            newTupleOf(slots)
+        else
+            let tag = tagAt(v)
+            let j = if {tag >= 0} andif {tag < extent from.parts} then partNamed(to from.labels[tag]) else ~1 end
+            if j < 0 then
+                dynamicError()
+                v
+            else
+                let fc = from.parts[tag]
+                let tc = to.parts[j]
+                let n = if tc.kind is kindNone then 0
+                    elsif storedType(tc).kind is kindTuple then extent storedType(tc).parts
+                    else 1
+                    end
+                let slots = array of(n v)
+                for i = 0 upto n - 1 do
+                    slots[i] := convert(optionElementAt(v i) elementType(fc i) elementType(tc i))
+                end
+                newOptionOf(j slots)
+            end
+        end
+
 
     (* A record field read as its payload stores it, v, seen at to through
      * the table dict, which says whether it is stored at another type *)
@@ -603,6 +890,18 @@ export
      * the option opt, of the bound's case b, converted to the bound's type
      * for it (quest_view_option_component) *)
     let optionSlot(opt: Any j: Int): Any = external "wasm.tupleSlot"
+    (* Through the view map of an option type: the payload of the option
+     * opt's case, as its case binder is, the original's payload seen at the
+     * bound's case's type (quest_view_option_payload) *)
+    let viewOptionPayload(opt: Any m0: Any): Any =
+        begin
+            let m = anyViewMap(m0)
+            let orig = unproxy(opt)
+            let stored = if isProxy(opt) then proxied(opt).stored else m.actual end
+            let tag = optionTagOf(orig)
+            convert(orig storedType(stored).parts[tag] m.bound.parts[m.index[tagAt(opt)]])
+        end
+
     let viewOptionComponent(opt: Any m0: Any b: Int j: Int): Any =
         viewPart(m0 {anyViewMap(m0).start[b] + j} optionSlot(opt j))
 
@@ -711,18 +1010,18 @@ export
      * (an object's), so that values is takes as equal hash equally *)
     let rec identityHash(d: Desc x: Any): Int =
         if {d.kind is kindOption} andif not(isSmall(x)) then
-            let tag = optionTag(x)
+            let tag = tagAt(x)
             let p = if {tag >= 0} andif {tag < extent d.parts} then d.parts[tag] else bases[kindNone] end
             if {p.kind is kindNone} orif {p.kind is kindOk} orif {{p.kind is kindTuple} andif {extent p.parts is 0}} then
                 mix(xor(~7046029254386353131 tag))
-            elsif p.kind isnot kindTuple then mix(xor(tag identityHash(p tupleSlot(x 0))))
-            elsif extent p.parts is 1 then mix(xor(tag identityHash(p.parts[0] tupleSlot(x 0))))
-            else mix(objectHash(x))
+            elsif p.kind isnot kindTuple then mix(xor(tag identityHash(p optionElementAt(x 0))))
+            elsif extent p.parts is 1 then mix(xor(tag identityHash(p.parts[0] optionElementAt(x 0))))
+            else mix(objectHash(unproxy(x)))
             end
         elsif isSmall(x) then mix(smallValue(x))
         elsif isBoxedInt(x) then mix(boxedInt(x))
         elsif isRecBox(x) then mix(objectHash(recPayload(x)))
-        elsif isObject(x) then mix(objectHash(x))
+        elsif isObject(x) then mix(objectHash(unproxy(x)))
         else mix(0)
         end
 

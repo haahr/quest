@@ -103,14 +103,14 @@ export
                     end
                 end
             elsif k is core.kindOption then
-                let tag = optionTag(v)
+                let tag = core.tagAt(v)
                 if {tag < 0} orif {tag >= extent d.parts} then "<val>"
                 else
                     let p = d.parts[tag]
                     let head = "option " <> d.labels[tag]
                     if {p.kind is core.kindNone} orif {p.kind is core.kindOk} then head <> " end"
                     elsif p.kind is core.kindTuple then head <> {" with " <> {tupleText(v p v true) <> " end"}}
-                    else head <> {" with " <> {show(tupleSlot(v 0) p) <> " end"}}
+                    else head <> {" with " <> {show(core.optionElementAt(v 0) p) <> " end"}}
                     end
                 end
             elsif k is core.kindVariant then
@@ -161,7 +161,8 @@ export
                     if i < n then
                         text := text <> " "
                         if not(stringOp.isEmpty(d.labels[i])) then text := text <> d.labels[i] <> "=" end
-                        text := text <> show(tupleSlot(v i) d.parts[i])
+                        let e = if inOption then core.optionElementAt(v i) else core.elementAt(v i) end
+                        text := text <> show(e d.parts[i])
                     end
                 end
                 leave()
