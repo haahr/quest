@@ -67,6 +67,41 @@ export
 
     let base(kind: Int): Desc = bases[kind]
 
+    (* The bound variable descriptor of index i (quest_type_bound_vars[i]):
+     * an auto type's components refer to its type parameter as index 0, the
+     * enclosing auto type's as 1, and so on. Index 0's is the base one; each
+     * other is made once, its index its one position *)
+    let boundVars = tuple let var items = array of :Desc end end
+    let boundVar(i: Int): Desc =
+        if i <= 0 then bases[kindBoundVar]
+        else
+            if i >= extent boundVars.items then
+                let more = array of(i + 1 bases[kindBoundVar])
+                for k = 0 upto extent boundVars.items - 1 do more[k] := boundVars.items[k] end
+                for k = extent boundVars.items upto i do
+                    if k > 0 then
+                        more[k] := tuple
+                            let kind = kindBoundVar let name = "?" let parts = array of :Desc end
+                            let labels = array of :String end let positions = array of k end
+                            let texts = array of :String end let flags = array of :Int end
+                        end
+                    end
+                end
+                boundVars.items := more
+            end
+            boundVars.items[i]
+        end
+    let boundIndex(d: Desc): Int = if extent d.positions > 0 then d.positions[0] else 0 end
+
+    (* An auto type's components, and its bound, a last part flagged 32, or
+     * none *)
+    let autoBound(d: Desc): Desc =
+        begin
+            let n = extent d.parts
+            if {n > 0} andif {d.flags[n - 1] is 32} then d.parts[n - 1] else bases[kindNone] end
+        end
+    let autoComponents(d: Desc): Int = if autoBound(d).kind is kindNone then extent d.parts else extent d.parts - 1 end
+
     let newDesc(kind: Int name: String n: Int m: Int): Desc =
         tuple
             let kind = kind let name = name let parts = array of(n bases[kindNone]) let labels = array of(n "")
@@ -116,6 +151,48 @@ export
             n
         end
 
+    (* An instance's name: its template's, each hole ?N in it its Nth
+     * argument's name, cut off at 80 characters (quest_inst_name) *)
+    let charNumber(c: Char): Int = external "wasm.charCode"
+    let instName(name: String args: Array(Desc)): String =
+        begin
+            let n = stringOp.length(name)
+            let pieces = array of(n + 1 "")
+            let var count = 0
+            let var start = 0
+            let var i = 0
+            while i < n do
+                if {stringOp.getChar(name i) is '?'} andif {{i + 1} < n} then
+                    let var j = i + 1
+                    let var k = 0
+                    let var digits = 0
+                    while {j < n} andif {digits < 6} andif {charNumber(stringOp.getChar(name j)) >= 48}
+                        andif {charNumber(stringOp.getChar(name j)) <= 57} do
+                        k := {k * 10} + {charNumber(stringOp.getChar(name j)) - 48}
+                        j := j + 1
+                        digits := digits + 1
+                    end
+                    if {digits > 0} andif {k < extent args} then
+                        pieces[count] := stringOp.getSub(name start i - start)
+                        pieces[count + 1] := args[k].name
+                        count := count + 2
+                        start := j
+                        i := j
+                    else i := i + 1
+                    end
+                else i := i + 1
+                end
+            end
+            pieces[count] := stringOp.getSub(name start n - start)
+            if count is 0 then name
+            else
+                let var all = ""
+                for m = 0 upto count do all := all <> pieces[m] end
+                (* cut off as static names are, at 80 characters *)
+                if stringOp.length(all) > 80 then stringOp.getSub(all 0 80) <> "..." else all end
+            end
+        end
+
     let rec copy(d: Desc args: Array(Desc)): Desc =
         if d.kind is kindHole then
             let k = holeIndex(d)
@@ -126,7 +203,7 @@ export
             for i = 0 upto instances.ncopied - 1 do if instances.copied[i] is d then found := i end end
             if found >= 0 then instances.copies[found]
             else
-                let c = newDesc(d.kind d.name extent d.parts extent d.texts)
+                let c = newDesc(d.kind instName(d.name args) extent d.parts extent d.texts)
                 if instances.ncopied >= extent instances.copied then
                     let more = array of({2 * instances.ncopied} + 4 d)
                     let moreCopies = array of({2 * instances.ncopied} + 4 d)
@@ -179,6 +256,55 @@ export
         end
 
 
+    (* The registry of abstract types' representations (see below) *)
+    Def Abstract = Tuple name: String arity: Int rep: Desc end
+    let abstracts = tuple let var items = array of :Abstract end let var count = 0 end
+
+    let registerAbstract(name: String arity: Int rep: Desc): Ok =
+        begin
+            let var found = false
+            for i = 0 upto abstracts.count - 1 do
+                if stringOp.equal(abstracts.items[i].name name) then found := true end
+            end
+            if not(found) then
+                let e = tuple let name = name let arity = arity let rep = rep end
+                if abstracts.count >= extent abstracts.items then
+                    let more = array of({2 * abstracts.count} + 8 e)
+                    for i = 0 upto abstracts.count - 1 do more[i] := abstracts.items[i] end
+                    abstracts.items := more
+                end
+                abstracts.items[abstracts.count] := e
+                abstracts.count := abstracts.count + 1
+            end
+        end
+
+    (* An abstract type's representation (an application's, its arguments
+     * filled in), or none if its module registered none *)
+    let abstractRep(d: Desc): Desc =
+        begin
+            let var rep = bases[kindNone]
+            (* its arguments, without a representation a document recorded *)
+            let var recorded = bases[kindNone]
+            let var args = 0
+            for i = 0 upto extent d.flags - 1 do
+                if d.flags[i] is 16 then recorded := d.parts[i] else args := args + 1 end
+            end
+            if d.kind is kindOpaque then
+                for i = 0 upto abstracts.count - 1 do
+                    let e = abstracts.items[i]
+                    if stringOp.equal(e.name d.name) andif {e.arity is args} then
+                        let given = array of(args bases[kindNone])
+                        for j = 0 upto args - 1 do given[j] := d.parts[j] end
+                        rep := if e.arity > 0 then instantiate(e.rep given) else e.rep end
+                    end
+                end
+            end
+            (* a module the program does not link: the representation the
+             * document recorded *)
+            if rep.kind is kindNone then rep := recorded end
+            rep
+        end
+
     (* ======================================================================
      * Subtyping, record tables, and conversion (quest_types.c's
      * quest_is_subtype, quest_views.c's quest_record_dict and quest_convert,
@@ -213,9 +339,15 @@ export
     (* dynamic.error, which a view of a value at a type it is not raises *)
     let dynamicError(): Ok = external "wasm.dynamicError"
 
-    (* A stored type's descriptor stands for its part, where it has one *)
+    (* A stored type's descriptor stands for its part, where it has one: an
+     * opaque descriptor of a bounded abstract type, held at its storage *)
     let storedType(d: Desc): Desc =
         if {d.kind is kindStored} andif {extent d.parts > 0} then d.parts[0] else d end
+    let storage(d: Desc): Desc =
+        if {d.kind is kindStored} andif {extent d.parts > 1} then d.parts[1] else bases[kindNone] end
+    (* How a value of type d is held: a stored type's at its storage, viewed
+     * at the bound (quest_stored_representation) *)
+    let storedRep(d: Desc): Desc = if storage(d).kind isnot kindNone then storage(d) else storedType(d) end
 
     (* The index of d's part labeled label, or ~1 *)
     let partNamed(d: Desc label: String): Int =
@@ -235,11 +367,16 @@ export
     Def Pair = Tuple sub: Desc sup: Desc end
     let trail = tuple let var items = array of :Pair end let var count = 0 end
 
+    (* word.T, the base descriptor or the opaque one (quest_is_word_type) *)
+    let isWordType(d: Desc): Bool =
+        {d.kind is kindWord}
+            orif {{d.kind is kindOpaque} andif {extent d.parts is 0} andif stringOp.equal(d.name "word.T")}
+
     let rec isSubtype(sub0: Desc sup0: Desc): Bool =
         begin
             let sub = storedType(sub0)
             let sup = storedType(sup0)
-            if sub is sup then true
+            if {sub is sup} orif {isWordType(sub) andif isWordType(sup)} then true
             else
                 let var assumed = false
                 for i = 0 upto trail.count - 1 do
@@ -344,13 +481,39 @@ export
                     end
                     match
                 end
-            elsif k is kindOpaque then
-                (* the same name, and an application's arguments equal *)
-                if {sub.kind isnot k} orif not(stringOp.equal(sub.name sup.name))
-                    orif {extent sub.parts isnot extent sup.parts} then false
+            elsif k is kindAuto then
+                (* a bound within sup's, if it has one, then a prefix of
+                 * components with equal names and var-ness, covariant, or
+                 * invariant when var *)
+                if {sub.kind isnot kindAuto} orif {autoComponents(sub) < autoComponents(sup)} then false
+                elsif {autoBound(sup).kind isnot kindNone} andif {{autoBound(sub).kind is kindNone}
+                    orif not(isSubtype(autoBound(sub) autoBound(sup)))} then false
                 else
                     let var match = true
-                    for i = 0 upto extent sup.parts - 1 do
+                    for i = 0 upto autoComponents(sup) - 1 do
+                        if not(stringOp.equal(sub.labels[i] sup.labels[i])) orif {isVar(sub i) isnot isVar(sup i)} then
+                            match := false
+                        elsif not(match) then ok
+                        elsif isVar(sup i) then match := both(sub.parts[i] sup.parts[i])
+                        else match := isSubtype(sub.parts[i] sup.parts[i])
+                        end
+                    end
+                    match
+                end
+            elsif k is kindOpaque then
+                (* the same name, and an application's arguments equal (not
+                 * the representation a document recorded, flagged 16) *)
+                let args = fun(d: Desc): Int
+                    begin
+                        let var n = 0
+                        for i = 0 upto extent d.parts - 1 do if d.flags[i] isnot 16 then n := n + 1 end end
+                        n
+                    end
+                if {sub.kind isnot k} orif not(stringOp.equal(sub.name sup.name)) orif {args(sub) isnot args(sup)}
+                then false
+                else
+                    let var match = true
+                    for i = 0 upto args(sup) - 1 do
                         if match andif not(both(sub.parts[i] sup.parts[i])) then match := false end
                     end
                     match
@@ -672,6 +835,15 @@ export
      * n (made by the backend), or as it is past the most it makes *)
     let adaptClosure(v: Any from: Desc to: Desc n: Int): Any = external "wasm.adaptClosure"
 
+    (* A module's abstract type is held as its representation is
+     * (quest_concrete_representation) *)
+    let concreteRep(d: Desc): Desc =
+        if d.kind is kindOpaque then
+            let rep = abstractRep(d)
+            if rep.kind is kindNone then d else storedType(rep) end
+        else d
+        end
+
     (* A variant's box seen at variant type to, from from: its tag renumbered
      * to to's for the case of the same name, and its payload converted when
      * the cases' types differ (quest_variant_adapt) *)
@@ -698,8 +870,8 @@ export
      * functions' views are built *)
     and convert(v: Any from0: Desc to0: Desc): Any =
         begin
-            let from = storedType(from0)
-            let to = storedType(to0)
+            let from = concreteRep(storedRep(from0))
+            let to = concreteRep(storedRep(to0))
             if {to.kind is kindRecord} andif {from.kind is kindRecord} then
                 let payload = recordPayload(v)
                 newRecBox(payload viewDict(payload to))
@@ -990,6 +1162,88 @@ export
         viewPart(m0 {anyViewMap(m0).start[b] + j} optionSlot(opt j))
 
     (* ======================================================================
+     * Abstract types (quest_register_abstract_type, docs/dynamic.md section
+     * 2.3): each module registers its abstract types' representations where
+     * it begins, by the types' global names, so that is and the identity hash
+     * compare a value as its representation's, and dynamic values write and
+     * read it so
+     * ====================================================================== *)
+
+    (* The type is compares a value of type d at: a stored type's type, an
+     * abstract type's representation (quest_identity_type) *)
+    let identityType(d0: Desc): Desc =
+        begin
+            let var d = d0
+            let var depth = 0
+            while depth < 64 do
+                let next = if d.kind is kindStored then storedType(d)
+                    elsif d.kind is kindOpaque then abstractRep(d)
+                    else d
+                    end
+                if {next is d} orif {next.kind is kindNone} then depth := 64
+                else
+                    d := next
+                    depth := depth + 1
+                end
+            end
+            d
+        end
+
+    (* An option's one case with one component that is not var, the others
+     * without components: its tag, or ~1 (quest_single_word_case) *)
+    let singleWordCase(d: Desc): Int =
+        begin
+            let var found = ~1
+            let var single = true
+            for i = 0 upto extent d.parts - 1 do
+                let p = d.parts[i]
+                let n = if p.kind is kindNone then 0
+                    elsif storedType(p).kind is kindTuple then extent storedType(p).parts
+                    else 1
+                    end
+                if n > 0 then
+                    let varComponent = {storedType(p).kind is kindTuple} andif {n is 1} andif isVar(storedType(p) 0)
+                    if {found >= 0} orif {n isnot 1} orif varComponent then single := false else found := i end
+                end
+            end
+            if single then found else ~1 end
+        end
+
+    (* is on values of the type d describes, as slots hold them
+     * (quest_val_is): the same reference or bits; an option by its case, or
+     * a single-word option's component; a tuple as its original; a Real by
+     * value *)
+    let boxedIntOf(x: Any): Int = external "wasm.boxedInt"
+    let isBoxedInt0(x: Any): Bool = external "wasm.isBoxedInt"
+    let realOf(x: Any): Real = external "wasm.fromAny"
+    let isBoxedReal(x: Any): Bool = external "wasm.isBoxedReal"
+    let realEq(a: Real b: Real): Bool = external "wasm.realEq"
+    let same0(a: Any b: Any): Bool = external "wasm.same"
+    let rec valIs(d0: Desc a: Any b: Any): Bool =
+        if same0(a b) then true
+        elsif isBoxedInt0(a) andif isBoxedInt0(b) then boxedIntOf(a) is boxedIntOf(b)
+        else
+            let d = identityType(d0)
+            if d.kind is kindOption then
+                if same0(unproxy(a) unproxy(b)) then true
+                else
+                    let tag = tagAt(a)
+                    if {tag isnot tagAt(b)} orif {tag < 0} orif {tag >= extent d.parts} then false
+                    elsif d.parts[tag].kind is kindNone then true
+                    elsif singleWordCase(d) isnot tag then false
+                    else
+                        let p = storedType(d.parts[tag])
+                        let component = if p.kind is kindTuple then p.parts[0] else p end
+                        valIs(component optionElementAt(a 0) optionElementAt(b 0))
+                    end
+                end
+            elsif d.kind is kindTuple then same0(unproxy(a) unproxy(b))
+            elsif {d.kind is kindReal} andif isBoxedReal(a) andif isBoxedReal(b) then realEq(realOf(a) realOf(b))
+            else false
+            end
+        end
+
+    (* ======================================================================
      * Auto values (docs/c-representation.md section 8.1)
      * ====================================================================== *)
 
@@ -1111,7 +1365,9 @@ export
     (* quest_identity_hash: a value hashes by its bits (a scalar's), by its
      * tag and its component (an option of at most one), or by its identity
      * (an object's), so that values is takes as equal hash equally *)
-    let rec identityHash(d: Desc x: Any): Int =
+    (* At the type is compares a value of type d at (identityType) *)
+    let rec identityHash(d: Desc x: Any): Int = identityHashAt(identityType(d) x)
+    and identityHashAt(d: Desc x: Any): Int =
         if {d.kind is kindOption} andif not(isSmall(x)) then
             let tag = tagAt(x)
             let p = if {tag >= 0} andif {tag < extent d.parts} then d.parts[tag] else bases[kindNone] end
@@ -1603,6 +1859,8 @@ export
         end
 
     let readerMore(r: Reader): Bool = fill(r)
+    (* The character read last read again: one character of lookahead *)
+    let readerUnget(r: Reader): Ok = if r.at > 0 then r.at := r.at - 1 end
 
     let readerGetChar(r: Reader): Char =
         begin

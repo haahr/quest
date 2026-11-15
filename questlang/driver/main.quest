@@ -633,7 +633,6 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                      * backend compiles may import *)
                     let runtimeRoot = files.join(paths.projectDir() "runtime")
                     let includes = vector.copy(:String e.includePaths)
-                    vector.append(:String includes runtimeRoot)
                     let implicit = vector.new(:passes.ImplicitImport)
                     let found = passes.implicitImports(t.unit program)
                     for k = 0 upto extent found - 1 do vector.append(:passes.ImplicitImport implicit found[k]) end
@@ -1036,6 +1035,13 @@ let run(): Ok =
                     end
                     for i = 0 upto {extent options.includePaths - 1} do
                         vector.append(:String e.includePaths options.includePaths[i])
+                    end
+                    (* The runtime's units in Quest (docs/wasm-plan.md section
+                     * 4.5), found under runtime/, which the library's wasm
+                     * variants import (lib/dynamic.wasm imports wasm/core),
+                     * so that a program is checked as it is compiled *)
+                    if choice.isWasm(programBackend) then
+                        vector.append(:String e.includePaths files.join(paths.projectDir() "runtime"))
                     end
                     (* The modules of prebuilt objects are known through their
                      * interfaces alone, by their canonical names and their

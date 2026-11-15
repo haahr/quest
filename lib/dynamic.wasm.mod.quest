@@ -1,0 +1,36 @@
+(* Standard library: dynamic values, for the wasm backend
+ *
+ * lib/dynamic's variant that the wasm backend compiles (docs/build-process.md
+ * section 6.4): the same module, but for intern and extern, which are the
+ * runtime's upper layer (wasm/dynamic) here rather than C functions. *)
+
+unsound module dynamic : Dynamic
+import
+    reader: Reader
+    writer: Writer
+    wasm/core : wasm/Core
+    serial = wasm/dynamic : wasm/Dynamic
+export
+    Let T = Auto A::TYPE with a: A end
+
+    (* Raised by the runtime operations as well, so it is the runtime's
+     * exception *)
+    let error: Exception = external "(&quest_exc_dynamic_error)"
+
+    let new(A::TYPE a: A): T = auto :A with a end
+
+    let be(A::TYPE d: T): A =
+        inspect d
+        when A with x then x.a
+        else raise error as A end
+        end
+
+    let copy(d: T): T = external "quest_dynamic_copy"
+
+    let toAny(d: T): core.Any = external "wasm.toAny"
+    let fromAny(x: core.Any): T = external "wasm.fromAny"
+
+    let intern(rd: reader.T): T = fromAny(serial.intern(rd))
+
+    let extern(wr: writer.T d: T): Ok = serial.extern(wr toAny(d))
+end

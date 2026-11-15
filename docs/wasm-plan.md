@@ -1665,6 +1665,33 @@ stands, not redesigned.
     the model where it serves, and the C runtime's (`quest_serialization.c`) is the reference, byte for byte, which
     the shared goldens check.
     *Done when* the `dynamic` group passes in both lists, and with it every test of steps 16 and 17 that waited.
+    *Done 2026-11-14:*
+    - **Auto values and inspect:** an `$auto` (its witness's descriptor and its other components' tuple); `inspect`
+      matches a case by the core's `isSubtype` (both ways for an exact one), and binds the stored components, or a
+      new tuple of them each converted by the arm's descriptors. `dynamic.copy` is the core's.
+    - **Descriptors**, which step 17's views and this step's matching compare, now carry what C's do: each part's
+      flags (var, out, a function's result, a quantifier's bound, an auto type's bound), a function type's
+      parameters, an abstract type operator's application's arguments, a stored type's type and storage (a module's
+      bounded abstract type, held at its bound), a bound variable for each index (nested auto types), and an
+      instance's name with its holes written as its arguments' (cut off at 80 characters, as C's). Record types'
+      descriptors are named as the C backend names them, a digest of each record's shape in its name, so that two
+      records whose fields lay out alike are no longer one descriptor. `is` and the identity hash compare an abstract
+      type's values as its representation's, through the registry of abstract types' representations that each
+      module fills where it begins (`quest_register_abstract_type`); `is` by descriptor keeps a reference test as
+      its fast path.
+    - **Function adapters:** a closure seen at a function type whose parameters or result change view is wrapped in
+      an adapter (quest_convert's `meta->adapt`), which converts each argument and the result through the core. The
+      backend makes them where it compiles the core: for each uniform arity up to 8, a closure type `$adaptN` and
+      its uniform entry, and a function that makes one.
+    - **Serialization:** `runtime/wasm/dynamic`, the runtime's upper layer, is `quest_serialization.c` in Quest:
+      the type graph of descriptors, its canonical table, the sharing scan, the writer, a streaming JSON parser
+      (with one character of lookahead, which the core's reader gives back), the type table's descriptors, and the
+      reader. `lib/dynamic.wasm.mod.quest`, the library's first variant (step 13's mechanism), calls it for
+      `intern` and `extern`, so the C backend's library is unchanged; a variant's library path drops its name.
+    - **Checked:** in the compiled list 46 tests pass, and 47 in the JIT's (with this step's group, the rest of
+      step 17's: `option_identity`'s abstract types, and `stdlib/bytes`). The lists hold only `Real`'s mathematics
+      (step 19), step 20's, and §7's absences. A program is checked with the runtime's units on its search path, as
+      it is compiled, since the library's wasm variants import them.
 19. **`Real`'s mathematics.** §4.3's second half: the mathematical functions ported to Quest from musl's or
     FreeBSD's `msun`, in a unit of the library beside `util/realconv` (and, like it, written and tested natively
     against libc first); `**` on reals; and `real.format`, a third formatter over `realconv`'s exact digits. A

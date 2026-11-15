@@ -784,6 +784,12 @@ export
                 let d = vector.get(:ir.StaticDescriptor data.descriptors k)
                 vector.append(:ir.Type if d.echo then echoed else plain end d.type)
             end
+            (* and the representations of its modules' abstract types, which it
+             * registers *)
+            for k = 0 upto vector.length(:ir.Module g.unit.modules) - 1 do
+                let entries = vector.get(:ir.Module g.unit.modules k).abstractTypes
+                for j = 0 upto extent entries - 1 do vector.append(:ir.Type plain entries[j].descriptor.type) end
+            end
             let collected = try
                     staticdata.collectDescriptors(plain echoed maybe.some(:staticdata.RecordNaming g.naming)
                         hashMap.new(:String :Bool stringOp.equal hash.string))
@@ -828,7 +834,14 @@ export
      * descriptor variable's and an instantiation come with step 7 *)
     let rec descriptor(f: F d: ir.Descriptor): Ok =
         case d
-            when descStatic with x then emit(f i1(ops.globalGet descGlobal(f formOf(f.g x.d).symbol)))
+            when descStatic with x then
+                let form = formOf(f.g x.d)
+                if stringOp.equal(form.symbol "quest_type_bound_vars") andif {form.index > 0} then
+                    emit(f i1(ops.globalGet f.g.noClosure))
+                    emit(f model.i64Const(form.index))
+                    runtimeUnitCall(f "wasm/core.boundVar")
+                else emit(f i1(ops.globalGet descGlobal(f form.symbol)))
+                end
             when descVar with x then atomParts(f ir.atomOfVar(x.v))
             when descInstantiate with x then
                 (* the template's, its holes filled by the core *)
@@ -854,7 +867,7 @@ export
 
     (* A part of a descriptor: its label, the descriptor it refers to, and its
      * flags, as wasm/core reads them (1 var, 2 out, 4 a function's result, 8
-     * a quantifier's bound) *)
+     * a quantifier's bound, 32 an auto type's bound) *)
     Def Part = Tuple label: String ref: staticdata.Ref flags: Int end
 
     let partsOf(d: staticdata.Descriptor): Array(Part) =
@@ -897,8 +910,24 @@ export
                 when payloadVariant with x then cases(x.cases)
                 when payloadArray with x then array of part(maybe.none(:String) x.element) end
                 when payloadException with x then array of part(maybe.none(:String) x.payloadType) end
-                when payloadAuto with x then components(x.components)
+                when payloadAuto with x then
+                    (* its components, then its bound if it has one *)
+                    let cs = components(x.components)
+                    if stringOp.isEmpty(x.bound.symbol) then cs
+                    else
+                        let ps = array of(extent cs + 1 flagged(maybe.none(:String) x.bound 32))
+                        for j = 0 upto extent cs - 1 do ps[j] := cs[j] end
+                        ps
+                    end
                 when payloadFun with x then function(x.params x.result x.bounds)
+                (* a module's bounded abstract type held as a value of its
+                 * bound: its type, an opaque descriptor of its name, which
+                 * makeDescriptors makes, and its storage, the bound *)
+                when payloadStored with x then
+                    array of
+                        part(maybe.some(:String "type") staticdata.nullRef)
+                        part(maybe.some(:String "storage") x.storage)
+                    end
                 when payloadOpaque with x then
                     (* an abstract type operator's application: its
                      * arguments *)
@@ -954,10 +983,21 @@ export
                     noClosure()
                     emit(f i1(ops.globalGet at))
                     emit(f model.i64Const(j))
-                    if stringOp.isEmpty(ps[j].ref.symbol) then
+                    if {j is 0} andif stringOp.equal(ps[j].label "type") andif {d.payload?payloadStored} then
+                        noClosure()
+                        emit(f model.i64Const(kindOf("QTYPE_KIND_OPAQUE")))
+                        literal(f d.name)
+                        emit(f model.i64Const(0))
+                        emit(f model.i64Const(0))
+                        callCore("newDesc")
+                    elsif stringOp.isEmpty(ps[j].ref.symbol) then
                         noClosure()
                         emit(f model.i64Const(0))
                         callCore("base")
+                    elsif stringOp.equal(ps[j].ref.symbol "quest_type_bound_vars") andif {ps[j].ref.index > 0} then
+                        noClosure()
+                        emit(f model.i64Const(ps[j].ref.index))
+                        callCore("boundVar")
                     else emit(f i1(ops.globalGet descGlobal(f ps[j].ref.symbol)))
                     end
                     literal(f ps[j].label)
@@ -1774,15 +1814,26 @@ export
                 elsif shapes.kindIs(shapeOf(ir.atomType(x.args[0])) shapes.shapeOption) then
                     let a = scratch(f model.eqref)
                     let b = scratch(f model.eqref)
-                    (* options that may be proxies: their originals *)
-                    let originals = not(x.access?direct) andif not(f.g.isRuntime)
-                    atom(f x.args[0])
-                    if originals then accessAs(f tOption ir.original) end
-                    emit(f i1(ops.localSet a))
-                    atom(f x.args[1])
-                    if originals then accessAs(f tOption ir.original) end
-                    emit(f i1(ops.localSet b))
-                    optionIs(f shapeOf(ir.atomType(x.args[0])) a b 0)
+                    (* options that may be proxies: the same original, or by
+                     * their tags and components through the proxies, as the
+                     * core's valIs compares them (quest_option_is) *)
+                    let proxied = not(x.access?direct) andif not(f.g.isRuntime)
+                    if proxied andif maybe.isSome(:ir.Descriptor x.descriptor)
+                        andif hashMap.contains(:String :Int f.g.runtimeUnits "wasm/core.valIs") then
+                        emit(f i1(ops.globalGet f.g.noClosure))
+                        descriptor(f maybe.unwrap(:ir.Descriptor x.descriptor))
+                        atom(f x.args[0])
+                        atom(f x.args[1])
+                        runtimeUnitCall(f "wasm/core.valIs")
+                    else
+                        atom(f x.args[0])
+                        if proxied then accessAs(f tOption ir.original) end
+                        emit(f i1(ops.localSet a))
+                        atom(f x.args[1])
+                        if proxied then accessAs(f tOption ir.original) end
+                        emit(f i1(ops.localSet b))
+                        optionIs(f shapeOf(ir.atomType(x.args[0])) a b 0)
+                    end
                     if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
                 elsif isRecord(ir.atomType(x.args[0])) then
                     for k = 0 upto 1 do
@@ -1810,6 +1861,15 @@ export
                     emit(f model.ifInst(option blockValue of model.BlockType with let type = model.i32 end ""))
                     emit(f model.i32Const(1))
                     emit(f model.elseInst)
+                    if hashMap.contains(:String :Int f.g.runtimeUnits "wasm/core.valIs") then
+                        (* by the descriptor, which may be an abstract type's
+                         * whose representation compares otherwise *)
+                        emit(f i1(ops.globalGet f.g.noClosure))
+                        descriptor(f maybe.unwrap(:ir.Descriptor x.descriptor))
+                        emit(f i1(ops.localGet a))
+                        emit(f i1(ops.localGet b))
+                        runtimeUnitCall(f "wasm/core.valIs")
+                    else
                     for k = 0 upto 1 do
                         emit(f i1(ops.localGet if k is 0 then a else b end))
                         emit(f option instRefTest of Inst with let type = tuple let nullable = false
@@ -1826,6 +1886,7 @@ export
                     emit(f model.elseInst)
                     emit(f model.i32Const(0))
                     emit(f model.endInst)
+                    end
                     emit(f model.endInst)
                 elsif x.access?original andif not(f.g.isRuntime) then
                     (* tuples or options that may be proxies: their
@@ -3735,6 +3796,24 @@ export
             elsif named("adaptClosure") then
                 atoms(f args)
                 emit(f i1(ops.call adapters(f.g)))
+            elsif named("addWrap") orif named("mulWrap") then
+                atoms(f args)
+                emit(f i(if named("addWrap") then ops.i64Add else ops.i64Mul end))
+            elsif named("newRecordPayload") then
+                (* a record's payload, its layout's descriptor and its slots *)
+                emit(f model.i32Const(0))
+                atom(f args[0])
+                atom(f args[1])
+                castTo(f tArray)
+                emit(f i2(ops.structGet tArray fElems))
+                emit(f i1(ops.structNew tRecord))
+            elsif named("realEq") then
+                atoms(f args)
+                emit(f i(ops.f64Eq))
+            elsif named("isBoxedReal") then
+                atom(f args[0])
+                emit(f option instRefTest of Inst with let type = tuple let nullable = false
+                    let heap = heapOf(rt.index("boxReal")) end end)
             elsif named("dictStored") then
                 atom(f args[0])
                 castTo(f tDict)
@@ -4691,6 +4770,26 @@ export
             found
         end
 
+    (* A module's abstract types registered with their representations
+     * (docs/dynamic.md section 2.3), as the describe pass listed them; one
+     * whose representation's descriptor the unit does not make is not *)
+    let registerAbstracts(f: F m: ir.Module): Ok =
+        for k = 0 upto extent m.abstractTypes - 1 do
+            let e = m.abstractTypes[k]
+            let naming = maybe.some(:staticdata.RecordNaming f.g.naming)
+            let symbol = try staticdata.descriptorForm(e.descriptor.type naming).symbol
+                when staticdata.missingDescriptor then ""
+                end
+            if not(stringOp.isEmpty(symbol)) andif hashMap.contains(:String :Int f.g.descGlobals symbol) then
+                emit(f i1(ops.globalGet f.g.noClosure))
+                literal(f e.name)
+                emit(f model.i64Const(e.arity))
+                emit(f i1(ops.globalGet hashMap.find(:String :Int f.g.descGlobals symbol)))
+                runtimeUnitCall(f "wasm/core.registerAbstract")
+                emit(f i(ops.drop))
+            end
+        end
+
     let unitModule(unit: ir.Unit): model.Module =
         begin
             (* A module file's module is its unit's last, after any it
@@ -4843,8 +4942,15 @@ export
              * the core's constructors, which its initializer makes them
              * with, and print's echo; each at its interface's closure
              * signature *)
+            (* a unit whose modules have abstract types registers their
+             * representations' descriptors (registerAbstracts) *)
+            let var abstracts = false
+            for k = 0 upto vector.length(:ir.Module unit.modules) - 1 do
+                if extent vector.get(:ir.Module unit.modules k).abstractTypes > 0 then abstracts := true end
+            end
             let described = not(isRuntimeUnit(moduleName)) andif maybe.isSome(:ir.StaticData unit.staticData)
-                andif {vector.length(:ir.StaticDescriptor maybe.unwrap(:ir.StaticData unit.staticData).descriptors) > 0}
+                andif {abstracts orif {vector.length(:ir.StaticDescriptor
+                    maybe.unwrap(:ir.StaticData unit.staticData).descriptors) > 0}}
             let runtimeImport = fun(unitName: String field: String params: Array(ValType)
                 results: Array(ValType)): Bool
                 hashMap.insert(:String :Int g.runtimeUnits unitName <> "." <> field
@@ -4899,12 +5005,15 @@ export
                 runtimeImport("wasm/core" "setPart" array of e n e e end array of e end)
                 runtimeImport("wasm/core" "setText" array of e n n e end array of e end)
                 runtimeImport("wasm/core" "setFlags" array of e n n end array of e end)
+                runtimeImport("wasm/core" "boundVar" array of n end array of e end)
                 runtimeImport("wasm/core" "instantiate" array of e e end array of e end)
                 (* records' tables and views (step 17) *)
                 runtimeImport("wasm/core" "viewDict" array of e e end array of e end)
                 runtimeImport("wasm/core" "storedField" array of e e n e end array of e end)
                 runtimeImport("wasm/core" "convert" array of e e e end array of e end)
                 runtimeImport("wasm/core" "isSubtype" array of e e end array of model.i32 end)
+                runtimeImport("wasm/core" "registerAbstract" array of e n e end array of e end)
+                runtimeImport("wasm/core" "valIs" array of e e e end array of model.i32 end)
                 runtimeImport("wasm/core" "viewMap" array of e e end array of e end)
                 runtimeImport("wasm/core" "viewIndex" array of e n end array of n end)
                 runtimeImport("wasm/core" "viewPart" array of e n e end array of e end)
@@ -5134,6 +5243,7 @@ export
                 emit(initF i1(ops.globalSet flag))
                 initRuntime(initF)
                 initImports(initF)
+                for k = 0 upto nmodules - 1 do registerAbstracts(initF vector.get(:ir.Module unit.modules k)) end
                 for k = 0 upto nmodules - 1 do body(initF vector.get(:ir.Module unit.modules k).init) end
                 (* and a phrase unit's top level, as the native entry runs it *)
                 if g.isPhrase then body(initF unit.main) end
@@ -5226,6 +5336,7 @@ export
             let mainF = newF(g array of :String end noTypes ~1)
             initRuntime(mainF)
             initImports(mainF)
+            for k = 0 upto nmodules - 1 do registerAbstracts(mainF vector.get(:ir.Module unit.modules k)) end
             (* the modules the program defines, in order, then its top
              * level *)
             for k = 0 upto nmodules - 1 do body(mainF vector.get(:ir.Module unit.modules k).init) end

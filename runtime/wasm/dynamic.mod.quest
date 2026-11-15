@@ -1,0 +1,1529 @@
+(* Quest WebAssembly Runtime: Dynamic Values' Serialization
+ *
+ * quest_serialization.c in Quest, over the core's descriptors (wasm/core's
+ * Desc) and values as slots hold them, read and made by intrinsics (externals
+ * named wasm.NAME, which the backend compiles in place). Writing builds the
+ * graph of the types met, merges its structurally equivalent nodes, and
+ * numbers the rest as a walk from the roots first reaches them, so that the
+ * table is canonical; finds the records, tuples, and arrays reached more than
+ * once, which it writes with "@id" and "@ref"; and writes the document.
+ * Reading parses the document, makes a descriptor for each node of its type
+ * table, and makes the value from new objects. *)
+
+unsound module dynamic : Dynamic
+import
+    wasm/core : wasm/Core
+    util/realconv : util/RealConv
+    reader : Reader
+    writer : Writer
+    stringOp = string : StringOp
+    ascii : Ascii
+    util/maybe : util/Maybe
+export
+    Let Any = core.Any
+    Let Desc = core.Desc
+
+    (* ======================================================================
+     * Values as slots hold them
+     * ====================================================================== *)
+
+    let toInt(x: Any): Int = external "wasm.fromAny"
+    let toBool(x: Any): Bool = external "wasm.fromAny"
+    let toChar(x: Any): Char = external "wasm.fromAny"
+    let toString(x: Any): String = external "wasm.fromAny"
+    let toReal(x: Any): Real = external "wasm.fromAny"
+    let fromInt(n: Int): Any = external "wasm.toAny"
+    let fromBool(b: Bool): Any = external "wasm.toAny"
+    let fromChar(c: Char): Any = external "wasm.toAny"
+    let fromString(s: String): Any = external "wasm.toAny"
+    let fromReal(r: Real): Any = external "wasm.toAny"
+    let fromOk(o: Ok): Any = external "wasm.toAny"
+    let fromArray(a: Array(Any)): Any = external "wasm.toAny"
+    let descAny(d: Desc): Any = external "wasm.toAny"
+    let readerAny(r: reader.T): Any = external "wasm.toAny"
+    let asReader(x: Any): core.Reader = external "wasm.fromAny"
+    let same(a: Any b: Any): Bool = external "wasm.same"
+    let shrU(n: Int k: Int): Int = external "wasm.shrU"
+    let addWrap(a: Int b: Int): Int = external "wasm.addWrap"
+    let mulWrap(a: Int b: Int): Int = external "wasm.mulWrap"
+    let decimal(n: Int): String = external "wasm.decimal"
+    let signBit(r: Real): Bool = external "wasm.signBit"
+    let arrayCount(x: Any): Int = external "wasm.arrayCount"
+    let arraySlot(x: Any i: Int): Any = external "wasm.arraySlot"
+    let recPayload(x: Any): Any = external "wasm.recPayload"
+    let recDict(x: Any): Any = external "wasm.recDict"
+    let recordSlot(payload: Any i: Int): Any = external "wasm.recordSlot"
+    let dictIndex(d: Any i: Int): Int = external "wasm.dictIndex"
+    let newRecBox(payload: Any dict: Any): Any = external "wasm.newRecBox"
+    let newRecordPayload(layout: Any slots: Array(Any)): Any = external "wasm.newRecordPayload"
+    let variantTag(x: Any): Int = external "wasm.variantTag"
+    let variantPayload(x: Any): Any = external "wasm.variantPayload"
+    let newVarBox(tag: Int payload: Any): Any = external "wasm.newVarBox"
+    let autoPayload(x: Any): Any = external "wasm.autoPayload"
+    let newAuto(d: Any payload: Any): Any = external "wasm.newAuto"
+    let newTuple(slots: Array(Any)): Any = external "wasm.newTuple"
+    let newOption(tag: Int slots: Array(Any)): Any = external "wasm.newOption"
+    (* dynamic.error *)
+    let fail(): Ok = external "wasm.dynamicError"
+
+    let none(): Desc = core.base(core.kindNone)
+    let isVarPart(d: Desc i: Int): Bool = {i < extent d.flags} andif {d.flags[i] is 1}
+
+    (* Auto A::TYPE with a: A end, whose one component is the value *)
+    let isDynamic(d: Desc): Bool =
+        {d.kind is core.kindAuto} andif {extent d.parts is 1} andif stringOp.equal(d.labels[0] "a")
+            andif not(isVarPart(d 0)) andif {d.parts[0].kind is core.kindBoundVar}
+            andif {core.boundIndex(d.parts[0]) is 0}
+
+    (* word.T: the external type uint64_t, the only external type that can be
+     * externed *)
+    let isWord(d: Desc): Bool =
+        {d.kind is core.kindWord}
+            orif {{d.kind is core.kindOpaque} andif {extent d.parts is 0} andif stringOp.equal(d.name "word.T")}
+
+    (* The witnesses of the auto values being written or read, innermost
+     * last, which a component of an auto type's parameter's type is written
+     * or read at (quest_witness_of). Descriptors here have one bound variable,
+     * which stands for the innermost *)
+    let witnesses = tuple let var items = array of :Desc end let var count = 0 end
+    let pushWitness(w: Desc): Ok =
+        begin
+            if witnesses.count >= extent witnesses.items then
+                let more = array of({2 * witnesses.count} + 4 w)
+                for i = 0 upto witnesses.count - 1 do more[i] := witnesses.items[i] end
+                witnesses.items := more
+            end
+            witnesses.items[witnesses.count] := w
+            witnesses.count := witnesses.count + 1
+        end
+    let popWitness(): Ok = witnesses.count := witnesses.count - 1
+    let witnessOf(d: Desc): Desc =
+        begin
+            let i = core.boundIndex(d)
+            if i >= witnesses.count then
+                fail()
+                none()
+            else witnesses.items[{witnesses.count - 1} - i]
+            end
+        end
+
+    (* A value held at a stored type's storage, converted to the type itself
+     * (quest_unstore) *)
+    let unstored(d: Desc v: Any): Any =
+        if core.storage(d).kind is core.kindNone then v else core.convert(v core.storage(d) core.storedType(d)) end
+
+    (* The type a value is written or read at: its stored type's, an abstract
+     * type's representation, an auto type's parameter's witness *)
+    let concrete(d0: Desc): Desc =
+        begin
+            let var d = core.storedType(d0)
+            let var going = true
+            while going do
+                if {d.kind is core.kindOpaque} andif not(isWord(d)) then
+                    let rep = core.abstractRep(d)
+                    if rep.kind is core.kindNone then
+                        fail()
+                        going := false
+                    else d := core.storedType(rep)
+                    end
+                elsif d.kind is core.kindBoundVar then d := core.storedType(witnessOf(d))
+                else going := false
+                end
+            end
+            d
+        end
+
+    (* ======================================================================
+     * Text out
+     * ====================================================================== *)
+
+    Def Text = Tuple var pieces: Array(String) var count: Int end
+    let newOut(): Text = tuple let var pieces = array of(64 "") let var count = 0 end
+    let put(o: Text s: String): Ok =
+        begin
+            if o.count >= extent o.pieces then
+                let more = array of(2 * o.count "")
+                for i = 0 upto o.count - 1 do more[i] := o.pieces[i] end
+                o.pieces := more
+            end
+            o.pieces[o.count] := s
+            o.count := o.count + 1
+        end
+    let text(o: Text): String =
+        begin
+            let all = array of(o.count "")
+            for i = 0 upto o.count - 1 do all[i] := o.pieces[i] end
+            stringOp.conc(all)
+        end
+
+    let hexDigits = "0123456789abcdef"
+    let hexDigit(n: Int): String = stringOp.getSub(hexDigits n 1)
+
+    (* A JSON string of s's bytes: ASCII, with a \u escape for each byte above
+     * 127 and each control character, as the interpreter writes it *)
+    let jsonString(o: Text s: String): Ok =
+        begin
+            put(o "\"")
+            let n = stringOp.length(s)
+            let var start = 0
+            for i = 0 upto n - 1 do
+                let c = ascii.val(stringOp.getChar(s i))
+                let escape = if c is 34 then "\\\""
+                    elsif c is 92 then "\\\\"
+                    elsif c is 8 then "\\b"
+                    elsif c is 12 then "\\f"
+                    elsif c is 10 then "\\n"
+                    elsif c is 13 then "\\r"
+                    elsif c is 9 then "\\t"
+                    elsif {c < 32} orif {c > 127} then "\\u00" <> {hexDigit(c / 16) <> hexDigit(c % 16)}
+                    else ""
+                    end
+                if not(stringOp.isEmpty(escape)) then
+                    if i > start then put(o stringOp.getSub(s start i - start)) end
+                    put(o escape)
+                    start := i + 1
+                end
+            end
+            if n > start then put(o stringOp.getSub(s start n - start)) end
+            put(o "\"")
+        end
+
+    (* A word's bits, unsigned, in decimal *)
+    let unsigned(n: Int): String =
+        if n >= 0 then decimal(n)
+        else
+            let h = shrU(n 1)
+            let var q = h / 5
+            let low = if {n % 2} is 0 then 0 else 1 end
+            let var r = {2 * {h - {5 * q}}} + low
+            if r >= 10 then
+                q := q + 1
+                r := r - 10
+            end
+            decimal(q) <> decimal(r)
+        end
+
+    (* A finite real as Python's repr writes it: the shortest digits that read
+     * back exactly, positional when the decimal exponent is in [-4, 16) (with
+     * ".0" for whole numbers), and otherwise d.ddde+XX; an infinity as the
+     * string "Infinity" or "-Infinity" *)
+    let realText(r: Real): String =
+        begin
+            let sign = if signBit(r) then "-" else "" end
+            let m = realconv.magnitude(r)
+            if stringOp.equal(m "inf") then "\"" <> {sign <> "Infinity\""}
+            elsif stringOp.equal(m "0.0") then sign <> "0.0"
+            else
+                let d = realconv.shortest(r)
+                let var n = extent d.digits
+                while {n > 1} andif {d.digits[n - 1] is 0} do n := n - 1 end
+                let digit = fun(i: Int): String if i < n then decimal(d.digits[i]) else "0" end
+                let x = d.exponent
+                let o = newOut()
+                put(o sign)
+                if {x >= ~4} andif {x < 16} then
+                    if x < 0 then
+                        put(o "0.")
+                        for i = 1 upto {0 - x} - 1 do put(o "0") end
+                        for i = 0 upto n - 1 do put(o digit(i)) end
+                    else
+                        for i = 0 upto x do put(o digit(i)) end
+                        put(o ".")
+                        if {x + 1} < n then
+                            for i = x + 1 upto n - 1 do put(o digit(i)) end
+                        else put(o "0")
+                        end
+                    end
+                else
+                    put(o digit(0))
+                    if n > 1 then
+                        put(o ".")
+                        for i = 1 upto n - 1 do put(o digit(i)) end
+                    end
+                    let e = if x < 0 then 0 - x else x end
+                    put(o "e" <> {if x < 0 then "-" else "+" end <> {if e < 10 then "0" else "" end <> decimal(e)}})
+                end
+                text(o)
+            end
+        end
+
+    (* ======================================================================
+     * Type graphs
+     * ====================================================================== *)
+
+    (* A ref: a node's index (>= 0), or a built-in type's *)
+    let refOk = ~1
+    let refBool = ~2
+    let refChar = ~3
+    let refString = ~4
+    let refInt = ~5
+    let refReal = ~6
+    let refDynamic = ~7
+    let builtinNames = array of "" "Ok" "Bool" "Char" "String" "Int" "Real" "Dynamic" end
+
+    (* A node's kind; the first seven are written as {kind: ...} *)
+    let nodeRecord = 0
+    let nodeTuple = 1
+    let nodeVariant = 2
+    let nodeOption = 3
+    let nodeArray = 4
+    let nodeFun = 5
+    let nodeException = 6
+    let nodeExternal = 7
+    let nodeAbstract = 8
+    let nodeAuto = 9
+    let nodeParam = 10
+    let nodeNames = array of "record" "tuple" "variant" "option" "array" "fun" "exception" end
+
+    (* A type node: its kind, labels (fields' names with "var " for var
+     * fields, cases' names, parameters' modes, an external type's C type, an
+     * abstract type's global name, an auto type's components' names, or a
+     * param node's index), whether each case has a payload, and its
+     * children's refs (fields by name, components and parameters in order
+     * then a function's result, the cases with payloads, an abstract type's
+     * arguments then its representation, an auto type's components) *)
+    Def Node = Tuple var kind: Int var labels: Array(String) var hasPayload: Array(Bool) var children: Array(Int) end
+    Def Graph = Tuple
+        var nodes: Array(Node)
+        var descs: Array(Desc)
+        var count: Int
+        var roots: Array(Int)
+        var rootCount: Int
+        (* after canonicalization: each node's class, each class's number in
+         * the table (or ~1), and a node of each class in table order *)
+        var cls: Array(Int)
+        var number: Array(Int)
+        var order: Array(Int)
+        var orderCount: Int
+    end
+    let newGraph(): Graph =
+        tuple
+            let var nodes = array of :Node end let var descs = array of :Desc end let var count = 0
+            let var roots = array of :Int end let var rootCount = 0 let var cls = array of :Int end
+            let var number = array of :Int end let var order = array of :Int end let var orderCount = 0
+        end
+
+    let varLabel(name: String isVar: Bool): String =
+        if not(isVar) then name elsif stringOp.isEmpty(name) then "var" else "var " <> name end
+
+    let emptyNode(): Node =
+        tuple
+            let var kind = 0 let var labels = array of :String end let var hasPayload = array of :Bool end
+            let var children = array of :Int end
+        end
+
+    let newNode(g: Graph d: Desc): Int =
+        begin
+            if g.count >= extent g.nodes then
+                let n = {2 * g.count} + 16
+                let nodes = array of(n emptyNode())
+                let descs = array of(n d)
+                for i = 0 upto g.count - 1 do
+                    nodes[i] := g.nodes[i]
+                    descs[i] := g.descs[i]
+                end
+                g.nodes := nodes
+                g.descs := descs
+            end
+            g.nodes[g.count] := emptyNode()
+            g.descs[g.count] := d
+            g.count := g.count + 1
+            g.count - 1
+        end
+
+    (* The ref of a descriptor's type, adding nodes for it and the types it
+     * mentions; dynamic.error for types the format cannot express:
+     * polymorphic functions, and abstract types other than modules' *)
+    let rec ref(g: Graph d0: Desc): Int =
+        begin
+            let d = core.storedType(d0)
+            let k = d.kind
+            if k is core.kindOk then refOk
+            elsif k is core.kindBool then refBool
+            elsif k is core.kindChar then refChar
+            elsif k is core.kindString then refString
+            elsif k is core.kindInt then refInt
+            elsif k is core.kindReal then refReal
+            elsif isDynamic(d) then refDynamic
+            else
+                if {k is core.kindOpaque} andif not(isWord(d)) andif {core.abstractRep(d).kind is core.kindNone} then
+                    fail()
+                end
+                let var found = ~1
+                for i = 0 upto g.count - 1 do if {found < 0} andif {g.descs[i] is d} then found := i end end
+                if found >= 0 then found else addNode(g d) end
+            end
+        end
+
+    and addNode(g: Graph d: Desc): Int =
+        begin
+            let index = newNode(g d)
+            let node = g.nodes[index]
+            let k = d.kind
+            let n = extent d.parts
+            if k is core.kindRecord then
+                node.kind := nodeRecord
+                node.labels := array of(n "")
+                node.children := array of(n 0)
+                for i = 0 upto n - 1 do
+                    node.labels[i] := varLabel(d.labels[i] isVarPart(d i))
+                    node.children[i] := ref(g d.parts[i])
+                end
+            elsif k is core.kindTuple then
+                node.kind := nodeTuple
+                node.labels := array of(n "")
+                node.children := array of(n 0)
+                for i = 0 upto n - 1 do
+                    node.labels[i] := varLabel(d.labels[i] isVarPart(d i))
+                    node.children[i] := ref(g d.parts[i])
+                end
+            elsif {k is core.kindVariant} orif {k is core.kindOption} then
+                node.kind := if k is core.kindVariant then nodeVariant else nodeOption end
+                node.labels := array of(n "")
+                node.hasPayload := array of(n false)
+                let kids = array of(n 0)
+                let var count = 0
+                for i = 0 upto n - 1 do
+                    node.labels[i] := if k is core.kindVariant then varLabel(d.labels[i] isVarPart(d i))
+                        else d.labels[i]
+                        end
+                    if d.parts[i].kind isnot core.kindNone then
+                        node.hasPayload[i] := true
+                        kids[count] := ref(g d.parts[i])
+                        count := count + 1
+                    end
+                end
+                node.children := array of(count 0)
+                for i = 0 upto count - 1 do node.children[i] := kids[i] end
+            elsif k is core.kindArray then
+                if n < 1 then fail() end
+                node.kind := nodeArray
+                node.children := array of ref(g d.parts[0]) end
+            elsif k is core.kindFun then
+                (* its parameters by mode, then its result; a polymorphic
+                 * function's type cannot be written *)
+                let var params = 0
+                for i = 0 upto n - 1 do
+                    if d.flags[i] is 8 then fail() end
+                    if {d.flags[i] isnot 4} andif {d.flags[i] isnot 8} then params := params + 1 end
+                end
+                node.kind := nodeFun
+                node.labels := array of(params "")
+                node.children := array of(params + 1 0)
+                for i = 0 upto params - 1 do
+                    node.labels[i] := if d.flags[i] is 1 then "var" elsif d.flags[i] is 2 then "out" else "" end
+                    node.children[i] := ref(g d.parts[i])
+                end
+                node.children[params] := ref(g d.parts[params])
+            elsif k is core.kindException then
+                node.kind := nodeException
+                node.children := array of ref(g if n > 0 then d.parts[0] else core.base(core.kindOk) end) end
+            elsif k is core.kindOpaque then
+                node.labels := array of if isWord(d) then "uint64_t" else d.name end end
+                if isWord(d) then node.kind := nodeExternal
+                else
+                    (* a module's abstract type: its global name, its
+                     * arguments, its representation *)
+                    node.kind := nodeAbstract
+                    let var args = 0
+                    for i = 0 upto n - 1 do if d.flags[i] isnot 16 then args := args + 1 end end
+                    node.children := array of(args + 1 0)
+                    for i = 0 upto args - 1 do node.children[i] := ref(g d.parts[i]) end
+                    node.children[args] := ref(g core.abstractRep(d))
+                end
+            elsif k is core.kindAuto then
+                (* its bound, if it has one, then its components *)
+                node.kind := nodeAuto
+                let m = core.autoComponents(d)
+                let b = if core.autoBound(d).kind is core.kindNone then 0 else 1 end
+                node.labels := array of(m "")
+                node.children := array of(m + b 0)
+                if b > 0 then node.children[0] := ref(g core.autoBound(d)) end
+                for i = 0 upto m - 1 do
+                    node.labels[i] := varLabel(d.labels[i] isVarPart(d i))
+                    node.children[b + i] := ref(g d.parts[i])
+                end
+            elsif k is core.kindBoundVar then
+                node.kind := nodeParam
+                node.labels := array of decimal(core.boundIndex(d)) end
+            elsif k is core.kindWord then
+                node.kind := nodeExternal
+                node.labels := array of "uint64_t" end
+            else fail()
+            end
+            index
+        end
+
+    let addRoot(g: Graph r: Int): Ok =
+        begin
+            if g.rootCount >= extent g.roots then
+                let more = array of({2 * g.rootCount} + 8 0)
+                for i = 0 upto g.rootCount - 1 do more[i] := g.roots[i] end
+                g.roots := more
+            end
+            g.roots[g.rootCount] := r
+            g.rootCount := g.rootCount + 1
+        end
+
+    let sameShape(a: Node b: Node): Bool =
+        begin
+            let var same = {a.kind is b.kind} andif {extent a.labels is extent b.labels}
+                andif {extent a.children is extent b.children} andif {extent a.hasPayload is extent b.hasPayload}
+            for i = 0 upto extent a.labels - 1 do
+                if same andif not(stringOp.equal(a.labels[i] b.labels[i])) then same := false end
+            end
+            for i = 0 upto extent a.hasPayload - 1 do
+                if same andif {a.hasPayload[i] isnot b.hasPayload[i]} then same := false end
+            end
+            same
+        end
+
+    let classOf(cls: Array(Int) r: Int): Int = if r < 0 then r else cls[r] end
+
+    let rec visit(g: Graph r: Int): Ok =
+        if {r >= 0} andif {g.number[g.cls[r]] < 0} then
+            g.number[g.cls[r]] := g.orderCount
+            g.order[g.orderCount] := r
+            g.orderCount := g.orderCount + 1
+            let node = g.nodes[r]
+            for i = 0 upto extent node.children - 1 do visit(g node.children[i]) end
+        end
+
+    (* Merges structurally equivalent nodes (partition refinement from shapes
+     * to the coarsest bisimulation) and numbers the classes in the order a
+     * depth-first walk from the roots first reaches them *)
+    let canonicalize(g: Graph): Ok =
+        begin
+            let n = g.count
+            let var cls = array of(n ~1)
+            let var classes = 0
+            for i = 0 upto n - 1 do
+                for j = 0 upto i - 1 do
+                    if {cls[i] < 0} andif sameShape(g.nodes[i] g.nodes[j]) then cls[i] := cls[j] end
+                end
+                if cls[i] < 0 then
+                    cls[i] := classes
+                    classes := classes + 1
+                end
+            end
+            let var refining = true
+            while refining do
+                let next = array of(n ~1)
+                let var nextClasses = 0
+                for i = 0 upto n - 1 do
+                    for j = 0 upto i - 1 do
+                        if {next[i] < 0} andif {cls[j] is cls[i]} then
+                            let var same = true
+                            let ci = g.nodes[i].children
+                            let cj = g.nodes[j].children
+                            for k = 0 upto extent ci - 1 do
+                                if same andif {classOf(cls ci[k]) isnot classOf(cls cj[k])} then same := false end
+                            end
+                            if same then next[i] := next[j] end
+                        end
+                    end
+                    if next[i] < 0 then
+                        next[i] := nextClasses
+                        nextClasses := nextClasses + 1
+                    end
+                end
+                if nextClasses is classes then refining := false
+                else
+                    cls := next
+                    classes := nextClasses
+                end
+            end
+            g.cls := cls
+            g.number := array of(classes ~1)
+            g.order := array of(classes 0)
+            g.orderCount := 0
+            for r = 0 upto g.rootCount - 1 do visit(g g.roots[r]) end
+        end
+
+    let writeRef(o: Text g: Graph r: Int): Ok =
+        if r < 0 then jsonString(o builtinNames[0 - r]) else put(o decimal(g.number[g.cls[r]])) end
+
+    let writeTable(o: Text g: Graph): Ok =
+        begin
+            put(o "[")
+            for t = 0 upto g.orderCount - 1 do
+                let node = g.nodes[g.order[t]]
+                if t > 0 then put(o ",") end
+                let k = node.kind
+                if k is nodeExternal then
+                    put(o "{\"external\":")
+                    jsonString(o node.labels[0])
+                    put(o "}")
+                elsif k is nodeParam then put(o "{\"param\":" <> {node.labels[0] <> "}"})
+                elsif k is nodeAuto then
+                    let b = extent node.children - extent node.labels
+                    put(o "{\"auto\":{\"bound\":")
+                    if b > 0 then writeRef(o g node.children[0]) else put(o "null") end
+                    put(o ",\"components\":[")
+                    for i = 0 upto extent node.labels - 1 do
+                        if i > 0 then put(o ",") end
+                        put(o "[")
+                        jsonString(o node.labels[i])
+                        put(o ",")
+                        writeRef(o g node.children[b + i])
+                        put(o "]")
+                    end
+                    put(o "]}}")
+                elsif k is nodeAbstract then
+                    put(o "{\"abstract\":")
+                    jsonString(o node.labels[0])
+                    let m = extent node.children
+                    if m > 1 then
+                        put(o ",\"args\":[")
+                        for i = 0 upto m - 2 do
+                            if i > 0 then put(o ",") end
+                            writeRef(o g node.children[i])
+                        end
+                        put(o "]")
+                    end
+                    put(o ",\"rep\":")
+                    writeRef(o g node.children[m - 1])
+                    put(o "}")
+                else
+                    put(o "{\"" <> {nodeNames[k] <> "\":"})
+                    if k is nodeRecord then
+                        put(o "{")
+                        for i = 0 upto extent node.labels - 1 do
+                            if i > 0 then put(o ",") end
+                            jsonString(o node.labels[i])
+                            put(o ":")
+                            writeRef(o g node.children[i])
+                        end
+                        put(o "}")
+                    elsif k is nodeTuple then
+                        put(o "[")
+                        for i = 0 upto extent node.labels - 1 do
+                            if i > 0 then put(o ",") end
+                            put(o "[")
+                            jsonString(o node.labels[i])
+                            put(o ",")
+                            writeRef(o g node.children[i])
+                            put(o "]")
+                        end
+                        put(o "]")
+                    elsif {k is nodeVariant} orif {k is nodeOption} then
+                        let var child = 0
+                        put(o "{")
+                        for i = 0 upto extent node.labels - 1 do
+                            if i > 0 then put(o ",") end
+                            jsonString(o node.labels[i])
+                            put(o ":")
+                            if node.hasPayload[i] then
+                                writeRef(o g node.children[child])
+                                child := child + 1
+                            else put(o "null")
+                            end
+                        end
+                        put(o "}")
+                    elsif {k is nodeArray} orif {k is nodeException} then writeRef(o g node.children[0])
+                    elsif k is nodeFun then
+                        put(o "{\"params\":[")
+                        for i = 0 upto extent node.labels - 1 do
+                            if i > 0 then put(o ",") end
+                            put(o "[")
+                            jsonString(o node.labels[i])
+                            put(o ",")
+                            writeRef(o g node.children[i])
+                            put(o "]")
+                        end
+                        put(o "],\"result\":")
+                        writeRef(o g node.children[extent node.labels])
+                        put(o "}")
+                    end
+                    put(o "}")
+                end
+            end
+            put(o "]")
+        end
+
+    (* ======================================================================
+     * Writing: the sharing scan, then the value
+     * ====================================================================== *)
+
+    (* The objects reached, each with how many times and its "@id" once it
+     * has been written *)
+    Def Shared = Tuple obj: Any var count: Int var id: Int end
+    Def Table = Tuple var items: Array(Shared) var count: Int end
+    let newTable(): Table = tuple let var items = array of :Shared end let var count = 0 end
+    let findShared(t: Table obj: Any): Int =
+        begin
+            let var found = ~1
+            for i = 0 upto t.count - 1 do if {found < 0} andif same(t.items[i].obj obj) then found := i end end
+            found
+        end
+    (* Counts obj reached once more: how many times it has been *)
+    let reach(t: Table obj: Any): Int =
+        begin
+            let i = findShared(t obj)
+            if i >= 0 then
+                t.items[i].count := t.items[i].count + 1
+                t.items[i].count
+            else
+                let e = tuple let obj = obj let var count = 1 let var id = 0 end
+                if t.count >= extent t.items then
+                    let more = array of({2 * t.count} + 16 e)
+                    for j = 0 upto t.count - 1 do more[j] := t.items[j] end
+                    t.items := more
+                end
+                t.items[t.count] := e
+                t.count := t.count + 1
+                1
+            end
+        end
+
+    (* A record's field i, at the type the record is seen at *)
+    let field(v: Any i: Int d: Desc): Any =
+        begin
+            let payload = recPayload(v)
+            let dict = recDict(v)
+            core.storedField(recordSlot(payload dictIndex(dict i)) dict i d.parts[i])
+        end
+
+    (* A variant's or option's case, and whether it is written as its bare
+     * tag: its index *)
+    let caseOf(d: Desc v: Any): Int =
+        begin
+            let tag = if d.kind is core.kindOption then core.tagAt(v) else variantTag(v) end
+            if {tag < 0} orif {tag >= extent d.parts} then fail() end
+            tag
+        end
+    let isBare(p: Desc): Bool = {p.kind is core.kindNone} orif {p.kind is core.kindOk}
+    let payloadParts(d: Desc tag: Int): Array(Desc) =
+        begin
+            let p = core.storedType(d.parts[tag])
+            if p.kind isnot core.kindTuple then fail() end
+            p.parts
+        end
+
+    let rec scan(d0: Desc v0: Any t: Table g: Graph): Ok =
+        begin
+            let v = unstored(d0 v0)
+            let d = concrete(d0)
+            let k = d.kind
+            if {k is core.kindInt} orif {k is core.kindReal} orif {k is core.kindBool} orif {k is core.kindChar}
+                orif {k is core.kindString} orif {k is core.kindOk} orif {k is core.kindWord}
+                orif {k is core.kindOpaque}
+            then ok
+            elsif k is core.kindAuto then
+                let w = core.autoWitness(v)
+                addRoot(g ref(g w))
+                let payload = autoPayload(v)
+                if isDynamic(d) then scan(w core.elementAt(payload 0) t g)
+                else
+                    pushWitness(w)
+                    for i = 0 upto core.autoComponents(d) - 1 do scan(d.parts[i] core.elementAt(payload i) t g) end
+                    popWitness()
+                end
+            elsif k is core.kindRecord then
+                if reach(t recPayload(v)) is 1 then
+                    for i = 0 upto extent d.parts - 1 do scan(d.parts[i] field(v i d) t g) end
+                end
+            elsif k is core.kindArray then
+                if reach(t v) is 1 then
+                    for i = 0 upto arrayCount(v) - 1 do scan(d.parts[0] arraySlot(v i) t g) end
+                end
+            elsif k is core.kindTuple then
+                if {extent d.parts > 0} andif {reach(t core.unproxy(v)) is 1} then
+                    for i = 0 upto extent d.parts - 1 do scan(d.parts[i] core.elementAt(v i) t g) end
+                end
+            elsif {k is core.kindVariant} orif {k is core.kindOption} then
+                let tag = caseOf(d v)
+                if not(isBare(d.parts[tag])) then
+                    if k is core.kindVariant then scan(d.parts[tag] variantPayload(v) t g)
+                    else
+                        let ps = payloadParts(d tag)
+                        for i = 0 upto extent ps - 1 do scan(ps[i] core.optionElementAt(v i) t g) end
+                    end
+                end
+            else fail()
+            end
+        end
+
+    Def Ids = Tuple var next: Int end
+
+    (* Writes the start of a record, tuple, or array: {"@ref":n} (true) if it
+     * was written before, or else gives it an "@id" when it is reached more
+     * than once: the id, or 0 *)
+    Def Start = Tuple written: Bool id: Int end
+    let startShared(o: Text t: Table ids: Ids obj: Any): Start =
+        begin
+            let i = findShared(t obj)
+            if {i < 0} orif {t.items[i].count <= 1} then tuple let written = false let id = 0 end
+            elsif t.items[i].id > 0 then
+                put(o "{\"@ref\":" <> {decimal(t.items[i].id) <> "}"})
+                tuple let written = true let id = 0 end
+            else
+                t.items[i].id := ids.next
+                ids.next := ids.next + 1
+                tuple let written = false let id = t.items[i].id end
+            end
+        end
+
+    let rec emit(o: Text d0: Desc v0: Any t: Table g: Graph ids: Ids): Ok =
+        begin
+            let v = unstored(d0 v0)
+            let d = concrete(d0)
+            let k = d.kind
+            if k is core.kindInt then put(o decimal(toInt(v)))
+            elsif isWord(d) then put(o unsigned(toInt(v)))
+            elsif k is core.kindReal then put(o realText(toReal(v)))
+            elsif k is core.kindBool then put(o if toBool(v) then "true" else "false" end)
+            elsif k is core.kindChar then jsonString(o stringOp.new(1 toChar(v)))
+            elsif k is core.kindString then jsonString(o toString(v))
+            elsif k is core.kindOk then put(o "null")
+            elsif k is core.kindAuto then
+                let w = core.autoWitness(v)
+                put(o "{\"@type\":")
+                writeRef(o g ref(g w))
+                put(o ",\"@value\":")
+                let payload = autoPayload(v)
+                if isDynamic(d) then emit(o w core.elementAt(payload 0) t g ids)
+                else
+                    pushWitness(w)
+                    put(o "[")
+                    for i = 0 upto core.autoComponents(d) - 1 do
+                        if i > 0 then put(o ",") end
+                        emit(o d.parts[i] core.elementAt(payload i) t g ids)
+                    end
+                    put(o "]")
+                    popWitness()
+                end
+                put(o "}")
+            elsif k is core.kindRecord then
+                let s = startShared(o t ids recPayload(v))
+                if not(s.written) then
+                    put(o "{")
+                    let var first = true
+                    if s.id > 0 then
+                        put(o "\"@id\":" <> decimal(s.id))
+                        first := false
+                    end
+                    for i = 0 upto extent d.parts - 1 do
+                        if not(first) then put(o ",") end
+                        first := false
+                        jsonString(o d.labels[i])
+                        put(o ":")
+                        emit(o d.parts[i] field(v i d) t g ids)
+                    end
+                    put(o "}")
+                end
+            elsif {k is core.kindArray} orif {k is core.kindTuple} then
+                if {k is core.kindTuple} andif {extent d.parts is 0} then put(o "[]")
+                else
+                    let s = startShared(o t ids if k is core.kindTuple then core.unproxy(v) else v end)
+                    if not(s.written) then
+                        if s.id > 0 then put(o "{\"@id\":" <> {decimal(s.id) <> ",\"@items\":"}) end
+                        put(o "[")
+                        if k is core.kindArray then
+                            for i = 0 upto arrayCount(v) - 1 do
+                                if i > 0 then put(o ",") end
+                                emit(o d.parts[0] arraySlot(v i) t g ids)
+                            end
+                        else
+                            for i = 0 upto extent d.parts - 1 do
+                                if i > 0 then put(o ",") end
+                                emit(o d.parts[i] core.elementAt(v i) t g ids)
+                            end
+                        end
+                        put(o "]")
+                        if s.id > 0 then put(o "}") end
+                    end
+                end
+            elsif {k is core.kindVariant} orif {k is core.kindOption} then
+                let tag = caseOf(d v)
+                if isBare(d.parts[tag]) then jsonString(o d.labels[tag])
+                else
+                    put(o "{")
+                    jsonString(o d.labels[tag])
+                    put(o ":")
+                    if k is core.kindVariant then emit(o d.parts[tag] variantPayload(v) t g ids)
+                    else
+                        let ps = payloadParts(d tag)
+                        put(o "[")
+                        for i = 0 upto extent ps - 1 do
+                            if i > 0 then put(o ",") end
+                            emit(o ps[i] core.optionElementAt(v i) t g ids)
+                        end
+                        put(o "]")
+                    end
+                    put(o "}")
+                end
+            else fail()
+            end
+        end
+
+    let extern(wr: writer.T d: Any): Ok =
+        begin
+            witnesses.count := 0
+            let w = core.autoWitness(d)
+            let value = core.elementAt(autoPayload(d) 0)
+            let t = newTable()
+            let g = newGraph()
+            let root = ref(g w)
+            addRoot(g root)
+            scan(w value t g)
+            canonicalize(g)
+            let o = newOut()
+            put(o "{\"quest\":1,\"types\":")
+            writeTable(o g)
+            put(o ",\"type\":")
+            writeRef(o g root)
+            put(o ",\"value\":")
+            emit(o w value t g tuple let var next = 1 end)
+            put(o "}")
+            writer.putString(wr text(o))
+        end
+
+    (* ======================================================================
+     * Reading: JSON
+     * ====================================================================== *)
+
+    Def Rec J = Option
+        jNull
+        jBool with b: Bool end
+        jInt with n: Int text: String end
+        jReal with r: Real end
+        jString with s: String end
+        jArray with items: Array(J) end
+        jObject with keys: Array(String) values: Array(J) end
+    end
+
+    (* The characters of rd, with one character of lookahead put back on the
+     * reader *)
+    Def Source = Tuple rd: reader.T end
+    let peek(src: Source): Int =
+        if not(reader.more(src.rd)) then ~1
+        else
+            let c = reader.getChar(src.rd)
+            core.readerUnget(asReader(readerAny(src.rd)))
+            ascii.val(c)
+        end
+    let next(src: Source): Int = if not(reader.more(src.rd)) then ~1 else ascii.val(reader.getChar(src.rd)) end
+    let skip(src: Source): Ok =
+        begin
+            next(src)
+            ok
+        end
+    let skipSpace(src: Source): Ok =
+        while {peek(src) is 32} orif {peek(src) is 9} orif {peek(src) is 10} orif {peek(src) is 13} do skip(src) end
+    let expect(src: Source c: Int): Ok = if next(src) isnot c then fail() end
+
+    let hexValue(c: Int): Int =
+        if {c >= 48} andif {c <= 57} then c - 48
+        elsif {c >= 97} andif {c <= 102} then c - 87
+        elsif {c >= 65} andif {c <= 70} then c - 55
+        else
+            fail()
+            0
+        end
+
+    (* A JSON string's bytes: a \u escape of one below 256 is that byte *)
+    let readString(src: Source): String =
+        begin
+            expect(src 34)
+            let o = newOut()
+            let var going = true
+            while going do
+                let c = next(src)
+                if c < 0 then fail()
+                elsif c is 34 then going := false
+                elsif c is 92 then
+                    let e = next(src)
+                    let byte = if e is 34 then 34 elsif e is 92 then 92 elsif e is 47 then 47 elsif e is 98 then 8
+                        elsif e is 102 then 12 elsif e is 110 then 10 elsif e is 114 then 13 elsif e is 116 then 9
+                        elsif e is 117 then
+                            let var u = 0
+                            for i = 0 upto 3 do u := {u * 16} + hexValue(next(src)) end
+                            if u > 255 then fail() end
+                            u
+                        else
+                            fail()
+                            0
+                        end
+                    put(o stringOp.new(1 ascii.char(byte)))
+                else put(o stringOp.new(1 ascii.char(c)))
+                end
+            end
+            text(o)
+        end
+
+    let isNumberChar(c: Int): Bool =
+        {{c >= 48} andif {c <= 57}} orif {c is 45} orif {c is 43} orif {c is 46} orif {c is 101} orif {c is 69}
+
+    (* A number: an Int when it has no fraction or exponent and fits, else a
+     * Real *)
+    let readNumber(src: Source): J =
+        begin
+            let o = newOut()
+            let var integral = true
+            while isNumberChar(peek(src)) do
+                let c = next(src)
+                if {c is 46} orif {c is 101} orif {c is 69} then integral := false end
+                put(o stringOp.new(1 ascii.char(c)))
+            end
+            let s = text(o)
+            if stringOp.isEmpty(s) then fail() end
+            let negative = ascii.val(stringOp.getChar(s 0)) is 45
+            let digits = if negative then stringOp.getSub(s 1 stringOp.length(s) - 1) else s end
+            if integral andif {stringOp.length(digits) <= 18} then
+                let var n = 0
+                for i = 0 upto stringOp.length(digits) - 1 do
+                    let c = ascii.val(stringOp.getChar(digits i))
+                    if {c < 48} orif {c > 57} then fail() end
+                    n := {n * 10} + {c - 48}
+                end
+                option jInt of J with let n = if negative then 0 - n else n end let text = s end
+            elsif integral then
+                (* too large for an Int but perhaps a word: its bits *)
+                let var n = 0
+                for i = 0 upto stringOp.length(digits) - 1 do
+                    n := addWrap(mulWrap(n 10) ascii.val(stringOp.getChar(digits i)) - 48)
+                end
+                option jInt of J with let n = n let text = s end
+            else option jReal of J with let r = realconv.toReal(s) end
+            end
+        end
+
+    let rec readJson(src: Source): J =
+        begin
+            skipSpace(src)
+            let c = peek(src)
+            if c is 34 then option jString of J with let s = readString(src) end
+            elsif c is 123 then
+                skip(src)
+                let keys = newOut()
+                let values = array of(16 option jNull of J end)
+                let var vs = values
+                let var count = 0
+                skipSpace(src)
+                if peek(src) is 125 then skip(src)
+                else
+                    let var going = true
+                    while going do
+                        skipSpace(src)
+                        put(keys readString(src))
+                        skipSpace(src)
+                        expect(src 58)
+                        let v = readJson(src)
+                        if count >= extent vs then
+                            let more = array of(2 * count option jNull of J end)
+                            for i = 0 upto count - 1 do more[i] := vs[i] end
+                            vs := more
+                        end
+                        vs[count] := v
+                        count := count + 1
+                        skipSpace(src)
+                        let d = next(src)
+                        if d is 125 then going := false elsif d isnot 44 then fail() end
+                    end
+                end
+                let ks = array of(count "")
+                let js = array of(count option jNull of J end)
+                for i = 0 upto count - 1 do
+                    ks[i] := keys.pieces[i]
+                    js[i] := vs[i]
+                end
+                option jObject of J with let keys = ks let values = js end
+            elsif c is 91 then
+                skip(src)
+                let var items = array of(16 option jNull of J end)
+                let var count = 0
+                skipSpace(src)
+                if peek(src) is 93 then skip(src)
+                else
+                    let var going = true
+                    while going do
+                        let v = readJson(src)
+                        if count >= extent items then
+                            let more = array of(2 * count option jNull of J end)
+                            for i = 0 upto count - 1 do more[i] := items[i] end
+                            items := more
+                        end
+                        items[count] := v
+                        count := count + 1
+                        skipSpace(src)
+                        let d = next(src)
+                        if d is 93 then going := false elsif d isnot 44 then fail() end
+                    end
+                end
+                let js = array of(count option jNull of J end)
+                for i = 0 upto count - 1 do js[i] := items[i] end
+                option jArray of J with let items = js end
+            elsif c is 116 then
+                for i = 0 upto 3 do skip(src) end
+                option jBool of J with let b = true end
+            elsif c is 102 then
+                for i = 0 upto 4 do skip(src) end
+                option jBool of J with let b = false end
+            elsif c is 110 then
+                for i = 0 upto 3 do skip(src) end
+                option jNull of J end
+            else readNumber(src)
+            end
+        end
+
+    let get(j: J key: String): maybe.T(J) =
+        case j
+            when jObject with o then
+                let var found = maybe.none(:J)
+                for i = 0 upto extent o.keys - 1 do
+                    if stringOp.equal(o.keys[i] key) then found := maybe.some(:J o.values[i]) end
+                end
+                found
+            else maybe.none(:J)
+        end
+    let must(x: maybe.T(J)): J =
+        if maybe.isSome(:J x) then maybe.unwrap(:J x)
+        else
+            fail()
+            option jNull of J end
+        end
+    let size(j: J): Int =
+        case j when jObject with o then extent o.keys when jArray with a then extent a.items else 0 end
+    let items(j: J): Array(J) =
+        case j
+            when jArray with a then a.items
+            else
+                fail()
+                array of :J end
+        end
+    let stringOf(j: J): String =
+        case j
+            when jString with s then s.s
+            else
+                fail()
+                ""
+        end
+
+    (* ======================================================================
+     * Reading: type tables
+     * ====================================================================== *)
+
+    (* A label's name, and whether it says var *)
+    let labelVar(label: String): Bool =
+        stringOp.equal(label "var")
+            orif {{stringOp.length(label) > 4} andif stringOp.equal(stringOp.getSub(label 0 4) "var ")}
+    let labelName(label: String): String =
+        if stringOp.equal(label "var") then ""
+        elsif labelVar(label) then stringOp.getSub(label 4 stringOp.length(label) - 4)
+        else label
+        end
+
+    (* Auto A::TYPE with a: A end, as values read back have it *)
+    let dynamicType: Desc =
+        begin
+            let d = core.newDesc(core.kindAuto "Dynamic" 1 0)
+            core.setPart(d 0 core.base(core.kindBoundVar) "a")
+            d
+        end
+
+    Def Types = Tuple descs: Array(Desc) end
+
+    let tableRef(t: Types r: J): Desc =
+        case r
+            when jInt with x then
+                if {x.n < 0} orif {x.n >= extent t.descs} then fail() end
+                t.descs[x.n]
+            when jString with x then
+                let s = x.s
+                if stringOp.equal(s "Ok") then core.base(core.kindOk)
+                elsif stringOp.equal(s "Bool") then core.base(core.kindBool)
+                elsif stringOp.equal(s "Char") then core.base(core.kindChar)
+                elsif stringOp.equal(s "String") then core.base(core.kindString)
+                elsif stringOp.equal(s "Int") then core.base(core.kindInt)
+                elsif stringOp.equal(s "Real") then core.base(core.kindReal)
+                elsif stringOp.equal(s "Dynamic") then dynamicType
+                else
+                    fail()
+                    none()
+                end
+            else
+                fail()
+                none()
+        end
+
+    (* The one key and value of a type node *)
+    let entryOf(node: J): Tuple key: String value: J end =
+        case node
+            when jObject with o then
+                if extent o.keys isnot 1 then fail() end
+                tuple let key = o.keys[0] let value = o.values[0] end
+            else
+                fail()
+                tuple let key = "" let value = option jNull of J end end
+        end
+
+    (* Each pair [label, ref] of an array *)
+    let pairs(j: J): Array(Tuple label: String ref: J end) =
+        begin
+            let xs = items(j)
+            let ps = array of(extent xs tuple let label = "" let ref = option jNull of J end end)
+            for i = 0 upto extent xs - 1 do
+                let p = items(xs[i])
+                if extent p isnot 2 then fail() end
+                ps[i] := tuple let label = stringOf(p[0]) let ref = p[1] end
+            end
+            ps
+        end
+
+    (* A descriptor for every node of the table: first each node's kind and
+     * its parts' count, then the parts, which may refer to any node; then
+     * the representations of abstract types checked against the ones their
+     * modules register *)
+    let readTypes(j: J): Types =
+        begin
+            let nodes = items(j)
+            let n = extent nodes
+            let descs = array of(n none())
+            let t = tuple let descs = descs end
+            for i = 0 upto n - 1 do
+                let node = nodes[i]
+                if maybe.isSome(:J get(node "abstract")) then
+                    let args = get(node "args")
+                    let count = if maybe.isSome(:J args) then size(maybe.unwrap(:J args)) else 0 end
+                    descs[i] := core.newDesc(core.kindOpaque stringOf(must(get(node "abstract"))) count + 1 0)
+                else
+                    let e = entryOf(node)
+                    let key = e.key
+                    let v = e.value
+                    descs[i] := if stringOp.equal(key "param") then
+                            case v
+                                when jInt with x then
+                                    if {x.n < 0} orif {x.n >= 64} then fail() end
+                                    core.boundVar(x.n)
+                                else
+                                    fail()
+                                    none()
+                            end
+                        elsif stringOp.equal(key "external") then
+                            if not(stringOp.equal(stringOf(v) "uint64_t")) then fail() end
+                            core.base(core.kindWord)
+                        elsif stringOp.equal(key "auto") then
+                            let bounded = case must(get(v "bound")) when jNull then 0 else 1 end
+                            core.newDesc(core.kindAuto "Auto" size(must(get(v "components"))) + bounded 0)
+                        elsif stringOp.equal(key "record") then core.newDesc(core.kindRecord "Record" size(v) 0)
+                        elsif stringOp.equal(key "tuple") then core.newDesc(core.kindTuple "Tuple" size(v) 0)
+                        elsif stringOp.equal(key "variant") then core.newDesc(core.kindVariant "Variant" size(v) 0)
+                        elsif stringOp.equal(key "option") then core.newDesc(core.kindOption "Option" size(v) 0)
+                        elsif stringOp.equal(key "array") then core.newDesc(core.kindArray "Array" 1 0)
+                        elsif stringOp.equal(key "exception") then core.newDesc(core.kindException "Exception" 1 0)
+                        elsif stringOp.equal(key "fun") then
+                            core.newDesc(core.kindFun "Fun" size(must(get(v "params"))) + 1 0)
+                        else
+                            fail()
+                            none()
+                        end
+                end
+            end
+            for i = 0 upto n - 1 do
+                let d = descs[i]
+                let node = nodes[i]
+                let k = d.kind
+                if {k is core.kindBoundVar} orif {k is core.kindWord} then ok
+                elsif k is core.kindOpaque then
+                    let args = get(node "args")
+                    let xs = if maybe.isSome(:J args) then items(maybe.unwrap(:J args)) else array of :J end end
+                    for a = 0 upto extent xs - 1 do core.setPart(d a tableRef(t xs[a]) "") end
+                    core.setPart(d extent xs tableRef(t must(get(node "rep"))) "rep")
+                    core.setFlags(d extent xs 16)
+                else
+                    let v = entryOf(node).value
+                    if {k is core.kindRecord} orif {k is core.kindVariant} orif {k is core.kindOption} then
+                        (* by name, as compiled code numbers them *)
+                        case v
+                            when jObject with o then
+                                let m = extent o.keys
+                                let order = array of(m 0)
+                                for a = 0 upto m - 1 do order[a] := a end
+                                for a = 1 upto m - 1 do
+                                    let x = order[a]
+                                    let var b = a
+                                    let before = fun(i: Int j: Int): Bool
+                                        stringOp.precedes(labelName(o.keys[i]) labelName(o.keys[j]))
+                                    while {b > 0} andif before(x order[b - 1]) do
+                                        order[b] := order[b - 1]
+                                        b := b - 1
+                                    end
+                                    order[b] := x
+                                end
+                                for a = 0 upto m - 1 do
+                                    let label = o.keys[order[a]]
+                                    let r = o.values[order[a]]
+                                    let part = case r when jNull then none() else tableRef(t r) end
+                                    let name = if k is core.kindOption then label else labelName(label) end
+                                    core.setPart(d a part name)
+                                    if {k isnot core.kindOption} andif labelVar(label) then core.setFlags(d a 1) end
+                                    if {k is core.kindOption} andif {part.kind isnot core.kindNone}
+                                        andif {core.storedType(part).kind isnot core.kindTuple} then fail() end
+                                end
+                            else fail()
+                        end
+                    elsif k is core.kindTuple then
+                        let ps = pairs(v)
+                        for a = 0 upto extent ps - 1 do
+                            core.setPart(d a tableRef(t ps[a].ref) labelName(ps[a].label))
+                            if labelVar(ps[a].label) then core.setFlags(d a 1) end
+                        end
+                    elsif k is core.kindAuto then
+                        let ps = pairs(must(get(v "components")))
+                        for a = 0 upto extent ps - 1 do
+                            core.setPart(d a tableRef(t ps[a].ref) labelName(ps[a].label))
+                            if labelVar(ps[a].label) then core.setFlags(d a 1) end
+                        end
+                        case must(get(v "bound"))
+                            when jNull then ok
+                            else
+                                core.setPart(d extent ps tableRef(t must(get(v "bound"))) "")
+                                core.setFlags(d extent ps 32)
+                        end
+                    elsif {k is core.kindArray} orif {k is core.kindException} then core.setPart(d 0 tableRef(t v) "")
+                    elsif k is core.kindFun then
+                        let ps = pairs(must(get(v "params")))
+                        for a = 0 upto extent ps - 1 do
+                            core.setPart(d a tableRef(t ps[a].ref) "")
+                            let mode = ps[a].label
+                            if stringOp.equal(mode "var") then core.setFlags(d a 1)
+                            elsif stringOp.equal(mode "out") then core.setFlags(d a 2)
+                            elsif not(stringOp.isEmpty(mode)) then fail()
+                            end
+                        end
+                        core.setPart(d extent ps tableRef(t must(get(v "result"))) "")
+                        core.setFlags(d extent ps 4)
+                    end
+                end
+            end
+            (* A linked module's abstract type must have the representation it
+             * registers, and then has it *)
+            for i = 0 upto n - 1 do
+                let d = descs[i]
+                if d.kind is core.kindOpaque then
+                    let last = extent d.parts - 1
+                    let recorded = d.parts[last]
+                    d.flags[last] := 0
+                    let registered = core.abstractRep(d)
+                    d.flags[last] := 16
+                    if {registered.kind isnot core.kindNone} andif not(core.sameType(registered recorded)) then fail()
+                    end
+                end
+            end
+            t
+        end
+
+    (* ======================================================================
+     * Reading: values
+     * ====================================================================== *)
+
+    Def IdEntry = Tuple id: Int value: Any desc: Desc end
+    Def Context = Tuple types: Types var ids: Array(IdEntry) var count: Int end
+
+    let findId(cx: Context id: Int): Int =
+        begin
+            let var found = ~1
+            for i = 0 upto cx.count - 1 do if {found < 0} andif {cx.ids[i].id is id} then found := i end end
+            found
+        end
+    let insertId(cx: Context idNode: J value: Any d: Desc): Ok =
+        case idNode
+            when jInt with x then
+                if findId(cx x.n) >= 0 then fail() end
+                let e = tuple let id = x.n let value = value let desc = d end
+                if cx.count >= extent cx.ids then
+                    let more = array of({2 * cx.count} + 8 e)
+                    for i = 0 upto cx.count - 1 do more[i] := cx.ids[i] end
+                    cx.ids := more
+                end
+                cx.ids[cx.count] := e
+                cx.count := cx.count + 1
+            else fail()
+        end
+
+    (* {"@ref": n}: the object, at d, from the type it was read at, which must
+     * be a subtype of d *)
+    let readRef(cx: Context node: J d: Desc): maybe.T(Any) =
+        begin
+            let r = get(node "@ref")
+            if maybe.isNone(:J r) then maybe.none(:Any)
+            else
+                if size(node) isnot 1 then fail() end
+                let i = case maybe.unwrap(:J r) when jInt with x then findId(cx x.n) else ~1 end
+                if i < 0 then fail() end
+                let e = cx.ids[i]
+                if e.desc is d then maybe.some(:Any e.value)
+                else
+                    if not(core.isSubtype(e.desc d)) then fail() end
+                    maybe.some(:Any core.convert(e.value e.desc d))
+                end
+            end
+        end
+
+    let rec readValue(cx: Context node: J d0: Desc): Any =
+        begin
+            let d = core.storedType(d0)
+            let k = d.kind
+            if isWord(d) then
+                case node
+                    when jInt with x then
+                        if ascii.val(stringOp.getChar(x.text 0)) is 45 then fail() end
+                        (* at most 2^64 - 1 *)
+                        let most = "18446744073709551615"
+                        if {stringOp.length(x.text) > 20} orif {{stringOp.length(x.text) is 20}
+                            andif not(stringOp.equal(most x.text)) andif stringOp.precedes(most x.text)} then fail() end
+                        fromInt(x.n)
+                    else
+                        fail()
+                        fromOk(ok)
+                end
+            elsif k is core.kindOpaque then
+                let rep = core.abstractRep(d)
+                if rep.kind is core.kindNone then fail() end
+                readValue(cx node rep)
+            elsif k is core.kindInt then
+                case node
+                    when jInt with x then fromInt(x.n)
+                    else
+                        fail()
+                        fromOk(ok)
+                end
+            elsif k is core.kindReal then
+                case node
+                    when jReal with x then fromReal(x.r)
+                    when jInt with x then fromReal(realconv.toReal(x.text))
+                    when jString with x then
+                        if stringOp.equal(x.s "Infinity") then fromReal(realconv.fromFields(false 2047 0))
+                        elsif stringOp.equal(x.s "-Infinity") then fromReal(realconv.fromFields(true 2047 0))
+                        else
+                            fail()
+                            fromOk(ok)
+                        end
+                    else
+                        fail()
+                        fromOk(ok)
+                end
+            elsif k is core.kindBool then
+                case node
+                    when jBool with x then fromBool(x.b)
+                    else
+                        fail()
+                        fromOk(ok)
+                end
+            elsif k is core.kindChar then
+                let s = stringOf(node)
+                if stringOp.length(s) isnot 1 then fail() end
+                fromChar(stringOp.getChar(s 0))
+            elsif k is core.kindString then fromString(stringOf(node))
+            elsif k is core.kindOk then
+                case node
+                    when jNull then fromOk(ok)
+                    else
+                        fail()
+                        fromOk(ok)
+                end
+            elsif k is core.kindBoundVar then readValue(cx node witnessOf(d))
+            elsif k is core.kindAuto then
+                if size(node) isnot 2 then fail() end
+                let typeNode = must(get(node "@type"))
+                let valueNode = must(get(node "@value"))
+                let w = tableRef(cx.types typeNode)
+                if isDynamic(d) then newAuto(descAny(w) newTuple(array of readValue(cx valueNode w) end))
+                else
+                    let vs = items(valueNode)
+                    if extent vs isnot core.autoComponents(d) then fail() end
+                    let b = core.autoBound(d)
+                    if {b.kind isnot core.kindNone} andif not(core.isSubtype(w b)) then fail() end
+                    pushWitness(w)
+                    let slots = array of(extent vs fromOk(ok))
+                    for i = 0 upto extent vs - 1 do slots[i] := readValue(cx vs[i] d.parts[i]) end
+                    popWitness()
+                    newAuto(descAny(w) newTuple(slots))
+                end
+            elsif k is core.kindRecord then
+                let shared = case node when jObject then readRef(cx node d) else maybe.none(:Any) end
+                if maybe.isSome(:Any shared) then maybe.unwrap(:Any shared)
+                else
+                    let idNode = get(node "@id")
+                    let n = extent d.parts
+                    if size(node) isnot {n + if maybe.isSome(:J idNode) then 1 else 0 end} then fail() end
+                    let slots = array of(n fromOk(ok))
+                    let payload = newRecordPayload(descAny(d) slots)
+                    let boxed = newRecBox(payload core.recordDict(d d))
+                    if maybe.isSome(:J idNode) then insertId(cx maybe.unwrap(:J idNode) boxed d) end
+                    for i = 0 upto n - 1 do slots[i] := readValue(cx must(get(node d.labels[i])) d.parts[i]) end
+                    boxed
+                end
+            elsif {k is core.kindArray} orif {k is core.kindTuple} then
+                let var list = node
+                let var idNode = maybe.none(:J)
+                let shared = case node when jObject then readRef(cx node d) else maybe.none(:Any) end
+                if maybe.isSome(:Any shared) then maybe.unwrap(:Any shared)
+                else
+                    case node
+                        when jObject then
+                            idNode := get(node "@id")
+                            list := must(get(node "@items"))
+                            if maybe.isNone(:J idNode) orif {size(node) isnot 2} then fail() end
+                        else ok
+                    end
+                    let xs = items(list)
+                    if {k is core.kindTuple} andif {extent xs isnot extent d.parts} then fail() end
+                    let slots = array of(extent xs fromOk(ok))
+                    let made = if k is core.kindArray then fromArray(slots) else newTuple(slots) end
+                    if maybe.isSome(:J idNode) then insertId(cx maybe.unwrap(:J idNode) made d) end
+                    for i = 0 upto extent xs - 1 do
+                        slots[i] := readValue(cx xs[i] if k is core.kindArray then d.parts[0] else d.parts[i] end)
+                    end
+                    made
+                end
+            elsif {k is core.kindVariant} orif {k is core.kindOption} then
+                let var tag = ""
+                let var payload = maybe.none(:J)
+                case node
+                    when jString with x then tag := x.s
+                    when jObject with o then
+                        if extent o.keys isnot 1 then fail() end
+                        tag := o.keys[0]
+                        payload := maybe.some(:J o.values[0])
+                    else fail()
+                end
+                let var c = ~1
+                for i = 0 upto extent d.parts - 1 do if stringOp.equal(d.labels[i] tag) then c := i end end
+                if c < 0 then fail() end
+                let bare = isBare(d.parts[c])
+                if bare isnot maybe.isNone(:J payload) then fail() end
+                if k is core.kindVariant then
+                    newVarBox(c if bare then fromOk(ok) else readValue(cx maybe.unwrap(:J payload) d.parts[c]) end)
+                elsif bare then newOption(c array of :Any end)
+                else
+                    let ps = payloadParts(d c)
+                    let xs = items(maybe.unwrap(:J payload))
+                    if extent xs isnot extent ps then fail() end
+                    let slots = array of(extent ps fromOk(ok))
+                    for i = 0 upto extent ps - 1 do slots[i] := readValue(cx xs[i] ps[i]) end
+                    newOption(c slots)
+                end
+            else
+                fail()
+                fromOk(ok)
+            end
+        end
+
+    let intern(rd: reader.T): Any =
+        begin
+            let root = readJson(tuple let rd = rd end)
+            if size(root) isnot 4 then fail() end
+            let version = must(get(root "quest"))
+            case version
+                when jInt with x then if x.n isnot 1 then fail() end
+                else fail()
+            end
+            witnesses.count := 0
+            let cx = tuple let types = readTypes(must(get(root "types"))) let var ids = array of :IdEntry end
+                let var count = 0 end
+            let w = tableRef(cx.types must(get(root "type")))
+            newAuto(descAny(w) newTuple(array of readValue(cx must(get(root "value")) w) end))
+        end
+end

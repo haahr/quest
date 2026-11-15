@@ -60,6 +60,14 @@ export
 
     (* The one descriptor of a kind with no parts (Int, Bool, Ok, ...) *)
     base(kind: Int): Desc
+    (* The bound variable descriptor of index i, as C's
+     * quest_type_bound_vars[i], made once; and a bound variable's index *)
+    boundVar(i: Int): Desc
+    boundIndex(d: Desc): Int
+    (* An auto type's bound (a last part flagged 32), or none, and how many
+     * components it has *)
+    autoBound(d: Desc): Desc
+    autoComponents(d: Desc): Int
     (* A new descriptor of n parts, each none until set, and m type
      * components *)
     newDesc(kind: Int name: String n: Int m: Int): Desc
@@ -106,6 +114,17 @@ export
      * payload; and a tuple's or option's tag and components, a proxy's or
      * not *)
     unproxy(v: Any): Any
+    (* The registry of abstract types' representations
+     * (quest_register_abstract_type): a module's, registered where it
+     * begins; a type's representation, or none; and is at the type d
+     * describes, on values as slots hold them (quest_val_is) *)
+    registerAbstract(name: String arity: Int rep: Desc): Ok
+    (* A stored type's descriptor's type, and its storage, the bound its
+     * values are held as, or none *)
+    storedType(d: Desc): Desc
+    storage(d: Desc): Desc
+    abstractRep(d: Desc): Desc
+    valIs(d: Desc a: Any b: Any): Bool
     (* An auto value's witness, and dynamic.copy (quest_dynamic_copy) *)
     autoWitness(x: Any): Desc
     dynamicCopy(d: Any): Any
@@ -179,6 +198,9 @@ export
     readerInput(): Reader
     readerFile(name: String): Reader
     readerMore(r: Reader): Bool
+    (* The character r read last is read again: one character of lookahead,
+     * which wasm/dynamic's reading of a document needs *)
+    readerUnget(r: Reader): Ok
     readerGetChar(r: Reader): Char
     readerGetString(r: Reader size: Int): String
     readerGetSubString(r: Reader s: String start: Int size: Int): Ok
