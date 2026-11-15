@@ -599,94 +599,111 @@ export
         static: maybe.T(Array(Bool))
     end
 
-    (* Whether to inline a call, made in a function of the component within
-     * (none, outside functions): one of a function the round knows, not
-     * recursive, with type arguments for all its type parameters, and a
-     * variable in scope for each var or out parameter, called once or small
-     * enough. A function recursive through itself alone is specialized to
-     * the call instead, when an argument for one of its static parameters is
-     * a function the round knows, so that its calls in the copy are known *)
-    let inlining(s: Simplifier x: nodes.OpCall within: maybe.T(Int)): maybe.T(Choice) =
+    (* The function a call calls, if the round knows it, and whether the call
+     * is its one use *)
+    let calleeOf(s: Simplifier x: nodes.OpCall): maybe.T(Tuple f: nodes.Function once: Bool end) =
         begin
-            let callee = if maybe.isSome(:Variable x.callee) then
-                maybe.some(:Resolved resolve(s maybe.unwrap(:Variable x.callee)))
-            else
-                maybe.some(:Resolved tuple let v = memberOf(x) let once = false end)
-            end
-            let found = if maybe.isSome(:Resolved callee) then
-                hashMap.get(:Int :nodes.Function s.analysis.functions maybe.unwrap(:Resolved callee).v.id)
-            else
-                maybe.none(:nodes.Function)
-            end
-            (* A member called as a module's (from outside its module) is
-             * called at its interface's type, which may hold the module's
-             * abstract types, laid out otherwise outside it, and may name
-             * variables of its module's, out of the caller's scope: such a call
-             * is inlined only at the function's own type, and of a function
-             * that is closed or names only variables of its module's that the
-             * copy can read as members (memberReads) *)
-            (* Whether the call is at f's own type: it has no interface type,
-             * or one of f's shape, or, in a whole program, where abstract
-             * types are transparent, one whose calls are represented as f's
-             * own are *)
-            let sameShape = fun(f: nodes.Function): Bool
-                maybe.isNone(:model.Type x.calleeType)
-                    orif {shapes.shape(maybe.unwrap(:model.Type x.calleeType)).id is shapes.shape(f.v.type).id}
-                    orif {shapes.transparentAbstractTypes()
-                        andif eq(genericLayout.signatureRepresentation(maybe.unwrap(:model.Type x.calleeType))
-                            genericLayout.signatureRepresentation(f.v.type))}
-            (* The variables of its module's that the function names, read as
-             * the module's members *)
-            let reads = if maybe.isSome(:Variable x.callee) orif maybe.isNone(:nodes.Function found) then
-                maybe.some(:Array(inline.Read) array of :inline.Read end)
-            elsif hashMap.find(:Int :Bool s.analysis.closed maybe.unwrap(:nodes.Function found).v.id) then
+            let callee = if maybe.isSome(:Variable x.callee) then resolve(s maybe.unwrap(:Variable x.callee))
+                else tuple let v = memberOf(x) let once = false end end
+            let found = hashMap.get(:Int :nodes.Function s.analysis.functions callee.v.id)
+            if maybe.isSome(:nodes.Function found) then
+                maybe.some(:Tuple f: nodes.Function once: Bool end
+                    tuple let f = maybe.unwrap(:nodes.Function found) let once = callee.once end)
+            else maybe.none(:Tuple f: nodes.Function once: Bool end) end
+        end
+
+    (* What a copy of f at the call reads for the variables of f's module that
+     * f names, if the call is at f's own type; none if it is not. A member
+     * called as a module's (from outside its module) is called at its
+     * interface's type, which may hold the module's abstract types, laid out
+     * otherwise outside it, and may name variables of its module's, out of
+     * the caller's scope: such a call is inlined only at the function's own
+     * type (no interface type, or one of f's shape, or, in a whole program,
+     * where abstract types are transparent, one whose calls are represented
+     * as f's own are), and of a function that is closed or names only
+     * variables of its module's that the copy can read as members
+     * (memberReads) *)
+    let readsAtItsType(s: Simplifier x: nodes.OpCall f: nodes.Function): maybe.T(Array(inline.Read)) =
+        if maybe.isSome(:Variable x.callee) then
+            maybe.some(:Array(inline.Read) array of :inline.Read end)
+        else
+            let sameShape = maybe.isNone(:model.Type x.calleeType)
+                orif {shapes.shape(maybe.unwrap(:model.Type x.calleeType)).id is shapes.shape(f.v.type).id}
+                orif {shapes.transparentAbstractTypes()
+                    andif eq(genericLayout.signatureRepresentation(maybe.unwrap(:model.Type x.calleeType))
+                        genericLayout.signatureRepresentation(f.v.type))}
+            let reads = if hashMap.find(:Int :Bool s.analysis.closed f.v.id) then
                 maybe.some(:Array(inline.Read) array of :inline.Read end)
             else
-                memberReads(hashMap.find(:Int :Array(Variable) s.analysis.free maybe.unwrap(:nodes.Function found).v.id)
+                memberReads(hashMap.find(:Int :Array(Variable) s.analysis.free f.v.id)
                     maybe.unwrap(:nodes.ModuleRef x.moduleRef))
             end
-            let atItsType = maybe.isSome(:Variable x.callee) orif {maybe.isSome(:nodes.Function found)
-                andif maybe.isSome(:Array(inline.Read) reads)
-                andif sameShape(maybe.unwrap(:nodes.Function found))}
-            if maybe.isSome(:nodes.Function found) then
-                let f = maybe.unwrap(:nodes.Function found)
-                let component = hashMap.find(:Int :Int s.analysis.components f.v.id)
-                let within1 = maybe.isSome(:Int within) andif {maybe.unwrap(:Int within) is component}
-                let size = hashMap.find(:Int :Int s.analysis.sizes f.v.id)
-                let byRef = array of(extent f.params maybe.none(:Variable))
-                let static = hashMap.get(:Int :Array(Bool) s.analysis.static f.v.id)
-                let recursive = hashMap.find(:Int :Bool s.analysis.recursive f.v.id)
-                let var fits = atItsType andif not(within1) andif {not(recursive) orif maybe.isSome(:Array(Bool) static)}
-                    andif {extent x.typeArgs is extent f.typeParams} andif {extent x.args is extent f.params}
-                if fits andif recursive then
-                    (* A known function for a static parameter *)
-                    let params = maybe.unwrap(:Array(Bool) static)
-                    let var known = false
-                    for i = 0 upto {extent params - 1} do
-                        if params[i] then
-                            case x.args[i]
-                                when atomVar with a then
-                                    if hashMap.contains(:Int :nodes.Function s.analysis.functions resolve(s a.v).v.id) then
-                                        known := true
-                                    end
-                                when atomConst then ok
-                            end
+            if sameShape then reads else maybe.none(:Array(inline.Read)) end
+        end
+
+    (* Whether f may be inlined (or specialized) at the call, made in a
+     * function of the component within: not in its own component, not
+     * recursive unless it has static parameters and the call passes a
+     * function the round knows for one, with an argument for each type and
+     * value parameter, no bounded type parameter (whose values are seen at
+     * its bound, which a type argument would change: an option's ordinal
+     * counts the bound's cases), and no external call at its type parameters
+     * (which passes their values as QVal words, which a type argument's may
+     * not be) *)
+    let eligible(s: Simplifier x: nodes.OpCall f: nodes.Function within: maybe.T(Int)): Bool =
+        begin
+            let component = hashMap.find(:Int :Int s.analysis.components f.v.id)
+            let within1 = maybe.isSome(:Int within) andif {maybe.unwrap(:Int within) is component}
+            let static = hashMap.get(:Int :Array(Bool) s.analysis.static f.v.id)
+            let recursive = hashMap.find(:Int :Bool s.analysis.recursive f.v.id)
+            let var fits = not(within1) andif {not(recursive) orif maybe.isSome(:Array(Bool) static)}
+                andif {extent x.typeArgs is extent f.typeParams} andif {extent x.args is extent f.params}
+            if fits andif recursive then
+                let params = maybe.unwrap(:Array(Bool) static)
+                let var known = false
+                for i = 0 upto {extent params - 1} do
+                    if params[i] then
+                        case x.args[i]
+                            when atomVar with a then
+                                if hashMap.contains(:Int :nodes.Function s.analysis.functions resolve(s a.v).v.id) then
+                                    known := true
+                                end
+                            when atomConst then ok
                         end
                     end
-                    if not(known) then fits := false end
                 end
-                (* A bounded type parameter's values are seen at its bound (an
-                 * option's ordinal counts the bound's cases), which a type
-                 * argument substituted for it would change *)
-                for i = 0 upto {extent f.typeParams - 1} do
-                    if maybe.isSome(:shapes.Shape f.typeParams[i].bound) then fits := false end
-                end
-                (* An external function called at a type parameter takes and
-                 * returns its values as QVal words, which the parameter's are
-                 * and a type argument's may not be *)
-                if {extent f.typeParams > 0} andif hashMap.find(:Int :Bool s.analysis.callsExternalAtTypes f.v.id) then
-                    fits := false
-                end
+                if not(known) then fits := false end
+            end
+            for i = 0 upto {extent f.typeParams - 1} do
+                if maybe.isSome(:shapes.Shape f.typeParams[i].bound) then fits := false end
+            end
+            if {extent f.typeParams > 0} andif hashMap.find(:Int :Bool s.analysis.callsExternalAtTypes f.v.id) then
+                fits := false
+            end
+            fits
+        end
+
+    (* Whether to inline a call, made in a function of the component within
+     * (none, outside functions): one of a function the round knows, at its
+     * own type, eligible, with a variable in scope for each var or out
+     * parameter, called once or small enough. A function recursive through
+     * itself alone is specialized to the call instead, when an argument for
+     * one of its static parameters is a function the round knows, so that
+     * its calls in the copy are known *)
+    let inlining(s: Simplifier x: nodes.OpCall within: maybe.T(Int)): maybe.T(Choice) =
+        begin
+            let callee = calleeOf(s x)
+            if maybe.isNone(:Tuple f: nodes.Function once: Bool end callee) then
+                maybe.none(:Choice)
+            else
+                let f = maybe.unwrap(:Tuple f: nodes.Function once: Bool end callee).f
+                let reads = readsAtItsType(s x f)
+                let size = hashMap.find(:Int :Int s.analysis.sizes f.v.id)
+                let recursive = hashMap.find(:Int :Bool s.analysis.recursive f.v.id)
+                let byRef = array of(extent f.params maybe.none(:Variable))
+                let var fits = maybe.isSome(:Array(inline.Read) reads) andif eligible(s x f within)
+                (* Each var or out parameter's variable, and what the
+                 * arguments save in the copy *)
                 let var bonus = if extent x.typeArgs > 0 then polymorphicBonus else 0 end
                 for i = 0 upto {extent f.params - 1} do
                     if fits then
@@ -698,7 +715,7 @@ export
                         end
                     end
                 end
-                let once = maybe.unwrap(:Resolved callee).once andif not(pinned(s f.v))
+                let once = maybe.unwrap(:Tuple f: nodes.Function once: Bool end callee).once andif not(pinned(s f.v))
                 (* A specialization is bounded by the threshold alone, not
                  * the unit's growth: its copy replaces a closure made at the
                  * call and a call through it on each step, and there is at
@@ -713,13 +730,12 @@ export
                         let byRef = byRef
                         let reads = maybe.unwrap(:Array(inline.Read) reads)
                         let size = size
-                        let static = if recursive then static else maybe.none(:Array(Bool)) end
+                        let static = if recursive then hashMap.get(:Int :Array(Bool) s.analysis.static f.v.id)
+                            else maybe.none(:Array(Bool)) end
                     end)
                 else
                     maybe.none(:Choice)
                 end
-            else
-                maybe.none(:Choice)
             end
         end
 
