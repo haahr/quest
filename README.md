@@ -289,6 +289,11 @@ To learn how the compiler works, start with [docs/walkthrough.md](docs/walkthrou
 program through every phase, then [docs/type-system.md](docs/type-system.md) and
 [docs/runtime-design.md](docs/runtime-design.md).
 
+To find your way around the source, each significant directory has a README that introduces its part of the compiler:
+start with [questlang/README.md](questlang/README.md) (the self-hosted compiler),
+[bootstrap/README.md](bootstrap/README.md) (the compiler in Python), and [runtime/README.md](runtime/README.md) (the
+C runtime), which link to the rest.
+
 ### 1. The Language
 - [docs/TypefulProgramming.md](docs/TypefulProgramming.md): Cardelli's *Typeful Programming* (1989, revised 1993),
   the definition of Quest this implementation follows.
