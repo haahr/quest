@@ -9,7 +9,6 @@ import
     questlang/modules/loader : questlang/modules/Loader
     questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
     values = questlang/values/model : questlang/values/Model
-    questlang/values/dynamicReader : questlang/values/DynamicReader
     questlang/config/abi : questlang/config/Abi
     questlang/common/sha256 : questlang/common/Sha256
     collections/hashMap : collections/HashMap
@@ -34,15 +33,7 @@ export
         end
 
     (* The shadow record a .qi holds *)
-    let qiRecord(qi: String): Value =
-        case dynamicReader.decode(qi)
-            when vAuto with x then
-                case x.a.value
-                    when vTuple with t then t.t.elements[0]
-                    else diagnostics.fail(:Value "Malformed .qi metadata" 0)
-                end
-            else diagnostics.fail(:Value "Malformed .qi metadata" 0)
-        end
+    let qiRecord(qi: String): Value = interfaceCompiler.qiRecord(qi "")
 
     let imports(r: Value): Array(String) =
         begin

@@ -230,14 +230,13 @@ export
                     (* A thunk parameter stands for the target's type parameter
                      * and the source's it is passed as; as the function's, for
                      * the target's *)
-                    let descriptorParams = array of(extent a.thunkParams tuple
-                        let v = nodes.newVar("" nodes.descriptorType false) let symbols = array of :Int end
-                    end)
+                    let descriptorParams = vector.new(:nodes.DescriptorParam)
                     for i = 0 upto {extent a.thunkParams - 1} do
                         let tp = a.thunkParams[i]
-                        descriptorParams[i] := tuple let v = tp.v let symbols = array of tp.symbols[0] end end
+                        vector.append(:nodes.DescriptorParam descriptorParams
+                            tuple let v = tp.v let symbols = array of tp.symbols[0] end end)
                     end
-                    f.descriptorParams := descriptorParams
+                    f.descriptorParams := vector.toArray(:nodes.DescriptorParam descriptorParams)
                     addThunk(t key f)
             end
         end
@@ -322,15 +321,14 @@ export
             else
                     let sig = written.funSignature(ty)
                     let typeParams = typeParamsOf(written.quantified(ty).quantifiers)
-                    let descriptorParams = array of(extent typeParams tuple
-                        let v = nodes.newVar("" nodes.descriptorType false) let symbols = array of :Int end
-                    end)
+                    let made = vector.new(:nodes.DescriptorParam)
                     for i = 0 upto {extent typeParams - 1} do
-                        descriptorParams[i] := tuple
+                        vector.append(:nodes.DescriptorParam made tuple
                             let v = nodes.newVar("qd_" <> conv.int(i) nodes.descriptorType false)
                             let symbols = array of typeParams[i].symbolId end
-                        end
+                        end)
                     end
+                    let descriptorParams = vector.toArray(:nodes.DescriptorParam made)
                     let params = paramsOf(sig)
                     let stmts = vector.new(:Stmt)
                     let args = forwarded(stmts params array of :maybe.T(Plan) end)

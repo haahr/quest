@@ -2,6 +2,7 @@
 
 module formatting : Formatting
 import
+    questlang/types/symbols : questlang/types/Symbols
     tm = questlang/types/model : questlang/types/Model
     questlang/types/kinds : questlang/types/Kinds
     questlang/types/dump : questlang/types/Dump
@@ -202,16 +203,20 @@ export
 
     let formatValueWithType(v: Value t: tm.Type): String = formatTyped(v t vector.new(:Value))
 
-    let formatLetValue(lv: typedAst.LetValue v: Value): String =
-        "let " <> {if lv.symbol.isVar then "var " else "" end} <> lv.name <> ":" <> tm.show(lv.symbol.type) <> " = "
-            <> formatValueWithType(v lv.symbol.type)
+    let valueDeclaration(name: String sym: symbols.ValueSymbol): String =
+        "let " <> {if sym.isVar then "var " else "" end} <> name <> ":" <> tm.show(sym.type)
 
-    let formatLetType(lt: typedAst.LetType): String =
-        if maybe.isSome(:tm.Type lt.symbol.definition) then
-            "Let " <> lt.name <> "::" <> tm.showKind(lt.symbol.kind) <> " = " <> tm.show(maybe.unwrap(:tm.Type lt.symbol.definition))
+    let typeDeclaration(name: String sym: symbols.TypeSymbol): String =
+        if maybe.isSome(:tm.Type sym.definition) then
+            "Let " <> name <> "::" <> tm.showKind(sym.kind) <> " = " <> tm.show(maybe.unwrap(:tm.Type sym.definition))
         else
-            "Let " <> lt.name <> "::" <> tm.showKind(lt.symbol.kind)
+            "Let " <> name <> "::" <> tm.showKind(sym.kind)
         end
+
+    let formatLetValue(lv: typedAst.LetValue v: Value): String =
+        valueDeclaration(lv.name lv.symbol) <> " = " <> formatValueWithType(v lv.symbol.type)
+
+    let formatLetType(lt: typedAst.LetType): String = typeDeclaration(lt.name lt.symbol)
 
     let formatInteractiveResult(phrase: typedAst.Binding v: Value): String =
         case phrase.form

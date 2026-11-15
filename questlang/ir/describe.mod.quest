@@ -297,10 +297,12 @@ export
      * with its descriptor parameters *)
     let thunk(d: Describer symbols: Array(Array(Int)) f: All(params: Array(nodes.DescriptorParam)) Ok): Ok =
         begin
-            let params = array of(extent symbols tuple let v = nodes.newVar("" nodes.descriptorType false) let symbols = array of :Int end end)
+            let made = vector.new(:nodes.DescriptorParam)
             for k = 0 upto {extent symbols - 1} do
-                params[k] := tuple let v = nodes.newVar("qd_" <> conv.int(k) nodes.descriptorType false) let symbols = symbols[k] end
+                vector.append(:nodes.DescriptorParam made
+                    tuple let v = nodes.newVar("qd_" <> conv.int(k) nodes.descriptorType false) let symbols = symbols[k] end)
             end
+            let params = vector.toArray(:nodes.DescriptorParam made)
             let savedScope = d.scope
             let savedUnavailable = d.unavailable
             let unavailable = hashMap.new(:Int :Bool intEqual hash.int)
@@ -678,11 +680,15 @@ export
      * needed *)
     let function(d: Describer f: nodes.Function): Ok =
         begin
-            let params = array of(extent f.typeParams tuple let v = nodes.newVar("" nodes.descriptorType false) let symbols = array of :Int end end)
+            let made = vector.new(:nodes.DescriptorParam)
             for i = 0 upto {extent f.typeParams - 1} do
                 let tp = f.typeParams[i]
-                params[i] := tuple let v = nodes.newVar("descriptor_" <> tp.name nodes.descriptorType false) let symbols = array of tp.symbolId end end
+                vector.append(:nodes.DescriptorParam made tuple
+                    let v = nodes.newVar("descriptor_" <> tp.name nodes.descriptorType false) let symbols = array of tp.symbolId
+                    end
+                end)
             end
+            let params = vector.toArray(:nodes.DescriptorParam made)
             f.descriptorParams := params
             let scope = newScope()
             for i = 0 upto {extent params - 1} do hashMap.insert(:Int :Variable scope params[i].symbols[0] params[i].v) end

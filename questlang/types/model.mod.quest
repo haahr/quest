@@ -30,6 +30,9 @@ export
     end
 
     let reservedIndexLimit = 4294967296
+    (* How many uses there are: ReservedSymbolUse's last case, hole, and one
+     * more, since a use's prefix is its ordinal plus 1 *)
+    let reservedUses = ordinal(option hole of ReservedSymbolUse end) + 1
 
     let reservedSymbolId(use: ReservedSymbolUse index: Int): Int =
         ~1 * {{{ordinal(use) + 1} * reservedIndexLimit} + index}
@@ -43,7 +46,7 @@ export
             else
                 let prefix = {~1 * symbolId} / reservedIndexLimit
                 let index = {~1 * symbolId} % reservedIndexLimit
-                if {prefix < 1} orif {prefix > 7} then
+                if {prefix < 1} orif {prefix > reservedUses} then
                     maybe.none(:Decoded)
                 else
                     maybe.some(:Decoded tuple
@@ -769,8 +772,6 @@ export
                 end
             else t
         end
-
-    let pruned(t: Type): Type = prune(t)
 
     let lookupOr(subst: Subst id: Int t: Type): Type = maybe.unwrapOr(:Type hashMap.get(:Int :Type subst id) t)
 

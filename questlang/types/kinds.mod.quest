@@ -391,9 +391,9 @@ export
      * POWER(B), with the id a walk through bounds marks it visited by: its
      * symbol, or for a path type, which has none of its own, its node's id
      * negated; none for any other type *)
-    let boundedVariable(t: Type): maybe.T(Tuple id: Int bound: Type end) =
+    Let Bounded = Tuple id: Int bound: Type end
+    let boundedVariable(t: Type): maybe.T(Bounded) =
         begin
-            Let Bounded = Tuple id: Int bound: Type end
             let boundOf = fun(id: Int k: maybe.T(Kind)): maybe.T(Bounded)
                 if maybe.isSome(:Kind k) andif model.isPower(maybe.unwrap(:Kind k)) then
                     maybe.some(:Bounded tuple let id = id let bound = model.powerBound(maybe.unwrap(:Kind k)) end)
@@ -447,10 +447,10 @@ export
                         end
                     else
                         let bounded = boundedVariable(lazy)
-                        if maybe.isNone(:Tuple id: Int bound: Type end bounded) then
+                        if maybe.isNone(:Bounded bounded) then
                             searching := false
                         else
-                            let b = maybe.unwrap(:Tuple id: Int bound: Type end bounded)
+                            let b = maybe.unwrap(:Bounded bounded)
                             if hashMap.contains(:Int :Bool visited b.id) then
                                 searching := false
                             else
@@ -568,8 +568,8 @@ export
                 end
                 if searching andif not(advanced) then
                     let bounded = boundedVariable(current)
-                    if maybe.isSome(:Tuple id: Int bound: Type end bounded) then
-                        let b = maybe.unwrap(:Tuple id: Int bound: Type end bounded)
+                    if maybe.isSome(:Bounded bounded) then
+                        let b = maybe.unwrap(:Bounded bounded)
                         if hashMap.contains(:Int :Bool visited b.id) then
                             searching := false
                         else

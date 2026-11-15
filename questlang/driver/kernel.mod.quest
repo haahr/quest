@@ -8,6 +8,7 @@ import
     questlang/syntax/tokenizer : questlang/syntax/Tokenizer
     questlang/types/env : questlang/types/Env
     tm = questlang/types/model : questlang/types/Model
+    questlang/interpreter/formatting : questlang/interpreter/Formatting
     questlang/types/symbols : questlang/types/Symbols
     questlang/interpreter/treewalk : questlang/interpreter/Treewalk
     questlang/ssa/pipeline : questlang/ssa/Pipeline
@@ -192,15 +193,8 @@ export
             tuple let start = start let matches = vector.toArray(:String matches) end
         end
 
-    let showValue(name: String v: symbols.ValueSymbol): String =
-        "let " <> {if v.isVar then "var " else "" end} <> name <> ":" <> tm.show(v.type)
-
-    let showType(name: String t: symbols.TypeSymbol): String =
-        if maybe.isSome(:tm.Type t.definition) then
-            "Let " <> name <> "::" <> tm.showKind(t.kind) <> " = " <> tm.show(maybe.unwrap(:tm.Type t.definition))
-        else
-            "Let " <> name <> "::" <> tm.showKind(t.kind)
-        end
+    let showValue = formatting.valueDeclaration
+    let showType = formatting.typeDeclaration
 
     (* What a module declares, a line a member, in the order declared *)
     let showModule(name: String scope: symbols.Scope): String =

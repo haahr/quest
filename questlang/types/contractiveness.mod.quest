@@ -22,16 +22,18 @@ export
     let newIds(): Ids = hashMap.new(:Int :Bool intEqual hash.int)
 
     (* ids with one more *)
+    let copy(ids: Ids): Ids = hashMap.filter(:Int :Bool ids fun(k: Int v: Bool): Bool true)
+
     let plus(ids: Ids id: Int): Ids =
         begin
-            let more = hashMap.filter(:Int :Bool ids fun(k: Int v: Bool): Bool true)
+            let more = copy(ids)
             hashMap.insert(:Int :Bool more id true)
             more
         end
 
     let union(a: Ids b: Ids): Ids =
         begin
-            let both = hashMap.filter(:Int :Bool a fun(k: Int v: Bool): Bool true)
+            let both = copy(a)
             hashMap.forEach(:Int :Bool b fun(k: Int v: Bool): Ok begin hashMap.insert(:Int :Bool both k true) ok end)
             both
         end

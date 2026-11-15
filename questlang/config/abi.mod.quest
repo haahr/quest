@@ -3,9 +3,7 @@
 module abi : Abi
 import
     pathLib = util/path : util/Path
-    filePath = os/path : os/Path
-    questlang/common/memoryFiles : questlang/common/MemoryFiles
-    system : System
+    questlang/common/files : questlang/common/Files
     questlang/common/json : questlang/common/Json
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -22,17 +20,7 @@ export
      * dynamic value's), if it has one and the file can be read *)
     let recordedField(artifact: String key: String): maybe.T(json.Value) =
         begin
-            let text = if memoryFiles.isMemory(artifact) then
-                    memoryFiles.read(artifact)
-                elsif not(system.isFile(artifact)) then
-                    maybe.none(:String)
-                else
-                    try
-                        maybe.some(:String filePath.readText(filePath.fromString(artifact)))
-                    when system.error then
-                        maybe.none(:String)
-                    end
-                end
+            let text = files.readText(artifact)
             if maybe.isNone(:String text) then
                 maybe.none(:json.Value)
             else

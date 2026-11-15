@@ -71,7 +71,7 @@ export
     (* visited holds the recursive types being written, by id *)
     and formatType(t0: Type visited: hashMap.T(Int Bool)): String =
         begin
-            let t = model.pruned(t0)
+            let t = model.prune(t0)
             let fmt(u: Type): String = formatType(u visited)
             let formatParam(p: model.Param): String =
                 if stringOp.length(p.name) is 0 then
@@ -783,20 +783,26 @@ export
         end
 
 
+    let qiRecord(text: String file: String): Value =
+        begin
+            let malformed = "Malformed .qi metadata" <> if stringOp.length(file) > 0 then " in '" <> file <> "'" else "" end
+            let r = case dynamicReader.decode(text)
+                when vAuto with x then
+                    case x.a.value
+                        when vTuple with t then t.t.elements[0]
+                        else diagnostics.fail(:Value malformed 0)
+                    end
+                else diagnostics.fail(:Value malformed 0)
+            end
+            case r when vRecord then r else diagnostics.fail(:Value malformed 0) end
+        end
+
     let loadInterfaceFromQiFile(file: String e: env.T): Scope =
         begin
             if not(abi.hasCurrentAbi(file)) then diagnostics.fail(:Ok abi.incompatibleArtifactMessage(file) 0) end
             let text = files.readText(file)
             if maybe.isNone(:String text) then diagnostics.fail(:Ok "Error reading .qi file '" <> file <> "'" 0) end
-            let rec0 = case dynamicReader.decode(maybe.unwrap(:String text))
-                when vAuto with x then
-                    case x.a.value
-                        when vTuple with t then t.t.elements[0]
-                        else diagnostics.fail(:Value "Malformed .qi metadata in '" <> file <> "'" 0)
-                    end
-                else diagnostics.fail(:Value "Malformed .qi metadata in '" <> file <> "'" 0)
-            end
-            case rec0 when vRecord then ok else diagnostics.fail(:Ok "Malformed .qi metadata in '" <> file <> "'" 0) end
+            let rec0 = qiRecord(maybe.unwrap(:String text) file)
             let nameField = fieldOf(rec0 "name")
             let name = if maybe.isSome(:Value nameField) then
                 stringOf(nameField) else paths.stripUnitSuffix(files.baseName(file)) end

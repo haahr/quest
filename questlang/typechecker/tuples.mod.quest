@@ -139,7 +139,8 @@ export
              *    so that each type component and each label (a value
              *    component's name) is in scope for the components after it.
              *    Each component falls into one of four cases, chosen by what
-             *    the expected type says of it (expKind, checking) or what it
+             *    the expected type says of it (expectsFormal, expectsBinding,
+             *    checking) or what it
              *    is (synthesizing). *)
             for index = 0 upto {n - 1} do
                 declareKinds(index)
@@ -151,16 +152,13 @@ export
                     when valItem with v then v.b.offset
                 end
                 let isTypeItem = case item when typeItem then true else false end
-                let expKind = if maybe.isSome(:model.TupleComponent expF) then
-                    case maybe.unwrap(:model.TupleComponent expF)
-                        when tupleTypeFormal then 1
-                        when tupleTypeBinding then 2
-                        when tupleField then 3
-                    end
-                else
-                    0
-                end
-                if expKind is 1 then
+                (* What the expected type has here: a type formal, a type
+                 * binding, or (neither) a field or nothing *)
+                let expectsFormal = maybe.isSome(:model.TupleComponent expF)
+                    andif maybe.unwrap(:model.TupleComponent expF)?tupleTypeFormal
+                let expectsBinding = maybe.isSome(:model.TupleComponent expF)
+                    andif maybe.unwrap(:model.TupleComponent expF)?tupleTypeBinding
+                if expectsFormal then
                     (* A type formal of the expected type, A::K: the component
                      * is A's witness, the type hidden behind A. It must have
                      * A's bound. A is declared under the formal's own symbol
@@ -192,7 +190,7 @@ export
                             end
                         else ok
                     end
-                elsif expKind is 2 then
+                elsif expectsBinding then
                     (* A type defined by the expected type, A = T: the
                      * component must define A as T *)
                     case maybe.unwrap(:model.TupleComponent expF)

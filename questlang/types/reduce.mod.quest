@@ -38,7 +38,7 @@ export
             let var steps = 0
             while not(done) andif {steps < maxBetaSteps} do
                 steps := steps + 1
-                t := model.pruned(t)
+                t := model.prune(t)
                 case t.form
                     when typeApp with app then
                         let ctor = betaReduceHead(app.constructor)
@@ -72,7 +72,7 @@ export
             let var steps = 0
             while isRecursive(t) andif {steps < maxBetaSteps} do
                 steps := steps + 1
-                t := model.pruned(model.unfoldLazily(t))
+                t := model.prune(model.unfoldLazily(t))
                 if isApp(t) then t := betaReduceHead(t) end
             end
             t
@@ -148,7 +148,7 @@ export
         end
     let normalizeType(t0: Type): Type =
         begin
-            let t = model.pruned(t0)
+            let t = model.prune(t0)
             if t.hasMeta then
                 normalizeUncached(t)
             else
@@ -173,7 +173,7 @@ export
         end
     let resolveTypeBound(t: Type): Type =
         begin
-            let var curr = model.stripAliases(model.pruned(t))
+            let var curr = model.stripAliases(model.prune(t))
             (* The nodes passed through: a variable or abstract type by its
              * symbol, a path type by itself *)
             let visited = vector.new(:Type)
@@ -192,7 +192,7 @@ export
                         done := true
                     else
                         vector.append(:Type visited curr)
-                        curr := model.pruned(maybe.unwrap(:Type bound))
+                        curr := model.prune(maybe.unwrap(:Type bound))
                     end
                 end
             end

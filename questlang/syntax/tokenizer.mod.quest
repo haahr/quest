@@ -29,9 +29,6 @@ export
         textLen: Int
         var cursor: Int
         var peeked: maybe.T(tokens.Token)
-        keywords: Table
-        reservedPunc: Table
-        delimiters: Table
     end
 
     (* ======================================================================
@@ -126,9 +123,6 @@ export
                 let textLen = stringOp.length(txt)
                 var cursor = 0
                 var peeked = maybe.none(:tokens.Token)
-                let keywords = keywordTable
-                let reservedPunc = reservedPunctuationTable
-                let delimiters = delimiterTable
             end
         end
 
@@ -446,7 +440,7 @@ export
             else
                 let start = tok.cursor
                 let c = currentChar(tok)
-                let delimiter = lookup(tok.delimiters stringOp.new(1 c))
+                let delimiter = lookup(delimiterTable stringOp.new(1 c))
                 if maybe.isSome(:K delimiter) then
                     tok.cursor := tok.cursor + 1
                     finish(tok maybe.unwrap(:K delimiter) start tokens.valNone())
@@ -457,9 +451,9 @@ export
                 elsif c is '"' then
                     lexString(tok)
                 elsif strutil.isAlpha(c) then
-                    lexWord(tok strutil.isAlnum tok.keywords option ident of K end)
+                    lexWord(tok strutil.isAlnum keywordTable option ident of K end)
                 elsif isSymbolicChar(c) then
-                    lexWord(tok isOperatorChar(tok) tok.reservedPunc option symbolicInfix of K end)
+                    lexWord(tok isOperatorChar(tok) reservedPunctuationTable option symbolicInfix of K end)
                 else
                     tok.cursor := tok.cursor + 1
                     error(tok start "Unexpected character " <> charRepr(c))

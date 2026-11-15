@@ -72,6 +72,15 @@ export
             component
         end
 
+    (* Whether a parameter is passed in a register, as a jump passes it: as a
+     * word, a real, or one of a pair's words, not a byte, a 32-bit integer,
+     * or in memory *)
+    let inRegister(p: ssa.Passed): Bool =
+        case p
+            when passWord, passReal, passPair, passPairRest then true
+            when passByte, passInt32, passMemory then false
+        end
+
     (* How a parameter or a result is passed, as a number *)
     let passing(p: ssa.Passed): Int =
         case p
@@ -91,7 +100,7 @@ export
         begin
             let var can = vector.empty(:ssa.Slot g.slots)
             for k = 0 upto {extent g.signature.params - 1} do
-                if passing(g.signature.params[k]) > 3 then can := false end
+                if not(inRegister(g.signature.params[k])) then can := false end
             end
             for b = 0 upto {vector.length(:ssa.Block g.blocks) - 1} do
                 case ssa.block(g b).term
