@@ -1820,6 +1820,25 @@ stands, not redesigned.
     measure points to: the initializers' tables built lazily, units the REPL never calls left out of the archive,
     or modules merged at the WebAssembly level, keeping every export.
     *Done when* §5.1 and step 12's figures are measured again, and each change is kept or not on its measure.
+    *Done 2026-11-15:*
+    - **Where start-up went,** in node (the units' initializers wrapped and timed, and V8's compile trace): 175 ms,
+      spread evenly over the 190 units at 1 to 3 ms each, most of it V8 compiling each function lazily at its first
+      call (563 functions, 220 ms of Liftoff by its own trace). No unit's tables lead: the static descriptors are
+      about 15 ms of it, the units' own `boxInt` and `unboxInt` (step 21) a little more.
+    - **What the page carried:** the SSA (30 units) and the C, arm64, and machine backends, a quarter of the driver,
+      which the page never runs. They are left out now (part 1): `codegen/native` and `driver/ssaphases` take the
+      driver's uses of them, each with a `wasm` variant that has none (build-process.md §6.4). The driver goes from
+      198 units to 154, the archive from 4,074 to 3,147 KB compressed, and it still compiles itself to the same
+      modules; kept.
+    - **Measured again,** before and after, alternating, cold, from a server on the same machine (medians of
+      three): node's initializers 174 → 141 ms; Chrome's archives compiled by 113 → 84–113 ms and a session started
+      183 → 150 ms interpreted, 68 → 57 with the JIT; Firefox's compiled by 284 → 203 ms; Safari's 150 → 120 ms,
+      and a session 77 → 67 and 67 → 56 ms. A page reaches its prompt in about a quarter of a second locally, so
+      the download is what start-up waits for, now 3.1 MB.
+    - **Not taken:** descriptors made from data (about 15 ms in node, below the noise of a page's load), merging the
+      modules at the WebAssembly level (instantiating all of them takes 13 to 15 ms), and lazy initializers (no
+      unit's lead). Leaving out `codegen/c/headers` and the two units it needs (200 KB) would take a variant of
+      `build/headers` too; not done.
 23. **Other browsers.** `check.html` run in Firefox and Safari, both modes, and the page used by hand. Each
     engine's support for what this target uses (WasmGC, tail calls, exceptions with `exnref`, a worker's
     synchronous request) is recorded, and its stack in a worker measured as step 12 measured Chromium's (§6.2).
