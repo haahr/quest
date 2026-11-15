@@ -26,6 +26,8 @@ import
     cBackend = questlang/codegen/backend : questlang/codegen/Backend
     questlang/build/compilerRunner : questlang/build/CompilerRunner
     collections/vector : collections/Vector
+    collections/hashMap : collections/HashMap
+    util/hash : util/Hash
     util/maybe : util/Maybe
     pathLib = os/path : os/Path
     os/fileStats : os/FileStats
@@ -146,22 +148,8 @@ export
             end
         end
 
-    let withBackends(eng: T backends: choice.T): T =
-        tuple
-            let buildDir = eng.buildDir
-            let resolver = eng.resolver
-            let includePaths = eng.includePaths
-            let extraObjects = eng.extraObjects
-            let logger = eng.logger
-            let nogc = eng.nogc
-            let compiler = eng.compiler
-            let extraCFlags = eng.extraCFlags
-            let jobs = eng.jobs
-            let driver = eng.driver
-            let backends = backends
-        end
-
-    let parallel(eng: T jobs: Int driver: String): T =
+    (* eng with the fields withBackends and parallel change replaced *)
+    let changed(eng: T jobs: Int driver: String backends: choice.T): T =
         tuple
             let buildDir = eng.buildDir
             let resolver = eng.resolver
@@ -173,8 +161,10 @@ export
             let extraCFlags = eng.extraCFlags
             let jobs = jobs
             let driver = driver
-            let backends = eng.backends
+            let backends = backends
         end
+    let withBackends(eng: T backends: choice.T): T = changed(eng eng.jobs eng.driver backends)
+    let parallel(eng: T jobs: Int driver: String): T = changed(eng jobs driver eng.backends)
 
     let log(eng: T tag: String message: String): Ok = logger.log(eng.logger tag message)
 
@@ -431,8 +421,6 @@ export
 
     (* An importer's expectation of a module's interface *)
     Let Expected = Tuple importer: String interfaceName: String end
-    Let NamedExpected = Tuple name: String expected: vector.T(Expected) end
-    Let NamedManifest = Tuple name: String m: manifest.ModuleManifest end
     Let Edges = Tuple node: String neighbors: Array(String) end
 
     let conformanceError(importer: String name: String expected: String actual: String): String =
@@ -577,52 +565,40 @@ export
             let search = searchPaths(eng)
             let queue = vector.new(:String)
             let var head = 0
-            let discovered = vector.new(:String)
-            let sourceNames = vector.new(:String)
-            let sourceFiles = vector.new(:String)
+            let discovered = hashMap.new(:String :Bool stringOp.equal hash.string)
+            let isDiscovered(name: String): Bool = hashMap.contains(:String :Bool discovered name)
+            let discover(name: String): Ok = begin hashMap.insert(:String :Bool discovered name true) ok end
+            (* The first source an importer recorded for each module *)
+            let sources = hashMap.new(:String :String stringOp.equal hash.string)
+            let recordSource(name: String file: String): Ok =
+                if not(hashMap.contains(:String :String sources name)) then
+                    begin hashMap.insert(:String :String sources name file) ok end
+                end
             let linked = vector.fromArray(:String strs(eng.extraObjects))
             for i = 0 upto {extent eng.extraObjects - 1} do
-                vector.append(:String discovered files.stem(str(eng.extraObjects[i])))
-                vector.append(:String discovered paths.lower(files.stem(str(eng.extraObjects[i]))))
+                discover(files.stem(str(eng.extraObjects[i])))
+                discover(paths.lower(files.stem(str(eng.extraObjects[i]))))
             end
             let moduleGraph = vector.new(:Edges)
-            let expected = vector.new(:NamedExpected)
-            let manifests = vector.new(:NamedManifest)
+            (* The interfaces expected of each module, and the modules in the
+             * order first expected, which they are checked again in *)
+            let expected = hashMap.new(:String :vector.T(Expected) stringOp.equal hash.string)
+            let expectedNames = vector.new(:String)
+            let manifests = hashMap.new(:String :manifest.ModuleManifest stringOp.equal hash.string)
 
             let manifestOf = fun(name: String): maybe.T(manifest.ModuleManifest)
-                begin
-                    let var found = maybe.none(:manifest.ModuleManifest)
-                    for i = 0 upto {vector.length(:NamedManifest manifests) - 1} do
-                        if eq(vector.get(:NamedManifest manifests i).name name) then
-                            found := maybe.some(:manifest.ModuleManifest vector.get(:NamedManifest manifests i).m)
-                        end
-                    end
-                    found
-                end
+                hashMap.get(:String :manifest.ModuleManifest manifests name)
             let setManifest = fun(name: String m: manifest.ModuleManifest): Ok
-                begin
-                    let var placed = false
-                    for i = 0 upto {vector.length(:NamedManifest manifests) - 1} do
-                        if eq(vector.get(:NamedManifest manifests i).name name) then
-                            vector.set(:NamedManifest manifests i tuple let name = name let m = m end)
-                            placed := true
-                        end
-                    end
-                    if not(placed) then vector.append(:NamedManifest manifests tuple let name = name let m = m end) end
-                end
+                begin hashMap.insert(:String :manifest.ModuleManifest manifests name m) ok end
             let expectedOf = fun(name: String): vector.T(Expected)
                 begin
-                    let var found = maybe.none(:vector.T(Expected))
-                    for i = 0 upto {vector.length(:NamedExpected expected) - 1} do
-                        if eq(vector.get(:NamedExpected expected i).name name) then
-                            found := maybe.some(:vector.T(Expected) vector.get(:NamedExpected expected i).expected)
-                        end
-                    end
+                    let found = hashMap.get(:String :vector.T(Expected) expected name)
                     if maybe.isSome(:vector.T(Expected) found) then
                         maybe.unwrap(:vector.T(Expected) found)
                     else
                         let fresh = vector.new(:Expected)
-                        vector.append(:NamedExpected expected tuple let name = name let expected = fresh end)
+                        hashMap.insert(:String :vector.T(Expected) expected name fresh)
+                        vector.append(:String expectedNames name)
                         fresh
                     end
                 end
@@ -661,27 +637,15 @@ export
                     let dep = imported[i]
                     recordExpectedInterface(name dep.name dep.interfaceName)
                     let norm = paths.lower(dep.name)
-                    if not(contains(discovered dep.name)) andif not(contains(discovered norm)) then
-                        if stringOp.length(dep.source) > 0 then
-                            vector.append(:String sourceNames dep.name)
-                            vector.append(:String sourceFiles dep.source)
-                        end
-                        vector.append(:String discovered dep.name)
-                        vector.append(:String discovered norm)
+                    if not(isDiscovered(dep.name)) andif not(isDiscovered(norm)) then
+                        if stringOp.length(dep.source) > 0 then recordSource(dep.name dep.source) end
+                        discover(dep.name)
+                        discover(norm)
                         log(eng "ENQUEUE MODULE" quoted(dep.name) <> " (from " <> name <> " import)")
                         vector.append(:String queue dep.name)
                     end
                 end
-            let recordedSource = fun(name: String): maybe.T(String)
-                begin
-                    let var found = maybe.none(:String)
-                    for i = 0 upto {vector.length(:String sourceNames) - 1} do
-                        if maybe.isNone(:String found) andif eq(vector.get(:String sourceNames i) name) then
-                            found := maybe.some(:String vector.get(:String sourceFiles i))
-                        end
-                    end
-                    found
-                end
+            let recordedSource = fun(name: String): maybe.T(String) hashMap.get(:String :String sources name)
 
             enqueueImports(importer roots)
 
@@ -897,13 +861,10 @@ export
                         next := next + 1
                         for i = 0 upto {extent imports - 1} do
                             let dep = imports[i]
-                            if not(contains(discovered dep.name)) andif not(contains(discovered paths.lower(dep.name)))
+                            if not(isDiscovered(dep.name)) andif not(isDiscovered(paths.lower(dep.name)))
                                 andif {preparedIndex(dep.name) < 0} then
                                 (* Where its importer's manifest will say it is *)
-                                if stringOp.length(dep.source) > 0 then
-                                    vector.append(:String sourceNames dep.name)
-                                    vector.append(:String sourceFiles dep.source)
-                                end
+                                if stringOp.length(dep.source) > 0 then recordSource(dep.name dep.source) end
                                 add(popped(dep.name))
                             end
                         end
@@ -973,8 +934,9 @@ export
                 <> " units)")
 
             (* Every expected interface, across the transitive closure *)
-            for i = 0 upto {vector.length(:NamedExpected expected) - 1} do
-                let entry = vector.get(:NamedExpected expected i)
+            for i = 0 upto {vector.length(:String expectedNames) - 1} do
+                let name = vector.get(:String expectedNames i)
+                let entry = tuple let name = name let expected = hashMap.find(:String :vector.T(Expected) expected name) end
                 let mf = manifestOf(entry.name)
                 if maybe.isSome(:manifest.ModuleManifest mf)
                     andif maybe.isSome(:String maybe.unwrap(:manifest.ModuleManifest mf).interfaceName) then
