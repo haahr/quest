@@ -24,6 +24,13 @@
 const decoder = new TextDecoder();
 const encoder = new TextEncoder();
 
+// Whether e is an engine's stack overflow, which no standard names: V8's and
+// JavaScriptCore's RangeError, SpiderMonkey's InternalError, "too much
+// recursion" (docs/wasm-plan.md step 23)
+export function isStackOverflow(e) {
+  return e instanceof RangeError || (e?.name === "InternalError" && /recursion/i.test(String(e.message)));
+}
+
 export class Jit {
   constructor() {
     // The exports of every unit by name: the runtime's, the driver's, and
@@ -119,7 +126,7 @@ export class Jit {
       entry();
       return 0;
     } catch (e) {
-      const overflow = e instanceof RangeError;
+      const overflow = isStackOverflow(e);
       if (!overflow && !(e instanceof WebAssembly.RuntimeError)) throw e;
       if (this.core && Number(this.core.updating(this.noClosure)) !== 0) this.mustReplay = true;
       return overflow ? 1 : runtime.fatalReport() !== null ? 3 : 2;

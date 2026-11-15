@@ -107,6 +107,10 @@ try {
   say(result.error, "fail");
 }
 result.done = true;
-// For a browser run headless, which logs the console
-console.log(`questCheck: ${mode}: ${result.passed} passed, ${result.failed.length} failed` +
-            `${result.failed.map(f => ` ${f.name}`).join("")}${result.error ? `; ${result.error}` : ""}`);
+// For a browser run by tools/wasm-page/build --check: the outcome posted to
+// the server the page came from, which any browser can do, headless or not
+// (a static server refuses it, which is no matter), and logged to the console
+const outcome = `questCheck: ${mode}: ${result.passed} passed, ${result.failed.length} failed` +
+  `${result.failed.map(f => ` ${f.name}`).join("")}${result.error ? `; ${result.error}` : ""}`;
+console.log(outcome);
+fetch("outcome", {method: "POST", body: outcome}).catch(() => {});

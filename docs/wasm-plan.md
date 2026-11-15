@@ -815,9 +815,21 @@ Steps 11 and 12 measured its depth in WebAssembly, which the native figure only 
 Tests under node constrain the stack to a browser's (`--stack-size`, or a worker's `resourceLimits`), or they pass
 where a browser fails.
 
+**In each browser's worker** (step 23, a probe page bisecting in the page's own session, each browser fresh):
+
+| Browser | JIT: `1 + down(n - 1)` | Interpreted: simple, nested body | Longest chain of additions, JIT / interpreted |
+|---|--:|--:|--:|
+| Chrome 157 | 5,476 | 769, 492 | 469 / 469 |
+| Firefox 160 | 96,893 | 1,619, 1,198 | 1,060 / 1,060 |
+| Safari 26.6.2 | 24,779 | 575, 348 | 349 / 466 |
+
+Every one is past the session's call limit of 150 and the inputs people type; Chromium's worker is the smallest
+for compiled recursion and Safari's for the compiler's nesting.
+
 ### 6.3. When the Stack Overflows (decision 10)
 
-No handler in a module sees the overflow: wasmtime traps, and V8 gives JavaScript a `RangeError`. The Quest code
+No handler in a module sees the overflow: wasmtime traps, V8 and JavaScriptCore give JavaScript a `RangeError`,
+and SpiderMonkey an `InternalError`, "too much recursion" (the hosts' `isStackOverflow` takes both, step 23). The Quest code
 that would roll a failed input back does not run. The host catches the error at the entry, and what it does depends
 on what was running:
 
@@ -876,6 +888,18 @@ present, a flag in shared memory that compiled code polls could stop an input an
 replay; that is an addition, with a cost in every unit compiled for a session.
 
 ---
+
+### 6.5. Browsers (step 23)
+
+The page and its check (`tools/wasm-page/build --check --browser chrome|firefox|safari`) run in Chrome 157,
+Firefox 160, and Safari 26.6.2 on macOS, both modes, every transcript passing in each: so each has what this
+target uses, WasmGC, tail calls, exceptions with `exnref`, and a worker's synchronous request (a URL prefix's
+files). Chrome and Firefox run headless with profiles of their own; Safari has no headless mode, and runs the
+check in a window of the user's. Firefox's stack overflow is an `InternalError`, which the hosts did not take for
+one: an input that overflowed ended the session's worker, until step 23 (§6.3). Compiling the driver's modules took
+156 ms in Chrome, 447 in Firefox, and 167 in Safari, from a server on the same machine. The page names the browsers
+it was tested in, and on failing to start, what an engine needs. Not tested: Chromium's other browsers (Edge),
+mobile browsers, and Linux and Windows.
 
 ## 7. Accepted Differences From the Native Backends
 
@@ -1795,6 +1819,12 @@ stands, not redesigned.
     engine's support for what this target uses (WasmGC, tail calls, exceptions with `exnref`, a worker's
     synchronous request) is recorded, and its stack in a worker measured as step 12 measured Chromium's (§6.2).
     *Done when* §6.2 and a new note in §6 record each browser's results, and the page says which it supports.
+    *Done 2026-11-15*, before step 22's measures, which wait for a quiet machine: Firefox 160 installed by the
+    owner's leave; `build --check` takes `--browser`, and the page posts its outcome to the server that serves it,
+    which any browser can; every transcript passes in all three, both modes (§6.5). Found and fixed: Firefox's
+    overflow, an `InternalError`, ended the session's worker. The depths are in §6.2: Firefox's worker the deepest,
+    Chromium's the shallowest for compiled recursion, Safari's for the compiler's nesting. The page says which
+    browsers it supports.
 
 #### 8.4.1. Why These Choices
 

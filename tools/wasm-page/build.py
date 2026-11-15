@@ -10,7 +10,7 @@ of the library's units the driver's build made when --qi is given. An archive
 is the format runtime/wasm/archive.mjs reads.
 
     tools/wasm-page/build [-o DIR] [--driver DRIVER | --driver-wasm PATH [--driver-build B]] [--qi]
-                          [--tests] [--check]
+                          [--tests] [--check [--browser chrome|firefox|safari]]
 
 DRIVER is ./quest unless given; --driver-wasm takes a driver already built
 (PATH its program module, with PATH.runtime.wasm and PATH.units beside it)
@@ -18,8 +18,11 @@ rather than building one, which takes a minute, and B is its build directory,
 where --qi finds the .qi files (PATH's directory's build/ unless given).
 --tests adds check.html, which runs the REPL's transcripts (tests/repl) in the
 page against their goldens. --check implies --tests, and then runs check.html
-in Google Chrome or Chromium, headless, with a profile of its own, served from
-DIR on a port of localhost: it exits 1 if a transcript fails.
+in a browser, served from DIR on a port of localhost, with the JIT and then
+interpreted: Google Chrome or Chromium (the default) or Firefox, headless, each
+with a profile of its own, or Safari, which has no headless mode, in a window
+of the user's. The page posts its outcome to the server. It exits 1 if a
+transcript fails.
 """
 
 from __future__ import annotations
@@ -114,44 +117,64 @@ def copy_tests(into: Path) -> None:
     (into / "tests" / "transcripts.json").write_text(json.dumps(names) + "\n")
 
 
-CHROME = ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "google-chrome", "chromium",
-          "chromium-browser"]
+# The browsers --check can run check.html in: each the programs that may be
+# it, and the command that opens a URL in it, given a fresh profile's
+# directory. Chrome and Firefox run headless, each with a profile of its own;
+# Safari has neither, so it opens a window of the user's Safari
+BROWSERS = {
+    "chrome": (["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "google-chrome", "chromium",
+                "chromium-browser"],
+               lambda exe, profile, url: [exe, "--headless=new", f"--user-data-dir={profile}", "--no-first-run",
+                                          url]),
+    "firefox": (["/Applications/Firefox.app/Contents/MacOS/firefox", "firefox"],
+                lambda exe, profile, url: [exe, "--headless", "--no-remote", "--profile", profile, url]),
+    "safari": (["/usr/bin/open"], lambda exe, profile, url: [exe, "-g", "-a", "Safari", url]),
+}
 
 
-def check_in_chrome(out: Path) -> bool:
-    """Runs out's check.html in headless Chrome, with the JIT and then
-    interpreted: whether every transcript passed in each. check.mjs logs its
-    outcome to the console, which Chrome writes to its standard error."""
-    chrome = next((c for c in CHROME if shutil.which(c) or Path(c).exists()), None)
-    if chrome is None:
-        sys.exit("build: --check needs Google Chrome or Chromium")
-    class Quiet(http.server.SimpleHTTPRequestHandler):
+def check_in_browser(out: Path, browser_name: str) -> bool:
+    """Runs out's check.html in a browser (BROWSERS), with the JIT and then
+    interpreted: whether every transcript passed in each. check.mjs posts its
+    outcome to /outcome, which the server here keeps."""
+    programs, command = BROWSERS[browser_name]
+    exe = next((c for c in programs if shutil.which(c) or Path(c).exists()), None)
+    if exe is None:
+        sys.exit(f"build: --check --browser {browser_name} needs one of {', '.join(programs)}")
+    outcomes: list[str] = []
+
+    class Handler(http.server.SimpleHTTPRequestHandler):
         def log_message(self, *args) -> None:
             pass
 
-    handler = functools.partial(Quiet, directory=str(out))
+        def do_POST(self) -> None:
+            n = int(self.headers.get("Content-Length", "0"))
+            outcomes.append(self.rfile.read(n).decode("utf-8", "replace"))
+            self.send_response(204)
+            self.end_headers()
+
+    handler = functools.partial(Handler, directory=str(out))
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     passed = True
     for query in ("", "?jit=0"):
         url = f"http://127.0.0.1:{server.server_address[1]}/check.html{query}"
-        with tempfile.TemporaryDirectory() as profile, tempfile.TemporaryFile("w+") as log:
-            browser = subprocess.Popen([chrome, "--headless=new", f"--user-data-dir={profile}", "--no-first-run",
-                                        "--enable-logging=stderr", "--v=0", url], stdout=log, stderr=log)
-            outcome = None
+        outcomes.clear()
+        with tempfile.TemporaryDirectory() as profile:
+            browser = subprocess.Popen(command(exe, profile, url), stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.DEVNULL)
             deadline = time.monotonic() + 600
-            while outcome is None and time.monotonic() < deadline and browser.poll() is None:
+            while not outcomes and time.monotonic() < deadline:
                 time.sleep(1)
-                log.seek(0)
-                outcome = re.search(r'questCheck: ([^"]*)"', log.read())
-            browser.kill()
+            if browser.poll() is None:
+                browser.kill()
             browser.wait()
-        if outcome is None:
-            print(f"check: check.html{query} gave no outcome")
+        if not outcomes:
+            print(f"check: check.html{query} gave no outcome in {browser_name}")
             passed = False
             continue
-        print(f"check: {outcome.group(1)}")
-        passed = passed and re.match(r"\w+: \d+ passed, 0 failed$", outcome.group(1)) is not None
+        outcome = outcomes[0].removeprefix("questCheck: ")
+        print(f"check: {browser_name}: {outcome}")
+        passed = passed and re.match(r"\w+: \d+ passed, 0 failed$", outcome) is not None
     server.shutdown()
     return passed
 
@@ -168,7 +191,10 @@ def main() -> None:
     parser.add_argument("--driver-build", help="the build directory of --driver-wasm's driver, for --qi")
     parser.add_argument("--qi", action="store_true", help="add the library's .qi files to its archive")
     parser.add_argument("--tests", action="store_true", help="add check.html and the REPL's transcripts")
-    parser.add_argument("--check", action="store_true", help="run check.html in headless Chrome")
+    parser.add_argument("--check", action="store_true", help="run check.html in a browser (--browser)")
+    parser.add_argument("--browser", choices=sorted(BROWSERS), default="chrome",
+                        help="the browser --check runs check.html in: chrome (the default) or firefox, headless, "
+                             "or safari, in a window")
     options = parser.parse_args()
     options.tests = options.tests or options.check
     out = Path(options.out).resolve()
@@ -197,7 +223,7 @@ def main() -> None:
     print(f"build: wrote {out}")
     print(f"  driver.qar.gz: {kb(driver[0])}, {kb(driver[1])} compressed")
     print(f"  lib.qar.gz:    {kb(library[0])}, {kb(library[1])} compressed{' (with .qi files)' if options.qi else ''}")
-    if options.check and not check_in_chrome(out):
+    if options.check and not check_in_browser(out, options.browser):
         sys.exit(1)
 
 

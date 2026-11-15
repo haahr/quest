@@ -228,4 +228,7 @@ try {
 } catch (e) {
   status.textContent = "Failed to start";
   append(String(e.stack || e) + "\n", "err");
+  // most likely an engine without what the driver's modules use
+  append("The page needs WebAssembly's garbage collection, tail calls, and exceptions (exnref), which recent " +
+         "Chrome, Firefox, and Safari have.\n", "err");
 }

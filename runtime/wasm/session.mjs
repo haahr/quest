@@ -11,7 +11,7 @@
 // writes to descriptor 4, the program's output as writes to 1 and 2.
 
 import {Host, Exit} from "./host.mjs";
-import {Jit} from "./jit.mjs";
+import {Jit, isStackOverflow} from "./jit.mjs";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -129,11 +129,11 @@ export class Session {
       this.kernel.request(this.noClosure);
     } catch (e) {
       if (e instanceof Exit) throw new Exited(e.code);
-      if (!(e instanceof RangeError) && !(e instanceof WebAssembly.RuntimeError)) throw e;
+      if (!isStackOverflow(e) && !(e instanceof WebAssembly.RuntimeError)) throw e;
       // No Quest handler saw it, and the interpreter's structures may be half
       // updated: a new session, with the committed inputs run again
       this.replay();
-      const kind = e instanceof RangeError ? "stack.overflow" : "trap";
+      const kind = isStackOverflow(e) ? "stack.overflow" : "trap";
       const records = failure(kind, String(e.message));
       if (this.options.record) this.options.record(encoder.encode(records.map(r => requestLine(r)).join("\n") + "\n"));
       return records;
