@@ -1,0 +1,361 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (TypeBindingGroup
+      :bindings (
+        (TypeBinding
+          :name 'Term'
+          :type_val (TypeOption
+            :variants (
+              (OptionFieldSig
+                :tag 'con'
+                :payload_sig (
+                  (FieldSig
+                    :name 's'
+                    :type_sig (TypePath ('String'))
+                    :mode VALUE
+                  )
+                )
+              )
+              (OptionFieldSig
+                :tag 'ref'
+                :payload_sig (
+                  (FieldSig
+                    :name 'r'
+                    :type_sig (TypePath ('Ref'))
+                    :mode VALUE
+                  )
+                )
+              )
+            )
+          )
+          :is_rec True
+        )
+        (TypeBinding
+          :name 'Ref'
+          :type_val (TypeTuple
+            :fields (
+              (FieldSig
+                :name 'v'
+                :type_sig (TypePath ('Maybe'))
+                :mode VAR
+              )
+            )
+          )
+          :is_rec True
+        )
+        (TypeBinding
+          :name 'Maybe'
+          :type_val (TypeOption
+            :variants (
+              (OptionFieldSig 'none' ())
+              (OptionFieldSig
+                :tag 'some'
+                :payload_sig (
+                  (FieldSig
+                    :name 't'
+                    :type_sig (TypePath ('Term'))
+                    :mode VALUE
+                  )
+                )
+              )
+            )
+          )
+          :is_rec True
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'show'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprId 's')
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'newRef'
+      :value (ExprFun
+        :return_type (TypePath ('Ref'))
+        :body (ExprTuple
+          :fields (
+            (TupleBinding
+              :name 'v'
+              :value (ExprOption
+                :tag 'none'
+                :option_type (TypePath ('Maybe'))
+              )
+              :is_var True
+            )
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :result_type (TypePath ('Ref'))
+      )
+    )
+    (LetValueBinding
+      :name 'occurs'
+      :value (ExprCase
+        :target (ExprId 't')
+        :branches (
+          (CaseBranch
+            :tags ('ref')
+            :binder 'x'
+            :body (ExprInfix
+              :left (ExprId 'r')
+              :op 'isnot'
+              :right (ExprSelect
+                :target (ExprId 'x')
+                :field 'r'
+              )
+            )
+          )
+        )
+        :else_branch (ExprBool True)
+      )
+      :params (
+        (FormalParam
+          :name 'r'
+          :type_annot (TypePath ('Ref'))
+          :mode VALUE
+        )
+        (FormalParam
+          :name 't'
+          :type_annot (TypePath ('Term'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Bool'))
+    )
+    (LetValueBinding
+      :name 'same'
+      :value (ExprCase
+        :target (ExprId 't')
+        :branches (
+          (CaseBranch
+            :tags ('ref')
+            :binder 'x'
+            :body (ExprInfix
+              :left (ExprId 'r')
+              :op 'is'
+              :right (ExprSelect
+                :target (ExprId 'x')
+                :field 'r'
+              )
+            )
+          )
+        )
+        :else_branch (ExprBool False)
+      )
+      :params (
+        (FormalParam
+          :name 'r'
+          :type_annot (TypePath ('Ref'))
+          :mode VALUE
+        )
+        (FormalParam
+          :name 't'
+          :type_annot (TypePath ('Term'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Bool'))
+    )
+    (LetValueBinding
+      :name 'a'
+      :value (ExprApp
+        :func (ExprId 'newRef')
+      )
+    )
+    (LetValueBinding
+      :name 'b'
+      :value (ExprApp
+        :func (ExprId 'newRef')
+      )
+    )
+    (LetValueBinding
+      :name 'ta'
+      :value (ExprOption
+        :tag 'ref'
+        :option_type (TypePath ('Term'))
+        :payload (ExprTuple
+          :fields (
+            (TupleBinding
+              :value (ExprId 'a')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprInfix
+            :left (ExprString 'a is a: ' '"a is a: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'bool'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprId 'same')
+                  :args (
+                    (ExprId 'a')
+                    (ExprId 'ta')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprInfix
+            :left (ExprString 'b is a: ' '"b is a: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'bool'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprId 'same')
+                  :args (
+                    (ExprId 'b')
+                    (ExprId 'ta')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprInfix
+            :left (ExprString 'a isnot a: ' '"a isnot a: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'bool'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprId 'occurs')
+                  :args (
+                    (ExprId 'a')
+                    (ExprId 'ta')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprInfix
+            :left (ExprString 'b isnot a: ' '"b isnot a: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'bool'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprId 'occurs')
+                  :args (
+                    (ExprId 'b')
+                    (ExprId 'ta')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprInfix
+            :left (ExprString 'a isnot a constant: ' '"a isnot a constant: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'bool'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprId 'occurs')
+                  :args (
+                    (ExprId 'a')
+                    (ExprOption
+                      :tag 'con'
+                      :option_type (TypePath ('Term'))
+                      :payload (ExprTuple
+                        :fields (
+                          (TupleBinding
+                            :value (ExprString 'c' '"c"')
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

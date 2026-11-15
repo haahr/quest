@@ -1,0 +1,167 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetTypeGroup 'Term' 'Ref' 'Maybe'
+      :members (
+        (TypedLetType 'Term' :kind TYPE)
+        (TypedLetType 'Ref' :kind TYPE)
+        (TypedLetType 'Maybe' :kind TYPE)
+      ))
+    (TypedLetValue 'show' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'newRef' :type Fun(): Ref
+      :value (TypedFun :params () :type Fun(): Ref
+        :body (TypedTuple :type Tuple var v: Maybe end
+          :elements (
+            (TypedOption 'none' :type Maybe)
+          ))))
+    (TypedLetValue 'occurs' :type Fun(r: Ref t: Term): Bool
+      :value (TypedFun :params (('r' : Ref) ('t' : Term)) :type Fun(r: Ref t: Term): Bool
+        :body (TypedCase :type Bool
+          :target (TypedVar 't' :type Term)
+          :branches (
+            (TypedCaseBranch tags=(ref) :binder 'x'
+              :body (TypedInfix 'isnot' :type Bool
+                :left (TypedVar 'r' :type Ref)
+                :right (TypedSelect 'r' :type Ref
+                  :target (TypedVar 'x' :type Tuple r: Ref end))))
+          )
+          :else (TypedBool true))))
+    (TypedLetValue 'same' :type Fun(r: Ref t: Term): Bool
+      :value (TypedFun :params (('r' : Ref) ('t' : Term)) :type Fun(r: Ref t: Term): Bool
+        :body (TypedCase :type Bool
+          :target (TypedVar 't' :type Term)
+          :branches (
+            (TypedCaseBranch tags=(ref) :binder 'x'
+              :body (TypedInfix 'is' :type Bool
+                :left (TypedVar 'r' :type Ref)
+                :right (TypedSelect 'r' :type Ref
+                  :target (TypedVar 'x' :type Tuple r: Ref end))))
+          )
+          :else (TypedBool false))))
+    (TypedLetValue 'a' :type Ref
+      :value (TypedApp :type Ref
+        :func (TypedVar 'newRef' :type Fun(): Ref)
+        :args ()))
+    (TypedLetValue 'b' :type Ref
+      :value (TypedApp :type Ref
+        :func (TypedVar 'newRef' :type Fun(): Ref)
+        :args ()))
+    (TypedLetValue 'ta' :type Term
+      :value (TypedOption 'ref' :type Term
+        :payload (TypedTuple :type Tuple r: Ref end
+          :elements (
+            (TypedVar 'a' :type Ref)
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'a is a: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedVar 'same' :type Fun(r: Ref t: Term): Bool)
+                  :args (
+                    (TypedVar 'a' :type Ref)
+                    (TypedVar 'ta' :type Term)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'b is a: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedVar 'same' :type Fun(r: Ref t: Term): Bool)
+                  :args (
+                    (TypedVar 'b' :type Ref)
+                    (TypedVar 'ta' :type Term)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'a isnot a: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedVar 'occurs' :type Fun(r: Ref t: Term): Bool)
+                  :args (
+                    (TypedVar 'a' :type Ref)
+                    (TypedVar 'ta' :type Term)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'b isnot a: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedVar 'occurs' :type Fun(r: Ref t: Term): Bool)
+                  :args (
+                    (TypedVar 'b' :type Ref)
+                    (TypedVar 'ta' :type Term)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'a isnot a constant: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedVar 'occurs' :type Fun(r: Ref t: Term): Bool)
+                  :args (
+                    (TypedVar 'a' :type Ref)
+                    (TypedOption 'con' :type Term
+                      :payload (TypedTuple :type Tuple s: String end
+                        :elements (
+                          (TypedString 'c' :type String)
+                        )))
+                  ))
+              )))
+        )))
+  ))

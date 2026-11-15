@@ -230,6 +230,11 @@ export
         (* Whether a call of the function itself in tail position branched
          * to the loop around its code (selfLabel) *)
         var selfTail: Bool
+        (* The statement that runs when the body being compiled falls off its
+         * end, if it is known: the one after the if, switch, or join it is
+         * part of, so that a call there can be a tail call; none in a loop's
+         * body, which repeats, or a try's *)
+        var after: maybe.T(ir.Stmt)
     end
 
     (* The label of the loop around a function's code, which no IR label is
@@ -254,6 +259,7 @@ export
                 let deferred = hashMap.new(:Int :Bool intEqual hash.int)
                 let patches = vector.new(:Patch)
                 let var selfTail = false
+                let var after = maybe.none(:ir.Stmt)
             end
         end
 
@@ -1976,7 +1982,6 @@ export
                         accessAs(f tTuple ir.original)
                     end
                     emit(f i(ops.refEq))
-                    if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
                 else
                 atoms(f x.args)
                 case atomType(x.args[0])
@@ -4392,11 +4397,17 @@ export
     let rec body(f: F b: ir.Body): Ok =
         begin
             let ss = vector.toArray(:ir.Stmt b.statements)
+            let outer = f.after
             let var k = 0
             while k < extent ss do
-                if {{k + 1} < extent ss} andif tailCall(f ss[k] ss[k + 1]) then k := k + 2
+                let last = {k + 1} >= extent ss
+                let next = if last then outer else maybe.some(:ir.Stmt ss[k + 1]) end
+                if maybe.isSome(:ir.Stmt next) andif tailCall(f ss[k] maybe.unwrap(:ir.Stmt next)) then
+                    k := k + if last then 1 else 2 end
                 else
+                    f.after := next
                     statement(f ss[k])
+                    f.after := outer
                     k := k + 1
                 end
             end
@@ -4456,6 +4467,7 @@ export
                 open(f x.label option labelExit of LabelKind end)
                 emit(f model.loopInst(empty x.label))
                 open(f x.label option labelRepeat of LabelKind end)
+                f.after := maybe.none(:ir.Stmt)
                 body(f x.body)
                 if not(ir.terminated(x.body)) then emit(f i1(ops.br 0)) end
                 close(f)
@@ -4530,6 +4542,7 @@ export
                     end
                 end)
                 open(f base <> ".body" option labelIf of LabelKind end)
+                f.after := maybe.none(:ir.Stmt)
                 body(f x.body)
                 if not(ir.terminated(x.body)) then
                     emit(f i1(ops.br depth(f base <> ".after" option labelIf of LabelKind end)))
@@ -4538,6 +4551,7 @@ export
                 emit(f i(ops.unreachable))
                 close(f)
                 store(f x.exc)
+                f.after := maybe.none(:ir.Stmt)
                 body(f x.handler)
                 close(f)
             when sEcho with x then echo(f x)
@@ -4557,6 +4571,7 @@ export
                  * are filled in once it has *)
                 let first = vector.length(:Patch f.patches)
                 for k = 0 upto extent x.vars - 1 do hashMap.insert(:Int :Bool f.deferred x.vars[k].id true) end
+                f.after := maybe.none(:ir.Stmt)
                 body(f x.body)
                 for k = 0 upto extent x.vars - 1 do hashMap.delete(:Int :Bool f.deferred x.vars[k].id) end
                 while vector.length(:Patch f.patches) > first do

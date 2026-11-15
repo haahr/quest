@@ -1,0 +1,84 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun show(s: String): Ok {
+      let %1: writer.T = member writer.output @16:44
+      let %2: String = prim <>(s, "\n") @16:58
+      let %3: Ok = call writer.putString(%1, %2) @16:27
+      return %3
+    }
+  }
+  funs {
+    fun newRef(): Ref {
+      let v: Maybe = option(none) @17:39
+      let %4: Tuple var v: Maybe end = tuple(v) @17:21
+      return %4
+    }
+  }
+  funs {
+    fun occurs(r: Ref, t: Term): Bool {
+      join k1(r.1: Bool) {
+        return r.1
+      } in {
+        switch tag(t) { @20:36
+          case ref (x: Tuple r: Ref end): {
+            let %5: Ref = tuple_field(x, 0) @20:72
+            let %6: Bool = prim isnot(r, %5) @20:64
+            jump k1(%6) @20:36
+          }
+          else: {
+            jump k1(true) @20:36
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun same(r.2: Ref, t.1: Term): Bool {
+      join k2(r.3: Bool) {
+        return r.3
+      } in {
+        switch tag(t.1) { @21:34
+          case ref (x.1: Tuple r: Ref end): {
+            let %7: Ref = tuple_field(x.1, 0) @21:67
+            let %8: Bool = prim is(r.2, %7) @21:62
+            jump k2(%8) @21:34
+          }
+          else: {
+            jump k2(false) @21:34
+          }
+        }
+      }
+    }
+  }
+  let a: Ref = call newRef() @23:9
+  let b: Ref = call newRef() @24:9
+  let r.4: Ref = a @25:34
+  let %9: Tuple r: Ref end = tuple(r.4) @25:10
+  let ta: Term = option(ref, %9) @25:10
+  let %10: Bool = call same(a, ta) @26:30
+  let %11: String = call conv.bool(%10) @26:20
+  let %12: String = prim <>("a is a: ", %11) @26:6
+  do call show(%12) @26:1
+  let %13: Bool = call same(b, ta) @27:30
+  let %14: String = call conv.bool(%13) @27:20
+  let %15: String = prim <>("b is a: ", %14) @27:6
+  do call show(%15) @27:1
+  let %16: Bool = call occurs(a, ta) @28:33
+  let %17: String = call conv.bool(%16) @28:23
+  let %18: String = prim <>("a isnot a: ", %17) @28:6
+  do call show(%18) @28:1
+  let %19: Bool = call occurs(b, ta) @29:33
+  let %20: String = call conv.bool(%19) @29:23
+  let %21: String = prim <>("b isnot a: ", %20) @29:6
+  do call show(%21) @29:1
+  let s.1: String = "c" @30:75
+  let %22: Tuple s: String end = tuple(s.1) @30:51
+  let %23: Term = option(con, %22) @30:51
+  let %24: Bool = call occurs(a, %23) @30:42
+  let %25: String = call conv.bool(%24) @30:32
+  let %26: String = prim <>("a isnot a constant: ", %25) @30:6
+  do call show(%26) @30:1
+}
+

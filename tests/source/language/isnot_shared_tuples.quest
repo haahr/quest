@@ -1,0 +1,30 @@
+(* is and isnot on tuples that may be seen through a proxy: a mutable tuple
+ * reached through an option's payload, as the MLton benchmark logic's
+ * unification compares its references (docs/wasm-plan.md step 21, where the
+ * wasm backend's isnot was is for these) *)
+
+import writer : Writer;
+import conv : Conv;
+
+Let Rec Term = Option
+    con with s: String end
+    ref with r: Ref end
+end
+and Ref = Tuple var v: Maybe end
+and Maybe = Option none some with t: Term end end;
+
+let show(s: String): Ok = writer.putString(writer.output s <> "\n");
+let newRef(): Ref = tuple let var v = option none of Maybe end end;
+
+(* r isnot the reference that t names, if it names one *)
+let occurs(r: Ref t: Term): Bool = case t when ref with x then r isnot x.r else true end;
+let same(r: Ref t: Term): Bool = case t when ref with x then r is x.r else false end;
+
+let a = newRef();
+let b = newRef();
+let ta = option ref of Term with a end;
+show("a is a: " <> conv.bool(same(a ta)));
+show("b is a: " <> conv.bool(same(b ta)));
+show("a isnot a: " <> conv.bool(occurs(a ta)));
+show("b isnot a: " <> conv.bool(occurs(b ta)));
+show("a isnot a constant: " <> conv.bool(occurs(a option con of Term with "c" end)));

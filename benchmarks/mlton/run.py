@@ -373,7 +373,9 @@ def main() -> int:
                         help="build the conversions with this backend: c, ssac, arm64, or wasm (check, time)")
     parser.add_argument("--wasm-engine", choices=("node", "wasmtime"), default="node",
                         help="what runs the conversions with --backend wasm (check, time)")
-    parser.add_argument("--node-stack", type=int, help="node's --stack-size, in KB, with --backend wasm")
+    parser.add_argument("--node-stack", type=int, default=7800,
+                        help="node's --stack-size, in KB, with --backend wasm: by default 7800, within the 8 MB a "
+                             "process's stack has, since DLXSimulator and simple recurse deeper than node's 984 KB")
     parser.add_argument("--whole-program", action="store_true",
                         help="build the conversions as whole programs, their modules' IR merged (check, time)")
     parser.add_argument("--interpret", action="store_true",
