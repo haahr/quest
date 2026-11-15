@@ -10,6 +10,7 @@ import
     questlang/types/symbols : questlang/types/Symbols
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/typechecker/typecheck : questlang/typechecker/Typecheck
+    questlang/typechecker/application : questlang/typechecker/Application
     questlang/config/abi : questlang/config/Abi
     questlang/modules/paths : questlang/modules/Paths
     questlang/common/files : questlang/common/Files
@@ -92,6 +93,7 @@ export
         jobs: Int
         driver: String
         backends: choice.T
+        reportInferable: String
     end
     Let ImportRef = Tuple interfacePath: String names: Array(String) modulePaths: Array(String) end
 
@@ -145,11 +147,13 @@ export
                 let jobs = 1
                 let driver = ""
                 let backends = choice.standard
+                let reportInferable = ""
             end
         end
 
-    (* eng with the fields withBackends and parallel change replaced *)
-    let changed(eng: T jobs: Int driver: String backends: choice.T): T =
+    (* eng with the fields withBackends, parallel, and reportingInferable
+     * change replaced *)
+    let changed(eng: T jobs: Int driver: String backends: choice.T reportInferable: String): T =
         tuple
             let buildDir = eng.buildDir
             let resolver = eng.resolver
@@ -162,9 +166,11 @@ export
             let jobs = jobs
             let driver = driver
             let backends = backends
+            let reportInferable = reportInferable
         end
-    let withBackends(eng: T backends: choice.T): T = changed(eng eng.jobs eng.driver backends)
-    let parallel(eng: T jobs: Int driver: String): T = changed(eng jobs driver eng.backends)
+    let withBackends(eng: T backends: choice.T): T = changed(eng eng.jobs eng.driver backends eng.reportInferable)
+    let parallel(eng: T jobs: Int driver: String): T = changed(eng jobs driver eng.backends eng.reportInferable)
+    let reportingInferable(eng: T mode: String): T = changed(eng eng.jobs eng.driver eng.backends mode)
 
     let log(eng: T tag: String message: String): Ok = logger.log(eng.logger tag message)
 
@@ -291,7 +297,7 @@ export
     (* Why a unit with a source file must be recompiled, if it must
      * (docs/build-process.md section 7.1): its artifacts' own freshness, and
      * its imports still resolving to the files it was compiled against *)
-    let unitStaleness(eng: T source: String a: graph.ModuleArtifacts programDir: maybe.T(String)): maybe.T(String) =
+    let artifactStaleness(eng: T source: String a: graph.ModuleArtifacts programDir: maybe.T(String)): maybe.T(String) =
         begin
             let search = searchPaths(eng)
             (* Its imports would find other files, or another backend compiled
@@ -314,6 +320,13 @@ export
                 maybe.some(:All(m: manifest.ModuleManifest) maybe.T(String) changed))
         end
 
+    (* Why a unit is stale: artifactStaleness's reason, or, when the build
+     * reports inferable type arguments, which only checking the unit finds,
+     * that *)
+    let unitStaleness(eng: T source: String a: graph.ModuleArtifacts programDir: maybe.T(String)): maybe.T(String) =
+        if stringOp.length(eng.reportInferable) > 0 then maybe.some("reporting inferable type arguments")
+        else artifactStaleness(eng source a programDir) end
+
     (* Compiles a main routine into its .main.qm, .main.c, and .main.o,
      * returning the modules it imports *)
     let compileMainUnit(eng: T mainFile: String): Array(manifest.ImportedModuleRef) =
@@ -327,6 +340,7 @@ export
             stdlib.install()
             typecheck.install()
             let e = env.new()
+            e.reportInferable := eng.reportInferable
             env.withUnitSource(:Array(manifest.ImportedModuleRef) e location.file(sm) fun():
                 Array(manifest.ImportedModuleRef)
                 begin
@@ -376,6 +390,7 @@ export
                     end
 
                     let result = typecheck.elaborateProgram(prog e)
+                    application.reportInferable(e sm)
                     (* The first error, as the bootstrap raises it *)
                     if extent result.errors > 0 then diagnostics.raiseError(:Ok result.errors[0]) end
                     let typed = maybe.unwrap(:typedAst.Program result.program)
@@ -511,6 +526,7 @@ export
                         let buildDir = maybe.some(:String str(eng.buildDir))
                         let programDir = programDir
                         let backends = eng.backends
+                        let reportInferable = eng.reportInferable
                     end
                 let jobs = array of(n jobOf(wave[vector.get(:Int indexes 0)]))
                 for k = 1 upto {n - 1} do jobs[k] := jobOf(wave[vector.get(:Int indexes k)]) end
@@ -897,7 +913,7 @@ export
                             typecheck.install()
                             moduleCompiler.compileModuleFile(maybe.unwrap(:String p.src) maybe.some(:String p.targetDir)
                                 search eng.compiler eng.nogc eng.extraCFlags maybe.some(:String str(eng.buildDir))
-                                programDir maybe.some(:graph.Resolver eng.resolver) eng.backends)
+                                programDir maybe.some(:graph.Resolver eng.resolver) eng.backends eng.reportInferable)
                             ok
                         end
                         manifest.readQm(p.a.qm)

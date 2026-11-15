@@ -55,6 +55,7 @@ import
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/typechecker/typedAstPrint : questlang/typechecker/TypedAstPrint
     questlang/typechecker/typecheck : questlang/typechecker/Typecheck
+    questlang/typechecker/application : questlang/typechecker/Application
     questlang/modules/paths : questlang/modules/Paths
     questlang/common/files : questlang/common/Files
     questlang/modules/stdlib : questlang/modules/Stdlib
@@ -403,9 +404,10 @@ let failWith(message: String): Ok =
 
 (* The engine that builds the modules a program's C imports *)
 let newEngine(e: env.T): engine.T =
-    engine.withBackends(engine.parallel(engine.new(maybe.some(:String buildDir) options.includePaths options.verbose
-        options.nogc options.extraObjects maybe.some(:graph.Resolver e.units.resolver)) options.jobs system.args[0])
-        options.backends);
+    engine.reportingInferable(engine.withBackends(engine.parallel(engine.new(maybe.some(:String buildDir)
+        options.includePaths options.verbose options.nogc options.extraObjects
+        maybe.some(:graph.Resolver e.units.resolver)) options.jobs system.args[0]) options.backends)
+        options.reportInferable);
 
 (* A whole program is one unit, the program's with its modules', which
  * --backend chooses the backend of (docs/arm64.md section 3.12), so a
@@ -681,7 +683,7 @@ let compileUnitFile(): Ok =
                     if maybe.isSome(:String outputDir) then system.makeDirectory(maybe.unwrap(:String outputDir)) end
                     moduleCompiler.compileModuleFile(files.absolute(options.file) outputDir includes maybe.none(:String)
                         options.nogc vector.toArray(:String vector.new(:String)) options.buildDir maybe.none(:String)
-                        maybe.none(:graph.Resolver) options.backends)
+                        maybe.none(:graph.Resolver) options.backends options.reportInferable)
                     ok
                 else
                     diagbag.add(bag diagnostics.error("'" <> options.file <> "' is a program, not a unit file"
@@ -740,6 +742,7 @@ let run(): Ok =
                     e.currentDir := maybe.some(:String dir)
                     e.programDir := maybe.some(:String dir)
                     e.sourceFile := options.file
+                    e.reportInferable := options.reportInferable
                     (* The file -i runs, and the REPL's inputs, are interactive
                      * (docs/repl.md section 6) *)
                     e.interactive := options.interactive
@@ -771,6 +774,7 @@ let run(): Ok =
                         byName.precompiled := true
                     end
                     let result = typecheck.elaborateProgram(desugared e)
+                    application.reportInferable(e sm)
                     for i = 0 upto {extent result.errors - 1} do
                         diagbag.add(bag diagnostics.errorDiagnostic(result.errors[i] options.file))
                     end
@@ -814,8 +818,9 @@ let buildProgram(): Ok =
         let sm = location.newSourceMap(options.file maybe.unwrapOr(:String files.readText(options.file) ""))
         stdlib.install()
         try
-            let eng = engine.withBackends(engine.parallel(engine.new(options.buildDir options.includePaths options.verbose
-                options.nogc options.extraObjects maybe.none(:graph.Resolver)) options.jobs system.args[0]) options.backends)
+            let eng = engine.reportingInferable(engine.withBackends(engine.parallel(engine.new(options.buildDir
+                options.includePaths options.verbose options.nogc options.extraObjects maybe.none(:graph.Resolver))
+                options.jobs system.args[0]) options.backends) options.reportInferable)
             if compileMode andif options.compileOnly then engine.compileMain(eng options.file)
             else engine.buildMain(eng options.file compileOutput) end
         when diagnostics.compilerError with err then

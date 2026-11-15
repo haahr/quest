@@ -3,6 +3,8 @@
 module application : Application
 import
     questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/location : questlang/common/Location
+    questlang/common/files : questlang/common/Files
     questlang/syntax/ast : questlang/syntax/Ast
     questlang/types/model : questlang/types/Model
     questlang/types/symbols : questlang/types/Symbols
@@ -19,7 +21,9 @@ import
     util/maybe : util/Maybe
     util/strutil : util/Strutil
     stringOp = string : StringOp
+    util/hash : util/Hash
     conv : Conv
+    writer : Writer
 export
     Let Type = model.Type
 
@@ -270,6 +274,45 @@ export
      * unsolved *)
     let isSolved(m: Type): Bool = not(model.same(model.prune(m) m))
 
+    let reportInferable(e: env.T sm: location.SourceMap): Ok =
+        begin
+            let maps = hashMap.new(:String :location.SourceMap stringOp.equal hash.string)
+            for i = 0 upto {vector.length(e.inferableCalls) - 1} do
+                let call = vector.get(e.inferableCalls i)
+                (* A call in another file than sm's (a module loaded while this
+                 * unit was checked) is located in that file's text *)
+                let inOther = {stringOp.length(call.file) > 0} andif not(stringOp.equal(call.file location.file(sm)))
+                let map = if not(inOther) then
+                    sm
+                else
+                    let known = hashMap.get(maps call.file)
+                    if maybe.isSome(known) then
+                        maybe.unwrap(known)
+                    else
+                        let made = location.newSourceMap(call.file maybe.unwrapOr(files.readText(call.file) ""))
+                        hashMap.insert(maps call.file made)
+                        made
+                    end
+                end
+                let p = location.locate(map call.offset)
+                writer.putString(writer.err location.file(map) <> ":" <> conv.int(p.line) <> ":" <> conv.int(p.col) <>
+                    ": type arguments can be inferred " <> {if call.fromArguments then "from the arguments" else
+                    "with the expected type" end} <> " [" <> conv.int(call.from) <> " " <> conv.int(call.to) <> "]\n")
+            end
+            vector.clear(e.inferableCalls)
+            ok
+        end
+
+    (* The type arguments of a call or instantiation elaborated by
+     * inferredTypeApp *)
+    let typeArgsOf(typed: typedAst.Expr): Array(Type) =
+        case typed.form
+            when exprTypeApp with t then t.typeArgs
+            when exprApp with a then
+                case a.func.form when exprTypeApp with t then t.typeArgs else array of :Type end end
+            else array of :Type end
+        end
+
     (* Elaborates a call f(args) of a polymorphic function,
      * f: All(A::K) Fun(x: A): R, finding its type arguments.
      *
@@ -362,6 +405,25 @@ export
             end
             let resolvedTargs = vector.toArray(:Type resolved)
             autoValues.checkDynamicTypeArgs(allType resolvedTargs offset autoValues.checkClosedType)
+            if {stringOp.length(e.reportInferable) > 0} andif {numTargs is extent quantifiers} then
+                let restVector = vector.new(:ast.Expr)
+                for i = numTargs upto {extent args - 1} do vector.append(:ast.Expr restVector args[i]) end
+                let rest = vector.toArray(:ast.Expr restVector)
+                (* From the value arguments alone, else with the expected type
+                 * too *)
+                let exact = stringOp.equal(e.reportInferable "exact")
+                let fromArguments = probeInference(c offset rest funcTyped allType quantifiers body e loopDepth
+                    maybe.none(:Type) resolvedTargs exact)
+                if fromArguments orif probeInference(c offset rest funcTyped allType quantifiers body e loopDepth expected
+                    resolvedTargs exact) then
+                    let to = if numTargs < extent args then
+                        args[numTargs].span.startOffset else args[numTargs - 1].span.endOffset end
+                    vector.append(e.inferableCalls tuple
+                        let file = e.sourceFile let offset = offset let from = args[0].span.startOffset let to = to
+                        let fromArguments = fromArguments
+                    end)
+                end
+            end
             let typedTypeApp = expr(offset instantiated option exprTypeApp of typedAst.ExprForm with
                 let func = funcTyped let typeArgs = resolvedTargs
             end)
@@ -380,6 +442,51 @@ export
                             offset)
                 end
             end
+        end
+
+    (* Whether inferredTypeApp, given the call's value arguments (args) and its
+     * expected type, finds the type arguments written (written): each an
+     * equal type, or if exact, the same type node, spelled the same way (an
+     * alias, not the type it names), since passes after the checker that
+     * compare types by identity tell the two apart. The trial's result, and any errors and warnings it records, are
+     * discarded. A call whose expected type still holds an enclosing call's
+     * unsolved metavariables, or that is an argument of an enclosing call with
+     * inferred type arguments, is not tried, since the trial could solve or
+     * defer to the enclosing call's metavariables. *)
+    and probeInference(
+        c: checker.T offset: Int args: Array(ast.Expr) funcTyped: typedAst.Expr allType: Type
+        quantifiers: Array(model.Quantifier) body: Type e: env.T loopDepth: Int expected: maybe.T(Type)
+        written: Array(Type) exact: Bool
+    ): Bool =
+        if maybe.isSome(:vector.T(checker.PendingTypeArg) c.pendingTypeArgs) orif
+            {maybe.isSome(:Type expected) andif {extent model.unsolvedMetas(maybe.unwrap(:Type expected)) > 0}} then
+            false
+        else
+            let errorCount = vector.length(:diagnostics.CompilerError c.errors)
+            let warningCount = vector.length(:diagnostics.CompilerError c.warnings)
+            let same =
+                try
+                    begin
+                        let found = typeArgsOf(inferredTypeApp(c offset args funcTyped allType quantifiers body e
+                            loopDepth expected))
+                        let var equal = extent found is extent written
+                        if equal then
+                            for i = 0 upto {extent found - 1} do
+                                let alike = model.same(found[i] written[i]) orif
+                                    {not(exact) andif subtyping.isTypeEqual(found[i] written[i] env.lookupOf(e))}
+                                if not(alike) then equal := false end
+                            end
+                        end
+                        equal
+                    end
+                when diagnostics.compilerError then false
+                end
+            c.pendingTypeArgs := maybe.none(:vector.T(checker.PendingTypeArg))
+            let truncate = fun(found: vector.T(diagnostics.CompilerError) count: Int): Ok
+                while vector.length(found) > count do vector.delete(found vector.length(found) - 1) end
+            truncate(c.errors errorCount)
+            truncate(c.warnings warningCount)
+            same
         end
 
     (* Metavariable inference for implicit type arguments. The metavariables

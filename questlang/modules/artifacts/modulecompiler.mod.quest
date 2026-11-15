@@ -10,6 +10,7 @@ import
     questlang/types/env : questlang/types/Env
     questlang/types/symbols : questlang/types/Symbols
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/typechecker/application : questlang/typechecker/Application
     questlang/modules/paths : questlang/modules/Paths
     questlang/common/files : questlang/common/Files
     questlang/modules/graph : questlang/modules/Graph
@@ -208,6 +209,7 @@ export
         begin
             system.makeDirectory(outputDir)
             let x = elaborate(decl offset e canonicalName buildDir)
+            application.reportInferable(e sourceMap)
             let typed = x.typed
             let name = if stringOp.length(canonicalName) > 0 then canonicalName else decl.name end
 
@@ -320,10 +322,11 @@ export
 
     let compileModuleFile(file: String outputDir: maybe.T(String) includePaths: Array(String) compiler: maybe.T(String)
         nogc: Bool extraFlags: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)
-        res: maybe.T(graph.Resolver) backends: choice.T): ModuleCompileResult =
+        res: maybe.T(graph.Resolver) backends: choice.T reportInferable: String): ModuleCompileResult =
         withModuleFile(:ModuleCompileResult file includePaths buildDir programDir res fun(m: ModuleFile):
             ModuleCompileResult
             begin
+                m.e.reportInferable := reportInferable
                 let outDir = if maybe.isSome(:String buildDir) andif maybe.isNone(:String outputDir) then
                     graph.unitArtifactDir(files.absolute(maybe.unwrap(:String buildDir)) m.canon)
                 elsif maybe.isNone(:String outputDir) then

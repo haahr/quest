@@ -47,6 +47,9 @@ export
         compileOnly: Bool
         emitC: Bool
         nogc: Bool
+        (* --report-inferable's mode: "equal" or "exact", or empty if it is not
+         * given (typechecker/application's reportInferable) *)
+        reportInferable: String
     end
 
     (* The IR's stages (docs/ir.md section 9) the driver dumps (ir_STAGE) and
@@ -129,6 +132,9 @@ export
         "  -v                   report what the build does"
         "  --emit-c             (compile) write the program's C (the C backend's, unless --backend), not a binary"
         "  --nogc               (compile) compile without the collector"
+        "  --report-inferable[=equal|exact]"
+        "                       report, on standard error, the calls whose written type arguments inference finds"
+        "                       (equal types, the default, or the same, spelled as written); compiles every unit"
         "  -h, --help           print this message"
         ""
         "Phases (for --stop-after and --dump-after):"
@@ -183,6 +189,7 @@ export
             let var compileOnly = false
             let var emitC = false
             let var nogc = false
+            let var reportInferable = ""
             let programArgs = vector.new(:String)
             (* The file, of which compile takes only one *)
             let setFile = fun(arg: String): Ok
@@ -297,6 +304,13 @@ export
                     compiling(arg)
                     nogc := true
                     i := i + 1
+                elsif strings.isOneOf(arg array of "--report-inferable" "--report-inferable=equal" "--report-inferable=exact"
+                    end) then
+                    reportInferable := if stringOp.equal(arg "--report-inferable=exact") then "exact" else "equal" end
+                    i := i + 1
+                elsif strutil.startsWith(arg "--report-inferable=") then
+                    usage("--report-inferable takes equal or exact, not '" <> stringOp.getSub(arg 19
+                        stringOp.length(arg) - 19) <> "'")
                 elsif strings.isOneOf(arg array of "-h" "--help" end) then
                     writer.putString(writer.output usageText)
                     system.sysexit(0)
@@ -408,6 +422,7 @@ export
                 let compileOnly = compileOnly
                 let emitC = emitC
                 let nogc = nogc
+                let reportInferable = reportInferable
             end
         end
 end

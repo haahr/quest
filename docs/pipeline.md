@@ -272,6 +272,9 @@ differences:
 - **The build:** `-j N` compiles N modules at once in worker processes (`build/workers`), `--build-dir` names the
   build directory (`.build` by default), and `-v` reports what the build does
   ([build-process.md](build-process.md)).
+- **Inferable type arguments:** `--report-inferable[=equal|exact]` writes, on standard error, the calls whose written
+  type arguments inference finds ([type-system.md](type-system.md) §6.9), for the program's own check and for every
+  unit the build engine compiles, which it then compiles whether stale or not.
 
 There is no framework of `Phase` objects: `questlang/driver/main` runs the phases in order and prints the output of
 each one that `--stop-after` or `--dump-after` names (`shows`).

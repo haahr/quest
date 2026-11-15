@@ -681,6 +681,18 @@ Universal quantifiers can be bounded by power kinds (`A <: Bound`, represented s
   The one exception is a call whose expected type still depends on the enclosing call's unknown type arguments
   (`nil()` in `cons(nil() tail)`): it defers its own to the enclosing call, which reports any that remain unknown.
   Metavariables never escape the outermost call.
+- **Reporting written type arguments that inference finds:** the self-hosted driver's `--report-inferable` tries,
+  at each call whose type arguments are all written, inferring them as if they were omitted (`probeInference` in
+  `questlang/typechecker/application`), discarding the trial's result and any errors it raises, and lists each call
+  where inference finds the same types, on standard error: `FILE:LINE:COL: type arguments can be inferred from the
+  arguments [FROM TO]`, or `with the expected type` when the trial needed the type the context expects of the call,
+  `FROM` and `TO` the byte offsets of the type arguments' text. `=equal`, the default, takes equal types
+  (`subtyping.isTypeEqual`); `=exact` only the same type nodes, so that an argument written as an alias (`:Entry`),
+  which inference finds as the type the alias names, is not listed. A call is not tried in the arguments of a call
+  whose own type arguments are inferred, nor where its expected type holds that call's metavariables, since the
+  trial could solve them. A call that needs its expected type may lose it when the call around it loses its own
+  type arguments, so such calls are best omitted after those inferable from their arguments, and the report run
+  again. The modules a program run by the JIT loads are not checked by the build engine, and are not listed.
 - **Checking Polymorphic Functions:** A function checked against an expected type `All(X::K ...) T` (a
   let-function's header, as in `let f(A::TYPE x: A): A = x`, or an annotation, as in `let f: All(B::TYPE x: B) B =
   fun(A::TYPE x: A): A x`) gets the expected quantifiers renamed by position (`_check_polymorphic_fun_expr`): fresh symbols,
