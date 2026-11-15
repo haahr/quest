@@ -1,0 +1,188 @@
+(* Standard library: util/realmath, against the runtime's own functions, which
+ * are libm's natively: for each function, edge values and pseudo-random ones,
+ * each result within the function's bound in ulps of libm's, and raising
+ * real.error where libm's would be NaN. Apple's libm is not msun, so the two
+ * may differ in the last bit: by 1 ulp, or by 2 for tan, the hyperbolic
+ * functions, and pow. Not checked: pow of an x within 2^-20 of 1 to a power
+ * beyond 2^31, msun's least accurate case, hundreds of ulps from libm's.
+ * Each section prints what it checks and a count of disagreements, and names
+ * any value that disagrees. On a target without libm (docs/wasm-plan.md
+ * section 4.3) real's functions are these, and every count is zero. The
+ * interpreters' phases skip it: its thousands of values cost them more than a
+ * test's time. *)
+(* @skip-phase: interpret, run_ir_core, run_ir_simplified, run_ir_specialized, run_ir_closed, run_ir_represented, run_ir_described *)
+
+import util/realmath : util/RealMath;
+import real : RealOp;
+import conv : Conv;
+import word : Word;
+import writer : Writer;
+
+let show(s: String): Ok =
+    begin
+        writer.putString(writer.output s)
+        writer.putString(writer.output "\n")
+    end;
+
+(* A result: a real, or real.error raised *)
+Def Outcome = Tuple raised: Bool value: Real end;
+
+let outcome(f: All(x: Real) Real x: Real): Outcome =
+    try tuple let raised = false let value = f(x) end
+    when real.error then tuple let raised = true let value = 0.0 end
+    end;
+
+let outcome2(f: All(x: Real y: Real) Real x: Real y: Real): Outcome =
+    try tuple let raised = false let value = f(x y) end
+    when real.error then tuple let raised = true let value = 0.0 end
+    end;
+
+(* r's place among the reals in order, so that neighbors differ by 1 *)
+let place(r: Real): Int =
+    begin
+        let b = word.toInt(word.fromReal(r))
+        if b >= 0 then b else 0 - word.toInt(word.andBits(word.fromReal(r) word.fromInt(0x7FFFFFFFFFFFFFFF))) end
+    end;
+
+(* Whether a and b agree within bound ulps: both raise, or neither does and
+ * their values are that close *)
+let agree(a: Outcome b: Outcome bound: Int): Bool =
+    if a.raised orif b.raised then a.raised andif b.raised
+    else
+        let d = place(a.value) - place(b.value)
+        {d <= bound} andif {d >= {0 - bound}}
+    end;
+
+let text(o: Outcome): String = if o.raised then "real.error" else conv.real(o.value) end;
+
+(* A pseudo-random word: splitmix64 *)
+let state = array of word.fromInt(20261114) end;
+let random(): word.T =
+    begin
+        state[0] := word.add(state[0] word.fromInt(~7046029254386353131))
+        let var z = state[0]
+        z := word.mul(word.xorBits(z word.shift(z ~30)) word.fromInt(~4658895280553007687))
+        z := word.mul(word.xorBits(z word.shift(z ~27)) word.fromInt(~7723592293110705685))
+        word.xorBits(z word.shift(z ~31))
+    end;
+
+(* A random finite real, its bits uniform *)
+let rec anyReal(): Real =
+    begin
+        let w = random()
+        if word.toInt(word.extract(w 52 11)) is 2047 then anyReal() else word.toReal(w) end
+    end;
+
+(* A random real in [a, b) *)
+let between(a: Real b: Real): Real =
+    begin
+        let u = real.int(word.toInt(word.shift(random() ~11))) ** 1.1102230246251565e-16
+        a ++ {{b -- a} ** u}
+    end;
+
+(* The values checked for a function of one argument: edges, then random
+ * ones, of every magnitude and in [lo, hi) *)
+let edges = array of
+    0.0 {~1.0 ** 0.0} 1.0 ~1.0 0.5 ~0.5 2.0 1.0e-300 ~1.0e-300 5.0e-324 1.0e-20 1.0e-8 0.1 0.785398163397448
+    1.5707963267948966 3.141592653589793 4.71238898038469 6.283185307179586 10.0 22.0 100.0 709.0 709.78 710.0
+    711.0 ~709.0 ~745.0 ~746.0 1.0e6 1.0e15 1.0e22 1.0e300 1.7976931348623157e308 real.infinity
+    {0.0 -- real.infinity} 0.9999999999999999 1.0000000000000002 0.975 0.4375 2.4375 1.1875
+end;
+
+let values(lo: Real hi: Real): Array(Real) =
+    begin
+        let n = 400
+        let vs = array of(extent edges + {2 * n} 0.0)
+        for i = 0 upto extent edges - 1 do vs[i] := edges[i] end
+        for i = 0 upto n - 1 do
+            vs[extent edges + i] := anyReal()
+            vs[{extent edges + n} + i] := between(lo hi)
+        end
+        vs
+    end;
+
+let check(name: String f: All(x: Real) Real g: All(x: Real) Real bound: Int lo: Real hi: Real): Ok =
+    begin
+        let vs = values(lo hi)
+        let var fails = 0
+        for i = 0 upto extent vs - 1 do
+            let a = outcome(f vs[i])
+            let b = outcome(g vs[i])
+            if not(agree(a b bound)) then
+                fails := fails + 1
+                show("  " <> name <> "(" <> conv.real(vs[i]) <> ") is " <> text(a) <> ", not " <> text(b))
+            end
+        end
+        show(name <> ": " <> conv.int(extent vs) <> " values within " <> conv.int(bound) <> " ulp, disagreements: "
+            <> conv.int(fails))
+    end;
+
+show("1. functions of one argument");
+check("sin" realmath.sin real.sin 1 ~10.0 10.0);
+check("cos" realmath.cos real.cos 1 ~10.0 10.0);
+check("tan" realmath.tan real.tan 2 ~10.0 10.0);
+check("sin, large" realmath.sin real.sin 1 ~1.0e9 1.0e9);
+check("asin" realmath.asin real.asin 1 ~1.0 1.0);
+check("acos" realmath.acos real.acos 1 ~1.0 1.0);
+check("atan" realmath.atan real.atan 1 ~10.0 10.0);
+check("exponential" realmath.exponential real.exponential 1 ~750.0 750.0);
+check("exponential, small" realmath.exponential real.exponential 1 ~1.0 1.0);
+check("log" realmath.log real.log 1 0.0 10.0);
+check("log, near 1" realmath.log real.log 1 0.999 1.001);
+check("sinh" realmath.sinh real.sinh 2 ~720.0 720.0);
+check("sinh, small" realmath.sinh real.sinh 2 ~2.0 2.0);
+check("cosh" realmath.cosh real.cosh 2 ~720.0 720.0);
+check("cosh, small" realmath.cosh real.cosh 2 ~2.0 2.0);
+check("tanh" realmath.tanh real.tanh 2 ~25.0 25.0);
+
+(* Functions of two arguments: pairs of the edges, then random pairs *)
+let check2(name: String f: All(x: Real y: Real) Real g: All(x: Real y: Real) Real bound: Int
+    xs: Array(Real) ys: Array(Real)): Ok =
+    begin
+        let var fails = 0
+        let var count = 0
+        for i = 0 upto extent xs - 1 do
+            for j = 0 upto extent ys - 1 do
+                let a = outcome2(f xs[i] ys[j])
+                let b = outcome2(g xs[i] ys[j])
+                count := count + 1
+                if not(agree(a b bound)) then
+                    fails := fails + 1
+                    show("  " <> name <> "(" <> conv.real(xs[i]) <> " " <> conv.real(ys[j]) <> ") is " <> text(a)
+                        <> ", not " <> text(b))
+                end
+            end
+        end
+        show(name <> ": " <> conv.int(count) <> " pairs within " <> conv.int(bound) <> " ulp, disagreements: "
+            <> conv.int(fails))
+    end;
+
+let randoms(n: Int lo: Real hi: Real): Array(Real) =
+    begin
+        let vs = array of(n 0.0)
+        for i = 0 upto n - 1 do vs[i] := between(lo hi) end
+        vs
+    end;
+
+let integers(n: Int lo: Int hi: Int): Array(Real) =
+    begin
+        let vs = array of(n 0.0)
+        for i = 0 upto n - 1 do vs[i] := real.int(real.floor(between(real.int(lo) real.int(hi)))) end
+        vs
+    end;
+
+let anyReals(n: Int): Array(Real) =
+    begin
+        let vs = array of(n 0.0)
+        for i = 0 upto n - 1 do vs[i] := anyReal() end
+        vs
+    end;
+
+show("2. functions of two arguments");
+check2("atan2" realmath.atan2 real.atan2 1 edges edges);
+check2("atan2, random" realmath.atan2 real.atan2 1 randoms(30 ~10.0 10.0) randoms(30 ~10.0 10.0));
+check2("pow" realmath.pow real.exp 2 edges edges);
+check2("pow, random" realmath.pow real.exp 2 randoms(30 0.0 10.0) randoms(30 ~50.0 50.0));
+check2("pow, integral exponents" realmath.pow real.exp 2 randoms(30 ~10.0 10.0) integers(30 ~40 40));
+check2("pow, any reals" realmath.pow real.exp 2 anyReals(30) anyReals(30));
+check2("pow, near 1" realmath.pow real.exp 2 randoms(30 0.9999999 1.0000001) randoms(30 ~1.0e9 1.0e9));

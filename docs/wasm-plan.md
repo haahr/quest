@@ -660,6 +660,17 @@ on `Math.sin`'s last bit. So both are written in Quest, and no C is compiled to 
   engine and may differ from Apple's libm in the last bit (Argon measured 1 to 2 units, §3.5 there), so goldens
   that print such results are recorded for this target or exempt (§7).
 
+  *Built 2026-11-15* as `lib/util/realmath` (step 19): msun's functions ported line for line, each of C's
+  expressions braced in C's order of evaluation, since Quest's operators associate to the right. Where msun returns
+  NaN the port raises `real.error`, as the C runtime's wrappers do after libm. Built natively from FreeBSD's sources
+  and compared on 229,905 values, the port's results are msun's to the bit. Against Apple's libm they agree within
+  1 ulp, or 2 for `tan`, the hyperbolic functions, and `pow`; the exception is msun's least accurate case, `pow` of
+  an x within 2⁻²⁰ of 1 to a power beyond 2³¹, hundreds of ulps from libm's. `real.format` is `realconv.format`,
+  printf's `%e`, `%f`, and `%g` over the exact digits. No golden needed recording for this target: those that print
+  the functions' results print 12 significant digits. The backend calls both units as it calls `realconv`'s other
+  functions, and imports `util/realmath` into every program beside `wasm/print`, for `^^`. The two units take `real`
+  only as externals, which compile to instructions, since `real`'s own module calls them.
+
 ### 4.4. The Host, and Bytes Across It
 
 Neither JavaScript nor WASI can read a GC array. The runtime module has one linear memory, used only as a buffer
@@ -1699,6 +1710,22 @@ stands, not redesigned.
     each named (§7, 6).
     *Done when* the `Real` group passes in both lists, and the tests of the functions against libc pass natively
     within the error bound the port states.
+    *Done 2026-11-15:*
+    - **The functions:** `lib/util/realmath`, msun's `sin`, `cos`, and `tan` (with their reduction modulo π/2 at
+      every magnitude), `asin`, `acos`, `atan`, `atan2`, `exp` (and `expm1` within), `log`, `sinh`, `cosh`, `tanh`,
+      and `pow`, ported line for line (§4.3). Compared with msun built natively from FreeBSD's sources on 229,905
+      values, every result is msun's to the bit.
+    - **Against libc:** `stdlib/realmath_operations` checks each natively against Apple's libm, at its edges and at
+      pseudo-random values: within 1 ulp, or 2 for `tan`, the hyperbolic functions, and `pow`, with `real.error`
+      where libm's result is NaN. Left out: msun's least accurate case (§4.3).
+    - **`real.format`** is `realconv.format`; `stdlib/realconv_format` checks it against `snprintf` at ten
+      precisions in each style. Both tests skip the bootstrap's interpreters, for which each takes minutes.
+    - **`tests/python/test_wasm_externals`** no longer lists the mathematical functions or `real.format` as lacking,
+      and takes a wasm variant's `wasm.` intrinsics as compiled.
+    - **Wired:** `real`'s functions and `^^` call `util/realmath`, which every program imports beside `wasm/print`.
+    - **Checked:** no golden needed recording for this target. The `Real` group passes in both lists; in each,
+      `language/real_values` moves to step 20's built-in operators as values. What is left: step 20's, and §7's
+      absences.
 20. **What is left of the lists.** A built-in operator passed as a value; a recursive value's capture of a record;
     an option's ordinal out of bounds, which is pending on the native JIT too and is fixed in both; and
     `questlang/types_judgments`, which under the wasm JIT reports no unbound type variable where the program

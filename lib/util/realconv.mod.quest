@@ -32,16 +32,17 @@
  * fits an Int, and so that on WebAssembly a limb is an i31ref, unboxed in an
  * array (docs/wasm-plan.md section 2.2).
  *
- * Imports: only word, for a real's bits, and string and ascii, for text.
- * util/bignum would serve, but it imports util/strutil and conv, whose real
- * conversions this module is to provide on a target without libc, which
- * would make a cycle of imports there. *)
+ * Imports: only word, for a real's bits, string and ascii, for text, and
+ * real, for real.error. util/bignum would serve, but it imports util/strutil
+ * and conv, whose real conversions this module is to provide on a target
+ * without libc, which would make a cycle of imports there. *)
 
 module realconv : RealConv
 import
     word : Word
     stringOp = string : StringOp
     ascii : Ascii
+    real : RealOp
 export
     Def Digits = Tuple digits: Array(Int) exponent: Int end
 
@@ -483,6 +484,108 @@ export
 
     let toString(r: Real): String =
         if word.getBit(word.fromReal(r) 63) then cat("~" magnitude(r)) else magnitude(r) end
+
+    (* printf's conversions (quest_real_format): %e and %f round the exact
+     * digits at a place, the first by significant digits, the second by
+     * decimal places, and %g chooses between them by the exponent *)
+
+    let isZeroReal(r: Real): Bool = {fieldOf(r) is 0} andif {fractionOf(r) is 0}
+
+    (* |r| rounded at 10^-places, ties to even, as %.{places}f rounds it: no
+     * digits for zero, and otherwise digits whose first is worth 10^exponent,
+     * which may stop before the place (the rest are zeros) *)
+    let fixedDigits(r: Real places: Int): Digits =
+        begin
+            let none = tuple let digits = array of :Int end let exponent = 0 end
+            if isZeroReal(r) then none
+            else
+                let g = generate(r 1)
+                (* the digits that reach 10^-places *)
+                let p = {g.exponent + 1} + places
+                if p >= 1 then rounded(r p)
+                elsif {p is 0} andif {{g.digits[0] > 5} orif {{g.digits[0] is 5} andif g.sticky}} then
+                    (* below 10^-places, nearer it than zero: a tie goes to
+                     * zero, which is even *)
+                    tuple let digits = array of 1 end let exponent = 0 - places end
+                else none
+                end
+            end
+        end
+
+    (* d in fixed notation with places decimal places *)
+    let fixedText(d: Digits places: Int): String =
+        begin
+            let nd = extent d.digits
+            let x = d.exponent
+            (* the digit worth 10^(x - i), or 0 *)
+            let at(i: Int): Int = if {i >= 0} andif {i < nd} then d.digits[i] else 0 end
+            let whole = if {nd is 0} orif {x < 0} then 1 else x + 1 end
+            let size = if places > 0 then {whole + 1} + places else whole end
+            let s = stringOp.new(size '0')
+            if {nd > 0} andif {x >= 0} then
+                for i = 0 upto x do stringOp.setChar(s i digitChar(at(i))) end
+            end
+            if places > 0 then
+                stringOp.setChar(s whole '.')
+                for j = 1 upto places do stringOp.setChar(s {whole + j} digitChar(at(x + j))) end
+            end
+            s
+        end
+
+    (* |r| as %.{places}e writes it *)
+    let exponentText(r: Real places: Int): String =
+        begin
+            let d = if isZeroReal(r) then tuple let digits = array of(places + 1 0) let exponent = 0 end
+                else rounded(r places + 1)
+                end
+            let mantissa = if places > 0 then cat(cat(digitText(d.digits 0 1) ".") digitText(d.digits 1 places + 1))
+                else digitText(d.digits 0 1)
+                end
+            let x = d.exponent
+            cat(mantissa cat(if x < 0 then "e-" else "e+" end twoDigits(if x < 0 then 0 - x else x end)))
+        end
+
+    (* s without the trailing zeros of its fraction, nor a point left last *)
+    let trimmed(s: String): String =
+        begin
+            let var n = stringOp.length(s)
+            let var point = false
+            for i = 0 upto n - 1 do if stringOp.getChar(s i) is '.' then point := true end end
+            if point then
+                while stringOp.getChar(s n - 1) is '0' do n := n - 1 end
+                if stringOp.getChar(s n - 1) is '.' then n := n - 1 end
+            end
+            stringOp.getSub(s 0 n)
+        end
+
+    (* |r| as %.{digits}g writes it: %e's form with digits - 1 places when its
+     * exponent x is below ~4 or at least the precision, else %f's with the
+     * places that keep that many significant digits, either without
+     * trailing zeros *)
+    let generalText(r: Real digits: Int): String =
+        begin
+            let p = if digits is 0 then 1 else digits end
+            let x = if isZeroReal(r) then 0 else rounded(r p).exponent end
+            if {p > x} andif {x >= ~4} then trimmed(fixedText(fixedDigits(r {p - 1} - x) {p - 1} - x))
+            else
+                let e = exponentText(r p - 1)
+                let var k = 0
+                while stringOp.getChar(e k) isnot 'e' do k := k + 1 end
+                cat(trimmed(stringOp.getSub(e 0 k)) stringOp.getSub(e k stringOp.length(e) - k))
+            end
+        end
+
+    let format(r: Real style: Char digits: Int): String =
+        if not({style is 'e'} orif {style is 'f'} orif {style is 'g'}) orif {digits < 0} orif {digits > 100} then
+            raise real.error end
+        else
+            let sign = if word.getBit(word.fromReal(r) 63) then "-" else "" end
+            cat(sign if fieldOf(r) is 2047 then "inf"
+                elsif style is 'e' then exponentText(r digits)
+                elsif style is 'f' then fixedText(fixedDigits(r digits) digits)
+                else generalText(r digits)
+                end)
+        end
 
     (* ======================================================================
      * 5. Reading a real

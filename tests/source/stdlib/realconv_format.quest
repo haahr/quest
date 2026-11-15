@@ -1,0 +1,89 @@
+(* Standard library: util/realconv's format, against real.format, which is
+ * printf's %e, %f, and %g: at each style and a range of precisions, for values
+ * chosen for their difficulty, for values halfway between two at a precision,
+ * and for random ones. Prints a count of disagreements, and names any value
+ * that disagrees. util/realconv is what a target without libc formats reals
+ * with (docs/wasm-plan.md section 4.3). Apart from realconv_operations, whose
+ * checks the interpreters' phases run too: these cost them minutes. *)
+(* @skip-phase: interpret, run_ir_core, run_ir_simplified, run_ir_specialized, run_ir_closed, run_ir_represented, run_ir_described *)
+
+import util/realconv : util/RealConv;
+import stringOp = string : StringOp;
+import conv : Conv;
+import word : Word;
+import writer : Writer;
+
+let show(s: String): Ok =
+    begin
+        writer.putString(writer.output s)
+        writer.putString(writer.output "\n")
+    end;
+
+let fields(negative: Bool field: Int fraction: Int): Real = realconv.fromFields(negative field fraction);
+let twoTo52 = 4503599627370496;
+
+(* A pseudo-random word: splitmix64 *)
+let state = array of word.fromInt(20261115) end;
+let random(): word.T =
+    begin
+        state[0] := word.add(state[0] word.fromInt(~7046029254386353131))
+        let var z = state[0]
+        z := word.mul(word.xorBits(z word.shift(z ~30)) word.fromInt(~4658895280553007687))
+        z := word.mul(word.xorBits(z word.shift(z ~27)) word.fromInt(~7723592293110705685))
+        word.xorBits(z word.shift(z ~31))
+    end;
+
+(* A random finite real, positive or negative, its bits uniform *)
+let rec randomReal(): Real =
+    begin
+        let w = random()
+        if word.toInt(word.extract(w 52 11)) is 2047 then randomReal() else word.toReal(w) end
+    end;
+
+(* Values chosen for their difficulty, realconv_operations' edges *)
+let edges = array of
+    0.0 fields(true 0 0) 1.0 0.1 0.2 0.3 {1.0 // 3.0} {2.0 // 3.0} 100.0 1.0e16 9999999999999998.0 1.0e15 123456.789
+    0.0001 0.00012345 9.999e-5 1.0e-5 5.0e-324 fields(false 0 1) fields(false 0 2) fields(false 0 {twoTo52 - 1})
+    fields(false 1 0) fields(false 1 1) fields(false 2 0) fields(false 2046 {twoTo52 - 1}) fields(false 2046 0)
+    fields(false 2047 0) fields(true 2047 0) 1.0e22 1.0e23 5.0e-310 2.2250738585072014e-308 9007199254740993.0
+    4.35e-5 1.7976931348623157e308 fields(false 1076 0) fields(false 1023 0) fields(false 1022 0) 0.5 1.5 2.5
+    1.0e300 1.0e-300 {0.0 -- 123.456} {0.0 -- 0.0000001} 8.41e21 5.0e-324 3.0e10 299792458.0 6.02214076e23
+end;
+
+let precisions = array of 0 1 2 3 6 12 17 20 40 100 end;
+let styles = array of 'e' 'f' 'g' end;
+
+(* Whether realconv.format agrees with real.format for r, at every style and
+ * precision; the count of disagreements, each shown *)
+let formatsAgree(r: Real): Int =
+    begin
+        let var fails = 0
+        for i = 0 upto extent styles - 1 do
+            for j = 0 upto extent precisions - 1 do
+                let mine = realconv.format(r styles[i] precisions[j])
+                let theirs = real.format(r styles[i] precisions[j])
+                if not(stringOp.equal(mine theirs)) then
+                    fails := fails + 1
+                    show("  %." <> conv.int(precisions[j]) <> stringOp.new(1 styles[i]) <> " of " <> conv.real(r)
+                        <> " is " <> mine <> ", not " <> theirs)
+                end
+            end
+        end
+        fails
+    end;
+
+(* Values at or near halfway between two at some precision *)
+let roundings = array of
+    0.5 1.5 2.5 0.125 0.375 9.5 99.5 999.5 0.05 0.15 0.25 0.45 0.95 9.995 0.0005 0.00015 1.0e-5 1.0e-4 123456.0
+    1234567.0 0.000123456 5.0e-324 1.0e-310 1.0e21 1.0e100 9.999999999999999e22
+end;
+
+show("format: %e, %f, and %g");
+let var fails = 0;
+for i = 0 upto extent edges - 1 do fails := fails + formatsAgree(edges[i]) end;
+for i = 0 upto extent roundings - 1 do
+    fails := fails + formatsAgree(roundings[i])
+    fails := fails + formatsAgree(0.0 -- roundings[i])
+end;
+for i = 1 upto 8 do fails := fails + formatsAgree(randomReal()) end;
+show("  disagreements: " <> conv.int(fails));

@@ -3,7 +3,8 @@
 Each module file under lib/ is compiled alone (`-c`) by the driver, through the
 C backend, into a build directory of its own, which must leave its C
 translation (.mod.c), manifest (.qm), object (.o), and its interface's .qi and
-C header (.int.h). The artifacts are the self-hosted compiler's own, so they
+C header (.int.h); not a backend's variant of one (NAME.VARIANT.mod.quest, such
+as lib/dynamic.wasm, which imports the wasm runtime's units). The artifacts are the self-hosted compiler's own, so they
 are not compared with the bootstrap's (docs/testing.md section 2.8); the ABI
 corpus pins its interfaces'.
 run_tests.py --self-hosted runs it (docs/testing.md section 2.3).
@@ -48,7 +49,8 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print(__doc__)
         sys.exit(2)
-    modules = [Path(m).resolve() for m in sys.argv[2:]] or sorted((ROOT_DIR / "lib").rglob("*.mod.quest"))
+    modules = [Path(m).resolve() for m in sys.argv[2:]] or sorted(
+        m for m in (ROOT_DIR / "lib").rglob("*.mod.quest") if "." not in m.name.removesuffix(".mod.quest"))
     problems = check(sys.argv[1], modules)
     for problem in problems:
         print(problem)

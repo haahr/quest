@@ -1950,7 +1950,13 @@ export
             when primRealGe then
                 atoms(f x.args)
                 emit(f i(ops.f64Ge))
-            when primRealPow then pending(f "** on reals, which needs the mathematical functions (milestone 4)")
+            when primRealPow then
+                (* util/realmath's, which raises real.error for a zero base
+                 * and a negative exponent, and for a NaN result
+                 * (quest_real_pow_at) *)
+                emit(f i1(ops.globalGet f.g.noClosure))
+                atoms(f x.args)
+                runtimeUnitCall(f "util/realmath.pow")
             when primExtent then
                 atoms(f x.args)
                 castTo(f rt.index("array"))
@@ -2035,6 +2041,7 @@ export
         array of "quest_conv_real" "toString" end
         array of "quest_sb_append_real" "toString" end
         array of "quest_strutil_to_real" "toReal" end
+        array of "quest_real_format" "format" end
     end
     let realconvFunction(symbol: String): maybe.T(String) =
         begin
@@ -2042,6 +2049,28 @@ export
             for k = 0 upto extent realconvExternals - 1 do
                 if stringOp.equal(realconvExternals[k][0] symbol) then
                     found := maybe.some(:String realconvExternals[k][1])
+                end
+            end
+            found
+        end
+    (* The externals that are functions of util/realmath, libm's functions in
+     * Quest (section 4.3), each with the function it calls and its arity;
+     * each raises real.error itself where the C runtime's wrapper would *)
+    let realmathExternals = array of
+        array of "quest_real_sin" "sin" "1" end array of "quest_real_cos" "cos" "1" end
+        array of "quest_real_tan" "tan" "1" end array of "quest_real_asin" "asin" "1" end
+        array of "quest_real_acos" "acos" "1" end array of "quest_real_atan" "atan" "1" end
+        array of "quest_real_atan2" "atan2" "2" end array of "quest_real_exponential" "exponential" "1" end
+        array of "quest_real_log" "log" "1" end array of "quest_real_sinh" "sinh" "1" end
+        array of "quest_real_cosh" "cosh" "1" end array of "quest_real_tanh" "tanh" "1" end
+        array of "quest_real_exp" "pow" "2" end
+    end
+    let realmathFunction(symbol: String): maybe.T(Array(String)) =
+        begin
+            let var found = maybe.none(:Array(String))
+            for k = 0 upto extent realmathExternals - 1 do
+                if stringOp.equal(realmathExternals[k][0] symbol) then
+                    found := maybe.some(:Array(String) realmathExternals[k])
                 end
             end
             found
@@ -2122,6 +2151,7 @@ export
             let binary = fun(o: model.Op): Ok begin atoms(f args) emit(f i(o)) end
             let core = coreExternal(symbol)
             let realconv = realconvFunction(symbol)
+            let realmath = realmathFunction(symbol)
             if named("quest_sb_append_real") then
                 emit(f i1(ops.globalGet f.g.noClosure))
                 atom(f args[0])
@@ -2133,6 +2163,10 @@ export
                 emit(f i1(ops.globalGet f.g.noClosure))
                 atoms(f args)
                 runtimeUnitCall(f "util/realconv." <> maybe.unwrap(:String realconv))
+            elsif maybe.isSome(:Array(String) realmath) then
+                emit(f i1(ops.globalGet f.g.noClosure))
+                atoms(f args)
+                runtimeUnitCall(f "util/realmath." <> maybe.unwrap(:Array(String) realmath)[1])
             elsif maybe.isSome(:Array(String) core) then
                 emit(f i1(ops.globalGet f.g.noClosure))
                 descriptors(f descs)
@@ -4715,7 +4749,17 @@ export
      * canonical name (arrayOp) may not be *)
     let unitName(i: ir.Import): String = maybe.unwrapOr(:String i.libPath i.canonicalPath)
 
-    let isUnitImport(runtimeUnit: Bool i: ir.Import): Bool = not(runtimeUnit andif maybe.isSome(:String i.libPath))
+    (* Whether the unit moduleName's import i is of a unit's module, its
+     * record and its init: not the core's of the library's units, whose
+     * members it takes only as externals; nor util/realconv's and
+     * util/realmath's of real, which they take only as externals too, and
+     * whose module's functions call theirs *)
+    let isUnitImport(moduleName: String i: ir.Import): Bool =
+        if stringOp.equal(moduleName "wasm/core") then maybe.isNone(:String i.libPath)
+        elsif stringOp.equal(moduleName "util/realconv") orif stringOp.equal(moduleName "util/realmath") then
+            not(stringOp.equal(i.canonicalPath "real"))
+        else true
+        end
 
     (* A representation converted to another at an exported function's
      * boundary (section 5.1): an Int or a Bool boxed or unboxed, as an
@@ -4819,7 +4863,7 @@ export
             let records = hashMap.new(:String :Int stringOp.equal hash.string)
             for k = 0 upto extent unit.imports - 1 do
                 let i = unit.imports[k]
-                if isUnitImport(stringOp.equal(moduleName "wasm/core") i) andif not(hashMap.contains(:String :Int records i.canonicalPath)) then
+                if isUnitImport(moduleName i) andif not(hashMap.contains(:String :Int records i.canonicalPath)) then
                     hashMap.insert(:String :Int records i.canonicalPath model.importedGlobals(m))
                     for j = 0 upto 1 do
                         vector.append(:model.Import m.imports tuple
@@ -4933,7 +4977,8 @@ export
                 end
             for k = 0 upto extent unit.imports - 1 do
                 let i = unit.imports[k]
-                if isUnitImport(g.isCore i) andif not(hashMap.contains(:String :Int g.importInits i.canonicalPath)) then
+                if isUnitImport(moduleName i)
+                    andif not(hashMap.contains(:String :Int g.importInits i.canonicalPath)) then
                     hashMap.insert(:String :Int g.importInits i.canonicalPath
                         importFunction(unitName(i) "init" funcType(g noTypes noTypes)))
                 end
@@ -5053,7 +5098,7 @@ export
                                         let fast = maybe.isSome(:String imp.i.libPath) andif
                                             maybe.isSome(:String externalSymbol(maybe.unwrap(:String imp.i.libPath)
                                                 maybe.unwrapOr(:String member "")))
-                                        if isUnitImport(g.isCore imp.i) andif not(known) andif not(fast)
+                                        if isUnitImport(moduleName imp.i) andif not(known) andif not(fast)
                                             andif maybe.isSome(:ir.Type calleeType) then
                                             let sig = closureSig(maybe.unwrap(:ir.Type calleeType))
                                             hashMap.insert(:String :Int g.importFunctions key
@@ -5067,11 +5112,21 @@ export
                             if not(hashMap.contains(:String :Int g.runtimeUnits "util/realconv." <> field)) then
                                 if stringOp.equal(field "toReal") then
                                     runtimeImport("util/realconv" field array of model.eqref end array of model.f64 end)
+                                elsif stringOp.equal(field "format") then
+                                    runtimeImport("util/realconv" field array of model.f64 model.i32 model.i64 end
+                                        array of model.eqref end)
                                 else runtimeImport("util/realconv" field array of model.f64 end array of model.eqref end)
                                 end
                             end
+                        let realmathImport = fun(field: String arity: Int): Ok
+                            if not(hashMap.contains(:String :Int g.runtimeUnits "util/realmath." <> field)) then
+                                runtimeImport("util/realmath" field array of(arity model.f64) array of model.f64 end)
+                            end
                         let coreFunction = fun(symbol: String): Ok
-                            if maybe.isSome(:String realconvFunction(symbol)) then
+                            if maybe.isSome(:Array(String) realmathFunction(symbol)) then
+                                let e = maybe.unwrap(:Array(String) realmathFunction(symbol))
+                                realmathImport(e[1] if stringOp.equal(e[2] "2") then 2 else 1 end)
+                            elsif maybe.isSome(:String realconvFunction(symbol)) then
                                 realconvImport(maybe.unwrap(:String realconvFunction(symbol)))
                                 let append = "wasm/core.sbAppendString"
                                 if stringOp.equal(symbol "quest_sb_append_real")
@@ -5133,6 +5188,7 @@ export
                                     end
                                 end
                             when opExternal with c then coreFunction(c.symbol)
+                            when opPrim with c then if c.op?primRealPow then realmathImport("pow" 2) end
                             when opTypeApp with c then register(c.callee c.moduleRef c.member c.calleeType)
                             else ok
                         end
@@ -5153,9 +5209,20 @@ export
             let usesRealconv = hashMap.contains(:String :Int g.runtimeUnits "util/realconv.toString")
                 orif hashMap.contains(:String :Int g.runtimeUnits "util/realconv.toReal")
                 orif hashMap.contains(:String :Int g.runtimeUnits "util/realconv.magnitude")
-            if usesRealconv then
+            let usesRealconv1 = usesRealconv orif hashMap.contains(:String :Int g.runtimeUnits "util/realconv.format")
+            if usesRealconv1 then
                 hashMap.insert(:String :Int g.runtimeUnits "util/realconv.init"
                     importFunction("util/realconv" "init" funcType(g noTypes noTypes)))
+            end
+            let var usesRealmath = false
+            for k = 0 upto extent realmathExternals - 1 do
+                if hashMap.contains(:String :Int g.runtimeUnits "util/realmath." <> realmathExternals[k][1]) then
+                    usesRealmath := true
+                end
+            end
+            if usesRealmath then
+                hashMap.insert(:String :Int g.runtimeUnits "util/realmath.init"
+                    importFunction("util/realmath" "init" funcType(g noTypes noTypes)))
             end
             if usesCore() andif not(hashMap.contains(:String :Int g.runtimeUnits "wasm/core.init")) then
                 hashMap.insert(:String :Int g.runtimeUnits "wasm/core.init"
@@ -5211,6 +5278,9 @@ export
                     if hashMap.contains(:String :Int g.runtimeUnits "util/realconv.init") then
                         emit(f i1(ops.call hashMap.find(:String :Int g.runtimeUnits "util/realconv.init")))
                     end
+                    if hashMap.contains(:String :Int g.runtimeUnits "util/realmath.init") then
+                        emit(f i1(ops.call hashMap.find(:String :Int g.runtimeUnits "util/realmath.init")))
+                    end
                     if described then emit(f i1(ops.call descIndex)) end
                     if {described andif echoes} orif g.isPhrase
                         orif hashMap.contains(:String :Int g.runtimeUnits "wasm/print.capture") then
@@ -5220,7 +5290,7 @@ export
             (* Each unit imported initialized, in the order of the imports *)
             let initImports = fun(f: F): Ok
                 for k = 0 upto extent unit.imports - 1 do
-                    if isUnitImport(g.isCore unit.imports[k]) then
+                    if isUnitImport(moduleName unit.imports[k]) then
                         emit(f i1(ops.call hashMap.find(:String :Int g.importInits unit.imports[k].canonicalPath)))
                     end
                 end

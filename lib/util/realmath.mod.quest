@@ -1,0 +1,1240 @@
+(* Real's mathematical functions; the interface describes the operations.
+ *
+ * Why this module exists: the C runtime's sin, log, pow, and the rest are
+ * libm's (quest_real_sin and its neighbors, quest_real_pow). A target without
+ * libc (WebAssembly, docs/wasm-plan.md section 4.3) has no libm, and must
+ * compute them itself, to within the error that libm's own implementations
+ * state. So this module is those functions in Quest, as util/realconv is
+ * printf's and strtod's.
+ *
+ * Method: FreeBSD's msun (lib/msun/src: e_exp.c, e_log.c, e_pow.c, e_asin.c,
+ * e_acos.c, s_atan.c, e_atan2.c, e_sinh.c, e_cosh.c, s_tanh.c, s_expm1.c,
+ * k_exp.c, s_sin.c, s_cos.c, s_tan.c, k_sin.c, k_cos.c, k_tan.c,
+ * e_rem_pio2.c, k_rem_pio2.c), Sun's fdlibm as FreeBSD keeps it, ported line
+ * for line: each function's argument reduction, polynomial, and special cases
+ * are msun's, its constants msun's to the bit, and its error msun's (under 1
+ * ulp for each, its comments say). Where this file and msun differ:
+ *   - Quest's operators share one precedence and associate to the right, so
+ *     each of C's expressions is written with braces, in C's order of
+ *     evaluation, which floating point makes part of the result;
+ *   - a Real is never NaN, and an operation whose result would be NaN raises
+ *     real.error, so where msun returns NaN (an arc sine outside [~1, 1], the
+ *     sine of an infinity) these raise real.error, as the C runtime's wrappers
+ *     do after libm, and NaN arguments need no cases;
+ *   - Quest has no early return, so a function's special cases are the arms
+ *     of one conditional, before its main computation;
+ *   - the words of a real are Ints: its high word a signed 32-bit integer, as
+ *     msun's int32_t, and its low word unsigned, made and taken apart through
+ *     word's bits. Bit operations on Ints go through word.
+ * Apple's libm is not msun, so a result here and libc's may differ in the
+ * last bit; tests/source/stdlib/realmath_operations.quest checks that they
+ * agree within the bound.
+ *
+ * Imports: word, for a real's bits, and real, for real.error, the conversions
+ * between Real and Int, and the square root, which WebAssembly has. *)
+
+module realmath : RealMath
+import
+    word : Word
+    real : RealOp
+export
+    (* ======================================================================
+     * 1. Words and bits
+     * ====================================================================== *)
+
+    let mask32 = 0xFFFFFFFF
+
+    let band(a: Int b: Int): Int = word.toInt(word.andBits(word.fromInt(a) word.fromInt(b)))
+    let bor(a: Int b: Int): Int = word.toInt(word.orBits(word.fromInt(a) word.fromInt(b)))
+    let bnot(a: Int): Int = word.toInt(word.notBits(word.fromInt(a)))
+
+    (* a shifted left by n bits; a shifted right by n, arithmetically, as C's
+     * >> shifts an int32_t (msun's own shifts of negative values are of
+     * that kind) *)
+    let shl(a: Int n: Int): Int = word.toInt(word.shift(word.fromInt(a) n))
+    let shr(a: Int n: Int): Int =
+        if a >= 0 then word.toInt(word.shift(word.fromInt(a) {0 - n}))
+        else ~1 - word.toInt(word.shift(word.fromInt(~1 - a) {0 - n}))
+        end
+
+    (* x's high word, signed (GET_HIGH_WORD into an int32_t), and its low
+     * word, unsigned *)
+    let high(x: Real): Int =
+        begin
+            let h = word.toInt(word.shift(word.fromReal(x) ~32))
+            if h >= 0x80000000 then h - 0x100000000 else h end
+        end
+    let low(x: Real): Int = word.toInt(word.andBits(word.fromReal(x) word.fromInt(mask32)))
+
+    (* The real whose words are hi and lo (INSERT_WORDS); never a NaN here *)
+    let fromWords(hi: Int lo: Int): Real =
+        word.toReal(word.orBits(word.shift(word.fromInt(hi) 32) word.fromInt(band(lo mask32))))
+    let withHigh(x: Real hi: Int): Real = fromWords(hi low(x))
+    let withLow(x: Real lo: Int): Real = fromWords(high(x) lo)
+
+    (* ~x, the sign bit flipped (0.0 -- x would make 0.0 of ~0.0's negation) *)
+    let neg(x: Real): Real = ~1.0 ** x
+    let fabs(x: Real): Real = withHigh(x band(high(x) 0x7fffffff))
+    let isZero(x: Real): Bool = {band(high(x) 0x7fffffff) is 0} andif {low(x) is 0}
+
+    (* What msun returns NaN for *)
+    let invalid(): Real = raise real.error end
+
+    let toReal(n: Int): Real = real.int(n)
+    (* r toward zero, as C's (int) cast; r within Int's range *)
+    let toInt(r: Real): Int = real.trunc(r)
+
+    let infinity = fromWords(0x7ff00000 0)
+    let huge = 1.0e300
+    let tiny = 1.0e-300
+    let twoTo1023 = fromWords(0x7fe00000 0)
+
+    (* x * 2^n, as musl's scalbn: in up to three steps, so that neither an
+     * intermediate overflow nor a subnormal's lost bits intervene *)
+    let scalbn(x: Real n0: Int): Real =
+        begin
+            let var y = x
+            let var n = n0
+            if n > 1023 then
+                y := y ** twoTo1023
+                n := n - 1023
+                if n > 1023 then
+                    y := y ** twoTo1023
+                    n := n - 1023
+                    if n > 1023 then n := 1023 end
+                end
+            elsif n < ~1022 then
+                (* 2^-1022 * 2^53: the product keeps the bits a subnormal
+                 * would drop *)
+                let down = fromWords(0x03600000 0)
+                y := y ** down
+                n := n + 969
+                if n < ~1022 then
+                    y := y ** down
+                    n := n + 969
+                    if n < ~1022 then n := ~1022 end
+                end
+            end
+            y ** fromWords(shl({0x3ff + n} 20) 0)
+        end
+
+    (* ======================================================================
+     * 2. Sine, cosine, and tangent near zero (k_sin.c, k_cos.c, k_tan.c)
+     * ====================================================================== *)
+
+    (* sin(x + y) for |x| <= pi/4, y x's tail; iy 0 when y is zero *)
+    let kSin(x: Real y: Real iy: Int): Real =
+        begin
+            let s1 = ~1.66666666666666324348e-01
+            let s2 = 8.33333333332248946124e-03
+            let s3 = ~1.98412698298579493134e-04
+            let s4 = 2.75573137070700676789e-06
+            let s5 = ~2.50507602534068634195e-08
+            let s6 = 1.58969099521155010221e-10
+            let z = x ** x
+            let w = z ** z
+            let r = {s2 ++ {z ** {s3 ++ {z ** s4}}}} ++ {{z ** w} ** {s5 ++ {z ** s6}}}
+            let v = z ** x
+            if iy is 0 then x ++ {v ** {s1 ++ {z ** r}}}
+            else x -- {{{z ** {{0.5 ** y} -- {v ** r}}} -- y} -- {v ** s1}}
+            end
+        end
+
+    (* cos(x + y) for |x| <= pi/4 *)
+    let kCos(x: Real y: Real): Real =
+        begin
+            let c1 = 4.16666666666666019037e-02
+            let c2 = ~1.38888888888741095749e-03
+            let c3 = 2.48015872894767294178e-05
+            let c4 = ~2.75573143513906633035e-07
+            let c5 = 2.08757232129817482790e-09
+            let c6 = ~1.13596475577881948265e-11
+            let z = x ** x
+            let w = z ** z
+            let r = {z ** {c1 ++ {z ** {c2 ++ {z ** c3}}}}} ++ {{w ** w} ** {c4 ++ {z ** {c5 ++ {z ** c6}}}}}
+            let hz = 0.5 ** z
+            let w1 = 1.0 -- hz
+            w1 ++ {{{1.0 -- w1} -- hz} ++ {{z ** r} -- {x ** y}}}
+        end
+
+    let tanT = array of
+        3.33333333333334091986e-01 1.33333333333201242699e-01 5.39682539762260521377e-02
+        2.18694882948595424599e-02 8.86323982359930005737e-03 3.59207910759131235356e-03
+        1.45620945432529025516e-03 5.88041240820264096874e-04 2.46463134818469906812e-04
+        7.81794442939557092300e-05 7.14072491382608190305e-05 ~1.85586374855275456654e-05
+        2.59073051863633712884e-05
+    end
+
+    (* tan(x + y) for |x| <= pi/4 when iy is 1, and ~1 / tan(x + y) when iy
+     * is ~1 *)
+    let kTan(x0: Real y0: Real iy: Int): Real =
+        begin
+            let t = tanT
+            let pio4 = 7.85398163397448278999e-01
+            let pio4lo = 3.06161699786838301793e-17
+            let hx = high(x0)
+            let ix = band(hx 0x7fffffff)
+            let big = ix >= 0x3FE59428
+            let var x = x0
+            let var y = y0
+            if big then
+                if hx < 0 then
+                    x := neg(x)
+                    y := neg(y)
+                end
+                let z = pio4 -- x
+                let w = pio4lo -- y
+                x := z ++ w
+                y := 0.0
+            end
+            let z = x ** x
+            let w = z ** z
+            let r0 = t[1] ++ {w ** {t[3] ++ {w ** {t[5] ++ {w ** {t[7] ++ {w ** {t[9] ++ {w ** t[11]}}}}}}}}}
+            let v = z ** {t[2] ++ {w ** {t[4] ++ {w ** {t[6] ++ {w ** {t[8] ++ {w ** {t[10] ++ {w ** t[12]}}}}}}}}}}
+            let s = z ** x
+            let r1 = y ++ {z ** {{s ** {r0 ++ v}} ++ y}}
+            let r = r1 ++ {t[0] ** s}
+            let w1 = x ++ r
+            if big then
+                let vi = toReal(iy)
+                toReal(1 - band(shr(hx 30) 2)) ** {vi -- {2.0 ** {x -- {{{w1 ** w1} // {w1 ++ vi}} -- r}}}}
+            elsif iy is 1 then w1
+            else
+                (* ~1 / (x + r), accurately *)
+                let z1 = withLow(w1 0)
+                let v1 = r -- {z1 -- x}
+                let a = ~1.0 // w1
+                let t1 = withLow(a 0)
+                let s1 = 1.0 ++ {t1 ** z1}
+                t1 ++ {a ** {s1 ++ {t1 ** v1}}}
+            end
+        end
+
+    (* ======================================================================
+     * 3. Reduction modulo pi/2 (e_rem_pio2.c, k_rem_pio2.c)
+     * ====================================================================== *)
+
+    (* x - n * pi/2 is y0 + y1, |y0 + y1| <= pi/4 *)
+    Def Reduced = Tuple n: Int y0: Real y1: Real end
+
+    (* 2/pi's bits, 24 at a time, as many as a double's reduction needs *)
+    let ipio2 = array of
+        0xA2F983 0x6E4E44 0x1529FC 0x2757D1 0xF534DD 0xC0DB62
+        0x95993C 0x439041 0xFE5163 0xABDEBB 0xC561B7 0x246E3A
+        0x424DD2 0xE00649 0x2EEA09 0xD1921C 0xFE1DEB 0x1CB129
+        0xA73EE8 0x8235F5 0x2EBB44 0x84E99C 0x7026B4 0x5F7E41
+        0x3991D6 0x398353 0x39F49C 0x845F8B 0xBDF928 0x3B1FF8
+        0x97FFDE 0x05980F 0xEF2F11 0x8B5A0A 0x6D1F6D 0x367ECF
+        0x27CB09 0xB74F46 0x3F669E 0x5FEA2D 0x7527BA 0xC7EBE5
+        0xF17B3D 0x0739F7 0x8A5292 0xEA6BFB 0x5FB11F 0x8D5D08
+        0x560330 0x46FC7B 0x6BABF0 0xCFBC20 0x9AF436 0x1DA9E3
+        0x91615E 0xE61B08 0x659985 0x5F14A0 0x68408D 0xFFD880
+        0x4D7327 0x310606 0x1556CA 0x73A8C9 0x60E27B 0xC08C6B
+    end
+
+    (* pi/2 in pieces of 24 bits *)
+    let pio2s = array of
+        1.57079625129699707031e+00 7.54978941586159635335e-08 5.39030252995776476554e-15
+        3.28200341580791294123e-22 1.27065575308067607349e-29 1.22933308981111328932e-36
+        2.73370053816464559624e-44 2.16741683877804819444e-51
+    end
+
+    let two24 = 1.67772160000000000000e+07
+    let twon24 = 5.96046447753906250000e-08
+
+    (* __kernel_rem_pio2 for a double (prec 1, jk 4): x the argument's 24-bit
+     * pieces, nx of them, the first scaled by 2^-e0 *)
+    let kRemPio2(x: Array(Real) e0: Int nx: Int): Reduced =
+        begin
+            let jk = 4
+            let jp = jk
+            let jx = nx - 1
+            let jv = if {{e0 - 3} / 24} < 0 then 0 else {e0 - 3} / 24 end
+            let var q0 = e0 - {24 * {jv + 1}}
+            let f = array of(20 0.0)
+            let q = array of(20 0.0)
+            let fq = array of(20 0.0)
+            let iq = array of(20 0)
+            let m = jx + jk
+            for i = 0 upto m do
+                let j = {jv - jx} + i
+                f[i] := if j < 0 then 0.0 else toReal(ipio2[j]) end
+            end
+            for i = 0 upto jk do
+                let var fw = 0.0
+                for j = 0 upto jx do fw := fw ++ {x[j] ** f[{jx + i} - j]} end
+                q[i] := fw
+            end
+            let var jz = jk
+            let var z = 0.0
+            let var n = 0
+            let var ih = 0
+            let var again = true
+            while again do
+                again := false
+                (* distill q[] into iq[], reversed *)
+                z := q[jz]
+                let var i = 0
+                let var j = jz
+                while j > 0 do
+                    let fw = toReal(toInt(twon24 ** z))
+                    iq[i] := toInt(z -- {two24 ** fw})
+                    z := q[j - 1] ++ fw
+                    i := i + 1
+                    j := j - 1
+                end
+                (* n *)
+                z := scalbn(z q0)
+                z := z -- {8.0 ** toReal(real.floor(z ** 0.125))}
+                n := toInt(z)
+                z := z -- toReal(n)
+                ih := 0
+                if q0 > 0 then
+                    let i1 = shr(iq[jz - 1] {24 - q0})
+                    n := n + i1
+                    iq[jz - 1] := iq[jz - 1] - shl(i1 {24 - q0})
+                    ih := shr(iq[jz - 1] {23 - q0})
+                elsif q0 is 0 then ih := shr(iq[jz - 1] 23)
+                elsif z >>= 0.5 then ih := 2
+                end
+                if ih > 0 then
+                    (* q > 0.5: 1 - q *)
+                    n := n + 1
+                    let var carry = 0
+                    for k = 0 upto jz - 1 do
+                        let jj = iq[k]
+                        if carry is 0 then
+                            if jj isnot 0 then
+                                carry := 1
+                                iq[k] := 0x1000000 - jj
+                            end
+                        else iq[k] := 0xffffff - jj
+                        end
+                    end
+                    if q0 is 1 then iq[jz - 1] := band(iq[jz - 1] 0x7fffff)
+                    elsif q0 is 2 then iq[jz - 1] := band(iq[jz - 1] 0x3fffff)
+                    end
+                    if ih is 2 then
+                        z := 1.0 -- z
+                        if carry isnot 0 then z := z -- scalbn(1.0 q0) end
+                    end
+                end
+                (* whether to recompute with more terms *)
+                if isZero(z) then
+                    let var jj = 0
+                    for k = jz - 1 downto jk do jj := bor(jj iq[k]) end
+                    if jj is 0 then
+                        let var k = 1
+                        while iq[jk - k] is 0 do k := k + 1 end
+                        for i2 = jz + 1 upto jz + k do
+                            f[jx + i2] := toReal(ipio2[jv + i2])
+                            let var fw = 0.0
+                            for j2 = 0 upto jx do fw := fw ++ {x[j2] ** f[{jx + i2} - j2]} end
+                            q[i2] := fw
+                        end
+                        jz := jz + k
+                        again := true
+                    end
+                end
+            end
+            (* chop off zero terms *)
+            if isZero(z) then
+                jz := jz - 1
+                q0 := q0 - 24
+                while iq[jz] is 0 do
+                    jz := jz - 1
+                    q0 := q0 - 24
+                end
+            else
+                (* break z into 24-bit pieces if need be *)
+                z := scalbn(z {0 - q0})
+                if z >>= two24 then
+                    let fw = toReal(toInt(twon24 ** z))
+                    iq[jz] := toInt(z -- {two24 ** fw})
+                    jz := jz + 1
+                    q0 := q0 + 24
+                    iq[jz] := toInt(fw)
+                else iq[jz] := toInt(z)
+                end
+            end
+            (* the pieces as reals *)
+            let var fw = scalbn(1.0 q0)
+            for i = jz downto 0 do
+                q[i] := fw ** toReal(iq[i])
+                fw := fw ** twon24
+            end
+            (* pio2s[0 .. jp] * q[jz .. 0] *)
+            for i = jz downto 0 do
+                let var sum = 0.0
+                let var k = 0
+                while {k <= jp} andif {k <= {jz - i}} do
+                    sum := sum ++ {pio2s[k] ** q[i + k]}
+                    k := k + 1
+                end
+                fq[jz - i] := sum
+            end
+            (* fq[] compressed into y0 and y1 *)
+            let var s = 0.0
+            for i = jz downto 0 do s := s ++ fq[i] end
+            let y0 = if ih is 0 then s else neg(s) end
+            let var t = fq[0] -- s
+            for i = 1 upto jz do t := t ++ fq[i] end
+            let y1 = if ih is 0 then t else neg(t) end
+            tuple let n = band(n 7) let y0 = y0 let y1 = y1 end
+        end
+
+    (* __ieee754_rem_pio2 for |x| > pi/4, x finite *)
+    let remPio2(x: Real): Reduced =
+        begin
+            let pio2a = 1.57079632673412561417e+00
+            let pio2at = 6.07710050650619224932e-11
+            let pio2b = 6.07710050630396597660e-11
+            let pio2bt = 2.02226624879595063154e-21
+            let pio2c = 2.02226624871116645580e-21
+            let pio2ct = 8.47842766036889956997e-32
+            let invpio2 = 6.36619772367581382433e-01
+            let hx = high(x)
+            let ix = band(hx 0x7fffffff)
+            (* |x| near k pi/2, for k up to 4: one step, good to 85 bits *)
+            let near(k: Int): Reduced =
+                begin
+                    let kr = toReal(k)
+                    if hx > 0 then
+                        let z = x -- {kr ** pio2a}
+                        let y0 = z -- {kr ** pio2at}
+                        tuple let n = k let y0 = y0 let y1 = {z -- y0} -- {kr ** pio2at} end
+                    else
+                        let z = x ++ {kr ** pio2a}
+                        let y0 = z ++ {kr ** pio2at}
+                        tuple let n = 0 - k let y0 = y0 let y1 = {z -- y0} ++ {kr ** pio2at} end
+                    end
+                end
+            (* |x| below about 2^20 pi/2: n * pi/2 in up to three pieces *)
+            let medium(): Reduced =
+                begin
+                    (* rnint: to the nearest integer, ties to even *)
+                    let shifter = 6755399441055744.0
+                    let fn = {{x ** invpio2} ++ shifter} -- shifter
+                    let n = toInt(fn)
+                    let var r = x -- {fn ** pio2a}
+                    let var w = fn ** pio2at
+                    let j = shr(ix 20)
+                    let var y0 = r -- w
+                    let var i = j - band(shr(high(y0) 20) 0x7ff)
+                    if i > 16 then
+                        (* a second step, good to 118 bits *)
+                        let var t = r
+                        w := fn ** pio2b
+                        r := t -- w
+                        w := {fn ** pio2bt} -- {{t -- r} -- w}
+                        y0 := r -- w
+                        i := j - band(shr(high(y0) 20) 0x7ff)
+                        if i > 49 then
+                            (* a third, good to 151 bits *)
+                            t := r
+                            w := fn ** pio2c
+                            r := t -- w
+                            w := {fn ** pio2ct} -- {{t -- r} -- w}
+                            y0 := r -- w
+                        end
+                    end
+                    tuple let n = n let y0 = y0 let y1 = {r -- y0} -- w end
+                end
+            if ix <= 0x400f6a7a then
+                (* |x| ~<= 5pi/4; near pi/2 or 2pi/2, cancellation needs the
+                 * medium case *)
+                if band(ix 0xfffff) is 0x921fb then medium()
+                elsif ix <= 0x4002d97c then near(1)
+                else near(2)
+                end
+            elsif ix <= 0x401c463b then
+                if ix <= 0x4015fdbc then
+                    if ix is 0x4012d97c then medium() else near(3) end
+                elsif ix is 0x401921fb then medium()
+                else near(4)
+                end
+            elsif ix < 0x413921fb then medium()
+            else
+                (* large: z = scalbn(|x|, ilogb(x) - 23), in 24-bit pieces *)
+                let e0 = shr(ix 20) - 1046
+                let var z = fromWords(ix - {e0 * 1048576} low(x))
+                let tx = array of(3 0.0)
+                for i = 0 upto 1 do
+                    tx[i] := toReal(toInt(z))
+                    z := {z -- tx[i]} ** two24
+                end
+                tx[2] := z
+                let var nx = 3
+                while isZero(tx[nx - 1]) do nx := nx - 1 end
+                let t = kRemPio2(tx e0 nx)
+                if hx < 0 then tuple let n = 0 - t.n let y0 = neg(t.y0) let y1 = neg(t.y1) end
+                else t
+                end
+            end
+        end
+
+    (* ======================================================================
+     * 4. Sine, cosine, and tangent (s_sin.c, s_cos.c, s_tan.c)
+     * ====================================================================== *)
+
+    let sin(x: Real): Real =
+        begin
+            let ix = band(high(x) 0x7fffffff)
+            if ix <= 0x3fe921fb then
+                if ix < 0x3e500000 then x else kSin(x 0.0 0) end
+            elsif ix >= 0x7ff00000 then invalid()
+            else
+                let y = remPio2(x)
+                let n = band(y.n 3)
+                if n is 0 then kSin(y.y0 y.y1 1)
+                elsif n is 1 then kCos(y.y0 y.y1)
+                elsif n is 2 then neg(kSin(y.y0 y.y1 1))
+                else neg(kCos(y.y0 y.y1))
+                end
+            end
+        end
+
+    let cos(x: Real): Real =
+        begin
+            let ix = band(high(x) 0x7fffffff)
+            if ix <= 0x3fe921fb then
+                if ix < 0x3e46a09e then 1.0 else kCos(x 0.0) end
+            elsif ix >= 0x7ff00000 then invalid()
+            else
+                let y = remPio2(x)
+                let n = band(y.n 3)
+                if n is 0 then kCos(y.y0 y.y1)
+                elsif n is 1 then neg(kSin(y.y0 y.y1 1))
+                elsif n is 2 then neg(kCos(y.y0 y.y1))
+                else kSin(y.y0 y.y1 1)
+                end
+            end
+        end
+
+    let tan(x: Real): Real =
+        begin
+            let ix = band(high(x) 0x7fffffff)
+            if ix <= 0x3fe921fb then
+                if ix < 0x3e400000 then x else kTan(x 0.0 1) end
+            elsif ix >= 0x7ff00000 then invalid()
+            else
+                let y = remPio2(x)
+                (* 1 for n even, ~1 for n odd *)
+                kTan(y.y0 y.y1 {1 - shl(band(y.n 1) 1)})
+            end
+        end
+
+    (* ======================================================================
+     * 5. Inverse trigonometric functions (e_asin.c, e_acos.c, s_atan.c,
+     *    e_atan2.c)
+     * ====================================================================== *)
+
+    let pio2Hi = 1.57079632679489655800e+00
+    let pio2Lo = 6.12323399573676603587e-17
+    let pio4Hi = 7.85398163397448278999e-01
+    let pi = 3.14159265358979311600e+00
+
+    (* The rational approximation asin and acos share: p(t) / q(t) *)
+    let asinP(t: Real): Real =
+        begin
+            let pS0 = 1.66666666666666657415e-01
+            let pS1 = ~3.25565818622400915405e-01
+            let pS2 = 2.01212532134862925881e-01
+            let pS3 = ~4.00555345006794114027e-02
+            let pS4 = 7.91534994289814532176e-04
+            let pS5 = 3.47933107596021167570e-05
+            t ** {pS0 ++ {t ** {pS1 ++ {t ** {pS2 ++ {t ** {pS3 ++ {t ** {pS4 ++ {t ** pS5}}}}}}}}}}
+        end
+    let asinQ(t: Real): Real =
+        begin
+            let qS1 = ~2.40339491173441421878e+00
+            let qS2 = 2.02094576023350569471e+00
+            let qS3 = ~6.88283971605453293030e-01
+            let qS4 = 7.70381505559019352791e-02
+            1.0 ++ {t ** {qS1 ++ {t ** {qS2 ++ {t ** {qS3 ++ {t ** qS4}}}}}}}
+        end
+
+    let asin(x: Real): Real =
+        begin
+            let hx = high(x)
+            let ix = band(hx 0x7fffffff)
+            if ix >= 0x3ff00000 then
+                (* asin(+-1) is +-pi/2; beyond, NaN *)
+                if bor(ix - 0x3ff00000 low(x)) is 0 then {x ** pio2Hi} ++ {x ** pio2Lo}
+                else invalid()
+                end
+            elsif ix < 0x3fe00000 then
+                if ix < 0x3e500000 then x
+                else
+                    let t = x ** x
+                    let w = asinP(t) // asinQ(t)
+                    x ++ {x ** w}
+                end
+            else
+                (* 1 > |x| >= 0.5 *)
+                let w = 1.0 -- fabs(x)
+                let t = w ** 0.5
+                let p = asinP(t)
+                let q = asinQ(t)
+                let s = real.sqrt(t)
+                let r = if ix >= 0x3FEF3333 then
+                        (* |x| > 0.975 *)
+                        let w1 = p // q
+                        pio2Hi -- {{2.0 ** {s ++ {s ** w1}}} -- pio2Lo}
+                    else
+                        let w1 = withLow(s 0)
+                        let c = {t -- {w1 ** w1}} // {s ++ w1}
+                        let r1 = p // q
+                        let p1 = {{2.0 ** s} ** r1} -- {pio2Lo -- {2.0 ** c}}
+                        let q1 = pio4Hi -- {2.0 ** w1}
+                        pio4Hi -- {p1 -- q1}
+                    end
+                if hx > 0 then r else neg(r) end
+            end
+        end
+
+    let acos(x: Real): Real =
+        begin
+            let hx = high(x)
+            let ix = band(hx 0x7fffffff)
+            if ix >= 0x3ff00000 then
+                if bor(ix - 0x3ff00000 low(x)) is 0 then
+                    if hx > 0 then 0.0 else pi ++ {2.0 ** pio2Lo} end
+                else invalid()
+                end
+            elsif ix < 0x3fe00000 then
+                if ix <= 0x3c600000 then pio2Hi ++ pio2Lo
+                else
+                    let z = x ** x
+                    let r = asinP(z) // asinQ(z)
+                    pio2Hi -- {x -- {pio2Lo -- {x ** r}}}
+                end
+            elsif hx < 0 then
+                (* x < ~0.5 *)
+                let z = {1.0 ++ x} ** 0.5
+                let s = real.sqrt(z)
+                let r = asinP(z) // asinQ(z)
+                let w = {r ** s} -- pio2Lo
+                pi -- {2.0 ** {s ++ w}}
+            else
+                (* x > 0.5 *)
+                let z = {1.0 -- x} ** 0.5
+                let s = real.sqrt(z)
+                let df = withLow(s 0)
+                let c = {z -- {df ** df}} // {s ++ df}
+                let r = asinP(z) // asinQ(z)
+                let w = {r ** s} ++ c
+                2.0 ** {df ++ w}
+            end
+        end
+
+    let atanHi = array of
+        4.63647609000806093515e-01 7.85398163397448278999e-01 9.82793723247329054082e-01
+        1.57079632679489655800e+00
+    end
+    let atanLo = array of
+        2.26987774529616870924e-17 3.06161699786838301793e-17 1.39033110312309984516e-17
+        6.12323399573676603587e-17
+    end
+    let aT = array of
+        3.33333333333329318027e-01 ~1.99999999998764832476e-01 1.42857142725034663711e-01
+        ~1.11111104054623557880e-01 9.09088713343650656196e-02 ~7.69187620504482999495e-02
+        6.66107313738753120669e-02 ~5.83357013379057348645e-02 4.97687799461593236017e-02
+        ~3.65315727442169155270e-02 1.62858201153657823623e-02
+    end
+
+    let atan(x0: Real): Real =
+        begin
+            let hx = high(x0)
+            let ix = band(hx 0x7fffffff)
+            if ix >= 0x44100000 then
+                (* |x| >= 2^66 *)
+                if hx > 0 then atanHi[3] ++ atanLo[3] else neg(atanHi[3]) -- atanLo[3] end
+            elsif ix < 0x3e400000 then x0
+            else
+                let var id = ~1
+                let var x = x0
+                if ix >= 0x3fdc0000 then
+                    x := fabs(x0)
+                    if ix < 0x3ff30000 then
+                        if ix < 0x3fe60000 then
+                            (* 7/16 <= |x| < 11/16 *)
+                            id := 0
+                            x := {{2.0 ** x} -- 1.0} // {2.0 ++ x}
+                        else
+                            (* 11/16 <= |x| < 19/16 *)
+                            id := 1
+                            x := {x -- 1.0} // {x ++ 1.0}
+                        end
+                    elsif ix < 0x40038000 then
+                        (* |x| < 2.4375 *)
+                        id := 2
+                        x := {x -- 1.5} // {1.0 ++ {1.5 ** x}}
+                    else
+                        (* 2.4375 <= |x| < 2^66 *)
+                        id := 3
+                        x := ~1.0 // x
+                    end
+                end
+                let z = x ** x
+                let w = z ** z
+                (* the sum of aT[i] z^(i + 1), in odd and even terms *)
+                let s1 = z ** {aT[0] ++ {w ** {aT[2] ++ {w ** {aT[4] ++ {w ** {aT[6] ++ {w ** {aT[8]
+                    ++ {w ** aT[10]}}}}}}}}}}
+                let s2 = w ** {aT[1] ++ {w ** {aT[3] ++ {w ** {aT[5] ++ {w ** {aT[7] ++ {w ** aT[9]}}}}}}}}
+                if id < 0 then x -- {x ** {s1 ++ s2}}
+                else
+                    let z1 = atanHi[id] -- {{{x ** {s1 ++ s2}} -- atanLo[id]} -- x}
+                    if hx < 0 then neg(z1) else z1 end
+                end
+            end
+        end
+
+    let atan2(y: Real x: Real): Real =
+        begin
+            let piO4 = 7.8539816339744827900e-01
+            let piO2 = 1.5707963267948965580e+00
+            let piLo = 1.2246467991473531772e-16
+            let hx = high(x)
+            let lx = low(x)
+            let ix = band(hx 0x7fffffff)
+            let hy = high(y)
+            let ly = low(y)
+            let iy = band(hy 0x7fffffff)
+            (* 2 * sign(x) + sign(y) *)
+            let m = bor(band(shr(hy 31) 1) band(shr(hx 30) 2))
+            if {hx is 0x3ff00000} andif {lx is 0} then atan(y)
+            elsif bor(iy ly) is 0 then
+                (* y is zero *)
+                if m <= 1 then y elsif m is 2 then pi else neg(pi) end
+            elsif bor(ix lx) is 0 then
+                if hy < 0 then neg(piO2) else piO2 end
+            elsif ix is 0x7ff00000 then
+                if iy is 0x7ff00000 then
+                    if m is 0 then piO4
+                    elsif m is 1 then neg(piO4)
+                    elsif m is 2 then 3.0 ** piO4
+                    else ~3.0 ** piO4
+                    end
+                elsif m is 0 then 0.0
+                elsif m is 1 then neg(0.0)
+                elsif m is 2 then pi
+                else neg(pi)
+                end
+            elsif iy is 0x7ff00000 then
+                if hy < 0 then neg(piO2) else piO2 end
+            else
+                let k = shr(iy - ix 20)
+                let mm = if k > 60 then band(m 1) else m end
+                let z = if k > 60 then piO2 ++ {0.5 ** piLo}
+                    elsif {hx < 0} andif {k < ~60} then 0.0
+                    else atan(fabs(y // x))
+                    end
+                if mm is 0 then z
+                elsif mm is 1 then neg(z)
+                elsif mm is 2 then pi -- {z -- piLo}
+                else {z -- piLo} -- pi
+                end
+            end
+        end
+
+    (* ======================================================================
+     * 6. Exponentials and logarithms (e_exp.c, s_expm1.c, k_exp.c, e_log.c)
+     * ====================================================================== *)
+
+    let ln2Hi = 6.93147180369123816490e-01
+    let ln2Lo = 1.90821492927058770002e-10
+    let invln2 = 1.44269504088896338700e+00
+    let oThreshold = 7.09782712893383973096e+02
+
+    let expP1 = 1.66666666666666019037e-01
+    let expP2 = ~2.77777777770155933842e-03
+    let expP3 = 6.61375632143793436117e-05
+    let expP4 = ~1.65339022054652515390e-06
+    let expP5 = 4.13813679705723846039e-08
+
+    let exponential(x: Real): Real =
+        begin
+            let uThreshold = ~7.45133219101941108420e+02
+            let twom1000 = 9.33263618503218878990e-302
+            let hs = high(x)
+            let xsb = if hs < 0 then 1 else 0 end
+            let hx = band(hs 0x7fffffff)
+            if hx >= 0x7ff00000 then
+                (* exp(+-inf) is inf or 0 *)
+                if xsb is 0 then x else 0.0 end
+            elsif {hx >= 0x40862E42} andif {x >> oThreshold} then infinity
+            elsif {hx >= 0x40862E42} andif {x << uThreshold} then 0.0
+            elsif {hx <= 0x3fd62e42} andif {hx < 0x3e300000} then 1.0 ++ x
+            else
+                let var k = 0
+                let var hi = 0.0
+                let var lo = 0.0
+                let var xr = x
+                if hx > 0x3fd62e42 then
+                    (* |x| > 0.5 ln2 *)
+                    if hx < 0x3FF0A2B2 then
+                        (* and |x| < 1.5 ln2 *)
+                        hi := if xsb is 0 then x -- ln2Hi else x ++ ln2Hi end
+                        lo := if xsb is 0 then ln2Lo else neg(ln2Lo) end
+                        k := {1 - xsb} - xsb
+                    else
+                        k := toInt({invln2 ** x} ++ {if xsb is 0 then 0.5 else ~0.5 end})
+                        let t = toReal(k)
+                        hi := x -- {t ** ln2Hi}
+                        lo := t ** ln2Lo
+                    end
+                    xr := hi -- lo
+                end
+                (* x is now in the primary range *)
+                let t = xr ** xr
+                let twopk = if k >= ~1021 then fromWords(shl(0x3ff + k 20) 0)
+                    else fromWords(shl({0x3ff + k} + 1000 20) 0)
+                    end
+                let c = xr -- {t ** {expP1 ++ {t ** {expP2 ++ {t ** {expP3 ++ {t ** {expP4 ++ {t ** expP5}}}}}}}}}
+                if k is 0 then 1.0 -- {{{xr ** c} // {c -- 2.0}} -- xr}
+                else
+                    let y = 1.0 -- {{lo -- {{xr ** c} // {2.0 -- c}}} -- hi}
+                    if k >= ~1021 then
+                        if k is 1024 then {y ** 2.0} ** twoTo1023 else y ** twopk end
+                    else {y ** twopk} ** twom1000
+                    end
+                end
+            end
+        end
+
+    (* e^x - 1, accurately near zero *)
+    let expm1(x0: Real): Real =
+        begin
+            let q1 = ~3.33333333333331316428e-02
+            let q2 = 1.58730158725481460165e-03
+            let q3 = ~7.93650757867487942473e-05
+            let q4 = 4.00821782732936239552e-06
+            let q5 = ~2.01099218183624371326e-07
+            let hs = high(x0)
+            let negative = hs < 0
+            let hx = band(hs 0x7fffffff)
+            if hx >= 0x7ff00000 then
+                if negative then ~1.0 else x0 end
+            elsif {hx >= 0x40862E42} andif {x0 >> oThreshold} then infinity
+            elsif {hx >= 0x4043687A} andif negative then
+                (* x < ~56 ln2: ~1 *)
+                ~1.0
+            elsif {hx <= 0x3fd62e42} andif {hx < 0x3c900000} then x0
+            else
+                let var k = 0
+                let var c = 0.0
+                let var x = x0
+                if hx > 0x3fd62e42 then
+                    (* |x| > 0.5 ln2 *)
+                    let var hi = 0.0
+                    let var lo = 0.0
+                    if hx < 0x3FF0A2B2 then
+                        if not(negative) then
+                            hi := x -- ln2Hi
+                            lo := ln2Lo
+                            k := 1
+                        else
+                            hi := x ++ ln2Hi
+                            lo := neg(ln2Lo)
+                            k := ~1
+                        end
+                    else
+                        k := toInt({invln2 ** x} ++ {if negative then ~0.5 else 0.5 end})
+                        let t = toReal(k)
+                        hi := x -- {t ** ln2Hi}
+                        lo := t ** ln2Lo
+                    end
+                    x := hi -- lo
+                    c := {hi -- x} -- lo
+                end
+                (* x is now in the primary range *)
+                let hfx = 0.5 ** x
+                let hxs = x ** hfx
+                let r1 = 1.0 ++ {hxs ** {q1 ++ {hxs ** {q2 ++ {hxs ** {q3 ++ {hxs ** {q4 ++ {hxs ** q5}}}}}}}}}
+                let t = 3.0 -- {r1 ** hfx}
+                let e = hxs ** {{r1 -- t} // {6.0 -- {x ** t}}}
+                if k is 0 then x -- {{x ** e} -- hxs}
+                else
+                    let twopk = fromWords(shl(0x3ff + k 20) 0)
+                    let e1 = {{x ** {e -- c}} -- c} -- hxs
+                    if k is ~1 then {0.5 ** {x -- e1}} -- 0.5
+                    elsif k is 1 then
+                        if x << ~0.25 then ~2.0 ** {e1 -- {x ++ 0.5}} else 1.0 ++ {2.0 ** {x -- e1}} end
+                    elsif {k <= ~2} orif {k > 56} then
+                        (* exp(x) - 1 suffices *)
+                        let y = 1.0 -- {e1 -- x}
+                        let y1 = if k is 1024 then {y ** 2.0} ** twoTo1023 else y ** twopk end
+                        y1 -- 1.0
+                    elsif k < 20 then
+                        (* 1 - 2^-k *)
+                        let t1 = fromWords(0x3ff00000 - shr(0x200000 k) 0)
+                        {t1 -- {e1 -- x}} ** twopk
+                    else
+                        (* 2^-k *)
+                        let t1 = fromWords(shl(0x3ff - k 20) 0)
+                        {{x -- {e1 ++ t1}} ++ 1.0} ** twopk
+                    end
+                end
+            end
+        end
+
+    (* exp(x) * 2^expt for ln(maxReal) <= x < 1454.91, without spurious
+     * overflow (__ldexp_exp over __frexp_exp); expt 0 or ~1 *)
+    let ldexpExp(x: Real expt: Int): Real =
+        begin
+            (* exp(x) is exp(x - k ln2) * 2^k, for a k that makes
+             * exp(k ln2) - 2^k small *)
+            let k = 1799
+            let kln2 = 1246.97177782734161156
+            let e = exponential(x -- kln2)
+            let hx = high(e)
+            let ex = {shr(hx 20) - {0x3ff + 1023}} + k
+            let scaled = withHigh(e bor(band(hx 0xfffff) shl(0x3ff + 1023 20)))
+            scaled ** fromWords(shl(0x3ff + {expt + ex} 20) 0)
+        end
+
+    let log(x0: Real): Real =
+        begin
+            let two54 = 1.80143985094819840000e+16
+            let lg1 = 6.666666666666735130e-01
+            let lg2 = 3.999999999940941908e-01
+            let lg3 = 2.857142874366239149e-01
+            let lg4 = 2.222219843214978396e-01
+            let lg5 = 1.818357216161805012e-01
+            let lg6 = 1.531383769920937332e-01
+            let lg7 = 1.479819860511658591e-01
+            if x0 <<= 0.0 then invalid()
+            elsif high(x0) >= 0x7ff00000 then x0
+            else
+                let var x = x0
+                let var hx = high(x)
+                let var k = 0
+                if hx < 0x00100000 then
+                    (* subnormal: scale up *)
+                    k := ~54
+                    x := x ** two54
+                    hx := high(x)
+                end
+                k := k + {shr(hx 20) - 1023}
+                hx := band(hx 0x000fffff)
+                let i = band(hx + 0x95f64 0x100000)
+                (* x or x/2 normalized *)
+                x := withHigh(x bor(hx word.toInt(word.xorBits(word.fromInt(i) word.fromInt(0x3ff00000)))))
+                k := k + shr(i 20)
+                let f = x -- 1.0
+                let dk = toReal(k)
+                if band(0x000fffff 2 + hx) < 3 then
+                    (* ~2^-20 <= f < 2^-20 *)
+                    if isZero(f) then
+                        if k is 0 then 0.0 else {dk ** ln2Hi} ++ {dk ** ln2Lo} end
+                    else
+                        let r = {f ** f} ** {0.5 -- {0.33333333333333333 ** f}}
+                        if k is 0 then f -- r else {dk ** ln2Hi} -- {{r -- {dk ** ln2Lo}} -- f} end
+                    end
+                else
+                    let s = f // {2.0 ++ f}
+                    let z = s ** s
+                    let w = z ** z
+                    let t1 = w ** {lg2 ++ {w ** {lg4 ++ {w ** lg6}}}}
+                    let t2 = z ** {lg1 ++ {w ** {lg3 ++ {w ** {lg5 ++ {w ** lg7}}}}}}
+                    let i1 = bor(hx - 0x6147a 0x6b851 - hx)
+                    let r = t2 ++ t1
+                    if i1 > 0 then
+                        let hfsq = {0.5 ** f} ** f
+                        if k is 0 then f -- {hfsq -- {s ** {hfsq ++ r}}}
+                        else {dk ** ln2Hi} -- {{hfsq -- {{s ** {hfsq ++ r}} ++ {dk ** ln2Lo}}} -- f}
+                        end
+                    elsif k is 0 then f -- {s ** {f -- r}}
+                    else {dk ** ln2Hi} -- {{{s ** {f -- r}} -- {dk ** ln2Lo}} -- f}
+                    end
+                end
+            end
+        end
+
+    (* ======================================================================
+     * 7. Hyperbolic functions (e_sinh.c, e_cosh.c, s_tanh.c)
+     * ====================================================================== *)
+
+    let sinh(x: Real): Real =
+        begin
+            let shuge = 1.0e307
+            let jx = high(x)
+            let ix = band(jx 0x7fffffff)
+            let h = if jx < 0 then ~0.5 else 0.5 end
+            if ix >= 0x7ff00000 then x
+            elsif ix < 0x40360000 then
+                (* |x| < 22 *)
+                if ix < 0x3e300000 then x
+                else
+                    let t = expm1(fabs(x))
+                    if ix < 0x3ff00000 then h ** {{2.0 ** t} -- {{t ** t} // {t ++ 1.0}}}
+                    else h ** {t ++ {t // {t ++ 1.0}}}
+                    end
+                end
+            elsif ix < 0x40862E42 then h ** exponential(fabs(x))
+            elsif ix <= 0x408633CE then {h ** 2.0} ** ldexpExp(fabs(x) ~1)
+            else x ** shuge
+            end
+        end
+
+    let cosh(x: Real): Real =
+        begin
+            let ix = band(high(x) 0x7fffffff)
+            if ix >= 0x7ff00000 then infinity
+            elsif ix < 0x3fd62e43 then
+                (* |x| < 0.5 ln2: 1 + expm1(|x|)^2 / (2 exp(|x|)) *)
+                let t = expm1(fabs(x))
+                let w = 1.0 ++ t
+                if ix < 0x3c800000 then w else 1.0 ++ {{t ** t} // {w ++ w}} end
+            elsif ix < 0x40360000 then
+                (* |x| < 22 *)
+                let t = exponential(fabs(x))
+                {0.5 ** t} ++ {0.5 // t}
+            elsif ix < 0x40862E42 then 0.5 ** exponential(fabs(x))
+            elsif ix <= 0x408633CE then ldexpExp(fabs(x) ~1)
+            else infinity
+            end
+        end
+
+    let tanh(x: Real): Real =
+        begin
+            let jx = high(x)
+            let ix = band(jx 0x7fffffff)
+            if ix >= 0x7ff00000 then
+                if jx >= 0 then 1.0 else ~1.0 end
+            elsif ix < 0x3e300000 then x
+            else
+                let z = if ix < 0x40360000 then
+                        (* |x| < 22 *)
+                        if ix >= 0x3ff00000 then
+                            let t = expm1(2.0 ** fabs(x))
+                            1.0 -- {2.0 // {t ++ 2.0}}
+                        else
+                            let t = expm1(~2.0 ** fabs(x))
+                            neg(t) // {t ++ 2.0}
+                        end
+                    else 1.0
+                    end
+                if jx >= 0 then z else neg(z) end
+            end
+        end
+
+    (* ======================================================================
+     * 8. Powers (e_pow.c)
+     * ====================================================================== *)
+
+    let overflow(s: Real): Real = {s ** huge} ** huge
+    let underflow(s: Real): Real = {s ** tiny} ** tiny
+
+    (* log2(|x|) as t1 + t2, t1's low word zero, for |x|'s high word ix
+     * (|y| <= 2^31) *)
+    Def Log2 = Tuple t1: Real t2: Real end
+
+    let powLog2(ax0: Real ix0: Int): Log2 =
+        begin
+            let two53 = 9007199254740992.0
+            let l1 = 5.99999999999994648725e-01
+            let l2 = 4.28571428578550184252e-01
+            let l3 = 3.33333329818377432918e-01
+            let l4 = 2.72728123808534006489e-01
+            let l5 = 2.30660745775561754067e-01
+            let l6 = 2.06975017800338417784e-01
+            let cp = 9.61796693925975554329e-01
+            let cpH = 9.61796700954437255859e-01
+            let cpL = ~7.02846165095275826516e-09
+            let var ax = ax0
+            let var ix = ix0
+            let var n = 0
+            if ix < 0x00100000 then
+                (* subnormal *)
+                ax := ax ** two53
+                n := n - 53
+                ix := high(ax)
+            end
+            n := n + {shr(ix 20) - 0x3ff}
+            let j = band(ix 0x000fffff)
+            (* the interval *)
+            ix := bor(j 0x3ff00000)
+            let var k = 0
+            if j <= 0x3988E then k := 0
+            elsif j < 0xBB67A then k := 1
+            else
+                k := 0
+                n := n + 1
+                ix := ix - 0x00100000
+            end
+            ax := withHigh(ax ix)
+            let bp = if k is 0 then 1.0 else 1.5 end
+            let dpH = if k is 0 then 0.0 else 5.84962487220764160156e-01 end
+            let dpL = if k is 0 then 0.0 else 1.35003920212974897128e-08 end
+            (* ss = sH + sL = (x - 1) / (x + 1) or (x - 1.5) / (x + 1.5) *)
+            let u = ax -- bp
+            let v = 1.0 // {ax ++ bp}
+            let ss = u ** v
+            let sH = withLow(ss 0)
+            (* tH = ax + bp, high *)
+            let tH = fromWords({bor(shr(ix 1) 0x20000000) + 0x00080000} + shl(k 18) 0)
+            let tL = ax -- {tH -- bp}
+            let sL = v ** {{u -- {sH ** tH}} -- {sH ** tL}}
+            (* log(ax) *)
+            let s2 = ss ** ss
+            let r0 = {s2 ** s2} ** {l1 ++ {s2 ** {l2 ++ {s2 ** {l3 ++ {s2 ** {l4 ++ {s2 ** {l5 ++ {s2 ** l6}}}}}}}}}}
+            let r = r0 ++ {sL ** {sH ++ ss}}
+            let s3 = sH ** sH
+            let tH1 = withLow({3.0 ++ s3} ++ r 0)
+            let tL1 = r -- {{tH1 -- 3.0} -- s3}
+            (* u1 + v1 = ss (1 + ...) *)
+            let u1 = sH ** tH1
+            let v1 = {sL ** tH1} ++ {tL1 ** ss}
+            (* 2 / (3 log2) (ss + ...) *)
+            let pH = withLow(u1 ++ v1 0)
+            let pL = v1 -- {pH -- u1}
+            let zH = cpH ** pH
+            let zL = {{cpL ** pH} ++ {pL ** cp}} ++ dpL
+            (* log2(ax) = (ss + ...) 2 / (3 log2) = n + dpH + zH + zL *)
+            let t = toReal(n)
+            let t1 = withLow({{zH ++ zL} ++ dpH} ++ t 0)
+            tuple let t1 = t1 let t2 = zL -- {{{t1 -- t} -- dpH} -- zH} end
+        end
+
+    (* s 2^(y (t1 + t2)), y (t1 + t2) the log2 of |x|^y *)
+    let powExp2(y: Real s: Real t1: Real t2: Real): Real =
+        begin
+            let lg2 = 6.93147180559945286227e-01
+            let lg2H = 6.93147182464599609375e-01
+            let lg2L = ~1.90465429995776804525e-09
+            (* ~(1024 - log2(ovfl + .5ulp)) *)
+            let ovt = 8.0085662595372944372e-17
+            (* y split into y1 + y2, (y1 + y2) (t1 + t2) *)
+            let y1 = withLow(y 0)
+            let pL = {{y -- y1} ** t1} ++ {y ** t2}
+            let pH0 = y1 ** t1
+            let z0 = pL ++ pH0
+            let j = high(z0)
+            let i = low(z0)
+            (* z0 >= 1024, or z0 <= ~1075 *)
+            if {j >= 0x40900000} andif {{j isnot 0x40900000} orif {i isnot 0}} then overflow(s)
+            elsif {j >= 0x40900000} andif {{pL ++ ovt} >> {z0 -- pH0}} then overflow(s)
+            elsif {j < 0x40900000} andif {band(j 0x7fffffff) >= 0x4090cc00}
+                andif {{j isnot {0xc090cc00 - 0x100000000}} orif {i isnot 0}} then underflow(s)
+            elsif {j < 0x40900000} andif {band(j 0x7fffffff) >= 0x4090cc00} andif {pL <<= {z0 -- pH0}} then
+                underflow(s)
+            else
+                (* 2^(pH + pL) *)
+                let ia = band(j 0x7fffffff)
+                let k = shr(ia 20) - 0x3ff
+                let var n = 0
+                let var pH = pH0
+                if ia > 0x3fe00000 then
+                    (* |z0| > 0.5: n = [z0 + 0.5] *)
+                    n := j + shr(0x00100000 k + 1)
+                    let k1 = shr(band(n 0x7fffffff) 20) - 0x3ff
+                    let t = fromWords(band(n bnot(shr(0x000fffff k1))) 0)
+                    n := shr(bor(band(n 0x000fffff) 0x00100000) 20 - k1)
+                    if j < 0 then n := 0 - n end
+                    pH := pH -- t
+                end
+                let t = withLow(pL ++ pH 0)
+                let u = t ** lg2H
+                let v = {{pL -- {t -- pH}} ** lg2} ++ {t ** lg2L}
+                let z = u ++ v
+                let w = v -- {z -- u}
+                let tt = z ** z
+                let t1a = z -- {tt ** {expP1 ++ {tt ** {expP2 ++ {tt ** {expP3 ++ {tt ** {expP4 ++ {tt ** expP5}}}}}}}}}
+                let r = {{z ** t1a} // {t1a -- 2.0}} -- {w ++ {z ** w}}
+                let z1 = 1.0 -- {r -- z}
+                let j1 = high(z1) + {n * 1048576}
+                let z2 = if shr(j1 20) <= 0 then scalbn(z1 n) else withHigh(z1 j1) end
+                s ** z2
+            end
+        end
+
+    let pow(x: Real y: Real): Real =
+        begin
+            let thrd = 3.3333333333333331e-01
+            let ivln2 = 1.44269504088896338700e+00
+            let ivln2H = 1.44269502162933349609e+00
+            let ivln2L = 1.92596299112661746887e-08
+            let hx = high(x)
+            let lx = low(x)
+            let hy = high(y)
+            let ly = low(y)
+            let ix = band(hx 0x7fffffff)
+            let iy = band(hy 0x7fffffff)
+            (* whether y is an integer, when x < 0: 0 not, 1 odd, 2 even *)
+            let var yisint = 0
+            if hx < 0 then
+                if iy >= 0x43400000 then yisint := 2
+                elsif iy >= 0x3ff00000 then
+                    let k = shr(iy 20) - 0x3ff
+                    if k > 20 then
+                        let j = shr(ly 52 - k)
+                        if shl(j 52 - k) is ly then yisint := 2 - band(j 1) end
+                    elsif ly is 0 then
+                        let j = shr(iy 20 - k)
+                        if shl(j 20 - k) is iy then yisint := 2 - band(j 1) end
+                    end
+                end
+            end
+            if bor(iy ly) is 0 then 1.0
+            elsif {hx is 0x3ff00000} andif {lx is 0} then 1.0
+            elsif {bor(ix lx) is 0} andif {hy < 0} then
+                (* a pole, as division by zero (quest_real_pow) *)
+                invalid()
+            elsif {ly is 0} andif {iy is 0x7ff00000} then
+                (* y is +-inf *)
+                if bor(ix - 0x3ff00000 lx) is 0 then 1.0
+                elsif ix >= 0x3ff00000 then
+                    (* (|x| > 1)^+-inf is inf or 0 *)
+                    if hy >= 0 then y else 0.0 end
+                elsif hy < 0 then neg(y)
+                else 0.0
+                end
+            elsif {ly is 0} andif {iy is 0x3ff00000} then
+                if hy < 0 then 1.0 // x else x end
+            elsif {ly is 0} andif {hy is 0x40000000} then x ** x
+            elsif {ly is 0} andif {hy is 0x3fe00000} andif {hx >= 0} then real.sqrt(x)
+            elsif {lx is 0} andif {{ix is 0x7ff00000} orif {ix is 0} orif {ix is 0x3ff00000}} then
+                (* x is +-0, +-inf, or +-1 *)
+                let var z = fabs(x)
+                if hy < 0 then z := 1.0 // z end
+                if hx < 0 then
+                    if bor(ix - 0x3ff00000 yisint) is 0 then
+                        (* (~1)^non-integer *)
+                        z := invalid()
+                    elsif yisint is 1 then z := neg(z)
+                    end
+                end
+                z
+            elsif {hx < 0} andif {yisint is 0} then
+                (* (x < 0)^non-integer *)
+                invalid()
+            else
+                (* s, the result's sign: ~1 for a negative x to an odd power *)
+                let s = if {hx < 0} andif {yisint is 1} then ~1.0 else 1.0 end
+                if {iy > 0x41e00000} andif {iy > 0x43f00000} andif {ix <= 0x3fefffff} then
+                    (* |y| > 2^64: overflow or underflow *)
+                    if hy < 0 then infinity else 0.0 end
+                elsif {iy > 0x41e00000} andif {iy > 0x43f00000} andif {ix >= 0x3ff00000} then
+                    if hy > 0 then infinity else 0.0 end
+                elsif {iy > 0x41e00000} andif {ix < 0x3fefffff} then
+                    (* |y| > 2^31, and x not near 1 *)
+                    if hy < 0 then overflow(s) else underflow(s) end
+                elsif {iy > 0x41e00000} andif {ix > 0x3ff00000} then
+                    if hy > 0 then overflow(s) else underflow(s) end
+                elsif iy > 0x41e00000 then
+                    (* |1 - x| <= 2^-20: log(x) by x - x^2/2 + x^3/3 - x^4/4 *)
+                    let t = fabs(x) -- 1.0
+                    let w = {t ** t} ** {0.5 -- {t ** {thrd -- {t ** 0.25}}}}
+                    let u = ivln2H ** t
+                    let v = {t ** ivln2L} -- {w ** ivln2}
+                    let t1 = withLow(u ++ v 0)
+                    powExp2(y s t1 {v -- {t1 -- u}})
+                else
+                    let l = powLog2(fabs(x) ix)
+                    powExp2(y s l.t1 l.t2)
+                end
+            end
+        end
+end

@@ -19,14 +19,9 @@ CODEGEN = ROOT / "questlang" / "wasm" / "codegen.mod.quest"
 
 # The externals the table compiles to a failure when called, by what they wait for
 LACKING = {
-    # The mathematical functions, ported to Quest in milestone 4 (section 4.3)
-    "quest_real_acos", "quest_real_asin", "quest_real_atan", "quest_real_atan2", "quest_real_cos",
-    "quest_real_cosh", "quest_real_exp", "quest_real_exponential", "quest_real_log", "quest_real_sin",
-    "quest_real_sinh", "quest_real_tan", "quest_real_tanh",
-    # real.format's printf styles, the rest of step 8
-    "quest_real_format",
-    # dynamic's serialization, milestone 4
-    "quest_dynamic_copy", "quest_dynamic_extern", "quest_dynamic_intern",
+    # dynamic's serialization, which the module's wasm variant writes in Quest
+    # (step 18), so that the table never sees them
+    "quest_dynamic_extern", "quest_dynamic_intern",
 }
 
 EXTERNAL = re.compile(r'\blet\s+\w+[^=]*=\s*external\s+"([^"]+)"')
@@ -52,8 +47,9 @@ class WasmExternalsTest(unittest.TestCase):
         names, prefixes = table_symbols()
 
         def compiled(symbol: str) -> bool:
-            # an exception value is the base's, by its name
-            return (symbol in names or symbol.startswith("(&quest_exc_")
+            # an exception value is the base's, by its name, and a wasm. symbol,
+            # in a module's wasm variant, is one of the backend's intrinsics
+            return (symbol in names or symbol.startswith("(&quest_exc_") or symbol.startswith("wasm.")
                     or any(symbol.startswith(p) for p in prefixes))
 
         symbols = library_externals()

@@ -1,0 +1,548 @@
+import realmath = "util/realmath" : util/RealMath
+import real = "real" : RealOp
+import conv = "conv" : Conv
+import word = "word" : Word
+import writer = "writer" : Writer
+main {
+  funs {
+    fun show(s: String): Ok {
+      let %1: writer.T = member writer.output @23:26
+      do call writer.putString(%1, s) @23:9
+      let %2: writer.T = member writer.output @24:26
+      let %3: Ok = call writer.putString(%2, "\n") @24:9
+      return %3
+    }
+  }
+  funs {
+    fun outcome(f: Fun(x: Real): Real, x: Real): Outcome {
+      join k1(r: Outcome) {
+        return r
+      } in {
+        let %4: Exception = member real.error @32:10
+        try catching (%4) {
+          let raised: Bool = false @31:28
+          let value: Real = call f(x) @31:46
+          let %5: Tuple raised: Bool value: Real end = tuple(raised, value) @31:9
+          jump k1(%5) @31:5
+        } handle (e: Exception) {
+          let %6: Bool = prim is(e, %4) @31:5
+          if %6 { @31:5
+            let raised.1: Bool = true @32:45
+            let value.1: Real = 0.0 @32:62
+            let %7: Tuple raised: Bool value: Real end = tuple(raised.1, value.1) @32:26
+            jump k1(%7) @31:5
+          } else {
+            reraise e @31:5
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun outcome2(f.1: Fun(x: Real y: Real): Real, x.1: Real, y: Real): Outcome {
+      join k2(r.1: Outcome) {
+        return r.1
+      } in {
+        let %8: Exception = member real.error @37:10
+        try catching (%8) {
+          let raised.2: Bool = false @36:28
+          let value.2: Real = call f.1(x.1, y) @36:46
+          let %9: Tuple raised: Bool value: Real end = tuple(raised.2, value.2) @36:9
+          jump k2(%9) @36:5
+        } handle (e.1: Exception) {
+          let %10: Bool = prim is(e.1, %8) @36:5
+          if %10 { @36:5
+            let raised.3: Bool = true @37:45
+            let value.3: Real = 0.0 @37:62
+            let %11: Tuple raised: Bool value: Real end = tuple(raised.3, value.3) @37:26
+            jump k2(%11) @36:5
+          } else {
+            reraise e.1 @36:5
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun place(r.2: Real): Int {
+      let %12: word.T = call word.fromReal(r.2) @43:28
+      let b: Int = call word.toInt(%12) @43:17
+      join k3(r.3: Int) {
+        return r.3
+      } in {
+        let %13: Bool = prim >=(b, 0) @44:12
+        if %13 { @44:9
+          jump k3(b) @44:9
+        } else {
+          let %14: word.T = call word.fromReal(r.2) @44:59
+          let %15: word.T = call word.fromInt(9223372036854775807) @44:76
+          let %16: word.T = call word.andBits(%14, %15) @44:46
+          let %17: Int = call word.toInt(%16) @44:35
+          let %18: Int = prim -(0, %17) @44:31
+          jump k3(%18) @44:9
+        }
+      }
+    }
+  }
+  funs {
+    fun agree(a: Outcome, b.1: Outcome, bound: Int): Bool {
+      join k4(r.4: Bool) {
+        return r.4
+      } in {
+        join k5(r.5: Bool) {
+          if r.5 { @50:5
+            join k6(r.6: Bool) {
+              jump k4(r.6) @50:5
+            } in {
+              let %19: Bool = tuple_field(a, 0) @50:36
+              if %19 { @50:36
+                let %20: Bool = tuple_field(b.1, 0) @50:51
+                jump k6(%20) @50:36
+              } else {
+                jump k6(false) @50:36
+              }
+            }
+          } else {
+            let %21: Real = tuple_field(a, 1) @52:23
+            let %22: Int = call place(%21) @52:17
+            let %23: Real = tuple_field(b.1, 1) @52:40
+            let %24: Int = call place(%23) @52:34
+            let d: Int = prim -(%22, %24) @52:17
+            join k7(r.7: Bool) {
+              jump k4(r.7) @50:5
+            } in {
+              let %25: Bool = prim <=(d, bound) @53:10
+              if %25 { @53:10
+                let %26: Int = prim -(0, bound) @53:35
+                let %27: Bool = prim >=(d, %26) @53:29
+                jump k7(%27) @53:10
+              } else {
+                jump k7(false) @53:10
+              }
+            }
+          }
+        } in {
+          let %28: Bool = tuple_field(a, 0) @50:8
+          if %28 { @50:8
+            jump k5(true) @50:8
+          } else {
+            let %29: Bool = tuple_field(b.1, 0) @50:22
+            jump k5(%29) @50:8
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun text(o: Outcome): String {
+      join k8(r.8: String) {
+        return r.8
+      } in {
+        let %30: Bool = tuple_field(o, 0) @56:35
+        if %30 { @56:32
+          jump k8("real.error") @56:32
+        } else {
+          let %31: Real = tuple_field(o, 1) @56:77
+          let %32: String = call conv.real(%31) @56:67
+          jump k8(%32) @56:32
+        }
+      }
+    }
+  }
+  let %33: word.T = call word.fromInt(20261114) @59:22
+  let state: Array(word.T) = array(%33) @59:13
+  funs {
+    fun random(): word.T {
+      let %34: word.T = index(state, 0) @62:30
+      let %35: word.T = call word.fromInt(-7046029254386353131) @62:39
+      let %36: word.T = call word.add(%34, %35) @62:21
+      store state[0] := %36 @62:9
+      let %37: word.T = index(state, 0) @63:21
+      var z: word.T = %37 @63:9
+      let %38: word.T = call word.shift(z, -30) @64:38
+      let %39: word.T = call word.xorBits(z, %38) @64:23
+      let %40: word.T = call word.fromInt(-4658895280553007687) @64:57
+      let %41: word.T = call word.mul(%39, %40) @64:14
+      z := %41 @64:9
+      let %42: word.T = call word.shift(z, -27) @65:38
+      let %43: word.T = call word.xorBits(z, %42) @65:23
+      let %44: word.T = call word.fromInt(-7723592293110705685) @65:57
+      let %45: word.T = call word.mul(%43, %44) @65:14
+      z := %45 @65:9
+      let %46: word.T = call word.shift(z, -31) @66:24
+      let %47: word.T = call word.xorBits(z, %46) @66:9
+      return %47
+    }
+  }
+  funs rec {
+    fun anyReal(): Real {
+      let w: word.T = call random() @72:17
+      join k9(r.9: Real) {
+        return r.9
+      } in {
+        let %48: word.T = call word.extract(w, 52, 11) @73:23
+        let %49: Int = call word.toInt(%48) @73:12
+        let %50: Bool = prim is(%49, 2047) @73:12
+        if %50 { @73:9
+          let %51: Real = call anyReal() @73:59
+          jump k9(%51) @73:9
+        } else {
+          let %52: Real = call word.toReal(w) @73:74
+          jump k9(%52) @73:9
+        }
+      }
+    }
+  }
+  funs {
+    fun between(a.1: Real, b.2: Real): Real {
+      let %53: word.T = call random() @79:48
+      let %54: word.T = call word.shift(%53, -11) @79:37
+      let %55: Int = call word.toInt(%54) @79:26
+      let %56: Real = call real.int(%55) @79:17
+      let u: Real = prim **(%56, 1.1102230246251565e-16) @79:17
+      let %57: Real = prim --(b.2, a.1) @80:16
+      let %58: Real = prim **(%57, u) @80:16
+      let %59: Real = prim ++(a.1, %58) @80:9
+      return %59
+    }
+  }
+  let %60: Real = prim **(-1.0, 0.0) @86:10
+  let %61: Real = member real.infinity @88:83
+  let %62: Real = member real.infinity @89:13
+  let %63: Real = prim --(0.0, %62) @89:6
+  let edges: Array(Real) = array(0.0, %60, 1.0, -1.0, 0.5, -0.5, 2.0, 1e-300, -1e-300, 5e-324, 1e-20, 1e-08, 0.1, 0.785398163397448, 1.5707963267948966, 3.141592653589793, 4.71238898038469, 6.283185307179586, 10.0, 22.0, 100.0, 709.0, 709.78, 710.0, 711.0, -709.0, -745.0, -746.0, 1000000.0, 1000000000000000.0, 1e+22, 1e+300, 1.7976931348623157e+308, %61, %63, 0.9999999999999999, 1.0000000000000002, 0.975, 0.4375, 2.4375, 1.1875) @85:13
+  funs {
+    fun values(lo: Real, hi: Real): Array(Real) {
+      let n: Int = 400 @94:17
+      let %64: Int = prim extent(edges) @95:27
+      let %65: Int = prim *(2, n) @95:43
+      let %66: Int = prim +(%64, %65) @95:27
+      let vs: Array(Real) = array_rep(%66, 0.0) @95:18
+      let %67: Int = prim extent(edges) @96:24
+      let %68: Int = prim -(%67, 1) @96:24
+      var i: Int = 0 @96:9
+      let %69: Bool = prim <=(i, %68) @96:9
+      if %69 { @96:9
+        loop L1 {
+          let i.1: Int = i @96:9
+          let %70: Real = index(edges, i.1) @96:53
+          store vs[i.1] := %70 @96:44
+          let %71: Bool = prim is(i, %68) @96:9
+          if %71 { @96:9
+            break L1 @96:9
+          }
+          let %72: Int = prim +(i, 1) @96:9
+          i := %72 @96:9
+        }
+      }
+      let %73: Int = prim -(n, 1) @97:24
+      var i.2: Int = 0 @97:9
+      let %74: Bool = prim <=(i.2, %73) @97:9
+      if %74 { @97:9
+        loop L2 {
+          let i.3: Int = i.2 @97:9
+          let %75: Int = prim extent(edges) @98:16
+          let %76: Int = prim +(%75, i.3) @98:16
+          let %77: Real = call anyReal() @98:37
+          store vs[%76] := %77 @98:13
+          let %78: Int = prim extent(edges) @99:17
+          let %79: Int = prim +(%78, n) @99:17
+          let %80: Int = prim +(%79, i.3) @99:17
+          let %81: Real = call between(lo, hi) @99:43
+          store vs[%80] := %81 @99:13
+          let %82: Bool = prim is(i.2, %73) @97:9
+          if %82 { @97:9
+            break L2 @97:9
+          }
+          let %83: Int = prim +(i.2, 1) @97:9
+          i.2 := %83 @97:9
+        }
+      }
+      return vs
+    }
+  }
+  funs {
+    fun check(name: String, f.2: Fun(x: Real): Real, g: Fun(x: Real): Real, bound.1: Int, lo.1: Real, hi.1: Real): Ok {
+      let vs.1: Array(Real) = call values(lo.1, hi.1) @106:18
+      var fails: Int = 0 @107:9
+      let %84: Int = prim extent(vs.1) @108:24
+      let %85: Int = prim -(%84, 1) @108:24
+      var i.4: Int = 0 @108:9
+      let %86: Bool = prim <=(i.4, %85) @108:9
+      if %86 { @108:9
+        loop L3 {
+          let i.5: Int = i.4 @108:9
+          let %87: Real = index(vs.1, i.5) @109:31
+          let a.2: Outcome = call outcome(f.2, %87) @109:21
+          let %88: Real = index(vs.1, i.5) @110:31
+          let b.3: Outcome = call outcome(g, %88) @110:21
+          let %89: Bool = call agree(a.2, b.3, bound.1) @111:20
+          let %90: Bool = prim not(%89) @111:16
+          if %90 { @111:13
+            let %91: Int = prim +(fails, 1) @112:26
+            fails := %91 @112:17
+            let %92: Real = index(vs.1, i.5) @113:55
+            let %93: String = call conv.real(%92) @113:45
+            let %94: String = call text(a.2) @113:76
+            let %95: String = call text(b.3) @113:99
+            let %96: String = prim <>(", not ", %95) @113:87
+            let %97: String = prim <>(%94, %96) @113:76
+            let %98: String = prim <>(") is ", %97) @113:65
+            let %99: String = prim <>(%93, %98) @113:45
+            let %100: String = prim <>("(", %99) @113:38
+            let %101: String = prim <>(name, %100) @113:30
+            let %102: String = prim <>("  ", %101) @113:22
+            do call show(%102) @113:17
+          }
+          let %103: Bool = prim is(i.4, %85) @108:9
+          if %103 { @108:9
+            break L3 @108:9
+          }
+          let %104: Int = prim +(i.4, 1) @108:9
+          i.4 := %104 @108:9
+        }
+      }
+      let %105: Int = prim extent(vs.1) @116:39
+      let %106: String = call conv.int(%105) @116:30
+      let %107: String = call conv.int(bound.1) @116:74
+      let %108: String = call conv.int(fails) @117:16
+      let %109: String = prim <>(" ulp, disagreements: ", %108) @116:93
+      let %110: String = prim <>(%107, %109) @116:74
+      let %111: String = prim <>(" values within ", %110) @116:53
+      let %112: String = prim <>(%106, %111) @116:30
+      let %113: String = prim <>(": ", %112) @116:22
+      let %114: String = prim <>(name, %113) @116:14
+      let %115: Ok = call show(%114) @116:9
+      return %115
+    }
+  }
+  do call show("1. functions of one argument") @120:1
+  let %116: Fun(x: Real): Real = member realmath.sin @121:13
+  let %117: Fun(r: Real): Real = member real.sin @121:26
+  do call check("sin", %116, %117, 1, -10.0, 10.0) @121:1
+  let %118: Fun(x: Real): Real = member realmath.cos @122:13
+  let %119: Fun(r: Real): Real = member real.cos @122:26
+  do call check("cos", %118, %119, 1, -10.0, 10.0) @122:1
+  let %120: Fun(x: Real): Real = member realmath.tan @123:13
+  let %121: Fun(r: Real): Real = member real.tan @123:26
+  do call check("tan", %120, %121, 2, -10.0, 10.0) @123:1
+  let %122: Fun(x: Real): Real = member realmath.sin @124:20
+  let %123: Fun(r: Real): Real = member real.sin @124:33
+  do call check("sin, large", %122, %123, 1, -1000000000.0, 1000000000.0) @124:1
+  let %124: Fun(x: Real): Real = member realmath.asin @125:14
+  let %125: Fun(r: Real): Real = member real.asin @125:28
+  do call check("asin", %124, %125, 1, -1.0, 1.0) @125:1
+  let %126: Fun(x: Real): Real = member realmath.acos @126:14
+  let %127: Fun(r: Real): Real = member real.acos @126:28
+  do call check("acos", %126, %127, 1, -1.0, 1.0) @126:1
+  let %128: Fun(x: Real): Real = member realmath.atan @127:14
+  let %129: Fun(r: Real): Real = member real.atan @127:28
+  do call check("atan", %128, %129, 1, -10.0, 10.0) @127:1
+  let %130: Fun(x: Real): Real = member realmath.exponential @128:21
+  let %131: Fun(r: Real): Real = member real.exponential @128:42
+  do call check("exponential", %130, %131, 1, -750.0, 750.0) @128:1
+  let %132: Fun(x: Real): Real = member realmath.exponential @129:28
+  let %133: Fun(r: Real): Real = member real.exponential @129:49
+  do call check("exponential, small", %132, %133, 1, -1.0, 1.0) @129:1
+  let %134: Fun(x: Real): Real = member realmath.log @130:13
+  let %135: Fun(r: Real): Real = member real.log @130:26
+  do call check("log", %134, %135, 1, 0.0, 10.0) @130:1
+  let %136: Fun(x: Real): Real = member realmath.log @131:21
+  let %137: Fun(r: Real): Real = member real.log @131:34
+  do call check("log, near 1", %136, %137, 1, 0.999, 1.001) @131:1
+  let %138: Fun(x: Real): Real = member realmath.sinh @132:14
+  let %139: Fun(r: Real): Real = member real.sinh @132:28
+  do call check("sinh", %138, %139, 2, -720.0, 720.0) @132:1
+  let %140: Fun(x: Real): Real = member realmath.sinh @133:21
+  let %141: Fun(r: Real): Real = member real.sinh @133:35
+  do call check("sinh, small", %140, %141, 2, -2.0, 2.0) @133:1
+  let %142: Fun(x: Real): Real = member realmath.cosh @134:14
+  let %143: Fun(r: Real): Real = member real.cosh @134:28
+  do call check("cosh", %142, %143, 2, -720.0, 720.0) @134:1
+  let %144: Fun(x: Real): Real = member realmath.cosh @135:21
+  let %145: Fun(r: Real): Real = member real.cosh @135:35
+  do call check("cosh, small", %144, %145, 2, -2.0, 2.0) @135:1
+  let %146: Fun(x: Real): Real = member realmath.tanh @136:14
+  let %147: Fun(r: Real): Real = member real.tanh @136:28
+  do call check("tanh", %146, %147, 2, -25.0, 25.0) @136:1
+  funs {
+    fun check2(name.1: String, f.3: Fun(x: Real y: Real): Real, g.1: Fun(x: Real y: Real): Real, bound.2: Int, xs: Array(Real), ys: Array(Real)): Ok {
+      var fails.1: Int = 0 @142:9
+      var count: Int = 0 @143:9
+      let %148: Int = prim extent(xs) @144:24
+      let %149: Int = prim -(%148, 1) @144:24
+      var i.6: Int = 0 @144:9
+      let %150: Bool = prim <=(i.6, %149) @144:9
+      if %150 { @144:9
+        loop L4 {
+          let i.7: Int = i.6 @144:9
+          let %151: Int = prim extent(ys) @145:28
+          let %152: Int = prim -(%151, 1) @145:28
+          var j: Int = 0 @145:13
+          let %153: Bool = prim <=(j, %152) @145:13
+          if %153 { @145:13
+            loop L5 {
+              let j.1: Int = j @145:13
+              let %154: Real = index(xs, i.7) @146:36
+              let %155: Real = index(ys, j.1) @146:42
+              let a.3: Outcome = call outcome2(f.3, %154, %155) @146:25
+              let %156: Real = index(xs, i.7) @147:36
+              let %157: Real = index(ys, j.1) @147:42
+              let b.4: Outcome = call outcome2(g.1, %156, %157) @147:25
+              let %158: Int = prim +(count, 1) @148:26
+              count := %158 @148:17
+              let %159: Bool = call agree(a.3, b.4, bound.2) @149:24
+              let %160: Bool = prim not(%159) @149:20
+              if %160 { @149:17
+                let %161: Int = prim +(fails.1, 1) @150:30
+                fails.1 := %161 @150:21
+                let %162: Real = index(xs, i.7) @151:59
+                let %163: String = call conv.real(%162) @151:49
+                let %164: Real = index(ys, j.1) @151:86
+                let %165: String = call conv.real(%164) @151:76
+                let %166: String = call text(a.3) @151:107
+                let %167: String = call text(b.4) @152:40
+                let %168: String = prim <>(", not ", %167) @152:28
+                let %169: String = prim <>(%166, %168) @151:107
+                let %170: String = prim <>(") is ", %169) @151:96
+                let %171: String = prim <>(%165, %170) @151:76
+                let %172: String = prim <>(" ", %171) @151:69
+                let %173: String = prim <>(%163, %172) @151:49
+                let %174: String = prim <>("(", %173) @151:42
+                let %175: String = prim <>(name.1, %174) @151:34
+                let %176: String = prim <>("  ", %175) @151:26
+                do call show(%176) @151:21
+              }
+              let %177: Bool = prim is(j, %152) @145:13
+              if %177 { @145:13
+                break L5 @145:13
+              }
+              let %178: Int = prim +(j, 1) @145:13
+              j := %178 @145:13
+            }
+          }
+          let %179: Bool = prim is(i.6, %149) @144:9
+          if %179 { @144:9
+            break L4 @144:9
+          }
+          let %180: Int = prim +(i.6, 1) @144:9
+          i.6 := %180 @144:9
+        }
+      }
+      let %181: String = call conv.int(count) @156:30
+      let %182: String = call conv.int(bound.2) @156:69
+      let %183: String = call conv.int(fails.1) @157:16
+      let %184: String = prim <>(" ulp, disagreements: ", %183) @156:88
+      let %185: String = prim <>(%182, %184) @156:69
+      let %186: String = prim <>(" pairs within ", %185) @156:49
+      let %187: String = prim <>(%181, %186) @156:30
+      let %188: String = prim <>(": ", %187) @156:22
+      let %189: String = prim <>(name.1, %188) @156:14
+      let %190: Ok = call show(%189) @156:9
+      return %190
+    }
+  }
+  funs {
+    fun randoms(n.1: Int, lo.2: Real, hi.2: Real): Array(Real) {
+      let vs.2: Array(Real) = array_rep(n.1, 0.0) @162:18
+      let %191: Int = prim -(n.1, 1) @163:24
+      var i.8: Int = 0 @163:9
+      let %192: Bool = prim <=(i.8, %191) @163:9
+      if %192 { @163:9
+        loop L6 {
+          let i.9: Int = i.8 @163:9
+          let %193: Real = call between(lo.2, hi.2) @163:42
+          store vs.2[i.9] := %193 @163:33
+          let %194: Bool = prim is(i.8, %191) @163:9
+          if %194 { @163:9
+            break L6 @163:9
+          }
+          let %195: Int = prim +(i.8, 1) @163:9
+          i.8 := %195 @163:9
+        }
+      }
+      return vs.2
+    }
+  }
+  funs {
+    fun integers(n.2: Int, lo.3: Int, hi.3: Int): Array(Real) {
+      let vs.3: Array(Real) = array_rep(n.2, 0.0) @169:18
+      let %196: Int = prim -(n.2, 1) @170:24
+      var i.10: Int = 0 @170:9
+      let %197: Bool = prim <=(i.10, %196) @170:9
+      if %197 { @170:9
+        loop L7 {
+          let i.11: Int = i.10 @170:9
+          let %198: Real = call real.int(lo.3) @170:70
+          let %199: Real = call real.int(hi.3) @170:83
+          let %200: Real = call between(%198, %199) @170:62
+          let %201: Int = call real.floor(%200) @170:51
+          let %202: Real = call real.int(%201) @170:42
+          store vs.3[i.11] := %202 @170:33
+          let %203: Bool = prim is(i.10, %196) @170:9
+          if %203 { @170:9
+            break L7 @170:9
+          }
+          let %204: Int = prim +(i.10, 1) @170:9
+          i.10 := %204 @170:9
+        }
+      }
+      return vs.3
+    }
+  }
+  funs {
+    fun anyReals(n.3: Int): Array(Real) {
+      let vs.4: Array(Real) = array_rep(n.3, 0.0) @176:18
+      let %205: Int = prim -(n.3, 1) @177:24
+      var i.12: Int = 0 @177:9
+      let %206: Bool = prim <=(i.12, %205) @177:9
+      if %206 { @177:9
+        loop L8 {
+          let i.13: Int = i.12 @177:9
+          let %207: Real = call anyReal() @177:42
+          store vs.4[i.13] := %207 @177:33
+          let %208: Bool = prim is(i.12, %205) @177:9
+          if %208 { @177:9
+            break L8 @177:9
+          }
+          let %209: Int = prim +(i.12, 1) @177:9
+          i.12 := %209 @177:9
+        }
+      }
+      return vs.4
+    }
+  }
+  do call show("2. functions of two arguments") @181:1
+  let %210: Fun(y: Real x: Real): Real = member realmath.atan2 @182:16
+  let %211: Fun(y: Real x: Real): Real = member real.atan2 @182:31
+  do call check2("atan2", %210, %211, 1, edges, edges) @182:1
+  let %212: Fun(y: Real x: Real): Real = member realmath.atan2 @183:24
+  let %213: Fun(y: Real x: Real): Real = member real.atan2 @183:39
+  let %214: Array(Real) = call randoms(30, -10.0, 10.0) @183:52
+  let %215: Array(Real) = call randoms(30, -10.0, 10.0) @183:75
+  do call check2("atan2, random", %212, %213, 1, %214, %215) @183:1
+  let %216: Fun(x: Real y: Real): Real = member realmath.pow @184:14
+  let %217: Fun(a: Real b: Real): Real = member real.exp @184:27
+  do call check2("pow", %216, %217, 2, edges, edges) @184:1
+  let %218: Fun(x: Real y: Real): Real = member realmath.pow @185:22
+  let %219: Fun(a: Real b: Real): Real = member real.exp @185:35
+  let %220: Array(Real) = call randoms(30, 0.0, 10.0) @185:46
+  let %221: Array(Real) = call randoms(30, -50.0, 50.0) @185:67
+  do call check2("pow, random", %218, %219, 2, %220, %221) @185:1
+  let %222: Fun(x: Real y: Real): Real = member realmath.pow @186:34
+  let %223: Fun(a: Real b: Real): Real = member real.exp @186:47
+  let %224: Array(Real) = call randoms(30, -10.0, 10.0) @186:58
+  let %225: Array(Real) = call integers(30, -40, 40) @186:81
+  do call check2("pow, integral exponents", %222, %223, 2, %224, %225) @186:1
+  let %226: Fun(x: Real y: Real): Real = member realmath.pow @187:25
+  let %227: Fun(a: Real b: Real): Real = member real.exp @187:38
+  let %228: Array(Real) = call anyReals(30) @187:49
+  let %229: Array(Real) = call anyReals(30) @187:62
+  do call check2("pow, any reals", %226, %227, 2, %228, %229) @187:1
+  let %230: Fun(x: Real y: Real): Real = member realmath.pow @188:22
+  let %231: Fun(a: Real b: Real): Real = member real.exp @188:35
+  let %232: Array(Real) = call randoms(30, 0.9999999, 1.0000001) @188:46
+  let %233: Array(Real) = call randoms(30, -1000000000.0, 1000000000.0) @188:78
+  do call check2("pow, near 1", %230, %231, 2, %232, %233) @188:1
+}
+
