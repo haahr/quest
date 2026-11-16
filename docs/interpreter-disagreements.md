@@ -10,15 +10,16 @@ None of the three is new. The release (3a45d707, 2026-11-13) and the bootstrap f
 were first recorded through the bootstrap's `--update-golden`, whose summary did not show the interpreter phases
 failing; `tools/check` was the first full run.
 
-In each case compiled code follows the rule the language documents, so the interpreters are the ones to change. Each
-needs both interpreters changed (two-compilers policy): the bootstrap's (`bootstrap/python/quest/interpreter`,
-`values`) and the self-hosted one (`questlang/interpreter`).
+**Resolved 2026-11-15** on main, each in the direction given under "Resolution" below: the interpreters changed for 1,
+compiled code for 2 and 3. The programs here, and the tests each resolution names, now give one answer everywhere.
+The wasm branch still needs the runtime half of 2 and 3 (its `isSubtype` and its printer), after which its two
+step 26 tests can drop their interpreter skips.
 
-| | Compiled code | Interpreters (both) |
-|---|---|---|
-| 1. An option key whose `var` component changed, in an identity map | `kept` | `lost` |
-| 2. `dynamic.be` at a function type whose quantifier's bound differs | `dynamic.error` | `accepted` |
-| 3. Echo of a nested auto value's reference to the outer parameter | `a2=<hidden>` | `a2=6` |
+| | Compiled code | Interpreters (both) | Now |
+|---|---|---|---|
+| 1. An option key whose `var` component changed, in an identity map | `kept` | `lost` | `kept` |
+| 2. `dynamic.be` at a function type whose quantifier's bound differs | `dynamic.error` | `accepted` | `accepted` |
+| 3. Echo of a nested auto value's reference to the outer parameter | `a2=<hidden>` | `a2=6` | `a2=6` |
 
 ## 1. An option's identity hash with a `var` component
 
@@ -45,9 +46,11 @@ not. The store changes the hash, and the map no longer finds its key, though `m 
 - `bootstrap/python/quest/interpreter/builtins.py`, `_quest_identity_hash`: the same branch
   (`payload.elements[0]`).
 
-**Fix:** hash by the single-word rule, which needs the option's type (whether the component is `var`, and whether
-the other cases have components), as compiled code's identity hash takes it (`quest_identity_hash(t, x)`). The
-interpreters' `is` on options should be checked against the same rule.
+**Resolution:** the interpreters' `quest_identity_hash` takes its type argument, resolved (`builtins.callExternal`,
+`call_external`: an external call passes its type arguments, as compiled code passes descriptors), and hashes options
+and variants by the rule `is` uses at that type (`reduce.optionIdentity`, `variantCases`). An option or variant not
+compared by content hashes by its object. Test: `language/option_identity` §10, which also covers a variant holding
+such an option.
 
 ## 2. A quantifier's bound in run-time subtyping
 
@@ -66,12 +69,23 @@ writer.putString(writer.output try
     end)
 ```
 
-**The rule** (C's `quest_is_subtype` for function types; the wasm runtime's `isSubtype` since step 26): two
-function types' quantifiers must have equal bounds.
+**The rule** the WASM session took was C's `quest_is_subtype`, which required equal bounds; the wasm runtime's
+`isSubtype` follows it since step 26. But that rule was C's alone (docs/c-representation.md). The language's rule,
+Cardelli's [TIncl Π], takes bounds contravariantly, and both type checkers do: `let g: All(A <: Big x: A) A = idS`
+compiles. The interpreters' run-time subtyping is the checkers' own, so they agreed with static typing and compiled
+code did not.
 
-**The interpreters** accept a bound taken contravariantly (`Small` where `Big` is asked), as the wasm runtime did
-before step 26 (wasm-review.md §2.4, 6). The interpreters' run-time subtyping, which `dynamic.be` calls, should
-compare bounds both ways.
+Nor was it only bounds: C compared the parameter and result types with a type parameter opaque, never a subtype of its
+bound. So `dynamic.be(:All(A <: Small x: A) Int dynamic.new(:All(A <: Small x: Small) Int f))` was refused by compiled
+code, with equal bounds, and accepted by the interpreters and by static typing.
+
+**Resolution** (the user's choice: the static rule): `quest_is_subtype` compares bounds contravariantly and the bodies
+under the quantifiers, as one binder per quantifier with the supertype's bound, where a type parameter is a subtype of
+its bound. Each side has its own scope of binders, since a bound is described under fewer binders than the type it is
+compared with; the trail records the scopes with each pair. Auto types' components are compared under one binder with
+the subtype's bound, as the checkers do. Like the checkers, a proof may compare only so many polymorphic function
+types (fuel), since full F<: is undecidable. Test: `language/dynamic_quantifier_bounds`, with cases refused as well as
+accepted. The wasm runtime's `isSubtype` needs the same.
 
 ## 3. Echo of an outer parameter inside a nested auto value
 
@@ -87,10 +101,14 @@ run with `--echo`.
 innermost auto value's own parameter (bound variable index 0). A reference to an enclosing auto type's parameter
 (index 1, `a2` here) is written `<hidden>`, as the wasm runtime does since step 26 (wasm-review.md §2.4, 5).
 
-**The interpreters** write the value itself, `6`, having the value in hand. Whether echo should show it is a
-choice: showing it is more useful, and compiled code could follow by keeping a stack of witnesses, as the wasm
-runtime's printer does. The two should agree either way; `quest_put_value` is the one to change if the interpreters'
-answer is preferred.
+**The interpreters** write the value itself, `6`, having the value in hand.
+
+**Resolution:** compiled code follows the interpreters, whose answer is more useful (and `quest_put_value` says it
+writes values as the interpreter does). Its `witness` is now a stack of the type components of the auto values being
+written, innermost first, and `quest_type_bound_vars[i]` is written at the `i`'th; `<hidden>` remains for a variable
+with no witness. `dynamic.extern` already wrote a component at the `N`th enclosing witness (dynamic.md §2.4). Test:
+`language/nested_auto_echo`, three levels deep and inside an array and a tuple. The wasm runtime's printer needs the
+same.
 
 ## Reproducing
 

@@ -249,13 +249,21 @@ static void quest_print_leave(void) {
     if (quest_print_depth < Q_PRINT_NESTING_MAX) quest_print_nesting[quest_print_depth] = NULL;
 }
 
-static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescriptor *witness);
+/* The type components of the auto values whose components are being written,
+ * innermost first: a component's type refers to the i'th as the bound type
+ * variable quest_type_bound_vars[i] (its de Bruijn index) */
+typedef struct QWitnesses {
+    const QTypeDescriptor *type;
+    const struct QWitnesses *outer;
+} QWitnesses;
+
+static void quest_put_value(QVal v, const QTypeDescriptor *t, const QWitnesses *witness);
 
 /* Writes the elements of a tuple of type t, or of the payload (of tuple type t)
  * of an option of type opt_t, with its type components among them (through a
  * proxy, or not) */
 static void quest_put_elements(const void *v, const QTypeDescriptor *t, const QTypeDescriptor *opt_t,
-                               const QTypeDescriptor *witness) {
+                               const QWitnesses *witness) {
     const QTupleTypeDescriptor *meta = (const QTupleTypeDescriptor *)t->extra;
     if (meta == NULL) return;
     size_t c = 0;
@@ -274,7 +282,7 @@ static void quest_put_elements(const void *v, const QTypeDescriptor *t, const QT
 
 /* Writes a tuple-shaped block as `tuple ... end` */
 static void quest_put_tuple(const void *v, const QTypeDescriptor *t, const QTypeDescriptor *opt_t,
-                            const QTypeDescriptor *witness) {
+                            const QWitnesses *witness) {
     if (!quest_print_enter(quest_unproxy(v), "tuple")) return;
     quest_put_elements(v, t, opt_t, witness);
     fputs(" end", stdout);
@@ -282,10 +290,11 @@ static void quest_put_tuple(const void *v, const QTypeDescriptor *t, const QType
 }
 
 /* Writes a value of the type t as the interpreter does
- * (format_value_with_type). witness is the type component of the auto value
- * whose components are being written, which a component's type refers to as its
- * type parameter. */
-static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescriptor *witness) {
+ * (format_value_with_type). witness is the type components of the auto values
+ * whose components are being written, which a component's type refers to as
+ * type parameters: the innermost auto value's own, and those of the auto values
+ * it is inside, as the interpreters have them in hand. */
+static void quest_put_value(QVal v, const QTypeDescriptor *t, const QWitnesses *witness) {
     if (t == NULL) {
         fputs("<val>", stdout);
         return;
@@ -393,12 +402,13 @@ static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescrip
                 return;
             }
             printf("auto :%s with", a->type_desc != NULL ? a->type_desc->name : "?");
+            const QWitnesses own = { a->type_desc, witness };
             const char *payload = (const char *)a->payload.p;
             for (size_t i = 0; payload != NULL && i < meta->component_count; ++i) {
                 const QAutoComponentDescriptor *c = &meta->components[i];
                 QVal cv = quest_slot_read(payload + c->offset);
                 printf(" %s=", c->name);
-                quest_put_value(cv, c->type, a->type_desc);
+                quest_put_value(cv, c->type, &own);
             }
             fputs(" end", stdout);
             return;
@@ -409,14 +419,23 @@ static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescrip
             return;
         }
         case QTYPE_KIND_BOUND_VAR:
+        {
             /* An auto value's components refer to its type component as the
-             * innermost type parameter */
-            if (witness != NULL && t == &quest_type_bound_vars[0]) {
-                quest_put_value(v, witness, NULL);
+             * innermost type parameter, and to those of the auto values it is
+             * inside as the ones further out */
+            const QWitnesses *w = witness;
+            if (t >= quest_type_bound_vars && t < quest_type_bound_vars + Q_MAX_BOUND_VARS) {
+                for (size_t i = (size_t)(t - quest_type_bound_vars); w != NULL && i > 0; --i) w = w->outer;
+            } else {
+                w = NULL;
+            }
+            if (w != NULL && w->type != NULL) {
+                quest_put_value(v, w->type, NULL);
             } else {
                 fputs("<hidden>", stdout);
             }
             return;
+        }
         case QTYPE_KIND_STORED:
             /* A value laid out as generic code stores its type argument:
              * converted to that type's own layout */
