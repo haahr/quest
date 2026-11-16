@@ -377,7 +377,10 @@ export
                         if maybe.isSome(:shapes.Component c) then maybe.unwrap(:shapes.Component c).shape else maybe.none(:Shape) end before)
                 end
                 false
-            when opExceptionPayload with x then boxed(exceptionPayload(typeOf(x.exc)))
+            (* Whether the binder is boxed: by its own type, the payload's (the
+             * exception's variable, x.exc, has the bare type Exception) *)
+            when opExceptionPayload then
+                maybe.isSome(:Variable v) andif boxed(maybe.some(:Shape shapes.shape(maybe.unwrap(:Variable v).type)))
             when opIsTag with x then
                 if not(layout.ownView(shapes.shape(typeOf(x.value)))) then
                     let ts = tagShape(typeOf(x.value))

@@ -1,0 +1,223 @@
+import conv = "conv" : Conv
+import writer = "writer" : Writer
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @8:45
+      let %2: String = prim <>(s, "\n") @8:59
+      let %3: Ok = call writer.putString(%1, %2) @8:28
+      return %3
+    }
+  }
+  let E: Exception(P) = exception E: P @11:1
+  let F: Exception(V) = exception F: V @12:1
+  join k1(r: Int) {
+    let %4: String = call conv.int(r) @15:7
+    do call print(%4) @15:1
+    join k2(r.1: String) {
+      do call print(r.1) @16:1
+      funs {
+        fun f(var x: P): Int {
+          raise E with x : "P" @20:24
+        }
+      }
+      funs {
+        fun h(var y: V): Int {
+          raise F with y : "V" @21:24
+        }
+      }
+      funs {
+        fun g(): Int {
+          let %5: Record a: Int b: String end = record(a = 4, b = "var") @23:17
+          var p: Record a: Int b: String end = %5 @23:5
+          join k4(r.2: Int) {
+            return r.2
+          } in {
+            try catching (E) {
+              let %6: Var(Record a: Int b: String end) = addr p @24:11
+              let %7: Int = call f(%6) @24:9
+              jump k4(%7) @24:5
+            } handle (e: Exception) {
+              let %8: Bool = prim is(e, E) @24:5
+              if %8 { @24:5
+                let q: P = exception_payload(e) @24:5
+                let %9: Int = record_field(q, a) @24:34
+                jump k4(%9) @24:5
+              } else {
+                reraise e @24:5
+              }
+            }
+          }
+        }
+      }
+      funs {
+        fun k(): Int {
+          let %10: V = variant(p, 9) @27:17
+          var v: V = %10 @27:5
+          join k5(r.3: Int) {
+            return r.3
+          } in {
+            try catching (F) {
+              let %11: Var(V) = addr v @28:11
+              let %12: Int = call h(%11) @28:9
+              jump k5(%12) @28:5
+            } handle (e.1: Exception) {
+              let %13: Bool = prim is(e.1, F) @28:5
+              if %13 { @28:5
+                let w: V = exception_payload(e.1) @28:5
+                join k6(r.4: Int) {
+                  jump k5(r.4) @28:5
+                } in {
+                  switch tag(w) { @28:34
+                    case p (n: Int): {
+                      jump k6(n) @28:34
+                    }
+                    else: {
+                      jump k6(0) @28:34
+                    }
+                  }
+                }
+              } else {
+                reraise e.1 @28:5
+              }
+            }
+          }
+        }
+      }
+      let %14: Int = call g() @30:16
+      let %15: String = call conv.int(%14) @30:7
+      do call print(%15) @30:1
+      let %16: Int = call k() @31:16
+      let %17: String = call conv.int(%16) @31:7
+      do call print(%17) @31:1
+      let r.5: Record a: Int b: String end = record(a = 5, b = "slot") @34:47
+      let t: Tuple var r: P end = tuple(r.5) @34:29
+      join k7(r.6: Int) {
+        let %18: String = call conv.int(r.6) @35:7
+        do call print(%18) @35:1
+        funs {
+          fun mk(n.1: Int): P {
+            let %19: Record a: Int b: String end = record(a = n.1, b = "returned") @38:21
+            return %19
+          }
+        }
+        funs {
+          fun caught(n.2: Int): P {
+            join k8(r.7: P) {
+              return r.7
+            } in {
+              try catching (E) {
+                let %20: P = call mk(n.2) @39:42
+                raise E with %20 : "P" @39:29
+              } handle (e.2: Exception) {
+                let %21: Bool = prim is(e.2, E) @39:25
+                if %21 { @39:25
+                  let q.1: P = exception_payload(e.2) @39:25
+                  jump k8(q.1) @39:25
+                } else {
+                  reraise e.2 @39:25
+                }
+              }
+            }
+          }
+        }
+        let r.8: P = call caught(6) @40:9
+        let %22: Int = record_field(r.8, a) @41:16
+        let %23: String = call conv.int(%22) @41:7
+        let %24: String = record_field(r.8, b) @41:31
+        let %25: String = prim <>(" ", %24) @41:24
+        let %26: String = prim <>(%23, %25) @41:7
+        do call print(%26) @41:1
+        funs {
+          fun caughtV(n.3: Int): V {
+            join k9(r.9: V) {
+              return r.9
+            } in {
+              try catching (F) {
+                let %27: V = variant(p, n.3) @42:43
+                raise F with %27 : "V" @42:30
+              } handle (e.3: Exception) {
+                let %28: Bool = prim is(e.3, F) @42:26
+                if %28 { @42:26
+                  let w.1: V = exception_payload(e.3) @42:26
+                  jump k9(w.1) @42:26
+                } else {
+                  reraise e.3 @42:26
+                }
+              }
+            }
+          }
+        }
+        join k10(r.10: String) {
+          do call print(r.10) @43:1
+        } in {
+          let %29: V = call caughtV(7) @43:12
+          switch tag(%29) { @43:7
+            case p (n.4: Int): {
+              let %30: String = call conv.int(n.4) @43:42
+              jump k10(%30) @43:7
+            }
+            else: {
+              jump k10("q") @43:7
+            }
+          }
+        }
+      } in {
+        try catching (E) {
+          let %31: Var(P) = addr t.#0 @35:22
+          let %32: Int = call f(%31) @35:20
+          jump k7(%32) @35:16
+        } handle (e.4: Exception) {
+          let %33: Bool = prim is(e.4, E) @35:16
+          if %33 { @35:16
+            let q.2: P = exception_payload(e.4) @35:16
+            let %34: Int = record_field(q.2, a) @35:47
+            jump k7(%34) @35:16
+          } else {
+            reraise e.4 @35:16
+          }
+        }
+      }
+    } in {
+      try catching (F) {
+        let %35: V = variant(q, true) @16:24
+        raise F with %35 : "V" @16:11
+      } handle (e.5: Exception) {
+        let %36: Bool = prim is(e.5, F) @16:7
+        if %36 { @16:7
+          let w.2: V = exception_payload(e.5) @16:7
+          join k3(r.11: String) {
+            jump k2(r.11) @16:7
+          } in {
+            switch tag(w.2) { @17:5
+              case q (t.1: Bool): {
+                let %37: String = call conv.bool(t.1) @17:31
+                jump k3(%37) @17:5
+              }
+              else: {
+                jump k3("p") @17:5
+              }
+            }
+          }
+        } else {
+          reraise e.5 @16:7
+        }
+      }
+    }
+  } in {
+    try catching (E) {
+      let %38: Record a: Int b: String end = record(a = 3, b = "made") @15:33
+      raise E with %38 : "Record a: Int b: String end" @15:20
+    } handle (e.6: Exception) {
+      let %39: Bool = prim is(e.6, E) @15:16
+      if %39 { @15:16
+        let q.3: P = exception_payload(e.6) @15:16
+        let %40: Int = record_field(q.3, a) @15:84
+        jump k1(%40) @15:16
+      } else {
+        reraise e.6 @15:16
+      }
+    }
+  }
+}
+

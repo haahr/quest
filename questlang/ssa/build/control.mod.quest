@@ -562,7 +562,9 @@ export
                     vals.callVoid(fn "quest_echo_text" array of vals.symbolAt(fn vals.stringSymbol(fn.u x.text)) end)
                 when sRaise with x then
                     let payload = if maybe.isNone(:Atom x.payload) then vals.toVal(fn vals.constant(fn 0))
-                        else vals.toWord(fn vals.atom(fn maybe.unwrap(:Atom x.payload)) ir.atomType(maybe.unwrap(:Atom x.payload)))
+                        (* In its slot form (the slots pass boxed a record or
+                         * variant), as the C printer's shapeSlotToQval reads it *)
+                        else representation.slotToWord(fn vals.atom(fn maybe.unwrap(:Atom x.payload)) ir.atomType(maybe.unwrap(:Atom x.payload)))
                     end
                     if maybe.isSome(:ir.Descriptor x.descriptor) then
                         vals.callVoid(fn "quest_raise_typed_at" array of vals.atom1(fn x.exc) payload

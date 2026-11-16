@@ -112,6 +112,8 @@ the stages are rebuilt.
    raised from a `var` parameter and caught, a `var` argument taken from a tuple's slot (`f(@t.r)`), and a payload
    returned from its handler. The slots change alters the IR goldens (`ir_represented`, `ir_described`) of any
    handler with a record or variant binder, in both compilers; regenerate them.
+   *Built 2026-11-15:* no other test's IR or SSA golden changed; the test passes in every phase and in the ssac,
+   arm64, arm64-program, arm64-whole, c-whole and jit-files modes.
 4. **`is` between records of known type.**
    *Where.* The SSA refuses a value of more than one part (`questlang/ssa/build/calls.mod.quest` lines 73–78), and a
    record has two (`val`, `dict`). Both C printers (`codegen/c/printer.mod.quest` lines 1624–1660,

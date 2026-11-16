@@ -388,8 +388,10 @@ class _Slots:
                 vs = _held(var.type, "variant")
                 case = vs.case(tag) if vs is not None else None
                 o.payload = self.slot_if_boxed(payload, case.shape if case is not None else None, before)
-            case ir.ExceptionPayload(exception=e):
-                return _boxed(_exception_payload(_type_of(e)))
+            case ir.ExceptionPayload():
+                # Whether the binder is boxed: by its own type, the payload's
+                # (the exception's variable has the bare type Exception)
+                return var is not None and _boxed(shape(var.type))
             case ir.IsTag(value=v) | ir.Ordinal(value=v) if not own_view(shape(_type_of(v))):
                 ts = _tag_shape(_type_of(v))
                 if ts is not None and ts.kind == "option":
