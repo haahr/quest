@@ -1,0 +1,155 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun show(s: String): Ok {
+      let %1: writer.T = member writer.output @13:44
+      let %2: String = prim <>(s, "\n") @13:58
+      let %3: Ok = call writer.putString(%1, %2) @13:27
+      return %3
+    }
+  }
+  funs rec {
+    fun depth(n: Int): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        let %4: Bool = prim is(n, 0) @15:33
+        if %4 { @15:30
+          jump k1(0) @15:30
+        } else {
+          let %5: Int = prim -(n, 1) @15:62
+          let %6: Int = call depth(%5) @15:56
+          let %7: Int = prim +(1, %6) @15:52
+          jump k1(%7) @15:30
+        }
+      }
+    }
+  }
+  let %8: Int = call depth(1000000) @16:15
+  let %9: String = call conv.int(%8) @16:6
+  do call show(%9) @16:1
+  funs rec {
+    fun fact(n.1: Int): Int {
+      join k2(r.1: Int) {
+        return r.1
+      } in {
+        let %10: Bool = prim <=(n.1, 1) @18:32
+        if %10 { @18:29
+          jump k2(1) @18:29
+        } else {
+          let %11: Int = prim -(n.1, 1) @18:60
+          let %12: Int = call fact(%11) @18:55
+          let %13: Int = prim *(n.1, %12) @18:51
+          jump k2(%13) @18:29
+        }
+      }
+    }
+  }
+  let %14: Int = call fact(20) @19:15
+  let %15: String = call conv.int(%14) @19:6
+  do call show(%15) @19:1
+  funs rec {
+    fun fib(n.2: Int): Int {
+      join k3(r.2: Int) {
+        return r.2
+      } in {
+        let %16: Bool = prim <(n.2, 2) @21:31
+        if %16 { @21:28
+          jump k3(n.2) @21:28
+        } else {
+          let %17: Int = prim -(n.2, 1) @21:53
+          let %18: Int = call fib(%17) @21:49
+          let %19: Int = prim -(n.2, 2) @21:66
+          let %20: Int = call fib(%19) @21:62
+          let %21: Int = prim +(%18, %20) @21:49
+          jump k3(%21) @21:28
+        }
+      }
+    }
+  }
+  let %22: Int = call fib(25) @22:15
+  let %23: String = call conv.int(%22) @22:6
+  do call show(%23) @22:1
+  funs rec {
+    fun sumSquares(n.3: Int): Int {
+      join k4(r.3: Int) {
+        return r.3
+      } in {
+        let %24: Bool = prim is(n.3, 0) @25:8
+        if %24 { @25:5
+          jump k4(0) @25:5
+        } else {
+          let sq: Int = prim *(n.3, n.3) @27:18
+          let %25: Int = prim -(n.3, 1) @28:20
+          let %26: Int = call sumSquares(%25) @28:9
+          let %27: Int = prim +(%26, sq) @28:9
+          jump k4(%27) @25:5
+        }
+      }
+    }
+  }
+  let %28: Int = call sumSquares(100000) @30:15
+  let %29: String = call conv.int(%28) @30:6
+  do call show(%29) @30:1
+  funs {
+    fun base(n.4: Int): Int {
+      let %30: Int = prim *(n.4, 10) @32:25
+      return %30
+    }
+  }
+  funs rec {
+    fun viaOther(n.5: Int): Int {
+      join k5(r.4: Int) {
+        return r.4
+      } in {
+        let %31: Bool = prim is(n.5, 0) @33:36
+        if %31 { @33:33
+          let %32: Int = call base(7) @33:48
+          jump k5(%32) @33:33
+        } else {
+          let %33: Int = prim -(n.5, 1) @33:74
+          let %34: Int = call viaOther(%33) @33:65
+          let %35: Int = prim +(2, %34) @33:61
+          jump k5(%35) @33:33
+        }
+      }
+    }
+  }
+  let %36: Int = call viaOther(500000) @34:15
+  let %37: String = call conv.int(%36) @34:6
+  do call show(%37) @34:1
+  funs rec {
+    fun mixed(n.6: Int): Int {
+      join k6(r.5: Int) {
+        return r.5
+      } in {
+        let %38: Bool = prim is(n.6, 0) @37:8
+        if %38 { @37:5
+          jump k6(0) @37:5
+        } else {
+          join k7(r.6: Int) {
+            jump k6(r.6) @37:5
+          } in {
+            let %39: Int = prim %(n.6, 2) @38:12
+            let %40: Bool = prim is(%39, 0) @38:12
+            if %40 { @38:12
+              let %41: Int = prim -(n.6, 1) @38:35
+              let %42: Int = call mixed(%41) @38:29
+              jump k7(%42) @38:12
+            } else {
+              let %43: Int = prim -(n.6, 1) @39:20
+              let %44: Int = call mixed(%43) @39:14
+              let %45: Int = prim +(3, %44) @39:10
+              jump k7(%45) @38:12
+            }
+          }
+        }
+      }
+    }
+  }
+  let %46: Int = call mixed(1000000) @41:15
+  let %47: String = call conv.int(%46) @41:6
+  do call show(%47) @41:1
+}
+
