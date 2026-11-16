@@ -72,8 +72,12 @@ export
             when jNumber with x then
                 if not(x.isInteger) then fail(:Ok) end
                 let n = strutil.tryToInt(x.text)
-                if maybe.isNone(:Int n) then fail(:Ok) end
-                maybe.unwrap(:Int n)
+                (* past an Int's range, saturated, as C's strtoll reads it
+                 * (its syntax json.parseNumber has checked) *)
+                if maybe.isSome(:Int n) then maybe.unwrap(:Int n)
+                elsif strutil.startsWith(x.text "-") then {0 - 9223372036854775807} - 1
+                else 9223372036854775807
+                end
             else fail(:Int)
         end
     (* Reads a document's value back by its type, from the document's type
