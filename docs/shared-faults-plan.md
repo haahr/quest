@@ -199,7 +199,8 @@ the stages are rebuilt.
    compiles them, so they are not shared errors. The shared test is a run error test,
    `tests/errors/run/rejected_layout.quest`, whose module `rejectedlayout.mod.quest` is the abstract type operator
    that `abstractPlan` rejects (step 2 does not fix it), with its expectation on the module's line; it skips the
-   interpreters, which run it. A check in `tests/self-hosted/jit_hosts.py` (`check_rejected_conversion`) imports
+   interpreters, which run it, and the whole-program modes (`@skip-phase: whole`, added for it), whose merged
+   modules' abstract types are transparent, so that they make no conversion and run it too. A check in `tests/self-hosted/jit_hosts.py` (`check_rejected_conversion`) imports
    the same module at the REPL: the error is located in the module, no line of the compiler's traceback shows,
    and the session goes on. `tests/python/test_ir_represent.py` checks the bootstrap's offset.
    *Built 2026-11-15.* Both compilers' lowerings give statements positions (the bootstrap's newly, with an `at`

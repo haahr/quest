@@ -276,7 +276,8 @@ the whole ones, all empty. The self-hosted driver's REPL and `-e` run on the JIT
 `-e`'s transcript pass it `--no-jit`, checking the interpreter. `jit` runs the REPL's transcripts on the JIT instead
 ([jit.md](jit.md) §5): a transcript marked `@skip-phase: jit` shows a difference the JIT is allowed and is skipped.
 `jit-files` runs the run goldens' programs with `--jit` (the `interpret` phase), skipping those marked
-`@skip-phase: jit` or `@skip-phase: run_c_compiled`, and `-e`'s transcript on the JIT;
+`@skip-phase: jit` or `@skip-phase: run_c_compiled`, and `-e`'s transcript on the JIT; the whole modes skip the tests
+marked `@skip-phase: whole` (§2.4);
 `tests/self-hosted/pending-jit.txt` lists the differences that remain. The
 questlang tests `ssac_print` and `arm64_assemble` print a unit of the SSA built by hand as C and as assembly, whose
 goldens `tests/python/test_ssac.py` compiles and `tests/python/test_arm64.py` assembles. The SSA's passes are tested on
@@ -401,6 +402,10 @@ C compilation backend (or for tests specific to certain phases), tests can inclu
 
 - **Multiple Phases**: Even though `@skip-phase:` is singular, multiple phases can be omitted using comma- or
   whitespace-separated names (e.g. `(* @skip-phase: run_c_compiled, interpret *)`) or multiple comment directives.
+- **Whole programs**: `whole` skips every phase in the self-hosted whole-program modes (`c-whole`, `ssac-whole`,
+  `arm64-whole`, §2.3 "The SSA's backends"), for what only separate compilation shows: a conversion at a module's
+  boundary, which a whole program, its modules merged and their abstract types transparent, does not make
+  (`errors/run/rejected_layout`).
 - **Reporting**: Skipped phases are explicitly noted during test execution (`[SKIP] phase:test_name`) and counted in
   the test summary without being counted as failures.
 - **Golden Management**: When updating goldens with `--update-golden`, skipped phases are ignored and will not

@@ -911,6 +911,10 @@ def run_all_tests(
                             # code shows, which the JIT does too (docs/jit.md
                             # section 4)
                             skipped_phases = skipped_phases | {phase}
+                        if args.backend.endswith("-whole") and "whole" in skipped_phases:
+                            # What separate compilation alone shows, at a
+                            # module's boundary (docs/testing.md section 2.4)
+                            skipped_phases = skipped_phases | {phase}
                         if phase.lower() in skipped_phases:
                             skipped_golden += 1
                             print(f"  [SKIP] {phase}:{test_id}")
@@ -1015,6 +1019,8 @@ def run_all_tests(
                     skipped_phases = parse_skipped_phases(error_file)
                     rel_id = str(error_file.relative_to(phase_error_dir).with_suffix(""))
                     if args.backend == "jit-files" and skipped_phases & {"jit", "run_c_compiled"}:
+                        skipped_phases = skipped_phases | {phase}
+                    if args.backend.endswith("-whole") and "whole" in skipped_phases:
                         skipped_phases = skipped_phases | {phase}
                     if phase.lower() in skipped_phases:
                         print(f"  [SKIP] {phase}:{rel_id}")
