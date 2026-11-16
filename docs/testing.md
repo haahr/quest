@@ -827,6 +827,30 @@ its own build directory; the phases run one after another. The questlang tests a
 into a shared build directory, and then run in parallel there (section 2.3). The runtime's C files are compiled once
 into objects that every link reuses ([codegen-c.md](codegen-c.md) §11.3).
 
+**`tools/check`'s concurrency, measured 2026-11-16** (55556a15, `--all`, after 30 minutes with the load under 4,
+nothing else running). `tools/check` runs the stress tier, then the other suites, each group at once; the default gives
+each suite a share of the cores and each driver build `-j` 10. The times in the table are when each suite finished,
+from its group's start; the load is the 1-minute average, sampled every 30 s.
+
+| | Default | `--jobs 6` | `--serial` |
+| :--- | ---: | ---: | ---: |
+| Stress tier (four suites) | 575 s | 588 s | 994 s |
+| Unit tests | 470 s | 361 s | 4,184 s |
+| Bootstrap | 883 s | 1,396 s | 3,968 s |
+| Self-hosting, C | 1,283 s | 1,149 s | 3,503 s |
+| Self-hosting, arm64, with the suite | 1,583 s | 1,498 s | 1,223 s |
+| Backends (four modes) | 1,983 s | 2,420 s | 2,606 s |
+| The rest, through the terminal tests | 1,985 s | 2,423 s | 4,187 s |
+| **Whole check** | **2,561 s** | **3,010 s** | **5,182 s** |
+| Load, median and highest | 14.6, 158 | 8.6, 59 | 4.6, 22 |
+| Timeouts | none | none | none |
+
+(For `--serial` the suites ran one after another, so its times are cumulative.) The default is the fastest: 18% faster
+than `--jobs 6`, and twice as fast as `--serial`. Its high load cost no timeouts once the machine was otherwise idle, so
+it stays the default; the timed tests' failures under load come from other work on the machine, which is why a check
+waits for an idle one. Every run failed the same four self-hosted tests, missing goldens (since recorded), and passed
+everything else.
+
 ### 5.2. A Possible Speedup
 **Avoid redundant precursor runs in error tests.** Each error test first reruns every earlier phase in its own process
 to confirm that it passes (section 3.4), although the target-phase run already executes those phases in the same
