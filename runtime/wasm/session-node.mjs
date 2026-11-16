@@ -55,25 +55,37 @@ function writeAll(fd, b) {
 function serve() {
   const {modules, args, env, cwd, kernel, committed} = workerData;
   const write = fd => b => writeAll(fd, b);
+  // A request's records as they come, but its last, done, which the main
+  // thread writes when it has the reply, so that an interrupt handled before
+  // the reply cannot follow it with a second done (wasm-review.md section
+  // 2.2, 5)
+  const record = (b, r) => { if (!("done" in r)) writeAll(4, b); };
   const session = new Session({
     modules, args, env, cwd, mounts: {"/": new NodeMount(fs, "/")},
-    stdout: write(1), stderr: write(2), record: kernel ? write(4) : null,
+    stdout: write(1), stderr: write(2), record: kernel ? record : null,
+    // a worker that replaces one: the -i file's output not written again
+    quietStart: committed !== null,
   });
   const post = message => parentPort.postMessage(message);
   try {
     session.start();
     // A replacement for a worker that was ended: the inputs that committed
-    session.committed = committed;
-    if (committed.length > 0) session.replay();
-    post({started: true});
+    if (committed !== null && committed.length > 0) {
+      session.committed = committed;
+      const lost = session.replay();
+      if (lost) writeAll(2, lost);
+    }
+    post({started: true, committed: session.committed});
   } catch (e) {
     if (e instanceof Exited) post({exited: e.status}); else throw e;
     return;
   }
   parentPort.on("message", ({line}) => {
     try {
+      // the input committed, not the whole list, which only a replay changes
+      session.replayed = false;
       const records = session.request(line);
-      post({records, committed: session.committed});
+      post({records, commit: session.commit, committed: session.replayed ? session.committed : undefined});
     } catch (e) {
       if (e instanceof Exited) post({exited: e.status}); else throw e;
     }
@@ -102,8 +114,9 @@ async function main() {
   const env = {...process.env, PWD: process.cwd()};
   // --no-jit first, before a file -i runs and its arguments
   const args = rest.includes("--no-jit") ? ["--no-jit", ...rest.filter(a => a !== "--no-jit")] : rest;
-  // A worker, started and given the committed inputs to replay
-  let committed = [];
+  // A worker, started and given the committed inputs to replay (null for
+  // the first)
+  let committed = null;
   let worker = null;
   let waiting = null;
   const startWorker = () => new Promise(resolve => {
@@ -115,6 +128,7 @@ async function main() {
     });
     waiting = message => {
       if (message.exited !== undefined) process.exit(message.exited);
+      committed = message.committed;
       resolve();
     };
     worker.on("message", message => {
@@ -146,18 +160,42 @@ async function main() {
       running = null;
       // process.exit ends the worker too
       if (message.exited !== undefined) process.exit(message.exited);
-      committed = message.committed;
+      if (message.committed !== undefined) committed = message.committed;
+      else if (message.commit) committed.push(message.commit);
+      if (kernel) {
+        const done = message.records.find(r => "done" in r);
+        if (done) writeAll(4, requestLine(done) + "\n");
+      }
       resolve(message.records);
     };
     worker.postMessage({line});
   });
+  // An interrupt during a request ends it: a new worker replays the inputs
+  // that committed. One while that worker replays them ends the replay too,
+  // and the session starts again without them (wasm-review.md section 4, 7)
+  let restarting = null;
   const interrupt = async () => {
+    if (restarting) {
+      const done = restarting;
+      restarting = null;
+      waiting = null;
+      await worker.terminate();
+      const count = committed.length;
+      committed = [];
+      await startWorker();
+      process.stderr.write(`quest: the replay was interrupted; ${count} inputs that ran before did not run again\n`);
+      done();
+      return;
+    }
     if (!running) return;  // between inputs, forgotten
     const {resolve} = running;
     running = null;
     waiting = null;
     await worker.terminate();
-    await startWorker();
+    await new Promise(finished => {
+      restarting = finished;
+      startWorker().then(() => { if (restarting === finished) { restarting = null; finished(); } });
+    });
     const records = failure("interrupted", "interrupted");
     if (kernel) writeAll(4, records.map(r => requestLine(r)).join("\n") + "\n");
     resolve(records);

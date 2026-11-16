@@ -458,7 +458,12 @@ export class Host {
   open(path, oflags) {
     const create = (oflags & 1) !== 0, directory = (oflags & 2) !== 0, truncate = (oflags & 8) !== 0;
     if (path === "/dev/fd/3") return {kind: "requests"};
-    if (path === "/dev/fd/4") return {kind: "output", write: b => this.onRecord(b)};
+    if (path === "/dev/fd/4") {
+      // the driver's kernel opens it when it holds its session for the
+      // host's requests, before its _start ends (session.mjs's start)
+      this.serving = true;
+      return {kind: "output", write: b => this.onRecord(b)};
+    }
     const s = this.stat(path);
     if (directory) {
       if (!s) throw new Errno(E.NOENT);

@@ -61,12 +61,16 @@ function start(files, committed, jit) {
     args: [...(jit ? [] : ["--no-jit"]), "-i", "/remote/0/files/functions.quest", "one"],
     env: {QUEST_HOME: "/quest", QUEST_KERNEL: "1", PWD: "/work"},
   }, post, get);
+  // the inputs committed, as the worker gives them when it starts
+  committed = messages.find(m => m.started)?.committed ?? [];
   const text = kind => messages.filter(m => m[kind]).map(m => new TextDecoder().decode(m[kind])).join("");
   const execute = code => {
     const at = messages.length;
     handle({line: requestLine({execute: code})});
     const reply = messages.slice(at).find(m => m.records);
-    return {records: reply.records.map(decodeRecord), committed: reply.committed, messages: messages.slice(at)};
+    if (reply.committed !== undefined) committed = reply.committed;
+    else if (reply.commit) committed = [...committed, reply.commit];
+    return {records: reply.records.map(decodeRecord), committed, messages: messages.slice(at)};
   };
   return {messages, copy, text, execute};
 }
@@ -74,7 +78,7 @@ function start(files, committed, jit) {
 for (const jit of [true, false]) {
   const mode = jit ? "jit" : "interpreted";
   fetched.length = 0;
-  const first = start(new Map([["work", null]]), [], jit);
+  const first = start(new Map([["work", null]]), null, jit);
   expect(`${mode}: the session starts`, first.messages.some(m => m.started), true);
   expect(`${mode}: -i runs the file from the URL prefix`, first.text("stdout"), "\"loaded\" : String\n");
   expect(`${mode}: the prefix's file is fetched`, fetched.includes(prefix + "files/functions.quest"), true);
@@ -93,7 +97,7 @@ for (const jit of [true, false]) {
   // A new worker, as after an interrupt: the page's files and the inputs that
   // committed, replayed without their output
   const second = start(first.copy.entries, committed, jit);
-  expect(`${mode}: a replay writes nothing`, second.text("stdout"), "\"loaded\" : String\n");
+  expect(`${mode}: a replay writes nothing, the -i file's output among it`, second.text("stdout"), "");
   expect(`${mode}: the bindings after a replay`, second.execute("kept + add1(1)").records.map(r => r.result),
          ["9 : Int", undefined]);
   expect(`${mode}: the files after a replay`,

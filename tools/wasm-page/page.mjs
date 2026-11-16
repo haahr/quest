@@ -56,7 +56,11 @@ export class PageSession {
   constructor(loaded, options = {}) {
     this.loaded = loaded;
     this.options = options;
-    this.committed = [];
+    // null until a worker has started, and then the inputs that committed
+    this.committed = null;
+    // while a worker that replaces an interrupted one replays: what its
+    // interrupt waits for
+    this.restarting = null;
     this.files = new MemoryMount(options.files || {work: null});
     this.worker = null;
     this.running = null;
@@ -94,13 +98,18 @@ export class PageSession {
         else if (data.stderr) this.options.stderr?.(text.stderr.decode(data.stderr, {stream: true}));
         else if (data.record) this.record(data.record, recordText);
         else if (data.change) { const [op, ...args] = data.change; this.files[op](...args); }
-        else if (data.started) { this.timings.started = Math.round(performance.now() - began); resolve(); }
+        else if (data.started) {
+          this.committed = data.committed;
+          this.timings.started = Math.round(performance.now() - began);
+          resolve();
+        }
         else if (data.exited !== undefined) this.exit(data.exited, resolve);
         else if (data.failed) {
           this.options.stderr?.(`the session's worker failed: ${data.failed}\n`);
           this.exit(70, resolve);
         } else if (data.records) {
-          this.committed = data.committed;
+          if (data.committed !== undefined) this.committed = data.committed;
+          else if (data.commit) this.committed.push(data.commit);
           this.finish(data.records);
         }
       };
@@ -169,15 +178,32 @@ export class PageSession {
   busy() { return this.running !== null; }
 
   // Ends the request running, if one is, as interrupted: a new worker replays
-  // the committed inputs. Resolves once it is ready.
+  // the committed inputs. Resolves once it is ready. An interrupt while that
+  // worker replays them ends the replay too, and the session starts again
+  // without them (wasm-review.md section 4, 7).
   async interrupt() {
+    if (this.restarting) {
+      const done = this.restarting;
+      this.restarting = null;
+      this.worker?.terminate();
+      this.worker = null;
+      const count = this.committed?.length ?? 0;
+      this.committed = [];
+      await this.start();
+      this.options.stderr?.(`quest: the replay was interrupted; ${count} inputs that ran before did not run again\n`);
+      done();
+      return;
+    }
     if (!this.running || !this.worker) return;
     const r = this.running;
     this.worker.terminate();
     this.worker = null;
     this.running = null;
     const began = performance.now();
-    await this.start();
+    await new Promise(finished => {
+      this.restarting = finished;
+      this.start().then(() => { if (this.restarting === finished) { this.restarting = null; finished(); } });
+    });
     this.timings.replay = Math.round(performance.now() - began);
     r.resolve(failure("interrupted", "interrupted"));
     this.next();

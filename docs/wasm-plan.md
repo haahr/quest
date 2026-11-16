@@ -2063,6 +2063,37 @@ writer's buffer, and would end the session when flushed.
     "complete"; a driver that exits while starting reported so; the committed list not posted with every reply;
     and a replay itself interruptible.
     *Done when* each is a case in `wasm_session.py` or `wasm_page.mjs`.
+
+    *Done 2026-11-15:*
+    - **Built** in `runtime/wasm/session.mjs`, the two workers (`session-node.mjs`'s and `tools/wasm-page/worker.mjs`),
+      `page.mjs`, and `repl.mjs`:
+      - **what a replay lost:** each committed input keeps the names its records show it bound; a replay that
+        cannot run an input again (it does not end `ok`) reports `quest: the session started again, and N inputs
+        that ran before did not run again; no longer bound: ...`, in the failure's `rendered` text for an
+        overflow or trap, on standard error otherwise, and the session goes on. A replay inside a replay keeps
+        the outer one's quiet.
+      - **the kernel's reply:** the worker writes each record as it comes but `done`, which the main thread
+        writes when the reply comes, with the commit, so an interrupt handled before the reply writes the only
+        `done`.
+      - **commits:** each reply carries the input it committed, and the whole list only after a replay changed
+        it; a worker started gives its list once.
+      - **a new worker:** starts quiet (`quietStart`), so the `-i` file's output is not written again;
+        `wasm_page.mjs` now expects nothing.
+      - **`isComplete`:** a test that fails (an overflow, an interrupt) writes its error and drops the phrase,
+        rather than run it as complete.
+      - **a driver that exits while starting:** reported as exited. The driver's `_start` ends with exit 0 also
+        when its kernel holds the session, so the host notes the open of descriptor 4 (its records), which
+        the kernel makes only then; an exit 0 before it ends the session.
+      - **an interrupt during a replay:** in node and the page, a second interrupt while a replacement worker
+        replays ends it too, and the session starts again without the inputs, saying how many.
+    - **Checked:** `wasm_session.py`'s `check_lost` (the review's program: an input that removed a file and one
+      that used its result are reported lost, by name, and the session answers the next input), and
+      `wasm_page.mjs`'s replay. By hand: a `-i` file that exits 0 ends the node session at once; a normal start
+      serves. Not by a test: the kernel's interrupt race (it needs an interrupt at a cell's very end) and the
+      second interrupt during a replay.
+    - **Found on the way:** `wasm_session.py`'s JIT overflow cases recursed as `1 + down(n + 1)`, which step 28
+      makes a loop that never ends; they recurse as `n - down(n + 1)` now, which still overflows. The native
+      tests of the same shape already skip the compiled phases, where the SSA's pass does the same.
 30. **The page** (§2.3; §2.2, 4; unchanged). Output batched for each frame and appended as nodes, so that a loop that
     prints does not freeze the page; Restart frees the old request; a flushed file visible; `MemoryMount.rename`
     testing its target as a file system does; the page's scripts and archives tied by a build stamp, a mismatch

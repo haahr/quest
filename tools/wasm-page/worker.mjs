@@ -11,7 +11,8 @@
 // The page posts one message to start the session, with what it needs, then
 // one for each request, {line}; the worker posts the driver's writes as they
 // are made ({stdout}, {stderr}, {record}: bytes), then {started} or
-// {exited: STATUS}, and for each request {records, committed}.
+// {exited: STATUS}, and for each request {records, commit, committed}: the
+// input it committed, and after a replay the inputs committed.
 
 import {Errno, E, MemoryMount, UrlMount, isStackOverflow} from "./host.mjs";
 import {Session, Exited} from "./session.mjs";
@@ -52,21 +53,28 @@ export function serve(start, post, get = getSync) {
   const session = new Session({
     modules: start.modules, args: start.args, env: start.env, cwd, mounts: mounts(start, post, get),
     stdout: b => post({stdout: b}), stderr: b => post({stderr: b}), record: b => post({record: b}),
+    // a worker that replaces one: the -i file's output not written again
+    quietStart: start.committed !== null,
   });
   try {
     session.start();
     // A worker started after an interrupt: the inputs that committed, again
-    session.committed = start.committed;
-    if (start.committed.length > 0) session.replay();
-    post({started: true});
+    if (start.committed !== null && start.committed.length > 0) {
+      session.committed = start.committed;
+      const lost = session.replay();
+      if (lost) post({stderr: new TextEncoder().encode(lost)});
+    }
+    post({started: true, committed: session.committed});
   } catch (e) {
     if (e instanceof Exited) post({exited: e.status}); else post({failed: String(e.stack || e)});
     return () => {};
   }
   return ({line}) => {
     try {
+      // the input committed, not the whole list, which only a replay changes
+      session.replayed = false;
       const records = session.request(line);
-      post({records, committed: session.committed});
+      post({records, commit: session.commit, committed: session.replayed ? session.committed : undefined});
     } catch (e) {
       if (e instanceof Exited) post({exited: e.status}); else post({failed: String(e.stack || e)});
     }

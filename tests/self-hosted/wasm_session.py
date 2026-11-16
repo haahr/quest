@@ -130,7 +130,7 @@ def check_recovery(command: list[str], scratch: Path) -> list[str]:
     s = Session(command, cwd=str(scratch), env=environment)
     try:
         s.execute("let held = array of 1 end")
-        reply = s.execute("let lost = 1\nlet rec down(n: Int): Int = 1 + down(n + 1)\nheld[0] := 2\ndown(0)")
+        reply = s.execute("let lost = 1\nlet rec down(n: Int): Int = n - down(n + 1)\nheld[0] := 2\ndown(0)")
         got = (reply.status, reply.error and reply.error["error"])
         if got != ("error", "stack.overflow"):
             problems.append(f"an overflow in an input's code: {got}")
@@ -159,12 +159,12 @@ REVIEW = [
         'let d = dynamic.new(:P tuple let a = tuple let x = 1 let y = tuple let z = 2 let w = 3 end end let b = "s"'
         ' end)',
         "let test(): Int = try begin let q = dynamic.be(:Q d) q.b end when dynamic.error then ~1 end",
-        "let rec deep(n: Int): Int = begin let unused = test() 1 + deep(n + 1) end",
+        "let rec deep(n: Int): Int = begin let unused = test() n - deep(n + 1) end",
         "deep(0)",
         "test()"], ["-1 : Int"]),
     ("an overflow inside a host's file call (§2.2, 2)", [
         "import system : System",
-        'let rec down(n: Int): Int = if system.fileExists("flag") then 1 + down(n + 1) else 0 end',
+        'let rec down(n: Int): Int = if system.fileExists("flag") then n - down(n + 1) else 0 end',
         "down(0)"], "stack.overflow"),
     # Natively the open raises writer.error; here the bytes, not records, go
     # to the client's standard error, and the session goes on
@@ -193,6 +193,30 @@ def check_review(command: list[str], scratch: Path) -> list[str]:
             problems.append(f"{name}: the session ended ({e.status})")
         finally:
             s.kill()
+    return problems
+
+
+def check_lost(command: list[str], scratch: Path) -> list[str]:
+    """A replay that cannot run an input again says so, with the names it no
+    longer has, and the session goes on (docs/wasm-review.md section 2.2, 3):
+    the input removed a file, which is gone when the replay runs it again"""
+    problems = []
+    (scratch / "gone.txt").write_text("x\n")
+    s = Session(command, cwd=str(scratch), env={**os.environ, "QUEST_HOME": str(ROOT_DIR)})
+    try:
+        s.execute("import system : System")
+        s.execute('let removed = begin system.removeFile("gone.txt") 5 end')
+        s.execute("let after = removed + 1")
+        reply = s.execute("1 + " * 3000 + "1")
+        rendered = (reply.error or {}).get("rendered", "")
+        if "no longer bound: removed, after" not in rendered:
+            problems.append(f"a replay that loses inputs: {rendered!r}")
+        if s.execute("2 + 3").results != ["5 : Int"]:
+            problems.append("the session after a replay that lost inputs")
+    except DriverExited as e:
+        problems.append(f"a replay that loses inputs: the session ended ({e.status})")
+    finally:
+        s.kill()
     return problems
 
 
@@ -228,6 +252,7 @@ def check(driver: str, driver_wasm: str | None) -> list[str]:
         scratch.mkdir()
         problems += check_recovery([str(quest)], scratch)
         problems += check_review([str(quest)], scratch)
+        problems += check_lost([str(quest)], scratch)
         problems += check_page(target, into)
     return problems
 

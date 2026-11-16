@@ -80,6 +80,17 @@ function withoutLoad(args) {
 }
 
 // Thrown by start or request when the driver exits: its status
+// The names an input's records show it bound: each result's let or Let
+function boundNames(records) {
+  const names = [];
+  for (const r of records) {
+    if (typeof r.result !== "string") continue;
+    const m = /^(?:let|Let)\s+(?:var\s+|rec\s+)?([^\s:(]+)/.exec(r.result);
+    if (m) names.push(m[1]);
+  }
+  return names;
+}
+
 export class Exited extends Error {
   constructor(status) { super(`the driver exited with status ${status}`); this.status = status; }
 }
@@ -94,13 +105,21 @@ export function failure(kind, message) {
 //   modules    {runtime, units: [{name, module}], program}, compiled
 //   args       the driver's arguments, after its name
 //   env, cwd, mounts, as Host takes them
-//   stdout, stderr, record: each called with bytes the driver writes
+//   stdout, stderr: each called with bytes the driver writes
+//   record     called with each record's line, as bytes, and the record
+//   quietStart true to start without writing (a worker that replaces one)
 export class Session {
   constructor(options) {
     this.options = options;
-    // The inputs that committed, in order, which a replay runs again
+    // The inputs that committed, in order, which a replay runs again, and
+    // the names each bound (by its line), which a replay that loses it
+    // reports; the input the last request committed, or null; and whether
+    // a replay changed the committed inputs since the client last read them
     this.committed = [];
-    this.quiet = false;
+    this.bound = new Map();
+    this.commit = null;
+    this.replayed = false;
+    this.quiet = !!options.quietStart;
   }
 
   // Instantiates the driver and runs its _start: 0 when it returned to the
@@ -125,7 +144,7 @@ export class Session {
           if (parsed !== null && typeof parsed === "object") {
             this.records.push(parsed);
             // the client gets each record as it is written, and nothing else
-            if (!this.quiet && o.record) o.record(all.slice(start, i + 1));
+            if (!this.quiet && o.record) o.record(all.slice(start, i + 1), parsed);
           } else if (!this.quiet && o.stderr) o.stderr(encoder.encode(`descriptor 4, not a record: ${text}\n`));
           start = i + 1;
         }
@@ -154,8 +173,12 @@ export class Session {
     try {
       program.exports._start();
     } catch (e) {
+      // The driver's _start ends with exit 0 once its kernel holds the
+      // session for the host's requests, having opened descriptor 4 for
+      // their records; any other exit, 0 before that among them (a file -i
+      // runs that exits), ends the session (wasm-review.md section 2.2, 10)
       if (e instanceof Exit) {
-        if (e.code !== 0) throw new Exited(e.code);
+        if (e.code !== 0 || !this.host.serving) throw new Exited(e.code);
         return 0;
       }
       // An overflow, a trap, or an exception that escapes the driver while
@@ -167,6 +190,8 @@ export class Session {
       if (o.stderr) o.stderr(encoder.encode(`quest: the file -i runs failed (${kind}); the session starts without it\n`));
       this.loadFailed = true;
       return this.start();
+    } finally {
+      if (o.quietStart) { this.quiet = false; o.quietStart = false; }
     }
     return 0;
   }
@@ -187,19 +212,30 @@ export class Session {
       if (!isStackOverflow(e) && !(e instanceof WebAssembly.RuntimeError) && !escaped) throw e;
       // No Quest handler saw it, and the interpreter's structures may be half
       // updated: a new session, with the committed inputs run again
-      this.replay();
+      const lost = this.replay();
       const kind = isStackOverflow(e) ? "stack.overflow" : escaped ? "exception" : "trap";
       const records = failure(kind, escaped ? "an exception the driver did not catch" : String(e.message));
-      if (this.options.record) this.options.record(encoder.encode(records.map(r => requestLine(r)).join("\n") + "\n"));
+      if (lost) records[0].rendered += lost;
+      if (this.options.record && !this.quiet) {
+        for (const r of records) this.options.record(encoder.encode(requestLine(r) + "\n"), r);
+      }
+      this.commit = null;
       return records;
     }
     const records = this.records;
     // An input whose overflow or trap the JIT's host caught part way through
     // an update of the runtime's shared tables: a new session (section 6.3)
-    if (this.jit.mustReplay) this.replay();
+    let lost = null;
+    if (this.jit.mustReplay) lost = this.replay();
     const parsed = JSON.parse(line);
     const done = records.find(r => "done" in r);
-    if (parsed.execute !== undefined && done && done.done === "ok") this.committed.push(line);
+    this.commit = null;
+    if (parsed.execute !== undefined && done && done.done === "ok") {
+      this.committed.push(line);
+      this.bound.set(line, boundNames(records));
+      this.commit = line;
+    }
+    if (lost && this.options.stderr && !this.quiet) this.options.stderr(encoder.encode(lost));
     return records;
   }
 
@@ -208,16 +244,33 @@ export class Session {
   updating() { return Number(this.core.updating(this.noClosure)); }
 
   // A new instance, the committed inputs run again with their output
-  // suppressed
+  // suppressed. An input that does not succeed again is lost, and so are
+  // the names it bound: the session goes on without them, and this gives
+  // the text that says so, or null if none was lost (wasm-review.md
+  // section 2.2, 3). A replay inside a replay stays quiet.
   replay() {
+    const quiet = this.quiet;
     this.quiet = true;
+    this.replayed = true;
+    const lost = [];
     try {
       this.start();
       const inputs = this.committed;
       this.committed = [];
-      for (const line of inputs) this.request(line);
+      for (const line of inputs) {
+        const records = this.request(line);
+        const done = records.find(r => "done" in r);
+        if (!done || done.done !== "ok") lost.push(line);
+      }
     } finally {
-      this.quiet = false;
+      this.quiet = quiet;
     }
+    if (lost.length === 0) return null;
+    const names = new Set();
+    for (const line of lost) for (const name of this.bound.get(line) || []) names.add(name);
+    for (const line of this.committed) for (const name of this.bound.get(line) || []) names.delete(name);
+    const count = lost.length === 1 ? "1 input" : `${lost.length} inputs`;
+    return `quest: the session started again, and ${count} that ran before did not run again` +
+      (names.size > 0 ? `; no longer bound: ${[...names].join(", ")}` : "") + "\n";
   }
 }

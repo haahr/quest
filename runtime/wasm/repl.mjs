@@ -42,7 +42,14 @@ export class Repl {
     const records = (await this.request(requestLine({isComplete: phrase}))).map(decodeRecord);
     const status = records.find(r => "status" in r);
     let executed = null;
-    if (!status || status.status === "complete") {
+    const failed = records.find(r => "error" in r);
+    if (!status && failed) {
+      // the test itself failed (a phrase nested past the stack, an
+      // interrupt): its error, and the phrase dropped, not run
+      // (wasm-review.md section 2.2, 9)
+      this.lines.length = 0;
+      this.err(failed.rendered);
+    } else if (!status || status.status === "complete") {
       this.lines.length = 0;
       if (phrase.trim() !== "") executed = await this.execute(phrase);
     }
