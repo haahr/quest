@@ -1,0 +1,31 @@
+(* A document with an object that repeats a key is refused (dynamic.error) by
+ * every reader (docs/dynamic.md section 2.1): a value's record that gives a
+ * field twice, a type's record that names one twice, and both at once, which
+ * readers once read differently, the runtime taking the first value and the
+ * interpreters the last. Each document is read from a file of its own, so
+ * that no refusal leaves the next to be read from where it stopped. *)
+
+import writer: Writer;
+import reader: Reader;
+import dynamic: Dynamic;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+Let R = Record a: Int end;
+let read(name: String document: String): Ok =
+    begin
+        let w = writer.file("document.json")
+        writer.putString(w document)
+        writer.close(w)
+        let r = reader.file("document.json")
+        print(name <> ": " <> try "a = " <> conv.int(dynamic.be(:R dynamic.intern(r)).a)
+            when dynamic.error then "dynamic.error" end)
+        reader.close(r)
+    end;
+read("the value repeats a field"
+    "{\"quest\":1,\"types\":[{\"record\":{\"a\":\"Int\"}}],\"type\":0,\"value\":{\"a\":1,\"a\":2}}");
+read("the type repeats a field"
+    "{\"quest\":1,\"types\":[{\"record\":{\"a\":\"Int\",\"a\":\"Int\"}}],\"type\":0,\"value\":{\"a\":1}}");
+read("both repeat it"
+    "{\"quest\":1,\"types\":[{\"record\":{\"a\":\"Int\",\"a\":\"Int\"}}],\"type\":0,\"value\":{\"a\":1,\"a\":2}}");
+read("well-formed"
+    "{\"quest\":1,\"types\":[{\"record\":{\"a\":\"Int\"}}],\"type\":0,\"value\":{\"a\":3}}")

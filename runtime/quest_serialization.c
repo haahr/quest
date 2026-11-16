@@ -1339,6 +1339,11 @@ static QJsonValue *quest_parse_json_object(QJsonReader *jr) {
         quest_json_skip_ws(jr);
         if (quest_json_peek(jr) != '"') quest_raise_dynamic_error();
         QJsonValue *key_node = quest_parse_json_string(jr);
+        /* A repeated key is an error, as in every reader (docs/dynamic.md
+         * section 2.1): which of its values a reader took would differ */
+        for (size_t i = 0; i < count; ++i) {
+            if (strcmp(entries[i].key, key_node->u.s.str) == 0) quest_raise_dynamic_error();
+        }
         quest_json_skip_ws(jr);
         if (quest_json_next(jr) != ':') quest_raise_dynamic_error();
         quest_json_skip_ws(jr);

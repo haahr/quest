@@ -762,7 +762,8 @@ export
         end
     let decode(text0: String): Value =
         begin
-            let document = try json.parse(text0) when json.error then fail(:json.Value) end
+            (* A repeated key is an error, as in every reader *)
+            let document = try json.parseUnique(text0) when json.error then fail(:json.Value) end
             let o = members(document)
             if {memberCount(o) isnot 4} orif not(hasMember(o "quest")) orif not(hasMember(o "types"))
                 orif not(hasMember(o "type")) orif not(hasMember(o "value")) then

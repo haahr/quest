@@ -172,6 +172,12 @@ the stages are rebuilt.
    today; check first that error tests take `@stdin`. Error tests do not run under the JIT, so also a run golden,
    `tests/source/stdlib/dynamic_repeated_keys.quest`, that reads all three documents, one per line, and catches
    each with `when dynamic.error`.
+   *Built 2026-11-15:* the rule is in docs/dynamic.md §2.1 (any object of the document). The run golden reads each
+   document from a file of its own: read one after another from standard input, a refused document left the next
+   unreadable (every later read raised `dynamic.error`), which is how a reader resumes after a refusal, not this
+   step's rule. The error test's `dynamic.error` is raised in the library, at no line of the program, so it is
+   matched by `tests/golden/errors/run/dynamic_repeated_field.error`. Both pass in every phase, in the ssac, arm64,
+   arm64-whole and jit-files modes, and every `dynamic` test still passes in both compilers.
 7. **A conversion the represent pass rejects is a compile-time error,** with the program's location, in both
    compilers and every driver (decided 2026-11-15). A conversion that would copy mutable data laid out two ways
    (`rejectedConversion`) is the program's fault, not the compiler's. A rejected conversion found later to be one

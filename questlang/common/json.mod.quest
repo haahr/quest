@@ -54,7 +54,9 @@ export
      * 2. Parsing (json.loads)
      * ====================================================================== *)
 
-    Let Scanner = Tuple text: String var pos: Int end
+    (* unique: whether an object's repeated member is an error (parseUnique),
+     * not its last value winning *)
+    Let Scanner = Tuple text: String var pos: Int unique: Bool end
 
     let atEnd(s: Scanner): Bool = s.pos >= stringOp.length(s.text)
     let peek(s: Scanner): Char = if atEnd(s) then '\x00' else stringOp.getChar(s.text s.pos) end
@@ -181,6 +183,7 @@ export
                         skipSpace(s)
                         if peek(s) isnot ':' then fail(:Ok) end
                         advance(s)
+                        if s.unique andif hashMap.contains(:String :Value o.members name) then fail(:Ok) end
                         put(o name parseValue(s))
                         skipSpace(s)
                         if peek(s) is ',' then advance(s)
@@ -224,14 +227,17 @@ export
             v
         end
 
-    let parse(text: String): Value =
+    let parseText(text: String unique: Bool): Value =
         begin
-            let s: Scanner = tuple let text = text let var pos = 0 end
+            let s: Scanner = tuple let text = text let var pos = 0 let unique = unique end
             let v = parseValue(s)
             skipSpace(s)
             if not(atEnd(s)) then fail(:Ok) end
             v
         end
+
+    let parse(text: String): Value = parseText(text false)
+    let parseUnique(text: String): Value = parseText(text true)
 
     (* The documents parseShared has parsed, by their text: a build reads each
      * artifact many times *)

@@ -498,6 +498,15 @@ def _reject_json_constant(name: str) -> Any:
     raise _fail()
 
 
+def _unique_members(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """An object's members, refusing a repeated name: which of its values a
+    reader took would differ (docs/dynamic.md §2.1)."""
+    members = dict(pairs)
+    if len(members) != len(pairs):
+        raise _fail()
+    return members
+
+
 def _is_bytes(text: str) -> bool:
     """Whether each character of text is a byte, as a Quest character is."""
     return max(text, default="\0") <= "\xff"
@@ -506,7 +515,7 @@ def _is_bytes(text: str) -> bool:
 def jsog_decode(raw_json: str) -> QAutoVal:
     """Deserializes a version 1 document into a dynamic value."""
     try:
-        document = json.loads(raw_json, parse_constant=_reject_json_constant)
+        document = json.loads(raw_json, parse_constant=_reject_json_constant, object_pairs_hook=_unique_members)
     except (json.JSONDecodeError, RecursionError):
         raise _fail() from None
     if not isinstance(document, dict) or set(document) != {"quest", "types", "type", "value"}:

@@ -76,6 +76,9 @@ index. Values are decoded by following their type, so the value encoding stays c
   It is independent of the build ABI version (docs/build-process.md §5.2), although `.qi` files use this
   format, so changing it also bumps the ABI.
 - **`types`**: the type table. Nested dynamic values anywhere in `value` use the same table.
+- **No object repeats a key,** anywhere in the document (a record's field, a type node's tag, the document's own
+  members): a reader refuses one (`dynamic.error`), since which of its values a reader took would differ. Every
+  reader does: the runtime's, and both interpreters' (decided 2026-11-15).
 - **`type`**: the type of the dynamic value.
 - **`value`**: the value, encoded as §2.4 describes for that type.
 
