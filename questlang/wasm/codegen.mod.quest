@@ -1960,6 +1960,20 @@ export
                         optionIs(f shapeOf(ir.atomType(x.args[0])) a b 0)
                     end
                     if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
+                elsif isVariant(ir.atomType(x.args[0])) then
+                    (* by case and value, the core's valIs at the variant's
+                     * descriptor (quest_variant_is; docs/extensions.md,
+                     * Variants as Values) *)
+                    if maybe.isNone(:ir.Descriptor x.descriptor)
+                        orif not(hashMap.contains(:String :Int f.g.runtimeUnits "wasm/core.valIs")) then
+                        fail("is on variants without their descriptor")
+                    end
+                    emit(f i1(ops.globalGet f.g.noClosure))
+                    descriptor(f maybe.unwrap(:ir.Descriptor x.descriptor))
+                    boxedAtom(f x.args[0])
+                    boxedAtom(f x.args[1])
+                    runtimeUnitCall(f "wasm/core.valIs")
+                    if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
                 elsif isRecord(ir.atomType(x.args[0])) then
                     for k = 0 upto 1 do
                         atom(f x.args[k])

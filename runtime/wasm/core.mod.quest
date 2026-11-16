@@ -1314,6 +1314,8 @@ export
     let realEq(a: Real b: Real): Bool = external "wasm.realEq"
     let realBits(r: Real): Int = external "wasm.realBits"
     let same0(a: Any b: Any): Bool = external "wasm.same"
+    let isRecBox(x: Any): Bool = external "wasm.isRecBox"
+    let recPayload(x: Any): Any = external "wasm.recPayload"
     let rec valIs(d0: Desc a: Any b: Any): Bool =
         if same0(a b) then true
         elsif isBoxedInt0(a) andif isBoxedInt0(b) then boxedIntOf(a) is boxedIntOf(b)
@@ -1334,6 +1336,20 @@ export
                 end
             elsif d.kind is kindTuple then same0(unproxy(a) unproxy(b))
             elsif {d.kind is kindReal} andif isBoxedReal(a) andif isBoxedReal(b) then realEq(realOf(a) realOf(b))
+            elsif d.kind is kindRecord then
+                (* a record is its payload: each view of it is a box of its
+                 * own (quest_val_is) *)
+                isRecBox(a) andif isRecBox(b) andif same0(recPayload(a) recPayload(b))
+            elsif d.kind is kindVariant then
+                (* by case and value, a var case by its location
+                 * (quest_variant_is; docs/extensions.md, Variants as
+                 * Values) *)
+                let tag = variantTag(a)
+                if {tag isnot variantTag(b)} orif {tag < 0} then false
+                elsif same0(variantPayload(a) variantPayload(b)) then true
+                elsif {tag >= extent d.parts} orif isVar(d tag) then false
+                else valIs(d.parts[tag] variantPayload(a) variantPayload(b))
+                end
             else false
             end
         end
@@ -1370,8 +1386,6 @@ export
     let smallValue(x: Any): Int = external "wasm.smallValue"
     let isBoxedInt(x: Any): Bool = external "wasm.isBoxedInt"
     let boxedInt(x: Any): Int = external "wasm.boxedInt"
-    let isRecBox(x: Any): Bool = external "wasm.isRecBox"
-    let recPayload(x: Any): Any = external "wasm.recPayload"
     let isObject(x: Any): Bool = external "wasm.isObject"
     let hashOf(x: Any): Int = external "wasm.hashOf"
     let setHash(x: Any h: Int): Ok = external "wasm.setHash"
@@ -1459,7 +1473,13 @@ export
     (* At the type is compares a value of type d at (identityType) *)
     let rec identityHash(d: Desc x: Any): Int = identityHashAt(identityType(d) x)
     and identityHashAt(d: Desc x: Any): Int =
-        if {d.kind is kindOption} andif not(isSmall(x)) then
+        if {d.kind is kindVariant} andif not(isSmall(x)) then
+            (* its case and its value's hash, as valIs compares variants
+             * (quest_variant_identity_hash) *)
+            let tag = variantTag(x)
+            let known = {tag >= 0} andif {tag < extent d.parts} andif not(isVar(d tag))
+            mix(xor(tag if known then identityHash(d.parts[tag] variantPayload(x)) else mix(objectHash(variantPayload(x))) end))
+        elsif {d.kind is kindOption} andif not(isSmall(x)) then
             let tag = tagAt(x)
             let p = if {tag >= 0} andif {tag < extent d.parts} then d.parts[tag] else bases[kindNone] end
             if {p.kind is kindNone} orif {p.kind is kindOk} orif {{p.kind is kindTuple} andif {extent p.parts is 0}} then

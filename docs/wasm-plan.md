@@ -1982,7 +1982,8 @@ writer's buffer, and would end the session when flushed.
       - **recorded representations:** the core's `registeredRep` and `isRegistered` split from `abstractRep`,
         so that a name registered at any arity is checked, as `quest_check_abstract_desc` does.
       - **JSON:** literals compared byte by byte; a number begins with a digit or `-` and is read as `strtoll`
-        and `strtod` read its longest prefix, saturating past an `Int`'s range; the first of a key given twice.
+        and `strtod` read its longest prefix, saturating past an `Int`'s range; a key given twice in an object
+        refused, as every reader refuses it since shared-faults-plan.md's step 6 (built first as C's first key).
       - **a closed reader:** read as at its end, so that `intern` raises `dynamic.error`.
     - **Not done: serialization's recursion as a loop** (§2.4, 10). The overflow is in `scan`, the sharing
       walk, which recurses as C's does. With node at native's 8 MB of stack (`--stack-size=7800`), a list's

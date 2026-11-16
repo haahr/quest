@@ -1055,7 +1055,11 @@ export
                     let var going = true
                     while going do
                         skipSpace(src)
-                        put(keys readString(src))
+                        let key = readString(src)
+                        (* a key given twice is refused, as every reader
+                         * refuses it (docs/dynamic.md) *)
+                        for i = 0 upto count - 1 do if stringOp.equal(keys.pieces[i] key) then fail() end end
+                        put(keys key)
                         skipSpace(src)
                         expect(src 58)
                         let v = readJson(src)
@@ -1123,7 +1127,6 @@ export
         case j
             when jObject with o then
                 let var found = maybe.none(:J)
-                (* the first of a key given twice, as C's reader takes it *)
                 for i = 0 upto extent o.keys - 1 do
                     if maybe.isNone(:J found) andif stringOp.equal(o.keys[i] key) then
                         found := maybe.some(:J o.values[i])
