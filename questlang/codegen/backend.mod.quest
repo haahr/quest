@@ -19,6 +19,11 @@ import
     questlang/wasm/model : questlang/wasm/Model
     collections/vector : collections/Vector
     util/maybe : util/Maybe
+    util/hash : util/Hash
+    wasmRuntime = questlang/wasm/runtime : questlang/wasm/Runtime
+    ascii : Ascii
+    conv : Conv
+    word : Word
     stringOp = string : StringOp
 export
     let unsupported: Exception(String) = exception unsupported: String end
@@ -32,6 +37,62 @@ export
 
     let wasmText(unit: nodes.Unit): String = wasmPrinter.print(wasmModule(unit))
 
+    (* The stamp of the runtime this compiler's wasm units are built against:
+     * a hash of the runtime module's encoding, which changes with its types
+     * and functions. Each unit's object carries it in a custom section,
+     * quest.runtime, and the build takes an object with another for stale,
+     * rather than fail when it is instantiated (docs/wasm-plan.md step 31) *)
+    let stamps = tuple let var made = "" end
+    let runtimeStamp(): String =
+        begin
+            if stringOp.isEmpty(stamps.made) then
+                stamps.made := conv.int(word.toInt(hash.string(encode.encode(wasmRuntime.runtimeModule()))))
+            end
+            stamps.made
+        end
+
+    (* An unsigned LEB128 in bytes at at: its value, and where it ends *)
+    Def Leb = Tuple value: Int next: Int end
+    let leb(bytes: String at: Int): Leb =
+        begin
+            let n = stringOp.length(bytes)
+            let var i = at
+            let var v = 0
+            let var shift = 1
+            let var going = true
+            while going andif {i < n} do
+                let b = ascii.val(stringOp.getChar(bytes i))
+                i := i + 1
+                v := v + {{b % 128} * shift}
+                shift := shift * 128
+                going := b >= 128
+            end
+            tuple let value = v let next = i end
+        end
+
+    (* The quest.runtime section of a wasm object's bytes, or "" *)
+    let objectRuntimeStamp(bytes: String): String =
+        begin
+            let n = stringOp.length(bytes)
+            let var at = 8
+            let var found = ""
+            while {at < n} andif stringOp.isEmpty(found) do
+                let id = ascii.val(stringOp.getChar(bytes at))
+                let size = leb(bytes at + 1)
+                let sectionEnd = size.next + size.value
+                if id is 0 then
+                    let length = leb(bytes size.next)
+                    let named = length.next + length.value
+                    if {named <= sectionEnd} andif {sectionEnd <= n}
+                        andif stringOp.equal(stringOp.getSub(bytes length.next length.value) "quest.runtime") then
+                        found := stringOp.getSub(bytes named sectionEnd - named)
+                    end
+                end
+                at := sectionEnd
+            end
+            found
+        end
+
     (* A unit's C with a datum of its own, exported: a symbol and the C
      * string it names. A backend's failure is raised as unsupported, so that
      * callers handle one exception whatever the backend. *)
@@ -41,7 +102,8 @@ export
             (* A module unit's fingerprint, for a host's JIT to compare
              * (docs/wasm-plan.md step 13), in a custom section *)
             Let Datum = Tuple symbol: String text: String end
-            encode.encode(wasmModule(unit)) <> if maybe.isSome(:Datum datum) then
+            encode.encode(wasmModule(unit)) <> encode.customSection("quest.runtime" runtimeStamp())
+                <> if maybe.isSome(:Datum datum) then
                 encode.customSection("quest.fingerprint" maybe.unwrap(:Datum datum).text)
             else "" end
         else

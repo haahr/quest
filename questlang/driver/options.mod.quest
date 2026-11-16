@@ -37,6 +37,7 @@ export
         wholeProgram: Bool
         backends: choice.T
         wasmEngine: String
+        runWasm: Bool
         expectedExit: Int
         dumpAfter: Array(String)
         extraObjects: Array(String)
@@ -410,6 +411,20 @@ export
             let fromStdin = stringOp.equal(file "-") orif {noProgram andif not(interactive) andif not(kernel)
                 andif not(atTerminal)}
             let fromFile = not(stringOp.equal(file "")) andif not(fromStdin)
+            (* --backend wasm and a program file, with no phase, output, or
+             * compile: the program compiled to WebAssembly and run in
+             * --wasm-engine's engine, not on the native JIT. -e, -i, the
+             * kernel, and the REPL, which run on the JIT, are refused with it
+             * (docs/wasm-plan.md step 31) *)
+            let plainRun = not(stopGiven) andif not(compileMode) andif maybe.isNone(:String output)
+                andif {vector.length(:String dumpAfter) is 0}
+            let runWasm = plainRun andif stringOp.equal(backend "wasm") andif fromFile andif not(interactive)
+                andif not(kernel)
+            if plainRun andif stringOp.equal(backend "wasm") andif not(runWasm) then
+                usage("--backend wasm runs a program file in --wasm-engine's engine; -e, -i, --kernel, and the REPL "
+                    <> "run on the JIT, without it")
+            end
+            if runWasm then stopAfter := "run_c_compiled" end
             tuple
                 let stopAfter = stopAfter
                 (* The program's name, as the bootstrap's diagnostics name it,
@@ -436,6 +451,7 @@ export
                     let variants = vector.toArray(:choice.Alternative variants)
                 end
                 let wasmEngine = wasmEngine
+                let runWasm = runWasm
                 let expectedExit = expectedExit
                 let dumpAfter = vector.toArray(:String dumpAfter)
                 let extraObjects = vector.toArray(:String extraObjects)
@@ -446,7 +462,7 @@ export
                  * the JIT by default, unless an option asks for the
                  * interpreter's phases or output, or for a whole program, or
                  * this driver cannot host the JIT (docs/jit.md section 3.10) *)
-                let jit = jit orif {not(noJit) andif not(compileMode) andif not(stopGiven)
+                let jit = {jit andif not(runWasm)} orif {not(noJit) andif not(compileMode) andif not(stopGiven)
                     andif stringOp.equal(stopAfter "interpret") andif {extent dumpAfter is 0} andif not(showOffsets)
                     andif not(showValues) andif not(wholeProgram) andif maybe.isNone(:String session.refusal())}
                 let programArgs = vector.toArray(:String programArgs)

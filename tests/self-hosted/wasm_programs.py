@@ -94,6 +94,63 @@ def check_program(driver: str, program: Path, update: bool) -> list[str]:
     return problems
 
 
+def check_driver_run(driver: str) -> list[str]:
+    """--backend wasm FILE runs the program in --wasm-engine's engine, as a
+    program runs natively: its output, its status (200 through wasmtime too),
+    an uncaught overflow as stack.overflow; -e is refused with it
+    (docs/wasm-plan.md step 31)"""
+    environment = {**os.environ, "QUEST_HOME": str(ROOT_DIR)}
+    problems: list[str] = []
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "exit.quest").write_text('import system: System;\nimport writer: Writer;\n'
+                                         'writer.putString(writer.output "before\\n");\nsystem.sysexit(200);\n')
+        Path(d, "deep.quest").write_text("let rec deep(n: Int): Int = n - deep(n + 1);\ndeep(0);\n")
+        for engine in ("wasmtime", "node"):
+            base = [driver, "--backend", "wasm", "--wasm-engine", engine, "--build-dir", str(Path(d) / "build")]
+            got = run(base + ["exit.quest"], d, environment)
+            if got[:2] != (200, "before\n"):
+                problems.append(f"--backend wasm in {engine}: status {got[0]}, output {got[1]!r}, stderr {got[2]!r}")
+            got = run(base + ["deep.quest"], d, environment)
+            if got[0] != 1 or not got[2].startswith("Exception: stack.overflow"):
+                problems.append(f"an overflow in {engine}: status {got[0]}, stderr {got[2][:300]!r}")
+        got = run([driver, "--backend", "wasm", "-e", "1 + 1"], d, environment)
+        if got[0] != 2:
+            problems.append(f"--backend wasm -e: status {got[0]}, not refused")
+    return problems
+
+
+def check_stale_runtime(driver: str) -> list[str]:
+    """An object in the build directory that another runtime's compiler
+    built (its quest.runtime section another stamp) is rebuilt, not linked
+    and refused when instantiated (docs/wasm-plan.md step 31)"""
+    environment = {**os.environ, "QUEST_HOME": str(ROOT_DIR)}
+    problems: list[str] = []
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "main.quest").write_text('import writer: Writer;\nwriter.putString(writer.output "ran\\n");\n')
+        build = Path(d) / "build"
+        command = [driver, "--backend", "wasm", "--wasm-engine", "node", "--build-dir", str(build), "main.quest"]
+        if run(command, d, environment)[:2] != (0, "ran\n"):
+            return ["a stale runtime: the first build did not run"]
+        objects = [o for o in build.rglob("*.wasm") if b"quest.runtime" in o.read_bytes()]
+        if not objects:
+            return ["a stale runtime: no object carries quest.runtime"]
+        # another stamp, of the same length and with the same times, as an
+        # earlier runtime's would be
+        for o in objects:
+            data = o.read_bytes()
+            times = o.stat()
+            at = data.rindex(b"quest.runtime") + len(b"quest.runtime")
+            digits = bytes(b"0123456789"[(c - 48 + 1) % 10] if 48 <= c <= 57 else c for c in data[at:])
+            o.write_bytes(data[:at] + digits)
+            os.utime(o, ns=(times.st_atime_ns, times.st_mtime_ns))
+        got = run(command[:1] + ["-v"] + command[1:], d, environment)
+        if got[0] != 0 or not got[1].endswith("ran\n"):
+            problems.append(f"a stale runtime: status {got[0]}, output {got[1][-300:]!r}, stderr {got[2][:300]!r}")
+        elif "built against another wasm runtime" not in got[1] + got[2]:
+            problems.append("a stale runtime: the build did not say why it rebuilt")
+    return problems
+
+
 def check(driver: str, update: bool = False) -> list[str]:
     if shutil.which("wasmtime") is None or shutil.which("node") is None:
         print("wasmtime or node is not installed: skipped")
@@ -101,6 +158,8 @@ def check(driver: str, update: bool = False) -> list[str]:
     problems: list[str] = []
     for program in sorted(CASES.glob("*.quest")):
         problems += check_program(driver, program, update)
+    problems += check_driver_run(driver)
+    problems += check_stale_runtime(driver)
     return problems
 
 

@@ -14,6 +14,7 @@
 import fs from "node:fs";
 import process from "node:process";
 import { WASI } from "node:wasi";
+import {isStackOverflow} from "./host.mjs";
 import { Jit } from "./jit.mjs";
 
 const args = process.argv.slice(2);
@@ -65,6 +66,13 @@ const program = await WebAssembly.instantiate(fs.readFileSync(programPath), jit.
 try {
   program.instance.exports._start();
 } catch (e) {
-  if (!(e instanceof Exit)) throw e;
-  process.exitCode = e.code;
+  if (isStackOverflow(e)) {
+    // as natively an overflow no handler caught ends a program
+    // (docs/wasm-plan.md step 31)
+    process.stderr.write("Exception: stack.overflow\n");
+    process.exitCode = 1;
+  } else {
+    if (!(e instanceof Exit)) throw e;
+    process.exitCode = e.code;
+  }
 }

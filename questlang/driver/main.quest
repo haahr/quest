@@ -566,9 +566,15 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
              * give: the core ends it with 125 and a last line on standard
              * error naming the status (runtime/wasm/core's exitStatus), which
              * this takes off and gives as the status *)
-            let exitAbove = fun(r: Tuple code: Int stdout: String stderr: String end):
+            let exitAbove = fun(r0: Tuple code: Int stdout: String stderr: String end):
                 Tuple code: Int stdout: String stderr: String end
                 begin
+                    (* and wasmtime's report of an overflow as natively: an
+                     * uncaught stack.overflow, status 1 *)
+                    let r = if {r0.code isnot 0} andif {strutil.find(r0.stderr "call stack exhausted") >= 0} then
+                            tuple let code = 1 let stdout = r0.stdout let stderr = "Exception: stack.overflow\n" end
+                        else r0
+                        end
                     let key = "quest: exit status "
                     let e = r.stderr
                     let var at = ~1
@@ -743,6 +749,10 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                              * error, which a program's own must not have *)
                             vector.append(:String command "node")
                             vector.append(:String command "--no-warnings")
+                            (* about 8 MB of stack, as natively and as wasmtime
+                             * is given, below the main thread's own (as
+                             * benchmarks/run.py's --node-stack) *)
+                            vector.append(:String command "--stack-size=7800")
                             vector.append(:String command files.join(paths.projectDir() "runtime/wasm/run.mjs"))
                             for k = 0 upto vector.length(:String units) - 1 do
                                 vector.append(:String command "--module")
@@ -756,6 +766,10 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                             vector.append(:String command "gc=y,function-references=y,tail-call=y,exceptions=y")
                             vector.append(:String command "-C")
                             vector.append(:String command "collector=copying")
+                            (* 8 MB of stack, as natively (section 8.1), not
+                             * wasmtime's 512 KB *)
+                            vector.append(:String command "-W")
+                            vector.append(:String command "max-wasm-stack=8388608")
                             (* WASI's: / and . opened, the environment, and the
                              * current directory as PWD *)
                             vector.append(:String command "--dir")
@@ -784,6 +798,14 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         if system.fileExists(base) then system.removeFile(base) end
                         if system.fileExists(program) then system.removeFile(program) end
                         if system.fileExists(runtimePath) then system.removeFile(runtimePath) end
+                        if options.runWasm then
+                            (* as the program ran: its output, and its status *)
+                            writer.putString(writer.output r.stdout)
+                            writer.putString(writer.err r.stderr)
+                            writer.flush(writer.output)
+                            writer.flush(writer.err)
+                            system.sysexit(r.code)
+                        end
                         finishRun(r)
                     end
                 when writer.error then failWith("error writing the program's WebAssembly modules")

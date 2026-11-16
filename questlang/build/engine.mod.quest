@@ -313,6 +313,12 @@ export
                     let library = strutil.startsWith(files.absolute(source) files.join(paths.projectDir() "lib") <> "/")
                     if not(eq(m.backend choice.forFile(eng.backends name library))) then
                         maybe.some(:String "compiled by the " <> m.backend <> " backend")
+                    elsif choice.isWasm(m.backend) andif system.isFile(choice.codeFile(a.c m.backend))
+                        andif not(eq(cBackend.objectRuntimeStamp(maybe.unwrapOr(:String
+                            files.readText(choice.codeFile(a.c m.backend)) "")) cBackend.runtimeStamp())) then
+                        (* a wasm object built against another runtime's types,
+                         * which instantiating it would refuse *)
+                        maybe.some(:String "built against another wasm runtime")
                     else
                         importResolutionChange(m maybe.some(:String files.parent(source)) search programDir eng.resolver)
                     end

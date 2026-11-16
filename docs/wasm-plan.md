@@ -2139,6 +2139,25 @@ writer's buffer, and would end the session when flushed.
     object carries a stamp of the runtime's types (a custom section), so that an object an earlier compiler built
     is stale and rebuilt, rather than failing at instantiation; the page's archive carries the same stamp.
     *Done when* each is a test: a run of `--backend wasm FILE`, and a build directory from an earlier runtime.
+
+    *Done 2026-11-15:*
+    - **Built:**
+      - **`--backend wasm FILE`,** with no phase, `-o`, or `compile` (`options.runWasm`): the program is
+        compiled to WebAssembly and run in `--wasm-engine`'s engine, its output written through and its status
+        the driver's. Its standard input is not given it (the engine runs under `system.run`). `-e`, `-i`,
+        `--kernel`, and the REPL with `--backend wasm` are refused, saying that they run on the JIT.
+      - **stack:** wasmtime is given `-W max-wasm-stack=8388608`, node `--stack-size=7800` (as
+        `benchmarks/run.py`'s). An uncaught overflow is `Exception: stack.overflow` and status 1 in both:
+        `run.mjs` reports node's, and the driver wasmtime's ("call stack exhausted"). Natively the report adds
+        the frames (§7, 1).
+      - **stale objects:** each wasm unit's object carries a custom section, `quest.runtime`, the stamp of the
+        runtime it was built against: a hash of the runtime module's encoding (`backend.runtimeStamp`), which
+        changes with the runtime's types and functions. The build's staleness check takes an object whose stamp
+        differs for stale, "built against another wasm runtime", and compiles it again, where it failed at
+        instantiation. The page's archive has the build stamp of step 30, which covers its driver's modules.
+    - **Checked:** `wasm_programs.py`'s `check_driver_run` (`--backend wasm FILE` in both engines: output, status
+      200, an overflow; `-e` refused) and `check_stale_runtime` (a build directory whose objects carry another
+      stamp, with their times kept, rebuilt and run). The whole wasm-node suite with the step's driver.
 32. **`Real`** (§4, 1 to 3; unchanged). `real.format`'s `'g'` on an exact tie in the exponent form is C's rule on
     both targets, natively through `util/realconv` or a corrected tie, so that both print `9.8e+03` (the owner's
     answer; Apple's `snprintf` gives `9.80e+03`); the plan's and `realmath`'s statements of accuracy corrected
