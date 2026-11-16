@@ -110,6 +110,30 @@ static char *quest_dup_str(const char *s) {
     return copy;
 }
 
+/* A type parameter in scope while two types are compared: a polymorphic
+ * function type's quantifier, or an auto type's type component. Both types'
+ * parameters at that position are the one binder, as the type checkers rename
+ * both to one fresh variable (types/subtyping in both compilers). bound is its
+ * bound (NULL for kind TYPE), described in the scope bound_scope: a
+ * quantifier's bound is under the quantifiers before it (docs/c-representation.md
+ * §6.4.4), and an auto type's under its own binder. */
+typedef struct QSubtypeBinder {
+    const QTypeDescriptor *bound;
+    const struct QSubtypeScope *bound_scope;
+} QSubtypeBinder;
+
+/* One side's binders in scope, innermost first: a bound variable descriptor
+ * quest_type_bound_vars[i] (a de Bruijn index) is the i'th from here. NULL is
+ * the empty scope, where a comparison starts. The two sides of a comparison
+ * have separate scopes, since a bound's comparison puts one side under fewer
+ * binders than the other; while they are under the same binders they share
+ * one scope, so that equal descriptors are equal types without comparing
+ * them. */
+typedef struct QSubtypeScope {
+    const QSubtypeBinder *binder;
+    const struct QSubtypeScope *outer;
+} QSubtypeScope;
+
 /* The trail of quest_is_subtype: the pairs (sub, super_type) whose proofs are
  * in progress, innermost last; each call that compares parts pushes its pair
  * and pops it when it returns. Descriptors of recursive types are cyclic, so a proof can come back
@@ -118,23 +142,81 @@ static char *quest_dup_str(const char *s) {
  * the cycle without finding a difference, so there is none. Without the
  * assumption, comparing Rec(L) Option nil cons with head: Int tail: L end end
  * with itself, through the separate descriptors two units emit for it, would
- * never end. Its pairs are QSubtypePairs (quest_runtime_internal.h).
+ * never end. Its pairs are QSubtypePairs (quest_runtime_internal.h), and each
+ * pair's scopes are at the same index of quest_subtyping_scopes: a pair is met
+ * again only under the same binders, since a bound variable in one scope is
+ * not the same type in another.
  *
  * The trail grows as deep comparisons need, in C memory; its pairs in use
  * are roots (quest_runtime_roots), since a descriptor being compared may be
- * reachable from nothing else */
+ * reachable from nothing else. The scopes are on the C stack of the calls
+ * that made them, which are running while their pairs are on the trail. */
+typedef struct QSubtypeScopes {
+    const QSubtypeScope *sub;
+    const QSubtypeScope *super_type;
+} QSubtypeScopes;
 static Q_THREAD_LOCAL QSubtypePair *quest_subtyping_trail = NULL;
+static Q_THREAD_LOCAL QSubtypeScopes *quest_subtyping_scopes = NULL;
 static Q_THREAD_LOCAL size_t quest_subtyping_trail_len = 0, quest_subtyping_trail_cap = 0;
+
+/* How many comparisons of polymorphic function types one proof may make. As
+ * in full F<:, subtyping with bounds compared contravariantly is undecidable
+ * (Pierce, Bounded quantification is undecidable): a search can go on through
+ * bounds without end. The type checkers give each proof fuel and charge each
+ * comparison of quantifiers much of it (MAX_SUBTYPE_FUEL / _QUANTIFIER_FUEL,
+ * 10000 / 500), so a diverging search fails as not a subtype after a few
+ * levels; this is the same number of quantifier comparisons. */
+#define Q_SUBTYPE_QUANTIFIER_FUEL 20
+static Q_THREAD_LOCAL int quest_subtyping_fuel = 0;
+
+/* The binder that quest_type_bound_vars[i] is in scope, or NULL if it is
+ * outside every binder in scope, with *free set to how far outside (i less the
+ * scope's depth) */
+static const QSubtypeBinder *quest_subtype_binder(const QTypeDescriptor *t, const QSubtypeScope *scope,
+                                                  size_t *free) {
+    size_t i = (size_t)(t - quest_type_bound_vars);
+    for (; scope != NULL; scope = scope->outer) {
+        if (i == 0) return scope->binder;
+        --i;
+    }
+    *free = i;
+    return NULL;
+}
+
+static bool quest_is_bound_var(const QTypeDescriptor *t) {
+    return t >= quest_type_bound_vars && t < quest_type_bound_vars + Q_MAX_BOUND_VARS;
+}
+
+static bool quest_subtype_in(const QTypeDescriptor *sub, const QSubtypeScope *ss,
+                             const QTypeDescriptor *super_type, const QSubtypeScope *ts);
+
+/* Whether sub, in the scope ss, is a subtype of super_type, in ts, when either
+ * is a bound type variable: the same binder, or two outside every binder in
+ * scope at the same distance outside (bound variables of types being compared
+ * at the top level); or a variable sub whose bound is a subtype of super_type
+ * (the type checkers' rule for a type variable, Cardelli's [TIncl Var]) */
+static bool quest_subtype_var(const QTypeDescriptor *sub, const QSubtypeScope *ss,
+                              const QTypeDescriptor *super_type, const QSubtypeScope *ts) {
+    size_t sub_free = 0, super_free = 0;
+    const QSubtypeBinder *sb = quest_is_bound_var(sub) ? quest_subtype_binder(sub, ss, &sub_free) : NULL;
+    if (quest_is_bound_var(super_type)) {
+        const QSubtypeBinder *tb = quest_subtype_binder(super_type, ts, &super_free);
+        if (quest_is_bound_var(sub) && sb == tb && (tb != NULL || sub_free == super_free)) return true;
+    }
+    if (sb != NULL && sb->bound != NULL) return quest_subtype_in(sb->bound, sb->bound_scope, super_type, ts);
+    return false;
+}
 
 /* Whether the type sub describes is a subtype of the one super_type describes,
  * compared structurally (docs/c-representation.md §6.4.4, Subtyping
  * Verification), as the type checkers compare types (types/subtyping in both
  * compilers, docs/type-system.md §3.2) but without caching. Stored descriptors
- * are looked through, and equal pointers are equal types. By kind of
- * super_type:
+ * are looked through, and equal pointers in one scope are equal types. By kind
+ * of super_type:
  *
- *   - Int, Real, Bool, Char, String, Ok, bound type variables, and holes: the
- *     same descriptor only;
+ *   - Int, Real, Bool, Char, String, Ok, and holes: the same descriptor only;
+ *   - bound type variables: the same binder, or (for sub) a variable whose
+ *     bound is a subtype (quest_subtype_var);
  *   - tuples: a prefix, with names equal where super_type names an element,
  *     and covariant elements, or invariant and var when super_type's is var
  *     (any tuple is a subtype of Tuple end);
@@ -144,42 +226,62 @@ static Q_THREAD_LOCAL size_t quest_subtyping_trail_len = 0, quest_subtyping_trai
  *     payload in both or neither, covariant, or invariant when either is var;
  *   - arrays and exceptions: invariant in the element or payload type;
  *   - functions: as many parameters, each of the same mode, and type
- *     parameters, equal bounds, contravariant value parameters, invariant var
+ *     parameters, with contravariant bounds (Cardelli's [TIncl Π], as the type
+ *     checkers compare them); then, under the type parameters, bound by
+ *     super_type's bounds, contravariant value parameters, invariant var
  *     parameters, covariant out parameters and result;
  *   - opaque types: the same name, and equal arguments for an application;
  *   - auto types: a bound within super_type's, if it has one, then a prefix
  *     of components with equal names and var-ness, covariant, or invariant
- *     when var.
+ *     when var, under the type component, bound by sub's bound.
  *
  * Covariant means sub's part is a subtype of super_type's, contravariant the
  * reverse, and invariant both. Pairs met again while being proved are assumed
- * to hold (the trail, above), which grows as deeply nested types need */
+ * to hold (the trail, above), which grows as deeply nested types need. A proof
+ * that compares more polymorphic function types than its fuel allows fails. */
 bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_type) {
+    if (quest_subtyping_trail_len == 0) quest_subtyping_fuel = Q_SUBTYPE_QUANTIFIER_FUEL;
+    return quest_subtype_in(sub, NULL, super_type, NULL);
+}
+
+static bool quest_subtype_in(const QTypeDescriptor *sub, const QSubtypeScope *ss,
+                             const QTypeDescriptor *super_type, const QSubtypeScope *ts) {
     /* A value stored as a type parameter has its type argument's type */
     sub = quest_stored_type(sub);
     super_type = quest_stored_type(super_type);
-    if (sub == super_type) return true;
+    if (sub == super_type && ss == ts) return true;
     if (sub == NULL || super_type == NULL) return false;
 
     /* Cycle detection trail */
     for (size_t i = 0; i < quest_subtyping_trail_len; ++i) {
-        if (quest_subtyping_trail[i].sub == sub && quest_subtyping_trail[i].super_type == super_type) {
+        if (quest_subtyping_trail[i].sub == sub && quest_subtyping_trail[i].super_type == super_type &&
+            quest_subtyping_scopes[i].sub == ss && quest_subtyping_scopes[i].super_type == ts) {
             return true;
         }
     }
     if (quest_subtyping_trail_len == quest_subtyping_trail_cap) {
         size_t cap = quest_subtyping_trail_cap > 0 ? 2 * quest_subtyping_trail_cap : 64;
         QSubtypePair *grown = (QSubtypePair *)realloc(quest_subtyping_trail, cap * sizeof *grown);
-        if (grown == NULL) {
+        QSubtypeScopes *grown_scopes =
+            grown == NULL ? NULL : (QSubtypeScopes *)realloc(quest_subtyping_scopes, cap * sizeof *grown_scopes);
+        if (grown == NULL || grown_scopes == NULL) {
             fprintf(stderr, "quest: out of memory comparing types\n");
             abort();
         }
         quest_subtyping_trail = grown;
+        quest_subtyping_scopes = grown_scopes;
         quest_subtyping_trail_cap = cap;
     }
+    quest_subtyping_scopes[quest_subtyping_trail_len] = (QSubtypeScopes){ ss, ts };
     quest_subtyping_trail[quest_subtyping_trail_len++] = (QSubtypePair){ sub, super_type };
 
     bool result = false;
+
+    if (sub->kind == QTYPE_KIND_BOUND_VAR || super_type->kind == QTYPE_KIND_BOUND_VAR) {
+        result = quest_subtype_var(sub, ss, super_type, ts);
+        quest_subtyping_trail_len--;
+        return result;
+    }
 
     switch (super_type->kind) {
         case QTYPE_KIND_INT:
@@ -194,12 +296,18 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
         case QTYPE_KIND_AUTO: {
             /* Cardelli §6.7: a subkind for the type component, then, as for
              * tuples, a prefix of the components with matching names, covariant
-             * immutable and invariant var components */
+             * immutable and invariant var components. The two type components
+             * are one binder, with sub's bound, as the type checkers rename
+             * super_type's to sub's; the bounds are described under it */
             if (sub->kind != QTYPE_KIND_AUTO) { result = false; break; }
             const QAutoTypeDescriptor *s = (const QAutoTypeDescriptor *)sub->extra;
             const QAutoTypeDescriptor *t = (const QAutoTypeDescriptor *)super_type->extra;
             if (s == NULL || t == NULL) { result = (s == t); break; }
-            if (t->bound != NULL && (s->bound == NULL || !quest_is_subtype(s->bound, t->bound))) {
+            QSubtypeBinder binder;
+            QSubtypeScope sin = { &binder, ss }, tin_own = { &binder, ts };
+            const QSubtypeScope *tin = ss == ts ? &sin : &tin_own;
+            binder = (QSubtypeBinder){ s->bound, &sin };
+            if (t->bound != NULL && (s->bound == NULL || !quest_subtype_in(s->bound, &sin, t->bound, tin))) {
                 result = false;
                 break;
             }
@@ -211,9 +319,10 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
                 if (strcmp(sc->name, tc->name) != 0 || sc->is_var != tc->is_var) {
                     match = false;
                 } else if (tc->is_var) {
-                    match = quest_is_subtype(sc->type, tc->type) && quest_is_subtype(tc->type, sc->type);
+                    match = quest_subtype_in(sc->type, &sin, tc->type, tin) &&
+                            quest_subtype_in(tc->type, tin, sc->type, &sin);
                 } else {
-                    match = quest_is_subtype(sc->type, tc->type);
+                    match = quest_subtype_in(sc->type, &sin, tc->type, tin);
                 }
             }
             result = match;
@@ -226,8 +335,8 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
             const QExceptionTypeDescriptor *s = (const QExceptionTypeDescriptor *)sub->extra;
             const QExceptionTypeDescriptor *t = (const QExceptionTypeDescriptor *)super_type->extra;
             if (s == NULL || t == NULL) { result = (s == t); break; }
-            result = quest_is_subtype(s->payload_type, t->payload_type) &&
-                     quest_is_subtype(t->payload_type, s->payload_type);
+            result = quest_subtype_in(s->payload_type, ss, t->payload_type, ts) &&
+                     quest_subtype_in(t->payload_type, ts, s->payload_type, ss);
             break;
         }
 
@@ -240,10 +349,11 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
             const QOpaqueTypeDescriptor *s = (const QOpaqueTypeDescriptor *)sub->extra;
             const QOpaqueTypeDescriptor *t = (const QOpaqueTypeDescriptor *)super_type->extra;
             size_t s_args = s != NULL ? s->arg_count : 0, t_args = t != NULL ? t->arg_count : 0;
-            if (result && sub != super_type && (s_args != 0 || t_args != 0)) {
+            if (result && (sub != super_type || ss != ts) && (s_args != 0 || t_args != 0)) {
                 result = s_args == t_args;
                 for (size_t i = 0; result && i < t_args; ++i) {
-                    result = quest_is_subtype(s->args[i], t->args[i]) && quest_is_subtype(t->args[i], s->args[i]);
+                    result = quest_subtype_in(s->args[i], ss, t->args[i], ts) &&
+                             quest_subtype_in(t->args[i], ts, s->args[i], ss);
                 }
             }
             break;
@@ -254,8 +364,8 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
             const QArrayTypeDescriptor *s = (const QArrayTypeDescriptor *)sub->extra;
             const QArrayTypeDescriptor *t = (const QArrayTypeDescriptor *)super_type->extra;
             if (s == NULL || t == NULL) { result = false; break; }
-            result = quest_is_subtype(s->element_type, t->element_type) &&
-                     quest_is_subtype(t->element_type, s->element_type);
+            result = quest_subtype_in(s->element_type, ss, t->element_type, ts) &&
+                     quest_subtype_in(t->element_type, ts, s->element_type, ss);
             break;
         }
 
@@ -276,12 +386,12 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
                 }
                 /* A var element, as a record's var field: the value's is var too, of the same type */
                 if (t->elements[i].is_var) {
-                    if (!s->elements[i].is_var || !quest_is_subtype(s->elements[i].type, t->elements[i].type) ||
-                        !quest_is_subtype(t->elements[i].type, s->elements[i].type)) {
+                    if (!s->elements[i].is_var || !quest_subtype_in(s->elements[i].type, ss, t->elements[i].type, ts) ||
+                        !quest_subtype_in(t->elements[i].type, ts, s->elements[i].type, ss)) {
                         match = false;
                         break;
                     }
-                } else if (!quest_is_subtype(s->elements[i].type, t->elements[i].type)) {
+                } else if (!quest_subtype_in(s->elements[i].type, ss, t->elements[i].type, ts)) {
                     match = false;
                     break;
                 }
@@ -309,12 +419,12 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
                 if (sf == NULL) { match = false; break; }
                 if (tf->is_var) {
                     if (!sf->is_var) { match = false; break; }
-                    if (!quest_is_subtype(sf->type, tf->type) || !quest_is_subtype(tf->type, sf->type)) {
+                    if (!quest_subtype_in(sf->type, ss, tf->type, ts) || !quest_subtype_in(tf->type, ts, sf->type, ss)) {
                         match = false;
                         break;
                     }
                 } else {
-                    if (!quest_is_subtype(sf->type, tf->type)) {
+                    if (!quest_subtype_in(sf->type, ss, tf->type, ts)) {
                         match = false;
                         break;
                     }
@@ -350,13 +460,13 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
                 } else {
                     if (tc->payload_type == NULL) { match = false; break; }
                     if (sc->is_var || tc->is_var) {
-                        if (!quest_is_subtype(sc->payload_type, tc->payload_type) ||
-                            !quest_is_subtype(tc->payload_type, sc->payload_type)) {
+                        if (!quest_subtype_in(sc->payload_type, ss, tc->payload_type, ts) ||
+                            !quest_subtype_in(tc->payload_type, ts, sc->payload_type, ss)) {
                             match = false;
                             break;
                         }
                     } else {
-                        if (!quest_is_subtype(sc->payload_type, tc->payload_type)) {
+                        if (!quest_subtype_in(sc->payload_type, ss, tc->payload_type, ts)) {
                             match = false;
                             break;
                         }
@@ -372,40 +482,61 @@ bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_t
             const QFunTypeDescriptor *s = (const QFunTypeDescriptor *)sub->extra;
             const QFunTypeDescriptor *t = (const QFunTypeDescriptor *)super_type->extra;
             if (s == NULL || t == NULL) { result = (s == t); break; }
-            if (s->param_count != t->param_count || s->quantifier_count != t->quantifier_count) {
+            size_t n = s->quantifier_count;
+            if (s->param_count != t->param_count || n != t->quantifier_count || n > Q_MAX_BOUND_VARS) {
                 result = false;
                 break;
             }
-            /* Type parameters with equal bounds; contravariant value
-             * parameters, invariant var parameters, covariant out parameters
-             * and result (the parameter descriptors refer to type parameters by
-             * index) */
             bool match = true;
-            for (size_t i = 0; i < s->quantifier_count && match; ++i) {
-                const QTypeDescriptor *sb = s->quantifier_bounds != NULL ? s->quantifier_bounds[i] : NULL;
-                const QTypeDescriptor *tb = t->quantifier_bounds != NULL ? t->quantifier_bounds[i] : NULL;
-                if (sb == NULL || tb == NULL) {
-                    match = sb == tb;
+            /* Type parameters with contravariant bounds, each under the type
+             * parameters before it; the k'th of n is one binder for both
+             * types, with super_type's bound (the type checkers make both a
+             * fresh variable with it). Comparing quantifiers costs fuel */
+            QSubtypeBinder binders[Q_MAX_BOUND_VARS];
+            QSubtypeScope sscopes[Q_MAX_BOUND_VARS], tscopes[Q_MAX_BOUND_VARS];
+            const QSubtypeScope *sin = ss, *tin = ts;
+            bool shared = ss == ts;
+            if (n > 0) {
+                if (quest_subtyping_fuel <= 0) {
+                    match = false;
                 } else {
-                    match = quest_is_subtype(sb, tb) && quest_is_subtype(tb, sb);
+                    --quest_subtyping_fuel;
                 }
             }
+            for (size_t k = 0; k < n && match; ++k) {
+                const QTypeDescriptor *sb = s->quantifier_bounds != NULL ? s->quantifier_bounds[k] : NULL;
+                const QTypeDescriptor *tb = t->quantifier_bounds != NULL ? t->quantifier_bounds[k] : NULL;
+                if (sb != NULL) match = tb != NULL && quest_subtype_in(tb, tin, sb, sin);
+                binders[k] = (QSubtypeBinder){ tb, tin };
+                tscopes[k] = (QSubtypeScope){ &binders[k], tin };
+                tin = &tscopes[k];
+                if (shared) {
+                    sin = tin;
+                } else {
+                    sscopes[k] = (QSubtypeScope){ &binders[k], sin };
+                    sin = &sscopes[k];
+                }
+            }
+            /* Then, under them, contravariant value parameters, invariant var
+             * parameters, covariant out parameters and result (the parameter
+             * descriptors refer to type parameters by index) */
             for (size_t i = 0; i < s->param_count && match; ++i) {
                 const QFunParamDescriptor *sp = &s->params[i];
                 const QFunParamDescriptor *tp = &t->params[i];
                 if (sp->is_var != tp->is_var || sp->is_out != tp->is_out) {
                     match = false;
                 } else if (sp->is_var) {
-                    match = quest_is_subtype(sp->type, tp->type) && quest_is_subtype(tp->type, sp->type);
+                    match = quest_subtype_in(sp->type, sin, tp->type, tin) && quest_subtype_in(tp->type, tin, sp->type, sin);
                 } else if (sp->is_out) {
-                    match = quest_is_subtype(sp->type, tp->type);
+                    match = quest_subtype_in(sp->type, sin, tp->type, tin);
                 } else {
-                    match = quest_is_subtype(tp->type, sp->type);
+                    match = quest_subtype_in(tp->type, tin, sp->type, sin);
                 }
             }
-            if (match && s->result_type != t->result_type) {
-                match = s->result_type != NULL && t->result_type != NULL &&
-                        quest_is_subtype(s->result_type, t->result_type);
+            if (match && (s->result_type == NULL || t->result_type == NULL)) {
+                match = s->result_type == t->result_type;
+            } else if (match) {
+                match = quest_subtype_in(s->result_type, sin, t->result_type, tin);
             }
             result = match;
             break;

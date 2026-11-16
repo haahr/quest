@@ -944,7 +944,12 @@ struct QTypeDescriptor {
   values (and adapters pass them through), and within the parameter and result types a type parameter is described
   by `quest_type_bound_vars[i]` (kind `QTYPE_KIND_BOUND_VAR`), where `i` is its de Bruijn index. So types differing
   only in the names of their type or value parameters have equal descriptors (`canonical_fun_type`), and their
-  subtyping requires equal bounds and compares parameter and result types as above.
+  subtyping is the type checkers' (Cardelli's [TIncl Π]): bounds are compared contravariantly, and the parameter and
+  result types as above under the type parameters, where a type parameter is a subtype of its bound (the supertype's,
+  as the checkers make both quantifiers one fresh variable with it). `quest_is_subtype` keeps a scope of binders per
+  side, so that a bound, described under fewer binders, is compared with a type under more. As in full F<: this is
+  undecidable; like the checkers, a proof may compare only so many polymorphic function types (20, the checkers' fuel
+  over their cost of a quantifier comparison) and otherwise fails.
 - **Exceptions (`QExceptionTypeDescriptor`):** Holds `payload_type`; subtyping is invariant in it.
 
 ##### Choosing a Descriptor (`descriptor_form`)

@@ -1,0 +1,46 @@
+(* Dynamic subtyping of polymorphic function types (Cardelli's [TIncl Π], as
+ * the type checkers compare them): the quantifiers' bounds are compared
+ * contravariantly, and the parameter and result types under the quantifiers,
+ * where a type parameter is a subtype of its bound. dynamic.be accepts what a
+ * static coercion accepts. *)
+
+import writer: Writer;
+import dynamic: Dynamic;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+Def Small = Record y: Int end;
+Def Big = Record name: String y: Int end;
+let idS(A <: Small x: A): A = x;
+let idB(A <: Big x: A): A = x;
+let f(A <: Small x: Small): Int = x.y;
+let g(A <: Small B <: A x: B): Small = x;
+
+let be(what: String try1: All() Ok): Ok =
+    print(what <> ": " <> try begin try1() "accepted" end when dynamic.error then "dynamic.error" end);
+
+(* 1. A wider bound where a narrower one is asked: accepted, as statically *)
+let s1: All(A <: Big x: A) A = idS;
+be("Small bound as Big bound" fun(): Ok begin dynamic.be(:All(A <: Big x: A) A dynamic.new(:All(A <: Small x: A) A idS)) ok end);
+
+(* 2. A narrower bound where a wider one is asked: refused *)
+be("Big bound as Small bound" fun(): Ok begin dynamic.be(:All(A <: Small x: A) A dynamic.new(:All(A <: Big x: A) A idB)) ok end);
+
+(* 3. A type parameter where its bound is asked, in a parameter *)
+let s3: All(A <: Small x: A) Int = f;
+be("parameter at its bound" fun(): Ok
+    begin dynamic.be(:All(A <: Small x: A) Int dynamic.new(:All(A <: Small x: Small) Int f)) ok end);
+
+(* 4. A result at its bound: accepted; a bound where the parameter is asked:
+ * refused *)
+let s4: All(A <: Small x: A) Small = idS;
+be("result at its bound" fun(): Ok
+    begin dynamic.be(:All(A <: Small x: A) Small dynamic.new(:All(A <: Small x: A) A idS)) ok end);
+be("bound as the parameter" fun(): Ok
+    begin dynamic.be(:All(A <: Small x: Small) A dynamic.new(:All(A <: Small x: A) Small fun(A <: Small x: A): Small x)) ok end);
+
+(* 5. A bound naming an earlier quantifier, followed through both bounds *)
+let s5: All(A <: Big B <: A x: B) Small = g;
+be("bound through a bound" fun(): Ok
+    begin dynamic.be(:All(A <: Big B <: A x: B) Small dynamic.new(:All(A <: Small B <: A x: B) Small g)) ok end);
+be("bound through a narrower bound" fun(): Ok
+    begin dynamic.be(:All(A <: Small B <: A x: B) Big dynamic.new(:All(A <: Small B <: A x: B) Small g)) ok end)
