@@ -114,7 +114,9 @@ async function drain() {
     append(line + "\n", "input");
     const began = performance.now();
     await repl.line(line);
-    status.textContent = `Last input: ${Math.round(performance.now() - began)} ms`;
+    // after the session ended, its status stays "Ended" (wasm-review.md
+    // section 4, 9)
+    if (session.status === null) status.textContent = `Last input: ${Math.round(performance.now() - began)} ms`;
   }
   draining = false;
 }

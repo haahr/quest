@@ -215,12 +215,16 @@ export
      * back exactly, positional when the decimal exponent is in [-4, 16) (with
      * ".0" for whole numbers), and otherwise d.ddde+XX; an infinity as the
      * string "Infinity" or "-Infinity" *)
+    (* A real's bits, which tell an infinity or a zero without its digits:
+     * realText derived them twice, once for magnitude's test of those
+     * (wasm-review.md section 4, 5) *)
+    let realBits(r: Real): Int = external "wasm.realBits"
     let realText(r: Real): String =
         begin
             let sign = if signBit(r) then "-" else "" end
-            let m = realconv.magnitude(r)
-            if stringOp.equal(m "inf") then "\"" <> {sign <> "Infinity\""}
-            elsif stringOp.equal(m "0.0") then sign <> "0.0"
+            let bits = realBits(r)
+            if {shrU(bits 52) % 2048} is 2047 then "\"" <> {sign <> "Infinity\""}
+            elsif {bits is 0} orif {bits is {{0 - 9223372036854775807} - 1}} then sign <> "0.0"
             else
                 let d = realconv.shortest(r)
                 let var n = extent d.digits

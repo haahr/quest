@@ -158,6 +158,9 @@ export class PageSession {
 
   exit(status, resolve) {
     this.status = status;
+    // a record cut off with its worker is no part of the next's
+    // (wasm-review.md section 4, 9)
+    this.pendingRecord = "";
     this.worker?.terminate();
     this.worker = null;
     if (this.running) this.finish([{done: "error"}]);
@@ -171,6 +174,7 @@ export class PageSession {
   // callback, so that whoever waits on them goes on
   close() {
     this.status = "closed";
+    this.pendingRecord = "";
     this.worker?.terminate();
     this.worker = null;
     const running = this.running;
@@ -213,6 +217,7 @@ export class PageSession {
   // worker replays them ends the replay too, and the session starts again
   // without them (wasm-review.md section 4, 7).
   async interrupt() {
+    this.pendingRecord = "";
     if (this.restarting) {
       const done = this.restarting;
       this.restarting = null;

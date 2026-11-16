@@ -2196,6 +2196,34 @@ writer's buffer, and would end the session when flushed.
     (review §7), for a plan of its own.
     *Done when* each is kept or not on a test or a measure.
 
+    *Done 2026-11-15:*
+    - **Kept:**
+      - **the self loop after the prologue** (§3, 7): the loop a self tail call branches to begins after the
+        closure's captures are read and the view maps made, so a turn does neither again; an accumulating
+        recursion's accumulator is set before it. On the suites and `wasm_programs`, whose text goldens did not
+        change (none of their self loops has a prologue).
+      - **a try's body by its label's kind** (§3, 7): `LabelKind` has `labelTry`, which `sTry` opens its body
+        with and `insideTry` looks for, where it matched the label's name.
+      - **`realText`'s digits once** (§4, 5): an infinity or a zero is told by the real's bits (`wasm.realBits`),
+        not by `realconv.magnitude`, whose digits were then derived again. An `Array(Real)` of 100,000 written
+        and read: 1.7 s in node and 22.5 s in wasmtime, against the review's 11 s and 71 s (step 21's buffered
+        writes among the causes); 0.55 s natively. wasmtime's remaining time is formatting `Real`s (§4, 8).
+      - **the page** (§4, 9): a record cut off with its worker is not joined to the next worker's, and the status
+        stays "Ended" after the session ends. `build.py` no longer removes a directory it did not build (step
+        30).
+    - **Not done:**
+      - **`wasm/core`'s caches hashed and emptied** (§4, 5): no wrong result comes of the scans, and making the
+        descriptors' caches hashed and weak is a design of its own; the measure (a document taken at a supertype
+        16,000 times, 12 s in wasmtime) stands.
+      - **the encoder's and printer's three edges** (§4, 11): not run again, and no module the compiler makes
+        reaches them.
+      - **`registerAbstracts` skipping without a word** (§4, 10): no case was found, as in the review.
+      - **an `out` argument with a conversion its callee does not assign** (§4, 4): the IR's, on both targets;
+        [shared-faults-plan.md](shared-faults-plan.md) lists it as not reproduced by its probes, and so not
+        planned until a program shows it.
+      - **a server that answers 200 for a missing file** (§4, 9): the page cannot tell such a server's answer
+        from a file's.
+
 Not in this milestone: the review's §7, faults of shared and native code it found on the way (a bounded quantifier
 in an interface, the native compiler on a `var` record raised as a payload, and the rest), checked again and planned
 in [shared-faults-plan.md](shared-faults-plan.md).

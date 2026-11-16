@@ -199,7 +199,8 @@ export
     (* A structured instruction open around the code being made: an IR
      * label's loop (its exit, a block, or its repetition, the loop), a join
      * point (its continuation's entry, or the end after it), or an if *)
-    Def LabelKind = Option labelExit labelRepeat labelJoin labelAfter labelIf end
+    (* labelTry: a try's body, which a tail call would leave (insideTry) *)
+    Def LabelKind = Option labelExit labelRepeat labelJoin labelAfter labelIf labelTry end
     Def Label = Tuple name: String kind: LabelKind end
 
     (* A capture to fill in: the closure, in local holder, of own type own,
@@ -277,7 +278,7 @@ export
     let sameKind(a: LabelKind b: LabelKind): Bool =
         case a
             when labelExit then b?labelExit when labelRepeat then b?labelRepeat when labelJoin then b?labelJoin
-            when labelAfter then b?labelAfter when labelIf then b?labelIf
+            when labelAfter then b?labelAfter when labelIf then b?labelIf when labelTry then b?labelTry
         end
 
     let open(f: F name: String kind: LabelKind): Ok =
@@ -4491,8 +4492,7 @@ export
         begin
             let var inside = false
             for k = 0 upto vector.length(:Label f.labels) - 1 do
-                let name = vector.get(:Label f.labels k).name
-                if strutil.startsWith(name "try") andif strutil.endsWith(name ".body") then inside := true end
+                if vector.get(:Label f.labels k).kind?labelTry then inside := true end
             end
             inside
         end
@@ -4814,7 +4814,7 @@ export
                         tuple let kind = option catchTag of model.CatchKind end let tag = 0 let label = 0 end
                     end
                 end)
-                open(f base <> ".body" option labelIf of LabelKind end)
+                open(f base <> ".body" option labelTry of LabelKind end)
                 f.after := maybe.none(:ir.Stmt)
                 body(f x.body)
                 if not(ir.terminated(x.body)) then
@@ -5148,7 +5148,9 @@ export
              * call, so that the page can end the worker running an endless
              * self recursion (step 13's finding 1, remedy (a)); a mutual
              * recursion's tail calls still cannot be interrupted there
-             * (docs/wasm-plan.md step 20). Left out if no such call is compiled *)
+             * (docs/wasm-plan.md step 20). Left out if no such call is
+             * compiled. It begins after the prologue, below; an accumulating
+             * recursion's accumulator is set here, before it *)
             f.accOp := accumulation(f fn)
             if f.accOp > 0 then
                 f.accLocal := scratch(f model.i64)
@@ -5156,8 +5158,6 @@ export
                 emit(f i1(ops.localSet f.accLocal))
                 f.selfTail := true
             end
-            emit(f model.loopInst(empty selfLabel))
-            open(f selfLabel option labelRepeat of LabelKind end)
             if maybe.isSome(:ir.Variable fn.env) andif not(isAdapter(fn)) then
                 hashMap.insert(:Int :Int f.locals maybe.unwrap(:ir.Variable fn.env).id 0)
             end
@@ -5209,16 +5209,24 @@ export
                             runtimeUnitCall(f "wasm/core.viewMap")
                             emit(f i1(ops.localSet local(f m.v)))
                         end
+                        (* the loop, after the prologue, so that a self tail
+                         * call does not read the closure's captures and make
+                         * the view maps again (wasm-review.md section 3, 7) *)
+                        let loopAt = vector.length(:Inst f.code)
+                        emit(f model.loopInst(empty selfLabel))
+                        open(f selfLabel option labelRepeat of LabelKind end)
                         body(f fn.body)
                         close(f)
                         emit(f i(ops.unreachable))
                         if not(f.selfTail) then
-                            (* the loop's instruction, first, and its end, at
-                             * the end but for unreachable, dropped *)
+                            (* the loop's instruction and its end, at the end
+                             * but for unreachable, dropped *)
                             let n = vector.length(:Inst f.code)
                             let kept = vector.new(:Inst)
-                            for k = 1 upto n - 1 do
-                                if k isnot {n - 2} then vector.append(:Inst kept vector.get(:Inst f.code k)) end
+                            for k = 0 upto n - 1 do
+                                if {k isnot loopAt} andif {k isnot {n - 2}} then
+                                    vector.append(:Inst kept vector.get(:Inst f.code k))
+                                end
                             end
                             vector.clear(:Inst f.code)
                             for k = 0 upto vector.length(:Inst kept) - 1 do
