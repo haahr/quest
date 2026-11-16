@@ -895,11 +895,16 @@ const QTypeDescriptor *quest_identity_type(const QTypeDescriptor *t);
 bool quest_option_is(const QTypeDescriptor *t, const void *a, const void *b);
 
 /* is on values of a type known only by its descriptor. Bit equality is identity for every type except Real,
-   where 0.0 is ~0.0 (NaN, the other case where bits and IEEE equality differ, never occurs), and options. */
+   where 0.0 is ~0.0 (NaN, the other case where bits and IEEE equality differ, never occurs), options, and records,
+   whose word is a box that each view of a record makes anew (quest_record_box), so that a record is its payload, as
+   code of known type compares it. */
 Q_INLINE bool quest_val_is(const QTypeDescriptor *t, QVal a, QVal b) {
     if (a.u == b.u) return true;
     t = quest_identity_type(t);
     if (t != NULL && t->kind == QTYPE_KIND_OPTION) return quest_option_is(t, a.p, b.p);
+    if (t != NULL && t->kind == QTYPE_KIND_RECORD) {
+        return a.p != NULL && b.p != NULL && ((const QRecordVal *)a.p)->val == ((const QRecordVal *)b.p)->val;
+    }
     if (t != NULL && t->kind == QTYPE_KIND_TUPLE) {
         /* A proxy is the object it is a view of */
         return quest_unproxy(a.p) == quest_unproxy(b.p);

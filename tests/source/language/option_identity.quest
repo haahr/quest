@@ -3,7 +3,8 @@
  * type (one case with one component that is not var, the others without) by
  * their component, at the type is is applied at; other options are the same
  * only if they are one object. hash.identityHash agrees, so that an identity
- * map's keys do. *)
+ * map's keys do, a record component's included: a record is the same through
+ * each of its views. *)
 
 import writer: Writer;
 import conv: Conv;
@@ -79,4 +80,25 @@ print("blue found: " <> yes(maybe.isSome(:Int hashMap.get(:Color :Int m option b
 print("red hashes alike: " <> yes(hash.identityHash(:Color red1) is hash.identityHash(:Color red2)));
 let ms = hashMap.newIdentityMap(:maybe.T(String) :Int);
 hashMap.insert(:maybe.T(String) :Int ms maybe.some(:String)(s) 2);
-print("some(s) found: " <> yes(maybe.isSome(:Int hashMap.get(:maybe.T(String) :Int ms maybe.some(:String)(s)))));
+print("some(s) found: " <> yes(maybe.isSome(:Int hashMap.get(:maybe.T(String) :Int ms maybe.some(:String)(s)))));;
+
+(* 9. A record component is its record through each view: an option viewed
+ * twice at a narrower type, and a record and its view *)
+Let Big = Record a: Int b: Int end;
+Let Small = Record a: Int end;
+Let OB = Option none some with r: Big end end;
+Let OS = Option none some with r: Small end end;
+let ob: OB = option some of OB with {record a = 1 b = 2 end} end;
+let v1: OS = ob;
+let v2: OS = ob;
+print("view is view: " <> yes(v1 is v2));
+print("views hash alike: " <> yes(hash.identityHash(:OS v1) is hash.identityHash(:OS v2)));
+let mv = hashMap.newIdentityMap(:OS :Int);
+hashMap.insert(:OS :Int mv v1 3);
+print("view found through another: " <> yes(maybe.isSome(:Int hashMap.get(:OS :Int mv v2))));
+let big: Big = record a = 1 b = 2 end;
+let small: Small = big;
+print("record hashes as its view: " <> yes(hash.identityHash(:Small small) is hash.identityHash(:Small big)));
+let mr = hashMap.newIdentityMap(:Small :Int);
+hashMap.insert(:Small :Int mr small 4);
+print("record found through its view: " <> yes(maybe.isSome(:Int hashMap.get(:Small :Int mr big))))

@@ -1351,5 +1351,389 @@
         )
       )
     )
+    (TypeBinding
+      :name 'Big'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'a'
+            :type_sig (TypePath ('Int'))
+          )
+          (RecordFieldSig
+            :name 'b'
+            :type_sig (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'Small'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'a'
+            :type_sig (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'OB'
+      :type_val (TypeOption
+        :variants (
+          (OptionFieldSig 'none' ())
+          (OptionFieldSig
+            :tag 'some'
+            :payload_sig (
+              (FieldSig
+                :name 'r'
+                :type_sig (TypePath ('Big'))
+                :mode VALUE
+              )
+            )
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'OS'
+      :type_val (TypeOption
+        :variants (
+          (OptionFieldSig 'none' ())
+          (OptionFieldSig
+            :tag 'some'
+            :payload_sig (
+              (FieldSig
+                :name 'r'
+                :type_sig (TypePath ('Small'))
+                :mode VALUE
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'ob'
+      :value (ExprOption
+        :tag 'some'
+        :option_type (TypePath ('OB'))
+        :payload (ExprTuple
+          :fields (
+            (TupleBinding
+              :value (ExprRecord
+                :fields (
+                  (RecordBinding
+                    :name 'a'
+                    :value (ExprInt 1 '1')
+                  )
+                  (RecordBinding
+                    :name 'b'
+                    :value (ExprInt 2 '2')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      :type_annot (TypePath ('OB'))
+    )
+    (LetValueBinding
+      :name 'v1'
+      :value (ExprId 'ob')
+      :type_annot (TypePath ('OS'))
+    )
+    (LetValueBinding
+      :name 'v2'
+      :value (ExprId 'ob')
+      :type_annot (TypePath ('OS'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'view is view: ' '"view is view: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprId 'yes')
+              :args (
+                (ExprInfix
+                  :left (ExprId 'v1')
+                  :op 'is'
+                  :right (ExprId 'v2')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'views hash alike: ' '"views hash alike: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprId 'yes')
+              :args (
+                (ExprInfix
+                  :left (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'hash')
+                      :field 'identityHash'
+                    )
+                    :args (
+                      (TypeArgument
+                        :type_val (TypePath ('OS'))
+                      )
+                      (ExprId 'v1')
+                    )
+                  )
+                  :op 'is'
+                  :right (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'hash')
+                      :field 'identityHash'
+                    )
+                    :args (
+                      (TypeArgument
+                        :type_val (TypePath ('OS'))
+                      )
+                      (ExprId 'v2')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'mv'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'hashMap')
+          :field 'newIdentityMap'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('OS'))
+          )
+          (TypeArgument
+            :type_val (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'hashMap')
+          :field 'insert'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('OS'))
+          )
+          (TypeArgument
+            :type_val (TypePath ('Int'))
+          )
+          (ExprId 'mv')
+          (ExprId 'v1')
+          (ExprInt 3 '3')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'view found through another: ' '"view found through another: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprId 'yes')
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'maybe')
+                    :field 'isSome'
+                  )
+                  :args (
+                    (TypeArgument
+                      :type_val (TypePath ('Int'))
+                    )
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'hashMap')
+                        :field 'get'
+                      )
+                      :args (
+                        (TypeArgument
+                          :type_val (TypePath ('OS'))
+                        )
+                        (TypeArgument
+                          :type_val (TypePath ('Int'))
+                        )
+                        (ExprId 'mv')
+                        (ExprId 'v2')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'big'
+      :value (ExprRecord
+        :fields (
+          (RecordBinding
+            :name 'a'
+            :value (ExprInt 1 '1')
+          )
+          (RecordBinding
+            :name 'b'
+            :value (ExprInt 2 '2')
+          )
+        )
+      )
+      :type_annot (TypePath ('Big'))
+    )
+    (LetValueBinding
+      :name 'small'
+      :value (ExprId 'big')
+      :type_annot (TypePath ('Small'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'record hashes as its view: ' '"record hashes as its view: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprId 'yes')
+              :args (
+                (ExprInfix
+                  :left (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'hash')
+                      :field 'identityHash'
+                    )
+                    :args (
+                      (TypeArgument
+                        :type_val (TypePath ('Small'))
+                      )
+                      (ExprId 'small')
+                    )
+                  )
+                  :op 'is'
+                  :right (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'hash')
+                      :field 'identityHash'
+                    )
+                    :args (
+                      (TypeArgument
+                        :type_val (TypePath ('Small'))
+                      )
+                      (ExprId 'big')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'mr'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'hashMap')
+          :field 'newIdentityMap'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('Small'))
+          )
+          (TypeArgument
+            :type_val (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'hashMap')
+          :field 'insert'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('Small'))
+          )
+          (TypeArgument
+            :type_val (TypePath ('Int'))
+          )
+          (ExprId 'mr')
+          (ExprId 'small')
+          (ExprInt 4 '4')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'record found through its view: ' '"record found through its view: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprId 'yes')
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'maybe')
+                    :field 'isSome'
+                  )
+                  :args (
+                    (TypeArgument
+                      :type_val (TypePath ('Int'))
+                    )
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'hashMap')
+                        :field 'get'
+                      )
+                      :args (
+                        (TypeArgument
+                          :type_val (TypePath ('Small'))
+                        )
+                        (TypeArgument
+                          :type_val (TypePath ('Int'))
+                        )
+                        (ExprId 'mr')
+                        (ExprId 'big')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
   )
 )

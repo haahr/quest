@@ -610,4 +610,178 @@
                   ))
               )))
         )))
+    (TypedLetType 'Big' :kind TYPE)
+    (TypedLetType 'Small' :kind TYPE)
+    (TypedLetType 'OB' :kind TYPE)
+    (TypedLetType 'OS' :kind TYPE)
+    (TypedLetValue 'ob' :type OB
+      :value (TypedOption 'some' :type OB
+        :payload (TypedTuple :type Tuple r: Big end
+          :elements (
+            (TypedRecord :type Record a: Int b: Int end
+              :fields (
+                (TypedRecordField 'a'
+                  :value (TypedInt 1 :type Int))
+                (TypedRecordField 'b'
+                  :value (TypedInt 2 :type Int))
+              ))
+          ))))
+    (TypedLetValue 'v1' :type OS
+      :value (TypedVar 'ob' :type OB))
+    (TypedLetValue 'v2' :type OS
+      :value (TypedVar 'ob' :type OB))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'view is view: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'yes' :type Fun(b: Bool): String)
+              :args (
+                (TypedInfix 'is' :type Bool
+                  :left (TypedVar 'v1' :type OS)
+                  :right (TypedVar 'v2' :type OS))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'views hash alike: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'yes' :type Fun(b: Bool): String)
+              :args (
+                (TypedInfix 'is' :type Bool
+                  :left (TypedApp :type word.T
+                    :func (TypedTypeApp [OS] :type Fun(x: OS): word.T
+                      :func (TypedSelect 'identityHash' :type All(A :: TYPE) Fun(x: A): word.T
+                        :target (TypedVar 'hash' :type Module 'hash')))
+                    :args (
+                      (TypedVar 'v1' :type OS)
+                    ))
+                  :right (TypedApp :type word.T
+                    :func (TypedTypeApp [OS] :type Fun(x: OS): word.T
+                      :func (TypedSelect 'identityHash' :type All(A :: TYPE) Fun(x: A): word.T
+                        :target (TypedVar 'hash' :type Module 'hash')))
+                    :args (
+                      (TypedVar 'v2' :type OS)
+                    )))
+              )))
+        )))
+    (TypedLetValue 'mv' :type hashMap.T(OS Int)
+      :value (TypedTypeApp [OS Int] :type hashMap.T(OS Int)
+        :func (TypedSelect 'newIdentityMap' :type All(K :: TYPE V :: TYPE) hashMap.T(K V)
+          :target (TypedVar 'hashMap' :type Module 'hashMap'))))
+    (TypedExprStmt
+      :expr (TypedApp :type Bool
+        :func (TypedTypeApp [OS Int] :type Fun(m: hashMap.T(OS Int) key: OS value: Int): Bool
+          :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K value: V): Bool
+            :target (TypedVar 'hashMap' :type Module 'hashMap')))
+        :args (
+          (TypedVar 'mv' :type hashMap.T(OS Int))
+          (TypedVar 'v1' :type OS)
+          (TypedInt 3 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'view found through another: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'yes' :type Fun(b: Bool): String)
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedTypeApp [Int] :type Fun(o: maybe.T(Int)): Bool
+                    :func (TypedSelect 'isSome' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                      :target (TypedVar 'maybe' :type Module 'maybe')))
+                  :args (
+                    (TypedApp :type maybe.T(Int)
+                      :func (TypedTypeApp [OS Int] :type Fun(m: hashMap.T(OS Int) key: OS): maybe.T(Int)
+                        :func (TypedSelect 'get' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K): maybe.T(V)
+                          :target (TypedVar 'hashMap' :type Module 'hashMap')))
+                      :args (
+                        (TypedVar 'mv' :type hashMap.T(OS Int))
+                        (TypedVar 'v2' :type OS)
+                      ))
+                  ))
+              )))
+        )))
+    (TypedLetValue 'big' :type Big
+      :value (TypedRecord :type Record a: Int b: Int end
+        :fields (
+          (TypedRecordField 'a'
+            :value (TypedInt 1 :type Int))
+          (TypedRecordField 'b'
+            :value (TypedInt 2 :type Int))
+        )))
+    (TypedLetValue 'small' :type Small
+      :value (TypedVar 'big' :type Big))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'record hashes as its view: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'yes' :type Fun(b: Bool): String)
+              :args (
+                (TypedInfix 'is' :type Bool
+                  :left (TypedApp :type word.T
+                    :func (TypedTypeApp [Small] :type Fun(x: Small): word.T
+                      :func (TypedSelect 'identityHash' :type All(A :: TYPE) Fun(x: A): word.T
+                        :target (TypedVar 'hash' :type Module 'hash')))
+                    :args (
+                      (TypedVar 'small' :type Small)
+                    ))
+                  :right (TypedApp :type word.T
+                    :func (TypedTypeApp [Small] :type Fun(x: Small): word.T
+                      :func (TypedSelect 'identityHash' :type All(A :: TYPE) Fun(x: A): word.T
+                        :target (TypedVar 'hash' :type Module 'hash')))
+                    :args (
+                      (TypedVar 'big' :type Big)
+                    )))
+              )))
+        )))
+    (TypedLetValue 'mr' :type hashMap.T(Small Int)
+      :value (TypedTypeApp [Small Int] :type hashMap.T(Small Int)
+        :func (TypedSelect 'newIdentityMap' :type All(K :: TYPE V :: TYPE) hashMap.T(K V)
+          :target (TypedVar 'hashMap' :type Module 'hashMap'))))
+    (TypedExprStmt
+      :expr (TypedApp :type Bool
+        :func (TypedTypeApp [Small Int] :type Fun(m: hashMap.T(Small Int) key: Small value: Int): Bool
+          :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K value: V): Bool
+            :target (TypedVar 'hashMap' :type Module 'hashMap')))
+        :args (
+          (TypedVar 'mr' :type hashMap.T(Small Int))
+          (TypedVar 'small' :type Small)
+          (TypedInt 4 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'record found through its view: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'yes' :type Fun(b: Bool): String)
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedTypeApp [Int] :type Fun(o: maybe.T(Int)): Bool
+                    :func (TypedSelect 'isSome' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                      :target (TypedVar 'maybe' :type Module 'maybe')))
+                  :args (
+                    (TypedApp :type maybe.T(Int)
+                      :func (TypedTypeApp [Small Int] :type Fun(m: hashMap.T(Small Int) key: Small): maybe.T(Int)
+                        :func (TypedSelect 'get' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K): maybe.T(V)
+                          :target (TypedVar 'hashMap' :type Module 'hashMap')))
+                      :args (
+                        (TypedVar 'mr' :type hashMap.T(Small Int))
+                        (TypedVar 'big' :type Big)
+                      ))
+                  ))
+              )))
+        )))
   ))

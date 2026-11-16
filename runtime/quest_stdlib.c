@@ -556,5 +556,10 @@ uint64_t quest_identity_hash(const QTypeDescriptor *t, QVal x) {
         /* A proxy hashes as the object it is a view of, as is compares them */
         x.p = quest_unproxy(x.p);
     }
+    if (t != NULL && t->kind == QTYPE_KIND_RECORD && x.p != NULL) {
+        /* A record hashes as its payload, as is compares records: each of
+         * its views is a box of its own */
+        x.p = ((const QRecordVal *)x.p)->val;
+    }
     return quest_hash_mix64(x.u);
 }

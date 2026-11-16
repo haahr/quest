@@ -144,6 +144,8 @@ the stages are rebuilt.
    found through the other, with the two hashes equal; and the same for a bare record and its view.
    *Watch.* Variants are reboxed the same way (`quest_variant_box`) and auto values copied (`quest_convert_auto`);
    see whether generic `is` reaches them, and if so give them the same case or note why not.
+   *Built 2026-11-15* (ABI 78, which step 8 shares): `option_identity` section 9, passing in every phase and in the
+   ssac, arm64, arm64-whole and jit-files modes.
 6. **A document whose record has a key twice.** What each target does today:
 
    | The document | arm64 and the JIT | both interpreters |
