@@ -1,0 +1,65 @@
+import conv = "conv" : Conv
+import writer = "writer" : Writer
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @9:45
+      let %2: String = prim <>(s, "\n") @9:59
+      let %3: Ok = call writer.putString(%1, %2) @9:28
+      return %3
+    }
+  }
+  let p: P = record(a = 1) @12:12
+  let q: P = record(a = 1) @13:12
+  let r: P = p @14:12
+  let w: Q = record(a = 1, b = 2) @15:12
+  let wp: P = w @16:13
+  let %4: Bool = prim is(p, p) @19:31
+  let %5: String = call conv.bool(%4) @19:21
+  let %6: String = prim <>("p is p: ", %5) @19:7
+  do call print(%6) @19:1
+  let %7: Bool = prim is(p, q) @20:45
+  let %8: String = call conv.bool(%7) @20:35
+  let %9: String = prim <>("p is an equal record: ", %8) @20:7
+  do call print(%9) @20:1
+  let %10: Bool = prim is(p, r) @21:38
+  let %11: String = call conv.bool(%10) @21:28
+  let %12: String = prim <>("p is its copy: ", %11) @21:7
+  do call print(%12) @21:1
+  let %13: Bool = prim isnot(p, q) @22:48
+  let %14: String = call conv.bool(%13) @22:38
+  let %15: String = prim <>("p isnot an equal record: ", %14) @22:7
+  do call print(%15) @22:1
+  let %16: Bool = prim isnot(p, r) @23:41
+  let %17: String = call conv.bool(%16) @23:31
+  let %18: String = prim <>("p isnot its copy: ", %17) @23:7
+  do call print(%18) @23:1
+  let %19: Bool = prim is(wp, w) @24:45
+  let %20: String = call conv.bool(%19) @24:35
+  let %21: String = prim <>("a view is its record: ", %20) @24:7
+  do call print(%21) @24:1
+  let %22: Bool = prim isnot(wp, p) @25:52
+  let %23: String = call conv.bool(%22) @25:42
+  let %24: String = prim <>("a view isnot another record: ", %23) @25:7
+  do call print(%24) @25:1
+  funs {
+    fun same [A::TYPE](x: A, y: A): Bool {
+      let %25: Bool = prim is(x, y) @28:37
+      return %25
+    }
+  }
+  let sameValue: All(A :: TYPE) Fun(x: A y: A): Bool = same @29:46
+  let %26: Bool = call sameValue [P](p, p) @30:36
+  let %27: String = call conv.bool(%26) @30:26
+  let %28: String = prim <>("generic p p: ", %27) @30:7
+  do call print(%28) @30:1
+  let %29: Bool = call sameValue [P](wp, w) @31:44
+  let %30: String = call conv.bool(%29) @31:34
+  let %31: String = prim <>("generic view record: ", %30) @31:7
+  do call print(%31) @31:1
+  let %32: Bool = call sameValue [P](p, wp) @32:39
+  let %33: String = call conv.bool(%32) @32:29
+  let %34: String = prim <>("generic p view: ", %33) @32:7
+  do call print(%34) @32:1
+}
+

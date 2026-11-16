@@ -1290,7 +1290,11 @@ class CPrinter:
                 return (f"({negate}quest_option_is({self.descriptor(descriptor)}, (const void *)({left}), "
                         f"(const void *)({right})))")
             t2 = self.atom_type(args[1]) if t is not None else None
-            if access == ir.ORIGINAL:
+            if t is not None and self.c_type(t) == "QRecordVal":
+                # A record is its payload: a view changes only its offset table
+                # (quest_record_view)
+                left, right = f"({left}).val", f"({right}).val"
+            elif access == ir.ORIGINAL:
                 # A proxy is the object it views
                 left, right = f"quest_unproxy({left})", f"quest_unproxy({right})"
             elif t2 is not None and self.c_type(t) != self.c_type(t2) and self.c_type(t).endswith("*"):

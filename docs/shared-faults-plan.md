@@ -127,6 +127,8 @@ the stages are rebuilt.
    equal but distinct records, through a supertype's view, and in a generic `same(A::TYPE x: A y: A)` that is not
    inlined (which needs step 5).
    *Variants* are refused the same way; step 8 gives them their rule first.
+   *Built 2026-11-15:* `language/record_identity`, passing in every phase and in the ssac, arm64, arm64-program,
+   arm64-whole, c-whole and jit-files modes; its variant cases are in step 8's `variant_identity`.
 5. **A record's identity in generic code, an option's proxy's identity hash among them.**
    *Where.* Not the option code: `quest_option_identity_hash` (`runtime/quest_views.c` line 574) unproxies. The
    option's component is a record, and reading it through a proxy (`quest_proxy_option_element` →

@@ -1654,7 +1654,12 @@ export
                         let t2 = if maybe.isSome(:Type t) then
                             maybe.some(:Type atomType(o.args[1])) else maybe.none(:Type) end
                         let viaOriginal = case o.access when original then true when direct, proxy then false end
-                        if viaOriginal then
+                        if maybe.isSome(:Type t) andif eq(cType(maybe.unwrap(:Type t)) "QRecordVal") then
+                            (* A record is its payload: a view changes only its
+                             * offset table (quest_record_view) *)
+                            l := "(" <> l <> ").val"
+                            r := "(" <> r <> ").val"
+                        elsif viaOriginal then
                             (* A proxy is the object it views *)
                             l := "quest_unproxy(" <> l <> ")"
                             r := "quest_unproxy(" <> r <> ")"

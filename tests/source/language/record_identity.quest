@@ -1,0 +1,32 @@
+(* is between records compares them by identity: a record is the same as
+ * itself through any of its views, at its own type or a supertype, and
+ * different from an equal record made apart; isnot is its negation. Compared
+ * in code that knows the records' types, and in generic code through a
+ * first-class polymorphic value, which is not inlined. *)
+
+import conv: Conv;
+import writer: Writer;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+Let P = Record a: Int end;
+Let Q = Record a: Int b: Int end;
+let p: P = record a = 1 end;
+let q: P = record a = 1 end;
+let r: P = p;
+let w: Q = record a = 1 b = 2 end;
+let wp: P = w;
+
+(* 1. Of known type *)
+print("p is p: " <> conv.bool(p is p));
+print("p is an equal record: " <> conv.bool(p is q));
+print("p is its copy: " <> conv.bool(p is r));
+print("p isnot an equal record: " <> conv.bool(p isnot q));
+print("p isnot its copy: " <> conv.bool(p isnot r));
+print("a view is its record: " <> conv.bool(wp is w));
+print("a view isnot another record: " <> conv.bool(wp isnot p));
+
+(* 2. In generic code *)
+let same(A::TYPE x: A y: A): Bool = x is y;
+let sameValue: All(A::TYPE x: A y: A) Bool = same;
+print("generic p p: " <> conv.bool(sameValue(:P p p)));
+print("generic view record: " <> conv.bool(sameValue(:P wp w)));
+print("generic p view: " <> conv.bool(sameValue(:P p wp)))
