@@ -258,3 +258,16 @@ compiling on every compiled target (step 1 keeps bounded generic code out of lib
 5, then 8, then 4 (step 8 needs step 5's record case for a variant's record value, and step 4's golden takes step
 8's variants); and 6. Steps 1, 5 and 8 each bump the ABI; if they land together, one bump will do. Each step lands
 with its test, in a shared phase where it can, so that both compilers' suites hold it (testing.md §2.8).
+
+## Batches
+
+Every step changes the bootstrap, the runtime, or shared goldens, so each needs every suite of `tools/check`; but a
+check covers all that differs from `origin/main`, so the steps land in two batches, each one full check before its
+push (decided 2026-11-15). While a step is under way, its own tests suffice (`run_tests.py -k`, with the bootstrap
+and with `--self-hosted`, and the JIT's checks for step 7).
+
+1. **Steps 7, 1, 2:** the represent pass's rejections, interfaces, and bounds: the IR's and the interfaces' changes,
+   with step 1's ABI bump. Step 2 is the riskiest (`resolvedShape` reaches type variables held at their bound), so
+   it is checked in the smaller batch.
+2. **Steps 3, 5, 8, 4, 6:** identity, payloads, and the runtime, with one ABI bump for steps 5 and 8. It changes
+   `quest_val_is` and the identity hash, where the stress tier that starts `tools/check` matters most.
