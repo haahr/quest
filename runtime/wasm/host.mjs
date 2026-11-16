@@ -19,6 +19,15 @@
 // session's records (onRecord), as the kernel's descriptors are natively
 // (docs/jupyter-kernel.md section 2).
 
+// Whether e is an engine's stack overflow, which no standard names: V8's and
+// JavaScriptCore's RangeError, SpiderMonkey's InternalError, "too much
+// recursion" (docs/wasm-plan.md step 23). A host function that makes the
+// errors it catches error numbers lets this one through, so that the input
+// fails as natively rather than see a file missing (step 24)
+export function isStackOverflow(e) {
+  return e instanceof RangeError || (e?.name === "InternalError" && /recursion/i.test(String(e.message)));
+}
+
 export class Errno extends Error {
   constructor(code, what) { super(what || `errno ${code}`); this.code = code; }
 }
@@ -182,6 +191,7 @@ export class NodeMount {
     try {
       return f();
     } catch (e) {
+      if (isStackOverflow(e)) throw e;
       const codes = {ENOENT: E.NOENT, ENOTDIR: E.NOTDIR, EEXIST: E.EXIST, EISDIR: E.ISDIR, ENOTEMPTY: E.NOTEMPTY,
                      EACCES: E.ACCES, EPERM: E.ACCES, EINVAL: E.INVAL};
       if (e.code in codes) throw new Errno(codes[e.code]);
@@ -193,6 +203,7 @@ export class NodeMount {
     try {
       s = this.fs.statSync(this.real(rel), {bigint: true});
     } catch (e) {
+      if (isStackOverflow(e)) throw e;
       if (e.code === "ENOENT" || e.code === "ENOTDIR") return null;
       throw new Errno(E.IO, String(e));
     }

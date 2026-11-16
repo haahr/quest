@@ -62,6 +62,23 @@ export function engine() {
 
 export const callLimit = callLimits[engine()];
 
+// The driver's options that take a value (questlang/driver/options.mod.quest)
+const valued = new Set(["--stop-after", "--stop_after", "--build-dir", "--build_dir", "--dump-after", "--dump_after",
+  "-o", "--output", "-I", "--include", "-j", "--backend", "--wasm-engine", "--unit-backend", "--variant",
+  "--expected-exit", "--expected_exit", "-e", "--eval", "--code", "--command"]);
+
+// The driver's arguments without the program file, the one -i runs first:
+// a -- in its place keeps the program's arguments after it
+function withoutLoad(args) {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--") return args;
+    if (valued.has(arg)) i++;
+    else if (arg === "-" || !arg.startsWith("-")) return [...args.slice(0, i), "--", ...args.slice(i + 1)];
+  }
+  return args;
+}
+
 // Thrown by start or request when the driver exits: its status
 export class Exited extends Error {
   constructor(status) { super(`the driver exited with status ${status}`); this.status = status; }
@@ -93,21 +110,30 @@ export class Session {
     let pending = new Uint8Array(0);
     this.records = [];
     const record = bytes => {
-      if (!this.quiet && o.record) o.record(bytes);
       const all = new Uint8Array(pending.length + bytes.length);
       all.set(pending);
       all.set(bytes, pending.length);
       let start = 0;
       for (let i = 0; i < all.length; i++) {
         if (all[i] === 10) {
-          this.records.push(JSON.parse(decoder.decode(all.subarray(start, i))));
+          // A line that is not a record, which a program wrote to descriptor
+          // 4 (io/display writes there too), is its standard error's, not
+          // the end of the session (step 24)
+          const text = decoder.decode(all.subarray(start, i));
+          let parsed;
+          try { parsed = JSON.parse(text); } catch { parsed = undefined; }
+          if (parsed !== null && typeof parsed === "object") {
+            this.records.push(parsed);
+            // the client gets each record as it is written, and nothing else
+            if (!this.quiet && o.record) o.record(all.slice(start, i + 1));
+          } else if (!this.quiet && o.stderr) o.stderr(encoder.encode(`descriptor 4, not a record: ${text}\n`));
           start = i + 1;
         }
       }
       pending = all.slice(start);
     };
     this.host = new Host({
-      args: ["quest", ...o.args], env: {QUEST_CALL_LIMIT: String(callLimit), ...o.env, QUEST_HOST_SESSION: "1"},
+      args: ["quest", ...(this.loadFailed ? withoutLoad(o.args) : o.args)], env: {QUEST_CALL_LIMIT: String(callLimit), ...o.env, QUEST_HOST_SESSION: "1"},
       cwd: o.cwd, mounts: o.mounts,
       onStdout: b => { if (!this.quiet && o.stdout) o.stdout(b); },
       onStderr: b => { if (!this.quiet && o.stderr) o.stderr(b); },
@@ -128,15 +154,27 @@ export class Session {
     try {
       program.exports._start();
     } catch (e) {
-      if (!(e instanceof Exit)) throw e;
-      if (e.code !== 0) throw new Exited(e.code);
+      if (e instanceof Exit) {
+        if (e.code !== 0) throw new Exited(e.code);
+        return 0;
+      }
+      // An overflow, a trap, or an exception that escapes the driver while
+      // -i's file runs at the start: the driver's own start is cut short, so
+      // the session starts again without the file, which it reports
+      const escaped = e instanceof WebAssembly.Exception;
+      if (this.loadFailed || !(isStackOverflow(e) || e instanceof WebAssembly.RuntimeError || escaped)) throw e;
+      const kind = isStackOverflow(e) ? "stack.overflow" : escaped ? "an exception" : "a trap";
+      if (o.stderr) o.stderr(encoder.encode(`quest: the file -i runs failed (${kind}); the session starts without it\n`));
+      this.loadFailed = true;
+      return this.start();
     }
     return 0;
   }
 
   // The records of a request (an object, or its line as the client wrote
-  // it). Throws Exited if the driver exits. A stack overflow, or a trap, in
-  // an input replays the session (replay) and gives that input's failure.
+  // it). Throws Exited if the driver exits. A stack overflow, a trap, or a
+  // Quest exception that escapes the driver, in an input, replays the session
+  // (replay) and gives that input's failure.
   request(request) {
     const line = typeof request === "string" ? request : requestLine(request);
     this.records = [];
@@ -145,12 +183,13 @@ export class Session {
       this.kernel.request(this.noClosure);
     } catch (e) {
       if (e instanceof Exit) throw new Exited(e.code);
-      if (!isStackOverflow(e) && !(e instanceof WebAssembly.RuntimeError)) throw e;
+      const escaped = e instanceof WebAssembly.Exception;
+      if (!isStackOverflow(e) && !(e instanceof WebAssembly.RuntimeError) && !escaped) throw e;
       // No Quest handler saw it, and the interpreter's structures may be half
       // updated: a new session, with the committed inputs run again
       this.replay();
-      const kind = isStackOverflow(e) ? "stack.overflow" : "trap";
-      const records = failure(kind, String(e.message));
+      const kind = isStackOverflow(e) ? "stack.overflow" : escaped ? "exception" : "trap";
+      const records = failure(kind, escaped ? "an exception the driver did not catch" : String(e.message));
       if (this.options.record) this.options.record(encoder.encode(records.map(r => requestLine(r)).join("\n") + "\n"));
       return records;
     }

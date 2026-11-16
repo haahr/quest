@@ -13,7 +13,7 @@
 // are made ({stdout}, {stderr}, {record}: bytes), then {started} or
 // {exited: STATUS}, and for each request {records, committed}.
 
-import {Errno, E, MemoryMount, UrlMount} from "./host.mjs";
+import {Errno, E, MemoryMount, UrlMount, isStackOverflow} from "./host.mjs";
 import {Session, Exited} from "./session.mjs";
 
 export const home = "/quest";
@@ -27,6 +27,7 @@ function getSync(url) {
   try {
     request.send();
   } catch (e) {
+    if (isStackOverflow(e)) throw e;
     throw new Errno(E.IO, `${url}: ${e}`);
   }
   if (request.status === 200) return new Uint8Array(request.response);

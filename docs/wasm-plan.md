@@ -1906,6 +1906,24 @@ writer's buffer, and would end the session when flushed.
     `writer.error`, as natively.
     *Done when* the review's programs for each give the native answer or `stack.overflow`, each a case in
     `wasm_session.py`.
+
+    *Done 2026-11-15:*
+    - **Built:** `wasm/core` and `wasm/print` each have a `recover`, which the JIT's host (`jit.mjs`'s `run`) calls
+      when it rolls an input back: the core's subtype and equivalence trails emptied, and print's nesting and
+      witnesses. The rest of what the runtime keeps across calls was already sound: the instance, dictionary
+      and view map caches under §6.3's count, and the abstract registry and the bound variables safe to leave
+      half done, each entry stored before the count or array that shows it. `isStackOverflow` moved to `host.mjs`, and `NodeMount`'s `call` and `stat` and `worker.mjs`'s
+      `getSync` rethrow an overflow. `session.mjs`'s `request` replays for a `WebAssembly.Exception` as for an
+      overflow or a trap, its failure named `exception`; and `start`, when the file `-i` runs fails so, reports it
+      on standard error and starts again without the file, its arguments kept after a `--`.
+    - **Departed from the plan:** descriptors 3 and 4 are not refused to a program. The kernel opens 3 for each
+      request, and `io/display` opens 4 to write its records, so a claim on the first open broke both. Instead
+      `session.mjs` reads descriptor 4 line by line: a line that is not a JSON object goes to the client's
+      standard error, and the session goes on, where natively the open raises `writer.error`.
+    - **Checked:** `wasm_session.py`'s `check_review` runs the review's programs for §2.2, 1 (`test()` is -1 after
+      the overflow), 2 (`stack.overflow`) and 7 (the session answers the next input). §2.2, 6's two paths are not
+      reached by a test: the driver catches an overflow in its own code as `stack.overflow` before the host sees
+      it, and the library archive that differed from the driver's has no case.
 25. **Boxed and proxied values in the code generator** (§2.1, 1 to 3; all still). A record or variant held boxed
     is unboxed wherever its parts are wanted (`sReturn`, `sJump`, `sAssign`, `sVarDecl`), not only in `opAtom`'s
     paths. Every access through a view map takes a proxy: `tupleField`, `sStoreComponent`, `opAddrComponent`,

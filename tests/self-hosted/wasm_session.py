@@ -42,7 +42,7 @@ from quest.common.location import BYTE_ENCODING  # noqa: E402
 from quest.testing.directives import parse_test_directives  # noqa: E402
 from quest.testing.transcripts import discover_repl_tests, repl_transcript  # noqa: E402
 from quest.testing.layout import TESTS_REPL_GOLDEN_DIR  # noqa: E402
-from quest_session import Session  # noqa: E402
+from quest_session import DriverExited, Session  # noqa: E402
 
 SESSION = ROOT_DIR / "runtime" / "wasm" / "session-node.mjs"
 KERNEL_PROTOCOL = Path(__file__).resolve().parent / "kernel_protocol.py"
@@ -148,6 +148,54 @@ def check_recovery(command: list[str], scratch: Path) -> list[str]:
     return problems
 
 
+# The review's programs for recovery (docs/wasm-review.md §2.2, 1, 2 and 7),
+# each in a fresh session: its inputs, and what the last must answer, its
+# results or its error's name
+REVIEW = [
+    ("the subtype trail after an overflow (§2.2, 1)", [
+        "import dynamic: Dynamic",
+        "Let P = Tuple a: Tuple x: Int y: Tuple z: Int w: Int end end b: String end",
+        "Let Q = Tuple a: Tuple x: Int y: Tuple z: Int w: Int end end b: Int end",
+        'let d = dynamic.new(:P tuple let a = tuple let x = 1 let y = tuple let z = 2 let w = 3 end end let b = "s"'
+        ' end)',
+        "let test(): Int = try begin let q = dynamic.be(:Q d) q.b end when dynamic.error then ~1 end",
+        "let rec deep(n: Int): Int = begin let unused = test() 1 + deep(n + 1) end",
+        "deep(0)",
+        "test()"], ["-1 : Int"]),
+    ("an overflow inside a host's file call (§2.2, 2)", [
+        "import system : System",
+        'let rec down(n: Int): Int = if system.fileExists("flag") then 1 + down(n + 1) else 0 end',
+        "down(0)"], "stack.overflow"),
+    # Natively the open raises writer.error; here the bytes, not records, go
+    # to the client's standard error, and the session goes on
+    ("a write to the session's own descriptor 4 (§2.2, 7)", [
+        "import writer : Writer",
+        'let f = writer.file("/dev/fd/4")',
+        'writer.putString(f "not a record\\n")',
+        "writer.close(f)",
+        "1 + 1"], ["2 : Int"]),
+]
+
+
+def check_review(command: list[str], scratch: Path) -> list[str]:
+    problems = []
+    environment = {**os.environ, "QUEST_HOME": str(ROOT_DIR)}
+    (scratch / "flag").write_text("x\n")
+    for name, inputs, expected in REVIEW:
+        s = Session(command, cwd=str(scratch), env=environment)
+        try:
+            for line in inputs:
+                reply = s.execute(line)
+            got = reply.results if reply.status == "ok" else (reply.error or {}).get("error")
+            if got != expected:
+                problems.append(f"{name}: {got}, not {expected}")
+        except DriverExited as e:
+            problems.append(f"{name}: the session ended ({e.status})")
+        finally:
+            s.kill()
+    return problems
+
+
 def check_page(driver_wasm: Path, into: Path) -> list[str]:
     """The page built from driver_wasm, checked in node"""
     page = into / "page"
@@ -179,6 +227,7 @@ def check(driver: str, driver_wasm: str | None) -> list[str]:
         scratch = into / "scratch"
         scratch.mkdir()
         problems += check_recovery([str(quest)], scratch)
+        problems += check_review([str(quest)], scratch)
         problems += check_page(target, into)
     return problems
 
