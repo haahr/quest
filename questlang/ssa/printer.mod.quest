@@ -5,7 +5,7 @@ import
     questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/repr/syntax : questlang/repr/Syntax
     collections/vector : collections/Vector
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
     conv : Conv
     stringOp = string : StringOp
@@ -130,54 +130,54 @@ export
 
     let formatFunction(f: Function): String =
         begin
-            let b = stringBuilder.new()
+            let b = sb.new()
             let params = nodes.block(f 0).params
-            b.str("function " <> f.symbol <> if f.exported then " exported" else "" end <> "(")
+            sb.str(b "function " <> f.symbol <> if f.exported then " exported" else "" end <> "(")
             for i = 0 upto {vector.length(:Int params) - 1} do
-                b.str(if i > 0 then ", " else "" end <> typed(f vector.get(:Int params i)))
+                sb.str(b if i > 0 then ", " else "" end <> typed(f vector.get(:Int params i)))
             end
-            b.str(")")
-            b.str(paramsText(f.signature))
+            sb.str(b ")")
+            sb.str(b paramsText(f.signature))
             if not(vector.empty(:nodes.Type f.resultTypes)) then
-                b.str(": ")
+                sb.str(b ": ")
                 for i = 0 upto {vector.length(:nodes.Type f.resultTypes) - 1} do
-                    b.str(if i > 0 then ", " else "" end <> nodes.typeName(vector.get(:nodes.Type f.resultTypes i)))
+                    sb.str(b if i > 0 then ", " else "" end <> nodes.typeName(vector.get(:nodes.Type f.resultTypes i)))
                 end
             end
-            b.str(resultText(f.signature))
+            sb.str(b resultText(f.signature))
             if not(vector.empty(:nodes.Slot f.slots)) then
-                b.str(" slots [")
+                sb.str(b " slots [")
                 for i = 0 upto {vector.length(:nodes.Slot f.slots) - 1} do
                     let s = vector.get(:nodes.Slot f.slots i)
-                    b.str(if i > 0 then " " else "" end <> conv.int(s.bytes) <> ":" <> conv.int(s.align))
+                    sb.str(b if i > 0 then " " else "" end <> conv.int(s.bytes) <> ":" <> conv.int(s.align))
                 end
-                b.str("]")
+                sb.str(b "]")
             end
-            b.str(" {\n")
+            sb.str(b " {\n")
             for bi = 0 upto {vector.length(:nodes.Block f.blocks) - 1} do
                 let blk = nodes.block(f bi)
-                b.str(blockName(bi) <> "(")
+                sb.str(b blockName(bi) <> "(")
                 for i = 0 upto {vector.length(:Int blk.params) - 1} do
-                    b.str(if i > 0 then ", " else "" end <> typed(f vector.get(:Int blk.params i)))
+                    sb.str(b if i > 0 then ", " else "" end <> typed(f vector.get(:Int blk.params i)))
                 end
-                b.str("):\n")
+                sb.str(b "):\n")
                 (* A block's code starts at no position *)
                 let state = tuple let var last = nodes.noLoc end
                 let at = fun(l: nodes.Loc): Ok
                     if not(nodes.sameLoc(l state.last)) then
-                        b.str("  " <> locText(l) <> "\n")
+                        sb.str(b "  " <> locText(l) <> "\n")
                         state.last := l
                     end
                 for i = 0 upto {vector.length(:nodes.Inst blk.insts) - 1} do
                     let inst = vector.get(:nodes.Inst blk.insts i)
                     at(inst.loc)
-                    b.str("  " <> instText(f inst) <> "\n")
+                    sb.str(b "  " <> instText(f inst) <> "\n")
                 end
                 at(blk.termLoc)
-                b.str("  " <> termText(f blk.term) <> "\n")
+                sb.str(b "  " <> termText(f blk.term) <> "\n")
             end
-            b.str("}\n")
-            b.toString()
+            sb.str(b "}\n")
+            sb.toString(b)
         end
 
     let wordText(w: nodes.Word): String =
@@ -194,23 +194,27 @@ export
                 when contentsZero with x then head <> "zero " <> conv.int(x.bytes) <> "\n"
                 when contentsText with x then head <> "text " <> syntax.cString(x.text) <> "\n"
                 when contentsWords with x then
-                    let b = stringBuilder.new()
-                    b.str(head <> "words [")
-                    for i = 0 upto {extent x.words - 1} do b.str(if i > 0 then ", " else "" end <> wordText(x.words[i])) end
-                    b.str("]\n")
-                    b.toString()
+                    let b = sb.new()
+                    sb.str(b head <> "words [")
+                    for i = 0 upto {extent x.words - 1} do
+                        sb.str(b if i > 0 then ", " else "" end <> wordText(x.words[i]))
+                    end
+                    sb.str(b "]\n")
+                    sb.toString(b)
             end
         end
 
     let formatUnit(u: nodes.Unit): String =
         begin
-            let b = stringBuilder.new()
+            let b = sb.new()
             for i = 0 upto {vector.length(:Function u.functions) - 1} do
-                if i > 0 then b.str("\n") end
-                b.str(formatFunction(vector.get(:Function u.functions i)))
+                if i > 0 then sb.str(b "\n") end
+                sb.strShared(b formatFunction(vector.get(:Function u.functions i)))
             end
-            if not(vector.empty(:nodes.Data u.data)) then b.str("\n") end
-            for i = 0 upto {vector.length(:nodes.Data u.data) - 1} do b.str(formatData(vector.get(:nodes.Data u.data i))) end
-            b.toString()
+            if not(vector.empty(:nodes.Data u.data)) then sb.str(b "\n") end
+            for i = 0 upto {vector.length(:nodes.Data u.data) - 1} do
+                sb.strShared(b formatData(vector.get(:nodes.Data u.data i)))
+            end
+            sb.toString(b)
         end
 end

@@ -7,7 +7,7 @@ import
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
     ascii : Ascii
     conv : Conv
@@ -121,7 +121,7 @@ export
     let parseString(s: Scanner): String =
         begin
             advance(s)
-            let b = stringBuilder.new()
+            let b = sb.new()
             let var done = false
             while not(done) do
                 if atEnd(s) then fail(:Ok) end
@@ -133,14 +133,14 @@ export
                     if atEnd(s) then fail(:Ok) end
                     let e = peek(s)
                     advance(s)
-                    if e is '"' then b.char('"')
-                    elsif e is '\\' then b.char('\\')
-                    elsif e is '/' then b.char('/')
-                    elsif e is 'b' then b.char(ascii.char(8))
-                    elsif e is 'f' then b.char(ascii.char(12))
-                    elsif e is 'n' then b.char('\n')
-                    elsif e is 'r' then b.char('\r')
-                    elsif e is 't' then b.char('\t')
+                    if e is '"' then sb.char(b '"')
+                    elsif e is '\\' then sb.char(b '\\')
+                    elsif e is '/' then sb.char(b '/')
+                    elsif e is 'b' then sb.char(b ascii.char(8))
+                    elsif e is 'f' then sb.char(b ascii.char(12))
+                    elsif e is 'n' then sb.char(b '\n')
+                    elsif e is 'r' then sb.char(b '\r')
+                    elsif e is 't' then sb.char(b '\t')
                     elsif e is 'u' then
                         if {s.pos + 4} > stringOp.length(s.text) then fail(:Ok) end
                         let var code = 0
@@ -149,18 +149,18 @@ export
                         (* A character is a byte, so an escape above ÿ gives
                          * none *)
                         if code > 255 then fail(:Ok) end
-                        b.char(ascii.char(code))
-                    else fail(:stringBuilder.T)
+                        sb.char(b ascii.char(code))
+                    else fail(:Ok)
                     end
                     ok
                 elsif ascii.val(c) < 32 then
                     fail(:Ok)
                 else
-                    b.char(c)
+                    sb.char(b c)
                     ok
                 end
             end
-            b.toString()
+            sb.toString(b)
         end
 
     let rec parseValue(s: Scanner): Value =
@@ -261,102 +261,104 @@ export
 
     let hexDigit(n: Int): Char = stringOp.getChar("0123456789abcdef" n)
 
-    let quoted(b: stringBuilder.T text: String): Ok =
+    let quoted(b: sb.T text: String): Ok =
         begin
-            b.char('"')
+            sb.char(b '"')
             for i = 0 upto {stringOp.length(text) - 1} do
                 let c = stringOp.getChar(text i)
                 let v = ascii.val(c)
-                if c is '"' then b.str("\\\"")
-                elsif c is '\\' then b.str("\\\\")
-                elsif c is '\n' then b.str("\\n")
-                elsif c is '\r' then b.str("\\r")
-                elsif c is '\t' then b.str("\\t")
-                elsif v is 8 then b.str("\\b")
-                elsif v is 12 then b.str("\\f")
+                if c is '"' then sb.str(b "\\\"")
+                elsif c is '\\' then sb.str(b "\\\\")
+                elsif c is '\n' then sb.str(b "\\n")
+                elsif c is '\r' then sb.str(b "\\r")
+                elsif c is '\t' then sb.str(b "\\t")
+                elsif v is 8 then sb.str(b "\\b")
+                elsif v is 12 then sb.str(b "\\f")
                 elsif {v < 32} orif {v > 126} then
-                    b.str("\\u00").char(hexDigit(v / 16)).char(hexDigit(v % 16))
+                    sb.str(b "\\u00")
+                    sb.char(b hexDigit(v / 16))
+                    sb.char(b hexDigit(v % 16))
                 else
-                    b.char(c)
+                    sb.char(b c)
                 end
             end
-            b.char('"')
+            sb.char(b '"')
             ok
         end
 
-    let rec write(b: stringBuilder.T v: Value): Ok =
+    let rec write(b: sb.T v: Value): Ok =
         case v
-            when jNull then begin b.str("null") ok end
-            when jBool with x then begin b.str(if x.b then "true" else "false" end) ok end
-            when jNumber with x then begin b.str(x.text) ok end
+            when jNull then begin sb.str(b "null") ok end
+            when jBool with x then begin sb.str(b if x.b then "true" else "false" end) ok end
+            when jNumber with x then begin sb.str(b x.text) ok end
             when jString with x then quoted(b x.s)
             when jArray with x then
                 begin
-                    b.char('[')
+                    sb.char(b '[')
                     for i = 0 upto {vector.length(:Value x.items) - 1} do
-                        if i > 0 then b.char(',') end
+                        if i > 0 then sb.char(b ',') end
                         write(b vector.get(:Value x.items i))
                     end
-                    b.char(']')
+                    sb.char(b ']')
                     ok
                 end
             when jObject with x then
                 begin
-                    b.char('{')
+                    sb.char(b '{')
                     for i = 0 upto {vector.length(:String x.o.names) - 1} do
-                        if i > 0 then b.char(',') end
+                        if i > 0 then sb.char(b ',') end
                         let name = vector.get(:String x.o.names i)
                         quoted(b name)
-                        b.char(':')
+                        sb.char(b ':')
                         write(b hashMap.find(:String :Value x.o.members name))
                     end
-                    b.char('}')
+                    sb.char(b '}')
                     ok
                 end
         end
 
     let dump(v: Value): String =
         begin
-            let b = stringBuilder.new()
+            let b = sb.new()
             write(b v)
-            b.toString()
+            sb.toString(b)
         end
 
-    let rec writeIndented(b: stringBuilder.T v: Value indent: Int level: Int): Ok =
+    let rec writeIndented(b: sb.T v: Value indent: Int level: Int): Ok =
         begin
-            let newline(depth: Int): Ok = begin b.char('\n').repeat(' ' indent * depth) ok end
+            let newline(depth: Int): Ok = begin sb.char(b '\n') sb.repeat(b ' ' indent * depth) ok end
             case v
                 when jArray with x then
                     if vector.empty(:Value x.items) then
-                        b.str("[]")
+                        sb.str(b "[]")
                         ok
                     else
-                        b.char('[')
+                        sb.char(b '[')
                         for i = 0 upto {vector.length(:Value x.items) - 1} do
-                            if i > 0 then b.char(',') end
+                            if i > 0 then sb.char(b ',') end
                             newline(level + 1)
                             writeIndented(b vector.get(:Value x.items i) indent {level + 1})
                         end
                         newline(level)
-                        b.char(']')
+                        sb.char(b ']')
                         ok
                     end
                 when jObject with x then
                     if vector.empty(:String x.o.names) then
-                        b.str("{}")
+                        sb.str(b "{}")
                         ok
                     else
-                        b.char('{')
+                        sb.char(b '{')
                         for i = 0 upto {vector.length(:String x.o.names) - 1} do
-                            if i > 0 then b.char(',') end
+                            if i > 0 then sb.char(b ',') end
                             newline(level + 1)
                             let name = vector.get(:String x.o.names i)
                             quoted(b name)
-                            b.str(": ")
+                            sb.str(b ": ")
                             writeIndented(b hashMap.find(:String :Value x.o.members name) indent {level + 1})
                         end
                         newline(level)
-                        b.char('}')
+                        sb.char(b '}')
                         ok
                     end
                 else write(b v)
@@ -365,8 +367,8 @@ export
 
     let dumpIndented(v: Value indent: Int): String =
         begin
-            let b = stringBuilder.new()
+            let b = sb.new()
             writeIndented(b v indent 0)
-            b.toString()
+            sb.toString(b)
         end
 end

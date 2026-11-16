@@ -5,9 +5,9 @@
 extern "C" {
 #endif
 #include "questlang/values/model.int.h"
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_5effa9a723614030_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_5effa9a723614030_TYPEDEF
-typedef struct RecGroup0_0_QTuple_QArra_5effa9a723614030 RecGroup0_0_QTuple_QArra_5effa9a723614030;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_2d0d5c19b53388e4_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_2d0d5c19b53388e4_TYPEDEF
+typedef struct RecGroup0_0_QTuple_QArra_2d0d5c19b53388e4 RecGroup0_0_QTuple_QArra_2d0d5c19b53388e4;
 #endif
 #ifndef QUEST_TYPE_RecGroup0_0_QTuple_Strin_483bc82e07ff306c_TYPEDEF
 #define QUEST_TYPE_RecGroup0_0_QTuple_Strin_483bc82e07ff306c_TYPEDEF
@@ -149,25 +149,25 @@ typedef struct RecGroup0_0_QOption_type_8b0ae4b2c2d35fb5 RecGroup0_0_QOption_typ
 #define QUEST_TYPE_RecGroup0_0_QTuple_Int_Q_1ac3f974e02e8874_TYPEDEF
 typedef struct RecGroup0_0_QTuple_Int_Q_1ac3f974e02e8874 RecGroup0_0_QTuple_Int_Q_1ac3f974e02e8874;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self1_ed646216dc76bc35_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_Self1_ed646216dc76bc35_TYPEDEF
-typedef struct RecGroup0_0_QTuple_Self1_ed646216dc76bc35 RecGroup0_0_QTuple_Self1_ed646216dc76bc35;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self1_bead310ff4b3472d_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_Self1_bead310ff4b3472d_TYPEDEF
+typedef struct RecGroup0_0_QTuple_Self1_bead310ff4b3472d RecGroup0_0_QTuple_Self1_bead310ff4b3472d;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_6c2f3f981b13652e_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_6c2f3f981b13652e_TYPEDEF
-typedef struct RecGroup0_0_QTuple_QTupl_6c2f3f981b13652e RecGroup0_0_QTuple_QTupl_6c2f3f981b13652e;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_af333618e56af6fb_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_af333618e56af6fb_TYPEDEF
+typedef struct RecGroup0_0_QTuple_QTupl_af333618e56af6fb RecGroup0_0_QTuple_QTupl_af333618e56af6fb;
 #endif
 #ifndef QUEST_TYPE_QTuple_Bool_TYPEDEF
 #define QUEST_TYPE_QTuple_Bool_TYPEDEF
 typedef struct QTuple_Bool QTuple_Bool;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Strin_f1be55d15d303ec6_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_Strin_f1be55d15d303ec6_TYPEDEF
-typedef struct RecGroup0_0_QTuple_Strin_f1be55d15d303ec6 RecGroup0_0_QTuple_Strin_f1be55d15d303ec6;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Strin_fe3640c35703673e_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_Strin_fe3640c35703673e_TYPEDEF
+typedef struct RecGroup0_0_QTuple_Strin_fe3640c35703673e RecGroup0_0_QTuple_Strin_fe3640c35703673e;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_eb711741e2b26671_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_eb711741e2b26671_TYPEDEF
-typedef struct RecGroup0_0_QTuple_QTupl_eb711741e2b26671 RecGroup0_0_QTuple_QTupl_eb711741e2b26671;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_772a0967627aac7a_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_772a0967627aac7a_TYPEDEF
+typedef struct RecGroup0_0_QTuple_QTupl_772a0967627aac7a RecGroup0_0_QTuple_QTupl_772a0967627aac7a;
 #endif
 #ifndef QUEST_TYPE_QTuple_Char_TYPEDEF
 #define QUEST_TYPE_QTuple_Char_TYPEDEF
@@ -417,113 +417,109 @@ typedef struct QTuple_QVal QTuple_QVal;
 #define QUEST_TYPE_QTuple_QTuple_QVal_end_QVal_TYPEDEF
 typedef struct QTuple_QTuple_QVal_end_QVal QTuple_QTuple_QVal_end_QVal;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_3bdadce253577ae0_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_3bdadce253577ae0_TYPEDEF
-typedef struct RecGroup0_0_QTuple_QArra_3bdadce253577ae0 RecGroup0_0_QTuple_QArra_3bdadce253577ae0;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_5043264daf4ac8bc_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_5043264daf4ac8bc_TYPEDEF
+typedef struct RecGroup0_0_QTuple_QArra_5043264daf4ac8bc RecGroup0_0_QTuple_QArra_5043264daf4ac8bc;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QVal__46ca87ac32489b87_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_QVal__46ca87ac32489b87_TYPEDEF
-typedef struct RecGroup0_0_QTuple_QVal__46ca87ac32489b87 RecGroup0_0_QTuple_QVal__46ca87ac32489b87;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018_TYPEDEF
+typedef struct RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018 RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_27669b99483adfcd_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_27669b99483adfcd_TYPEDEF
-typedef struct RecGroup0_0_QTuple_QArra_27669b99483adfcd RecGroup0_0_QTuple_QArra_27669b99483adfcd;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b_TYPEDEF
+typedef struct RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_131db41021e98e7e_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_131db41021e98e7e_TYPEDEF
-typedef struct RecGroup0_0_QTuple_QTupl_131db41021e98e7e RecGroup0_0_QTuple_QTupl_131db41021e98e7e;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_a00d7c42658cf4be_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_a00d7c42658cf4be_TYPEDEF
+typedef struct RecGroup0_0_QTuple_QTupl_a00d7c42658cf4be RecGroup0_0_QTuple_QTupl_a00d7c42658cf4be;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Strin_16301d9113cb2332_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_Strin_16301d9113cb2332_TYPEDEF
-typedef struct RecGroup0_0_QTuple_Strin_16301d9113cb2332 RecGroup0_0_QTuple_Strin_16301d9113cb2332;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Strin_f874b66d19404152_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_Strin_f874b66d19404152_TYPEDEF
+typedef struct RecGroup0_0_QTuple_Strin_f874b66d19404152 RecGroup0_0_QTuple_Strin_f874b66d19404152;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self3_6ca8c4f40bf045c6_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_Self3_6ca8c4f40bf045c6_TYPEDEF
-typedef struct RecGroup0_0_QTuple_Self3_6ca8c4f40bf045c6 RecGroup0_0_QTuple_Self3_6ca8c4f40bf045c6;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self3_0e3dd74ee2e5567a_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_Self3_0e3dd74ee2e5567a_TYPEDEF
+typedef struct RecGroup0_0_QTuple_Self3_0e3dd74ee2e5567a RecGroup0_0_QTuple_Self3_0e3dd74ee2e5567a;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Strin_0dc5c6cc5b3a0a70_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_Strin_0dc5c6cc5b3a0a70_TYPEDEF
-typedef struct RecGroup0_0_QTuple_Strin_0dc5c6cc5b3a0a70 RecGroup0_0_QTuple_Strin_0dc5c6cc5b3a0a70;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Strin_c55cd8a3402e6675_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_Strin_c55cd8a3402e6675_TYPEDEF
+typedef struct RecGroup0_0_QTuple_Strin_c55cd8a3402e6675 RecGroup0_0_QTuple_Strin_c55cd8a3402e6675;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_bf58ee64a94523a2_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_bf58ee64a94523a2_TYPEDEF
-typedef struct RecGroup0_0_QTuple_QTupl_bf58ee64a94523a2 RecGroup0_0_QTuple_QTupl_bf58ee64a94523a2;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_72ca7754a99591c9_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_72ca7754a99591c9_TYPEDEF
+typedef struct RecGroup0_0_QTuple_QTupl_72ca7754a99591c9 RecGroup0_0_QTuple_QTupl_72ca7754a99591c9;
 #endif
 #ifndef QUEST_TYPE_QTuple_process_T_TYPEDEF
 #define QUEST_TYPE_QTuple_process_T_TYPEDEF
 typedef struct QTuple_process_T QTuple_process_T;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self3_1654ef0cab24752f_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_Self3_1654ef0cab24752f_TYPEDEF
-typedef struct RecGroup0_0_QTuple_Self3_1654ef0cab24752f RecGroup0_0_QTuple_Self3_1654ef0cab24752f;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self3_fb035fbeed772b90_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_Self3_fb035fbeed772b90_TYPEDEF
+typedef struct RecGroup0_0_QTuple_Self3_fb035fbeed772b90 RecGroup0_0_QTuple_Self3_fb035fbeed772b90;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QOption_inte_a48b1aef7b655d82_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QOption_inte_a48b1aef7b655d82_TYPEDEF
-typedef struct RecGroup0_0_QOption_inte_a48b1aef7b655d82 RecGroup0_0_QOption_inte_a48b1aef7b655d82;
+#ifndef QUEST_TYPE_RecGroup0_0_QOption_inte_98a0c5dfc9d294ca_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QOption_inte_98a0c5dfc9d294ca_TYPEDEF
+typedef struct RecGroup0_0_QOption_inte_98a0c5dfc9d294ca RecGroup0_0_QOption_inte_98a0c5dfc9d294ca;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QOpti_4af353ae77fb2663_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_QOpti_4af353ae77fb2663_TYPEDEF
-typedef struct RecGroup0_0_QTuple_QOpti_4af353ae77fb2663 RecGroup0_0_QTuple_QOpti_4af353ae77fb2663;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QOpti_34c55a847354005e_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_QOpti_34c55a847354005e_TYPEDEF
+typedef struct RecGroup0_0_QTuple_QOpti_34c55a847354005e RecGroup0_0_QTuple_QOpti_34c55a847354005e;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_7fb5202b699fb3f1_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_7fb5202b699fb3f1_TYPEDEF
-typedef struct RecGroup0_0_QTuple_QTupl_7fb5202b699fb3f1 RecGroup0_0_QTuple_QTupl_7fb5202b699fb3f1;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_57ce5b958245199d_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_57ce5b958245199d_TYPEDEF
+typedef struct RecGroup0_0_QTuple_QTupl_57ce5b958245199d RecGroup0_0_QTuple_QTupl_57ce5b958245199d;
 #endif
 #ifndef QUEST_TYPE_QTuple_reader_T_TYPEDEF
 #define QUEST_TYPE_QTuple_reader_T_TYPEDEF
 typedef struct QTuple_reader_T QTuple_reader_T;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QVal__1cf42802a349d6f1_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_QVal__1cf42802a349d6f1_TYPEDEF
-typedef struct RecGroup0_0_QTuple_QVal__1cf42802a349d6f1 RecGroup0_0_QTuple_QVal__1cf42802a349d6f1;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QVal__d7e879c74ce19ce0_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_QVal__d7e879c74ce19ce0_TYPEDEF
+typedef struct RecGroup0_0_QTuple_QVal__d7e879c74ce19ce0 RecGroup0_0_QTuple_QVal__d7e879c74ce19ce0;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_adfcf60bcafa964d_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_adfcf60bcafa964d_TYPEDEF
-typedef struct RecGroup0_0_QTuple_QTupl_adfcf60bcafa964d RecGroup0_0_QTuple_QTupl_adfcf60bcafa964d;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_1fd090d129e6df57_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_1fd090d129e6df57_TYPEDEF
+typedef struct RecGroup0_0_QTuple_QTupl_1fd090d129e6df57 RecGroup0_0_QTuple_QTupl_1fd090d129e6df57;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_d6c7383339e91a45_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_d6c7383339e91a45_TYPEDEF
-typedef struct RecGroup0_0_QTuple_QArra_d6c7383339e91a45 RecGroup0_0_QTuple_QArra_d6c7383339e91a45;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_f627a621e38ca01e_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_f627a621e38ca01e_TYPEDEF
+typedef struct RecGroup0_0_QTuple_QArra_f627a621e38ca01e RecGroup0_0_QTuple_QArra_f627a621e38ca01e;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self1_d31b7e0e6611934c_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_Self1_d31b7e0e6611934c_TYPEDEF
-typedef struct RecGroup0_0_QTuple_Self1_d31b7e0e6611934c RecGroup0_0_QTuple_Self1_d31b7e0e6611934c;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self1_f633f80c632546fd_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_Self1_f633f80c632546fd_TYPEDEF
+typedef struct RecGroup0_0_QTuple_Self1_f633f80c632546fd RecGroup0_0_QTuple_Self1_f633f80c632546fd;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_8abb88ee9410f020_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_8abb88ee9410f020_TYPEDEF
-typedef struct RecGroup0_0_QTuple_QTupl_8abb88ee9410f020 RecGroup0_0_QTuple_QTupl_8abb88ee9410f020;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_4e28968c2a0d541b_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_4e28968c2a0d541b_TYPEDEF
+typedef struct RecGroup0_0_QTuple_QTupl_4e28968c2a0d541b RecGroup0_0_QTuple_QTupl_4e28968c2a0d541b;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570_TYPEDEF
-typedef struct RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570 RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_fa52723831e3652f_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_fa52723831e3652f_TYPEDEF
+typedef struct RecGroup0_0_QTuple_QArra_fa52723831e3652f RecGroup0_0_QTuple_QArra_fa52723831e3652f;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self3_1fa7f234bcb4c6db_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_Self3_1fa7f234bcb4c6db_TYPEDEF
-typedef struct RecGroup0_0_QTuple_Self3_1fa7f234bcb4c6db RecGroup0_0_QTuple_Self3_1fa7f234bcb4c6db;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self3_93bb326922c36bac_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_Self3_93bb326922c36bac_TYPEDEF
+typedef struct RecGroup0_0_QTuple_Self3_93bb326922c36bac RecGroup0_0_QTuple_Self3_93bb326922c36bac;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QOption_arra_fef87445a7354967_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QOption_arra_fef87445a7354967_TYPEDEF
-typedef struct RecGroup0_0_QOption_arra_fef87445a7354967 RecGroup0_0_QOption_arra_fef87445a7354967;
+#ifndef QUEST_TYPE_RecGroup0_0_QOption_arra_022e681d5ce0e1ce_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QOption_arra_022e681d5ce0e1ce_TYPEDEF
+typedef struct RecGroup0_0_QOption_arra_022e681d5ce0e1ce RecGroup0_0_QOption_arra_022e681d5ce0e1ce;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QOpti_cffad0b9eebae478_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_QOpti_cffad0b9eebae478_TYPEDEF
-typedef struct RecGroup0_0_QTuple_QOpti_cffad0b9eebae478 RecGroup0_0_QTuple_QOpti_cffad0b9eebae478;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QOpti_60339ecea75b4da4_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_QOpti_60339ecea75b4da4_TYPEDEF
+typedef struct RecGroup0_0_QTuple_QOpti_60339ecea75b4da4 RecGroup0_0_QTuple_QOpti_60339ecea75b4da4;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_8bf3cd5cf5ab5e38_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_8bf3cd5cf5ab5e38_TYPEDEF
-typedef struct RecGroup0_0_QTuple_QTupl_8bf3cd5cf5ab5e38 RecGroup0_0_QTuple_QTupl_8bf3cd5cf5ab5e38;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_97508533457ba21e_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_97508533457ba21e_TYPEDEF
+typedef struct RecGroup0_0_QTuple_QTupl_97508533457ba21e RecGroup0_0_QTuple_QTupl_97508533457ba21e;
 #endif
-#ifndef QUEST_TYPE_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d_TYPEDEF
-#define QUEST_TYPE_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d_TYPEDEF
-typedef struct Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d;
+#ifndef QUEST_TYPE_QTuple_stringBuilder_T_TYPEDEF
+#define QUEST_TYPE_QTuple_stringBuilder_T_TYPEDEF
+typedef struct QTuple_stringBuilder_T QTuple_stringBuilder_T;
 #endif
-#ifndef QUEST_TYPE_QTuple_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d_TYPEDEF
-#define QUEST_TYPE_QTuple_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d_TYPEDEF
-typedef struct QTuple_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d QTuple_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d;
-#endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self3_fbab50b1099728e8_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QTuple_Self3_fbab50b1099728e8_TYPEDEF
-typedef struct RecGroup0_0_QTuple_Self3_fbab50b1099728e8 RecGroup0_0_QTuple_Self3_fbab50b1099728e8;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self3_9105cf31d511b429_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QTuple_Self3_9105cf31d511b429_TYPEDEF
+typedef struct RecGroup0_0_QTuple_Self3_9105cf31d511b429 RecGroup0_0_QTuple_Self3_9105cf31d511b429;
 #endif
 #ifndef QUEST_TYPE_QTuple_RecGroup0_0_QTuple_Int_Q_1ac3f974e02e8874_QVal_QVal_TYPEDEF
 #define QUEST_TYPE_QTuple_RecGroup0_0_QTuple_Int_Q_1ac3f974e02e8874_QVal_QVal_TYPEDEF
@@ -541,17 +537,17 @@ typedef struct QTuple_Word QTuple_Word;
 #define QUEST_TYPE_QTuple_writer_T_TYPEDEF
 typedef struct QTuple_writer_T QTuple_writer_T;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_TYPEDEF
-#define QUEST_TYPE_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_TYPEDEF
-typedef struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7 RecGroup0_0_QOption_vArr_4b3455932a2e54b7;
+#ifndef QUEST_TYPE_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_TYPEDEF
+#define QUEST_TYPE_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_TYPEDEF
+typedef struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa RecGroup0_0_QOption_vArr_bced0b107b0cbffa;
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_5effa9a723614030_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_5effa9a723614030_DEFINED
-struct RecGroup0_0_QTuple_QArra_5effa9a723614030 {
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_2d0d5c19b53388e4_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_2d0d5c19b53388e4_DEFINED
+struct RecGroup0_0_QTuple_QArra_2d0d5c19b53388e4 {
     QArray * _0;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_5effa9a723614030, _0) == 0, layout_RecGroup0_0_QTuple_QArra_5effa9a723614030__0);
-static_assert(sizeof(struct RecGroup0_0_QTuple_QArra_5effa9a723614030) == 8, layout_RecGroup0_0_QTuple_QArra_5effa9a723614030_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_2d0d5c19b53388e4, _0) == 0, layout_RecGroup0_0_QTuple_QArra_2d0d5c19b53388e4__0);
+static_assert(sizeof(struct RecGroup0_0_QTuple_QArra_2d0d5c19b53388e4) == 8, layout_RecGroup0_0_QTuple_QArra_2d0d5c19b53388e4_size);
 #endif
 #ifndef QUEST_TYPE_RecGroup0_0_QTuple_Strin_483bc82e07ff306c_DEFINED
 #define QUEST_TYPE_RecGroup0_0_QTuple_Strin_483bc82e07ff306c_DEFINED
@@ -1112,23 +1108,23 @@ static_assert(offsetof(struct RecGroup0_0_QTuple_Int_Q_1ac3f974e02e8874, _4) == 
 static_assert(offsetof(struct RecGroup0_0_QTuple_Int_Q_1ac3f974e02e8874, _5) == 40, layout_RecGroup0_0_QTuple_Int_Q_1ac3f974e02e8874__5);
 static_assert(sizeof(struct RecGroup0_0_QTuple_Int_Q_1ac3f974e02e8874) == 48, layout_RecGroup0_0_QTuple_Int_Q_1ac3f974e02e8874_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self1_ed646216dc76bc35_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_Self1_ed646216dc76bc35_DEFINED
-struct RecGroup0_0_QTuple_Self1_ed646216dc76bc35 {
-    RecGroup0_0_QOption_vArr_4b3455932a2e54b7 * _0;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self1_bead310ff4b3472d_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_Self1_bead310ff4b3472d_DEFINED
+struct RecGroup0_0_QTuple_Self1_bead310ff4b3472d {
+    RecGroup0_0_QOption_vArr_bced0b107b0cbffa * _0;
     RecGroup0_0_QTuple_Int_Q_1ac3f974e02e8874 * _1;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_Self1_ed646216dc76bc35, _0) == 0, layout_RecGroup0_0_QTuple_Self1_ed646216dc76bc35__0);
-static_assert(offsetof(struct RecGroup0_0_QTuple_Self1_ed646216dc76bc35, _1) == 8, layout_RecGroup0_0_QTuple_Self1_ed646216dc76bc35__1);
-static_assert(sizeof(struct RecGroup0_0_QTuple_Self1_ed646216dc76bc35) == 16, layout_RecGroup0_0_QTuple_Self1_ed646216dc76bc35_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_Self1_bead310ff4b3472d, _0) == 0, layout_RecGroup0_0_QTuple_Self1_bead310ff4b3472d__0);
+static_assert(offsetof(struct RecGroup0_0_QTuple_Self1_bead310ff4b3472d, _1) == 8, layout_RecGroup0_0_QTuple_Self1_bead310ff4b3472d__1);
+static_assert(sizeof(struct RecGroup0_0_QTuple_Self1_bead310ff4b3472d) == 16, layout_RecGroup0_0_QTuple_Self1_bead310ff4b3472d_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_6c2f3f981b13652e_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_6c2f3f981b13652e_DEFINED
-struct RecGroup0_0_QTuple_QTupl_6c2f3f981b13652e {
-    RecGroup0_0_QTuple_Self1_ed646216dc76bc35 * _0;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_af333618e56af6fb_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_af333618e56af6fb_DEFINED
+struct RecGroup0_0_QTuple_QTupl_af333618e56af6fb {
+    RecGroup0_0_QTuple_Self1_bead310ff4b3472d * _0;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_QTupl_6c2f3f981b13652e, _0) == 0, layout_RecGroup0_0_QTuple_QTupl_6c2f3f981b13652e__0);
-static_assert(sizeof(struct RecGroup0_0_QTuple_QTupl_6c2f3f981b13652e) == 8, layout_RecGroup0_0_QTuple_QTupl_6c2f3f981b13652e_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QTupl_af333618e56af6fb, _0) == 0, layout_RecGroup0_0_QTuple_QTupl_af333618e56af6fb__0);
+static_assert(sizeof(struct RecGroup0_0_QTuple_QTupl_af333618e56af6fb) == 8, layout_RecGroup0_0_QTuple_QTupl_af333618e56af6fb_size);
 #endif
 #ifndef QUEST_TYPE_QTuple_Bool_DEFINED
 #define QUEST_TYPE_QTuple_Bool_DEFINED
@@ -1138,23 +1134,23 @@ struct QTuple_Bool {
 static_assert(offsetof(struct QTuple_Bool, _0) == 0, layout_QTuple_Bool__0);
 static_assert(sizeof(struct QTuple_Bool) == 8, layout_QTuple_Bool_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Strin_f1be55d15d303ec6_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_Strin_f1be55d15d303ec6_DEFINED
-struct RecGroup0_0_QTuple_Strin_f1be55d15d303ec6 {
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Strin_fe3640c35703673e_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_Strin_fe3640c35703673e_DEFINED
+struct RecGroup0_0_QTuple_Strin_fe3640c35703673e {
     QString * _0;
     QClosure * _1;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_Strin_f1be55d15d303ec6, _0) == 0, layout_RecGroup0_0_QTuple_Strin_f1be55d15d303ec6__0);
-static_assert(offsetof(struct RecGroup0_0_QTuple_Strin_f1be55d15d303ec6, _1) == 8, layout_RecGroup0_0_QTuple_Strin_f1be55d15d303ec6__1);
-static_assert(sizeof(struct RecGroup0_0_QTuple_Strin_f1be55d15d303ec6) == 16, layout_RecGroup0_0_QTuple_Strin_f1be55d15d303ec6_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_Strin_fe3640c35703673e, _0) == 0, layout_RecGroup0_0_QTuple_Strin_fe3640c35703673e__0);
+static_assert(offsetof(struct RecGroup0_0_QTuple_Strin_fe3640c35703673e, _1) == 8, layout_RecGroup0_0_QTuple_Strin_fe3640c35703673e__1);
+static_assert(sizeof(struct RecGroup0_0_QTuple_Strin_fe3640c35703673e) == 16, layout_RecGroup0_0_QTuple_Strin_fe3640c35703673e_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_eb711741e2b26671_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_eb711741e2b26671_DEFINED
-struct RecGroup0_0_QTuple_QTupl_eb711741e2b26671 {
-    RecGroup0_0_QTuple_Strin_f1be55d15d303ec6 * _0;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_772a0967627aac7a_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_772a0967627aac7a_DEFINED
+struct RecGroup0_0_QTuple_QTupl_772a0967627aac7a {
+    RecGroup0_0_QTuple_Strin_fe3640c35703673e * _0;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_QTupl_eb711741e2b26671, _0) == 0, layout_RecGroup0_0_QTuple_QTupl_eb711741e2b26671__0);
-static_assert(sizeof(struct RecGroup0_0_QTuple_QTupl_eb711741e2b26671) == 8, layout_RecGroup0_0_QTuple_QTupl_eb711741e2b26671_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QTupl_772a0967627aac7a, _0) == 0, layout_RecGroup0_0_QTuple_QTupl_772a0967627aac7a__0);
+static_assert(sizeof(struct RecGroup0_0_QTuple_QTupl_772a0967627aac7a) == 8, layout_RecGroup0_0_QTuple_QTupl_772a0967627aac7a_size);
 #endif
 #ifndef QUEST_TYPE_QTuple_Char_DEFINED
 #define QUEST_TYPE_QTuple_Char_DEFINED
@@ -2190,107 +2186,107 @@ static_assert(offsetof(struct QTuple_QTuple_QVal_end_QVal, _0) == 0, layout_QTup
 static_assert(offsetof(struct QTuple_QTuple_QVal_end_QVal, _1) == 8, layout_QTuple_QTuple_QVal_end_QVal__1);
 static_assert(sizeof(struct QTuple_QTuple_QVal_end_QVal) == 16, layout_QTuple_QTuple_QVal_end_QVal_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_3bdadce253577ae0_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_3bdadce253577ae0_DEFINED
-struct RecGroup0_0_QTuple_QArra_3bdadce253577ae0 {
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_5043264daf4ac8bc_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_5043264daf4ac8bc_DEFINED
+struct RecGroup0_0_QTuple_QArra_5043264daf4ac8bc {
     QArray * _0;
     QVal _1;
     QTuple_QTuple_QVal_end_QVal * _2;
     QVal _3;
     QVal _4;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_3bdadce253577ae0, _0) == 0, layout_RecGroup0_0_QTuple_QArra_3bdadce253577ae0__0);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_3bdadce253577ae0, _1) == 8, layout_RecGroup0_0_QTuple_QArra_3bdadce253577ae0__1);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_3bdadce253577ae0, _2) == 16, layout_RecGroup0_0_QTuple_QArra_3bdadce253577ae0__2);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_3bdadce253577ae0, _3) == 24, layout_RecGroup0_0_QTuple_QArra_3bdadce253577ae0__3);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_3bdadce253577ae0, _4) == 32, layout_RecGroup0_0_QTuple_QArra_3bdadce253577ae0__4);
-static_assert(sizeof(struct RecGroup0_0_QTuple_QArra_3bdadce253577ae0) == 40, layout_RecGroup0_0_QTuple_QArra_3bdadce253577ae0_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_5043264daf4ac8bc, _0) == 0, layout_RecGroup0_0_QTuple_QArra_5043264daf4ac8bc__0);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_5043264daf4ac8bc, _1) == 8, layout_RecGroup0_0_QTuple_QArra_5043264daf4ac8bc__1);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_5043264daf4ac8bc, _2) == 16, layout_RecGroup0_0_QTuple_QArra_5043264daf4ac8bc__2);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_5043264daf4ac8bc, _3) == 24, layout_RecGroup0_0_QTuple_QArra_5043264daf4ac8bc__3);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_5043264daf4ac8bc, _4) == 32, layout_RecGroup0_0_QTuple_QArra_5043264daf4ac8bc__4);
+static_assert(sizeof(struct RecGroup0_0_QTuple_QArra_5043264daf4ac8bc) == 40, layout_RecGroup0_0_QTuple_QArra_5043264daf4ac8bc_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QVal__46ca87ac32489b87_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_QVal__46ca87ac32489b87_DEFINED
-struct RecGroup0_0_QTuple_QVal__46ca87ac32489b87 {
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018_DEFINED
+struct RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018 {
     QVal _0;
     QVal _1;
     QVal _2;
     QVal _3;
     QVal _4;
     QVal _5;
-    RecGroup0_0_QTuple_QArra_3bdadce253577ae0 * _6;
+    RecGroup0_0_QTuple_QArra_5043264daf4ac8bc * _6;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_QVal__46ca87ac32489b87, _0) == 0, layout_RecGroup0_0_QTuple_QVal__46ca87ac32489b87__0);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QVal__46ca87ac32489b87, _1) == 8, layout_RecGroup0_0_QTuple_QVal__46ca87ac32489b87__1);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QVal__46ca87ac32489b87, _2) == 16, layout_RecGroup0_0_QTuple_QVal__46ca87ac32489b87__2);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QVal__46ca87ac32489b87, _3) == 24, layout_RecGroup0_0_QTuple_QVal__46ca87ac32489b87__3);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QVal__46ca87ac32489b87, _4) == 32, layout_RecGroup0_0_QTuple_QVal__46ca87ac32489b87__4);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QVal__46ca87ac32489b87, _5) == 40, layout_RecGroup0_0_QTuple_QVal__46ca87ac32489b87__5);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QVal__46ca87ac32489b87, _6) == 48, layout_RecGroup0_0_QTuple_QVal__46ca87ac32489b87__6);
-static_assert(sizeof(struct RecGroup0_0_QTuple_QVal__46ca87ac32489b87) == 56, layout_RecGroup0_0_QTuple_QVal__46ca87ac32489b87_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018, _0) == 0, layout_RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018__0);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018, _1) == 8, layout_RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018__1);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018, _2) == 16, layout_RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018__2);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018, _3) == 24, layout_RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018__3);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018, _4) == 32, layout_RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018__4);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018, _5) == 40, layout_RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018__5);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018, _6) == 48, layout_RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018__6);
+static_assert(sizeof(struct RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018) == 56, layout_RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_27669b99483adfcd_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_27669b99483adfcd_DEFINED
-struct RecGroup0_0_QTuple_QArra_27669b99483adfcd {
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b_DEFINED
+struct RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b {
     QArray * _0;
     RecGroup0_0_QTuple_Int_R_4f919f2cf5393a44 * _1;
-    RecGroup0_0_QTuple_QVal__46ca87ac32489b87 * _2;
+    RecGroup0_0_QTuple_QVal__f6d53d5a8dc39018 * _2;
     QVal _3;
     QArray * _4;
     QVal _5;
     QBoolSlot _6;
     QString * _7;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_27669b99483adfcd, _0) == 0, layout_RecGroup0_0_QTuple_QArra_27669b99483adfcd__0);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_27669b99483adfcd, _1) == 8, layout_RecGroup0_0_QTuple_QArra_27669b99483adfcd__1);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_27669b99483adfcd, _2) == 16, layout_RecGroup0_0_QTuple_QArra_27669b99483adfcd__2);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_27669b99483adfcd, _3) == 24, layout_RecGroup0_0_QTuple_QArra_27669b99483adfcd__3);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_27669b99483adfcd, _4) == 32, layout_RecGroup0_0_QTuple_QArra_27669b99483adfcd__4);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_27669b99483adfcd, _5) == 40, layout_RecGroup0_0_QTuple_QArra_27669b99483adfcd__5);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_27669b99483adfcd, _6) == 48, layout_RecGroup0_0_QTuple_QArra_27669b99483adfcd__6);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_27669b99483adfcd, _7) == 56, layout_RecGroup0_0_QTuple_QArra_27669b99483adfcd__7);
-static_assert(sizeof(struct RecGroup0_0_QTuple_QArra_27669b99483adfcd) == 64, layout_RecGroup0_0_QTuple_QArra_27669b99483adfcd_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b, _0) == 0, layout_RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b__0);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b, _1) == 8, layout_RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b__1);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b, _2) == 16, layout_RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b__2);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b, _3) == 24, layout_RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b__3);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b, _4) == 32, layout_RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b__4);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b, _5) == 40, layout_RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b__5);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b, _6) == 48, layout_RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b__6);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b, _7) == 56, layout_RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b__7);
+static_assert(sizeof(struct RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b) == 64, layout_RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_131db41021e98e7e_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_131db41021e98e7e_DEFINED
-struct RecGroup0_0_QTuple_QTupl_131db41021e98e7e {
-    RecGroup0_0_QTuple_QArra_27669b99483adfcd * _0;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_a00d7c42658cf4be_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_a00d7c42658cf4be_DEFINED
+struct RecGroup0_0_QTuple_QTupl_a00d7c42658cf4be {
+    RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b * _0;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_QTupl_131db41021e98e7e, _0) == 0, layout_RecGroup0_0_QTuple_QTupl_131db41021e98e7e__0);
-static_assert(sizeof(struct RecGroup0_0_QTuple_QTupl_131db41021e98e7e) == 8, layout_RecGroup0_0_QTuple_QTupl_131db41021e98e7e_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QTupl_a00d7c42658cf4be, _0) == 0, layout_RecGroup0_0_QTuple_QTupl_a00d7c42658cf4be__0);
+static_assert(sizeof(struct RecGroup0_0_QTuple_QTupl_a00d7c42658cf4be) == 8, layout_RecGroup0_0_QTuple_QTupl_a00d7c42658cf4be_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Strin_16301d9113cb2332_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_Strin_16301d9113cb2332_DEFINED
-struct RecGroup0_0_QTuple_Strin_16301d9113cb2332 {
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Strin_f874b66d19404152_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_Strin_f874b66d19404152_DEFINED
+struct RecGroup0_0_QTuple_Strin_f874b66d19404152 {
     QString * _0;
     QVal _1;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_Strin_16301d9113cb2332, _0) == 0, layout_RecGroup0_0_QTuple_Strin_16301d9113cb2332__0);
-static_assert(offsetof(struct RecGroup0_0_QTuple_Strin_16301d9113cb2332, _1) == 8, layout_RecGroup0_0_QTuple_Strin_16301d9113cb2332__1);
-static_assert(sizeof(struct RecGroup0_0_QTuple_Strin_16301d9113cb2332) == 16, layout_RecGroup0_0_QTuple_Strin_16301d9113cb2332_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_Strin_f874b66d19404152, _0) == 0, layout_RecGroup0_0_QTuple_Strin_f874b66d19404152__0);
+static_assert(offsetof(struct RecGroup0_0_QTuple_Strin_f874b66d19404152, _1) == 8, layout_RecGroup0_0_QTuple_Strin_f874b66d19404152__1);
+static_assert(sizeof(struct RecGroup0_0_QTuple_Strin_f874b66d19404152) == 16, layout_RecGroup0_0_QTuple_Strin_f874b66d19404152_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self3_6ca8c4f40bf045c6_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_Self3_6ca8c4f40bf045c6_DEFINED
-struct RecGroup0_0_QTuple_Self3_6ca8c4f40bf045c6 {
-    RecGroup0_0_QTuple_Strin_16301d9113cb2332 * _0;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self3_0e3dd74ee2e5567a_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_Self3_0e3dd74ee2e5567a_DEFINED
+struct RecGroup0_0_QTuple_Self3_0e3dd74ee2e5567a {
+    RecGroup0_0_QTuple_Strin_f874b66d19404152 * _0;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_Self3_6ca8c4f40bf045c6, _0) == 0, layout_RecGroup0_0_QTuple_Self3_6ca8c4f40bf045c6__0);
-static_assert(sizeof(struct RecGroup0_0_QTuple_Self3_6ca8c4f40bf045c6) == 8, layout_RecGroup0_0_QTuple_Self3_6ca8c4f40bf045c6_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_Self3_0e3dd74ee2e5567a, _0) == 0, layout_RecGroup0_0_QTuple_Self3_0e3dd74ee2e5567a__0);
+static_assert(sizeof(struct RecGroup0_0_QTuple_Self3_0e3dd74ee2e5567a) == 8, layout_RecGroup0_0_QTuple_Self3_0e3dd74ee2e5567a_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Strin_0dc5c6cc5b3a0a70_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_Strin_0dc5c6cc5b3a0a70_DEFINED
-struct RecGroup0_0_QTuple_Strin_0dc5c6cc5b3a0a70 {
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Strin_c55cd8a3402e6675_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_Strin_c55cd8a3402e6675_DEFINED
+struct RecGroup0_0_QTuple_Strin_c55cd8a3402e6675 {
     QString * _0;
     QVal _1;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_Strin_0dc5c6cc5b3a0a70, _0) == 0, layout_RecGroup0_0_QTuple_Strin_0dc5c6cc5b3a0a70__0);
-static_assert(offsetof(struct RecGroup0_0_QTuple_Strin_0dc5c6cc5b3a0a70, _1) == 8, layout_RecGroup0_0_QTuple_Strin_0dc5c6cc5b3a0a70__1);
-static_assert(sizeof(struct RecGroup0_0_QTuple_Strin_0dc5c6cc5b3a0a70) == 16, layout_RecGroup0_0_QTuple_Strin_0dc5c6cc5b3a0a70_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_Strin_c55cd8a3402e6675, _0) == 0, layout_RecGroup0_0_QTuple_Strin_c55cd8a3402e6675__0);
+static_assert(offsetof(struct RecGroup0_0_QTuple_Strin_c55cd8a3402e6675, _1) == 8, layout_RecGroup0_0_QTuple_Strin_c55cd8a3402e6675__1);
+static_assert(sizeof(struct RecGroup0_0_QTuple_Strin_c55cd8a3402e6675) == 16, layout_RecGroup0_0_QTuple_Strin_c55cd8a3402e6675_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_bf58ee64a94523a2_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_bf58ee64a94523a2_DEFINED
-struct RecGroup0_0_QTuple_QTupl_bf58ee64a94523a2 {
-    RecGroup0_0_QTuple_Strin_0dc5c6cc5b3a0a70 * _0;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_72ca7754a99591c9_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_72ca7754a99591c9_DEFINED
+struct RecGroup0_0_QTuple_QTupl_72ca7754a99591c9 {
+    RecGroup0_0_QTuple_Strin_c55cd8a3402e6675 * _0;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_QTupl_bf58ee64a94523a2, _0) == 0, layout_RecGroup0_0_QTuple_QTupl_bf58ee64a94523a2__0);
-static_assert(sizeof(struct RecGroup0_0_QTuple_QTupl_bf58ee64a94523a2) == 8, layout_RecGroup0_0_QTuple_QTupl_bf58ee64a94523a2_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QTupl_72ca7754a99591c9, _0) == 0, layout_RecGroup0_0_QTuple_QTupl_72ca7754a99591c9__0);
+static_assert(sizeof(struct RecGroup0_0_QTuple_QTupl_72ca7754a99591c9) == 8, layout_RecGroup0_0_QTuple_QTupl_72ca7754a99591c9_size);
 #endif
 #ifndef QUEST_TYPE_QTuple_process_T_DEFINED
 #define QUEST_TYPE_QTuple_process_T_DEFINED
@@ -2300,60 +2296,60 @@ struct QTuple_process_T {
 static_assert(offsetof(struct QTuple_process_T, _0) == 0, layout_QTuple_process_T__0);
 static_assert(sizeof(struct QTuple_process_T) == 8, layout_QTuple_process_T_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self3_1654ef0cab24752f_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_Self3_1654ef0cab24752f_DEFINED
-struct RecGroup0_0_QTuple_Self3_1654ef0cab24752f {
-    RecGroup0_0_QTuple_Strin_16301d9113cb2332 * _0;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self3_fb035fbeed772b90_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_Self3_fb035fbeed772b90_DEFINED
+struct RecGroup0_0_QTuple_Self3_fb035fbeed772b90 {
+    RecGroup0_0_QTuple_Strin_f874b66d19404152 * _0;
     QVal _1;
     QVal _2;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_Self3_1654ef0cab24752f, _0) == 0, layout_RecGroup0_0_QTuple_Self3_1654ef0cab24752f__0);
-static_assert(offsetof(struct RecGroup0_0_QTuple_Self3_1654ef0cab24752f, _1) == 8, layout_RecGroup0_0_QTuple_Self3_1654ef0cab24752f__1);
-static_assert(offsetof(struct RecGroup0_0_QTuple_Self3_1654ef0cab24752f, _2) == 16, layout_RecGroup0_0_QTuple_Self3_1654ef0cab24752f__2);
-static_assert(sizeof(struct RecGroup0_0_QTuple_Self3_1654ef0cab24752f) == 24, layout_RecGroup0_0_QTuple_Self3_1654ef0cab24752f_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_Self3_fb035fbeed772b90, _0) == 0, layout_RecGroup0_0_QTuple_Self3_fb035fbeed772b90__0);
+static_assert(offsetof(struct RecGroup0_0_QTuple_Self3_fb035fbeed772b90, _1) == 8, layout_RecGroup0_0_QTuple_Self3_fb035fbeed772b90__1);
+static_assert(offsetof(struct RecGroup0_0_QTuple_Self3_fb035fbeed772b90, _2) == 16, layout_RecGroup0_0_QTuple_Self3_fb035fbeed772b90__2);
+static_assert(sizeof(struct RecGroup0_0_QTuple_Self3_fb035fbeed772b90) == 24, layout_RecGroup0_0_QTuple_Self3_fb035fbeed772b90_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QOption_inte_a48b1aef7b655d82_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QOption_inte_a48b1aef7b655d82_DEFINED
-struct RecGroup0_0_QOption_inte_a48b1aef7b655d82 {
+#ifndef QUEST_TYPE_RecGroup0_0_QOption_inte_98a0c5dfc9d294ca_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QOption_inte_98a0c5dfc9d294ca_DEFINED
+struct RecGroup0_0_QOption_inte_98a0c5dfc9d294ca {
     int64_t tag;
     union {
-        struct RecGroup0_0_QOption_inte_a48b1aef7b655d82_internal_payload {
+        struct RecGroup0_0_QOption_inte_98a0c5dfc9d294ca_internal_payload {
             QString * _0;
         } qo_internal;
-        struct RecGroup0_0_QOption_inte_a48b1aef7b655d82_raised_payload {
-            RecGroup0_0_QTuple_Strin_16301d9113cb2332 * _0;
+        struct RecGroup0_0_QOption_inte_98a0c5dfc9d294ca_raised_payload {
+            RecGroup0_0_QTuple_Strin_f874b66d19404152 * _0;
             QVal _1;
             QVal _2;
         } qo_raised;
     } u;
 };
-static_assert(offsetof(struct RecGroup0_0_QOption_inte_a48b1aef7b655d82, u.qo_internal._0) == 8, layout_RecGroup0_0_QOption_inte_a48b1aef7b655d82_u_qo_internal__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_inte_a48b1aef7b655d82, u.qo_raised._0) == 8, layout_RecGroup0_0_QOption_inte_a48b1aef7b655d82_u_qo_raised__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_inte_a48b1aef7b655d82, u.qo_raised._1) == 16, layout_RecGroup0_0_QOption_inte_a48b1aef7b655d82_u_qo_raised__1);
-static_assert(offsetof(struct RecGroup0_0_QOption_inte_a48b1aef7b655d82, u.qo_raised._2) == 24, layout_RecGroup0_0_QOption_inte_a48b1aef7b655d82_u_qo_raised__2);
-static_assert(sizeof(struct RecGroup0_0_QOption_inte_a48b1aef7b655d82) == 32, layout_RecGroup0_0_QOption_inte_a48b1aef7b655d82_size);
+static_assert(offsetof(struct RecGroup0_0_QOption_inte_98a0c5dfc9d294ca, u.qo_internal._0) == 8, layout_RecGroup0_0_QOption_inte_98a0c5dfc9d294ca_u_qo_internal__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_inte_98a0c5dfc9d294ca, u.qo_raised._0) == 8, layout_RecGroup0_0_QOption_inte_98a0c5dfc9d294ca_u_qo_raised__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_inte_98a0c5dfc9d294ca, u.qo_raised._1) == 16, layout_RecGroup0_0_QOption_inte_98a0c5dfc9d294ca_u_qo_raised__1);
+static_assert(offsetof(struct RecGroup0_0_QOption_inte_98a0c5dfc9d294ca, u.qo_raised._2) == 24, layout_RecGroup0_0_QOption_inte_98a0c5dfc9d294ca_u_qo_raised__2);
+static_assert(sizeof(struct RecGroup0_0_QOption_inte_98a0c5dfc9d294ca) == 32, layout_RecGroup0_0_QOption_inte_98a0c5dfc9d294ca_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QOpti_4af353ae77fb2663_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_QOpti_4af353ae77fb2663_DEFINED
-struct RecGroup0_0_QTuple_QOpti_4af353ae77fb2663 {
-    RecGroup0_0_QOption_inte_a48b1aef7b655d82 * _0;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QOpti_34c55a847354005e_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_QOpti_34c55a847354005e_DEFINED
+struct RecGroup0_0_QTuple_QOpti_34c55a847354005e {
+    RecGroup0_0_QOption_inte_98a0c5dfc9d294ca * _0;
     QVal _1;
     QVal _2;
     QVal _3;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_QOpti_4af353ae77fb2663, _0) == 0, layout_RecGroup0_0_QTuple_QOpti_4af353ae77fb2663__0);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QOpti_4af353ae77fb2663, _1) == 8, layout_RecGroup0_0_QTuple_QOpti_4af353ae77fb2663__1);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QOpti_4af353ae77fb2663, _2) == 16, layout_RecGroup0_0_QTuple_QOpti_4af353ae77fb2663__2);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QOpti_4af353ae77fb2663, _3) == 24, layout_RecGroup0_0_QTuple_QOpti_4af353ae77fb2663__3);
-static_assert(sizeof(struct RecGroup0_0_QTuple_QOpti_4af353ae77fb2663) == 32, layout_RecGroup0_0_QTuple_QOpti_4af353ae77fb2663_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QOpti_34c55a847354005e, _0) == 0, layout_RecGroup0_0_QTuple_QOpti_34c55a847354005e__0);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QOpti_34c55a847354005e, _1) == 8, layout_RecGroup0_0_QTuple_QOpti_34c55a847354005e__1);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QOpti_34c55a847354005e, _2) == 16, layout_RecGroup0_0_QTuple_QOpti_34c55a847354005e__2);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QOpti_34c55a847354005e, _3) == 24, layout_RecGroup0_0_QTuple_QOpti_34c55a847354005e__3);
+static_assert(sizeof(struct RecGroup0_0_QTuple_QOpti_34c55a847354005e) == 32, layout_RecGroup0_0_QTuple_QOpti_34c55a847354005e_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_7fb5202b699fb3f1_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_7fb5202b699fb3f1_DEFINED
-struct RecGroup0_0_QTuple_QTupl_7fb5202b699fb3f1 {
-    RecGroup0_0_QTuple_QOpti_4af353ae77fb2663 * _0;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_57ce5b958245199d_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_57ce5b958245199d_DEFINED
+struct RecGroup0_0_QTuple_QTupl_57ce5b958245199d {
+    RecGroup0_0_QTuple_QOpti_34c55a847354005e * _0;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_QTupl_7fb5202b699fb3f1, _0) == 0, layout_RecGroup0_0_QTuple_QTupl_7fb5202b699fb3f1__0);
-static_assert(sizeof(struct RecGroup0_0_QTuple_QTupl_7fb5202b699fb3f1) == 8, layout_RecGroup0_0_QTuple_QTupl_7fb5202b699fb3f1_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QTupl_57ce5b958245199d, _0) == 0, layout_RecGroup0_0_QTuple_QTupl_57ce5b958245199d__0);
+static_assert(sizeof(struct RecGroup0_0_QTuple_QTupl_57ce5b958245199d) == 8, layout_RecGroup0_0_QTuple_QTupl_57ce5b958245199d_size);
 #endif
 #ifndef QUEST_TYPE_QTuple_reader_T_DEFINED
 #define QUEST_TYPE_QTuple_reader_T_DEFINED
@@ -2363,154 +2359,126 @@ struct QTuple_reader_T {
 static_assert(offsetof(struct QTuple_reader_T, _0) == 0, layout_QTuple_reader_T__0);
 static_assert(sizeof(struct QTuple_reader_T) == 8, layout_QTuple_reader_T_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QVal__1cf42802a349d6f1_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_QVal__1cf42802a349d6f1_DEFINED
-struct RecGroup0_0_QTuple_QVal__1cf42802a349d6f1 {
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QVal__d7e879c74ce19ce0_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_QVal__d7e879c74ce19ce0_DEFINED
+struct RecGroup0_0_QTuple_QVal__d7e879c74ce19ce0 {
     QVal _0;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_QVal__1cf42802a349d6f1, _0) == 0, layout_RecGroup0_0_QTuple_QVal__1cf42802a349d6f1__0);
-static_assert(sizeof(struct RecGroup0_0_QTuple_QVal__1cf42802a349d6f1) == 8, layout_RecGroup0_0_QTuple_QVal__1cf42802a349d6f1_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QVal__d7e879c74ce19ce0, _0) == 0, layout_RecGroup0_0_QTuple_QVal__d7e879c74ce19ce0__0);
+static_assert(sizeof(struct RecGroup0_0_QTuple_QVal__d7e879c74ce19ce0) == 8, layout_RecGroup0_0_QTuple_QVal__d7e879c74ce19ce0_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_adfcf60bcafa964d_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_adfcf60bcafa964d_DEFINED
-struct RecGroup0_0_QTuple_QTupl_adfcf60bcafa964d {
-    RecGroup0_0_QTuple_QVal__1cf42802a349d6f1 * _0;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_1fd090d129e6df57_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_1fd090d129e6df57_DEFINED
+struct RecGroup0_0_QTuple_QTupl_1fd090d129e6df57 {
+    RecGroup0_0_QTuple_QVal__d7e879c74ce19ce0 * _0;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_QTupl_adfcf60bcafa964d, _0) == 0, layout_RecGroup0_0_QTuple_QTupl_adfcf60bcafa964d__0);
-static_assert(sizeof(struct RecGroup0_0_QTuple_QTupl_adfcf60bcafa964d) == 8, layout_RecGroup0_0_QTuple_QTupl_adfcf60bcafa964d_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QTupl_1fd090d129e6df57, _0) == 0, layout_RecGroup0_0_QTuple_QTupl_1fd090d129e6df57__0);
+static_assert(sizeof(struct RecGroup0_0_QTuple_QTupl_1fd090d129e6df57) == 8, layout_RecGroup0_0_QTuple_QTupl_1fd090d129e6df57_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_d6c7383339e91a45_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_d6c7383339e91a45_DEFINED
-struct RecGroup0_0_QTuple_QArra_d6c7383339e91a45 {
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_f627a621e38ca01e_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_f627a621e38ca01e_DEFINED
+struct RecGroup0_0_QTuple_QArra_f627a621e38ca01e {
     QArray * _0;
     QInt _1;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_d6c7383339e91a45, _0) == 0, layout_RecGroup0_0_QTuple_QArra_d6c7383339e91a45__0);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_d6c7383339e91a45, _1) == 8, layout_RecGroup0_0_QTuple_QArra_d6c7383339e91a45__1);
-static_assert(sizeof(struct RecGroup0_0_QTuple_QArra_d6c7383339e91a45) == 16, layout_RecGroup0_0_QTuple_QArra_d6c7383339e91a45_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_f627a621e38ca01e, _0) == 0, layout_RecGroup0_0_QTuple_QArra_f627a621e38ca01e__0);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_f627a621e38ca01e, _1) == 8, layout_RecGroup0_0_QTuple_QArra_f627a621e38ca01e__1);
+static_assert(sizeof(struct RecGroup0_0_QTuple_QArra_f627a621e38ca01e) == 16, layout_RecGroup0_0_QTuple_QArra_f627a621e38ca01e_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self1_d31b7e0e6611934c_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_Self1_d31b7e0e6611934c_DEFINED
-struct RecGroup0_0_QTuple_Self1_d31b7e0e6611934c {
-    RecGroup0_0_QOption_vArr_4b3455932a2e54b7 * _0;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self1_f633f80c632546fd_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_Self1_f633f80c632546fd_DEFINED
+struct RecGroup0_0_QTuple_Self1_f633f80c632546fd {
+    RecGroup0_0_QOption_vArr_bced0b107b0cbffa * _0;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_Self1_d31b7e0e6611934c, _0) == 0, layout_RecGroup0_0_QTuple_Self1_d31b7e0e6611934c__0);
-static_assert(sizeof(struct RecGroup0_0_QTuple_Self1_d31b7e0e6611934c) == 8, layout_RecGroup0_0_QTuple_Self1_d31b7e0e6611934c_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_Self1_f633f80c632546fd, _0) == 0, layout_RecGroup0_0_QTuple_Self1_f633f80c632546fd__0);
+static_assert(sizeof(struct RecGroup0_0_QTuple_Self1_f633f80c632546fd) == 8, layout_RecGroup0_0_QTuple_Self1_f633f80c632546fd_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_8abb88ee9410f020_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_8abb88ee9410f020_DEFINED
-struct RecGroup0_0_QTuple_QTupl_8abb88ee9410f020 {
-    RecGroup0_0_QTuple_Self1_d31b7e0e6611934c * _0;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_4e28968c2a0d541b_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_4e28968c2a0d541b_DEFINED
+struct RecGroup0_0_QTuple_QTupl_4e28968c2a0d541b {
+    RecGroup0_0_QTuple_Self1_f633f80c632546fd * _0;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_QTupl_8abb88ee9410f020, _0) == 0, layout_RecGroup0_0_QTuple_QTupl_8abb88ee9410f020__0);
-static_assert(sizeof(struct RecGroup0_0_QTuple_QTupl_8abb88ee9410f020) == 8, layout_RecGroup0_0_QTuple_QTupl_8abb88ee9410f020_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QTupl_4e28968c2a0d541b, _0) == 0, layout_RecGroup0_0_QTuple_QTupl_4e28968c2a0d541b__0);
+static_assert(sizeof(struct RecGroup0_0_QTuple_QTupl_4e28968c2a0d541b) == 8, layout_RecGroup0_0_QTuple_QTupl_4e28968c2a0d541b_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570_DEFINED
-struct RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570 {
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QArra_fa52723831e3652f_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_QArra_fa52723831e3652f_DEFINED
+struct RecGroup0_0_QTuple_QArra_fa52723831e3652f {
     QArray * _0;
     QVal _1;
     QVal _2;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570, _0) == 0, layout_RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570__0);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570, _1) == 8, layout_RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570__1);
-static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570, _2) == 16, layout_RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570__2);
-static_assert(sizeof(struct RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570) == 24, layout_RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_fa52723831e3652f, _0) == 0, layout_RecGroup0_0_QTuple_QArra_fa52723831e3652f__0);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_fa52723831e3652f, _1) == 8, layout_RecGroup0_0_QTuple_QArra_fa52723831e3652f__1);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QArra_fa52723831e3652f, _2) == 16, layout_RecGroup0_0_QTuple_QArra_fa52723831e3652f__2);
+static_assert(sizeof(struct RecGroup0_0_QTuple_QArra_fa52723831e3652f) == 24, layout_RecGroup0_0_QTuple_QArra_fa52723831e3652f_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self3_1fa7f234bcb4c6db_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_Self3_1fa7f234bcb4c6db_DEFINED
-struct RecGroup0_0_QTuple_Self3_1fa7f234bcb4c6db {
-    RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570 * _0;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self3_93bb326922c36bac_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_Self3_93bb326922c36bac_DEFINED
+struct RecGroup0_0_QTuple_Self3_93bb326922c36bac {
+    RecGroup0_0_QTuple_QArra_fa52723831e3652f * _0;
     QInt _1;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_Self3_1fa7f234bcb4c6db, _0) == 0, layout_RecGroup0_0_QTuple_Self3_1fa7f234bcb4c6db__0);
-static_assert(offsetof(struct RecGroup0_0_QTuple_Self3_1fa7f234bcb4c6db, _1) == 8, layout_RecGroup0_0_QTuple_Self3_1fa7f234bcb4c6db__1);
-static_assert(sizeof(struct RecGroup0_0_QTuple_Self3_1fa7f234bcb4c6db) == 16, layout_RecGroup0_0_QTuple_Self3_1fa7f234bcb4c6db_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_Self3_93bb326922c36bac, _0) == 0, layout_RecGroup0_0_QTuple_Self3_93bb326922c36bac__0);
+static_assert(offsetof(struct RecGroup0_0_QTuple_Self3_93bb326922c36bac, _1) == 8, layout_RecGroup0_0_QTuple_Self3_93bb326922c36bac__1);
+static_assert(sizeof(struct RecGroup0_0_QTuple_Self3_93bb326922c36bac) == 16, layout_RecGroup0_0_QTuple_Self3_93bb326922c36bac_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QOption_arra_fef87445a7354967_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QOption_arra_fef87445a7354967_DEFINED
-struct RecGroup0_0_QOption_arra_fef87445a7354967 {
+#ifndef QUEST_TYPE_RecGroup0_0_QOption_arra_022e681d5ce0e1ce_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QOption_arra_022e681d5ce0e1ce_DEFINED
+struct RecGroup0_0_QOption_arra_022e681d5ce0e1ce {
     int64_t tag;
     union {
-        struct RecGroup0_0_QOption_arra_fef87445a7354967_arrayElement_payload {
+        struct RecGroup0_0_QOption_arra_022e681d5ce0e1ce_arrayElement_payload {
             QArray * _0;
             QInt _1;
         } qo_arrayElement;
-        struct RecGroup0_0_QOption_arra_fef87445a7354967_cell_payload {
-            RecGroup0_0_QTuple_Self1_d31b7e0e6611934c * _0;
+        struct RecGroup0_0_QOption_arra_022e681d5ce0e1ce_cell_payload {
+            RecGroup0_0_QTuple_Self1_f633f80c632546fd * _0;
         } qo_cell;
-        struct RecGroup0_0_QOption_arra_fef87445a7354967_tupleElement_payload {
-            RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570 * _0;
+        struct RecGroup0_0_QOption_arra_022e681d5ce0e1ce_tupleElement_payload {
+            RecGroup0_0_QTuple_QArra_fa52723831e3652f * _0;
             QInt _1;
         } qo_tupleElement;
     } u;
 };
-static_assert(offsetof(struct RecGroup0_0_QOption_arra_fef87445a7354967, u.qo_arrayElement._0) == 8, layout_RecGroup0_0_QOption_arra_fef87445a7354967_u_qo_arrayElement__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_arra_fef87445a7354967, u.qo_arrayElement._1) == 16, layout_RecGroup0_0_QOption_arra_fef87445a7354967_u_qo_arrayElement__1);
-static_assert(offsetof(struct RecGroup0_0_QOption_arra_fef87445a7354967, u.qo_cell._0) == 8, layout_RecGroup0_0_QOption_arra_fef87445a7354967_u_qo_cell__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_arra_fef87445a7354967, u.qo_tupleElement._0) == 8, layout_RecGroup0_0_QOption_arra_fef87445a7354967_u_qo_tupleElement__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_arra_fef87445a7354967, u.qo_tupleElement._1) == 16, layout_RecGroup0_0_QOption_arra_fef87445a7354967_u_qo_tupleElement__1);
-static_assert(sizeof(struct RecGroup0_0_QOption_arra_fef87445a7354967) == 24, layout_RecGroup0_0_QOption_arra_fef87445a7354967_size);
+static_assert(offsetof(struct RecGroup0_0_QOption_arra_022e681d5ce0e1ce, u.qo_arrayElement._0) == 8, layout_RecGroup0_0_QOption_arra_022e681d5ce0e1ce_u_qo_arrayElement__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_arra_022e681d5ce0e1ce, u.qo_arrayElement._1) == 16, layout_RecGroup0_0_QOption_arra_022e681d5ce0e1ce_u_qo_arrayElement__1);
+static_assert(offsetof(struct RecGroup0_0_QOption_arra_022e681d5ce0e1ce, u.qo_cell._0) == 8, layout_RecGroup0_0_QOption_arra_022e681d5ce0e1ce_u_qo_cell__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_arra_022e681d5ce0e1ce, u.qo_tupleElement._0) == 8, layout_RecGroup0_0_QOption_arra_022e681d5ce0e1ce_u_qo_tupleElement__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_arra_022e681d5ce0e1ce, u.qo_tupleElement._1) == 16, layout_RecGroup0_0_QOption_arra_022e681d5ce0e1ce_u_qo_tupleElement__1);
+static_assert(sizeof(struct RecGroup0_0_QOption_arra_022e681d5ce0e1ce) == 24, layout_RecGroup0_0_QOption_arra_022e681d5ce0e1ce_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QOpti_cffad0b9eebae478_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_QOpti_cffad0b9eebae478_DEFINED
-struct RecGroup0_0_QTuple_QOpti_cffad0b9eebae478 {
-    RecGroup0_0_QOption_arra_fef87445a7354967 * _0;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QOpti_60339ecea75b4da4_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_QOpti_60339ecea75b4da4_DEFINED
+struct RecGroup0_0_QTuple_QOpti_60339ecea75b4da4 {
+    RecGroup0_0_QOption_arra_022e681d5ce0e1ce * _0;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_QOpti_cffad0b9eebae478, _0) == 0, layout_RecGroup0_0_QTuple_QOpti_cffad0b9eebae478__0);
-static_assert(sizeof(struct RecGroup0_0_QTuple_QOpti_cffad0b9eebae478) == 8, layout_RecGroup0_0_QTuple_QOpti_cffad0b9eebae478_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QOpti_60339ecea75b4da4, _0) == 0, layout_RecGroup0_0_QTuple_QOpti_60339ecea75b4da4__0);
+static_assert(sizeof(struct RecGroup0_0_QTuple_QOpti_60339ecea75b4da4) == 8, layout_RecGroup0_0_QTuple_QOpti_60339ecea75b4da4_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_8bf3cd5cf5ab5e38_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_8bf3cd5cf5ab5e38_DEFINED
-struct RecGroup0_0_QTuple_QTupl_8bf3cd5cf5ab5e38 {
-    RecGroup0_0_QTuple_QOpti_cffad0b9eebae478 * _0;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_QTupl_97508533457ba21e_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_QTupl_97508533457ba21e_DEFINED
+struct RecGroup0_0_QTuple_QTupl_97508533457ba21e {
+    RecGroup0_0_QTuple_QOpti_60339ecea75b4da4 * _0;
 };
-static_assert(offsetof(struct RecGroup0_0_QTuple_QTupl_8bf3cd5cf5ab5e38, _0) == 0, layout_RecGroup0_0_QTuple_QTupl_8bf3cd5cf5ab5e38__0);
-static_assert(sizeof(struct RecGroup0_0_QTuple_QTupl_8bf3cd5cf5ab5e38) == 8, layout_RecGroup0_0_QTuple_QTupl_8bf3cd5cf5ab5e38_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_QTupl_97508533457ba21e, _0) == 0, layout_RecGroup0_0_QTuple_QTupl_97508533457ba21e__0);
+static_assert(sizeof(struct RecGroup0_0_QTuple_QTupl_97508533457ba21e) == 8, layout_RecGroup0_0_QTuple_QTupl_97508533457ba21e_size);
 #endif
-#ifndef QUEST_TYPE_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d_DEFINED
-#define QUEST_TYPE_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d_DEFINED
-struct Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d {
-    QClosure * _0;
-    QClosure * _1;
-    QClosure * _2;
-    QClosure * _3;
-    QClosure * _4;
-    QClosure * _5;
-    QClosure * _6;
-    QClosure * _7;
-    QClosure * _8;
-    QClosure * _9;
-    QClosure * _10;
+#ifndef QUEST_TYPE_QTuple_stringBuilder_T_DEFINED
+#define QUEST_TYPE_QTuple_stringBuilder_T_DEFINED
+struct QTuple_stringBuilder_T {
+    QStringBuilder * _0;
 };
-static_assert(offsetof(struct Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d, _0) == 0, layout_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d__0);
-static_assert(offsetof(struct Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d, _1) == 8, layout_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d__1);
-static_assert(offsetof(struct Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d, _2) == 16, layout_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d__2);
-static_assert(offsetof(struct Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d, _3) == 24, layout_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d__3);
-static_assert(offsetof(struct Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d, _4) == 32, layout_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d__4);
-static_assert(offsetof(struct Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d, _5) == 40, layout_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d__5);
-static_assert(offsetof(struct Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d, _6) == 48, layout_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d__6);
-static_assert(offsetof(struct Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d, _7) == 56, layout_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d__7);
-static_assert(offsetof(struct Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d, _8) == 64, layout_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d__8);
-static_assert(offsetof(struct Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d, _9) == 72, layout_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d__9);
-static_assert(offsetof(struct Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d, _10) == 80, layout_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d__10);
-static_assert(sizeof(struct Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d) == 88, layout_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d_size);
+static_assert(offsetof(struct QTuple_stringBuilder_T, _0) == 0, layout_QTuple_stringBuilder_T__0);
+static_assert(sizeof(struct QTuple_stringBuilder_T) == 8, layout_QTuple_stringBuilder_T_size);
 #endif
-#ifndef QUEST_TYPE_QTuple_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d_DEFINED
-#define QUEST_TYPE_QTuple_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d_DEFINED
-struct QTuple_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d {
-    Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d * _0;
+#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self3_9105cf31d511b429_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QTuple_Self3_9105cf31d511b429_DEFINED
+struct RecGroup0_0_QTuple_Self3_9105cf31d511b429 {
+    RecGroup0_0_QTuple_QArra_fa52723831e3652f * _0;
 };
-static_assert(offsetof(struct QTuple_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d, _0) == 0, layout_QTuple_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d__0);
-static_assert(sizeof(struct QTuple_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d) == 8, layout_QTuple_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d_size);
-#endif
-#ifndef QUEST_TYPE_RecGroup0_0_QTuple_Self3_fbab50b1099728e8_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QTuple_Self3_fbab50b1099728e8_DEFINED
-struct RecGroup0_0_QTuple_Self3_fbab50b1099728e8 {
-    RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570 * _0;
-};
-static_assert(offsetof(struct RecGroup0_0_QTuple_Self3_fbab50b1099728e8, _0) == 0, layout_RecGroup0_0_QTuple_Self3_fbab50b1099728e8__0);
-static_assert(sizeof(struct RecGroup0_0_QTuple_Self3_fbab50b1099728e8) == 8, layout_RecGroup0_0_QTuple_Self3_fbab50b1099728e8_size);
+static_assert(offsetof(struct RecGroup0_0_QTuple_Self3_9105cf31d511b429, _0) == 0, layout_RecGroup0_0_QTuple_Self3_9105cf31d511b429__0);
+static_assert(sizeof(struct RecGroup0_0_QTuple_Self3_9105cf31d511b429) == 8, layout_RecGroup0_0_QTuple_Self3_9105cf31d511b429_size);
 #endif
 #ifndef QUEST_TYPE_QTuple_RecGroup0_0_QTuple_Int_Q_1ac3f974e02e8874_QVal_QVal_DEFINED
 #define QUEST_TYPE_QTuple_RecGroup0_0_QTuple_Int_Q_1ac3f974e02e8874_QVal_QVal_DEFINED
@@ -2548,105 +2516,105 @@ struct QTuple_writer_T {
 static_assert(offsetof(struct QTuple_writer_T, _0) == 0, layout_QTuple_writer_T__0);
 static_assert(sizeof(struct QTuple_writer_T) == 8, layout_QTuple_writer_T_size);
 #endif
-#ifndef QUEST_TYPE_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_DEFINED
-#define QUEST_TYPE_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_DEFINED
-struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7 {
+#ifndef QUEST_TYPE_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_DEFINED
+#define QUEST_TYPE_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_DEFINED
+struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa {
     int64_t tag;
     union {
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vArray_payload {
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vArray_payload {
             QArray * _0;
         } qo_vArray;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vAuto_payload {
-            RecGroup0_0_QTuple_Self1_ed646216dc76bc35 * _0;
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vAuto_payload {
+            RecGroup0_0_QTuple_Self1_bead310ff4b3472d * _0;
         } qo_vAuto;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vBool_payload {
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vBool_payload {
             QBoolSlot _0;
         } qo_vBool;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vBuiltin_payload {
-            RecGroup0_0_QTuple_Strin_f1be55d15d303ec6 * _0;
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vBuiltin_payload {
+            RecGroup0_0_QTuple_Strin_fe3640c35703673e * _0;
         } qo_vBuiltin;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vChar_payload {
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vChar_payload {
             QCharSlot _0;
         } qo_vChar;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vClosure_payload {
-            RecGroup0_0_QTuple_QArra_27669b99483adfcd * _0;
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vClosure_payload {
+            RecGroup0_0_QTuple_QArra_b6785d8bd7b3fd0b * _0;
         } qo_vClosure;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vException_payload {
-            RecGroup0_0_QTuple_Strin_16301d9113cb2332 * _0;
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vException_payload {
+            RecGroup0_0_QTuple_Strin_f874b66d19404152 * _0;
         } qo_vException;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vInt_payload {
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vInt_payload {
             QInt _0;
         } qo_vInt;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vOption_payload {
-            RecGroup0_0_QTuple_Strin_0dc5c6cc5b3a0a70 * _0;
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vOption_payload {
+            RecGroup0_0_QTuple_Strin_c55cd8a3402e6675 * _0;
         } qo_vOption;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vProcess_payload {
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vProcess_payload {
             QProcess * _0;
         } qo_vProcess;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vRaised_payload {
-            RecGroup0_0_QTuple_QOpti_4af353ae77fb2663 * _0;
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vRaised_payload {
+            RecGroup0_0_QTuple_QOpti_34c55a847354005e * _0;
         } qo_vRaised;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vReader_payload {
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vReader_payload {
             QReader * _0;
         } qo_vReader;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vReal_payload {
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vReal_payload {
             QReal _0;
         } qo_vReal;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vRecord_payload {
-            RecGroup0_0_QTuple_QVal__1cf42802a349d6f1 * _0;
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vRecord_payload {
+            RecGroup0_0_QTuple_QVal__d7e879c74ce19ce0 * _0;
         } qo_vRecord;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vRef_payload {
-            RecGroup0_0_QTuple_QOpti_cffad0b9eebae478 * _0;
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vRef_payload {
+            RecGroup0_0_QTuple_QOpti_60339ecea75b4da4 * _0;
         } qo_vRef;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vString_payload {
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vString_payload {
             QString * _0;
         } qo_vString;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vStringBuilder_payload {
-            Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d * _0;
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vStringBuilder_payload {
+            QStringBuilder * _0;
         } qo_vStringBuilder;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vTuple_payload {
-            RecGroup0_0_QTuple_QArra_2dacc9a18ecaa570 * _0;
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vTuple_payload {
+            RecGroup0_0_QTuple_QArra_fa52723831e3652f * _0;
         } qo_vTuple;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vTypeValue_payload {
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vTypeValue_payload {
             QTuple_RecGroup0_0_QTuple_Int_Q_1ac3f974e02e8874_QVal_QVal * _0;
         } qo_vTypeValue;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vVariant_payload {
-            RecGroup0_0_QTuple_Strin_0dc5c6cc5b3a0a70 * _0;
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vVariant_payload {
+            RecGroup0_0_QTuple_Strin_c55cd8a3402e6675 * _0;
         } qo_vVariant;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vWord_payload {
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vWord_payload {
             uint64_t _0;
         } qo_vWord;
-        struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7_vWriter_payload {
+        struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa_vWriter_payload {
             QWriter * _0;
         } qo_vWriter;
     } u;
 };
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vArray._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vArray__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vAuto._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vAuto__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vBool._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vBool__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vBuiltin._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vBuiltin__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vChar._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vChar__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vClosure._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vClosure__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vException._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vException__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vInt._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vInt__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vOption._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vOption__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vProcess._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vProcess__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vRaised._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vRaised__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vReader._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vReader__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vReal._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vReal__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vRecord._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vRecord__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vRef._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vRef__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vString._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vString__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vStringBuilder._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vStringBuilder__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vTuple._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vTuple__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vTypeValue._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vTypeValue__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vVariant._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vVariant__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vWord._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vWord__0);
-static_assert(offsetof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7, u.qo_vWriter._0) == 8, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_u_qo_vWriter__0);
-static_assert(sizeof(struct RecGroup0_0_QOption_vArr_4b3455932a2e54b7) == 16, layout_RecGroup0_0_QOption_vArr_4b3455932a2e54b7_size);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vArray._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vArray__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vAuto._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vAuto__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vBool._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vBool__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vBuiltin._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vBuiltin__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vChar._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vChar__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vClosure._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vClosure__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vException._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vException__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vInt._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vInt__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vOption._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vOption__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vProcess._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vProcess__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vRaised._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vRaised__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vReader._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vReader__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vReal._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vReal__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vRecord._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vRecord__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vRef._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vRef__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vString._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vString__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vStringBuilder._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vStringBuilder__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vTuple._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vTuple__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vTypeValue._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vTypeValue__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vVariant._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vVariant__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vWord._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vWord__0);
+static_assert(offsetof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa, u.qo_vWriter._0) == 8, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_u_qo_vWriter__0);
+static_assert(sizeof(struct RecGroup0_0_QOption_vArr_bced0b107b0cbffa) == 16, layout_RecGroup0_0_QOption_vArr_bced0b107b0cbffa_size);
 #endif
-typedef QString * (*quest_sig_questlang__values__DynamicJson_encode)(RecGroup0_0_QOption_vArr_4b3455932a2e54b7 * d);
-typedef RecGroup0_0_QOption_vArr_4b3455932a2e54b7 * (*quest_sig_questlang__values__DynamicJson_decode)(QString * text);
+typedef QString * (*quest_sig_questlang__values__DynamicJson_encode)(RecGroup0_0_QOption_vArr_bced0b107b0cbffa * d);
+typedef RecGroup0_0_QOption_vArr_bced0b107b0cbffa * (*quest_sig_questlang__values__DynamicJson_decode)(QString * text);
 #ifdef __cplusplus
 }
 #endif

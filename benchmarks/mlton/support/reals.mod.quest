@@ -2,7 +2,7 @@ module reals : Reals
 import
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
     real : RealOp
     conv : Conv
@@ -80,19 +80,19 @@ export
             let n = stringOp.length(s)
             let var i = 0
             while {i < n} andif strutil.isSpace(stringOp.getChar(s i)) do i := i + 1 end
-            let b = stringBuilder.new()
+            let b = sb.new()
             if {i < n} andif {{stringOp.getChar(s i) is '~'} orif {stringOp.getChar(s i) is '-'}} then
-                b.char('-') i := i + 1
+                sb.char(b '-') i := i + 1
             elsif {i < n} andif {stringOp.getChar(s i) is '+'} then
                 i := i + 1
             end
             let start = i
-            while {i < n} andif isDigit(stringOp.getChar(s i)) do b.char(stringOp.getChar(s i)) i := i + 1 end
+            while {i < n} andif isDigit(stringOp.getChar(s i)) do sb.char(b stringOp.getChar(s i)) i := i + 1 end
             let var fracDigits = 0
             if {{i + 1} < n} andif {stringOp.getChar(s i) is '.'} andif isDigit(stringOp.getChar(s i + 1)) then
-                b.char('.') i := i + 1
+                sb.char(b '.') i := i + 1
                 while {i < n} andif isDigit(stringOp.getChar(s i)) do
-                    b.char(stringOp.getChar(s i)) i := i + 1 fracDigits := fracDigits + 1
+                    sb.char(b stringOp.getChar(s i)) i := i + 1 fracDigits := fracDigits + 1
                 end
             end
             if {i is start} then maybe.none(:Real)
@@ -105,13 +105,13 @@ export
                             andif {{stringOp.getChar(s j) is '~'} orif {stringOp.getChar(s j) is '-'}}
                         if {j < n} andif {negative orif {stringOp.getChar(s j) is '+'}} then j := j + 1 end
                         if {j < n} andif isDigit(stringOp.getChar(s j)) then
-                            b.char('e')
-                            if negative then b.char('-') end
+                            sb.char(b 'e')
+                            if negative then sb.char(b '-') end
                             while {j < n}
-                                andif isDigit(stringOp.getChar(s j)) do b.char(stringOp.getChar(s j)) j := j + 1 end
+                                andif isDigit(stringOp.getChar(s j)) do sb.char(b stringOp.getChar(s j)) j := j + 1 end
                         end
                     end
-                    maybe.some(:Real strutil.toReal(b.toString()))
+                    maybe.some(:Real strutil.toReal(sb.toString(b)))
                 end
             end
         end

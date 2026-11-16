@@ -26,7 +26,7 @@ import
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
     stringOp = string : StringOp
     questlang/repr/layout : questlang/repr/Layout
@@ -314,22 +314,24 @@ export
             end
             let params = if shapes.kindIs(s shapes.shapeFun) then s.params else array of :shapes.Param end end
             let result = if shapes.kindIs(s shapes.shapeFun) then shapes.result(s) else s end
-            let key = stringBuilder.new()
-            key.str(layout.shapeRepresentation(result)).char('|').str(syntax.cInt(count))
+            let key = sb.new()
+            sb.str(key layout.shapeRepresentation(result))
+            sb.char(key '|')
+            sb.str(key syntax.cInt(count))
             for i = 0 upto {extent params - 1} do
                 let p = params[i]
-                key.char('|')
+                sb.char(key '|')
                 if not(eq(p.mode "value")) then
-                    key.str(layout.shapeLocationRepresentation(p.shape) <> " *")
+                    sb.str(key layout.shapeLocationRepresentation(p.shape) <> " *")
                 (* An Ok parameter is passed as a QVal word, since C has no
                  * void parameter *)
                 elsif shapes.kindIs(p.shape shapes.shapeOk) then
-                    key.str("QVal")
+                    sb.str(key "QVal")
                 else
-                    key.str(layout.shapeRepresentation(p.shape))
+                    sb.str(key layout.shapeRepresentation(p.shape))
                 end
             end
-            key.toString()
+            sb.toString(key)
         end
     let qtypeToNameStr(t0: Type): String =
         begin

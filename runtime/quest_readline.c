@@ -282,7 +282,6 @@ void quest_readline_read_history(const QString *path) {
         if (c == '\n') {
             QString *line = quest_sb_to_string(b);
             quest_readline_remember(line->data, (size_t)line->length);
-            quest_sb_clear(b);
         } else {
             quest_sb_append_char(b, (QChar)c);
         }

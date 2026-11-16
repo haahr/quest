@@ -13,7 +13,7 @@ import
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
     stringOp = string : StringOp
     conv : Conv
@@ -229,12 +229,17 @@ export
     (* The key by which equal shapes are told apart *)
     let shapeKey(s: Shape): String =
         begin
-            let b = stringBuilder.new()
-            b.str(s.kind).char('\x01').str(s.text).char('\x01').int(s.count).char('\x01')
-            for i = 0 upto {extent s.labels - 1} do b.str(s.labels[i]).char('\x02') end
-            b.char('\x01')
-            for i = 0 upto {extent s.flags - 1} do b.char(if s.flags[i] then 't' else 'f' end) end
-            b.toString()
+            let b = sb.new()
+            sb.str(b s.kind)
+            sb.char(b '\x01')
+            sb.str(b s.text)
+            sb.char(b '\x01')
+            sb.int(b s.count)
+            sb.char(b '\x01')
+            for i = 0 upto {extent s.labels - 1} do sb.str(b s.labels[i]) sb.char(b '\x02') end
+            sb.char(b '\x01')
+            for i = 0 upto {extent s.flags - 1} do sb.char(b if s.flags[i] then 't' else 'f' end) end
+            sb.toString(b)
         end
 
     (* The graph of the types a value mentions, from which the document's
@@ -323,13 +328,19 @@ export
                 else
                     (* A type that mentions enclosing auto types' parameters is
                      * a node for each way it refers to them *)
-                    let key = stringBuilder.new()
-                    key.char('s').int(s.id)
+                    let key = sb.new()
+                    sb.char(key 's')
+                    sb.int(key s.id)
                     for i = 0 upto {n - 1} do
                         let b = vector.get(:Int g.binders i)
-                        if mentions(s b) then key.char(':').int(b).char(',').int({n - 1} - i) end
+                        if mentions(s b) then
+                            sb.char(key ':')
+                            sb.int(key b)
+                            sb.char(key ',')
+                            sb.int(key {n - 1} - i)
+                        end
                     end
-                    add(g key.toString() s true 0)
+                    add(g sb.toString(key) s true 0)
                 end
             end
         end
@@ -506,14 +517,14 @@ export
                 let sigs = hashMap.new(:String :Int stringOp.equal hash.string)
                 let refined = array of(n 0)
                 for i = 0 upto {n - 1} do
-                    let key = stringBuilder.new()
-                    key.int(cls[i])
+                    let key = sb.new()
+                    sb.int(key cls[i])
                     let children = vector.get(:Node nodes i).children
                     for j = 0 upto {extent children - 1} do
-                        if isBuiltin(children[j]) then key.char(':').str(children[j].name)
-                        else key.char('#').int(cls[children[j].index]) end
+                        if isBuiltin(children[j]) then sb.char(key ':') sb.str(key children[j].name)
+                        else sb.char(key '#') sb.int(key cls[children[j].index]) end
                     end
-                    let k = key.toString()
+                    let k = sb.toString(key)
                     if not(hashMap.contains(:String :Int sigs k)) then hashMap.insert(:String :Int sigs k hashMap.size(:String :Int sigs)) end
                     refined[i] := hashMap.find(:String :Int sigs k)
                 end

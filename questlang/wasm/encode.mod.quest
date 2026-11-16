@@ -4,13 +4,13 @@ module encode : Encode
 import
     questlang/wasm/model : questlang/wasm/Model
     collections/vector : collections/Vector
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     ascii : Ascii
     word : Word
     conv : Conv
     stringOp = string : StringOp
 export
-    Let Builder = stringBuilder.T
+    Let Builder = sb.T
     Let Module = model.Module
     Let ValType = model.ValType
     Let HeapType = model.HeapType
@@ -22,7 +22,7 @@ export
      * Numbers, names, and vectors
      * ====================================================================== *)
 
-    let byte(b: Builder n: Int): Ok = begin b.char(ascii.char(n)) ok end
+    let byte(b: Builder n: Int): Ok = begin sb.char(b ascii.char(n)) ok end
 
     (* An unsigned LEB128 number, n from 0 to 2^32 - 1 *)
     let u32(b: Builder n: Int): Ok =
@@ -68,15 +68,15 @@ export
     let name(b: Builder s: String): Ok =
         begin
             u32(b stringOp.length(s))
-            b.str(s) ok
+            sb.str(b s) ok
         end
 
     (* What one builder holds, after its length, as a section or a function's
      * body is written *)
     let sized(b: Builder inner: Builder): Ok =
         begin
-            u32(b inner.length())
-            b.str(inner.toString()) ok
+            u32(b sb.length(inner))
+            sb.strShared(b sb.toString(inner)) ok
         end
 
     let section(b: Builder id: Int inner: Builder): Ok =
@@ -87,12 +87,12 @@ export
 
     let customSection(title: String bytes: String): String =
         begin
-            let inner = stringBuilder.new()
+            let inner = sb.new()
             name(inner title)
-            inner.str(bytes)
-            let b = stringBuilder.new()
+            sb.str(inner bytes)
+            let b = sb.new()
             section(b 0 inner)
-            b.toString()
+            sb.toString(b)
         end
 
     (* ======================================================================
@@ -173,7 +173,7 @@ export
         begin
             let groups = m.types
             if vector.length(:model.RecGroup groups) > 0 then
-                let s = stringBuilder.new()
+                let s = sb.new()
                 u32(s vector.length(:model.RecGroup groups))
                 for g = 0 upto vector.length(:model.RecGroup groups) - 1 do
                     let group = vector.get(:model.RecGroup groups g)
@@ -315,7 +315,7 @@ export
 
     let importSection(b: Builder m: Module): Ok =
         if vector.length(:model.Import m.imports) > 0 then
-            let s = stringBuilder.new()
+            let s = sb.new()
             u32(s vector.length(:model.Import m.imports))
             for k = 0 upto vector.length(:model.Import m.imports) - 1 do
                 let i = vector.get(:model.Import m.imports k)
@@ -343,7 +343,7 @@ export
 
     let functionSection(b: Builder m: Module): Ok =
         if vector.length(:model.Function m.functions) > 0 then
-            let s = stringBuilder.new()
+            let s = sb.new()
             u32(s vector.length(:model.Function m.functions))
             for k = 0 upto vector.length(:model.Function m.functions) - 1 do
                 u32(s vector.get(:model.Function m.functions k).type)
@@ -353,7 +353,7 @@ export
 
     let memorySection(b: Builder m: Module): Ok =
         if vector.length(:model.Memory m.memories) > 0 then
-            let s = stringBuilder.new()
+            let s = sb.new()
             u32(s vector.length(:model.Memory m.memories))
             for k = 0 upto vector.length(:model.Memory m.memories) - 1 do
                 let mem = vector.get(:model.Memory m.memories k)
@@ -364,7 +364,7 @@ export
 
     let tagSection(b: Builder m: Module): Ok =
         if vector.length(:model.Tag m.tags) > 0 then
-            let s = stringBuilder.new()
+            let s = sb.new()
             u32(s vector.length(:model.Tag m.tags))
             for k = 0 upto vector.length(:model.Tag m.tags) - 1 do
                 byte(s 0x00)
@@ -375,7 +375,7 @@ export
 
     let globalSection(b: Builder m: Module): Ok =
         if vector.length(:model.Global m.globals) > 0 then
-            let s = stringBuilder.new()
+            let s = sb.new()
             u32(s vector.length(:model.Global m.globals))
             for k = 0 upto vector.length(:model.Global m.globals) - 1 do
                 let g = vector.get(:model.Global m.globals k)
@@ -388,7 +388,7 @@ export
 
     let exportSection(b: Builder m: Module): Ok =
         if vector.length(:model.Export m.exports) > 0 then
-            let s = stringBuilder.new()
+            let s = sb.new()
             u32(s vector.length(:model.Export m.exports))
             for k = 0 upto vector.length(:model.Export m.exports) - 1 do
                 let e = vector.get(:model.Export m.exports k)
@@ -403,7 +403,7 @@ export
 
     let startSection(b: Builder m: Module): Ok =
         if m.start >= 0 then
-            let s = stringBuilder.new()
+            let s = sb.new()
             u32(s m.start)
             section(b 8 s)
         end
@@ -411,7 +411,7 @@ export
     (* The functions ref.func takes, in one declarative segment of funcref *)
     let elementSection(b: Builder m: Module): Ok =
         if vector.length(:Int m.declared) > 0 then
-            let s = stringBuilder.new()
+            let s = sb.new()
             u32(s 1)
             u32(s 3)
             byte(s 0x00)
@@ -430,7 +430,7 @@ export
                 end
             end
             if needed then
-                let s = stringBuilder.new()
+                let s = sb.new()
                 u32(s vector.length(:model.Data m.data))
                 section(b 12 s)
             end
@@ -439,11 +439,11 @@ export
     (* Whether two value types are one, which their encodings say *)
     let sameType(x: ValType y: ValType): Bool =
         begin
-            let a = stringBuilder.new()
-            let c = stringBuilder.new()
+            let a = sb.new()
+            let c = sb.new()
             valType(a x)
             valType(c y)
-            stringOp.equal(a.toString() c.toString())
+            stringOp.equal(sb.toString(a) sb.toString(c))
         end
 
     (* A function's locals, after its parameters, in runs of one type *)
@@ -468,11 +468,11 @@ export
 
     let codeSection(b: Builder m: Module): Ok =
         if vector.length(:model.Function m.functions) > 0 then
-            let s = stringBuilder.new()
+            let s = sb.new()
             u32(s vector.length(:model.Function m.functions))
             for k = 0 upto vector.length(:model.Function m.functions) - 1 do
                 let f = vector.get(:model.Function m.functions k)
-                let body = stringBuilder.new()
+                let body = sb.new()
                 locals(body f.locals)
                 for j = 0 upto vector.length(:Inst f.body) - 1 do instruction(body vector.get(:Inst f.body j)) end
                 byte(body 0x0B)
@@ -483,7 +483,7 @@ export
 
     let dataSection(b: Builder m: Module): Ok =
         if vector.length(:model.Data m.data) > 0 then
-            let s = stringBuilder.new()
+            let s = sb.new()
             u32(s vector.length(:model.Data m.data))
             for k = 0 upto vector.length(:model.Data m.data) - 1 do
                 let d = vector.get(:model.Data m.data k)
@@ -520,7 +520,7 @@ export
     (* A subsection of names, if it has any *)
     let subsection(b: Builder id: Int names: Array(String)): Ok =
         begin
-            let s = stringBuilder.new()
+            let s = sb.new()
             if nameMap(s names) then section(b id s) end
         end
 
@@ -528,19 +528,19 @@ export
      * names, those names *)
     let indirect(b: Builder id: Int outer: Array(Int) inner: Array(Array(String))): Ok =
         begin
-            let s = stringBuilder.new()
+            let s = sb.new()
             let var n = 0
             for k = 0 upto extent outer - 1 do
-                let one = stringBuilder.new()
+                let one = sb.new()
                 if nameMap(one inner[k]) then n := n + 1 end
             end
             if n > 0 then
                 u32(s n)
                 for k = 0 upto extent outer - 1 do
-                    let one = stringBuilder.new()
+                    let one = sb.new()
                     if nameMap(one inner[k]) then
                         u32(s outer[k])
-                        s.str(one.toString()) ok
+                        sb.strShared(s sb.toString(one)) ok
                     end
                 end
                 section(b id s)
@@ -602,9 +602,9 @@ export
 
     let nameSection(b: Builder m: Module): Ok =
         begin
-            let s = stringBuilder.new()
+            let s = sb.new()
             if not(stringOp.isEmpty(m.name)) then
-                let one = stringBuilder.new()
+                let one = sb.new()
                 name(one m.name)
                 section(s 0 one)
             end
@@ -652,19 +652,19 @@ export
             let tagNames = array of(vector.length(:model.Tag m.tags) "")
             for k = 0 upto extent tagNames - 1 do tagNames[k] := vector.get(:model.Tag m.tags k).name end
             subsection(s 11 spaceNames(m isTag tagNames))
-            if s.length() > 0 then
-                let custom = stringBuilder.new()
+            if sb.length(s) > 0 then
+                let custom = sb.new()
                 name(custom "name")
-                custom.str(s.toString())
+                sb.strShared(custom sb.toString(s))
                 section(b 0 custom)
             end
         end
 
     let encode(m: Module): String =
         begin
-            let b = stringBuilder.new()
+            let b = sb.new()
             (* The magic number, "\0asm", and the version, 1 *)
-            b.str("\x00asm\x01\x00\x00\x00")
+            sb.str(b "\x00asm\x01\x00\x00\x00")
             typeSection(b m)
             importSection(b m)
             functionSection(b m)
@@ -678,6 +678,6 @@ export
             codeSection(b m)
             dataSection(b m)
             nameSection(b m)
-            b.toString()
+            sb.toString(b)
         end
 end

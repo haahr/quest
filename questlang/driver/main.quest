@@ -135,8 +135,8 @@ if options.wholeProgram then shapes.setTransparentAbstractTypes(true) end;
 let readAll(r: reader.T): String =
     begin
         let b = stringBuilder.new()
-        while reader.more(r) do b.char(reader.getChar(r)) end
-        b.toString()
+        while reader.more(r) do stringBuilder.char(b reader.getChar(r)) end
+        stringBuilder.toString(b)
     end;
 
 (* The text of a file *)
@@ -734,9 +734,9 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                             let parts = strutil.split(vector.get(:String units k) "=")
                             let path = target <> "." <> conv.int(k) <> ".wasm"
                             save(path maybe.unwrapOr(:String files.readText(vector.get(:String parts 1)) ""))
-                            lines.str(vector.get(:String parts 0) <> "=" <> path <> "\n")
+                            stringBuilder.str(lines vector.get(:String parts 0) <> "=" <> path <> "\n")
                         end
-                        save(target <> ".units" lines.toString())
+                        save(target <> ".units" stringBuilder.toString(lines))
                     else
                         let base = compilerRunner.temporaryBinary()
                         let program = base <> ".wasm"

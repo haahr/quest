@@ -12,7 +12,7 @@ import
     hash = util/hash : util/Hash
     maybe = util/maybe : util/Maybe
     strutil = util/strutil : util/Strutil
-    stringBuilder = util/stringbuilder : util/StringBuilder
+    sb = util/stringbuilder : util/StringBuilder
     stringOp = string : StringOp
     intOp = int : IntOp
     ascii : Ascii
@@ -170,14 +170,17 @@ export
     let charRepr(c: Char): String =
         begin
             let code = ascii.val(c)
-            let b = stringBuilder.new().char('\'')
+            let b = sb.new()
+            sb.char(b '\'')
             if {code < 32} orif {code >= 127} then
-                b.str("\\x").char(stringOp.getChar("0123456789abcdef" {code / 16}))
-                    .char(stringOp.getChar("0123456789abcdef" {code % 16}))
+                sb.str(b "\\x")
+                sb.char(b stringOp.getChar("0123456789abcdef" {code / 16}))
+                sb.char(b stringOp.getChar("0123456789abcdef" {code % 16}))
             else
-                b.char(c)
+                sb.char(b c)
             end
-            b.char('\'').toString()
+            sb.char(b '\'')
+            sb.toString(b)
         end
 
     (* ======================================================================
@@ -393,13 +396,13 @@ export
         begin
             let start = tok.cursor
             tok.cursor := tok.cursor + 1 (* Opening quote *)
-            let b = stringBuilder.new()
+            let b = sb.new()
             while not(atEnd(tok)) andif {currentChar(tok) isnot '"'} do
                 if currentChar(tok) is '\\' then
                     tok.cursor := tok.cursor + 1
-                    b.char(lexEscapeSequence(tok))
+                    sb.char(b lexEscapeSequence(tok))
                 else
-                    b.char(advanceChar(tok))
+                    sb.char(b advanceChar(tok))
                 end
             end
             if atEnd(tok) then
@@ -407,7 +410,7 @@ export
             else
                 tok.cursor := tok.cursor + 1 (* Closing quote *)
             end
-            finish(tok option stringLit of K end start tokens.valString(b.toString()))
+            finish(tok option stringLit of K end start tokens.valString(sb.toString(b)))
         end
 
     (* An identifier, keyword, symbolic operator, or reserved punctuation: the
@@ -496,15 +499,18 @@ export
 
     let formatDump(tokensList: vector.T(tokens.Token) sm: location.SourceMap showValues: Bool): String =
         begin
-            let b = stringBuilder.new()
+            let b = sb.new()
             for i = 0 upto {vector.length(:tokens.Token tokensList) - 1} do
                 let t = vector.get(:tokens.Token tokensList i)
                 let loc = location.locate(sm t.span.startOffset)
-                if i > 0 then b.char('\n') end
-                b.int(loc.line).char(':').int(loc.col).char('\t')
+                if i > 0 then sb.char(b '\n') end
+                sb.int(b loc.line)
+                sb.char(b ':')
+                sb.int(b loc.col)
+                sb.char(b '\t')
                 case t.kind
-                    when eof then b.str("EOF")
-                    else b.str(tokens.tokenKindName(t.kind)).char('\t').str(t.lexeme)
+                    when eof then sb.str(b "EOF")
+                    else sb.str(b tokens.tokenKindName(t.kind)) sb.char(b '\t') sb.str(b t.lexeme)
                 end
                 (* A literal's value as Python's repr writes it, as the
                  * bootstrap's dump does *)
@@ -518,8 +524,12 @@ export
                         else maybe.none(:String)
                     end
                 end
-                if maybe.isSome(:String shown) then b.str("\t(value=").str(maybe.unwrap(:String shown)).char(')') end
+                if maybe.isSome(:String shown) then
+                    sb.str(b "\t(value=")
+                    sb.str(b maybe.unwrap(:String shown))
+                    sb.char(b ')')
+                end
             end
-            b.toString()
+            sb.toString(b)
         end
 end

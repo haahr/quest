@@ -473,8 +473,10 @@ double   quest_strutil_to_real(const QString *s);
 
 /* StringBuilder (lib/util/stringbuilder) native buffer. Short appends are written into a fixed working buffer;
  * when it fills, it becomes a finished chunk and a new working buffer is started. A string longer than
- * QUEST_SB_LONG_APPEND is copied into a chunk of its own instead of passing through the working buffer.
- * quest_sb_to_string always returns a new string, so the builder can be reused after it. */
+ * QUEST_SB_LONG_APPEND is copied into a chunk of its own instead of passing through the working buffer, or, appended
+ * by quest_sb_append_string_shared, is the chunk itself, its caller promising not to change it until the builder's
+ * next quest_sb_to_string or quest_sb_clear. quest_sb_to_string returns a new string and empties the builder, which
+ * can then be reused. */
 #define QUEST_SB_BUFFER_SIZE 512
 #define QUEST_SB_LONG_APPEND 256
 
@@ -489,6 +491,7 @@ typedef struct QStringBuilder {
 
 QStringBuilder *quest_sb_new(void);
 void     quest_sb_append_string(QStringBuilder *b, const QString *s);
+void     quest_sb_append_string_shared(QStringBuilder *b, QString *s);
 void     quest_sb_append_char(QStringBuilder *b, QChar ch);
 void     quest_sb_append_int(QStringBuilder *b, int64_t n);
 void     quest_sb_append_real(QStringBuilder *b, double r);
@@ -498,7 +501,7 @@ void     quest_sb_append_sub(QStringBuilder *b, const QString *s, int64_t start,
 void     quest_sb_append_repeat(QStringBuilder *b, QChar ch, int64_t n);
 void     quest_sb_clear(QStringBuilder *b);
 int64_t  quest_sb_length(const QStringBuilder *b);
-QString *quest_sb_to_string(const QStringBuilder *b);
+QString *quest_sb_to_string(QStringBuilder *b);
 
 /* Ascii module primitives */
 QChar   quest_ascii_char(int64_t n);

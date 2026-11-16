@@ -961,18 +961,15 @@ def _sb_append_repeat(b: QStringBuilder, c: QChar, n: QInt) -> QOk:
     return _sb_append(b, c.value * n.value)
 
 def _sb_to_string(b: QStringBuilder) -> QString:
+    """The builder's text, after which it is empty, as quest_sb_to_string leaves
+    it."""
     text = "".join(b.pieces)
-    b.pieces = [text] if text else []
+    _sb_clear(b)
     return QString(text)
 
 def _sb_clear(b: QStringBuilder) -> QOk:
     b.pieces.clear()
     b.length = 0
-    return OK_VALUE
-
-
-def _sb_append(b: QStringBuilder, text: str) -> QOk:
-    b.append(text)
     return OK_VALUE
 
 
@@ -1184,6 +1181,8 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     # StringBuilder
     "quest_sb_new": QStringBuilder,
     "quest_sb_append_string": lambda b, s: _sb_append(b, s.value),
+    # A Python str is immutable, so sharing and copying are the same
+    "quest_sb_append_string_shared": lambda b, s: _sb_append(b, s.value),
     "quest_sb_append_char": lambda b, c: _sb_append(b, c.value),
     "quest_sb_append_int": lambda b, n: _sb_append(b, _conv_int(n).value),
     "quest_sb_append_real": lambda b, r: _sb_append(b, _conv_real(r).value),

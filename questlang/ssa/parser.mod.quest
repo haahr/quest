@@ -5,7 +5,7 @@ import
     questlang/ssa/nodes : questlang/ssa/Nodes
     collections/vector : collections/Vector
     util/maybe : util/Maybe
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
     stringOp = string : StringOp
     conv : Conv
@@ -421,28 +421,28 @@ export
     let cString(l: Line): String =
         begin
             expect(l "\"")
-            let b = stringBuilder.new()
+            let b = sb.new()
             while not(atEnd(l)) andif not({peek(l) is '"'}) do
                 let c = peek(l)
                 l.at := l.at + 1
                 if c is '\\' then
                     let e = peek(l)
                     l.at := l.at + 1
-                    if e is 'n' then b.char('\n')
-                    elsif e is 't' then b.char('\t')
-                    elsif e is 'r' then b.char('\r')
+                    if e is 'n' then sb.char(b '\n')
+                    elsif e is 't' then sb.char(b '\t')
+                    elsif e is 'r' then sb.char(b '\r')
                     elsif isDigit(e) then
                         let d2 = ascii.val(peek(l)) - 48
                         let d3 = ascii.val(stringOp.getChar(l.text l.at + 1)) - 48
                         l.at := l.at + 2
-                        b.char(ascii.char({{{ascii.val(e) - 48} * 64} + {d2 * 8}} + d3))
-                    else b.char(e) end
+                        sb.char(b ascii.char({{{ascii.val(e) - 48} * 64} + {d2 * 8}} + d3))
+                    else sb.char(b e) end
                 else
-                    b.char(c)
+                    sb.char(b c)
                 end
             end
             expect(l "\"")
-            b.toString()
+            sb.toString(b)
         end
 
     (* data SYMBOL [exported] [writable] zero N | text "..." | words [...] *)

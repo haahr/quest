@@ -3,7 +3,7 @@
 module pyRepr : PyRepr
 import
     collections/vector : collections/Vector
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
     stringOp = string : StringOp
     ascii : Ascii
@@ -21,24 +21,27 @@ export
                 if c is '\'' then hasSingle := true elsif c is '"' then hasDouble := true end
             end
             let quote = if hasSingle andif not(hasDouble) then '"' else '\'' end
-            let b = stringBuilder.new()
-            b.char(quote)
+            let b = sb.new()
+            sb.char(b quote)
             for i = 0 upto {size - 1} do
                 let c = stringOp.getChar(s i)
                 let code = ascii.val(c)
-                if c is '\\' then b.str("\\\\")
-                elsif c is quote then b.char('\\').char(quote)
-                elsif code is 10 then b.str("\\n")
-                elsif code is 13 then b.str("\\r")
-                elsif code is 9 then b.str("\\t")
+                if c is '\\' then sb.str(b "\\\\")
+                elsif c is quote then sb.char(b '\\') sb.char(b quote)
+                elsif code is 10 then sb.str(b "\\n")
+                elsif code is 13 then sb.str(b "\\r")
+                elsif code is 9 then sb.str(b "\\t")
                 elsif {code < 32} orif {{code >= 127} andif {code <= 160}} orif {code is 173} then
                     (* Python's repr escapes the bytes that are not printable
                      * Latin-1 characters *)
-                    b.str("\\x").char(hexDigit(code / 16)).char(hexDigit(code % 16))
-                else b.char(c)
+                    sb.str(b "\\x")
+                    sb.char(b hexDigit(code / 16))
+                    sb.char(b hexDigit(code % 16))
+                else sb.char(b c)
                 end
             end
-            b.char(quote).toString()
+            sb.char(b quote)
+            sb.toString(b)
         end
 
     let joinedItems(items: vector.T(String)): String = strutil.join(", " items)

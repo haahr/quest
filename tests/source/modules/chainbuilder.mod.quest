@@ -1,0 +1,40 @@
+module chainBuilder : ChainBuilder
+import
+    wordLib = word: Word
+    sb = util/stringBuilder : util/StringBuilder
+export
+    Def Rec T = Tuple
+        str(s: String): T
+        strShared(s: String): T
+        char(c: Char): T
+        int(n: Int): T
+        real(r: Real): T
+        bool(b: Bool): T
+        word(w: wordLib.T): T
+        sub(s: String start: Int size: Int): T
+        repeat(c: Char n: Int): T
+        clear(): T
+        length(): Int
+        toString(): String
+    end
+
+    let new(): T =
+        begin
+            let buf = sb.new()
+            let rec self: T = tuple
+                let str(s: String): T = begin sb.str(buf s) self end
+                let strShared(s: String): T = begin sb.strShared(buf s) self end
+                let char(c: Char): T = begin sb.char(buf c) self end
+                let int(n: Int): T = begin sb.int(buf n) self end
+                let real(r: Real): T = begin sb.real(buf r) self end
+                let bool(b: Bool): T = begin sb.bool(buf b) self end
+                let word(w: wordLib.T): T = begin sb.word(buf w) self end
+                let sub(s: String start: Int size: Int): T = begin sb.sub(buf s start size) self end
+                let repeat(c: Char n: Int): T = begin sb.repeat(buf c n) self end
+                let clear(): T = begin sb.clear(buf) self end
+                let length(): Int = sb.length(buf)
+                let toString(): String = sb.toString(buf)
+            end
+            self
+        end
+end;

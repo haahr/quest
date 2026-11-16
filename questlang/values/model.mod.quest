@@ -249,7 +249,7 @@ export
             when vException then "Exception"
             when vWriter then "Writer.T"
             when vReader then "Reader.T"
-            when vStringBuilder then "StringBuilder.Buffer"
+            when vStringBuilder then "StringBuilder.T"
             when vProcess then "Process.T"
             when vRaised then "Raised.T"
             when vTypeValue then "Type"
@@ -313,10 +313,10 @@ export
     let quotedString(s: String): String =
         begin
             let b = stringBuilder.new()
-            b.char('"')
-            for i = 0 upto {stringOp.length(s) - 1} do b.str(escaped(stringOp.getChar(s i) '"')) end
-            b.char('"')
-            b.toString()
+            stringBuilder.char(b '"')
+            for i = 0 upto {stringOp.length(s) - 1} do stringBuilder.str(b escaped(stringOp.getChar(s i) '"')) end
+            stringBuilder.char(b '"')
+            stringBuilder.toString(b)
         end
 
     (* A number as conv writes it, with Python's - for Cardelli's ~ *)
@@ -338,20 +338,20 @@ export
                 let nibble = word.toInt(word.extract(w {i * 4} 4))
                 if {nibble isnot 0} orif started orif {i is 0} then
                     started := true
-                    digits.char(hexDigit(nibble))
+                    stringBuilder.char(digits hexDigit(nibble))
                 end
             end
-            "16#" <> digits.toString() <> "#"
+            "16#" <> stringBuilder.toString(digits) <> "#"
         end
 
     let joined(parts: vector.T(String)): String =
         begin
             let b = stringBuilder.new()
             for i = 0 upto {vector.length(:String parts) - 1} do
-                if i > 0 then b.char(' ') end
-                b.str(vector.get(:String parts i))
+                if i > 0 then stringBuilder.char(b ' ') end
+                stringBuilder.strShared(b vector.get(:String parts i))
             end
-            b.toString()
+            stringBuilder.toString(b)
         end
 
     (* The values being printed, for cycles: the aggregates and references on

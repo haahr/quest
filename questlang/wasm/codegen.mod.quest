@@ -20,7 +20,7 @@ import
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
     stringOp = string : StringOp
     ascii : Ascii
@@ -59,7 +59,7 @@ export
         known: hashMap.T(Int ir.OpMakeClosure)
         runtimeFunctions: hashMap.T(String Int)
         funcTypes: hashMap.T(String Int)
-        strings: stringBuilder.T
+        strings: sb.T
         names: hashMap.T(String Int)
         dicts: hashMap.T(String Int)
         (* Closures (section 3.1): the closure types by signature, each
@@ -128,11 +128,13 @@ export
     (* The index of the function type of params and results, made once *)
     let funcType(g: G params: Array(ValType) results: Array(ValType)): Int =
         begin
-            let key = stringBuilder.new()
-            for k = 0 upto extent params - 1 do key.str(printer.valType(g.m params[k]) <> " ") end
-            key.str("->")
-            for k = 0 upto extent results - 1 do key.str(" " <> printer.valType(g.m results[k])) end
-            let known = hashMap.get(:String :Int g.funcTypes key.toString())
+            let key = sb.new()
+            for k = 0 upto extent params - 1 do sb.str(key printer.valType(g.m params[k]) <> " ") end
+            sb.str(key "->")
+            for k = 0 upto extent results - 1 do sb.str(key " " <> printer.valType(g.m results[k])) end
+            (* toString empties the builder, so the key is taken once *)
+            let text = sb.toString(key)
+            let known = hashMap.get(:String :Int g.funcTypes text)
             if maybe.isSome(:Int known) then maybe.unwrap(:Int known)
             else
                     let n = typeCount(g.m)
@@ -142,7 +144,7 @@ export
                                 let params = params let results = results end
                         end
                     end)
-                    hashMap.insert(:String :Int g.funcTypes key.toString() n)
+                    hashMap.insert(:String :Int g.funcTypes text n)
                     n
             end
         end
@@ -501,11 +503,11 @@ export
         end
     let sigText(g: G sig: Signature): String =
         begin
-            let b = stringBuilder.new()
-            for k = 0 upto extent sig.params - 1 do b.str(printer.valType(g.m sig.params[k]) <> " ") end
-            b.str("->")
-            for k = 0 upto extent sig.results - 1 do b.str(" " <> printer.valType(g.m sig.results[k])) end
-            b.toString()
+            let b = sb.new()
+            for k = 0 upto extent sig.params - 1 do sb.str(b printer.valType(g.m sig.params[k]) <> " ") end
+            sb.str(b "->")
+            for k = 0 upto extent sig.results - 1 do sb.str(b " " <> printer.valType(g.m sig.results[k])) end
+            sb.toString(b)
         end
     let closS(g: G sig: Signature n: Int): Int =
         begin
@@ -621,8 +623,8 @@ export
     (* A new string of the literal s's bytes, from the data segment *)
     let literal(f: F s: String): Ok =
         begin
-            let offset = f.g.strings.length()
-            f.g.strings.str(s)
+            let offset = sb.length(f.g.strings)
+            sb.str(f.g.strings s)
             let n = stringOp.length(s)
             emit(f model.i32Const(0))
             emit(f model.i32Const(n))
@@ -2132,6 +2134,8 @@ export
         array of "quest_identity_hash" "identityHash" "ee" "n" end
         array of "quest_sb_new" "sbNew" "" "e" end
         array of "quest_sb_append_string" "sbAppendString" "ee" "e" end
+        (* Sharing a string is copying it here, which keeps its promise *)
+        array of "quest_sb_append_string_shared" "sbAppendString" "ee" "e" end
         array of "quest_sb_append_char" "sbAppendChar" "eb" "e" end
         array of "quest_sb_append_int" "sbAppendInt" "en" "e" end
         array of "quest_sb_append_bool" "sbAppendBool" "eb" "e" end
@@ -2690,18 +2694,18 @@ export
                      * unit's initializer evaluates it, its name the C
                      * runtime's, the part after the module's in camel case
                      * (readline.endOfInput) *)
-                    let b = stringBuilder.new()
+                    let b = sb.new()
                     let var upper = false
                     for k = 0 upto stringOp.length(name) - 1 do
                         let c = stringOp.getChar(name k)
                         if {c is '_'} andif {k > at} then upper := true
                         else
-                            b.char(if upper andif {ascii.val(c) >= 97} then ascii.char(ascii.val(c) - 32) else c end)
+                            sb.char(b if upper andif {ascii.val(c) >= 97} then ascii.char(ascii.val(c) - 32) else c end)
                             upper := false
                         end
                     end
                     emit(f model.i32Const(0))
-                    literal(f b.toString())
+                    literal(f sb.toString(b))
                     emit(f i1(ops.structNew rt.index("exception")))
                 end
             elsif named("QUEST_REAL_MAX") then emit(f model.f64Const(1.7976931348623157e+308))
@@ -5415,7 +5419,7 @@ export
                 let known = walk.knownClosures(unit)
                 let runtimeFunctions = hashMap.new(:String :Int stringOp.equal hash.string)
                 let funcTypes = hashMap.new(:String :Int stringOp.equal hash.string)
-                let strings = stringBuilder.new()
+                let strings = sb.new()
                 let names = hashMap.new(:String :Int stringOp.equal hash.string)
                 let dicts = hashMap.new(:String :Int stringOp.equal hash.string)
                 let closTypes = hashMap.new(:String :Int stringOp.equal hash.string)
@@ -6000,9 +6004,9 @@ export
                 let field = "_start" let kind = option exportFunc of model.ExportKind end let index = mainIndex + 1
             end)
             end
-            if g.strings.length() > 0 then
+            if sb.length(g.strings) > 0 then
                 vector.append(:model.Data m.data
-                    tuple let name = "strings" let bytes = g.strings.toString() let offset = ~1 end)
+                    tuple let name = "strings" let bytes = sb.toString(g.strings) let offset = ~1 end)
             end
             (* The locals that are never live together share one *)
             reuse.reuse(m)

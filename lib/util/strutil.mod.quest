@@ -3,7 +3,7 @@
 unsound module strutil : Strutil
 import
     util/maybe : util/Maybe
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     collections/vector : collections/Vector
     stringOp = string : StringOp
     ascii: Ascii
@@ -277,6 +277,9 @@ export
             end
         end
 
+    (* join and joinArray share the items with the builder (strShared): no
+     * code but theirs runs between the appends and toString, so nothing can
+     * change an item meanwhile *)
     let join(delim: String items: vector.T(String)): String =
         begin
             let count = vector.length(:String items)
@@ -285,15 +288,15 @@ export
             elsif count is 1 then
                 vector.get(:String items 0)
             else
-                let b = stringBuilder.new()
-                b.str(vector.get(:String items 0))
+                let b = sb.new()
+                sb.strShared(b vector.get(:String items 0))
                 for i = 1 upto {count - 1} do
                     if stringOp.length(delim) > 0 then
-                        b.str(delim)
+                        sb.str(b delim)
                     end
-                    b.str(vector.get(:String items i))
+                    sb.strShared(b vector.get(:String items i))
                 end
-                b.toString()
+                sb.toString(b)
             end
         end
 
@@ -305,15 +308,15 @@ export
             elsif count is 1 then
                 items[0]
             else
-                let b = stringBuilder.new()
-                b.str(items[0])
+                let b = sb.new()
+                sb.strShared(b items[0])
                 for i = 1 upto {count - 1} do
                     if stringOp.length(delim) > 0 then
-                        b.str(delim)
+                        sb.str(b delim)
                     end
-                    b.str(items[i])
+                    sb.strShared(b items[i])
                 end
-                b.toString()
+                sb.toString(b)
             end
         end
 
@@ -332,21 +335,21 @@ export
                 if firstMatch is ~1 then
                     s
                 else
-                    let b = stringBuilder.new()
+                    let b = sb.new()
                     let var start = 0
                     let var matchPos = firstMatch
                     while matchPos >= 0 do
                         if matchPos > start then
-                            b.sub(s start {matchPos - start})
+                            sb.sub(b s start {matchPos - start})
                         end
-                        b.str(newSub)
+                        sb.str(b newSub)
                         start := matchPos + oldLen
                         matchPos := findFrom(s oldSub start)
                     end
                     if start < sLen then
-                        b.sub(s start {sLen - start})
+                        sb.sub(b s start {sLen - start})
                     end
-                    b.toString()
+                    sb.toString(b)
                 end
             end
         end
@@ -354,60 +357,60 @@ export
     let escapeC(s: String): String =
         begin
             let sLen = stringOp.length(s)
-            let b = stringBuilder.new()
+            let b = sb.new()
             for i = 0 upto {sLen - 1} do
                 let c = stringOp.getChar(s i)
                 if c is '\\' then
-                    b.str("\\\\")
+                    sb.str(b "\\\\")
                 elsif c is '"' then
-                    b.str("\\\"")
+                    sb.str(b "\\\"")
                 elsif c is '\n' then
-                    b.str("\\n")
+                    sb.str(b "\\n")
                 elsif c is '\t' then
-                    b.str("\\t")
+                    sb.str(b "\\t")
                 elsif c is '\r' then
-                    b.str("\\r")
+                    sb.str(b "\\r")
                 elsif c is '\0' then
-                    b.str("\\0")
+                    sb.str(b "\\0")
                 else
-                    b.char(c)
+                    sb.char(b c)
                 end
             end
-            b.toString()
+            sb.toString(b)
         end
 
     let unescapeC(s: String): String =
         begin
             let sLen = stringOp.length(s)
-            let b = stringBuilder.new()
+            let b = sb.new()
             let var i = 0
             while i < sLen do
                 let c = stringOp.getChar(s i)
                 if {c is '\\'} andif {{i + 1} < sLen} then
                     let next = stringOp.getChar(s {i + 1})
                     if next is 'n' then
-                        b.char('\n') i := i + 2
+                        sb.char(b '\n') i := i + 2
                     elsif next is 't' then
-                        b.char('\t') i := i + 2
+                        sb.char(b '\t') i := i + 2
                     elsif next is 'r' then
-                        b.char('\r') i := i + 2
+                        sb.char(b '\r') i := i + 2
                     elsif next is '0' then
-                        b.char('\0') i := i + 2
+                        sb.char(b '\0') i := i + 2
                     elsif next is '\\' then
-                        b.char('\\') i := i + 2
+                        sb.char(b '\\') i := i + 2
                     elsif next is '"' then
-                        b.char('"') i := i + 2
+                        sb.char(b '"') i := i + 2
                     elsif next is '\'' then
-                        b.char('\'') i := i + 2
+                        sb.char(b '\'') i := i + 2
                     else
-                        b.char(next) i := i + 2
+                        sb.char(b next) i := i + 2
                     end
                 else
-                    b.char(c)
+                    sb.char(b c)
                     i := i + 1
                 end
             end
-            b.toString()
+            sb.toString(b)
         end
 
     (* ======================================================================

@@ -710,7 +710,7 @@ class QStringBuilder(QValue):
 
     @property
     def type_name(self) -> str:
-        return "StringBuilder.Buffer"
+        return "StringBuilder.T"
 
     def to_str(self, visited: Optional[set[int]] = None) -> str:
         return "<string builder>"

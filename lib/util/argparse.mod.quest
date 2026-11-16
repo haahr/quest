@@ -5,7 +5,7 @@ import
     util/maybe : util/Maybe
     util/hash : util/Hash
     util/strutil : util/Strutil
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     collections/vector : collections/Vector
     collections/hashMap : collections/HashMap
     stringOp = string : StringOp
@@ -192,65 +192,79 @@ export
     (* Help Formatting *)
     let formatHelp(p: Parser): String =
         begin
-            let b = stringBuilder.new()
-            b.str("Usage: ").str(p.prog).str(" [options]")
+            let b = sb.new()
+            sb.str(b "Usage: ")
+            sb.str(b p.prog)
+            sb.str(b " [options]")
             let posCount = vector.length(:PositionalDef p.positionals)
             for i = 0 upto {posCount - 1} do
                 let pos = vector.get(:PositionalDef p.positionals i)
-                b.str(" ").str(pos.name)
+                sb.str(b " ")
+                sb.str(b pos.name)
             end
-            b.char('\n')
+            sb.char(b '\n')
             if stringOp.length(p.description) > 0 then
-                b.char('\n').str(p.description).char('\n')
+                sb.char(b '\n')
+                sb.str(b p.description)
+                sb.char(b '\n')
             end
 
             if posCount > 0 then
-                b.str("\nPositional arguments:\n")
+                sb.str(b "\nPositional arguments:\n")
                 for i = 0 upto {posCount - 1} do
                     let pos = vector.get(:PositionalDef p.positionals i)
-                    b.str("  ").str(pos.name)
+                    sb.str(b "  ")
+                    sb.str(b pos.name)
                     let pad = {24 - stringOp.length(pos.name)}
-                    if pad > 0 then b.repeat(' ' pad) else b.str("  ") end
-                    b.str(pos.help).char('\n')
+                    if pad > 0 then sb.repeat(b ' ' pad) else sb.str(b "  ") end
+                    sb.str(b pos.help)
+                    sb.char(b '\n')
                 end
             end
 
             let optCount = vector.length(:OptDef p.options)
             if optCount > 0 then
-                b.str("\nOptions:\n")
+                sb.str(b "\nOptions:\n")
                 for i = 0 upto {optCount - 1} do
                     let opt = vector.get(:OptDef p.options i)
-                    b.str("  ").str(opt.flagsStr)
+                    sb.str(b "  ")
+                    sb.str(b opt.flagsStr)
                     let pad = {24 - stringOp.length(opt.flagsStr)}
-                    if pad > 0 then b.repeat(' ' pad) else b.str("  ") end
-                    b.str(opt.help)
+                    if pad > 0 then sb.repeat(b ' ' pad) else sb.str(b "  ") end
+                    sb.str(b opt.help)
                     case opt.kind
                         when choice with cd: Tuple choices: Array(String) defaultVal: String end then
-                            b.str(" (choices: ")
+                            sb.str(b " (choices: ")
                             let cNum = extent cd.choices
                             for ci = 0 upto {cNum - 1} do
-                                if ci > 0 then b.str(", ") end
-                                b.str(cd.choices[ci])
+                                if ci > 0 then sb.str(b ", ") end
+                                sb.str(b cd.choices[ci])
                             end
-                            b.str(")")
+                            sb.str(b ")")
                             if stringOp.length(cd.defaultVal) > 0 then
-                                b.str(" [default: ").str(cd.defaultVal).str("]")
+                                sb.str(b " [default: ")
+                                sb.str(b cd.defaultVal)
+                                sb.str(b "]")
                             end
                         when str with sd: Tuple defaultVal: String end then
                             if stringOp.length(sd.defaultVal) > 0 then
-                                b.str(" [default: ").str(sd.defaultVal).str("]")
+                                sb.str(b " [default: ")
+                                sb.str(b sd.defaultVal)
+                                sb.str(b "]")
                             end
                         when integer with id: Tuple defaultVal: Int end then
                             if id.defaultVal isnot 0 then
-                                b.str(" [default: ").int(id.defaultVal).str("]")
+                                sb.str(b " [default: ")
+                                sb.int(b id.defaultVal)
+                                sb.str(b "]")
                             end
                         else ok
                     end
-                    b.char('\n')
+                    sb.char(b '\n')
                 end
             end
 
-            b.toString()
+            sb.toString(b)
         end
 
     let printHelp(p: Parser w: writer.T): Ok =

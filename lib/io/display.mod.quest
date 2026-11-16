@@ -10,7 +10,7 @@ import
     system: System
     writer: Writer
     stringOp = string : StringOp
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
 export
     Def Item = Tuple mimeType: String data: String end
 
@@ -19,20 +19,23 @@ export
     let hexDigit(n: Int): Char = stringOp.getChar("0123456789abcdef" n)
 
     (* A JSON string of s's bytes *)
-    let quoted(b: stringBuilder.T s: String): Ok =
+    let quoted(b: sb.T s: String): Ok =
         begin
-            b.char('"')
+            sb.char(b '"')
             for i = 0 upto {stringOp.length(s) - 1} do
                 let c = stringOp.getChar(s i)
                 let v = ascii.val(c)
-                if c is '"' then b.str("\\\"")
-                elsif c is '\\' then b.str("\\\\")
-                elsif c is '\n' then b.str("\\n")
-                elsif {v < 32} orif {v > 126} then b.str("\\u00").char(hexDigit(v / 16)).char(hexDigit(v % 16))
-                else b.char(c)
+                if c is '"' then sb.str(b "\\\"")
+                elsif c is '\\' then sb.str(b "\\\\")
+                elsif c is '\n' then sb.str(b "\\n")
+                elsif {v < 32} orif {v > 126} then
+                    sb.str(b "\\u00")
+                    sb.char(b hexDigit(v / 16))
+                    sb.char(b hexDigit(v % 16))
+                else sb.char(b c)
                 end
             end
-            b.char('"')
+            sb.char(b '"')
             ok
         end
 
@@ -41,19 +44,19 @@ export
     (* s's bytes in base64, padded *)
     let base64(s: String): String =
         begin
-            let b = stringBuilder.new()
+            let b = sb.new()
             let n = stringOp.length(s)
             let byte = fun(i: Int): Int if i < n then ascii.val(stringOp.getChar(s i)) else 0 end
             let var i = 0
             while i < n do
                 let group = {{byte(i) * 65536} + {byte(i + 1) * 256}} + byte(i + 2)
-                b.char(stringOp.getChar(base64Digits {group / 262144}))
-                b.char(stringOp.getChar(base64Digits {{group / 4096} % 64}))
-                b.char(if {i + 1} < n then stringOp.getChar(base64Digits {{group / 64} % 64}) else '=' end)
-                b.char(if {i + 2} < n then stringOp.getChar(base64Digits {group % 64}) else '=' end)
+                sb.char(b stringOp.getChar(base64Digits {group / 262144}))
+                sb.char(b stringOp.getChar(base64Digits {{group / 4096} % 64}))
+                sb.char(b if {i + 1} < n then stringOp.getChar(base64Digits {{group / 64} % 64}) else '=' end)
+                sb.char(b if {i + 2} < n then stringOp.getChar(base64Digits {group % 64}) else '=' end)
                 i := i + 3
             end
-            b.toString()
+            sb.toString(b)
         end
 
     (* Whether a form's data is bytes, which JSON carries in base64: an image's,
@@ -67,17 +70,17 @@ export
             writer.flush(writer.output)
             writer.flush(writer.err)
             if inKernel() then
-                let b = stringBuilder.new()
-                b.str("{\"display\":{")
+                let b = sb.new()
+                sb.str(b "{\"display\":{")
                 for i = 0 upto {extent items - 1} do
-                    if i > 0 then b.char(',') end
+                    if i > 0 then sb.char(b ',') end
                     quoted(b items[i].mimeType)
-                    b.char(':')
+                    sb.char(b ':')
                     quoted(b if isBinary(items[i].mimeType) then base64(items[i].data) else items[i].data end)
                 end
-                b.str("}}\n")
+                sb.str(b "}}\n")
                 let w = writer.file("/dev/fd/4")
-                writer.putString(w b.toString())
+                writer.putString(w sb.toString(b))
                 writer.close(w)
             else
                 let var shown = false
@@ -88,13 +91,14 @@ export
                     end
                 end
                 if not(shown) then
-                    let b = stringBuilder.new()
-                    b.str("<")
+                    let b = sb.new()
+                    sb.str(b "<")
                     for i = 0 upto {extent items - 1} do
-                        if i > 0 then b.str(", ") end
-                        b.str(items[i].mimeType)
+                        if i > 0 then sb.str(b ", ") end
+                        sb.str(b items[i].mimeType)
                     end
-                    writer.putString(writer.output b.str(">\n").toString())
+                    sb.str(b ">\n")
+                    writer.putString(writer.output sb.toString(b))
                 end
             end
         end

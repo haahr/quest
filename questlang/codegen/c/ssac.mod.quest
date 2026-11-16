@@ -9,12 +9,12 @@ import
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
     conv : Conv
 export
     Let Function = ssa.Function
-    Let Builder = stringBuilder.T
+    Let Builder = sb.T
 
     let unsupported: Exception(String) = exception unsupported: String end
     let eq(a: String b: String): Bool = stringOp.equal(a b)
@@ -81,8 +81,8 @@ export
         hasTry: Bool
     end
 
-    let line(p: Printer s: String): Ok = begin p.buf.str("    " <> s <> "\n") ok end
-    let text(buf: Builder s: String): Ok = begin buf.str(s) ok end
+    let line(p: Printer s: String): Ok = begin sb.strShared(p.buf "    " <> s <> "\n") ok end
+    let text(buf: Builder s: String): Ok = begin sb.strShared(buf s) ok end
     let volatile(p: Printer): String = if p.hasTry then " volatile" else "" end
 
     (* A pointer to memory of C type t at a value plus an offset *)
@@ -469,7 +469,7 @@ export
      * refer to any; the data defined; the functions defined *)
     let printUnit(u: ssa.Unit): String =
         begin
-            let buf = stringBuilder.new()
+            let buf = sb.new()
             let defined = hashMap.new(:String :Bool eq hash.string)
             (* The thread-locals the unit's code takes the addresses of *)
             let threadLocals = hashMap.new(:String :Bool eq hash.string)
@@ -523,38 +523,42 @@ export
                 end
             end
 
-            buf.str("/* Emitted by the Quest SSA's C printer (ssac) */\n")
-            buf.str("#include <stdint.h>\n\n")
-            buf.str("typedef struct { uint64_t w0, w1; } QSsaPair;\n")
+            sb.str(buf "/* Emitted by the Quest SSA's C printer (ssac) */\n")
+            sb.str(buf "#include <stdint.h>\n\n")
+            sb.str(buf "typedef struct { uint64_t w0, w1; } QSsaPair;\n")
             let sizes = hashMap.keys(:Int :Bool memorySizes)
             for k = 0 upto {vector.length(:Int sizes) - 1} do
                 let n = vector.get(:Int sizes k)
-                buf.str("typedef struct { unsigned char b[" <> conv.int(n) <> "]; } " <> memoryType(n) <> ";\n")
+                sb.str(buf "typedef struct { unsigned char b[" <> conv.int(n) <> "]; } " <> memoryType(n) <> ";\n")
             end
-            buf.str("static inline double ssac_real(uint64_t b) { double d; __builtin_memcpy(&d, &b, 8); return d; }\n")
-            buf.str("static inline uint64_t ssac_bits(double d) { uint64_t b; __builtin_memcpy(&b, &d, 8); return b; }\n")
-            buf.str("extern int _setjmp(int *) __attribute__((returns_twice));\n\n")
+            sb.str(buf
+                "static inline double ssac_real(uint64_t b) { double d; __builtin_memcpy(&d, &b, 8); return d; }\n")
+            sb.str(buf
+                "static inline uint64_t ssac_bits(double d) { uint64_t b; __builtin_memcpy(&b, &d, 8); return b; }\n")
+            sb.str(buf "extern int _setjmp(int *) __attribute__((returns_twice));\n\n")
             (* Only an extern's address is used, so its declared size is
              * arbitrary *)
             for k = 0 upto {vector.length(:String externs) - 1} do
                 let symbol = vector.get(:String externs k)
-                buf.str(if hashMap.contains(:String :Bool threadLocals symbol) then "extern __thread uint64_t " <> symbol <> "[8];\n"
+                sb.str(buf
+                    if hashMap.contains(:String :Bool threadLocals symbol) then
+                        "extern __thread uint64_t " <> symbol <> "[8];\n"
                     else "extern char " <> symbol <> "[];\n" end)
             end
-            buf.str("\n")
+            sb.str(buf "\n")
             for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
-                buf.str(dataDeclaration(vector.get(:ssa.Data u.data k)) <> ";\n")
+                sb.str(buf dataDeclaration(vector.get(:ssa.Data u.data k)) <> ";\n")
             end
             for k = 0 upto {vector.length(:Function u.functions) - 1} do
-                buf.str(prototype(vector.get(:Function u.functions k) false) <> ";\n")
+                sb.str(buf prototype(vector.get(:Function u.functions k) false) <> ";\n")
             end
-            buf.str("\n")
+            sb.str(buf "\n")
             for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
-                buf.str(dataDefinition(vector.get(:ssa.Data u.data k) threadLocals) <> "\n")
+                sb.str(buf dataDefinition(vector.get(:ssa.Data u.data k) threadLocals) <> "\n")
             end
-            buf.str("\n")
+            sb.str(buf "\n")
             for k = 0 upto {vector.length(:Function u.functions) - 1} do function(buf vector.get(:Function u.functions
                 k)) end
-            buf.toString()
+            sb.toString(buf)
         end
 end

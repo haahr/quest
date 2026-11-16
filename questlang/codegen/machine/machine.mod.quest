@@ -6,7 +6,7 @@ import
     questlang/ssa/cfg : questlang/ssa/Cfg
     collections/vector : collections/Vector
     collections/bitset : collections/Bitset
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     conv : Conv
 export
     Def Kind = Option kindOrdinary kindMove kindJump kindBranch kindCall kindReturn end
@@ -218,26 +218,26 @@ export
 
     let format(f: Function name: All(r: Int) String line: All(i: Inst) String): String =
         begin
-            let text = stringBuilder.new()
+            let text = sb.new()
             for b = 0 upto {vector.length(:Block f.blocks) - 1} do
                 let blk = block(f b)
-                text.str("b" <> conv.int(b))
+                sb.str(text "b" <> conv.int(b))
                 if vector.length(:Int blk.params) > 0 then
-                    text.str("(")
+                    sb.str(text "(")
                     for p = 0 upto {vector.length(:Int blk.params) - 1} do
-                        if p > 0 then text.str(" ") end
-                        text.str(name(vector.get(:Int blk.params p)))
+                        if p > 0 then sb.str(text " ") end
+                        sb.str(text name(vector.get(:Int blk.params p)))
                     end
-                    text.str(")")
+                    sb.str(text ")")
                 end
-                text.str(if blk.raised then ": raised\n" else ":\n" end)
+                sb.str(text if blk.raised then ": raised\n" else ":\n" end)
                 for j = 0 upto {vector.length(:Inst blk.insts) - 1} do
                     let i = vector.get(:Inst blk.insts j)
-                    text.str("\t" <> line(i))
-                    if i.target >= 0 then text.str(" -> b" <> conv.int(i.target)) end
-                    text.str("\n")
+                    sb.str(text "\t" <> line(i))
+                    if i.target >= 0 then sb.str(text " -> b" <> conv.int(i.target)) end
+                    sb.str(text "\n")
                 end
             end
-            text.toString()
+            sb.toString(text)
         end
 end

@@ -11,7 +11,7 @@ import
     questlang/syntax/ast : questlang/syntax/Ast
     collections/vector : collections/Vector
     util/maybe : util/Maybe
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
     conv : Conv
     raised : Raised
@@ -396,39 +396,43 @@ export
             else false
         end
 
-    let pad(b: stringBuilder.T indent: Int): stringBuilder.T = b.repeat(' ' {2 * indent})
+    (* Starts a new line at nesting depth indent, two spaces a level *)
+    let newLine(b: sb.T indent: Int): Ok =
+        begin
+            sb.char(b '\n')
+            sb.repeat(b ' ' {2 * indent})
+        end
 
     let flagText(value: Bool): String = if value then "True" else "False" end
 
     (* The items of a tuple of strings, quoted and separated by sep *)
-    let quoted(b: stringBuilder.T items: vector.T(String) sep: String): stringBuilder.T =
-        begin
-            for i = 0 upto {vector.length(:String items) - 1} do
-                if i > 0 then b.str(sep) end
-                b.str(pyRepr.str(vector.get(:String items i)))
-            end
-            b
+    let quoted(b: sb.T items: vector.T(String) sep: String): Ok =
+        for i = 0 upto {vector.length(:String items) - 1} do
+            if i > 0 then sb.str(b sep) end
+            sb.str(b pyRepr.str(vector.get(:String items i)))
         end
 
     (* A simple value as a field of a node *)
-    let simpleField(b: stringBuilder.T v: S): stringBuilder.T =
+    let simpleField(b: sb.T v: S): Ok =
         case v
-            when flag with x then b.str(flagText(x.value))
-            when atom with x then b.str(x.text)
-            when strs with x then quoted(b.char('(') x.items " ").char(')')
-            else b.str("()")
+            when flag with x then sb.str(b flagText(x.value))
+            when atom with x then sb.str(b x.text)
+            when strs with x then
+                sb.char(b '(')
+                quoted(b x.items " ")
+                sb.char(b ')')
+            else sb.str(b "()")
         end
 
     (* A simple value as an item of a tuple, as Python's str prints it *)
-    let simpleItem(b: stringBuilder.T v: S): stringBuilder.T =
+    let simpleItem(b: sb.T v: S): Ok =
         case v
-            when nil then b.str("None")
+            when nil then sb.str(b "None")
             when strs with x then
-                begin
-                    quoted(b.char('(') x.items ", ")
-                    if vector.length(:String x.items) is 1 then b.char(',') end
-                    b.char(')')
-                end
+                sb.char(b '(')
+                quoted(b x.items ", ")
+                if vector.length(:String x.items) is 1 then sb.char(b ',') end
+                sb.char(b ')')
             else simpleField(b v)
         end
 
@@ -441,9 +445,9 @@ export
      * tuple go one to a line below it. A tuple goes on one line if its items
      * are all simple, where a nil item prints as None and a tuple of strings
      * as Python's str prints it, with commas: ('a', 'b') *)
-    let rec render(b: stringBuilder.T v: S indent: Int): stringBuilder.T =
+    let rec render(b: sb.T v: S indent: Int): Ok =
         case v
-            when nil then b.str("nil")
+            when nil then sb.str(b "nil")
             when seq with x then
                 begin
                     let count = extent x.items
@@ -452,64 +456,83 @@ export
                         if not(isSimple(x.items[i])) then allSimple := false end
                     end
                     if count is 0 then
-                        b.str("()")
+                        sb.str(b "()")
                     elsif allSimple then
-                        b.char('(')
+                        sb.char(b '(')
                         for i = 0 upto {count - 1} do
-                            if i > 0 then b.char(' ') end
+                            if i > 0 then sb.char(b ' ') end
                             simpleItem(b x.items[i])
                         end
-                        b.char(')')
+                        sb.char(b ')')
                     else
-                        b.char('(')
+                        sb.char(b '(')
                         for i = 0 upto {count - 1} do
-                            render(pad(b.char('\n') {indent + 1}) x.items[i] {indent + 1})
+                            newLine(b {indent + 1})
+                            render(b x.items[i] {indent + 1})
                         end
-                        pad(b.char('\n') indent).char(')')
+                        newLine(b indent)
+                        sb.char(b ')')
                     end
                 end
             when node with x then renderNode(b x.name x.fields indent)
             else simpleField(b v)
         end
-    and renderNode(b: stringBuilder.T name: String fields: Array(Field) indent: Int): stringBuilder.T =
+    and renderNode(b: sb.T name: String fields: Array(Field) indent: Int): Ok =
         begin
             let count = extent fields
             let var allSimple = true
             for i = 0 upto {count - 1} do
                 if not(isSimple(fields[i].value)) then allSimple := false end
             end
-            b.char('(').str(name)
+            sb.char(b '(')
+            sb.str(b name)
             if allSimple then
                 for i = 0 upto {count - 1} do
                     let v = fields[i].value
-                    case v when nil then ok else simpleField(b.char(' ') v) ok end
+                    case v
+                        when nil then ok
+                        else
+                            sb.char(b ' ')
+                            simpleField(b v)
+                    end
                 end
-                b.char(')')
+                sb.char(b ')')
             else
                 for i = 0 upto {count - 1} do
                     let v = fields[i].value
                     if not(isOmitted(v)) then
-                        pad(b.char('\n') {indent + 1}).char(':').str(fields[i].name).char(' ')
+                        newLine(b {indent + 1})
+                        sb.char(b ':')
+                        sb.str(b fields[i].name)
+                        sb.char(b ' ')
                         case v
                             when seq with x then
                                 begin
                                     let itemCount = extent x.items
-                                    b.char('(')
+                                    sb.char(b '(')
                                     for k = 0 upto {itemCount - 1} do
-                                        render(pad(b.char('\n') {indent + 2}) x.items[k] {indent + 2})
+                                        newLine(b {indent + 2})
+                                        render(b x.items[k] {indent + 2})
                                     end
-                                    pad(b.char('\n') {indent + 1}).char(')')
+                                    newLine(b {indent + 1})
+                                    sb.char(b ')')
                                 end
                             when node then render(b v {indent + 1})
                             else simpleField(b v)
                         end
                     end
                 end
-                pad(b.char('\n') indent).char(')')
+                newLine(b indent)
+                sb.char(b ')')
             end
         end
 
-    let show(v: S): String = render(stringBuilder.new() v 0).toString()
+    let show(v: S): String =
+        begin
+            let b = sb.new()
+            render(b v 0)
+            sb.toString(b)
+        end
 
     let dump(node: ast.Program): String = show(program(node))
     let dumpWithOffsets(node: ast.Program): String =

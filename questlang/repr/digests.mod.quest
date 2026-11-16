@@ -15,7 +15,7 @@ import
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
     ascii : Ascii
     questlang/repr/layout : questlang/repr/Layout
@@ -224,15 +224,15 @@ export
             when pType with x then model.show(x.t)
             when pKind with x then model.showKind(x.k)
             else
-                let b = stringBuilder.new()
+                let b = sb.new()
                 let ps = printedParts(node)
                 for i = 0 upto {vector.length(:Piece ps) - 1} do
                     case vector.get(:Piece ps i)
-                        when pieceText with y then b.str(y.s)
-                        when piecePart with y then b.str(textOf(y.p))
+                        when pieceText with y then sb.strShared(b y.s)
+                        when piecePart with y then sb.strShared(b textOf(y.p))
                     end
                 end
-                b.toString()
+                sb.toString(b)
         end
     let printedMemo = hashMap.new(:Int :Printed intEqual hash.int)
     (* The length of a node's text, the sum of its pieces' lengths, and the
@@ -243,23 +243,24 @@ export
     let rec printedUncached(node: Printable): Printed =
         begin
             let var length = 0
-            let joined = stringBuilder.new()
+            let joined = sb.new()
             let ps = printedParts(node)
             for i = 0 upto {vector.length(:Piece ps) - 1} do
                 case vector.get(:Piece ps i)
                     when pieceText with y then
                         length := length + stringOp.length(y.s)
-                        joined.str(y.s)
+                        sb.strShared(joined y.s)
                     when piecePart with y then
                         let p = printed(y.p)
                         length := length + p.length
-                        joined.char(ascii.char(0)).str(p.digest)
+                        sb.char(joined ascii.char(0))
+                        sb.str(joined p.digest)
                 end
             end
             let digest = if length <= printedTextLimit then
                 sha256.hexDigest(textOf(node))
             else
-                sha256.hexDigest(stringOp.new(1 ascii.char(1)) <> joined.toString())
+                sha256.hexDigest(stringOp.new(1 ascii.char(1)) <> sb.toString(joined))
             end
             tuple let length = length let digest = digest end
         end

@@ -1,6 +1,6 @@
-(* Standard library: StringBuilder operations, chained, across the native buffer's boundaries *)
+(* Standard library: StringBuilder operations, across the native buffer's boundaries *)
 
-import util/stringBuilder : util/StringBuilder;
+import sb = util/stringBuilder : util/StringBuilder;
 import stringOp = string: StringOp;
 import word: Word;
 import writer: Writer;
@@ -9,53 +9,85 @@ import conv: Conv;
 let wOut = writer.output;
 let line(s: String): Ok = begin writer.putString(wOut s) writer.putString(wOut "\n") end;
 
-(* 1. Every method, chained *)
-let b = stringBuilder.new();
-b.str("Hello").char(' ').str("World: ").int(42).char(' ').int(~7).char(' ').bool(true).char(' ').bool(false);
-b.char(' ').real(2.5).char(' ').real(~0.0).char(' ').word(word.fromInt(255)).char(' ').word(word.fromInt(~1));
-b.char(' ').sub("abcdef" 2 3).char(' ').repeat('*' 3).sub("xyz" 3 0).repeat('-' 0).str("");
-line(b.toString());
-line(conv.int(b.length()));
+(* 1. Every function *)
+let b = sb.new();
+sb.str(b "Hello"); sb.char(b ' '); sb.str(b "World: "); sb.int(b 42); sb.char(b ' '); sb.int(b ~7);
+sb.char(b ' '); sb.bool(b true); sb.char(b ' '); sb.bool(b false);
+sb.char(b ' '); sb.real(b 2.5); sb.char(b ' '); sb.real(b ~0.0); sb.char(b ' '); sb.word(b word.fromInt(255));
+sb.char(b ' '); sb.word(b word.fromInt(~1));
+sb.char(b ' '); sb.sub(b "abcdef" 2 3); sb.char(b ' '); sb.repeat(b '*' 3); sb.sub(b "xyz" 3 0); sb.repeat(b '-' 0);
+sb.str(b "");
+line(conv.int(sb.length(b)));
+line(sb.toString(b));
+line(conv.int(sb.length(b)));
 
-(* 2. toString returns a copy: clearing and reusing the builder leaves earlier results unchanged *)
-let first = b.clear().str("first").toString();
-let second = b.clear().str("second").toString();
-line(first <> " " <> second <> " " <> conv.int(b.length()));
-line("[" <> b.clear().toString() <> "] " <> conv.int(b.length()));
+(* 2. toString empties the builder, which can be reused without changing the strings it returned *)
+sb.str(b "first");
+let first = sb.toString(b);
+sb.str(b "second");
+let second = sb.toString(b);
+line(first <> " " <> second <> " " <> conv.int(sb.length(b)));
+line("[" <> sb.toString(b) <> "] " <> conv.int(sb.length(b)));
+sb.str(b "cleared");
+sb.clear(b);
+line("[" <> sb.toString(b) <> "] " <> conv.int(sb.length(b)));
 
 (* 3. Appended strings are copied, so changing one later does not change the result *)
 let short = stringOp.new(4 'a');
 let long = stringOp.new(300 'b');
-b.clear().str(short).str(long);
+sb.str(b short);
+sb.str(b long);
 stringOp.setChar(short 0 'X');
 stringOp.setChar(long 0 'Y');
-let copied = b.toString();
+let copied = sb.toString(b);
 line(stringOp.getSub(copied 0 6) <> " " <> conv.int(stringOp.length(copied)));
 
 (* 4. Many appends, crossing the working buffer and long-string chunks *)
-let big = stringBuilder.new();
+let big = sb.new();
 for i = 1 upto 1000 do
-    big.int(i).char(',')
+    sb.int(big i)
+    sb.char(big ',')
     if {i % 100} is 0 then
-        big.str(stringOp.new(400 'L')).repeat('r' 700)
+        sb.str(big stringOp.new(400 'L'))
+        sb.repeat(big 'r' 700)
     end
 end;
-let bigString = big.toString();
-line(conv.int(big.length()) <> " " <> conv.int(stringOp.length(bigString)));
+line(conv.int(sb.length(big)));
+let bigString = sb.toString(big);
+line(conv.int(sb.length(big)) <> " " <> conv.int(stringOp.length(bigString)));
 line(stringOp.getSub(bigString 0 20) <> " ... " <> stringOp.getSub(bigString {stringOp.length(bigString) - 12} 12));
 
 (* 5. Builders are independent *)
-let b1 = stringBuilder.new();
-let b2 = stringBuilder.new();
-b1.str("one");
-b2.str("two");
-b1.str("!");
-line(b1.toString() <> " " <> b2.toString());
+let b1 = sb.new();
+let b2 = sb.new();
+sb.str(b1 "one");
+sb.str(b2 "two");
+sb.str(b1 "!");
+line(sb.toString(b1) <> " " <> sb.toString(b2));
 
 (* 6. sub and repeat raise string.error when out of range *)
 let tryIt(f: All() Ok): String = try f() "ok" when stringOp.error then "string.error" end;
-line(tryIt(fun(): Ok begin b.sub("abc" 2 2) ok end));
-line(tryIt(fun(): Ok begin b.sub("abc" ~1 1) ok end));
-line(tryIt(fun(): Ok begin b.sub("abc" 0 ~1) ok end));
-line(tryIt(fun(): Ok begin b.repeat('x' ~1) ok end));
-line(tryIt(fun(): Ok begin b.sub("abc" 1 2) ok end));
+line(tryIt(fun(): Ok sb.sub(b "abc" 2 2)));
+line(tryIt(fun(): Ok sb.sub(b "abc" ~1 1)));
+line(tryIt(fun(): Ok sb.sub(b "abc" 0 ~1)));
+line(tryIt(fun(): Ok sb.repeat(b 'x' ~1)));
+line(tryIt(fun(): Ok sb.sub(b "abc" 1 2)));
+sb.clear(b);
+
+(* 7. strShared appends short and long strings, either side of the working
+ * buffer's limit for copying, in order with copied ones; after toString the
+ * builder holds none of them *)
+let shortShared = stringOp.new(5 's');
+let longShared = stringOp.new(500 'S');
+sb.str(b "<");
+sb.strShared(b shortShared);
+sb.char(b '|');
+sb.strShared(b longShared);
+sb.str(b "|");
+sb.strShared(b longShared);
+sb.char(b '>');
+let shared = sb.toString(b);
+line(conv.int(stringOp.length(shared)) <> " " <> stringOp.getSub(shared 0 9) <> " ... "
+    <> stringOp.getSub(shared 506 3) <> " ... " <> stringOp.getSub(shared {stringOp.length(shared) - 3} 3));
+sb.str(b "after");
+line(sb.toString(b));

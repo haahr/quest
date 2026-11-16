@@ -14,7 +14,7 @@ import
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
     ascii : Ascii
     system : System
@@ -26,13 +26,13 @@ export
 
     let lower(s: String): String =
         begin
-            let b = stringBuilder.new()
+            let b = sb.new()
             for i = 0 upto {stringOp.length(s) - 1} do
                 let ch = stringOp.getChar(s i)
                 let code = ascii.val(ch)
-                b.char(if {code >= 65} andif {code <= 90} then ascii.char(code + 32) else ch end)
+                sb.char(b if {code >= 65} andif {code <= 90} then ascii.char(code + 32) else ch end)
             end
-            b.toString()
+            sb.toString(b)
         end
 
     let projectDir(): String =
@@ -364,15 +364,15 @@ export
             end
             let n = vector.length(:String components)
             vector.set(:String components {n - 1} stripUnitSuffix(vector.get(:String components {n - 1})))
-            let b = stringBuilder.new()
+            let b = sb.new()
             let var bad = maybe.none(:String)
             for i = 0 upto {n - 1} do
                 let c = vector.get(:String components i)
-                if i > 0 then b.char('/') end
-                b.str(c)
+                if i > 0 then sb.char(b '/') end
+                sb.str(b c)
                 if maybe.isNone(:String bad) andif not(isNameComponent(c)) then bad := maybe.some(:String c) end
             end
-            let name = b.toString()
+            let name = sb.toString(b)
             if maybe.isSome(:String bad) then
                 diagnostics.fail(:Ok "Invalid module path '" <> name <> "' for '" <> resolved <> "': '" <>
                     maybe.unwrap(:String bad) <> "' contains characters other than letters and digits, which are the " <>

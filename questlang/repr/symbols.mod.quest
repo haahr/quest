@@ -4,7 +4,7 @@ module symbols : Symbols
 import
     collections/vector : collections/Vector
     util/maybe : util/Maybe
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
     stringOp = string : StringOp
     ascii : Ascii
@@ -48,12 +48,11 @@ export
     let mangleSymbolicIdent(name: String): String =
         begin
             let parts = vector.new(:String)
-            let curr = stringBuilder.new()
+            let curr = sb.new()
             let flush(): Ok =
                 begin
-                    let s = stripUnderscores(curr.toString())
+                    let s = stripUnderscores(sb.toString(curr))
                     if stringOp.length(s) > 0 then vector.append(:String parts s) end
-                    curr.clear()
                     ok
                 end
             for i = 0 upto {stringOp.length(name) - 1} do
@@ -64,7 +63,7 @@ export
                 elsif c is '.' then
                     flush()
                 else
-                    curr.char(c)
+                    sb.char(curr c)
                     ok
                 end
             end
@@ -78,13 +77,13 @@ export
     (* s in lowercase (ASCII) *)
     let lower(s: String): String =
         begin
-            let b = stringBuilder.new()
+            let b = sb.new()
             for i = 0 upto {stringOp.length(s) - 1} do
                 let c = stringOp.getChar(s i)
                 let code = ascii.val(c)
-                if {code >= 65} andif {code <= 90} then b.char(ascii.char(code + 32)) else b.char(c) end
+                if {code >= 65} andif {code <= 90} then sb.char(b ascii.char(code + 32)) else sb.char(b c) end
             end
-            b.toString()
+            sb.toString(b)
         end
 
     let mangleModuleName(moduleName: String): String =

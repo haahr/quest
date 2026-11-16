@@ -4,14 +4,14 @@ module printer : Printer
 import
     questlang/wasm/model : questlang/wasm/Model
     collections/vector : collections/Vector
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
     ascii : Ascii
     word : Word
     conv : Conv
     stringOp = string : StringOp
 export
-    Let Builder = stringBuilder.T
+    Let Builder = sb.T
     Let Module = model.Module
     Let ValType = model.ValType
     Let HeapType = model.HeapType
@@ -26,7 +26,10 @@ export
     (* n in decimal, with - for a negative one, as the text format has it *)
     let signed(n: Int): String =
         if n >= 0 then conv.int(n)
-        else "-" <> stringBuilder.new().word(word.sub(word.fromInt(0) word.fromInt(n))).toString()
+        else
+            let b = sb.new()
+            sb.word(b word.sub(word.fromInt(0) word.fromInt(n)))
+            "-" <> sb.toString(b)
         end
 
     let hexDigit(d: Int): String = stringOp.getSub("0123456789abcdef" d 1)
@@ -81,19 +84,19 @@ export
      * backslash each as \hh *)
     let quoted(s: String): String =
         begin
-            let b = stringBuilder.new()
-            b.char('"')
+            let b = sb.new()
+            sb.char(b '"')
             for k = 0 upto stringOp.length(s) - 1 do
                 let c = ascii.val(stringOp.getChar(s k))
-                if {c >= 0x20} andif {c < 0x7F} andif {c isnot 0x22} andif {c isnot 0x5C} then b.char(ascii.char(c))
+                if {c >= 0x20} andif {c < 0x7F} andif {c isnot 0x22} andif {c isnot 0x5C} then sb.char(b ascii.char(c))
                 else
-                    b.char('\\')
-                    b.str(hexDigit(c / 16))
-                    b.str(hexDigit(c - {{c / 16} * 16}))
+                    sb.char(b '\\')
+                    sb.str(b hexDigit(c / 16))
+                    sb.str(b hexDigit(c - {{c / 16} * 16}))
                 end
             end
-            b.char('"')
-            b.toString()
+            sb.char(b '"')
+            sb.toString(b)
         end
 
     (* An index as its name, if it has one, else as a number *)
@@ -139,11 +142,11 @@ export
     let typeList(m: Module keyword: String ts: Array(ValType)): String =
         if extent ts is 0 then ""
         else
-            let b = stringBuilder.new()
-            b.str(" (" <> keyword)
-            for k = 0 upto extent ts - 1 do b.str(" " <> valType(m ts[k])) end
-            b.str(")")
-            b.toString()
+            let b = sb.new()
+            sb.str(b " (" <> keyword)
+            for k = 0 upto extent ts - 1 do sb.str(b " " <> valType(m ts[k])) end
+            sb.str(b ")")
+            sb.toString(b)
         end
 
     let storage(m: Module f: model.Field): String =
@@ -160,15 +163,15 @@ export
         case c
             when compFunc with x then "(func" <> typeList(m "param" x.params) <> typeList(m "result" x.results) <> ")"
             when compStruct with x then
-                let b = stringBuilder.new()
-                b.str("(struct")
+                let b = sb.new()
+                sb.str(b "(struct")
                 for k = 0 upto extent x.fields - 1 do
                     let f = x.fields[k]
-                    b.str(" (field " <> {if stringOp.isEmpty(f.name) then "" else "$" <> f.name <> " " end}
+                    sb.str(b " (field " <> {if stringOp.isEmpty(f.name) then "" else "$" <> f.name <> " " end}
                           <> storage(m f) <> ")")
                 end
-                b.str(")")
-                b.toString()
+                sb.str(b ")")
+                sb.toString(b)
             when compArray with x then "(array " <> storage(m x.element) <> ")"
         end
 
@@ -177,12 +180,12 @@ export
             let named = if stringOp.isEmpty(t.name) then "" else " $" <> t.name end
             if t.final andif {extent t.supers is 0} then "(type" <> named <> " " <> composite(m t.composite) <> ")"
             else
-                let b = stringBuilder.new()
-                b.str("(type" <> named <> " (sub")
-                if t.final then b.str(" final") end
-                for k = 0 upto extent t.supers - 1 do b.str(" " <> typeId(m t.supers[k])) end
-                b.str(" " <> composite(m t.composite) <> "))")
-                b.toString()
+                let b = sb.new()
+                sb.str(b "(type" <> named <> " (sub")
+                if t.final then sb.str(b " final") end
+                for k = 0 upto extent t.supers - 1 do sb.str(b " " <> typeId(m t.supers[k])) end
+                sb.str(b " " <> composite(m t.composite) <> "))")
+                sb.toString(b)
             end
         end
 
@@ -271,7 +274,7 @@ export
             if {extent args} isnot {extent o.imms} then
                 fail(o.name <> " has " <> conv.int(extent args) <> " immediates, not " <> conv.int(extent o.imms))
             end
-            let b = stringBuilder.new()
+            let b = sb.new()
             for k = 0 upto extent args - 1 do
                 let a = args[k]
                 let text = case o.imms[k]
@@ -288,9 +291,9 @@ export
                     when immI32, immI64 then signed(a)
                     when immOffset then if a is 0 then "" else "offset=" <> conv.int(a) end
                 end
-                if not(stringOp.isEmpty(text)) then b.str(" " <> text) end
+                if not(stringOp.isEmpty(text)) then sb.str(b " " <> text) end
             end
-            b.toString()
+            sb.toString(b)
         end
 
     let catchText(m: Module ns: Names c: Context x: model.Catch): String =
@@ -317,22 +320,22 @@ export
                 vector.append(:String c.labels x.label)
                 keyword <> named(x.label) <> blockType(m x.type)
             when instTryTable with x then
-                let b = stringBuilder.new()
-                b.str("try_table" <> named(x.label) <> blockType(m x.type))
-                for k = 0 upto extent x.catches - 1 do b.str(catchText(m ns c x.catches[k])) end
+                let b = sb.new()
+                sb.str(b "try_table" <> named(x.label) <> blockType(m x.type))
+                for k = 0 upto extent x.catches - 1 do sb.str(b catchText(m ns c x.catches[k])) end
                 vector.append(:String c.labels x.label)
-                b.toString()
+                sb.toString(b)
             when instElse then "else"
             when instEnd then
                 if vector.empty(:String c.labels) then fail("an end with no block to end") end
                 vector.pop(:String c.labels)
                 "end"
             when instBrTable with x then
-                let b = stringBuilder.new()
-                b.str("br_table")
-                for k = 0 upto extent x.labels - 1 do b.str(" " <> label(c x.labels[k])) end
-                b.str(" " <> label(c x.default))
-                b.toString()
+                let b = sb.new()
+                sb.str(b "br_table")
+                for k = 0 upto extent x.labels - 1 do sb.str(b " " <> label(c x.labels[k])) end
+                sb.str(b " " <> label(c x.default))
+                sb.toString(b)
             when instF64Const with x then "f64.const " <> hexFloat(x.bits)
             when instRefNull with x then "ref.null " <> heapType(m x.heap)
             when instRefTest with x then "ref.test " <> refType(m x.type.nullable x.type.heap)
@@ -351,9 +354,9 @@ export
             let depth = vector.length(:String c.labels)
             let outer = {i?instEnd} orif {i?instElse}
             let text = instruction(m ns c i)
-            b.repeat(' ' indent + {2 * if outer then depth - 1 else depth end})
-            b.str(text)
-            b.char('\n')
+            sb.repeat(b ' ' indent + {2 * if outer then depth - 1 else depth end})
+            sb.str(b text)
+            sb.char(b '\n')
         end
 
     (* ======================================================================
@@ -378,9 +381,9 @@ export
     let constant(m: Module ns: Names insts: Array(Inst)): String =
         begin
             let c = tuple let locals = array of :String end let labels = vector.new(:String) end
-            let b = stringBuilder.new()
-            for k = 0 upto extent insts - 1 do b.str(" " <> instruction(m ns c insts[k])) end
-            b.toString()
+            let b = sb.new()
+            for k = 0 upto extent insts - 1 do sb.str(b " " <> instruction(m ns c insts[k])) end
+            sb.toString(b)
         end
 
     let function(b: Builder m: Module ns: Names f: model.Function): Ok =
@@ -397,25 +400,25 @@ export
                 fail("function " <> f.name <> " names " <> conv.int(extent f.params) <> " parameters of "
                      <> conv.int(extent params))
             end
-            b.str("  (func" <> named(f.name) <> " (type " <> typeId(m f.type) <> ")")
+            sb.str(b "  (func" <> named(f.name) <> " (type " <> typeId(m f.type) <> ")")
             for k = 0 upto extent params - 1 do
-                b.str(" (param" <> named(f.params[k]) <> " " <> valType(m params[k]) <> ")")
+                sb.str(b " (param" <> named(f.params[k]) <> " " <> valType(m params[k]) <> ")")
             end
-            b.str(typeList(m "result" results))
-            b.char('\n')
+            sb.str(b typeList(m "result" results))
+            sb.char(b '\n')
             let localNames = vector.new(:String)
             for k = 0 upto extent f.params - 1 do vector.append(:String localNames f.params[k]) end
             for k = 0 upto vector.length(:model.Local f.locals) - 1 do
                 let l = vector.get(:model.Local f.locals k)
                 vector.append(:String localNames l.name)
-                b.str("    (local" <> named(l.name) <> " " <> valType(m l.type) <> ")\n")
+                sb.str(b "    (local" <> named(l.name) <> " " <> valType(m l.type) <> ")\n")
             end
             let c = tuple let locals = vector.toArray(:String localNames) let labels = vector.new(:String) end
             instructions(b m ns c f.body 4)
             if not(vector.empty(:String c.labels)) then
                 fail("function " <> f.name <> " has a block without its end")
             end
-            b.str("  )\n") ok
+            sb.str(b "  )\n") ok
         end
 
     let exportText(m: Module ns: Names e: model.Export): String =
@@ -430,45 +433,47 @@ export
 
     let print(m: Module): String =
         begin
-            let b = stringBuilder.new()
+            let b = sb.new()
             let ns = names(m)
-            b.str("(module" <> named(m.name) <> "\n")
+            sb.str(b "(module" <> named(m.name) <> "\n")
             for g = 0 upto vector.length(:model.RecGroup m.types) - 1 do
                 let group = vector.get(:model.RecGroup m.types g)
-                if extent group is 1 then b.str("  " <> subType(m group[0]) <> "\n")
+                if extent group is 1 then sb.str(b "  " <> subType(m group[0]) <> "\n")
                 else
-                    b.str("  (rec\n")
-                    for k = 0 upto extent group - 1 do b.str("    " <> subType(m group[k]) <> "\n") end
-                    b.str("  )\n")
+                    sb.str(b "  (rec\n")
+                    for k = 0 upto extent group - 1 do sb.str(b "    " <> subType(m group[k]) <> "\n") end
+                    sb.str(b "  )\n")
                 end
             end
             for k = 0 upto vector.length(:model.Import m.imports) - 1 do
-                b.str("  " <> importText(m vector.get(:model.Import m.imports k)) <> "\n")
+                sb.str(b "  " <> importText(m vector.get(:model.Import m.imports k)) <> "\n")
             end
             for k = 0 upto vector.length(:model.Memory m.memories) - 1 do
                 let mem = vector.get(:model.Memory m.memories k)
-                b.str("  (memory" <> named(mem.name) <> limits(mem.min mem.max) <> ")\n")
+                sb.str(b "  (memory" <> named(mem.name) <> limits(mem.min mem.max) <> ")\n")
             end
             for k = 0 upto vector.length(:model.Tag m.tags) - 1 do
                 let t = vector.get(:model.Tag m.tags k)
-                b.str("  (tag" <> named(t.name) <> " (type " <> typeId(m t.type) <> "))\n")
+                sb.str(b "  (tag" <> named(t.name) <> " (type " <> typeId(m t.type) <> "))\n")
             end
             for k = 0 upto vector.length(:model.Global m.globals) - 1 do
                 let g = vector.get(:model.Global m.globals k)
-                b.str("  (global" <> named(g.name) <> " " <> globalType(m g.type g.mutable) <> constant(m ns g.init)
+                sb.str(b "  (global" <> named(g.name) <> " " <> globalType(m g.type g.mutable) <> constant(m ns g.init)
                       <> ")\n")
             end
             for k = 0 upto vector.length(:model.Export m.exports) - 1 do
-                b.str("  " <> exportText(m ns vector.get(:model.Export m.exports k)) <> "\n")
+                sb.str(b "  " <> exportText(m ns vector.get(:model.Export m.exports k)) <> "\n")
             end
-            if m.start >= 0 then b.str("  (start " <> id(spaceName(m isFunc ns.functions m.start) m.start) <> ")\n") end
+            if m.start >= 0 then
+                sb.str(b "  (start " <> id(spaceName(m isFunc ns.functions m.start) m.start) <> ")\n")
+            end
             if vector.length(:Int m.declared) > 0 then
-                b.str("  (elem declare func")
+                sb.str(b "  (elem declare func")
                 for k = 0 upto vector.length(:Int m.declared) - 1 do
                     let f = vector.get(:Int m.declared k)
-                    b.str(" " <> id(spaceName(m isFunc ns.functions f) f))
+                    sb.str(b " " <> id(spaceName(m isFunc ns.functions f) f))
                 end
-                b.str(")\n")
+                sb.str(b ")\n")
             end
             for k = 0 upto vector.length(:model.Function m.functions) - 1 do
                 function(b m ns vector.get(:model.Function m.functions k))
@@ -476,9 +481,9 @@ export
             for k = 0 upto vector.length(:model.Data m.data) - 1 do
                 let d = vector.get(:model.Data m.data k)
                 let offset = if d.offset < 0 then "" else " (i32.const " <> conv.int(d.offset) <> ")" end
-                b.str("  (data" <> named(d.name) <> offset <> " " <> quoted(d.bytes) <> ")\n")
+                sb.str(b "  (data" <> named(d.name) <> offset <> " " <> quoted(d.bytes) <> ")\n")
             end
-            b.str(")\n")
-            b.toString()
+            sb.str(b ")\n")
+            sb.toString(b)
         end
 end

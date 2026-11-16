@@ -5,7 +5,7 @@ import
     strings = util/path : util/Path
     collections/vector : collections/Vector
     util/maybe : util/Maybe
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     hashLib = util/hash : util/Hash
     os/fileStats : os/FileStats
     stringOp = string : StringOp
@@ -20,8 +20,8 @@ export
     let fromString(s: String): T =
         begin
             let absolute = strings.isAbsolute(s)
-            let b = stringBuilder.new()
-            if absolute then b.char('/') ok end
+            let b = sb.new()
+            if absolute then sb.char(b '/') ok end
             let n = stringOp.length(s)
             let var start = 0
             let var count = 0
@@ -29,14 +29,14 @@ export
                 if {i is n} orif {stringOp.getChar(s i) is '/'} then
                     let size = i - start
                     if {size > 0} andif not({size is 1} andif {stringOp.getChar(s start) is '.'}) then
-                        if count > 0 then b.char('/') end
-                        b.sub(s start size)
+                        if count > 0 then sb.char(b '/') end
+                        sb.sub(b s start size)
                         count := count + 1
                     end
                     start := i + 1
                 end
             end
-            if {count is 0} andif not(absolute) then "." else b.toString() end
+            if {count is 0} andif not(absolute) then "." else sb.toString(b) end
         end
 
     let toString(p: T): String = p
@@ -93,10 +93,12 @@ export
     let readText(p: T): String =
         begin
             let r = reader.file(p)
-            let b = stringBuilder.new()
-            while reader.more(r) do b.str(reader.getString(r 65536)) end
+            let b = sb.new()
+            (* Each piece is a fresh string no one else holds, so the builder
+             * can share it *)
+            while reader.more(r) do sb.strShared(b reader.getString(r 65536)) end
             reader.close(r)
-            b.toString()
+            sb.toString(b)
         end
 
     let writeText(p: T text: String): Ok =

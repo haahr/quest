@@ -19,7 +19,7 @@ import
     util/sort : util/Sort
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
     reader : Reader
     writer : Writer
@@ -31,13 +31,13 @@ export
         if not(reader.more(r)) then
             maybe.none(:String)
         else
-            let b = stringBuilder.new()
+            let b = sb.new()
             let var reading = true
             while reading andif reader.more(r) do
                 let c = reader.getChar(r)
-                if c is '\n' then reading := false else b.char(c) ok end
+                if c is '\n' then reading := false else sb.char(b c) ok end
             end
-            maybe.some(:String b.toString())
+            maybe.some(:String sb.toString(b))
         end
 
     (* Writes a record whose members are names[i]: values[i], after flushing
@@ -57,12 +57,12 @@ export
     let failed(r: repl.T w: writer.T sm: location.SourceMap bag: diagbag.T): Ok =
         begin
             let shown = maybe.unwrapOr(:location.SourceMap r.errorSource sm)
-            let b = stringBuilder.new()
+            let b = sb.new()
             let var message = ""
             let var position = maybe.none(:location.Pos)
             for i = 0 upto {diagbag.count(bag) - 1} do
                 let d = diagbag.get(bag i)
-                b.str(diagnostics.format(d shown))
+                sb.strShared(b diagnostics.format(d shown))
                 if stringOp.isEmpty(message) then
                     message := diagnostics.message(d)
                     let sp = diagnostics.span(d)
@@ -75,7 +75,7 @@ export
             let values = vector.new(:json.Value)
             vector.append(:String names "error") vector.append(:json.Value values json.string(r.failure))
             vector.append(:String names "message") vector.append(:json.Value values json.string(message))
-            vector.append(:String names "rendered") vector.append(:json.Value values json.string(b.toString()))
+            vector.append(:String names "rendered") vector.append(:json.Value values json.string(sb.toString(b)))
             if maybe.isSome(:location.Pos position) then
                 let p = maybe.unwrap(:location.Pos position)
                 vector.append(:String names "line") vector.append(:json.Value values json.int(p.line))
@@ -204,16 +204,17 @@ export
     (* What a module declares, a line a member, in the order declared *)
     let showModule(name: String scope: symbols.Scope): String =
         begin
-            let b = stringBuilder.new()
-            b.str("module ").str(name)
+            let b = sb.new()
+            sb.str(b "module ")
+            sb.str(b name)
             for i = 0 upto {vector.length(:symbols.Symbol scope.declarations) - 1} do
                 case vector.get(:symbols.Symbol scope.declarations i)
-                    when valueSymbol with x then b.str("\n    ").str(showValue(x.sym.name x.sym))
-                    when typeSymbol with x then b.str("\n    ").str(showType(x.sym.name x.sym))
-                    else b
+                    when valueSymbol with x then sb.str(b "\n    ") sb.strShared(b showValue(x.sym.name x.sym))
+                    when typeSymbol with x then sb.str(b "\n    ") sb.strShared(b showType(x.sym.name x.sym))
+                    else ok
                 end
             end
-            b.toString()
+            sb.toString(b)
         end
 
     (* What the name at cursor is, as the REPL shows a binding of it *)

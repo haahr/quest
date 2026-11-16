@@ -5,7 +5,7 @@ import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
     collections/vector : collections/Vector
-    util/stringBuilder : util/StringBuilder
+    sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
     stringOp = string : StringOp
     conv : Conv
@@ -42,25 +42,25 @@ export
      * outside printable ASCII escaped, the last as three octal digits *)
     let quoted(s: String): String =
         begin
-            let b = stringBuilder.new()
-            b.char('"')
+            let b = sb.new()
+            sb.char(b '"')
             for i = 0 upto {stringOp.length(s) - 1} do
                 let c = stringOp.getChar(s i)
                 let code = ascii.val(c)
                 if {c is '"'} orif {c is '\\'} then
-                    b.char('\\')
-                    b.char(c)
+                    sb.char(b '\\')
+                    sb.char(b c)
                 elsif {code < 32} orif {code >= 127} then
-                    b.char('\\')
-                    b.str(conv.int(code / 64))
-                    b.str(conv.int({code / 8} - {8 * {code / 64}}))
-                    b.str(conv.int(code - {8 * {code / 8}}))
+                    sb.char(b '\\')
+                    sb.str(b conv.int(code / 64))
+                    sb.str(b conv.int({code / 8} - {8 * {code / 64}}))
+                    sb.str(b conv.int(code - {8 * {code / 8}}))
                 else
-                    b.char(c)
+                    sb.char(b c)
                 end
             end
-            b.char('"')
-            b.toString()
+            sb.char(b '"')
+            sb.toString(b)
         end
 
     let data(d: ssa.Data): Array(String) =

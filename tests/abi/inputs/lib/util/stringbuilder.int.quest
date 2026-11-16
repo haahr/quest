@@ -4,56 +4,67 @@ export
     (* =========================================================================
      * Fast String Building (StringBuilder)
      *
-     * A builder accumulates text in a native buffer. Its methods are components
-     * of the builder itself, and each method that adds to the builder returns
-     * it, so calls chain:
+     * A builder accumulates text in a native buffer. Each function that adds
+     * to the builder takes it first and returns ok, and the module is usually
+     * imported under a short name:
      *
-     *     let b = stringBuilder.new();
-     *     b.str("x = ").int(x).char('\n');
-     *     writer.putString(writer.output b.toString());
+     *     let b = sb.new()
+     *     sb.str(b "x = ")
+     *     sb.int(b x)
+     *     sb.char(b '\n')
+     *     writer.putString(writer.output sb.toString(b))
+     *
+     * toString empties the builder, which can then be reused.
      * ====================================================================== *)
 
-    Def Rec T = Tuple
-        (* Append a string *)
-        str(s: String): T
-
-        (* Append a single character *)
-        char(c: Char): T
-
-        (* Append an integer in decimal, with ~ for negative numbers, as
-         * conv.int does *)
-        int(n: Int): T
-
-        (* Append a real number, as conv.real formats it *)
-        real(r: Real): T
-
-        (* Append "true" or "false" *)
-        bool(b: Bool): T
-
-        (* Append an unsigned 64-bit word in decimal *)
-        word(w: wordLib.T): T
-
-        (* Append the substring of s of the given size at start; raises
-         * string.error, as string.getSub does, if the substring is not within
-         * s *)
-        sub(s: String start: Int size: Int): T
-
-        (* Append n copies of character c; raises string.error if n is
-         * negative *)
-        repeat(c: Char n: Int): T
-
-        (* Reset the builder to empty *)
-        clear(): T
-
-        (* The number of characters accumulated *)
-        length(): Int
-
-        (* A new string holding the accumulated characters; the builder is
-         * unchanged, so it can be reused (for example after clear) without
-         * affecting strings it returned earlier *)
-        toString(): String
-    end
+    (* A builder *)
+    T::TYPE
 
     (* Create a new empty string builder *)
     new(): T
+
+    (* Append a string, copying it, so that changing s later does not change
+     * the result *)
+    str(b: T s: String): Ok
+
+    (* Append a string without copying it: b may keep s itself until its next
+     * toString or clear, and the caller promises not to change s until then.
+     * If s is changed before then, the result holds the old text or the new,
+     * unspecified which *)
+    strShared(b: T s: String): Ok
+
+    (* Append a single character *)
+    char(b: T c: Char): Ok
+
+    (* Append an integer in decimal, with ~ for negative numbers, as
+     * conv.int does *)
+    int(b: T n: Int): Ok
+
+    (* Append a real number, as conv.real formats it *)
+    real(b: T r: Real): Ok
+
+    (* Append "true" or "false" *)
+    bool(b: T v: Bool): Ok
+
+    (* Append an unsigned 64-bit word in decimal *)
+    word(b: T w: wordLib.T): Ok
+
+    (* Append the substring of s of the given size at start; raises
+     * string.error, as string.getSub does, if the substring is not within
+     * s *)
+    sub(b: T s: String start: Int size: Int): Ok
+
+    (* Append n copies of character c; raises string.error if n is
+     * negative *)
+    repeat(b: T c: Char n: Int): Ok
+
+    (* Reset the builder to empty *)
+    clear(b: T): Ok
+
+    (* The number of characters accumulated *)
+    length(b: T): Int
+
+    (* A new string holding the accumulated characters, after which the
+     * builder is empty, as clear leaves it *)
+    toString(b: T): String
 end

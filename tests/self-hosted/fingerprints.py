@@ -93,9 +93,9 @@ export
                 for i = 0 upto 63 do
                     let addr = start + i
                     let w = value.be(:word.T value.fetch(value.new(:Int addr - addr % 8) 0))
-                    b.char(ascii.char(word.toInt(word.extract(w 8 * {addr % 8} 8))))
+                    stringBuilder.char(b ascii.char(word.toInt(word.extract(w 8 * {addr % 8} 8))))
                 end
-                b.toString()
+                stringBuilder.toString(b)
             end
         end
 end

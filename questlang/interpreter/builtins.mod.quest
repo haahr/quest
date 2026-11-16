@@ -285,14 +285,14 @@ export
             let next(): Char = if reader.more(r) then reader.getChar(r) else dynamicFailure(:Char) end
             let var c = next()
             while {c is ' '} orif {c is '\t'} orif {c is '\r'} orif {c is '\n'} do c := next() end
-            b.char(c)
+            stringBuilder.char(b c)
             if {c is '{'} orif {c is '['} then
                 let var depth = 1
                 let var inString = false
                 let var escaped = false
                 while depth > 0 do
                     let d = next()
-                    b.char(d)
+                    stringBuilder.char(b d)
                     if inString then
                         if escaped then escaped := false
                         elsif d is '\\' then escaped := true
@@ -308,7 +308,7 @@ export
                 let var done = false
                 while not(done) do
                     let d = next()
-                    b.char(d)
+                    stringBuilder.char(b d)
                     if escaped then escaped := false
                     elsif d is '\\' then escaped := true
                     elsif d is '"' then done := true
@@ -322,12 +322,12 @@ export
                         orif {d is '}'} then
                         done := true
                     else
-                        b.char(d)
+                        stringBuilder.char(b d)
                         ok
                     end
                 end
             end
-            b.toString()
+            stringBuilder.toString(b)
         end
 
     (* dynamic.intern(rd): reads one dynamic value from rd, as dynamic.extern
@@ -440,20 +440,24 @@ export
              * callers do *)
             fn("quest_strutil_to_real" fun(a: Args): Value vReal(maybe.unwrap(:Real strutil.tryToReal(str(a[0])))))
 
-            (* StringBuilder: the native buffer is a native builder, whose
-             * methods the buffer's functions are *)
+            (* StringBuilder: an interpreted builder is one of the host's,
+             * whose functions are the natives' *)
             fn("quest_sb_new" fun(a: Args): Value option vStringBuilder of Value with let sb = stringBuilder.new() end)
-            fn("quest_sb_append_string" fun(a: Args): Value begin sb(a[0]).str(str(a[1])) unit end)
-            fn("quest_sb_append_char" fun(a: Args): Value begin sb(a[0]).char(chr(a[1])) unit end)
-            fn("quest_sb_append_int" fun(a: Args): Value begin sb(a[0]).int(int(a[1])) unit end)
-            fn("quest_sb_append_real" fun(a: Args): Value begin sb(a[0]).real(rl(a[1])) unit end)
-            fn("quest_sb_append_bool" fun(a: Args): Value begin sb(a[0]).bool(bool(a[1])) unit end)
-            fn("quest_sb_append_word" fun(a: Args): Value begin sb(a[0]).word(wd(a[1])) unit end)
-            fn("quest_sb_append_sub" fun(a: Args): Value begin sb(a[0]).sub(str(a[1]) int(a[2]) int(a[3])) unit end)
-            fn("quest_sb_append_repeat" fun(a: Args): Value begin sb(a[0]).repeat(chr(a[1]) int(a[2])) unit end)
-            fn("quest_sb_clear" fun(a: Args): Value begin sb(a[0]).clear() unit end)
-            fn("quest_sb_length" fun(a: Args): Value vInt(sb(a[0]).length()))
-            fn("quest_sb_to_string" fun(a: Args): Value vString(sb(a[0]).toString()))
+            fn("quest_sb_append_string" fun(a: Args): Value begin stringBuilder.str(sb(a[0]) str(a[1])) unit end)
+            fn("quest_sb_append_string_shared" fun(a: Args): Value
+                begin stringBuilder.strShared(sb(a[0]) str(a[1])) unit end)
+            fn("quest_sb_append_char" fun(a: Args): Value begin stringBuilder.char(sb(a[0]) chr(a[1])) unit end)
+            fn("quest_sb_append_int" fun(a: Args): Value begin stringBuilder.int(sb(a[0]) int(a[1])) unit end)
+            fn("quest_sb_append_real" fun(a: Args): Value begin stringBuilder.real(sb(a[0]) rl(a[1])) unit end)
+            fn("quest_sb_append_bool" fun(a: Args): Value begin stringBuilder.bool(sb(a[0]) bool(a[1])) unit end)
+            fn("quest_sb_append_word" fun(a: Args): Value begin stringBuilder.word(sb(a[0]) wd(a[1])) unit end)
+            fn("quest_sb_append_sub" fun(a: Args): Value
+                begin stringBuilder.sub(sb(a[0]) str(a[1]) int(a[2]) int(a[3])) unit end)
+            fn("quest_sb_append_repeat" fun(a: Args): Value
+                begin stringBuilder.repeat(sb(a[0]) chr(a[1]) int(a[2])) unit end)
+            fn("quest_sb_clear" fun(a: Args): Value begin stringBuilder.clear(sb(a[0])) unit end)
+            fn("quest_sb_length" fun(a: Args): Value vInt(stringBuilder.length(sb(a[0]))))
+            fn("quest_sb_to_string" fun(a: Args): Value vString(stringBuilder.toString(sb(a[0]))))
 
             (* ArrayOp *)
             exc("quest_exc_arrayOp_error" primitives.arrayOpError)

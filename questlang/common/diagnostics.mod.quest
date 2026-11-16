@@ -101,9 +101,15 @@ export
             while i < extent frames do
                 let var j = i
                 while {j < extent frames} andif stringOp.equal(frames[j] frames[i]) do j := j + 1 end
-                sb.str("  in ").str(frames[i]).char('\n')
+                stringBuilder.str(sb "  in ")
+                stringBuilder.str(sb frames[i])
+                stringBuilder.char(sb '\n')
                 if {j - i} > 1 then
-                    sb.str("  ... ").str(frames[i]).str(" repeated ").int({j - i} - 1).str(" more times\n")
+                    stringBuilder.str(sb "  ... ")
+                    stringBuilder.str(sb frames[i])
+                    stringBuilder.str(sb " repeated ")
+                    stringBuilder.int(sb {j - i} - 1)
+                    stringBuilder.str(sb " more times\n")
                 end
                 i := j
             end
@@ -153,14 +159,24 @@ export
             let located = {stringOp.length(sp.file) > 0} andif {sp.startOffset >= 0}
             let pos = location.locate(sm if located then sp.startOffset else 0 end)
             if located then
-                sb.str(sp.file).char(':').int(pos.line).char(':').int(pos.col).str(": ")
+                stringBuilder.str(sb sp.file)
+                stringBuilder.char(sb ':')
+                stringBuilder.int(sb pos.line)
+                stringBuilder.char(sb ':')
+                stringBuilder.int(sb pos.col)
+                stringBuilder.str(sb ": ")
             end
-            sb.str(sevStr).str(": ").str(d.message).char('\n')
+            stringBuilder.str(sb sevStr)
+            stringBuilder.str(sb ": ")
+            stringBuilder.str(sb d.message)
+            stringBuilder.char(sb '\n')
 
             let lineStr = if located then location.getLine(sm pos.line) else "" end
             let lineLen = stringOp.length(lineStr)
             if lineLen > 0 then
-                sb.str("    ").str(lineStr).char('\n')
+                stringBuilder.str(sb "    ")
+                stringBuilder.str(sb lineStr)
+                stringBuilder.char(sb '\n')
 
                 let padCount = if pos.col > 1 then pos.col - 1 else 0 end
                 let var spanLen = sp.endOffset - sp.startOffset
@@ -169,7 +185,10 @@ export
                 if {maxLen > 0} andif {spanLen > maxLen} then
                     spanLen := maxLen
                 end
-                sb.str("    ").repeat(' ' padCount).repeat('^' spanLen).char('\n')
+                stringBuilder.str(sb "    ")
+                stringBuilder.repeat(sb ' ' padCount)
+                stringBuilder.repeat(sb '^' spanLen)
+                stringBuilder.char(sb '\n')
             end
 
             (* Secondary labels, each in its own file (an import in the main
@@ -184,11 +203,24 @@ export
                     if {lpos.line >= 1} andif {lpos.line <= location.lineCount(lsm)} then
                         let var dashes = label.sp.endOffset - label.sp.startOffset
                         if dashes < 1 then dashes := 1 end
-                        sb.str("  ::: ").str(label.sp.file).char(':').int(lpos.line).char(':').int(lpos.col).char('\n')
-                        sb.str("    ").str(lline).char('\n')
-                        sb.str("    ").repeat(' ' if lpos.col > 1 then lpos.col - 1 else 0 end).repeat('-' dashes)
-                        if stringOp.length(label.message) > 0 then sb.str(" note: ").str(label.message) end
-                        sb.char('\n')
+                        stringBuilder.str(sb "  ::: ")
+                        stringBuilder.str(sb label.sp.file)
+                        stringBuilder.char(sb ':')
+                        stringBuilder.int(sb lpos.line)
+                        stringBuilder.char(sb ':')
+                        stringBuilder.int(sb lpos.col)
+                        stringBuilder.char(sb '\n')
+                        stringBuilder.str(sb "    ")
+                        stringBuilder.str(sb lline)
+                        stringBuilder.char(sb '\n')
+                        stringBuilder.str(sb "    ")
+                        stringBuilder.repeat(sb ' ' if lpos.col > 1 then lpos.col - 1 else 0 end)
+                        stringBuilder.repeat(sb '-' dashes)
+                        if stringOp.length(label.message) > 0 then
+                            stringBuilder.str(sb " note: ")
+                            stringBuilder.str(sb label.message)
+                        end
+                        stringBuilder.char(sb '\n')
                     end
                 end
             end
@@ -198,21 +230,24 @@ export
             if noteCount > 0 then
                 for i = 0 upto {noteCount - 1} do
                     let note = vector.get(:String d.notes i)
-                    sb.str("  = note: ")
+                    stringBuilder.str(sb "  = note: ")
                     for j = 0 upto {stringOp.length(note) - 1} do
                         let c = stringOp.getChar(note j)
-                        if ascii.val(c) is 10 then sb.str("\n          ") else sb.char(c) end
+                        if ascii.val(c) is 10 then stringBuilder.str(sb "\n          ")
+                        else stringBuilder.char(sb c) end
                     end
-                    sb.char('\n')
+                    stringBuilder.char(sb '\n')
                 end
             end
 
             if maybe.isSome(:String d.help) then
-                sb.str("  = help: ").str(maybe.unwrap(:String d.help)).char('\n')
+                stringBuilder.str(sb "  = help: ")
+                stringBuilder.str(sb maybe.unwrap(:String d.help))
+                stringBuilder.char(sb '\n')
             end
             traceLines(sb d.trace)
 
-            sb.toString()
+            stringBuilder.toString(sb)
         end
 
     let render(d: Diagnostic sm: location.SourceMap w: writer.T): Ok =
