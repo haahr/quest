@@ -177,7 +177,9 @@ comparison of components and buys nothing.
 **Where to start.** [option-values.md](option-values.md): its design, and what adopting or dropping it takes.
 
 **Done when.** The representation is built, or the single-word `is` rule is undone in both compilers, the runtime,
-the interpreters, the tests, and extensions.md, and option-values.md is deleted.
+the interpreters, the tests, and extensions.md, and option-values.md is deleted. Variants follow options' rule
+(extensions.md, "Variants as Values", `quest_variant_is`): if the rule is undone, so is theirs, and compiled variants,
+two words with no location, need a box or `is` on them is refused.
 
 ---
 
@@ -238,3 +240,49 @@ overlay.
 
 **Done when.** Either facility exists with tests, or the idea is dropped.
 
+---
+
+## A dynamic reader cannot read on after a document it refused
+
+**Problem.** `dynamic.intern` reading documents one after another from one reader: once it refuses a document (one
+that repeats a key, docs/dynamic.md §2.1, or any that does not decode), every later read from that reader raises
+`dynamic.error` too, though the next document is well formed. Found 2026-11-15 writing
+`tests/source/stdlib/dynamic_repeated_keys.quest`, which therefore reads each document from a file of its own.
+
+**Reproduce.** A program that calls `dynamic.intern(reader.input)` three times, catching `dynamic.error` each time,
+given on standard input three documents, one per line, the second repeating a key: the third read fails. Check every
+target: compiled, the JIT, and both interpreters.
+
+**Where to start.** How a read consumes its document before decoding it: `readDocument` and `dynamicIntern` in
+`questlang/interpreter/builtins.mod.quest`, the bootstrap's `dynamic_reader.py`, and the runtime's reading in
+`runtime/quest_serialization.c`. A refused document should be consumed whole, so the reader stands at the next one.
+
+**Done when.** A read after a refused document reads the next one on every target, and `dynamic_repeated_keys` (or
+a new test) reads its documents from standard input.
+
+---
+
+## Bounded quantifiers in interfaces are untested on the wasm backend
+
+**Problem.** An interface's `All(A::POWER(Small) x: A) Int` (ABI 77) was checked on every target on `main`, but not on
+the wasm backend's view maps, which were not on `main` then.
+
+**Where to start.** `tests/source/modules/bounded_generic_import.quest` (with `geom/bounded`) and
+`modules/bounded_abstract_types` (with `geom/held`), compiled to wasm.
+
+**Done when.** Both pass on the wasm backend, or it is fixed so that they do.
+
+---
+
+## Faults the wasm review reported that no probe reproduced
+
+**Problem.** The wasm review (docs/wasm-review.md §7, on the wasm branch) reported three faults that probes written
+on 2026-11-15 did not show, so nothing was planned for them:
+- an `out` argument that needs a conversion and that the callee does not assign (a segmentation fault natively);
+- subsumption of an auto value with a covariant record component (every mode gave the right answer);
+- the JIT's "a use of variable qj_1_record (423), which nothing binds", for which the review gives no program.
+
+**Where to start.** A program that shows one, run compiled, by the JIT, and by both interpreters.
+
+**Done when.** A program shows one and it is fixed with that program as its test, or a review of the code finds the
+fault gone.

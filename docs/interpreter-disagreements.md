@@ -6,7 +6,7 @@ when `tools/check` ran their interpreter phases. Both compilers' interpreters gi
 interpreter phases (`@skip-phase: interpret, run_ir_*`), with a comment pointing here, until these are settled.
 
 None of the three is new. The release (3a45d707, 2026-11-13) and the bootstrap from before
-[shared-faults-plan.md](shared-faults-plan.md)'s second batch give the interpreters' answers too. The step 26 tests
+the shared-faults plan's second batch (e43ccb7a..18c8e54a) give the interpreters' answers too. The step 26 tests
 were first recorded through the bootstrap's `--update-golden`, whose summary did not show the interpreter phases
 failing; `tools/check` was the first full run.
 
