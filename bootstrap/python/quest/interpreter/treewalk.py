@@ -1058,10 +1058,11 @@ def run_closure(closure: QClosure, args: list[QValue], offset: Optional[int] = N
     env.call_stack.append(closure.trace_name)
     try:
         if isinstance(closure.body, TypedExternal):
-            from quest.interpreter.builtins import resolve_external_symbol
+            from quest.interpreter.builtins import call_external
 
-            ext_val = resolve_external_symbol(closure.body.symbol)
-            return ext_val.fn(*args) if isinstance(ext_val, QBuiltinFun) else ext_val
+            # The type parameters' types, which the type applications bound
+            types = tuple(closure.type_bindings[i] for i in closure.type_param_ids if i in closure.type_bindings)
+            return call_external(closure.body.symbol, types, args)
         call_env = env.push_scope()
         call_env.bind_types(closure.type_bindings)
         for param_name, arg_val in zip(closure.params, args):

@@ -39,7 +39,9 @@ is in [compiler-organization.md](compiler-organization.md) §6.
   (`stringOp.error`); the implementation catches it and raises the interpreted one, which the interpreted library binds
   to `error` through the same table, so the program's `try` catches it. Only what acts on interpreted values
   themselves is the interpreter's own: `dynamic.copy`, `extern`, and `intern`, the identity hash of what `is`
-  compares, and `system.args`.
+  compares, and `system.args`. The identity hash takes its type argument, as compiled code's takes a descriptor
+  (`callExternal` in the self-hosted interpreters, `call_external` in the bootstrap's), so that it hashes options and
+  variants under the rule `is` uses at that type.
 
 ```
                               ┌─────────────────────────┐

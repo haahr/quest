@@ -712,9 +712,9 @@ export
             when opConvert with x then atom(it x.value f)
             when opExternal with x then builtins.resolveExternal(x.symbol)
             when opCallExternal with x then
-                let ext = builtins.resolveExternal(x.symbol)
-                let values = atoms(it x.args f)
-                case ext when vBuiltin with b then b.b.fn(values) else ext end
+                let types = array of(extent x.typeArgs tm.okType)
+                for i = 0 upto {extent x.typeArgs - 1} do types[i] := resolve(f x.typeArgs[i]) end
+                builtins.callExternal(x.symbol types atoms(it x.args f))
             when opMakeTuple with x then makeTuple(it atoms(it x.args f) x.typeComponents result f)
             when opTupleField with x then
                 let t = tupleOf(atom(it x.tup f))

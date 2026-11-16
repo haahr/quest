@@ -88,7 +88,7 @@ from quest.types import (
     is_type_equal,
 )
 from quest.repr.descriptors import hole_var
-from quest.interpreter.builtins import resolve_external_symbol
+from quest.interpreter.builtins import call_external, resolve_external_symbol
 
 _INT_ARITHMETIC = ("+", "-", "*", "/", "mod", "%")
 _INT_RELATIONAL = ("<", "<=", ">", ">=")
@@ -441,10 +441,9 @@ class Interpreter:
                 return self.atom(v, frame)
             case ir.External(symbol=symbol):
                 return resolve_external_symbol(symbol)
-            case ir.CallExternal(symbol=symbol, args=args):
-                ext = resolve_external_symbol(symbol)
-                values = self.atoms(args, frame)
-                return ext.fn(*values) if isinstance(ext, QBuiltinFun) else ext
+            case ir.CallExternal(symbol=symbol, type_args=type_args, args=args):
+                types = tuple(frame.resolve(t) for t in type_args)
+                return call_external(symbol, types, self.atoms(args, frame))
             case ir.MakeTuple(args=args, type_components=type_components):
                 return self.make_tuple(self.atoms(args, frame), type_components, result, frame)
             case ir.TupleField(tuple=t, index=index):

@@ -1040,10 +1040,14 @@ export
             let result = try
                 case c.body.form
                     when exprExternal with x then
-                        case builtins.resolveExternal(x.symbol)
-                            when vBuiltin with b then b.b.fn(args)
-                            else builtins.resolveExternal(x.symbol)
+                        (* The type parameters' types, which the type
+                         * applications bound, resolved *)
+                        let types = vector.new(:tm.Type)
+                        for i = 0 upto {extent c.typeParamIds - 1} do
+                            let t = hashMap.get(:Int :tm.Type c.typeBindings c.typeParamIds[i])
+                            if maybe.isSome(:tm.Type t) then vector.append(:tm.Type types maybe.unwrap(:tm.Type t)) end
                         end
+                        builtins.callExternal(x.symbol vector.toArray(:tm.Type types) args)
                     else
                         let callEnv = pushScope(env)
                         bindTypes(callEnv c.typeBindings)

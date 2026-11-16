@@ -18,7 +18,10 @@ import struct
 import subprocess
 import sys
 import tempfile
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
+
+if TYPE_CHECKING:
+    from quest.types.model import QType
 
 try:
     import readline as line_editor
@@ -863,19 +866,24 @@ def _quest_hash_combine(h1: QWord, h2: QWord) -> QWord:
     ) & 0xFFFF_FFFF_FFFF_FFFF
     return QWord(combined)
 
-def _quest_identity_hash(v: QValue) -> QWord:
+def _quest_identity_hash(v: QValue, t: Optional[QType] = None) -> QWord:
     """util/hash's identityHash (quest_identity_hash in the runtime): a hash
-    of v consistent with is (qvalue_is), so that values is finds the same hash
-    alike, as a hash table keyed by identity needs.
+    of v consistent with is (qvalue_is) at the type t, the resolved type
+    argument when known, so that values is finds the same hash alike, as a hash
+    table keyed by identity needs.
 
-    Scalars hash by value, a Real by its bits with ~0.0 as 0.0. An option
-    whose payload has no components or one hashes by its case's name and that
-    component, which covers the options is compares by content at any type
-    (docs/extensions.md, Options as Values), and a variant by its case's name
-    and its value (Variants as Values). Anything else hashes by its
-    object's identity. The result is mixed by splitmix64, as the runtime's is,
-    but the hashes are not the runtime's: tags are hashed by name, and
-    identities are Python objects', not addresses."""
+    Scalars hash by value, a Real by its bits with ~0.0 as 0.0. Options and
+    variants follow qvalue_is (docs/extensions.md, Options as Values, Variants
+    as Values): an option of a case without components by its case's name, and
+    one of a single-word option type's case by its component too, at the
+    component's type; a variant by its case's name and its value at the case's
+    type. Any other option or variant, or one whose type is not known, hashes
+    by its object's identity, never by a component that could change after it
+    is stored (a var one); so does anything else. The result is mixed by
+    splitmix64, as the runtime's is, but the hashes are not the runtime's: tags
+    are hashed by name, and identities are Python objects', not addresses."""
+    from quest.types.reduce import option_identity, variant_cases
+
     match v:
         case QInt(value=val) | QWord(value=val):
             raw = val & 0xFFFF_FFFF_FFFF_FFFF
@@ -889,23 +897,38 @@ def _quest_identity_hash(v: QValue) -> QWord:
             raw = struct.unpack(">Q", struct.pack(">d", val + 0.0))[0]
         case QOk():
             raw = 0
-        case QOption(tag=tag, payload=payload) if payload is None or (
-                isinstance(payload, QTuple) and len(payload.elements) <= 1):
-            # As is compares them at any type (docs/extensions.md, Options as
-            # Values): a case without components by its name, and one of a
-            # single-word type by its component too
+        case QOption(tag=tag, payload=payload):
+            rule = option_identity(t) if t is not None else None
+            if rule is not None and tag in rule.empty:
+                raw = _string_hash(tag)
+            elif rule is not None and tag == rule.single and isinstance(payload, QTuple) and payload.elements:
+                raw = _string_hash(tag) ^ _quest_identity_hash(payload.elements[0], rule.component).value
+            else:
+                raw = id(v) & 0xFFFF_FFFF_FFFF_FFFF
+        case QVariant(tag=tag, payload=None):
             raw = _string_hash(tag)
-            if payload is not None and payload.elements:
-                raw ^= _quest_identity_hash(payload.elements[0]).value
         case QVariant(tag=tag, payload=payload):
-            # As is compares them (docs/extensions.md, Variants as Values): by
-            # case, and its value
-            raw = _string_hash(tag)
-            if payload is not None:
-                raw ^= _quest_identity_hash(payload).value
+            cases = variant_cases(t) if t is not None else None
+            case = next((c for c in cases or () if c.name == tag), None)
+            if case is None or case.type_val is None:
+                raw = id(v) & 0xFFFF_FFFF_FFFF_FFFF
+            else:
+                raw = _string_hash(tag) ^ _quest_identity_hash(payload, case.type_val).value
         case _:
             raw = id(v) & 0xFFFF_FFFF_FFFF_FFFF
     return QWord(_splitmix64(raw))
+
+
+def call_external(symbol: str, types: tuple[QType, ...], args: list[QValue]) -> QValue:
+    """Calls the external function symbol with its type arguments, resolved,
+    and its arguments, as a function defined as `external "symbol"` calls it.
+    Most externals ignore the types; quest_identity_hash hashes at its type, as
+    the runtime's does with its descriptor. A symbol bound to a value is that
+    value."""
+    if symbol == "quest_identity_hash" and len(types) == 1:
+        return _quest_identity_hash(args[0], types[0])
+    ext = resolve_external_symbol(symbol)
+    return ext.fn(*args) if isinstance(ext, QBuiltinFun) else ext
 
 
 def _string_hash(s: str) -> int:

@@ -102,3 +102,18 @@ print("record hashes as its view: " <> yes(hash.identityHash(:Small small) is ha
 let mr = hashMap.newIdentityMap(:Small :Int);
 hashMap.insert(:Small :Int mr small 4);
 print("record found through its view: " <> yes(maybe.isSome(:Int hashMap.get(:Small :Int mr big))))
+;
+
+(* 10. A key whose var component changes is found again: an option that is not
+ * single-word hashes by its object, not by its components, and so does a
+ * variant holding one *)
+let mf = hashMap.newIdentityMap(:Cell :Int);
+hashMap.insert(:Cell :Int mf f1 5);
+case f1 when full with c then c.n := 2 when empty then ok end;
+print("full found after its var changed: " <> yes(maybe.isSome(:Int hashMap.get(:Cell :Int mf f1))));
+Let VC = Variant c: Cell end;
+let vc = variant c of VC with f2 end;
+let mv = hashMap.newIdentityMap(:VC :Int);
+hashMap.insert(:VC :Int mv vc 6);
+case f2 when full with c then c.n := 3 when empty then ok end;
+print("variant of full found after its var changed: " <> yes(maybe.isSome(:Int hashMap.get(:VC :Int mv vc))))
