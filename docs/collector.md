@@ -27,7 +27,7 @@ From `runtime/quest_runtime.h`, [c-representation.md](c-representation.md), and 
   layouts from a fixed table in `quest_gc.c`.
 - **Objects are their words, after a header.** A tuple is its words (`{QVal _0; int64_t _1}`), a closure two words
   (`fn`, `env`), a closure environment a struct of its captures, an option a tag and words, an array a length and
-  words, a string a length, capacity, and buffer pointer, an auto value a descriptor and a word. A record's payload
+  words, a string a length and buffer pointer, an auto value a descriptor and a word. A record's payload
   also carries a descriptor (`QRecordHeader`), and a `QRecordVal` is two words, payload and dictionary, boxed when
   stored. The header word sits before the object, outside every struct (§3.2).
 - **Every aggregate slot is one word** ([runtime-design.md](runtime-design.md) §2.2), a `QVal` union: a pointer, an

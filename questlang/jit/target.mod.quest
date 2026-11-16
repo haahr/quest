@@ -8,6 +8,7 @@
 
 unsound module target : Target
 import
+    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
     questlang/common/location : questlang/common/Location
     questlang/types/env : questlang/types/Env
     questlang/types/symbols : questlang/types/Symbols
@@ -201,8 +202,9 @@ export
     let descriptorSymbol = "__jit_debug_descriptor"
     let breakSymbol = "__jit_debug_register_code"
 
-    (* A string's characters' address: its QString's data (word 2) *)
-    let bytesOf(text: String): value.T = value.fetch(value.new(:String text) 16)
+    (* A string's characters' address: its QString's data, at the offset the
+     * runtime's layout gives, since this compiler runs on that runtime *)
+    let bytesOf(text: String): value.T = value.fetch(value.new(:String text) runtimeLayout.offset("QString" "data"))
     let word(n: Int): value.T = value.new(:Int n)
 
     (* Adds object to the interface's list of objects, as its first, and

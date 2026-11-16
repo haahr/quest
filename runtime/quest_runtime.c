@@ -47,7 +47,6 @@ QString *quest_string_new(const char *src, int64_t len) {
     char *data = (char *)quest_alloc_bytes(len + 1);
     QString *s = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
     s->length = len;
-    s->capacity = len;
     s->data = data;
     if (len > 0 && src != NULL) {
         memcpy(s->data, src, (size_t)len);
@@ -65,7 +64,6 @@ QString *quest_string_concat(const QString *s1, const QString *s2) {
     char *data = (char *)quest_alloc_bytes(total + 1);
     QString *res = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
     res->length = total;
-    res->capacity = total;
     res->data = data;
     if (s1->length > 0) {
         memcpy(res->data, s1->data, (size_t)s1->length);
@@ -125,7 +123,6 @@ QString *quest_string_alloc(int64_t size, QChar init) {
     char *data = (char *)quest_alloc_bytes((size_t)size + 1);
     QString *s = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
     s->length = size;
-    s->capacity = size;
     s->data = data;
     memset(s->data, (int)init, (size_t)size);
     s->data[size] = '\0';

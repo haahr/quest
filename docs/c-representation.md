@@ -111,10 +111,10 @@ character/substring mutation (`string.setChar`, `string.setSub`, §5.5):
 ```c
 typedef struct QString {
     int64_t length;
-    int64_t capacity;
     char   *data;
 } QString;
 ```
+- Two words, the length and the bytes' address: a string never changes length, so it needs no capacity.
 - The header and character buffer (`length + 1` bytes with a trailing NUL byte) are allocated via `quest_string_new`.
 - Runtime functions `quest_string_new(const char *data, size_t len)`, `quest_string_concat(s1, s2)`, and
   `quest_string_equal(s1, s2)` provide safe string creation, concatenation, and content comparison.
@@ -612,7 +612,6 @@ In Quest, strings are mutable character sequences (supporting Cardelli's `String
 ```c
 typedef struct QString {
     int64_t length;
-    int64_t capacity;
     char   *data;     /* Null-terminated bytes, ASCII or not */
 } QString;
 ```

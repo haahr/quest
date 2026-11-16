@@ -104,11 +104,9 @@ typedef union QVal {
 /* A string (docs/c-representation.md §3.2): a header holding its length and a pointer to its bytes, a separate
  * pointer-free allocation of length + 1 bytes ending in a NUL, so that data can be passed to C as it is (a string may
  * also hold NULs of its own). Strings are mutable in place (string.setChar, string.setSub) but never change length,
- * so every string literal is a fresh quest_string_new at each evaluation, not shared static data. capacity is always
- * equal to length, and nothing reads it. */
+ * so every string literal is a fresh quest_string_new at each evaluation, not shared static data. */
 typedef struct QString {
     int64_t length;
-    int64_t capacity;
     char   *data;
 } QString;
 
@@ -281,7 +279,7 @@ static_assert(sizeof(QReal)         == 8, qreal_must_be_8_bytes);
 static_assert(sizeof(void *)        == 8, ptr_must_be_8_bytes);
 static_assert(sizeof(QVal)          == 8, qval_must_be_8_bytes);
 static_assert(sizeof(uint64_t)      == 8, u64_must_be_8_bytes);
-static_assert(sizeof(QString)       == 24, qstring_must_be_24_bytes);
+static_assert(sizeof(QString)       == 16, qstring_must_be_16_bytes);
 static_assert(sizeof(QClosure)      == 16, qclosure_must_be_16_bytes);
 static_assert(sizeof(QRecordHeader) == 8, qrecord_header_must_be_8_bytes);
 static_assert(sizeof(QRecordVal)    == 16, qrecordval_must_be_16_bytes);

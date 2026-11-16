@@ -299,7 +299,7 @@ measurement repeats step 0's and goes into `benchmarks.md`.
    but for the lengths after `toString` (§3), and the SSA shows known calls of the module's functions where closure
    calls were. Then a Markdown-only
    commit for the docs (`libraries.md` §1.2, `converting-python-to-quest.md` item 6, `arm64.md` §3), and a measurement.
-2. **Drop `capacity`** (§4); ABI bump. *Done when* the full `tools/check` passes, the JIT's tests included, and the
+2. **Drop `capacity`** (§4), done 2026-11-16 ("Drop QString's capacity"); ABI bump. *Done when* the full `tools/check` passes, the JIT's tests included, and the
    allocation is measured.
 3. **The read-only bit** (§5), with no literal changed yet: `Q_HEADER_READONLY`, the checks in
    `quest_string_set_char`, `quest_string_set_sub`, and the SSA builder's inlined `setChar`, and

@@ -202,7 +202,6 @@ QString *quest_reader_get_string(QReader *r, int64_t size) {
     buf[count] = 0;
     QString *res = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
     res->length = count;
-    res->capacity = count;
     res->data = buf;
     return res;
 }
@@ -323,7 +322,6 @@ static void quest_sb_add_string(QStringBuilder *b, QString *s) {
 static void quest_sb_add_chunk(QStringBuilder *b, char *data, int64_t len) {
     QString *chunk = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
     chunk->length = len;
-    chunk->capacity = len;
     chunk->data = data;
     quest_sb_add_string(b, chunk);
 }
@@ -444,7 +442,6 @@ QString *quest_sb_to_string(QStringBuilder *b) {
     char *data = (char *)quest_alloc_bytes((size_t)b->length + 1);
     QString *s = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
     s->length = b->length;
-    s->capacity = b->length;
     s->data = data;
     int64_t offset = 0;
     for (int64_t i = 0; i < b->chunk_count; ++i) {

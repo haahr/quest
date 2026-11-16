@@ -92,7 +92,7 @@ const QLayout quest_layout_bytes = { "bytes", Q_LAYOUT_SIZED, Q_LAYOUT_NOSCAN, 0
 Q_SIZED(quest_layout_words, "words", A);
 
 /* The runtime's values and the structures behind them */
-Q_FIXED(quest_layout_string, "QString", 24, S, S, P);
+Q_FIXED(quest_layout_string, "QString", 16, S, P);
 Q_FIXED(quest_layout_exception, "QException", 8, P);
 Q_FIXED(quest_layout_auto, "QAuto", 16, P, A);
 Q_FIXED(quest_layout_component, "QVal", 8, A);
