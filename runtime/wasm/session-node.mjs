@@ -33,9 +33,28 @@ if (isMainThread) await main(); else serve();
 // The worker: a Session, its writes made directly to the process's
 // descriptors, so that a cell's output and its records keep their order
 
+// All of b (a string or bytes) written to fd: a write to a pipe may take only
+// some, and one to a pipe whose reader is slow may say "try again" (EAGAIN),
+// after which this waits a millisecond (wasm-review.md section 1.2, 1)
+const pause = new Int32Array(new SharedArrayBuffer(4));
+function writeAll(fd, b) {
+  let bytes = typeof b === "string" ? Buffer.from(b) : b;
+  while (bytes.length > 0) {
+    let n;
+    try {
+      n = fs.writeSync(fd, bytes);
+    } catch (e) {
+      if (e.code !== "EAGAIN") throw e;
+      Atomics.wait(pause, 0, 0, 1);
+      continue;
+    }
+    bytes = bytes.subarray(n);
+  }
+}
+
 function serve() {
   const {modules, args, env, cwd, kernel, committed} = workerData;
-  const write = fd => b => fs.writeSync(fd, b);
+  const write = fd => b => writeAll(fd, b);
   const session = new Session({
     modules, args, env, cwd, mounts: {"/": new NodeMount(fs, "/")},
     stdout: write(1), stderr: write(2), record: kernel ? write(4) : null,
@@ -140,7 +159,7 @@ async function main() {
     await worker.terminate();
     await startWorker();
     const records = failure("interrupted", "interrupted");
-    if (kernel) fs.writeSync(4, records.map(r => requestLine(r)).join("\n") + "\n");
+    if (kernel) writeAll(4, records.map(r => requestLine(r)).join("\n") + "\n");
     resolve(records);
   };
   process.on("SIGINT", () => { interrupt(); });
@@ -161,7 +180,7 @@ async function main() {
 
 // The REPL's loop (repl.mjs) over standard input, read without editing
 async function repl(request) {
-  const r = new Repl(request, s => fs.writeSync(1, s), s => fs.writeSync(2, s));
+  const r = new Repl(request, s => writeAll(1, s), s => writeAll(2, s));
   r.begin();
   const input = readline.createInterface({input: process.stdin, terminal: false});
   for await (const line of input) await r.line(line);

@@ -562,6 +562,37 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
              * as expected, and its stdout run_c_compiled's dump, as the
              * bootstrap has it, printed when that phase is stopped after (as
              * linking objects alone does) or dumped *)
+            (* A wasm program's exit status above 125, which wasmtime cannot
+             * give: the core ends it with 125 and a last line on standard
+             * error naming the status (runtime/wasm/core's exitStatus), which
+             * this takes off and gives as the status *)
+            let exitAbove = fun(r: Tuple code: Int stdout: String stderr: String end):
+                Tuple code: Int stdout: String stderr: String end
+                begin
+                    let key = "quest: exit status "
+                    let e = r.stderr
+                    let var at = ~1
+                    let var from = strutil.findFrom(e key 0)
+                    while from >= 0 do
+                        at := from
+                        from := strutil.findFrom(e key from + 1)
+                    end
+                    if {r.code isnot 125} orif {at < 0} orif not(strutil.endsWith(e "\n"))
+                        orif {{at > 0} andif {stringOp.getChar(e at - 1) isnot '\n'}} then r
+                    else
+                        let digits = stringOp.getSub(e at + stringOp.length(key)
+                            {stringOp.length(e) - 1} - {at + stringOp.length(key)})
+                        let var valid = {stringOp.length(digits) > 0} andif {stringOp.length(digits) < 10}
+                        for k = 0 upto stringOp.length(digits) - 1 do
+                            if strutil.find("0123456789" stringOp.getSub(digits k 1)) < 0 then valid := false end
+                        end
+                        if not(valid) then r
+                        else
+                            tuple let code = strutil.toInt(digits) let stdout = r.stdout
+                                let stderr = stringOp.getSub(e 0 at) end
+                        end
+                    end
+                end
             let finishRun = fun(r: Tuple code: Int stdout: String stderr: String end): Ok
                 begin
                     if not(r.code is options.expectedExit) then
@@ -735,6 +766,9 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                             vector.append(:String command "inherit-env=y")
                             vector.append(:String command "--env")
                             vector.append(:String command "PWD=" <> system.currentDirectory())
+                            (* an exit status above 125 as a line (exitAbove) *)
+                            vector.append(:String command "--env")
+                            vector.append(:String command "QUEST_WASM_EXIT_LINE=1")
                             vector.append(:String command "--preload")
                             vector.append(:String command wasmRuntime.name <> "=" <> runtimePath)
                             for k = 0 upto vector.length(:String units) - 1 do
@@ -746,7 +780,7 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         for k = 0 upto extent options.programArgs - 1 do
                             vector.append(:String command options.programArgs[k])
                         end
-                        let r = system.run(vector.toArray(:String command))
+                        let r = exitAbove(system.run(vector.toArray(:String command)))
                         if system.fileExists(base) then system.removeFile(base) end
                         if system.fileExists(program) then system.removeFile(program) end
                         if system.fileExists(runtimePath) then system.removeFile(runtimePath) end

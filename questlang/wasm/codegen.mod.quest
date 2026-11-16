@@ -618,9 +618,16 @@ export
             let n = stringOp.length(s)
             emit(f model.i32Const(0))
             emit(f model.i32Const(n))
-            emit(f model.i32Const(offset))
-            emit(f model.i32Const(n))
-            emit(f i2(ops.arrayNewData rt.index("bytes") 0))
+            if n is 0 then
+                (* none from the segment, which a unit whose literals are all
+                 * empty lacks (wasm-review.md section 1.3, 3) *)
+                emit(f model.i32Const(0))
+                emit(f i1(ops.arrayNewDefault rt.index("bytes")))
+            else
+                emit(f model.i32Const(offset))
+                emit(f model.i32Const(n))
+                emit(f i2(ops.arrayNewData rt.index("bytes") 0))
+            end
             emit(f i1(ops.structNew rt.index("string")))
         end
 
@@ -2354,7 +2361,12 @@ export
                     emit(f i(ops.drop))
                 end
                 literal(f "")
-                atom(f args[0])
+                if hashMap.contains(:String :Int f.g.runtimeUnits "wasm/core.exitStatus") then
+                    emit(f i1(ops.globalGet f.g.noClosure))
+                    atom(f args[0])
+                    runtimeUnitCall(f "wasm/core.exitStatus")
+                else atom(f args[0])
+                end
                 emit(f i(ops.i32WrapI64))
                 runtimeCall(f "fatal")
                 okValue()
@@ -3998,6 +4010,9 @@ export
             elsif named("convInt") then
                 atoms(f args)
                 runtimeCall(f "convInt")
+            elsif named("realBits") then
+                atoms(f args)
+                emit(f i(ops.i64ReinterpretF64))
             elsif named("signBit") then
                 atoms(f args)
                 emit(f i(ops.i64ReinterpretF64))
@@ -5485,7 +5500,11 @@ export
                                 runtimeImport("util/realmath" field array of(arity model.f64) array of model.f64 end)
                             end
                         let coreFunction = fun(symbol: String): Ok
-                            if maybe.isSome(:Array(String) realmathFunction(symbol)) then
+                            if stringOp.equal(symbol "quest_system_exit") andif not(g.isCore) then
+                                if not(hashMap.contains(:String :Int g.runtimeUnits "wasm/core.exitStatus")) then
+                                    runtimeImport("wasm/core" "exitStatus" repTypes("n") repTypes("n"))
+                                end
+                            elsif maybe.isSome(:Array(String) realmathFunction(symbol)) then
                                 let e = maybe.unwrap(:Array(String) realmathFunction(symbol))
                                 realmathImport(e[1] if stringOp.equal(e[2] "2") then 2 else 1 end)
                             elsif maybe.isSome(:String realconvFunction(symbol)) then
@@ -5567,6 +5586,7 @@ export
             let usesCore = fun(): Bool
                 begin
                     let var any = hashMap.contains(:String :Int g.runtimeUnits "wasm/core.flushWriters")
+                        orif hashMap.contains(:String :Int g.runtimeUnits "wasm/core.exitStatus")
                     for k = 0 upto extent coreExternals - 1 do
                         if hashMap.contains(:String :Int g.runtimeUnits "wasm/core." <> coreExternals[k][1]) then
                             any := true

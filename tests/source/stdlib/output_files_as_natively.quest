@@ -1,0 +1,44 @@
+(* Output and files as natively (docs/wasm-review.md section 1.1 to 1.3, where
+ * the wasm backend differed): a Real's identity hash by its value, more than
+ * a pipe takes at once written whole, a path with two leading slashes, the
+ * empty path, a substring outside its string, a short read's bytes, and a
+ * directory's reader *)
+
+import writer : Writer;
+import reader : Reader;
+import system : System;
+import string : StringOp;
+import conv : Conv;
+import hash : Hash = util/hash : util/Hash;
+import hashMap : HashMap = collections/hashmap : collections/HashMap;
+
+let show(s: String): Ok = writer.putString(writer.output s <> "\n");
+let yes(b: Bool): String = if b then "true" else "false" end;
+
+show("1.0 and 2.0: " <> if {hash.identityHash(:Real 1.0) is hash.identityHash(:Real 2.0)} then "same" else "differ" end);
+show("0.0 and ~0.0: " <> if {hash.identityHash(:Real 0.0) is hash.identityHash(:Real ~0.0)} then "same" else "differ" end);
+let m = hashMap.newIdentityMap(:Real :Int);
+for i = 0 upto 20000 do hashMap.insert(:Real :Int m real.int(i) i) end;
+show("keys: " <> conv.int(hashMap.size(:Real :Int m)));
+
+(* 300,000 bytes, in one write, to a pipe when the runner reads it *)
+let big = string.new(300000 'x');
+let w = writer.file("output_files_as_natively.txt");
+writer.putString(w big);
+writer.close(w);
+let r = reader.file("output_files_as_natively.txt");
+show("written: " <> conv.int(string.length(reader.getString(r 400000))));
+reader.close(r);
+
+show("//tmp: " <> yes(system.fileExists("//tmp")));
+show("empty: " <> yes(system.fileExists("")));
+show("listing empty: " <> try begin system.listDirectory("") "listed" end when system.error then "system.error" end);
+show("putSubString: " <> try begin writer.putSubString(writer.output "abc" 2 5) "wrote" end
+    when writer.error then "writer.error" when string.error then "string.error" end);
+let w2 = writer.file("output_files_as_natively.txt");
+writer.putString(w2 "xy");
+writer.close(w2);
+let dest = string.new(5 '.');
+show("getSubString: " <> try begin reader.getSubString(reader.file("output_files_as_natively.txt") dest 0 5) "read" end
+    when reader.error then "reader.error" end <> " " <> dest);
+show("a directory: " <> try begin let rd = reader.file(".") yes(reader.more(rd)) end when reader.error then "reader.error" end)

@@ -39,7 +39,18 @@ const wasi = new WASI({
 // proc_exit ends the run by unwinding to here, so that node exits as it
 // does after a script, writing what it writes then (--cpu-prof's profile)
 class Exit { constructor(code) { this.code = code; } }
-const wasiImports = {...wasi.wasiImport, proc_exit(code) { throw new Exit(code); }};
+// node's fd_read of a pipe with nothing in it yet says "try again" (EAGAIN,
+// 6) where a read natively waits, so a read waits here a few milliseconds at
+// a time until the data comes (wasm-review.md section 1.2, 3)
+const pause = new Int32Array(new SharedArrayBuffer(4));
+function fd_read(...args) {
+  for (;;) {
+    const errno = wasi.wasiImport.fd_read(...args);
+    if (errno !== 6) return errno;
+    Atomics.wait(pause, 0, 0, 5);
+  }
+}
+const wasiImports = {...wasi.wasiImport, fd_read, proc_exit(code) { throw new Exit(code); }};
 const runtime = await WebAssembly.instantiate(fs.readFileSync(runtimePath), {wasi_snapshot_preview1: wasiImports});
 wasi.initialize(runtime.instance);
 // The units linked by the JIT's host (jit.mjs), so that the driver compiled to

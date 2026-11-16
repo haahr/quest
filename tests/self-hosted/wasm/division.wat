@@ -628,9 +628,8 @@
       struct.new $string
       i32.const 0
       i32.const 0
-      i32.const 225
       i32.const 0
-      array.new_data $bytes $strings
+      array.new_default $bytes
       struct.new $string
       i32.const 0
       ref.null none
@@ -667,9 +666,8 @@
       struct.new $string
       i32.const 0
       i32.const 0
-      i32.const 336
       i32.const 0
-      array.new_data $bytes $strings
+      array.new_default $bytes
       struct.new $string
       i32.const 0
       ref.null none

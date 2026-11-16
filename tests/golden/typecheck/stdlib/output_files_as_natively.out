@@ -1,0 +1,401 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('reader') : 'Reader')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('system') : 'System')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('string') : 'StringOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('hash') : 'Hash')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('hashMap') : 'HashMap')
+      ))
+    (TypedLetValue 'show' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'yes' :type Fun(b: Bool): String
+      :value (TypedFun :params (('b' : Bool)) :type Fun(b: Bool): String
+        :body (TypedIf :type String
+          :cond (TypedVar 'b' :type Bool)
+          :then (TypedString 'true' :type String)
+          :else (TypedString 'false' :type String))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString '1.0 and 2.0: ' :type String)
+            :right (TypedIf :type String
+              :cond (TypedInfix 'is' :type Bool
+                :left (TypedApp :type word.T
+                  :func (TypedTypeApp [Real] :type Fun(x: Real): word.T
+                    :func (TypedSelect 'identityHash' :type All(A :: TYPE) Fun(x: A): word.T
+                      :target (TypedVar 'hash' :type Module 'hash')))
+                  :args (
+                    (TypedReal 1.0 :type Real)
+                  ))
+                :right (TypedApp :type word.T
+                  :func (TypedTypeApp [Real] :type Fun(x: Real): word.T
+                    :func (TypedSelect 'identityHash' :type All(A :: TYPE) Fun(x: A): word.T
+                      :target (TypedVar 'hash' :type Module 'hash')))
+                  :args (
+                    (TypedReal 2.0 :type Real)
+                  )))
+              :then (TypedString 'same' :type String)
+              :else (TypedString 'differ' :type String)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString '0.0 and ~0.0: ' :type String)
+            :right (TypedIf :type String
+              :cond (TypedInfix 'is' :type Bool
+                :left (TypedApp :type word.T
+                  :func (TypedTypeApp [Real] :type Fun(x: Real): word.T
+                    :func (TypedSelect 'identityHash' :type All(A :: TYPE) Fun(x: A): word.T
+                      :target (TypedVar 'hash' :type Module 'hash')))
+                  :args (
+                    (TypedReal 0.0 :type Real)
+                  ))
+                :right (TypedApp :type word.T
+                  :func (TypedTypeApp [Real] :type Fun(x: Real): word.T
+                    :func (TypedSelect 'identityHash' :type All(A :: TYPE) Fun(x: A): word.T
+                      :target (TypedVar 'hash' :type Module 'hash')))
+                  :args (
+                    (TypedReal -0.0 :type Real)
+                  )))
+              :then (TypedString 'same' :type String)
+              :else (TypedString 'differ' :type String)))
+        )))
+    (TypedLetValue 'm' :type hashMap.T(Real Int)
+      :value (TypedTypeApp [Real Int] :type hashMap.T(Real Int)
+        :func (TypedSelect 'newIdentityMap' :type All(K :: TYPE V :: TYPE) hashMap.T(K V)
+          :target (TypedVar 'hashMap' :type Module 'hashMap'))))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInt 20000 :type Int)
+        :body (TypedApp :type Bool
+          :func (TypedTypeApp [Real Int] :type Fun(m: hashMap.T(Real Int) key: Real value: Int): Bool
+            :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K value: V): Bool
+              :target (TypedVar 'hashMap' :type Module 'hashMap')))
+          :args (
+            (TypedVar 'm' :type hashMap.T(Real Int))
+            (TypedApp :type Real
+              :func (TypedSelect 'int' :type Fun(n: Int): Real
+                :target (TypedVar 'real' :type Module 'real'))
+              :args (
+                (TypedVar 'i' :type Int)
+              ))
+            (TypedVar 'i' :type Int)
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'keys: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedTypeApp [Real Int] :type Fun(m: hashMap.T(Real Int)): Int
+                    :func (TypedSelect 'size' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V)): Int
+                      :target (TypedVar 'hashMap' :type Module 'hashMap')))
+                  :args (
+                    (TypedVar 'm' :type hashMap.T(Real Int))
+                  ))
+              )))
+        )))
+    (TypedLetValue 'big' :type String
+      :value (TypedApp :type String
+        :func (TypedSelect 'new' :type Fun(size: Int init: Char): String
+          :target (TypedVar 'string' :type Module 'string'))
+        :args (
+          (TypedInt 300000 :type Int)
+          (TypedChar 'x' :type Char)
+        )))
+    (TypedLetValue 'w' :type writer.T
+      :value (TypedApp :type writer.T
+        :func (TypedSelect 'file' :type Fun(name: String): writer.T
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedString 'output_files_as_natively.txt' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedVar 'w' :type writer.T)
+          (TypedVar 'big' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'close' :type Fun(writer: writer.T): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedVar 'w' :type writer.T)
+        )))
+    (TypedLetValue 'r' :type reader.T
+      :value (TypedApp :type reader.T
+        :func (TypedSelect 'file' :type Fun(name: String): reader.T
+          :target (TypedVar 'reader' :type Module 'reader'))
+        :args (
+          (TypedString 'output_files_as_natively.txt' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'written: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedSelect 'length' :type Fun(string: String): Int
+                    :target (TypedVar 'string' :type Module 'string'))
+                  :args (
+                    (TypedApp :type String
+                      :func (TypedSelect 'getString' :type Fun(reader: reader.T size: Int): String
+                        :target (TypedVar 'reader' :type Module 'reader'))
+                      :args (
+                        (TypedVar 'r' :type reader.T)
+                        (TypedInt 400000 :type Int)
+                      ))
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'close' :type Fun(reader: reader.T): Ok
+          :target (TypedVar 'reader' :type Module 'reader'))
+        :args (
+          (TypedVar 'r' :type reader.T)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString '//tmp: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'yes' :type Fun(b: Bool): String)
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedSelect 'fileExists' :type Fun(path: String): Bool
+                    :target (TypedVar 'system' :type Module 'system'))
+                  :args (
+                    (TypedString '//tmp' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'empty: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'yes' :type Fun(b: Bool): String)
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedSelect 'fileExists' :type Fun(path: String): Bool
+                    :target (TypedVar 'system' :type Module 'system'))
+                  :args (
+                    (TypedString '' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'listing empty: ' :type String)
+            :right (TypedTry :type String
+              :body (TypedBlock :type String
+                :bindings (
+                  (TypedExprStmt
+                    :expr (TypedApp :type Array(String)
+                      :func (TypedSelect 'listDirectory' :type Fun(path: String): Array(String)
+                        :target (TypedVar 'system' :type Module 'system'))
+                      :args (
+                        (TypedString '' :type String)
+                      )))
+                )
+                :result (TypedString 'listed' :type String))
+              :branches (
+                (TypedTryBranch
+                  :exc_pattern (TypedSelect 'error' :type Exception
+                    :target (TypedVar 'system' :type Module 'system'))
+                  :body (TypedString 'system.error' :type String))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'putSubString: ' :type String)
+            :right (TypedTry :type String
+              :body (TypedBlock :type String
+                :bindings (
+                  (TypedExprStmt
+                    :expr (TypedApp :type Ok
+                      :func (TypedSelect 'putSubString' :type Fun(writer: writer.T string: String start: Int size: Int): Ok
+                        :target (TypedVar 'writer' :type Module 'writer'))
+                      :args (
+                        (TypedSelect 'output' :type writer.T
+                          :target (TypedVar 'writer' :type Module 'writer'))
+                        (TypedString 'abc' :type String)
+                        (TypedInt 2 :type Int)
+                        (TypedInt 5 :type Int)
+                      )))
+                )
+                :result (TypedString 'wrote' :type String))
+              :branches (
+                (TypedTryBranch
+                  :exc_pattern (TypedSelect 'error' :type Exception
+                    :target (TypedVar 'writer' :type Module 'writer'))
+                  :body (TypedString 'writer.error' :type String))
+                (TypedTryBranch
+                  :exc_pattern (TypedSelect 'error' :type Exception
+                    :target (TypedVar 'string' :type Module 'string'))
+                  :body (TypedString 'string.error' :type String))
+              )))
+        )))
+    (TypedLetValue 'w2' :type writer.T
+      :value (TypedApp :type writer.T
+        :func (TypedSelect 'file' :type Fun(name: String): writer.T
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedString 'output_files_as_natively.txt' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedVar 'w2' :type writer.T)
+          (TypedString 'xy' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'close' :type Fun(writer: writer.T): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedVar 'w2' :type writer.T)
+        )))
+    (TypedLetValue 'dest' :type String
+      :value (TypedApp :type String
+        :func (TypedSelect 'new' :type Fun(size: Int init: Char): String
+          :target (TypedVar 'string' :type Module 'string'))
+        :args (
+          (TypedInt 5 :type Int)
+          (TypedChar '.' :type Char)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'getSubString: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedTry :type String
+                :body (TypedBlock :type String
+                  :bindings (
+                    (TypedExprStmt
+                      :expr (TypedApp :type Ok
+                        :func (TypedSelect 'getSubString' :type Fun(reader: reader.T string: String start: Int size: Int): Ok
+                          :target (TypedVar 'reader' :type Module 'reader'))
+                        :args (
+                          (TypedApp :type reader.T
+                            :func (TypedSelect 'file' :type Fun(name: String): reader.T
+                              :target (TypedVar 'reader' :type Module 'reader'))
+                            :args (
+                              (TypedString 'output_files_as_natively.txt' :type String)
+                            ))
+                          (TypedVar 'dest' :type String)
+                          (TypedInt 0 :type Int)
+                          (TypedInt 5 :type Int)
+                        )))
+                  )
+                  :result (TypedString 'read' :type String))
+                :branches (
+                  (TypedTryBranch
+                    :exc_pattern (TypedSelect 'error' :type Exception
+                      :target (TypedVar 'reader' :type Module 'reader'))
+                    :body (TypedString 'reader.error' :type String))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedVar 'dest' :type String))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'a directory: ' :type String)
+            :right (TypedTry :type String
+              :body (TypedBlock :type String
+                :bindings (
+                  (TypedLetValue 'rd' :type reader.T
+                    :value (TypedApp :type reader.T
+                      :func (TypedSelect 'file' :type Fun(name: String): reader.T
+                        :target (TypedVar 'reader' :type Module 'reader'))
+                      :args (
+                        (TypedString '.' :type String)
+                      )))
+                )
+                :result (TypedApp :type String
+                  :func (TypedVar 'yes' :type Fun(b: Bool): String)
+                  :args (
+                    (TypedApp :type Bool
+                      :func (TypedSelect 'more' :type Fun(reader: reader.T): Bool
+                        :target (TypedVar 'reader' :type Module 'reader'))
+                      :args (
+                        (TypedVar 'rd' :type reader.T)
+                      ))
+                  )))
+              :branches (
+                (TypedTryBranch
+                  :exc_pattern (TypedSelect 'error' :type Exception
+                    :target (TypedVar 'reader' :type Module 'reader'))
+                  :body (TypedString 'reader.error' :type String))
+              )))
+        )))
+  ))

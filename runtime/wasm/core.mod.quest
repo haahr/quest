@@ -1312,6 +1312,7 @@ export
     let realOf(x: Any): Real = external "wasm.fromAny"
     let isBoxedReal(x: Any): Bool = external "wasm.isBoxedReal"
     let realEq(a: Real b: Real): Bool = external "wasm.realEq"
+    let realBits(r: Real): Int = external "wasm.realBits"
     let same0(a: Any b: Any): Bool = external "wasm.same"
     let rec valIs(d0: Desc a: Any b: Any): Bool =
         if same0(a b) then true
@@ -1472,6 +1473,11 @@ export
             end
         elsif isSmall(x) then mix(smallValue(x))
         elsif isBoxedInt(x) then mix(boxedInt(x))
+        elsif isBoxedReal(x) then
+            (* by its bits, both zeros alike, as is compares them
+             * (quest_identity_hash) *)
+            let r = realOf(x)
+            mix(if realEq(r 0.0) then 0 else realBits(r) end)
         elsif isRecBox(x) then mix(objectHash(recPayload(x)))
         elsif isObject(x) then mix(objectHash(unproxy(x)))
         else mix(0)
@@ -1679,10 +1685,13 @@ export
         end
 
     (* The directory a path is opened from and the path relative to it:
-     * an absolute path's from /, a relative one's from . *)
+     * an absolute path's from /, its leading slashes all taken off (//tmp is
+     * /tmp, as natively), a relative one's from . The empty path names
+     * nothing (fd ~1), as natively (wasm-review.md section 1.2, 4) *)
     Def Resolved = Tuple fd: Int path: String end
     let resolve(path: String): Resolved =
-        begin
+        if stringOp.isEmpty(path) then tuple let fd = ~1 let path = "" end
+        else
             let full = absolute(path)
             let all = preopens()
             let var fd = ~1
@@ -1691,7 +1700,9 @@ export
                 if startsWith(full "/") then
                     if stringOp.equal(all[i].name "/") then
                         fd := all[i].fd
-                        rest := stringOp.getSub(full 1 stringOp.length(full) - 1)
+                        let var k = 0
+                        while {k < stringOp.length(full)} andif {stringOp.getChar(full k) is '/'} do k := k + 1 end
+                        rest := stringOp.getSub(full k stringOp.length(full) - k)
                     end
                 elsif stringOp.equal(all[i].name ".") then fd := all[i].fd
                 end
@@ -1917,8 +1928,12 @@ export
     Let FileWriter = Tuple fd: Int pending: Buffer var open: Bool end
     let fileWriterAny(w: FileWriter): Any = external "wasm.toAny"
     let anyFileWriter(x: Any): FileWriter = external "wasm.fromAny"
-    let putStringTo(w: Any s: String): Ok = external "wasm.putTo"
-    let putCharTo(w: Any c: Char): Ok = external "wasm.putCharTo"
+    (* The runtime's writes to a descriptor: 0, or WASI's error number, for
+     * which the writer raises writer.error, as natively a failed write does *)
+    let putStringStatus(w: Any s: String): Any = external "wasm.putTo"
+    let putCharStatus(w: Any c: Char): Any = external "wasm.putCharTo"
+    let putStringTo(w: Any s: String): Ok = if smallValue(putStringStatus(w s)) isnot 0 then writerError() end
+    let putCharTo(w: Any c: Char): Ok = if smallValue(putCharStatus(w c)) isnot 0 then writerError() end
     let openWriters = tuple let var all = array of(8 nullAny()) let var count = 0 end
     let pendingLimit = 65536
 
@@ -1967,8 +1982,22 @@ export
             if f.pending.length >= pendingLimit then flushWriter(f) end
         end
 
+    (* A substring outside s raises writer.error, as natively *)
+    (* system.exit's status as the engine can give it: wasmtime gives none
+     * above 125, so where the driver runs a program in it, setting
+     * QUEST_WASM_EXIT_LINE, such a status is 125 and a last line on standard
+     * error naming it, which the driver gives back as the status
+     * (questlang/driver/main's exitAbove; wasm-review.md section 1.3, 2) *)
+    let exitStatus(code: Int): Int =
+        if {code > 125} andif not(stringOp.isEmpty(getEnv("QUEST_WASM_EXIT_LINE"))) then
+            putStringTo(intAny(2) "quest: exit status " <> decimal(code) <> "\n")
+            125
+        else code
+        end
+
     let writerPutSubString(w: Any s: String start: Int size: Int): Ok =
-        if isSmall(w) then putStringTo(w stringOp.getSub(s start size))
+        if {start < 0} orif {size < 0} orif {start > {stringOp.length(s) - size}} then writerError()
+        elsif isSmall(w) then putStringTo(w stringOp.getSub(s start size))
         else
             let f = openFile(w)
             sbAppendSub(f.pending s start size)
@@ -2010,18 +2039,20 @@ export
 
     let readerInput(): Reader = input
 
+    (* A file's reader; a directory's opens, as natively fopen does, and has
+     * nothing to read (fd ~1) *)
     let readerFile(name: String): Reader =
         begin
             let fd = open(name 0)
-            if fd < 0 then readerError() end
-            tuple let fd = fd let var buffer = "" let var at = 0 let var closed = false end
+            if {fd < 0} andif {fileType(name) isnot 3} then readerError() end
+            tuple let fd = if fd < 0 then ~1 else fd end let var buffer = "" let var at = 0 let var closed = false end
         end
 
     (* Whether r has bytes not yet taken, reading more if it has none *)
     let fill(r: Reader): Bool =
         begin
             if r.closed then readerError() end
-            if r.at >= stringOp.length(r.buffer) then
+            if {r.at >= stringOp.length(r.buffer)} andif {r.fd >= 0} then
                 ensure(bufferAt + bufferSize)
                 store32(results bufferAt)
                 store32(results + 4 bufferSize)
@@ -2063,9 +2094,11 @@ export
     let readerGetSubString(r: Reader s: String start: Int size: Int): Ok =
         begin
             if {start < 0} orif {size < 0} orif {{start + size} > stringOp.length(s)} then readerError() end
+            (* the bytes read are there before a short read raises, as
+             * natively (quest_reader_get_substring) *)
             let got = readerGetString(r size)
+            stringOp.setSub(s start got 0 stringOp.length(got))
             if stringOp.length(got) < size then readerError() end
-            stringOp.setSub(s start got 0 size)
         end
 
     let readerClose(r: Reader): Ok =

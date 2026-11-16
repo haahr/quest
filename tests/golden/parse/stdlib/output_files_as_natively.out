@@ -1,0 +1,662 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('reader') 'Reader')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('system') 'System')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('string') 'StringOp')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('hash') 'Hash' ('util/hash') 'util/Hash')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('hashMap') 'HashMap' ('collections/hashmap') 'collections/HashMap')
+      )
+    )
+    (LetValueBinding
+      :name 'show'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprId 's')
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'yes'
+      :value (ExprIf
+        :cond (ExprId 'b')
+        :then_branch (ExprString 'true' '"true"')
+        :else_branch (ExprString 'false' '"false"')
+      )
+      :params (
+        (FormalParam
+          :name 'b'
+          :type_annot (TypePath ('Bool'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('String'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprInfix
+            :left (ExprString '1.0 and 2.0: ' '"1.0 and 2.0: "')
+            :op '<>'
+            :right (ExprIf
+              :cond (ExprInfix
+                :left (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'hash')
+                    :field 'identityHash'
+                  )
+                  :args (
+                    (TypeArgument
+                      :type_val (TypePath ('Real'))
+                    )
+                    (ExprReal 1.0 '1.0')
+                  )
+                )
+                :op 'is'
+                :right (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'hash')
+                    :field 'identityHash'
+                  )
+                  :args (
+                    (TypeArgument
+                      :type_val (TypePath ('Real'))
+                    )
+                    (ExprReal 2.0 '2.0')
+                  )
+                )
+              )
+              :then_branch (ExprString 'same' '"same"')
+              :else_branch (ExprString 'differ' '"differ"')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprInfix
+            :left (ExprString '0.0 and ~0.0: ' '"0.0 and ~0.0: "')
+            :op '<>'
+            :right (ExprIf
+              :cond (ExprInfix
+                :left (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'hash')
+                    :field 'identityHash'
+                  )
+                  :args (
+                    (TypeArgument
+                      :type_val (TypePath ('Real'))
+                    )
+                    (ExprReal 0.0 '0.0')
+                  )
+                )
+                :op 'is'
+                :right (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'hash')
+                    :field 'identityHash'
+                  )
+                  :args (
+                    (TypeArgument
+                      :type_val (TypePath ('Real'))
+                    )
+                    (ExprReal -0.0 '~0.0')
+                  )
+                )
+              )
+              :then_branch (ExprString 'same' '"same"')
+              :else_branch (ExprString 'differ' '"differ"')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'm'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'hashMap')
+          :field 'newIdentityMap'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('Real'))
+          )
+          (TypeArgument
+            :type_val (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprFor
+        :var_name 'i'
+        :start (ExprInt 0 '0')
+        :stop (ExprInt 20000 '20000')
+        :body (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'hashMap')
+            :field 'insert'
+          )
+          :args (
+            (TypeArgument
+              :type_val (TypePath ('Real'))
+            )
+            (TypeArgument
+              :type_val (TypePath ('Int'))
+            )
+            (ExprId 'm')
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'real')
+                :field 'int'
+              )
+              :args (
+                (ExprId 'i')
+              )
+            )
+            (ExprId 'i')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprInfix
+            :left (ExprString 'keys: ' '"keys: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'hashMap')
+                    :field 'size'
+                  )
+                  :args (
+                    (TypeArgument
+                      :type_val (TypePath ('Real'))
+                    )
+                    (TypeArgument
+                      :type_val (TypePath ('Int'))
+                    )
+                    (ExprId 'm')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'big'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'string')
+          :field 'new'
+        )
+        :args (
+          (ExprInt 300000 '300000')
+          (ExprChar 'x' "'x'")
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'w'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'file'
+        )
+        :args (
+          (ExprString 'output_files_as_natively.txt' '"output_files_as_natively.txt"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprId 'w')
+          (ExprId 'big')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'close'
+        )
+        :args (
+          (ExprId 'w')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'r'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'reader')
+          :field 'file'
+        )
+        :args (
+          (ExprString 'output_files_as_natively.txt' '"output_files_as_natively.txt"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprInfix
+            :left (ExprString 'written: ' '"written: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'string')
+                    :field 'length'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'reader')
+                        :field 'getString'
+                      )
+                      :args (
+                        (ExprId 'r')
+                        (ExprInt 400000 '400000')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'reader')
+          :field 'close'
+        )
+        :args (
+          (ExprId 'r')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprInfix
+            :left (ExprString '//tmp: ' '"//tmp: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprId 'yes')
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'system')
+                    :field 'fileExists'
+                  )
+                  :args (
+                    (ExprString '//tmp' '"//tmp"')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprInfix
+            :left (ExprString 'empty: ' '"empty: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprId 'yes')
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'system')
+                    :field 'fileExists'
+                  )
+                  :args (
+                    (ExprString '' '""')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprInfix
+            :left (ExprString 'listing empty: ' '"listing empty: "')
+            :op '<>'
+            :right (ExprTry
+              :body (ExprBlock
+                :bindings (
+                  (ExprStmt
+                    :expr (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'system')
+                        :field 'listDirectory'
+                      )
+                      :args (
+                        (ExprString '' '""')
+                      )
+                    )
+                  )
+                  (ExprStmt
+                    :expr (ExprString 'listed' '"listed"')
+                  )
+                )
+              )
+              :branches (
+                (TryBranch
+                  :exc_pattern (ExprSelect
+                    :target (ExprId 'system')
+                    :field 'error'
+                  )
+                  :body (ExprString 'system.error' '"system.error"')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprInfix
+            :left (ExprString 'putSubString: ' '"putSubString: "')
+            :op '<>'
+            :right (ExprTry
+              :body (ExprBlock
+                :bindings (
+                  (ExprStmt
+                    :expr (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'writer')
+                        :field 'putSubString'
+                      )
+                      :args (
+                        (ExprSelect
+                          :target (ExprId 'writer')
+                          :field 'output'
+                        )
+                        (ExprString 'abc' '"abc"')
+                        (ExprInt 2 '2')
+                        (ExprInt 5 '5')
+                      )
+                    )
+                  )
+                  (ExprStmt
+                    :expr (ExprString 'wrote' '"wrote"')
+                  )
+                )
+              )
+              :branches (
+                (TryBranch
+                  :exc_pattern (ExprSelect
+                    :target (ExprId 'writer')
+                    :field 'error'
+                  )
+                  :body (ExprString 'writer.error' '"writer.error"')
+                )
+                (TryBranch
+                  :exc_pattern (ExprSelect
+                    :target (ExprId 'string')
+                    :field 'error'
+                  )
+                  :body (ExprString 'string.error' '"string.error"')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'w2'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'file'
+        )
+        :args (
+          (ExprString 'output_files_as_natively.txt' '"output_files_as_natively.txt"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprId 'w2')
+          (ExprString 'xy' '"xy"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'close'
+        )
+        :args (
+          (ExprId 'w2')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'dest'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'string')
+          :field 'new'
+        )
+        :args (
+          (ExprInt 5 '5')
+          (ExprChar '.' "'.'")
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprInfix
+            :left (ExprString 'getSubString: ' '"getSubString: "')
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprTry
+                :body (ExprBlock
+                  :bindings (
+                    (ExprStmt
+                      :expr (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'reader')
+                          :field 'getSubString'
+                        )
+                        :args (
+                          (ExprApp
+                            :func (ExprSelect
+                              :target (ExprId 'reader')
+                              :field 'file'
+                            )
+                            :args (
+                              (ExprString 'output_files_as_natively.txt' '"output_files_as_natively.txt"')
+                            )
+                          )
+                          (ExprId 'dest')
+                          (ExprInt 0 '0')
+                          (ExprInt 5 '5')
+                        )
+                      )
+                    )
+                    (ExprStmt
+                      :expr (ExprString 'read' '"read"')
+                    )
+                  )
+                )
+                :branches (
+                  (TryBranch
+                    :exc_pattern (ExprSelect
+                      :target (ExprId 'reader')
+                      :field 'error'
+                    )
+                    :body (ExprString 'reader.error' '"reader.error"')
+                  )
+                )
+              )
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprString ' ' '" "')
+                :op '<>'
+                :right (ExprId 'dest')
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprInfix
+            :left (ExprString 'a directory: ' '"a directory: "')
+            :op '<>'
+            :right (ExprTry
+              :body (ExprBlock
+                :bindings (
+                  (LetValueBinding
+                    :name 'rd'
+                    :value (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'reader')
+                        :field 'file'
+                      )
+                      :args (
+                        (ExprString '.' '"."')
+                      )
+                    )
+                  )
+                  (ExprStmt
+                    :expr (ExprApp
+                      :func (ExprId 'yes')
+                      :args (
+                        (ExprApp
+                          :func (ExprSelect
+                            :target (ExprId 'reader')
+                            :field 'more'
+                          )
+                          :args (
+                            (ExprId 'rd')
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+              :branches (
+                (TryBranch
+                  :exc_pattern (ExprSelect
+                    :target (ExprId 'reader')
+                    :field 'error'
+                  )
+                  :body (ExprString 'reader.error' '"reader.error"')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

@@ -171,12 +171,14 @@ export
     let escapeChar = 26 + wasiCount + {extent exports - 22}
     let hexDigit = 27 + wasiCount + {extent exports - 22}
     let putByte = 28 + wasiCount + {extent exports - 22}
-    let stringError = 29 + wasiCount + {extent exports - 22}
-    let show = 30 + wasiCount + {extent exports - 22}
+    let stringMemory = 29 + wasiCount + {extent exports - 22}
+    let stringError = 30 + wasiCount + {extent exports - 22}
+    let show = 31 + wasiCount + {extent exports - 22}
 
     (* The runtime's own text, in its one passive data segment: each string's
      * offset and length *)
     let text = "truefalseException: \n  at \nstring.error with :'\"ok16##<fun><hidden><val>"
+        <> "quest: out of memory: a string too long\n"
     Def Piece = Tuple offset: Int length: Int end
     let piece(offset: Int length: Int): Piece = tuple let offset = offset let length = length end
     let trueText = piece(0 4)
@@ -197,6 +199,11 @@ export
     let funText = piece(54 5)
     let hiddenText = piece(59 8)
     let valText = piece(67 5)
+    let stringMemoryText = piece(72 40)
+    (* The longest string the runtime makes, in bytes: one longer is out of
+     * memory, as natively an allocation that fails is, rather than a size
+     * that wraps or an engine's trap (wasm-review.md section 1.3, 1) *)
+    let maxBytes = 1073741824
 
     let runtimeModule(): model.Module =
         begin
@@ -296,14 +303,35 @@ export
             for k = 0 upto extent exports - 1 do typeOf[k] := funcType(exports[k].params exports[k].results) end
 
             (* Bytes cross at 16 and up; the iovec is at 0, the count written
-             * at 8 *)
-            let write(fd: Array(Inst)): Array(Inst) = cat(array of
-                array of c32(0) c32(16) i1(ops.i32Store 0) end
+             * at 8. A write may take only some of them (node's to a pipe takes
+             * 64 KB), so the iovec is advanced by the count and written again
+             * until none is left; "try again" (6) is tried again; and another
+             * error leaves its number in local err, which the caller returns
+             * for the core to raise writer.error (wasm-review.md section 1.2,
+             * 1) *)
+            let write(fd: Array(Inst) err: Int): Array(Inst) = cat(array of
+                array of
+                    c32(0) c32(16) i1(ops.i32Store 0)
+                    c32(0) i1(ops.localSet err)
+                    model.blockInst(empty "written") model.loopInst(empty "again")
+                end
                 fd
-                array of c32(0) c32(1) c32(8) i1(ops.call fdWrite) i(ops.drop) end
+                array of
+                    c32(0) c32(1) c32(8) i1(ops.call fdWrite) i1(ops.localTee err)
+                    model.ifInst(empty "")
+                    i1(ops.localGet err) c32(6) i(ops.i32Eq) i1(ops.brIf 1)
+                    i1(ops.br 2)
+                    model.endInst
+                    c32(0) c32(0) i1(ops.i32Load 0) c32(8) i1(ops.i32Load 0) i(ops.i32Add) i1(ops.i32Store 0)
+                    c32(4) c32(4) i1(ops.i32Load 0) c32(8) i1(ops.i32Load 0) i(ops.i32Sub) i1(ops.i32Store 0)
+                    c32(4) i1(ops.i32Load 0) i(ops.i32Eqz) i1(ops.brIf 1)
+                    i1(ops.br 0)
+                    model.endInst model.endInst
+                end
             end)
             add("putString" typeOf[0] array of "w" "s" end
-                array of local("str" nullString) local("n" model.i32) local("bytes" nullBytes) local("i" model.i32) end
+                array of local("str" nullString) local("n" model.i32) local("bytes" nullBytes) local("i" model.i32)
+                    local("err" model.i32) end
                 cat(array of array of
                     i1(ops.localGet 1) castTo(tString) i1(ops.localTee 2) i2(ops.structGet tString sLength)
                     i1(ops.localSet 3)
@@ -319,13 +347,13 @@ export
                     model.endInst model.endInst
                     c32(4) i1(ops.localGet 3) i1(ops.i32Store 0)
                 end
-                write(array of i1(ops.localGet 0) castI31 i(ops.i31GetS) end)
-                array of c32(0) i(ops.refI31) end
+                write(array of i1(ops.localGet 0) castI31 i(ops.i31GetS) end 6)
+                array of i1(ops.localGet 6) i(ops.refI31) end
                 end))
-            add("putChar" typeOf[1] array of "w" "c" end array of :model.Local end cat(array of
+            add("putChar" typeOf[1] array of "w" "c" end array of local("err" model.i32) end cat(array of
                 array of c32(16) i1(ops.localGet 1) i1(ops.i32Store8 0) c32(4) c32(1) i1(ops.i32Store 0) end
-                write(array of i1(ops.localGet 0) castI31 i(ops.i31GetS) end)
-                array of c32(0) i(ops.refI31) end
+                write(array of i1(ops.localGet 0) castI31 i(ops.i31GetS) end 2)
+                array of i1(ops.localGet 2) i(ops.refI31) end
             end))
             add("concat" typeOf[2] array of "a" "b" end
                 array of local("x" nullString) local("y" nullString) local("la" model.i32) local("lb" model.i32)
@@ -335,6 +363,9 @@ export
                     i1(ops.localSet 4)
                     i1(ops.localGet 1) castTo(tString) i1(ops.localTee 3) i2(ops.structGet tString sLength)
                     i1(ops.localSet 5)
+                    i1(ops.localGet 4) i(ops.i64ExtendI32U) i1(ops.localGet 5) i(ops.i64ExtendI32U) i(ops.i64Add)
+                    model.i64Const(maxBytes) i(ops.i64GtU)
+                    model.ifInst(empty "") i1(ops.call stringMemory) model.endInst
                     i1(ops.localGet 4) i1(ops.localGet 5) i(ops.i32Add) i1(ops.arrayNewDefault tBytes)
                     i1(ops.localSet 6)
                     i1(ops.localGet 6) c32(0) i1(ops.localGet 2) i2(ops.structGet tString sBytes) c32(0)
@@ -573,6 +604,8 @@ export
             add("stringNew" typeOf[16] array of "n" "c" end array of :model.Local end array of
                 i1(ops.localGet 0) model.i64Const(0) i(ops.i64LtS)
                 model.ifInst(empty "") i1(ops.call stringError) model.endInst
+                i1(ops.localGet 0) model.i64Const(maxBytes) i(ops.i64GtS)
+                model.ifInst(empty "") i1(ops.call stringMemory) model.endInst
                 c32(0) i1(ops.localGet 0) i(ops.i32WrapI64)
                 i1(ops.localGet 1) i1(ops.localGet 0) i(ops.i32WrapI64) i1(ops.arrayNew tBytes)
                 i1(ops.structNew tString)
@@ -822,6 +855,12 @@ export
                     i1(ops.localGet 0) i1(ops.localGet 1) i1(ops.localGet 2) i1(ops.arraySet tBytes)
                     i1(ops.localGet 1) c32(1) i(ops.i32Add)
                 end)
+            (* A string too long to make: out of memory, status 70, as the
+             * collector's is natively *)
+            add("stringMemory" funcType(none none) array of :String end array of :model.Local end cat(array of
+                pieceString(stringMemoryText)
+                array of c32(70) i1(ops.call fatal) i(ops.unreachable) end
+            end))
             add("stringError" funcType(none none) array of :String end array of :model.Local end cat(array of
                 array of i1(ops.globalGet 3) c32(0) i(ops.refI31) end
                 pieceString(emptyText) pieceString(emptyText)

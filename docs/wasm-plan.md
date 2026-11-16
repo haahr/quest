@@ -2000,6 +2000,38 @@ writer's buffer, and would end the session when flushed.
     of 2³² is of length 0). A program with no string literal a valid module (still: an unused data segment index),
     which unblocks the test of `sysexit(200)` in wasmtime, whose status above 125 the driver maps as natively.
     *Done when* each is a run golden or error test passing in wasm and wasm-node.
+
+    *Done 2026-11-15:*
+    - **Built:**
+      - **a `Real`'s identity hash:** by its bits, both zeros alike (`quest_identity_hash`), through a new
+        intrinsic `wasm.realBits`. 20,001 keys in an identity map take as long as an `Int`'s.
+      - **writes:** the runtime's `putString` and `putChar` write until all is taken, advancing the iovec by the
+        count, try "try again" (6) again, and return any other error number. The core's writers raise
+        `writer.error` on one. `session-node.mjs` writes through `writeAll`, which loops on the count and waits a
+        millisecond on `EAGAIN`.
+      - **late input:** `run.mjs` waits 5 ms at a time on node's `fd_read` saying "try again" for a pipe with
+        nothing in it yet. The runtime is unchanged: wasmtime and the sessions' host read as natively.
+      - **paths:** an absolute path's leading slashes all taken off (`//tmp`); the empty path names nothing.
+      - **substrings:** `putSubString` outside its string raises `writer.error`; `getSubString`'s short read
+        keeps the bytes read before it raises.
+      - **a directory:** `reader.file` of one opens, with nothing to read.
+      - **sizes:** `stringNew` and `concat` test a string's length against the runtime's `maxBytes` (2³⁰) and
+        end the program out of memory (status 70) past it, where the size wrapped or the engine trapped.
+        Natively a string of 2³² bytes is made. The other byte arrays' sizes are bounded by strings already
+        made (a substring, an escape's at most four times its string), so they are not tested again.
+      - **no data segment:** an empty literal is made with `array.new_default`, not from the segment, which a
+        unit with no other literal lacks. `system.sysexit`'s empty report was the literal that made such a
+        program invalid.
+      - **exit statuses above 125:** wasmtime cannot give them. The driver starts wasmtime with
+        `QUEST_WASM_EXIT_LINE` set, and there the core's `exitStatus` makes such a status 125 and a last line on
+        standard error, `quest: exit status N`; the driver gives N back as the status and takes the line off.
+        Anywhere else (node, the wasm driver's JIT) the status is given as it is. The marker was first in the
+        runtime's `fatal`, for every engine; wasm-jit, whose program runs inside the wasm driver with nothing
+        outside to map it back, failed with 125.
+    - **Checked:** run goldens `stdlib/output_files_as_natively` (§1.1, §1.2, 4 to 6) and `stdlib/system_exit_above`
+      (§1.3, 2 and 3), in wasm, wasm-node, wasm-jit, arm64, and jit-files. By hand, as goldens cannot: 300,000
+      bytes written to `wc -c` through a pipe arrive whole in node; input given a second late is read whole in
+      node; `string.new` of 2³² ends out of memory.
 28. **An accumulating recursion as a loop** (§3, 1; still: `depth(1000000)` overflows; the owner's answer). The
     SSA's `accumulate` pass's rule, a recursion whose result is combined with an operation and a constant after
     its call, made a loop with an accumulator for this target too: in the IR, so that both backends could share
