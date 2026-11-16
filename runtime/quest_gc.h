@@ -62,9 +62,16 @@ typedef struct QLayout {
 #define Q_HEADER_LAYOUT_MASK ((uintptr_t)0x0000FFFFFFFFFFFFu)
 #define Q_HEADER_OLD         ((uintptr_t)1 << 56)   /* the collector's byte: marked by some collection */
 #define Q_HEADER_LOGGED      ((uintptr_t)1 << 48)   /* the mutator's byte: in the log since the last collection */
+#define Q_HEADER_READONLY    ((uintptr_t)1 << 49)   /* the mutator's byte: a string that may not be written */
 
 Q_INLINE const QLayout *quest_layout_of(const void *obj) {
     return (const QLayout *)(((const uintptr_t *)obj)[-1] & Q_HEADER_LAYOUT_MASK);
+}
+
+/* Whether the object at obj is read-only: a string literal, which
+ * string.setChar and string.setSub may not change */
+Q_INLINE bool quest_is_readonly(const void *obj) {
+    return (((const uintptr_t *)obj)[-1] & Q_HEADER_READONLY) != 0;
 }
 
 /* The byte count a sized allocation records before its header */

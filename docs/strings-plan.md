@@ -301,7 +301,9 @@ measurement repeats step 0's and goes into `benchmarks.md`.
    commit for the docs (`libraries.md` §1.2, `converting-python-to-quest.md` item 6, `arm64.md` §3), and a measurement.
 2. **Drop `capacity`** (§4), done 2026-11-16 ("Drop QString's capacity"); ABI bump. *Done when* the full `tools/check` passes, the JIT's tests included, and the
    allocation is measured.
-3. **The read-only bit** (§5), with no literal changed yet: `Q_HEADER_READONLY`, the checks in
+3. **The read-only bit** (§5), done 2026-11-16 ("Mark read-only strings by a header bit"; the test is
+   `tests/python/test_runtime_readonly.py`, since `test_runtime.py` tests the bootstrap's values), with no literal
+   changed yet: `Q_HEADER_READONLY`, the checks in
    `quest_string_set_char`, `quest_string_set_sub`, and the SSA builder's inlined `setChar`, and
    `quest_string_freeze`; ABI bump. *Done when* the full `tools/check` passes (nothing is read-only yet, so this
    proves the checks cost no behavior) and a test in `tests/python/test_runtime.py` shows a frozen string raising.

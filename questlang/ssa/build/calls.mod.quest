@@ -437,7 +437,17 @@ export
                     elsif named("getChar") then
                         one(vals.load(fn byteAddress(x() y()) 0 vals.part(vals.tInt 1 false)))
                     elsif named("setChar") then
-                        vals.store(fn byteAddress(x() y()) 0 1 vals.atom1(fn o.args[2]))
+                        let s = x()
+                        let address = byteAddress(s y())
+                        (* A read-only string (a literal) raises string.error, as
+                         * quest_string_set_char does: its header's bit, in the
+                         * mutator's byte, byte 6 of the word before the string *)
+                        let bit = runtimeLayout.constant("Q_HEADER_READONLY") / 281474976710656
+                        let mutatorByte = vals.load(fn s ~2 vals.part(vals.tInt 1 false))
+                        let clear = vals.binary(fn ssa.opEq vals.binary(fn ssa.opAnd mutatorByte vals.constant(fn bit))
+                            vals.constant(fn 0))
+                        vals.check(fn clear true "quest_raise_string_error" noSite)
+                        vals.store(fn address 0 1 vals.atom1(fn o.args[2]))
                         maybe.some(:Array(Int) array of :Int end)
                     else none
                     end

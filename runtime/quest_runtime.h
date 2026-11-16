@@ -316,6 +316,7 @@ QString *quest_string_concat(const QString *s1, const QString *s2);
 bool     quest_string_equal(const QString *s1, const QString *s2);
 QChar    quest_string_get_char(const QString *s, int64_t idx);
 void     quest_string_set_char(QString *s, int64_t idx, QChar ch);
+void     quest_string_freeze(QString *s);
 QString *quest_string_get_sub(const QString *s, int64_t start, int64_t len);
 void     quest_string_set_sub(QString *dest, int64_t dest_start, const QString *src, int64_t src_start, int64_t len);
 QString *quest_string_cat_sub(const QString *s1, int64_t st1, int64_t sz1,
