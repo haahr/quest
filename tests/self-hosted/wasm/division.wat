@@ -621,9 +621,9 @@
       i32.const 0
       ref.i31
       i32.const 0
-      i32.const 111
+      i32.const 42
       i32.const 114
-      i32.const 111
+      i32.const 42
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
@@ -659,9 +659,9 @@
       i32.const 0
       ref.i31
       i32.const 0
-      i32.const 111
-      i32.const 225
-      i32.const 111
+      i32.const 42
+      i32.const 156
+      i32.const 42
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
@@ -690,7 +690,7 @@
     local.set $v.3
     i32.const 0
     i32.const 12
-    i32.const 336
+    i32.const 198
     i32.const 12
     array.new_data $bytes $strings
     struct.new $string
@@ -703,7 +703,7 @@
     local.set $v.2
     i32.const 0
     i32.const 3
-    i32.const 348
+    i32.const 210
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
@@ -716,7 +716,7 @@
     local.set $v.1
     i32.const 0
     i32.const 3
-    i32.const 351
+    i32.const 213
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
@@ -733,7 +733,7 @@
     local.get $v
     i32.const 0
     i32.const 1
-    i32.const 354
+    i32.const 216
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -755,7 +755,7 @@
     local.set $v
     i32.const 0
     i32.const 11
-    i32.const 355
+    i32.const 217
     i32.const 11
     array.new_data $bytes $strings
     struct.new $string
@@ -766,7 +766,7 @@
     local.get $v
     i32.const 0
     i32.const 1
-    i32.const 366
+    i32.const 228
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -819,6 +819,6 @@
     drop
     call $uncaught
   )
-  (data $strings ", remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/division.quest:6:94/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/division.quest:7:17, remainder  =  / \0anot reached\0a")
+  (data $strings ", remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0atests/self-hosted/wasm/division.quest:6:94tests/self-hosted/wasm/division.quest:7:17, remainder  =  / \0anot reached\0a")
 )
 

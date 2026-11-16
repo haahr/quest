@@ -379,9 +379,9 @@
             i32.const 0
             ref.i31
             i32.const 0
-            i32.const 114
+            i32.const 45
             i32.const 280
-            i32.const 114
+            i32.const 45
             array.new_data $bytes $strings
             struct.new $string
             i32.const 0
@@ -541,7 +541,7 @@
             local.get $v.2
             i32.const 0
             i32.const 1
-            i32.const 394
+            i32.const 325
             i32.const 1
             array.new_data $bytes $strings
             struct.new $string
@@ -595,9 +595,9 @@
       i32.const 0
       ref.i31
       i32.const 0
-      i32.const 114
-      i32.const 395
-      i32.const 114
+      i32.const 45
+      i32.const 326
+      i32.const 45
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
@@ -637,9 +637,9 @@
       i32.const 0
       ref.i31
       i32.const 0
-      i32.const 114
-      i32.const 509
-      i32.const 114
+      i32.const 45
+      i32.const 371
+      i32.const 45
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
@@ -702,7 +702,7 @@
     local.set $v.2
     i32.const 0
     i32.const 1
-    i32.const 623
+    i32.const 416
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -719,7 +719,7 @@
     local.get $v.2
     i32.const 0
     i32.const 1
-    i32.const 624
+    i32.const 417
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -752,9 +752,9 @@
       i32.const 0
       ref.i31
       i32.const 0
-      i32.const 114
-      i32.const 625
-      i32.const 114
+      i32.const 45
+      i32.const 418
+      i32.const 45
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
@@ -802,9 +802,9 @@
       i32.const 0
       ref.i31
       i32.const 0
-      i32.const 114
-      i32.const 739
-      i32.const 114
+      i32.const 45
+      i32.const 463
+      i32.const 45
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
@@ -857,9 +857,9 @@
       i32.const 0
       ref.i31
       i32.const 0
-      i32.const 114
-      i32.const 853
-      i32.const 114
+      i32.const 45
+      i32.const 508
+      i32.const 45
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
@@ -931,9 +931,9 @@
       i32.const 0
       ref.i31
       i32.const 0
-      i32.const 114
-      i32.const 967
-      i32.const 114
+      i32.const 45
+      i32.const 553
+      i32.const 45
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
@@ -966,9 +966,9 @@
       i32.const 0
       ref.i31
       i32.const 0
-      i32.const 114
-      i32.const 1081
-      i32.const 114
+      i32.const 45
+      i32.const 598
+      i32.const 45
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
@@ -1000,7 +1000,7 @@
     local.set $v
     i32.const 0
     i32.const 1
-    i32.const 1195
+    i32.const 643
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1013,7 +1013,7 @@
     local.set $v
     i32.const 0
     i32.const 1
-    i32.const 1196
+    i32.const 644
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1026,7 +1026,7 @@
     local.set $v
     i32.const 0
     i32.const 1
-    i32.const 1197
+    i32.const 645
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1043,7 +1043,7 @@
     local.get $v
     i32.const 0
     i32.const 1
-    i32.const 1198
+    i32.const 646
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1071,7 +1071,7 @@
     if
       i32.const 0
       i32.const 15
-      i32.const 1199
+      i32.const 647
       i32.const 15
       array.new_data $bytes $strings
       struct.new $string
@@ -1079,9 +1079,9 @@
       call $decimal
       call $concat
       i32.const 0
-      i32.const 154
-      i32.const 1214
-      i32.const 154
+      i32.const 85
+      i32.const 662
+      i32.const 85
       array.new_data $bytes $strings
       struct.new $string
       call $concat
@@ -1168,7 +1168,7 @@
     local.set $v
     i32.const 0
     i32.const 1
-    i32.const 1368
+    i32.const 747
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1185,7 +1185,7 @@
     local.get $v
     i32.const 0
     i32.const 1
-    i32.const 1369
+    i32.const 748
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1293,7 +1293,7 @@
     local.set $v
     i32.const 0
     i32.const 1
-    i32.const 1370
+    i32.const 749
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1310,7 +1310,7 @@
     local.get $v
     i32.const 0
     i32.const 1
-    i32.const 1371
+    i32.const 750
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1332,7 +1332,7 @@
     local.set $v
     i32.const 0
     i32.const 3
-    i32.const 1372
+    i32.const 751
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
@@ -1355,7 +1355,7 @@
     local.get $v.2
     i32.const 0
     i32.const 1
-    i32.const 1375
+    i32.const 754
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1378,7 +1378,7 @@
     local.set $v
     i32.const 0
     i32.const 1
-    i32.const 1376
+    i32.const 755
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1389,7 +1389,7 @@
     call $concat
     i32.const 0
     i32.const 1
-    i32.const 1377
+    i32.const 756
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1409,7 +1409,7 @@
     local.get $v
     i32.const 0
     i32.const 1
-    i32.const 1378
+    i32.const 757
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1465,7 +1465,7 @@
     local.set $v.5
     i32.const 0
     i32.const 1
-    i32.const 1379
+    i32.const 758
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1478,7 +1478,7 @@
     local.set $v.4
     i32.const 0
     i32.const 1
-    i32.const 1380
+    i32.const 759
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1491,7 +1491,7 @@
     local.set $v.2
     i32.const 0
     i32.const 1
-    i32.const 1381
+    i32.const 760
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1508,7 +1508,7 @@
     local.get $v
     i32.const 0
     i32.const 1
-    i32.const 1382
+    i32.const 761
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1536,9 +1536,9 @@
       i32.const 0
       ref.i31
       i32.const 0
-      i32.const 113
-      i32.const 1383
-      i32.const 113
+      i32.const 44
+      i32.const 762
+      i32.const 44
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
@@ -1557,7 +1557,7 @@
     if
       i32.const 0
       i32.const 63
-      i32.const 1496
+      i32.const 806
       i32.const 63
       array.new_data $bytes $strings
       struct.new $string
@@ -1602,9 +1602,9 @@
             i32.const 0
             ref.i31
             i32.const 0
-            i32.const 114
-            i32.const 1559
-            i32.const 114
+            i32.const 45
+            i32.const 869
+            i32.const 45
             array.new_data $bytes $strings
             struct.new $string
             i32.const 0
@@ -1658,9 +1658,9 @@
       i32.const 0
       ref.i31
       i32.const 0
-      i32.const 114
-      i32.const 1673
-      i32.const 114
+      i32.const 45
+      i32.const 914
+      i32.const 45
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
@@ -1695,7 +1695,7 @@
     local.set $v.4
     i32.const 0
     i32.const 1
-    i32.const 1787
+    i32.const 959
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1712,7 +1712,7 @@
     local.get $v.2
     i32.const 0
     i32.const 1
-    i32.const 1788
+    i32.const 960
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1743,7 +1743,7 @@
     drop
     i32.const 0
     i32.const 6
-    i32.const 1789
+    i32.const 961
     i32.const 6
     array.new_data $bytes $strings
     struct.new $string
@@ -1753,13 +1753,13 @@
     local.set $v.4
     i32.const 0
     i32.const 2
-    i32.const 1795
+    i32.const 967
     i32.const 2
     array.new_data $bytes $strings
     struct.new $string
     i32.const 0
     i32.const 2
-    i32.const 1797
+    i32.const 969
     i32.const 2
     array.new_data $bytes $strings
     struct.new $string
@@ -1771,7 +1771,7 @@
     local.set $v.5
     i32.const 0
     i32.const 3
-    i32.const 1799
+    i32.const 971
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
@@ -1780,7 +1780,7 @@
     local.set $v.9
     i32.const 0
     i32.const 1
-    i32.const 1802
+    i32.const 974
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1791,7 +1791,7 @@
     call $concat
     i32.const 0
     i32.const 1
-    i32.const 1803
+    i32.const 975
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1799,7 +1799,7 @@
     local.set $v.48
     i32.const 0
     i32.const 1
-    i32.const 1804
+    i32.const 976
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1812,7 +1812,7 @@
     local.set $v.5
     i32.const 0
     i32.const 1
-    i32.const 1805
+    i32.const 977
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1825,7 +1825,7 @@
     local.set $v.4
     i32.const 0
     i32.const 1
-    i32.const 1806
+    i32.const 978
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1842,7 +1842,7 @@
     local.get $v.2
     i32.const 0
     i32.const 1
-    i32.const 1807
+    i32.const 979
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1866,7 +1866,7 @@
     global.get $QT_record_e453bc1b6cf6d2db
     i32.const 0
     i32.const 1
-    i32.const 1808
+    i32.const 980
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1967,7 +1967,7 @@
     local.set $t.44
     i32.const 0
     i32.const 1
-    i32.const 1809
+    i32.const 981
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1980,7 +1980,7 @@
     local.set $t.43
     i32.const 0
     i32.const 1
-    i32.const 1810
+    i32.const 982
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -1997,7 +1997,7 @@
     local.get $v.48
     i32.const 0
     i32.const 1
-    i32.const 1811
+    i32.const 983
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -2021,7 +2021,7 @@
     global.get $QT_record_e453bc1b6cf6d2db
     i32.const 0
     i32.const 1
-    i32.const 1812
+    i32.const 984
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -2065,9 +2065,9 @@
       i32.const 0
       ref.i31
       i32.const 0
-      i32.const 113
-      i32.const 1813
-      i32.const 113
+      i32.const 44
+      i32.const 985
+      i32.const 44
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
@@ -2120,9 +2120,9 @@
       i32.const 0
       ref.i31
       i32.const 0
-      i32.const 114
-      i32.const 1926
-      i32.const 114
+      i32.const 45
+      i32.const 1029
+      i32.const 45
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
@@ -2290,7 +2290,7 @@
     local.set $t.43
     i32.const 0
     i32.const 1
-    i32.const 2040
+    i32.const 1074
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -2311,7 +2311,7 @@
     local.get $v.2
     i32.const 0
     i32.const 1
-    i32.const 2041
+    i32.const 1075
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -2356,7 +2356,7 @@
     local.get $v.2
     i32.const 0
     i32.const 1
-    i32.const 2042
+    i32.const 1076
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -2389,9 +2389,9 @@
       i32.const 0
       ref.i31
       i32.const 0
-      i32.const 114
-      i32.const 2043
-      i32.const 114
+      i32.const 45
+      i32.const 1077
+      i32.const 45
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
@@ -2421,7 +2421,7 @@
     local.get $v
     i32.const 0
     i32.const 1
-    i32.const 2157
+    i32.const 1122
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -2800,6 +2800,6 @@
     i31.get_s
     i64.extend_i32_s
   )
-  (data $strings "Record x: Int var y: Int name: String endTuple r: Int endTuple x: Int y: Int endTuple side: Int endTuple v: Int endOption circle: Tuple r: Int end empty point: Tuple x: Int y: Int end square: Tup...Option none some: Tuple v: Int end endnamexyrxysidevcircleemptypointsquarenonesome/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:25:55\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:26:10/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:26:10 \0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:28:15/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:28:75/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:29:25/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:29:57/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:29:70   \0aOption ordinal  out of bounds (0 <= ordinal < 3)\0a  at /Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:31:13\0a \0a \0atwo!''\0a   \0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:54:9quest: out of memory: an array of more than 134217720 elements\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:55:21/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:56:14 \0aabcdefabababc''   \0ap  \0aq/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:68:5/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:68:33 \0a\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/aggregates.quest:71:14\0a")
+  (data $strings "Record x: Int var y: Int name: String endTuple r: Int endTuple x: Int y: Int endTuple side: Int endTuple v: Int endOption circle: Tuple r: Int end empty point: Tuple x: Int y: Int end square: Tup...Option none some: Tuple v: Int end endnamexyrxysidevcircleemptypointsquarenonesometests/self-hosted/wasm/aggregates.quest:25:55\0atests/self-hosted/wasm/aggregates.quest:26:10tests/self-hosted/wasm/aggregates.quest:26:10 \0atests/self-hosted/wasm/aggregates.quest:28:15tests/self-hosted/wasm/aggregates.quest:28:75tests/self-hosted/wasm/aggregates.quest:29:25tests/self-hosted/wasm/aggregates.quest:29:57tests/self-hosted/wasm/aggregates.quest:29:70   \0aOption ordinal  out of bounds (0 <= ordinal < 3)\0a  at tests/self-hosted/wasm/aggregates.quest:31:13\0a \0a \0atwo!''\0a   \0atests/self-hosted/wasm/aggregates.quest:54:9quest: out of memory: an array of more than 134217720 elements\0atests/self-hosted/wasm/aggregates.quest:55:21tests/self-hosted/wasm/aggregates.quest:56:14 \0aabcdefabababc''   \0ap  \0aqtests/self-hosted/wasm/aggregates.quest:68:5tests/self-hosted/wasm/aggregates.quest:68:33 \0a\0atests/self-hosted/wasm/aggregates.quest:71:14\0a")
 )
 

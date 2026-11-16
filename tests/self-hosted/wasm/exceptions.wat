@@ -210,9 +210,9 @@
       i32.const 0
       ref.i31
       i32.const 0
-      i32.const 114
+      i32.const 45
       i32.const 0
-      i32.const 114
+      i32.const 45
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
@@ -274,9 +274,9 @@
       i32.const 0
       ref.i31
       i32.const 0
-      i32.const 114
-      i32.const 114
-      i32.const 114
+      i32.const 45
+      i32.const 45
+      i32.const 45
       array.new_data $bytes $strings
       struct.new $string
       i32.const 0
@@ -343,7 +343,7 @@
     i32.const 0
     i32.const 0
     i32.const 3
-    i32.const 228
+    i32.const 90
     i32.const 3
     array.new_data $bytes $strings
     struct.new $string
@@ -352,7 +352,7 @@
     i32.const 0
     i32.const 0
     i32.const 5
-    i32.const 231
+    i32.const 93
     i32.const 5
     array.new_data $bytes $strings
     struct.new $string
@@ -361,7 +361,7 @@
     i32.const 0
     i32.const 0
     i32.const 5
-    i32.const 236
+    i32.const 98
     i32.const 5
     array.new_data $bytes $strings
     struct.new $string
@@ -376,14 +376,14 @@
               i64.const 5
               call $boxInt.1
               i32.const 0
-              i32.const 114
-              i32.const 241
-              i32.const 114
+              i32.const 45
+              i32.const 103
+              i32.const 45
               array.new_data $bytes $strings
               struct.new $string
               i32.const 0
               i32.const 3
-              i32.const 355
+              i32.const 148
               i32.const 3
               array.new_data $bytes $strings
               struct.new $string
@@ -442,7 +442,7 @@
       local.get $e
       i32.const 0
       i32.const 1
-      i32.const 358
+      i32.const 151
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -476,9 +476,9 @@
                   i32.const 0
                   ref.i31
                   i32.const 0
-                  i32.const 114
-                  i32.const 359
-                  i32.const 114
+                  i32.const 45
+                  i32.const 152
+                  i32.const 45
                   array.new_data $bytes $strings
                   struct.new $string
                   i32.const 0
@@ -567,7 +567,7 @@
           local.set $v.4
           i32.const 0
           i32.const 1
-          i32.const 473
+          i32.const 197
           i32.const 1
           array.new_data $bytes $strings
           struct.new $string
@@ -584,7 +584,7 @@
           local.get $e
           i32.const 0
           i32.const 1
-          i32.const 474
+          i32.const 198
           i32.const 1
           array.new_data $bytes $strings
           struct.new $string
@@ -613,9 +613,9 @@
                     i32.const 0
                     ref.i31
                     i32.const 0
-                    i32.const 114
-                    i32.const 475
-                    i32.const 114
+                    i32.const 45
+                    i32.const 199
+                    i32.const 45
                     array.new_data $bytes $strings
                     struct.new $string
                     i32.const 0
@@ -646,7 +646,7 @@
             local.get $e
             i32.const 0
             i32.const 1
-            i32.const 589
+            i32.const 244
             i32.const 1
             array.new_data $bytes $strings
             struct.new $string
@@ -678,14 +678,14 @@
                             i64.const 9
                             call $boxInt.1
                             i32.const 0
-                            i32.const 114
-                            i32.const 590
-                            i32.const 114
+                            i32.const 45
+                            i32.const 245
+                            i32.const 45
                             array.new_data $bytes $strings
                             struct.new $string
                             i32.const 0
                             i32.const 3
-                            i32.const 704
+                            i32.const 290
                             i32.const 3
                             array.new_data $bytes $strings
                             struct.new $string
@@ -752,7 +752,7 @@
               local.get $e
               i32.const 0
               i32.const 1
-              i32.const 707
+              i32.const 293
               i32.const 1
               array.new_data $bytes $strings
               struct.new $string
@@ -803,14 +803,14 @@
                                     local.get $i.1
                                     call $boxInt.1
                                     i32.const 0
-                                    i32.const 114
-                                    i32.const 708
-                                    i32.const 114
+                                    i32.const 45
+                                    i32.const 294
+                                    i32.const 45
                                     array.new_data $bytes $strings
                                     struct.new $string
                                     i32.const 0
                                     i32.const 3
-                                    i32.const 822
+                                    i32.const 339
                                     i32.const 3
                                     array.new_data $bytes $strings
                                     struct.new $string
@@ -887,7 +887,7 @@
               local.get $bad
               i32.const 0
               i32.const 1
-              i32.const 825
+              i32.const 342
               i32.const 1
               array.new_data $bytes $strings
               struct.new $string
@@ -923,7 +923,7 @@
               local.get $bad
               i32.const 0
               i32.const 1
-              i32.const 826
+              i32.const 343
               i32.const 1
               array.new_data $bytes $strings
               struct.new $string
@@ -946,7 +946,7 @@
               i32.const 0
               i32.const 0
               i32.const 4
-              i32.const 827
+              i32.const 344
               i32.const 4
               array.new_data $bytes $strings
               struct.new $string
@@ -972,7 +972,7 @@
               local.set $other
               i32.const 0
               i32.const 1
-              i32.const 831
+              i32.const 348
               i32.const 1
               array.new_data $bytes $strings
               struct.new $string
@@ -989,7 +989,7 @@
               local.get $bad
               i32.const 0
               i32.const 1
-              i32.const 832
+              i32.const 349
               i32.const 1
               array.new_data $bytes $strings
               struct.new $string
@@ -1012,19 +1012,19 @@
               local.get $named
               i32.const 0
               i32.const 7
-              i32.const 833
+              i32.const 350
               i32.const 7
               array.new_data $bytes $strings
               struct.new $string
               i32.const 0
-              i32.const 113
-              i32.const 840
-              i32.const 113
+              i32.const 44
+              i32.const 357
+              i32.const 44
               array.new_data $bytes $strings
               struct.new $string
               i32.const 0
               i32.const 6
-              i32.const 953
+              i32.const 401
               i32.const 6
               array.new_data $bytes $strings
               struct.new $string
@@ -1148,6 +1148,6 @@
     call $tries.1
     call $boxInt.1
   )
-  (data $strings "/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/exceptions.quest:32:28/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/exceptions.quest:32:28badothernamed/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/exceptions.quest:10:36Int\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/exceptions.quest:13:26 \0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/exceptions.quest:15:20\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/exceptions.quest:10:36Int\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/exceptions.quest:10:36Int\0a\0astop \0athe end/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/exceptions.quest:36:1String")
+  (data $strings "tests/self-hosted/wasm/exceptions.quest:32:28tests/self-hosted/wasm/exceptions.quest:32:28badothernamedtests/self-hosted/wasm/exceptions.quest:10:36Int\0atests/self-hosted/wasm/exceptions.quest:13:26 \0atests/self-hosted/wasm/exceptions.quest:15:20\0atests/self-hosted/wasm/exceptions.quest:10:36Int\0atests/self-hosted/wasm/exceptions.quest:10:36Int\0a\0astop \0athe endtests/self-hosted/wasm/exceptions.quest:36:1String")
 )
 

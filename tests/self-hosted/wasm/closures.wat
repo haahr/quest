@@ -421,9 +421,9 @@
               i32.const 0
               ref.i31
               i32.const 0
-              i32.const 112
+              i32.const 43
               i32.const 9
-              i32.const 112
+              i32.const 43
               array.new_data $bytes $strings
               struct.new $string
               i32.const 0
@@ -485,7 +485,7 @@
       local.get $f
       i32.const 0
       i32.const 1
-      i32.const 121
+      i32.const 52
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -513,7 +513,7 @@
       local.set $v
       i32.const 0
       i32.const 1
-      i32.const 122
+      i32.const 53
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -530,7 +530,7 @@
       local.get $f
       i32.const 0
       i32.const 1
-      i32.const 123
+      i32.const 54
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -592,7 +592,7 @@
         local.get $f
         i32.const 0
         i32.const 1
-        i32.const 124
+        i32.const 55
         i32.const 1
         array.new_data $bytes $strings
         struct.new $string
@@ -614,7 +614,7 @@
         local.set $f
         i32.const 0
         i32.const 3
-        i32.const 125
+        i32.const 56
         i32.const 3
         array.new_data $bytes $strings
         struct.new $string
@@ -622,7 +622,7 @@
         local.get $f
         i32.const 0
         i32.const 1
-        i32.const 128
+        i32.const 59
         i32.const 1
         array.new_data $bytes $strings
         struct.new $string
@@ -630,7 +630,7 @@
         local.set $f
         i32.const 0
         i32.const 2
-        i32.const 129
+        i32.const 60
         i32.const 2
         array.new_data $bytes $strings
         struct.new $string
@@ -638,7 +638,7 @@
         local.get $v
         i32.const 0
         i32.const 1
-        i32.const 131
+        i32.const 62
         i32.const 1
         array.new_data $bytes $strings
         struct.new $string
@@ -646,7 +646,7 @@
         local.set $v
         i32.const 0
         i32.const 1
-        i32.const 132
+        i32.const 63
         i32.const 1
         array.new_data $bytes $strings
         struct.new $string
@@ -663,7 +663,7 @@
         local.get $f
         i32.const 0
         i32.const 1
-        i32.const 133
+        i32.const 64
         i32.const 1
         array.new_data $bytes $strings
         struct.new $string
@@ -734,9 +734,9 @@
                 i32.const 0
                 ref.i31
                 i32.const 0
-                i32.const 112
-                i32.const 134
-                i32.const 112
+                i32.const 43
+                i32.const 65
+                i32.const 43
                 array.new_data $bytes $strings
                 struct.new $string
                 i32.const 0
@@ -862,9 +862,9 @@
                 i32.const 0
                 ref.i31
                 i32.const 0
-                i32.const 112
-                i32.const 246
-                i32.const 112
+                i32.const 43
+                i32.const 108
+                i32.const 43
                 array.new_data $bytes $strings
                 struct.new $string
                 i32.const 0
@@ -941,7 +941,7 @@
         local.set $v
         i32.const 0
         i32.const 1
-        i32.const 358
+        i32.const 151
         i32.const 1
         array.new_data $bytes $strings
         struct.new $string
@@ -958,7 +958,7 @@
         local.get $f
         i32.const 0
         i32.const 1
-        i32.const 359
+        i32.const 152
         i32.const 1
         array.new_data $bytes $strings
         struct.new $string
@@ -1082,6 +1082,6 @@
     call $builtin-
     call $boxInt.1
   )
-  (data $strings "  \0aabbccc/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/closures.quest:17:55\0a \0a\0ayes!no><\0a/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/closures.quest:31:50/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/closures.quest:31:50 \0a")
+  (data $strings "  \0aabbccctests/self-hosted/wasm/closures.quest:17:55\0a \0a\0ayes!no><\0atests/self-hosted/wasm/closures.quest:31:50tests/self-hosted/wasm/closures.quest:31:50 \0a")
 )
 

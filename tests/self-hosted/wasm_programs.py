@@ -51,11 +51,17 @@ def check_program(driver: str, program: Path, update: bool) -> list[str]:
     environment = {**os.environ, "QUEST_HOME": str(ROOT_DIR)}
     problems: list[str] = []
     name = program.stem
+    # Built from the repository's root by a relative path, since the module
+    # holds its source's path (a raise's site) among its literals, and so the
+    # offsets of the literals after it: an absolute path would tie the golden
+    # to one checkout
+    source = [str(program.relative_to(ROOT_DIR))]
+    root = str(ROOT_DIR)
     with tempfile.TemporaryDirectory() as d:
         build = Path(d) / "build"
         # The module's text, the backend's golden
         code, text, err = run([driver, "--stop-after", "codegen_wasm", "--build-dir", str(build)] + INCLUDES
-                              + [str(program)], d, environment)
+                              + source, root, environment)
         golden = program.with_suffix(".wat")
         if code != 0:
             return [f"{name}: codegen_wasm failed: {err.strip()[:500]}"]
@@ -66,13 +72,13 @@ def check_program(driver: str, program: Path, update: bool) -> list[str]:
         # The arm64 backend's run, which the engines' must match
         native = Path(d) / "native"
         code, _, err = run([driver, "--backend", "arm64", "--build-dir", str(build), "-o", str(native)] + INCLUDES
-                           + [str(program)], d, environment)
+                           + source, root, environment)
         if code != 0:
             return problems + [f"{name}: the arm64 build failed: {err.strip()[:500]}"]
         expected = run([str(native)], d, environment)
         module = Path(d) / f"{name}.wasm"
         code, _, err = run([driver, "--backend", "wasm", "--build-dir", str(build), "-o", str(module)] + INCLUDES
-                           + [str(program)], d, environment)
+                           + source, root, environment)
         if code != 0:
             return problems + [f"{name}: the wasm build failed: {err.strip()[:500]}"]
         runtime = Path(str(module) + ".runtime.wasm")

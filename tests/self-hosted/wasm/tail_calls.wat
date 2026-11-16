@@ -249,9 +249,9 @@
             i32.const 0
             ref.i31
             i32.const 0
-            i32.const 114
+            i32.const 45
             i32.const 0
-            i32.const 114
+            i32.const 45
             array.new_data $bytes $strings
             struct.new $string
             i32.const 0
@@ -349,7 +349,7 @@
     local.get $v.1
     i32.const 0
     i32.const 1
-    i32.const 114
+    i32.const 45
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -383,7 +383,7 @@
     local.get $v.1
     i32.const 0
     i32.const 1
-    i32.const 115
+    i32.const 46
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -417,7 +417,7 @@
     local.get $v.1
     i32.const 0
     i32.const 1
-    i32.const 116
+    i32.const 47
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -451,7 +451,7 @@
     local.get $v.1
     i32.const 0
     i32.const 1
-    i32.const 117
+    i32.const 48
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -485,7 +485,7 @@
     local.get $v.1
     i32.const 0
     i32.const 1
-    i32.const 118
+    i32.const 49
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -519,7 +519,7 @@
     local.get $v.1
     i32.const 0
     i32.const 1
-    i32.const 119
+    i32.const 50
     i32.const 1
     array.new_data $bytes $strings
     struct.new $string
@@ -630,6 +630,6 @@
     call $count
     call $boxInt.1
   )
-  (data $strings "/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/tail_calls.quest:11:24\0a\0a\0a\0a\0a\0a")
+  (data $strings "tests/self-hosted/wasm/tail_calls.quest:11:24\0a\0a\0a\0a\0a\0a")
 )
 

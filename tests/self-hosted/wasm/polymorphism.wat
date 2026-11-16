@@ -793,14 +793,14 @@
     local.get $v
     local.get $pos
     i32.const 0
-    i32.const 115
+    i32.const 46
     i32.const 75
-    i32.const 115
+    i32.const 46
     array.new_data $bytes $strings
     struct.new $string
     i32.const 0
     i32.const 35
-    i32.const 190
+    i32.const 121
     i32.const 35
     array.new_data $bytes $strings
     struct.new $string
@@ -974,6 +974,6 @@
     call $qa_adapt.2
     call $boxInt.1
   )
-  (data $strings "!Tuple first: Int second: String endfirstsecond\0aabc\0ayesno\0a\0a\0ahihi\0aseven \0abad/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/wasm-plan-opus/tests/self-hosted/wasm/polymorphism.quest:22:1Tuple first: Int second: String end")
+  (data $strings "!Tuple first: Int second: String endfirstsecond\0aabc\0ayesno\0a\0a\0ahihi\0aseven \0abadtests/self-hosted/wasm/polymorphism.quest:22:1Tuple first: Int second: String end")
 )
 
