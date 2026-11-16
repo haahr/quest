@@ -466,7 +466,8 @@ class _Reader:
 
     def _builtin_value(self, data: Any, ref: str) -> QValue:
         if ref == "Int" and isinstance(data, int) and not isinstance(data, bool):
-            return QInt(data)
+            # saturated, not wrapped, past an Int's range, as C's strtoll
+            return QInt(max(-(1 << 63), min(data, (1 << 63) - 1)))
         if ref == "Real":
             if isinstance(data, (int, float)) and not isinstance(data, bool):
                 return QReal(float(data))
