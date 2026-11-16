@@ -662,7 +662,7 @@ class CPrinter:
                 slot = f"quest_view_tuple_slot({self.atom(base)}, {self.name(vm)}, {c_int(index)})"
                 return self.slot_address(f"(({self.slot_c_type(component)} *){slot})", component)
             case ir.AddrComponent(base=base, index=index, access=access):
-                ts = shape(self.atom_type(base))
+                ts = resolved_shape(shape(self.atom_type(base)))
                 component = ts.components[index].shape
                 b = self.atom(base)
                 address = self.slot_address(f"(&({b}->_{c_int(index)}))", component)
@@ -685,7 +685,7 @@ class CPrinter:
                 element = call("quest_view_tuple_element", [self.atom(t), self.name(vm), c_int(index)])
                 return shape_qval_unwrap(element, comp)
             case ir.TupleField(tuple=t, index=index, access=access):
-                return self.tuple_component(self.atom(t), shape(self.atom_type(t)), index, access)
+                return self.tuple_component(self.atom(t), resolved_shape(shape(self.atom_type(t))), index, access)
             case ir.MakeRecord():
                 return self.make_record(o, result)
             case ir.RecordField(record=r, name=name):
@@ -1472,7 +1472,7 @@ class CPrinter:
                 if self.holds_pointer(self.atom_type(value)):
                     self.emit(f"quest_barrier_slot({slot});")
             case ir.StoreComponent(value=value, base=base, index=index, access=access):
-                ts = shape(self.atom_type(base))
+                ts = resolved_shape(shape(self.atom_type(base)))
                 component = ts.components[index].shape
                 b, v = self.atom(base), self.atom(value)
                 barrier = self.holds_pointer(self.atom_type(value))

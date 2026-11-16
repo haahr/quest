@@ -95,6 +95,9 @@ the stages are rebuilt.
    *Watch.* `resolvedShape` also resolves type variables held at their bound, so the full suite matters; the
    whole-program and transparent-abstract paths (`transparentAbstractTypes`) skip planning and need a whole-program
    run of the test.
+   *Built 2026-11-15:* the bounds are in `geom/held`, which `modules/bounded_abstract_types` imports (rather than
+   `geom/small`, which `dynamic_abstract_types` also imports); passing in every phase and in the ssac, arm64,
+   arm64-whole, c-whole, ssac-whole and jit-files modes.
 3. **A record or variant caught as an exception's payload.** Two causes.
    *Where, the IR (both compilers).* Slots decides whether a handler's binder is boxed from
    `exceptionPayload(typeOf(x.exc))` (`questlang/ir/slots.mod.quest` line 380; `bootstrap/python/quest/ir/slots.py`

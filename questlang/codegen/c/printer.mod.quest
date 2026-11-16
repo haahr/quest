@@ -2002,7 +2002,7 @@ export
                         <> cInt(x.index) <> ")"
                     slotAddress("((" <> slotCType(component) <> " *)" <> slot <> ")" component)
                 else
-                    let ts = shapeOf(atomType(x.base))
+                    let ts = layout.resolvedShape(shapeOf(atomType(x.base)))
                     let component = componentShape(ts x.index)
                     let b = atom(p x.base)
                     let address = slotAddress("(&(" <> b <> "->_" <> cInt(x.index) <> "))" component)
@@ -2058,7 +2058,7 @@ export
                 elsif maybe.isSome(:Variable nodes.atomVarOf(x.tup)) andif maybe.unwrap(:Variable nodes.atomVarOf(x.tup)).unboxed then
                     atom(p x.tup) <> "._" <> cInt(x.index)
                 else
-                    tupleComponent(p atom(p x.tup) shapeOf(atomType(x.tup)) x.index x.access)
+                    tupleComponent(p atom(p x.tup) layout.resolvedShape(shapeOf(atomType(x.tup))) x.index x.access)
                 end
             when opMakeRecord with x then makeRecord(p x maybe.unwrap(:Variable result))
             when opRecordField with x then
@@ -2253,7 +2253,7 @@ export
                     emit(p "*((" <> slotCType(component) <> " *)" <> slot <> ") = " <> atom(p x.value) <> ";")
                     if holdsPointer(atomType(x.value)) then emit(p "quest_barrier_slot(" <> slot <> ");") end
                 else
-                    let ts = shapeOf(atomType(x.base))
+                    let ts = layout.resolvedShape(shapeOf(atomType(x.base)))
                     let component = componentShape(ts x.index)
                     let b = atom(p x.base)
                     let v = atom(p x.value)

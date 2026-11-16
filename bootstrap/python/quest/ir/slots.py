@@ -225,7 +225,8 @@ class _Slots:
                 ts = resolved_shape(shape(_type_of(base)))
                 s.value = self.slot_if_boxed(s.value, ts.components[index].shape, before)
             case ir.StoreComponent(base=base, index=index):
-                ts = shape(_type_of(base))
+                # A module's abstract type's value is its tuple bound's
+                ts = resolved_shape(shape(_type_of(base)))
                 s.value = self.slot_if_boxed(s.value, ts.components[index].shape, before)
                 # A store is never into a fresh tuple's view
                 s.access = tuple_access(ts, index)
@@ -304,7 +305,8 @@ class _Slots:
                 # map, converted, as a value
                 return False
             case ir.TupleField(tuple=t, index=index):
-                ts = shape(_type_of(t))
+                # A module's abstract type's value is its tuple bound's
+                ts = resolved_shape(shape(_type_of(t)))
                 o.access = tuple_access(ts, index, self.is_fresh(t))
                 return _boxed(ts.components[index].shape)
             case ir.RecordField(record=r, name=name):
@@ -411,7 +413,7 @@ class _Slots:
             case ir.AddrCell(init=init):
                 o.init = self.slot_if_boxed(init, shape(_type_of(init)), before)
             case ir.AddrComponent(base=base, index=index) if not own_view(shape(_type_of(base))):
-                o.access = tuple_access(shape(_type_of(base)), index)
+                o.access = tuple_access(resolved_shape(shape(_type_of(base))), index)
             case ir.Prim(op="is" | "isnot", args=(a, b)):
                 t, t2 = _type_of(a), _type_of(b)
                 if shape_representation(shape(t)) != "QVal" and (may_be_proxied(shape(t)) or may_be_proxied(shape(t2))):

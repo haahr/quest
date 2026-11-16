@@ -243,8 +243,8 @@ export
     let operation(st: SlotState o: Op v: maybe.T(Variable) before: vector.T(Stmt)): Bool =
         case o
             when opTupleField with x then
-                let ts = shapes.shape(typeOf(x.tup))
-                if layout.ownView(ts) then
+                let ts = layout.resolvedShape(shapes.shape(typeOf(x.tup)))
+                if layout.ownView(shapes.shape(typeOf(x.tup))) then
                     (* A tuple-bounded type parameter's value: read through the
                      * view map, converted, as a value *)
                     false
@@ -429,7 +429,7 @@ export
                 false
             when opAddrComponent with x then
                 if not(layout.ownView(shapes.shape(typeOf(x.base)))) then
-                    x.access := tupleAccess(shapes.shape(typeOf(x.base)) x.index false)
+                    x.access := tupleAccess(layout.resolvedShape(shapes.shape(typeOf(x.base))) x.index false)
                 end
                 false
             when opPrim with x then
@@ -556,9 +556,10 @@ export
                         let ts = layout.resolvedShape(bs)
                         x.value := slotIfBoxed(st x.value ts.components[x.index].shape before)
                     else
-                        x.value := slotIfBoxed(st x.value bs.components[x.index].shape before)
+                        let ts = layout.resolvedShape(bs)
+                        x.value := slotIfBoxed(st x.value ts.components[x.index].shape before)
                         (* A store is never into a fresh tuple's view *)
-                        x.access := tupleAccess(bs x.index false)
+                        x.access := tupleAccess(ts x.index false)
                     end
                 when sStoreElement with x then x.value := slotIfBoxed(st x.value shapes.shape(typeOf(x.base)).elementShape before)
                 when sSwitch then ok (* switchCases, before its cases' bodies *)

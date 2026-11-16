@@ -294,7 +294,7 @@ def _unproxied(p: Optional[ir.Plan]) -> Optional[ir.Plan]:
     proxy, and its components do not change view, so the original serves."""
     if p is None or p.kind != "cast":
         return p
-    source_s, target_s = shape(p.source), shape(p.target)
+    source_s, target_s = resolved_shape(shape(p.source)), resolved_shape(shape(p.target))
     if target_s.kind in ("tuple", "option") and may_be_proxied(source_s) and not may_be_proxied(target_s):
         return ir.Plan("unproxy", p.source, p.target)
     return p
@@ -403,7 +403,14 @@ def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType],
         # whose cases are numbered differently or whose payloads change view: a
         # proxy (made by the runtime, between the two views' descriptors)
         return ir.Plan("view", s_held.structure, t_held.structure)
-    if ss.kind == ts.kind == "tuple":
+    if (s_held.kind == t_held.kind == "tuple" and held_at_bound(ss) and not held_at_bound(ts)
+            and len(s_held.components) < len(t_held.components)):
+        # A module's abstract type's value, held at its tuple bound, back at its
+        # representation, a wider tuple: the module made it, so it is one, or a
+        # proxy of one
+        return ir.Plan("unproxy" if may_be_proxied(s_held) else "cast", source, target)
+    if s_held.kind == t_held.kind == "tuple":
+        ss, ts = s_held, t_held
         if len(ss.components) < len(ts.components):
             raise UnsupportedConversion(f"converting a tuple of type {source} to {target}")
         pairs = list(zip(ss.components, ts.components))

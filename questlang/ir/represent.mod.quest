@@ -368,8 +368,8 @@ export
             p
         else
             let x = maybe.unwrap(:Plan p)
-            let ss = shapes.shape(x.source)
-            let ts = shapes.shape(x.target)
+            let ss = layout.resolvedShape(shapes.shape(x.source))
+            let ts = layout.resolvedShape(shapes.shape(x.target))
             if {shapes.kindIs(ts shapes.shapeTuple) orif shapes.kindIs(ts shapes.shapeOption)}
                 andif layout.mayBeProxied(ss) andif not(layout.mayBeProxied(ts)) then
                 newPlan(nodes.planUnproxy x.source x.target)
@@ -562,7 +562,17 @@ export
                      * descriptors) *)
                     newPlan(nodes.planView sHeld.structure tHeld.structure)
                 end
-            elsif shapes.kindIs(ss shapes.shapeTuple) andif shapes.kindIs(ts shapes.shapeTuple) then
+            elsif shapes.kindIs(sHeld shapes.shapeTuple) andif shapes.kindIs(tHeld shapes.shapeTuple)
+                andif layout.heldAtBound(ss) andif not(layout.heldAtBound(ts))
+                andif {extent sHeld.components < extent tHeld.components} then
+                (* A module's abstract type's value, held at its tuple bound,
+                 * back at its representation, a wider tuple: the module made
+                 * it, so it is one, or a proxy of one *)
+                if layout.mayBeProxied(sHeld) then newPlan(nodes.planUnproxy source target)
+                else newPlan(nodes.planCast source target) end
+            elsif shapes.kindIs(sHeld shapes.shapeTuple) andif shapes.kindIs(tHeld shapes.shapeTuple) then
+                let ss = sHeld
+                let ts = tHeld
                 if extent ss.components < extent ts.components then
                     unsupported(:maybe.T(Plan) "converting a tuple of type " <> model.show(source) <> " to " <> model.show(target))
                 else
