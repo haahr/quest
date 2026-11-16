@@ -34,6 +34,7 @@ void quest_sb_append_escaped(QStringBuilder *b, unsigned char c, char quote);
 
 /* quest_views.c: an option's identity hash at its type t */
 uint64_t quest_option_identity_hash(const QTypeDescriptor *t, const void *p);
+uint64_t quest_variant_identity_hash(const QTypeDescriptor *t, QVariantVal x);
 
 /* quest_stdlib.c: set up standard output, standard error, and standard input,
  * which quest_builtins_init does before anything else */

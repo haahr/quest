@@ -69,6 +69,7 @@ from quest.values.model import (
     QString,
     QStringBuilder,
     QTuple,
+    QVariant,
     QValue,
     QWord,
     QWriter,
@@ -870,7 +871,8 @@ def _quest_identity_hash(v: QValue) -> QWord:
     Scalars hash by value, a Real by its bits with ~0.0 as 0.0. An option
     whose payload has no components or one hashes by its case's name and that
     component, which covers the options is compares by content at any type
-    (docs/extensions.md, Options as Values). Anything else hashes by its
+    (docs/extensions.md, Options as Values), and a variant by its case's name
+    and its value (Variants as Values). Anything else hashes by its
     object's identity. The result is mixed by splitmix64, as the runtime's is,
     but the hashes are not the runtime's: tags are hashed by name, and
     identities are Python objects', not addresses."""
@@ -895,6 +897,12 @@ def _quest_identity_hash(v: QValue) -> QWord:
             raw = _string_hash(tag)
             if payload is not None and payload.elements:
                 raw ^= _quest_identity_hash(payload.elements[0]).value
+        case QVariant(tag=tag, payload=payload):
+            # As is compares them (docs/extensions.md, Variants as Values): by
+            # case, and its value
+            raw = _string_hash(tag)
+            if payload is not None:
+                raw ^= _quest_identity_hash(payload).value
         case _:
             raw = id(v) & 0xFFFF_FFFF_FFFF_FFFF
     return QWord(_splitmix64(raw))

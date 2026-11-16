@@ -1,0 +1,139 @@
+import writer = "writer" : Writer
+import maybe = "util/maybe" : util/Maybe
+import hashMap = "collections/hashMap" : collections/HashMap
+import hash = "util/hash" : util/Hash
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @11:45
+      let %2: String = prim <>(s, "\n") @11:59
+      let %3: Ok = call writer.putString(%1, %2) @11:28
+      return %3
+    }
+  }
+  funs {
+    fun yes(b: Bool): String {
+      join k1(r: String) {
+        return r
+      } in {
+        if b { @12:28
+          jump k1("true") @12:28
+        } else {
+          jump k1("false") @12:28
+        }
+      }
+    }
+  }
+  let s.1: String = "str" @18:9
+  let rec1: Record a: Int end = record(a = 1) @19:12
+  let %4: V = variant(p, 1) @20:30
+  let %5: V = variant(p, 1) @20:61
+  let %6: Bool = prim is(%4, %5) @20:30
+  let %7: String = call yes(%6) @20:25
+  let %8: String = prim <>("p 1 is p 1: ", %7) @20:7
+  do call print(%8) @20:1
+  let %9: V = variant(p, 1) @21:30
+  let %10: V = variant(p, 2) @21:61
+  let %11: Bool = prim is(%9, %10) @21:30
+  let %12: String = call yes(%11) @21:25
+  let %13: String = prim <>("p 1 is p 2: ", %12) @21:7
+  do call print(%13) @21:1
+  let %14: V = variant(q, s.1) @22:30
+  let %15: V = variant(q, s.1) @22:61
+  let %16: Bool = prim is(%14, %15) @22:30
+  let %17: String = call yes(%16) @22:25
+  let %18: String = prim <>("q s is q s: ", %17) @22:7
+  do call print(%18) @22:1
+  let %19: V = variant(r, rec1) @23:34
+  let %20: V = variant(r, rec1) @23:68
+  let %21: Bool = prim is(%19, %20) @23:34
+  let %22: String = call yes(%21) @23:29
+  let %23: String = prim <>("r rec is r rec: ", %22) @23:7
+  do call print(%23) @23:1
+  let %24: V = variant(r, rec1) @24:38
+  let %25: Record a: Int end = record(a = 1) @24:92
+  let %26: V = variant(r, %25) @24:72
+  let %27: Bool = prim is(%24, %26) @24:38
+  let %28: String = call yes(%27) @24:33
+  let %29: String = prim <>("r rec is r another: ", %28) @24:7
+  do call print(%29) @24:1
+  let %30: V = variant(u, ok) @25:26
+  let %31: V = variant(u, ok) @25:58
+  let %32: Bool = prim is(%30, %31) @25:26
+  let %33: String = call yes(%32) @25:21
+  let %34: String = prim <>("u is u: ", %33) @25:7
+  do call print(%34) @25:1
+  let %35: V = variant(p, 1) @26:29
+  let %36: V = variant(u, ok) @26:63
+  let %37: Bool = prim isnot(%35, %36) @26:29
+  let %38: String = call yes(%37) @26:24
+  let %39: String = prim <>("p isnot u: ", %38) @26:7
+  do call print(%39) @26:1
+  let v: V = variant(q, s.1) @29:12
+  let w: W = v @30:12
+  let %40: W = variant(q, s.1) @31:44
+  let %41: Bool = prim is(w, %40) @31:38
+  let %42: String = call yes(%41) @31:34
+  let %43: String = prim <>("upcast is made at W: ", %42) @31:7
+  do call print(%43) @31:1
+  let %44: Bool = prim is(v, w) @32:25
+  let %45: String = call yes(%44) @32:21
+  let %46: String = prim <>("v is w: ", %45) @32:7
+  do call print(%46) @32:1
+  let %47: Record a: Int b: Int end = record(a = 1, b = 2) @38:35
+  let vb: VB = variant(r, %47) @38:14
+  let vs1: VS = vb @39:15
+  let vs2: VS = vb @40:15
+  let %48: Bool = prim is(vs1, vs2) @41:49
+  let %49: String = call yes(%48) @41:45
+  let %50: String = prim <>("record value through two views: ", %49) @41:7
+  do call print(%50) @41:1
+  funs {
+    fun same [A::TYPE](x: A, y: A): Bool {
+      let %51: Bool = prim is(x, y) @44:37
+      return %51
+    }
+  }
+  let sameValue: All(A :: TYPE) Fun(x: A y: A): Bool = same @45:46
+  let %52: V = variant(p, 3) @46:43
+  let %53: V = variant(p, 3) @46:69
+  let %54: Bool = call sameValue [V](%52, %53) @46:30
+  let %55: String = call yes(%54) @46:26
+  let %56: String = prim <>("generic p 3: ", %55) @46:7
+  do call print(%56) @46:1
+  let %57: V = variant(p, 3) @47:47
+  let %58: V = variant(p, 4) @47:73
+  let %59: Bool = call sameValue [V](%57, %58) @47:34
+  let %60: String = call yes(%59) @47:30
+  let %61: String = prim <>("generic p 3 p 4: ", %60) @47:7
+  do call print(%61) @47:1
+  let m: hashMap.T(V Int) = type_app hashMap.newIdentityMap [V Int] @50:9
+  let %62: V = variant(p, 5) @51:26
+  let %63: Bool = call hashMap.insert [V Int](m, %62, 1) @51:1
+  let %64: V = variant(p, 5) @52:68
+  let %65: maybe.T(Int) = call hashMap.get [V Int](m, %64) @52:46
+  let %66: Bool = call maybe.isSome [Int](%65) @52:28
+  let %67: String = call yes(%66) @52:24
+  let %68: String = prim <>("p 5 found: ", %67) @52:7
+  do call print(%68) @52:1
+  let %69: V = variant(p, 6) @53:68
+  let %70: maybe.T(Int) = call hashMap.get [V Int](m, %69) @53:46
+  let %71: Bool = call maybe.isSome [Int](%70) @53:28
+  let %72: String = call yes(%71) @53:24
+  let %73: String = prim <>("p 6 found: ", %72) @53:7
+  do call print(%73) @53:1
+  let mvs: hashMap.T(VS Int) = type_app hashMap.newIdentityMap [VS Int] @54:11
+  let %74: Bool = call hashMap.insert [VS Int](mvs, vs1, 2) @55:1
+  let %75: maybe.T(Int) = call hashMap.get [VS Int](mvs, vs2) @56:63
+  let %76: Bool = call maybe.isSome [Int](%75) @56:45
+  let %77: String = call yes(%76) @56:41
+  let %78: String = prim <>("view found through another: ", %77) @56:7
+  do call print(%78) @56:1
+  let %79: word.T = call hash.identityHash [VS](vs1) @57:35
+  let %80: word.T = call hash.identityHash [VS](vs2) @57:65
+  let %81: Bool = prim is(%79, %80) @57:35
+  let %82: String = call yes(%81) @57:31
+  let %83: String = prim <>("views hash alike: ", %82) @57:7
+  do call print(%83) @57:1
+}
+

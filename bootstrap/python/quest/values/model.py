@@ -816,10 +816,25 @@ def qvalue_is(v1: QValue, v2: QValue, t: Optional[QType] = None) -> bool:
     Record, Tuple, Variant, Option, Closure, Ref, Dynamic, Exception); except
     that options of a case without components at t are the same if of the same
     case, and those of a single-word option type's case with a component if
-    their components are (docs/extensions.md, Options as Values).
+    their components are (docs/extensions.md, Options as Values), and variants
+    of the same case if their values are, at the case's type (a case of type Ok
+    is its case: docs/extensions.md, Variants as Values).
     """
     if type(v1) is not type(v2):
         return False
+
+    if isinstance(v1, QVariant) and v1 is not v2:
+        if v1.tag != v2.tag:
+            return False
+        if v1.payload is None or v2.payload is None:
+            return v1.payload is None and v2.payload is None
+        from quest.types.reduce import variant_cases
+        cases = variant_cases(t) if t is not None else None
+        case = next((c for c in cases or () if c.name == v1.tag), None)
+        if case is None or case.type_val is None:
+            # Not known to be a variant type: the same object only
+            return False
+        return qvalue_is(v1.payload, v2.payload, case.type_val)
 
     if isinstance(v1, QOption) and v1 is not v2 and t is not None and v1.tag == v2.tag:
         from quest.types.reduce import option_identity

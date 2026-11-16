@@ -552,6 +552,9 @@ uint64_t quest_identity_hash(const QTypeDescriptor *t, QVal x) {
         x.u = 0;
     }
     if (t != NULL && t->kind == QTYPE_KIND_OPTION) return quest_option_identity_hash(t, x.p);
+    if (t != NULL && t->kind == QTYPE_KIND_VARIANT && x.p != NULL) {
+        return quest_variant_identity_hash(t, *(const QVariantVal *)x.p);
+    }
     if (t != NULL && t->kind == QTYPE_KIND_TUPLE) {
         /* A proxy hashes as the object it is a view of, as is compares them */
         x.p = quest_unproxy(x.p);

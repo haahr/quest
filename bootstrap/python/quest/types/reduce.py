@@ -181,14 +181,13 @@ class OptionIdentity:
     component: Optional[QType] = None
 
 
-def option_identity(t: QType) -> Optional[OptionIdentity]:
-    """t's option identity, or None if t is not an option type: for a module's
-    abstract type, its representation's, since is compares an abstract type's
-    values as their representation's; for a type parameter bounded by an option
-    type, its bound's."""
+def _exposed_type(t: QType, wanted: type) -> Optional[QType]:
+    """t looked through until it is a wanted type, or None if it never is:
+    each round looks through one layer, the module abstract types free in it
+    replaced by their representations, or else its bound."""
     from quest.modules.abstract_types import abstract_type_by_symbol
     curr = normalize_type(t)
-    while not isinstance(curr, QOptionType):
+    while not isinstance(curr, wanted):
         reps = {}
         for symbol_id in curr._fv:
             entry = abstract_type_by_symbol(symbol_id)
@@ -200,6 +199,17 @@ def option_identity(t: QType) -> Optional[OptionIdentity]:
         if exposed is curr:
             return None
         curr = exposed
+    return curr
+
+
+def option_identity(t: QType) -> Optional[OptionIdentity]:
+    """t's option identity, or None if t is not an option type: for a module's
+    abstract type, its representation's, since is compares an abstract type's
+    values as their representation's; for a type parameter bounded by an option
+    type, its bound's."""
+    curr = _exposed_type(t, QOptionType)
+    if curr is None:
+        return None
     empty: set[str] = set()
     with_components: list[tuple[str, tuple[Any, ...]]] = []
     for o in curr.options:
@@ -214,6 +224,15 @@ def option_identity(t: QType) -> Optional[OptionIdentity]:
         if len(fields) == 1 and isinstance(fields[0], QTupleField) and not fields[0].is_var:
             return OptionIdentity(frozenset(empty), name, fields[0].type_val)
     return OptionIdentity(frozenset(empty))
+
+
+def variant_cases(t: QType) -> Optional[tuple]:
+    """t's variant cases (QVariantFields), or None if t is not a variant type,
+    looked through as option_identity looks: is compares two variants of a case
+    by their values at the case's type (docs/extensions.md, Variants as
+    Values)."""
+    curr = _exposed_type(t, QVariantType)
+    return None if curr is None else curr.variants
 
 
 def collect_fun_quantifiers(fun_type: QType) -> tuple[tuple[QQuantifier, ...], QType]:

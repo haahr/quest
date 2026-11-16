@@ -1,0 +1,57 @@
+(* Variants as values (docs/extensions.md): is compares two variants by case
+ * and value, at the type is is applied at: of the same case, with values that
+ * are is each other at the case's type (a case of type Ok is its case),
+ * whether made apart, viewed at another variant type, or compared in generic
+ * code. hash.identityHash agrees, so that an identity map's keys do. *)
+
+import writer: Writer;
+import maybe = util/maybe: util/Maybe;
+import hashMap = collections/hashMap: collections/HashMap;
+import hash = util/hash: util/Hash;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let yes(b: Bool): String = if b then "true" else "false" end;
+
+Let V = Variant p: Int q: String r: Record a: Int end u: Ok end;
+Let W = Variant p: Int q: String r: Record a: Int end u: Ok z: Bool end;
+
+(* 1. Made apart *)
+let s = "str";
+let rec1 = record a = 1 end;
+print("p 1 is p 1: " <> yes({variant p of V with 1 end} is {variant p of V with 1 end}));
+print("p 1 is p 2: " <> yes({variant p of V with 1 end} is {variant p of V with 2 end}));
+print("q s is q s: " <> yes({variant q of V with s end} is {variant q of V with s end}));
+print("r rec is r rec: " <> yes({variant r of V with rec1 end} is {variant r of V with rec1 end}));
+print("r rec is r another: " <> yes({variant r of V with rec1 end} is {variant r of V with record a = 1 end end}));
+print("u is u: " <> yes({variant u of V with ok end} is {variant u of V with ok end}));
+print("p isnot u: " <> yes({variant p of V with 1 end} isnot {variant u of V with ok end}));
+
+(* 2. Viewed at another variant type, whose tags are numbered otherwise *)
+let v: V = variant q of V with s end;
+let w: W = v;
+print("upcast is made at W: " <> yes(w is {variant q of W with s end}));
+print("v is w: " <> yes(v is w));
+
+(* 3. A record value viewed: the same record through each view *)
+Let Big = Record a: Int b: Int end;
+Let VB = Variant r: Big end;
+Let VS = Variant r: Record a: Int end end;
+let vb: VB = variant r of VB with record a = 1 b = 2 end end;
+let vs1: VS = vb;
+let vs2: VS = vb;
+print("record value through two views: " <> yes(vs1 is vs2));
+
+(* 4. In generic code, through a first-class polymorphic value *)
+let same(A::TYPE x: A y: A): Bool = x is y;
+let sameValue: All(A::TYPE x: A y: A) Bool = same;
+print("generic p 3: " <> yes(sameValue(:V variant p of V with 3 end variant p of V with 3 end)));
+print("generic p 3 p 4: " <> yes(sameValue(:V variant p of V with 3 end variant p of V with 4 end)));
+
+(* 5. Identity maps and identity hashes agree *)
+let m = hashMap.newIdentityMap(:V :Int);
+hashMap.insert(:V :Int m variant p of V with 5 end 1);
+print("p 5 found: " <> yes(maybe.isSome(:Int hashMap.get(:V :Int m variant p of V with 5 end))));
+print("p 6 found: " <> yes(maybe.isSome(:Int hashMap.get(:V :Int m variant p of V with 6 end))));
+let mvs = hashMap.newIdentityMap(:VS :Int);
+hashMap.insert(:VS :Int mvs vs1 2);
+print("view found through another: " <> yes(maybe.isSome(:Int hashMap.get(:VS :Int mvs vs2))));
+print("views hash alike: " <> yes(hash.identityHash(:VS vs1) is hash.identityHash(:VS vs2)))

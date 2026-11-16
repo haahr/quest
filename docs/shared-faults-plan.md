@@ -250,6 +250,10 @@ the stages are rebuilt.
    *Tied to options.* docs/option-values.md says that if its deferred design is dropped, options' single-word rule
    goes back to identity. Variants follow options: if that happens, this rule goes too, and compiled variants need a
    location (a box) or `is` on them is refused.
+   *Built 2026-11-15* (ABI 78, with step 5): `language/variant_identity`, passing in every phase and in the ssac,
+   arm64, arm64-program, arm64-whole, c-whole and jit-files modes; both interpreters' `interpret` phases still pass
+   every test. The SSA and both C printers compare a variant of known type through `quest_variant_is` (the step's
+   inline comparison of known cases was not needed). `questlang/codegen_runtime_functions` lists the new function.
 
 ## Order
 

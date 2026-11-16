@@ -165,7 +165,11 @@ export
             when vRecord with x then hash.identityHash(:model.RecordValue x.r)
             when vTuple with x then hash.identityHash(:model.TupleValue x.t)
             when vArray with x then hash.identityHash(:Array(Value) x.a)
-            when vVariant with x then hash.identityHash(:model.Tagged x.v)
+            when vVariant with x then
+                (* As is compares them (docs/extensions.md, Variants as
+                 * Values): by case, and its value *)
+                if maybe.isNone(:Value x.v.payload) then hash.string(x.v.tag)
+                else hash.combine(hash.string(x.v.tag) identityHash(maybe.unwrap(:Value x.v.payload))) end
             when vOption with x then
                 (* As is compares them at any type (docs/extensions.md,
                  * Options as Values): a case without components by its

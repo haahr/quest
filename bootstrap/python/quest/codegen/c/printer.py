@@ -1280,6 +1280,10 @@ class CPrinter:
             if t is not None and self.c_type(t) == "QVal":
                 negate = "" if op == "is" else "!"
                 return f"({negate}quest_val_is({self.descriptor(descriptor)}, {left}, {right}))"
+            if descriptor is not None and t is not None and self.c_type(t) == "QVariantVal":
+                # By case and value (docs/extensions.md, Variants as Values)
+                negate = "" if op == "is" else "!"
+                return f"({negate}quest_variant_is({self.descriptor(descriptor)}, {left}, {right}))"
             if descriptor is not None and t is not None:
                 # An option type whose options is compares by case or component
                 negate = "" if op == "is" else "!"

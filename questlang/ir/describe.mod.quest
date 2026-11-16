@@ -490,7 +490,10 @@ export
                     if nodes.comparesIdentity(x.op) andif {extent x.args > 0} then
                         let a = x.args[0]
                         let isHandler = case a when atomVar with y then hashMap.contains(:Int :Bool d.handlerVars y.v.id) else false end
-                        if not(isHandler) andif {layout.isQVal(shapes.shape(typeOf(a))) orif comparesAsOption(typeOf(a))} then
+                        (* A QVal word, an option is compares by case, or a
+                         * variant, which is compares by case and value *)
+                        if not(isHandler) andif {layout.isQVal(shapes.shape(typeOf(a))) orif comparesAsOption(typeOf(a))
+                            orif stringOp.equal(layout.representation(typeOf(a)) "QVariantVal")} then
                             x.descriptor := maybe.some(:Descriptor describeType(d typeOf(a)))
                         end
                     end

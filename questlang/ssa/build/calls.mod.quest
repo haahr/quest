@@ -64,6 +64,14 @@ export
                     let same = if layout.isQVal(shapes.shape(ir.atomType(first))) then
                         let args = array of descriptors.maybeDescriptor(fn o.descriptor) vals.atom1(fn o.args[0]) vals.atom1(fn o.args[1]) end
                         vals.narrowed(fn vals.call1(fn "quest_val_is" args) vals.part(vals.tInt 1 false))
+                    elsif maybe.isSome(:ir.Descriptor o.descriptor)
+                        andif vals.eq(layout.representation(ir.atomType(first)) "QVariantVal") then
+                        (* By case and value (docs/extensions.md, Variants as
+                         * Values) *)
+                        let a = vals.atom(fn o.args[0])
+                        let b = vals.atom(fn o.args[1])
+                        let args = array of descriptors.maybeDescriptor(fn o.descriptor) a[0] a[1] b[0] b[1] end
+                        vals.narrowed(fn vals.call1(fn "quest_variant_is" args) vals.part(vals.tInt 1 false))
                     elsif maybe.isSome(:ir.Descriptor o.descriptor) then
                         (* An option type whose options is compares by case or
                          * component (docs/extensions.md, Options as Values) *)

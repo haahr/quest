@@ -33,8 +33,9 @@ Quest combines five language features that pull data representations in differen
 3. **Mutable State (`var`) and Object Identity (`is`):**
    - Records, tuples, and local scopes can have mutable `var` fields or components (`r.x := 10`, `t.a := 20`), and can
      pass mutable locations by reference (`:var` and `:out` parameters).
-   - Cardelli's identity operator `is` tests whether two non-scalar values (strings, records, tuples, variants, options,
-     arrays, closures) are the **same memory location** (*Typeful Programming* §3.1).
+   - Cardelli's identity operator `is` tests whether two non-scalar values (strings, records, tuples, options, arrays,
+     closures) are the **same memory location** (*Typeful Programming* §3.1); some options, and variants, compare by
+     case and value instead ([extensions.md](extensions.md), Options as Values and Variants as Values).
    - Together, `var` and `is` forbid the classic functional-language trick of implementing depth subtyping by
      *allocating a converted copy* on upcast: if you copy a tuple or record when coercing it to a supertype, `sub is
      sup` becomes `false`, and mutating a `var` field through the supertype view fails to update the original object!

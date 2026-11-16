@@ -217,16 +217,16 @@ export
             end
         end
     Def OptionIdentity = Tuple empty: Array(String) single: maybe.T(String) component: maybe.T(Type) end
-    let optionIdentity(t: Type): maybe.T(OptionIdentity) =
+    (* t looked through until wanted holds of it or nothing changes: each
+     * round looks through one layer, the module abstract types free in it
+     * replaced by their representations, or else its bound. A representation
+     * may itself be bounded, or mention another abstract type, so rounds
+     * repeat *)
+    let exposedType(t: Type wanted: All(u: Type) Bool): Type =
         begin
             let var curr = normalizeType(t)
             let var stuck = false
-            (* Each round looks through one layer: the module abstract types
-             * free in curr replaced by their representations, or else curr's
-             * bound. A representation may itself be bounded, or mention
-             * another abstract type, so rounds repeat until an option shows
-             * or nothing changes *)
-            while not(stuck) andif not(curr.form?typeOption) do
+            while not(stuck) andif not(wanted(curr)) do
                 let reps = model.newSubst()
                 for i = 0 upto {extent curr.fv - 1} do
                     let e = abstractTypes.abstractTypeBySymbol(curr.fv[i])
@@ -241,6 +241,12 @@ export
                 if model.same(exposed curr) then exposed := normalizeType(resolveTypeBound(curr)) end
                 if model.same(exposed curr) then stuck := true else curr := exposed end
             end
+            curr
+        end
+
+    let optionIdentity(t: Type): maybe.T(OptionIdentity) =
+        begin
+            let curr = exposedType(t fun(u: Type): Bool u.form?typeOption)
             case curr.form
                 when typeOption with x then
                     let empty = vector.new(:String)
@@ -282,6 +288,12 @@ export
                     end)
                 else maybe.none(:OptionIdentity)
             end
+        end
+
+    let variantCases(t: Type): maybe.T(Array(model.VariantField)) =
+        case exposedType(t fun(u: Type): Bool u.form?typeVariant).form
+            when typeVariant with x then maybe.some(:Array(model.VariantField) x.variants)
+            else maybe.none(:Array(model.VariantField))
         end
     Def FunQuantifiers = Tuple quantifiers: Array(model.Quantifier) body: Type end
     let collectFunQuantifiers(funType: Type): FunQuantifiers =

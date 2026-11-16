@@ -106,6 +106,33 @@ export
                         end
                     else false
                 end
+            when vVariant with x then
+                (* Of the same case, and their values the same at its type;
+                 * a case of type Ok is its case (docs/extensions.md,
+                 * Variants as Values) *)
+                case v2
+                    when vVariant with y then
+                        stringOp.equal(x.v.tag y.v.tag) andif begin
+                            let cases = reduce.variantCases(t)
+                            let caseType = if maybe.isNone(:Array(tm.VariantField) cases) then maybe.none(:tm.Type)
+                                else
+                                    let f = tm.variantGetField(maybe.unwrap(:Array(tm.VariantField) cases) x.v.tag)
+                                    if maybe.isSome(:tm.VariantField f) then maybe.unwrap(:tm.VariantField f).type
+                                    else maybe.none(:tm.Type) end
+                                end
+                            if maybe.isNone(:model.Value x.v.payload) orif maybe.isNone(:model.Value y.v.payload) then
+                                maybe.isNone(:model.Value x.v.payload) andif maybe.isNone(:model.Value y.v.payload)
+                            elsif maybe.isNone(:tm.Type caseType) then
+                                (* Not known to be a variant type: the same
+                                 * object only *)
+                                false
+                            else
+                                sameAt(maybe.unwrap(:tm.Type caseType) maybe.unwrap(:model.Value x.v.payload)
+                                    maybe.unwrap(:model.Value y.v.payload))
+                            end
+                        end
+                    else false
+                end
             else false
         end
 end

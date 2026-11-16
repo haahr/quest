@@ -382,7 +382,9 @@ class _Describer:
                 a = args[0]
                 if not (isinstance(a, ir.Var) and id(a) in self.handler_vars):
                     t = _type_of(a)
-                    if representation(t) == "QVal" or _compares_as_option(t):
+                    # A QVal word, an option is compares by case, or a variant,
+                    # which is compares by case and value
+                    if representation(t) in ("QVal", "QVariantVal") or _compares_as_option(t):
                         o.descriptor = self.describe(t)
             case ir.Call(type_args=type_args) | ir.CallExternal(type_args=type_args) | \
                     ir.MakeClosure(type_args=type_args):

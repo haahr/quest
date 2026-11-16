@@ -297,6 +297,24 @@ The single-word rule anticipates representing such options by their component
 ([option-values.md](option-values.md)), a design deferred on 2026-11-01. Whether to adopt it is open; if it is
 dropped, the rule is withdrawn, leaving only the rule for cases without components.
 
+## Variants as Values
+
+*Typeful Programming* §6.3 makes variants like options, each case carrying exactly one value (`Ok` where it carries
+none), so every variant type is what a single-word option type is, and `is` compares variants by the options' rule
+(decided 2026-11-15):
+
+- **A variant is its case and its value.** Two variants are `is` each other if they are of the same case and their
+  values are `is` each other at that case's type. A case of type `Ok` is its case. `{variant p of V with 1 end} is
+  {variant p of V with 1 end}` is true. A `var` case compares by its location.
+- **The static type decides,** as for options, and a variant viewed at another variant type (its tags renumbered,
+  its value converted) is still the same: an upcast is `is` the variant it was made from.
+
+`hash.identityHash` agrees. The reason is that a compiled variant is two words, its tag and its value
+([c-representation.md](c-representation.md) §5.3), with no location of its own to compare: the interpreters, which
+made every variant an object, said two variants made apart were not `is` each other, and compiled code could not say
+so at all. If the single-word rule for options is withdrawn, this one goes with it, and compiled variants would need
+a location (a box) or `is` on them refused.
+
 ---
 
 ## Extensions to `RealOp`

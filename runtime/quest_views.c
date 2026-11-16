@@ -569,6 +569,25 @@ bool quest_option_is(const QTypeDescriptor *t, const void *a, const void *b) {
     return quest_val_is(component, quest_option_element(a, t, 0), quest_option_element(b, t, 0));
 }
 
+bool quest_variant_is(const QTypeDescriptor *t, QVariantVal a, QVariantVal b) {
+    if (a.tag != b.tag) return false;
+    if (a.payload.u == b.payload.u) return true;
+    t = quest_identity_type(t);
+    if (t == NULL || t->kind != QTYPE_KIND_VARIANT || a.tag < 0) return false;
+    const QVariantTypeDescriptor *v = (const QVariantTypeDescriptor *)t->extra;
+    if ((size_t)a.tag >= v->case_count || v->cases[a.tag].is_var) return false;
+    return quest_val_is(v->cases[a.tag].payload_type, a.payload, b.payload);
+}
+
+/* A variant's identity hash at its type t (quest_identity_type's), as
+ * quest_variant_is compares variants: its case and its value's hash */
+uint64_t quest_variant_identity_hash(const QTypeDescriptor *t, QVariantVal x) {
+    const QVariantTypeDescriptor *v = (const QVariantTypeDescriptor *)t->extra;
+    bool known = x.tag >= 0 && (size_t)x.tag < v->case_count && !v->cases[x.tag].is_var;
+    uint64_t h = known ? quest_identity_hash(v->cases[x.tag].payload_type, x.payload) : quest_hash_mix64(x.payload.u);
+    return quest_hash_mix64((uint64_t)x.tag ^ h);
+}
+
 /* An option's identity hash at its type t (quest_identity_type's), as
  * quest_option_is compares options */
 uint64_t quest_option_identity_hash(const QTypeDescriptor *t, const void *p) {

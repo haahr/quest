@@ -893,17 +893,24 @@ const QTypeDescriptor *quest_identity_type(const QTypeDescriptor *t);
 /* is on options of type t (or of an abstract type that is one): the same object, or the same case, which has no
    components or is a single-word option type's case with a component and the same component */
 bool quest_option_is(const QTypeDescriptor *t, const void *a, const void *b);
+/* is on variants of type t (or of an abstract type that is one), each in t's tag numbering: the same case, and their
+   values the same at the case's type, or for a var case the same location (docs/extensions.md, Variants as Values) */
+bool quest_variant_is(const QTypeDescriptor *t, QVariantVal a, QVariantVal b);
 
 /* is on values of a type known only by its descriptor. Bit equality is identity for every type except Real,
-   where 0.0 is ~0.0 (NaN, the other case where bits and IEEE equality differ, never occurs), options, and records,
+   where 0.0 is ~0.0 (NaN, the other case where bits and IEEE equality differ, never occurs), options, records,
    whose word is a box that each view of a record makes anew (quest_record_box), so that a record is its payload, as
-   code of known type compares it. */
+   code of known type compares it, and variants, by case and value (quest_variant_is). */
 Q_INLINE bool quest_val_is(const QTypeDescriptor *t, QVal a, QVal b) {
     if (a.u == b.u) return true;
     t = quest_identity_type(t);
     if (t != NULL && t->kind == QTYPE_KIND_OPTION) return quest_option_is(t, a.p, b.p);
     if (t != NULL && t->kind == QTYPE_KIND_RECORD) {
         return a.p != NULL && b.p != NULL && ((const QRecordVal *)a.p)->val == ((const QRecordVal *)b.p)->val;
+    }
+    if (t != NULL && t->kind == QTYPE_KIND_VARIANT) {
+        /* A variant's word is a box, as a record's is */
+        return a.p != NULL && b.p != NULL && quest_variant_is(t, *(const QVariantVal *)a.p, *(const QVariantVal *)b.p);
     }
     if (t != NULL && t->kind == QTYPE_KIND_TUPLE) {
         /* A proxy is the object it is a view of */
