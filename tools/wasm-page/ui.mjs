@@ -14,6 +14,7 @@
 // the phrase in progress.
 
 import {load, PageSession} from "./page.mjs";
+import {Transcript} from "./transcript.mjs";
 import {requestLine, decodeRecord} from "./session.mjs";
 
 const $ = id => document.getElementById(id);
@@ -31,20 +32,11 @@ const options = {
 // golden by hand (window.quest.written)
 const written = {stdout: "", stderr: ""};
 
-function append(text, kind) {
-  const atEnd = transcript.scrollTop + transcript.clientHeight >= transcript.scrollHeight - 4;
-  const last = transcript.lastChild;
-  if (last && last.nodeType === 1 && last.className === kind && last.tagName === "SPAN") last.textContent += text;
-  else {
-    const span = document.createElement("span");
-    span.className = kind;
-    span.textContent = text;
-    transcript.append(span);
-  }
-  if (atEnd) transcript.scrollTop = transcript.scrollHeight;
-}
+const shown = new Transcript(transcript);
+function append(text, kind) { shown.append(text, kind); }
 
 function show(bundle) {
+  shown.flush();
   const div = document.createElement("div");
   div.className = "display";
   const image = Object.keys(bundle).find(t => t.startsWith("image/") && t !== "image/svg+xml");
@@ -209,9 +201,11 @@ input.addEventListener("keydown", e => {
 
 $("interrupt").addEventListener("click", () => { interrupt(); input.focus(); });
 $("restart").addEventListener("click", async () => {
-  session.worker?.terminate();
+  // the old session's request and queue answered, so that drain returns
+  // (wasm-review.md section 2.3, 2)
+  session.close();
   pending.length = 0;
-  transcript.textContent = "";
+  shown.clear();
   written.stdout = written.stderr = "";
   input.disabled = true;
   status.textContent = "Restarting…";
@@ -221,7 +215,24 @@ $("restart").addEventListener("click", async () => {
 window.quest = {written, pending, get session() { return session; }, get loaded() { return loaded; },
                 get repl() { return repl; }, get draining() { return draining; }};
 
+// A prefix or a file to load from another origin than the page's is the
+// link's choice, not the user's: the page asks first, since a program from
+// there can read what the page's origin serves (wasm-review.md section 2.3,
+// 6). A prefix of the page's own origin needs no answer.
+function crossOrigin() {
+  const others = [...options.prefixes, ...(options.load && /^[a-z]+:/i.test(options.load) ? [options.load] : [])]
+    .filter(p => new URL(p, location.href).origin !== location.origin);
+  return others;
+}
+
 try {
+  const others = crossOrigin();
+  if (others.length > 0 && !confirm(`This page was asked to load Quest code from ${others.join(", ")}, ` +
+                                    "which is another site. Load it?")) {
+    options.prefixes = options.prefixes.filter(p => new URL(p, location.href).origin === location.origin);
+    if (options.load && options.load.startsWith("/remote/")) options.load = undefined;
+    append("Loading from another site was declined.\n", "note");
+  }
   loaded = await load();
   status.textContent = "Starting the session…";
   await begin(undefined);

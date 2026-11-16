@@ -99,9 +99,16 @@ async function main() {
   const argv = process.argv.slice(2);
   let stackKb = 512;
   if (argv[0] === "--stack-kb") { stackKb = Number(argv[1]); argv.splice(0, 2); }
+  // A limit for the worker's heap, if given: node ends a worker that it
+  // finds over its limit, and the session replays in a new one
+  // (wasm-review.md section 2.2, 4). Not by default: with WebAssembly's GC
+  // objects V8 aborts the whole process at the limit for a large
+  // allocation, and slows near it for small ones (docs/wasm-plan.md step 30)
+  let heapMb = null;
+  if (argv[0] === "--heap-mb") { heapMb = Number(argv[1]); argv.splice(0, 2); }
   const [driver, ...rest] = argv;
   if (!driver) {
-    process.stderr.write("usage: node session-node.mjs [--stack-kb N] DRIVER.wasm (--kernel | -i [FILE]) [ARG...]\n");
+    process.stderr.write("usage: node session-node.mjs [--stack-kb N] [--heap-mb N] DRIVER.wasm (--kernel | -i [FILE]) [ARG...]\n");
     process.exit(2);
   }
   const kernel = rest.includes("--kernel");
@@ -124,7 +131,7 @@ async function main() {
       workerData: {modules, args, env, cwd: process.cwd(), kernel, committed},
       // node keeps 192 KB of a worker's stack from V8 (kStackBufferSize), so
       // that V8 has the N KB that a browser's worker gives it
-      resourceLimits: {stackSizeMb: (stackKb + 192) / 1024},
+      resourceLimits: {stackSizeMb: (stackKb + 192) / 1024, ...(heapMb ? {maxOldGenerationSizeMb: heapMb} : {})},
     });
     waiting = message => {
       if (message.exited !== undefined) process.exit(message.exited);
@@ -136,7 +143,11 @@ async function main() {
       waiting = null;
       if (w) w(message);
     });
-    worker.on("error", e => { process.stderr.write(`quest: the session's worker failed: ${e.stack || e}\n`); process.exit(70); });
+    worker.on("error", e => {
+      if (e.code === "ERR_WORKER_OUT_OF_MEMORY" && running) { outOfMemory(); return; }
+      process.stderr.write(`quest: the session's worker failed: ${e.stack || e}\n`);
+      process.exit(70);
+    });
   });
   await startWorker();
   // After the driver has checked its options, as natively, where it opens
@@ -201,6 +212,17 @@ async function main() {
     resolve(records);
   };
   process.on("SIGINT", () => { interrupt(); });
+  // An input that filled the worker's heap: as an interrupt ends one, a new
+  // worker replaying the inputs that committed, and the input's failure
+  const outOfMemory = async () => {
+    const {resolve} = running;
+    running = null;
+    waiting = null;
+    await startWorker();
+    const records = failure("memory", "out of memory");
+    if (kernel) writeAll(4, records.map(r => requestLine(r)).join("\n") + "\n");
+    resolve(records);
+  };
 
   if (kernel) {
     // A socket, not a file stream: a file stream's blocking read in node's

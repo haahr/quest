@@ -21,17 +21,34 @@ async function fetchBytes(url) {
 // The driver's modules, compiled, and the library's files: what every session
 // of the page starts from. timings records how long each part took, in
 // milliseconds, and sizes the archives' bytes.
+// The build these scripts are from, which build.py writes here and as the
+// driver archive's stamp member; "dev" in the sources, which no check is
+// made for
+const BUILD = "dev";
+
 export async function load(base = new URL(".", import.meta.url)) {
   const timings = {}, sizes = {};
   const started = performance.now();
   const lap = name => { timings[name] = Math.round(performance.now() - started); };
+  const v = BUILD === "dev" ? "" : `?v=${BUILD}`;
   const [driverBytes, libBytes] = await Promise.all([
-    fetchBytes(new URL("driver.qar.gz", base)), fetchBytes(new URL("lib.qar.gz", base))]);
+    fetchBytes(new URL("driver.qar.gz" + v, base)), fetchBytes(new URL("lib.qar.gz" + v, base))]);
   sizes.driver = driverBytes.length;
   sizes.lib = libBytes.length;
   lap("fetched");
   const [driver, lib] = await Promise.all([unpack(driverBytes), unpack(libBytes)]);
   lap("unpacked");
+  // An archive of another build than the scripts' (a partial deployment, a
+  // cache): the page loaded again, once, and then an error
+  const stamp = driver.has("stamp") ? new TextDecoder().decode(driver.get("stamp")) : null;
+  if (BUILD !== "dev" && stamp !== BUILD) {
+    const key = `quest-reloaded-${BUILD}`;
+    if (globalThis.sessionStorage && globalThis.location && !sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, "1");
+      location.reload();
+    }
+    throw new Error(`the page's scripts (build ${BUILD}) and its driver (build ${stamp}) differ`);
+  }
   const names = [...driver.keys()].filter(n => n.startsWith("units/"));
   const [runtime, program, ...units] = await Promise.all(
     ["runtime.wasm", "program.wasm", ...names].map(n => WebAssembly.compile(driver.get(n))));
@@ -147,6 +164,20 @@ export class PageSession {
     for (const q of this.queue.splice(0)) q.resolve([{done: "error"}]);
     this.options.exited?.(status);
     resolve?.();
+  }
+
+  // Ends the session for a restart: the worker ended, and the request
+  // running and those queued answered as failed, without the exited
+  // callback, so that whoever waits on them goes on
+  close() {
+    this.status = "closed";
+    this.worker?.terminate();
+    this.worker = null;
+    const running = this.running;
+    this.running = null;
+    if (running) running.resolve([{done: "error"}]);
+    for (const q of this.queue.splice(0)) q.resolve([{done: "error"}]);
+    if (this.restarting) { const done = this.restarting; this.restarting = null; done(); }
   }
 
   // A request's records (its line as session.mjs's requestLine writes it),

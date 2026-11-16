@@ -918,7 +918,11 @@ mobile browsers, and Linux and Windows.
    milestone 4 (§4.3).
 7. **`os/process`, `os/code`, `os/value`, and readline** are absent, and with them the parallel build.
 8. **`is` on some converted values:** true on a tuple that C's `runtime` conversion copies (§4.1).
-9. **No mixing with C units.** The other backends were brought up by moving units between backends until a
+9. **The heap's end is the engine's.** A browser ends the tab of a page whose worker fills the heap; node, given a
+   limit (`session-node.mjs --heap-mb`), ends the worker it finds over it, and the session replays, but with
+   WebAssembly's GC objects V8 aborts the whole process at the limit for a large allocation and slows near it for
+   small ones, so no limit is set by default (step 30).
+10. **No mixing with C units.** The other backends were brought up by moving units between backends until a
    miscompile was found; a wasm unit's values are not C's. The interpreter is the reference and the IR dumps are
    the evidence.
 
@@ -2102,6 +2106,33 @@ writer's buffer, and would end the session when flushed.
     ends the tab, documented in §7.
     *Done when* each is a case in `wasm_page.mjs` or the page's check, and a loop of 20,000 lines prints in Chrome
     in under a second.
+
+    *Done 2026-11-15:*
+    - **Built:**
+      - **output:** `tools/wasm-page/transcript.mjs`, which `ui.mjs` writes through: text gathered and added once
+        a frame, each frame's text of a kind one text node in that kind's last span.
+      - **Restart:** `PageSession.close` ends the worker and answers the request running and those queued, so
+        `drain` returns; the old prompt no longer waits for ever.
+      - **a flushed file:** `host.mjs` writes a file through to its mount with each write, rather than when it is
+        closed. The core's writers give WASI 64 KB at a time, so each write copies the file so far, once a
+        64 KB.
+      - **rename:** `MemoryMount.rename` refuses a directory into itself, a directory onto a file or a
+        non-empty directory, and a file onto a directory, and replaces what was at the target; the host refuses
+        a mount's own path or one holding a mount (`/quest`).
+      - **a build stamp:** `build.py` hashes the page's scripts and archives' members into a stamp, writes it as
+        `page.mjs`'s `BUILD` and the driver archive's `stamp` member, and names every script import and archive
+        fetch with `?v=STAMP`. A page whose archive's stamp differs loads again once, and then fails saying so.
+        `build.py` also no longer removes an `-o` directory that is not a page it built (review §4, 9).
+      - **another origin:** a `?path=` prefix or `?load=` URL of another origin is loaded only on the user's
+        yes (`confirm`); declined, it is dropped and the page says so. The page's own origin needs no answer.
+      - **heap exhaustion:** `session-node.mjs --heap-mb N` gives the worker a limit, and node's report that the
+        worker is out of memory replays the session, the input failing with `memory`. Not by default, as §7, 9
+        says: a program filling a 256 MB limit with one large array aborted node, and one filling it with small
+        ones ran for minutes near the limit. A browser ends the tab.
+    - **Checked:** `wasm_page.mjs` (a flushed file in the page's copy; a directory renamed into itself and
+      `/quest` renamed, both `system.error`), and the page's check in headless Chrome, both modes passing, with
+      a case that appends 20,000 lines of 41 bytes, one at a time, through `Transcript` in under a second.
+      By hand, not by a test: Restart while an input runs, and the question for another origin.
 31. **The driver and stale objects** (§1.4; unchanged). `--backend wasm FILE` without a phase runs the program as
     WebAssembly, in `--wasm-engine`'s engine, or is refused, rather than run the native JIT without a word.
     wasmtime is given §8.1's 8 MB of stack, and a program's overflow is reported as `stack.overflow`. Each wasm

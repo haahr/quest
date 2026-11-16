@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import functools
 import gzip
+import hashlib
 import http.server
 import json
 import os
@@ -45,7 +46,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 HERE = Path(__file__).resolve().parent
-PAGE_FILES = ["index.html", "style.css", "ui.mjs", "page.mjs", "worker.mjs"]
+PAGE_FILES = ["index.html", "style.css", "ui.mjs", "page.mjs", "worker.mjs", "transcript.mjs"]
 CHECK_FILES = ["check.html", "check.mjs"]
 HOST_FILES = ["host.mjs", "session.mjs", "jit.mjs", "repl.mjs", "archive.mjs"]
 
@@ -64,6 +65,31 @@ def write_archive(path: Path, members: list[tuple[str, bytes]]) -> tuple[int, in
     compressed = gzip.compress(data, compresslevel=9, mtime=0)
     path.write_bytes(compressed)
     return len(data), len(compressed)
+
+
+def build_stamp(files: list[tuple[str, bytes]]) -> str:
+    """A build's stamp: a hash of its scripts and its archives' members"""
+    h = hashlib.sha256()
+    for name, data in files:
+        h.update(name.encode() + b"\0" + len(data).to_bytes(8, "little") + data)
+    return h.hexdigest()[:16]
+
+
+def stamped(name: str, data: bytes, stamp: str) -> bytes:
+    """A page's script or HTML file with the build's stamp: each import of
+    another of its scripts, and each archive fetched, named with ?v=STAMP,
+    so that a cache never pairs one build's files with another's; and
+    page.mjs's BUILD, which it checks against the driver archive's stamp
+    member (wasm-review.md section 2.3, 5)"""
+    if not (name.endswith(".mjs") or name.endswith(".html")):
+        return data
+    text = data.decode()
+    scripts = "|".join(re.escape(n[:-4]) for n in PAGE_FILES + CHECK_FILES + HOST_FILES if n.endswith(".mjs"))
+    text = re.sub(r'(["\'])(\./)?(' + scripts + r')\.mjs\1', lambda m: f"{m[1]}{m[2] or ''}{m[3]}.mjs?v={stamp}{m[1]}",
+                  text)
+    if name == "page.mjs":
+        text = text.replace('const BUILD = "dev";', f'const BUILD = "{stamp}";')
+    return text.encode()
 
 
 def build_driver(driver: str, build_dir: Path) -> Path:
@@ -210,14 +236,20 @@ def main() -> None:
     if options.qi and qi_dir is None:
         sys.exit("build: --qi needs the build directory of --driver-wasm's driver (--driver-build)")
     if out.exists():
+        # only an earlier page's directory, or an empty one, is replaced
+        if any(out.iterdir()) and not (out / "driver.qar.gz").exists():
+            sys.exit(f"build: {out} is not a page this built; it is left as it is")
         shutil.rmtree(out)
     out.mkdir(parents=True)
-    for name in PAGE_FILES + (CHECK_FILES if options.tests else []):
-        shutil.copyfile(HERE / name, out / name)
-    for name in HOST_FILES:
-        shutil.copyfile(ROOT / "runtime" / "wasm" / name, out / name)
-    driver = write_archive(out / "driver.qar.gz", driver_members(program))
-    library = write_archive(out / "lib.qar.gz", library_members(qi_dir if options.qi else None))
+    sources = [(name, (HERE / name).read_bytes()) for name in PAGE_FILES + (CHECK_FILES if options.tests else [])]
+    sources += [(name, (ROOT / "runtime" / "wasm" / name).read_bytes()) for name in HOST_FILES]
+    members = driver_members(program)
+    lib_members = library_members(qi_dir if options.qi else None)
+    stamp = build_stamp(sources + members + lib_members)
+    for name, data in sources:
+        (out / name).write_bytes(stamped(name, data, stamp))
+    driver = write_archive(out / "driver.qar.gz", members + [("stamp", stamp.encode())])
+    library = write_archive(out / "lib.qar.gz", lib_members)
     if options.tests:
         copy_tests(out)
     print(f"build: wrote {out}")

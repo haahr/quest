@@ -88,6 +88,17 @@ for (const jit of [true, false]) {
   first.execute('import writer: Writer\nlet w = writer.file("note.txt")\nwriter.putString(w "hi")\nwriter.close(w)');
   expect(`${mode}: a file written is in the page's copy`, new TextDecoder().decode(first.copy.read("work/note.txt")),
          "hi");
+  // A file flushed and not closed is in the page's copy, as natively; a
+  // rename into itself or of /quest refused (docs/wasm-plan.md step 30)
+  first.execute('import writer: Writer\nlet flushed = writer.file("flushed.txt")\n' +
+                'writer.putString(flushed "seen")\nwriter.flush(flushed)');
+  expect(`${mode}: a file flushed is in the page's copy`,
+         new TextDecoder().decode(first.copy.read("work/flushed.txt")), "seen");
+  const renamed = to => first.execute(`import system: System\ntry begin system.renameFile(${to}) "renamed" end ` +
+                                      'when system.error then "system.error" end').records.map(r => r.result);
+  first.execute('import system: System\nsystem.makeDirectory("d")');
+  expect(`${mode}: a directory renamed into itself`, renamed('"d" "d/e"'), ['"system.error" : String', undefined]);
+  expect(`${mode}: /quest renamed`, renamed('"/quest" "/elsewhere"'), ['"system.error" : String', undefined]);
   const shown = first.execute('import io/display: io/Display\ndisplay.html("<p>hi</p>")').messages
     .filter(m => m.record).map(m => new TextDecoder().decode(m.record)).join("");
   expect(`${mode}: a display is a record`, shown.includes('{"display":{"text/html":"<p>hi</p>"'), true);

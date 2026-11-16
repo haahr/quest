@@ -11,6 +11,7 @@
 // those the native transcripts show.
 
 import {load, PageSession} from "./page.mjs";
+import {Transcript} from "./transcript.mjs";
 
 const jit = new URLSearchParams(location.search).get("jit") !== "0";
 const mode = jit ? "jit" : "interpreted";
@@ -100,6 +101,25 @@ try {
       result.failed.push({name, expected, actual: text});
       say(`[FAIL] ${name}\n--- expected\n${expected}--- actual\n${text}`, "fail");
     }
+  }
+  // A program printing in a loop, a write at a time: 20,000 lines of 41
+  // bytes into a transcript, in under a second (docs/wasm-plan.md step 30)
+  const flood = document.createElement("div");
+  flood.style.cssText = "height: 10em; overflow: auto; white-space: pre";
+  document.body.append(flood);
+  const t = new Transcript(flood);
+  const began = performance.now();
+  for (let i = 0; i < 20000; i++) t.append(`line ${String(i).padStart(5, "0")} of the flood of output.....\n`, "out");
+  await t.settled();
+  flood.scrollTop = flood.scrollHeight;
+  const took = Math.round(performance.now() - began);
+  flood.remove();
+  if (took < 1000) {
+    result.passed++;
+    say(`[PASS] 20,000 lines into the transcript (${took} ms)`, "pass");
+  } else {
+    result.failed.push({name: "flood", expected: "under 1000 ms", actual: `${took} ms`});
+    say(`[FAIL] 20,000 lines into the transcript took ${took} ms`, "fail");
   }
   say(`${result.passed} passed, ${result.failed.length} failed, ${result.pending.length} pending`);
 } catch (e) {

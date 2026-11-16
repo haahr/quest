@@ -128,11 +128,26 @@ export class MemoryMount {
     this.entries.delete(rel);
     this.made("rmdir", rel);
   }
+  // As a file system renames (wasm-review.md section 2.3, 4): not into
+  // itself; a directory onto an empty directory only, a file onto a file
+  // only; what was at the target replaced
   rename(rel, toRel) {
     this.changing();
     if (!this.entries.has(rel)) throw new Errno(E.NOENT);
     if (this.entries.get(this.parent(toRel)) !== null) throw new Errno(E.NOENT);
+    if (rel === toRel) return;
     const prefix = rel + "/";
+    const isDirectory = this.entries.get(rel) === null;
+    if (isDirectory && toRel.startsWith(prefix)) throw new Errno(E.INVAL);
+    if (this.entries.has(toRel)) {
+      const target = this.entries.get(toRel);
+      if (isDirectory && target !== null) throw new Errno(E.NOTDIR);
+      if (!isDirectory && target === null) throw new Errno(E.ISDIR);
+      if (target === null) {
+        for (const key of this.entries.keys()) if (key.startsWith(toRel + "/")) throw new Errno(E.NOTEMPTY);
+      }
+      this.entries.delete(toRel);
+    }
     for (const [key, value] of [...this.entries]) {
       if (key === rel || key.startsWith(prefix)) {
         this.entries.delete(key);
@@ -447,6 +462,12 @@ export class Host {
         const from = this.mountOf(this.path(fd, at, n));
         const to = this.mountOf(this.path(fd2, at2, n2));
         if (from.mount !== to.mount) throw new Errno(E.ACCES);
+        // a mount's own path, or one holding a mount, is not the mount's to
+        // move (/quest, which holds /quest/lib)
+        const source = this.path(fd, at, n);
+        if (this.mounts.some(m => m.path !== "/" && (m.path === source || m.path.startsWith(source + "/")))) {
+          throw new Errno(E.ACCES);
+        }
         from.mount.rename(from.rel, to.rel);
       }),
       proc_exit: code => { throw new Exit(code); },
@@ -477,17 +498,21 @@ export class Host {
     if (!s && !create) throw new Errno(E.NOENT);
     const {mount, rel} = this.mountOf(path);
     if (create || truncate) {
-      // Written as it is closed; made now, so that it exists while open
-      const file = {kind: "file", chunks: [], at: 0, data: new Uint8Array(0)};
+      // Made now, so that it exists while open, and written through with
+      // each write, so that what a flush gives the file is in it, as
+      // natively (wasm-review.md section 2.3, 3). The core's writers give
+      // WASI a file's bytes 64 KB at a time, so each write copies what the
+      // file has so far, once for each 64 KB
+      const file = {kind: "file", bytes: new Uint8Array(0), at: 0, data: new Uint8Array(0)};
       if (!s || truncate) mount.write(rel, new Uint8Array(0));
-      file.write = b => file.chunks.push(b);
-      file.close = () => {
-        const n = file.chunks.reduce((k, c) => k + c.length, 0);
-        const all = new Uint8Array(n);
-        let at = 0;
-        for (const c of file.chunks) { all.set(c, at); at += c.length; }
+      file.write = b => {
+        const all = new Uint8Array(file.bytes.length + b.length);
+        all.set(file.bytes);
+        all.set(b, file.bytes.length);
+        file.bytes = all;
         mount.write(rel, all);
       };
+      file.close = () => {};
       return file;
     }
     return {kind: "file", data: mount.read(rel), at: 0};
