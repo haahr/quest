@@ -25,7 +25,7 @@ self-hosting check also checking the whole-program fixed point through its
 backend (stage 2's whole-program build writes stage 2's whole-program code), and
 the backends' suite (the self-hosted suite's compiled tests through the SSA's C
 printer, ssac, for every unit; through the native arm64 backend, for every unit,
-and for the program's alone; and whole programs through C and arm64:
+and for the program's alone; and whole programs through arm64:
 docs/arm64.md section 4), whose compiled tests run under the collector's
 `incremental` mode (a full collection's marking always under way in slices of
 one object, each cycle's marks checked against a stop-the-world marking:
@@ -45,9 +45,10 @@ reach only by chance; when it fails, the suites are not run.
 Left to run by hand (docs/testing.md section 4.1): ssac's other modes and its
 fixed points, since arm64 tests the SSA they share and the plain mode keeps
 ssac's C printer working; arm64-modules, the boundary arm64-program tests from
-the other side; the JIT's modes, jit and jit-files, whose tests the stress
-tier (jit-files) and the self-hosted suite's jit_hosts check (the REPL's
-transcripts through an arm64-built driver's JIT) run; and the IR runs between Core and the described stage
+the other side; c-whole, since the self-hosted suite runs the C backend and
+arm64-whole whole programs; the JIT's modes, jit and jit-files, whose tests the
+stress tier (jit-files) and the self-hosted suite's jit_hosts check (the
+REPL's transcripts through an arm64-built driver's JIT) run; and the IR runs between Core and the described stage
 (SKIPPED_PHASES), whose failures the described stage's run and the compiled
 runs still show. Each suite builds into a temporary directory of its own, so
 they do not interfere. Their output is kept in .build/check/SUITE.txt, and each
@@ -323,9 +324,10 @@ def main() -> int:
     self_hosting = [*self_hosting, "--stage-backend", "arm64"]
     # The JIT's modes run by hand: the stress tier runs jit-files, and the
     # self-hosted suite's jit_hosts check runs the REPL's transcripts (jit's
-    # tests) through --jit in an arm64-built driver
+    # tests) through --jit in an arm64-built driver. So does c-whole: the
+    # self-hosted suite runs the C backend, and arm64-whole whole programs
     backends = [*run_tests, "--self-hosted", "--seed", args.seed, "--backend",
-                "ssac,arm64,arm64-program,c-whole,arm64-whole"]
+                "ssac,arm64,arm64-program,arm64-whole"]
     unit = [python, "-m", "unittest"]
     unit_environment = {"PYTHONPATH": str(ROOT_DIR / "bootstrap" / "python")}
     # Every compiled program the suites run, the compilers among them, checks
