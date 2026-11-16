@@ -225,5 +225,34 @@ main {
   let %136: String = call yes(%135) @104:44
   let %137: String = prim <>("record found through its view: ", %136) @104:7
   do call print(%137) @104:1
+  let mf: hashMap.T(Cell Int) = type_app hashMap.newIdentityMap [Cell Int] @110:10
+  let %138: Bool = call hashMap.insert [Cell Int](mf, f1, 5) @111:1
+  switch tag(f1) { @112:1
+    case full (c: Tuple var n: Int end): {
+      store c.#0 := 2 @112:31
+    }
+    case empty: {
+    }
+  }
+  let %139: maybe.T(Int) = call hashMap.get [Cell Int](mf, f1) @113:69
+  let %140: Bool = call maybe.isSome [Int](%139) @113:51
+  let %141: String = call yes(%140) @113:47
+  let %142: String = prim <>("full found after its var changed: ", %141) @113:7
+  do call print(%142) @113:1
+  let vc: VC = variant(c, f2) @115:10
+  let mv.1: hashMap.T(VC Int) = type_app hashMap.newIdentityMap [VC Int] @116:10
+  let %143: Bool = call hashMap.insert [VC Int](mv.1, vc, 6) @117:1
+  switch tag(f2) { @118:1
+    case full (c.1: Tuple var n: Int end): {
+      store c.1.#0 := 3 @118:31
+    }
+    case empty: {
+    }
+  }
+  let %144: maybe.T(Int) = call hashMap.get [VC Int](mv.1, vc) @119:80
+  let %145: Bool = call maybe.isSome [Int](%144) @119:62
+  let %146: String = call yes(%145) @119:58
+  let %147: String = prim <>("variant of full found after its var changed: ", %146) @119:7
+  do call print(%147) @119:1
 }
 
