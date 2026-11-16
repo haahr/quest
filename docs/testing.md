@@ -685,7 +685,7 @@ the check. It says which, and why; `--all` and `--self-hosted-only` choose for i
 
 | Change | Runs | Takes (10 cores) |
 | :--- | :--- | ---: |
-| **Both compilers,** or what they share: the language, `lib/`, `runtime/`, `bootstrap/`, a fix to what programs do or what errors they report, the shared tests | At once: the self-hosting check seeded from the release (50% of the workers), the fixed point through `c`, each with the whole-program fixed point through its backend, the backends' suite (20%: `--self-hosted --backend` with `ssac`, `arm64`, `arm64-program`, `c-whole`, `arm64-whole`, `jit`, and `jit-files`), the bootstrap's suite (30%), and the unit tests but the terminal ones; then the terminal tests alone | about 11 min |
+| **Both compilers,** or what they share: the language, `lib/`, `runtime/`, `bootstrap/`, a fix to what programs do or what errors they report, the shared tests | At once: the self-hosting check seeded from the release (50% of the workers), the fixed point through `c`, each with the whole-program fixed point through its backend, the backends' suite (20%: `--self-hosted --backend` with `ssac`, `arm64`, `arm64-program`, `c-whole`, and `arm64-whole`), the bootstrap's suite (30%), and the unit tests but the terminal ones; then the terminal tests alone | about 11 min |
 | **The self-hosted compiler alone:** `questlang/` changes to how it compiles (its IR, its C), refactorings, and its own goldens | The self-hosting check seeded from the release, with 8 workers, the fixed point through `c`, each with the whole-program one, and the backends' suite, with a quarter of the cores | about 11 min |
 
 - **Both take about as long,** since the self-hosted suite sets when either ends (section 5.1); the second leaves the
@@ -715,6 +715,10 @@ the check. It says which, and why; `--all` and `--self-hosted-only` choose for i
   test the SSA the two backends share, and the other `ssac` runs added a quarter of an hour to the check.
   `arm64-modules` runs by hand too: `arm64-program` tests the same boundary between arm64's units and C's, from the
   other side.
+- **The JIT's modes** run by hand too (since 2026-11-15): the stress tier runs `jit-files`, under the stricter
+  `stress` mode, and the self-hosted suite's `self-hosted/jit_hosts` check runs the REPL's transcripts, `jit`'s
+  tests, through `--jit` in an arm64-built driver. So `tools/check --no-stress` leaves the run goldens through the
+  JIT out; run `run_tests.py --self-hosted --backend jit,jit-files` when a change touches the JIT.
 - **The questlang tests** (`tests/source/questlang/`) need no run of their own: each suite runs them compiled, with its
   own compiler.
 - **The collector's checks:** every compiled program the suites run, the compilers among them, runs with
