@@ -1,0 +1,46 @@
+(* A document's abstract type whose module the program links: the
+ * representation it records must be the one the module registers, with as
+ * many arguments (docs/dynamic.md section 2.3; docs/wasm-review.md section
+ * 2.4, 7, where the wasm backend never checked it) *)
+
+import writer : Writer;
+import reader : Reader;
+import dynamic : Dynamic;
+import small: Small = geom/small : geom/Small;
+import strutil : Strutil = util/strutil : util/Strutil;
+import string : StringOp;
+
+let show(s: String): Ok = writer.putString(writer.output s <> "\n");
+let interned(text: String): String =
+    try
+        begin
+            let w = writer.file("dynamic_recorded_representations.json")
+            writer.putString(w text)
+            writer.close(w)
+            let d = dynamic.intern(reader.file("dynamic_recorded_representations.json"))
+            "read"
+        end
+    when dynamic.error then "dynamic.error"
+    end;
+(* The type's global name, which depends on where the module is found: as a
+ * document extern writes names it *)
+let name: String =
+    begin
+        let w = writer.file("dynamic_recorded_representations.json")
+        dynamic.extern(w dynamic.new(:small.P small.p(1)))
+        writer.close(w)
+        let r = reader.file("dynamic_recorded_representations.json")
+        let text = reader.getString(r 1000)
+        reader.close(r)
+        let key = "\"abstract\":\""
+        let start = strutil.find(text key) + string.length(key)
+        string.getSub(text start strutil.findFrom(text "\"" start) - start)
+    end;
+let doc(args: String rep: String value: String): String =
+    "{\"quest\":1,\"types\":[{\"abstract\":\"" <> name <> "\"" <> args <> ",\"rep\":1}," <> rep
+        <> "],\"type\":0,\"value\":" <> value <> "}";
+show("the same: " <> interned(doc("" "{\"record\":{\"x\":\"Int\",\"y\":\"Int\"}}" "{\"x\":1,\"y\":2}")));
+show("another: " <> interned(doc("" "{\"record\":{\"x\":\"Int\"}}" "{\"x\":1}")));
+show("another kind: " <> interned(doc("" "{\"tuple\":[\"Int\"]}" "[1]")));
+show("an argument: " <> interned(doc(",\"args\":[\"Int\"]" "{\"record\":{\"x\":\"Int\",\"y\":\"Int\"}}"
+    "{\"x\":1,\"y\":2}")))

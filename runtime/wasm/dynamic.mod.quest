@@ -113,12 +113,20 @@ export
         if core.storage(d).kind is core.kindNone then v else core.convert(v core.storage(d) core.storedType(d)) end
 
     (* The type a value is written or read at: its stored type's, an abstract
-     * type's representation, an auto type's parameter's witness *)
+     * type's representation, an auto type's parameter's witness. A cyclic
+     * table, whose types never reach one, fails after as many steps as no
+     * table needs (natively its recursion overflows the stack) *)
     let concrete(d0: Desc): Desc =
         begin
             let var d = core.storedType(d0)
             let var going = true
+            let var steps = 0
             while going do
+                steps := steps + 1
+                if steps > 100000 then
+                    fail()
+                    going := false
+                end
                 if {d.kind is core.kindOpaque} andif not(isWord(d)) then
                     let rep = core.abstractRep(d)
                     if rep.kind is core.kindNone then
@@ -896,14 +904,17 @@ export
     (* The characters of rd, with one character of lookahead put back on the
      * reader *)
     Def Source = Tuple rd: reader.T end
+    (* Whether the reader has more; a closed one has none, as C's reader takes
+     * it, so that intern of one raises dynamic.error *)
+    let more(src: Source): Bool = try reader.more(src.rd) when reader.error then false end
     let peek(src: Source): Int =
-        if not(reader.more(src.rd)) then ~1
+        if not(more(src)) then ~1
         else
             let c = reader.getChar(src.rd)
             core.readerUnget(asReader(readerAny(src.rd)))
             ascii.val(c)
         end
-    let next(src: Source): Int = if not(reader.more(src.rd)) then ~1 else ascii.val(reader.getChar(src.rd)) end
+    let next(src: Source): Int = if not(more(src)) then ~1 else ascii.val(reader.getChar(src.rd)) end
     let skip(src: Source): Ok =
         begin
             next(src)
@@ -954,9 +965,16 @@ export
 
     let isNumberChar(c: Int): Bool =
         {{c >= 48} andif {c <= 57}} orif {c is 45} orif {c is 43} orif {c is 46} orif {c is 101} orif {c is 69}
+    let isDigitAt(s: String i: Int): Bool =
+        {i < stringOp.length(s)} andif {ascii.val(stringOp.getChar(s i)) >= 48}
+            andif {ascii.val(stringOp.getChar(s i)) <= 57}
+    let isAt(s: String i: Int c: Int): Bool = {i < stringOp.length(s)} andif {ascii.val(stringOp.getChar(s i)) is c}
 
-    (* A number: an Int when it has no fraction or exponent and fits, else a
-     * Real *)
+    (* A number, as C's reader takes it (quest_parse_json_number): its
+     * characters, then an Int when none is a point or an exponent, else a
+     * Real, each of the longest prefix strtoll or strtod reads, and none
+     * read dynamic.error. An Int past the range saturates, as strtoll does;
+     * its text is kept for a word *)
     let readNumber(src: Source): J =
         begin
             let o = newOut()
@@ -967,26 +985,53 @@ export
                 put(o stringOp.new(1 ascii.char(c)))
             end
             let s = text(o)
-            if stringOp.isEmpty(s) then fail() end
-            let negative = ascii.val(stringOp.getChar(s 0)) is 45
-            let digits = if negative then stringOp.getSub(s 1 stringOp.length(s) - 1) else s end
-            if integral andif {stringOp.length(digits) <= 18} then
+            let negative = isAt(s 0 45)
+            let var i = if negative then 1 else 0 end
+            if integral then
+                if not(isDigitAt(s i)) then fail() end
+                let most = 9223372036854775807
                 let var n = 0
-                for i = 0 upto stringOp.length(digits) - 1 do
-                    let c = ascii.val(stringOp.getChar(digits i))
-                    if {c < 48} orif {c > 57} then fail() end
-                    n := {n * 10} + {c - 48}
+                let var over = false
+                while isDigitAt(s i) do
+                    let c = ascii.val(stringOp.getChar(s i)) - 48
+                    if over orif {n > {{most - c} / 10}} then over := true else n := {n * 10} + c end
+                    i := i + 1
                 end
-                option jInt of J with let n = if negative then 0 - n else n end let text = s end
-            elsif integral then
-                (* too large for an Int but perhaps a word: its bits *)
-                let var n = 0
-                for i = 0 upto stringOp.length(digits) - 1 do
-                    n := addWrap(mulWrap(n 10) ascii.val(stringOp.getChar(digits i)) - 48)
+                let value = if over then {if negative then {0 - most} - 1 else most end}
+                    elsif negative then 0 - n
+                    else n
+                    end
+                option jInt of J with let n = value let text = s end
+            else
+                (* digits, a point and digits, at least one digit in all, and
+                 * an exponent only if its digits follow *)
+                let start = i
+                while isDigitAt(s i) do i := i + 1 end
+                let var digits = i > start
+                if isAt(s i 46) then
+                    i := i + 1
+                    while isDigitAt(s i) do
+                        i := i + 1
+                        digits := true
+                    end
                 end
-                option jInt of J with let n = n let text = s end
-            else option jReal of J with let r = realconv.toReal(s) end
+                if not(digits) then fail() end
+                if isAt(s i 101) orif isAt(s i 69) then
+                    let var j = i + 1
+                    if isAt(s j 43) orif isAt(s j 45) then j := j + 1 end
+                    if isDigitAt(s j) then
+                        while isDigitAt(s j) do j := j + 1 end
+                        i := j
+                    end
+                end
+                option jReal of J with let r = realconv.toReal(stringOp.getSub(s 0 i)) end
             end
+        end
+
+    (* The literal word, each of its bytes *)
+    let literal(src: Source word: String): Ok =
+        for i = 0 upto stringOp.length(word) - 1 do
+            if next(src) isnot ascii.val(stringOp.getChar(word i)) then fail() end
         end
 
     let rec readJson(src: Source): J =
@@ -1055,15 +1100,18 @@ export
                 for i = 0 upto count - 1 do js[i] := items[i] end
                 option jArray of J with let items = js end
             elsif c is 116 then
-                for i = 0 upto 3 do skip(src) end
+                literal(src "true")
                 option jBool of J with let b = true end
             elsif c is 102 then
-                for i = 0 upto 4 do skip(src) end
+                literal(src "false")
                 option jBool of J with let b = false end
             elsif c is 110 then
-                for i = 0 upto 3 do skip(src) end
+                literal(src "null")
                 option jNull of J end
-            else readNumber(src)
+            elsif {c is 45} orif {{c >= 48} andif {c <= 57}} then readNumber(src)
+            else
+                fail()
+                option jNull of J end
             end
         end
 
@@ -1071,8 +1119,11 @@ export
         case j
             when jObject with o then
                 let var found = maybe.none(:J)
+                (* the first of a key given twice, as C's reader takes it *)
                 for i = 0 upto extent o.keys - 1 do
-                    if stringOp.equal(o.keys[i] key) then found := maybe.some(:J o.values[i]) end
+                    if maybe.isNone(:J found) andif stringOp.equal(o.keys[i] key) then
+                        found := maybe.some(:J o.values[i])
+                    end
                 end
                 found
             else maybe.none(:J)
@@ -1302,12 +1353,12 @@ export
             for i = 0 upto n - 1 do
                 let d = descs[i]
                 if d.kind is core.kindOpaque then
-                    let last = extent d.parts - 1
-                    let recorded = d.parts[last]
-                    d.flags[last] := 0
-                    let registered = core.abstractRep(d)
-                    d.flags[last] := 16
-                    if {registered.kind isnot core.kindNone} andif not(core.sameType(registered recorded)) then fail()
+                    let recorded = d.parts[extent d.parts - 1]
+                    (* a name registered at another arity, or with another
+                     * representation, is refused (quest_check_abstract_desc) *)
+                    if core.isRegistered(d.name) then
+                        let registered = core.registeredRep(d)
+                        if {registered.kind is core.kindNone} orif not(core.sameType(registered recorded)) then fail() end
                     end
                 end
             end
@@ -1363,7 +1414,7 @@ export
 
     let rec readValue(cx: Context node: J d0: Desc): Any =
         begin
-            let d = core.storedType(d0)
+            let d = concrete(d0)
             let k = d.kind
             if isWord(d) then
                 case node
@@ -1373,15 +1424,19 @@ export
                         let most = "18446744073709551615"
                         if {stringOp.length(x.text) > 20} orif {{stringOp.length(x.text) is 20}
                             andif not(stringOp.equal(most x.text)) andif stringOp.precedes(most x.text)} then fail() end
-                        fromInt(x.n)
+                        (* its bits from its text, as C's strtoull reads it: an
+                         * Int's value saturates past 2^63 - 1 *)
+                        let var bits = 0
+                        for i = 0 upto stringOp.length(x.text) - 1 do
+                            let c = ascii.val(stringOp.getChar(x.text i))
+                            if {c < 48} orif {c > 57} then fail() end
+                            bits := addWrap(mulWrap(bits 10) c - 48)
+                        end
+                        fromInt(bits)
                     else
                         fail()
                         fromOk(ok)
                 end
-            elsif k is core.kindOpaque then
-                let rep = core.abstractRep(d)
-                if rep.kind is core.kindNone then fail() end
-                readValue(cx node rep)
             elsif k is core.kindInt then
                 case node
                     when jInt with x then fromInt(x.n)
@@ -1423,7 +1478,6 @@ export
                         fail()
                         fromOk(ok)
                 end
-            elsif k is core.kindBoundVar then readValue(cx node witnessOf(d))
             elsif k is core.kindAuto then
                 if size(node) isnot 2 then fail() end
                 let typeNode = must(get(node "@type"))

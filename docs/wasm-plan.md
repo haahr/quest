@@ -1956,6 +1956,41 @@ writer's buffer, and would end the session when flushed.
     check counting parts as C does; the JSON reader's literals, numbers, saturation, and first key as C's;
     `dynamic.intern` on a closed reader `dynamic.error`; and serialization's recursion over a list as a loop.
     *Done when* the review's cases agree with native, each a run golden or error test.
+
+    *Done 2026-11-15:*
+    - **Built:**
+      - **adapters past eight:** the core keeps a registry of adapter makers by arity (`registerAdapter`,
+        `adapterFor`). A unit that calls a closure of a greater arity (`arityPast`, from its IR) makes that
+        arity's adapter (`adapterOf`, which the core's own eight share) and a maker, a closure of three
+        parameters, and registers it as it starts. The core's `adaptClosure` asks the registry past eight;
+        `dynamic.error` where no unit made one, which no code then calls.
+      - **auto values:** `convertAuto` (`quest_convert_auto`), its witness kept and each component converted
+        but one of the witness's type.
+      - **an option's identity hash:** by its single-word case only, else by identity, as `valIs` compares it.
+      - **depth:** `concrete` stops after 100,000 steps with `dynamic.error`, and `readValue` resolves its type
+        through it. Natively a cyclic table overflows the stack; this one raises the documented error for a
+        malformed document instead.
+      - **echo:** a record's field through `core.storedField`; a bound variable shows its witness only at
+        index 0, else `<hidden>`, as `quest_put_value` does; and a stored type converted to its type's form.
+      - **subtyping:** a quantifier's bound compared for equality.
+      - **recorded representations:** the core's `registeredRep` and `isRegistered` split from `abstractRep`,
+        so that a name registered at any arity is checked, as `quest_check_abstract_desc` does.
+      - **JSON:** literals compared byte by byte; a number begins with a digit or `-` and is read as `strtoll`
+        and `strtod` read its longest prefix, saturating past an `Int`'s range; the first of a key given twice.
+      - **a closed reader:** read as at its end, so that `intern` raises `dynamic.error`.
+    - **Not done: serialization's recursion as a loop** (§2.4, 10). The overflow is in `scan`, the sharing
+      walk, which recurses as C's does. With node at native's 8 MB of stack (`--stack-size=7800`), a list's
+      round trip reaches 10,000 cells in wasm and 15,000 natively, and both overflow at 20,000. The difference
+      is node's default stack (§1.4, step 31), not a recursion the C lacks, and loops in `scan`, `emit`, and
+      `readValue` would go beyond the C this step ports. Left as it is.
+    - **Lesser, not done:** `[]` still reads as `Record end` (§2.4, 8).
+    - **A word's bits from its text:** a number's `Int` value saturates past 2⁶³ − 1 now, so a `word.T` reads its
+      bits from the number's text, as C's `strtoull` does (`modules/dynamic_abstract_types` reads `2⁶⁴ − 1`).
+    - **Checked:** run goldens `language/dynamic_adapters_past_eight` (arities 9 and 12),
+      `language/dynamic_runtime_ports` (§2.4, 2, 3, 6, 8, 9), `modules/dynamic_recorded_representations` (7: the
+      type's global name taken from a document `extern` writes, since it depends on where the module is found),
+      and `modules/echo_stored_views` (5), on arm64, wasm, wasm-node, wasm-jit, and jit-files. The cyclic table
+      (4) has no golden, the two runtimes ending it differently.
 27. **Output, files, and traps** (§1.1 to §1.3; all still where run). The identity hash of a boxed `Real` by its
     bits. The base's `write` loops until all is written, retries on "try again", and raises `writer.error` on
     failure; `session-node.mjs` likewise (node cut a pipe at 64 KB, still). Late standard input in node read as it

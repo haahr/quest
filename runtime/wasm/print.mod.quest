@@ -30,6 +30,7 @@ export
     let arrayCount(x: core.Any): Int = external "wasm.arrayCount"
     let arraySlot(x: core.Any i: Int): core.Any = external "wasm.arraySlot"
     let recordField(x: core.Any i: Int): core.Any = external "wasm.recordField"
+    let recDict(x: core.Any): core.Any = external "wasm.recDict"
     let optionTag(x: core.Any): Int = external "wasm.optionTag"
     (* A variant's tag and payload, from its $varBox *)
     let variantTag(x: core.Any): Int = external "wasm.variantTag"
@@ -101,7 +102,9 @@ export
                     else
                         let var text = e.text
                         for i = 0 upto extent d.parts - 1 do
-                            text := text <> " " <> {d.labels[i] <> {"=" <> show(recordField(v i) d.parts[i])}}
+                            (* converted from the type the record stores it at *)
+                            let field = core.storedField(recordField(v i) recDict(v) i d.parts[i])
+                            text := text <> " " <> {d.labels[i] <> {"=" <> show(field d.parts[i])}}
                         end
                         leave()
                         text <> " end"
@@ -154,8 +157,13 @@ export
                 end
                 witnesses.count := witnesses.count - 1
                 text <> " end"
-            elsif {k is core.kindBoundVar} andif {witnesses.count > 0} then
+            elsif {k is core.kindBoundVar} andif {witnesses.count > 0} andif {core.boundIndex(d) is 0} then
+                (* the innermost auto value's witness; an outer one's is
+                 * hidden, as natively (quest_put_value) *)
                 show(v witnesses.items[witnesses.count - 1])
+            elsif k is core.kindStored then
+                (* a value laid out as generic code stores its type argument *)
+                show(core.convert(v d core.storedType(d)) core.storedType(d))
             elsif k is core.kindOpaque then
                 if stringOp.equal(d.name "Word.T") orif stringOp.equal(d.name "word.T") then
                     "16#" <> {hex(toInt(v)) <> "#"}

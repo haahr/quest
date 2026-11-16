@@ -3544,15 +3544,70 @@ export
             n
         end
 
-    (* The adapters of closures seen at a function supertype (the core's
-     * convert, quest_convert's meta->adapt), made in wasm/core when its
-     * adaptClosure is first compiled: for each uniform arity n up to
-     * maxAdapted, a closure type $adaptN, a subtype of $closU(n), that holds
-     * the closure adapted and the two function types, and its uniform entry,
-     * which converts each argument by the core's adaptArg, calls the closure
-     * through its uniform entry, and converts the result by adaptResult; and
-     * the function that makes one for an arity, or for a greater arity gives
-     * the closure as it is. The index of that function *)
+    (* The adapter of closures of uniform arity n seen at a function
+     * supertype (the core's convert, quest_convert's meta->adapt): a closure
+     * type $adaptN, a subtype of $closU(n), that holds the closure adapted
+     * and the two function types, and its uniform entry, which converts each
+     * argument by the core's adaptArg (function adaptArg), calls the closure
+     * through its uniform entry, and converts the result by adaptResult. Its
+     * type and its entry's index *)
+    Def Adapter = Tuple type: Int entry: Int end
+    let adapterOf(g: G n: Int adaptArg: Int adaptResult: Int): Adapter =
+        begin
+            let t = addType(g structSub("adapt" <> conv.int(n) true closU(g n) array of
+                hashField fieldOf("uniform" model.ref(uniformType(g n)) false)
+                fieldOf("orig" model.eqref false) fieldOf("from" model.eqref false) fieldOf("to" model.eqref false)
+            end))
+            let names = array of(n + 1 "")
+            names[0] := "closure"
+            for k = 1 upto n do names[k] := "a" <> conv.int(k - 1) end
+            let f = newF(g names array of model.eqref end ~1)
+            let state = scratch(f model.refNull(t))
+            let result = scratch(f model.eqref)
+            emit(f i1(ops.localGet 0))
+            castTo(f t)
+            emit(f i1(ops.localSet state))
+            (* the closure adapted, then each argument converted *)
+            emit(f i1(ops.localGet state))
+            emit(f i2(ops.structGet t 2))
+            castTo(f tClos)
+            for k = 0 upto n - 1 do
+                emit(f i1(ops.globalGet g.noClosure))
+                emit(f i1(ops.localGet state))
+                emit(f i2(ops.structGet t 3))
+                emit(f i1(ops.localGet state))
+                emit(f i2(ops.structGet t 4))
+                emit(f model.i64Const(k))
+                emit(f i1(ops.localGet k + 1))
+                emit(f i1(ops.call adaptArg))
+            end
+            emit(f i1(ops.localGet state))
+            emit(f i2(ops.structGet t 2))
+            castTo(f closU(g n))
+            emit(f i2(ops.structGet closU(g n) 1))
+            emit(f i1(ops.callRef uniformType(g n)))
+            emit(f i1(ops.localSet result))
+            emit(f i1(ops.globalGet g.noClosure))
+            emit(f i1(ops.localGet state))
+            emit(f i2(ops.structGet t 3))
+            emit(f i1(ops.localGet state))
+            emit(f i2(ops.structGet t 4))
+            emit(f i1(ops.localGet result))
+            emit(f i1(ops.call adaptResult))
+            let at = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
+            vector.append(:model.Function g.m.functions tuple
+                let name = fresh(g.names "adapt" <> conv.int(n) <> ".uniform") let type = uniformType(g n)
+                let params = names let locals = f.declared let body = f.code
+            end)
+            declare(g at)
+            tuple let type = t let entry = at end
+        end
+
+    (* The adapters the core makes, when its adaptClosure is first compiled:
+     * one for each uniform arity up to maxAdapted, and the function that
+     * makes one for an arity, or past those asks the core's adapterFor for
+     * the maker a unit registered (adaptersPast). The index of that
+     * function *)
     let maxAdapted = 8
     let adapters(g: G): Int =
         if hashMap.contains(:String :Int g.runtimeFunctions "adaptClosure") then
@@ -3572,58 +3627,9 @@ export
                 end
             let adaptArg = helper("adaptArg")
             let adaptResult = helper("adaptResult")
-            let types = array of(maxAdapted + 1 0)
-            let entries = array of(maxAdapted + 1 0)
-            for n = 0 upto maxAdapted do
-                let t = addType(g structSub("adapt" <> conv.int(n) true closU(g n) array of
-                    hashField fieldOf("uniform" model.ref(uniformType(g n)) false)
-                    fieldOf("orig" model.eqref false) fieldOf("from" model.eqref false) fieldOf("to" model.eqref false)
-                end))
-                types[n] := t
-                let names = array of(n + 1 "")
-                names[0] := "closure"
-                for k = 1 upto n do names[k] := "a" <> conv.int(k - 1) end
-                let f = newF(g names array of model.eqref end ~1)
-                let state = scratch(f model.refNull(t))
-                let result = scratch(f model.eqref)
-                emit(f i1(ops.localGet 0))
-                castTo(f t)
-                emit(f i1(ops.localSet state))
-                (* the closure adapted, then each argument converted *)
-                emit(f i1(ops.localGet state))
-                emit(f i2(ops.structGet t 2))
-                castTo(f tClos)
-                for k = 0 upto n - 1 do
-                    emit(f i1(ops.globalGet g.noClosure))
-                    emit(f i1(ops.localGet state))
-                    emit(f i2(ops.structGet t 3))
-                    emit(f i1(ops.localGet state))
-                    emit(f i2(ops.structGet t 4))
-                    emit(f model.i64Const(k))
-                    emit(f i1(ops.localGet k + 1))
-                    emit(f i1(ops.call adaptArg))
-                end
-                emit(f i1(ops.localGet state))
-                emit(f i2(ops.structGet t 2))
-                castTo(f closU(g n))
-                emit(f i2(ops.structGet closU(g n) 1))
-                emit(f i1(ops.callRef uniformType(g n)))
-                emit(f i1(ops.localSet result))
-                emit(f i1(ops.globalGet g.noClosure))
-                emit(f i1(ops.localGet state))
-                emit(f i2(ops.structGet t 3))
-                emit(f i1(ops.localGet state))
-                emit(f i2(ops.structGet t 4))
-                emit(f i1(ops.localGet result))
-                emit(f i1(ops.call adaptResult))
-                let at = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
-                vector.append(:model.Function g.m.functions tuple
-                    let name = fresh(g.names "adapt" <> conv.int(n) <> ".uniform") let type = uniformType(g n)
-                    let params = names let locals = f.declared let body = f.code
-                end)
-                declare(g at)
-                entries[n] := at
-            end
+            let adapterFor = helper("adapterFor")
+            let made = array of(maxAdapted + 1 tuple let type = 0 let entry = 0 end)
+            for n = 0 upto maxAdapted do made[n] := adapterOf(g n adaptArg adaptResult) end
             (* adaptClosure(v from to n): an adapter of arity n *)
             let names = array of "v" "from" "to" "n" end
             let f = newF(g names array of model.eqref end ~1)
@@ -3633,15 +3639,30 @@ export
                 emit(f i(ops.i64Eq))
                 emit(f model.ifInst(empty ""))
                 emit(f model.i32Const(0))
-                emit(f i1(ops.refFunc entries[n]))
+                emit(f i1(ops.refFunc made[n].entry))
                 emit(f i1(ops.localGet 0))
                 emit(f i1(ops.localGet 1))
                 emit(f i1(ops.localGet 2))
-                emit(f i1(ops.structNew types[n]))
+                emit(f i1(ops.structNew made[n].type))
                 emit(f i(ops.returnOp))
                 emit(f model.endInst)
             end
+            (* past them, the maker a unit registered, a closure of three
+             * parameters, called with the closure and the two types *)
+            let maker = scratch(f model.eqref)
+            emit(f i1(ops.globalGet g.noClosure))
             emit(f i1(ops.localGet 0))
+            emit(f i1(ops.localGet 3))
+            emit(f i1(ops.call adapterFor))
+            emit(f i1(ops.localTee maker))
+            castTo(f tClos)
+            emit(f i1(ops.localGet 0))
+            emit(f i1(ops.localGet 1))
+            emit(f i1(ops.localGet 2))
+            emit(f i1(ops.localGet maker))
+            castTo(f closU(g 3))
+            emit(f i2(ops.structGet closU(g 3) 1))
+            emit(f i1(ops.callRef uniformType(g 3)))
             let index = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
             vector.append(:model.Function g.m.functions tuple
                 let name = fresh(g.names "adaptClosure")
@@ -3650,6 +3671,72 @@ export
             end)
             hashMap.insert(:String :Int g.runtimeFunctions "adaptClosure" index)
             index
+        end
+
+    (* The arities past maxAdapted at which a unit's code may call a closure
+     * through its uniform entry (closureCall), in order, each once *)
+    let arityPast(g: G unit: ir.Unit): Array(Int) =
+        begin
+            let found = vector.new(:Int)
+            let bodies = walk.unitBodies(unit)
+            for b = 0 upto extent bodies - 1 do
+                let ss = walk.walkStatements(bodies[b] true)
+                for k = 0 upto vector.length(:ir.Stmt ss) - 1 do
+                    let op = case vector.get(:ir.Stmt ss k)
+                        when sLet with x then maybe.some(:ir.Op x.value)
+                        when sDo with x then maybe.some(:ir.Op x.value)
+                        else maybe.none(:ir.Op)
+                    end
+                    if maybe.isSome(:ir.Op op) then
+                        case maybe.unwrap(:ir.Op op)
+                            when opCall with x then
+                                if maybe.isSome(:ir.Variable x.callee) then
+                                    let n = arity(maybe.unwrap(:ir.Variable x.callee).type)
+                                    let var seen = n <= maxAdapted
+                                    for j = 0 upto vector.length(:Int found) - 1 do
+                                        if vector.get(:Int found j) is n then seen := true end
+                                    end
+                                    if not(seen) then vector.append(:Int found n) end
+                                end
+                            else ok
+                        end
+                    end
+                end
+            end
+            vector.toArray(:Int found)
+        end
+
+    (* The adapters of the arities past the core's that the unit calls
+     * closures at, each with a maker, a closure of three parameters (the
+     * closure, the two types) that makes one; registered with the core as
+     * the unit starts, so that the core's adaptClosure finds them (natively
+     * the adapters have no limit; wasm-review.md section 2.4, 1) *)
+    let adaptersPast(f: F arities: Array(Int)): Ok =
+        for k = 0 upto extent arities - 1 do
+            let g = f.g
+            let n = arities[k]
+            let a = adapterOf(g n hashMap.find(:String :Int g.runtimeUnits "wasm/core.adaptArg")
+                hashMap.find(:String :Int g.runtimeUnits "wasm/core.adaptResult"))
+            let mf = newF(g array of "maker" "v" "from" "to" end array of model.eqref end ~1)
+            emit(mf model.i32Const(0))
+            emit(mf i1(ops.refFunc a.entry))
+            emit(mf i1(ops.localGet 1))
+            emit(mf i1(ops.localGet 2))
+            emit(mf i1(ops.localGet 3))
+            emit(mf i1(ops.structNew a.type))
+            let maker = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
+            vector.append(:model.Function g.m.functions tuple
+                let name = fresh(g.names "adapt" <> conv.int(n) <> ".maker") let type = uniformType(g 3)
+                let params = array of "maker" "v" "from" "to" end let locals = mf.declared let body = mf.code
+            end)
+            declare(g maker)
+            emit(f i1(ops.globalGet g.noClosure))
+            emit(f model.i64Const(n))
+            emit(f model.i32Const(0))
+            emit(f i1(ops.refFunc maker))
+            emit(f i1(ops.structNew closU(g 3)))
+            runtimeUnitCall(f "wasm/core.registerAdapter")
+            emit(f i(ops.drop))
         end
 
     (* A closure of x.code with its captures: its static closure if it has
@@ -5311,6 +5398,12 @@ export
                 runtimeImport("wasm/core" "proxyOptionElement" array of e n end array of e end)
                 runtimeImport("wasm/core" "proxyOptionPayload" array of e end array of e end)
             end
+            let pastArities = if isRuntimeUnit(moduleName) then array of :Int end else arityPast(g unit) end
+            if extent pastArities > 0 then
+                runtimeImport("wasm/core" "adaptArg" array of e e n e end array of e end)
+                runtimeImport("wasm/core" "adaptResult" array of e e e end array of e end)
+                runtimeImport("wasm/core" "registerAdapter" array of n e end array of e end)
+            end
             if described then
                 hashMap.insert(:String :Int g.runtimeUnits "wasm/core.init"
                     importFunction("wasm/core" "init" funcType(g noTypes noTypes)))
@@ -5589,6 +5682,7 @@ export
                 initRuntime(initF)
                 initImports(initF)
                 for k = 0 upto nmodules - 1 do registerAbstracts(initF vector.get(:ir.Module unit.modules k)) end
+                adaptersPast(initF pastArities)
                 for k = 0 upto nmodules - 1 do body(initF vector.get(:ir.Module unit.modules k).init) end
                 (* and a phrase unit's top level, as the native entry runs it *)
                 if g.isPhrase then body(initF unit.main) end
@@ -5688,6 +5782,7 @@ export
             initRuntime(mainF)
             initImports(mainF)
             for k = 0 upto nmodules - 1 do registerAbstracts(mainF vector.get(:ir.Module unit.modules k)) end
+            adaptersPast(mainF pastArities)
             (* the modules the program defines, in order, then its top
              * level *)
             for k = 0 upto nmodules - 1 do body(mainF vector.get(:ir.Module unit.modules k).init) end

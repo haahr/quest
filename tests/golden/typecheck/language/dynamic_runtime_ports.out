@@ -1,0 +1,460 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('reader') : 'Reader')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('dynamic') : 'Dynamic')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('hashMap') : 'HashMap')
+      ))
+    (TypedLetValue 'show' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'attempt' :type Fun(name: String f: Fun(): String): Ok
+      :value (TypedFun :params (('name' : String) ('f' : Fun(): String)) :type Fun(name: String f: Fun(): String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'show' :type Fun(s: String): Ok)
+          :args (
+            (TypedInfix '<>' :type String
+              :left (TypedVar 'name' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ': ' :type String)
+                :right (TypedTry :type String
+                  :body (TypedApp :type String
+                    :func (TypedVar 'f' :type Fun(): String)
+                    :args ())
+                  :branches (
+                    (TypedTryBranch
+                      :exc_pattern (TypedSelect 'error' :type Exception
+                        :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                      :body (TypedString 'dynamic.error' :type String))
+                    (TypedTryBranch
+                      :exc_pattern (TypedSelect 'error' :type Exception
+                        :target (TypedVar 'reader' :type Module 'reader'))
+                      :body (TypedString 'reader.error' :type String))
+                  ))))
+          ))))
+    (TypedLetType 'VS' :kind TYPE)
+    (TypedLetType 'VB' :kind TYPE)
+    (TypedLetType 'AS' :kind TYPE)
+    (TypedLetType 'AB' :kind TYPE)
+    (TypedLetValue 'vc' :type VS
+      :value (TypedVariant 'c' :type VS
+        :payload (TypedBool true)))
+    (TypedLetValue 'aS' :type AS
+      :value (TypedAuto :Int :type AS
+        :payload (TypedTuple :type Tuple x: Int v: VS end
+          :elements (
+            (TypedInt 1 :type Int)
+            (TypedVar 'vc' :type VS)
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(name: String f: Fun(): String): Ok)
+        :args (
+          (TypedString 'auto' :type String)
+          (TypedFun :params () :type Fun(): String
+            :body (TypedBlock :type String
+              :bindings (
+                (TypedLetValue 'ab' :type AB
+                  :value (TypedApp :type AB
+                    :func (TypedTypeApp [AB] :type Fun(d: T): AB
+                      :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedApp :type T
+                        :func (TypedTypeApp [AS] :type Fun(a: AS): T
+                          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                        :args (
+                          (TypedVar 'aS' :type AS)
+                        ))
+                    )))
+              )
+              :result (TypedInspect :type String
+                :target (TypedVar 'ab' :type AB)
+                :branches (
+                  (TypedInspectBranch match=Int
+                    :body (TypedCase :type String
+                      :target (TypedSelect 'v' :type VB
+                        :target (TypedVar 'i' :type Tuple x: Int v: VB end))
+                      :branches (
+                        (TypedCaseBranch tags=(a)
+                          :body (TypedString 'a' :type String))
+                        (TypedCaseBranch tags=(b)
+                          :body (TypedString 'b' :type String))
+                        (TypedCaseBranch tags=(c)
+                          :body (TypedString 'c' :type String))
+                      )))
+                )
+                :else (TypedString '?' :type String))))
+        )))
+    (TypedLetType 'MV' :kind TYPE)
+    (TypedLetValue 'm' :type MV
+      :value (TypedOption 'some' :type MV
+        :payload (TypedTuple :type Tuple var v: Int end
+          :elements (
+            (TypedInt 1 :type Int)
+          ))))
+    (TypedLetValue 'map' :type hashMap.T(MV Int)
+      :value (TypedTypeApp [MV Int] :type hashMap.T(MV Int)
+        :func (TypedSelect 'newIdentityMap' :type All(K :: TYPE V :: TYPE) hashMap.T(K V)
+          :target (TypedVar 'hashMap' :type Module 'hashMap'))))
+    (TypedExprStmt
+      :expr (TypedApp :type Bool
+        :func (TypedTypeApp [MV Int] :type Fun(m: hashMap.T(MV Int) key: MV value: Int): Bool
+          :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K value: V): Bool
+            :target (TypedVar 'hashMap' :type Module 'hashMap')))
+        :args (
+          (TypedVar 'map' :type hashMap.T(MV Int))
+          (TypedVar 'm' :type MV)
+          (TypedInt 5 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedCase :type Ok
+        :target (TypedVar 'm' :type MV)
+        :branches (
+          (TypedCaseBranch tags=(some) :binder 'c'
+            :body (TypedAssign
+              :target (TypedSelect 'v' :type Int
+                :target (TypedVar 'c' :type Tuple var v: Int end))
+              :value (TypedInt 2 :type Int)))
+          (TypedCaseBranch tags=(none)
+            :body (TypedOk))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'identity: ' :type String)
+            :right (TypedIf :type String
+              :cond (TypedApp :type Bool
+                :func (TypedTypeApp [MV Int] :type Fun(m: hashMap.T(MV Int) key: MV): Bool
+                  :func (TypedSelect 'contains' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K): Bool
+                    :target (TypedVar 'hashMap' :type Module 'hashMap')))
+                :args (
+                  (TypedVar 'map' :type hashMap.T(MV Int))
+                  (TypedVar 'm' :type MV)
+                ))
+              :then (TypedString 'kept' :type String)
+              :else (TypedString 'lost' :type String)))
+        )))
+    (TypedLetType 'Small' :kind TYPE)
+    (TypedLetType 'Big' :kind TYPE)
+    (TypedLetValue 'idS' :type All(A <: Small) Fun(x: A): A
+      :value (TypedFun :params (('x' : A)) :type All(A <: Small) Fun(x: A): A
+        :body (TypedVar 'x' :type A)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(name: String f: Fun(): String): Ok)
+        :args (
+          (TypedString 'bound' :type String)
+          (TypedFun :params () :type Fun(): String
+            :body (TypedBlock :type String
+              :bindings (
+                (TypedLetValue 'g' :type All(A <: Big) Fun(x: A): A
+                  :value (TypedApp :type All(A <: Big) Fun(x: A): A
+                    :func (TypedTypeApp [All(A <: Big) Fun(x: A): A] :type Fun(d: T): All(A <: Big) Fun(x: A): A
+                      :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedApp :type T
+                        :func (TypedTypeApp [All(A <: Small) Fun(x: A): A] :type Fun(a: All(A <: Small) Fun(x: A): A): T
+                          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                        :args (
+                          (TypedVar 'idS' :type All(A <: Small) Fun(x: A): A)
+                        ))
+                    )))
+              )
+              :result (TypedString 'accepted' :type String)))
+        )))
+    (TypedLetValue 'interned' :type Fun(text: String): String
+      :value (TypedFun :params (('text' : String)) :type Fun(text: String): String
+        :body (TypedBlock :type String
+          :bindings (
+            (TypedLetValue 'w' :type writer.T
+              :value (TypedApp :type writer.T
+                :func (TypedSelect 'file' :type Fun(name: String): writer.T
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedString 'dynamic_runtime_ports.json' :type String)
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedVar 'w' :type writer.T)
+                  (TypedVar 'text' :type String)
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'close' :type Fun(writer: writer.T): Ok
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedVar 'w' :type writer.T)
+                )))
+            (TypedLetValue 'd' :type T
+              :value (TypedApp :type T
+                :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+                  :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                :args (
+                  (TypedApp :type reader.T
+                    :func (TypedSelect 'file' :type Fun(name: String): reader.T
+                      :target (TypedVar 'reader' :type Module 'reader'))
+                    :args (
+                      (TypedString 'dynamic_runtime_ports.json' :type String)
+                    ))
+                )))
+          )
+          :result (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedTypeApp [Int] :type Fun(d: T): Int
+                    :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                      :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                  :args (
+                    (TypedVar 'd' :type T)
+                  ))
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'error' :type Exception
+                  :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                :body (TypedTry :type String
+                  :body (TypedIf :type String
+                    :cond (TypedApp :type Bool
+                      :func (TypedTypeApp [Bool] :type Fun(d: T): Bool
+                        :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                          :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                      :args (
+                        (TypedVar 'd' :type T)
+                      ))
+                    :then (TypedString 'true' :type String)
+                    :else (TypedString 'false' :type String))
+                  :branches (
+                    (TypedTryBranch
+                      :exc_pattern (TypedSelect 'error' :type Exception
+                        :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                      :body (TypedString '?' :type String))
+                  )))
+            )))))
+    (TypedLetValue 'doc' :type Fun(type: String value: String): String
+      :value (TypedFun :params (('type' : String) ('value' : String)) :type Fun(type: String value: String): String
+        :body (TypedInfix '<>' :type String
+          :left (TypedString '{"quest":1,"types":[],"type":"' :type String)
+          :right (TypedInfix '<>' :type String
+            :left (TypedVar 'type' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedString '","value":' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedVar 'value' :type String)
+                :right (TypedString '}' :type String)))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(name: String f: Fun(): String): Ok)
+        :args (
+          (TypedString 'txxx' :type String)
+          (TypedFun :params () :type Fun(): String
+            :body (TypedApp :type String
+              :func (TypedVar 'interned' :type Fun(text: String): String)
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'doc' :type Fun(type: String value: String): String)
+                  :args (
+                    (TypedString 'Bool' :type String)
+                    (TypedString 'txxx' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(name: String f: Fun(): String): Ok)
+        :args (
+          (TypedString 'true' :type String)
+          (TypedFun :params () :type Fun(): String
+            :body (TypedApp :type String
+              :func (TypedVar 'interned' :type Fun(text: String): String)
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'doc' :type Fun(type: String value: String): String)
+                  :args (
+                    (TypedString 'Bool' :type String)
+                    (TypedString 'true' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(name: String f: Fun(): String): Ok)
+        :args (
+          (TypedString 'nul' :type String)
+          (TypedFun :params () :type Fun(): String
+            :body (TypedApp :type String
+              :func (TypedVar 'interned' :type Fun(text: String): String)
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'doc' :type Fun(type: String value: String): String)
+                  :args (
+                    (TypedString 'Ok' :type String)
+                    (TypedString 'nulx' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(name: String f: Fun(): String): Ok)
+        :args (
+          (TypedString '-' :type String)
+          (TypedFun :params () :type Fun(): String
+            :body (TypedApp :type String
+              :func (TypedVar 'interned' :type Fun(text: String): String)
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'doc' :type Fun(type: String value: String): String)
+                  :args (
+                    (TypedString 'Int' :type String)
+                    (TypedString '-' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(name: String f: Fun(): String): Ok)
+        :args (
+          (TypedString '+1' :type String)
+          (TypedFun :params () :type Fun(): String
+            :body (TypedApp :type String
+              :func (TypedVar 'interned' :type Fun(text: String): String)
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'doc' :type Fun(type: String value: String): String)
+                  :args (
+                    (TypedString 'Int' :type String)
+                    (TypedString '+1' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(name: String f: Fun(): String): Ok)
+        :args (
+          (TypedString '--1.5' :type String)
+          (TypedFun :params () :type Fun(): String
+            :body (TypedApp :type String
+              :func (TypedVar 'interned' :type Fun(text: String): String)
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'doc' :type Fun(type: String value: String): String)
+                  :args (
+                    (TypedString 'Real' :type String)
+                    (TypedString '--1.5' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(name: String f: Fun(): String): Ok)
+        :args (
+          (TypedString '9223372036854775808' :type String)
+          (TypedFun :params () :type Fun(): String
+            :body (TypedApp :type String
+              :func (TypedVar 'interned' :type Fun(text: String): String)
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'doc' :type Fun(type: String value: String): String)
+                  :args (
+                    (TypedString 'Int' :type String)
+                    (TypedString '9223372036854775808' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(name: String f: Fun(): String): Ok)
+        :args (
+          (TypedString '-9223372036854775809' :type String)
+          (TypedFun :params () :type Fun(): String
+            :body (TypedApp :type String
+              :func (TypedVar 'interned' :type Fun(text: String): String)
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'doc' :type Fun(type: String value: String): String)
+                  :args (
+                    (TypedString 'Int' :type String)
+                    (TypedString '-9223372036854775809' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(name: String f: Fun(): String): Ok)
+        :args (
+          (TypedString 'twice' :type String)
+          (TypedFun :params () :type Fun(): String
+            :body (TypedApp :type String
+              :func (TypedVar 'interned' :type Fun(text: String): String)
+              :args (
+                (TypedString '{"quest":1,"types":[],"type":"Int","value":{"@ref":1},"value":2}' :type String)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(name: String f: Fun(): String): Ok)
+        :args (
+          (TypedString 'closed' :type String)
+          (TypedFun :params () :type Fun(): String
+            :body (TypedBlock :type String
+              :bindings (
+                (TypedLetValue 'rd' :type reader.T
+                  :value (TypedApp :type reader.T
+                    :func (TypedSelect 'file' :type Fun(name: String): reader.T
+                      :target (TypedVar 'reader' :type Module 'reader'))
+                    :args (
+                      (TypedString 'dynamic_runtime_ports.json' :type String)
+                    )))
+                (TypedExprStmt
+                  :expr (TypedApp :type Ok
+                    :func (TypedSelect 'close' :type Fun(reader: reader.T): Ok
+                      :target (TypedVar 'reader' :type Module 'reader'))
+                    :args (
+                      (TypedVar 'rd' :type reader.T)
+                    )))
+                (TypedExprStmt
+                  :expr (TypedApp :type T
+                    :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+                      :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                    :args (
+                      (TypedVar 'rd' :type reader.T)
+                    )))
+              )
+              :result (TypedString 'read' :type String)))
+        )))
+  ))

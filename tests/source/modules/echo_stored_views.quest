@@ -1,0 +1,17 @@
+(* Echo of a record's field held at another type, of a nested auto type's
+ * reference to the outer one's parameter, and of a bounded abstract type
+ * inside a tuple (docs/wasm-review.md section 2.4, 5, where the wasm
+ * backend's echo trapped on the first two and wrote the third as <val>) *)
+(* @echo *)
+
+import small: Small = geom/small : geom/Small;
+Def Mid = Record a: Int end;
+Def Big = Record a: Int b: Int end;
+let big: Big = record a = 1 b = 2 end;
+let r: Record f: Mid g: Int end = record f = big g = 7 end;
+r;
+Let Nest = Auto A::TYPE with a: A inner: Auto B::TYPE with b: B a2: A end end;
+let n: Nest = auto :Int with 5 auto :String with "s" 6 end end;
+n;
+let held = tuple let p = small.p(4) end;
+held

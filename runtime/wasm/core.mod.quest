@@ -278,17 +278,26 @@ export
             end
         end
 
-    (* An abstract type's representation (an application's, its arguments
-     * filled in), or none if its module registered none *)
-    let abstractRep(d: Desc): Desc =
+    (* Whether a module the program links registered an abstract type of
+     * this name, of any arity *)
+    let isRegistered(name: String): Bool =
+        begin
+            let var found = false
+            for i = 0 upto abstracts.count - 1 do
+                if stringOp.equal(abstracts.items[i].name name) then found := true end
+            end
+            found
+        end
+
+    (* An abstract type's representation as its module registered it (an
+     * application's, its arguments filled in), or none: its arguments are
+     * its parts but a representation a document recorded, flagged 16
+     * (quest_registered_abstract_rep) *)
+    let registeredRep(d: Desc): Desc =
         begin
             let var rep = bases[kindNone]
-            (* its arguments, without a representation a document recorded *)
-            let var recorded = bases[kindNone]
             let var args = 0
-            for i = 0 upto extent d.flags - 1 do
-                if d.flags[i] is 16 then recorded := d.parts[i] else args := args + 1 end
-            end
+            for i = 0 upto extent d.flags - 1 do if d.flags[i] isnot 16 then args := args + 1 end end
             if d.kind is kindOpaque then
                 for i = 0 upto abstracts.count - 1 do
                     let e = abstracts.items[i]
@@ -299,10 +308,20 @@ export
                     end
                 end
             end
-            (* a module the program does not link: the representation the
-             * document recorded *)
-            if rep.kind is kindNone then rep := recorded end
             rep
+        end
+
+    (* An abstract type's representation: its module's, or for a module the
+     * program does not link, the one the document recorded, or none *)
+    let abstractRep(d: Desc): Desc =
+        begin
+            let rep = registeredRep(d)
+            if rep.kind isnot kindNone then rep
+            else
+                let var recorded = bases[kindNone]
+                for i = 0 upto extent d.flags - 1 do if d.flags[i] is 16 then recorded := d.parts[i] end end
+                recorded
+            end
         end
 
     (* ======================================================================
@@ -338,6 +357,13 @@ export
     let anyDesc(x: Any): Desc = external "wasm.fromAny"
     (* dynamic.error, which a view of a value at a type it is not raises *)
     let dynamicError(): Ok = external "wasm.dynamicError"
+
+    (* An auto value's witness's descriptor, its other components' tuple, and
+     * a new one of the two *)
+    let autoDescAny(x: Any): Any = external "wasm.autoDesc"
+    let autoPayload(x: Any): Any = external "wasm.autoPayload"
+    let newAuto(d: Any payload: Any): Any = external "wasm.newAuto"
+    let autoWitness(x: Any): Desc = anyDesc(autoDescAny(x))
 
     (* A stored type's descriptor stands for its part, where it has one: an
      * opaque descriptor of a bounded abstract type, held at its storage *)
@@ -478,8 +504,8 @@ export
                     andif {{extent sup.parts is 0} orif both(sub.parts[0] sup.parts[0])}
             elsif k is kindFun then
                 (* as many parameters, each of the same mode: contravariant
-                 * value parameters, invariant var ones, covariant out ones and
-                 * result *)
+                 * value parameters, invariant var ones and quantifiers'
+                 * bounds, covariant out ones and result *)
                 if {sub.kind isnot kindFun} orif {extent sub.parts isnot extent sup.parts} then false
                 else
                     let var match = true
@@ -487,7 +513,7 @@ export
                         let mode = sup.flags[i]
                         if sub.flags[i] isnot mode then match := false
                         elsif not(match) then ok
-                        elsif mode is 1 then match := both(sub.parts[i] sup.parts[i])
+                        elsif {mode is 1} orif {mode is 8} then match := both(sub.parts[i] sup.parts[i])
                         elsif {mode is 2} orif {mode is 4} then match := isSubtype(sub.parts[i] sup.parts[i])
                         else match := isSubtype(sup.parts[i] sub.parts[i])
                         end
@@ -862,8 +888,38 @@ export
         end
     let funQuantifiers(d: Desc): Int = countFlagged(d fun(x: Int): Bool x is 8)
     let funArity(d: Desc): Int = countFlagged(d fun(x: Int): Bool {x isnot 4} andif {x isnot 8})
+    (* The makers of adapters past the arities the core's own adaptClosure
+     * makes, by arity: each unit that calls a closure of such an arity makes
+     * its adapter and registers a maker as it starts, a closure that takes
+     * the closure and the two types (the backend's adaptersPast). Each maker
+     * is stored before the flag that shows it *)
+    let adapterMakers = tuple let var items = array of :Any end let var made = array of :Bool end end
+    let registerAdapter(n: Int maker: Any): Ok =
+        begin
+            if n >= extent adapterMakers.made then
+                let items = array of(n + 1 maker)
+                let made = array of(n + 1 false)
+                for i = 0 upto extent adapterMakers.made - 1 do
+                    items[i] := adapterMakers.items[i]
+                    made[i] := adapterMakers.made[i]
+                end
+                adapterMakers.items := items
+                adapterMakers.made := made
+            end
+            adapterMakers.items[n] := maker
+            adapterMakers.made[n] := true
+        end
+    (* The maker of arity n's adapters, for the closure v; dynamic.error if
+     * no unit made one, which no code calls a closure of that arity in *)
+    let adapterFor(v: Any n: Int): Any =
+        if {n < extent adapterMakers.made} andif adapterMakers.made[n] then adapterMakers.items[n]
+        else
+            dynamicError()
+            v
+        end
+
     (* A closure of type from seen at to, through an adapter of uniform arity
-     * n (made by the backend), or as it is past the most it makes *)
+     * n (made by the backend, past its own through adapterFor) *)
     let adaptClosure(v: Any from: Desc to: Desc n: Int): Any = external "wasm.adaptClosure"
 
     (* A variant's box seen at variant type to, from from: its tag renumbered
@@ -899,6 +955,7 @@ export
                 newRecBox(payload viewDict(payload to))
             elsif {from is to} orif {from.kind isnot to.kind} then v
             elsif to.kind is kindVariant then variantAdapt(v from to)
+            elsif to.kind is kindAuto then convertAuto(v from to)
             elsif to.kind is kindFun then
                 (* the same type: nothing to adapt; else an adapter *)
                 if isSubtype(to from) then v else adaptClosure(v from to funQuantifiers(to) + funArity(to)) end
@@ -910,6 +967,22 @@ export
                 end
             else v
             end
+        end
+
+    (* An auto value seen at auto type to, from from: its witness kept, and
+     * each component converted from from's type for it to to's, but one of
+     * the witness's type, which is a value of that type whatever its
+     * storage (quest_convert_auto) *)
+    and convertAuto(v: Any from: Desc to: Desc): Any =
+        begin
+            let payload = autoPayload(v)
+            let n = if autoComponents(to) < autoComponents(from) then autoComponents(to) else autoComponents(from) end
+            let slots = array of(n v)
+            for i = 0 upto n - 1 do
+                let c = slotOf(payload i)
+                slots[i] := if from.parts[i].kind is kindBoundVar then c else convert(c from.parts[i] to.parts[i]) end
+            end
+            newAuto(autoDescAny(v) newTupleOf(slots))
         end
 
     and proxyElement(p: Any i: Int): Any =
@@ -1268,12 +1341,8 @@ export
      * Auto values (docs/c-representation.md section 8.1)
      * ====================================================================== *)
 
-    (* An auto value's witness's descriptor, its other components' tuple, and
-     * a new one of the two *)
-    let autoDescAny(x: Any): Any = external "wasm.autoDesc"
-    let autoPayload(x: Any): Any = external "wasm.autoPayload"
-    let newAuto(d: Any payload: Any): Any = external "wasm.newAuto"
-    let autoWitness(x: Any): Desc = anyDesc(autoDescAny(x))
+    (* An auto value's witness's descriptor, its other components' tuple,
+     * and a new one of the two, are with the descriptors above *)
 
     (* dynamic.copy: a new dynamic value of the same witness, its one
      * component the same (quest_dynamic_copy) *)
@@ -1394,9 +1463,12 @@ export
             let p = if {tag >= 0} andif {tag < extent d.parts} then d.parts[tag] else bases[kindNone] end
             if {p.kind is kindNone} orif {p.kind is kindOk} orif {{p.kind is kindTuple} andif {extent p.parts is 0}} then
                 mix(xor(~7046029254386353131 tag))
+            elsif singleWordCase(d) isnot tag then
+                (* by identity, as is compares it (quest_option_identity_hash):
+                 * a component that var makes changeable is not hashed *)
+                mix(objectHash(unproxy(x)))
             elsif p.kind isnot kindTuple then mix(xor(tag identityHash(p optionElementAt(x 0))))
-            elsif extent p.parts is 1 then mix(xor(tag identityHash(p.parts[0] optionElementAt(x 0))))
-            else mix(objectHash(unproxy(x)))
+            else mix(xor(tag identityHash(p.parts[0] optionElementAt(x 0))))
             end
         elsif isSmall(x) then mix(smallValue(x))
         elsif isBoxedInt(x) then mix(boxedInt(x))

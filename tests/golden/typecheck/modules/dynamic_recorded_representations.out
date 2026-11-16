@@ -1,0 +1,270 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('reader') : 'Reader')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('dynamic') : 'Dynamic')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('small') : 'Small')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('strutil') : 'Strutil')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('string') : 'StringOp')
+      ))
+    (TypedLetValue 'show' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'interned' :type Fun(text: String): String
+      :value (TypedFun :params (('text' : String)) :type Fun(text: String): String
+        :body (TypedTry :type String
+          :body (TypedBlock :type String
+            :bindings (
+              (TypedLetValue 'w' :type writer.T
+                :value (TypedApp :type writer.T
+                  :func (TypedSelect 'file' :type Fun(name: String): writer.T
+                    :target (TypedVar 'writer' :type Module 'writer'))
+                  :args (
+                    (TypedString 'dynamic_recorded_representations.json' :type String)
+                  )))
+              (TypedExprStmt
+                :expr (TypedApp :type Ok
+                  :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+                    :target (TypedVar 'writer' :type Module 'writer'))
+                  :args (
+                    (TypedVar 'w' :type writer.T)
+                    (TypedVar 'text' :type String)
+                  )))
+              (TypedExprStmt
+                :expr (TypedApp :type Ok
+                  :func (TypedSelect 'close' :type Fun(writer: writer.T): Ok
+                    :target (TypedVar 'writer' :type Module 'writer'))
+                  :args (
+                    (TypedVar 'w' :type writer.T)
+                  )))
+              (TypedLetValue 'd' :type T
+                :value (TypedApp :type T
+                  :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+                    :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                  :args (
+                    (TypedApp :type reader.T
+                      :func (TypedSelect 'file' :type Fun(name: String): reader.T
+                        :target (TypedVar 'reader' :type Module 'reader'))
+                      :args (
+                        (TypedString 'dynamic_recorded_representations.json' :type String)
+                      ))
+                  )))
+            )
+            :result (TypedString 'read' :type String))
+          :branches (
+            (TypedTryBranch
+              :exc_pattern (TypedSelect 'error' :type Exception
+                :target (TypedVar 'dynamic' :type Module 'dynamic'))
+              :body (TypedString 'dynamic.error' :type String))
+          ))))
+    (TypedLetValue 'name' :type String
+      :value (TypedBlock :type String
+        :bindings (
+          (TypedLetValue 'w' :type writer.T
+            :value (TypedApp :type writer.T
+              :func (TypedSelect 'file' :type Fun(name: String): writer.T
+                :target (TypedVar 'writer' :type Module 'writer'))
+              :args (
+                (TypedString 'dynamic_recorded_representations.json' :type String)
+              )))
+          (TypedExprStmt
+            :expr (TypedApp :type Ok
+              :func (TypedSelect 'extern' :type Fun(wr: writer.T d: T): Ok
+                :target (TypedVar 'dynamic' :type Module 'dynamic'))
+              :args (
+                (TypedVar 'w' :type writer.T)
+                (TypedApp :type T
+                  :func (TypedTypeApp [small.P] :type Fun(a: small.P): T
+                    :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                      :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                  :args (
+                    (TypedApp :type small.P
+                      :func (TypedSelect 'p' :type Fun(i: Int): small.P
+                        :target (TypedVar 'small' :type Module 'small'))
+                      :args (
+                        (TypedInt 1 :type Int)
+                      ))
+                  ))
+              )))
+          (TypedExprStmt
+            :expr (TypedApp :type Ok
+              :func (TypedSelect 'close' :type Fun(writer: writer.T): Ok
+                :target (TypedVar 'writer' :type Module 'writer'))
+              :args (
+                (TypedVar 'w' :type writer.T)
+              )))
+          (TypedLetValue 'r' :type reader.T
+            :value (TypedApp :type reader.T
+              :func (TypedSelect 'file' :type Fun(name: String): reader.T
+                :target (TypedVar 'reader' :type Module 'reader'))
+              :args (
+                (TypedString 'dynamic_recorded_representations.json' :type String)
+              )))
+          (TypedLetValue 'text' :type String
+            :value (TypedApp :type String
+              :func (TypedSelect 'getString' :type Fun(reader: reader.T size: Int): String
+                :target (TypedVar 'reader' :type Module 'reader'))
+              :args (
+                (TypedVar 'r' :type reader.T)
+                (TypedInt 1000 :type Int)
+              )))
+          (TypedExprStmt
+            :expr (TypedApp :type Ok
+              :func (TypedSelect 'close' :type Fun(reader: reader.T): Ok
+                :target (TypedVar 'reader' :type Module 'reader'))
+              :args (
+                (TypedVar 'r' :type reader.T)
+              )))
+          (TypedLetValue 'key' :type String
+            :value (TypedString '"abstract":"' :type String))
+          (TypedLetValue 'start' :type Int
+            :value (TypedInfix '+' :type Int
+              :left (TypedApp :type Int
+                :func (TypedSelect 'find' :type Fun(s: String sub: String): Int
+                  :target (TypedVar 'strutil' :type Module 'strutil'))
+                :args (
+                  (TypedVar 'text' :type String)
+                  (TypedVar 'key' :type String)
+                ))
+              :right (TypedApp :type Int
+                :func (TypedSelect 'length' :type Fun(string: String): Int
+                  :target (TypedVar 'string' :type Module 'string'))
+                :args (
+                  (TypedVar 'key' :type String)
+                ))))
+        )
+        :result (TypedApp :type String
+          :func (TypedSelect 'getSub' :type Fun(source: String start: Int size: Int): String
+            :target (TypedVar 'string' :type Module 'string'))
+          :args (
+            (TypedVar 'text' :type String)
+            (TypedVar 'start' :type Int)
+            (TypedInfix '-' :type Int
+              :left (TypedApp :type Int
+                :func (TypedSelect 'findFrom' :type Fun(s: String sub: String start: Int): Int
+                  :target (TypedVar 'strutil' :type Module 'strutil'))
+                :args (
+                  (TypedVar 'text' :type String)
+                  (TypedString '"' :type String)
+                  (TypedVar 'start' :type Int)
+                ))
+              :right (TypedVar 'start' :type Int))
+          ))))
+    (TypedLetValue 'doc' :type Fun(args: String rep: String value: String): String
+      :value (TypedFun :params (('args' : String) ('rep' : String) ('value' : String)) :type Fun(args: String rep: String value: String): String
+        :body (TypedInfix '<>' :type String
+          :left (TypedString '{"quest":1,"types":[{"abstract":"' :type String)
+          :right (TypedInfix '<>' :type String
+            :left (TypedVar 'name' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedString '"' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedVar 'args' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedString ',"rep":1},' :type String)
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedVar 'rep' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedString '],"type":0,"value":' :type String)
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedVar 'value' :type String)
+                        :right (TypedString '}' :type String)))))))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'the same: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'interned' :type Fun(text: String): String)
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'doc' :type Fun(args: String rep: String value: String): String)
+                  :args (
+                    (TypedString '' :type String)
+                    (TypedString '{"record":{"x":"Int","y":"Int"}}' :type String)
+                    (TypedString '{"x":1,"y":2}' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'another: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'interned' :type Fun(text: String): String)
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'doc' :type Fun(args: String rep: String value: String): String)
+                  :args (
+                    (TypedString '' :type String)
+                    (TypedString '{"record":{"x":"Int"}}' :type String)
+                    (TypedString '{"x":1}' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'another kind: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'interned' :type Fun(text: String): String)
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'doc' :type Fun(args: String rep: String value: String): String)
+                  :args (
+                    (TypedString '' :type String)
+                    (TypedString '{"tuple":["Int"]}' :type String)
+                    (TypedString '[1]' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'an argument: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'interned' :type Fun(text: String): String)
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'doc' :type Fun(args: String rep: String value: String): String)
+                  :args (
+                    (TypedString ',"args":["Int"]' :type String)
+                    (TypedString '{"record":{"x":"Int","y":"Int"}}' :type String)
+                    (TypedString '{"x":1,"y":2}' :type String)
+                  ))
+              )))
+        )))
+  ))

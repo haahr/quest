@@ -1,0 +1,54 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('small') : 'Small')
+      ))
+    (TypedLetType 'Mid' :kind TYPE)
+    (TypedLetType 'Big' :kind TYPE)
+    (TypedLetValue 'big' :type Big
+      :value (TypedRecord :type Record a: Int b: Int end
+        :fields (
+          (TypedRecordField 'a'
+            :value (TypedInt 1 :type Int))
+          (TypedRecordField 'b'
+            :value (TypedInt 2 :type Int))
+        )))
+    (TypedLetValue 'r' :type Record f: Mid g: Int end
+      :value (TypedRecord :type Record f: Mid g: Int end
+        :fields (
+          (TypedRecordField 'f'
+            :value (TypedVar 'big' :type Big))
+          (TypedRecordField 'g'
+            :value (TypedInt 7 :type Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedVar 'r' :type Record f: Mid g: Int end))
+    (TypedLetType 'Nest' :kind TYPE)
+    (TypedLetValue 'n' :type Nest
+      :value (TypedAuto :Int :type Nest
+        :payload (TypedTuple :type Tuple a: Int inner: Auto B :: TYPE with b: B a2: Int end end
+          :elements (
+            (TypedInt 5 :type Int)
+            (TypedAuto :String :type Auto B :: TYPE with b: B a2: Int end
+              :payload (TypedTuple :type Tuple b: String a2: Int end
+                :elements (
+                  (TypedString 's' :type String)
+                  (TypedInt 6 :type Int)
+                )))
+          ))))
+    (TypedExprStmt
+      :expr (TypedVar 'n' :type Nest))
+    (TypedLetValue 'held' :type Tuple p: small.P end
+      :value (TypedTuple :type Tuple p: small.P end
+        :elements (
+          (TypedApp :type small.P
+            :func (TypedSelect 'p' :type Fun(i: Int): small.P
+              :target (TypedVar 'small' :type Module 'small'))
+            :args (
+              (TypedInt 4 :type Int)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedVar 'held' :type Tuple p: small.P end))
+  ))
