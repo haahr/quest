@@ -521,14 +521,52 @@
         )
       )
     )
-    (ExprStmt
-      :expr (ExprApp
+    (LetValueBinding
+      :name 'made'
+      :value (ExprApp
         :func (ExprSelect
-          :target (ExprId 'system')
-          :field 'makeDirectory'
+          :target (ExprId 'process')
+          :field 'wait'
         )
         :args (
-          (ExprString 'sub' '"sub"')
+          (ExprApp
+            :func (ExprId 'sh')
+            :args (
+              (ExprString 'mktemp -d /tmp/quest-os-process.XXXXXX' '"mktemp -d /tmp/quest-os-process.XXXXXX"')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'dir'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'stringOp')
+          :field 'getSub'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'made')
+            :field 'stdout'
+          )
+          (ExprInt 0 '0')
+          (ExprInfix
+            :left (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'stringOp')
+                :field 'length'
+              )
+              :args (
+                (ExprSelect
+                  :target (ExprId 'made')
+                  :field 'stdout'
+                )
+              )
+            )
+            :op '-'
+            :right (ExprInt 1 '1')
+          )
         )
       )
     )
@@ -540,7 +578,11 @@
           :field 'file'
         )
         :args (
-          (ExprString 'sub/inside.txt' '"sub/inside.txt"')
+          (ExprInfix
+            :left (ExprId 'dir')
+            :op '<>'
+            :right (ExprString '/inside.txt' '"/inside.txt"')
+          )
         )
       )
     )
@@ -577,11 +619,37 @@
                       (ExprString 'ls' '"ls"')
                     )
                   )
-                  (ExprString 'sub' '"sub"')
+                  (ExprId 'dir')
                 )
               )
             )
           )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'system')
+          :field 'removeFile'
+        )
+        :args (
+          (ExprInfix
+            :left (ExprId 'dir')
+            :op '<>'
+            :right (ExprString '/inside.txt' '"/inside.txt"')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'system')
+          :field 'removeDirectory'
+        )
+        :args (
+          (ExprId 'dir')
         )
       )
     )

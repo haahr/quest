@@ -6,193 +6,203 @@ import stringOp = "string" : StringOp
 main {
   funs {
     fun print(s: String): Ok {
-      let %1: writer.T = member writer.output @11:45
-      let %2: String = prim <>(s, "\n") @11:59
-      let %3: Ok = call writer.putString(%1, %2) @11:28
+      let %1: writer.T = member writer.output @10:45
+      let %2: String = prim <>(s, "\n") @10:59
+      let %3: Ok = call writer.putString(%1, %2) @10:28
       return %3
     }
   }
   funs {
     fun show(what: String, r: process.Result): Ok {
-      let %4: Int = tuple_field(r, 0) @13:41
-      let %5: String = call conv.int(%4) @13:32
-      let %6: String = tuple_field(r, 1) @13:68
-      let %7: String = tuple_field(r, 2) @13:97
-      let %8: String = prim <>(%7, "]") @13:97
-      let %9: String = prim <>("], stderr [", %8) @13:80
-      let %10: String = prim <>(%6, %9) @13:68
-      let %11: String = prim <>(", stdout [", %10) @13:52
-      let %12: String = prim <>(%5, %11) @13:32
-      let %13: String = prim <>(": code ", %12) @13:19
-      let %14: String = prim <>(what, %13) @13:11
-      let %15: Ok = call print(%14) @13:5
+      let %4: Int = tuple_field(r, 0) @12:41
+      let %5: String = call conv.int(%4) @12:32
+      let %6: String = tuple_field(r, 1) @12:68
+      let %7: String = tuple_field(r, 2) @12:97
+      let %8: String = prim <>(%7, "]") @12:97
+      let %9: String = prim <>("], stderr [", %8) @12:80
+      let %10: String = prim <>(%6, %9) @12:68
+      let %11: String = prim <>(", stdout [", %10) @12:52
+      let %12: String = prim <>(%5, %11) @12:32
+      let %13: String = prim <>(": code ", %12) @12:19
+      let %14: String = prim <>(what, %13) @12:11
+      let %15: Ok = call print(%14) @12:5
       return %15
     }
   }
   funs {
     fun sh(command: String): process.T {
-      let %16: Array(String) = array("sh", "-c", command) @14:52
-      let %17: process.T = call process.spawn(%16) @14:38
+      let %16: Array(String) = array("sh", "-c", command) @13:52
+      let %17: process.T = call process.spawn(%16) @13:38
       return %17
     }
   }
-  let p: process.T = call sh("echo out; echo err >&2; exit 3") @17:9
-  let %18: Int = call process.pid(p) @18:37
-  let %19: Bool = prim >(%18, 0) @18:37
-  let %20: String = call conv.bool(%19) @18:27
-  let %21: String = prim <>("pid positive: ", %20) @18:7
-  do call print(%21) @18:1
-  let %22: Result = call process.wait(p) @19:19
-  do call show("first wait", %22) @19:1
-  let %23: Result = call process.wait(p) @20:20
-  do call show("second wait", %23) @20:1
-  let %24: Bool = call process.isDone(p) @21:40
-  let %25: String = call conv.bool(%24) @21:30
-  let %26: String = prim <>("done after wait: ", %25) @21:7
-  do call print(%26) @21:1
-  let %27: process.T = call sh("i=0; while [ $i -lt 20000 ]; do echo line; i=$((i+1)); done") @24:24
-  let big: Result = call process.wait(%27) @24:11
-  let %28: Int = tuple_field(big, 0) @25:27
-  let %29: String = call conv.int(%28) @25:18
-  let %30: String = tuple_field(big, 1) @25:72
-  let %31: Int = call stringOp.length(%30) @25:56
-  let %32: String = call conv.int(%31) @25:47
-  let %33: String = prim <>(" ", %32) @25:40
-  let %34: String = prim <>(%29, %33) @25:18
-  let %35: String = prim <>("big: ", %34) @25:7
-  do call print(%35) @25:1
-  let %36: process.T = call sh("sleep 1; echo slow") @28:19
-  let %37: process.T = call sh("echo quick; exit 4") @28:44
-  let ps: Array(process.T) = array(%36, %37) @28:10
-  let first: Int = call process.waitAny(ps) @29:13
-  let %38: String = call conv.int(first) @30:30
-  let %39: String = prim <>("first to finish: ", %38) @30:7
-  do call print(%39) @30:1
-  let %40: process.T = index(ps, first) @31:27
-  let %41: Result = call process.wait(%40) @31:14
-  do call show("quick", %41) @31:1
-  let %42: Int = call process.waitAny(ps) @32:37
-  let %43: String = call conv.int(%42) @32:28
-  let %44: String = prim <>("waitAny again: ", %43) @32:7
-  do call print(%44) @32:1
-  let %45: process.T = index(ps, 0) @33:26
-  let %46: Result = call process.wait(%45) @33:13
-  do call show("slow", %46) @33:1
-  let %47: process.T = call sh("exit 1") @36:21
-  let %48: process.T = call sh("exit 2") @36:34
-  let %49: process.T = call sh("exit 3") @36:47
-  let %50: process.T = call sh("exit 4") @36:60
-  let many: Array(process.T) = array(%47, %48, %49, %50) @36:12
-  var total: Int = 0 @37:1
-  var i: Int = 0 @38:1
-  let %51: Bool = prim <=(i, 3) @38:1
-  if %51 { @38:1
+  let p: process.T = call sh("echo out; echo err >&2; exit 3") @16:9
+  let %18: Int = call process.pid(p) @17:37
+  let %19: Bool = prim >(%18, 0) @17:37
+  let %20: String = call conv.bool(%19) @17:27
+  let %21: String = prim <>("pid positive: ", %20) @17:7
+  do call print(%21) @17:1
+  let %22: Result = call process.wait(p) @18:19
+  do call show("first wait", %22) @18:1
+  let %23: Result = call process.wait(p) @19:20
+  do call show("second wait", %23) @19:1
+  let %24: Bool = call process.isDone(p) @20:40
+  let %25: String = call conv.bool(%24) @20:30
+  let %26: String = prim <>("done after wait: ", %25) @20:7
+  do call print(%26) @20:1
+  let %27: process.T = call sh("i=0; while [ $i -lt 20000 ]; do echo line; i=$((i+1)); done") @23:24
+  let big: Result = call process.wait(%27) @23:11
+  let %28: Int = tuple_field(big, 0) @24:27
+  let %29: String = call conv.int(%28) @24:18
+  let %30: String = tuple_field(big, 1) @24:72
+  let %31: Int = call stringOp.length(%30) @24:56
+  let %32: String = call conv.int(%31) @24:47
+  let %33: String = prim <>(" ", %32) @24:40
+  let %34: String = prim <>(%29, %33) @24:18
+  let %35: String = prim <>("big: ", %34) @24:7
+  do call print(%35) @24:1
+  let %36: process.T = call sh("sleep 1; echo slow") @27:19
+  let %37: process.T = call sh("echo quick; exit 4") @27:44
+  let ps: Array(process.T) = array(%36, %37) @27:10
+  let first: Int = call process.waitAny(ps) @28:13
+  let %38: String = call conv.int(first) @29:30
+  let %39: String = prim <>("first to finish: ", %38) @29:7
+  do call print(%39) @29:1
+  let %40: process.T = index(ps, first) @30:27
+  let %41: Result = call process.wait(%40) @30:14
+  do call show("quick", %41) @30:1
+  let %42: Int = call process.waitAny(ps) @31:37
+  let %43: String = call conv.int(%42) @31:28
+  let %44: String = prim <>("waitAny again: ", %43) @31:7
+  do call print(%44) @31:1
+  let %45: process.T = index(ps, 0) @32:26
+  let %46: Result = call process.wait(%45) @32:13
+  do call show("slow", %46) @32:1
+  let %47: process.T = call sh("exit 1") @35:21
+  let %48: process.T = call sh("exit 2") @35:34
+  let %49: process.T = call sh("exit 3") @35:47
+  let %50: process.T = call sh("exit 4") @35:60
+  let many: Array(process.T) = array(%47, %48, %49, %50) @35:12
+  var total: Int = 0 @36:1
+  var i: Int = 0 @37:1
+  let %51: Bool = prim <=(i, 3) @37:1
+  if %51 { @37:1
     loop L1 {
-      let i.1: Int = i @38:1
-      let %52: process.T = index(many, i.1) @38:51
-      let %53: Result = call process.wait(%52) @38:38
-      let %54: Int = tuple_field(%53, 0) @38:38
-      let %55: Int = prim +(total, %54) @38:30
-      total := %55 @38:21
-      let %56: Bool = prim is(i, 3) @38:1
-      if %56 { @38:1
-        break L1 @38:1
+      let i.1: Int = i @37:1
+      let %52: process.T = index(many, i.1) @37:51
+      let %53: Result = call process.wait(%52) @37:38
+      let %54: Int = tuple_field(%53, 0) @37:38
+      let %55: Int = prim +(total, %54) @37:30
+      total := %55 @37:21
+      let %56: Bool = prim is(i, 3) @37:1
+      if %56 { @37:1
+        break L1 @37:1
       }
-      let %57: Int = prim +(i, 1) @38:1
-      i := %57 @38:1
+      let %57: Int = prim +(i, 1) @37:1
+      i := %57 @37:1
     }
   }
-  let %58: String = call conv.int(total) @39:20
-  let %59: String = prim <>("total: ", %58) @39:7
-  do call print(%59) @39:1
-  do call system.makeDirectory("sub") @42:1
-  let w: writer.T = call writer.file("sub/inside.txt") @43:9
-  do call writer.close(w) @44:1
-  let %60: Array(String) = array("ls") @45:45
-  let %61: process.T = call process.spawnIn(%60, "sub") @45:29
-  let %62: Result = call process.wait(%61) @45:16
-  do call show("spawnIn", %62) @45:1
-  let sleeper: process.T = call sh("sleep 10") @48:15
-  do call process.kill(sleeper, 15) @49:1
-  let %63: Result = call process.wait(sleeper) @50:30
-  let %64: Int = tuple_field(%63, 0) @50:30
-  let %65: String = call conv.int(%64) @50:21
-  let %66: String = prim <>("killed: ", %65) @50:7
-  do call print(%66) @50:1
-  do call process.kill(sleeper, 15) @51:1
-  do call print("kill after wait: ok") @52:1
+  let %58: String = call conv.int(total) @38:20
+  let %59: String = prim <>("total: ", %58) @38:7
+  do call print(%59) @38:1
+  let %60: process.T = call sh("mktemp -d /tmp/quest-os-process.XXXXXX") @42:25
+  let made: Result = call process.wait(%60) @42:12
+  let %61: String = tuple_field(made, 1) @43:27
+  let %62: String = tuple_field(made, 1) @43:57
+  let %63: Int = call stringOp.length(%62) @43:41
+  let %64: Int = prim -(%63, 1) @43:41
+  let dir: String = call stringOp.getSub(%61, 0, %64) @43:11
+  let %65: String = prim <>(dir, "/inside.txt") @44:21
+  let w: writer.T = call writer.file(%65) @44:9
+  do call writer.close(w) @45:1
+  let %66: Array(String) = array("ls") @46:45
+  let %67: process.T = call process.spawnIn(%66, dir) @46:29
+  let %68: Result = call process.wait(%67) @46:16
+  do call show("spawnIn", %68) @46:1
+  let %69: String = prim <>(dir, "/inside.txt") @47:19
+  do call system.removeFile(%69) @47:1
+  do call system.removeDirectory(dir) @48:1
+  let sleeper: process.T = call sh("sleep 10") @51:15
+  do call process.kill(sleeper, 15) @52:1
+  let %70: Result = call process.wait(sleeper) @53:30
+  let %71: Int = tuple_field(%70, 0) @53:30
+  let %72: String = call conv.int(%71) @53:21
+  let %73: String = prim <>("killed: ", %72) @53:7
+  do call print(%73) @53:1
+  do call process.kill(sleeper, 15) @54:1
+  do call print("kill after wait: ok") @55:1
   join k1(r.1: String) {
-    do call print(r.1) @55:1
+    do call print(r.1) @58:1
     join k2(r.2: String) {
-      do call print(r.2) @57:1
+      do call print(r.2) @60:1
       join k3(r.3: String) {
-        do call print(r.3) @58:1
+        do call print(r.3) @61:1
         join k4(r.4: String) {
-          do call print(r.4) @59:1
+          do call print(r.4) @62:1
         } in {
-          let %67: Exception = member system.error @59:67
-          try catching (%67) {
-            let %68: Array(process.T) = array() @59:36
-            let %69: Int = call process.waitAny(%68) @59:20
-            let %70: String = call conv.int(%69) @59:11
-            jump k4(%70) @59:7
+          let %74: Exception = member system.error @62:67
+          try catching (%74) {
+            let %75: Array(process.T) = array() @62:36
+            let %76: Int = call process.waitAny(%75) @62:20
+            let %77: String = call conv.int(%76) @62:11
+            jump k4(%77) @62:7
           } handle (e: Exception) {
-            let %71: Bool = prim is(e, %67) @59:7
-            if %71 { @59:7
-              jump k4("nothing to wait for") @59:7
+            let %78: Bool = prim is(e, %74) @62:7
+            if %78 { @62:7
+              jump k4("nothing to wait for") @62:7
             } else {
-              reraise e @59:7
+              reraise e @62:7
             }
           }
         }
       } in {
-        let %72: Exception = member system.error @58:88
-        try catching (%72) {
-          let %73: Array(String) = array("ls") @58:48
-          let %74: process.T = call process.spawnIn(%73, "no-such-dir") @58:32
-          let %75: Int = call process.pid(%74) @58:20
-          let %76: String = call conv.int(%75) @58:11
-          jump k3(%76) @58:7
+        let %79: Exception = member system.error @61:88
+        try catching (%79) {
+          let %80: Array(String) = array("ls") @61:48
+          let %81: process.T = call process.spawnIn(%80, "no-such-dir") @61:32
+          let %82: Int = call process.pid(%81) @61:20
+          let %83: String = call conv.int(%82) @61:11
+          jump k3(%83) @61:7
         } handle (e.1: Exception) {
-          let %77: Bool = prim is(e.1, %72) @58:7
-          if %77 { @58:7
-            jump k3("no directory") @58:7
+          let %84: Bool = prim is(e.1, %79) @61:7
+          if %84 { @61:7
+            jump k3("no directory") @61:7
           } else {
-            reraise e.1 @58:7
+            reraise e.1 @61:7
           }
         }
       }
     } in {
-      let %78: Exception = member system.error @57:67
-      try catching (%78) {
-        let %79: Array(String) = array() @57:46
-        let %80: process.T = call process.spawn(%79) @57:32
-        let %81: Int = call process.pid(%80) @57:20
-        let %82: String = call conv.int(%81) @57:11
-        jump k2(%82) @57:7
+      let %85: Exception = member system.error @60:67
+      try catching (%85) {
+        let %86: Array(String) = array() @60:46
+        let %87: process.T = call process.spawn(%86) @60:32
+        let %88: Int = call process.pid(%87) @60:20
+        let %89: String = call conv.int(%88) @60:11
+        jump k2(%89) @60:7
       } handle (e.2: Exception) {
-        let %83: Bool = prim is(e.2, %78) @57:7
-        if %83 { @57:7
-          jump k2("no program") @57:7
+        let %90: Bool = prim is(e.2, %85) @60:7
+        if %90 { @60:7
+          jump k2("no program") @60:7
         } else {
-          reraise e.2 @57:7
+          reraise e.2 @60:7
         }
       }
     }
   } in {
-    let %84: Exception = member system.error @56:10
-    try catching (%84) {
-      let %85: Array(String) = array("no-such-program-quest") @55:46
-      let %86: process.T = call process.spawn(%85) @55:32
-      let %87: Int = call process.pid(%86) @55:20
-      let %88: String = call conv.int(%87) @55:11
-      jump k1(%88) @55:7
+    let %91: Exception = member system.error @59:10
+    try catching (%91) {
+      let %92: Array(String) = array("no-such-program-quest") @58:46
+      let %93: process.T = call process.spawn(%92) @58:32
+      let %94: Int = call process.pid(%93) @58:20
+      let %95: String = call conv.int(%94) @58:11
+      jump k1(%95) @58:7
     } handle (e.3: Exception) {
-      let %89: Bool = prim is(e.3, %84) @55:7
-      if %89 { @55:7
-        jump k1("cannot start") @55:7
+      let %96: Bool = prim is(e.3, %91) @58:7
+      if %96 { @58:7
+        jump k1("cannot start") @58:7
       } else {
-        reraise e.3 @55:7
+        reraise e.3 @58:7
       }
     }
   }

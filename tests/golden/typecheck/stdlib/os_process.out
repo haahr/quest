@@ -320,19 +320,43 @@
                   :target (TypedVar 'total' :type Var(Int)))
               )))
         )))
-    (TypedExprStmt
-      :expr (TypedApp :type Ok
-        :func (TypedSelect 'makeDirectory' :type Fun(path: String): Ok
-          :target (TypedVar 'system' :type Module 'system'))
+    (TypedLetValue 'made' :type Result
+      :value (TypedApp :type Result
+        :func (TypedSelect 'wait' :type Fun(p: process.T): Result
+          :target (TypedVar 'process' :type Module 'process'))
         :args (
-          (TypedString 'sub' :type String)
+          (TypedApp :type process.T
+            :func (TypedVar 'sh' :type Fun(command: String): process.T)
+            :args (
+              (TypedString 'mktemp -d /tmp/quest-os-process.XXXXXX' :type String)
+            ))
+        )))
+    (TypedLetValue 'dir' :type String
+      :value (TypedApp :type String
+        :func (TypedSelect 'getSub' :type Fun(source: String start: Int size: Int): String
+          :target (TypedVar 'stringOp' :type Module 'stringOp'))
+        :args (
+          (TypedSelect 'stdout' :type String
+            :target (TypedVar 'made' :type Result))
+          (TypedInt 0 :type Int)
+          (TypedInfix '-' :type Int
+            :left (TypedApp :type Int
+              :func (TypedSelect 'length' :type Fun(string: String): Int
+                :target (TypedVar 'stringOp' :type Module 'stringOp'))
+              :args (
+                (TypedSelect 'stdout' :type String
+                  :target (TypedVar 'made' :type Result))
+              ))
+            :right (TypedInt 1 :type Int))
         )))
     (TypedLetValue 'w' :type writer.T
       :value (TypedApp :type writer.T
         :func (TypedSelect 'file' :type Fun(name: String): writer.T
           :target (TypedVar 'writer' :type Module 'writer'))
         :args (
-          (TypedString 'sub/inside.txt' :type String)
+          (TypedInfix '<>' :type String
+            :left (TypedVar 'dir' :type String)
+            :right (TypedString '/inside.txt' :type String))
         )))
     (TypedExprStmt
       :expr (TypedApp :type Ok
@@ -358,9 +382,25 @@
                     :elements (
                       (TypedString 'ls' :type String)
                     ))
-                  (TypedString 'sub' :type String)
+                  (TypedVar 'dir' :type String)
                 ))
             ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'removeFile' :type Fun(path: String): Ok
+          :target (TypedVar 'system' :type Module 'system'))
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedVar 'dir' :type String)
+            :right (TypedString '/inside.txt' :type String))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'removeDirectory' :type Fun(path: String): Ok
+          :target (TypedVar 'system' :type Module 'system'))
+        :args (
+          (TypedVar 'dir' :type String)
         )))
     (TypedLetValue 'sleeper' :type process.T
       :value (TypedApp :type process.T

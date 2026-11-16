@@ -1,8 +1,7 @@
 (* os/process starts programs without waiting for them: their results, which
    wait gives the same each time; waitAny with a slow child and a quick one;
    spawnIn's directory; kill; and the errors for a program that cannot start.
-   The test runs in a fresh, empty directory of its own (docs/testing.md
-   section 2.2). *)
+   It writes only under /tmp, so it leaves nothing behind wherever it runs. *)
 import os/process : os/Process;
 import system: System;
 import writer: Writer;
@@ -38,11 +37,15 @@ let var total = 0;
 for i = 0 upto 3 do total := total + process.wait(many[i]).code end;
 print("total: " <> conv.int(total));
 
-(* The child's current directory *)
-system.makeDirectory("sub");
-let w = writer.file("sub/inside.txt");
+(* The child's current directory: a directory of the test's own under /tmp,
+ * which mktemp names so that runs at once do not share it, removed after *)
+let made = process.wait(sh("mktemp -d /tmp/quest-os-process.XXXXXX"));
+let dir = stringOp.getSub(made.stdout 0 stringOp.length(made.stdout) - 1);
+let w = writer.file(dir <> "/inside.txt");
 writer.close(w);
-show("spawnIn" process.wait(process.spawnIn(array of "ls" end "sub")));
+show("spawnIn" process.wait(process.spawnIn(array of "ls" end dir)));
+system.removeFile(dir <> "/inside.txt");
+system.removeDirectory(dir);
 
 (* A signal, and a signal to a child that has finished *)
 let sleeper = sh("sleep 10");
