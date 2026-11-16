@@ -66,6 +66,8 @@ the stages are rebuilt.
    `bounded_generic_import.quest` with `geom/bounded.int.quest` and `.mod.quest`: `getA(A <: Small x: A): Int`
    called with a wider record, the bound's own record, and a value ascribed to the bound; a bound with a field of
    function type (which catches `show`); and a higher-kinded quantifier. Goldens for every phase.
+   *Built 2026-11-15* (ABI 77): `tests/source/modules/bounded_generic_import.quest` with `geom/bounded`, passing
+   in every phase and in the ssac, arm64, arm64-whole, c-whole and jit-files modes.
 2. **An abstract type bounded by a tuple.** Two faults, by whether the module's representation is the bound or a
    wider tuple. Both come from code that takes an abstract type's shape where it needs the shape it is held at.
    *Where, the same tuple.* The module compiles, and the importer's `p.a` raises `arrayOp.error` in

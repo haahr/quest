@@ -226,7 +226,9 @@ def format_type_for_qi(
             params_str = " ".join(format_param(p) for p in t.params)
             return f"All({params_str}) {format_type_for_qi(t.result_type, visited)}"
         case QAllType():
-            quants_str = " ".join(f"{q.name}::{q.bound}" for q in t.quantifiers)
+            # A bound as the reader reads it: A::POWER(B), not the display's
+            # A::<: B
+            quants_str = " ".join(f"{q.name}::{format_kind_for_qi(q.bound)}" for q in t.quantifiers)
             if isinstance(t.body, QFunType):
                 params_str = " ".join(format_param(p) for p in t.body.params)
                 return f"All({quants_str} {params_str}) {format_type_for_qi(t.body.result_type, visited)}"
