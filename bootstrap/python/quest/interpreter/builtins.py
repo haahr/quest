@@ -352,9 +352,14 @@ def _string_get_char(s: QString, index: QInt) -> QChar:
 
 def _string_set_char(s: QString, index: QInt, char: QChar) -> QOk:
     idx = index.value
-    if idx < 0 or idx >= len(s.value):
+    if idx < 0 or idx >= len(s.value) or s.readonly:
         raise QuestException(STRING_ERROR_EXC)
     s.value = s.value[:idx] + char.value + s.value[idx + 1 :]
+    return OK_VALUE
+
+def _string_freeze(s: QString) -> QOk:
+    """quest_string_freeze: s is read-only from now on, as a literal is."""
+    s.readonly = True
     return OK_VALUE
 
 def _string_get_sub(s: QString, start: QInt, size: QInt) -> QString:
@@ -371,6 +376,7 @@ def _string_set_sub(dest: QString, d_st: QInt, src: QString, s_st: QInt, sz: QIn
         or count < 0
         or dst_idx + count > len(dest.value)
         or src_idx + count > len(src.value)
+        or dest.readonly
     ):
         raise QuestException(STRING_ERROR_EXC)
     chunk = src.value[src_idx : src_idx + count]
@@ -1164,6 +1170,7 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     "quest_string_is_empty": lambda s: QBool(len(s.value) == 0),
     "quest_string_get_char": _string_get_char,
     "quest_string_set_char": _string_set_char,
+    "quest_string_freeze": _string_freeze,
     "quest_string_get_sub": _string_get_sub,
     "quest_string_set_sub": _string_set_sub,
     "quest_string_concat": lambda s1, s2: QString(s1.value + s2.value),

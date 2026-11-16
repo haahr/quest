@@ -103,8 +103,8 @@ typedef union QVal {
 
 /* A string (docs/c-representation.md §3.2): a header holding its length and a pointer to its bytes, a separate
  * pointer-free allocation of length + 1 bytes ending in a NUL, so that data can be passed to C as it is (a string may
- * also hold NULs of its own). Strings are mutable in place (string.setChar, string.setSub) but never change length,
- * so every string literal is a fresh quest_string_new at each evaluation, not shared static data. */
+ * also hold NULs of its own). Strings are mutable in place (string.setChar, string.setSub) but never change length;
+ * a literal is one static string, marked read-only (QStaticString). */
 typedef struct QString {
     int64_t length;
     char   *data;
@@ -300,6 +300,18 @@ static_assert(offsetof(QExceptionState, payload) == 8, qexception_state_payload_
 #define Q_FALSE_VAL ((QVal){ .i = 0 })
 
 #include "quest_gc.h"
+
+/* A string literal, as the C backends define it once in static data: its header word, which marks it read-only
+ * (Q_HEADER_READONLY), then the string, whose bytes are a C string literal. Every evaluation of the literal is
+ * (QString *)&name.string, the same object; string.setChar and string.setSub raise string.error on it, and the
+ * collector, which ignores addresses outside its heap, never frees it (docs/strings-plan.md section 5). */
+typedef struct QStaticString {
+    uintptr_t header;
+    QString   string;
+} QStaticString;
+#define Q_STATIC_STRING_HEADER ((uintptr_t)&quest_layout_string + Q_HEADER_READONLY)
+/* The linker keeps only the top byte of a static header's flags (quest_gc.h) */
+static_assert(Q_HEADER_READONLY_BIT >= 56, readonly_bit_must_be_in_the_top_byte);
 
 /* Strings and arrays: the primitives behind the string and stringOp modules, string literals, <>, and arrays.
  * quest_string_new copies len bytes of src (strlen(src) when len is negative) into a new string. A substring is

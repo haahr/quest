@@ -58,11 +58,17 @@ typedef struct QLayout {
  * and above them the collector's byte (bits 56 to 63) and the mutator's (48
  * to 55), each written by its side alone (docs/collector.md section 3.2). The
  * collector's holds `old`, set when the object is marked, the generational
- * barrier's hint. */
+ * barrier's hint, and read-only, which the mutator sets once (below). */
 #define Q_HEADER_LAYOUT_MASK ((uintptr_t)0x0000FFFFFFFFFFFFu)
 #define Q_HEADER_OLD         ((uintptr_t)1 << 56)   /* the collector's byte: marked by some collection */
 #define Q_HEADER_LOGGED      ((uintptr_t)1 << 48)   /* the mutator's byte: in the log since the last collection */
-#define Q_HEADER_READONLY    ((uintptr_t)1 << 49)   /* the mutator's byte: a string that may not be written */
+/* A string that may not be written (a literal): set when it is made, in static data or by quest_string_freeze before
+ * it is shared, and never cleared. It is the top bit, in the collector's byte, because a static object's header is
+ * a relocated pointer, and arm64 Darwin's chained fixups keep only a pointer's low 36 bits and its top byte: an
+ * addend in bits 48 to 55 is dropped without a word. The collector's writes (or-ing in old, or the whole word at an
+ * object's birth, before it is frozen) keep it. */
+#define Q_HEADER_READONLY_BIT 63
+#define Q_HEADER_READONLY    ((uintptr_t)1 << Q_HEADER_READONLY_BIT)
 
 Q_INLINE const QLayout *quest_layout_of(const void *obj) {
     return (const QLayout *)(((const uintptr_t *)obj)[-1] & Q_HEADER_LAYOUT_MASK);

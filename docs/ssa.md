@@ -263,8 +263,10 @@ internal error.
   the range that no case has takes the default's arguments, so a switch with such gaps is converted only when its
   default passes constants to the join too. `nodes.opcodeIndex`, a case of 52 arms each an integer, was arm64's
   compare and branch for each case, 1,555 of the compiler's samples against the C build's 196, where clang made it a
-  load ([benchmarks.md](benchmarks.md) §21.5); a case of strings is not converted, since each arm calls
-  `quest_string_new` for its literal. `ssa_tables` shows each case.
+  load ([benchmarks.md](benchmarks.md) §21.5). A case whose arms each give a string literal is converted too, since
+  a literal is its static object's address (`symbol qso_N + 8`, past its header word; [c-representation.md](c-representation.md)
+  §3.2), so the table holds the literals' addresses. `ssa_tables` shows each case, and
+  `language/string_literals_read_only`'s SSA a case of literals.
 - **`ssa/passes/accumulate`** makes loops of recursion through an associative operation (LLVM's accumulator recursion
   elimination; [benchmarks.md](benchmarks.md) §14): in a function of one `int` result, from which no slot's address
   escapes, a block whose last instructions are a call of the function itself and an `add`, `mul`, `and`, `or`, or `xor`

@@ -118,6 +118,16 @@ typedef struct QString {
 - The header and character buffer (`length + 1` bytes with a trailing NUL byte) are allocated via `quest_string_new`.
 - Runtime functions `quest_string_new(const char *data, size_t len)`, `quest_string_concat(s1, s2)`, and
   `quest_string_equal(s1, s2)` provide safe string creation, concatenation, and content comparison.
+- **A string literal is static and read-only** ([extensions.md](extensions.md#string-literals)): one object for each
+  distinct literal in a unit, a header word and the `QString`, whose bytes are a C string literal. The header is
+  `quest_layout_string`'s address with `Q_HEADER_READONLY` (bit 63, the header word's top bit), so
+  `quest_layout_of` and everything that reads a string's layout work on it, and the collector, which ignores
+  addresses outside its heap, never frees it. The C backends define it as a `QStaticString`
+  (`static const QStaticString qsl_N = { Q_STATIC_STRING_HEADER, { length, "bytes" } }`) and evaluate the literal as
+  `(QString *)&qsl_N.string`; the SSA's builder makes it three words of data, `qso_N`, and the literal
+  `symbol qso_N + 8`. `quest_string_set_char`, `quest_string_set_sub`, and the SSA's inlined `setChar` raise
+  `string.error` when the bit is set; `quest_string_freeze` sets it on a heap string, for the self-hosted
+  interpreters' literals.
 
 ### 3.3. Opaque C Data Structures (`QExternalType`)
 Quest allows native C pointer and handle types to be declared directly in source code using the `external` keyword

@@ -139,7 +139,9 @@ def check_unit(assembly: Path, scratch: Path) -> list[str]:
                 fail(f"function {item[1]} is not in the object")
             elif macho.symbols[symbol][1] - text_addr != int(item[2]):
                 fail(f"function {item[1]} is at {item[2]}, the object's at {macho.symbols[symbol][1] - text_addr}")
-    data_relocs = [(int(i[2]), i[4], int(i[5])) for i in lines if i[0] == "reloc" and i[1] == "data"]
+    # An addend is written as Quest writes an Int, ~ for negative (a string
+    # literal's header has the top bit set)
+    data_relocs = [(int(i[2]), i[4], int(i[5].replace("~", "-"))) for i in lines if i[0] == "reloc" and i[1] == "data"]
     for item in lines:
         if item[0] != "data":
             continue

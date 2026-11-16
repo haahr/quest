@@ -1,0 +1,63 @@
+(* A string literal denotes one string, the same at every evaluation, which is read-only: string.setChar and
+ * string.setSub on it raise string.error, and every other string stays writable (docs/extensions.md, string
+ * literals). Each implementation (compiled code, the JIT, and both compilers' interpreters) must agree. *)
+
+import stringOp = string: StringOp;
+import writer: Writer;
+import conv: Conv;
+
+let line(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
+let flag(b: Bool): String = if b then "true" else "false" end;
+let tryIt(f: All() Ok): String = try f() "ok" when stringOp.error then "string.error" end;
+
+(* 1. A literal is the same string at every evaluation *)
+let f(): String = "ab";
+line("1. " <> flag(f() is f()));
+
+(* 2. Writing into a literal raises string.error and leaves it unchanged *)
+line("2. " <> tryIt(fun(): Ok stringOp.setChar(f() 0 'X')) <> " " <> f());
+line("2. " <> tryIt(fun(): Ok stringOp.setSub(f() 0 "XY" 0 2)) <> " " <> f());
+line("2. " <> tryIt(fun(): Ok stringOp.setChar(f() 5 'X')));
+
+(* 3. A string made from a literal is a new string, and writable *)
+let copy = stringOp.getSub(f() 0 2);
+stringOp.setChar(copy 0 'X');
+line("3. " <> copy <> " " <> f() <> " " <> flag(copy is f()));
+let joined = f() <> "c";
+stringOp.setChar(joined 2 'Z');
+line("3. " <> joined);
+let made = stringOp.new(3 '-');
+stringOp.setSub(made 0 f() 0 2);
+line("3. " <> made);
+
+(* 4. A literal in a closure, and a module-level one, are read-only too *)
+let maker = fun(): String "closure";
+line("4. " <> flag(maker() is maker()) <> " " <> tryIt(fun(): Ok stringOp.setChar(maker() 0 'C')) <> " " <> maker());
+let top = "top";
+line("4. " <> tryIt(fun(): Ok stringOp.setChar(top 0 'T')) <> " " <> top);
+
+(* 5. The empty literal, and a loop that reads a literal's characters *)
+line("5. " <> conv.int(stringOp.length("")) <> " " <> tryIt(fun(): Ok stringOp.setSub("" 0 "" 0 0)));
+let var n = 0;
+for i = 0 upto 4 do
+    let s = "hello"
+    if stringOp.getChar(s i) is 'l' then n := n + 1 end
+end;
+line("5. " <> conv.int(n));
+
+(* 6. A case whose arms each give a literal, which the self-hosted compiler makes a table of the literals' addresses
+ * (docs/ssa.md section 4.1): the same strings, read-only, whichever way they are reached *)
+Let Op = Option add sub mul div neg end;
+let opName(o: Op): String =
+    case o
+        when add then "+"
+        when sub then "-"
+        when mul then "*"
+        when div then "/"
+        when neg then "~"
+    end;
+let ops = array of option add of Op end option sub of Op end option mul of Op end option div of Op end option neg of Op end end;
+let var names = "";
+for i = 0 upto {extent ops - 1} do names := names <> opName(ops[i]) end;
+line("6. " <> names <> " " <> flag(opName(ops[2]) is opName(ops[2])) <> " "
+    <> tryIt(fun(): Ok stringOp.setChar(opName(ops[0]) 0 'x')));

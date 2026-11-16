@@ -240,10 +240,13 @@ class QChar(QValue):
 
 
 class QString(QValue):
-    """String literal value."""
+    """A string. A literal's is read-only (literal_string), as compiled code's
+    literals are static and marked read-only: string.setChar and string.setSub
+    raise string.error on it (docs/strings-plan.md section 5)."""
 
-    def __init__(self, value: str):
+    def __init__(self, value: str, readonly: bool = False):
         self.value = str(value)
+        self.readonly = readonly
 
     @property
     def type_name(self) -> str:
@@ -280,6 +283,21 @@ class QString(QValue):
 # ============================================================================
 # 3. Compound Aggregates
 # ============================================================================
+
+
+# The interpreters' string literals, by text: each one read-only QString, the
+# same object at every evaluation, as a compiled unit has one static object
+# for each distinct literal
+_literal_strings: dict[str, QString] = {}
+
+
+def literal_string(text: str) -> QString:
+    """The string literal text's value: one read-only QString for each text."""
+    s = _literal_strings.get(text)
+    if s is None:
+        s = QString(text, readonly=True)
+        _literal_strings[text] = s
+    return s
 
 class QRecord(QValue):
     """Unordered collection of labeled fields."""

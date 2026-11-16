@@ -441,10 +441,12 @@ export
                         let address = byteAddress(s y())
                         (* A read-only string (a literal) raises string.error, as
                          * quest_string_set_char does: its header's bit, in the
-                         * mutator's byte, byte 6 of the word before the string *)
-                        let bit = runtimeLayout.constant("Q_HEADER_READONLY") / 281474976710656
-                        let mutatorByte = vals.load(fn s ~2 vals.part(vals.tInt 1 false))
-                        let clear = vals.binary(fn ssa.opEq vals.binary(fn ssa.opAnd mutatorByte vals.constant(fn bit))
+                         * byte of the word before the string that holds it *)
+                        let bit = runtimeLayout.constant("Q_HEADER_READONLY_BIT")
+                        let headerByte = vals.load(fn s {bit / 8} - 8 vals.part(vals.tInt 1 false))
+                        let var mask = 1
+                        for k = 1 upto {bit % 8} do mask := 2 * mask end
+                        let clear = vals.binary(fn ssa.opEq vals.binary(fn ssa.opAnd headerByte vals.constant(fn mask))
                             vals.constant(fn 0))
                         vals.check(fn clear true "quest_raise_string_error" noSite)
                         vals.store(fn address 0 1 vals.atom1(fn o.args[2]))

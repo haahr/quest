@@ -2,6 +2,7 @@
 
 module treewalk : Treewalk
 import
+    questlang/interpreter/literals : questlang/interpreter/Literals
     questlang/common/location : questlang/common/Location
     questlang/common/diagnostics : questlang/common/Diagnostics
     tm = questlang/types/model : questlang/types/Model
@@ -554,7 +555,9 @@ export
                 when exprReal with x then model.realValue(x.value)
                 when exprBool with x then model.boolValue(x.value)
                 when exprChar with x then model.charValue(x.value)
-                when exprString with x then model.stringValue(x.value)
+                when exprString with x then
+                    literals.freeze(x.value)
+                    model.stringValue(x.value)
                 when exprOk then model.okValue
                 when exprExternal with x then builtins.resolveExternal(x.symbol)
                 when exprVar with x then lookup(f x.name offset)

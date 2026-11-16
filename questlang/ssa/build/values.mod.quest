@@ -8,6 +8,7 @@ import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/cfg : questlang/ssa/Cfg
     questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
     questlang/repr/symbols : questlang/repr/Symbols
     questlang/repr/staticdata : questlang/repr/StaticData
     questlang/repr/objectLayout : questlang/repr/ObjectLayout
@@ -153,6 +154,7 @@ export
          * numbers the next *)
         strings: hashMap.T(String String)
         var stringCount: Int
+        stringObjects: hashMap.T(String String)
         optionTables: hashMap.T(String String)
         (* Names records and their offset tables as the unit's static data
          * does *)
@@ -278,6 +280,25 @@ export
             hashMap.find(:String :String u.strings s)
         end
 
+    let stringObject(u: UnitBuilder s: String): String =
+        begin
+            if not(hashMap.contains(:String :String u.stringObjects s)) then
+                let bytes = stringSymbol(u s)
+                let symbol = "qso_" <> stringOp.getSub(bytes 3 {stringOp.length(bytes) - 3})
+                put(:String :String u.stringObjects s symbol)
+                let header = option wordSymbol of ssa.Word with
+                    let symbol = "quest_layout_string"
+                    let addend = word.toInt(word.shift(word.fromInt(1) runtimeLayout.constant("Q_HEADER_READONLY_BIT")))
+                end
+                vector.append(:ssa.Data u.built.data ssa.words(symbol false false array of
+                    header
+                    option wordInt of ssa.Word with let n = stringOp.length(s) end
+                    option wordSymbol of ssa.Word with let symbol = bytes let addend = 0 end
+                end))
+            end
+            hashMap.find(:String :String u.stringObjects s)
+        end
+
     let optionTable(u: UnitBuilder key: String count: Int): String =
         begin
             if not(hashMap.contains(:String :String u.optionTables key)) then
@@ -298,6 +319,7 @@ export
     let constant(fn: Fn n: Int): Int = ssa.constant(fn.f fn.cur n)
     let binary(fn: Fn op: ssa.Opcode x: Int y: Int): Int = ssa.binary(fn.f fn.cur op x y)
     let symbolAt(fn: Fn symbol: String): Int = ssa.symbolAddress(fn.f fn.cur symbol)
+    let symbolPlus(fn: Fn symbol: String addend: Int): Int = ssa.symbolPlus(fn.f fn.cur symbol addend)
     let threadLocal(fn: Fn symbol: String): Int = ssa.threadLocal(fn.f fn.cur symbol)
     let load(fn: Fn address: Int offset: Int p: Part): Int = ssa.load(fn.f fn.cur address offset p.width p.signed p.type)
     let loadWord(fn: Fn address: Int offset: Int t: ssa.Type): Int = ssa.load(fn.f fn.cur address offset 8 false t)
@@ -575,9 +597,9 @@ export
             when constChar with x then array of constant(fn ascii.val(x.c)) end
             when constReal with x then
                 array of ssa.realConstant(fn.f fn.cur realBitsOf(x.r)) end
-            when constString with x then
-                let literal = symbolAt(fn stringSymbol(fn.u x.s))
-                array of call1(fn "quest_string_new" array of literal constant(fn stringOp.length(x.s)) end) end
+            (* A literal is its static, read-only object, the same at every
+             * evaluation (stringObject) *)
+            when constString with x then array of symbolPlus(fn stringObject(fn.u x.s) 8) end
         end
 
     (* An atom's values. A boxed mutable variable (or var parameter) holds its

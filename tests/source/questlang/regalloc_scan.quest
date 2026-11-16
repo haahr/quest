@@ -28,6 +28,7 @@ import
     util/strutil : util/Strutil
     writer : Writer
     conv : Conv
+    stringOp = string : StringOp
 ;
 
 let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
@@ -164,7 +165,7 @@ let showCold(title: String f: machine.Function cold: All(b: Int) Bool): Ok =
         for v = 0 upto {extent slots - 1} do
             if slots[v] >= 0 then shown := shown <> " %" <> conv.int(v) <> " in " <> conv.int(slots[v]) end
         end
-        if shown isnot "" then emit("slots:" <> shown) end
+        if stringOp.length(shown) > 0 then emit("slots:" <> shown) end
         regalloc.rewrite(f a lowering)
         emit("rewritten:")
         writer.putString(writer.output machine.format(f fun(r: Int): String name(f r) fun(i: machine.Inst): String

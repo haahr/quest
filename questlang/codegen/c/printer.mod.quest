@@ -248,6 +248,11 @@ export
          * (docs/c-representation.md section 5.3) *)
         optionTables: hashMap.T(String String)
         optionTableDecls: vector.T(String)
+        (* The unit's string literals, each one static object
+         * (QStaticString): their names, by text, and their definitions in
+         * the order first used *)
+        stringObjects: hashMap.T(String String)
+        stringDecls: vector.T(String)
         (* The layouts of the objects the unit allocates (docs/collector.md
          * section 3.2), each defined once *)
         layouts: objectLayout.Table
@@ -581,7 +586,21 @@ export
      * Atoms
      * ====================================================================== *)
 
-    let const(c: nodes.Const): String =
+    (* The string literal s: its static object, defined once in the unit, and
+     * the same at every evaluation (docs/strings-plan.md section 5) *)
+    let stringLiteral(p: P s: String): String =
+        begin
+            if not(hashMap.contains(:String :String p.stringObjects s)) then
+                let name = "qsl_" <> conv.int(hashMap.size(:String :String p.stringObjects) + 1)
+                put(:String :String p.stringObjects s name)
+                vector.append(:String p.stringDecls "static Q_UNUSED const QStaticString " <> name
+                    <> " = { Q_STATIC_STRING_HEADER, { " <> lit(stringOp.length(s)) <> ", (char *)" <> syntax.cString(s)
+                    <> " } };")
+            end
+            "((QString *)&" <> hashMap.find(:String :String p.stringObjects s) <> ".string)"
+        end
+
+    let const(p: P c: nodes.Const): String =
         case c.value
             when constOk then "Q_OK_VAL"
             when constBool with x then if x.b then "true" else "false" end
@@ -592,13 +611,12 @@ export
                 end
             when constReal with x then syntax.cReal(x.r)
             when constChar with x then syntax.cChar(x.c)
-            when constString with x then
-                syntax.call("quest_string_new" strings(array of syntax.cString(x.s) lit(stringOp.length(x.s)) end))
+            when constString with x then stringLiteral(p x.s)
         end
 
     let atom(p: P a: Atom): String =
         case a
-            when atomConst with x then const(x.c)
+            when atomConst with x then const(p x.c)
             when atomVar with x then
                 let v = x.v
                 if isOk(v.type) then
@@ -3223,6 +3241,7 @@ export
             for i = 0 upto {vector.length(:String p.optionTableDecls) - 1} do
                 add(res vector.get(:String p.optionTableDecls i))
             end
+            for i = 0 upto {vector.length(:String p.stringDecls) - 1} do add(res vector.get(:String p.stringDecls i)) end
             for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
                 let m = vector.get(:nodes.Module unit.modules i)
                 let clean = symbols.mangleModuleName(m.name)
@@ -3337,6 +3356,8 @@ export
             let tupleCasts = hashMap.new(:String :declarations.Pair eq hash.string)
             let optionTables = hashMap.new(:String :String eq hash.string)
             let optionTableDecls = vector.new(:String)
+            let stringObjects = hashMap.new(:String :String eq hash.string)
+            let stringDecls = vector.new(:String)
             let layouts = objectLayout.newTable()
             let var fs = newFnState(maybe.none(:nodes.Function))
             let var lines = vector.new(:String)

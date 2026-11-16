@@ -220,6 +220,27 @@ signed number, so `0xFFFFFFFFFFFFFFFF` is out of range rather than ~1, and `0x` 
 
 ---
 
+## String Literals
+
+*Typeful Programming*'s `StringOp` makes strings mutable (`setChar`, `setSub`), but says nothing of what a string
+literal denotes when it is written into. In Quest a string literal denotes one string, the same object at every
+evaluation of that literal, and that string is read-only: `string.setChar` and `string.setSub` on it raise
+`string.error`, even for a write of no characters, and leave it unchanged. Every other string, including any made from
+a literal (`getSub`, `<>`, `new` and `setSub`), is writable. So `let f(): String = "ab"` gives `f() is f()` true, and a
+program that needs a buffer makes one (`string.new(n ' ')`) rather than writing into a literal.
+
+Whether two occurrences of the same text are one string is unspecified: compiled code makes one object for each
+distinct literal in a unit, and the interpreters one for each text. In compiled code a literal is static data, a
+header word that marks it read-only (`Q_HEADER_READONLY`) and its `QString` ([c-representation.md](c-representation.md)
+§3.2), so evaluating one allocates nothing; the interpreters mark the strings the program's text holds
+(`quest_string_freeze`, or the bootstrap's read-only `QString`).
+
+The WASM backend does not follow this yet: its strings are WASM-GC byte arrays with no header to mark, so a literal
+there is a new, writable string at every evaluation, as every implementation's was before, and its
+`quest_string_freeze` does nothing (`runtime/wasm/core`'s `stringFreeze`).
+
+---
+
 ## Semicolons
 
 *Typeful Programming* uses semicolons only to end top-level phrases (§3.3, and the syntax in §11.1): the sole rule

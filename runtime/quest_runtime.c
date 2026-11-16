@@ -99,9 +99,12 @@ void quest_string_set_char(QString *s, int64_t idx, QChar ch) {
 /* Makes the heap string s read-only, as a literal is: the self-hosted
  * interpreter's literals, which it makes as strings of its own */
 void quest_string_freeze(QString *s) {
-    /* The mutator's byte alone, byte 6 of the header word at s - 8, as the
-     * barrier writes it (quest_gc.h) */
-    if (s != NULL) ((uint8_t *)s)[-2] |= (uint8_t)(Q_HEADER_READONLY >> 48);
+    /* Byte 7 of the header word at s - 8, the top byte, alone, and only when
+     * the bit is not set yet: so the mutator writes the collector's byte once
+     * for each string, and never a static literal's header, which is in
+     * read-only memory with the bit set (the interpreters may be handed one
+     * of the compiler's own literals) */
+    if (s != NULL && !quest_is_readonly(s)) ((uint8_t *)s)[-1] |= (uint8_t)(Q_HEADER_READONLY >> 56);
 }
 
 QString *quest_string_get_sub(const QString *s, int64_t start, int64_t len) {

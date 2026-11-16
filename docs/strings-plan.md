@@ -183,6 +183,22 @@ stolen from `length` would instead cost every reader a mask, and a reader that m
 bounds check (`idx < length`) for any index. `quest_string_freeze(s)` sets the bit on a heap string, for the
 self-hosted interpreter.
 
+**Moved to bit 63** (found 2026-11-16, building step 4). Step 3 put the bit at 49, in the mutator's byte. A static
+literal's header is then `quest_layout_string`'s address plus 2^49, a relocated pointer with an addend, and arm64
+Darwin's chained fixups (the linker's default) keep only a pointer's low 36 bits and its top byte: the addend was
+dropped without a warning, so every static literal was writable and a `setChar` on one wrote into `__TEXT` and died
+of SIGBUS. Bit 63, the top of the collector's byte, survives the fixups. It breaks collector.md §3.2's rule that each
+byte has one writer, since the mutator sets it, but it is set once, before the string is shared, and never cleared,
+and the collector's writes (or-ing in `old`, the whole word at birth) keep it. The other way would be linking every
+program with `-Wl,-no_fixup_chains`, which keeps full addends, but a link without it would silently lose the check.
+Raised with the owner as a decision to confirm. `quest_string_freeze` writes only when the bit is not set yet, so
+the mutator writes the collector's byte once per string and never a static literal's read-only header, and the
+runtime header asserts that the bit is in the top byte.
+
+**The WASM backend** (on `main` since this plan was written) does not follow the rule yet: its strings are WASM-GC
+byte arrays with no header, so its literals stay fresh and writable, and its `quest_string_freeze`, which the
+interpreters compiled to WASM call, does nothing (recorded in `extensions.md`).
+
 **Emitting them.** Each distinct literal in a unit becomes static data: a header word (the address of
 `quest_layout_string`, with the read-only bit), the `QString` (length and a pointer to its bytes), and the bytes,
 NUL-terminated; a use is the object's address (`opSymbol`), not a call. Static closures today have no header word, so
@@ -307,7 +323,8 @@ measurement repeats step 0's and goes into `benchmarks.md`.
    `quest_string_set_char`, `quest_string_set_sub`, and the SSA builder's inlined `setChar`, and
    `quest_string_freeze`; ABI bump. *Done when* the full `tools/check` passes (nothing is read-only yet, so this
    proves the checks cost no behavior) and a test in `tests/python/test_runtime.py` shows a frozen string raising.
-4. **Static literals** (§5) in every implementation at once, with a shared test (a literal's identity across
+4. **Static literals** (§5), done 2026-11-16 ("Make string literals static, shared, and read-only"; the bit moved
+   to 63, §5), in every implementation at once, with a shared test (a literal's identity across
    evaluations, `setChar` and `setSub` on a literal raising `string.error`, a mutable copy made by `getSub` still
    writable, a literal inside a closure and a module member) and `extensions.md`, `c-representation.md`, and the
    `QString` comment updated; ABI bump. Fix, in the same commit, any code the suites show writing into a literal.

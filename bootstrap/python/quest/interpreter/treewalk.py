@@ -59,6 +59,7 @@ from quest.values.model import (
     QArrayElementRef,
     QTupleElementRef,
     QString,
+    literal_string,
     QTuple,
     QTypeValue,
     QValue,
@@ -443,7 +444,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
         case TypedChar(value=val):
             return QChar(val)
         case TypedString(value=val):
-            return QString(val)
+            return literal_string(val)
         case TypedOk():
             return OK_VALUE
         case TypedExternal(symbol=symbol):

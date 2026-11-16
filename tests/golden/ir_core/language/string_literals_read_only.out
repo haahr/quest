@@ -1,0 +1,263 @@
+import stringOp = "string" : StringOp
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun line(s: String): Ok {
+      let %1: writer.T = member writer.output @9:50
+      do call writer.putString(%1, s) @9:33
+      let %2: writer.T = member writer.output @9:84
+      let %3: Ok = call writer.putString(%2, "\n") @9:67
+      return %3
+    }
+  }
+  funs {
+    fun flag(b: Bool): String {
+      join k1(r: String) {
+        return r
+      } in {
+        if b { @10:29
+          jump k1("true") @10:29
+        } else {
+          jump k1("false") @10:29
+        }
+      }
+    }
+  }
+  funs {
+    fun tryIt(f: Fun(): Ok): String {
+      join k2(r.1: String) {
+        return r.1
+      } in {
+        let %4: Exception = member stringOp.error @11:52
+        try catching (%4) {
+          do call f() @11:38
+          jump k2("ok") @11:34
+        } handle (e: Exception) {
+          let %5: Bool = prim is(e, %4) @11:34
+          if %5 { @11:34
+            jump k2("string.error") @11:34
+          } else {
+            reraise e @11:34
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun f.1(): String {
+      return "ab"
+    }
+  }
+  let %6: String = call f.1() @15:20
+  let %7: String = call f.1() @15:27
+  let %8: Bool = prim is(%6, %7) @15:20
+  let %9: String = call flag(%8) @15:15
+  let %10: String = prim <>("1. ", %9) @15:6
+  do call line(%10) @15:1
+  funs {
+    fun f.2(): Ok {
+      let %11: String = call f.1() @18:48
+      let %12: Ok = call stringOp.setChar(%11, 0, 'X') @18:31
+      return %12
+    }
+  }
+  let %13: String = call tryIt(f.2) @18:15
+  let %14: String = call f.1() @18:70
+  let %15: String = prim <>(" ", %14) @18:63
+  let %16: String = prim <>(%13, %15) @18:15
+  let %17: String = prim <>("2. ", %16) @18:6
+  do call line(%17) @18:1
+  funs {
+    fun f.3(): Ok {
+      let %18: String = call f.1() @19:47
+      let %19: Ok = call stringOp.setSub(%18, 0, "XY", 0, 2) @19:31
+      return %19
+    }
+  }
+  let %20: String = call tryIt(f.3) @19:15
+  let %21: String = call f.1() @19:74
+  let %22: String = prim <>(" ", %21) @19:67
+  let %23: String = prim <>(%20, %22) @19:15
+  let %24: String = prim <>("2. ", %23) @19:6
+  do call line(%24) @19:1
+  funs {
+    fun f.4(): Ok {
+      let %25: String = call f.1() @20:48
+      let %26: Ok = call stringOp.setChar(%25, 5, 'X') @20:31
+      return %26
+    }
+  }
+  let %27: String = call tryIt(f.4) @20:15
+  let %28: String = prim <>("2. ", %27) @20:6
+  do call line(%28) @20:1
+  let %29: String = call f.1() @23:28
+  let copy: String = call stringOp.getSub(%29, 0, 2) @23:12
+  do call stringOp.setChar(copy, 0, 'X') @24:1
+  let %30: String = call f.1() @25:30
+  let %31: String = call f.1() @25:57
+  let %32: Bool = prim is(copy, %31) @25:49
+  let %33: String = call flag(%32) @25:44
+  let %34: String = prim <>(" ", %33) @25:37
+  let %35: String = prim <>(%30, %34) @25:30
+  let %36: String = prim <>(" ", %35) @25:23
+  let %37: String = prim <>(copy, %36) @25:15
+  let %38: String = prim <>("3. ", %37) @25:6
+  do call line(%38) @25:1
+  let %39: String = call f.1() @26:14
+  let joined: String = prim <>(%39, "c") @26:14
+  do call stringOp.setChar(joined, 2, 'Z') @27:1
+  let %40: String = prim <>("3. ", joined) @28:6
+  do call line(%40) @28:1
+  let made: String = call stringOp.new(3, '-') @29:12
+  let %41: String = call f.1() @30:24
+  do call stringOp.setSub(made, 0, %41, 0, 2) @30:1
+  let %42: String = prim <>("3. ", made) @31:6
+  do call line(%42) @31:1
+  funs {
+    fun maker(): String {
+      return "closure"
+    }
+  }
+  let %43: String = call maker() @35:20
+  let %44: String = call maker() @35:31
+  let %45: Bool = prim is(%43, %44) @35:20
+  let %46: String = call flag(%45) @35:15
+  funs {
+    fun f.5(): Ok {
+      let %47: String = call maker() @35:83
+      let %48: Ok = call stringOp.setChar(%47, 0, 'C') @35:66
+      return %48
+    }
+  }
+  let %49: String = call tryIt(f.5) @35:50
+  let %50: String = call maker() @35:109
+  let %51: String = prim <>(" ", %50) @35:102
+  let %52: String = prim <>(%49, %51) @35:50
+  let %53: String = prim <>(" ", %52) @35:43
+  let %54: String = prim <>(%46, %53) @35:15
+  let %55: String = prim <>("4. ", %54) @35:6
+  do call line(%55) @35:1
+  let top: String = "top" @36:11
+  funs {
+    fun f.6(): Ok {
+      let %56: Ok = call stringOp.setChar(top, 0, 'T') @37:31
+      return %56
+    }
+  }
+  let %57: String = call tryIt(f.6) @37:15
+  let %58: String = prim <>(" ", top) @37:63
+  let %59: String = prim <>(%57, %58) @37:15
+  let %60: String = prim <>("4. ", %59) @37:6
+  do call line(%60) @37:1
+  let %61: Int = call stringOp.length("") @40:24
+  let %62: String = call conv.int(%61) @40:15
+  funs {
+    fun f.7(): Ok {
+      let %63: Ok = call stringOp.setSub("", 0, "", 0, 0) @40:71
+      return %63
+    }
+  }
+  let %64: String = call tryIt(f.7) @40:55
+  let %65: String = prim <>(" ", %64) @40:48
+  let %66: String = prim <>(%62, %65) @40:15
+  let %67: String = prim <>("5. ", %66) @40:6
+  do call line(%67) @40:1
+  var n: Int = 0 @41:1
+  var i: Int = 0 @42:1
+  let %68: Bool = prim <=(i, 4) @42:1
+  if %68 { @42:1
+    loop L1 {
+      let i.1: Int = i @42:1
+      let s.1: String = "hello" @43:13
+      let %69: Char = call stringOp.getChar(s.1, i.1) @44:8
+      let %70: Bool = prim is(%69, 'l') @44:8
+      if %70 { @44:5
+        let %71: Int = prim +(n, 1) @44:47
+        n := %71 @44:42
+      }
+      let %72: Bool = prim is(i, 4) @42:1
+      if %72 { @42:1
+        break L1 @42:1
+      }
+      let %73: Int = prim +(i, 1) @42:1
+      i := %73 @42:1
+    }
+  }
+  let %74: String = call conv.int(n) @46:15
+  let %75: String = prim <>("5. ", %74) @46:6
+  do call line(%75) @46:1
+  funs {
+    fun opName(o: Op): String {
+      join k3(r.2: String) {
+        return r.2
+      } in {
+        switch tag(o) { @52:5
+          case add: {
+            jump k3("+") @52:5
+          }
+          case sub: {
+            jump k3("-") @52:5
+          }
+          case mul: {
+            jump k3("*") @52:5
+          }
+          case div: {
+            jump k3("/") @52:5
+          }
+          case neg: {
+            jump k3("~") @52:5
+          }
+        }
+      }
+    }
+  }
+  let %76: Op = option(add) @59:20
+  let %77: Op = option(sub) @59:41
+  let %78: Op = option(mul) @59:62
+  let %79: Op = option(div) @59:83
+  let %80: Op = option(neg) @59:104
+  let ops: Array(Op) = array(%76, %77, %78, %79, %80) @59:11
+  var names: String = "" @60:1
+  let %81: Int = prim extent(ops) @61:17
+  let %82: Int = prim -(%81, 1) @61:17
+  var i.2: Int = 0 @61:1
+  let %83: Bool = prim <=(i.2, %82) @61:1
+  if %83 { @61:1
+    loop L2 {
+      let i.3: Int = i.2 @61:1
+      let %84: Op = index(ops, i.3) @61:61
+      let %85: String = call opName(%84) @61:54
+      let %86: String = prim <>(names, %85) @61:45
+      names := %86 @61:36
+      let %87: Bool = prim is(i.2, %82) @61:1
+      if %87 { @61:1
+        break L2 @61:1
+      }
+      let %88: Int = prim +(i.2, 1) @61:1
+      i.2 := %88 @61:1
+    }
+  }
+  let %89: Op = index(ops, 2) @62:43
+  let %90: String = call opName(%89) @62:36
+  let %91: Op = index(ops, 2) @62:61
+  let %92: String = call opName(%91) @62:54
+  let %93: Bool = prim is(%90, %92) @62:36
+  let %94: String = call flag(%93) @62:31
+  funs {
+    fun f.8(): Ok {
+      let %95: Op = index(ops, 0) @63:48
+      let %96: String = call opName(%95) @63:41
+      let %97: Ok = call stringOp.setChar(%96, 0, 'x') @63:24
+      return %97
+    }
+  }
+  let %98: String = call tryIt(f.8) @63:8
+  let %99: String = prim <>(" ", %98) @62:73
+  let %100: String = prim <>(%94, %99) @62:31
+  let %101: String = prim <>(" ", %100) @62:24
+  let %102: String = prim <>(names, %101) @62:15
+  let %103: String = prim <>("6. ", %102) @62:6
+  do call line(%103) @62:1
+}
+

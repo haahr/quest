@@ -68,6 +68,7 @@ from quest.values.model import (
     QRecord,
     QRef,
     QString,
+    literal_string,
     QTuple,
     QTupleElementRef,
     QTypeValue,
@@ -336,9 +337,8 @@ class Interpreter:
             case "char":
                 return QChar(v)
             case "string":
-                # A new string each time, as each evaluation of a string literal
-                # is (is compares strings by identity)
-                return QString(v)
+                # One read-only string for each literal (literal_string)
+                return literal_string(v)
         raise IRInterpreterError(f"constant {v!r} of shape {a.shape.kind}")
 
     def atoms(self, atoms: tuple[ir.Atom, ...], frame: _Frame) -> list[QValue]:

@@ -197,6 +197,9 @@ class CPrinter:
         # §3.2), each defined once
         self.layouts = objectlayout.Table()
         self.global_words: dict[int, int] = {}
+        # The unit's string literals, each one static object (QStaticString):
+        # their names, by text, in the order first used
+        self.string_objects: dict[str, str] = {}
 
     # Names
 
@@ -579,6 +582,20 @@ class CPrinter:
         record or variant boxed."""
         return shape_location_representation(shape(t))
 
+    def string_literal(self, s: str) -> str:
+        """The string literal s: its static object, defined once in the unit,
+        and the same at every evaluation (docs/strings-plan.md section 5)."""
+        name = self.string_objects.get(s)
+        if name is None:
+            name = f"qsl_{len(self.string_objects) + 1}"
+            self.string_objects[s] = name
+        return f"((QString *)&{name}.string)"
+
+    def string_definitions(self) -> list[str]:
+        return [f"static Q_UNUSED const QStaticString {name} = {{ Q_STATIC_STRING_HEADER, "
+                f"{{ {c_int_literal(len(s))}, (char *){c_string(s)} }} }};"
+                for s, name in self.string_objects.items()]
+
     def const(self, c: ir.Const) -> str:
         v = c.value
         if v is None:
@@ -593,7 +610,7 @@ class CPrinter:
             case "char":
                 return c_char(v)
             case "string":
-                return call("quest_string_new", [c_string(v), c_int_literal(len(v))])
+                return self.string_literal(v)
         raise NotImplementedError(f"constant {repr(v)} of shape {c.shape.kind}")
 
     def operation(self, o, result: Optional[ir.Var]) -> str:
@@ -2028,6 +2045,7 @@ class CPrinter:
         out.append("    { NULL, 0 },")
         out.append("};")
         out.extend(self.thunk_decls)
+        out.extend(self.string_definitions())
         # The layouts of the objects the unit allocates, after the thunks'
         # environment structs they size
         out.extend(objectlayout.c_definitions(self.layouts))

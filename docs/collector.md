@@ -154,6 +154,10 @@ right to move is reserved in the header and designed (§9.1), and not taken (dec
   (`Q_HEADER_LAYOUT_MASK`; free on a 48-bit address space), and above it two bytes with one writer each. The
   collector's byte (bits 56 to 63) holds *old* (`Q_HEADER_OLD`), set when a collection marks the object, the barrier's
   hint (§3.5); the mutator's byte (bits 48 to 55) holds *logged* (`Q_HEADER_LOGGED`), set when the barrier logs it.
+  One bit breaks the rule: *read-only* (`Q_HEADER_READONLY`, bit 63), a string literal's mark, is in the collector's
+  byte although the mutator sets it, since a static object's header is a relocated pointer and arm64 Darwin's chained
+  fixups keep only a pointer's low 36 bits and top byte. It is set once, when the string is made (static data, or
+  `quest_string_freeze` before the string is shared), and never cleared, and the collector's writes keep it.
   The bits left in each are reserved for moving (*pinned*, *forwarded*, and the hash states, §9). Each side writes
   its byte with a byte store, so no read-modify-write of the word is shared, and a marker thread would need fences
   but no atomics (§9.3). The mark bit itself is not in the header: liveness lives in the side mark bitmap, which a
