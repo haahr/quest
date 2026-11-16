@@ -1,0 +1,160 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun show(s: String): Ok {
+      let %1: writer.T = member writer.output @12:44
+      let %2: String = prim <>(s, "\n") @12:58
+      let %3: Ok = call writer.putString(%1, %2) @12:27
+      return %3
+    }
+  }
+  funs rec {
+    fun last(var q: P, k: Int): P {
+      join k1(r: P) {
+        return r
+      } in {
+        let %4: Bool = prim >(k, 0) @14:39
+        if %4 { @14:36
+          let %5: Var(P) = addr q @14:55
+          let %6: Int = prim -(k, 1) @14:58
+          let %7: P = call last(%5, %6) @14:50
+          jump k1(%7) @14:36
+        } else {
+          jump k1(q) @14:36
+        }
+      }
+    }
+  }
+  funs {
+    fun pick(var q.1: P, c: Bool): P {
+      join k2(r.1: P) {
+        return r.1
+      } in {
+        if c { @15:33
+          jump k2(q.1) @15:33
+        } else {
+          let %8: Record a: Int end = record(a = 0) @15:50
+          jump k2(%8) @15:33
+        }
+      }
+    }
+  }
+  funs {
+    fun viaCase(var q.2: P, v: V): P {
+      join k3(r.2: P) {
+        return r.2
+      } in {
+        switch tag(v) { @16:33
+          case one: {
+            jump k3(q.2) @16:33
+          }
+          case two: {
+            let %9: Record a: Int end = record(a = 0) @16:70
+            jump k3(%9) @16:33
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun viaTry(var q.3: P): P {
+      join k4(r.3: P) {
+        return r.3
+      } in {
+        try catching all {
+          jump k4(q.3) @17:27
+        } handle (e: Exception) {
+          let %10: Record a: Int end = record(a = -1) @17:38
+          jump k4(%10) @17:27
+        }
+      }
+    }
+  }
+  funs {
+    fun viaDecl(var q.4: P): P {
+      var cur: P = q.4 @18:34
+      return cur
+    }
+  }
+  funs {
+    fun viaAssign(var q.5: P): P {
+      let %11: Record a: Int end = record(a = 0) @19:50
+      var cur.1: Record a: Int end = %11 @19:36
+      cur.1 := q.5 @19:67
+      return cur.1
+    }
+  }
+  funs {
+    fun bump(var v.1: V): Ok {
+      let n: V = variant(two, "bumped") @20:43
+      v.1 := n @20:78
+      return ok
+    }
+  }
+  funs {
+    fun viaLocal(): V {
+      let %12: V = variant(one, 1) @21:42
+      var l: V = %12 @21:27
+      let %13: Var(V) = addr l @21:75
+      do call bump(%13) @21:70
+      return l
+    }
+  }
+  funs {
+    fun tag(v.2: V): String {
+      join k5(r.4: String) {
+        return r.4
+      } in {
+        switch tag(v.2) { @22:25
+          case one (n.1: Int): {
+            let %14: String = call conv.int(n.1) @22:63
+            let %15: String = prim <>("one ", %14) @22:53
+            jump k5(%15) @22:25
+          }
+          case two (s.1: String): {
+            let %16: String = prim <>("two ", s.1) @22:96
+            jump k5(%16) @22:25
+          }
+        }
+      }
+    }
+  }
+  let three: V = variant(one, 3) @24:16
+  let %17: Record a: Int end = record(a = 5) @25:30
+  let arr: Array(P) = array(%17) @25:21
+  let %18: Var(P) = addr arr[0] @26:20
+  let %19: P = call last(%18, 2) @26:15
+  let %20: Int = record_field(%19, a) @26:15
+  let %21: String = call conv.int(%20) @26:6
+  do call show(%21) @26:1
+  let %22: Var(P) = addr arr[0] @27:20
+  let %23: P = call pick(%22, true) @27:15
+  let %24: Int = record_field(%23, a) @27:15
+  let %25: String = call conv.int(%24) @27:6
+  do call show(%25) @27:1
+  let %26: Var(P) = addr arr[0] @28:23
+  let %27: P = call viaCase(%26, three) @28:15
+  let %28: Int = record_field(%27, a) @28:15
+  let %29: String = call conv.int(%28) @28:6
+  do call show(%29) @28:1
+  let %30: Var(P) = addr arr[0] @29:22
+  let %31: P = call viaTry(%30) @29:15
+  let %32: Int = record_field(%31, a) @29:15
+  let %33: String = call conv.int(%32) @29:6
+  do call show(%33) @29:1
+  let %34: Var(P) = addr arr[0] @30:23
+  let %35: P = call viaDecl(%34) @30:15
+  let %36: Int = record_field(%35, a) @30:15
+  let %37: String = call conv.int(%36) @30:6
+  do call show(%37) @30:1
+  let %38: Var(P) = addr arr[0] @31:25
+  let %39: P = call viaAssign(%38) @31:15
+  let %40: Int = record_field(%39, a) @31:15
+  let %41: String = call conv.int(%40) @31:6
+  do call show(%41) @31:1
+  let %42: V = call viaLocal() @32:10
+  let %43: String = call tag(%42) @32:6
+  do call show(%43) @32:1
+}
+

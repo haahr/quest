@@ -1,0 +1,122 @@
+import writer = "writer" : Writer
+import dynamic = "dynamic" : Dynamic
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @9:45
+      let %2: String = prim <>(s, "\n") @9:59
+      let %3: Ok = call writer.putString(%1, %2) @9:28
+      return %3
+    }
+  }
+  funs {
+    fun idS [A::<: Small](x: A): A {
+      return x
+    }
+  }
+  funs {
+    fun idB [A::<: Big](x.1: A): A {
+      return x.1
+    }
+  }
+  funs {
+    fun f [A::<: Small](x.2: Small): Int {
+      let %4: Int = record_field(x.2, y) @15:35
+      return %4
+    }
+  }
+  funs {
+    fun g [A::<: Small B::<: A](x.3: B): Small {
+      return x.3
+    }
+  }
+  funs {
+    fun be(what: String, try1: Fun(): Ok): Ok {
+      join k1(r: String) {
+        let %5: String = prim <>(": ", r) @19:19
+        let %6: String = prim <>(what, %5) @19:11
+        let %7: Ok = call print(%6) @19:5
+        return %7
+      } in {
+        let %8: Exception = member dynamic.error @19:64
+        try catching (%8) {
+          do call try1() @19:37
+          jump k1("accepted") @19:27
+        } handle (e: Exception) {
+          let %9: Bool = prim is(e, %8) @19:27
+          if %9 { @19:27
+            jump k1("dynamic.error") @19:27
+          } else {
+            reraise e @19:27
+          }
+        }
+      }
+    }
+  }
+  let s1: All(A <: Big) Fun(x: A): A = idS @22:32
+  funs {
+    fun f.1(): Ok {
+      let %10: T = call dynamic.new [All(A <: Small) Fun(x: A): A](idS) @23:80
+      let %11: All(A <: Big) Fun(x: A): A = call dynamic.be [All(A <: Big) Fun(x: A): A](%10) @23:47
+      return ok
+    }
+  }
+  do call be("Small bound as Big bound", f.1) @23:1
+  funs {
+    fun f.2(): Ok {
+      let %12: T = call dynamic.new [All(A <: Big) Fun(x: A): A](idB) @26:82
+      let %13: All(A <: Small) Fun(x: A): A = call dynamic.be [All(A <: Small) Fun(x: A): A](%12) @26:47
+      return ok
+    }
+  }
+  do call be("Big bound as Small bound", f.2) @26:1
+  let s3: All(A <: Small) Fun(x: A): Int = f @29:36
+  funs {
+    fun f.3(): Ok {
+      let %14: T = call dynamic.new [All(A <: Small) Fun(x: Small): Int](f) @31:48
+      let %15: All(A <: Small) Fun(x: A): Int = call dynamic.be [All(A <: Small) Fun(x: A): Int](%14) @31:11
+      return ok
+    }
+  }
+  do call be("parameter at its bound", f.3) @30:1
+  let s4: All(A <: Small) Fun(x: A): Small = idS @35:38
+  funs {
+    fun f.4(): Ok {
+      let %16: T = call dynamic.new [All(A <: Small) Fun(x: A): A](idS) @37:50
+      let %17: All(A <: Small) Fun(x: A): Small = call dynamic.be [All(A <: Small) Fun(x: A): Small](%16) @37:11
+      return ok
+    }
+  }
+  do call be("result at its bound", f.4) @36:1
+  funs {
+    fun f.5(): Ok {
+      funs {
+        fun f.6 [A::<: Small](x.4: A): Small {
+          return x.4
+        }
+      }
+      let %18: T = call dynamic.new [All(A <: Small) Fun(x: A): Small](f.6) @39:50
+      let %19: All(A <: Small) Fun(x: Small): A = call dynamic.be [All(A <: Small) Fun(x: Small): A](%18) @39:11
+      return ok
+    }
+  }
+  do call be("bound as the parameter", f.5) @38:1
+  let s5: All(A <: Big B <: A) Fun(x: B): Small = g @42:43
+  funs {
+    fun f.7(): Ok {
+      let %20: T = call dynamic.new [All(A <: Small B <: A) Fun(x: B): Small](g) @44:55
+      let %21: All(A <: Big B <: A) Fun(x: B): Small = call dynamic.be [All(A <: Big B <: A) Fun(x: B): Small](%20) @44:11
+      return ok
+    }
+  }
+  do call be("bound through a bound", f.7) @43:1
+  funs {
+    fun f.8(): Ok {
+      let %22: T = call dynamic.new [All(A <: Small B <: A) Fun(x: B): Small](g) @46:55
+      let %23: All(A <: Small B <: A) Fun(x: B): Big = call dynamic.be [All(A <: Small B <: A) Fun(x: B): Big](%22) @46:11
+      return ok
+    }
+  }
+  do call be("bound through a narrower bound", f.8) @45:1
+}
+

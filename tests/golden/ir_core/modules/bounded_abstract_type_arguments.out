@@ -1,0 +1,58 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import small = "geom/small" : geom/Small
+main {
+  funs {
+    fun show(s: String): Ok {
+      let %1: writer.T = member writer.output @11:44
+      let %2: String = prim <>(s, "\n") @11:58
+      let %3: Ok = call writer.putString(%1, %2) @11:27
+      return %3
+    }
+  }
+  funs {
+    fun getX0 [A::<: Record x: Int end](r: A): Int {
+      let %4: Int = record_field(r, x) @12:47
+      return %4
+    }
+  }
+  let getX: All(A <: Record x: Int end) Fun(r: A): Int = getX0 @13:50
+  let %5: small.P = call small.p(4) @14:29
+  let %6: Int = call getX [small.P](%5) @14:15
+  let %7: String = call conv.int(%6) @14:6
+  do call show(%7) @14:1
+  funs {
+    fun caseV0 [A::<: Variant a: Int b: Bool end](v: A): Int {
+      join k1(r.1: Int) {
+        return r.1
+      } in {
+        switch tag(v) { @16:5
+          case a (i: Int): {
+            jump k1(i) @16:5
+          }
+          case b (t: Bool): {
+            join k2(r.2: Int) {
+              jump k1(r.2) @16:5
+            } in {
+              if t { @16:52
+                jump k2(1) @16:52
+              } else {
+                jump k2(2) @16:52
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  let caseV: All(A <: Variant a: Int b: Bool end) Fun(v: A): Int = caseV0 @17:60
+  let %8: small.V = call small.b(true) @18:30
+  let %9: Int = call caseV [small.V](%8) @18:15
+  let %10: String = call conv.int(%9) @18:6
+  do call show(%10) @18:1
+  let %11: small.V = call small.b(false) @19:30
+  let %12: Int = call caseV [small.V](%11) @19:15
+  let %13: String = call conv.int(%12) @19:6
+  do call show(%13) @19:1
+}
+

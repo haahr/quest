@@ -1,0 +1,91 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun show(s: String): Ok {
+      let %1: writer.T = member writer.output @14:44
+      let %2: String = prim <>(s, "\n") @14:58
+      let %3: Ok = call writer.putString(%1, %2) @14:27
+      return %3
+    }
+  }
+  funs {
+    fun readN0 [A::<: TS](p: A): Int {
+      let %4: Int = tuple_field(p, 1) @17:33
+      return %4
+    }
+  }
+  let readN: All(A <: TS) Fun(p: A): Int = readN0 @18:36
+  funs {
+    fun writeN0 [A::<: TS](p.1: A, v: Int): Ok {
+      store p.1.#1 := v @19:40
+      return ok
+    }
+  }
+  let writeN: All(A <: TS) Fun(p: A v: Int): Ok = writeN0 @20:43
+  funs {
+    fun bumpAt(var n: Int): Ok {
+      let %5: Int = prim +(n, 1) @21:35
+      n := %5 @21:30
+      return ok
+    }
+  }
+  funs {
+    fun addrN0 [A::<: TS](p.2: A): Ok {
+      let %6: Var(Int) = addr p.2.#1 @22:39
+      let %7: Ok = call bumpAt(%6) @22:32
+      return %7
+    }
+  }
+  let addrN: All(A <: TS) Fun(p: A): Ok = addrN0 @23:35
+  funs {
+    fun readA0 [A::<: TS](p.3: A): Int {
+      let %8: Small = tuple_field(p.3, 0) @24:33
+      let %9: Int = record_field(%8, a) @24:33
+      return %9
+    }
+  }
+  let readA: All(A <: TS) Fun(p: A): Int = readA0 @25:36
+  let x: Record a: Int b: Int end = record(a = 1, b = 2) @27:28
+  let n.1: Int = 7 @27:63
+  let tb: TB = tuple(x, n.1) @27:14
+  let ts: TS = tb @28:14
+  let %10: Int = call readN [TS](ts) @29:15
+  let %11: String = call conv.int(%10) @29:6
+  do call show(%11) @29:1
+  do call writeN [TS](ts, 8) @30:1
+  let %12: Int = tuple_field(tb, 1) @31:15
+  let %13: String = call conv.int(%12) @31:6
+  do call show(%13) @31:1
+  do call addrN [TS](ts) @32:1
+  let %14: Int = tuple_field(tb, 1) @33:15
+  let %15: String = call conv.int(%14) @33:6
+  do call show(%15) @33:1
+  let %16: Int = call readA [TS](ts) @34:15
+  let %17: String = call conv.int(%16) @34:6
+  do call show(%17) @34:1
+  funs {
+    fun caseN0 [A::<: OS](o: A): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        switch tag(o) { @38:33
+          case s (t: TS): {
+            let %18: Int = tuple_field(t, 1) @38:59
+            jump k1(%18) @38:33
+          }
+          case none: {
+            jump k1(0) @38:33
+          }
+        }
+      }
+    }
+  }
+  let caseN: All(A <: OS) Fun(o: A): Int = caseN0 @39:36
+  let ob: OB = variant(s, tb) @40:14
+  let os: OS = ob @41:14
+  let %19: Int = call caseN [OS](os) @42:15
+  let %20: String = call conv.int(%19) @42:6
+  do call show(%20) @42:1
+}
+
