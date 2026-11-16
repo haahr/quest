@@ -402,8 +402,54 @@ export
     let isVar(d: Desc i: Int): Bool = {i < extent d.flags} andif {d.flags[i] is 1}
 
     (* The pairs whose proofs are in progress, which are assumed to hold
-     * (quest_is_subtype's trail: descriptors of recursive types are cyclic) *)
-    Def Pair = Tuple sub: Desc sup: Desc end
+     * (quest_is_subtype's trail: descriptors of recursive types are cyclic),
+     * each with its two sides' scopes: a pair is met again only under the
+     * same binders *)
+    Def Pair = Tuple sub: Desc sup: Desc ss: Array(Int) ts: Array(Int) end
+
+    (* A type parameter in scope while two types are compared
+     * (QSubtypeBinder): a polymorphic function type's quantifier, or an auto
+     * type's type component, one binder for both types; its bound, none for
+     * kind TYPE, described in the scope scope. A scope is the binders in
+     * scope, innermost last, by their indexes in the table below, which a
+     * proof begins empty; a bound variable descriptor of index i is the i'th
+     * from the innermost *)
+    Def Binder = Tuple bound: Desc var scope: Array(Int) end
+    let binders = tuple let var items = array of :Binder end let var count = 0 end
+    let newBinder(bound: Desc): Int =
+        begin
+            let b = tuple let bound = bound let var scope = array of :Int end end
+            if binders.count >= extent binders.items then
+                let more = array of({2 * binders.count} + 16 b)
+                for i = 0 upto binders.count - 1 do more[i] := binders.items[i] end
+                binders.items := more
+            end
+            binders.items[binders.count] := b
+            binders.count := binders.count + 1
+            binders.count - 1
+        end
+    let within(scope: Array(Int) b: Int): Array(Int) =
+        begin
+            let r = array of({extent scope + 1} b)
+            for i = 0 upto extent scope - 1 do r[i] := scope[i] end
+            r
+        end
+    let sameScope(a: Array(Int) b: Array(Int)): Bool =
+        begin
+            let var same = extent a is extent b
+            for i = 0 upto extent a - 1 do if same andif {a[i] isnot b[i]} then same := false end end
+            same
+        end
+    (* The binder a bound variable names in scope, or ~1 outside every one *)
+    let binderOf(d: Desc scope: Array(Int)): Int =
+        if boundIndex(d) < extent scope then scope[{extent scope - 1} - boundIndex(d)] else ~1 end
+
+    (* How many comparisons of polymorphic function types one proof may make,
+     * as the type checkers' fuel allows (Q_SUBTYPE_QUANTIFIER_FUEL): with
+     * bounds compared contravariantly subtyping is undecidable, and a search
+     * past it fails *)
+    let quantifierFuel = 20
+    let fuel = tuple let var left = 0 end
     let trail = tuple let var items = array of :Pair end let var count = 0 end
 
     (* word.T, the base descriptor or the opaque one (quest_is_word_type) *)
@@ -411,19 +457,34 @@ export
         {d.kind is kindWord}
             orif {{d.kind is kindOpaque} andif {extent d.parts is 0} andif stringOp.equal(d.name "word.T")}
 
-    let rec isSubtype(sub0: Desc sup0: Desc): Bool =
+    (* Whether sub is a subtype of sup (quest_is_subtype): subtypeIn from
+     * empty scopes, with a proof's fuel and binders anew *)
+    let rec isSubtype(sub: Desc sup: Desc): Bool =
+        begin
+            if trail.count is 0 then
+                fuel.left := quantifierFuel
+                binders.count := 0
+            end
+            subtypeIn(sub array of :Int end sup array of :Int end)
+        end
+
+    (* Whether sub, in the scope ss, is a subtype of sup, in ts *)
+    and subtypeIn(sub0: Desc ss: Array(Int) sup0: Desc ts: Array(Int)): Bool =
         begin
             let sub = storedType(sub0)
             let sup = storedType(sup0)
-            if {sub is sup} orif {isWordType(sub) andif isWordType(sup)} then true
+            if {{sub is sup} andif sameScope(ss ts)} orif {isWordType(sub) andif isWordType(sup)} then true
             else
                 let var assumed = false
                 for i = 0 upto trail.count - 1 do
-                    if {trail.items[i].sub is sub} andif {trail.items[i].sup is sup} then assumed := true end
+                    let p = trail.items[i]
+                    if {p.sub is sub} andif {p.sup is sup} andif sameScope(p.ss ss) andif sameScope(p.ts ts) then
+                        assumed := true
+                    end
                 end
                 if assumed then true
                 else
-                    let pair = tuple let sub = sub let sup = sup end
+                    let pair = tuple let sub = sub let sup = sup let ss = ss let ts = ts end
                     if trail.count >= extent trail.items then
                         let more = array of({2 * trail.count} + 16 pair)
                         for i = 0 upto trail.count - 1 do more[i] := trail.items[i] end
@@ -431,18 +492,39 @@ export
                     end
                     trail.items[trail.count] := pair
                     trail.count := trail.count + 1
-                    let result = subtypeParts(sub sup)
+                    let result = if {sub.kind is kindBoundVar} orif {sup.kind is kindBoundVar} then
+                            subtypeVar(sub ss sup ts)
+                        else subtypeParts(sub ss sup ts)
+                        end
                     trail.count := trail.count - 1
                     result
                 end
             end
         end
 
+    (* When either is a bound type variable (quest_subtype_var): the same
+     * binder, or two outside every binder in scope at the same distance
+     * outside; or a variable sub whose bound is a subtype of sup (Cardelli's
+     * [TIncl Var]) *)
+    and subtypeVar(sub: Desc ss: Array(Int) sup: Desc ts: Array(Int)): Bool =
+        begin
+            let subVar = sub.kind is kindBoundVar
+            let sb = if subVar then binderOf(sub ss) else ~1 end
+            let same = subVar andif {sup.kind is kindBoundVar} andif {sb is binderOf(sup ts)}
+                andif {{sb >= 0} orif {{boundIndex(sub) - extent ss} is {boundIndex(sup) - extent ts}}}
+            if same then true
+            elsif {sb >= 0} andif {binders.items[sb].bound.kind isnot kindNone} then
+                subtypeIn(binders.items[sb].bound binders.items[sb].scope sup ts)
+            else false
+            end
+        end
+
     (* By sup's kind, as quest_is_subtype compares them *)
-    and subtypeParts(sub: Desc sup: Desc): Bool =
+    and subtypeParts(sub: Desc ss: Array(Int) sup: Desc ts: Array(Int)): Bool =
         begin
             let k = sup.kind
-            let both = fun(a: Desc b: Desc): Bool isSubtype(a b) andif isSubtype(b a)
+            let isSub = fun(a: Desc b: Desc): Bool subtypeIn(a ss b ts)
+            let both = fun(a: Desc b: Desc): Bool subtypeIn(a ss b ts) andif subtypeIn(b ts a ss)
             if {k is kindTuple} then
                 if sub.kind isnot kindTuple then false
                 elsif extent sup.parts is 0 then true
@@ -456,7 +538,7 @@ export
                             if not(isVar(sub i)) orif {match andif not(both(sub.parts[i] sup.parts[i]))} then
                                 match := false
                             end
-                        elsif match andif not(isSubtype(sub.parts[i] sup.parts[i])) then match := false
+                        elsif match andif not(isSub(sub.parts[i] sup.parts[i])) then match := false
                         end
                     end
                     match
@@ -472,7 +554,7 @@ export
                             if not(isVar(sub i)) orif {match andif not(both(sub.parts[i] sup.parts[j]))} then
                                 match := false
                             end
-                        elsif match andif not(isSubtype(sub.parts[i] sup.parts[j])) then match := false
+                        elsif match andif not(isSub(sub.parts[i] sup.parts[j])) then match := false
                         end
                     end
                     match
@@ -493,7 +575,7 @@ export
                                 if sNone isnot tNone then match := false end
                             elsif isVar(sub i) orif isVar(sup j) then
                                 if match andif not(both(sp tp)) then match := false end
-                            elsif match andif not(isSubtype(sp tp)) then match := false
+                            elsif match andif not(isSub(sp tp)) then match := false
                             end
                         end
                     end
@@ -503,19 +585,49 @@ export
                 {sub.kind is k} andif {extent sub.parts is extent sup.parts}
                     andif {{extent sup.parts is 0} orif both(sub.parts[0] sup.parts[0])}
             elsif k is kindFun then
-                (* as many parameters, each of the same mode: contravariant
-                 * value parameters, invariant var ones and quantifiers'
-                 * bounds, covariant out ones and result *)
+                (* as many parameters, each of the same mode, and type
+                 * parameters, with contravariant bounds, each under those
+                 * before it, the k'th of both one binder with sup's bound
+                 * (Cardelli's [TIncl Π], as the type checkers compare them;
+                 * comparing quantifiers costs fuel); then, under them,
+                 * contravariant value parameters, invariant var ones, and
+                 * covariant out ones and result. The bounds are the parts
+                 * flagged 8, after the parameters and the result *)
                 if {sub.kind isnot kindFun} orif {extent sub.parts isnot extent sup.parts} then false
                 else
                     let var match = true
+                    for i = 0 upto extent sup.parts - 1 do if sub.flags[i] isnot sup.flags[i] then match := false end end
+                    let var sin = ss
+                    let var tin = ts
+                    let var quantified = false
+                    for i = 0 upto extent sup.parts - 1 do if sup.flags[i] is 8 then quantified := true end end
+                    if match andif quantified then
+                        if fuel.left <= 0 then match := false else fuel.left := fuel.left - 1 end
+                    end
+                    for i = 0 upto extent sup.parts - 1 do
+                        if match andif {sup.flags[i] is 8} then
+                            let sb = sub.parts[i]
+                            let tb = sup.parts[i]
+                            if sb.kind isnot kindNone then
+                                match := {tb.kind isnot kindNone} andif subtypeIn(tb tin sb sin)
+                            end
+                            let b = newBinder(tb)
+                            binders.items[b].scope := tin
+                            tin := within(tin b)
+                            sin := within(sin b)
+                        end
+                    end
                     for i = 0 upto extent sup.parts - 1 do
                         let mode = sup.flags[i]
-                        if sub.flags[i] isnot mode then match := false
-                        elsif not(match) then ok
-                        elsif {mode is 1} orif {mode is 8} then match := both(sub.parts[i] sup.parts[i])
-                        elsif {mode is 2} orif {mode is 4} then match := isSubtype(sub.parts[i] sup.parts[i])
-                        else match := isSubtype(sup.parts[i] sub.parts[i])
+                        let sp = sub.parts[i]
+                        let tp = sup.parts[i]
+                        if not(match) orif {mode is 8} then ok
+                        elsif mode is 1 then match := subtypeIn(sp sin tp tin) andif subtypeIn(tp tin sp sin)
+                        elsif {mode is 2} orif {mode is 4} then
+                            match := if {sp.kind is kindNone} orif {tp.kind is kindNone} then sp is tp
+                                else subtypeIn(sp sin tp tin)
+                                end
+                        else match := subtypeIn(tp tin sp sin)
                         end
                     end
                     match
@@ -525,19 +637,30 @@ export
                  * components with equal names and var-ness, covariant, or
                  * invariant when var *)
                 if {sub.kind isnot kindAuto} orif {autoComponents(sub) < autoComponents(sup)} then false
-                elsif {autoBound(sup).kind isnot kindNone} andif {{autoBound(sub).kind is kindNone}
-                    orif not(isSubtype(autoBound(sub) autoBound(sup)))} then false
                 else
-                    let var match = true
-                    for i = 0 upto autoComponents(sup) - 1 do
-                        if not(stringOp.equal(sub.labels[i] sup.labels[i])) orif {isVar(sub i) isnot isVar(sup i)} then
-                            match := false
-                        elsif not(match) then ok
-                        elsif isVar(sup i) then match := both(sub.parts[i] sup.parts[i])
-                        else match := isSubtype(sub.parts[i] sup.parts[i])
+                    (* the two type components one binder, with sub's bound,
+                     * as the type checkers rename sup's to sub's; the bounds
+                     * and components are under it *)
+                    let b = newBinder(autoBound(sub))
+                    let sin = within(ss b)
+                    let tin = within(ts b)
+                    binders.items[b].scope := sin
+                    if {autoBound(sup).kind isnot kindNone} andif {{autoBound(sub).kind is kindNone}
+                        orif not(subtypeIn(autoBound(sub) sin autoBound(sup) tin))} then false
+                    else
+                        let var match = true
+                        for i = 0 upto autoComponents(sup) - 1 do
+                            if not(stringOp.equal(sub.labels[i] sup.labels[i])) orif {isVar(sub i) isnot isVar(sup i)}
+                            then match := false
+                            elsif not(match) then ok
+                            elsif isVar(sup i) then
+                                match := subtypeIn(sub.parts[i] sin sup.parts[i] tin)
+                                    andif subtypeIn(sup.parts[i] tin sub.parts[i] sin)
+                            else match := subtypeIn(sub.parts[i] sin sup.parts[i] tin)
+                            end
                         end
+                        match
                     end
-                    match
                 end
             elsif k is kindOpaque then
                 (* the same name, and an application's arguments equal (not
@@ -557,7 +680,10 @@ export
                     end
                     match
                 end
-            else false
+            else
+                (* the base types (and the rest): the same descriptor, in
+                 * whatever scopes, as quest_subtype_in's default *)
+                sub is sup
             end
         end
 
@@ -751,7 +877,8 @@ export
      * a value in one form): the same type, or tuples whose components are,
      * a prefix of a's, or records, variants, and options whose fields or
      * cases are, by name and position *)
-    let equivTrail = tuple let var items = array of :Pair end let var count = 0 end
+    Def EquivPair = Tuple sub: Desc sup: Desc end
+    let equivTrail = tuple let var items = array of :EquivPair end let var count = 0 end
 
     let recover(): Ok =
         begin

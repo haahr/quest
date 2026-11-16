@@ -1,12 +1,8 @@
-(* @skip-phase: interpret, run_ir_core, run_ir_simplified, run_ir_specialized, run_ir_closed, run_ir_represented, run_ir_described *)
-(* The interpreters, both compilers', differ from compiled code on two of
- * these: they lose an option key whose var component changed, and accept a
- * function whose quantifier's bound differs (docs/interpreter-disagreements.md).
- * The test checks compiled code, the C the wasm runtime ports. *)
 (* Places where the wasm backend's dynamic runtime departed from the C it
  * ports (docs/wasm-review.md section 2.4): an auto value's components
  * converted at an auto supertype (2), an option's identity hash by its
- * single-word case only (3), a quantifier's bound compared for equality (6),
+ * single-word case only (3), a quantifier's bound compared as the type
+ * checkers compare it, contravariantly (6; docs/interpreter-disagreements.md),
  * the JSON reader's literals and numbers (8), and intern of a closed reader
  * (9) *)
 
@@ -40,7 +36,8 @@ hashMap.insert(:MV :Int map m 5);
 case m when some with c then c.v := 2 when none then ok end;
 show("identity: " <> if hashMap.contains(:MV :Int map m) then "kept" else "lost" end);
 
-(* A function whose quantifier's bound differs is not taken *)
+(* A function whose quantifier's bound is wider than asked is taken, as a
+ * static coercion takes it *)
 Def Small = Record y: Int end;
 Def Big = Record name: String y: Int end;
 let idS(A <: Small x: A): A = x;

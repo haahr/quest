@@ -157,10 +157,11 @@ export
                 end
                 witnesses.count := witnesses.count - 1
                 text <> " end"
-            elsif {k is core.kindBoundVar} andif {witnesses.count > 0} andif {core.boundIndex(d) is 0} then
-                (* the innermost auto value's witness; an outer one's is
-                 * hidden, as natively (quest_put_value) *)
-                show(v witnesses.items[witnesses.count - 1])
+            elsif {k is core.kindBoundVar} andif {core.boundIndex(d) < witnesses.count} then
+                (* bound variable i at the i'th enclosing auto value's
+                 * witness, innermost first, as quest_put_value's stack of
+                 * witnesses has it *)
+                show(v witnesses.items[{witnesses.count - 1} - core.boundIndex(d)])
             elsif k is core.kindStored then
                 (* a value laid out as generic code stores its type argument *)
                 show(core.convert(v d core.storedType(d)) core.storedType(d))
