@@ -629,6 +629,9 @@ static QVal quest_convert_auto(QVal v, const QTypeDescriptor *from, const QTypeD
          * whatever its storage */
         QVal c = quest_auto_component_read(fc, (const char *)a->payload.p);
         if (fc->type->kind != QTYPE_KIND_BOUND_VAR) c = quest_convert(c, fc->type, tc->type);
+        /* The conversion may have collected, leaving payload old: the value,
+         * then the barrier, then the store (collector.md section 3.5) */
+        quest_barrier(payload);
         quest_auto_component_write(tc, payload, c);
     }
     return (QVal){ .p = quest_auto_new(a->type_desc, (QVal){ .p = payload }) };
