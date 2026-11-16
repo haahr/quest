@@ -664,8 +664,9 @@ on `Math.sin`'s last bit. So both are written in Quest, and no C is compiled to 
   expressions braced in C's order of evaluation, since Quest's operators associate to the right. Where msun returns
   NaN the port raises `real.error`, as the C runtime's wrappers do after libm. Built natively from FreeBSD's sources
   and compared on 229,905 values, the port's results are msun's to the bit. Against Apple's libm they agree within
-  1 ulp, or 2 for `tan`, the hyperbolic functions, and `pow`; the exception is msun's least accurate case, `pow` of
-  an x within 2⁻²⁰ of 1 to a power beyond 2³¹, hundreds of ulps from libm's. `real.format` is `realconv.format`,
+  1 ulp, or 2 for the hyperbolic functions and `pow`, or 3 for `tan` (step 32); the exception is msun's least accurate
+  case, `pow` of an x within 2⁻²⁰ of 1 to a power beyond 2³¹, hundreds of ulps from libm's. msun's own error is
+  under 1 ulp for most of the functions, but `sinh` reaches 1.66 ulp and `tanh` 1.93. `real.format` is `realconv.format`,
   printf's `%e`, `%f`, and `%g` over the exact digits. No golden needed recording for this target: those that print
   the functions' results print 12 significant digits. The backend calls both units as it calls `realconv`'s other
   functions, and imports `util/realmath` into every program beside `wasm/print`, for `^^`. The two units take `real`
@@ -914,8 +915,8 @@ mobile browsers, and Linux and Windows.
    of 1,000 calls is not reached there (§6.2).
 4. **A stack overflow or an interrupt may replay the session** (§6.3, §6.4).
 5. **An array has fewer than about 2²⁷ elements, and a string fewer than about 2³⁰ bytes** (§2.10).
-6. **The mathematical functions' results may differ in the last bit** from Apple's libm, and are absent until
-   milestone 4 (§4.3).
+6. **The mathematical functions' results may differ in the last bits** from Apple's libm: by up to 2 ulp, 3 for
+   `tan` (§4.3, step 32).
 7. **`os/process`, `os/code`, `os/value`, and readline** are absent, and with them the parallel build.
 8. **`is` on some converted values:** true on a tuple that C's `runtime` conversion copies (§4.1).
 9. **The heap's end is the engine's.** A browser ends the tab of a page whose worker fills the heap; node, given a
@@ -1753,7 +1754,8 @@ stands, not redesigned.
       and `pow`, ported line for line (§4.3). Compared with msun built natively from FreeBSD's sources on 229,905
       values, every result is msun's to the bit.
     - **Against libc:** `stdlib/realmath_operations` checks each natively against Apple's libm, at its edges and at
-      pseudo-random values: within 1 ulp, or 2 for `tan`, the hyperbolic functions, and `pow`, with `real.error`
+      pseudo-random values: within 1 ulp, or 2 for the hyperbolic functions and `pow`, or 3 for `tan` (step 32),
+      with `real.error`
       where libm's result is NaN. Left out: msun's least accurate case (§4.3).
     - **`real.format`** is `realconv.format`; `stdlib/realconv_format` checks it against `snprintf` at ten
       precisions in each style. Both tests skip the bootstrap's interpreters, for which each takes minutes.
@@ -2165,6 +2167,28 @@ writer's buffer, and would end the session when flushed.
     made 3; reading a `Real` of many digits not quadratic; and `isUnitImport`'s exemption of `util/realconv` and
     `util/realmath` by name replaced by a rule (a unit that takes `real` only as externals).
     *Done when* a run golden has the ties, and reading 400,000 digits takes well under a second.
+
+    *Done 2026-11-15:*
+    - **Built:**
+      - **ties:** the C runtime's `quest_real_format` drops a `'g'` result's trailing fraction zeros and a bare
+        point after `snprintf`, as `%g` without `#` does; Apple's kept them on an exact tie rounding to even
+        (`9.80e+03`, `9.80e+04`). Both targets print `9.8e+03`.
+      - **accuracy:** the plan (§4.3, §7, 6, step 19), `realmath`'s header, and `stdlib/realmath_operations`
+        now say `tan` within 3 ulp of libm, the hyperbolic functions and `pow` 2, and msun's own error under 1
+        ulp for most but `sinh` (1.66) and `tanh` (1.93); the test's bound for `tan` is 3.
+      - **long numbers:** `realconv.toReal` keeps the first 800 significant digits and one more, 1, if any
+        digit after them is not 0, which keeps the value on the same side of every rounding boundary (no real
+        needs more than 768). Three reads of 400,000 digits take 0.23 s natively and 0.28 s in node, the
+        driver's compile included, where the review measured 8.6 s natively for one and 50 s here for three.
+    - **Not done: `isUnitImport`'s rule.** A rule in place of the two names was built: an import of `real` is a
+      unit's import unless the unit refers to `real` only through members with externals. Measured on
+      `wasm_programs`, the programs then failed to load (`wasm/print` missing from what the engine was given),
+      and the same with the rule for every library module (`conv` missing): which units a program loads
+      follows these imports in a way the step did not trace. The two names stay, with their comment's reason.
+    - **Checked:** run goldens `stdlib/real_format_ties` (exact ties in both forms) and
+      `stdlib/realconv_long_numbers` (the halfway point between 1 and the next real, tying to even, and above it
+      with a 1 a thousand digits on; long integers, fractions, and zeros; each as Python's `float` reads it), and
+      `stdlib/realmath_operations` with its new bound, on arm64, wasm, and wasm-node.
 33. **The rest** (§3, 7; §4, 4, 5, 8 to 11; unchanged). The self loop after the prologue, and a tail call inside a
     `try` found by the label's kind, not its name; `wasm/core`'s caches hashed rather than scanned, emptied when
     nothing refers to their entries; `realText`'s digits derived once; and the encoder's and printer's three edges

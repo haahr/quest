@@ -650,7 +650,15 @@ export
             end
             (* The digits, the fraction's included, as one integer m, with nd
              * of them significant (after the leading zeros) and fraction of
-             * them after the point; 9 at a time into m *)
+             * them after the point; 9 at a time into m. Only the first
+             * maxDigits significant digits are kept: no real's rounding needs
+             * more than 768 of them, so the rest are one more digit, 1, if
+             * any of them is not 0 (sticky), which keeps the value on the
+             * same side of each rounding boundary. Kept whole, a number of
+             * many digits took time quadratic in their count
+             * (docs/wasm-plan.md step 32) *)
+            let maxDigits = 800
+            let var sticky = false
             let var m = nat(0)
             let var chunk = 0
             let var size9 = 0
@@ -666,7 +674,11 @@ export
                 elsif isDigit(c) then
                     let v = ascii.val(c) - 48
                     if inFraction then fraction := fraction + 1 end
-                    if {nd > 0} orif {v isnot 0} then
+                    if nd >= maxDigits then
+                        (* left out: its place kept in the scale *)
+                        if v isnot 0 then sticky := true end
+                        fraction := fraction - 1
+                    elsif {nd > 0} orif {v isnot 0} then
                         nd := nd + 1
                         chunk := {chunk * 10} + v
                         size9 := size9 + 1
@@ -681,6 +693,11 @@ export
                 end
             end
             m := mulAdd(m pow10(size9) chunk)
+            if sticky then
+                m := mulAdd(m 10 1)
+                nd := nd + 1
+                fraction := fraction + 1
+            end
             (* The exponent, held below 10^12 so that it cannot overflow: any
              * larger one already decides an infinity or a zero *)
             let var exponent = 0

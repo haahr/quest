@@ -1,0 +1,22 @@
+(* util/realconv's toReal on numbers of many digits, of which it keeps the
+ * first 800 significant ones and a sticky digit for the rest
+ * (docs/wasm-plan.md step 32): the halfway point between 1 and the next real
+ * (1 + 2^-53) ties to even, and with a 1 a thousand digits later rounds up;
+ * long integers, fractions, and zeros *)
+
+import writer : Writer;
+import string : StringOp;
+import realconv : RealConv = util/realconv : util/RealConv;
+
+let show(s: String): Ok = writer.putString(writer.output realconv.format(realconv.toReal(s) 'e' 17) <> "\n");
+
+let half = "1.00000000000000011102230246251565404236316680908203125";
+show(half);
+show(half <> string.new(1000 '0') <> "1");
+show(half <> string.new(1000 '0'));
+show("0.99999999999999994448884876874217297882");
+show("1" <> string.new(400 '0'));
+show("1" <> string.new(320 '0'));
+show("0." <> string.new(330 '0') <> "1");
+show("0." <> string.new(320 '0') <> "4940656458412465441765687928682213723651");
+show("123456789" <> string.new(2000 '7') <> "e-2000")

@@ -520,6 +520,24 @@ QString *quest_real_format(double r, QChar style, int64_t digits) {
     int n = snprintf(NULL, 0, spec, r);
     char *buf = (char *)quest_alloc_bytes((size_t)n + 1);
     snprintf(buf, (size_t)n + 1, spec, r);
+    if (style == 'g') {
+        /* %g without # drops the fraction's trailing zeros and a point left
+         * bare. Apple's snprintf keeps them on an exact tie that rounds to
+         * even in the exponent form (9805 at 3 digits gives 9.80e+03, not
+         * 9.8e+03), so they are dropped here, as the wasm target's
+         * util/realconv does (docs/wasm-plan.md step 32) */
+        char *e = strchr(buf, 'e');
+        char *end = e != NULL ? e : buf + n;
+        if (memchr(buf, '.', (size_t)(end - buf)) != NULL) {
+            char *last = end;
+            while (last > buf && last[-1] == '0') last--;
+            if (last > buf && last[-1] == '.') last--;
+            if (last < end) {
+                memmove(last, end, (size_t)(buf + n - end) + 1);
+                n -= (int)(end - last);
+            }
+        }
+    }
     return quest_string_new(buf, n);
 }
 

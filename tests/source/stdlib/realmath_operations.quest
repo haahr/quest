@@ -2,8 +2,9 @@
  * are libm's natively: for each function, edge values and pseudo-random ones,
  * each result within the function's bound in ulps of libm's, and raising
  * real.error where libm's would be NaN. Apple's libm is not msun, so the two
- * may differ in the last bit: by 1 ulp, or by 2 for tan, the hyperbolic
- * functions, and pow. Not checked: pow of an x within 2^-20 of 1 to a power
+ * may differ in the last bits: by 1 ulp, by 2 for the hyperbolic functions
+ * and pow, and by 3 for tan (tan(~8.109259628597705), where the port is 0.64
+ * ulp from the exact value and libm 2.45; docs/wasm-plan.md step 32). Not checked: pow of an x within 2^-20 of 1 to a power
  * beyond 2^31, msun's least accurate case, hundreds of ulps from libm's.
  * Each section prints what it checks and a count of disagreements, and names
  * any value that disagrees. On a target without libm (docs/wasm-plan.md
@@ -120,7 +121,7 @@ let check(name: String f: All(x: Real) Real g: All(x: Real) Real bound: Int lo: 
 show("1. functions of one argument");
 check("sin" realmath.sin real.sin 1 ~10.0 10.0);
 check("cos" realmath.cos real.cos 1 ~10.0 10.0);
-check("tan" realmath.tan real.tan 2 ~10.0 10.0);
+check("tan" realmath.tan real.tan 3 ~10.0 10.0);
 check("sin, large" realmath.sin real.sin 1 ~1.0e9 1.0e9);
 check("asin" realmath.asin real.asin 1 ~1.0 1.0);
 check("acos" realmath.acos real.acos 1 ~1.0 1.0);
