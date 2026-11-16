@@ -349,6 +349,19 @@ export
      * at the bound (quest_stored_representation) *)
     let storedRep(d: Desc): Desc = if storage(d).kind isnot kindNone then storage(d) else storedType(d) end
 
+    (* A module's abstract type is held as its representation is
+     * (quest_concrete_representation) *)
+    let concreteRep(d: Desc): Desc =
+        if d.kind is kindOpaque then
+            let rep = abstractRep(d)
+            if rep.kind is kindNone then d else storedType(rep) end
+        else d
+        end
+    (* The tuple or option type a descriptor stands for, looking through
+     * stored and abstract types (quest_proxied_type): what a view map's
+     * actual type and a proxy's types are (wasm-review.md section 2.1, 3) *)
+    let proxiedType(d: Desc): Desc = concreteRep(storedRep(d))
+
     (* The index of d's part labeled label, or ~1 *)
     let partNamed(d: Desc label: String): Int =
         begin
@@ -689,11 +702,23 @@ export
             if {k is kindRecord} orif {k is kindVariant} orif {k is kindAuto} orif {k is kindStored}
                 orif {k is kindBoundVar} orif {k is kindHole} then true
             elsif {k is kindTuple} orif {k is kindOption} then mayBeProxiedIn(d w)
+            elsif k is kindFun then
+                (* one with quantifiers, or a parameter or result that is *)
+                if walking(w d) then false
+                else
+                    enterWalk(w d)
+                    let var any = false
+                    for i = 0 upto extent d.parts - 1 do
+                        if not(any) andif {{d.flags[i] is 8} orif viewSensitive(d.parts[i] w)} then any := true end
+                    end
+                    w.count := w.count - 1
+                    any
+                end
             else false
             end
         end
 
-    let mayBeProxied(d: Desc): Bool = mayBeProxiedIn(storedType(d) newWalk())
+    let mayBeProxied(d: Desc): Bool = mayBeProxiedIn(proxiedType(d) newWalk())
 
     (* Whether values of type a can be used at type b as they are, as far as
      * their views go (quest_layout_equivalent, here, where every slot holds
@@ -760,8 +785,8 @@ export
      * values never are (quest_proxies_agree) *)
     let rec proxiesAgreeIn(from0: Desc to0: Desc depth: Int): Bool =
         begin
-            let from = storedType(from0)
-            let to = storedType(to0)
+            let from = storedRep(from0)
+            let to = storedRep(to0)
             if {from is to} orif {depth >= 64} then true
             elsif {to.kind isnot kindTuple} andif {to.kind isnot kindOption} then true
             elsif from.kind isnot to.kind then true
@@ -790,8 +815,8 @@ export
     let makeProxy(v: Any from0: Desc to0: Desc): Any =
         begin
             let orig = unproxy(v)
-            let from = storedType(if isProxy(v) then proxied(v).stored else from0 end)
-            let to = storedType(to0)
+            let from = proxiedType(if isProxy(v) then proxied(v).stored else from0 end)
+            let to = proxiedType(to0)
             if {from is to} orif {viewEquivalent(from to) andif proxiesAgree(from to)} then orig
             else
                 let tags = if to.kind is kindOption then array of(extent from.parts ~1) else array of :Int end end
@@ -840,15 +865,6 @@ export
     (* A closure of type from seen at to, through an adapter of uniform arity
      * n (made by the backend), or as it is past the most it makes *)
     let adaptClosure(v: Any from: Desc to: Desc n: Int): Any = external "wasm.adaptClosure"
-
-    (* A module's abstract type is held as its representation is
-     * (quest_concrete_representation) *)
-    let concreteRep(d: Desc): Desc =
-        if d.kind is kindOpaque then
-            let rep = abstractRep(d)
-            if rep.kind is kindNone then d else storedType(rep) end
-        else d
-        end
 
     (* A variant's box seen at variant type to, from from: its tag renumbered
      * to to's for the case of the same name, and its payload converted when
@@ -1095,7 +1111,7 @@ export
     (* The view map of actual at bound, made once *)
     let viewMap(actual0: Desc bound0: Desc): Any =
         begin
-            let actual = storedType(actual0)
+            let actual = proxiedType(actual0)
             let bound = storedType(bound0)
             let var found = ~1
             for i = 0 upto viewMaps.count - 1 do
@@ -1148,10 +1164,6 @@ export
             end
         end
 
-    (* Through the view map of an option type: component j of the payload of
-     * the option opt, of the bound's case b, converted to the bound's type
-     * for it (quest_view_option_component) *)
-    let optionSlot(opt: Any j: Int): Any = external "wasm.tupleSlot"
     (* Through the view map of an option type: the payload of the option
      * opt's case, as its case binder is, the original's payload seen at the
      * bound's case's type (quest_view_option_payload) *)
@@ -1164,8 +1176,11 @@ export
             convert(orig storedType(stored).parts[tag] m.bound.parts[m.index[tagAt(opt)]])
         end
 
+    (* Through the view map of an option type: component j of the payload of
+     * the option opt, a proxy's or not, of the bound's case b, converted to
+     * the bound's type for it (quest_view_option_component) *)
     let viewOptionComponent(opt: Any m0: Any b: Int j: Int): Any =
-        viewPart(m0 {anyViewMap(m0).start[b] + j} optionSlot(opt j))
+        viewPart(m0 {anyViewMap(m0).start[b] + j} optionElementAt(opt j))
 
     (* ======================================================================
      * Abstract types (quest_register_abstract_type, docs/dynamic.md section

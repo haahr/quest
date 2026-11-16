@@ -1,0 +1,19 @@
+(* A module's bounded abstract types (geom/small's P, a record, and V, a
+ * variant) as the type arguments of functions bounded by their bounds: the
+ * view map is the representation's, as quest_view_map takes it
+ * (docs/wasm-review.md section 2.1, 3, where the wasm backend raised
+ * dynamic.error) *)
+
+import writer : Writer;
+import conv : Conv;
+import small: Small = geom/small : geom/Small;
+
+let show(s: String): Ok = writer.putString(writer.output s <> "\n");
+let getX0(A <: Record x: Int end r: A): Int = r.x;
+let getX: All(A <: Record x: Int end r: A) Int = getX0;
+show(conv.int(getX(:small.P small.p(4))));
+let caseV0(A <: Variant a: Int b: Bool end v: A): Int =
+    case v when a with i then i when b with t then if t then 1 else 2 end end;
+let caseV: All(A <: Variant a: Int b: Bool end v: A) Int = caseV0;
+show(conv.int(caseV(:small.V small.b(true))));
+show(conv.int(caseV(:small.V small.b(false))))

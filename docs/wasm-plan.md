@@ -1931,6 +1931,23 @@ writer's buffer, and would end the session when flushed.
     sibling does. `viewMap`, `makeProxy`, `mayBeProxied`, and `proxiesAgreeIn` take the stored type's concrete
     representation, as `quest_view_map` and `quest_proxied_type` do.
     *Done when* the review's programs run as natively, each a run golden.
+
+    *Done 2026-11-15:*
+    - **Built:** `atomAs` in `questlang/wasm/codegen` pushes an atom as the variable it goes to holds it, its box
+      or its parts, unboxing or boxing as they differ; `sReturn` (plain), `sJump` (each join parameter's, which
+      `F.joins` keeps by label), `sAssign`, and `sVarDecl` use it. Through a view map a tuple's component is read
+      through the proxy (`proxyAware`), and written or its address taken in the original's slot (`ir.original`);
+      `viewTag` reads an option's tag through `tagOf` with a proxy's access; `wasm/core`'s `viewOptionComponent`
+      reads through `optionElementAt`, as `viewOptionPayload` beside it unproxies. `wasm/core` gains
+      `proxiedType` (`quest_proxied_type`): `viewMap`'s actual type, `makeProxy`'s two, and `mayBeProxied`'s are
+      the concrete representation of the stored one, and `proxiesAgreeIn` compares stored representations, as C
+      does. On the way, `viewSensitive` counts a function type as C's `quest_view_sensitive_rec` does (one with
+      quantifiers, or a parameter or result that is), which its comment said and its code left out.
+    - **Checked:** the run goldens `language/boxed_values_as_plain` (§2.1, 1: a `var` parameter returned, through
+      `if`, `case`, and `try`, bound and assigned to a local, and a variant local passed by address and returned),
+      `language/proxied_type_arguments` (§2.1, 2: a read, a store, an address, a nested read, and an option's case,
+      each through a proxy), and `modules/bounded_abstract_type_arguments` (§2.1, 3: a record and a variant
+      bound) give native's output in wasm, wasm-node, and wasm-jit.
 26. **The dynamic runtime as the C it ports** (§2.4, 1 to 10; 1 and 4 still, 8's first case gives `dynamic.error`
     now, the rest unchanged). Adapters of any arity, made on demand past the ones built in, where today a closure
     past 8 parameters is left unconverted; `core.convert` for auto values (`quest_convert_auto`); an option's

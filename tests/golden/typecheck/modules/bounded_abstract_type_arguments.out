@@ -1,0 +1,111 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('small') : 'Small')
+      ))
+    (TypedLetValue 'show' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'getX0' :type All(A <: Record x: Int end) Fun(r: A): Int
+      :value (TypedFun :params (('r' : A)) :type All(A <: Record x: Int end) Fun(r: A): Int
+        :body (TypedSelect 'x' :type Int
+          :target (TypedVar 'r' :type A))))
+    (TypedLetValue 'getX' :type All(A <: Record x: Int end) Fun(r: A): Int
+      :value (TypedVar 'getX0' :type All(A <: Record x: Int end) Fun(r: A): Int))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedTypeApp [small.P] :type Fun(r: small.P): Int
+                  :func (TypedVar 'getX' :type All(A <: Record x: Int end) Fun(r: A): Int))
+                :args (
+                  (TypedApp :type small.P
+                    :func (TypedSelect 'p' :type Fun(i: Int): small.P
+                      :target (TypedVar 'small' :type Module 'small'))
+                    :args (
+                      (TypedInt 4 :type Int)
+                    ))
+                ))
+            ))
+        )))
+    (TypedLetValue 'caseV0' :type All(A <: Variant a: Int b: Bool end) Fun(v: A): Int
+      :value (TypedFun :params (('v' : A)) :type All(A <: Variant a: Int b: Bool end) Fun(v: A): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 'v' :type A)
+          :branches (
+            (TypedCaseBranch tags=(a) :binder 'i'
+              :body (TypedVar 'i' :type Int))
+            (TypedCaseBranch tags=(b) :binder 't'
+              :body (TypedIf :type Int
+                :cond (TypedVar 't' :type Bool)
+                :then (TypedInt 1 :type Int)
+                :else (TypedInt 2 :type Int)))
+          ))))
+    (TypedLetValue 'caseV' :type All(A <: Variant a: Int b: Bool end) Fun(v: A): Int
+      :value (TypedVar 'caseV0' :type All(A <: Variant a: Int b: Bool end) Fun(v: A): Int))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedTypeApp [small.V] :type Fun(v: small.V): Int
+                  :func (TypedVar 'caseV' :type All(A <: Variant a: Int b: Bool end) Fun(v: A): Int))
+                :args (
+                  (TypedApp :type small.V
+                    :func (TypedSelect 'b' :type Fun(b: Bool): small.V
+                      :target (TypedVar 'small' :type Module 'small'))
+                    :args (
+                      (TypedBool true)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedTypeApp [small.V] :type Fun(v: small.V): Int
+                  :func (TypedVar 'caseV' :type All(A <: Variant a: Int b: Bool end) Fun(v: A): Int))
+                :args (
+                  (TypedApp :type small.V
+                    :func (TypedSelect 'b' :type Fun(b: Bool): small.V
+                      :target (TypedVar 'small' :type Module 'small'))
+                    :args (
+                      (TypedBool false)
+                    ))
+                ))
+            ))
+        )))
+  ))

@@ -1,0 +1,287 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetType 'P' :kind TYPE)
+    (TypedLetType 'V' :kind TYPE)
+    (TypedLetValue 'show' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'last' :rec :type Fun(var q: P k: Int): P
+      :value (TypedFun :params (('q' : P) ('k' : Int)) :type Fun(var q: P k: Int): P
+        :body (TypedIf :type P
+          :cond (TypedInfix '>' :type Bool
+            :left (TypedVar 'k' :type Int)
+            :right (TypedInt 0 :type Int))
+          :then (TypedApp :type P
+            :func (TypedVar 'last' :type Fun(var q: P k: Int): P)
+            :args (
+              (TypedVar 'q' :type Var(P))
+              (TypedInfix '-' :type Int
+                :left (TypedVar 'k' :type Int)
+                :right (TypedInt 1 :type Int))
+            ))
+          :else (TypedDerefCell :type P
+            :target (TypedVar 'q' :type Var(P))))))
+    (TypedLetValue 'pick' :type Fun(var q: P c: Bool): P
+      :value (TypedFun :params (('q' : P) ('c' : Bool)) :type Fun(var q: P c: Bool): P
+        :body (TypedIf :type P
+          :cond (TypedVar 'c' :type Bool)
+          :then (TypedDerefCell :type P
+            :target (TypedVar 'q' :type Var(P)))
+          :else (TypedRecord :type Record a: Int end
+            :fields (
+              (TypedRecordField 'a'
+                :value (TypedInt 0 :type Int))
+            )))))
+    (TypedLetValue 'viaCase' :type Fun(var q: P v: V): P
+      :value (TypedFun :params (('q' : P) ('v' : V)) :type Fun(var q: P v: V): P
+        :body (TypedCase :type P
+          :target (TypedVar 'v' :type V)
+          :branches (
+            (TypedCaseBranch tags=(one)
+              :body (TypedDerefCell :type P
+                :target (TypedVar 'q' :type Var(P))))
+            (TypedCaseBranch tags=(two)
+              :body (TypedRecord :type Record a: Int end
+                :fields (
+                  (TypedRecordField 'a'
+                    :value (TypedInt 0 :type Int))
+                )))
+          ))))
+    (TypedLetValue 'viaTry' :type Fun(var q: P): P
+      :value (TypedFun :params (('q' : P)) :type Fun(var q: P): P
+        :body (TypedTry :type P
+          :body (TypedDerefCell :type P
+            :target (TypedVar 'q' :type Var(P)))
+          :branches ()
+          :else (TypedRecord :type Record a: Int end
+            :fields (
+              (TypedRecordField 'a'
+                :value (TypedInt -1 :type Int))
+            )))))
+    (TypedLetValue 'viaDecl' :type Fun(var q: P): P
+      :value (TypedFun :params (('q' : P)) :type Fun(var q: P): P
+        :body (TypedBlock :type P
+          :bindings (
+            (TypedLetValue 'cur' :type P
+              :value (TypedDerefCell :type P
+                :target (TypedVar 'q' :type Var(P))))
+          )
+          :result (TypedDerefCell :type P
+            :target (TypedVar 'cur' :type Var(P))))))
+    (TypedLetValue 'viaAssign' :type Fun(var q: P): P
+      :value (TypedFun :params (('q' : P)) :type Fun(var q: P): P
+        :body (TypedBlock :type P
+          :bindings (
+            (TypedLetValue 'cur' :type Record a: Int end
+              :value (TypedRecord :type Record a: Int end
+                :fields (
+                  (TypedRecordField 'a'
+                    :value (TypedInt 0 :type Int))
+                )))
+            (TypedExprStmt
+              :expr (TypedAssign
+                :target (TypedVar 'cur' :type Var(Record a: Int end))
+                :value (TypedDerefCell :type P
+                  :target (TypedVar 'q' :type Var(P)))))
+          )
+          :result (TypedDerefCell :type Record a: Int end
+            :target (TypedVar 'cur' :type Var(Record a: Int end))))))
+    (TypedLetValue 'bump' :type Fun(var v: V): Ok
+      :value (TypedFun :params (('v' : V)) :type Fun(var v: V): Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'n' :type V
+              :value (TypedVariant 'two' :type V
+                :payload (TypedString 'bumped' :type String)))
+          )
+          :result (TypedAssign
+            :target (TypedVar 'v' :type Var(V))
+            :value (TypedVar 'n' :type V)))))
+    (TypedLetValue 'viaLocal' :type Fun(): V
+      :value (TypedFun :params () :type Fun(): V
+        :body (TypedBlock :type V
+          :bindings (
+            (TypedLetValue 'l' :type V
+              :value (TypedVariant 'one' :type V
+                :payload (TypedInt 1 :type Int)))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'bump' :type Fun(var v: V): Ok)
+                :args (
+                  (TypedVar 'l' :type Var(V))
+                )))
+          )
+          :result (TypedDerefCell :type V
+            :target (TypedVar 'l' :type Var(V))))))
+    (TypedLetValue 'tag' :type Fun(v: V): String
+      :value (TypedFun :params (('v' : V)) :type Fun(v: V): String
+        :body (TypedCase :type String
+          :target (TypedVar 'v' :type V)
+          :branches (
+            (TypedCaseBranch tags=(one) :binder 'n'
+              :body (TypedInfix '<>' :type String
+                :left (TypedString 'one ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedVar 'n' :type Int)
+                  ))))
+            (TypedCaseBranch tags=(two) :binder 's'
+              :body (TypedInfix '<>' :type String
+                :left (TypedString 'two ' :type String)
+                :right (TypedVar 's' :type String)))
+          ))))
+    (TypedLetValue 'three' :type V
+      :value (TypedVariant 'one' :type V
+        :payload (TypedInt 3 :type Int)))
+    (TypedLetValue 'arr' :type Array(P)
+      :value (TypedArray :type Array(P)
+        :elements (
+          (TypedRecord :type Record a: Int end
+            :fields (
+              (TypedRecordField 'a'
+                :value (TypedInt 5 :type Int))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'a' :type Int
+                :target (TypedApp :type P
+                  :func (TypedVar 'last' :type Fun(var q: P k: Int): P)
+                  :args (
+                    (TypedIndexRef [] (ref) :type Var(P)
+                      :target (TypedVar 'arr' :type Array(P))
+                      :index (TypedInt 0 :type Int))
+                    (TypedInt 2 :type Int)
+                  )))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'a' :type Int
+                :target (TypedApp :type P
+                  :func (TypedVar 'pick' :type Fun(var q: P c: Bool): P)
+                  :args (
+                    (TypedIndexRef [] (ref) :type Var(P)
+                      :target (TypedVar 'arr' :type Array(P))
+                      :index (TypedInt 0 :type Int))
+                    (TypedBool true)
+                  )))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'a' :type Int
+                :target (TypedApp :type P
+                  :func (TypedVar 'viaCase' :type Fun(var q: P v: V): P)
+                  :args (
+                    (TypedIndexRef [] (ref) :type Var(P)
+                      :target (TypedVar 'arr' :type Array(P))
+                      :index (TypedInt 0 :type Int))
+                    (TypedVar 'three' :type V)
+                  )))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'a' :type Int
+                :target (TypedApp :type P
+                  :func (TypedVar 'viaTry' :type Fun(var q: P): P)
+                  :args (
+                    (TypedIndexRef [] (ref) :type Var(P)
+                      :target (TypedVar 'arr' :type Array(P))
+                      :index (TypedInt 0 :type Int))
+                  )))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'a' :type Int
+                :target (TypedApp :type P
+                  :func (TypedVar 'viaDecl' :type Fun(var q: P): P)
+                  :args (
+                    (TypedIndexRef [] (ref) :type Var(P)
+                      :target (TypedVar 'arr' :type Array(P))
+                      :index (TypedInt 0 :type Int))
+                  )))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'a' :type Int
+                :target (TypedApp :type P
+                  :func (TypedVar 'viaAssign' :type Fun(var q: P): P)
+                  :args (
+                    (TypedIndexRef [] (ref) :type Var(P)
+                      :target (TypedVar 'arr' :type Array(P))
+                      :index (TypedInt 0 :type Int))
+                  )))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'tag' :type Fun(v: V): String)
+            :args (
+              (TypedApp :type V
+                :func (TypedVar 'viaLocal' :type Fun(): V)
+                :args ())
+            ))
+        )))
+  ))

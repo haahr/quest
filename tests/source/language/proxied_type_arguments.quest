@@ -1,0 +1,42 @@
+(* A bounded type parameter's value that is a proxy: the type argument is the
+ * bound, and the value an upcast tuple or option, so each access through the
+ * bound's view map meets the proxy. Read, written, its address taken, read
+ * nested, and an option's case (docs/wasm-review.md section 2.1, 2, where
+ * the wasm backend cast to a tuple or option and trapped) *)
+
+import writer : Writer;
+import conv : Conv;
+
+Def Small = Record a: Int end;
+Def Big = Record a: Int b: Int end;
+Def TS = Tuple x: Small var n: Int end;
+Def TB = Tuple x: Big var n: Int end;
+let show(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+(* Each held as a value, so that it is called through its uniform entry *)
+let readN0(A <: TS p: A): Int = p.n;
+let readN: All(A <: TS p: A) Int = readN0;
+let writeN0(A <: TS p: A v: Int): Ok = p.n := v;
+let writeN: All(A <: TS p: A v: Int) Ok = writeN0;
+let bumpAt(var n: Int): Ok = n := n + 1;
+let addrN0(A <: TS p: A): Ok = bumpAt(@p.n);
+let addrN: All(A <: TS p: A) Ok = addrN0;
+let readA0(A <: TS p: A): Int = p.x.a;
+let readA: All(A <: TS p: A) Int = readA0;
+
+let tb: TB = tuple let x = record a = 1 b = 2 end let var n = 7 end;
+let ts: TS = tb;
+show(conv.int(readN(:TS ts)));
+writeN(:TS ts 8);
+show(conv.int(tb.n));
+addrN(:TS ts);
+show(conv.int(tb.n));
+show(conv.int(readA(:TS ts)));
+
+Def OS = Variant s: TS none: Ok end;
+Def OB = Variant s: TB none: Ok end;
+let caseN0(A <: OS o: A): Int = case o when s with t then t.n when none then 0 end;
+let caseN: All(A <: OS o: A) Int = caseN0;
+let ob: OB = variant s of OB with tb end;
+let os: OS = ob;
+show(conv.int(caseN(:OS os)))

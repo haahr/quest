@@ -209,8 +209,8 @@ export
 
     (* What compiling one function keeps: its code, its locals by variable
      * id, its locals after its parameters, their names, the labels open,
-     * innermost last, its results, and the join points whose continuations
-     * only return their one parameter *)
+     * innermost last, its results, the join points whose continuations
+     * only return their one parameter, and each join point's parameters *)
     Def F = Tuple
         g: G
         code: vector.T(Inst)
@@ -221,6 +221,7 @@ export
         labels: vector.T(Label)
         results: Array(ValType)
         returning: hashMap.T(String Bool)
+        joins: hashMap.T(String Array(ir.Variable))
         (* The function compiled (~1 for the top level), the variables a
          * recursive value's body is binding, and the captures of theirs to
          * fill in once it has (sLetRec) *)
@@ -255,6 +256,7 @@ export
                 let labels = vector.new(:Label)
                 let results = results
                 let returning = hashMap.new(:String :Bool stringOp.equal hash.string)
+                let joins = hashMap.new(:String :Array(ir.Variable) stringOp.equal hash.string)
                 let fnId = fnId
                 let deferred = hashMap.new(:Int :Bool intEqual hash.int)
                 let patches = vector.new(:Patch)
@@ -1227,6 +1229,18 @@ export
             atom(f a)
             if isBoxedVar(a) then unbox(f ir.atomType(a)) end
         end
+    (* The atom's value as a variable held boxed or not, as boxed says: a
+     * record or variant held boxed (a var parameter, a local whose address
+     * is taken) is one eqref, its box, where the value's own form is its two
+     * parts (wasm-review.md section 2.1, 1) *)
+    let atomAs(f: F a: ir.Atom boxed: Bool): Ok =
+        begin
+            atom(f a)
+            if isBoxedVar(a) andif not(boxed) then unbox(f ir.atomType(a))
+            elsif boxed andif not(isBoxedVar(a)) then box(f ir.atomType(a))
+            end
+        end
+    let atomFor(f: F a: ir.Atom v: ir.Variable): Ok = atomAs(f a v.boxed)
 
     (* Ends the program at what step 4 cannot run: a proxy, which nothing in
      * the compiler makes (section 10.1) *)
@@ -1268,6 +1282,17 @@ export
                 end
                 emit(f model.endInst)
         end
+
+    (* A tuple or option read through a view map may be a proxy: the value
+     * of a bounded type parameter whose type argument is a supertype of the
+     * value's, upcast (natively quest_view_tuple_slot and its siblings take
+     * one; wasm-review.md section 2.1, 2). A component read so is read
+     * through the proxy; one written, or its address taken, is the
+     * original's *)
+    let viewedRead(access: ir.Access m: maybe.T(ir.Variable)): ir.Access =
+        if maybe.isSome(:ir.Variable m) then ir.proxy else access end
+    let viewedSlot(access: ir.Access m: maybe.T(ir.Variable)): ir.Access =
+        if maybe.isSome(:ir.Variable m) andif access?direct then ir.original else access end
 
     (* An i32 on the stack mapped through table, as a br_table to constants;
      * nothing when table is the identity *)
@@ -1359,7 +1384,7 @@ export
                 for j = 0 upto extent parts(componentType(s x.index)) - 1 do emit(f i1(ops.localGet first + j)) end
             else
                 atom(f x.tup)
-                if x.access?proxy andif not(f.g.isRuntime) then
+                if viewedRead(x.access x.viewMap)?proxy andif not(f.g.isRuntime) then
                     proxyAware(f tTuple fSlots x.index "wasm/core.proxyElement")
                 else
                     accessAs(f tTuple x.access)
@@ -1527,9 +1552,8 @@ export
                 variantAtom(f value)
                 emit(f i(ops.drop))
             else
-                atom(f value)
-                castTo(f tOption)
-                emit(f i2(ops.structGet tOption fTag))
+                (* a proxy's tag in its own numbering, the view map's actual's *)
+                tagOf(f value ir.proxy)
             end
             emit(f i1(ops.localSet tag))
             emit(f i1(ops.globalGet f.g.noClosure))
@@ -4186,7 +4210,7 @@ export
                 end
             when opAddrComponent with x then
                 atom(f x.base)
-                accessAs(f tTuple x.access)
+                accessAs(f tTuple viewedSlot(x.access x.viewMap))
                 emit(f i2(ops.structGet tTuple fSlots))
                 emit(f model.i32Const(x.index))
             when opAddrElement with x then
@@ -4446,7 +4470,7 @@ export
                 for k = 1 upto resultCount(f x.value) do emit(f i(ops.drop)) end
             when sStoreComponent with x then
                 atom(f x.base)
-                accessAs(f tTuple x.access)
+                accessAs(f tTuple viewedSlot(x.access x.viewMap))
                 emit(f i2(ops.structGet tTuple fSlots))
                 emit(f model.i32Const(x.index))
                 boxedAtom(f x.value)
@@ -4459,7 +4483,7 @@ export
             when sSwitch with x then switch(f x)
             when sVarDecl with x then
                 if isLocated(f x.v) then
-                    if maybe.isSome(:ir.Atom x.init) then atom(f maybe.unwrap(:ir.Atom x.init))
+                    if maybe.isSome(:ir.Atom x.init) then atomFor(f maybe.unwrap(:ir.Atom x.init) x.v)
                     else
                         (* no value until it is assigned: a slot that holds
                          * none, which its box would have been *)
@@ -4468,14 +4492,14 @@ export
                     end
                     declareLocated(f x.v)
                 elsif maybe.isSome(:ir.Atom x.init) then
-                    atom(f maybe.unwrap(:ir.Atom x.init))
+                    atomFor(f maybe.unwrap(:ir.Atom x.init) x.v)
                     store(f x.v)
                 elsif not(isGlobal(f x.v)) then
                     local(f x.v)
                     ok
                 end
             when sAssign with x then
-                atom(f x.value)
+                atomFor(f x.value x.v)
                 store(f x.v)
             when sIf with x then
                 atom(f x.cond)
@@ -4499,6 +4523,7 @@ export
             when sContinue with x then emit(f i1(ops.br depth(f x.label option labelRepeat of LabelKind end)))
             when sJoin with x then
                 hashMap.insert(:String :Bool f.returning x.label returnsParam(f x))
+                hashMap.insert(:String :Array(ir.Variable) f.joins x.label x.params)
                 let joined = vector.new(:ValType)
                 for k = 0 upto extent x.params - 1 do
                     let ps = varParts(f.g x.params[k])
@@ -4518,10 +4543,11 @@ export
                 body(f x.continuation)
                 close(f)
             when sJump with x then
-                atoms(f x.args)
+                let params = maybe.unwrap(:Array(ir.Variable) hashMap.get(:String :Array(ir.Variable) f.joins x.label))
+                for k = 0 upto extent x.args - 1 do atomFor(f x.args[k] params[k]) end
                 emit(f i1(ops.br depth(f x.label option labelJoin of LabelKind end)))
             when sReturn with x then
-                if extent f.results > 0 then atom(f x.value) end
+                if extent f.results > 0 then atomAs(f x.value false) end
                 emit(f i(ops.returnOp))
             when sUnreachable then emit(f i(ops.unreachable))
             when sRaise with x then
