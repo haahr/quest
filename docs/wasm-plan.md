@@ -2039,6 +2039,22 @@ writer's buffer, and would end the session when flushed.
     smaller. The tail loops of step 20 are the model.
     *Done when* `stdlib`'s and the MLton suite's accumulating recursions (`depth`, `fib`'s and `tak`'s shapes) run
     as deep in wasm as natively, a run golden among them.
+
+    *Done 2026-11-15:*
+    - **Built** in the wasm backend after the IR, which `ssa/passes/accumulate`'s reading made the smaller: the
+      IR the backend reads has the site as three statements (`let x = call self(...)`, `let y = prim +(x, o)`,
+      and a return of `y`), and the backend already had step 20's loop around a function's code. `accumulation`
+      finds a function's operation (`+` or `*` on `Int`, the only combining prims; Int's `and`, `or`, and `xor`
+      are calls), for one returning an `i64` with no `try`. Its accumulator is a local set to the identity
+      before the loop. `body` takes a site as the accumulator combined with the other value, the parameters set,
+      and a branch to the loop. Every other return combines with the accumulator. A tail call of another
+      function is not made in such a function, since it would return without the accumulator; a plain call of
+      itself in tail position still branches.
+    - **Checked:** the run golden `language/accumulating_recursion` (`depth` a million deep, a product, `fib`'s
+      two calls, a value computed before the call, a tail call of another function, and a plain self tail call
+      among the sites) on arm64, wasm, and wasm-node. It skips the `interpret` phase with the bootstrap's
+      interpreters, too slow at these depths, and so wasm-jit and jit-files, which run that phase, skip it too. `depth(1000000)` overflowed node's stack before. The MLton suite is not run
+      again here; its accumulating programs are among the benchmarks the next measurement takes.
 29. **Replay that says what it lost** (§2.2, 3, 5, 8, 9, 10; §4, 6 and 7; unchanged). A replay that loses an input
     reports it, with the names no longer bound, and the session goes on (the owner's answer). The kernel's reply,
     records and commit, one message, so that an interrupt at a cell's end cannot put later replies out of step

@@ -236,6 +236,11 @@ export
          * part of, so that a call there can be a tail call; none in a loop's
          * body, which repeats, or a try's *)
         var after: maybe.T(ir.Stmt)
+        (* An accumulating recursion's (accumulation): the operation its
+         * results combine with, 0 for none, 1 for +, 2 for times, and its accumulator's
+         * local *)
+        var accOp: Int
+        var accLocal: Int
     end
 
     (* The label of the loop around a function's code, which no IR label is
@@ -262,6 +267,8 @@ export
                 let patches = vector.new(:Patch)
                 let var selfTail = false
                 let var after = maybe.none(:ir.Stmt)
+                let var accOp = 0
+                let var accLocal = ~1
             end
         end
 
@@ -4490,10 +4497,119 @@ export
             inside
         end
 
+    (* An accumulating recursion (the SSA's accumulate pass, wasm-review.md
+     * section 3, 1): a function returning an Int, one of whose blocks
+     * returns its own call's result plus (or times) another value, is a loop
+     * with an accumulator. Each such site adds (or multiplies) the other
+     * value into the accumulator and branches to the loop around the
+     * function's code, its parameters set, as a self tail call does; each
+     * other return gives what it returns combined with the accumulator,
+     * which starts at the operation's identity. A tail call of another
+     * function would return without it, so in such a function none is made.
+     * The operation: 1 for +, 2 for times, 0 for none, found in the body as the
+     * first call of the function itself whose result the next statement
+     * combines; no try, whose handler would see the accumulation *)
+    let selfIndex(f: F): Int =
+        if f.fnId < 0 then ~1 else maybe.unwrapOr(:Int hashMap.get(:Int :Int f.g.functions f.fnId) ~1) end
+    let isSelfCall(f: F s: ir.Stmt): maybe.T(Tuple v: ir.Variable call: ir.OpCall end) =
+        case s
+            when sLet with x then
+                case x.value
+                    when opCall with c then
+                        let d = directCallee(f c)
+                        if maybe.isSome(:Int d) andif {maybe.unwrap(:Int d) is selfIndex(f)} andif {selfIndex(f) >= 0} then
+                            maybe.some(:Tuple v: ir.Variable call: ir.OpCall end tuple let v = x.v let call = c end)
+                        else maybe.none(:Tuple v: ir.Variable call: ir.OpCall end)
+                        end
+                    else maybe.none(:Tuple v: ir.Variable call: ir.OpCall end)
+                end
+            else maybe.none(:Tuple v: ir.Variable call: ir.OpCall end)
+        end
+    (* Whether s combines v with another value by op (1 for +, 2 for times): that value,
+     * and the variable s binds *)
+    let combining(s: ir.Stmt v: ir.Variable op: Int): maybe.T(Tuple other: ir.Atom result: ir.Variable end) =
+        case s
+            when sLet with x then
+                case x.value
+                    when opPrim with p then
+                        let thisOp = if p.op?primAdd then 1 elsif p.op?primMul then 2 else 0 end
+                        if {thisOp is 0} orif {{op > 0} andif {thisOp isnot op}} orif {extent p.args isnot 2} then
+                            maybe.none(:Tuple other: ir.Atom result: ir.Variable end)
+                        elsif isVar(p.args[0] v) andif not(isVar(p.args[1] v)) then
+                            maybe.some(:Tuple other: ir.Atom result: ir.Variable end
+                                tuple let other = p.args[1] let result = x.v end)
+                        elsif isVar(p.args[1] v) andif not(isVar(p.args[0] v)) then
+                            maybe.some(:Tuple other: ir.Atom result: ir.Variable end
+                                tuple let other = p.args[0] let result = x.v end)
+                        else maybe.none(:Tuple other: ir.Atom result: ir.Variable end)
+                        end
+                    else maybe.none(:Tuple other: ir.Atom result: ir.Variable end)
+                end
+            else maybe.none(:Tuple other: ir.Atom result: ir.Variable end)
+        end
+    let accumulation(f: F fn: ir.Function): Int =
+        if {extent f.results isnot 1} orif not(f.results[0]?valI64) orif fn.unboxedResult then 0
+        else
+            let ss = walk.walkStatements(fn.body true)
+            let var op = 0
+            let var tried = false
+            for k = 0 upto vector.length(:ir.Stmt ss) - 1 do
+                case vector.get(:ir.Stmt ss k) when sTry then tried := true else ok end
+                if {op is 0} andif {{k + 1} < vector.length(:ir.Stmt ss)} then
+                    let call = isSelfCall(f vector.get(:ir.Stmt ss k))
+                    if maybe.isSome(:Tuple v: ir.Variable call: ir.OpCall end call) then
+                        let v = maybe.unwrap(:Tuple v: ir.Variable call: ir.OpCall end call).v
+                        let next = vector.get(:ir.Stmt ss k + 1)
+                        for candidate = 1 upto 2 do
+                            if {op is 0} andif maybe.isSome(:Tuple other: ir.Atom result: ir.Variable end
+                                combining(next v candidate)) then op := candidate end
+                        end
+                    end
+                end
+            end
+            if tried then 0 else op end
+        end
+    let combine(f: F): Ok = emit(f i(if f.accOp is 1 then ops.i64Add else ops.i64Mul end))
+    (* A site at ss[k]: the call, the statement that combines its result,
+     * and the return of that (the next statement, or after's): compiled as
+     * the accumulator combined and a branch to the loop. How many of ss it
+     * takes, or 0 if it is not one *)
+    let accumulateSite(f: F ss: Array(ir.Stmt) k: Int after: maybe.T(ir.Stmt)): Int =
+        if {f.accOp is 0} orif {{k + 1} >= extent ss} then 0
+        else
+            let call = isSelfCall(f ss[k])
+            if maybe.isNone(:Tuple v: ir.Variable call: ir.OpCall end call) then 0
+            else
+                let site = maybe.unwrap(:Tuple v: ir.Variable call: ir.OpCall end call)
+                let c = combining(ss[k + 1] site.v f.accOp)
+                let next = if {k + 2} < extent ss then maybe.some(:ir.Stmt ss[k + 2]) else after end
+                if maybe.isNone(:Tuple other: ir.Atom result: ir.Variable end c) orif maybe.isNone(:ir.Stmt next)
+                    orif not(returnsResult(f
+                        maybe.some(:ir.Variable maybe.unwrap(:Tuple other: ir.Atom result: ir.Variable end c).result)
+                        maybe.unwrap(:ir.Stmt next))) then 0
+                else
+                    emit(f i1(ops.localGet f.accLocal))
+                    atomAs(f maybe.unwrap(:Tuple other: ir.Atom result: ir.Variable end c).other false)
+                    combine(f)
+                    emit(f i1(ops.localSet f.accLocal))
+                    closureArg(f site.call)
+                    atoms(f site.call.args)
+                    for j = 0 upto f.nparams - 1 do emit(f i1(ops.localSet {f.nparams - 1} - j)) end
+                    emit(f i1(ops.br depth(f selfLabel option labelRepeat of LabelKind end)))
+                    f.selfTail := true
+                    if {k + 2} < extent ss then 3 else 2 end
+                end
+            end
+        end
+
     let tailCall(f: F s: ir.Stmt next: ir.Stmt): Bool =
         begin
             let found = callIn(f s)
             if maybe.isNone(:Found found) orif insideTry(f) then false
+            elsif {f.accOp > 0} andif maybe.isNone(:Tuple v: ir.Variable call: ir.OpCall end isSelfCall(f s)) then
+                (* in an accumulating recursion, which combines what it
+                 * returns, only itself *)
+                false
             else
                 let c = maybe.unwrap(:Found found).call
                 let direct = directCallee(f c)
@@ -4551,7 +4667,9 @@ export
             while k < extent ss do
                 let last = {k + 1} >= extent ss
                 let next = if last then outer else maybe.some(:ir.Stmt ss[k + 1]) end
-                if maybe.isSome(:ir.Stmt next) andif tailCall(f ss[k] maybe.unwrap(:ir.Stmt next)) then
+                let taken = accumulateSite(f ss k outer)
+                if taken > 0 then k := k + taken
+                elsif maybe.isSome(:ir.Stmt next) andif tailCall(f ss[k] maybe.unwrap(:ir.Stmt next)) then
                     k := k + if last then 1 else 2 end
                 else
                     f.after := next
@@ -4650,6 +4768,10 @@ export
                 emit(f i1(ops.br depth(f x.label option labelJoin of LabelKind end)))
             when sReturn with x then
                 if extent f.results > 0 then atomAs(f x.value false) end
+                if f.accOp > 0 then
+                    emit(f i1(ops.localGet f.accLocal))
+                    combine(f)
+                end
                 emit(f i(ops.returnOp))
             when sUnreachable then emit(f i(ops.unreachable))
             when sRaise with x then
@@ -5027,6 +5149,13 @@ export
              * self recursion (step 13's finding 1, remedy (a)); a mutual
              * recursion's tail calls still cannot be interrupted there
              * (docs/wasm-plan.md step 20). Left out if no such call is compiled *)
+            f.accOp := accumulation(f fn)
+            if f.accOp > 0 then
+                f.accLocal := scratch(f model.i64)
+                emit(f model.i64Const(if f.accOp is 1 then 0 else 1 end))
+                emit(f i1(ops.localSet f.accLocal))
+                f.selfTail := true
+            end
             emit(f model.loopInst(empty selfLabel))
             open(f selfLabel option labelRepeat of LabelKind end)
             if maybe.isSome(:ir.Variable fn.env) andif not(isAdapter(fn)) then
