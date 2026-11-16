@@ -19,8 +19,8 @@ where that overhead dominates.
 
 The module is used heavily (about 350 calls in 38 files), so this plan keeps it and its native buffer, and changes
 only its shape: the builder becomes an abstract native type, as `writer.T` is, and each method becomes a function of
-the module that is the runtime function itself (a direct external), so an append is one direct C call and a new
-builder is one allocation. The closure-per-method object moves to a test, wrapped around the new module, since that
+the module that is the runtime function itself (an external), so an append is one known call and a new builder is
+one allocation. The closure-per-method object moves to a test, wrapped around the new module, since that
 style should keep working and is a demanding test of the compiler (a recursive tuple type, a `let rec` tuple whose
 components close over it, chained calls through components).
 
@@ -79,11 +79,21 @@ table maps it to the host's `strShared`, and the bootstrap's to the same functio
 `str`, so its appends are snapshots anyway). The name says what the caller grants, and `sb.strShared(b x)` is short
 enough with the alias.
 
+**Not direct calls yet** (found 2026-11-15, building step 1). An importer calls a library module's external function
+as the C function itself only when no parameter or result is held as a `QVal` (c-representation.md §6.2), and it
+holds every library external type but `reader.T` and `writer.T`, which the compiler has built in, as an abstract
+`QVal`: `os/process`'s `process.T` already had this. So `sb.str(b s)` is a call of the module's wrapper,
+`qv_util__stringbuilder_str`, which calls `quest_sb_append_string`: a known call in place of a closure's, but not the
+runtime's function itself. `tools/externals` also leaves out `new`, which has no parameters, and `word`, whose
+`wordLib.T` is not a simple type. Making importers see a library external type as its C type, as the compiler's
+table already records (`questlang/repr/externals`' types), would make these calls direct for every such module; it is
+a change to the self-hosted compiler alone, proposed as a step of its own rather than folded into this one.
+
 Call sites read `sb.str(b "x = ")`, then `sb.int(b x)`, then `sb.char(b '\n')`, as separate statements, with the
 module imported under the short alias `sb` (`sb = util/stringBuilder : util/StringBuilder`, as the tokenizer already
 renames its import) wherever a module appends more than a few times. A chain is not folded into one `str` of a `<>`
 expression, which would allocate the intermediate strings. (Decided 2026-11-15: separate calls with the alias;
-appends return `Ok`, so the externals are called directly.)
+appends return `Ok`, so each function can be the runtime's.)
 
 ## 2. What changes at the call sites
 
@@ -280,12 +290,14 @@ measurement repeats step 0's and goes into `benchmarks.md`.
    --stop-after codegen_c` and `codegen_arm64` on a large module (`codegen/c/ssac`, `ssa/printer`), the perf suite's
    `stringbuilder_operations` and `questlang_tokenizer`, and a profile's share of `quest_string_concat`,
    `quest_string_new`, and allocation. *Done when* the numbers are in this plan.
-1. **`stringBuilder` as functions** (§1–3), one commit: the interface and module, every call site, the rewritten
+1. **`stringBuilder` as functions** (§1–3), done 2026-11-16 ("Make stringBuilder functions over a native type"; tested
+   with a stage 1 built by a local self-hosted compiler, since the release cannot compile it), one commit: the interface and module, every call site, the rewritten
    `stringbuilder_operations` test, and the chained test module and its test; `toString` emptying the builder in the
    runtime and the bootstrap, and `strShared` in the runtime, both interpreters, and the callers (§1–2);
    `tools/externals`; ABI bump. *Done when* the full `tools/check` passes, the goldens other than the rewritten test's
    front-end phases are unchanged, both tests' run outputs equal each other and today's `stringbuilder_operations.out`
-   but for the lengths after `toString` (§3), and `tools/c-diff` shows direct `quest_sb_*` calls. Then a Markdown-only
+   but for the lengths after `toString` (§3), and the SSA shows known calls of the module's functions where closure
+   calls were. Then a Markdown-only
    commit for the docs (`libraries.md` §1.2, `converting-python-to-quest.md` item 6, `arm64.md` §3), and a measurement.
 2. **Drop `capacity`** (§4); ABI bump. *Done when* the full `tools/check` passes, the JIT's tests included, and the
    allocation is measured.

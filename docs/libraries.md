@@ -71,14 +71,34 @@ end
 ### 1.2. `util/stringBuilder : util/StringBuilder`
 
 String accumulator with $O(N)$ construction, backed by a native buffer in the runtime (`quest_sb_*` in
-`runtime/quest_stdlib.c`, with a matching implementation in the interpreter). Short appends are written into a fixed
+`runtime/quest_stdlib.c`, with a matching implementation in each interpreter). Short appends are written into a fixed
 512-byte working buffer, and numbers are formatted straight into it; a full buffer becomes a finished chunk, and a
-string longer than 256 characters is copied into a chunk of its own. Appended strings are always copied, so changing a
-string after appending it does not change the result.
+string longer than 256 characters is copied into a chunk of its own.
 
-A builder's methods are components of the builder itself, and each method that adds to it returns the builder, so
-calls chain: `b.str("x = ").int(x).char('\n')`. `toString` always returns a new string and leaves the builder
-unchanged, so a builder can be reused (for example after `clear`) without affecting strings it returned earlier.
+A builder is an abstract native type, as `writer.T` is, and each operation is a function of the module that is the
+runtime's function itself, so an append is one direct call and a new builder one allocation. The functions that add to
+a builder take it first and return `Ok`; callers that append often import the module as `sb`:
+
+```quest
+let b = sb.new()
+sb.str(b "x = ")
+sb.int(b x)
+sb.char(b '\n')
+writer.putString(writer.output sb.toString(b))
+```
+
+- **`str` copies,** so changing a string after appending it does not change the result. **`strShared`** may instead
+  keep the string itself until the builder's next `toString` or `clear`, and its caller promises not to change it until
+  then; a long string then costs no copy until `toString`. A short one is copied either way. A string changed against
+  the promise leaves the old text or the new in the result, unspecified which, never a memory error. `strutil.join`
+  and `joinArray` share their items, since nothing else runs before their `toString`; `questlang/` shares the long
+  strings it appends (`ssac`'s text, `ssa/printer`'s functions, `repr/digests`' texts), since the compiler never
+  changes a string once made.
+- **`toString` empties the builder:** it returns a new string, after which the builder is as `clear` leaves it, and
+  can be reused without affecting strings it returned earlier.
+- The object style, a recursive tuple of closures whose appends return the builder so that calls chain
+  (`b.str("x = ").int(x)`), is what this module was; it cost a tuple and eleven closures per builder and a closure call
+  per append, and now survives as a test of the compiler (`tests/source/modules/chainbuilder`).
 
 #### Interface Summary
 
@@ -86,21 +106,20 @@ unchanged, so a builder can be reused (for example after `clear`) without affect
 interface StringBuilder
     import wordLib = word: Word
 export
-    Def Rec T = Tuple
-        str(s: String): T                         (* a string *)
-        char(c: Char): T                          (* a character *)
-        int(n: Int): T                            (* as conv.int: decimal, ~ for negatives *)
-        real(r: Real): T                          (* as conv.real *)
-        bool(b: Bool): T                          (* "true" or "false" *)
-        word(w: wordLib.T): T                     (* unsigned decimal *)
-        sub(s: String start: Int size: Int): T    (* a substring; string.error if not within s *)
-        repeat(c: Char n: Int): T                 (* n copies of c; string.error if n < 0 *)
-        clear(): T                                (* reset to empty *)
-        length(): Int                             (* characters accumulated *)
-        toString(): String                        (* a new string of the characters accumulated *)
-    end
-
+    T::TYPE
     new(): T
+    str(b: T s: String): Ok                         (* a string, copied *)
+    strShared(b: T s: String): Ok                   (* a string, which b may keep until toString or clear *)
+    char(b: T c: Char): Ok                          (* a character *)
+    int(b: T n: Int): Ok                            (* as conv.int: decimal, ~ for negatives *)
+    real(b: T r: Real): Ok                          (* as conv.real *)
+    bool(b: T v: Bool): Ok                          (* "true" or "false" *)
+    word(b: T w: wordLib.T): Ok                     (* unsigned decimal *)
+    sub(b: T s: String start: Int size: Int): Ok    (* a substring; string.error if not within s *)
+    repeat(b: T c: Char n: Int): Ok                 (* n copies of c; string.error if n < 0 *)
+    clear(b: T): Ok                                 (* reset to empty *)
+    length(b: T): Int                               (* characters accumulated *)
+    toString(b: T): String                          (* a new string of them; b is then empty *)
 end
 ```
 

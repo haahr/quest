@@ -596,8 +596,8 @@ pass. Cross-module inlining, in whole programs, makes abstract ids affordable th
   `case` on it directly. Without that, integer tables keep most `maybe.T`s out of the backend.
 - **Patterns as functions.** `case` matches one level, with no nested patterns or guards, so instruction selection's
   patterns (§3.5) are functions over the table of definitions (`defOf(value)`, `shiftedByConstant(value)`).
-- **Text through a string builder** (`util/stringbuilder`) or straight to a writer, not chains of `<>`, each of which
-  allocates a new string.
+- **Text through a string builder** (`util/stringbuilder`, its functions called directly) or straight to a writer, not
+  chains of `<>`, each of which allocates a new string.
 - **Iteration, not recursion, over graphs:** compiled Quest uses about 2 KB of stack per call, so reverse postorder,
   dominators (Cooper, Harvey, and Kennedy's iterative algorithm), and liveness use explicit worklists.
 - **A bitset library** (`lib/collections/bitset`) for liveness (`codegen/machine/machine`). A library

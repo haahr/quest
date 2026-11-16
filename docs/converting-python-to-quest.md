@@ -24,7 +24,7 @@ import collections/vector : collections/Vector       (* Python list *)
 import collections/hashMap : collections/HashMap     (* Python dict *)
 import collections/hashSet : collections/HashSet     (* Python set *)
 import util/maybe : util/Maybe                       (* Optional[T] *)
-import util/stringBuilder : util/StringBuilder       (* Fast string accumulator *)
+import sb = util/stringBuilder : util/StringBuilder  (* Fast string accumulator *)
 import util/strutil : util/Strutil                   (* String utilities *)
 import util/hash : util/Hash                         (* Universal & primitive hashing *)
 import util/sort : util/Sort                         (* sorted(), list.sort(), bisect *)
@@ -76,9 +76,10 @@ maybe.T(A)      Option type with tags none, and some with val:A:
                 some(:A val)  none(:A)
                 error:Exception(Ok)        (* raised by unwrap on none *)
 
-stringBuilder.T new(), then chained methods of a builder b:
-                b.str(s)  b.char(c)  b.int(n)  b.real(r)  b.bool(v)  b.word(w)
-                b.sub(s start size)  b.repeat(c n)  b.clear()  b.length()  b.toString()
+sb.T           new(), then functions of a builder b, each append returning ok:
+                sb.str(b s)  sb.strShared(b s)  sb.char(b c)  sb.int(b n)  sb.real(b r)
+                sb.bool(b v)  sb.word(b w)  sb.sub(b s start size)  sb.repeat(b c n)
+                sb.clear(b)  sb.length(b)  sb.toString(b)   (* toString empties b *)
 ```
 
 `hashMap.new` and `hashSet.new` take an equality function `All(a,b:K) Bool` and a hash function `All(k:K) word.T`. Quest
@@ -140,9 +141,11 @@ When building strings inside loops or accumulating large outputs (such as code g
 `<>` creates $O(N^2)$ copying allocations. Use `util/stringBuilder` instead:
 
 ```quest
-let sb = stringBuilder.new()
-sb.str("header\n").int(42).char('\n')
-let result = sb.toString()
+let b = sb.new()
+sb.str(b "header\n")
+sb.int(b 42)
+sb.char(b '\n')
+let result = sb.toString(b)
 ```
 
 The compilers' C backends write C text in a form that translates line by line (the bootstrap's `repr/syntax.py`,
