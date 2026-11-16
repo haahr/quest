@@ -166,6 +166,9 @@ def _writer_close(w: QWriter) -> QOk:
     return OK_VALUE
 
 def _reader_file(name_val: QString) -> QReader:
+    # A directory opens, as C's fopen does, with nothing to read
+    if os.path.isdir(_os_path(name_val)):
+        return QReader(stream=io.StringIO(""), is_file=True, file_name=name_val.value)
     try:
         f = open(_os_path(name_val), "r", encoding=BYTE_ENCODING, newline="")
         return QReader(stream=f, is_file=True, file_name=name_val.value)
@@ -238,6 +241,10 @@ def _reader_get_sub_string(r: QReader, s: QString, start: QInt, size: QInt) -> Q
         raise QuestException(READER_ERROR_EXC)
     read_str = _reader_get_string(r, size).value
     s.value = s.value[:st] + read_str + s.value[st + len(read_str) :]
+    # A short read: the bytes read are kept, and then reader.error, as C's
+    # quest_reader_get_substring has it
+    if len(read_str) < sz:
+        raise QuestException(READER_ERROR_EXC)
     return OK_VALUE
 
 def _reader_close(r: QReader) -> QOk:
