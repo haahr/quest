@@ -42,6 +42,7 @@ from typing import Any, Optional
 
 from quest.repr.layout import held_at_bound, own_view, is_boxed_in_slots, may_be_proxied, resolved_shape, shape_representation, shape_slot_representation
 from quest.repr.generic_layout import abstract_instance, generic_layout_agrees, generic_layout_copies_mutable_data, signature_representation
+from quest.common.diagnostics import QuestCompilerError
 from quest.ir import nodes as ir
 from quest.repr.shapes import Shape, shape
 from quest.ir.slots import decide_slots, may_be_stored_as_subtype, tuple_access
@@ -158,8 +159,15 @@ def _variant_subtype(s: Shape, t: Shape) -> bool:
 
 class RejectedConversion(Exception):
     """A conversion that would copy mutable data laid out differently, which
-    would then not share its updates: a compile-time error
-    (docs/c-representation.md §5.1, Polymorphic Calls)."""
+    would then not share its updates: the program's error, which plan raises
+    and represent_unit reports as a QuestCompilerError, located at the
+    statement whose conversion it is (docs/c-representation.md §5.1,
+    Polymorphic Calls)."""
+
+
+# The statements that have no position of their own (the self-hosted
+# nodes.stmtPos): those that make no code where they are
+_UNPLACED = (ir.Funs, ir.LetRec, ir.Loop, ir.Try, ir.Join, ir.EchoText, ir.Unreachable)
 
 
 def layout_plan(source: QType, target: QType, layout: tuple[dict[int, QType], bool]) -> Optional[ir.Plan]:
@@ -182,7 +190,7 @@ def layout_plan(source: QType, target: QType, layout: tuple[dict[int, QType], bo
         return None if generic_c == native_c else ir.Plan("cast", source, target)
     if generic_layout_copies_mutable_data(generic_t, instantiation):
         raise RejectedConversion(
-            f"C code generation cannot pass a value of type '{native_t}' to or from a polymorphic function that lays "
+            f"Compiled code cannot pass a value of type '{native_t}' to or from a polymorphic function that lays "
             f"it out as '{generic_t}': the layouts differ, and converting the value would copy mutable data, which "
             f"would then not share its updates"
         )
@@ -440,7 +448,7 @@ def _abstract_plan(source: QType, target: QType, ss: Shape, ts: Shape, cs: str, 
         return None
     if generic_layout_copies_mutable_data(generic_t, subst):
         raise RejectedConversion(
-            f"C code generation cannot convert a value of type '{abstract_t}' between its module's layout of it and "
+            f"Compiled code cannot convert a value of type '{abstract_t}' between its module's layout of it and "
             f"its own: the layouts differ, and converting the value would copy mutable data, which would then not "
             f"share its updates"
         )
@@ -554,7 +562,7 @@ def inspect_arm(auto_t, case: ir.InspectCase) -> ir.InspectArm:
     shared = auto_layouts_agree(stored_t, arm_t)
     if not shared and has_var:
         raise UnsupportedConversion(
-            f"C code generation cannot inspect an auto value of type '{auto_t}' at type "
+            f"Compiled code cannot inspect an auto value of type '{auto_t}' at type "
             f"'{case.match_type}': its components need conversion, so the var components could not be "
             f"shared with the auto value"
         )
@@ -600,6 +608,9 @@ class _Representer:
         self.generic_results: list[tuple[QType, QType, dict]] = []
         # The function whose body is being represented (None for a top level)
         self.function: Optional[ir.Function] = None
+        # The position of the statement being represented, or of the nearest
+        # before it that has one, in its function or initializer (-1 if none)
+        self.pos = -1
 
     def convert(self, a: ir.Atom, target: QType, before: list, layout=None) -> ir.Atom:
         """a, converted to be used at target (by a let added to before), or a
@@ -619,7 +630,16 @@ class _Representer:
                 self.joins[s.label] = s.params
             for b in statement_bodies(s):
                 self.body(b, function)
-            statements.extend(self.statement(s, function))
+            # Where a rejected conversion is reported: s, or the nearest
+            # statement before it with a position
+            if not isinstance(s, _UNPLACED) and getattr(s, "pos", -1) >= 0:
+                self.pos = s.pos
+            try:
+                statements.extend(self.statement(s, function))
+            except RejectedConversion as rejected:
+                error = QuestCompilerError(str(rejected), max(self.pos, 0))
+                error.source_map = self.unit.source_map
+                raise error from None
         body.statements = statements
 
     def result(self, s: ir.Let, result_t: QType, after: list) -> None:
@@ -886,14 +906,18 @@ class _Representer:
 
     def run(self) -> None:
         for m in self.unit.modules:
+            self.pos = -1
             self.body(m.init, None)
+        self.pos = -1
         self.body(self.unit.main, None)
         for f in self.unit.functions:
+            self.pos = -1
             self.body(f.body, f)
 
 
 def represent_unit(unit: ir.Unit) -> ir.Unit:
-    """Inserts the unit's conversions, in place, returning it."""
+    """Inserts the unit's conversions, in place, returning it; raises
+    QuestCompilerError for a conversion plan rejects."""
     _Representer(unit).run()
     decide_slots(unit)
     unit.stage = "represented"

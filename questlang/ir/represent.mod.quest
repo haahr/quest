@@ -2,6 +2,7 @@
 
 module represent : Represent
 import
+    questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/types/model : questlang/types/Model
     questlang/types/subtyping : questlang/types/Subtyping
     questlang/repr/shapes : questlang/repr/Shapes
@@ -222,7 +223,7 @@ export
                 if eq(genericC nativeC) then none else newPlan(nodes.planCast source target) end
             elsif genericLayout.genericLayoutCopiesMutableData(genericType lay.subst) then
                 raise rejectedConversion with
-                    "C code generation cannot pass a value of type '" <> model.show(nativeType)
+                    "Compiled code cannot pass a value of type '" <> model.show(nativeType)
                         <> "' to or from a polymorphic function that lays it out as '" <> model.show(genericType)
                         <> "': the layouts differ, and converting the value would copy mutable data, which would then "
                         <> "not share its updates"
@@ -488,7 +489,7 @@ export
                     maybe.none(:maybe.T(Plan))
                 elsif genericLayout.genericLayoutCopiesMutableData(i.generic i.subst) then
                     raise rejectedConversion with
-                        "C code generation cannot convert a value of type '" <> model.show(abstractT)
+                        "Compiled code cannot convert a value of type '" <> model.show(abstractT)
                             <> "' between its module's layout of it and its own: the layouts differ, and converting "
                             <> "the value would copy mutable data, which would then not share its updates"
                     end
@@ -765,7 +766,7 @@ export
             else
                 let shared = autoLayoutsAgree(storedType armType)
                 if not(shared) andif hasVar then
-                    unsupported(:Ok "C code generation cannot inspect an auto value of type '" <> model.show(autoType)
+                    unsupported(:Ok "Compiled code cannot inspect an auto value of type '" <> model.show(autoType)
                         <> "' at type '" <> model.show(c.matchType) <> "': its components need conversion, so the var "
                         <> "components could not be shared with the auto value")
                 end
@@ -842,6 +843,9 @@ export
         unit: nodes.Unit
         joins: hashMap.T(String Array(Variable))
         var genericResults: vector.T(GenericResult)
+        (* The position of the statement being represented, or of the nearest
+         * before it that has one, in its function or initializer *)
+        var pos: Int
     end
 
     let convertOp(a: Atom p: Plan): Op =
@@ -1299,6 +1303,21 @@ export
             vector.toArray(:Stmt all)
         end
 
+    (* A conversion rejected at pos in r's unit (nodes.stmtPos), raised as
+     * the program's error in the file pos is in (at its start if pos is
+     * unknown) *)
+    let rejectedAt(r: Representer pos: Int message: String): diagnostics.CompilerError =
+        begin
+            let p = nodes.sourcePos(r.unit pos)
+            if maybe.isNone(:nodes.SourcePos p) then diagnostics.errorAt(message 0)
+            else
+                let q = maybe.unwrap(:nodes.SourcePos p)
+                let e = diagnostics.errorAt(message pos - nodes.fileOffset(q.file 0))
+                let file = nodes.sourceFile(r.unit q.file)
+                if maybe.isSome(:String file) then diagnostics.inFile(e maybe.unwrap(:String file)) else e end
+            end
+        end
+
     let rec body(r: Representer b: Body function: maybe.T(nodes.Function)): Ok =
         begin
             let statements = vector.new(:Stmt)
@@ -1311,7 +1330,12 @@ export
                 end
                 let bodies = walk.statementBodies(s)
                 for j = 0 upto {extent bodies - 1} do body(r bodies[j] function) end
-                let made = statement(r s function)
+                (* Where a rejected conversion is reported: s, or the nearest
+                 * statement before it with a position *)
+                if nodes.stmtPos(s) >= 0 then r.pos := nodes.stmtPos(s) end
+                let made = try statement(r s function)
+                    when rejectedConversion with m then diagnostics.raiseError(:Array(Stmt) rejectedAt(r r.pos m))
+                    end
                 for j = 0 upto {extent made - 1} do vector.append(:Stmt statements made[j]) end
             end
             b.statements := statements
@@ -1323,13 +1347,17 @@ export
                 let unit = unit
                 let joins = hashMap.new(:String :Array(Variable) stringOp.equal hash.string)
                 let var genericResults = vector.new(:GenericResult)
+                let var pos = ~1
             end
             for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                r.pos := ~1
                 body(r vector.get(:nodes.Module unit.modules i).init maybe.none(:nodes.Function))
             end
+            r.pos := ~1
             body(r unit.main maybe.none(:nodes.Function))
             for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
                 let f = vector.get(:nodes.Function unit.functions i)
+                r.pos := ~1
                 body(r f.body maybe.some(:nodes.Function f))
             end
             slots.decideSlots(unit)

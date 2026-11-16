@@ -1,0 +1,11 @@
+(* T(A) is an array of functions returning A. The module's generic code lays a
+ * function's result out as a word, a T(Bool) outside it as a Bool, and
+ * converting the array between the two would copy it, so that updates to one
+ * would not reach the other: compiled code rejects the conversion, at the
+ * value that needs it (docs/c-representation.md section 5.1) *)
+module rejectedLayout : RejectedLayout
+export
+    Let T = Fun(A::TYPE) Array(All(u: Int) A)
+    let bools: T(Bool) = array of fun(u: Int): Bool true end (* ERROR: would copy mutable data *)
+    let first(A::TYPE t: T(A)): A = t[0](0)
+end;

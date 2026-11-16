@@ -13,11 +13,12 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
+from quest.common.diagnostics import QuestCompilerError
 from quest.config import CompilerOptions
 from quest.ir import nodes as ir
 from quest.ir.closure import closure_convert_unit
 from quest.ir.lower import lower_program
-from quest.ir.represent import RejectedConversion, represent_unit
+from quest.ir.represent import represent_unit
 from quest.ir.specialize import specialize_unit
 from quest.ir.verify import verify_unit
 from quest.ir.walk import walk_statements
@@ -142,11 +143,13 @@ class TestRepresent(unittest.TestCase):
                 self.assertFalse({"runtime", "view", "record_view", "copy"} & set(plans(represent(source))))
 
     def test_copying_mutable_data_is_rejected(self) -> None:
-        with self.assertRaises(RejectedConversion):
-            represent(
-                "let first(A::TYPE fs: Array(All(x: Int) A)): A = fs[0](1); "
-                "let f: All(A::TYPE fs: Array(All(x: Int) A)) A = first; f(:Bool array of fun(x: Int): Bool true end)"
-            )
+        # The program's error, located at the call that needs the conversion
+        source = ("let first(A::TYPE fs: Array(All(x: Int) A)): A = fs[0](1); "
+                  "let f: All(A::TYPE fs: Array(All(x: Int) A)) A = first; f(:Bool array of fun(x: Int): Bool true end)")
+        with self.assertRaises(QuestCompilerError) as raised:
+            represent(source)
+        self.assertIn("would copy mutable data", raised.exception.message)
+        self.assertEqual(raised.exception.offset, source.index("f(:Bool"))
 
     def test_records_read_from_slots_keep_their_boxes(self) -> None:
         # The record read from one tuple is stored into another in the box it

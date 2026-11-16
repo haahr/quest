@@ -23,6 +23,9 @@ import
     cBackend = questlang/codegen/backend : questlang/codegen/Backend
     questlang/codegen/choice : questlang/codegen/Choice
     questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/closure : questlang/ir/Closure
+    questlang/ir/represent : questlang/ir/Represent
+    questlang/ir/describe : questlang/ir/Describe
     questlang/ir/lower : questlang/ir/Lower
     questlang/build/compilerRunner : questlang/build/CompilerRunner
     collections/vector : collections/Vector
@@ -222,11 +225,17 @@ export
             (* 5. Its C (exporting the interface's members), and 6. its
              * object *)
             let backend = choice.forUnit(backends name)
-            (* What its backend cannot compile is an error *)
+            (* What its backend or the IR passes cannot compile is an error
+             * (a conversion the represent pass rejects is raised as the
+             * program's error, where it is) *)
             let fp = fingerprint.ofInterface(decl.interfaceName e)
             let c = try cBackend.moduleFileToC(typed e maybe.some(:location.SourceMap sourceMap) interfaceHeader backend
                 fp)
                 when cBackend.unsupported with m then diagnostics.fail(:String m 0)
+                when closure.capturesMutable with m then diagnostics.fail(:String m 0)
+                when represent.unsupportedConversion with m then diagnostics.fail(:String m 0)
+                when represent.rejectedConversion with m then diagnostics.fail(:String m 0)
+                when describe.unsupportedDescriptor with m then diagnostics.fail(:String m 0)
                 end
             let base = if stringOp.length(stem) > 0 then stem else paths.lower(decl.name) end
             let cFile = choice.codeFile(files.join(outputDir base <> ".mod.c") backend)

@@ -9,6 +9,9 @@
   source, one importing another, in one input and again in a later one, shows
   what the interpreter shows: the modules are loaded once, keeping their state,
   and an exception raised in one is located in its file;
+- a module of the user's own with a conversion the represent pass rejects is
+  reported as the program's error, located in the module, not with the
+  compiler's traceback, and the session goes on;
 - the REPL's transcripts run through --jit in a driver whose units the arm64
   backend compiled, as they do in one the C backend compiled (run_tests.py
   --backend jit), against their goldens, but for those the jit mode skips.
@@ -117,6 +120,40 @@ def check_own_modules(driver: str, scratch: Path) -> list[str]:
     return []
 
 
+# A module whose abstract type operator compiled code cannot lay out both
+# ways (tests/errors/run/rejectedlayout.mod.quest), and inputs that import it
+REJECTED_MODULES = {
+    "layouts.int.quest": "interface Layouts export T::ALL(A::TYPE) TYPE bools: T(Bool) first(A::TYPE t: T(A)): A "
+                         "end\n",
+    "layouts.mod.quest": """module layouts : Layouts
+export
+    Let T = Fun(A::TYPE) Array(All(u: Int) A)
+    let bools: T(Bool) = array of fun(u: Int): Bool true end
+    let first(A::TYPE t: T(A)): A = t[0](0)
+end
+""",
+}
+REJECTED_INPUTS = """import layouts: Layouts
+layouts.first(:Bool layouts.bools)
+1 + 2
+"""
+
+
+def check_rejected_conversion(driver: str, scratch: Path) -> list[str]:
+    rejected = scratch / "rejected"
+    rejected.mkdir()
+    for name, text in REJECTED_MODULES.items():
+        (rejected / name).write_text(text, encoding="utf-8")
+    environment = {**os.environ, "QUEST_HOME": str(ROOT_DIR)}
+    ran = subprocess.run([driver, "-i"], input=REJECTED_INPUTS, capture_output=True, text=True, cwd=rejected,
+                         env=environment, timeout=120)
+    shown = ran.stdout + ran.stderr
+    if ("layouts.mod.quest:4:" not in shown or "would copy mutable data" not in shown or "3 : Int" not in shown
+            or "questlang/" in shown):
+        return [f"a conversion the represent pass rejects, through the JIT:\n{shown}"]
+    return []
+
+
 def check_arm64_host(driver: str, scratch: Path) -> list[str]:
     host = scratch / "quest-arm64"
     environment = {**os.environ, "QUEST_HOME": str(ROOT_DIR)}
@@ -146,7 +183,8 @@ if __name__ == "__main__":
         print("the driver cannot host the JIT: jit hosts not checked")
         sys.exit(0)
     with tempfile.TemporaryDirectory() as d:
-        found = check_imports(driver, Path(d)) + check_own_modules(driver, Path(d)) + check_arm64_host(driver, Path(d))
+        found = (check_imports(driver, Path(d)) + check_own_modules(driver, Path(d))
+                 + check_rejected_conversion(driver, Path(d)) + check_arm64_host(driver, Path(d)))
     for problem in found:
         print(problem)
     print(f"jit hosts: {len(found)} problems")

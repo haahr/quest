@@ -465,7 +465,7 @@ component's values at their own type (inspect reads them by the stored descripto
 | `copy` | a new tuple, each component converted by its own plan and read as the plan's access says (an auto value's payload, stored in its witness-independent layout) |
 | `runtime` | `quest_convert` between the native layout's descriptor and the generic layout's (a template instantiated with the type arguments): layouts that disagree at a polymorphic call (closures among the components whose C signatures differ) |
 | `adapt` | a closure wrapped in a thunk of the target's signature converting its arguments (from the target's parameter types to the closure's) and its result |
-| rejected | a conversion that would copy mutable data laid out differently: a compile-time error (`RejectedConversion`) |
+| rejected | a conversion that would copy mutable data laid out differently: a compile-time error of the program's (`RejectedConversion`), which the pass reports at the statement whose conversion it is, in that statement's file (every compiled target, the JIT included) |
 
 Function types are compared with the target's type parameters renamed to the source's, and recursive ones
 coinductively. A value of a type parameter bounded by a record, variant, option, or tuple type is held at its own

@@ -369,7 +369,7 @@ applications, closures, shapes as type arguments, dynamic values, subsumption, s
 every shape over a type parameter (tuples, options, records, variants, arrays, closures, recursive types) at scalar,
 record, variant, and tuple type arguments ([ir.md](ir.md) §8.4). Goldens come from the interpreter. Cells
 listed in the generator's `KNOWN_FAILURES` go into `*_known_failures.quest`, which skips the compiled phase, each
-with its reason; cells in `REJECTED` are compile-time errors of C generation, checked by
+with its reason; cells in `REJECTED` are compile-time errors of the bootstrap's (whose generic code is not inlined), checked by
 `tests/python/test_conversion_rejections.py`. After changing the generator, run `python tests/conversions/generate.py`
 and then `python run_tests.py -k conversions/ --update-golden`.
 

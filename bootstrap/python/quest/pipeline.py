@@ -502,6 +502,10 @@ class IrPassPhase(Phase):
             if ir_checks_enabled():
                 check_unit(unit)
             return unit
+        except QuestCompilerError as error:
+            # The program's error, which a pass found (a rejected conversion)
+            ctx.sink.emit(diagnostic_of(error))
+            return None
         except Exception as error:
             ctx.sink.emit(Diagnostic.make_from_exception(error, 0))
             return None

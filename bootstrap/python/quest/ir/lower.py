@@ -18,7 +18,7 @@ The self-hosted counterpart is questlang/ir/lower.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Callable, Optional
 from quest.common.diagnostics import MAIN_FRAME, frame_name, init_frame
 from quest.modules.elaboration import build_record_type_from_scope
 from quest.modules.stdlib import STANDARD_LIBRARY_MODULE_NAMES, STANDARD_LIBRARY_MODULES
@@ -219,6 +219,10 @@ class _Lowerer:
         # component, which the frame and the closures share
         self.captured: set[int] = set()
         self.boxes: dict[int, ir.Var] = {}
+        # The source offset of the expression or binding being lowered, which
+        # the statements it emits keep as their position (pos), where a pass
+        # reports an error of the program's (a rejected conversion), or -1
+        self.pos = -1
         # Where each lowered module's initializer ends, by id(module): its
         # init, or the continuation of a join it made (an if's value at its
         # top level), which the statements after its bindings go in
@@ -227,7 +231,21 @@ class _Lowerer:
     # Building
 
     def emit(self, statement) -> None:
+        """Appends statement to the current body, at the current position if
+        it has none."""
+        if getattr(statement, "pos", -1) < 0:
+            statement.pos = self.pos
         self.body.statements.append(statement)
+
+    def at(self, offset: int, f: Callable[[], Any]) -> Any:
+        """f's result, with the statements it makes at offset (at none for
+        a negative offset)."""
+        saved = self.pos
+        self.pos = offset if offset >= 0 else -1
+        try:
+            return f()
+        finally:
+            self.pos = saved
 
     def terminate(self, terminator) -> None:
         """Emits a terminator; what follows it is unreachable, and goes into a
@@ -285,6 +303,9 @@ class _Lowerer:
     def value(self, e: TypedExpr, into: Optional[ir.Var] = None) -> ir.Atom:
         """Lowers e, returning the atom that holds its value (into, if
         given)."""
+        return self.at(e.offset, lambda: self.value_form(e, into))
+
+    def value_form(self, e: TypedExpr, into: Optional[ir.Var]) -> ir.Atom:
         match e:
             case TypedInt(value=v):
                 return self.copy_into(self.const(v, INT_TYPE), into)
@@ -646,6 +667,9 @@ class _Lowerer:
 
     def effect(self, e: TypedExpr) -> None:
         """Lowers e for its effect alone."""
+        self.at(e.offset, lambda: self.effect_form(e))
+
+    def effect_form(self, e: TypedExpr) -> None:
         match e:
             case TypedIf() | TypedCase() | TypedInspect() | TypedTry():
                 self.branches(e, self.effect)
@@ -904,7 +928,9 @@ class _Lowerer:
                 self.make_scope_exceptions(e.body)
                 result = self.value(e.body)
             if not self.body.terminated:
-                self.terminate(ir.Return(result))
+                # The return has no position of its own: it is at the last of
+                # the body's
+                self.at(-1, lambda: self.terminate(ir.Return(result)))
         self.loops = saved_loops
         self.frame = saved_frame
         return ir.Function(var, type_params, tuple(params), result_t, body, trace_name=trace_name)
@@ -970,6 +996,9 @@ class _Lowerer:
 
         The named exceptions b makes for its scope are made before it
         (make_scope_exceptions)."""
+        self.at(b.offset, lambda: self.binding_form(b, show))
+
+    def binding_form(self, b: TypedNode, show: bool) -> None:
         self.make_scope_exceptions(b)
         match b:
             case TypedLetValue(value=value, is_rec=True) if not isinstance(value, TypedFun):

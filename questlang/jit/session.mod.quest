@@ -17,6 +17,9 @@ import
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/lower : questlang/ir/Lower
     questlang/ir/verify : questlang/ir/Verify
+    questlang/ir/closure : questlang/ir/Closure
+    questlang/ir/represent : questlang/ir/Represent
+    questlang/ir/describe : questlang/ir/Describe
     passes = questlang/ir/pipeline : questlang/ir/Pipeline
     ssaBuild = questlang/ssa/build : questlang/ssa/Build
     ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
@@ -410,6 +413,12 @@ export
                 let built = ssaPipeline.build(passes.runPasses(unit))
                 ssaPipeline.lower(built)
                 arm64.encodeUnit(built)
+                (* The IR passes' failures, which are the compiler's (a rejected
+                 * conversion, the program's, is raised as its error) *)
+                when closure.capturesMutable with x then fail(:encode.Encoded x)
+                when represent.unsupportedConversion with x then fail(:encode.Encoded x)
+                when represent.rejectedConversion with x then fail(:encode.Encoded x)
+                when describe.unsupportedDescriptor with x then fail(:encode.Encoded x)
                 when ssaBuild.unsupported with x then fail(:encode.Encoded "ssa: unsupported: " <> x)
                 when ssaVerify.verifyError with x then fail(:encode.Encoded x)
                 when arm64.unsupported with x then fail(:encode.Encoded x)

@@ -350,8 +350,9 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
     type cannot be proxied (a closure among its components whose C signature changes with the layout).
     A value whose conversion would copy mutable data laid out differently (an array of such values) cannot be
     converted, since the copy would not share its updates; the compiler rejects the call
-    (`generic_layout_copies_mutable_data`). An array's C type is the same whatever its elements, so its layout is
-    judged from its type, not its C type.
+    (`generic_layout_copies_mutable_data`), as the program's error, located at the statement that needs the
+    conversion, as it rejects such a value of an abstract type operator's application (below). An array's C type is
+    the same whatever its elements, so its layout is judged from its type, not its C type.
   - **Abstract Types (Generic Layout Outside the Module):** a value of an application of a module's abstract type
     operator (`handler.T(Real)`, for `Let T = Fun(K::TYPE) Tuple f: All(k: K) K end`) is opaque outside the module,
     which cannot convert it, so it has one layout there whoever made it: the module's generic code's, its
@@ -365,7 +366,8 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
     type (`abstract_layouts_differ`), so its adapter converts for other units. A generic function of the module
     takes and returns such values as they are, its own layout being the generic one. A call from outside the module
     that would be specialized to such a native layout is not (ir.md §8.1), so that the generic code serves it
-    without converting (`modules/abstract_closure_layouts`).
+    without converting (`modules/abstract_closure_layouts`). Where the conversion would copy mutable data (an
+    array of such closures), it is rejected, as at a polymorphic call (`errors/run/rejected_layout`).
 
 ### 5.2. Records and Subtyping (Evidence Passing)
 Under Cardelli's structural subtyping with multiple inheritance, field offsets cannot be assigned globally.

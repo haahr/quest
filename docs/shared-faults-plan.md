@@ -189,27 +189,18 @@ the stages are rebuilt.
    - **The rest stay internal.** `unsupportedConversion`, `describe.unsupportedDescriptor` and
      `closure.capturesMutable` are the compiler's failures: catch them in the JIT's session (as "the JIT cannot
      compile this input") and in the module compiler (as internal errors), the set `reportingInternal` catches.
-   *Test.*
-   - A new phase of error tests, `tests/errors/represent/` (docs/testing.md §3), whose expectations are compile
-     errors after type checking, run by both drivers with the C backend and arm64. The cells of the conversion
-     matrix's `REJECTED` (`tests/conversions/generate.py`), now checked by
-     `tests/python/test_conversion_rejections.py`, become error tests there, written by the generator, and that unit
-     test goes.
-   - An error test, in its own directory of modules, for the abstract type operator that `abstractPlan` rejects,
-     which step 2 does not fix:
+   *Test* (as built). The conversion matrix's `REJECTED` cells stay the bootstrap's unit test
+   (`tests/python/test_conversion_rejections.py`): the self-hosted compiler inlines their generic functions and
+   compiles them, so they are not shared errors. The shared test is a run error test,
+   `tests/errors/run/rejected_layout.quest`, whose module `rejectedlayout.mod.quest` is the abstract type operator
+   that `abstractPlan` rejects (step 2 does not fix it), with its expectation on the module's line; it skips the
+   interpreters, which run it. A check in `tests/self-hosted/jit_hosts.py` (`check_rejected_conversion`) imports
+   the same module at the REPL: the error is located in the module, no line of the compiler's traceback shows,
+   and the session goes on. `tests/python/test_ir_represent.py` checks the bootstrap's offset.
+   *Built 2026-11-15.* Both compilers' lowerings give statements positions (the bootstrap's newly, with an `at`
+   as the self-hosted one has); the represent pass catches a rejection at its statement and raises the program's
+   error there (`diagnostics.compilerError`, `QuestCompilerError`); the message now begins "Compiled code cannot".
 
-     ```
-     interface Ar export T::ALL(A::TYPE) TYPE  bools: T(Bool)  first(A::TYPE t: T(A)): A end
-     module ar : Ar export Let T = Fun(A::TYPE) Array(All(u: Int) A)
-         let bools: T(Bool) = array of fun(u: Int): Bool true end
-         let first(A::TYPE t: T(A)): A = t[0](0) end
-     ```
-
-     imported by `ar.first(:Bool ar.bools)`.
-   - A check in `tests/self-hosted/jit_hosts.py` (shaped like `check_own_modules`) that the JIT reports that
-     program's error at its location and goes on, with no line of the compiler's traceback.
-   - The interpreters run these programs and will go on running them: the error is compiled code's, and an error
-     test's expectations apply to the compiled phases only.
 8. **`is` between variants** (decided 2026-11-15): the rule options have (docs/extensions.md, Options as Values),
    applied to variants. *Typeful Programming* §3.1 gives every type but the scalars "same memory location", and
    §6.3 makes variants like options; this implementation already compares options by case and component, and a
