@@ -396,6 +396,11 @@ def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType],
         # caller holds it at: by the runtime, between the two views' descriptors
         # (no static tag map relates them)
         return ir.Plan("view", s_held.structure, t_held.structure)
+    if (s_held.kind == t_held.kind == "option" and cs == ct and _equal(s_held.type, t_held.type)
+            and not (_bounded_view(ss) or _bounded_view(ts))):
+        # Equal option types spelled otherwise (an option of an alias, and of
+        # the type it names): one representation, nothing to convert
+        return None
     if s_held.kind == t_held.kind == "option" and not _equal(s_held.type, t_held.type):
         if not (_bounded_view(ss) or _bounded_view(ts)) and _option_cases_agree(s_held, t_held):
             return None if cs == ct else ir.Plan("cast", source, target)
