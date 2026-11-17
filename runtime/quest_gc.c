@@ -102,7 +102,7 @@ Q_FIXED_NOSCAN(quest_layout_trace, "QTrace", sizeof(QTrace));
 Q_FIXED(quest_layout_writer, "QWriter", 16, P, S);
 Q_FIXED(quest_layout_reader, "QReader", 16, P, S);
 Q_FIXED(quest_layout_process, "QProcess", 40, S, S, S, P, P);
-Q_FIXED(quest_layout_string_builder, "QStringBuilder", 48, P, S, P, S, S, S);
+Q_FIXED(quest_layout_string_builder, "QStringBuilder", 56, P, S, P, S, S, S, S);
 Q_FIXED(quest_layout_code_region, "QCodeRegion", 24, P, S, S);
 Q_FIXED(quest_layout_run_result, "Tuple code: Int stdout: String stderr: String end", 24, S, P, P);
 Q_FIXED_NOSCAN(quest_layout_file_stats, "Tuple kind: Int ... changeNs: Int end", 72);

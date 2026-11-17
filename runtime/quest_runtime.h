@@ -484,22 +484,28 @@ QString *quest_conv_string(const QString *s);
 /* Strutil module primitives */
 double   quest_strutil_to_real(const QString *s);
 
-/* StringBuilder (lib/util/stringbuilder) native buffer. Short appends are written into a fixed working buffer;
- * when it fills, it becomes a finished chunk and a new working buffer is started. A string longer than
+/* StringBuilder (lib/util/stringbuilder) native buffer. Short appends are written into a working buffer, made on the
+ * first append at QUEST_SB_FIRST_SIZE bytes and doubled as it fills, up to QUEST_SB_BUFFER_SIZE; a full-size buffer
+ * that fills becomes a finished chunk, and a new one is started. Most builders hold less than the first few sizes
+ * (benchmarks.md section 26: in a driver build, 88% of 2.6 million end under 256 bytes, and 96% never make a chunk),
+ * and quest_sb_to_string hands a builder's buffer to the string it returns when the buffer holds everything, with
+ * room for the NUL, rather than copying it. A string longer than
  * QUEST_SB_LONG_APPEND is copied into a chunk of its own instead of passing through the working buffer, or, appended
  * by quest_sb_append_string_shared, is the chunk itself, its caller promising not to change it until the builder's
  * next quest_sb_to_string or quest_sb_clear. quest_sb_to_string returns a new string and empties the builder, which
  * can then be reused. */
+#define QUEST_SB_FIRST_SIZE 32
 #define QUEST_SB_BUFFER_SIZE 512
 #define QUEST_SB_LONG_APPEND 256
 
 typedef struct QStringBuilder {
-    char     *buffer;       /* working buffer of QUEST_SB_BUFFER_SIZE bytes (pointer-free memory) */
+    char     *buffer;       /* working buffer of size bytes (pointer-free memory), or NULL before the first append */
     int64_t   used;         /* bytes used in the working buffer */
     QString **chunks;       /* finished chunks, in order */
     int64_t   chunk_count;
     int64_t   chunk_capacity;
     int64_t   length;       /* total length: the chunks and the working buffer */
+    int64_t   size;         /* the working buffer's size: 0, or QUEST_SB_FIRST_SIZE doubled up to QUEST_SB_BUFFER_SIZE */
 } QStringBuilder;
 
 QStringBuilder *quest_sb_new(void);

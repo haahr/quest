@@ -297,11 +297,10 @@ double quest_strutil_to_real(const QString *s) {
 }
 
 /* StringBuilder native buffer (see quest_runtime.h) */
+
+/* A builder has no buffer until its first append (quest_sb_room) */
 QStringBuilder *quest_sb_new(void) {
-    char *buffer = (char *)quest_alloc_bytes(QUEST_SB_BUFFER_SIZE);
-    QStringBuilder *b = (QStringBuilder *)quest_alloc(sizeof(QStringBuilder), &quest_layout_string_builder);
-    b->buffer = buffer;
-    return b;
+    return (QStringBuilder *)quest_alloc(sizeof(QStringBuilder), &quest_layout_string_builder);
 }
 
 /* Adds the string s as the builder's next finished chunk */
@@ -326,14 +325,41 @@ static void quest_sb_add_chunk(QStringBuilder *b, char *data, int64_t len) {
     quest_sb_add_string(b, chunk);
 }
 
-/* Turns a nonempty working buffer into a chunk, and starts a new one */
+/* Turns a nonempty working buffer into a chunk, and starts a full-size one */
 static void quest_sb_flush(QStringBuilder *b) {
     if (b->used == 0) return;
     quest_sb_add_chunk(b, b->buffer, b->used);
     char *buffer = (char *)quest_alloc_bytes(QUEST_SB_BUFFER_SIZE);
     quest_barrier(b);
     b->buffer = buffer;
+    b->size = QUEST_SB_BUFFER_SIZE;
     b->used = 0;
+}
+
+/* Room for len more bytes (len at most QUEST_SB_BUFFER_SIZE): the buffer
+ * grown by doubling up to its full size, then flushed */
+static void quest_sb_room(QStringBuilder *b, int64_t len) {
+    if (b->used + len <= b->size) return;
+    if (b->size < QUEST_SB_BUFFER_SIZE) {
+        int64_t size = b->size ? b->size * 2 : QUEST_SB_FIRST_SIZE;
+        while (size < b->used + len && size < QUEST_SB_BUFFER_SIZE) size *= 2;
+        if (size > QUEST_SB_BUFFER_SIZE) size = QUEST_SB_BUFFER_SIZE;
+        if (b->used + len <= size) {
+            char *buffer = (char *)quest_alloc_bytes((size_t)size);
+            if (b->used > 0) memcpy(buffer, b->buffer, (size_t)b->used);
+            quest_barrier(b);
+            b->buffer = buffer;
+            b->size = size;
+            return;
+        }
+    }
+    quest_sb_flush(b);
+    if (b->size < QUEST_SB_BUFFER_SIZE) {
+        char *buffer = (char *)quest_alloc_bytes(QUEST_SB_BUFFER_SIZE);
+        quest_barrier(b);
+        b->buffer = buffer;
+        b->size = QUEST_SB_BUFFER_SIZE;
+    }
 }
 
 static void quest_sb_append_bytes(QStringBuilder *b, const char *data, int64_t len) {
@@ -346,7 +372,7 @@ static void quest_sb_append_bytes(QStringBuilder *b, const char *data, int64_t l
         quest_sb_add_chunk(b, copy, len);
         return;
     }
-    if (b->used + len > QUEST_SB_BUFFER_SIZE) quest_sb_flush(b);
+    quest_sb_room(b, len);
     memcpy(b->buffer + b->used, data, (size_t)len);
     b->used += len;
 }
@@ -369,7 +395,7 @@ void quest_sb_append_string_shared(QStringBuilder *b, QString *s) {
 }
 
 void quest_sb_append_char(QStringBuilder *b, QChar ch) {
-    if (b->used == QUEST_SB_BUFFER_SIZE) quest_sb_flush(b);
+    if (b->used == b->size) quest_sb_room(b, 1);
     b->buffer[b->used++] = ch;
     b->length++;
 }
@@ -417,8 +443,8 @@ void quest_sb_append_repeat(QStringBuilder *b, QChar ch, int64_t n) {
     }
     b->length += n;
     while (n > 0) {
-        if (b->used == QUEST_SB_BUFFER_SIZE) quest_sb_flush(b);
-        int64_t count = QUEST_SB_BUFFER_SIZE - b->used;
+        if (b->used == b->size) quest_sb_room(b, n < QUEST_SB_BUFFER_SIZE ? n : QUEST_SB_BUFFER_SIZE);
+        int64_t count = b->size - b->used;
         if (count > n) count = n;
         memset(b->buffer + b->used, (int)(unsigned char)ch, (size_t)count);
         b->used += count;
@@ -438,7 +464,21 @@ int64_t quest_sb_length(const QStringBuilder *b) {
     return b->length;
 }
 
+/* The contents as a new string, the builder emptied. A buffer that holds all
+ * of them, with a byte to spare for the NUL, becomes the string's data, and
+ * the builder makes a new one on its next append; the string keeps the rest of
+ * the buffer, at most half of it past the first size */
 QString *quest_sb_to_string(QStringBuilder *b) {
+    if (b->chunk_count == 0 && b->used > 0 && b->used < b->size) {
+        QString *s = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
+        s->length = b->used;
+        s->data = b->buffer;
+        s->data[b->used] = 0;
+        b->buffer = NULL;
+        b->size = 0;
+        quest_sb_clear(b);
+        return s;
+    }
     char *data = (char *)quest_alloc_bytes((size_t)b->length + 1);
     QString *s = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
     s->length = b->length;

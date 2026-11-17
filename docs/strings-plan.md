@@ -366,7 +366,9 @@ measurement repeats step 0's and goes into `benchmarks.md`.
    accumulating `<>` becomes a builder. No ABI bump. *Done when* the full `tools/check` passes with no golden
    changed, a search finds no builder used only in straight-line code outside the kept cases, and the gain is
    measured.
-7. **Tune the builder** (§8): the counting build and its distribution, recorded in `benchmarks.md`; the candidate
+7. **Tune the builder** (§8), done 2026-11-17 ("Grow the builder's buffer from 32 bytes, and hand it to toString's
+   string"; benchmarks.md §26.1): the buffer is made on the first append and doubles to 512, and `toString` hands
+   over a buffer that holds everything; ABI 84. As planned: the counting build and its distribution, recorded in `benchmarks.md`; the candidate
    strategies timed against the current one; the winner committed with its `quest_runtime.h` comment updated, and an
    ABI bump if the struct or header changed. *Done when* the full `tools/check` passes, the timings of every
    candidate are in `benchmarks.md` with the reason for the choice, and `stringbuilder_operations` and the

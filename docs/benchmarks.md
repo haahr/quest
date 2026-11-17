@@ -2812,3 +2812,26 @@ of a rewrite of a dozen loops, few of them hot. Step 4's own gain on the compile
 
 The builder as functions (step 1) makes a short builder a third cheaper; static literals (step 4) make a literal
 free, and a chain's literal parts no longer allocated; chains (step 5) take another fifth off `concat`.
+
+### 26.1. Tuning the builder (step 7)
+
+A counting build of the runtime, over one `-j 1` driver build by step 6's compiler: 2,633,332 builders made,
+2,615,022 `toString`s, no other `clear`. At `toString`, 88% held under 256 bytes (most between 8 and 128), and 96%
+had made no chunk; 97,779 long strings were shared by `strShared` (786 MB, against 49 MB copied by `str`), none
+copied as a long append. So nearly every builder is used once, short, and in one piece, and each allocated a
+512-byte buffer that its `toString` then copied.
+
+Three runtimes, each linked into step 6's compiler and timed as above (all three build the same artifacts):
+A, the current one; B, the buffer made on the first append at 32 bytes and doubled up to 512; BC, B with
+`toString` handing an unchunked buffer to the string instead of copying it.
+
+| | `-j 8` real | `-j 8` user | `-j 1` user | allocated | heap max | `sbsmall` |
+|---|---:|---:|---:|---:|---:|---:|
+| A (512 at once, copy) | 26.92–27.08 | 99.46 | 68.17 | 63.8 GB | 4.87 GB | 0.39 |
+| B (grow) | 26.89–26.95 | 99.43 | 68.24 | 62.9 GB | 4.95 GB | 0.37 |
+| BC (grow, hand over) | 26.15–26.58 | 98.18 | 68.29 | 62.8 GB | 4.92 GB | 0.36 |
+
+BC is kept: each of its `-j 8` builds beat A's best, by 1–3%, and it allocates 1.6% less; at `-j 1` the three are
+within noise. Growing alone (B) saves allocation but no time. Not tried, since the counts give them nothing to
+win: the chunk array's policy and what `clear` keeps (no builder is cleared and reused), and the long-append
+threshold (no long `str`). WASM's builder (`runtime/wasm/core`) is its own and unchanged.
