@@ -1,10 +1,10 @@
 # Quest Project Implementation Roadmap
 
-The seven steps of the Quest implementation, following a staged compiler methodology (inspired by Jeremy Siek's
+The eight steps of the Quest implementation, following a staged compiler methodology (inspired by Jeremy Siek's
 *Essentials of Compilation*): a bootstrap in Python (steps 1 to 4), and a **self-hosted implementation written in
-Quest** (steps 5 to 7) that compiles to native **AArch64 (ARM64)** machine code and runs interactive code on a **JIT
-compiler**. Every step is complete; open work is in [tasklist.md](tasklist.md) and the reference documents' open-work
-sections.
+Quest** (steps 5 to 8) that compiles to native **AArch64 (ARM64)** machine code, runs interactive code on a **JIT
+compiler**, and compiles to **WebAssembly**, on which it runs as the REPL in a browser. Every step is complete; open
+work is in [tasklist.md](tasklist.md) and the reference documents' open-work sections.
 
 ---
 
@@ -38,7 +38,10 @@ sections.
 |       │   • Direct code generation; the default backend                           |
 |       ▼                                                                           |
 |  [Step 7] Native AArch64 JIT & Interactive Incremental Runtime [COMPLETE]         |
-|           • In-process code emission and execution for the REPL, -e, and files    |
+|       │   • In-process code emission and execution for the REPL, -e, and files    |
+|       ▼                                                                           |
+|  [Step 8] WebAssembly (WasmGC) Backend & the REPL in a Browser [COMPLETE]         |
+|           • The compiler compiled to WebAssembly, a module for each input         |
 +-----------------------------------------------------------------------------------+
 ```
 
@@ -148,6 +151,18 @@ sections.
   What jit.md leaves for later (inlining across inputs, redefinition with another type, surviving faults) is open
   work there.
 
+### Step 8: WebAssembly Backend & the REPL in a Browser — *Complete*
+- A backend, `wasm`, that compiles Quest to WebAssembly with garbage collection ([wasm.md](wasm.md)): the engine's
+  structs and arrays are Quest's values and its collector is Quest's (§2), every closure has a native and a uniform
+  entry (§3), and the runtime is the C runtime ported to Quest over intrinsics, with `Real`'s formatting, parsing, and
+  mathematics in Quest too (§4). Each unit is a module (§5).
+- Built in five milestones, 2026-11-13 to 2026-11-16: the compiler compiling itself in node, to the same modules as
+  natively; the interpreter in a browser page; each REPL input compiled to a module and loaded into the session, as the
+  arm64 JIT does; the rest of the language (locations, variants, proxies, `dynamic`); and a review's fixes.
+- The REPL page ([wasm.md](wasm.md) §6), published at <https://haahr.github.io/quest/>, runs in Chrome, Firefox, and
+  Safari, and survives a stack overflow by rolling the input back or replaying the session. What differs from the
+  native backends is in §7; the suites run its programs in wasmtime and node (§8.3).
+
 ---
 
 ## See Also
@@ -162,4 +177,5 @@ sections.
 - [interpreter.md](interpreter.md): Interpreter runtime architecture, value model, and semantic decisions.
 - [compiler-organization.md](compiler-organization.md): Organization of the self-hosted compiler, and how it differs
   from the bootstrap.
+- [wasm.md](wasm.md): The WebAssembly backend, its runtime, and the REPL in a browser.
 - [extensions.md](extensions.md): OS, CLI, and native interop extensions to the core language.

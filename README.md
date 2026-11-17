@@ -67,8 +67,10 @@ Otherwise, if you're interested in a retro programming language and an interesti
 ## Status
 
 Two implementations of the language are tested to behave alike: a bootstrap in Python, with an interpreter and a
-compiler to C, and a self-hosted compiler in Quest, which compiles itself to C or to arm64 machine code (see the
-Quickstart below). Both run on macOS on Apple Silicon only; anything else is left as an exercise for the reader.
+compiler to C, and a self-hosted compiler in Quest, which compiles itself to arm64 machine code, to C, or to
+WebAssembly (see the Quickstart below). Both compilers run on macOS on Apple Silicon only; anything else is left as an
+exercise for the reader. What the WebAssembly backend compiles runs wherever WebAssembly's garbage collection does: in
+a browser (the REPL above is the self-hosted compiler compiled that way), in node, and in wasmtime.
 
 The compilers were built in steps ([docs/roadmap.md](docs/roadmap.md)):
 
@@ -94,13 +96,19 @@ The compilers were built in steps ([docs/roadmap.md](docs/roadmap.md)):
 - **Compilation:** the typed syntax tree is lowered to an A-normal-form IR and refined by small passes
   ([docs/ir.md](docs/ir.md)); the arm64 backend goes through an SSA form with linear-scan register allocation
   ([docs/arm64.md](docs/arm64.md)).
-- **Memory:** both compilers' programs allocate through a collector of Quest's own, a non-moving, generational Immix
-  heap with incremental marking, precise in the heap and, through stack maps, in arm64's frames, with write barriers
-  ([docs/collector.md](docs/collector.md)).
+- **Memory:** both compilers' native programs allocate through a collector of Quest's own, a non-moving,
+  generational Immix heap with incremental marking, precise in the heap and, through stack maps, in arm64's frames,
+  with write barriers ([docs/collector.md](docs/collector.md)).
+- **WebAssembly:** the `wasm` backend targets WebAssembly with garbage collection: Quest's values are the engine's
+  structs and arrays, the engine's collector is Quest's, and the runtime is written in Quest. The compiler compiled by
+  it runs in a browser page, where it compiles each REPL input to a module and loads it into the session
+  ([docs/wasm.md](docs/wasm.md)).
 - **Performance:** on the MLton benchmark suite, translated from Standard ML, programs compiled as whole programs by
   the arm64 backend take about 2.2 times as long as MLton's (geometric mean, 2026-11-06, against MLton's times of
   2026-10-28; [docs/benchmarks.md](docs/benchmarks.md) §20.3), from 0.34 (fib) to 34 (peek). Compiled unit by unit,
-  before §20's optimizations, the C backend's took 2.4 times as long and arm64's 2.6 (§19).
+  before §20's optimizations, the C backend's took 2.4 times as long and arm64's 2.6 (§19). Compiled to WebAssembly
+  and run in node, the suite takes 7.2 times as long as MLton's, about 3.5 times arm64's; the compiler, compiled to
+  WebAssembly, compiles itself in node in 1.21 times the native time (§25, 2026-11-15).
 
 ---
 
@@ -121,6 +129,8 @@ There are two implementations of Quest in this repository, and a launcher for ea
 - Git: the self-hosted compiler's releases live in the clone's git directory.
 - Optional: GNU readline (`brew install readline`) for the REPL's line editing; without it the REPL uses libedit's,
   or none.
+- Optional, for the WebAssembly backend: wasmtime and node (`brew install wasmtime node`) to run what it compiles, and
+  `wasm-tools` for its tests. Each is skipped by the tests where it is missing.
 
 ### Trying Quest with the Bootstrap
 `./questboot` works as soon as the repository is cloned:
@@ -141,9 +151,10 @@ cd quest
 The self-hosted compiler is a Quest program, `questlang/driver/main.quest` and the modules it imports, called the
 driver because it is the command-line entry point that runs the front end, the interpreter, and the backends. Its
 front end and interpreter mirror the bootstrap's; beyond the bootstrap, it optimizes the IR
-([docs/ir.md](docs/ir.md) §8.6), can write arm64 machine code instead of C (`--backend arm64`;
-[docs/arm64.md](docs/arm64.md)), and runs programs, `-e`, and the REPL's inputs by compiling them to arm64 code in
-memory rather than interpreting them (`--no-jit` interprets; [docs/jit.md](docs/jit.md)).
+([docs/ir.md](docs/ir.md) §8.6), writes arm64 machine code ([docs/arm64.md](docs/arm64.md)), by default, rather than
+C (`--backend c`), or WebAssembly (`--backend wasm`; [docs/wasm.md](docs/wasm.md)), and runs programs, `-e`, and the
+REPL's inputs by compiling them to arm64 code in memory rather than interpreting them (`--no-jit` interprets;
+[docs/jit.md](docs/jit.md)).
 
 `./quest` is a shell script that builds the driver into a native binary when needed and then runs it. The binary is
 not checked in: it is built from `questlang/` on first use, and again whenever `questlang/`, `lib/`, or `runtime/`
@@ -229,6 +240,15 @@ directory first and then on the search path (`-I` and `lib/`; [docs/modules.md](
 
 # Print a phase's output and continue
 ./quest --dump-after parse --stop-after typecheck program.quest
+
+# Compile a program to WebAssembly and run it under wasmtime, or node; print its module as text
+./quest --backend wasm program.quest
+./quest --backend wasm --wasm-engine node program.quest
+./quest compile --backend wasm --stop-after codegen_wasm program.quest
+
+# Build the REPL's page, a directory of static files, and check it in a browser
+tools/wasm-page/build -o page
+tools/wasm-page/build -o page --tests --check --browser firefox
 ```
 
 As with `python script.py`, the driver's options come before the program file: everything after it, options
@@ -276,6 +296,10 @@ PYTHONPATH=bootstrap/python python3.11 -m unittest discover -s tests/python   # 
    `let` of a name at the same type updates it in place, for the code that already uses it, so that fixing a function
    fixes its callers; one at another type shadows, with a warning. Programs are unchanged
    ([docs/repl.md](docs/repl.md) §6).
+8. **String literals are read-only:** the paper's strings are mutable, but it does not say what a literal denotes
+   when it is written into. Here a string literal is one string, the same object at every evaluation, and
+   `string.setChar` and `string.setSub` on it raise `string.error`; a string made from one (`getSub`, `<>`) is
+   writable ([docs/extensions.md](docs/extensions.md), "String Literals").
 
 [docs/extensions.md](docs/extensions.md) describes the additions to the language and its libraries, among them the
 `System` interface to the operating system, the `Word` type, and `external` declarations of C functions.
@@ -346,6 +370,8 @@ C runtime), which link to the rest.
 - [docs/arm64.md](docs/arm64.md): the arm64 backend: instruction selection, register allocation, and assembly for
   Darwin.
 - [docs/jit.md](docs/jit.md): the arm64 JIT, which runs the REPL's inputs, `-e`, and files in the driver's process.
+- [docs/wasm.md](docs/wasm.md): the WebAssembly backend and its runtime in Quest, the REPL in a browser, and the
+  measurements behind them.
 - [docs/collector.md](docs/collector.md): the garbage collector: its heap, generations, incremental marking, write
   barriers, roots, and the checking modes that test them.
 - [docs/option-values.md](docs/option-values.md): single-word options held as pointers, a representation designed
@@ -359,13 +385,18 @@ C runtime), which link to the rest.
   backend against MLton.
 - [docs/profiling.md](docs/profiling.md): finding out why compiled code runs as fast as it does (`tools/perf/`).
 - [docs/diagnostics.md](docs/diagnostics.md): how errors are reported.
+- [docs/interpreter-disagreements.md](docs/interpreter-disagreements.md): where the interpreters and compiled code
+  disagreed, and how each was settled.
 - [docs/instructions.md](docs/instructions.md): the guide for contributors, people and models: workflow, commands,
   conventions, and Quest syntax traps.
 
 ### 5. The Self-Hosted Compiler
-- [docs/roadmap.md](docs/roadmap.md): the seven steps from the Python bootstrap to a JIT compiler.
+- [docs/roadmap.md](docs/roadmap.md): the eight steps from the Python bootstrap to a JIT compiler and the REPL in a
+  browser.
 - [docs/compiler-organization.md](docs/compiler-organization.md): the modules of the self-hosted compiler
   (`questlang/`), and how they differ from the bootstrap's.
 - [docs/release-compiler.md](docs/release-compiler.md): releases of the self-hosted compiler (`tools/release`), from
   which `./quest` is built.
 - [docs/tasklist.md](docs/tasklist.md): open bugs and planned tasks.
+- [docs/strings-plan.md](docs/strings-plan.md) and [docs/type-arguments-plan.md](docs/type-arguments-plan.md): plans
+  in progress, for how strings are built and for omitting the type arguments that inference finds.

@@ -1,19 +1,18 @@
 # The Interpreters Against Compiled Code: Three Disagreements
 
-Found 2026-11-15 by the WasmGC plan's step 26 tests (`language/dynamic_runtime_ports`, `modules/echo_stored_views`),
-when `tools/check` ran their interpreter phases. Both compilers' interpreters give one answer and compiled code
-(arm64, C, ssac, the JIT, and the wasm backend, which ports the C runtime) gives another. Both tests now skip the
-interpreter phases (`@skip-phase: interpret, run_ir_*`), with a comment pointing here, until these are settled.
+Found 2026-11-15 by two tests of the wasm runtime's port of the C runtime (`language/dynamic_runtime_ports`,
+`modules/echo_stored_views`), when `tools/check` ran their interpreter phases. Both compilers' interpreters gave one
+answer and compiled code (arm64, C, ssac, the JIT, and the wasm backend) another. The tests skipped the interpreter
+phases until these were settled; they no longer do.
 
 None of the three is new. The release (3a45d707, 2026-11-13) and the bootstrap from before
-the shared-faults plan's second batch (e43ccb7a..18c8e54a) give the interpreters' answers too. The step 26 tests
+the shared-faults plan's second batch (e43ccb7a..18c8e54a) give the interpreters' answers too. The two tests
 were first recorded through the bootstrap's `--update-golden`, whose summary did not show the interpreter phases
 failing; `tools/check` was the first full run.
 
 **Resolved 2026-11-15** on main, each in the direction given under "Resolution" below: the interpreters changed for 1,
-compiled code for 2 and 3. The programs here, and the tests each resolution names, now give one answer everywhere.
-The wasm branch still needs the runtime half of 2 and 3 (its `isSubtype` and its printer), after which its two
-step 26 tests can drop their interpreter skips.
+compiled code for 2 and 3. The programs here, and the tests each resolution names, now give one answer everywhere, the wasm backend's
+included: its runtime's `isSubtype` and printer follow 2 and 3 ([wasm.md](wasm.md) §4.2).
 
 | | Compiled code | Interpreters (both) | Now |
 |---|---|---|---|
@@ -69,8 +68,8 @@ writer.putString(writer.output try
     end)
 ```
 
-**The rule** the WASM session took was C's `quest_is_subtype`, which required equal bounds; the wasm runtime's
-`isSubtype` follows it since step 26. But that rule was C's alone (docs/c-representation.md). The language's rule,
+**The rule** the wasm runtime first took was C's `quest_is_subtype`, which required equal bounds. But that rule was
+C's alone (docs/c-representation.md). The language's rule,
 Cardelli's [TIncl Π], takes bounds contravariantly, and both type checkers do: `let g: All(A <: Big x: A) A = idS`
 compiles. The interpreters' run-time subtyping is the checkers' own, so they agreed with static typing and compiled
 code did not.
