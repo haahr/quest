@@ -235,9 +235,9 @@ header word that marks it read-only (`Q_HEADER_READONLY`) and its `QString` ([c-
 §3.2), so evaluating one allocates nothing; the interpreters mark the strings the program's text holds
 (`quest_string_freeze`, or the bootstrap's read-only `QString`).
 
-The WASM backend does not follow this yet: its strings are WASM-GC byte arrays with no header to mark, so a literal
-there is a new, writable string at every evaluation, as every implementation's was before, and its
-`quest_string_freeze` does nothing (`runtime/wasm/core`'s `stringFreeze`).
+The WASM backend marks a read-only string by a bit of its hash field, since its strings have no header word
+([wasm-plan.md](wasm-plan.md) §2.8), and makes each distinct literal of a unit one string, in a global, the first time
+it is evaluated.
 
 ---
 

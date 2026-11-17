@@ -136,6 +136,11 @@
   (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 54)))
   (import "wasm/core" "init" (func $wasm/core.init (type 49)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
+  (global $literal (mut eqref) ref.null none)
+  (global $literal.1 (mut eqref) ref.null none)
+  (global $literal.2 (mut eqref) ref.null none)
+  (global $literal.3 (mut eqref) ref.null none)
+  (global $literal.4 (mut eqref) ref.null none)
   (export "_start" (func $_start))
   (func $main (type 49)
     (local $v eqref)
@@ -158,12 +163,18 @@
     i64.const 1
     call $convInt
     local.set $v.3
-    i32.const 0
-    i32.const 12
-    i32.const 0
-    i32.const 12
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 12
+      i32.const 0
+      i32.const 12
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal
+    end
+    global.get $literal
     local.get $v.3
     call $concat
     local.set $v.3
@@ -171,12 +182,18 @@
     local.get $v.3
     call $concat
     local.set $v.2
-    i32.const 0
-    i32.const 3
-    i32.const 12
-    i32.const 3
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.1
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 3
+      i32.const 12
+      i32.const 3
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.1
+    end
+    global.get $literal.1
     local.get $v.2
     call $concat
     local.set $v.2
@@ -184,12 +201,18 @@
     local.get $v.2
     call $concat
     local.set $v.1
-    i32.const 0
-    i32.const 3
-    i32.const 15
-    i32.const 3
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.2
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 3
+      i32.const 15
+      i32.const 3
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.2
+    end
+    global.get $literal.2
     local.get $v.1
     call $concat
     local.set $v.1
@@ -201,12 +224,18 @@
     ref.i31
     local.set $v.1
     local.get $v
-    i32.const 0
-    i32.const 1
-    i32.const 18
-    i32.const 1
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.3
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 1
+      i32.const 18
+      i32.const 1
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.3
+    end
+    global.get $literal.3
     call $concat
     local.set $v
     local.get $v.1
@@ -235,12 +264,18 @@
     i64.const -1
     call $convInt
     local.set $v.3
-    i32.const 0
-    i32.const 12
-    i32.const 19
-    i32.const 12
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 12
+      i32.const 19
+      i32.const 12
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal
+    end
+    global.get $literal
     local.get $v.3
     call $concat
     local.set $v.3
@@ -248,12 +283,18 @@
     local.get $v.3
     call $concat
     local.set $v.2
-    i32.const 0
-    i32.const 3
-    i32.const 31
-    i32.const 3
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.1
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 3
+      i32.const 31
+      i32.const 3
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.1
+    end
+    global.get $literal.1
     local.get $v.2
     call $concat
     local.set $v.2
@@ -261,12 +302,18 @@
     local.get $v.2
     call $concat
     local.set $v.1
-    i32.const 0
-    i32.const 3
-    i32.const 34
-    i32.const 3
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.2
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 3
+      i32.const 34
+      i32.const 3
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.2
+    end
+    global.get $literal.2
     local.get $v.1
     call $concat
     local.set $v.1
@@ -278,12 +325,18 @@
     ref.i31
     local.set $v.1
     local.get $v
-    i32.const 0
-    i32.const 1
-    i32.const 37
-    i32.const 1
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.3
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 1
+      i32.const 37
+      i32.const 1
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.3
+    end
+    global.get $literal.3
     call $concat
     local.set $v
     local.get $v.1
@@ -312,12 +365,18 @@
     i64.const 1
     call $convInt
     local.set $v.3
-    i32.const 0
-    i32.const 12
-    i32.const 38
-    i32.const 12
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 12
+      i32.const 38
+      i32.const 12
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal
+    end
+    global.get $literal
     local.get $v.3
     call $concat
     local.set $v.3
@@ -325,12 +384,18 @@
     local.get $v.3
     call $concat
     local.set $v.2
-    i32.const 0
-    i32.const 3
-    i32.const 50
-    i32.const 3
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.1
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 3
+      i32.const 50
+      i32.const 3
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.1
+    end
+    global.get $literal.1
     local.get $v.2
     call $concat
     local.set $v.2
@@ -338,12 +403,18 @@
     local.get $v.2
     call $concat
     local.set $v.1
-    i32.const 0
-    i32.const 3
-    i32.const 53
-    i32.const 3
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.2
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 3
+      i32.const 53
+      i32.const 3
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.2
+    end
+    global.get $literal.2
     local.get $v.1
     call $concat
     local.set $v.1
@@ -355,12 +426,18 @@
     ref.i31
     local.set $v.1
     local.get $v
-    i32.const 0
-    i32.const 1
-    i32.const 56
-    i32.const 1
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.3
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 1
+      i32.const 56
+      i32.const 1
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.3
+    end
+    global.get $literal.3
     call $concat
     local.set $v
     local.get $v.1
@@ -389,12 +466,18 @@
     i64.const 0
     call $convInt
     local.set $v.3
-    i32.const 0
-    i32.const 12
-    i32.const 57
-    i32.const 12
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 12
+      i32.const 57
+      i32.const 12
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal
+    end
+    global.get $literal
     local.get $v.3
     call $concat
     local.set $v.3
@@ -402,12 +485,18 @@
     local.get $v.3
     call $concat
     local.set $v.2
-    i32.const 0
-    i32.const 3
-    i32.const 69
-    i32.const 3
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.1
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 3
+      i32.const 69
+      i32.const 3
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.1
+    end
+    global.get $literal.1
     local.get $v.2
     call $concat
     local.set $v.2
@@ -415,12 +504,18 @@
     local.get $v.2
     call $concat
     local.set $v.1
-    i32.const 0
-    i32.const 3
-    i32.const 72
-    i32.const 3
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.2
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 3
+      i32.const 72
+      i32.const 3
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.2
+    end
+    global.get $literal.2
     local.get $v.1
     call $concat
     local.set $v.1
@@ -432,12 +527,18 @@
     ref.i31
     local.set $v.1
     local.get $v
-    i32.const 0
-    i32.const 1
-    i32.const 75
-    i32.const 1
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.3
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 1
+      i32.const 75
+      i32.const 1
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.3
+    end
+    global.get $literal.3
     call $concat
     local.set $v
     local.get $v.1
@@ -466,12 +567,18 @@
     i64.const 0
     call $convInt
     local.set $v.3
-    i32.const 0
-    i32.const 12
-    i32.const 76
-    i32.const 12
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 12
+      i32.const 76
+      i32.const 12
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal
+    end
+    global.get $literal
     local.get $v.3
     call $concat
     local.set $v.3
@@ -479,12 +586,18 @@
     local.get $v.3
     call $concat
     local.set $v.2
-    i32.const 0
-    i32.const 3
-    i32.const 88
-    i32.const 3
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.1
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 3
+      i32.const 88
+      i32.const 3
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.1
+    end
+    global.get $literal.1
     local.get $v.2
     call $concat
     local.set $v.2
@@ -492,12 +605,18 @@
     local.get $v.2
     call $concat
     local.set $v.1
-    i32.const 0
-    i32.const 3
-    i32.const 91
-    i32.const 3
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.2
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 3
+      i32.const 91
+      i32.const 3
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.2
+    end
+    global.get $literal.2
     local.get $v.1
     call $concat
     local.set $v.1
@@ -509,12 +628,18 @@
     ref.i31
     local.set $v.1
     local.get $v
-    i32.const 0
-    i32.const 1
-    i32.const 94
-    i32.const 1
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.3
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 1
+      i32.const 94
+      i32.const 1
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.3
+    end
+    global.get $literal.3
     call $concat
     local.set $v
     local.get $v.1
@@ -543,12 +668,18 @@
     i64.const 0
     call $convInt
     local.set $v.3
-    i32.const 0
-    i32.const 12
-    i32.const 95
-    i32.const 12
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 12
+      i32.const 95
+      i32.const 12
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal
+    end
+    global.get $literal
     local.get $v.3
     call $concat
     local.set $v.3
@@ -556,12 +687,18 @@
     local.get $v.3
     call $concat
     local.set $v.2
-    i32.const 0
-    i32.const 3
-    i32.const 107
-    i32.const 3
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.1
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 3
+      i32.const 107
+      i32.const 3
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.1
+    end
+    global.get $literal.1
     local.get $v.2
     call $concat
     local.set $v.2
@@ -569,12 +706,18 @@
     local.get $v.2
     call $concat
     local.set $v.1
-    i32.const 0
-    i32.const 3
-    i32.const 110
-    i32.const 3
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.2
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 3
+      i32.const 110
+      i32.const 3
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.2
+    end
+    global.get $literal.2
     local.get $v.1
     call $concat
     local.set $v.1
@@ -586,12 +729,18 @@
     ref.i31
     local.set $v.1
     local.get $v
-    i32.const 0
-    i32.const 1
-    i32.const 113
-    i32.const 1
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.3
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 1
+      i32.const 113
+      i32.const 1
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.3
+    end
+    global.get $literal.3
     call $concat
     local.set $v
     local.get $v.1
@@ -688,12 +837,18 @@
     local.get $v.80
     call $convInt
     local.set $v.3
-    i32.const 0
-    i32.const 12
-    i32.const 198
-    i32.const 12
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 12
+      i32.const 198
+      i32.const 12
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal
+    end
+    global.get $literal
     local.get $v.3
     call $concat
     local.set $v.3
@@ -701,12 +856,18 @@
     local.get $v.3
     call $concat
     local.set $v.2
-    i32.const 0
-    i32.const 3
-    i32.const 210
-    i32.const 3
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.1
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 3
+      i32.const 210
+      i32.const 3
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.1
+    end
+    global.get $literal.1
     local.get $v.2
     call $concat
     local.set $v.2
@@ -714,12 +875,18 @@
     local.get $v.2
     call $concat
     local.set $v.1
-    i32.const 0
-    i32.const 3
-    i32.const 213
-    i32.const 3
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.2
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 3
+      i32.const 213
+      i32.const 3
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.2
+    end
+    global.get $literal.2
     local.get $v.1
     call $concat
     local.set $v.1
@@ -731,12 +898,18 @@
     ref.i31
     local.set $v.1
     local.get $v
-    i32.const 0
-    i32.const 1
-    i32.const 216
-    i32.const 1
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.3
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 1
+      i32.const 216
+      i32.const 1
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.3
+    end
+    global.get $literal.3
     call $concat
     local.set $v
     local.get $v.1
@@ -753,23 +926,35 @@
       call $wasm/core.writerPutString
     end
     local.set $v
-    i32.const 0
-    i32.const 11
-    i32.const 217
-    i32.const 11
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.4
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 11
+      i32.const 217
+      i32.const 11
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.4
+    end
+    global.get $literal.4
     local.set $v
     i32.const 1
     ref.i31
     local.set $v.1
     local.get $v
-    i32.const 0
-    i32.const 1
-    i32.const 228
-    i32.const 1
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $literal.3
+    ref.is_null
+    if
+      i32.const 1073741824
+      i32.const 1
+      i32.const 228
+      i32.const 1
+      array.new_data $bytes $strings
+      struct.new $string
+      global.set $literal.3
+    end
+    global.get $literal.3
     call $concat
     local.set $v
     local.get $v.1

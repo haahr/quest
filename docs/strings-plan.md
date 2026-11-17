@@ -195,9 +195,10 @@ Raised with the owner as a decision to confirm. `quest_string_freeze` writes onl
 the mutator writes the collector's byte once per string and never a static literal's read-only header, and the
 runtime header asserts that the bit is in the top byte.
 
-**The WASM backend** (on `main` since this plan was written) does not follow the rule yet: its strings are WASM-GC
-byte arrays with no header, so its literals stay fresh and writable, and its `quest_string_freeze`, which the
-interpreters compiled to WASM call, does nothing (recorded in `extensions.md`).
+**The WASM backend** (on `main` since this plan was written) follows the rule too: its strings are WASM-GC byte arrays
+with no header, so the mark is bit 30 of the string's identity-hash field, which the hash counter never reaches; each
+distinct literal of a unit is one string in a global, made the first time it is evaluated, rather than all at a unit's
+start, which would cost a unit of thousands of literals its start-up time (wasm-plan.md §2.8).
 
 **Emitting them.** Each distinct literal in a unit becomes static data: a header word (the address of
 `quest_layout_string`, with the read-only bit), the `QString` (length and a pointer to its bytes), and the bytes,

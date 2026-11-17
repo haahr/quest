@@ -60,6 +60,9 @@ export
         runtimeFunctions: hashMap.T(String Int)
         funcTypes: hashMap.T(String Int)
         strings: sb.T
+        (* The globals holding the unit's string literals, by text: each the
+         * one string its literal denotes, made when first evaluated *)
+        literalGlobals: hashMap.T(String Int)
         names: hashMap.T(String Int)
         dicts: hashMap.T(String Int)
         (* Closures (section 3.1): the closure types by signature, each
@@ -623,13 +626,25 @@ export
      * Values
      * ====================================================================== *)
 
-    (* A new string of the literal s's bytes, from the data segment *)
-    let literal(f: F s: String): Ok =
+    (* A new mutable global of the unit, null to begin with *)
+    let newGlobal(g: G name: String): Int =
+        begin
+            let n = model.importedGlobals(g.m) + vector.length(:model.Global g.m.globals)
+            vector.append(:model.Global g.m.globals tuple
+                let name = fresh(g.names name) let type = model.eqref let mutable = true
+                let init = array of option instRefNull of Inst with let heap = option heapNone of model.HeapType end end end
+            end)
+            n
+        end
+
+    (* A new string of s's bytes, from the data segment, its hash word hash:
+     * 0, or readOnly's bit *)
+    let stringOf(f: F s: String hash: Int): Ok =
         begin
             let offset = sb.length(f.g.strings)
             sb.str(f.g.strings s)
             let n = stringOp.length(s)
-            emit(f model.i32Const(0))
+            emit(f model.i32Const(hash))
             emit(f model.i32Const(n))
             if n is 0 then
                 (* none from the segment, which a unit whose literals are all
@@ -644,12 +659,41 @@ export
             emit(f i1(ops.structNew rt.index("string")))
         end
 
+    (* A new string of the backend's own text s, which no program names *)
+    let literal(f: F s: String): Ok = stringOf(f s 0)
+
+    (* The bit of a string's hash word that marks it read-only, as a native
+     * string's header bit does (Q_HEADER_READONLY): objects' hashes are below
+     * it (runtime/wasm/core's objectHash) *)
+    let readOnly = 1073741824
+
+    (* The string a Quest string literal denotes: one for each distinct text in
+     * the unit, the same at every evaluation, and read-only, so that setChar
+     * and setSub raise string.error on it (docs/extensions.md, String
+     * Literals). It is made the first time it is evaluated and kept in a
+     * global, rather than made as the unit starts, which would cost a unit
+     * with thousands of literals the time to make them all *)
+    let questLiteral(f: F s: String): Ok =
+        begin
+            if not(hashMap.contains(:String :Int f.g.literalGlobals s)) then
+                hashMap.insert(:String :Int f.g.literalGlobals s newGlobal(f.g "literal"))
+            end
+            let held = hashMap.find(:String :Int f.g.literalGlobals s)
+            emit(f i1(ops.globalGet held))
+            emit(f i(ops.refIsNull))
+            emit(f model.ifInst(empty ""))
+            stringOf(f s readOnly)
+            emit(f i1(ops.globalSet held))
+            emit(f model.endInst)
+            emit(f i1(ops.globalGet held))
+        end
+
     let constant(f: F c: ir.Const): Ok =
         case c.value
             when constInt with x then emit(f model.i64Const(x.n))
             when constBool with x then emit(f model.i32Const(if x.b then 1 else 0 end))
             when constChar with x then emit(f model.i32Const(ascii.val(x.c)))
-            when constString with x then literal(f x.s)
+            when constString with x then questLiteral(f x.s)
             when constOk then
                 emit(f model.i32Const(0))
                 emit(f i(ops.refI31))
@@ -866,16 +910,6 @@ export
         "quest_type_Word" "quest_type_EmptyTuple" "quest_type_bound_vars"
     end
     let baseKinds = array of 1 2 3 4 5 6 7 9 17 end
-
-    let newGlobal(g: G name: String): Int =
-        begin
-            let n = model.importedGlobals(g.m) + vector.length(:model.Global g.m.globals)
-            vector.append(:model.Global g.m.globals tuple
-                let name = fresh(g.names name) let type = model.eqref let mutable = true
-                let init = array of option instRefNull of Inst with let heap = option heapNone of model.HeapType end end end
-            end)
-            n
-        end
 
     (* The descriptors the unit's static data needs, the base ones and those
      * collected (staticdata), each a global, which makeDescriptors fills
@@ -5459,6 +5493,7 @@ export
                 let runtimeFunctions = hashMap.new(:String :Int stringOp.equal hash.string)
                 let funcTypes = hashMap.new(:String :Int stringOp.equal hash.string)
                 let strings = sb.new()
+                let literalGlobals = hashMap.new(:String :Int stringOp.equal hash.string)
                 let names = hashMap.new(:String :Int stringOp.equal hash.string)
                 let dicts = hashMap.new(:String :Int stringOp.equal hash.string)
                 let closTypes = hashMap.new(:String :Int stringOp.equal hash.string)

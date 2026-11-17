@@ -1582,14 +1582,20 @@ export
      * for (docs/wasm-plan.md section 2.8) *)
     let hashes = tuple let var next = 0 end
 
+    (* The bit of an object's hash word above every hash, which marks a
+     * read-only string (questlang/wasm/codegen's questLiteral, stringFreeze):
+     * a hash is the word below it, and storing one keeps it *)
+    let readOnly = 1073741824
+
     let objectHash(x: Any): Int =
         begin
-            let h = hashOf(x)
+            let word = hashOf(x)
+            let h = word % readOnly
             if h isnot 0 then h
             else
-                hashes.next := {hashes.next + 1} % 1073741824
+                hashes.next := {hashes.next + 1} % readOnly
                 if hashes.next is 0 then hashes.next := 1 end
-                setHash(x hashes.next)
+                setHash(x {word - h} + hashes.next)
                 hashes.next
             end
         end
@@ -1630,7 +1636,13 @@ export
         else mix(0)
         end
 
-    let stringFreeze(s: String): Ok = ok
+    let stringAny(s: String): Any = external "wasm.toAny"
+    let stringFreeze(s: String): Ok =
+        begin
+            let x = stringAny(s)
+            let word = hashOf(x)
+            if word < readOnly then setHash(x word + readOnly) end
+        end
 
     (* A string builder: its bytes, a string grown by doubling, and how many
      * of them are used *)

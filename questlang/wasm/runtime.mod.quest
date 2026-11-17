@@ -235,6 +235,14 @@ export
             end
             let sLength = rt.field("string" "length")
             let sBytes = rt.field("string" "bytes")
+            let sHash = rt.field("string" "hash")
+            (* A read-only string (a literal, its hash word's bit set, as
+             * codegen's questLiteral makes it) raises string.error on a write,
+             * as natively (quest_string_set_char): the string in local str *)
+            let readOnlyCheck(str: Int): Array(Inst) = array of
+                i1(ops.localGet str) i2(ops.structGet tString sHash) c32(1073741824) i(ops.i32And)
+                model.ifInst(empty "") i1(ops.call stringError) model.endInst
+            end
             let nullString = model.refNull(tString)
             let nullBytes = model.refNull(tBytes)
             let funcType(params: Array(model.ValType) results: Array(model.ValType)): Int =
@@ -595,6 +603,7 @@ export
             end))
             add("stringSetChar" typeOf[15] array of "s" "i" "c" end array of local("str" nullString) end cat(array of
                 checkIndex(0 1 3)
+                readOnlyCheck(3)
                 array of
                     i1(ops.localGet 3) i2(ops.structGet tString sBytes) i1(ops.localGet 1) i(ops.i32WrapI64)
                     i1(ops.localGet 2) i1(ops.arraySet tBytes)
@@ -648,6 +657,9 @@ export
                     array of
                         i(ops.i32Or)
                         model.ifInst(empty "") i1(ops.call stringError) model.endInst
+                    end
+                    readOnlyCheck(5)
+                    array of
                         i1(ops.localGet 5) i2(ops.structGet tString sBytes) i1(ops.localGet 1) i(ops.i32WrapI64)
                         i1(ops.localGet 6) i2(ops.structGet tString sBytes) i1(ops.localGet 3) i(ops.i32WrapI64)
                         i1(ops.localGet 4) i(ops.i32WrapI64) i2(ops.arrayCopy tBytes tBytes)

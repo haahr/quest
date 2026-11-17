@@ -207,6 +207,12 @@ counter the first time it is asked for: tuples, options, proxies' originals, str
 closures (`$clos`), exceptions, and auto values. The boxes of scalars, of records, and of variants are not: scalars
 hash by value, through the descriptor, and a boxed record is its payload.
 
+The counter stays below 2^30, so the field's bit 30 is free, and marks a read-only string, as the native header's
+`Q_HEADER_READONLY` does: a string literal (one global for each distinct literal in a unit, made the first time it is
+evaluated: `questLiteral` in `questlang/wasm/codegen`) and a string the interpreters freeze (`runtime/wasm/core`'s
+`stringFreeze`). `stringSetChar` and `stringSetSub` raise `string.error` when it is set, and `objectHash` reads the
+hash below it and keeps it when storing one ([extensions.md](extensions.md#string-literals)).
+
 A counter's values differ from addresses. `ir/represent` puts an identity hash's digits in a memo key; that it
 never reaches the compiler's output is checked in step 1 (§8.1), since the fixed point depends on it.
 
