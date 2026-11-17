@@ -1,0 +1,21 @@
+(* Quest Self-Hosted Compiler: The SSA's Concatenations Interface
+ *
+ * Chains of <> made one allocation (docs/strings-plan.md section 6). The IR
+ * is in A-normal form, so x <> y <> z arrives as two calls of
+ * quest_string_concat, the first's result an argument of the second; each
+ * allocates a string and copies both its operands, so a chain of n parts
+ * makes n - 1 strings and copies its early parts up to n - 1 times. A call of
+ * quest_string_concat whose argument is the result of another, in the same
+ * block and used only there, takes that one's parts as its own, and the other
+ * call goes: the chain becomes one call of quest_string_concat_n, which
+ * allocates the whole and copies each part once. A chain of more than its
+ * seven parts is joined seven at a time. *)
+
+interface Concats
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* Merges f's chains of concatenations *)
+    concatFunction(f: ssa.Function): Ok
+    concatUnit(u: ssa.Unit): Ok
+end

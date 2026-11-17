@@ -75,6 +75,33 @@ QString *quest_string_concat(const QString *s1, const QString *s2) {
     return res;
 }
 
+/* The first n of p0 to p6 joined, as quest_string_concat joins two, in one
+ * allocation: a chain of <> that the self-hosted compiler's SSA merges
+ * (questlang/ssa/passes/concats). The parts are arguments rather than an
+ * array, so that they stay in this frame, which the collector scans
+ * conservatively, while the result is allocated */
+QString *quest_string_concat_n(int64_t n, const QString *p0, const QString *p1, const QString *p2, const QString *p3,
+                               const QString *p4, const QString *p5, const QString *p6) {
+    const QString *parts[7] = { p0, p1, p2, p3, p4, p5, p6 };
+    int64_t total = 0;
+    for (int64_t i = 0; i < n; ++i) {
+        if (parts[i] != NULL) total += parts[i]->length;
+    }
+    char *data = (char *)quest_alloc_bytes(total + 1);
+    QString *res = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
+    res->length = total;
+    res->data = data;
+    int64_t at = 0;
+    for (int64_t i = 0; i < n; ++i) {
+        if (parts[i] != NULL && parts[i]->length > 0) {
+            memcpy(res->data + at, parts[i]->data, (size_t)parts[i]->length);
+            at += parts[i]->length;
+        }
+    }
+    res->data[total] = 0;
+    return res;
+}
+
 bool quest_string_equal(const QString *s1, const QString *s2) {
     if (s1 == s2) return true;
     if (s1 == NULL || s2 == NULL) return false;

@@ -224,6 +224,11 @@ internal error.
   such a global: the module's initialization stores it, guarded by the module's flag, and each use would load it, in
   every iteration of a loop that uses it ([benchmarks.md](benchmarks.md) §15.5). Only a unit's own globals are seen, so
   only those are folded: another unit loads an exported member. `ssa_constants` shows each case.
+- **`ssa/passes/concats`** joins chains of `<>` ([strings-plan.md](strings-plan.md) §6). A call of
+  `quest_string_concat` whose argument is the result of another in the same block, used only there, with no store or
+  call that may write memory between them, takes that one's parts, and the chain becomes one call of
+  `quest_string_concat_n`, which allocates the whole string once and copies each part once; a chain of more than seven
+  parts is joined seven at a time. `language/concat_chains` covers it.
 - **`ssa/passes/valueNumbers`** removes redundant values along the dominator tree, in the manner of Briggs, Cooper, and
   Simpson: a pure instruction or a load whose equal dominates it becomes that equal, by a key of its opcode, immediate,
   symbol, result type, and arguments' numbers (a constant's by its value; commutative ones ordered; a load's address
@@ -349,12 +354,11 @@ Only value numbering removes values that become dead; parameters no load reads s
 slots, and linear scan none.
 
 The passes share their analyses: `ssa/cfg` (predecessors, successors, reverse postorder, the dominator tree with
-preorder and postorder numbers, dominance frontiers, and loop depths); the register allocator computes liveness on
-the machine layer's instructions (`codegen/machine/machine`), not on the SSA. `nodes` has the mutators (`targets`, `mapTargets`, `mapBlocks`,
-`replaceUses`). The driver dumps the SSA after the builder (`--dump-after ssa_built`), after each pass (`ssa_escape`,
-`ssa_promote`, `ssa_constants`, `ssa_valueNumbers`, `ssa_selects`, `ssa_tables`, `ssa_accumulate`, `ssa_tailCalls`,
-`ssa_tailJumps`, `ssa_trampolines`), and at the end
-(`ssa`);
+preorder and postorder numbers, dominance frontiers, and loop depths); the register allocator computes liveness on the
+machine layer's instructions (`codegen/machine/machine`), not on the SSA. `nodes` has the mutators (`targets`,
+`mapTargets`, `mapBlocks`, `replaceUses`). The driver dumps the SSA after the builder (`--dump-after ssa_built`), after
+each pass (`ssa_escape`, `ssa_promote`, `ssa_constants`, `ssa_concats`, `ssa_valueNumbers`, `ssa_selects`, `ssa_tables`,
+`ssa_accumulate`, `ssa_tailCalls`, `ssa_tailJumps`, `ssa_trampolines`), and at the end (`ssa`);
 `QUEST_SKIP_PASSES`, a comma-separated list of passes' names, leaves passes out, for a test or a bisection.
 
 ### 4.2. Escape Analysis

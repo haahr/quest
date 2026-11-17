@@ -38,6 +38,7 @@
   (type (func (param eqref) (result eqref)))
   (type (func (param i32)))
   (type (func (result eqref)))
+  (type (func (param eqref eqref eqref eqref eqref eqref eqref) (result eqref)))
   (type (func (param i64) (result i64)))
   (type (func (param i64 i64)))
   (type (func (param i64)))
@@ -76,18 +77,18 @@
   (type (func (param (ref $clos) i64) (result i32)))
   (type (func (param (ref $clos) eqref) (result i32)))
   (type (func (param (ref $clos) i64) (result i64)))
-  (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 51)))))
-  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 72)))))
-  (type $pos.closure (sub final 76 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 72)))))
-  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 74)))))
-  (type $f.closure (sub final 78 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 74)))))
-  (type $qa_adapt.closure (sub final 78 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 74)) (field $c0 (mut eqref)))))
-  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 51)))))
-  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 73)))))
-  (type $nonEmpty.closure (sub final 82 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 73)))))
-  (type $qa_adapt.closure.1 (sub final 82 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 73)))))
-  (type $qa_adapt.closure.2 (sub final 81 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 51)))))
-  (type $f.closure.1 (sub final 81 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 51)))))
+  (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 52)))))
+  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 73)))))
+  (type $pos.closure (sub final 77 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 73)))))
+  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 75)))))
+  (type $f.closure (sub final 79 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 75)))))
+  (type $qa_adapt.closure (sub final 79 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 75)) (field $c0 (mut eqref)))))
+  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 52)))))
+  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 74)))))
+  (type $nonEmpty.closure (sub final 83 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 74)))))
+  (type $qa_adapt.closure.1 (sub final 83 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 74)))))
+  (type $qa_adapt.closure.2 (sub final 82 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 52)))))
+  (type $f.closure.1 (sub final 82 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 52)))))
   (type (func (param eqref) (result (ref $tuple))))
   (import "quest.runtime" "exception:int.error" (global $int.error (ref $exception)))
   (import "quest.runtime" "exception:real.error" (global $real.error (ref $exception)))
@@ -135,69 +136,70 @@
   (import "quest.runtime" "raisedText" (func $raisedText (type 20)))
   (import "quest.runtime" "holdFatal" (func $holdFatal (type 35)))
   (import "quest.runtime" "fatalReport" (func $fatalReport (type 36)))
-  (import "quest.runtime" "memLoad8" (func $memLoad8 (type 37)))
-  (import "quest.runtime" "memStore8" (func $memStore8 (type 38)))
-  (import "quest.runtime" "memLoad32" (func $memLoad32 (type 37)))
-  (import "quest.runtime" "memStore32" (func $memStore32 (type 38)))
-  (import "quest.runtime" "memLoad64" (func $memLoad64 (type 37)))
-  (import "quest.runtime" "memStore64" (func $memStore64 (type 38)))
-  (import "quest.runtime" "memEnsure" (func $memEnsure (type 39)))
-  (import "quest.runtime" "memToString" (func $memToString (type 40)))
-  (import "quest.runtime" "stringToMem" (func $stringToMem (type 41)))
-  (import "quest.runtime" "wasi:args_sizes_get" (func $wasi:args_sizes_get (type 42)))
-  (import "quest.runtime" "wasi:args_get" (func $wasi:args_get (type 42)))
-  (import "quest.runtime" "wasi:environ_sizes_get" (func $wasi:environ_sizes_get (type 42)))
-  (import "quest.runtime" "wasi:environ_get" (func $wasi:environ_get (type 42)))
-  (import "quest.runtime" "wasi:fd_prestat_get" (func $wasi:fd_prestat_get (type 42)))
-  (import "quest.runtime" "wasi:fd_prestat_dir_name" (func $wasi:fd_prestat_dir_name (type 43)))
-  (import "quest.runtime" "wasi:path_open" (func $wasi:path_open (type 44)))
-  (import "quest.runtime" "wasi:fd_read" (func $wasi:fd_read (type 45)))
-  (import "quest.runtime" "wasi:fd_close" (func $wasi:fd_close (type 37)))
-  (import "quest.runtime" "wasi:path_filestat_get" (func $wasi:path_filestat_get (type 46)))
-  (import "quest.runtime" "wasi:path_create_directory" (func $wasi:path_create_directory (type 43)))
-  (import "quest.runtime" "wasi:path_unlink_file" (func $wasi:path_unlink_file (type 43)))
-  (import "quest.runtime" "wasi:path_remove_directory" (func $wasi:path_remove_directory (type 43)))
-  (import "quest.runtime" "wasi:path_rename" (func $wasi:path_rename (type 47)))
-  (import "quest.runtime" "wasi:fd_readdir" (func $wasi:fd_readdir (type 46)))
-  (import "quest.runtime" "error" (tag $error (type 48)))
-  (import "units/gen" "init" (func $units/gen.init (type 49)))
-  (import "writer" "init" (func $writer.init (type 49)))
-  (import "string" "init" (func $string.init (type 49)))
-  (import "conv" "init" (func $conv.init (type 49)))
-  (import "wasm/print" "init" (func $wasm/print.init (type 49)))
-  (import "wasm/print" "show" (func $wasm/print.show (type 50)))
-  (import "wasm/core" "unproxy" (func $wasm/core.unproxy (type 51)))
-  (import "wasm/core" "proxyTag" (func $wasm/core.proxyTag (type 52)))
-  (import "wasm/core" "proxyElement" (func $wasm/core.proxyElement (type 53)))
-  (import "wasm/core" "proxyOptionElement" (func $wasm/core.proxyOptionElement (type 53)))
-  (import "wasm/core" "proxyOptionPayload" (func $wasm/core.proxyOptionPayload (type 51)))
-  (import "wasm/core" "init" (func $wasm/core.init (type 49)))
-  (import "wasm/core" "base" (func $wasm/core.base (type 54)))
-  (import "wasm/core" "newDesc" (func $wasm/core.newDesc (type 55)))
-  (import "wasm/core" "setPart" (func $wasm/core.setPart (type 56)))
-  (import "wasm/core" "setText" (func $wasm/core.setText (type 57)))
-  (import "wasm/core" "setFlags" (func $wasm/core.setFlags (type 58)))
-  (import "wasm/core" "boundVar" (func $wasm/core.boundVar (type 54)))
-  (import "wasm/core" "instantiate" (func $wasm/core.instantiate (type 50)))
-  (import "wasm/core" "viewDict" (func $wasm/core.viewDict (type 50)))
-  (import "wasm/core" "storedField" (func $wasm/core.storedField (type 59)))
-  (import "wasm/core" "convert" (func $wasm/core.convert (type 60)))
-  (import "wasm/core" "isSubtype" (func $wasm/core.isSubtype (type 61)))
-  (import "wasm/core" "registerAbstract" (func $wasm/core.registerAbstract (type 62)))
-  (import "wasm/core" "valIs" (func $wasm/core.valIs (type 63)))
-  (import "wasm/core" "viewMap" (func $wasm/core.viewMap (type 50)))
-  (import "wasm/core" "viewIndex" (func $wasm/core.viewIndex (type 64)))
-  (import "wasm/core" "viewPart" (func $wasm/core.viewPart (type 62)))
-  (import "wasm/core" "viewRecordSlot" (func $wasm/core.viewRecordSlot (type 65)))
-  (import "wasm/core" "viewRecordField" (func $wasm/core.viewRecordField (type 66)))
-  (import "wasm/core" "viewOptionComponent" (func $wasm/core.viewOptionComponent (type 67)))
-  (import "wasm/core" "viewOptionPayload" (func $wasm/core.viewOptionPayload (type 50)))
-  (import "units/gen" "count" (func $units/gen.count (type 68)))
-  (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 50)))
-  (import "units/gen" "pick" (func $units/gen.pick (type 69)))
-  (import "units/gen" "twice" (func $units/gen.twice (type 50)))
-  (import "units/gen" "pair" (func $units/gen.pair (type 70)))
-  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 71)))
+  (import "quest.runtime" "concatN" (func $concatN (type 37)))
+  (import "quest.runtime" "memLoad8" (func $memLoad8 (type 38)))
+  (import "quest.runtime" "memStore8" (func $memStore8 (type 39)))
+  (import "quest.runtime" "memLoad32" (func $memLoad32 (type 38)))
+  (import "quest.runtime" "memStore32" (func $memStore32 (type 39)))
+  (import "quest.runtime" "memLoad64" (func $memLoad64 (type 38)))
+  (import "quest.runtime" "memStore64" (func $memStore64 (type 39)))
+  (import "quest.runtime" "memEnsure" (func $memEnsure (type 40)))
+  (import "quest.runtime" "memToString" (func $memToString (type 41)))
+  (import "quest.runtime" "stringToMem" (func $stringToMem (type 42)))
+  (import "quest.runtime" "wasi:args_sizes_get" (func $wasi:args_sizes_get (type 43)))
+  (import "quest.runtime" "wasi:args_get" (func $wasi:args_get (type 43)))
+  (import "quest.runtime" "wasi:environ_sizes_get" (func $wasi:environ_sizes_get (type 43)))
+  (import "quest.runtime" "wasi:environ_get" (func $wasi:environ_get (type 43)))
+  (import "quest.runtime" "wasi:fd_prestat_get" (func $wasi:fd_prestat_get (type 43)))
+  (import "quest.runtime" "wasi:fd_prestat_dir_name" (func $wasi:fd_prestat_dir_name (type 44)))
+  (import "quest.runtime" "wasi:path_open" (func $wasi:path_open (type 45)))
+  (import "quest.runtime" "wasi:fd_read" (func $wasi:fd_read (type 46)))
+  (import "quest.runtime" "wasi:fd_close" (func $wasi:fd_close (type 38)))
+  (import "quest.runtime" "wasi:path_filestat_get" (func $wasi:path_filestat_get (type 47)))
+  (import "quest.runtime" "wasi:path_create_directory" (func $wasi:path_create_directory (type 44)))
+  (import "quest.runtime" "wasi:path_unlink_file" (func $wasi:path_unlink_file (type 44)))
+  (import "quest.runtime" "wasi:path_remove_directory" (func $wasi:path_remove_directory (type 44)))
+  (import "quest.runtime" "wasi:path_rename" (func $wasi:path_rename (type 48)))
+  (import "quest.runtime" "wasi:fd_readdir" (func $wasi:fd_readdir (type 47)))
+  (import "quest.runtime" "error" (tag $error (type 49)))
+  (import "units/gen" "init" (func $units/gen.init (type 50)))
+  (import "writer" "init" (func $writer.init (type 50)))
+  (import "string" "init" (func $string.init (type 50)))
+  (import "conv" "init" (func $conv.init (type 50)))
+  (import "wasm/print" "init" (func $wasm/print.init (type 50)))
+  (import "wasm/print" "show" (func $wasm/print.show (type 51)))
+  (import "wasm/core" "unproxy" (func $wasm/core.unproxy (type 52)))
+  (import "wasm/core" "proxyTag" (func $wasm/core.proxyTag (type 53)))
+  (import "wasm/core" "proxyElement" (func $wasm/core.proxyElement (type 54)))
+  (import "wasm/core" "proxyOptionElement" (func $wasm/core.proxyOptionElement (type 54)))
+  (import "wasm/core" "proxyOptionPayload" (func $wasm/core.proxyOptionPayload (type 52)))
+  (import "wasm/core" "init" (func $wasm/core.init (type 50)))
+  (import "wasm/core" "base" (func $wasm/core.base (type 55)))
+  (import "wasm/core" "newDesc" (func $wasm/core.newDesc (type 56)))
+  (import "wasm/core" "setPart" (func $wasm/core.setPart (type 57)))
+  (import "wasm/core" "setText" (func $wasm/core.setText (type 58)))
+  (import "wasm/core" "setFlags" (func $wasm/core.setFlags (type 59)))
+  (import "wasm/core" "boundVar" (func $wasm/core.boundVar (type 55)))
+  (import "wasm/core" "instantiate" (func $wasm/core.instantiate (type 51)))
+  (import "wasm/core" "viewDict" (func $wasm/core.viewDict (type 51)))
+  (import "wasm/core" "storedField" (func $wasm/core.storedField (type 60)))
+  (import "wasm/core" "convert" (func $wasm/core.convert (type 61)))
+  (import "wasm/core" "isSubtype" (func $wasm/core.isSubtype (type 62)))
+  (import "wasm/core" "registerAbstract" (func $wasm/core.registerAbstract (type 63)))
+  (import "wasm/core" "valIs" (func $wasm/core.valIs (type 64)))
+  (import "wasm/core" "viewMap" (func $wasm/core.viewMap (type 51)))
+  (import "wasm/core" "viewIndex" (func $wasm/core.viewIndex (type 65)))
+  (import "wasm/core" "viewPart" (func $wasm/core.viewPart (type 63)))
+  (import "wasm/core" "viewRecordSlot" (func $wasm/core.viewRecordSlot (type 66)))
+  (import "wasm/core" "viewRecordField" (func $wasm/core.viewRecordField (type 67)))
+  (import "wasm/core" "viewOptionComponent" (func $wasm/core.viewOptionComponent (type 68)))
+  (import "wasm/core" "viewOptionPayload" (func $wasm/core.viewOptionPayload (type 51)))
+  (import "units/gen" "count" (func $units/gen.count (type 69)))
+  (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 51)))
+  (import "units/gen" "pick" (func $units/gen.pick (type 70)))
+  (import "units/gen" "twice" (func $units/gen.twice (type 51)))
+  (import "units/gen" "pair" (func $units/gen.pair (type 71)))
+  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 72)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $quest_type_Int (mut eqref) ref.null none)
   (global $quest_type_Real (mut eqref) ref.null none)
@@ -228,7 +230,7 @@
   (global $literal.10 (mut eqref) ref.null none)
   (export "_start" (func $_start))
   (elem declare func $pos.uniform $pos $f.uniform $f $nonEmpty.uniform $nonEmpty $qa_adapt.uniform $qa_adapt $qa_adapt.1 $qa_adapt.uniform.1 $qa_adapt.2 $f.1)
-  (func $pos (type 72) (param $closure (ref $clos)) (param $n i64) (result i32)
+  (func $pos (type 73) (param $closure (ref $clos)) (param $n i64) (result i32)
     (local $v i32)
     local.get $n
     i64.const 0
@@ -238,7 +240,7 @@
     return
     unreachable
   )
-  (func $nonEmpty (type 73) (param $closure (ref $clos)) (param $s eqref) (result i32)
+  (func $nonEmpty (type 74) (param $closure (ref $clos)) (param $s eqref) (result i32)
     (local $v i64)
     (local $v.1 i32)
     local.get $s
@@ -254,7 +256,7 @@
     return
     unreachable
   )
-  (func $f (type 74) (param $closure (ref $clos)) (param $n i64) (result i64)
+  (func $f (type 75) (param $closure (ref $clos)) (param $n i64) (result i64)
     (local $v i64)
     local.get $n
     i64.const 3
@@ -264,7 +266,7 @@
     return
     unreachable
   )
-  (func $f.1 (type 51) (param $closure (ref $clos)) (param $s eqref) (result eqref)
+  (func $f.1 (type 52) (param $closure (ref $clos)) (param $s eqref) (result eqref)
     (local $v eqref)
     local.get $s
     global.get $literal
@@ -285,7 +287,7 @@
     return
     unreachable
   )
-  (func $qa_adapt (type 73) (param $closure (ref $clos)) (param $x eqref) (result i32)
+  (func $qa_adapt (type 74) (param $closure (ref $clos)) (param $x eqref) (result i32)
     (local $orig eqref)
     (local $x.1 i64)
     global.get $pos.static
@@ -298,7 +300,7 @@
     return_call $pos
     unreachable
   )
-  (func $qa_adapt.1 (type 51) (param $closure (ref $clos)) (param $x eqref) (result eqref)
+  (func $qa_adapt.1 (type 52) (param $closure (ref $clos)) (param $x eqref) (result eqref)
     (local $orig eqref)
     (local $x.1 i64)
     global.get $f.static
@@ -317,7 +319,7 @@
     return
     unreachable
   )
-  (func $qa_adapt.2 (type 74) (param $closure (ref $clos)) (param $x i64) (result i64)
+  (func $qa_adapt.2 (type 75) (param $closure (ref $clos)) (param $x i64) (result i64)
     (local $orig eqref)
     (local $x.1 eqref)
     (local $r.1 i64)
@@ -331,15 +333,15 @@
     local.get $orig
     local.set $orig
     local.get $orig
-    ref.test (ref 81)
+    ref.test (ref 82)
     if (result eqref)
       local.get $orig
       ref.cast (ref $clos)
       local.get $x.1
       local.get $orig
-      ref.cast (ref 81)
-      struct.get 81 $native
-      call_ref 51
+      ref.cast (ref 82)
+      struct.get 82 $native
+      call_ref 52
     else
       local.get $orig
       ref.cast (ref $clos)
@@ -347,7 +349,7 @@
       local.get $orig
       ref.cast (ref $closU1)
       struct.get $closU1 $uniform
-      call_ref 51
+      call_ref 52
     end
     local.set $orig
     local.get $orig
@@ -357,7 +359,7 @@
     return
     unreachable
   )
-  (func $main (type 49)
+  (func $main (type 50)
     (local $pos eqref)
     (local $v eqref)
     (local $pos.1 eqref)
@@ -659,15 +661,15 @@
     local.get $pos
     local.set $pos
     local.get $pos
-    ref.test (ref 78)
+    ref.test (ref 79)
     if (result i64)
       local.get $pos
       ref.cast (ref $clos)
       i64.const 5
       local.get $pos
-      ref.cast (ref 78)
-      struct.get 78 $native
-      call_ref 74
+      ref.cast (ref 79)
+      struct.get 79 $native
+      call_ref 75
     else
       local.get $pos
       ref.cast (ref $clos)
@@ -676,7 +678,7 @@
       local.get $pos
       ref.cast (ref $closU1)
       struct.get $closU1 $uniform
-      call_ref 51
+      call_ref 52
       call $unboxInt.1
     end
     local.set $v.1
@@ -725,7 +727,7 @@
     local.get $pos
     local.set $pos
     local.get $pos
-    ref.test (ref 81)
+    ref.test (ref 82)
     if (result eqref)
       local.get $pos
       ref.cast (ref $clos)
@@ -742,9 +744,9 @@
       end
       global.get $literal.8
       local.get $pos
-      ref.cast (ref 81)
-      struct.get 81 $native
-      call_ref 51
+      ref.cast (ref 82)
+      struct.get 82 $native
+      call_ref 52
     else
       local.get $pos
       ref.cast (ref $clos)
@@ -763,7 +765,7 @@
       local.get $pos
       ref.cast (ref $closU1)
       struct.get $closU1 $uniform
-      call_ref 51
+      call_ref 52
     end
     local.set $pos
     i32.const 1
@@ -822,7 +824,7 @@
     call $units/gen.pair
     local.set $pos
     local.get $pos
-    block (type 87)
+    block (type 88)
       br_on_cast 0 eqref (ref $tuple)
       local.set $pos
       global.get $noClosure
@@ -849,6 +851,7 @@
     i32.const 1
     array.get $slots
     local.set $pos.1
+    local.get $v
     global.get $literal.10
     ref.is_null
     if
@@ -862,11 +865,11 @@
     end
     global.get $literal.10
     local.get $pos.1
-    call $concat
-    local.set $pos.1
-    local.get $v
-    local.get $pos.1
-    call $concat
+    ref.null eq
+    ref.null eq
+    ref.null eq
+    ref.null eq
+    call $concatN
     local.set $v
     i32.const 1
     ref.i31
@@ -928,7 +931,7 @@
     call $raise
     unreachable
   )
-  (func $_start (type 49)
+  (func $_start (type 50)
     (local $t (ref null $raised))
     block $uncaught (result eqref)
       try_table (catch $error $uncaught)
@@ -960,7 +963,7 @@
     drop
     call $uncaught
   )
-  (func $descriptors (type 49)
+  (func $descriptors (type 50)
     global.get $noClosure
     i64.const 1
     call $wasm/core.base
@@ -1045,7 +1048,7 @@
     i31.get_s
     i64.extend_i32_s
   )
-  (func $pos.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+  (func $pos.uniform (type 52) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt.1
@@ -1067,26 +1070,26 @@
       struct.new $boxInt
     end
   )
-  (func $f.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+  (func $f.uniform (type 52) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt.1
     call $f
     call $boxInt.1
   )
-  (func $nonEmpty.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+  (func $nonEmpty.uniform (type 52) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $nonEmpty
     ref.i31
   )
-  (func $qa_adapt.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+  (func $qa_adapt.uniform (type 52) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $qa_adapt
     ref.i31
   )
-  (func $qa_adapt.uniform.1 (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+  (func $qa_adapt.uniform.1 (type 52) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt.1

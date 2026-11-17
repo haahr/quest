@@ -237,6 +237,22 @@ builder fills (the slot machinery already passes memory to the runtime), with on
 With static literals (§5), every part, literal or not, is a `QString *`, so no separate form for literal bytes is
 needed. The existing `quest_string_conc` takes a heap `QArray`, which would cost an allocation of its own.
 
+**As built** (2026-11-16, two changes, both the implementer's call and easily reversed). The merge is an SSA pass,
+`ssa/passes/concats`, after `constants`, not an IR operation: a call of `quest_string_concat` whose argument is the
+result of another, in the same block and used only there, takes that one's parts, and the chain becomes one call. An
+IR operation would have touched every IR pass, both IR printers and verifiers, and the IR goldens, to reach the C
+printer and the IR interpreter as well, which do not matter for speed. And the parts are arguments, not a stack slot:
+`quest_string_concat_n(n, p0, ..., p6)`, eight words, all in registers. The collector scans a compiled frame by its
+tables, so a slot holding the only pointers to the parts would have needed describing there; arguments sit in the
+runtime's C frame, which it scans conservatively, as `quest_string_concat`'s two do while it allocates. A chain of more
+than seven parts is joined seven at a time. Adjacent literals are not folded. The merged call reads its parts where
+the chain's last call was, so a chain is not merged across a store or a call that may write memory: `let m = a <> b`,
+then `setChar(a ...)`, then `m <> c` must see `a` as it was.
+
+WASM joins chains too, in its backend, which works from the IR: a run of adjacent statements each binding a `<>` of
+the one before's result (used there only) and another atom becomes one call of the runtime's `concatN`, seven
+`eqref`s with null for absent. Being adjacent, nothing runs between them.
+
 **Scope.** Self-hosted compiler only, as other optimizations have been (two-compilers policy): the bootstrap keeps its
 pairwise `<>`, and behavior is identical, since the result is a fresh string either way. It does not help
 `s := s <> piece` in a loop, which is quadratic in any form and is what `stringBuilder` is for.
@@ -333,7 +349,8 @@ measurement repeats step 0's and goes into `benchmarks.md`.
    `tests/source/questlang/ssa_tables.quest`, and replace `ssa.md` §4.1's "a case of strings is not converted" with
    what it now does. *Done when* the full `tools/check` passes, the self-hosted interpreter agrees with compiled code
    on the new test, `ssa_tables` shows the string `case` as a table, and the gain is measured.
-5. **Concatenation chains** (§6): the IR operation and its simplification, its lowering in the SSA builder, C
+5. **Concatenation chains** (§6), done 2026-11-17 ("Join chains of <> in one allocation"), as built in §6: an SSA
+   pass rather than an IR operation, and WASM's backend joining adjacent ones; ABI 83. As planned: the IR operation and its simplification, its lowering in the SSA builder, C
    printer, and IR interpreter, and `quest_string_concat_n`; ABI bump; a test of chains with literals, adjacent
    literals, empty strings, a part mutated after the concatenation, and an intermediate used twice (which must stay
    split). *Done when* `--stop-after ir_…` shows chains as one `concat`, the C and arm64 call

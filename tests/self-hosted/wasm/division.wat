@@ -38,6 +38,7 @@
   (type (func (param eqref) (result eqref)))
   (type (func (param i32)))
   (type (func (result eqref)))
+  (type (func (param eqref eqref eqref eqref eqref eqref eqref) (result eqref)))
   (type (func (param i64) (result i64)))
   (type (func (param i64 i64)))
   (type (func (param i64)))
@@ -98,43 +99,44 @@
   (import "quest.runtime" "raisedText" (func $raisedText (type 20)))
   (import "quest.runtime" "holdFatal" (func $holdFatal (type 35)))
   (import "quest.runtime" "fatalReport" (func $fatalReport (type 36)))
-  (import "quest.runtime" "memLoad8" (func $memLoad8 (type 37)))
-  (import "quest.runtime" "memStore8" (func $memStore8 (type 38)))
-  (import "quest.runtime" "memLoad32" (func $memLoad32 (type 37)))
-  (import "quest.runtime" "memStore32" (func $memStore32 (type 38)))
-  (import "quest.runtime" "memLoad64" (func $memLoad64 (type 37)))
-  (import "quest.runtime" "memStore64" (func $memStore64 (type 38)))
-  (import "quest.runtime" "memEnsure" (func $memEnsure (type 39)))
-  (import "quest.runtime" "memToString" (func $memToString (type 40)))
-  (import "quest.runtime" "stringToMem" (func $stringToMem (type 41)))
-  (import "quest.runtime" "wasi:args_sizes_get" (func $wasi:args_sizes_get (type 42)))
-  (import "quest.runtime" "wasi:args_get" (func $wasi:args_get (type 42)))
-  (import "quest.runtime" "wasi:environ_sizes_get" (func $wasi:environ_sizes_get (type 42)))
-  (import "quest.runtime" "wasi:environ_get" (func $wasi:environ_get (type 42)))
-  (import "quest.runtime" "wasi:fd_prestat_get" (func $wasi:fd_prestat_get (type 42)))
-  (import "quest.runtime" "wasi:fd_prestat_dir_name" (func $wasi:fd_prestat_dir_name (type 43)))
-  (import "quest.runtime" "wasi:path_open" (func $wasi:path_open (type 44)))
-  (import "quest.runtime" "wasi:fd_read" (func $wasi:fd_read (type 45)))
-  (import "quest.runtime" "wasi:fd_close" (func $wasi:fd_close (type 37)))
-  (import "quest.runtime" "wasi:path_filestat_get" (func $wasi:path_filestat_get (type 46)))
-  (import "quest.runtime" "wasi:path_create_directory" (func $wasi:path_create_directory (type 43)))
-  (import "quest.runtime" "wasi:path_unlink_file" (func $wasi:path_unlink_file (type 43)))
-  (import "quest.runtime" "wasi:path_remove_directory" (func $wasi:path_remove_directory (type 43)))
-  (import "quest.runtime" "wasi:path_rename" (func $wasi:path_rename (type 47)))
-  (import "quest.runtime" "wasi:fd_readdir" (func $wasi:fd_readdir (type 46)))
-  (import "quest.runtime" "error" (tag $error (type 48)))
-  (import "writer" "init" (func $writer.init (type 49)))
-  (import "conv" "init" (func $conv.init (type 49)))
-  (import "wasm/print" "init" (func $wasm/print.init (type 49)))
-  (import "wasm/print" "show" (func $wasm/print.show (type 50)))
-  (import "wasm/core" "unproxy" (func $wasm/core.unproxy (type 51)))
-  (import "wasm/core" "proxyTag" (func $wasm/core.proxyTag (type 52)))
-  (import "wasm/core" "proxyElement" (func $wasm/core.proxyElement (type 53)))
-  (import "wasm/core" "proxyOptionElement" (func $wasm/core.proxyOptionElement (type 53)))
-  (import "wasm/core" "proxyOptionPayload" (func $wasm/core.proxyOptionPayload (type 51)))
-  (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 50)))
-  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 54)))
-  (import "wasm/core" "init" (func $wasm/core.init (type 49)))
+  (import "quest.runtime" "concatN" (func $concatN (type 37)))
+  (import "quest.runtime" "memLoad8" (func $memLoad8 (type 38)))
+  (import "quest.runtime" "memStore8" (func $memStore8 (type 39)))
+  (import "quest.runtime" "memLoad32" (func $memLoad32 (type 38)))
+  (import "quest.runtime" "memStore32" (func $memStore32 (type 39)))
+  (import "quest.runtime" "memLoad64" (func $memLoad64 (type 38)))
+  (import "quest.runtime" "memStore64" (func $memStore64 (type 39)))
+  (import "quest.runtime" "memEnsure" (func $memEnsure (type 40)))
+  (import "quest.runtime" "memToString" (func $memToString (type 41)))
+  (import "quest.runtime" "stringToMem" (func $stringToMem (type 42)))
+  (import "quest.runtime" "wasi:args_sizes_get" (func $wasi:args_sizes_get (type 43)))
+  (import "quest.runtime" "wasi:args_get" (func $wasi:args_get (type 43)))
+  (import "quest.runtime" "wasi:environ_sizes_get" (func $wasi:environ_sizes_get (type 43)))
+  (import "quest.runtime" "wasi:environ_get" (func $wasi:environ_get (type 43)))
+  (import "quest.runtime" "wasi:fd_prestat_get" (func $wasi:fd_prestat_get (type 43)))
+  (import "quest.runtime" "wasi:fd_prestat_dir_name" (func $wasi:fd_prestat_dir_name (type 44)))
+  (import "quest.runtime" "wasi:path_open" (func $wasi:path_open (type 45)))
+  (import "quest.runtime" "wasi:fd_read" (func $wasi:fd_read (type 46)))
+  (import "quest.runtime" "wasi:fd_close" (func $wasi:fd_close (type 38)))
+  (import "quest.runtime" "wasi:path_filestat_get" (func $wasi:path_filestat_get (type 47)))
+  (import "quest.runtime" "wasi:path_create_directory" (func $wasi:path_create_directory (type 44)))
+  (import "quest.runtime" "wasi:path_unlink_file" (func $wasi:path_unlink_file (type 44)))
+  (import "quest.runtime" "wasi:path_remove_directory" (func $wasi:path_remove_directory (type 44)))
+  (import "quest.runtime" "wasi:path_rename" (func $wasi:path_rename (type 48)))
+  (import "quest.runtime" "wasi:fd_readdir" (func $wasi:fd_readdir (type 47)))
+  (import "quest.runtime" "error" (tag $error (type 49)))
+  (import "writer" "init" (func $writer.init (type 50)))
+  (import "conv" "init" (func $conv.init (type 50)))
+  (import "wasm/print" "init" (func $wasm/print.init (type 50)))
+  (import "wasm/print" "show" (func $wasm/print.show (type 51)))
+  (import "wasm/core" "unproxy" (func $wasm/core.unproxy (type 52)))
+  (import "wasm/core" "proxyTag" (func $wasm/core.proxyTag (type 53)))
+  (import "wasm/core" "proxyElement" (func $wasm/core.proxyElement (type 54)))
+  (import "wasm/core" "proxyOptionElement" (func $wasm/core.proxyOptionElement (type 54)))
+  (import "wasm/core" "proxyOptionPayload" (func $wasm/core.proxyOptionPayload (type 52)))
+  (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 51)))
+  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 55)))
+  (import "wasm/core" "init" (func $wasm/core.init (type 50)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $literal (mut eqref) ref.null none)
   (global $literal.1 (mut eqref) ref.null none)
@@ -142,12 +144,12 @@
   (global $literal.3 (mut eqref) ref.null none)
   (global $literal.4 (mut eqref) ref.null none)
   (export "_start" (func $_start))
-  (func $main (type 49)
+  (func $main (type 50)
     (local $v eqref)
     (local $v.1 eqref)
     (local $v.2 eqref)
     (local $v.3 eqref)
-    (local $v.80 i64)
+    (local $v.50 i64)
     call $wasm/core.init
     call $writer.init
     call $conv.init
@@ -163,31 +165,26 @@
     i64.const 1
     call $convInt
     local.set $v.3
+    local.get $v
     global.get $literal
     ref.is_null
     if
       i32.const 1073741824
-      i32.const 12
+      i32.const 3
       i32.const 0
-      i32.const 12
+      i32.const 3
       array.new_data $bytes $strings
       struct.new $string
       global.set $literal
     end
     global.get $literal
-    local.get $v.3
-    call $concat
-    local.set $v.3
-    local.get $v.2
-    local.get $v.3
-    call $concat
-    local.set $v.2
+    local.get $v.1
     global.get $literal.1
     ref.is_null
     if
       i32.const 1073741824
       i32.const 3
-      i32.const 12
+      i32.const 3
       i32.const 3
       array.new_data $bytes $strings
       struct.new $string
@@ -195,30 +192,20 @@
     end
     global.get $literal.1
     local.get $v.2
-    call $concat
-    local.set $v.2
-    local.get $v.1
-    local.get $v.2
-    call $concat
-    local.set $v.1
     global.get $literal.2
     ref.is_null
     if
       i32.const 1073741824
-      i32.const 3
-      i32.const 15
-      i32.const 3
+      i32.const 12
+      i32.const 6
+      i32.const 12
       array.new_data $bytes $strings
       struct.new $string
       global.set $literal.2
     end
     global.get $literal.2
-    local.get $v.1
-    call $concat
-    local.set $v.1
-    local.get $v
-    local.get $v.1
-    call $concat
+    local.get $v.3
+    call $concatN
     local.set $v
     i32.const 1
     ref.i31
@@ -264,31 +251,26 @@
     i64.const -1
     call $convInt
     local.set $v.3
+    local.get $v
     global.get $literal
     ref.is_null
     if
       i32.const 1073741824
-      i32.const 12
+      i32.const 3
       i32.const 19
-      i32.const 12
+      i32.const 3
       array.new_data $bytes $strings
       struct.new $string
       global.set $literal
     end
     global.get $literal
-    local.get $v.3
-    call $concat
-    local.set $v.3
-    local.get $v.2
-    local.get $v.3
-    call $concat
-    local.set $v.2
+    local.get $v.1
     global.get $literal.1
     ref.is_null
     if
       i32.const 1073741824
       i32.const 3
-      i32.const 31
+      i32.const 22
       i32.const 3
       array.new_data $bytes $strings
       struct.new $string
@@ -296,30 +278,20 @@
     end
     global.get $literal.1
     local.get $v.2
-    call $concat
-    local.set $v.2
-    local.get $v.1
-    local.get $v.2
-    call $concat
-    local.set $v.1
     global.get $literal.2
     ref.is_null
     if
       i32.const 1073741824
-      i32.const 3
-      i32.const 34
-      i32.const 3
+      i32.const 12
+      i32.const 25
+      i32.const 12
       array.new_data $bytes $strings
       struct.new $string
       global.set $literal.2
     end
     global.get $literal.2
-    local.get $v.1
-    call $concat
-    local.set $v.1
-    local.get $v
-    local.get $v.1
-    call $concat
+    local.get $v.3
+    call $concatN
     local.set $v
     i32.const 1
     ref.i31
@@ -365,31 +337,26 @@
     i64.const 1
     call $convInt
     local.set $v.3
+    local.get $v
     global.get $literal
     ref.is_null
     if
       i32.const 1073741824
-      i32.const 12
+      i32.const 3
       i32.const 38
-      i32.const 12
+      i32.const 3
       array.new_data $bytes $strings
       struct.new $string
       global.set $literal
     end
     global.get $literal
-    local.get $v.3
-    call $concat
-    local.set $v.3
-    local.get $v.2
-    local.get $v.3
-    call $concat
-    local.set $v.2
+    local.get $v.1
     global.get $literal.1
     ref.is_null
     if
       i32.const 1073741824
       i32.const 3
-      i32.const 50
+      i32.const 41
       i32.const 3
       array.new_data $bytes $strings
       struct.new $string
@@ -397,30 +364,20 @@
     end
     global.get $literal.1
     local.get $v.2
-    call $concat
-    local.set $v.2
-    local.get $v.1
-    local.get $v.2
-    call $concat
-    local.set $v.1
     global.get $literal.2
     ref.is_null
     if
       i32.const 1073741824
-      i32.const 3
-      i32.const 53
-      i32.const 3
+      i32.const 12
+      i32.const 44
+      i32.const 12
       array.new_data $bytes $strings
       struct.new $string
       global.set $literal.2
     end
     global.get $literal.2
-    local.get $v.1
-    call $concat
-    local.set $v.1
-    local.get $v
-    local.get $v.1
-    call $concat
+    local.get $v.3
+    call $concatN
     local.set $v
     i32.const 1
     ref.i31
@@ -466,31 +423,26 @@
     i64.const 0
     call $convInt
     local.set $v.3
+    local.get $v
     global.get $literal
     ref.is_null
     if
       i32.const 1073741824
-      i32.const 12
+      i32.const 3
       i32.const 57
-      i32.const 12
+      i32.const 3
       array.new_data $bytes $strings
       struct.new $string
       global.set $literal
     end
     global.get $literal
-    local.get $v.3
-    call $concat
-    local.set $v.3
-    local.get $v.2
-    local.get $v.3
-    call $concat
-    local.set $v.2
+    local.get $v.1
     global.get $literal.1
     ref.is_null
     if
       i32.const 1073741824
       i32.const 3
-      i32.const 69
+      i32.const 60
       i32.const 3
       array.new_data $bytes $strings
       struct.new $string
@@ -498,30 +450,20 @@
     end
     global.get $literal.1
     local.get $v.2
-    call $concat
-    local.set $v.2
-    local.get $v.1
-    local.get $v.2
-    call $concat
-    local.set $v.1
     global.get $literal.2
     ref.is_null
     if
       i32.const 1073741824
-      i32.const 3
-      i32.const 72
-      i32.const 3
+      i32.const 12
+      i32.const 63
+      i32.const 12
       array.new_data $bytes $strings
       struct.new $string
       global.set $literal.2
     end
     global.get $literal.2
-    local.get $v.1
-    call $concat
-    local.set $v.1
-    local.get $v
-    local.get $v.1
-    call $concat
+    local.get $v.3
+    call $concatN
     local.set $v
     i32.const 1
     ref.i31
@@ -567,31 +509,26 @@
     i64.const 0
     call $convInt
     local.set $v.3
+    local.get $v
     global.get $literal
     ref.is_null
     if
       i32.const 1073741824
-      i32.const 12
+      i32.const 3
       i32.const 76
-      i32.const 12
+      i32.const 3
       array.new_data $bytes $strings
       struct.new $string
       global.set $literal
     end
     global.get $literal
-    local.get $v.3
-    call $concat
-    local.set $v.3
-    local.get $v.2
-    local.get $v.3
-    call $concat
-    local.set $v.2
+    local.get $v.1
     global.get $literal.1
     ref.is_null
     if
       i32.const 1073741824
       i32.const 3
-      i32.const 88
+      i32.const 79
       i32.const 3
       array.new_data $bytes $strings
       struct.new $string
@@ -599,30 +536,20 @@
     end
     global.get $literal.1
     local.get $v.2
-    call $concat
-    local.set $v.2
-    local.get $v.1
-    local.get $v.2
-    call $concat
-    local.set $v.1
     global.get $literal.2
     ref.is_null
     if
       i32.const 1073741824
-      i32.const 3
-      i32.const 91
-      i32.const 3
+      i32.const 12
+      i32.const 82
+      i32.const 12
       array.new_data $bytes $strings
       struct.new $string
       global.set $literal.2
     end
     global.get $literal.2
-    local.get $v.1
-    call $concat
-    local.set $v.1
-    local.get $v
-    local.get $v.1
-    call $concat
+    local.get $v.3
+    call $concatN
     local.set $v
     i32.const 1
     ref.i31
@@ -668,31 +595,26 @@
     i64.const 0
     call $convInt
     local.set $v.3
+    local.get $v
     global.get $literal
     ref.is_null
     if
       i32.const 1073741824
-      i32.const 12
+      i32.const 3
       i32.const 95
-      i32.const 12
+      i32.const 3
       array.new_data $bytes $strings
       struct.new $string
       global.set $literal
     end
     global.get $literal
-    local.get $v.3
-    call $concat
-    local.set $v.3
-    local.get $v.2
-    local.get $v.3
-    call $concat
-    local.set $v.2
+    local.get $v.1
     global.get $literal.1
     ref.is_null
     if
       i32.const 1073741824
       i32.const 3
-      i32.const 107
+      i32.const 98
       i32.const 3
       array.new_data $bytes $strings
       struct.new $string
@@ -700,30 +622,20 @@
     end
     global.get $literal.1
     local.get $v.2
-    call $concat
-    local.set $v.2
-    local.get $v.1
-    local.get $v.2
-    call $concat
-    local.set $v.1
     global.get $literal.2
     ref.is_null
     if
       i32.const 1073741824
-      i32.const 3
-      i32.const 110
-      i32.const 3
+      i32.const 12
+      i32.const 101
+      i32.const 12
       array.new_data $bytes $strings
       struct.new $string
       global.set $literal.2
     end
     global.get $literal.2
-    local.get $v.1
-    call $concat
-    local.set $v.1
-    local.get $v
-    local.get $v.1
-    call $concat
+    local.get $v.3
+    call $concatN
     local.set $v
     i32.const 1
     ref.i31
@@ -797,8 +709,8 @@
       i64.const 0
       i64.div_s
     end
-    local.set $v.80
-    local.get $v.80
+    local.set $v.50
+    local.get $v.50
     call $convInt
     local.set $v.2
     i64.const 0
@@ -833,35 +745,30 @@
       i64.const 0
       i64.rem_s
     end
-    local.set $v.80
-    local.get $v.80
+    local.set $v.50
+    local.get $v.50
     call $convInt
     local.set $v.3
+    local.get $v
     global.get $literal
     ref.is_null
     if
       i32.const 1073741824
-      i32.const 12
+      i32.const 3
       i32.const 198
-      i32.const 12
+      i32.const 3
       array.new_data $bytes $strings
       struct.new $string
       global.set $literal
     end
     global.get $literal
-    local.get $v.3
-    call $concat
-    local.set $v.3
-    local.get $v.2
-    local.get $v.3
-    call $concat
-    local.set $v.2
+    local.get $v.1
     global.get $literal.1
     ref.is_null
     if
       i32.const 1073741824
       i32.const 3
-      i32.const 210
+      i32.const 201
       i32.const 3
       array.new_data $bytes $strings
       struct.new $string
@@ -869,30 +776,20 @@
     end
     global.get $literal.1
     local.get $v.2
-    call $concat
-    local.set $v.2
-    local.get $v.1
-    local.get $v.2
-    call $concat
-    local.set $v.1
     global.get $literal.2
     ref.is_null
     if
       i32.const 1073741824
-      i32.const 3
-      i32.const 213
-      i32.const 3
+      i32.const 12
+      i32.const 204
+      i32.const 12
       array.new_data $bytes $strings
       struct.new $string
       global.set $literal.2
     end
     global.get $literal.2
-    local.get $v.1
-    call $concat
-    local.set $v.1
-    local.get $v
-    local.get $v.1
-    call $concat
+    local.get $v.3
+    call $concatN
     local.set $v
     i32.const 1
     ref.i31
@@ -972,7 +869,7 @@
     end
     local.set $v
   )
-  (func $_start (type 49)
+  (func $_start (type 50)
     (local $t (ref null $raised))
     block $uncaught (result eqref)
       try_table (catch $error $uncaught)
@@ -1004,6 +901,6 @@
     drop
     call $uncaught
   )
-  (data $strings ", remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0a, remainder  =  / \0atests/self-hosted/wasm/division.quest:6:94tests/self-hosted/wasm/division.quest:7:17, remainder  =  / \0anot reached\0a")
+  (data $strings " /  = , remainder \0a /  = , remainder \0a /  = , remainder \0a /  = , remainder \0a /  = , remainder \0a /  = , remainder \0atests/self-hosted/wasm/division.quest:6:94tests/self-hosted/wasm/division.quest:7:17 /  = , remainder \0anot reached\0a")
 )
 

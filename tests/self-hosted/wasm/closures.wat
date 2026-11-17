@@ -38,6 +38,7 @@
   (type (func (param eqref) (result eqref)))
   (type (func (param i32)))
   (type (func (result eqref)))
+  (type (func (param eqref eqref eqref eqref eqref eqref eqref) (result eqref)))
   (type (func (param i64) (result i64)))
   (type (func (param i64 i64)))
   (type (func (param i64)))
@@ -58,14 +59,14 @@
   (type (func (param (ref $clos)) (result eqref)))
   (type (func (param (ref $clos) i64) (result i64)))
   (type (func (param (ref $clos) i64 eqref) (result i64)))
-  (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 51)))))
-  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 55)))))
-  (type $f.closure (sub final 58 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 55)))))
-  (type $closU2 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 50)))))
-  (type (sub $closU2 (struct (field $hash (mut i32)) (field $uniform (ref 50)) (field $native (ref 56)))))
-  (type $countDown.closure (sub final 61 (struct (field $hash (mut i32)) (field $uniform (ref 50)) (field $native (ref 56)))))
+  (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 52)))))
+  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 56)))))
+  (type $f.closure (sub final 59 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 56)))))
+  (type $closU2 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 51)))))
+  (type (sub $closU2 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 57)))))
+  (type $countDown.closure (sub final 62 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 57)))))
   (type (func (param (ref $clos) i64 i64) (result i64)))
-  (type (sub $closU2 (struct (field $hash (mut i32)) (field $uniform (ref 50)) (field $native (ref 63)))))
+  (type (sub $closU2 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 64)))))
   (import "quest.runtime" "exception:int.error" (global $int.error (ref $exception)))
   (import "quest.runtime" "exception:real.error" (global $real.error (ref $exception)))
   (import "quest.runtime" "exception:word.error" (global $word.error (ref $exception)))
@@ -110,44 +111,45 @@
   (import "quest.runtime" "raisedText" (func $raisedText (type 20)))
   (import "quest.runtime" "holdFatal" (func $holdFatal (type 35)))
   (import "quest.runtime" "fatalReport" (func $fatalReport (type 36)))
-  (import "quest.runtime" "memLoad8" (func $memLoad8 (type 37)))
-  (import "quest.runtime" "memStore8" (func $memStore8 (type 38)))
-  (import "quest.runtime" "memLoad32" (func $memLoad32 (type 37)))
-  (import "quest.runtime" "memStore32" (func $memStore32 (type 38)))
-  (import "quest.runtime" "memLoad64" (func $memLoad64 (type 37)))
-  (import "quest.runtime" "memStore64" (func $memStore64 (type 38)))
-  (import "quest.runtime" "memEnsure" (func $memEnsure (type 39)))
-  (import "quest.runtime" "memToString" (func $memToString (type 40)))
-  (import "quest.runtime" "stringToMem" (func $stringToMem (type 41)))
-  (import "quest.runtime" "wasi:args_sizes_get" (func $wasi:args_sizes_get (type 42)))
-  (import "quest.runtime" "wasi:args_get" (func $wasi:args_get (type 42)))
-  (import "quest.runtime" "wasi:environ_sizes_get" (func $wasi:environ_sizes_get (type 42)))
-  (import "quest.runtime" "wasi:environ_get" (func $wasi:environ_get (type 42)))
-  (import "quest.runtime" "wasi:fd_prestat_get" (func $wasi:fd_prestat_get (type 42)))
-  (import "quest.runtime" "wasi:fd_prestat_dir_name" (func $wasi:fd_prestat_dir_name (type 43)))
-  (import "quest.runtime" "wasi:path_open" (func $wasi:path_open (type 44)))
-  (import "quest.runtime" "wasi:fd_read" (func $wasi:fd_read (type 45)))
-  (import "quest.runtime" "wasi:fd_close" (func $wasi:fd_close (type 37)))
-  (import "quest.runtime" "wasi:path_filestat_get" (func $wasi:path_filestat_get (type 46)))
-  (import "quest.runtime" "wasi:path_create_directory" (func $wasi:path_create_directory (type 43)))
-  (import "quest.runtime" "wasi:path_unlink_file" (func $wasi:path_unlink_file (type 43)))
-  (import "quest.runtime" "wasi:path_remove_directory" (func $wasi:path_remove_directory (type 43)))
-  (import "quest.runtime" "wasi:path_rename" (func $wasi:path_rename (type 47)))
-  (import "quest.runtime" "wasi:fd_readdir" (func $wasi:fd_readdir (type 46)))
-  (import "quest.runtime" "error" (tag $error (type 48)))
-  (import "writer" "init" (func $writer.init (type 49)))
-  (import "conv" "init" (func $conv.init (type 49)))
-  (import "string" "init" (func $string.init (type 49)))
-  (import "wasm/print" "init" (func $wasm/print.init (type 49)))
-  (import "wasm/print" "show" (func $wasm/print.show (type 50)))
-  (import "wasm/core" "unproxy" (func $wasm/core.unproxy (type 51)))
-  (import "wasm/core" "proxyTag" (func $wasm/core.proxyTag (type 52)))
-  (import "wasm/core" "proxyElement" (func $wasm/core.proxyElement (type 53)))
-  (import "wasm/core" "proxyOptionElement" (func $wasm/core.proxyOptionElement (type 53)))
-  (import "wasm/core" "proxyOptionPayload" (func $wasm/core.proxyOptionPayload (type 51)))
-  (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 50)))
-  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 54)))
-  (import "wasm/core" "init" (func $wasm/core.init (type 49)))
+  (import "quest.runtime" "concatN" (func $concatN (type 37)))
+  (import "quest.runtime" "memLoad8" (func $memLoad8 (type 38)))
+  (import "quest.runtime" "memStore8" (func $memStore8 (type 39)))
+  (import "quest.runtime" "memLoad32" (func $memLoad32 (type 38)))
+  (import "quest.runtime" "memStore32" (func $memStore32 (type 39)))
+  (import "quest.runtime" "memLoad64" (func $memLoad64 (type 38)))
+  (import "quest.runtime" "memStore64" (func $memStore64 (type 39)))
+  (import "quest.runtime" "memEnsure" (func $memEnsure (type 40)))
+  (import "quest.runtime" "memToString" (func $memToString (type 41)))
+  (import "quest.runtime" "stringToMem" (func $stringToMem (type 42)))
+  (import "quest.runtime" "wasi:args_sizes_get" (func $wasi:args_sizes_get (type 43)))
+  (import "quest.runtime" "wasi:args_get" (func $wasi:args_get (type 43)))
+  (import "quest.runtime" "wasi:environ_sizes_get" (func $wasi:environ_sizes_get (type 43)))
+  (import "quest.runtime" "wasi:environ_get" (func $wasi:environ_get (type 43)))
+  (import "quest.runtime" "wasi:fd_prestat_get" (func $wasi:fd_prestat_get (type 43)))
+  (import "quest.runtime" "wasi:fd_prestat_dir_name" (func $wasi:fd_prestat_dir_name (type 44)))
+  (import "quest.runtime" "wasi:path_open" (func $wasi:path_open (type 45)))
+  (import "quest.runtime" "wasi:fd_read" (func $wasi:fd_read (type 46)))
+  (import "quest.runtime" "wasi:fd_close" (func $wasi:fd_close (type 38)))
+  (import "quest.runtime" "wasi:path_filestat_get" (func $wasi:path_filestat_get (type 47)))
+  (import "quest.runtime" "wasi:path_create_directory" (func $wasi:path_create_directory (type 44)))
+  (import "quest.runtime" "wasi:path_unlink_file" (func $wasi:path_unlink_file (type 44)))
+  (import "quest.runtime" "wasi:path_remove_directory" (func $wasi:path_remove_directory (type 44)))
+  (import "quest.runtime" "wasi:path_rename" (func $wasi:path_rename (type 48)))
+  (import "quest.runtime" "wasi:fd_readdir" (func $wasi:fd_readdir (type 47)))
+  (import "quest.runtime" "error" (tag $error (type 49)))
+  (import "writer" "init" (func $writer.init (type 50)))
+  (import "conv" "init" (func $conv.init (type 50)))
+  (import "string" "init" (func $string.init (type 50)))
+  (import "wasm/print" "init" (func $wasm/print.init (type 50)))
+  (import "wasm/print" "show" (func $wasm/print.show (type 51)))
+  (import "wasm/core" "unproxy" (func $wasm/core.unproxy (type 52)))
+  (import "wasm/core" "proxyTag" (func $wasm/core.proxyTag (type 53)))
+  (import "wasm/core" "proxyElement" (func $wasm/core.proxyElement (type 54)))
+  (import "wasm/core" "proxyOptionElement" (func $wasm/core.proxyOptionElement (type 54)))
+  (import "wasm/core" "proxyOptionPayload" (func $wasm/core.proxyOptionPayload (type 52)))
+  (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 51)))
+  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 55)))
+  (import "wasm/core" "init" (func $wasm/core.init (type 50)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $f.static (ref $f.closure) i32.const 0 ref.func $f.uniform ref.func $f struct.new $f.closure)
   (global $literal (mut eqref) ref.null none)
@@ -162,11 +164,11 @@
   (global $literal.7 (mut eqref) ref.null none)
   (global $literal.8 (mut eqref) ref.null none)
   (global $literal.9 (mut eqref) ref.null none)
-  (global $builtin+.static (ref 64) i32.const 0 ref.func $builtin+.uniform ref.func $builtin+ struct.new 64)
-  (global $builtin-.static (ref 64) i32.const 0 ref.func $builtin-.uniform ref.func $builtin- struct.new 64)
+  (global $builtin+.static (ref 65) i32.const 0 ref.func $builtin+.uniform ref.func $builtin+ struct.new 65)
+  (global $builtin-.static (ref 65) i32.const 0 ref.func $builtin-.uniform ref.func $builtin- struct.new 65)
   (export "_start" (func $_start))
   (elem declare func $f.uniform $f $countDown.uniform $countDown $builtin+ $builtin+.uniform $builtin- $builtin-.uniform)
-  (func $f (type 55) (param $closure (ref $clos)) (param $x i64) (result i64)
+  (func $f (type 56) (param $closure (ref $clos)) (param $x i64) (result i64)
     (local $v i64)
     local.get $x
     i64.const 5
@@ -176,7 +178,7 @@
     return
     unreachable
   )
-  (func $countDown (type 56) (param $closure (ref $clos)) (param $n i64) (param $k eqref) (result i64)
+  (func $countDown (type 57) (param $closure (ref $clos)) (param $n i64) (param $k eqref) (result i64)
     (local $v i32)
     (local $t eqref)
     (local $v.1 i64)
@@ -190,15 +192,15 @@
         local.get $k
         local.set $t
         local.get $t
-        ref.test (ref 58)
+        ref.test (ref 59)
         if
           local.get $t
           ref.cast (ref $clos)
           i64.const 0
           local.get $t
-          ref.cast (ref 58)
-          struct.get 58 $native
-          return_call_ref 55
+          ref.cast (ref 59)
+          struct.get 59 $native
+          return_call_ref 56
         else
           local.get $t
           ref.cast (ref $clos)
@@ -207,7 +209,7 @@
           local.get $t
           ref.cast (ref $closU1)
           struct.get $closU1 $uniform
-          call_ref 51
+          call_ref 52
           call $unboxInt.1
           return
         end
@@ -227,7 +229,7 @@
     end
     unreachable
   )
-  (func $main (type 49)
+  (func $main (type 50)
     (local $f eqref)
     (local $v eqref)
     (local $v.1 eqref)
@@ -278,15 +280,15 @@
               local.get $f.2
               local.set $t
               local.get $t
-              ref.test (ref 58)
+              ref.test (ref 59)
               if (result i64)
                 local.get $t
                 ref.cast (ref $clos)
                 local.get $x.1
                 local.get $t
-                ref.cast (ref 58)
-                struct.get 58 $native
-                call_ref 55
+                ref.cast (ref 59)
+                struct.get 59 $native
+                call_ref 56
               else
                 local.get $t
                 ref.cast (ref $clos)
@@ -295,7 +297,7 @@
                 local.get $t
                 ref.cast (ref $closU1)
                 struct.get $closU1 $uniform
-                call_ref 51
+                call_ref 52
                 call $unboxInt.1
               end
               local.set $x.1
@@ -320,6 +322,7 @@
       local.get $x
       call $convInt
       local.set $f
+      local.get $v
       global.get $literal
       ref.is_null
       if
@@ -332,13 +335,7 @@
         global.set $literal
       end
       global.get $literal
-      local.get $f
-      call $concat
-      local.set $f
       local.get $v.1
-      local.get $f
-      call $concat
-      local.set $f
       global.get $literal
       ref.is_null
       if
@@ -352,11 +349,9 @@
       end
       global.get $literal
       local.get $f
-      call $concat
-      local.set $f
-      local.get $v
-      local.get $f
-      call $concat
+      ref.null eq
+      ref.null eq
+      call $concatN
       local.set $f
       i32.const 1
       ref.i31
@@ -563,6 +558,7 @@
       i64.const 106
       call $convInt
       local.set $v
+      local.get $f
       global.get $literal
       ref.is_null
       if
@@ -576,11 +572,11 @@
       end
       global.get $literal
       local.get $v
-      call $concat
-      local.set $v
-      local.get $f
-      local.get $v
-      call $concat
+      ref.null eq
+      ref.null eq
+      ref.null eq
+      ref.null eq
+      call $concatN
       local.set $f
       i32.const 1
       ref.i31
@@ -723,7 +719,7 @@
         end
         global.get $literal.7
         local.set $v
-        local.get $v
+        local.get $f
         global.get $literal.8
         ref.is_null
         if
@@ -736,8 +732,7 @@
           global.set $literal.8
         end
         global.get $literal.8
-        call $concat
-        local.set $v
+        local.get $v
         global.get $literal.9
         ref.is_null
         if
@@ -750,12 +745,10 @@
           global.set $literal.9
         end
         global.get $literal.9
-        local.get $v
-        call $concat
-        local.set $v
-        local.get $f
-        local.get $v
-        call $concat
+        ref.null eq
+        ref.null eq
+        ref.null eq
+        call $concatN
         local.set $f
         i32.const 1
         ref.i31
@@ -866,16 +859,16 @@
               local.get $f
               local.set $v.1
               local.get $v.1
-              ref.test (ref 64)
+              ref.test (ref 65)
               if (result i64)
                 local.get $v.1
                 ref.cast (ref $clos)
                 local.get $x
                 local.get $n.1
                 local.get $v.1
-                ref.cast (ref 64)
-                struct.get 64 $native
-                call_ref 63
+                ref.cast (ref 65)
+                struct.get 65 $native
+                call_ref 64
               else
                 local.get $v.1
                 ref.cast (ref $clos)
@@ -886,7 +879,7 @@
                 local.get $v.1
                 ref.cast (ref $closU2)
                 struct.get $closU2 $uniform
-                call_ref 50
+                call_ref 51
                 call $unboxInt.1
               end
               local.set $n.1
@@ -994,16 +987,16 @@
               local.get $v
               local.set $f.2
               local.get $f.2
-              ref.test (ref 64)
+              ref.test (ref 65)
               if (result i64)
                 local.get $f.2
                 ref.cast (ref $clos)
                 local.get $x
                 local.get $n.1
                 local.get $f.2
-                ref.cast (ref 64)
-                struct.get 64 $native
-                call_ref 63
+                ref.cast (ref 65)
+                struct.get 65 $native
+                call_ref 64
               else
                 local.get $f.2
                 ref.cast (ref $clos)
@@ -1014,7 +1007,7 @@
                 local.get $f.2
                 ref.cast (ref $closU2)
                 struct.get $closU2 $uniform
-                call_ref 50
+                call_ref 51
                 call $unboxInt.1
               end
               local.set $n.1
@@ -1045,6 +1038,7 @@
         local.get $x
         call $convInt
         local.set $v
+        local.get $f
         global.get $literal
         ref.is_null
         if
@@ -1058,11 +1052,11 @@
         end
         global.get $literal
         local.get $v
-        call $concat
-        local.set $v
-        local.get $f
-        local.get $v
-        call $concat
+        ref.null eq
+        ref.null eq
+        ref.null eq
+        ref.null eq
+        call $concatN
         local.set $f
         i32.const 1
         ref.i31
@@ -1099,7 +1093,7 @@
       end
     end
   )
-  (func $_start (type 49)
+  (func $_start (type 50)
     (local $t (ref null $raised))
     block $uncaught (result eqref)
       try_table (catch $error $uncaught)
@@ -1157,14 +1151,14 @@
     i31.get_s
     i64.extend_i32_s
   )
-  (func $f.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+  (func $f.uniform (type 52) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt.1
     call $f
     call $boxInt.1
   )
-  (func $countDown.uniform (type 50) (param $closure (ref $clos)) (param $a0 eqref) (param $a1 eqref) (result eqref)
+  (func $countDown.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (param $a1 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt.1
@@ -1172,12 +1166,12 @@
     call $countDown
     call $boxInt.1
   )
-  (func $builtin+ (type 63) (param $closure (ref $clos)) (param $a i64) (param $b i64) (result i64)
+  (func $builtin+ (type 64) (param $closure (ref $clos)) (param $a i64) (param $b i64) (result i64)
     local.get $a
     local.get $b
     i64.add
   )
-  (func $builtin+.uniform (type 50) (param $closure (ref $clos)) (param $a eqref) (param $b eqref) (result eqref)
+  (func $builtin+.uniform (type 51) (param $closure (ref $clos)) (param $a eqref) (param $b eqref) (result eqref)
     local.get $closure
     local.get $a
     call $unboxInt.1
@@ -1186,12 +1180,12 @@
     call $builtin+
     call $boxInt.1
   )
-  (func $builtin- (type 63) (param $closure (ref $clos)) (param $a i64) (param $b i64) (result i64)
+  (func $builtin- (type 64) (param $closure (ref $clos)) (param $a i64) (param $b i64) (result i64)
     local.get $a
     local.get $b
     i64.sub
   )
-  (func $builtin-.uniform (type 50) (param $closure (ref $clos)) (param $a eqref) (param $b eqref) (result eqref)
+  (func $builtin-.uniform (type 51) (param $closure (ref $clos)) (param $a eqref) (param $b eqref) (result eqref)
     local.get $closure
     local.get $a
     call $unboxInt.1
@@ -1200,6 +1194,6 @@
     call $builtin-
     call $boxInt.1
   )
-  (data $strings "  \0aabbccctests/self-hosted/wasm/closures.quest:17:55\0a \0a\0ayes!no><\0atests/self-hosted/wasm/closures.quest:31:50tests/self-hosted/wasm/closures.quest:31:50 \0a")
+  (data $strings "  \0aabbccctests/self-hosted/wasm/closures.quest:17:55\0a \0a\0ayes!no<>\0atests/self-hosted/wasm/closures.quest:31:50tests/self-hosted/wasm/closures.quest:31:50 \0a")
 )
 

@@ -74,6 +74,10 @@ export
          * starting to hold clears the report kept. The report kept, or null *)
         entry("holdFatal" array of model.i32 end none)
         entry("fatalReport" none array of model.eqref end)
+        (* Up to seven strings joined in one allocation, a null one absent: a
+         * chain of <>, which the backend joins (the C runtime's
+         * quest_string_concat_n) *)
+        entry("concatN" array of(7 model.eqref) array of model.eqref end)
         (* Memory, for the core's calls of WASI: a byte, a 32-bit word, and a
          * 64-bit one, read and written at an address; the memory grown to
          * hold an address; n bytes from an address as a new string; a
@@ -740,6 +744,44 @@ export
             add("fatalReport" typeOf[24] array of :String end array of :model.Local end array of
                 i1(ops.globalGet heldGlobal + 1)
             end)
+            (* The total of the present parts' lengths, then each copied *)
+            let present(k: Int): Array(Inst) =
+                array of i1(ops.localGet k) i(ops.refIsNull) i(ops.i32Eqz) model.ifInst(empty "") end
+            let partsIn = vector.new(:Inst)
+            let appendAll = fun(xs: Array(Inst)): Ok
+                for j = 0 upto extent xs - 1 do vector.append(:Inst partsIn xs[j]) end
+            for k = 0 upto 6 do
+                appendAll(present(k))
+                appendAll(array of
+                    i1(ops.localGet 7) i1(ops.localGet k) castTo(tString) i2(ops.structGet tString sLength)
+                    i(ops.i64ExtendI32U) i(ops.i64Add) i1(ops.localSet 7)
+                    model.endInst
+                end)
+            end
+            appendAll(array of
+                i1(ops.localGet 7) model.i64Const(maxBytes) i(ops.i64GtU)
+                model.ifInst(empty "") i1(ops.call stringMemory) model.endInst
+                i1(ops.localGet 7) i(ops.i32WrapI64) i1(ops.arrayNewDefault tBytes) i1(ops.localSet 9)
+            end)
+            for k = 0 upto 6 do
+                appendAll(present(k))
+                appendAll(array of
+                    i1(ops.localGet k) castTo(tString) i1(ops.localSet 10)
+                    i1(ops.localGet 9) i1(ops.localGet 8) i1(ops.localGet 10) i2(ops.structGet tString sBytes) c32(0)
+                    i1(ops.localGet 10) i2(ops.structGet tString sLength) i2(ops.arrayCopy tBytes tBytes)
+                    i1(ops.localGet 8) i1(ops.localGet 10) i2(ops.structGet tString sLength) i(ops.i32Add)
+                    i1(ops.localSet 8)
+                    model.endInst
+                end)
+            end
+            appendAll(array of
+                c32(0) i1(ops.localGet 7) i(ops.i32WrapI64) i1(ops.localGet 9) i(ops.refAsNonNull)
+                i1(ops.structNew tString)
+            end)
+            add("concatN" typeOf[25] array of "p0" "p1" "p2" "p3" "p4" "p5" "p6" end
+                array of local("total" model.i64) local("at" model.i32) local("out" nullBytes)
+                    local("part" nullString) end
+                vector.toArray(:Inst partsIn))
             (* Memory's helpers: an address is an i64, wrapped *)
             let k0 = extent fixedExports - 9
             let addr = array of i1(ops.localGet 0) i(ops.i32WrapI64) end

@@ -325,6 +325,8 @@ QString *quest_string_alloc(int64_t size, QChar init);
 bool     quest_string_is_empty(const QString *s);
 int64_t  quest_string_length(const QString *s);
 QString *quest_string_concat(const QString *s1, const QString *s2);
+QString *quest_string_concat_n(int64_t n, const QString *p0, const QString *p1, const QString *p2, const QString *p3,
+                               const QString *p4, const QString *p5, const QString *p6);
 bool     quest_string_equal(const QString *s1, const QString *s2);
 QChar    quest_string_get_char(const QString *s, int64_t idx);
 void     quest_string_set_char(QString *s, int64_t idx, QChar ch);

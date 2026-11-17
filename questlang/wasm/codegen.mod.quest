@@ -111,6 +111,11 @@ export
          * them: each ends with a digest of the record's shape, so that two
          * records whose fields lay out alike are not one descriptor *)
         naming: staticdata.RecordNaming
+        (* How many times each variable is used, by id, and the variables
+         * named from outside the bodies (walk.countUses), for joining chains
+         * of <> (concatSite) *)
+        uses: hashMap.T(Int Int)
+        pinned: hashMap.T(Int Bool)
     end
 
     (* A name not given before among names: base, or base.k *)
@@ -4750,6 +4755,89 @@ export
             else 1
         end
 
+    (* The variable s binds and the operands, when it binds a <> *)
+    let concatOf(s: ir.Stmt): maybe.T(Tuple v: ir.Variable args: Array(ir.Atom) end) =
+        case s
+            when sLet with x then
+                case x.value
+                    when opPrim with p then
+                        if p.op?primConcat andif {extent p.args is 2} then
+                            maybe.some(:Tuple v: ir.Variable args: Array(ir.Atom) end
+                                tuple let v = x.v let args = p.args end)
+                        else maybe.none(:Tuple v: ir.Variable args: Array(ir.Atom) end)
+                        end
+                    else maybe.none(:Tuple v: ir.Variable args: Array(ir.Atom) end)
+                end
+            else maybe.none(:Tuple v: ir.Variable args: Array(ir.Atom) end)
+        end
+    (* A chain of <> made one allocation (docs/strings-plan.md section 6), as
+     * the SSA's concats pass makes it for the native backends: ss[k] binds a
+     * concatenation, and each statement after it one of the one before's
+     * result, which is used there only, and another atom. The chain's
+     * parts, in order, are joined by the runtime's concatN, seven at a time
+     * (each group's string the first part of the next), and the last
+     * statement's variable bound. The statements are adjacent, so nothing
+     * runs between them to change a part. The count of statements taken, 0
+     * for none *)
+    let concatSite(f: F ss: Array(ir.Stmt) k: Int): Int =
+        begin
+            let first = concatOf(ss[k])
+            if maybe.isNone(:Tuple v: ir.Variable args: Array(ir.Atom) end first) then 0
+            else
+                let once = fun(v: ir.Variable): Bool
+                    {maybe.unwrapOr(:Int hashMap.get(:Int :Int f.g.uses v.id) 0) is 1} andif not(isLocated(f v))
+                        andif not(hashMap.contains(:Int :Bool f.g.pinned v.id))
+                        andif not(hashMap.contains(:Int :Bool f.g.globalIds v.id))
+                let start = maybe.unwrap(:Tuple v: ir.Variable args: Array(ir.Atom) end first)
+                let var parts = vector.fromArray(:ir.Atom start.args)
+                let var last = start.v
+                let var j = k + 1
+                let var going = true
+                while going andif {j < extent ss} do
+                    let c = concatOf(ss[j])
+                    if maybe.isNone(:Tuple v: ir.Variable args: Array(ir.Atom) end c) orif not(once(last)) then
+                        going := false
+                    else
+                        let next = maybe.unwrap(:Tuple v: ir.Variable args: Array(ir.Atom) end c)
+                        if isVar(next.args[0] last) andif not(isVar(next.args[1] last)) then
+                            vector.append(:ir.Atom parts next.args[1])
+                        elsif isVar(next.args[1] last) andif not(isVar(next.args[0] last)) then
+                            let joined = vector.new(:ir.Atom)
+                            vector.append(:ir.Atom joined next.args[0])
+                            for p = 0 upto vector.length(:ir.Atom parts) - 1 do
+                                vector.append(:ir.Atom joined vector.get(:ir.Atom parts p))
+                            end
+                            parts := joined
+                        else going := false
+                        end
+                        if going then
+                            last := next.v
+                            j := j + 1
+                        end
+                    end
+                end
+                if j is k + 1 then 0
+                else
+                    let n = vector.length(:ir.Atom parts)
+                    let var at = 0
+                    let var held = false
+                    while at < n do
+                        let room = if held then 6 else 7 end
+                        let take = if {n - at} < room then n - at else room end
+                        for p = at upto {at + take} - 1 do atom(f vector.get(:ir.Atom parts p)) end
+                        for p = take + {if held then 1 else 0 end} upto 6 do
+                            emit(f option instRefNull of Inst with let heap = option heapEq of model.HeapType end end)
+                        end
+                        runtimeCall(f "concatN")
+                        at := at + take
+                        held := true
+                    end
+                    store(f last)
+                    j - k
+                end
+            end
+        end
+
     let rec body(f: F b: ir.Body): Ok =
         begin
             let ss = vector.toArray(:ir.Stmt b.statements)
@@ -4759,7 +4847,9 @@ export
                 let last = {k + 1} >= extent ss
                 let next = if last then outer else maybe.some(:ir.Stmt ss[k + 1]) end
                 let taken = accumulateSite(f ss k outer)
+                let chained = if taken > 0 then 0 else concatSite(f ss k) end
                 if taken > 0 then k := k + taken
+                elsif chained > 0 then k := k + chained
                 elsif maybe.isSome(:ir.Stmt next) andif tailCall(f ss[k] maybe.unwrap(:ir.Stmt next)) then
                     k := k + if last then 1 else 2 end
                 else
@@ -5516,7 +5606,10 @@ export
                 let isPhrase = maybe.isSome(:ir.Phrase unit.phrase)
                 let located = locatedVariables(unit)
                 let naming = staticdata.newRecordNaming()
+                let uses = hashMap.new(:Int :Int intEqual hash.int)
+                let pinned = hashMap.new(:Int :Bool intEqual hash.int)
             end
+            walk.countUses(unit g.uses g.pinned)
             (* Each function, and the types of what its closures capture: an
              * adapter's (ir/thunks), whose environment is the closure it
              * adapts, of that closure's type, captures that closure *)

@@ -38,6 +38,7 @@
   (type (func (param eqref) (result eqref)))
   (type (func (param i32)))
   (type (func (result eqref)))
+  (type (func (param eqref eqref eqref eqref eqref eqref eqref) (result eqref)))
   (type (func (param i64) (result i64)))
   (type (func (param i64 i64)))
   (type (func (param i64)))
@@ -72,10 +73,10 @@
   (type (func (param (ref $clos) i32) (result eqref)))
   (type (func (param (ref $clos)) (result eqref)))
   (type (func (param (ref $clos) i64) (result i64)))
-  (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 51)))))
-  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 70)))))
-  (type $tries.closure (sub final 72 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 70)))))
-  (type $tries.closure.1 (sub final 72 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 70)))))
+  (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 52)))))
+  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 71)))))
+  (type $tries.closure (sub final 73 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 71)))))
+  (type $tries.closure.1 (sub final 73 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 71)))))
   (import "quest.runtime" "exception:int.error" (global $int.error (ref $exception)))
   (import "quest.runtime" "exception:real.error" (global $real.error (ref $exception)))
   (import "quest.runtime" "exception:word.error" (global $word.error (ref $exception)))
@@ -120,65 +121,66 @@
   (import "quest.runtime" "raisedText" (func $raisedText (type 20)))
   (import "quest.runtime" "holdFatal" (func $holdFatal (type 35)))
   (import "quest.runtime" "fatalReport" (func $fatalReport (type 36)))
-  (import "quest.runtime" "memLoad8" (func $memLoad8 (type 37)))
-  (import "quest.runtime" "memStore8" (func $memStore8 (type 38)))
-  (import "quest.runtime" "memLoad32" (func $memLoad32 (type 37)))
-  (import "quest.runtime" "memStore32" (func $memStore32 (type 38)))
-  (import "quest.runtime" "memLoad64" (func $memLoad64 (type 37)))
-  (import "quest.runtime" "memStore64" (func $memStore64 (type 38)))
-  (import "quest.runtime" "memEnsure" (func $memEnsure (type 39)))
-  (import "quest.runtime" "memToString" (func $memToString (type 40)))
-  (import "quest.runtime" "stringToMem" (func $stringToMem (type 41)))
-  (import "quest.runtime" "wasi:args_sizes_get" (func $wasi:args_sizes_get (type 42)))
-  (import "quest.runtime" "wasi:args_get" (func $wasi:args_get (type 42)))
-  (import "quest.runtime" "wasi:environ_sizes_get" (func $wasi:environ_sizes_get (type 42)))
-  (import "quest.runtime" "wasi:environ_get" (func $wasi:environ_get (type 42)))
-  (import "quest.runtime" "wasi:fd_prestat_get" (func $wasi:fd_prestat_get (type 42)))
-  (import "quest.runtime" "wasi:fd_prestat_dir_name" (func $wasi:fd_prestat_dir_name (type 43)))
-  (import "quest.runtime" "wasi:path_open" (func $wasi:path_open (type 44)))
-  (import "quest.runtime" "wasi:fd_read" (func $wasi:fd_read (type 45)))
-  (import "quest.runtime" "wasi:fd_close" (func $wasi:fd_close (type 37)))
-  (import "quest.runtime" "wasi:path_filestat_get" (func $wasi:path_filestat_get (type 46)))
-  (import "quest.runtime" "wasi:path_create_directory" (func $wasi:path_create_directory (type 43)))
-  (import "quest.runtime" "wasi:path_unlink_file" (func $wasi:path_unlink_file (type 43)))
-  (import "quest.runtime" "wasi:path_remove_directory" (func $wasi:path_remove_directory (type 43)))
-  (import "quest.runtime" "wasi:path_rename" (func $wasi:path_rename (type 47)))
-  (import "quest.runtime" "wasi:fd_readdir" (func $wasi:fd_readdir (type 46)))
-  (import "quest.runtime" "error" (tag $error (type 48)))
-  (import "writer" "init" (func $writer.init (type 49)))
-  (import "conv" "init" (func $conv.init (type 49)))
-  (import "int" "init" (func $int.init (type 49)))
-  (import "wasm/print" "init" (func $wasm/print.init (type 49)))
-  (import "wasm/print" "show" (func $wasm/print.show (type 50)))
-  (import "wasm/core" "unproxy" (func $wasm/core.unproxy (type 51)))
-  (import "wasm/core" "proxyTag" (func $wasm/core.proxyTag (type 52)))
-  (import "wasm/core" "proxyElement" (func $wasm/core.proxyElement (type 53)))
-  (import "wasm/core" "proxyOptionElement" (func $wasm/core.proxyOptionElement (type 53)))
-  (import "wasm/core" "proxyOptionPayload" (func $wasm/core.proxyOptionPayload (type 51)))
-  (import "wasm/core" "init" (func $wasm/core.init (type 49)))
-  (import "wasm/core" "base" (func $wasm/core.base (type 54)))
-  (import "wasm/core" "newDesc" (func $wasm/core.newDesc (type 55)))
-  (import "wasm/core" "setPart" (func $wasm/core.setPart (type 56)))
-  (import "wasm/core" "setText" (func $wasm/core.setText (type 57)))
-  (import "wasm/core" "setFlags" (func $wasm/core.setFlags (type 58)))
-  (import "wasm/core" "boundVar" (func $wasm/core.boundVar (type 54)))
-  (import "wasm/core" "instantiate" (func $wasm/core.instantiate (type 50)))
-  (import "wasm/core" "viewDict" (func $wasm/core.viewDict (type 50)))
-  (import "wasm/core" "storedField" (func $wasm/core.storedField (type 59)))
-  (import "wasm/core" "convert" (func $wasm/core.convert (type 60)))
-  (import "wasm/core" "isSubtype" (func $wasm/core.isSubtype (type 61)))
-  (import "wasm/core" "registerAbstract" (func $wasm/core.registerAbstract (type 62)))
-  (import "wasm/core" "valIs" (func $wasm/core.valIs (type 63)))
-  (import "wasm/core" "viewMap" (func $wasm/core.viewMap (type 50)))
-  (import "wasm/core" "viewIndex" (func $wasm/core.viewIndex (type 64)))
-  (import "wasm/core" "viewPart" (func $wasm/core.viewPart (type 62)))
-  (import "wasm/core" "viewRecordSlot" (func $wasm/core.viewRecordSlot (type 65)))
-  (import "wasm/core" "viewRecordField" (func $wasm/core.viewRecordField (type 66)))
-  (import "wasm/core" "viewOptionComponent" (func $wasm/core.viewOptionComponent (type 67)))
-  (import "wasm/core" "viewOptionPayload" (func $wasm/core.viewOptionPayload (type 50)))
-  (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 50)))
-  (import "conv" "bool" (func $conv.bool (type 68)))
-  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 69)))
+  (import "quest.runtime" "concatN" (func $concatN (type 37)))
+  (import "quest.runtime" "memLoad8" (func $memLoad8 (type 38)))
+  (import "quest.runtime" "memStore8" (func $memStore8 (type 39)))
+  (import "quest.runtime" "memLoad32" (func $memLoad32 (type 38)))
+  (import "quest.runtime" "memStore32" (func $memStore32 (type 39)))
+  (import "quest.runtime" "memLoad64" (func $memLoad64 (type 38)))
+  (import "quest.runtime" "memStore64" (func $memStore64 (type 39)))
+  (import "quest.runtime" "memEnsure" (func $memEnsure (type 40)))
+  (import "quest.runtime" "memToString" (func $memToString (type 41)))
+  (import "quest.runtime" "stringToMem" (func $stringToMem (type 42)))
+  (import "quest.runtime" "wasi:args_sizes_get" (func $wasi:args_sizes_get (type 43)))
+  (import "quest.runtime" "wasi:args_get" (func $wasi:args_get (type 43)))
+  (import "quest.runtime" "wasi:environ_sizes_get" (func $wasi:environ_sizes_get (type 43)))
+  (import "quest.runtime" "wasi:environ_get" (func $wasi:environ_get (type 43)))
+  (import "quest.runtime" "wasi:fd_prestat_get" (func $wasi:fd_prestat_get (type 43)))
+  (import "quest.runtime" "wasi:fd_prestat_dir_name" (func $wasi:fd_prestat_dir_name (type 44)))
+  (import "quest.runtime" "wasi:path_open" (func $wasi:path_open (type 45)))
+  (import "quest.runtime" "wasi:fd_read" (func $wasi:fd_read (type 46)))
+  (import "quest.runtime" "wasi:fd_close" (func $wasi:fd_close (type 38)))
+  (import "quest.runtime" "wasi:path_filestat_get" (func $wasi:path_filestat_get (type 47)))
+  (import "quest.runtime" "wasi:path_create_directory" (func $wasi:path_create_directory (type 44)))
+  (import "quest.runtime" "wasi:path_unlink_file" (func $wasi:path_unlink_file (type 44)))
+  (import "quest.runtime" "wasi:path_remove_directory" (func $wasi:path_remove_directory (type 44)))
+  (import "quest.runtime" "wasi:path_rename" (func $wasi:path_rename (type 48)))
+  (import "quest.runtime" "wasi:fd_readdir" (func $wasi:fd_readdir (type 47)))
+  (import "quest.runtime" "error" (tag $error (type 49)))
+  (import "writer" "init" (func $writer.init (type 50)))
+  (import "conv" "init" (func $conv.init (type 50)))
+  (import "int" "init" (func $int.init (type 50)))
+  (import "wasm/print" "init" (func $wasm/print.init (type 50)))
+  (import "wasm/print" "show" (func $wasm/print.show (type 51)))
+  (import "wasm/core" "unproxy" (func $wasm/core.unproxy (type 52)))
+  (import "wasm/core" "proxyTag" (func $wasm/core.proxyTag (type 53)))
+  (import "wasm/core" "proxyElement" (func $wasm/core.proxyElement (type 54)))
+  (import "wasm/core" "proxyOptionElement" (func $wasm/core.proxyOptionElement (type 54)))
+  (import "wasm/core" "proxyOptionPayload" (func $wasm/core.proxyOptionPayload (type 52)))
+  (import "wasm/core" "init" (func $wasm/core.init (type 50)))
+  (import "wasm/core" "base" (func $wasm/core.base (type 55)))
+  (import "wasm/core" "newDesc" (func $wasm/core.newDesc (type 56)))
+  (import "wasm/core" "setPart" (func $wasm/core.setPart (type 57)))
+  (import "wasm/core" "setText" (func $wasm/core.setText (type 58)))
+  (import "wasm/core" "setFlags" (func $wasm/core.setFlags (type 59)))
+  (import "wasm/core" "boundVar" (func $wasm/core.boundVar (type 55)))
+  (import "wasm/core" "instantiate" (func $wasm/core.instantiate (type 51)))
+  (import "wasm/core" "viewDict" (func $wasm/core.viewDict (type 51)))
+  (import "wasm/core" "storedField" (func $wasm/core.storedField (type 60)))
+  (import "wasm/core" "convert" (func $wasm/core.convert (type 61)))
+  (import "wasm/core" "isSubtype" (func $wasm/core.isSubtype (type 62)))
+  (import "wasm/core" "registerAbstract" (func $wasm/core.registerAbstract (type 63)))
+  (import "wasm/core" "valIs" (func $wasm/core.valIs (type 64)))
+  (import "wasm/core" "viewMap" (func $wasm/core.viewMap (type 51)))
+  (import "wasm/core" "viewIndex" (func $wasm/core.viewIndex (type 65)))
+  (import "wasm/core" "viewPart" (func $wasm/core.viewPart (type 63)))
+  (import "wasm/core" "viewRecordSlot" (func $wasm/core.viewRecordSlot (type 66)))
+  (import "wasm/core" "viewRecordField" (func $wasm/core.viewRecordField (type 67)))
+  (import "wasm/core" "viewOptionComponent" (func $wasm/core.viewOptionComponent (type 68)))
+  (import "wasm/core" "viewOptionPayload" (func $wasm/core.viewOptionPayload (type 51)))
+  (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 51)))
+  (import "conv" "bool" (func $conv.bool (type 69)))
+  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 70)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $quest_type_Int (mut eqref) ref.null none)
   (global $quest_type_Real (mut eqref) ref.null none)
@@ -199,7 +201,7 @@
   (global $literal.2 (mut eqref) ref.null none)
   (export "_start" (func $_start))
   (elem declare func $tries.uniform $tries $tries.uniform.1 $tries.1)
-  (func $tries (type 70) (param $closure (ref $clos)) (param $i i64) (result i64)
+  (func $tries (type 71) (param $closure (ref $clos)) (param $i i64) (result i64)
     (local $v i32)
     (local $v.1 i64)
     (local $e eqref)
@@ -263,7 +265,7 @@
     end
     unreachable
   )
-  (func $tries.1 (type 70) (param $closure (ref $clos)) (param $i i64) (result i64)
+  (func $tries.1 (type 71) (param $closure (ref $clos)) (param $i i64) (result i64)
     (local $v i32)
     (local $v.1 i64)
     (local $e eqref)
@@ -327,7 +329,7 @@
     end
     unreachable
   )
-  (func $main (type 49)
+  (func $main (type 50)
     (local $bad eqref)
     (local $other eqref)
     (local $named eqref)
@@ -574,6 +576,7 @@
           local.get $x
           call $convInt
           local.set $v.4
+          local.get $e
           global.get $literal.1
           ref.is_null
           if
@@ -587,11 +590,11 @@
           end
           global.get $literal.1
           local.get $v.4
-          call $concat
-          local.set $v.4
-          local.get $e
-          local.get $v.4
-          call $concat
+          ref.null eq
+          ref.null eq
+          ref.null eq
+          ref.null eq
+          call $concatN
           local.set $e
           i32.const 1
           ref.i31
@@ -1015,6 +1018,7 @@
               local.get $x
               call $convInt
               local.set $other
+              local.get $bad
               global.get $literal.1
               ref.is_null
               if
@@ -1028,11 +1032,11 @@
               end
               global.get $literal.1
               local.get $other
-              call $concat
-              local.set $other
-              local.get $bad
-              local.get $other
-              call $concat
+              ref.null eq
+              ref.null eq
+              ref.null eq
+              ref.null eq
+              call $concatN
               local.set $bad
               i32.const 1
               ref.i31
@@ -1101,7 +1105,7 @@
       end
     end
   )
-  (func $_start (type 49)
+  (func $_start (type 50)
     (local $t (ref null $raised))
     block $uncaught (result eqref)
       try_table (catch $error $uncaught)
@@ -1133,7 +1137,7 @@
     drop
     call $uncaught
   )
-  (func $descriptors (type 49)
+  (func $descriptors (type 50)
     global.get $noClosure
     i64.const 1
     call $wasm/core.base
@@ -1197,14 +1201,14 @@
     i31.get_s
     i64.extend_i32_s
   )
-  (func $tries.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+  (func $tries.uniform (type 52) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt.1
     call $tries
     call $boxInt.1
   )
-  (func $tries.uniform.1 (type 51) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+  (func $tries.uniform.1 (type 52) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt.1
