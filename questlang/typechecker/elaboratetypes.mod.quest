@@ -25,8 +25,8 @@ export
     let checkKindWellFormed(k: Kind e: env.T): Ok = kinds.checkKindWellFormed(k some(e))
     let declare(e: env.T sym: symbols.TypeSymbol): symbols.TypeSymbol = symbols.declareType(e.currentScope sym)
     let declareVariable(e: env.T name: String symbolId: Int kind: Kind): Ok =
-        begin declare(e symbols.newTypeSymbol(name symbolId kind maybe.none(:Type))) ok end
-    let newIds(): hashMap.T(Int Bool) = hashMap.new(:Int :Bool fun(a: Int b: Int): Bool a is b hash.int)
+        begin declare(e symbols.newTypeSymbol(name symbolId kind maybe.none())) ok end
+    let newIds(): hashMap.T(Int Bool) = hashMap.new(fun(a: Int b: Int): Bool a is b hash.int)
     let joinPath(path: vector.T(String)): String =
         begin
             let var s = ""
@@ -48,7 +48,7 @@ export
 
     Let RecOperator = Tuple name: String formals: Array(model.TypeFormal) recVar: Type end
     let recOperators: hashMap.T(Int RecOperator) =
-        hashMap.new(:Int :RecOperator fun(a: Int b: Int): Bool a is b hash.int)
+        hashMap.new(fun(a: Int b: Int): Bool a is b hash.int)
 
     let recOperatorOf(sym: symbols.TypeSymbol): maybe.T(RecOperator) =
         hashMap.get(recOperators sym.symbolId)
@@ -91,12 +91,12 @@ export
                     if maybe.isSome(sym) then
                         recOperatorOf(maybe.unwrap(sym))
                     else
-                        maybe.none(:RecOperator)
+                        maybe.none()
                     end
                 else
-                    maybe.none(:RecOperator)
+                    maybe.none()
                 end
-            else maybe.none(:RecOperator)
+            else maybe.none()
         end
 
     (* The kind of a type operator with the given parameters and result kind:
@@ -186,7 +186,7 @@ export
                     end
                     model.kindVar(x.interfaceName <> "_" <> x.kindName maybe.unwrap(sym).symbolId)
                 end
-            else diagnostics.fail(:Kind "Unsupported AST kind node" k.span.startOffset)
+            else diagnostics.fail("Unsupported AST kind node" k.span.startOffset)
         end
 
     (* ======================================================================
@@ -242,7 +242,7 @@ export
                                 let name = f.name let type = elaborateType(f.typeSig e) let isVar = f.isVar
                             end)
                         end
-                        model.recordType(vector.toArray(fields) maybe.none(:String))
+                        model.recordType(vector.toArray(fields) maybe.none())
                     end
                 when typeVariant with x then
                     begin
@@ -367,7 +367,7 @@ export
                         requireUnsoundModule(e offset)
                         model.externalType("" x.cType)
                     end
-                else diagnostics.fail(:Type "Unsupported AST type node" offset)
+                else diagnostics.fail("Unsupported AST type node" offset)
             end
         end
 
@@ -523,7 +523,7 @@ export
                     model.pathType(rootName rootId typeName model.substituteInKind(c.bound pathSubst(c.symbolId)))
                 when tupleTypeBinding with c then model.substitute(c.type pathSubst(0))
                 when tupleField then
-                    diagnostics.fail(:Type "Component '" <> typeName <> "' of tuple '" <> rootName <>
+                    diagnostics.fail("Component '" <> typeName <> "' of tuple '" <> rootName <>
                         "' is a value field, not a type component" offset)
             end
         end
@@ -532,7 +532,7 @@ export
     and tupleFields(t: Type message: String offset: Int): Array(model.TupleComponent) =
         case t.form
             when typeTuple with x then x.fields
-            else diagnostics.fail(:Array(model.TupleComponent) message offset)
+            else diagnostics.fail(message offset)
         end
 
     and elaborateTupleSignature(sigs: vector.T(ast.Signature) e: env.T): Type =

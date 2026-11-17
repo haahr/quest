@@ -20,13 +20,13 @@ export
     Let Type = model.Type
 
     let internal(A::TYPE what: String expr: ast.Expr): A =
-        diagnostics.fail(:A "internal: not " <> what expr.span.startOffset)
+        diagnostics.fail("internal: not " <> what expr.span.startOffset)
 
     (* The auto type of an inspect target *)
     let inspectedAutoType(target: typedAst.Expr): maybe.T(model.Type) =
         begin
             let t = model.evaluateLazily(target.type symbols.lookup)
-            case t.form when typeAuto then maybe.some(t) else maybe.none(:model.Type) end
+            case t.form when typeAuto then maybe.some(t) else maybe.none() end
         end
 
     (* Whether t, stripped of aliases, is an auto type *)
@@ -117,7 +117,7 @@ export
                         vector.append(bodies arm.body)
                     end
                     let elseTyped = checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
-                    let types = checker.branchTypes(maybe.none(:Type) vector.toArray(bodies) elseTyped)
+                    let types = checker.branchTypes(maybe.none() vector.toArray(bodies) elseTyped)
                     let resultType = if maybe.isSome(expected) then
                         maybe.unwrap(expected)
                     elsif extent types > 0 then
@@ -133,7 +133,7 @@ export
                         let autoType = inspectedAutoType(targetTyped)
                     end)
                 end
-            else internal(:typedAst.Expr "an inspect" expr)
+            else internal("an inspect" expr)
         end
 
     (* Checks that witness has the kind, else fails with message *)
@@ -142,7 +142,7 @@ export
             kinds.checkKind(witness kind maybe.some(e))
         when diagnostics.compilerError with err then
             if err.isFatal orif err.silent then diagnostics.raiseError(:Ok err) end
-            diagnostics.fail(:Ok message offset)
+            diagnostics.fail(message offset)
         end
 
     let elaborateAuto(c: checker.T expr: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
@@ -191,6 +191,6 @@ export
                         let witnessType = witness let autoType = autoType let payload = payloadTyped
                     end)
                 end
-            else internal(:typedAst.Expr "an auto value" expr)
+            else internal("an auto value" expr)
         end
 end

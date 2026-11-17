@@ -64,8 +64,8 @@ export
         tuple
             let parent = parent
             let var bindings = model.newFields()
-            let typeBindings = hashMap.new(:Int :tm.Type intEqual hash.int)
-            let madeExceptions = hashMap.new(:Int :model.ExceptionValue intEqual hash.int)
+            let typeBindings = hashMap.new(intEqual hash.int)
+            let madeExceptions = hashMap.new(intEqual hash.int)
             let var currentDir = currentDir
             let var sourceMap = sourceMap
             let root = root
@@ -160,7 +160,7 @@ export
                     model.internalError(:Value "Undefined runtime symbol '" <> name <> "'" offset)
                 end
                 let normName = maybe.unwrap(std)[0]
-                let modVal = hooks.loadModule(normName maybe.unwrap(std)[1] f maybe.none(:String))
+                let modVal = hooks.loadModule(normName maybe.unwrap(std)[1] f maybe.none())
                 define(f normName modVal)
                 if not(stringOp.equal(name normName)) then define(f name modVal) end
                 modVal
@@ -178,7 +178,7 @@ export
             elsif maybe.isSome(f.parent) then
                 assignName(maybe.unwrap(f.parent) name v offset)
             else
-                model.internalError(:Ok "Cannot assign to undefined symbol '" <> name <> "'" offset)
+                model.internalError("Cannot assign to undefined symbol '" <> name <> "'" offset)
             end
         end
 
@@ -187,14 +187,14 @@ export
     let intOperand(op: String v: Value w: Value offset: maybe.T(Int)): Int =
         case v
             when vInt with x then x.n
-            else model.internalError(:Int "Operator '" <> op <> "' requires Int operands, got " <> model.typeName(v)
+            else model.internalError("Operator '" <> op <> "' requires Int operands, got " <> model.typeName(v)
                 <> " and " <> model.typeName(w) offset)
         end
 
     let realOperand(op: String v: Value w: Value offset: maybe.T(Int)): Real =
         case v
             when vReal with x then x.r
-            else model.internalError(:Real "Operator '" <> op <> "' requires Real operands, got " <> model.typeName(v)
+            else model.internalError("Operator '" <> op <> "' requires Real operands, got " <> model.typeName(v)
                 <> " and " <> model.typeName(w) offset)
         end
 
@@ -227,10 +227,10 @@ export
                 when vString with x then
                     case right
                         when vString with y then model.stringValue(x.s <> y.s)
-                        else model.internalError(:Value "Operator '<>' requires String operands, got "
+                        else model.internalError("Operator '<>' requires String operands, got "
                             <> model.typeName(left) <> " and " <> model.typeName(right) offset)
                     end
-                else model.internalError(:Value "Operator '<>' requires String operands, got "
+                else model.internalError("Operator '<>' requires String operands, got "
                     <> model.typeName(left) <> " and " <> model.typeName(right) offset)
             end
         elsif stringOp.equal(op "/\\") orif stringOp.equal(op "\\/") then
@@ -239,10 +239,10 @@ export
                     case right
                         when vBool with y then
                             model.boolValue(if stringOp.equal(op "/\\") then x.b andif y.b else x.b orif y.b end)
-                        else model.internalError(:Value "Operator '" <> op <> "' requires Bool operands, got "
+                        else model.internalError("Operator '" <> op <> "' requires Bool operands, got "
                             <> model.typeName(left) <> " and " <> model.typeName(right) offset)
                     end
-                else model.internalError(:Value "Operator '" <> op <> "' requires Bool operands, got "
+                else model.internalError("Operator '" <> op <> "' requires Bool operands, got "
                     <> model.typeName(left) <> " and " <> model.typeName(right) offset)
             end
         elsif stringOp.equal(op "is") then
@@ -250,7 +250,7 @@ export
         elsif stringOp.equal(op "isnot") then
             model.boolValue(not(model.same(left right)))
         else
-            model.internalError(:Value "Unsupported infix operator '" <> op <> "'" offset)
+            model.internalError("Unsupported infix operator '" <> op <> "'" offset)
         end
 
     (* An operator as a function of two values; its errors are located at the
@@ -262,12 +262,12 @@ export
         begin
             let root: model.Root = tuple
                 let var includePaths = array of :String end
-                let var programDir = maybe.none(:String)
+                let var programDir = maybe.none()
                 let var units = units
                 let moduleValues = model.newFields()
-                let callStack = vector.new(:String)
+                let callStack = vector.new()
             end
-            let f = newFrame(maybe.none(:Frame) maybe.none(:String) maybe.none(:location.SourceMap) root)
+            let f = newFrame(maybe.none() maybe.none() maybe.none() root)
             define(f "true" model.trueValue)
             define(f "false" model.falseValue)
             define(f "ok" model.okValue)
@@ -283,7 +283,7 @@ export
             (* ordinal counts in its operand's static type, so its applications
              * are evaluated as such (exprApp) *)
             define(f "ordinal" model.builtinValue("ordinal" fun(args: Array(Value)): Value
-                model.internalError(:Value "ordinal needs its operand's static type" none)))
+                model.internalError("ordinal needs its operand's static type" none)))
             f
         end
 
@@ -307,13 +307,13 @@ export
                             let env = f
                             let name = name
                             let typeParamIds = x.typeParamIds
-                            let typeBindings = hashMap.new(:Int :tm.Type intEqual hash.int)
+                            let typeBindings = hashMap.new(intEqual hash.int)
                             let typeOnly = x.typeOnly
                             let traceName = diagnostics.frameName(enclosing binder)
                         end
                     end
                 end
-            else model.internalError(:Value "A closure of a non-function" at(fun0.offset))
+            else model.internalError("A closure of a non-function" at(fun0.offset))
         end
 
     let bindTypesInto(into: hashMap.T(Int tm.Type) from: hashMap.T(Int tm.Type)): Ok =
@@ -475,7 +475,7 @@ export
                 let labels = array of(extent x.fields maybe.none(:String))
                 for i = 0 upto {extent x.fields - 1} do labels[i] := tm.componentName(x.fields[i]) end
                 maybe.some(labels)
-            else maybe.none(:Array(maybe.T(String)))
+            else maybe.none()
         end
 
     (* The simultaneous group starting at component index, if one does *)
@@ -497,7 +497,7 @@ export
      * the value where the name is bound, as an assignment does: in the frame
      * that holds it, or into its cell if it is a var *)
     let bindLet(v: typedAst.LetValue val: Value f: Frame): Ok =
-        if v.redefines then assignName(f v.name val maybe.none(:Int))
+        if v.redefines then assignName(f v.name val maybe.none())
         else define(f v.name if v.symbol.isVar then model.cellValue(val) else val end) end
 
     (* Whether binding b (or a member of its group) declares a name already
@@ -571,8 +571,8 @@ export
                         when vRecord with r then
                             let cell = hashMap.find(r.r.fields x.field)
                             if cell?vRef then cell
-                            else model.internalError(:Value "Field '" <> x.field <> "' is not mutable" offset) end
-                        else model.internalError(:Value "Field selection target must be Record" offset)
+                            else model.internalError("Field '" <> x.field <> "' is not mutable" offset) end
+                        else model.internalError("Field selection target must be Record" offset)
                     end
                 when exprIndexRef with x then
                     let target = unwrapRefs(evalExpr(x.target f))
@@ -584,7 +584,7 @@ export
                                 let r = tuple let form = option arrayElement of model.RefForm with
                                     let arr = a.a let index = i end end
                             end
-                        else model.internalError(:Value "Index target must be Array, got " <> model.typeName(target) offset)
+                        else model.internalError("Index target must be Array, got " <> model.typeName(target) offset)
                     end
                 when exprTupleSelectRef with x then
                     let target = unwrapRefs(evalExpr(x.target f))
@@ -604,7 +604,7 @@ export
                                         let tup = t.t let index = idx end end
                                 end
                             end
-                        else model.internalError(:Value "Tuple select target must be Tuple, got " <> model.typeName(target) offset)
+                        else model.internalError("Tuple select target must be Tuple, got " <> model.typeName(target) offset)
                     end
                 when exprAssign with x then
                     let rhs = evalExpr(x.value f)
@@ -629,7 +629,7 @@ export
                     model.okValue
 
                 (* Functions and application *)
-                when exprFun then makeClosure(e f maybe.none(:String) maybe.none(:String))
+                when exprFun then makeClosure(e f maybe.none() maybe.none())
                 when exprTypeApp with x then
                     let var callee = evalExpr(x.func f)
                     let typeArgs = array of(extent x.typeArgs tm.okType)
@@ -655,13 +655,13 @@ export
                                 case args[0]
                                     when vOption with o then
                                         model.intValue(position(reduce.optionCaseNames(x.args[0].type) o.v.tag))
-                                    else model.internalError(:Value "ordinal expects Option, got " <> model.typeName(args[0]) offset)
+                                    else model.internalError("ordinal expects Option, got " <> model.typeName(args[0]) offset)
                                 end
                             else
                                 b.b.fn(args)
                             end
                         when vClosure with c then runClosure(c.c args offset)
-                        else model.internalError(:Value "Cannot call non-function of type " <> model.typeName(callee) offset)
+                        else model.internalError("Cannot call non-function of type " <> model.typeName(callee) offset)
                     end
                 when exprInfix with x then
                     let left = evalExpr(x.left f)
@@ -679,7 +679,7 @@ export
                 when exprIf with x then
                     case evalExpr(x.cond f)
                         when vBool with b then if b.b then evalExpr(x.thenBranch f) else evalExpr(x.elseBranch f) end
-                        else model.internalError(:Value "Conditional expression must evaluate to Bool" offset)
+                        else model.internalError("Conditional expression must evaluate to Bool" offset)
                     end
                 when exprBlock with x then
                     let var g = pushScope(f)
@@ -726,9 +726,9 @@ export
                                         end
                                     end
                                     model.okValue
-                                else model.internalError(:Value "For loop bounds must evaluate to Int" offset)
+                                else model.internalError("For loop bounds must evaluate to Int" offset)
                             end
-                        else model.internalError(:Value "For loop bounds must evaluate to Int" offset)
+                        else model.internalError("For loop bounds must evaluate to Int" offset)
                     end
                 when exprExit then raise loopExit end
 
@@ -754,7 +754,7 @@ export
                                 else hashMap.find(r.r.fields x.field)
                             end
                         when vTuple with t then model.tupleGet(t.t x.field)
-                        else model.internalError(:Value "Cannot select field '" <> x.field <> "' from " <> model.typeName(target) offset)
+                        else model.internalError("Cannot select field '" <> x.field <> "' from " <> model.typeName(target) offset)
                     end
                 when exprArray with x then
                     let a = array of(extent x.elements model.okValue)
@@ -766,7 +766,7 @@ export
                             if c.n < 0 then model.raiseException(:Ok primitives.arrayOpError offset) end
                             let init = evalExpr(x.initVal f)
                             option vArray of Value with let a = array of(c.n init) end
-                        else model.internalError(:Value "Array count must evaluate to Int" offset)
+                        else model.internalError("Array count must evaluate to Int" offset)
                     end
                 when exprIndex with x then
                     let target = evalExpr(x.target f)
@@ -776,7 +776,7 @@ export
                             let i = indexOf(idx offset)
                             if {i < 0} orif {i >= extent a.a} then model.raiseException(:Ok primitives.arrayOpError offset) end
                             a.a[i]
-                        else model.internalError(:Value "Index target must be Array, got " <> model.typeName(target) offset)
+                        else model.internalError("Index target must be Array, got " <> model.typeName(target) offset)
                     end
                 when exprIndexAssign with x then
                     let target = evalExpr(x.target f)
@@ -788,7 +788,7 @@ export
                             if {i < 0} orif {i >= extent a.a} then model.raiseException(:Ok primitives.arrayOpError offset) end
                             a.a[i] := rhs
                             model.okValue
-                        else model.internalError(:Value "Index target must be Array, got " <> model.typeName(target) offset)
+                        else model.internalError("Index target must be Array, got " <> model.typeName(target) offset)
                     end
 
                 (* Variants, options, and auto values *)
@@ -810,9 +810,9 @@ export
                                                 <> " out of bounds (0 <= ordinal < " <> model.toString(model.intValue(extent o.options)) <> ")" offset)
                                         end
                                         model.optionValue(o.options[n.n].name payload)
-                                    else model.internalError(:Value "Expected Option type, got " <> tm.show(optType) offset)
+                                    else model.internalError("Expected Option type, got " <> tm.show(optType) offset)
                                 end
-                            else model.internalError(:Value "Option ordinal must evaluate to Int, got "
+                            else model.internalError("Option ordinal must evaluate to Int, got "
                                 <> model.typeName(evalExpr(maybe.unwrap(x.ordinalExpr) f)) offset)
                         end
                     else
@@ -823,7 +823,7 @@ export
                     case target
                         when vVariant with v then model.boolValue(stringOp.equal(v.v.tag x.tag))
                         when vOption with v then model.boolValue(stringOp.equal(v.v.tag x.tag))
-                        else model.internalError(:Value "Variant query target must be Variant or Option, got "
+                        else model.internalError("Variant query target must be Variant or Option, got "
                             <> model.typeName(target) offset)
                     end
                 when exprVariantAssert with x then
@@ -835,7 +835,7 @@ export
                         when vOption with v then
                             if not(stringOp.equal(v.v.tag x.tag)) then model.raiseException(:Ok primitives.variantError offset) end
                             optionAssertion(v.v position(reduce.optionCaseNames(x.target.type) x.tag))
-                        else model.internalError(:Value "Variant assert target must be Variant or Option, got "
+                        else model.internalError("Variant assert target must be Variant or Option, got "
                             <> model.typeName(target) offset)
                     end
                 when exprCase with x then
@@ -863,7 +863,7 @@ export
                     elsif maybe.isSome(x.elseBranch) then
                         evalExpr(maybe.unwrap(x.elseBranch) f)
                     else
-                        model.internalError(:Value "Unhandled case tag '" <> tagged.tag <> "'" offset)
+                        model.internalError("Unhandled case tag '" <> tagged.tag <> "'" offset)
                     end
 
                 (* Exceptions *)
@@ -893,11 +893,11 @@ export
                                         let exc = exc.e let payload = payload let payloadType = payloadType
                                     end
                                     let var offset = offset
-                                    let var sourceMap = maybe.none(:location.SourceMap)
-                                    let var frames = maybe.none(:Array(String))
+                                    let var sourceMap = maybe.none()
+                                    let var frames = maybe.none()
                                 end
                             end
-                        else model.internalError(:Value "Target of raise must be Exception, got "
+                        else model.internalError("Target of raise must be Exception, got "
                             <> model.typeName(evalExpr(x.exc f)) offset)
                     end
                 when exprTry with x then
@@ -947,9 +947,9 @@ export
                                         evalExpr(maybe.unwrap(x.elseBranch) f)
                                     end
                                 else
-                                    rethrow(:Value err)
+                                    rethrow(err)
                                 end
-                            else rethrow(:Value err)
+                            else rethrow(err)
                         end
                     end
 
@@ -963,9 +963,9 @@ export
                                 let b = x.branches[i]
                                 let matchType = resolveType(f b.matchType)
                                 let matches = if b.exact then
-                                    subtyping.isTypeEqual(a.a.type matchType maybe.none(:tm.Lookup))
+                                    subtyping.isTypeEqual(a.a.type matchType maybe.none())
                                 else
-                                    subtyping.isSubtype(a.a.type matchType maybe.none(:tm.Lookup))
+                                    subtyping.isSubtype(a.a.type matchType maybe.none())
                                 end
                                 if matches then
                                     result := maybe.some(if extent b.binders > 0 then
@@ -983,21 +983,21 @@ export
                             elsif maybe.isSome(x.elseBranch) then
                                 evalExpr(maybe.unwrap(x.elseBranch) f)
                             else
-                                model.raiseException(:Value model.dynamicError offset)
+                                model.raiseException(model.dynamicError offset)
                             end
-                        else model.internalError(:Value "Inspect target must be an auto value, got "
+                        else model.internalError("Inspect target must be an auto value, got "
                             <> model.typeName(evalExpr(x.target f)) offset)
                     end
             end
         end
 
     and evalMaybe(e: maybe.T(Expr) f: Frame): maybe.T(Value) =
-        if maybe.isSome(e) then maybe.some(evalExpr(maybe.unwrap(e) f)) else maybe.none(:Value) end
+        if maybe.isSome(e) then maybe.some(evalExpr(maybe.unwrap(e) f)) else maybe.none() end
 
     and indexOf(v: Value offset: maybe.T(Int)): Int =
         case v
             when vInt with x then x.n
-            else model.internalError(:Int "Array index must be Int, got " <> model.typeName(v) offset)
+            else model.internalError("Array index must be Int, got " <> model.typeName(v) offset)
         end
 
     (* A tuple: each component's label is bound for the components after it; a
@@ -1073,7 +1073,7 @@ export
     (* The value of a let binding of name: a function's closure is bound to the
      * name *)
     and evalBoundValue(name: String value: Expr f: Frame): Value =
-        if value.form?exprFun then makeClosure(value f maybe.some(name) maybe.none(:String))
+        if value.form?exprFun then makeClosure(value f maybe.some(name) maybe.none())
         else evalExpr(value f) end
 
     and defineMembers(members: Array(typedAst.LetValue) values: Array(Value) f: Frame): Ok =
@@ -1232,8 +1232,8 @@ export
                 if maybe.isSome(loaded) then
                     maybe.unwrap(loaded)
                 elsif uninterpreted(canon) then
-                    model.internalError(:Value "'" <> canon <> "' cannot be interpreted: compile the program instead"
-                        maybe.none(:Int))
+                    model.internalError("'" <> canon <> "' cannot be interpreted: compile the program instead"
+                        maybe.none())
                 else
                     let var typedMod = graph.typedModule(g canon)
                     if maybe.isNone(typedMod) then
@@ -1261,7 +1261,7 @@ export
                             let exported = exportsOf(m.scope runModuleInit(m.name m.bindings modEnv))
                             hashMap.insert(root.moduleValues canon exported)
                             exported
-                        else model.internalError(:Value "Not a module: " <> name none)
+                        else model.internalError("Not a module: " <> name none)
                     end
                 end
             end

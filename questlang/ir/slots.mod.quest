@@ -45,7 +45,7 @@ export
     let exceptionPayload(t: Type): maybe.T(Shape) =
         begin
             let s = shapes.shape(t)
-            if shapes.kindIs(s shapes.shapeException) then s.elementShape else maybe.none(:Shape) end
+            if shapes.kindIs(s shapes.shapeException) then s.elementShape else maybe.none() end
         end
 
     let tupleAccess(ts: Shape index: Int fresh: Bool): nodes.Access =
@@ -224,10 +224,10 @@ export
             for i = 0 upto {extent fields - 1} do
                 recordFields[i] := tuple let name = fields[i].name let type = typeOf(fields[i].atom) let isVar = fields[i].isVar end
             end
-            let concrete = model.recordType(recordFields maybe.none(:String))
+            let concrete = model.recordType(recordFields maybe.none())
             let h = layout.heldShape(maybe.unwrap(v).type shapes.shapeRecord)
             let target = if maybe.isSome(h) then maybe.unwrap(h).structure else concrete end
-            not(subtyping.isTypeEqual(target concrete maybe.none(:model.Lookup)) orif genericLayout.isRecordSubtype(concrete target))
+            not(subtyping.isTypeEqual(target concrete maybe.none()) orif genericLayout.isRecordSubtype(concrete target))
         end
 
     let hasBox(st: SlotState a: Atom): Bool =
@@ -374,7 +374,7 @@ export
                     let vs = layout.heldShape(maybe.unwrap(v).type shapes.shapeVariant)
                     let c = if maybe.isSome(vs) then shapes.caseOf(maybe.unwrap(vs) x.tag) else maybe.none(:shapes.Component) end
                     x.payload := optSlotIfBoxed(st x.payload
-                        if maybe.isSome(c) then maybe.unwrap(c).shape else maybe.none(:Shape) end before)
+                        if maybe.isSome(c) then maybe.unwrap(c).shape else maybe.none() end before)
                 end
                 false
             (* Whether the binder is boxed: by its own type, the payload's (the
@@ -409,7 +409,7 @@ export
                         false
                     elsif maybe.isSome(ts) then
                         let c = shapes.caseOf(maybe.unwrap(ts) x.tag)
-                        boxed(if maybe.isSome(c) then maybe.unwrap(c).shape else maybe.none(:Shape) end)
+                        boxed(if maybe.isSome(c) then maybe.unwrap(c).shape else maybe.none() end)
                     else
                         false
                     end
@@ -536,7 +536,7 @@ export
             let before = vector.new(:Stmt)
             case s
                 when sLet then ok
-                when sDo with x then begin operation(st x.value maybe.none(:Variable) before) ok end
+                when sDo with x then begin operation(st x.value maybe.none() before) ok end
                 when sVarDecl with x then
                     if x.v.boxed andif maybe.isSome(x.init) then x.init := maybe.some(slot(st maybe.unwrap(x.init) before)) end
                 when sAssign with x then if x.v.boxed then x.value := slot(st x.value before) end

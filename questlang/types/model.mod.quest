@@ -42,12 +42,12 @@ export
     let reservedSymbolUse(symbolId: Int): maybe.T(Decoded) =
         begin
             if symbolId >= 0 then
-                maybe.none(:Decoded)
+                maybe.none()
             else
                 let prefix = {~1 * symbolId} / reservedIndexLimit
                 let index = {~1 * symbolId} % reservedIndexLimit
                 if {prefix < 1} orif {prefix > reservedUses} then
-                    maybe.none(:Decoded)
+                    maybe.none()
                 else
                     maybe.some(tuple
                         let use = option ordinal({prefix - 1}) of ReservedSymbolUse end
@@ -151,7 +151,7 @@ export
      * metavariable was seen *)
     Let Acc = Tuple ids: vector.T(Int) var hasMeta: Bool end
 
-    let newAcc(): Acc = tuple let ids = vector.new(:Int) let var hasMeta = false end
+    let newAcc(): Acc = tuple let ids = vector.new() let var hasMeta = false end
 
     (* Adds ids, but those in bound *)
     let addIds(acc: Acc ids: Array(Int) bound: vector.T(Int)): Ok =
@@ -164,7 +164,7 @@ export
             if not(isBound) then vector.append(acc.ids id) end
         end
 
-    let noBound(): vector.T(Int) = vector.new(:Int)
+    let noBound(): vector.T(Int) = vector.new()
 
     let addType(acc: Acc t: Type bound: vector.T(Int)): Ok =
         begin
@@ -351,7 +351,7 @@ export
 
     (* The value at a key's number, if one was put there *)
     let atKey(A::TYPE values: vector.T(maybe.T(A)) number: Int): maybe.T(A) =
-        if number < vector.length(values) then vector.get(values number) else maybe.none(:A) end
+        if number < vector.length(values) then vector.get(values number) else maybe.none() end
     let putAtKey(A::TYPE values: vector.T(maybe.T(A)) number: Int value: A): Ok =
         begin
             while vector.length(values) <= number do vector.append(values maybe.none(:A)) end
@@ -534,7 +534,7 @@ export
                 let form = form
                 let fv = fv
                 let hasMeta = acc.hasMeta
-                let var unfolded = maybe.none(:Type)
+                let var unfolded = maybe.none()
                 let var siblings = array of :Type end
             end
         end
@@ -674,7 +674,7 @@ export
                 let symbolId = symbolId
                 let bound = bound
                 let name = maybe.unwrapOr(name "?T" <> conv.int(counters.meta))
-                let var instance = maybe.none(:Type)
+                let var instance = maybe.none()
             end
             make(option typeMeta of TypeForm with let meta = meta end)
         end
@@ -702,8 +702,8 @@ export
     Let KindSubst = hashMap.T(Int Kind)
 
     let intEqual(a: Int b: Int): Bool = a is b
-    let newSubst(): Subst = hashMap.new(:Int :Type intEqual hash.int)
-    let newKindSubst(): KindSubst = hashMap.new(:Int :Kind intEqual hash.int)
+    let newSubst(): Subst = hashMap.new(intEqual hash.int)
+    let newKindSubst(): KindSubst = hashMap.new(intEqual hash.int)
     let singleSubst(symbolId: Int t: Type): Subst =
         begin
             let s = newSubst()
@@ -1139,8 +1139,8 @@ export
 
     let noLookup: Lookup =
         tuple
-            let typeDefinition = fun(symbolId: Int): maybe.T(Type) maybe.none(:Type)
-            let kindOf = fun(symbolId: Int): maybe.T(Kind) maybe.none(:Kind)
+            let typeDefinition = fun(symbolId: Int): maybe.T(Type) maybe.none()
+            let kindOf = fun(symbolId: Int): maybe.T(Kind) maybe.none()
         end
 
     let rec evaluateLazily(t: Type env: Lookup): Type =
@@ -1638,7 +1638,7 @@ export
             else k
         end
 
-    let newMemo(A::TYPE): hashMap.T(Int A) = hashMap.new(:Int :A intEqual hash.int)
+    let newMemo(A::TYPE): hashMap.T(Int A) = hashMap.new(intEqual hash.int)
 
     let mapAliases(t: Type replace: All(alias: Type) maybe.T(Type)): Type =
         begin
@@ -2129,7 +2129,7 @@ export
             if maybe.isSome(bound) andif isPower(maybe.unwrap(bound)) then
                 maybe.some(powerBound(maybe.unwrap(bound)))
             else
-                maybe.none(:Type)
+                maybe.none()
             end
         end
 end

@@ -37,8 +37,8 @@ export
 
     let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
-    let none: maybe.T(Plan) = maybe.none(:Plan)
-    let noLayout: Layout = maybe.none(:nodes.PlanLayout)
+    let none: maybe.T(Plan) = maybe.none()
+    let noLayout: Layout = maybe.none()
     let lookupNone = maybe.none(:model.Lookup)
 
     let some(p: Plan): maybe.T(Plan) = maybe.some(p)
@@ -53,7 +53,7 @@ export
      * order they were bound *)
     Let Instantiation = Tuple subst: model.Subst keys: vector.T(Int) end
 
-    let newInstantiation(): Instantiation = tuple let subst = model.newSubst() let keys = vector.new(:Int) end
+    let newInstantiation(): Instantiation = tuple let subst = model.newSubst() let keys = vector.new() end
 
     let bind(inst: Instantiation symbolId: Int t: Type): Ok =
         begin
@@ -506,12 +506,12 @@ export
                 maybe.none(:genericLayout.AbstractInstance)
             else genericLayout.abstractInstance(abstractT) end
             if maybe.isNone(instance) then
-                maybe.none(:maybe.T(Plan))
+                maybe.none()
             else
                 let i = maybe.unwrap(instance)
                 if genericLayout.genericLayoutAgrees(i.generic i.subst)
                     orif not(equal(model.substitute(i.generic i.subst) nativeT)) then
-                    maybe.none(:maybe.T(Plan))
+                    maybe.none()
                 elsif genericLayout.genericLayoutCopiesMutableData(i.generic i.subst) then
                     raise rejectedConversion with
                         "Compiled code cannot convert a value of type '" <> model.show(abstractT)
@@ -605,7 +605,7 @@ export
                 let ss = sHeld
                 let ts = tHeld
                 if extent ss.components < extent ts.components then
-                    unsupported(:maybe.T(Plan) "converting a tuple of type " <> model.show(source) <> " to " <> model.show(target))
+                    unsupported("converting a tuple of type " <> model.show(source) <> " to " <> model.show(target))
                 else
                     let var changing = false
                     for i = 0 upto {extent ts.components - 1} do
@@ -643,7 +643,7 @@ export
                 if arrayServes then
                     none
                 else
-                    unsupported(:maybe.T(Plan) "converting a value of type " <> model.show(source) <> " (" <> cs <> ") to "
+                    unsupported("converting a value of type " <> model.show(source) <> " (" <> cs <> ") to "
                         <> model.show(target) <> " (" <> ct <> ")")
                 end
             end
@@ -713,7 +713,7 @@ export
     let autoParts(t: Type): AutoParts =
         case t.form
             when typeAuto with x then tuple let symbolId = x.symbolId let signature = x.signature end
-            else unsupported(:AutoParts "not an auto type: " <> model.show(t))
+            else unsupported("not an auto type: " <> model.show(t))
         end
 
     (* How an auto value's components are stored, in the auto type's
@@ -786,7 +786,7 @@ export
     let inspectArm(autoType: Type c: nodes.InspectCase): nodes.InspectArm =
         begin
             let a = autoParts(autoType)
-            let storedType = model.autoPayloadType(autoType maybe.none(:Type))
+            let storedType = model.autoPayloadType(autoType maybe.none())
             let armType = model.autoPayloadType(autoType maybe.some(c.matchType))
             let var hasVar = false
             for i = 0 upto {extent a.signature - 1} do if a.signature[i].isVar then hasVar := true end end
@@ -795,7 +795,7 @@ export
                 let t = a.signature[i].type
                 let var mentions = false
                 for j = 0 upto {extent t.fv - 1} do if t.fv[j] is a.symbolId then mentions := true end end
-                converted[i] := if not(mentions) then maybe.none(:String)
+                converted[i] := if not(mentions) then maybe.none()
                     elsif isTypeVariable(t a.symbolId) then maybe.some("component")
                     else maybe.some("mentions") end
             end
@@ -996,7 +996,7 @@ export
      * its callee's result type *)
     let call(r: Representer c: nodes.OpCall before: vector.T(Stmt) after: vector.T(Stmt)): Type =
         begin
-            r.genericResults := vector.new(:GenericResult)
+            r.genericResults := vector.new()
             let calleeType = if maybe.isSome(c.callee) then
                 maybe.some(maybe.unwrap(c.callee).type)
             else
@@ -1065,13 +1065,13 @@ export
         begin
             let w = written.writtenStructure(t kind)
             if maybe.isNone(w) then
-                maybe.none(:Type)
+                maybe.none()
             else
                 case maybe.unwrap(w).form
                     when typeRecord with x then
                         let f = model.recordGetField(x.fields name)
-                        if maybe.isSome(f) then maybe.some(maybe.unwrap(f).type) else maybe.none(:Type) end
-                    else maybe.none(:Type)
+                        if maybe.isSome(f) then maybe.some(maybe.unwrap(f).type) else maybe.none() end
+                    else maybe.none()
                 end
             end
         end
@@ -1080,13 +1080,13 @@ export
         begin
             let w = written.writtenStructure(t shapes.shapeTuple)
             if maybe.isNone(w) then
-                maybe.none(:Type)
+                maybe.none()
             else
                 case maybe.unwrap(w).form
                     when typeTuple with x then
                         let values = model.tupleValueFields(x.fields)
-                        if index < extent values then maybe.some(values[index].type) else maybe.none(:Type) end
-                    else maybe.none(:Type)
+                        if index < extent values then maybe.some(values[index].type) else maybe.none() end
+                    else maybe.none()
                 end
             end
         end
@@ -1095,13 +1095,13 @@ export
         begin
             let w = written.writtenStructure(t shapes.shapeVariant)
             if maybe.isNone(w) then
-                maybe.none(:Type)
+                maybe.none()
             else
                 case maybe.unwrap(w).form
                     when typeVariant with x then
                         let c = model.variantGetField(x.variants tag)
-                        if maybe.isSome(c) then maybe.unwrap(c).type else maybe.none(:Type) end
-                    else maybe.none(:Type)
+                        if maybe.isSome(c) then maybe.unwrap(c).type else maybe.none() end
+                    else maybe.none()
                 end
             end
         end
@@ -1123,7 +1123,7 @@ export
                         else ok
                     end
                 end
-                maybe.none(:Type)
+                maybe.none()
             when opMakeVariant with x then
                 if maybe.isSome(x.payload) then
                     let caseType = writtenVariantCase(resultType x.tag)
@@ -1131,7 +1131,7 @@ export
                         x.payload := maybe.some(convert(maybe.unwrap(x.payload) maybe.unwrap(caseType) before noLayout))
                     end
                 end
-                maybe.none(:Type)
+                maybe.none()
             when opMakeOption with x then
                 if maybe.isSome(x.payload) andif maybe.isSome(x.tag) then
                     let w = written.writtenStructure(resultType shapes.shapeOption)
@@ -1147,25 +1147,25 @@ export
                         end
                     end
                 end
-                maybe.none(:Type)
+                maybe.none()
             when opMakeArray with x then
                 let elem = arrayElement(resultType)
                 let args = vector.new(:Atom)
                 for i = 0 upto {extent x.args - 1} do vector.append(args convert(x.args[i] elem before noLayout)) end
                 x.args := vector.toArray(args)
-                maybe.none(:Type)
+                maybe.none()
             when opArrayRep with x then
                 x.init := convert(x.init arrayElement(resultType) before noLayout)
-                maybe.none(:Type)
+                maybe.none()
             when opMakeAuto with x then
-                let storedType = model.autoPayloadType(x.autoType maybe.none(:Type))
+                let storedType = model.autoPayloadType(x.autoType maybe.none())
                 let p = autoPayloadPlan(typeOf(x.payload) storedType x.autoType)
                 if maybe.isSome(p) then
                     let stored = nodes.newVar("payload" storedType false)
                     vector.append(before letConvert(stored x.payload maybe.unwrap(p)))
                     x.payload := nodes.atomOfVar(stored)
                 end
-                maybe.none(:Type)
+                maybe.none()
             when opTupleField with x then writtenComponent(typeOf(x.tup) x.index)
             when opRecordField with x then writtenField(typeOf(x.recordAtom) shapes.shapeRecord x.name)
             when opIndex with x then maybe.some(arrayElement(typeOf(x.arr)))
@@ -1173,8 +1173,8 @@ export
                 case x.moduleRef
                     when refModule with m then
                         if maybe.isSome(x.member) then maybe.some(memberType(m.m maybe.unwrap(x.member)))
-                        else maybe.none(:Type) end
-                    else maybe.none(:Type)
+                        else maybe.none() end
+                    else maybe.none()
                 end
             when opTypeApp with x then
                 let origType = if maybe.isSome(x.callee) then
@@ -1193,9 +1193,9 @@ export
                 let plans = typeAppPlans(origType x.typeArgs resultType)
                 x.plans := plans.plans
                 x.thunkSymbols := plans.thunkSymbols
-                maybe.none(:Type)
+                maybe.none()
             when opPayload with x then writtenVariantCase(typeOf(x.value) x.tag)
-            else maybe.none(:Type)
+            else maybe.none()
         end
 
     (* The type of the location a store stores into (none for one through an
@@ -1205,7 +1205,7 @@ export
             when sStoreField with x then writtenField(typeOf(x.base) shapes.shapeRecord x.name)
             when sStoreComponent with x then writtenComponent(typeOf(x.base) x.index)
             when sStoreElement with x then maybe.some(arrayElement(typeOf(x.base)))
-            else maybe.none(:Type)
+            else maybe.none()
         end
 
     (* Decides how an inspect case obtains its components (its arm), and
@@ -1252,7 +1252,7 @@ export
                             x.value := nodes.opOfAtom(convert(y.atom x.v.type before noLayout))
                         when opCall with c then
                             let writebacks = vector.new(:Stmt)
-                            r.genericResults := vector.new(:GenericResult)
+                            r.genericResults := vector.new()
                             let resultType = call(r c before writebacks)
                             if not(vector.empty(r.genericResults)) then
                                 (* The callee's generic result, converted to its
@@ -1392,10 +1392,10 @@ export
             end
             for i = 0 upto {vector.length(unit.modules) - 1} do
                 r.pos := ~1
-                body(r vector.get(unit.modules i).init maybe.none(:nodes.Function))
+                body(r vector.get(unit.modules i).init maybe.none())
             end
             r.pos := ~1
-            body(r unit.main maybe.none(:nodes.Function))
+            body(r unit.main maybe.none())
             for i = 0 upto {vector.length(unit.functions) - 1} do
                 let f = vector.get(unit.functions i)
                 r.pos := ~1

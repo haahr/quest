@@ -29,11 +29,11 @@ export
     let evaluate(t: Type): Type = model.evaluateLazily(t symbols.lookup)
     let isSubtype(a: Type b: Type e: env.T): Bool = subtyping.isSubtype(a b env.lookupOf(e))
     let expr(offset: Int t: Type form: typedAst.ExprForm): typedAst.Expr = typedAst.expr(offset t form)
-    let internal(A::TYPE what: String x: ast.Expr): A = diagnostics.fail(:A "internal: not " <> what x.span.startOffset)
+    let internal(A::TYPE what: String x: ast.Expr): A = diagnostics.fail("internal: not " <> what x.span.startOffset)
     let okExpr(offset: Int): typedAst.Expr = expr(offset model.okType option exprOk of typedAst.ExprForm end)
     let notDesugared(A::TYPE className: String x: ast.Expr): A =
-        diagnostics.raiseError(:A checks.notDesugared(className x.span.startOffset))
-    let newIds(): hashMap.T(Int Bool) = hashMap.new(:Int :Bool fun(a: Int b: Int): Bool a is b hash.int)
+        diagnostics.raiseError(checks.notDesugared(className x.span.startOffset))
+    let newIds(): hashMap.T(Int Bool) = hashMap.new(fun(a: Int b: Int): Bool a is b hash.int)
 
     (* ======================================================================
      * Case
@@ -102,7 +102,7 @@ export
     ): Array(typedAst.CaseBranch) =
         begin
             let failed(): Array(Tag) =
-                diagnostics.fail(:Array(Tag) "Case target must have Option or Variant type, got '" <> model.show(targetType) <>
+                diagnostics.fail("Case target must have Option or Variant type, got '" <> model.show(targetType) <>
                     "'" target.span.startOffset)
             let tags = case targetType.form
                 when typeOption with o then optionTags(o.options)
@@ -186,7 +186,7 @@ export
                 else
                     tuple
                         let body = checker.elaborateSubexpr(c branch.body expected e loopDepth)
-                        let binder = maybe.none(:symbols.ValueSymbol)
+                        let binder = maybe.none()
                     end
                 end
                 vector.append(typed tuple
@@ -223,7 +223,7 @@ export
                     let elseTyped = checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
                     let bodies = vector.new(:typedAst.Expr)
                     for i = 0 upto {extent branches - 1} do vector.append(bodies branches[i].body) end
-                    let types = checker.branchTypes(maybe.none(:Type) vector.toArray(bodies) elseTyped)
+                    let types = checker.branchTypes(maybe.none() vector.toArray(bodies) elseTyped)
                     let resultType = if maybe.isSome(expected) then
                         maybe.unwrap(expected)
                     elsif extent types > 0 then
@@ -236,7 +236,7 @@ export
                         let target = targetTyped let branches = branches let elseBranch = elseTyped
                     end)
                 end
-            else internal(:typedAst.Expr "a case" x0)
+            else internal("a case" x0)
         end
 
     (* ======================================================================
@@ -376,9 +376,9 @@ export
                     end
                 (* Desugaring has made an assignment to an array element an
                  * index assignment *)
-                when exprIndex then notDesugared(:typedAst.Expr "ExprInfix" x0)
+                when exprIndex then notDesugared("ExprInfix" x0)
                 else
-                    diagnostics.fail(:typedAst.Expr "Assignment target must be a mutable variable or field" left.span.startOffset)
+                    diagnostics.fail("Assignment target must be a mutable variable or field" left.span.startOffset)
             end
         end
 
@@ -392,7 +392,7 @@ export
                     if stringOp.equal(op ":=") then
                         synthAssignment(c x0 x.left x.right e loopDepth)
                     elsif stringOp.equal(op "andif") orif stringOp.equal(op "orif") then
-                        notDesugared(:typedAst.Expr "ExprInfix" x0)
+                        notDesugared("ExprInfix" x0)
                     elsif maybe.isSome(infix) then
                         let o = maybe.unwrap(infix)
                         let leftTyped = checker.checkExpr(c x.left o.left e loopDepth)
@@ -404,21 +404,21 @@ export
                         if isSubtype(leftTyped.type rightTyped.type e) orif isSubtype(rightTyped.type leftTyped.type e) then
                             expr(offset model.boolType infixForm(leftTyped op rightTyped))
                         else
-                            diagnostics.fail(:typedAst.Expr "Equality operator '" <> op <>
+                            diagnostics.fail("Equality operator '" <> op <>
                                 "' requires operands of compatible types, got '" <> model.show(leftTyped.type) <> "' and '" <>
                                 model.show(rightTyped.type) <> "'" offset)
                         end
                     elsif stringOp.equal(op "==") orif stringOp.equal(op "!=") then
                         let suggest = if stringOp.equal(op "==") then "is" else "isnot" end
-                        diagnostics.fail(:typedAst.Expr "Operator '" <> op <> "' is not supported; use '" <> suggest <>
+                        diagnostics.fail("Operator '" <> op <> "' is not supported; use '" <> suggest <>
                             "' instead" offset)
                     else
                         (* Other infix operators are desugared into calls: a op
                          * b is op(a, b) *)
-                        notDesugared(:typedAst.Expr "ExprInfix" x0)
+                        notDesugared("ExprInfix" x0)
                     end
                 end
-            else internal(:typedAst.Expr "an infix expression" x0)
+            else internal("an infix expression" x0)
         end
 
     (* ======================================================================
@@ -459,7 +459,7 @@ export
                         expr(offset resultType ifForm(thenTyped elseTyped))
                     end
                 end
-            else internal(:typedAst.Expr "a conditional" x0)
+            else internal("a conditional" x0)
         end
 
     let synthFor(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
@@ -483,7 +483,7 @@ export
                         let stop = stopTyped let body = looped.body
                     end)
                 end
-            else internal(:typedAst.Expr "a for loop" x0)
+            else internal("a for loop" x0)
         end
 
     (* ======================================================================
@@ -568,6 +568,6 @@ export
                             let bindings = vector.toArray(typed) let result = resultExpr
                         end)
                     end)
-            else internal(:typedAst.Expr "a block" x0)
+            else internal("a block" x0)
         end
 end

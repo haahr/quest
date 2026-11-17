@@ -27,7 +27,7 @@ export
 
     Let JoinPoint = Tuple label: String arity: Int end
     Let Ids = hashMap.T(Int Bool)
-    let newIds(): Ids = hashMap.new(:Int :Bool intEqual hash.int)
+    let newIds(): Ids = hashMap.new(intEqual hash.int)
     Let Scope = Tuple
         vars: Ids
         var joins: vector.T(JoinPoint)
@@ -47,13 +47,13 @@ export
     let newScope(vars: Ids): Scope =
         tuple
             let vars = vars
-            let var joins = vector.new(:JoinPoint)
-            let var loops = vector.new(:String)
+            let var joins = vector.new()
+            let var loops = vector.new()
             let var inFunction = false
             let var outerMutables = newIds()
             let var localMutables = newIds()
             let var topLevel = true
-            let logs = vector.new(:vector.T(Variable))
+            let logs = vector.new()
         end
     (* Adds a variable to the scope (one already in it stays, as it was) *)
     let withVar(scope: Scope v: Variable): Ok =
@@ -162,7 +162,7 @@ export
                 begin
                     let s = layout.resolvedShape(shapes.shape(t))
                     if shapes.kindIs(s shapes.shapeOption) then maybe.some(s)
-                        else maybe.none(:shapes.Shape) end
+                        else maybe.none() end
                 end
             let check = fun(cases: Array(String) t: model.Type): Ok
                 begin
@@ -219,8 +219,8 @@ export
             if not(scope.topLevel) then
                 hashMap.forEach(scope.localMutables fun(k: Int b: Bool): Ok begin hashMap.insert(outer k b) ok end)
             end
-            scope.joins := vector.new(:JoinPoint)
-            scope.loops := vector.new(:String)
+            scope.joins := vector.new()
+            scope.loops := vector.new()
             scope.inFunction := true
             scope.outerMutables := outer
             scope.localMutables := newIds()

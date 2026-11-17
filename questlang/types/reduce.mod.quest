@@ -80,7 +80,7 @@ export
     let unfoldRecursiveAny(t: Type): maybe.T(Type) =
         begin
             let u = unfolding(t)
-            if isRecursive(u) orif isApp(u) then maybe.none(:Type) else maybe.some(u) end
+            if isRecursive(u) orif isApp(u) then maybe.none() else maybe.some(u) end
         end
     (* Whether a recursive type that unfolds to t is represented as t is:
      * true for the constructed types below (a tuple's values by a pointer to
@@ -105,7 +105,7 @@ export
     let unfoldRecursive(t: Type): maybe.T(Type) =
         begin
             let u = unfolding(t)
-            if isUnfoldedRepresentation(u) then maybe.some(u) else maybe.none(:Type) end
+            if isUnfoldedRepresentation(u) then maybe.some(u) else maybe.none() end
         end
     (* Reduced forms by the id of the type node *)
     let normalized = hashMap.new(:Int :Type intEqual hash.int)
@@ -280,20 +280,20 @@ export
                         end
                     end
                     if withComponents isnot 1 then
-                        single := maybe.none(:String)
-                        component := maybe.none(:Type)
+                        single := maybe.none()
+                        component := maybe.none()
                     end
                     maybe.some(tuple
                         let empty = vector.toArray(empty) let single = single let component = component
                     end)
-                else maybe.none(:OptionIdentity)
+                else maybe.none()
             end
         end
 
     let variantCases(t: Type): maybe.T(Array(model.VariantField)) =
         case exposedType(t fun(u: Type): Bool u.form?typeVariant).form
             when typeVariant with x then maybe.some(x.variants)
-            else maybe.none(:Array(model.VariantField))
+            else maybe.none()
         end
     Def FunQuantifiers = Tuple quantifiers: Array(model.Quantifier) body: Type end
     let collectFunQuantifiers(funType: Type): FunQuantifiers =

@@ -227,7 +227,7 @@ export
 
     (* The constant a value is, if it is one: an Int's, or the null's 0 *)
     let constOf(s: S v: Int): maybe.T(Int) =
-        if maybe.isNone(s.defs[v]) then maybe.none(:Int)
+        if maybe.isNone(s.defs[v]) then maybe.none()
         else
             let i = maybe.unwrap(s.defs[v])
             case i.op
@@ -238,7 +238,7 @@ export
                     opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
                     opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
                     opThreadLocal, opToVal, opFromVal, opSelect, opUnproxy then
-                    maybe.none(:Int)
+                    maybe.none()
             end
         end
     let isConst(s: S v: Int n: Int): Bool = maybe.isSome(constOf(s v)) andif {maybe.unwrap(constOf(s v)) is n}
@@ -347,13 +347,13 @@ export
      * tests it in, if v is one *)
     Let Bit = Tuple value: Int bit: Int end
     let bitOf(defs: Array(maybe.T(ssa.Inst)) v: Int): maybe.T(Bit) =
-        if maybe.isNone(defs[v]) then maybe.none(:Bit)
+        if maybe.isNone(defs[v]) then maybe.none()
         else
             let i = maybe.unwrap(defs[v])
             let constant(a: Int): maybe.T(Int) =
                 if maybe.isSome(defs[a]) andif ssa.isOp(maybe.unwrap(defs[a]) ssa.opConst) then
                     maybe.some(maybe.unwrap(defs[a]).imm)
-                else maybe.none(:Int) end
+                else maybe.none() end
             let one(n: Int): Bool = word.popCount(word.fromInt(n)) is 1
             let at(n: Int): Int = word.countTrailingZeros(word.fromInt(n))
             (* A copy's source, through conversions between words *)
@@ -370,7 +370,7 @@ export
                             a
                     end
                 else a end
-            if not(ssa.isOp(i ssa.opAnd)) then maybe.none(:Bit)
+            if not(ssa.isOp(i ssa.opAnd)) then maybe.none()
             elsif maybe.isSome(constant(i.args[1])) andif one(maybe.unwrap(constant(i.args[1]))) then
                 maybe.some(tuple
                     let value = source(i.args[0]) let bit = at(maybe.unwrap(constant(i.args[1])))
@@ -379,14 +379,14 @@ export
                 maybe.some(tuple
                     let value = source(i.args[1]) let bit = at(maybe.unwrap(constant(i.args[0])))
                 end)
-            else maybe.none(:Bit) end
+            else maybe.none() end
         end
 
     (* The two comparisons of integers or pointers an and of v's joins, if it
      * is one *)
     let conjunctionOf(defs: Array(maybe.T(ssa.Inst)) v: Int): maybe.T(Array(Int)) =
         if maybe.isNone(defs[v]) orif not(ssa.isOp(maybe.unwrap(defs[v]) ssa.opAnd)) then
-            maybe.none(:Array(Int))
+            maybe.none()
         else
             let i = maybe.unwrap(defs[v])
             let compares(a: Int): Bool =
@@ -394,7 +394,7 @@ export
                     andif not(isRealComparison(maybe.unwrap(defs[a]).op))
             if compares(i.args[0]) andif compares(i.args[1]) andif {i.args[0] isnot i.args[1]} then
                 maybe.some(i.args)
-            else maybe.none(:Array(Int)) end
+            else maybe.none() end
         end
 
     let setFlags(s: S i: ssa.Inst): Ok =
@@ -427,8 +427,8 @@ export
             if ssa.isOp(p ssa.opSymbol) andif {{p.imm + imm} is 0}
                     andif hashMap.contains(s.defined p.symbol) then
                 maybe.some(p.symbol)
-            else maybe.none(:String) end
-        else maybe.none(:String) end
+            else maybe.none() end
+        else maybe.none() end
     let address(s: S v: Int imm: Int width: Int): Address =
         if maybe.isSome(localSymbol(s v imm)) then
             let symbol = maybe.unwrap(localSymbol(s v imm))
@@ -1006,7 +1006,7 @@ export
             let constAt(v: Int): maybe.T(Int) =
                 if maybe.isSome(defs[v]) andif ssa.isOp(maybe.unwrap(defs[v]) ssa.opConst) then
                     maybe.some(maybe.unwrap(defs[v]).imm)
-                else maybe.none(:Int) end
+                else maybe.none() end
             for b = 0 upto {nBlocks - 1} do
                 let insts = ssa.block(f b).insts
                 let here(v: Int): Bool = {defBlock[v] is b} andif {uses[v] is 1} andif maybe.isSome(defs[v])

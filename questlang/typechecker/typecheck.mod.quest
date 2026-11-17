@@ -120,7 +120,7 @@ export
                     if maybe.isSome(x.elseBranch) andif not(x.shortCircuit) then
                         control.elaborateIf(c x0 exp e loopDepth)
                     else
-                        checker.checkSubsumption(c x0 expected e loopDepth maybe.none(:String))
+                        checker.checkSubsumption(c x0 expected e loopDepth maybe.none())
                     end
                 when exprBlock then control.elaborateBlock(c x0 exp e loopDepth)
                 when exprFun then bindings.elaborateFun(c x0 exp e loopDepth)
@@ -145,10 +145,10 @@ export
                  * Language and System section 4: cons(3 nil())) *)
                 when exprApp then
                     checks.requireSubtype(x0.span.startOffset application.elaborateApp(c x0 exp e loopDepth) expected e
-                        maybe.none(:String))
+                        maybe.none())
                 (* Subsumption: the minimal type is synthesized and must be a
                  * subtype *)
-                else checker.checkSubsumption(c x0 expected e loopDepth maybe.none(:String))
+                else checker.checkSubsumption(c x0 expected e loopDepth maybe.none())
             end
         end
 
@@ -198,7 +198,7 @@ export
                         expr(offset model.okType option exprExit of typedAst.ExprForm end)
                     end
                 when exprExternal with x then
-                    diagnostics.fail(:typedAst.Expr "External binding '" <> x.symbol <> "' requires an explicit type annotation"
+                    diagnostics.fail("External binding '" <> x.symbol <> "' requires an explicit type annotation"
                         offset)
 
                 (* Variables *)
@@ -268,7 +268,7 @@ export
                                             let target = targetTyped
                                         end)
                                     else
-                                        diagnostics.fail(:typedAst.Expr "Cannot dereference non-variable type '" <>
+                                        diagnostics.fail("Cannot dereference non-variable type '" <>
                                             model.show(targetTyped.type) <> "'" offset)
                                 end
                             end
@@ -331,7 +331,7 @@ export
                 when exprInspect then autoValues.elaborateInspect(c x0 none e loopDepth)
                 when exprAuto then autoValues.elaborateAuto(c x0 none e loopDepth)
 
-                else diagnostics.fail(:typedAst.Expr "Unsupported AST expression" offset)
+                else diagnostics.fail("Unsupported AST expression" offset)
             end
         end
 

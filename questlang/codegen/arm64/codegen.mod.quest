@@ -406,7 +406,7 @@ export
             end
         end
 
-    let frameSlots(f: Function): Array(FrameSlot) = compile(f 0 hashMap.new(:String :Bool eq hash.string)).slots
+    let frameSlots(f: Function): Array(FrameSlot) = compile(f 0 hashMap.new(eq hash.string)).slots
 
     (* =========================================================================
      * Emitting a function's code: the prologue, each block's instructions,
@@ -754,7 +754,7 @@ export
             end
             tuple
                 let code = code
-                let frame = if s.entersTry then maybe.none(:Frame) else maybe.some(tuple
+                let frame = if s.entersTry then maybe.none() else maybe.some(tuple
                     let below = {{16 * extent c.saved} + c.size} / 8 let saved = savedMask
                     let undescribed = s.slotsEnd / 8 let calls = vector.toArray(sites)
                 end) end
@@ -763,7 +763,7 @@ export
 
     let frameMaps(f: Function): Array(String) =
         begin
-            let made = machineCode(f 0 hashMap.new(:String :Bool eq hash.string))
+            let made = machineCode(f 0 hashMap.new(eq hash.string))
             let lines = vector.new(:String)
             if maybe.isSome(made.frame) then
                 let frame = maybe.unwrap(made.frame)
@@ -1018,6 +1018,6 @@ export
             let made = compiled(u definedSymbols(u))
             encode.unit(made.machines dataBesidesFrames(u) vector.toArray(u.files)
                 if hasFrames(u) then maybe.some(frameTable(made.frames))
-                else maybe.none(:encode.Frames) end)
+                else maybe.none() end)
         end
 end

@@ -39,20 +39,20 @@ export
      * type named what (QString, QInt, ...): a builtin called with a value of
      * the wrong type, which a checked program never does *)
     let wrong(A::TYPE what: String v: Value): A =
-        model.internalError(:A "Expected argument of type " <> what <> ", got " <> model.typeName(v) maybe.none(:Int))
+        model.internalError("Expected argument of type " <> what <> ", got " <> model.typeName(v) maybe.none())
 
-    let str(v: Value): String = case v when vString with x then x.s else wrong(:String "QString" v) end
-    let int(v: Value): Int = case v when vInt with x then x.n else wrong(:Int "QInt" v) end
-    let chr(v: Value): Char = case v when vChar with x then x.c else wrong(:Char "QChar" v) end
-    let rl(v: Value): Real = case v when vReal with x then x.r else wrong(:Real "QReal" v) end
-    let bool(v: Value): Bool = case v when vBool with x then x.b else wrong(:Bool "QBool" v) end
-    let wd(v: Value): word.T = case v when vWord with x then x.w else wrong(:word.T "QWord" v) end
-    let wr(v: Value): writer.T = case v when vWriter with x then x.w else wrong(:writer.T "QWriter" v) end
-    let rd(v: Value): reader.T = case v when vReader with x then x.rd else wrong(:reader.T "QReader" v) end
+    let str(v: Value): String = case v when vString with x then x.s else wrong("QString" v) end
+    let int(v: Value): Int = case v when vInt with x then x.n else wrong("QInt" v) end
+    let chr(v: Value): Char = case v when vChar with x then x.c else wrong("QChar" v) end
+    let rl(v: Value): Real = case v when vReal with x then x.r else wrong("QReal" v) end
+    let bool(v: Value): Bool = case v when vBool with x then x.b else wrong("QBool" v) end
+    let wd(v: Value): word.T = case v when vWord with x then x.w else wrong("QWord" v) end
+    let wr(v: Value): writer.T = case v when vWriter with x then x.w else wrong("QWriter" v) end
+    let rd(v: Value): reader.T = case v when vReader with x then x.rd else wrong("QReader" v) end
     let sb(v: Value): stringBuilder.T =
-        case v when vStringBuilder with x then x.sb else wrong(:stringBuilder.T "QStringBuilder" v) end
-    let proc(v: Value): process.T = case v when vProcess with x then x.p else wrong(:process.T "QProcess" v) end
-    let arr(v: Value): Array(Value) = case v when vArray with x then x.a else wrong(:Array(Value) "QArray" v) end
+        case v when vStringBuilder with x then x.sb else wrong("QStringBuilder" v) end
+    let proc(v: Value): process.T = case v when vProcess with x then x.p else wrong("QProcess" v) end
+    let arr(v: Value): Array(Value) = case v when vArray with x then x.a else wrong("QArray" v) end
 
     let unit = model.okValue
     let vString(s: String): Value = model.stringValue(s)
@@ -66,7 +66,7 @@ export
     let vException(e: model.ExceptionValue): Value = option vException of Value with let e = e end
     let vProcess(p: process.T): Value = option vProcess of Value with let p = p end
     let raisedError(v: Value): model.RunError =
-        case v when vRaised with x then x.e else wrong(:model.RunError "QRaised" v) end
+        case v when vRaised with x then x.e else wrong("QRaised" v) end
 
     let strings(xs: Array(String)): Value =
         begin
@@ -127,18 +127,18 @@ export
         fun(args: Args): Value
             try
                 fn(args)
-            when stringOp.error then model.raiseException(:Value primitives.stringError maybe.none(:Int))
-            when writer.error then model.raiseException(:Value primitives.writerError maybe.none(:Int))
-            when reader.error then model.raiseException(:Value primitives.readerError maybe.none(:Int))
-            when ascii.error then model.raiseException(:Value primitives.asciiError maybe.none(:Int))
-            when intOp.error then model.raiseException(:Value primitives.intError maybe.none(:Int))
-            when realOp.error then model.raiseException(:Value primitives.realError maybe.none(:Int))
-            when word.error then model.raiseException(:Value primitives.wordError maybe.none(:Int))
-            when arrayOp.error then model.raiseException(:Value primitives.arrayOpError maybe.none(:Int))
-            when system.error then model.raiseException(:Value primitives.systemError maybe.none(:Int))
-            when readline.error then model.raiseException(:Value primitives.readlineError maybe.none(:Int))
-            when readline.endOfInput then model.raiseException(:Value primitives.readlineEndOfInput maybe.none(:Int))
-            when readline.interrupted then model.raiseException(:Value primitives.readlineInterrupted maybe.none(:Int))
+            when stringOp.error then model.raiseException(primitives.stringError maybe.none())
+            when writer.error then model.raiseException(primitives.writerError maybe.none())
+            when reader.error then model.raiseException(primitives.readerError maybe.none())
+            when ascii.error then model.raiseException(primitives.asciiError maybe.none())
+            when intOp.error then model.raiseException(primitives.intError maybe.none())
+            when realOp.error then model.raiseException(primitives.realError maybe.none())
+            when word.error then model.raiseException(primitives.wordError maybe.none())
+            when arrayOp.error then model.raiseException(primitives.arrayOpError maybe.none())
+            when system.error then model.raiseException(primitives.systemError maybe.none())
+            when readline.error then model.raiseException(primitives.readlineError maybe.none())
+            when readline.endOfInput then model.raiseException(primitives.readlineEndOfInput maybe.none())
+            when readline.interrupted then model.raiseException(primitives.readlineInterrupted maybe.none())
             end
 
     (* ======================================================================
@@ -157,14 +157,14 @@ export
     (* The type of t's variant case tag, if t is known to be a variant type
      * with that case and the case has a value *)
     let variantCaseType(t: maybe.T(tm.Type) tag: String): maybe.T(tm.Type) =
-        if maybe.isNone(t) then maybe.none(:tm.Type)
+        if maybe.isNone(t) then maybe.none()
         else
             let cases = reduce.variantCases(maybe.unwrap(t))
-            if maybe.isNone(cases) then maybe.none(:tm.Type)
+            if maybe.isNone(cases) then maybe.none()
             else
                 let f = tm.variantGetField(maybe.unwrap(cases) tag)
                 if maybe.isSome(f) then maybe.unwrap(f).type
-                else maybe.none(:tm.Type) end
+                else maybe.none() end
             end
         end
 
@@ -237,7 +237,7 @@ export
     let systemArgs = tuple let var args = array of :String end end
     let setSystemArgs(args: Array(String)): Ok = systemArgs.args := args
 
-    let dynamicFailure(A::TYPE): A = model.raiseException(:A model.dynamicError maybe.none(:Int))
+    let dynamicFailure(A::TYPE): A = model.raiseException(model.dynamicError maybe.none())
 
     (* A dynamic value's copy: a new auto value of the same components *)
     let dynamicCopy(v: Value): Value =
@@ -250,9 +250,9 @@ export
                         option vAuto of Value with
                             let a = tuple let value = model.tupleValue(elements t.t.labels) let type = x.a.type end
                         end
-                    else dynamicFailure(:Value)
+                    else dynamicFailure()
                 end
-            else dynamicFailure(:Value)
+            else dynamicFailure()
         end
 
     let dynamicExtern(w: writer.T d: Value): Value =
@@ -283,7 +283,7 @@ export
     let readDocument(r: reader.T): String =
         begin
             let b = stringBuilder.new()
-            let next(): Char = if reader.more(r) then reader.getChar(r) else dynamicFailure(:Char) end
+            let next(): Char = if reader.more(r) then reader.getChar(r) else dynamicFailure() end
             let var c = next()
             while {c is ' '} orif {c is '\t'} orif {c is '\r'} orif {c is '\n'} do c := next() end
             stringBuilder.char(b c)
@@ -337,7 +337,7 @@ export
      * is raised for a closed reader, input that ends inside the value, a failed
      * read, and a document that does not decode. *)
     let dynamicIntern(r: reader.T): Value =
-        dynamicReader.decode(try readDocument(r) when reader.error then dynamicFailure(:String) end)
+        dynamicReader.decode(try readDocument(r) when reader.error then dynamicFailure() end)
 
     (* Fills table, when this module initializes, with the externals the
      * interpreter provides, keyed by C symbol: all but quest_system_args,
@@ -492,7 +492,7 @@ export
             fn("quest_word_ge" fun(a: Args): Value vBool(word.ge(wd(a[0]) wd(a[1]))))
             fn("quest_word_to_real_val" fun(a: Args): Value vReal(word.toReal(wd(a[0]))))
             fn("quest_word_from_real_val" fun(a: Args): Value vWord(word.fromReal(rl(a[0]))))
-            fn("quest_identity_hash" fun(a: Args): Value vWord(identityHash(maybe.none(:tm.Type) a[0])))
+            fn("quest_identity_hash" fun(a: Args): Value vWord(identityHash(maybe.none() a[0])))
             fn("quest_hash_mix" fun(a: Args): Value vWord(hash.mix(wd(a[0]))))
             fn("quest_hash_combine" fun(a: Args): Value vWord(hash.combine(wd(a[0]) wd(a[1]))))
 
@@ -551,7 +551,7 @@ export
         else
             let found = hashMap.get(table symbol)
             if maybe.isNone(found) then
-                model.internalError(:Value "Undefined external symbol '" <> symbol <> "' in interpreter" maybe.none(:Int))
+                model.internalError(:Value "Undefined external symbol '" <> symbol <> "' in interpreter" maybe.none())
             end
             maybe.unwrap(found)
         end

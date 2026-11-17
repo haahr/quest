@@ -37,7 +37,7 @@ export
      * v *)
     let symbolOf(defs: Defs v: Int): maybe.T(ssa.Inst) =
         if maybe.isSome(defs[v]) andif ssa.isOp(maybe.unwrap(defs[v]) ssa.opSymbol) then defs[v]
-        else maybe.none(:ssa.Inst) end
+        else maybe.none() end
 
     (* The runtime's functions that write memory but run no Quest code: those
      * a module's initialization registers its types, functions, records'
@@ -157,13 +157,13 @@ export
     (* The value a store of v stores, as a word of static data, if an
      * opConst or an opSymbol defines v *)
     let wordOf(defs: Defs v: Int): maybe.T(ssa.Word) =
-        if maybe.isNone(defs[v]) then maybe.none(:ssa.Word)
+        if maybe.isNone(defs[v]) then maybe.none()
         else
             let i = maybe.unwrap(defs[v])
             if ssa.isOp(i ssa.opConst) then maybe.some(option wordInt of ssa.Word with let n = i.imm end)
             elsif ssa.isOp(i ssa.opSymbol) then
                 maybe.some(option wordSymbol of ssa.Word with let symbol = i.symbol let addend = i.imm end)
-            else maybe.none(:ssa.Word) end
+            else maybe.none() end
         end
 
     (* The instruction a load of a constant global becomes: the value w as
@@ -248,7 +248,7 @@ export
                                 maybe.unwrap(c).ruledOut := true
                             end
                             c
-                        else maybe.none(:Candidate) end
+                        else maybe.none() end
                     end
                 for b = 0 upto {vector.length(f.blocks) - 1} do
                     let blk = ssa.block(f b)

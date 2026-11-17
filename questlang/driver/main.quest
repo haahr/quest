@@ -833,10 +833,10 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         let flags = vector.fromArray(cBackend.cFlags(programBackend))
                         if assembly then vector.append(flags "-g") end
                         compilerRunner.compileCSource(t.c files.absolute(maybe.unwrap(compileOutput))
-                            options.nogc maybe.none(:String) objects vector.toArray(flags) assembly)
+                            options.nogc maybe.none() objects vector.toArray(flags) assembly)
                     else
                         let binary = compilerRunner.temporaryBinary()
-                        compilerRunner.compileCSource(t.c binary false maybe.none(:String) objects
+                        compilerRunner.compileCSource(t.c binary false maybe.none() objects
                             cBackend.cFlags(programBackend) choice.isAssembly(programBackend))
                         let r = compilerRunner.runBinary(binary options.programArgs)
                         if system.fileExists(binary) then system.removeFile(binary) end
@@ -990,13 +990,13 @@ let compileUnitFile(): Ok =
                 when interfaceUnit then
                     if maybe.isSome(outputDir) then system.makeDirectory(maybe.unwrap(outputDir)) end
                     headers.compileInterfaceWithHeader(files.absolute(options.file) outputDir includes options.buildDir
-                        maybe.none(:String))
+                        maybe.none())
                     ok
                 when moduleUnit then
                     if maybe.isSome(outputDir) then system.makeDirectory(maybe.unwrap(outputDir)) end
-                    moduleCompiler.compileModuleFile(files.absolute(options.file) outputDir includes maybe.none(:String)
-                        options.nogc vector.toArray(vector.new(:String)) options.buildDir maybe.none(:String)
-                        maybe.none(:graph.Resolver) options.backends options.reportInferable)
+                    moduleCompiler.compileModuleFile(files.absolute(options.file) outputDir includes maybe.none()
+                        options.nogc vector.toArray(vector.new(:String)) options.buildDir maybe.none()
+                        maybe.none() options.backends options.reportInferable)
                     ok
                 else
                     diagbag.add(bag diagnostics.error("'" <> options.file <> "' is a program, not a unit file"
@@ -1091,7 +1091,7 @@ let run(): Ok =
                     for i = 0 upto {extent options.extraObjects - 1} do
                         let o = options.extraObjects[i]
                         let byPath = graph.unit(e.units option moduleUnit of units.UnitKind end
-                            paths.canonicalizeModulePath(o options.includePaths maybe.none(:String)))
+                            paths.canonicalizeModulePath(o options.includePaths maybe.none()))
                         byPath.precompiled := true
                         let byName = graph.unit(e.units option moduleUnit of units.UnitKind end
                             vector.get(strutil.split(files.baseName(o) ".") 0))
@@ -1143,7 +1143,7 @@ let buildProgram(): Ok =
         stdlib.install()
         try
             let eng = engine.reportingInferable(engine.withBackends(engine.parallel(engine.new(options.buildDir
-                options.includePaths options.verbose options.nogc options.extraObjects maybe.none(:graph.Resolver))
+                options.includePaths options.verbose options.nogc options.extraObjects maybe.none())
                 options.jobs system.args[0]) options.backends) options.reportInferable)
             if compileMode andif options.compileOnly then engine.compileMain(eng options.file)
             else engine.buildMain(eng options.file compileOutput) end

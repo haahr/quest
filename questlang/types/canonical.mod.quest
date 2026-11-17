@@ -44,7 +44,7 @@ export
                 andif {ordinal(maybe.unwrap(decoded).use) is ordinal(use)} then
                 maybe.some(maybe.unwrap(decoded).index)
             else
-                maybe.none(:Int)
+                maybe.none()
             end
         end
 
@@ -55,12 +55,12 @@ export
     let isRecSelfSymbol(symbolId: Int): Bool = maybe.isSome(reservedIndex(symbolId recSelfUse))
 
     let recSelfVar(level: Int): Type =
-        model.typeVariable("Rec.Self" <> conv.int(level) model.reservedSymbolId(recSelfUse level) maybe.none(:Kind))
+        model.typeVariable("Rec.Self" <> conv.int(level) model.reservedSymbolId(recSelfUse level) maybe.none())
 
     let recSelfLevel(t: Type): maybe.T(Int) =
         case t.form
             when typeVariable with x then reservedIndex(x.symbolId recSelfUse)
-            else maybe.none(:Int)
+            else maybe.none()
         end
 
     (* =========================================================================
@@ -312,7 +312,7 @@ export
                     when kindAll with x then
                         binderInfo(option sKindAll of Shape end array of ofKind(x.paramKind) ofKind(x.resultKind) end
                             array of x.paramId end)
-                    else maybe.none(:NodeInfo)
+                    else maybe.none()
                 end
             when nodeType with nt then
                 let s = nt.t
@@ -480,7 +480,7 @@ export
                         let parts = array of({n + 1} ofType(x.constructor))
                         for i = 0 upto {n - 1} do parts[i + 1] := ofType(x.arguments[i]) end
                         info(option sApp of Shape with let count = n end parts)
-                    else maybe.none(:NodeInfo)
+                    else maybe.none()
                 end
         end
 
@@ -489,7 +489,7 @@ export
     let rebuildNode(s: Shape parts: Array(Node)): Node =
         case s
             when sTuple with x then
-                let fields = array of(extent x.fields model.tupleField(maybe.none(:String) model.okType false))
+                let fields = array of(extent x.fields model.tupleField(maybe.none() model.okType false))
                 for i = 0 upto {extent x.fields - 1} do
                     fields[i] := model.tupleField(x.fields[i].name asType(parts[i]) x.fields[i].isVar)
                 end
@@ -556,7 +556,7 @@ export
                 elsif x.hasKind then
                     ofType(model.typeVariable(x.name x.symbolId maybe.some(asKind(parts[0]))))
                 else
-                    ofType(model.typeVariable(x.name x.symbolId maybe.none(:Kind)))
+                    ofType(model.typeVariable(x.name x.symbolId maybe.none()))
                 end
             when sPath with x then ofType(model.pathType(x.rootName x.rootSymbolId x.fieldName asKind(parts[0])))
             when sKindType then ofKind(model.typeKind)
@@ -597,8 +597,8 @@ export
         tuple
             let recRoot = ~1
             let recComp = ~1
-            let recVars = hashMap.new(:Int :Type intEqual hash.int)
-            let scope = hashMap.new(:Int :vector.T(Param) intEqual hash.int)
+            let recVars = hashMap.new(intEqual hash.int)
+            let scope = hashMap.new(intEqual hash.int)
             let depth = 0
         end
 
@@ -706,7 +706,7 @@ export
     Let Work = Tuple k: Int var pos: Int end
     Let Step = Tuple k: Int succ: Array(Int) var pos: Int end
 
-    let newPlaces(): Places = hashMap.new(:Int :Place intEqual hash.int)
+    let newPlaces(): Places = hashMap.new(intEqual hash.int)
 
     let newGraph(root: Type): Graph =
         begin
@@ -973,7 +973,7 @@ export
             tuple
                 let objects = vector.toArray(objects)
                 let closed = vector.toArray(closed)
-                let root = case rootRef when refClass with x then maybe.some(x.k) else maybe.none(:Int) end
+                let root = case rootRef when refClass with x then maybe.some(x.k) else maybe.none() end
                 let cls = classes
                 let shapes = qShapes
                 let children = qChildren
@@ -982,10 +982,10 @@ export
                 let cyclic = vector.toArray(cyclic)
                 let reachesCycle = vector.toArray(reachesCycle)
                 let refers = vector.toArray(refers)
-                let terms = hashMap.new(:Int :maybe.T(Node) intEqual hash.int)
+                let terms = hashMap.new(intEqual hash.int)
                 let built = keys.new()
-                let builtNodes = vector.new(:maybe.T(Node))
-                let aggregateMemo = hashMap.new(:Int :Bool intEqual hash.int)
+                let builtNodes = vector.new()
+                let aggregateMemo = hashMap.new(intEqual hash.int)
             end
         end
 
@@ -1216,7 +1216,7 @@ export
                     elsif x.hasKind then
                         ofType(model.typeVariable(param.name param.symbolId maybe.some(asKind(build(g kids[0] ctx)))))
                     else
-                        ofType(model.typeVariable(param.name param.symbolId maybe.none(:Kind)))
+                        ofType(model.typeVariable(param.name param.symbolId maybe.none()))
                     end
                 when sAll with x then buildBinder(g k ctx x.count)
                 when sOperator with x then buildBinder(g k ctx x.count)
@@ -1473,7 +1473,7 @@ export
         begin
             let built = try maybe.some(newGraph(s)) when notCanonicalizable then maybe.none(:Graph) end
             if maybe.isNone(built) orif maybe.isNone(maybe.unwrap(built).root) then
-                maybe.none(:Graph)
+                maybe.none()
             else
                 let g = maybe.unwrap(built)
                 for i = 0 upto {extent g.objects - 1} do
@@ -1609,13 +1609,13 @@ export
             let var selfNamed = false
             for i = 0 upto {extent t.fv - 1} do if isRecSelfSymbol(t.fv[i]) then selfNamed := true end end
             if not(mayRecur(t)) then
-                maybe.none(:Type)
+                maybe.none()
             elsif selfNamed then
                 (* A body of a recursive type being named, its variables
                  * replaced by placeholders: the recursive type is in canonical
                  * form already (or is named as written), and so are the body's
                  * parts *)
-                maybe.none(:Type)
+                maybe.none()
             else
                 let s = canonicalStructure(t)
                 let entry = hashMap.get(canonicalNodes s.id)
@@ -1634,7 +1634,7 @@ export
                     end
                 end
                 if maybe.isNone(place) then
-                    maybe.none(:Type)
+                    maybe.none()
                 else
                     let gc = maybe.unwrap(place)
                     let found = try term(gc.graph gc.k) when notCanonicalizable then maybe.none(:Node) end
@@ -1647,20 +1647,20 @@ export
                         maybe.none(:Type)
                     end
                     if maybe.isNone(canonical) orif model.same(maybe.unwrap(canonical) t) then
-                        maybe.none(:Type)
+                        maybe.none()
                     else
                         let c = maybe.unwrap(canonical)
                         (* Merging binders could in principle mix up scopes: a
                          * canonical form is used only if it is equal to the
                          * type *)
-                        if not(subtyping.isTypeEqual(c model.stripAliases(t) maybe.none(:model.Lookup))) then
+                        if not(subtyping.isTypeEqual(c model.stripAliases(t) maybe.none())) then
                             let message = "canonical form of the type " <> dump.shortTypeName(t) <> " is not equal to it"
                             if checkCanonical() then raise canonicalError with message end end
                             (* The type is named as written; the program is
                              * still compiled *)
                             writer.putString(writer.err
                                 "quest: warning: internal: " <> message <> "; naming it as written (please report this)\n")
-                            maybe.none(:Type)
+                            maybe.none()
                         else
                             (* Tags and descriptors ask next for the parts of
                              * the canonical form and of its unfoldings: its
@@ -1685,7 +1685,7 @@ export
         begin
             let t = model.prune(t0)
             if t.hasMeta then
-                maybe.none(:Type)
+                maybe.none()
             else
                 let found = hashMap.get(canonicalCache t.id)
                 if maybe.isSome(found) then

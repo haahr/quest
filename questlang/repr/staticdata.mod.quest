@@ -45,13 +45,13 @@ export
     (* A descriptor of the runtime's, element index of the array symbol *)
     let base(expr: String symbol: String index: Int): DescriptorForm =
         tuple
-            let kind = "base" let tag = "" let type = maybe.none(:Type) let name = "" let expr = expr
-            let struct = "" let display = maybe.none(:Type) let symbol = symbol let index = index
+            let kind = "base" let tag = "" let type = maybe.none() let name = "" let expr = expr
+            let struct = "" let display = maybe.none() let symbol = symbol let index = index
         end
     let described(kind: String tag: String t: maybe.T(Type) name: String): DescriptorForm =
         tuple
             let kind = kind let tag = tag let type = t let name = name let expr = "" let struct = ""
-            let display = maybe.none(:Type) let symbol = "quest_type_" <> tag let index = 0
+            let display = maybe.none() let symbol = "quest_type_" <> tag let index = 0
         end
     let ofType(kind: String tag: String t: Type): DescriptorForm = described(kind tag maybe.some(t) "")
 
@@ -71,8 +71,8 @@ export
 
     let newRecordNaming(): RecordNaming =
         tuple
-            let aliasByShape = hashMap.new(:String :String eq hash.string)
-            let canonicalNames = hashMap.new(:String :String eq hash.string)
+            let aliasByShape = hashMap.new(eq hash.string)
+            let canonicalNames = hashMap.new(eq hash.string)
         end
 
     let recordFields(t: Type): Array(model.RecordField) =
@@ -182,7 +182,7 @@ export
                 when shapeOk then some("&quest_type_Ok")
                 when shapeWord, shapeBottom, shapeTuple, shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell,
                     shapeOut, shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal,
-                    shapeOperator, shapePending then maybe.none(:String)
+                    shapeOperator, shapePending then maybe.none()
             end
         end
 
@@ -256,7 +256,7 @@ export
                     end
                 else
                     let opaque(tag: String name: String): DescriptorForm =
-                        described("opaque" tag maybe.none(:Type) name)
+                        described("opaque" tag maybe.none() name)
                     let named(name: String): DescriptorForm = opaque("opaque_" <> symbols.mangleIdent(name) name)
                     case t.form
                         when typeApp with x then
@@ -341,7 +341,7 @@ export
                 vector.append(inner id)
             end
             if repeated then
-                maybe.none(:String)
+                maybe.none()
             else
                 let head = written.echoHead(t)
                 let own = case head.form
@@ -361,7 +361,7 @@ export
                     vector.append(parts pyRepr.tupleOf(pair))
                 end
                 if {extent own is 0} andif not(anyPart) then
-                    maybe.none(:String)
+                    maybe.none()
                 else
                     let owned = vector.new(:String)
                     for i = 0 upto {extent own - 1} do
@@ -381,13 +381,13 @@ export
 
     let echoDescriptorForm(t: Type ctx: maybe.T(RecordNaming)): maybe.T(DescriptorForm) =
         begin
-            let key = echoKey(t vector.new(:Int))
+            let key = echoKey(t vector.new())
             if maybe.isNone(key) then
-                maybe.none(:DescriptorForm)
+                maybe.none()
             else
                 let f = descriptorForm(t ctx)
                 if not(strings.isOneOf(f.kind array of "tuple" "record" "array" "option" "variant" end)) then
-                    maybe.none(:DescriptorForm)
+                    maybe.none()
                 else
                     (* A record's tag names its struct too, which the copy
                      * keeps *)
@@ -431,10 +431,10 @@ export
         if maybe.isSome(k) andif model.isPower(maybe.unwrap(k)) then
             maybe.some(model.powerBound(maybe.unwrap(k)))
         else
-            maybe.none(:Type)
+            maybe.none()
         end
     let variableBound(t: Type): maybe.T(Type) =
-        case t.form when typeVariable with v then kindBound(v.bound) else maybe.none(:Type) end
+        case t.form when typeVariable with v then kindBound(v.bound) else maybe.none() end
 
     Def ShapeSignature = Tuple
         bounds: vector.T(maybe.T(Type))
@@ -720,7 +720,7 @@ export
                 made("QTYPE_KIND_FUN" dump.shortTypeName(t) pointerSize("sizeof(QClosure *)")
                     option payloadFun of Payload with let params = params let result = refType(sig.result) let bounds = bounds end)
             elsif eq(kind "auto") then
-                let payloadType = model.autoPayloadType(t maybe.none(:Type))
+                let payloadType = model.autoPayloadType(t maybe.none())
                 let structName = layout.tupleStructName(payloadType)
                 let n = extent valueFields(payloadType)
                 case t.form

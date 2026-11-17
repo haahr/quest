@@ -134,7 +134,7 @@ export
         case v.form
             when typeVariable with x then x.bound
             when typeAbstract with x then maybe.some(x.bound)
-            else maybe.none(:model.Kind)
+            else maybe.none()
         end
 
     let isConstantKind(kind: shapes.ShapeKind): Bool =
@@ -188,7 +188,7 @@ export
         handlerVars: hashMap.T(Int Bool)
     end
 
-    let newScope(): hashMap.T(Int Variable) = hashMap.new(:Int :Variable intEqual hash.int)
+    let newScope(): hashMap.T(Int Variable) = hashMap.new(intEqual hash.int)
 
     (* A static descriptor operand for t (a closed type, or a template), whose
      * descriptor is listed once in the unit's static data. Types of one shape
@@ -420,7 +420,7 @@ export
             let heldKind = shapes.kindIs(held shapes.shapeRecord) orif shapes.kindIs(held shapes.shapeVariant)
                 orif shapes.kindIs(held shapes.shapeOption) orif shapes.kindIs(held shapes.shapeTuple)
             if not(layout.ownView(s)) orif not(heldKind) orif not(hashMap.contains(d.scope s.symbolId)) then
-                maybe.none(:Variable)
+                maybe.none()
             else
                 let found = hashMap.get(d.viewMaps s.symbolId)
                 if maybe.isSome(found) then
@@ -532,7 +532,7 @@ export
                     for i = 0 upto {extent x.fields - 1} do
                         fields[i] := tuple let name = x.fields[i].name let type = typeOf(x.fields[i].atom) let isVar = x.fields[i].isVar end
                     end
-                    let concrete = model.recordType(fields maybe.none(:String))
+                    let concrete = model.recordType(fields maybe.none())
                     let held = layout.heldShape(maybe.unwrap(result).type shapes.shapeRecord)
                     let target = if maybe.isSome(held) then maybe.unwrap(held).structure else concrete end
                     x.descriptor := maybe.some(describeType(d concrete))
@@ -583,7 +583,7 @@ export
             let symbol = case autoType.form when typeAuto with a then a.symbolId else 0 end
             let witness = tuple let v = nodes.newVar("witness" nodes.descriptorType false) let symbols = array of symbol end end
             x.witness := maybe.some(witness)
-            let storedType = model.autoPayloadType(autoType maybe.none(:Type))
+            let storedType = model.autoPayloadType(autoType maybe.none())
             let storedFields = case storedType.form when typeTuple with t then model.tupleValueFields(t.fields) else array of :model.ValueField end end
             for i = 0 upto {extent x.cases - 1} do
                 let c = x.cases[i]
@@ -603,7 +603,7 @@ export
                     for j = 0 upto {m - 1} do
                         let how = arm.converted[j]
                         pairs[j] := if maybe.isNone(how) then
-                            maybe.none(:nodes.DescriptorPair)
+                            maybe.none()
                         elsif eq(maybe.unwrap(how) "component") then
                             maybe.some(tuple let source = descVar(witness.v) let target = describeType(d armFields[j].type) end)
                         else
@@ -638,7 +638,7 @@ export
             let var replaced = maybe.none(:Stmt)
             case s
                 when sLet with x then operation(d x.value maybe.some(x.v))
-                when sDo with x then operation(d x.value maybe.none(:Variable))
+                when sDo with x then operation(d x.value maybe.none())
                 when sInspect with x then describeInspect(d x)
                 when sTry with x then begin hashMap.insert(d.handlerVars x.exc.id true) ok end
                 when sStoreField with x then x.viewMap := viewMap(d x.base)
@@ -696,12 +696,12 @@ export
             let scope = newScope()
             for i = 0 upto {extent params - 1} do hashMap.insert(scope params[i].symbols[0] params[i].v) end
             d.scope := scope
-            d.viewMaps := hashMap.new(:Int :nodes.ViewMapParam intEqual hash.int)
-            d.viewMapOrder := vector.new(:nodes.ViewMapParam)
+            d.viewMaps := hashMap.new(intEqual hash.int)
+            d.viewMapOrder := vector.new()
             body(d f.body)
             f.viewMaps := vector.toArray(d.viewMapOrder)
-            d.viewMaps := hashMap.new(:Int :nodes.ViewMapParam intEqual hash.int)
-            d.viewMapOrder := vector.new(:nodes.ViewMapParam)
+            d.viewMaps := hashMap.new(intEqual hash.int)
+            d.viewMapOrder := vector.new()
             d.scope := newScope()
         end
 
@@ -904,7 +904,7 @@ export
                     for i = 0 upto {extent x.fields - 1} do
                         fields[i] := tuple let name = x.fields[i].name let type = typeOf(x.fields[i].atom) let isVar = x.fields[i].isVar end
                     end
-                    add(c model.recordType(fields maybe.none(:String)))
+                    add(c model.recordType(fields maybe.none()))
                     for i = 0 upto {extent x.fields - 1} do atom(c x.fields[i].atom) end
                 end
             when opRecordField with x then atom(c x.recordAtom)

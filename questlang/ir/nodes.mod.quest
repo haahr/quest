@@ -523,7 +523,7 @@ export
         tuple let id = nextId() let hint = hint let type = t let isMutable = isMutable let var boxed = false
             let var unboxed = false end
 
-    let newBody(): Body = tuple let id = nextId() let var statements = vector.new(:Stmt) end
+    let newBody(): Body = tuple let id = nextId() let var statements = vector.new() end
     let bodyOf(statements: Array(Stmt)): Body =
         tuple let id = nextId() let var statements = vector.fromArray(statements) end
 
@@ -583,13 +583,13 @@ export
             let source = source
             let target = target
             let var fields = array of :maybe.T(Plan) end
-            let var layout = maybe.none(:PlanLayout)
+            let var layout = maybe.none()
             let var access = array of :Access end
             let var thunkSymbols = array of :Array(Int) end
             let var descriptors = array of :Descriptor end
             let var thunkParams = array of :DescriptorParam end
-            let var tagMap = maybe.none(:TagMap)
-            let var thunk = maybe.none(:Function)
+            let var tagMap = maybe.none()
+            let var thunk = maybe.none()
         end
 
     let newFunction(v: Variable typeParams: Array(TypeParam) params: Array(ParamEntry) resultType: Type body: Body
@@ -601,7 +601,7 @@ export
             let var params = params
             let var resultType = resultType
             let var body = body
-            let var env = maybe.none(:Variable)
+            let var env = maybe.none()
             let var traceName = traceName
             let var descriptorParams = array of :DescriptorParam end
             let var viewMaps = array of :ViewMapParam end
@@ -609,7 +609,7 @@ export
         end
 
     let newMembers(): Members =
-        tuple let names = vector.new(:String) let vars = hashMap.new(:String :Variable stringOp.equal hash.string) end
+        tuple let names = vector.new() let vars = hashMap.new(stringOp.equal hash.string) end
 
     let addMember(m: Members name: String v: Variable): Ok =
         begin
@@ -627,8 +627,8 @@ export
             let interfaceName = interfaceName
             let var init = init
             let var members = members
-            let var exports = maybe.none(:Members)
-            let var recordVar = maybe.none(:Variable)
+            let var exports = maybe.none()
+            let var recordVar = maybe.none()
             let var abstractTypes = array of :AbstractTypeEntry end
         end
 
@@ -650,12 +650,12 @@ export
             let var main = main
             let var modules = modules
             let var imports = imports
-            let var functions = vector.new(:Function)
+            let var functions = vector.new()
             let var stage = "core"
             let var sourceMap = sourceMap
-            let var mergedSources = vector.new(:maybe.T(location.SourceMap))
-            let var staticData = maybe.none(:StaticData)
-            let var phrase = maybe.none(:Phrase)
+            let var mergedSources = vector.new()
+            let var staticData = maybe.none()
+            let var phrase = maybe.none()
         end
 
     (* Each file's offsets are below 2^32, so a unit's offsets carry their file
@@ -668,12 +668,12 @@ export
         if file is 0 then u.sourceMap
         elsif {file > 0} andif {file <= vector.length(u.mergedSources)} then
             vector.get(u.mergedSources {file - 1})
-        else maybe.none(:location.SourceMap) end
+        else maybe.none() end
 
     let sourceFile(u: Unit file: Int): maybe.T(String) =
         begin
             let sm = fileMap(u file)
-            if maybe.isNone(sm) then maybe.none(:String)
+            if maybe.isNone(sm) then maybe.none()
             else maybe.some(location.file(maybe.unwrap(sm))) end
         end
 
@@ -681,7 +681,7 @@ export
         begin
             let file = if offset < 0 then ~1 else offset / fileSpan end
             let sm = fileMap(u file)
-            if maybe.isNone(sm) then maybe.none(:SourcePos)
+            if maybe.isNone(sm) then maybe.none()
             else
                 let pos = location.locate(maybe.unwrap(sm) offset - {file * fileSpan})
                 maybe.some(tuple let file = file let line = pos.line let col = pos.col end)
@@ -691,7 +691,7 @@ export
     let site(u: Unit offset: Int): maybe.T(String) =
         begin
             let pos = sourcePos(u offset)
-            if maybe.isNone(pos) then maybe.none(:String)
+            if maybe.isNone(pos) then maybe.none()
             else
                 let p = maybe.unwrap(pos)
                 maybe.some(maybe.unwrap(sourceFile(u p.file)) <> ":" <> conv.int(p.line) <> ":"
@@ -796,7 +796,7 @@ export
             let var args = args
             let offset = offset
             let var access = direct
-            let var descriptor = maybe.none(:Descriptor)
+            let var descriptor = maybe.none()
         end
 
     let call(callee: maybe.T(Variable) typeArgs: Array(Type) args: Array(Atom) moduleRef: maybe.T(ModuleRef)
@@ -822,7 +822,7 @@ export
             let var plans = array of :maybe.T(Plan) end
             let var thunkSymbols = array of :Array(Int) end
             let var descriptors = array of :Descriptor end
-            let var thunkParams = maybe.none(:Array(DescriptorParam))
+            let var thunkParams = maybe.none()
         end
 
     let makeTuple(args: Array(Atom) typeComponents: Array(TypeComponent)): Op =
@@ -837,7 +837,7 @@ export
             let var tup = tup
             let var index = index
             let var access = direct
-            let var viewMap = maybe.none(:Variable)
+            let var viewMap = maybe.none()
         end
 
     let makeRecord(fields: Array(FieldAtom)): Op =
@@ -845,9 +845,9 @@ export
             let var fields = fields
             let var embedded = array of :Int end
             let var runtimeOffsets = false
-            let var descriptor = maybe.none(:Descriptor)
-            let var offsets = maybe.none(:OffsetTable)
-            let var viewDescriptor = maybe.none(:Descriptor)
+            let var descriptor = maybe.none()
+            let var offsets = maybe.none()
+            let var viewDescriptor = maybe.none()
         end
 
     let recordField(recordAtom: Atom name: String): Op =
@@ -855,8 +855,8 @@ export
             let var recordAtom = recordAtom
             let name = name
             let var stored = false
-            let var descriptor = maybe.none(:Descriptor)
-            let var viewMap = maybe.none(:Variable)
+            let var descriptor = maybe.none()
+            let var viewMap = maybe.none()
         end
 
     let makeOption(tag: maybe.T(String) payload: maybe.T(Atom) ordinalAtom: maybe.T(Atom) offset: maybe.T(Int)
@@ -875,7 +875,7 @@ export
             let var value = value
             let tag = tag
             let var access = direct
-            let var viewMap = maybe.none(:Variable)
+            let var viewMap = maybe.none()
         end
 
     let payload(value: Atom tag: String offset: maybe.T(Int) ordinalIndex: maybe.T(Int)): Op =
@@ -886,7 +886,7 @@ export
             let var access = direct
             let var components = array of :Access end
             let ordinalIndex = ordinalIndex
-            let var viewMap = maybe.none(:Variable)
+            let var viewMap = maybe.none()
         end
 
     let ordinalOf(value: Atom cases: Array(String)): Op =
@@ -894,7 +894,7 @@ export
             let var value = value
             let cases = cases
             let var access = direct
-            let var viewMap = maybe.none(:Variable)
+            let var viewMap = maybe.none()
         end
 
     let switchStmt(value: Atom cases: Array(Case) elseBody: maybe.T(Body)): Stmt =
@@ -904,7 +904,7 @@ export
             let var cases = cases
             let var elseBody = elseBody
             let var access = direct
-            let var viewMap = maybe.none(:Variable)
+            let var viewMap = maybe.none()
         end
 
     let inspectStmt(value: Atom cases: Array(InspectCase) elseBody: maybe.T(Body) autoType: maybe.T(Type)
@@ -916,7 +916,7 @@ export
             let var elseBody = elseBody
             let autoType = autoType
             let offset = offset
-            let var witness = maybe.none(:DescriptorParam)
+            let var witness = maybe.none()
         end
 
     let newCase(tags: Array(String) body: Body binder: maybe.T(Variable)): Case =
@@ -928,8 +928,8 @@ export
             let var binders = binders
             let var body = body
             let exact = exact
-            let var arm = maybe.none(:InspectArm)
-            let var descriptor = maybe.none(:Descriptor)
+            let var arm = maybe.none()
+            let var descriptor = maybe.none()
         end
 
     (* ======================================================================
@@ -939,7 +939,7 @@ export
     let same(a: Variable b: Variable): Bool = a.id is b.id
     let sameType(a: model.Type b: model.Type): Bool =
         {a.id is b.id} orif {reduce.normalizeType(a).id is reduce.normalizeType(b).id}
-            orif subtyping.isTypeEqual(a b maybe.none(:model.Lookup))
+            orif subtyping.isTypeEqual(a b maybe.none())
 
     let stmtPos(s: Stmt): Int =
         case s
@@ -1005,7 +1005,7 @@ export
     let atomVarOf(a: Atom): maybe.T(Variable) =
         case a
             when atomVar with x then maybe.some(x.v)
-            else maybe.none(:Variable)
+            else maybe.none()
         end
 
     let atomType(a: Atom): Type =

@@ -26,7 +26,7 @@ export
         array of "reader" "Reader" end array of "system" "System" end
     end
 
-    let newStringMap(V::TYPE): hashMap.T(String V) = hashMap.new(:String :V stringOp.equal hash.string)
+    let newStringMap(V::TYPE): hashMap.T(String V) = hashMap.new(stringOp.equal hash.string)
 
     (* Every name of an interface (its own, lowercased, its module's, and that
      * lowercased), and of a module *)
@@ -71,11 +71,11 @@ export
         var exportScopes: vector.T(graph.NamedScope)
     end
     let cache: Cache = tuple
-        let interfaces = newStringMap(:Scope)
-        let modScopes = newStringMap(:Scope)
-        let modTypes = newStringMap(:model.Type)
-        let var loadedInterfaces = vector.new(:graph.NamedScope)
-        let var exportScopes = vector.new(:graph.NamedScope)
+        let interfaces = newStringMap()
+        let modScopes = newStringMap()
+        let modTypes = newStringMap()
+        let var loadedInterfaces = vector.new()
+        let var exportScopes = vector.new()
     end
 
     (* Replaces the entries of the same names, as a dictionary update does *)
@@ -102,11 +102,11 @@ export
         begin
             let target = hashMap.get(interfaceNames name)
             if maybe.isNone(target) then
-                maybe.none(:Scope)
+                maybe.none()
             else
                 let iface = maybe.unwrap(target)
                 if not(hashMap.contains(cache.interfaces iface)) then
-                    let baseEnv = env.newWith(maybe.none(:env.Registry))
+                    let baseEnv = env.newWith(maybe.none())
                     let scope = elaboration.loadInterface(iface baseEnv)
                     hashMap.insert(cache.interfaces iface scope)
                     update(cache.loadedInterfaces graph.interfaceScopes(baseEnv.units))
@@ -133,13 +133,13 @@ export
         begin
             let norm = hashMap.get(moduleNames name)
             if maybe.isNone(norm) then
-                maybe.none(:Scope)
+                maybe.none()
             else
                 let mod = maybe.unwrap(norm)
                 let iface = hashMap.find(moduleInterfaces mod)
                 ensureInterface(iface e)
                 if not(hashMap.contains(cache.modScopes mod)) then
-                    let baseEnv = env.newWith(maybe.none(:env.Registry))
+                    let baseEnv = env.newWith(maybe.none())
                     let ifaceScope = hashMap.find(cache.interfaces iface)
                     let modScope = elaboration.separatelyCompiledModuleScope(mod ifaceScope baseEnv)
                     hashMap.insert(cache.modScopes mod modScope)

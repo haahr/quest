@@ -28,7 +28,7 @@ export
     let wordType = "uint64_t"
 
     let none = maybe.none(:Int)
-    let fail(A::TYPE): A = model.raiseException(:A model.dynamicError none)
+    let fail(A::TYPE): A = model.raiseException(model.dynamicError none)
     let intEqual(a: Int b: Int): Bool = a is b
     let intKey(i: Int): String = conv.int(i)
 
@@ -40,8 +40,8 @@ export
     let isBuiltin(r: Ref): Bool = stringOp.length(r.name) > 0
     let isRef(r: Ref name: String): Bool = stringOp.equal(r.name name)
     let isVarLabel(label: String): Bool = strutil.startsWith(label "var ") orif stringOp.equal(label "var")
-    let items(v: json.Value): vector.T(json.Value) = case v when jArray with x then x.items else fail(:vector.T(json.Value)) end
-    let text(v: json.Value): String = case v when jString with x then x.s else fail(:String) end
+    let items(v: json.Value): vector.T(json.Value) = case v when jArray with x then x.items else fail() end
+    let text(v: json.Value): String = case v when jString with x then x.s else fail() end
 
     (* The built-in types a ref may name *)
     let builtinNames = array of "Ok" "Bool" "Char" "String" "Int" "Real" "Dynamic" end
@@ -165,13 +165,13 @@ export
                     let entry = abstractTypes.abstractTypeBySymbol(v.symbolId)
                     if maybe.isNone(entry)
                         orif not(isUnbounded(boundOf(maybe.unwrap(entry).typeVar))) then
-                        maybe.none(:Abstract)
+                        maybe.none()
                     else
                         maybe.some(tuple
                             let entry = maybe.unwrap(entry) let args = args
                         end)
                     end
-                else maybe.none(:Abstract)
+                else maybe.none()
             end
         end
 
@@ -180,7 +180,7 @@ export
             let var equal = extent a is extent b
             if equal then
                 for i = 0 upto {extent a - 1} do
-                    if not(subtyping.isTypeEqual(a[i] b[i] maybe.none(:tm.Lookup))) then equal := false end
+                    if not(subtyping.isTypeEqual(a[i] b[i] maybe.none())) then equal := false end
                 end
             end
             equal
@@ -281,9 +281,9 @@ export
 
     let newGraph(): Graph =
         tuple
-            let nodes = vector.new(:Node)
-            let index = hashMap.new(:String :Int stringOp.equal hash.string)
-            let binders = vector.new(:Int)
+            let nodes = vector.new()
+            let index = hashMap.new(stringOp.equal hash.string)
+            let binders = vector.new()
         end
 
     let nodeOf(g: Graph r: Ref): Node = vector.get(g.nodes r.index)

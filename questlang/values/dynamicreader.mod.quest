@@ -56,7 +56,7 @@ export
             end
             k
         end
-    let members(v: json.Value): json.Object = case v when jObject with x then x.o else fail(:json.Object) end
+    let members(v: json.Value): json.Object = case v when jObject with x then x.o else fail() end
     let member(o: json.Object name: String): json.Value =
         begin
             let found = json.get(o name)
@@ -78,7 +78,7 @@ export
                 elsif strutil.startsWith(x.text "-") then {0 - 9223372036854775807} - 1
                 else 9223372036854775807
                 end
-            else fail(:Int)
+            else fail()
         end
     (* Reads a document's value back by its type, from the document's type
      * table, raising dynamic.error (fail) at anything ill-formed.
@@ -116,12 +116,12 @@ export
     end
     let checkRef(rd: Reader v: json.Value): Ref =
         case v
-            when jString with x then if dynamicJson.isBuiltinName(x.s) then builtin(x.s) else fail(:Ref) end
+            when jString with x then if dynamicJson.isBuiltinName(x.s) then builtin(x.s) else fail() end
             when jNumber with x then
                 let i = integer(v)
                 if {i < 0} orif {i >= extent rd.table} then fail(:Ok) end
                 nodeRef(i)
-            else fail(:Ref)
+            else fail()
         end
     let isPairList(v: json.Value): Bool =
         case v
@@ -252,7 +252,7 @@ export
                     checkRef(rd member(b "result"))
                     ok
                 else
-                    fail(:Ok)
+                    fail()
                 end
             end
         end
@@ -263,14 +263,14 @@ export
             let binderIdSet = hashMap.new(:Int :Bool intEqual hash.int)
             let rd: Reader = tuple
                 let table = entries
-                let types = hashMap.new(:Int :Type intEqual hash.int)
-                let active = hashMap.new(:Int :Bool intEqual hash.int)
-                let recursive = hashMap.new(:Int :Bool intEqual hash.int)
+                let types = hashMap.new(intEqual hash.int)
+                let active = hashMap.new(intEqual hash.int)
+                let recursive = hashMap.new(intEqual hash.int)
                 let binderIds = binderIds
                 let binderIdSet = binderIdSet
-                let objects = hashMap.new(:Int :Seen intEqual hash.int)
-                let autoParams = vector.new(:Type)
-                let witnesses = vector.new(:Ref)
+                let objects = hashMap.new(intEqual hash.int)
+                let autoParams = vector.new()
+                let witnesses = vector.new()
             end
             for i = 0 upto {extent entries - 1} do checkNode(rd entries[i]) end
             for i = 0 upto {extent entries - 1} do
@@ -360,7 +360,7 @@ export
             else
                 dynamicJson.representation(entry args)
             end
-            if not(subtyping.isTypeEqual(known rep maybe.none(:tm.Lookup))) then fail(:Ok) end
+            if not(subtyping.isTypeEqual(known rep maybe.none())) then fail(:Ok) end
             if extent args > 0 then tm.typeApp(entry.typeVar args) else entry.typeVar end
         end
     let pairsOf(v: json.Value): vector.T(json.Value) = items(v)
@@ -417,7 +417,7 @@ export
                     let name = dynamicJson.fieldName(ns[i]) let type = typeOf(rd checkRef(rd member(b ns[i]))) let isVar = isVarLabel(ns[i])
                 end)
             end
-            tm.recordType(vector.toArray(fields) maybe.none(:String))
+            tm.recordType(vector.toArray(fields) maybe.none())
         elsif stringOp.equal(e.kind "tuple") then
             let ps = pairsOf(e.body)
             let fields = vector.new(:tm.TupleComponent)
@@ -489,7 +489,7 @@ export
             vector.pop(rd.autoParams)
             case param.form
                 when typeVariable with v then tm.autoType(v.name v.symbolId kindBound vector.toArray(signature))
-                else fail(:Type)
+                else fail()
             end
         elsif stringOp.equal(e.kind "fun") then
             let b = members(e.body)
@@ -522,10 +522,10 @@ export
                     if maybe.isNone(found) then fail(:Ok) end
                     let obj = maybe.unwrap(found)
                     if not(sameRef(obj.readAt r))
-                        andif not(subtyping.isSubtype(typeOf(rd obj.readAt) typeOf(rd r) maybe.none(:tm.Lookup))) then
+                        andif not(subtyping.isSubtype(typeOf(rd obj.readAt) typeOf(rd r) maybe.none())) then
                         fail(:Ok)
                     end
-                    tuple let existing = maybe.some(obj.value) let objId = maybe.none(:Int) let contents = json.null end
+                    tuple let existing = maybe.some(obj.value) let objId = maybe.none() let contents = json.null end
                 elsif hasMember(x.o "@id") then
                     let id = integer(member(x.o "@id"))
                     if hashMap.contains(rd.objects id) then fail(:Ok) end
@@ -535,15 +535,15 @@ export
                         for i = 0 upto {extent ns - 1} do
                             if not(stringOp.equal(ns[i] "@id")) then json.put(rest ns[i] member(x.o ns[i])) end
                         end
-                        tuple let existing = maybe.none(:Value) let objId = maybe.some(id) let contents = json.object(rest) end
+                        tuple let existing = maybe.none() let objId = maybe.some(id) let contents = json.object(rest) end
                     else
                         if {memberCount(x.o) isnot 2} orif not(hasMember(x.o "@items")) then fail(:Ok) end
-                        tuple let existing = maybe.none(:Value) let objId = maybe.some(id) let contents = member(x.o "@items") end
+                        tuple let existing = maybe.none() let objId = maybe.some(id) let contents = member(x.o "@items") end
                     end
                 else
-                    tuple let existing = maybe.none(:Value) let objId = maybe.none(:Int) let contents = data end
+                    tuple let existing = maybe.none() let objId = maybe.none() let contents = data end
                 end
-            else tuple let existing = maybe.none(:Value) let objId = maybe.none(:Int) let contents = data end
+            else tuple let existing = maybe.none() let objId = maybe.none() let contents = data end
         end
     let wordLimit = "18446744073709551615"
     (* A word's integer: 0 to 2^64 - 1 *)
@@ -558,14 +558,14 @@ export
                 let w = strutil.tryToWord(t)
                 if maybe.isNone(w) then fail(:Ok) end
                 maybe.unwrap(w)
-            else fail(:word.T)
+            else fail()
         end
     let labelsOf(ps: vector.T(json.Value)): maybe.T(Array(maybe.T(String))) =
         begin
             let labels = array of(vector.length(ps) maybe.none(:String))
             for i = 0 upto {vector.length(ps) - 1} do
                 let name = dynamicJson.fieldName(pairLabel(vector.get(ps i)))
-                labels[i] := if stringOp.length(name) > 0 then maybe.some(name) else maybe.none(:String) end
+                labels[i] := if stringOp.length(name) > 0 then maybe.some(name) else maybe.none() end
             end
             maybe.some(labels)
         end
@@ -584,7 +584,7 @@ export
                     let witness = checkRef(rd member(o "@type"))
                     let b = members(e.body)
                     if not(isNull(member(b "bound"))) andif not(subtyping.isSubtype(typeOf(rd witness)
-                        typeOf(rd checkRef(rd member(b "bound"))) maybe.none(:tm.Lookup))) then
+                        typeOf(rd checkRef(rd member(b "bound"))) maybe.none())) then
                         fail(:Ok)
                     end
                     let values = items(member(o "@value"))
@@ -710,10 +710,10 @@ export
                                 end
                                 make(tag model.tupleValue(elements labelsOf(ps)))
                             end
-                        else fail(:Value)
+                        else fail()
                     end
                 else
-                    fail(:Value)
+                    fail()
                 end
             end
         end
@@ -727,7 +727,7 @@ export
                     if maybe.isNone(r) then fail(:Ok) end
                     model.realValue(maybe.unwrap(r))
                 else
-                    fail(:Value)
+                    fail()
                 end
             when jString with x then
                 if stringOp.equal(name "Real") andif stringOp.equal(x.s "Infinity") then
@@ -739,20 +739,20 @@ export
                 elsif stringOp.equal(name "String") then
                     model.stringValue(x.s)
                 else
-                    fail(:Value)
+                    fail()
                 end
             when jBool with x then
-                if stringOp.equal(name "Bool") then model.boolValue(x.b) else fail(:Value) end
+                if stringOp.equal(name "Bool") then model.boolValue(x.b) else fail() end
             when jNull then
-                if stringOp.equal(name "Ok") then model.okValue else fail(:Value) end
+                if stringOp.equal(name "Ok") then model.okValue else fail() end
             when jObject with x then
                 if stringOp.equal(name "Dynamic") andif {memberCount(x.o) is 2} andif hasMember(x.o "@type")
                     andif hasMember(x.o "@value") then
                     dynamic(rd checkRef(rd member(x.o "@type")) member(x.o "@value"))
                 else
-                    fail(:Value)
+                    fail()
                 end
-            else fail(:Value)
+            else fail()
         end
     and dynamic(rd: Reader r: Ref data: json.Value): Value =
         begin

@@ -84,7 +84,7 @@ export
 
     (* A member, if the value is an object that has it *)
     let member(v: json.Value name: String): maybe.T(json.Value) =
-        case v when jObject with x then json.get(x.o name) else maybe.none(:json.Value) end
+        case v when jObject with x then json.get(x.o name) else maybe.none() end
     let stringMember(v: json.Value name: String default: String): String =
         begin
             let m = member(v name)
@@ -100,14 +100,14 @@ export
         begin
             let text = if system.isFile(file) then files.readText(file) else maybe.none(:String) end
             if maybe.isNone(text) then
-                maybe.none(:ModuleManifest)
+                maybe.none()
             else
                 try
                     let data = json.parseShared(maybe.unwrap(text))
                     let stringValue(v: maybe.T(json.Value)): maybe.T(String) =
-                        if maybe.isNone(v) then maybe.none(:String)
+                        if maybe.isNone(v) then maybe.none()
                         else case maybe.unwrap(v) when jString with y then
-                            maybe.some(y.s) else maybe.none(:String) end
+                            maybe.some(y.s) else maybe.none() end
                         end
                     let required(v: json.Value key: String): String =
                         begin
@@ -116,7 +116,7 @@ export
                             maybe.unwrap(found)
                         end
                     let itemsOf(v: maybe.T(json.Value)): vector.T(json.Value) =
-                        if maybe.isNone(v) then vector.new(:json.Value)
+                        if maybe.isNone(v) then vector.new()
                         else case maybe.unwrap(v) when jArray with x then
                             x.items else raise malformed as vector.T(json.Value) end end
                         end
@@ -162,9 +162,9 @@ export
                         let backend = stringMember(data "backend" "c")
                     end)
                 when json.error then
-                    maybe.none(:ModuleManifest)
+                    maybe.none()
                 when malformed then
-                    maybe.none(:ModuleManifest)
+                    maybe.none()
                 end
             end
         end
@@ -257,7 +257,7 @@ export
                 elsif maybe.isSome(importsChanged) then
                     maybe.unwrap(importsChanged)(man)
                 else
-                    maybe.none(:String)
+                    maybe.none()
                 end
             end
         end

@@ -221,12 +221,12 @@ export
                     end
                     let args = forwarded(stmts params a.fields)
                     let called = nodes.call(maybe.some(orig) typeVariables(typeParams) args
-                        maybe.none(:nodes.ModuleRef) maybe.none(:String) maybe.none(:Type))
+                        maybe.none() maybe.none() maybe.none())
                     case called when opCall with c then c.descriptors := descriptorsOf(a.thunkParams) else ok end
                     let last = if extent a.fields > 0 then a.fields[extent a.fields - 1] else maybe.none(:Plan) end
                     finish(stmts called source.result target.result last)
                     let f = nodes.newFunction(nodes.newVar("qa_adapt" plan.target false) typeParams params target.result
-                        nodes.bodyOf(vector.toArray(stmts)) maybe.none(:String))
+                        nodes.bodyOf(vector.toArray(stmts)) maybe.none())
                     if maybe.isNone(known) then f.env := maybe.some(orig) end
                     (* A thunk parameter stands for the target's type parameter
                      * and the source's it is passed as; as the function's, for
@@ -294,12 +294,12 @@ export
                     let args = forwarded(stmts params o.plans)
                     let descriptors = descriptorsOf(vector.toArray(descriptorParams))
                     let called = nodes.call(maybe.some(orig) typeVariables(typeParams) args
-                        maybe.none(:nodes.ModuleRef) maybe.none(:String) maybe.none(:Type))
+                        maybe.none() maybe.none() maybe.none())
                     case called when opCall with c then c.descriptors := descriptors else ok end
                     let resultPlan = if extent o.plans > 0 then o.plans[extent o.plans - 1] else maybe.none(:Plan) end
                     finish(stmts called written.funSignature(origType).result target.result resultPlan)
                     let f = nodes.newFunction(nodes.newVar("qa_type_app" targetType false) typeParams params target.result
-                        nodes.bodyOf(vector.toArray(stmts)) maybe.none(:String))
+                        nodes.bodyOf(vector.toArray(stmts)) maybe.none())
                     f.env := maybe.some(env)
                     f.descriptorParams := vector.toArray(descriptorParams)
                     addThunk(t key f)
@@ -336,9 +336,9 @@ export
                         let var args = args
                         let var descriptors = array of :Descriptor end
                     end
-                    finish(stmts called sig.result sig.result maybe.none(:Plan))
+                    finish(stmts called sig.result sig.result maybe.none())
                     let f = nodes.newFunction(nodes.newVar("qx_" <> symbol ty false) typeParams params sig.result
-                        nodes.bodyOf(vector.toArray(stmts)) maybe.none(:String))
+                        nodes.bodyOf(vector.toArray(stmts)) maybe.none())
                     f.descriptorParams := descriptorParams
                     addThunk(t key f)
             end
@@ -364,7 +364,7 @@ export
     let knownOf(t: Thunker a: Atom): maybe.T(Function) =
         case a
             when atomVar with x then hashMap.get(t.known x.v.id)
-            when atomConst then maybe.none(:Function)
+            when atomConst then maybe.none()
         end
 
     (* Gives every adapt plan in a plan its adapter, in place. The adapter
@@ -390,7 +390,7 @@ export
         end
 
     let moduleOf(r: nodes.ModuleRef): maybe.T(nodes.Module) =
-        case r when refModule with x then maybe.some(x.m) else maybe.none(:nodes.Module) end
+        case r when refModule with x then maybe.some(x.m) else maybe.none() end
 
     (* The function a type application applies, as an atom, after the
      * statements that compute it (added to before), and its type *)
@@ -429,7 +429,7 @@ export
                     maybe.some(closureOp(f array of :Atom end array of :Type end array of :Descriptor end))
                 else
                     plan(t maybe.some(x.plan))
-                    maybe.none(:Op)
+                    maybe.none()
                 end
             when opTypeApp with x then
                 if maybe.isSome(x.thunkParams) then
@@ -439,14 +439,14 @@ export
                     maybe.some(closureOp(f array of a.atom end x.typeArgs x.descriptors))
                 else
                     for i = 0 upto {extent x.plans - 1} do plan(t x.plans[i]) end
-                    maybe.none(:Op)
+                    maybe.none()
                 end
             when opExternal with x then
                 if maybe.isSome(result) andif shapes.isFunction(maybe.unwrap(result).type) then
                     let f = externalThunk(t x.symbol maybe.unwrap(result).type)
                     maybe.some(closureOp(f array of :Atom end array of :Type end array of :Descriptor end))
                 else
-                    maybe.none(:Op)
+                    maybe.none()
                 end
             when opCall with x then
                 (* A call of an external C function bound to a variable calls
@@ -464,9 +464,9 @@ export
                         let var descriptors = array of :Descriptor end
                     end)
                 else
-                    maybe.none(:Op)
+                    maybe.none()
                 end
-            else maybe.none(:Op)
+            else maybe.none()
         end
 
     let rec body(t: Thunker b: Body): Ok =
@@ -493,7 +493,7 @@ export
                             hashMap.insert(t.known x.v.id maybe.unwrap(known))
                         end
                     when sDo with x then
-                        let r = operation(t before x.value maybe.none(:Variable))
+                        let r = operation(t before x.value maybe.none())
                         if maybe.isSome(r) then x.value := maybe.unwrap(r) end
                     when sInspect with x then
                         for j = 0 upto {extent x.cases - 1} do

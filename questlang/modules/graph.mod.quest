@@ -69,7 +69,7 @@ export
 
     let newResolver(): Resolver =
         tuple
-            let memo = hashMap.new(:String :Resolved stringOp.equal hash.string)
+            let memo = hashMap.new(stringOp.equal hash.string)
             let var variantOf = fun(unit: String): String ""
         end
 
@@ -86,7 +86,7 @@ export
         tuple
             let kind = kind let path = path let fromDir = fromDir let roots = roots let source = source
             let prebuilt = prebuilt
-            let var canonical = maybe.none(:String) let var ifaceName = maybe.none(:String)
+            let var canonical = maybe.none() let var ifaceName = maybe.none()
         end
 
     let memoized(res: Resolver key: String make: All() Resolved): Resolved =
@@ -118,19 +118,19 @@ export
         memoized(res keyOf("module" path fromDir roots) fun(): Resolved
             begin
                 let own = paths.resolveModuleFile(path fromDir roots.searchPaths)
-                let r = resolved(option moduleUnit of units.UnitKind end path fromDir roots own maybe.none(:String))
+                let r = resolved(option moduleUnit of units.UnitKind end path fromDir roots own maybe.none())
                 (* Its variant's file has its canonical name *)
                 if maybe.isSome(own) then
                     let chosen = paths.chooseVariant(maybe.unwrap(own) res.variantOf(canonicalName(r)))
                     resolved(option moduleUnit of units.UnitKind end path fromDir roots maybe.some(chosen)
-                        maybe.none(:String))
+                        maybe.none())
                 else r end
             end)
 
     let resolveFile(res: Resolver file: String roots: Roots): Resolved =
-        memoized(res keyOf("file" file maybe.none(:String) roots) fun(): Resolved
+        memoized(res keyOf("file" file maybe.none() roots) fun(): Resolved
             resolved(units.unitKind(file) paths.stripUnitSuffix(files.baseName(file))
-                maybe.some(files.parent(file)) roots maybe.some(file) maybe.none(:String)))
+                maybe.some(files.parent(file)) roots maybe.some(file) maybe.none()))
 
     let artifactName(r: Resolved): String =
         if maybe.isNone(r.source) then paths.lower(r.path)
@@ -144,7 +144,7 @@ export
 
     let interfaceSource(res: Resolver path: String fromDir: maybe.T(String) searchPaths: Array(String)):
         maybe.T(String) =
-        resolveInterface(res path fromDir rootsOf(searchPaths maybe.none(:String))).source
+        resolveInterface(res path fromDir rootsOf(searchPaths maybe.none())).source
 
     (* The interface paths each interface source imports, by path and
      * modification time *)
@@ -194,7 +194,7 @@ export
     let interfaceDependencies(res: Resolver source: String searchPaths: Array(String)):
         Array(paths.InterfaceDependency) =
         begin
-            let roots = rootsOf(searchPaths maybe.none(:String))
+            let roots = rootsOf(searchPaths maybe.none())
             let deps = vector.new(:paths.InterfaceDependency)
             let seen = hashMap.new(:String :Bool stringOp.equal hash.string)
             let visited = hashMap.new(:String :Bool stringOp.equal hash.string)
@@ -261,7 +261,7 @@ export
     Let UnitGraph = Tuple resolver: Resolver units: hashMap.T(String Unit) end
 
     let newGraphWith(res: Resolver): UnitGraph =
-        tuple let resolver = res let units = hashMap.new(:String :Unit stringOp.equal hash.string) end
+        tuple let resolver = res let units = hashMap.new(stringOp.equal hash.string) end
     let newGraph(): UnitGraph = newGraphWith(newResolver())
 
     let kindName(k: units.UnitKind): String =
@@ -277,8 +277,8 @@ export
                 maybe.unwrap(found)
             else
                 let u: Unit = tuple
-                    let kind = kind let canonicalName = canonicalName let var scope = maybe.none(:symbols.Scope)
-                    let var typedModule = maybe.none(:typedAst.Binding) let var exportScope = maybe.none(:symbols.Scope)
+                    let kind = kind let canonicalName = canonicalName let var scope = maybe.none()
+                    let var typedModule = maybe.none() let var exportScope = maybe.none()
                     let var precompiled = false
                 end
                 hashMap.insert(g.units key u)
@@ -292,13 +292,13 @@ export
     let interfaceScope(g: UnitGraph canonicalName: String): maybe.T(symbols.Scope) =
         begin
             let found = find(g option interfaceUnit of units.UnitKind end canonicalName)
-            if maybe.isSome(found) then maybe.unwrap(found).scope else maybe.none(:symbols.Scope) end
+            if maybe.isSome(found) then maybe.unwrap(found).scope else maybe.none() end
         end
 
     let typedModule(g: UnitGraph canonicalName: String): maybe.T(typedAst.Binding) =
         begin
             let found = find(g option moduleUnit of units.UnitKind end canonicalName)
-            if maybe.isSome(found) then maybe.unwrap(found).typedModule else maybe.none(:typedAst.Binding) end
+            if maybe.isSome(found) then maybe.unwrap(found).typedModule else maybe.none() end
         end
 
     let isPrecompiled(g: UnitGraph name: String): Bool =

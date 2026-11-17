@@ -110,7 +110,7 @@ export
     let defOf(s: Simplifier a: Atom): maybe.T(Op) =
         case a
             when atomVar with x then hashMap.get(s.defs x.v.id)
-            when atomConst then maybe.none(:Op)
+            when atomConst then maybe.none()
         end
 
     (* The constant an atom is, or its variable is bound to *)
@@ -124,12 +124,12 @@ export
                         when opAtom with x then
                             case x.atom
                                 when atomConst with c then maybe.some(c.c.value)
-                                when atomVar then maybe.none(:nodes.ConstValue)
+                                when atomVar then maybe.none()
                             end
-                        else maybe.none(:nodes.ConstValue)
+                        else maybe.none()
                     end
                 else
-                    maybe.none(:nodes.ConstValue)
+                    maybe.none()
                 end
         end
 
@@ -139,10 +139,10 @@ export
             if maybe.isSome(c) then
                 case maybe.unwrap(c)
                     when constBool with x then maybe.some(x.b)
-                    else maybe.none(:Bool)
+                    else maybe.none()
                 end
             else
-                maybe.none(:Bool)
+                maybe.none()
             end
         end
 
@@ -152,10 +152,10 @@ export
             if maybe.isSome(c) then
                 case maybe.unwrap(c)
                     when constInt with x then maybe.some(x.n)
-                    else maybe.none(:Int)
+                    else maybe.none()
                 end
             else
-                maybe.none(:Int)
+                maybe.none()
             end
         end
 
@@ -171,8 +171,8 @@ export
                 case maybe.unwrap(d)
                     when opAtom with x then
                         case x.atom
-                            when atomVar with y then if y.v.isMutable then maybe.none(:Made) else madeOf(s x.atom) end
-                            when atomConst then maybe.none(:Made)
+                            when atomVar with y then if y.v.isMutable then maybe.none() else madeOf(s x.atom) end
+                            when atomConst then maybe.none()
                         end
                     when opMakeVariant with x then
                         maybe.some(tuple let tag = x.tag let payload = x.payload let isVariant = true end)
@@ -182,12 +182,12 @@ export
                                 let tag = maybe.unwrap(x.tag) let payload = x.payload let isVariant = false
                             end)
                         else
-                            maybe.none(:Made)
+                            maybe.none()
                         end
-                    else maybe.none(:Made)
+                    else maybe.none()
                 end
             else
-                maybe.none(:Made)
+                maybe.none()
             end
         end
 
@@ -256,10 +256,10 @@ export
                 when primGe then maybe.some(boolConst(a >= b))
                 when primIs then maybe.some(boolConst(a is b))
                 when primIsnot then maybe.some(boolConst(a isnot b))
-                else maybe.none(:Op)
+                else maybe.none()
             end
         when intOp.error then
-            maybe.none(:Op)
+            maybe.none()
         end
 
     let foldPrim(s: Simplifier x: nodes.OpPrim): maybe.T(Op) =
@@ -270,13 +270,13 @@ export
             let a = maybe.unwrap(madeOf(s x.args[0]))
             let b = maybe.unwrap(madeOf(s x.args[1]))
             if eq(a.tag b.tag) andif {maybe.isSome(a.payload) orif maybe.isSome(b.payload)} then
-                maybe.none(:Op)
+                maybe.none()
             else
                 maybe.some(boolConst(eq(a.tag b.tag) is x.op?primIs))
             end
         elsif {extent x.args is 1} andif {case x.op when primNot then true else false end} then
             let b = boolOf(s x.args[0])
-            if maybe.isSome(b) then maybe.some(boolConst(not(maybe.unwrap(b)))) else maybe.none(:Op) end
+            if maybe.isSome(b) then maybe.some(boolConst(not(maybe.unwrap(b)))) else maybe.none() end
         elsif extent x.args is 2 then
             let i = intOf(s x.args[0])
             let j = intOf(s x.args[1])
@@ -292,13 +292,13 @@ export
                     when primOr then maybe.some(boolConst(a orif b))
                     when primIs then maybe.some(boolConst(a is b))
                     when primIsnot then maybe.some(boolConst(a isnot b))
-                    else maybe.none(:Op)
+                    else maybe.none()
                 end
             else
-                maybe.none(:Op)
+                maybe.none()
             end
         else
-            maybe.none(:Op)
+            maybe.none()
         end
 
     (* Whether an atom has one value wherever it is in scope: a constant, or an
@@ -330,17 +330,17 @@ export
                                 andif stable(t.args[x.index]) then
                                 maybe.some(nodes.opOfAtom(t.args[x.index]))
                             else
-                                maybe.none(:Op)
+                                maybe.none()
                             end
-                        else maybe.none(:Op)
+                        else maybe.none()
                     end
                 else
-                    maybe.none(:Op)
+                    maybe.none()
                 end
             when opIsTag with x then
                 let m = madeOf(s x.value)
                 if maybe.isSome(m) then maybe.some(boolConst(eq(maybe.unwrap(m).tag x.tag)))
-                else maybe.none(:Op) end
+                else maybe.none() end
             when opOrdinal with x then
                 (* A known option's ordinal: its case's position in the cases
                  * as written *)
@@ -351,7 +351,7 @@ export
                         if eq(x.cases[i] maybe.unwrap(m).tag) then n := i end
                     end
                 end
-                if n >= 0 then maybe.some(intConst(n)) else maybe.none(:Op) end
+                if n >= 0 then maybe.some(intConst(n)) else maybe.none() end
             when opPayload with x then
                 (* A variant's payload is the value it was made of; an
                  * option's is a new tuple (of its ordinal and its
@@ -363,9 +363,9 @@ export
                     andif stable(maybe.unwrap(maybe.unwrap(m).payload)) then
                     maybe.some(nodes.opOfAtom(maybe.unwrap(maybe.unwrap(m).payload)))
                 else
-                    maybe.none(:Op)
+                    maybe.none()
                 end
-            else maybe.none(:Op)
+            else maybe.none()
         end
 
     let simplified(s: Simplifier o: Op): Op =
@@ -400,11 +400,11 @@ export
                             andif {c.c.shape.id is shapes.shape(x.v.type).id} then
                             maybe.some(a.atom)
                         else
-                            maybe.none(:Atom)
+                            maybe.none()
                         end
-                    when atomVar then maybe.none(:Atom)
+                    when atomVar then maybe.none()
                 end
-            else maybe.none(:Atom)
+            else maybe.none()
         end
 
     (* The case of a switch on a known tag: its body and binder, or the else
@@ -483,10 +483,10 @@ export
             if maybe.isSome(d) then
                 case maybe.unwrap(d)
                     when opAddrVar with x then maybe.some(x.v)
-                    else maybe.none(:Variable)
+                    else maybe.none()
                 end
             else
-                maybe.none(:Variable)
+                maybe.none()
             end
         end
 
@@ -576,8 +576,8 @@ export
                     end
                 end
                 if all then maybe.some(vector.toArray(reads))
-                else maybe.none(:Array(inline.Read)) end
-            when refImport then maybe.none(:Array(inline.Read))
+                else maybe.none() end
+            when refImport then maybe.none()
         end
 
     (* What inlining a function of a size grows the unit by: its size less the
@@ -608,7 +608,7 @@ export
             let found = hashMap.get(s.analysis.functions callee.v.id)
             if maybe.isSome(found) then
                 maybe.some(tuple let f = maybe.unwrap(found) let once = callee.once end)
-            else maybe.none(:Tuple f: nodes.Function once: Bool end) end
+            else maybe.none() end
         end
 
     (* What a copy of f at the call reads for the variables of f's module that
@@ -637,7 +637,7 @@ export
                 memberReads(hashMap.find(s.analysis.free f.v.id)
                     maybe.unwrap(x.moduleRef))
             end
-            if sameShape then reads else maybe.none(:Array(inline.Read)) end
+            if sameShape then reads else maybe.none() end
         end
 
     (* Whether f may be inlined (or specialized) at the call, made in a
@@ -693,7 +693,7 @@ export
         begin
             let callee = calleeOf(s x)
             if maybe.isNone(callee) then
-                maybe.none(:Choice)
+                maybe.none()
             else
                 let f = maybe.unwrap(callee).f
                 let reads = readsAtItsType(s x f)
@@ -733,7 +733,7 @@ export
                             else maybe.none(:Array(Bool)) end
                     end)
                 else
-                    maybe.none(:Choice)
+                    maybe.none()
                 end
             end
         end
@@ -759,20 +759,20 @@ export
                         let var descriptors = t.descriptors
                     end)
                 else
-                    maybe.none(:nodes.OpCall)
+                    maybe.none()
                 end
-            else maybe.none(:nodes.OpCall)
+            else maybe.none()
         end
     let callOf(st: Stmt): maybe.T(nodes.OpCall) =
         case st
             when sLet with x then opCallOf(x.value maybe.some(x.v))
-            when sDo with x then opCallOf(x.value maybe.none(:Variable))
-            else maybe.none(:nodes.OpCall)
+            when sDo with x then opCallOf(x.value maybe.none())
+            else maybe.none()
         end
     let intoOf(st: Stmt): maybe.T(Variable) =
         case st
             when sLet with x then maybe.some(x.v)
-            else maybe.none(:Variable)
+            else maybe.none()
         end
 
     (* The component of a function the round knows *)
@@ -797,10 +797,10 @@ export
         if vector.length(x.continuation.statements) is 1 then
             case vector.get(x.continuation.statements 0)
                 when sReturn with r then maybe.some(r.value)
-                else maybe.none(:Atom)
+                else maybe.none()
             end
         else
-            maybe.none(:Atom)
+            maybe.none()
         end
 
     (* Replaces, in place, the jumps to label in a body (not in the functions
@@ -865,7 +865,7 @@ export
                 end
                 maybe.some(result)
             else
-                maybe.none(:vector.T(Stmt))
+                maybe.none()
             end
         end
 
@@ -1057,7 +1057,7 @@ export
                 hashMap.clear(s.defs)
                 let all = walk.unitBodies(unit)
                 if round > 0 then s.analysis := inline.analyze(all) end
-                for b = 0 upto {extent all - 1} do body(s all[b] maybe.none(:Int)) end
+                for b = 0 upto {extent all - 1} do body(s all[b] maybe.none()) end
                 if contify.contify(all s.analysis.recursive s.pinned s.labels) then s.changed := true end
                 round := round + 1
             end

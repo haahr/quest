@@ -25,22 +25,22 @@ export
 
     let wrong(A::TYPE what: String): A = raise engine.error with "expected " <> what end
 
-    let tok(v: Val): tokens.Token = case v when tok with x then x.val else wrong(:tokens.Token "a token") end
+    let tok(v: Val): tokens.Token = case v when tok with x then x.val else wrong("a token") end
     let present(v: Val): Bool = case v when absent then false else true end
-    let items(v: Val): Args = case v when list with x then x.items else wrong(:Args "a list") end
-    let str(v: Val): String = case v when str with x then x.val else wrong(:String "a string") end
-    let ty(v: Val): ast.TypeExpr = case v when typeExpr with x then x.val else wrong(:ast.TypeExpr "a type") end
-    let ex(v: Val): ast.Expr = case v when expr with x then x.val else wrong(:ast.Expr "an expression") end
-    let sigOf(v: Val): ast.Signature = case v when sig with x then x.val else wrong(:ast.Signature "a signature") end
-    let sigSpan(v: Val): location.Span = case v when sig with x then x.span else wrong(:location.Span "a signature") end
+    let items(v: Val): Args = case v when list with x then x.items else wrong("a list") end
+    let str(v: Val): String = case v when str with x then x.val else wrong("a string") end
+    let ty(v: Val): ast.TypeExpr = case v when typeExpr with x then x.val else wrong("a type") end
+    let ex(v: Val): ast.Expr = case v when expr with x then x.val else wrong("an expression") end
+    let sigOf(v: Val): ast.Signature = case v when sig with x then x.val else wrong("a signature") end
+    let sigSpan(v: Val): location.Span = case v when sig with x then x.span else wrong("a signature") end
     let sigStart(v: Val): Int = sigSpan(v).startOffset
 
     (* An optional item's value, if it matched *)
     let optTy(v: Val): maybe.T(ast.TypeExpr) =
-        if present(v) then maybe.some(ty(v)) else maybe.none(:ast.TypeExpr) end
-    let optEx(v: Val): maybe.T(ast.Expr) = if present(v) then maybe.some(ex(v)) else maybe.none(:ast.Expr) end
+        if present(v) then maybe.some(ty(v)) else maybe.none() end
+    let optEx(v: Val): maybe.T(ast.Expr) = if present(v) then maybe.some(ex(v)) else maybe.none() end
     let optName(v: Val): maybe.T(String) =
-        if present(v) then maybe.some(tok(v).lexeme) else maybe.none(:String) end
+        if present(v) then maybe.some(tok(v).lexeme) else maybe.none() end
     (* An optional list's items, none if it did not match *)
     let optItems(v: Val): Args = if present(v) then items(v) else array of :Val end end
 
@@ -98,9 +98,9 @@ export
                 case x.val.form
                     when phraseImport with i then
                         ast.makeDecl(x.val.span option declImport of ExprForm with let phrase = i.phrase end)
-                    else reject(:ast.Expr ctx x.val.span phraseName(x.val) <> " is allowed only at the top level")
+                    else reject(ctx x.val.span phraseName(x.val) <> " is allowed only at the top level")
                 end
-            else wrong(:ast.Expr "a phrase")
+            else wrong("a phrase")
         end
     let decls(ctx: Ctx v: Val): vector.T(ast.Expr) = each(optItems(v) fun(b: Val): ast.Expr decl(ctx b))
 
@@ -148,7 +148,7 @@ export
         if present(clause) then
             maybe.some(body(ctx items(clause)[1] tok(items(clause)[0]).span.startOffset))
         else
-            maybe.none(:ast.Expr)
+            maybe.none()
         end
 
     let vElse(m: maybe.T(ast.Expr)): Val = if maybe.isSome(m) then vExpr(maybe.unwrap(m)) else absent end
@@ -182,12 +182,12 @@ export
                         let params = x.params
                         let returnType = x.typeAnnot
                         let body = x.value
-                        let typeParams = vector.new(:ast.TypeFormal)
+                        let typeParams = vector.new()
                     end)
-                    ast.tupleBinding(e.span.startOffset maybe.some(x.name) fn maybe.none(:ast.TypeExpr) x.isVar)
+                    ast.tupleBinding(e.span.startOffset maybe.some(x.name) fn maybe.none() x.isVar)
                 end
             else
-                wrong(:ast.TupleFieldBinding "a value declaration")
+                wrong("a value declaration")
         end
 
     let fieldVal(b: ast.TupleFieldBinding): ast.TupleField = option fieldVal of ast.TupleField with let val = b end
@@ -231,7 +231,7 @@ export
         begin
             let phrases = optItems(withBindings)
             if extent(phrases) is 0 then
-                maybe.none(:ast.Expr)
+                maybe.none()
             else
                 let lone = if extent(phrases) is 1 then
                     case stmtExpr(decl(ctx phrases[0])).form when exprTuple then isExprStmt(decl(ctx phrases[0]))
@@ -278,7 +278,7 @@ export
                     let isDef = x.isDef
                 end
             else
-                wrong(:ast.TypeBinding "a type declaration")
+                wrong("a type declaration")
         end
 
     (* A declaration in a signature: a type declaration or a group of them, or a
@@ -297,17 +297,17 @@ export
                     let val = tuple let offset = e.span.startOffset let name = x.name let kindVal = x.kindVal end
                 end e.span)
             else
-                wrong(:Val "a declaration in a signature")
+                wrong("a declaration in a signature")
         end
 
     let typeFormalOf(v: Val): ast.TypeFormal =
-        case sigOf(v) when sigType with x then x.val else wrong(:ast.TypeFormal "a type formal") end
+        case sigOf(v) when sigType with x then x.val else wrong("a type formal") end
 
     (* A value field's signature, or an error at the item *)
     let fieldSigOf(ctx: Ctx v: Val what: String): ast.FieldSig =
         case sigOf(v)
             when sigValue with x then x.val
-            else reject(:ast.FieldSig ctx sigSpan(v) what <> " has only values")
+            else reject(ctx sigSpan(v) what <> " has only values")
         end
 
     (* The quantifier for one signature item of All(...) or of a curried
@@ -381,17 +381,17 @@ export
     let curriedFun(ctx: Ctx groups: Args returnType: maybe.T(ast.TypeExpr) body: ast.Expr start: Int): ast.Expr =
         if extent(groups) is 0 then
             ast.makeExpr(from(ctx start) option exprFun of ExprForm with
-                let params = vector.new(:ast.FormalParam)
+                let params = vector.new()
                 let returnType = returnType
                 let body = body
-                let typeParams = vector.new(:ast.TypeFormal)
+                let typeParams = vector.new()
             end)
         else
             let var current = body
             for i = {extent(groups) - 1} downto 0 do
                 current := ast.makeExpr(from(ctx start) option exprFun of ExprForm with
                     let params = valueParams(groups[i])
-                    let returnType = if i is {extent(groups) - 1} then returnType else maybe.none(:ast.TypeExpr) end
+                    let returnType = if i is {extent(groups) - 1} then returnType else maybe.none() end
                     let body = current
                     let typeParams = typeParams(groups[i])
                 end)
@@ -433,12 +433,12 @@ export
 
     let vImport(item: ast.ImportItem): Val = option importItem of Val with let val = item end
     let somePaths(paths: vector.T(String)): maybe.T(vector.T(String)) = maybe.some(paths)
-    let noPaths: maybe.T(vector.T(String)) = maybe.none(:vector.T(String))
+    let noPaths: maybe.T(vector.T(String)) = maybe.none()
     (* The interface path an import item records, as the bootstrap does: the
      * path if it has a directory (util/Counter), none for a bare name (Ascii),
      * which the interface's local name then stands for (ast.ImportItem) *)
     let dirPath(path: String): maybe.T(String) =
-        if strutil.contains(path "/") then maybe.some(path) else maybe.none(:String) end
+        if strutil.contains(path "/") then maybe.some(path) else maybe.none() end
 
     (* r1, r2 : Rnd = p1, p2 : IfacePath *)
     let importDual(ctx: Ctx args: Args): Val =
@@ -454,12 +454,12 @@ export
 
     (* : Rnd = : IfacePath *)
     let importAliasInterface(ctx: Ctx args: Args): Val =
-        vImport(ast.importItem(tok(args[0]).span.startOffset vector.new(:String) tok(args[1]).lexeme noPaths
+        vImport(ast.importItem(tok(args[0]).span.startOffset vector.new() tok(args[1]).lexeme noPaths
             maybe.some(str(args[2]))))
 
     (* : IfacePath *)
     let importInterface(ctx: Ctx args: Args): Val =
-        vImport(ast.importItem(tok(args[0]).span.startOffset vector.new(:String) basename(str(args[1])) noPaths
+        vImport(ast.importItem(tok(args[0]).span.startOffset vector.new() basename(str(args[1])) noPaths
             dirPath(str(args[1]))))
 
     (* m1 = p1, m2 = p2 : IfacePath or p1, p2 : IfacePath *)
@@ -603,7 +603,7 @@ export
         end)
 
     let recordFieldSigOf(v: Val): ast.RecordFieldSig =
-        case v when recordFieldSig with x then x.val else wrong(:ast.RecordFieldSig "a field's signature") end
+        case v when recordFieldSig with x then x.val else wrong("a field's signature") end
 
     let typeRecord(ctx: Ctx args: Args): Val =
         mkType(at(ctx tok(args[0])) option typeRecord of TypeForm with
@@ -783,7 +783,7 @@ export
     let mutField(mode: ast.ParamMode): engine.Action =
         fun(ctx: Ctx args: Args): Val
             vSig(option sigValue of ast.Signature with
-                let val = ast.fieldSig(tok(args[0]).span.startOffset maybe.none(:String) maybe.some(ty(args[1])) mode)
+                let val = ast.fieldSig(tok(args[0]).span.startOffset maybe.none() maybe.some(ty(args[1])) mode)
             end at(ctx tok(args[0])))
 
     (* ======================================================================
@@ -984,7 +984,7 @@ export
                 let tag = maybe.some(tok(args[1]).lexeme)
                 let optionType = ty(args[2])
                 let payload = optionPayload(ctx args[3] t.span.startOffset)
-                let ordinalExpr = maybe.none(:ast.Expr)
+                let ordinalExpr = maybe.none()
             end)
         end
 
@@ -992,7 +992,7 @@ export
         begin
             let t = tok(args[0])
             mkExpr(at(ctx t) option exprOption of ExprForm with
-                let tag = maybe.none(:String)
+                let tag = maybe.none()
                 let optionType = ty(args[2])
                 let payload = optionPayload(ctx args[3] t.span.startOffset)
                 let ordinalExpr = maybe.some(ex(args[1]))
@@ -1014,8 +1014,8 @@ export
                 let witnessType = ty(args[2])
                 let payload = ast.makeExpr(at(ctx tok(args[3]))
                     option exprTuple of ExprForm with let fields = tupleFields(ctx args[4]) end)
-                let witnessName = if present(witness) then optName(items(witness)[0]) else maybe.none(:String) end
-                let witnessBound = if present(witness) then optTy(items(witness)[1]) else maybe.none(:ast.TypeExpr) end
+                let witnessName = if present(witness) then optName(items(witness)[0]) else maybe.none() end
+                let witnessBound = if present(witness) then optTy(items(witness)[1]) else maybe.none() end
             end)
         end
 
@@ -1219,8 +1219,8 @@ export
             mkExpr(at(ctx ide) option declTypeBinding of ExprForm with
                 let name = ide.lexeme
                 let typeVal = typeVal
-                let params = vector.new(:ast.TypeFormal)
-                let bound = if hasParams then maybe.none(:ast.KindExpr) else optTy(args[2]) end
+                let params = vector.new()
+                let bound = if hasParams then maybe.none() else optTy(args[2]) end
                 let isRec = false
                 let isDef = false
             end)
@@ -1247,7 +1247,7 @@ export
             let simple = {extent(groups) is 1} andif
                 {vector.empty(typeParams(groups[0])) andif not(vector.empty(valueParams(groups[0])))}
             if extent(groups) is 0 then
-                binding(value vector.new(:ast.FormalParam) returnType)
+                binding(value vector.new() returnType)
             elsif simple then
                 binding(value valueParams(groups[0]) returnType)
             else
@@ -1256,7 +1256,7 @@ export
                 else
                     maybe.none(:ast.TypeExpr)
                 end
-                binding(curriedFun(ctx groups returnType value ide.span.startOffset) vector.new(:ast.FormalParam) fullType)
+                binding(curriedFun(ctx groups returnType value ide.span.startOffset) vector.new() fullType)
             end
         end
 
@@ -1302,7 +1302,7 @@ export
                     let isVar = isVar
                 end)
             else
-                wrong(:ast.Expr "a value declaration")
+                wrong("a value declaration")
         end
 
     let isVarDecl(e: ast.Expr): Bool = case e.form when declLetVal with x then x.isVar else false end
@@ -1358,7 +1358,7 @@ export
                     else ast.makePhrase(x.val.span option phraseDecl of ast.PhraseForm with let decl = x.val end)
                 end
             else
-                wrong(:ast.Phrase "a phrase")
+                wrong("a phrase")
         end
 
     let program(ctx: Ctx args: Args): Val =

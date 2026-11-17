@@ -18,13 +18,13 @@ export
     Let Type = model.Type
     Let Kind = model.Kind
 
-    let kindError(A::TYPE message: String): A = diagnostics.fail(:A message 0)
+    let kindError(A::TYPE message: String): A = diagnostics.fail(message 0)
 
     let lookupOf(e: Env): model.Lookup =
         if maybe.isSome(e) then symbols.lookup else model.noLookup end
 
     let subEnv(e: Env): subtyping.Env =
-        if maybe.isSome(e) then env.lookupOf(maybe.unwrap(e)) else maybe.none(:model.Lookup) end
+        if maybe.isSome(e) then env.lookupOf(maybe.unwrap(e)) else maybe.none() end
 
     let evaluate(t: Type e: Env): Type = model.evaluateLazily(t lookupOf(e))
     let evaluateKind(k: Kind e: Env): Kind = model.evaluateKindLazily(k lookupOf(e))
@@ -43,7 +43,7 @@ export
             ok
         end
 
-    let noDefinition: maybe.T(Type) = maybe.none(:Type)
+    let noDefinition: maybe.T(Type) = maybe.none()
 
     (* ======================================================================
      * 1. The kind memo
@@ -51,9 +51,9 @@ export
 
     Let Memo = Tuple kinds: hashMap.T(Int Kind) e: Env end
     Let MemoState = Tuple var active: maybe.T(Memo) end
-    let memo: MemoState = tuple let var active = maybe.none(:Memo) end
+    let memo: MemoState = tuple let var active = maybe.none() end
 
-    let newKinds(): hashMap.T(Int Kind) = hashMap.new(:Int :Kind fun(a: Int b: Int): Bool a is b hash.int)
+    let newKinds(): hashMap.T(Int Kind) = hashMap.new(fun(a: Int b: Int): Bool a is b hash.int)
 
     let sameEnv(a: Env b: Env): Bool =
         if maybe.isSome(a) andif maybe.isSome(b) then
@@ -150,10 +150,10 @@ export
                     let k = try
                         synthUncached(t e)
                     else with r then
-                        memo.active := maybe.none(:Memo)
+                        memo.active := maybe.none()
                         raised.reraise(:Kind r)
                     end
-                    memo.active := maybe.none(:Memo)
+                    memo.active := maybe.none()
                     k
                 end
         end
@@ -254,7 +254,7 @@ export
                     if maybe.isSome(sym) then
                         maybe.unwrap(sym).kind
                     else
-                        kindError(:Kind "Unbound type variable '" <> x.name <> "' (#" <> conv.int(x.symbolId) <> ")")
+                        kindError("Unbound type variable '" <> x.name <> "' (#" <> conv.int(x.symbolId) <> ")")
                     end
                 end
             when typeAbstract with x then begin checkKindWellFormed(x.bound e) x.bound end
@@ -356,7 +356,7 @@ export
                     end
                     ctorKind
                 end
-            else kindError(:Kind "Cannot synthesize kind for unknown type node '" <> model.show(t) <> "'")
+            else kindError("Cannot synthesize kind for unknown type node '" <> model.show(t) <> "'")
         end
 
     (* ======================================================================
@@ -379,12 +379,12 @@ export
                                 end
                                 maybe.some(model.substitute(f.body subst))
                             else
-                                maybe.none(:Type)
+                                maybe.none()
                             end
-                        else maybe.none(:Type)
+                        else maybe.none()
                     end
                 end
-            else maybe.none(:Type)
+            else maybe.none()
         end
 
     (* The bound B of a type variable, abstract type, or path type of kind
@@ -398,13 +398,13 @@ export
                 if maybe.isSome(k) andif model.isPower(maybe.unwrap(k)) then
                     maybe.some(tuple let id = id let bound = model.powerBound(maybe.unwrap(k)) end)
                 else
-                    maybe.none(:Bounded)
+                    maybe.none()
                 end
             case t.form
                 when typeVariable with x then boundOf(x.symbolId x.bound)
                 when typeAbstract with x then boundOf(x.symbolId maybe.some(x.bound))
                 when typePath with x then boundOf({~1 * t.id} maybe.some(x.bound))
-                else maybe.none(:Bounded)
+                else maybe.none()
             end
         end
 

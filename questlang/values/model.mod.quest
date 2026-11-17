@@ -114,7 +114,7 @@ export
     let charValue(c: Char): Value = option vChar of Value with let c = c end
     let stringValue(s: String): Value = option vString of Value with let s = s end
 
-    let newFields(): hashMap.T(String Value) = hashMap.new(:String :Value stringOp.equal hash.string)
+    let newFields(): hashMap.T(String Value) = hashMap.new(stringOp.equal hash.string)
 
     let recordValue(fields: hashMap.T(String Value)): Value =
         option vRecord of Value with let r = tuple let fields = fields end end
@@ -147,7 +147,7 @@ export
             let r = tuple let form = option cell of RefForm with let c = tuple let var value = v end end end
         end
 
-    let exceptionValue(name: String): ExceptionValue = tuple let name = name let payload = maybe.none(:Value) end
+    let exceptionValue(name: String): ExceptionValue = tuple let name = name let payload = maybe.none() end
 
     let builtinValue(name: String fn: All(args: Array(Value)) Value): Value =
         option vBuiltin of Value with let b = tuple let name = name let fn = fn end end
@@ -256,7 +256,7 @@ export
         end
 
     let sameType(a: tm.Type b: tm.Type): Bool =
-        tm.same(a b) orif subtyping.isTypeEqual(a b maybe.none(:tm.Lookup))
+        tm.same(a b) orif subtyping.isTypeEqual(a b maybe.none())
 
     let same(v1: Value v2: Value): Bool =
         case v1
@@ -457,10 +457,10 @@ export
         if maybe.isSome(t.labels) andif {i < extent maybe.unwrap(:Array(maybe.T(String)) t.labels)} then
             maybe.unwrap(t.labels)[i]
         else
-            maybe.none(:String)
+            maybe.none()
         end
 
-    let toString(v: Value): String = show(v vector.new(:Value))
+    let toString(v: Value): String = show(v vector.new())
 
     (* ======================================================================
      * 5. Errors raised while running
@@ -473,18 +473,18 @@ export
             tuple
                 let cause = cause
                 let var offset = offset
-                let var sourceMap = maybe.none(:location.SourceMap)
-                let var frames = maybe.none(:Array(String))
+                let var sourceMap = maybe.none()
+                let var frames = maybe.none()
             end
         end
 
     let raiseException(A::TYPE exc: ExceptionValue offset: maybe.T(Int)): A =
-        raiseError(:A option raised of Cause with
-            let exc = exc let payload = maybe.none(:Value) let payloadType = maybe.none(:tm.Type)
+        raiseError(option raised of Cause with
+            let exc = exc let payload = maybe.none() let payloadType = maybe.none()
         end offset)
 
     let internalError(A::TYPE message: String offset: maybe.T(Int)): A =
-        raiseError(:A option internal of Cause with let message = message end offset)
+        raiseError(option internal of Cause with let message = message end offset)
 
     let runErrorMessage(e: RunError): String =
         case e.cause

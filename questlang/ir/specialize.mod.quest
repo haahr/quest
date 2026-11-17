@@ -34,7 +34,7 @@ export
     let maxDepth = 16
 
     Let Ids = hashMap.T(Int Bool)
-    let newIds(): Ids = hashMap.new(:Int :Bool intEqual hash.int)
+    let newIds(): Ids = hashMap.new(intEqual hash.int)
     let withIds(ids: Ids more: Array(nodes.TypeParam)): Ids =
         begin
             let result = newIds()
@@ -257,7 +257,7 @@ export
                         let f = x.functions[j]
                         hashMap.insert(sp.definitions f.v.id
                             tuple let function = f let funs = s let owner = m let enclosing = enclosing end)
-                        collect(sp f.body maybe.none(:nodes.Module) withIds(enclosing f.typeParams))
+                        collect(sp f.body maybe.none() withIds(enclosing f.typeParams))
                     end
                 else
                     let bodies = walk.statementBodies(s)
@@ -299,7 +299,7 @@ export
             if maybe.isSome(existing) then
                 existing
             elsif sp.depth >= maxDepth then
-                maybe.none(:nodes.Function)
+                maybe.none()
             else
                 let n = maybe.unwrapOr(hashMap.get(sp.counts f.id) 0)
                 hashMap.insert(sp.counts f.id n + 1)
@@ -331,7 +331,7 @@ export
                     tuple let function = cloned let funs = definition.funs let owner = definition.owner let enclosing = definition.enclosing end)
                 (* The clone's local functions are definitions too, whose calls
                  * (in the clone) may be specialized *)
-                collect(sp cloned.body maybe.none(:nodes.Module) definition.enclosing)
+                collect(sp cloned.body maybe.none() definition.enclosing)
                 vector.append(sp.pending tuple let clone = cloned let enclosing = definition.enclosing let depth = sp.depth + 1 end)
                 maybe.some(cloned)
             end
@@ -349,13 +349,13 @@ export
                     let m = nodes.member(r.m.members maybe.unwrapOr(member ""))
                     if maybe.isSome(m) then
                         hashMap.get(sp.definitions maybe.unwrap(m).id)
-                    else maybe.none(:Definition) end
+                    else maybe.none() end
                 (* A function of another unit, whose IR this unit does not
                  * have *)
-                else maybe.none(:Definition)
+                else maybe.none()
             end
         else
-            maybe.none(:Definition)
+            maybe.none()
         end
 
     (* Whether a call of f at typeArgs is specialized: typeArgs supply all of
@@ -438,10 +438,10 @@ export
                                 maybe.some(nodes.call(maybe.none(:Variable) none array of :Atom end app.moduleRef
                                     maybe.some(member) app.calleeType))
                             end
-                        else maybe.none(:Op) end
-                    else maybe.none(:Op) end
-                else maybe.none(:Op) end
-            else maybe.none(:Op)
+                        else maybe.none() end
+                    else maybe.none() end
+                else maybe.none() end
+            else maybe.none()
         end
 
     let rec specializeBody(sp: Specializer b: Body enclosing: Ids): Ok =
@@ -477,7 +477,7 @@ export
                 let m = vector.get(unit.modules i)
                 collect(sp m.init maybe.some(m) newIds())
             end
-            collect(sp unit.main maybe.none(:nodes.Module) newIds())
+            collect(sp unit.main maybe.none() newIds())
             for i = 0 upto {vector.length(unit.modules) - 1} do
                 specializeBody(sp vector.get(unit.modules i).init newIds())
             end

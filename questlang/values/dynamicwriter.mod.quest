@@ -36,7 +36,7 @@ export
             when vTuple with x then hash.identityHash(x.t)
             else hash.int(0)
         end
-    let newIdentityMap(V::TYPE): hashMap.T(Value V) = hashMap.new(:Value :V model.same identityHash)
+    let newIdentityMap(V::TYPE): hashMap.T(Value V) = hashMap.new(model.same identityHash)
     (* Writes a value as the document's value, by its type, in two passes.
      *
      * scan walks the value first and finds the objects reached more than
@@ -126,7 +126,7 @@ export
         case v
             when vVariant with x then x.v
             when vOption with x then x.v
-            else fail(:model.Tagged)
+            else fail()
         end
     (* The type ref of a variant or option value's payload, or none if it is
      * written as its bare tag *)
@@ -283,7 +283,7 @@ export
                 if stringOp.equal(kind "external") then
                     case v
                         when vWord with x then json.number(strutil.wordToString(x.w) true)
-                        else fail(:json.Value)
+                        else fail()
                     end
                 elsif stringOp.equal(kind "auto") then
                     (* As a dynamic value is: its witness, then its components
@@ -365,14 +365,14 @@ export
                             json.object(target)
                         end
                     else
-                        fail(:json.Value)
+                        fail()
                     end
                 end
             end
         end
     and encodeBuiltin(w: Writer v: Value name: String): json.Value =
         if stringOp.equal(name "Int") then
-            case v when vInt with x then json.int(x.n) else fail(:json.Value) end
+            case v when vInt with x then json.int(x.n) else fail() end
         elsif stringOp.equal(name "Real") then
             let r = case v
                 when vReal with x then x.r
@@ -381,11 +381,11 @@ export
             end
             if isInfinite(r) then json.string(if r >> 0.0 then "Infinity" else "-Infinity" end) else json.real(r) end
         elsif stringOp.equal(name "Bool") then
-            case v when vBool with x then json.bool(x.b) else fail(:json.Value) end
+            case v when vBool with x then json.bool(x.b) else fail() end
         elsif stringOp.equal(name "Char") then
-            case v when vChar with x then json.string(stringOp.new(1 x.c)) else fail(:json.Value) end
+            case v when vChar with x then json.string(stringOp.new(1 x.c)) else fail() end
         elsif stringOp.equal(name "String") then
-            case v when vString with x then json.string(x.s) else fail(:json.Value) end
+            case v when vString with x then json.string(x.s) else fail() end
         elsif stringOp.equal(name "Ok") then
             json.null
         elsif stringOp.equal(name "Dynamic") then
@@ -399,18 +399,18 @@ export
             json.put(target "@value" encodeValue(w p.value p.ref))
             json.object(target)
         else
-            fail(:json.Value)
+            fail()
         end
     let encode(d: Value): String =
         begin
             let w: Writer = tuple
                 let graph = dynamicJson.newGraph()
-                let roots = vector.new(:Ref)
-                let nested = vector.new(:Nested)
-                let seen = newIdentityMap(:Bool)
-                let shared = newIdentityMap(:Bool)
-                let ids = newIdentityMap(:Int)
-                let witnesses = vector.new(:Ref)
+                let roots = vector.new()
+                let nested = vector.new()
+                let seen = newIdentityMap()
+                let shared = newIdentityMap()
+                let ids = newIdentityMap()
+                let witnesses = vector.new()
             end
             scan(w d builtin("Dynamic"))
             let a = case d when vAuto with x then x.a else fail(:model.AutoValue) end

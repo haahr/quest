@@ -23,7 +23,7 @@ import
 export
     Let Type = model.Type
 
-    let internal(A::TYPE what: String offset: Int): A = diagnostics.fail(:A "internal: not " <> what offset)
+    let internal(A::TYPE what: String offset: Int): A = diagnostics.fail("internal: not " <> what offset)
 
     let isVarMode(m: ast.ParamMode): Bool = case m when modeVar then true else false end
     let isOutMode(m: ast.ParamMode): Bool = case m when modeOut then true else false end
@@ -35,7 +35,7 @@ export
     let showParam(p: model.Param): String =
         {if p.isVar then "var " elsif p.isOut then "out " else "" end} <> p.name <> ": " <> model.show(p.type)
 
-    let newIds(): hashMap.T(Int Bool) = hashMap.new(:Int :Bool fun(a: Int b: Int): Bool a is b hash.int)
+    let newIds(): hashMap.T(Int Bool) = hashMap.new(fun(a: Int b: Int): Bool a is b hash.int)
 
     (* The ids of the values declared in a scope *)
     let valueIds(s: symbols.Scope): hashMap.T(Int Bool) =
@@ -55,7 +55,7 @@ export
                     let offset = d.span.startOffset let name = x.name let typeVal = x.typeVal let params = x.params
                     let bound = x.bound let isRec = x.isRec let isDef = x.isDef
                 end
-            else internal(:ast.TypeBinding "a type binding" d.span.startOffset)
+            else internal("a type binding" d.span.startOffset)
         end
 
     let valueMembers(d: ast.Decl): vector.T(ast.Decl) =
@@ -341,9 +341,9 @@ export
                                     end
                                 end)
                         end
-                    else internal(:typedAst.Expr "a polymorphic type" expr.span.startOffset)
+                    else internal("a polymorphic type" expr.span.startOffset)
                 end
-            else internal(:typedAst.Expr "a function" expr.span.startOffset)
+            else internal("a function" expr.span.startOffset)
         end
 
     (* Elaborates a function, fun[(type params)](params)[: R] body, into a
@@ -414,7 +414,7 @@ export
                         elaborateFunBody(c expr x.params x.returnType x.body x.typeParams expectedFun e)
                     end
                 end
-            else internal(:typedAst.Expr "a function" expr.span.startOffset)
+            else internal("a function" expr.span.startOffset)
         end
 
     and elaborateFunBody(
@@ -591,7 +591,7 @@ export
                     end
                     declareLet(c sym offset e)
                 end
-            else internal(:symbols.ValueSymbol "a let declaration" b.span.startOffset)
+            else internal("a let declaration" b.span.startOffset)
         end
 
     let checkRecValue(c: checker.T b: ast.Decl sym: symbols.ValueSymbol e: env.T loopDepth: Int): typedAst.LetValue =
@@ -601,7 +601,7 @@ export
                     let typedVal = if not(vector.empty(x.params)) then
                         let fnExpr = ast.makeExpr(b.span option exprFun of ast.ExprForm with
                             let params = x.params let returnType = x.typeAnnot let body = x.value
-                            let typeParams = vector.new(:ast.TypeFormal)
+                            let typeParams = vector.new()
                         end)
                         checker.checkExpr(c fnExpr sym.type e 0)
                     else
@@ -612,7 +612,7 @@ export
                         let isRec = true let redefines = env.redefines(e sym)
                     end
                 end
-            else internal(:typedAst.LetValue "a let declaration" b.span.startOffset)
+            else internal("a let declaration" b.span.startOffset)
         end
 
     let letValueBinding(v: typedAst.LetValue): typedAst.Binding =
@@ -681,7 +681,7 @@ export
                             let recSym = declareRecValue(c b e)
                             letValueBinding(checkRecValue(c b recSym e loopDepth))
                         elsif hasParams then
-                            diagnostics.raiseError(:typedAst.Binding checks.notDesugared("LetValueBinding" offset))
+                            diagnostics.raiseError(checks.notDesugared("LetValueBinding" offset))
                         else
                             Let Valued = Tuple typed: typedAst.Expr type: Type end
                             let valued: Valued = if maybe.isSome(x.typeAnnot) then
@@ -729,7 +729,7 @@ export
                             let name = x.name let symbol = sym
                         end)
                     end
-                else diagnostics.fail(:typedAst.Binding "Unsupported binding" offset)
+                else diagnostics.fail("Unsupported binding" offset)
             end
         end
 
@@ -765,7 +765,7 @@ export
                         let redefines = env.redefines(e sym)
                     end)
                 end
-            else internal(:typedAst.Binding "a let declaration" b.span.startOffset)
+            else internal("a let declaration" b.span.startOffset)
         end
 
     (* let [rec] x = ... and y = ...: with rec, every member is declared before
@@ -831,7 +831,7 @@ export
                             maybe.some(model.funType(annotatedParams(x.params e)
                                 elaborateTypes.elaborateType(maybe.unwrap(x.typeAnnot) e)))
                         else
-                            maybe.none(:Type)
+                            maybe.none()
                         end
                     elsif maybe.isSome(x.typeAnnot) then
                         maybe.some(elaborateTypes.elaborateType(maybe.unwrap(x.typeAnnot) e))
@@ -850,17 +850,17 @@ export
                                         maybe.some(model.funType(annotatedParams(f.params e)
                                             elaborateTypes.elaborateType(maybe.unwrap(f.returnType) e)))
                                     else
-                                        maybe.none(:Type)
+                                        maybe.none()
                                     end
                                 end
-                            else maybe.none(:Type)
+                            else maybe.none()
                         end
                     end
                 when diagnostics.compilerError with err then
                     if err.isFatal then diagnostics.raiseError(:Ok err) end
-                    maybe.none(:Type)
+                    maybe.none()
                 end
-            else maybe.none(:Type)
+            else maybe.none()
         end
 
     let poisonValue(c: checker.T name: String b: ast.Decl e: env.T): Ok =
@@ -875,7 +875,7 @@ export
 
     let poisonType(name: String e: env.T): Ok =
         begin
-            let sym = symbols.newTypeSymbol(name env.freshSymbolId(e) model.typeKind maybe.none(:Type))
+            let sym = symbols.newTypeSymbol(name env.freshSymbolId(e) model.typeKind maybe.none())
             symbols.poison(sym.symbolId)
             symbols.declareType(e.currentScope sym)
             ok

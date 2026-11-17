@@ -229,7 +229,7 @@ export
             end
         end
 
-    and formatTypeForQi(t: Type): String = formatType(t hashMap.new(:Int :Bool intEqual hash.int))
+    and formatTypeForQi(t: Type): String = formatType(t hashMap.new(intEqual hash.int))
 
     (* A member of a group of recursive type operators (Fun(A::K) applied to a
      * group) as the operator it declares, Fun(A::K) Body, with the group's
@@ -288,7 +288,7 @@ export
                 end
                 result
             when diagbag.fatalError with d then
-                diagnostics.fail(:A "malformed type '" <> text <> "': " <> diagnostics.message(d) 0)
+                diagnostics.fail("malformed type '" <> text <> "': " <> diagnostics.message(d) 0)
             end
         end
 
@@ -668,7 +668,7 @@ export
             let artifacts(qi: String): InterfaceArtifacts =
                 tuple
                     let qiFile = qi let canonicalName = canon
-                    let source = if hasSource then src else maybe.none(:String) end
+                    let source = if hasSource then src else maybe.none() end
                     let targetDir = targetDir let searchPaths = searchPaths
                 end
             (* Rules 1 and 2 plus the ABI version: the .qi exists, is fresh,
@@ -768,7 +768,7 @@ export
      * ====================================================================== *)
 
     let fieldOf(r: Value name: String): maybe.T(Value) =
-        case r when vRecord with x then hashMap.get(x.r.fields name) else maybe.none(:Value) end
+        case r when vRecord with x then hashMap.get(x.r.fields name) else maybe.none() end
     let stringOf(v: maybe.T(Value)): String =
         if maybe.isNone(v) then "" else case maybe.unwrap(v) when vString with x then x.s else "" end end
     let boolOf(v: maybe.T(Value)): Bool =
@@ -795,7 +795,7 @@ export
                     end
                 else diagnostics.fail(:Value malformed 0)
             end
-            case r when vRecord then r else diagnostics.fail(:Value malformed 0) end
+            case r when vRecord then r else diagnostics.fail(malformed 0) end
         end
 
     let loadInterfaceFromQiFile(file: String e: env.T): Scope =
@@ -890,7 +890,7 @@ export
                         end
                         let sym =
                             symbols.newTypeSymbol(stringOf(fieldOf(item "name")) env.freshSymbolId(e) kind
-                            maybe.none(:Type))
+                            maybe.none())
                         symbols.declareType(ifaceScope sym)
                         vector.append(records tuple
                             let name = sym.name let isManifest = boolOf(fieldOf(item "isManifest")) let kind = kindText

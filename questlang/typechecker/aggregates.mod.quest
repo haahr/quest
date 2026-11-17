@@ -27,8 +27,8 @@ export
     let isSubtype(a: Type b: Type e: env.T): Bool = subtyping.isSubtype(a b env.lookupOf(e))
     let isTypeEqual(a: Type b: Type e: env.T): Bool = subtyping.isTypeEqual(a b env.lookupOf(e))
     let expr(offset: Int t: Type form: typedAst.ExprForm): typedAst.Expr = typedAst.expr(offset t form)
-    let internal(A::TYPE what: String x: ast.Expr): A = diagnostics.fail(:A "internal: not " <> what x.span.startOffset)
-    let newIntMap(V::TYPE): hashMap.T(Int V) = hashMap.new(:Int :V fun(a: Int b: Int): Bool a is b hash.int)
+    let internal(A::TYPE what: String x: ast.Expr): A = diagnostics.fail("internal: not " <> what x.span.startOffset)
+    let newIntMap(V::TYPE): hashMap.T(Int V) = hashMap.new(fun(a: Int b: Int): Bool a is b hash.int)
 
     (* ======================================================================
      * Variants and options
@@ -65,7 +65,7 @@ export
                     begin
                         let bound = kinds.resolveSumBound(targetType some(e))
                         let failed(): TagPayload =
-                            diagnostics.fail(:TagPayload opDesc <> " requires Variant or Option target, got '" <>
+                            diagnostics.fail(opDesc <> " requires Variant or Option target, got '" <>
                                 model.show(targetType) <> "'" offset)
                         if maybe.isSome(bound) then
                             let b = maybe.unwrap(bound)
@@ -152,12 +152,12 @@ export
                                     let name = fields[i].name let type = fields[i].value.type let isVar = fields[i].isVar
                                 end)
                             end
-                            model.recordType(vector.toArray(qFields) maybe.none(:String))
+                            model.recordType(vector.toArray(qFields) maybe.none())
                         end
                         expr(x0.span.startOffset recType option exprRecord of typedAst.ExprForm with let fields = fields end)
                     end
                 end
-            else internal(:typedAst.Expr "a record" x0)
+            else internal("a record" x0)
         end
 
     (* ======================================================================
@@ -190,9 +190,9 @@ export
                                     let d = vector.get(definitions i)
                                     if stringOp.equal(d.name a.name) andif model.same(d.type a.target) then found := true end
                                 end
-                                if found then maybe.some(model.mapAliases(a.target replace)) else maybe.none(:Type) end
+                                if found then maybe.some(model.mapAliases(a.target replace)) else maybe.none() end
                             end
-                        else maybe.none(:Type)
+                        else maybe.none()
                     end
                 model.mapAliases(t replace)
             end
@@ -344,14 +344,14 @@ export
                                     case targetType.form
                                         when typeTuple with t then selectTupleField(c x0 x.target x.field targetTyped targetType t.fields e)
                                         else
-                                            diagnostics.fail(:typedAst.Expr "Cannot select field '" <> x.field <>
+                                            diagnostics.fail("Cannot select field '" <> x.field <>
                                                 "' from non-record/tuple type '" <> model.show(targetType) <> "'" offset)
                                     end
                                 end
                         end
                     end
                 end
-            else internal(:typedAst.Expr "a selection" x0)
+            else internal("a selection" x0)
         end
 
     (* ======================================================================
@@ -382,7 +382,7 @@ export
                                         case comp
                                             when tupleField with f then maybe.some(f.type)
                                             when tupleTypeBinding with b then maybe.some(b.type)
-                                            else maybe.none(:Type)
+                                            else maybe.none()
                                         end
                                     let ct1 = componentType(t1.fields[i])
                                     let ct2 = componentType(t2.fields[i])
@@ -483,7 +483,7 @@ export
                             end
                             maybe.none(:typedAst.Expr)
                         end
-                        optionExpr(maybe.none(:String) payloadTyped maybe.some(ordinalTyped))
+                        optionExpr(maybe.none() payloadTyped maybe.some(ordinalTyped))
                     else
                         let tag = maybe.unwrap(x.tag)
                         let optField = model.optionGetField(options tag)
@@ -505,10 +505,10 @@ export
                             end
                             maybe.none(:typedAst.Expr)
                         end
-                        optionExpr(x.tag payloadTyped maybe.none(:typedAst.Expr))
+                        optionExpr(x.tag payloadTyped maybe.none())
                     end
                 end
-            else internal(:typedAst.Expr "an option" x0)
+            else internal("an option" x0)
         end
 
     let synthVariant(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
@@ -546,7 +546,7 @@ export
                         let tag = x.tag let payload = payloadTyped
                     end)
                 end
-            else internal(:typedAst.Expr "a variant" x0)
+            else internal("a variant" x0)
         end
 
     let synthVariantCheck(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
@@ -560,7 +560,7 @@ export
                         let target = targetTyped let tag = x.tag
                     end)
                 end
-            else internal(:typedAst.Expr "a variant check" x0)
+            else internal("a variant check" x0)
         end
 
     (* target!tag, which fails at run time unless target has that tag. For a
@@ -579,7 +579,7 @@ export
                     let resultType = if not(tp.isOption) then
                         maybe.unwrapOr(tp.payload model.okType)
                     else
-                        let ordinalField = model.tupleField(maybe.none(:String) model.intType false)
+                        let ordinalField = model.tupleField(maybe.none() model.intType false)
                         if maybe.isNone(tp.payload) then
                             model.tupleType(array of ordinalField end)
                         else
@@ -594,7 +594,7 @@ export
                                         model.tupleType(vector.toArray(fields))
                                     end
                                 else
-                                    model.tupleType(array of ordinalField model.tupleField(maybe.none(:String) payloadLazy false) end)
+                                    model.tupleType(array of ordinalField model.tupleField(maybe.none() payloadLazy false) end)
                             end
                         end
                     end
@@ -602,7 +602,7 @@ export
                         let target = targetTyped let tag = x.tag
                     end)
                 end
-            else internal(:typedAst.Expr "a variant assertion" x0)
+            else internal("a variant assertion" x0)
         end
 
     (* ======================================================================
@@ -666,7 +666,7 @@ export
                         end)
                     end
                 end
-            else internal(:typedAst.Expr "an array" x0)
+            else internal("an array" x0)
         end
 
     let elaborateArrayRep(c: checker.T x0: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
@@ -703,13 +703,13 @@ export
                         end)
                     end
                 end
-            else internal(:typedAst.Expr "an array repetition" x0)
+            else internal("an array repetition" x0)
         end
 
     let arrayElement(t: Type message: String offset: Int): Type =
         case t.form
             when typeArray with a then a.element
-            else diagnostics.fail(:Type message offset)
+            else diagnostics.fail(message offset)
         end
 
     let synthIndex(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
@@ -726,7 +726,7 @@ export
                         let target = targetTyped let index = idxTyped
                     end)
                 end
-            else internal(:typedAst.Expr "an index" x0)
+            else internal("an index" x0)
         end
 
     let synthIndexAssign(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
@@ -744,6 +744,6 @@ export
                         let target = targetTyped let index = idxTyped let value = valTyped
                     end)
                 end
-            else internal(:typedAst.Expr "an index assignment" x0)
+            else internal("an index assignment" x0)
         end
 end

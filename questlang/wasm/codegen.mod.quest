@@ -281,20 +281,20 @@ export
             let names = hashMap.new(:String :Int stringOp.equal hash.string)
             tuple
                 let g = g
-                let code = vector.new(:Inst)
-                let locals = hashMap.new(:Int :Int intEqual hash.int)
-                let declared = vector.new(:model.Local)
+                let code = vector.new()
+                let locals = hashMap.new(intEqual hash.int)
+                let declared = vector.new()
                 let nparams = extent params
                 let names = names
-                let labels = vector.new(:Label)
+                let labels = vector.new()
                 let results = results
-                let returning = hashMap.new(:String :Bool stringOp.equal hash.string)
-                let joins = hashMap.new(:String :Array(ir.Variable) stringOp.equal hash.string)
+                let returning = hashMap.new(stringOp.equal hash.string)
+                let joins = hashMap.new(stringOp.equal hash.string)
                 let fnId = fnId
-                let deferred = hashMap.new(:Int :Bool intEqual hash.int)
-                let patches = vector.new(:Patch)
+                let deferred = hashMap.new(intEqual hash.int)
+                let patches = vector.new()
                 let var selfTail = false
-                let var after = maybe.none(:ir.Stmt)
+                let var after = maybe.none()
                 let var accOp = 0
                 let var accLocal = ~1
             end
@@ -867,7 +867,7 @@ export
             emit(f i(ops.i32And))
             emit(f i(ops.i32Eqz))
             emit(f model.ifInst(empty ""))
-            raiseAt(f "real.error" maybe.none(:Int))
+            raiseAt(f "real.error" maybe.none())
             emit(f model.endInst)
             emit(f i1(ops.localGet r))
             emit(f i(ops.i64TruncSatF64S))
@@ -972,11 +972,11 @@ export
             end
             let collected = try
                     staticdata.collectDescriptors(plain echoed maybe.some(g.naming)
-                        hashMap.new(:String :Bool stringOp.equal hash.string))
+                        hashMap.new(stringOp.equal hash.string))
                 when staticdata.missingDescriptor with msg then
                     fail("a descriptor: " <> msg)
-                    staticdata.collectDescriptors(vector.new(:ir.Type) vector.new(:ir.Type)
-                        maybe.some(g.naming) hashMap.new(:String :Bool stringOp.equal hash.string))
+                    staticdata.collectDescriptors(vector.new() vector.new()
+                        maybe.some(g.naming) hashMap.new(stringOp.equal hash.string))
                 end
             let forms = vector.new(:staticdata.DescriptorForm)
             for k = 0 upto extent staticdata.descriptorKinds - 1 do
@@ -1065,13 +1065,13 @@ export
             let part = fun(label: maybe.T(String) r: staticdata.Ref): Part flagged(label r 0)
             let components = fun(cs: Array(staticdata.Component)): Array(Part)
                 begin
-                    let ps = array of(extent cs part(maybe.none(:String) staticdata.nullRef))
+                    let ps = array of(extent cs part(maybe.none() staticdata.nullRef))
                     for j = 0 upto extent cs - 1 do ps[j] := flagged(cs[j].name cs[j].type if cs[j].isVar then 1 else 0 end) end
                     ps
                 end
             let cases = fun(cs: Array(staticdata.Case)): Array(Part)
                 begin
-                    let ps = array of(extent cs part(maybe.none(:String) staticdata.nullRef))
+                    let ps = array of(extent cs part(maybe.none() staticdata.nullRef))
                     for j = 0 upto extent cs - 1 do
                         ps[cs[j].tagIndex] := flagged(maybe.some(cs[j].name) cs[j].payload
                             if cs[j].isVar then 1 else 0 end)
@@ -1083,12 +1083,12 @@ export
             let function = fun(params: Array(staticdata.FunParam) result: staticdata.Ref bs: Array(staticdata.Ref)): Array(Part)
                 begin
                     let n = extent params
-                    let ps = array of({n + 1} + extent bs flagged(maybe.none(:String) result 4))
+                    let ps = array of({n + 1} + extent bs flagged(maybe.none() result 4))
                     for j = 0 upto n - 1 do
                         let mode = if params[j].isVar then 1 elsif params[j].isOut then 2 else 0 end
-                        ps[j] := flagged(maybe.none(:String) params[j].type mode)
+                        ps[j] := flagged(maybe.none() params[j].type mode)
                     end
-                    for j = 0 upto extent bs - 1 do ps[{n + 1} + j] := flagged(maybe.none(:String) bs[j] 8) end
+                    for j = 0 upto extent bs - 1 do ps[{n + 1} + j] := flagged(maybe.none() bs[j] 8) end
                     ps
                 end
             case d.payload
@@ -1096,14 +1096,14 @@ export
                 when payloadRecord with x then components(x.fields)
                 when payloadOption with x then cases(x.cases)
                 when payloadVariant with x then cases(x.cases)
-                when payloadArray with x then array of part(maybe.none(:String) x.element) end
-                when payloadException with x then array of part(maybe.none(:String) x.payloadType) end
+                when payloadArray with x then array of part(maybe.none() x.element) end
+                when payloadException with x then array of part(maybe.none() x.payloadType) end
                 when payloadAuto with x then
                     (* its components, then its bound if it has one *)
                     let cs = components(x.components)
                     if stringOp.isEmpty(x.bound.symbol) then cs
                     else
-                        let ps = array of(extent cs + 1 flagged(maybe.none(:String) x.bound 32))
+                        let ps = array of(extent cs + 1 flagged(maybe.none() x.bound 32))
                         for j = 0 upto extent cs - 1 do ps[j] := cs[j] end
                         ps
                     end
@@ -1119,8 +1119,8 @@ export
                 when payloadOpaque with x then
                     (* an abstract type operator's application: its
                      * arguments *)
-                    let ps = array of(extent x.args part(maybe.none(:String) staticdata.nullRef))
-                    for j = 0 upto extent x.args - 1 do ps[j] := part(maybe.none(:String) x.args[j]) end
+                    let ps = array of(extent x.args part(maybe.none() staticdata.nullRef))
+                    for j = 0 upto extent x.args - 1 do ps[j] := part(maybe.none() x.args[j]) end
                     ps
                 else array of :Part end
             end
@@ -2476,7 +2476,7 @@ export
                 emit(f model.i64Const(256))
                 emit(f i(ops.i64GeU))
                 emit(f model.ifInst(empty ""))
-                raiseAt(f "ascii.error" maybe.none(:Int))
+                raiseAt(f "ascii.error" maybe.none())
                 emit(f model.endInst)
                 atom(f args[0])
                 emit(f i(ops.i32WrapI64))
@@ -2518,16 +2518,16 @@ export
              * that there is no such symbol, as natively for a name the
              * binary lacks, since the driver asks at its top level *)
             elsif named("quest_system_run") orif strutil.startsWith(symbol "quest_process_") then
-                raiseAt(f "system.error" maybe.none(:Int))
+                raiseAt(f "system.error" maybe.none())
             elsif named("quest_code_symbol") orif named("quest_code_tlv_getter") then
                 emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
             elsif named("quest_code_is_null") then
                 atoms(f args)
                 emit(f i(ops.refIsNull))
             elsif strutil.startsWith(symbol "quest_code_") orif strutil.startsWith(symbol "quest_value_") then
-                raiseAt(f "value.error" maybe.none(:Int))
+                raiseAt(f "value.error" maybe.none())
             elsif named("quest_readline_editing") then emit(f model.i32Const(0))
-            elsif strutil.startsWith(symbol "quest_readline_") then raiseAt(f "readline.error" maybe.none(:Int))
+            elsif strutil.startsWith(symbol "quest_readline_") then raiseAt(f "readline.error" maybe.none())
             (* hash *)
             elsif named("quest_hash_mix") then
                 atoms(f args)
@@ -2577,7 +2577,7 @@ export
                 atom(f args[1])
                 emit(f i(ops.i64Eqz))
                 emit(f model.ifInst(empty ""))
-                raiseAt(f "word.error" maybe.none(:Int))
+                raiseAt(f "word.error" maybe.none())
                 emit(f model.endInst)
                 binary(if named("quest_word_div_val") then ops.i64DivU else ops.i64RemU end)
             elsif named("quest_word_shift_val") then
@@ -2755,16 +2755,16 @@ export
             elsif named("quest_real_sqrt") then
                 atoms(f args)
                 emit(f i(ops.f64Sqrt))
-                notNaN(f maybe.none(:Int))
+                notNaN(f maybe.none())
             elsif named("quest_real_div") then
                 atom(f args[1])
                 emit(f model.f64Const(0.0))
                 emit(f i(ops.f64Eq))
                 emit(f model.ifInst(empty ""))
-                raiseAt(f "real.error" maybe.none(:Int))
+                raiseAt(f "real.error" maybe.none())
                 emit(f model.endInst)
                 binary(ops.f64Div)
-                notNaN(f maybe.none(:Int))
+                notNaN(f maybe.none())
             elsif named("quest_word_to_real_val") then
                 (* word.error for a NaN's bits, which are no Real's *)
                 let r = scratch(f model.f64)
@@ -2774,7 +2774,7 @@ export
                 emit(f i1(ops.localGet r))
                 emit(f i(ops.f64Ne))
                 emit(f model.ifInst(empty ""))
-                raiseAt(f "word.error" maybe.none(:Int))
+                raiseAt(f "word.error" maybe.none())
                 emit(f model.endInst)
                 emit(f i1(ops.localGet r))
             elsif named("quest_word_from_real_val") then
@@ -2853,15 +2853,15 @@ export
     (* The function a call names directly, if it does: a known closure's code
      * (walk.knownClosures), with no type arguments *)
     let directCallee(f: F x: ir.OpCall): maybe.T(Int) =
-        if maybe.isNone(x.callee) then maybe.none(:Int)
+        if maybe.isNone(x.callee) then maybe.none()
         else
             let c = maybe.unwrap(x.callee)
-            if not(hashMap.contains(f.g.known c.id)) then maybe.none(:Int)
+            if not(hashMap.contains(f.g.known c.id)) then maybe.none()
             else
                 let k = hashMap.find(f.g.known c.id)
                 if {extent x.typeArgs is 0} andif {extent k.typeArgs is 0} then
                     hashMap.get(f.g.functions k.code.id)
-                else maybe.none(:Int)
+                else maybe.none()
                 end
             end
         end
@@ -2984,7 +2984,7 @@ export
                             end
                         if maybe.isSome(symbol) then
                             (* an external of the library, compiled in place *)
-                            externalCall(f maybe.unwrap(symbol) x.args x.descriptors maybe.none(:ir.Variable))
+                            externalCall(f maybe.unwrap(symbol) x.args x.descriptors maybe.none())
                         elsif f.g.isCore andif maybe.isSome(imp.i.libPath) then
                             fail("the runtime's call of the library's " <> imp.i.canonicalPath <> "." <> member
                                 <> ", which the backend does not compile itself")
@@ -3037,9 +3037,9 @@ export
                     let var moduleRef = moduleRef let var member = x.member let var calleeType = x.calleeType
                     let var descriptors = x.descriptors
                 end
-            if maybe.isSome(x.callee) then closureCall(f asCall(x.callee maybe.none(:ir.ModuleRef)) false)
+            if maybe.isSome(x.callee) then closureCall(f asCall(x.callee maybe.none()) false)
             elsif maybe.isNone(x.moduleRef) then fail("a type application of no function")
-            else call(f asCall(maybe.none(:ir.Variable) x.moduleRef))
+            else call(f asCall(maybe.none() x.moduleRef))
             end
             if {extent x.plans > 0} andif maybe.isSome(x.plans[0]) then
                 let plan = maybe.unwrap(x.plans[0])
@@ -3663,7 +3663,7 @@ export
                 emit(nf i1(ops.localGet 2))
                 emit(nf i(ops.i64Eqz))
                 emit(nf model.ifInst(empty ""))
-                raiseAt(nf "int.error" maybe.none(:Int))
+                raiseAt(nf "int.error" maybe.none())
                 emit(nf model.endInst)
                 emit(nf i1(ops.localGet 2))
                 emit(nf model.i64Const(~1))
@@ -3683,7 +3683,7 @@ export
                 emit(nf model.f64Const(0.0))
                 emit(nf i(ops.f64Eq))
                 emit(nf model.ifInst(empty ""))
-                raiseAt(nf "real.error" maybe.none(:Int))
+                raiseAt(nf "real.error" maybe.none())
                 emit(nf model.endInst)
             end
             if named("^^") then emit(nf i1(ops.globalGet g.noClosure)) end
@@ -3702,7 +3702,7 @@ export
                     elsif named(">>=") then ops.f64Ge
                     elsif named("/\\") then ops.i32And
                     else ops.i32Or end))
-                if realArithmetic then notNaN(nf maybe.none(:Int)) end
+                if realArithmetic then notNaN(nf maybe.none()) end
             end
             let native = model.importedFunctions(g.m) + vector.length(g.m.functions)
             vector.append(g.m.functions tuple
@@ -4366,7 +4366,7 @@ export
                 atom(f args[0])
                 castTo(f tDict)
                 emit(f i2(ops.structGet tDict 1))
-            elsif named("dynamicError") then raiseAt(f "dynamic.error" maybe.none(:Int))
+            elsif named("dynamicError") then raiseAt(f "dynamic.error" maybe.none())
             elsif named("hashOf") then
                 atom(f args[0])
                 castTo(f rt.index("obj"))
@@ -4663,18 +4663,18 @@ export
                 when sLet with x then
                     case x.value
                         when opCall with c then
-                            if isGlobal(f x.v) then maybe.none(:Found)
+                            if isGlobal(f x.v) then maybe.none()
                             else maybe.some(tuple let call = c let v = maybe.some(x.v) end)
                             end
-                        else maybe.none(:Found)
+                        else maybe.none()
                     end
                 when sDo with x then
                     case x.value
                         when opCall with c then
                             maybe.some(tuple let call = c let v = maybe.none(:ir.Variable) end)
-                        else maybe.none(:Found)
+                        else maybe.none()
                     end
-                else maybe.none(:Found)
+                else maybe.none()
             end
         end
 
@@ -4702,11 +4702,11 @@ export
                         let d = directCallee(f c)
                         if maybe.isSome(d) andif {maybe.unwrap(d) is selfIndex(f)} andif {selfIndex(f) >= 0} then
                             maybe.some(tuple let v = x.v let call = c end)
-                        else maybe.none(:Tuple v: ir.Variable call: ir.OpCall end)
+                        else maybe.none()
                         end
-                    else maybe.none(:Tuple v: ir.Variable call: ir.OpCall end)
+                    else maybe.none()
                 end
-            else maybe.none(:Tuple v: ir.Variable call: ir.OpCall end)
+            else maybe.none()
         end
     (* Whether s combines v with another value by op (1 for +, 2 for times,
      * 0 for either): that value, and the variable s binds *)
@@ -4717,16 +4717,16 @@ export
                     when opPrim with p then
                         let thisOp = if p.op?primAdd then 1 elsif p.op?primMul then 2 else 0 end
                         if {thisOp is 0} orif {{op > 0} andif {thisOp isnot op}} orif {extent p.args isnot 2} then
-                            maybe.none(:Tuple other: ir.Atom result: ir.Variable end)
+                            maybe.none()
                         elsif isVar(p.args[0] v) andif not(isVar(p.args[1] v)) then
                             maybe.some(tuple let other = p.args[1] let result = x.v end)
                         elsif isVar(p.args[1] v) andif not(isVar(p.args[0] v)) then
                             maybe.some(tuple let other = p.args[0] let result = x.v end)
-                        else maybe.none(:Tuple other: ir.Atom result: ir.Variable end)
+                        else maybe.none()
                         end
-                    else maybe.none(:Tuple other: ir.Atom result: ir.Variable end)
+                    else maybe.none()
                 end
-            else maybe.none(:Tuple other: ir.Atom result: ir.Variable end)
+            else maybe.none()
         end
     (* An accumulating recursion (the SSA's accumulate pass, section 3.3): a
      * function returning an Int, one of whose blocks
@@ -4867,11 +4867,11 @@ export
                     when opPrim with p then
                         if p.op?primConcat andif {extent p.args is 2} then
                             maybe.some(tuple let v = x.v let args = p.args end)
-                        else maybe.none(:Tuple v: ir.Variable args: Array(ir.Atom) end)
+                        else maybe.none()
                         end
-                    else maybe.none(:Tuple v: ir.Variable args: Array(ir.Atom) end)
+                    else maybe.none()
                 end
-            else maybe.none(:Tuple v: ir.Variable args: Array(ir.Atom) end)
+            else maybe.none()
         end
     (* A chain of <> made one allocation (docs/ssa.md section 4.1), as
      * the SSA's concats pass makes it for the native backends: ss[k] binds a
@@ -4974,7 +4974,7 @@ export
                 operation(f x.value maybe.some(x.v))
                 store(f x.v)
             when sDo with x then
-                operation(f x.value maybe.none(:ir.Variable))
+                operation(f x.value maybe.none())
                 for k = 1 upto resultCount(f x.value) do emit(f i(ops.drop)) end
             when sStoreComponent with x then
                 atom(f x.base)
@@ -5022,7 +5022,7 @@ export
                 open(f x.label option labelExit of LabelKind end)
                 emit(f model.loopInst(empty x.label))
                 open(f x.label option labelRepeat of LabelKind end)
-                f.after := maybe.none(:ir.Stmt)
+                f.after := maybe.none()
                 body(f x.body)
                 if not(ir.terminated(x.body)) then emit(f i1(ops.br 0)) end
                 close(f)
@@ -5103,7 +5103,7 @@ export
                     end
                 end)
                 open(f base <> ".body" option labelTry of LabelKind end)
-                f.after := maybe.none(:ir.Stmt)
+                f.after := maybe.none()
                 body(f x.body)
                 if not(ir.terminated(x.body)) then
                     emit(f i1(ops.br depth(f base <> ".after" option labelIf of LabelKind end)))
@@ -5112,7 +5112,7 @@ export
                 emit(f i(ops.unreachable))
                 close(f)
                 store(f x.exc)
-                f.after := maybe.none(:ir.Stmt)
+                f.after := maybe.none()
                 body(f x.handler)
                 close(f)
             when sEcho with x then echo(f x)
@@ -5132,7 +5132,7 @@ export
                  * are filled in once it has *)
                 let first = vector.length(f.patches)
                 for k = 0 upto extent x.vars - 1 do hashMap.insert(f.deferred x.vars[k].id true) end
-                f.after := maybe.none(:ir.Stmt)
+                f.after := maybe.none()
                 body(f x.body)
                 for k = 0 upto extent x.vars - 1 do hashMap.delete(f.deferred x.vars[k].id) end
                 while vector.length(f.patches) > first do
@@ -5378,7 +5378,7 @@ export
             end
             close(f)
             if maybe.isSome(x.elseBody) then body(f maybe.unwrap(x.elseBody))
-            else raiseAt(f "variant.tagMismatch" maybe.none(:Int))
+            else raiseAt(f "variant.tagMismatch" maybe.none())
             end
             close(f)
         end

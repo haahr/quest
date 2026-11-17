@@ -459,7 +459,7 @@ export
         if hashMap.contains(fn.bindings v.id) then
             hashMap.get(fn.bindings v.id)
         elsif isGlobal(fn v) then maybe.some(option bindGlobal of Binding end)
-        else maybe.none(:Binding) end
+        else maybe.none() end
 
     let bind(fn: Fn v: Variable b: Binding): Ok = put(fn.bindings v.id b)
     let bindToValues(fn: Fn v: Variable vs: Array(Int)): Ok =
@@ -473,11 +473,11 @@ export
     let pointerOf(fn: Fn v: Variable): maybe.T(Int) =
         begin
             let b = binding(fn v)
-            if maybe.isNone(b) then maybe.none(:Int)
+            if maybe.isNone(b) then maybe.none()
             else
                 case maybe.unwrap(b)
                     when bindPointer with x then maybe.some(x.address)
-                    when bindValues, bindSlot, bindHandler, bindGlobal then maybe.none(:Int)
+                    when bindValues, bindSlot, bindHandler, bindGlobal then maybe.none()
                 end
             end
         end
@@ -788,15 +788,15 @@ export
     let newFn(u: UnitBuilder f: Function closure: maybe.T(ir.OpMakeClosure)): Fn =
         tuple
             let u = u let f = f let var cur = 0 let var calls = 0
-            let initObjects = vector.new(:Int) let initMarks = vector.new(:Int)
-            let bindings = hashMap.new(:Int :Binding intEqual hash.int)
-            let joins = hashMap.new(:String :Int eq hash.string)
-            let joinParts = hashMap.new(:String :Array(Int) eq hash.string)
-            let loops = hashMap.new(:String :LoopTargets eq hash.string)
+            let initObjects = vector.new() let initMarks = vector.new()
+            let bindings = hashMap.new(intEqual hash.int)
+            let joins = hashMap.new(eq hash.string)
+            let joinParts = hashMap.new(eq hash.string)
+            let loops = hashMap.new(eq hash.string)
             let closure = closure
-            let var deferred = maybe.none(:Deferred)
-            let handlers = vector.new(:Int)
-            let labelDepth = hashMap.new(:String :Int eq hash.string)
+            let var deferred = maybe.none()
+            let handlers = vector.new()
+            let labelDepth = hashMap.new(eq hash.string)
         end
 
     (* Finishes a function: blocks nothing reaches the end of end in

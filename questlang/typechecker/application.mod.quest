@@ -111,7 +111,7 @@ export
                     let value = checker.checkExpr(c x.value paramType e loopDepth)
                 end)
             else
-                diagnostics.fail(:typedAst.Expr "Argument to '" <> {if isOut then "out" else "var" end} <>
+                diagnostics.fail("Argument to '" <> {if isOut then "out" else "var" end} <>
                     "' parameter must be passed with '@' or 'var(...)'" arg.span.startOffset)
         end
 
@@ -252,7 +252,7 @@ export
                         end)
                     end
                 else
-                    diagnostics.fail(:typedAst.Expr "Argument to '" <> modeName <>
+                    diagnostics.fail("Argument to '" <> modeName <>
                         "' parameter must be a mutable variable, field, or array element" offset)
             end
         end
@@ -265,7 +265,7 @@ export
                 expr(offset f.result option exprApp of typedAst.ExprForm with
                     let func = funcTyped let args = checkCallArgs(c args f.params e loopDepth offset)
                 end)
-            else diagnostics.fail(:typedAst.Expr "internal: not a function type" offset)
+            else diagnostics.fail("internal: not a function type" offset)
         end
 
     let isTypeOrKindArg(a: ast.Expr): Bool = case a.form when typeArg then true when kindArg then true else false end
@@ -360,7 +360,7 @@ export
                         inferredTypeApp(c offset args funcTyped allType all.quantifiers all.body e loopDepth expected)
                     end
                 end
-            else diagnostics.fail(:typedAst.Expr "internal: not a polymorphic type" offset)
+            else diagnostics.fail("internal: not a polymorphic type" offset)
         end
 
     and explicitTypeApp(
@@ -413,7 +413,7 @@ export
                  * too *)
                 let exact = stringOp.equal(e.reportInferable "exact")
                 let fromArguments = probeInference(c offset rest funcTyped allType quantifiers body e loopDepth
-                    maybe.none(:Type) resolvedTargs exact)
+                    maybe.none() resolvedTargs exact)
                 if fromArguments orif probeInference(c offset rest funcTyped allType quantifiers body e loopDepth expected
                     resolvedTargs exact) then
                     let to = if numTargs < extent args then
@@ -438,7 +438,7 @@ export
                     when typeAll then synthPolymorphicApp(c offset rest typedTypeApp instLazy e loopDepth expected)
                     when typeFun then synthMonomorphicApp(c offset typedTypeApp rest instLazy e loopDepth)
                     else
-                        diagnostics.fail(:typedAst.Expr "Cannot invoke non-function type '" <> model.show(instLazy) <> "'"
+                        diagnostics.fail("Cannot invoke non-function type '" <> model.show(instLazy) <> "'"
                             offset)
                 end
             end
@@ -481,7 +481,7 @@ export
                     end
                 when diagnostics.compilerError then false
                 end
-            c.pendingTypeArgs := maybe.none(:vector.T(checker.PendingTypeArg))
+            c.pendingTypeArgs := maybe.none()
             let truncate = fun(found: vector.T(diagnostics.CompilerError) count: Int): Ok
                 while vector.length(found) > count do vector.delete(found vector.length(found) - 1) end
             truncate(c.errors errorCount)
@@ -626,7 +626,7 @@ export
                         expr(offset f.result option exprApp of typedAst.ExprForm with
                             let func = typedTypeApp let args = typedArgs
                         end)
-                    else diagnostics.fail(:typedAst.Expr "internal: not a function type" offset)
+                    else diagnostics.fail("internal: not a function type" offset)
                 end
             end
         end
@@ -660,11 +660,11 @@ export
                             when typeAll then synthPolymorphicApp(c offset args funcTyped fnType e loopDepth expected)
                             when typeFun then synthMonomorphicApp(c offset funcTyped args fnType e loopDepth)
                             else
-                                diagnostics.fail(:typedAst.Expr "Cannot invoke non-function type '" <> model.show(fnType) <>
+                                diagnostics.fail("Cannot invoke non-function type '" <> model.show(fnType) <>
                                     "'" x.func.span.startOffset)
                         end
                     end
                 end
-            else diagnostics.fail(:typedAst.Expr "internal: not an application" x0.span.startOffset)
+            else diagnostics.fail("internal: not an application" x0.span.startOffset)
         end
 end

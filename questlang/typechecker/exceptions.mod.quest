@@ -18,11 +18,11 @@ export
     Let Type = model.Type
 
     let internal(A::TYPE what: String expr: ast.Expr): A =
-        diagnostics.fail(:A "internal: not " <> what expr.span.startOffset)
+        diagnostics.fail("internal: not " <> what expr.span.startOffset)
 
     (* The payload type of an exception type, if t is one *)
     let exceptionPayload(t: Type): maybe.T(Type) =
-        case t.form when typeException with x then maybe.some(x.payload) else maybe.none(:Type) end
+        case t.form when typeException with x then maybe.some(x.payload) else maybe.none() end
 
     let synthException(c: checker.T expr: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
         case expr.form
@@ -42,7 +42,7 @@ export
                         let symbol = maybe.some(sym)
                     end)
                 end
-            else internal(:typedAst.Expr "an exception" expr)
+            else internal("an exception" expr)
         end
 
     let elaborateRaise(c: checker.T expr: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
@@ -80,7 +80,7 @@ export
                         let exc = excTyped let payload = payloadTyped
                     end)
                 end
-            else internal(:typedAst.Expr "a raise" expr)
+            else internal("a raise" expr)
         end
 
     let elaborateTry(c: checker.T expr: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
@@ -116,7 +116,7 @@ export
                             else
                                 tuple
                                     let body = checker.elaborateSubexpr(c branch.body expected e loopDepth)
-                                    let binder = maybe.none(:symbols.ValueSymbol)
+                                    let binder = maybe.none()
                                 end
                             end
                         vector.append(branches tuple
@@ -169,6 +169,6 @@ export
                         let elseBinder = elseBinder
                     end)
                 end
-            else internal(:typedAst.Expr "a try" expr)
+            else internal("a try" expr)
         end
 end

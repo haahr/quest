@@ -87,11 +87,11 @@ export
     let member(o: json.Object name: String): json.Value = maybe.unwrapOr(json.get(o name) json.null)
     let text(v: json.Value): String = case v when jString with x then x.s else "" end
     let maybeString(v: json.Value): maybe.T(String) =
-        case v when jString with x then maybe.some(x.s) else maybe.none(:String) end
+        case v when jString with x then maybe.some(x.s) else maybe.none() end
     let number(v: json.Value): Int = case v when jNumber with x then strutil.toInt(x.text) else 0 end
     let flag(v: json.Value): Bool = case v when jBool with x then x.b else false end
     let items(v: json.Value): vector.T(json.Value) =
-        case v when jArray with x then x.items else vector.new(:json.Value) end
+        case v when jArray with x then x.items else vector.new() end
 
     (* The file's text, as the driver finds the lines of errors in it *)
     let register(file: String): Ok =
@@ -225,8 +225,8 @@ export
                     let stderr = if b is 0 then r.stderr else "" end
                     let failure = failure
                 end
-            let outcomes = array of(extent batch outcome(0 maybe.none(:String)))
-            for b = 1 upto {extent batch - 1} do outcomes[b] := outcome(b maybe.none(:String)) end
+            let outcomes = array of(extent batch outcome(0 maybe.none()))
+            for b = 1 upto {extent batch - 1} do outcomes[b] := outcome(b maybe.none()) end
             if r.code isnot 0 then
                 let newline = strutil.find(r.stdout "\n")
                 let failed = if newline > 0 then strutil.tryToInt(stringOp.getSub(r.stdout 0 newline))

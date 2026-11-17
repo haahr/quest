@@ -93,7 +93,7 @@ export
     let heldShape(t: Type kind: shapes.ShapeKind): maybe.T(Shape) =
         begin
             let held = layout.resolvedShape(shapeOf(t))
-            if shapes.sameKind(held.kind kind) then maybe.some(held) else maybe.none(:Shape) end
+            if shapes.sameKind(held.kind kind) then maybe.some(held) else maybe.none() end
         end
 
     (* How many type parameters t's quantifiers bind, nested ones included:
@@ -136,7 +136,7 @@ export
         begin
             let c = caseOf(s tag)
             if maybe.isSome(c) then
-                maybe.unwrap(c).shape else maybe.none(:Shape) end
+                maybe.unwrap(c).shape else maybe.none() end
         end
 
     (* =========================================================================
@@ -171,14 +171,14 @@ export
     let newFnState(f: maybe.T(nodes.Function)): FnState =
         tuple
             let function = f
-            let locals = vector.new(:Local)
-            let usedLabels = hashMap.new(:String :Bool eq hash.string)
-            let handlers = vector.new(:String)
-            let labelDepth = hashMap.new(:String :Int eq hash.string)
-            let joinParams = hashMap.new(:String :Array(Variable) eq hash.string)
-            let var volatile = hashMap.new(:Int :Bool intEqual hash.int)
-            let var fused = hashMap.new(:Int :nodes.Stmt intEqual hash.int)
-            let inits = vector.new(:Init)
+            let locals = vector.new()
+            let usedLabels = hashMap.new(eq hash.string)
+            let handlers = vector.new()
+            let labelDepth = hashMap.new(eq hash.string)
+            let joinParams = hashMap.new(eq hash.string)
+            let var volatile = hashMap.new(intEqual hash.int)
+            let var fused = hashMap.new(intEqual hash.int)
+            let inits = vector.new()
         end
 
     (* A field of an aggregate being made: its C expression, a record or
@@ -845,7 +845,7 @@ export
             let res = vector.new(:String)
             if maybe.isSome(p.pending) then
                 let pending = maybe.unwrap(p.pending)
-                p.pending := maybe.none(:Pending)
+                p.pending := maybe.none()
                 emit(p pending.boxes <> " = (QRecordVal *)(" <> pending.block <> " + 1);")
                 for i = 0 upto {vector.length(fields) - 1} do
                     case vector.get(fields i)
@@ -1101,7 +1101,7 @@ export
                     let name = f.name let type = atomType(f.atom) let isVar = f.isVar
                 end)
             end
-            let concrete = model.recordType(vector.toArray(fields) maybe.none(:String))
+            let concrete = model.recordType(vector.toArray(fields) maybe.none())
             let struct = staticdata.recordStructName(concrete maybe.some(p.ctx))
             let box = temp(p "QRecordVal *")
             let payload = temp(p struct <> " *")
@@ -1494,7 +1494,7 @@ export
                 end
             elsif maybe.isSome(pt) then
                 emit(p tmp <> "->_" <> cInt(offset) <> " = "
-                    <> optionComponent(p opt os tag maybe.none(:Int) access[0]) <> ";")
+                    <> optionComponent(p opt os tag maybe.none() access[0]) <> ";")
             end
             initBarrier(p mark tmp)
             tmp
@@ -1539,7 +1539,7 @@ export
                         if maybe.isSome(pt) andif shapes.kindIs(maybe.unwrap(pt) shapes.shapeTuple) then
                             optionField(optionComponent(p v ts o.tag maybe.some(i) o.components[i]) pt i wanted)
                         else
-                            optionComponent(p v ts o.tag maybe.none(:Int) o.components[0])
+                            optionComponent(p v ts o.tag maybe.none() o.components[0])
                         end
                     else "/* not a payload */ 0"
                 end
@@ -1646,7 +1646,7 @@ export
                     let var t = maybe.some(atomType(first))
                     case first
                         when atomVar with x then
-                            if hashMap.contains(p.handlerVars x.v.id) then t := maybe.none(:Type) end
+                            if hashMap.contains(p.handlerVars x.v.id) then t := maybe.none() end
                         else ok
                     end
                     if maybe.isSome(t) andif eq(cType(maybe.unwrap(t)) "QVal") then
@@ -1723,9 +1723,9 @@ export
         end
 
     let moduleOf(r: nodes.ModuleRef): maybe.T(nodes.Module) =
-        case r when refModule with x then maybe.some(x.m) else maybe.none(:nodes.Module) end
+        case r when refModule with x then maybe.some(x.m) else maybe.none() end
     let importOf(r: nodes.ModuleRef): maybe.T(nodes.Import) =
-        case r when refImport with x then maybe.some(x.i) else maybe.none(:nodes.Import) end
+        case r when refImport with x then maybe.some(x.i) else maybe.none() end
     let memberOf(m: nodes.Module member: String): Variable = maybe.unwrap(nodes.member(m.members member))
 
     (* A call of the closure callee holds, of descriptors descs and then
@@ -1953,7 +1953,7 @@ export
 
     let makeAuto(p: P witness: maybe.T(nodes.Descriptor) autoType: Type payloadAtom: Atom): String =
         begin
-            let storedType = model.autoPayloadType(autoType maybe.none(:Type))
+            let storedType = model.autoPayloadType(autoType maybe.none())
             "quest_auto_new(" <> maybeDescriptor(p witness) <> ", "
                 <> types.shapeSlotToQval(atom(p payloadAtom) shapeOf(storedType))
                 <> ")"
@@ -2262,7 +2262,7 @@ export
                     put(p.closures x.v.id c) else ok end
                 assign(p x.v operation(p x.value maybe.some(x.v)))
             when sDo with x then
-                let c = operation(p x.value maybe.none(:Variable))
+                let c = operation(p x.value maybe.none())
                 emit(p c <> ";")
             when sVarDecl with x then
                 if maybe.isSome(x.init) then assign(p x.v atom(p maybe.unwrap(x.init))) end
@@ -2531,7 +2531,7 @@ export
                     else
                         (* In its slot form (a record or variant, for a boxed
                          * variable) *)
-                        assign(p binder optionComponent(p v t c.tags[0] maybe.none(:Int) c.components[0]))
+                        assign(p binder optionComponent(p v t c.tags[0] maybe.none() c.components[0]))
                     end
                 end
                 body(p c.body)
@@ -2596,7 +2596,7 @@ export
     and inspectAuto(p: P x: nodes.StmtInspect): Ok =
         begin
             let autoType = maybe.unwrap(x.autoType)
-            let storedType = model.autoPayloadType(autoType maybe.none(:Type))
+            let storedType = model.autoPayloadType(autoType maybe.none())
             let storedStruct = layout.tupleStructName(storedType)
             let tgt = temp(p "const QAuto *")
             emit(p tgt <> " = " <> atom(p x.value) <> ";")
@@ -2812,7 +2812,7 @@ export
             let exclude = hashMap.new(:Int :Bool intEqual hash.int)
             for i = 0 upto {extent f.params - 1} do put(exclude f.params[i].v.id true) end
             let decls = declareLocals(p f.body exclude)
-            p.lines := vector.new(:String)
+            p.lines := vector.new()
             p.indent := 1
             body(p f.body)
             let bodyLines = p.lines
@@ -2861,11 +2861,11 @@ export
     Let TopLevel = Tuple decls: vector.T(Local) lines: Lines end
     let topLevel(p: P b: nodes.Body): TopLevel =
         begin
-            p.fs := newFnState(maybe.none(:nodes.Function))
+            p.fs := newFnState(maybe.none())
             p.fs.volatile := volatileVars(b)
             p.fs.fused := fusedTuples(p b)
             let decls = declareLocals(p b p.globals)
-            p.lines := vector.new(:String)
+            p.lines := vector.new()
             p.indent := 1
             body(p b)
             let all = vector.copy(decls)
@@ -3346,26 +3346,26 @@ export
             let interfaceHeader = interfaceHeader
             let ctx = staticdata.newRecordNaming()
             let globals = walk.globalVariables(unit)
-            let names = hashMap.new(:Int :String intEqual hash.int)
-            let usedNames = hashMap.new(:String :Bool eq hash.string)
-            let nameCounts = hashMap.new(:String :Int eq hash.string)
-            let codeNames = hashMap.new(:Int :String intEqual hash.int)
-            let closures = hashMap.new(:Int :nodes.OpMakeClosure intEqual hash.int)
-            let handlerVars = hashMap.new(:Int :Bool intEqual hash.int)
-            let tupleCastKeys = vector.new(:String)
-            let tupleCasts = hashMap.new(:String :declarations.Pair eq hash.string)
-            let optionTables = hashMap.new(:String :String eq hash.string)
-            let optionTableDecls = vector.new(:String)
-            let stringObjects = hashMap.new(:String :String eq hash.string)
-            let stringDecls = vector.new(:String)
+            let names = hashMap.new(intEqual hash.int)
+            let usedNames = hashMap.new(eq hash.string)
+            let nameCounts = hashMap.new(eq hash.string)
+            let codeNames = hashMap.new(intEqual hash.int)
+            let closures = hashMap.new(intEqual hash.int)
+            let handlerVars = hashMap.new(intEqual hash.int)
+            let tupleCastKeys = vector.new()
+            let tupleCasts = hashMap.new(eq hash.string)
+            let optionTables = hashMap.new(eq hash.string)
+            let optionTableDecls = vector.new()
+            let stringObjects = hashMap.new(eq hash.string)
+            let stringDecls = vector.new()
             let layouts = objectLayout.newTable()
-            let var fs = newFnState(maybe.none(:nodes.Function))
-            let var lines = vector.new(:String)
+            let var fs = newFnState(maybe.none())
+            let var lines = vector.new()
             let var indent = 1
             let var tmp = 0
             let var calls = 0
-            let var pending = maybe.none(:Pending)
-            let var deferred = maybe.none(:Deferred)
-            let var emitter = maybe.none(:declarations.Emitter)
+            let var pending = maybe.none()
+            let var deferred = maybe.none()
+            let var emitter = maybe.none()
         end)
 end

@@ -97,8 +97,8 @@ export
 
     let new(e: env.T f: model.Frame): T =
         tuple
-            let e = e let var frame = f let var errorSource = maybe.none(:location.SourceMap) let var failure = ""
-            let jit = maybe.none(:session.T)
+            let e = e let var frame = f let var errorSource = maybe.none() let var failure = ""
+            let jit = maybe.none()
         end
 
     (* A driver that cannot host the JIT ends with 1 *)
@@ -110,7 +110,7 @@ export
                 system.sysexit(1)
             end
             tuple
-                let e = e let var frame = f let var errorSource = maybe.none(:location.SourceMap) let var failure = ""
+                let e = e let var frame = f let var errorSource = maybe.none() let var failure = ""
                 let jit = maybe.some(session.new(e args))
             end
         end
@@ -133,18 +133,18 @@ export
                     r.errorSource := x.sourceMap
                     r.failure := if x.fatal then "error" else x.name end
                     diagbag.add(bag d)
-                    maybe.none(:Array(String))
+                    maybe.none()
             end
         when session.unsupported with m then
             r.failure := "unsupported"
             diagbag.add(bag diagnostics.error("the JIT cannot compile this input: " <> m location.span("" ~1 ~1)))
-            maybe.none(:Array(String))
+            maybe.none()
         when diagnostics.compilerError with err then
             (* An error in a module file the input imports, which the JIT
              * compiles (docs/jit.md section 3.4) *)
             r.failure := "compile"
             diagbag.add(bag diagnostics.errorDiagnostic(err inputName))
-            maybe.none(:Array(String))
+            maybe.none()
         end
 
     (* The exception's name in an error's message ("Exception: name ..."), or
@@ -218,7 +218,7 @@ export
      * created since; units loaded by earlier inputs stay loaded *)
     let evaluate(r: T text: String sm: location.SourceMap bag: diagbag.T): maybe.T(Array(String)) =
         begin
-            r.errorSource := maybe.none(:location.SourceMap)
+            r.errorSource := maybe.none()
             let envSnapshot = env.snapshot(r.e)
             let start = r.frame
             let frameSnapshot = treewalk.snapshot(start)
@@ -263,7 +263,7 @@ export
             if readline.editing() andif {stringOp.length(home) > 0} then
                 maybe.some(home <> "/" <> historyFileName)
             else
-                maybe.none(:String)
+                maybe.none()
             end
         end
 

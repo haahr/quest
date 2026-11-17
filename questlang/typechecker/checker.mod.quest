@@ -35,13 +35,13 @@ export
             let env = e
             let var loopDepth = loopDepth
             let var functionDepth = 0
-            let var pendingTypeArgs = maybe.none(:vector.T(PendingTypeArg))
-            let errors = vector.new(:diagnostics.CompilerError)
-            let warnings = vector.new(:diagnostics.CompilerError)
+            let var pendingTypeArgs = maybe.none()
+            let errors = vector.new()
+            let warnings = vector.new()
             let var checkHook = fun(c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int): typedAst.Expr
-                diagnostics.fail(:typedAst.Expr "internal: the checker has no dispatch" expr.span.startOffset)
+                diagnostics.fail("internal: the checker has no dispatch" expr.span.startOffset)
             let var synthHook = fun(c: T expr: ast.Expr e: env.T loopDepth: Int isCallee: Bool): typedAst.Expr
-                diagnostics.fail(:typedAst.Expr "internal: the checker has no dispatch" expr.span.startOffset)
+                diagnostics.fail("internal: the checker has no dispatch" expr.span.startOffset)
         end
 
     let checkExpr(c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int): typedAst.Expr =
@@ -94,7 +94,7 @@ export
         if maybe.isSome(expr) then
             maybe.some(elaborateSubexpr(c maybe.unwrap(expr) expected e loopDepth))
         else
-            maybe.none(:typedAst.Expr)
+            maybe.none()
         end
 
     let branchTypes(
@@ -155,9 +155,9 @@ export
         if {sym.isOut orif sym.isVar} andif sym.isParam andif {sym.functionDepth > 0}
             andif {c.functionDepth > sym.functionDepth} then
             let kindStr = if sym.isOut then "'out' parameter" else "'var' parameter" end
-            diagnostics.fail(:Ok "Cannot capture " <> kindStr <> " '" <> sym.name <> "' in closure" offset)
+            diagnostics.fail("Cannot capture " <> kindStr <> " '" <> sym.name <> "' in closure" offset)
         elsif {c.functionDepth > 0} andif isGlobalVar(c sym) then
-            diagnostics.fail(:Ok "A function may not refer directly to the global 'var' variable '" <> sym.name <>
+            diagnostics.fail("A function may not refer directly to the global 'var' variable '" <> sym.name <>
                 "': pass it as a 'var' parameter, or hold it in a data structure" offset)
         end
 
@@ -182,11 +182,11 @@ export
                     let offset = err.offset
                     let length = err.length
                     let isFatal = true
-                    let help = maybe.none(:String)
-                    let notes = vector.new(:String)
+                    let help = maybe.none()
+                    let notes = vector.new()
                     let file = err.file
                     let silent = false
-                    let labels = vector.new(:diagnostics.Label)
+                    let labels = vector.new()
                 end)
             end
         end
@@ -199,6 +199,6 @@ export
         when diagnostics.compilerError with err then
             if err.isFatal then diagnostics.raiseError(:Ok err) end
             if not(err.silent) then report(c err) end
-            maybe.none(:A)
+            maybe.none()
         end
 end

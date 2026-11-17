@@ -77,7 +77,7 @@ export
                 let d = ascii.val(stringOp.getChar(text i)) - 48
                 if {d < 0} orif {d > 9} then valid := false else n := {10 * n} + d end
             end
-            if valid then maybe.some(n) else maybe.none(:Int) end
+            if valid then maybe.some(n) else maybe.none() end
         end
 
     (* An input's code names its source <repl>#N *)
@@ -112,7 +112,7 @@ export
     let hostSymbol = mangling.fingerprintIdent(mangling.mangleModuleName("questlang/jit/target"))
 
     let refusal(): maybe.T(String) =
-        if maybe.isSome(code.symbol(hostSymbol)) then maybe.none(:String)
+        if maybe.isSome(code.symbol(hostSymbol)) then maybe.none()
         else maybe.some("this driver cannot host the JIT: its modules carry no fingerprints (a whole-program "
             <> "build drops them)") end
 
@@ -123,11 +123,11 @@ export
                 let e = e
                 let loader = loader.new(codeBytes dataBytes)
                 let sources = sources
-                let var symbols = hashMap.new(:String :value.T stringOp.equal hash.string)
+                let var symbols = hashMap.new(stringOp.equal hash.string)
                 let debugging = stringOp.equal(system.getEnv("QUEST_JIT_DEBUG") "1")
-                let described = vector.new(:String)
+                let described = vector.new()
                 let var sourceDir = ""
-                let sourceFiles = vector.new(:String)
+                let sourceFiles = vector.new()
             end
         end
 
@@ -247,7 +247,7 @@ export
                  * -N not yet taken *)
                 let tmp = system.getEnv("TMPDIR")
                 let base = files.join(if stringOp.length(tmp) > 0 then tmp else "/tmp" end
-                    "quest-jit-" <> conv.int(value.be(:Int bytesOf(name)) % 1000000007))
+                    "quest-jit-" <> conv.int(value.be(bytesOf(name)) % 1000000007))
                 let var n = 0
                 while system.isDirectory(base <> "-" <> conv.int(n)) do n := n + 1 end
                 t.sourceDir := base <> "-" <> conv.int(n)
@@ -296,7 +296,7 @@ export
      * code (docs/jit.md section 3.12) *)
     let describe(t: T e: encode.Encoded symbols: hashMap.T(String value.T)): Ok =
         if t.debugging andif {extent e.functions > 0} then
-            let start = value.be(:Int symbolAt(symbols e.functions[0].name)) - e.functions[0].offset
+            let start = value.be(symbolAt(symbols e.functions[0].name)) - e.functions[0].offset
             let files = array of(extent e.files "")
             for i = 0 upto {extent files - 1} do files[i] := debugFile(t e.files[i]) end
             register(t debugObject.object(e start files))
