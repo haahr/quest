@@ -1,0 +1,26 @@
+(* Cyclic values echoed where the cycle comes back through another view of
+ * the same object: a record seen at a supertype, which is another box of the
+ * same payload, and a tuple seen through a proxy (docs/c-representation.md
+ * section 5.8). Echo cuts a cycle off as `record ... end` or `tuple ... end`
+ * where it reaches an object it is already writing, the object itself
+ * whatever the view (quest_put_value's rec->val, quest_put_tuple's
+ * quest_unproxy), so each is written once before it is cut off *)
+(* @echo *)
+
+(* A record whose field holds it seen at a supertype *)
+Def Rec Small = Record var link: Option none some with s: Small end end end;
+Let Big = Record a: Int var link: Option none some with s: Small end end end;
+let b: Big = record a = 1 var link = option none of Option none some with s: Small end end end end;
+let s: Small = b;
+b.link := option some of Option none some with s: Small end end with let s = s end;
+b;
+s;
+
+(* A tuple seen through a proxy, whose component holds the tuple itself *)
+Def Rec TB = Tuple x: Big var next: Option none some with t: TB end end end;
+Let TS = Tuple x: Small var next: Option none some with t: TB end end end;
+let tb: TB = tuple let x = record a = 2 var link = option none of Option none some with s: Small end end end end
+    let var next = option none of Option none some with t: TB end end end end;
+let ts: TS = tb;
+tb.next := option some of Option none some with t: TB end end with let t = tb end;
+ts;

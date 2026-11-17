@@ -31,6 +31,7 @@ export
     let arraySlot(x: core.Any i: Int): core.Any = external "wasm.arraySlot"
     let recordField(x: core.Any i: Int): core.Any = external "wasm.recordField"
     let recDict(x: core.Any): core.Any = external "wasm.recDict"
+    let recPayload(x: core.Any): core.Any = external "wasm.recPayload"
     let optionTag(x: core.Any): Int = external "wasm.optionTag"
     (* A variant's tag and payload, from its $varBox *)
     let variantTag(x: core.Any): Int = external "wasm.variantTag"
@@ -98,7 +99,9 @@ export
             elsif k is core.kindRecord then
                 if extent d.parts is 0 then "record end"
                 else
-                    let e = enter(v "record")
+                    (* entered by its payload, which every view of the
+                     * record shares, as quest_put_value enters rec->val *)
+                    let e = enter(recPayload(v) "record")
                     if not(e.entered) then e.text
                     else
                         let var text = e.text
@@ -181,7 +184,9 @@ export
      * the option holder's payload (quest_put_tuple) *)
     and tupleText(v: core.Any d: core.Desc holder: core.Any inOption: Bool): String =
         begin
-            let e = enter(holder "tuple")
+            (* entered by the object itself, a proxy's original, as
+             * quest_put_tuple enters quest_unproxy(v) *)
+            let e = enter(core.unproxy(holder) "tuple")
             if not(e.entered) then e.text
             else
                 let var text = e.text
