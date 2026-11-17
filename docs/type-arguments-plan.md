@@ -20,10 +20,12 @@ lasting results are the process and its tools; the edits themselves are redone, 
   so such calls stay generic), and eight tests that kept their calls generic by a let at the function's polymorphic
   type read the function out of an array instead ([testing.md](testing.md) §2.10). The 17 MLton benchmarks whose
   code changed ran at a geometric mean of 0.993, and the driver builds in the same time.
-- **§2.4** is on branch `questlang/omit-type-args`, from `1ad37963`: `ef46b044` omits the type arguments of 11,768
-  calls inferable from their arguments, `9913d446` those of 1,178 inferable with their expected type (none restored),
-  and every one of `questlang/`'s 178 units compiles to the same arm64 assembly as before, but for source positions.
-  The first removal (`566fef29`, `2ce3ff3d` on `questlang/infer-type-args`, exact mode) is abandoned.
+- **§2.4** is on main: `bb17a542` omits the type arguments of 11,768 calls inferable from their arguments,
+  `81bf1423` those of 1,178 inferable with their expected type (none restored), and every one of `questlang/`'s 178
+  units compiles to the same arm64 assembly as before, but for source positions. The driver's whole-program build,
+  which `tools/compare-codegen` does not try, met a bug the edits exposed: `represent` failed to convert between
+  equal option types spelled otherwise (`maybe.T(nodes.ConstValue)` and the option written out), fixed first in
+  both compilers (`a309845e`). The first removal (`566fef29`, `2ce3ff3d`, exact mode) is abandoned.
 
 **Why aliases stayed, before §2.3.** About 7,700 more calls are inferable to an equal type but not the same node: a
 type argument written as an alias (`:Type` for `model.Type`, `:Entry`) is inferred as the type the alias names. Omitting those
