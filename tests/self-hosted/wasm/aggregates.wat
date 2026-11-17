@@ -2152,10 +2152,6 @@
     local.set $t.43
     local.get $t.43
     local.get $v.2
-    local.set $v.2
-    local.set $t.43
-    local.get $t.43
-    local.get $v.2
     local.set $t.44
     ref.cast (ref $record)
     struct.get $record $slots

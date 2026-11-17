@@ -71,6 +71,9 @@ export
         ownTypes: hashMap.T(Int Int)
         staticClosures: hashMap.T(Int Int)
         uniforms: hashMap.T(Int Int)
+        (* The native entries that trap, for the closures of functions whose
+         * results ir/unbox unboxed, by function id (trapNative) *)
+        trapNatives: hashMap.T(Int Int)
         captureTypes: hashMap.T(Int Array(ir.Type))
         byId: hashMap.T(Int ir.Function)
         declaredFns: hashMap.T(Int Bool)
@@ -3244,21 +3247,30 @@ export
                     let f = newF(g names array of model.eqref end ~1)
                     names[0] := "closure"
                     for k = 1 upto n do names[k] := "a" <> conv.int(k - 1) end
-                    emit(f i1(ops.localGet 0))
-                    for k = 0 upto n - 1 do
-                        emit(f i1(ops.localGet k + 1))
-                        if k >= q.count then
-                            if isLocatedParam(s k - q.count) then unpackLocation(f)
-                            else unbox(f s.params[k - q.count].shape.type)
+                    (* A function whose result ir/unbox unboxed is only ever
+                     * called directly, so its closure, which it has when it
+                     * captures (makeClosure), is never called through: its
+                     * uniform entry, which could not box its components as
+                     * its result, traps *)
+                    if fn.unboxedResult then emit(f i(ops.unreachable))
+                    else
+                        emit(f i1(ops.localGet 0))
+                        for k = 0 upto n - 1 do
+                            emit(f i1(ops.localGet k + 1))
+                            if k >= q.count then
+                                if isLocatedParam(s k - q.count) then unpackLocation(f)
+                                else unbox(f s.params[k - q.count].shape.type)
+                                end
                             end
                         end
-                    end
-                    let result = if shapes.kindIs(s shapes.shapeFun) then shapes.result(s).type else s.type end
-                    let plain = {extent sig.results is 1} andif sig.results[0]?valRef andif not(isRecord(result))
-                    if plain then emit(f i1(ops.returnCall native))
-                    else
-                        emit(f i1(ops.call native))
-                        box(f result)
+                        let result = if shapes.kindIs(s shapes.shapeFun) then shapes.result(s).type else s.type end
+                        let plain = {extent sig.results is 1} andif sig.results[0]?valRef
+                            andif not(isRecord(result))
+                        if plain then emit(f i1(ops.returnCall native))
+                        else
+                            emit(f i1(ops.call native))
+                            box(f result)
+                        end
                     end
                     let at = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
                     vector.append(:model.Function g.m.functions tuple
@@ -3269,6 +3281,29 @@ export
                 end
             hashMap.insert(:Int :Int g.uniforms fn.id index)
             index
+        end
+
+    (* The native entry of the closure of fn, whose result ir/unbox unboxed: a
+     * function of the closure type's native signature that traps, since fn is
+     * only ever called directly, by its own function, which returns the
+     * result's components and so has another type; the closure is there for
+     * fn's captures, which a direct call reads from it *)
+    let trapNative(g: G fn: ir.Function): Int =
+        if hashMap.contains(:Int :Int g.trapNatives fn.id) then hashMap.find(:Int :Int g.trapNatives fn.id)
+        else
+            let sig = closureSig(fn.v.type)
+            let names = array of({extent sig.params + 1} "")
+            names[0] := "closure"
+            for k = 1 upto extent sig.params do names[k] := "a" <> conv.int(k - 1) end
+            let f = newF(g names sig.results ~1)
+            emit(f i(ops.unreachable))
+            let at = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
+            vector.append(:model.Function g.m.functions tuple
+                let name = fresh(g.names fn.v.hint <> ".native") let type = nativeType(g sig) let params = names
+                let locals = f.declared let body = f.code
+            end)
+            hashMap.insert(:Int :Int g.trapNatives fn.id at)
+            at
         end
 
     (* A function's static closure, which captures nothing: an immutable
@@ -3784,15 +3819,18 @@ export
     let makeClosure(f: F x: ir.OpMakeClosure): Ok =
         begin
             let fn = x.code
-            if fn.unboxedResult then
-                (* only ever called directly (ir/unbox), never through it *)
+            if fn.unboxedResult andif {extent x.captures is 0} andif {extent x.descriptors is 0} then
+                (* only ever called directly (ir/unbox), never through it, and
+                 * with nothing to carry; one that captures needs its closure
+                 * for its captures, as a direct call reads them from it *)
                 emit(f i1(ops.globalGet f.g.noClosure))
             elsif {extent x.captures is 0} andif {extent x.descriptors is 0} then
                 emit(f i1(ops.globalGet staticClosure(f.g fn)))
             else
                 let own = ownType(f.g fn)
                 let u = uniformEntry(f.g fn)
-                let native = hashMap.find(:Int :Int f.g.functions fn.id)
+                let native = if fn.unboxedResult then trapNative(f.g fn)
+                    else hashMap.find(:Int :Int f.g.functions fn.id) end
                 declare(f.g u)
                 declare(f.g native)
                 emit(f model.i32Const(0))
@@ -5427,6 +5465,7 @@ export
                 let ownTypes = hashMap.new(:Int :Int intEqual hash.int)
                 let staticClosures = hashMap.new(:Int :Int intEqual hash.int)
                 let uniforms = hashMap.new(:Int :Int intEqual hash.int)
+                let trapNatives = hashMap.new(:Int :Int intEqual hash.int)
                 let captureTypes = hashMap.new(:Int :Array(ir.Type) intEqual hash.int)
                 let byId = hashMap.new(:Int :ir.Function intEqual hash.int)
                 let declaredFns = hashMap.new(:Int :Bool intEqual hash.int)
