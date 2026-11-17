@@ -6,6 +6,9 @@ Research Center (SRC) and described in [*Typeful Programming*](http://lucacardel
 and Wegner's *On Understanding Types, Data Abstraction, and Polymorphism* (1985). It was in turn a major influence on
 Modula-3, designed at SRC in the same years.
 
+**Try it in your browser:** the [Quest REPL](https://haahr.github.io/quest/) runs this implementation's self-hosted
+compiler, compiled to WebAssembly, in the page, with nothing to install.
+
 Quest's type system is Girard's System $F^\omega$ (functions polymorphic in types, and type operators, which are
 functions from types to types) with subtyping added: System $F_{<:}^\omega$. Types have types of their own, called
 kinds, so a program has three levels:
@@ -76,8 +79,9 @@ The compilers were built in steps ([docs/roadmap.md](docs/roadmap.md)):
 | **3** | Python | Tree-walking interpreter and REPL | Complete |
 | **4** | Python | Compiler to C99, through an IR, with a garbage-collected runtime | Complete |
 | **5** | Quest | Self-hosted front end, interpreter, and compiler to C | Complete |
-| **6** | Quest | Native arm64 backend | Complete; the default backend since 2026-11 |
-| **7** | Quest | arm64 JIT compiler and incremental runtime | Complete ([docs/jit.md](docs/jit.md)) |
+| **6** | Quest | Native arm64 backend | Complete |
+| **7** | Quest | arm64 JIT compiler and incremental runtime | Complete |
+| **8** | Quest | WebAssembly backend, and the REPL in a browser | Complete |
 
 ### Implementation Notes
 - **Representation:** polymorphism, structural subtyping, and mutable state together make data layout the subtle
