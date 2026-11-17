@@ -4,7 +4,7 @@
  * instantiation, subtyping, conversion, proxies, view maps, is), and the
  * library's externals that are Quest on this target, over intrinsics,
  * externals named wasm.NAME that the backend compiles in place
- * (docs/wasm-plan.md sections 4.2 and 4.5).
+ * (docs/wasm.md sections 4.2 and 4.5).
  *
  * It is monomorphic, since generic code's descriptors would need its own
  * instantiate to be made, and it runs no library unit's Quest code, since
@@ -355,7 +355,7 @@ export
     (* ======================================================================
      * Subtyping, record tables, and conversion (quest_types.c's
      * quest_is_subtype, quest_views.c's quest_record_dict and quest_convert,
-     * docs/wasm-plan.md step 17)
+     * docs/wasm.md section 4.2)
      *
      * A slot holds every value in one form here, so no two layouts of a type
      * differ: what a value seen at another type may need is only its view, a
@@ -413,7 +413,7 @@ export
         end
     (* The tuple or option type a descriptor stands for, looking through
      * stored and abstract types (quest_proxied_type): what a view map's
-     * actual type and a proxy's types are (wasm-review.md section 2.1, 3) *)
+     * actual type and a proxy's types are *)
     let proxiedType(d: Desc): Desc = concreteRep(storedRep(d))
 
     (* The index of d's part labeled label, or ~1 *)
@@ -1622,7 +1622,7 @@ export
         end
 
     (* The objects' hashes, given out in order the first time each is asked
-     * for (docs/wasm-plan.md section 2.8) *)
+     * for (docs/wasm.md section 2.8) *)
     let hashes = tuple let var next = 0 end
 
     (* The bit of an object's hash word above every hash, which marks a
@@ -1904,7 +1904,7 @@ export
     (* The directory a path is opened from and the path relative to it:
      * an absolute path's from /, its leading slashes all taken off (//tmp is
      * /tmp, as natively), a relative one's from . The empty path names
-     * nothing (fd ~1), as natively (wasm-review.md section 1.2, 4) *)
+     * nothing (fd ~1), as natively *)
     Def Resolved = Tuple fd: Int path: String end
     let resolve(path: String): Resolved =
         if stringOp.isEmpty(path) then tuple let fd = ~1 let path = "" end
@@ -2212,7 +2212,7 @@ export
      * above 125, so where the driver runs a program in it, setting
      * QUEST_WASM_EXIT_LINE, such a status is 125 and a last line on standard
      * error naming it, which the driver gives back as the status
-     * (questlang/driver/main's exitAbove; wasm-review.md section 1.3, 2) *)
+     * (questlang/driver/main's exitAbove) *)
     let exitStatus(code: Int): Int =
         if {code > 125} andif not(stringOp.isEmpty(getEnv("QUEST_WASM_EXIT_LINE"))) then
             putStringTo(intAny(2) "quest: exit status " <> decimal(code) <> "\n")

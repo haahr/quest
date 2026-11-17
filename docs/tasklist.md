@@ -231,8 +231,8 @@ a new test) reads its documents from standard input.
 
 ## Faults the wasm review reported that no probe reproduced
 
-**Problem.** The wasm review (docs/wasm-review.md §7, on the wasm branch) reported three faults that probes written
-on 2026-11-15 did not show, so nothing was planned for them:
+**Problem.** A review of the wasm backend (2026-11-15) reported three faults that probes written the same day did not
+show, so nothing was planned for them:
 - an `out` argument that needs a conversion and that the callee does not assign (a segmentation fault natively);
 - subsumption of an auto value with a covariant record component (every mode gave the right answer);
 - the JIT's "a use of variable qj_1_record (423), which nothing binds", for which the review gives no program.

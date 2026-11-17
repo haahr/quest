@@ -1,5 +1,5 @@
 """The wasm backend's table of the library's externals covers lib/
-(docs/wasm-plan.md section 4.2 and step 9): every external value and function
+(docs/wasm.md section 4.2): every external value and function
 a module of lib/ binds names a C symbol that questlang/wasm/codegen compiles,
 by name or by prefix, or is one listed in LACKING with the reason the table
 does not. A symbol on neither list is one a change to lib/ added and the
@@ -21,7 +21,7 @@ CODEGEN = ROOT / "questlang" / "wasm" / "codegen.mod.quest"
 LACKING = {
     # dynamic's serialization, bound in lib/dynamic.mod.quest; on this target
     # lib/dynamic.wasm.mod.quest, the module's wasm variant, replaces it and
-    # writes them in Quest (step 18), so the table never sees them
+    # writes them in Quest (runtime/wasm/dynamic), so the table never sees them
     "quest_dynamic_extern", "quest_dynamic_intern",
 }
 

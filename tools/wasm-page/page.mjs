@@ -1,8 +1,9 @@
-// The page's side of a session (docs/wasm-plan.md step 12), which the prompt
+// The page's side of a session (docs/wasm.md section 6.5), which the prompt
 // (ui.mjs) and the check of the transcripts (check.mjs) share: the driver's
 // modules fetched and compiled once, a worker (worker.mjs) that runs the
 // session, its requests one at a time, and an interrupt, which ends the
-// worker and starts another that replays the committed inputs (section 6.4).
+// worker and starts another that replays the committed inputs
+// (docs/wasm.md section 6.4).
 
 import {MemoryMount} from "./host.mjs";
 import {unpack} from "./archive.mjs";
@@ -59,7 +60,7 @@ export async function load(base = new URL(".", import.meta.url)) {
 
 // A session, given what load gives. options:
 //   jit        false to interpret each input, rather than compile it (the
-//              default, step 14)
+//              default)
 //   args       the program's arguments (system.args after <repl>)
 //   load       a file for -i to run first, a path in the session
 //   env        more of the driver's environment
@@ -164,7 +165,6 @@ export class PageSession {
   exit(status, resolve) {
     this.status = status;
     // a record cut off with its worker is no part of the next's
-    // (wasm-review.md section 4, 9)
     this.pendingRecord = "";
     this.worker?.terminate();
     this.worker = null;
@@ -222,7 +222,7 @@ export class PageSession {
   // Ends the request running, if one is, as interrupted: a new worker replays
   // the committed inputs. Resolves once it is ready. An interrupt while that
   // worker replays them ends the replay too, and the session starts again
-  // without them (wasm-review.md section 4, 7).
+  // without them (docs/wasm.md section 6.4).
   async interrupt() {
     this.pendingRecord = "";
     if (this.restarting) {

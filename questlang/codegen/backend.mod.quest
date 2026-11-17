@@ -28,7 +28,7 @@ import
 export
     let unsupported: Exception(String) = exception unsupported: String end
 
-    (* A unit's WebAssembly module (docs/wasm-plan.md section 5.1) *)
+    (* A unit's WebAssembly module (docs/wasm.md section 5.1) *)
     let wasmModule(unit: nodes.Unit): model.Module =
         try wasm.unitModule(unit)
             when wasm.unsupported with m then raise unsupported with "wasm: unsupported: " <> m end
@@ -41,7 +41,7 @@ export
      * a hash of the runtime module's encoding, which changes with its types
      * and functions. Each unit's object carries it in a custom section,
      * quest.runtime, and the build takes an object with another for stale,
-     * rather than fail when it is instantiated (docs/wasm-plan.md step 31) *)
+     * rather than fail when it is instantiated (docs/wasm.md section 5.3) *)
     let stamps = tuple let var made = "" end
     let runtimeStamp(): String =
         begin
@@ -100,7 +100,7 @@ export
         datum: maybe.T(Tuple symbol: String text: String end)): String =
         if stringOp.equal(backend "wasm") then
             (* A module unit's fingerprint, for a host's JIT to compare
-             * (docs/wasm-plan.md step 13), in a custom section *)
+             * (docs/wasm.md section 5.3), in a custom section *)
             Let Datum = Tuple symbol: String text: String end
             encode.encode(wasmModule(unit)) <> encode.customSection("quest.runtime" runtimeStamp())
                 <> if maybe.isSome(:Datum datum) then

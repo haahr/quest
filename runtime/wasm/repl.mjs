@@ -1,4 +1,4 @@
-// The REPL's loop over a session (docs/wasm-plan.md steps 11 and 12), for node
+// The REPL's loop over a session (docs/wasm.md sections 6.1 and 6.5), for node
 // and for a page alike: questlang/driver/repl's run, reading lines without
 // editing them and writing its prompts, results, and errors as it does, so
 // that the REPL's transcripts (tests/repl) give their goldens.
@@ -46,7 +46,6 @@ export class Repl {
     if (!status && failed) {
       // the test itself failed (a phrase nested past the stack, an
       // interrupt): its error, and the phrase dropped, not run
-      // (wasm-review.md section 2.2, 9)
       this.lines.length = 0;
       this.err(failed.rendered);
     } else if (!status || status.status === "complete") {

@@ -1,6 +1,6 @@
 (* Quest WebAssembly Runtime: The Core Interface
  *
- * The runtime's core (docs/wasm-plan.md sections 4.2 and 4.5), a unit the wasm
+ * The runtime's core (docs/wasm.md sections 4.2 and 4.5), a unit the wasm
  * backend compiles and every other unit it compiles imports: descriptors,
  * types as run-time values, which a unit's initializer makes for the types
  * its code describes, by the constructors below; and what compiled code asks
@@ -13,10 +13,10 @@
  * compiles in place, and reaches the engine's objects through intrinsics,
  * externals named wasm.NAME that the backend compiles in place too.
  *
- * Any is every value as a slot holds it, an eqref (docs/wasm-plan.md section
- * 2.1): an Int, Bool, or Char an i31 (an Int too wide for 31 bits a
- * $boxInt), a Real a $boxReal, a record or a variant its pair boxed ($recBox,
- * $varBox), and the rest the object itself. *)
+ * Any is every value as a slot holds it, an eqref (docs/wasm.md section 2.1):
+ * an Int, Bool, or Char an i31 (an Int too wide for 31 bits a $boxInt), a
+ * Real a $boxReal, a record or a variant its pair boxed ($recBox, $varBox),
+ * and the rest the object itself. *)
 
 unsound interface Core
 export
@@ -171,19 +171,19 @@ export
     (* How many updates of the runtime's shared tables are in progress: not
      * zero when a stack overflow, which no Quest handler sees, left one half
      * done, so that the host replays the session rather than abandon the
-     * input alone (docs/wasm-plan.md section 6.3) *)
+     * input alone (docs/wasm.md section 6.3) *)
     updating(): Int
     (* The proofs in progress forgotten, as after a call an engine's
      * overflow, a trap, or a fatal error cut short: the JIT's host calls it
      * then, since no proof can be in progress once the input has ended, and a
      * pair left on a trail would be assumed to hold from then on
-     * (docs/wasm-plan.md step 24) *)
+     * (docs/wasm.md section 6.3) *)
     recover(): Ok
 
-    (* The library's externals that are Quest here (docs/wasm-plan.md section
-     * 4.2), which the backend calls in their place: string's that compare
-     * and join (quest_string_cat_sub and the rest, raising string.error as
-     * they do), util/hash's identityHash at the type d describes, and
+    (* The library's externals that are Quest here (docs/wasm.md section 4.2),
+     * which the backend calls in their place: string's that compare and join
+     * (quest_string_cat_sub and the rest, raising string.error as they do),
+     * util/hash's identityHash at the type d describes, and
      * util/stringbuilder's buffer *)
     catSub(s1: String start1: Int size1: Int s2: String start2: Int size2: Int): String
     conc(a: Array(String)): String
@@ -209,7 +209,7 @@ export
     sbToString(b: Buffer): String
 
     (* system's, writer's, and reader's externals over WASI's first preview
-     * (docs/wasm-plan.md section 4.4), raising system.error, writer.error,
+     * (docs/wasm.md section 4.4), raising system.error, writer.error,
      * and reader.error as the C runtime's do. A path is resolved against
      * the directories the host opens, / and ., after the current directory
      * changeDirectory sets, PWD's to begin with. A writer is its file

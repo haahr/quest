@@ -121,12 +121,12 @@ BACKEND_MODES = {
     "jit": [],
     # The run goldens' programs, each one input of the JIT
     "jit-files": ["--jit"],
-    # The run goldens' programs compiled to WebAssembly (docs/wasm-plan.md), run
-    # in wasmtime and in node
+    # The run goldens' programs compiled to WebAssembly (docs/wasm.md), run in
+    # wasmtime and in node
     "wasm": ["--backend", "wasm"],
     "wasm-node": ["--backend", "wasm", "--wasm-engine", "node"],
     # The run goldens' programs, each one input of the JIT of the driver
-    # compiled to WebAssembly, run in node (docs/wasm-plan.md step 13)
+    # compiled to WebAssembly, run in node (docs/wasm.md section 8.3)
     "wasm-jit": ["--jit"],
 }
 SSAC_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-ssac.txt"

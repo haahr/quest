@@ -1,5 +1,5 @@
-// The REPL's transcripts (tests/repl) run in the page (docs/wasm-plan.md steps
-// 12 and 14), each in a session of its own, against their goldens, as
+// The REPL's transcripts (tests/repl) run in the page (docs/wasm.md sections
+// 6.5 and 8.3), each in a session of its own, against their goldens, as
 // tests/self-hosted/wasm_session.py runs them in node: the page that
 // tools/wasm-page/build --tests writes, check.html, shows the outcome, and
 // window.questCheck holds it. The inputs are compiled by the JIT, or with
@@ -106,7 +106,7 @@ try {
     }
   }
   // A program printing in a loop, a write at a time: 20,000 lines of 41
-  // bytes into a transcript, in under a second (docs/wasm-plan.md step 30)
+  // bytes into a transcript, in under a second (docs/wasm.md section 9.7)
   const flood = document.createElement("div");
   flood.style.cssText = "height: 10em; overflow: auto; white-space: pre";
   document.body.append(flood);

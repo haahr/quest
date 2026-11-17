@@ -1,4 +1,4 @@
-// The host's half of the JIT on WebAssembly (docs/wasm-plan.md step 13): the
+// The host's half of the JIT on WebAssembly (docs/wasm.md section 6.1): the
 // functions of quest.host, which questlang/jit/target's wasm variant imports,
 // over the modules a driver compiled to wasm was instantiated from. A
 // session (session.mjs), a page through it, and run.mjs, which runs a file
@@ -47,7 +47,8 @@ export class Jit {
     this.core = null;
     this.noClosure = null;
     // Whether an overflow or a trap caught here interrupted an update of the
-    // runtime's shared tables, so that the session must replay (section 6.3)
+    // runtime's shared tables, so that the session must replay
+    // (docs/wasm.md section 6.3)
     this.mustReplay = false;
     this.imports = {
       give: (at, n) => { this.given.push(this.bytes(at, n).slice()); return 0; },

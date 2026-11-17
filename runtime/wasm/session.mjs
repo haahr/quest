@@ -1,8 +1,8 @@
-// A session of the driver compiled to wasm (docs/wasm-plan.md step 11), for
+// A session of the driver compiled to wasm (docs/wasm.md section 6.1), for
 // node and for a page alike: the driver's modules instantiated over a Host
 // (host.mjs), its requests those of the kernel's protocol
 // (docs/jupyter-kernel.md section 2), and its recovery from a stack overflow
-// by replay (section 6.3 of the plan).
+// by replay (docs/wasm.md section 6.3).
 //
 // The driver runs with QUEST_HOST_SESSION set, so that after its _start has
 // set the session up (and run a file -i names), it returns, and the host calls
@@ -46,7 +46,7 @@ export function decodeRecord(record) {
 // The stack a call takes depends on its body, and on how warm the code is: the
 // limit is about two thirds of the depth of a function whose body nests a let,
 // a tuple, a loop, and an if around the call, called in a new session, in each
-// engine's worker (docs/wasm-plan.md section 6.2): Chromium's 181, Firefox's
+// engine's worker (docs/wasm.md section 6.2): Chromium's 181, Firefox's
 // 378, Safari's 117 (which varies, one run overflowing at 100), and node's 175
 // at the 512 KB a session's worker gets. An engine not known takes the least.
 export const callLimits = {chromium: 150, firefox: 250, node: 150, other: 80};
@@ -141,7 +141,7 @@ export class Session {
         if (all[i] === 10) {
           // A line that is not a record, which a program wrote to descriptor
           // 4 (io/display writes there too), is its standard error's, not
-          // the end of the session (step 24)
+          // the end of the session (docs/wasm.md section 7)
           const text = decoder.decode(all.subarray(start, i));
           let parsed;
           try { parsed = JSON.parse(text); } catch { parsed = undefined; }
@@ -180,7 +180,7 @@ export class Session {
       // The driver's _start ends with exit 0 once its kernel holds the
       // session for the host's requests, having opened descriptor 4 for
       // their records; any other exit, 0 before that among them (a file -i
-      // runs that exits), ends the session (wasm-review.md section 2.2, 10)
+      // runs that exits), ends the session
       if (e instanceof Exit) {
         if (e.code !== 0 || !this.host.serving) throw new Exited(e.code);
         return 0;
@@ -228,7 +228,8 @@ export class Session {
     }
     const records = this.records;
     // An input whose overflow or trap the JIT's host caught part way through
-    // an update of the runtime's shared tables: a new session (section 6.3)
+    // an update of the runtime's shared tables: a new session
+    // (docs/wasm.md section 6.3)
     let lost = null;
     if (this.jit.mustReplay) lost = this.replay();
     const parsed = JSON.parse(line);
@@ -250,8 +251,8 @@ export class Session {
   // A new instance, the committed inputs run again with their output
   // suppressed. An input that does not succeed again is lost, and so are
   // the names it bound: the session goes on without them, and this gives
-  // the text that says so, or null if none was lost (wasm-review.md
-  // section 2.2, 3). A replay inside a replay stays quiet.
+  // the text that says so, or null if none was lost. A replay inside a
+  // replay stays quiet.
   replay() {
     const quiet = this.quiet;
     this.quiet = true;

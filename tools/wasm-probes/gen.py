@@ -1,13 +1,12 @@
-"""Writes the step-0 probes of docs/wasm-plan.md (their results are in
-section 9) as WebAssembly text, NAME.wat here for each; build.sh assembles
-them, run.mjs, stack.mjs, and limits.mjs run them in node, and wt.sh and
-wtlimits.sh in wasmtime. Each measures a choice of the value representation
-(section 2) on shapes the compiler uses: a tuple as a slot array or a flat
-struct (tuples); an array of eqref or of i64, at a known type (arrays) and
-through another module's generic get and set (vec, called by user); a
-parameter of its precise type or an eqref cast on entry (vec and user); the
-stack's depth with many locals and few (stack); and each engine's largest
-array (limits)."""
+"""Writes the probes of docs/wasm.md (their results are in section 9) as
+WebAssembly text, NAME.wat here for each; build.sh assembles them, run.mjs,
+stack.mjs, and limits.mjs run them in node, and wt.sh and wtlimits.sh in
+wasmtime. Each measures a choice of the value representation (section 2) on
+shapes the compiler uses: a tuple as a slot array or a flat struct (tuples);
+an array of eqref or of i64, at a known type (arrays) and through another
+module's generic get and set (vec, called by user); a parameter of its
+precise type or an eqref cast on entry (vec and user); the stack's depth with
+many locals and few (stack); and each engine's largest array (limits)."""
 import os
 HERE = os.path.dirname(os.path.abspath(__file__))
 # The types the probes share, a subset of section 2's. $boxInt holds an Int

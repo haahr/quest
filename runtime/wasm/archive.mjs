@@ -1,6 +1,7 @@
-// The archives a page fetches (docs/wasm-plan.md step 12): the driver's
-// modules, and the library's sources, each one file fetched once rather than a
-// request for each of its members. tools/wasm-page/build.py writes them.
+// The archives a page fetches (docs/wasm.md sections 5.1 and 5.2): the
+// driver's modules, and the library's sources, each one file fetched once
+// rather than a request for each of its members. tools/wasm-page/build.py
+// writes them.
 //
 // An archive is "QAR1", the length of its index as four bytes, little-endian,
 // the index, a JSON list of [NAME, SIZE] in order, and then the members' bytes

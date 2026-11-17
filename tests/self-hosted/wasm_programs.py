@@ -1,4 +1,4 @@
-"""Checks a self-hosted driver's wasm backend (docs/wasm-plan.md, step 3) on the
+"""Checks a self-hosted driver's wasm backend (docs/wasm.md section 4.1) on the
 programs in tests/self-hosted/wasm, which test what the shared run goldens
 cannot: tail calls a million deep and more, in an engine's own stack, and the
 tests before instructions that would trap (section 2.10).
@@ -109,7 +109,7 @@ def check_driver_run(driver: str) -> list[str]:
     """--backend wasm FILE runs the program in --wasm-engine's engine, as a
     program runs natively: its output, its status (200 through wasmtime too),
     an uncaught overflow as stack.overflow; -e is refused with it
-    (docs/wasm-plan.md step 31)"""
+    (docs/wasm.md section 8.2)"""
     environment = {**os.environ, "QUEST_HOME": str(ROOT_DIR)}
     problems: list[str] = []
     with tempfile.TemporaryDirectory() as d:
@@ -133,7 +133,7 @@ def check_driver_run(driver: str) -> list[str]:
 def check_stale_runtime(driver: str) -> list[str]:
     """An object in the build directory that another runtime's compiler
     built (its quest.runtime section another stamp) is rebuilt, not linked
-    and refused when instantiated (docs/wasm-plan.md step 31)"""
+    and refused when instantiated (docs/wasm.md section 5.3)"""
     environment = {**os.environ, "QUEST_HOME": str(ROOT_DIR)}
     problems: list[str] = []
     with tempfile.TemporaryDirectory() as d:

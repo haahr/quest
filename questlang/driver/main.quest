@@ -636,12 +636,10 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                 end
             elsif choice.isWasm(programBackend) andif {running orif writing} then
                 (* The program's module, the runtime's, and those of the
-                 * units it imports, built by the engine (docs/wasm-plan.md
-                 * section 5.1): each unit's object is its module, named by
-                 * its canonical name, its path in the build directory. The
-                 * library's units are compiled by the C printer until the
-                 * library is compiled to WebAssembly (step 9), and their
-                 * members the program uses are compiled into it *)
+                 * units it imports, the library's included, built by the
+                 * engine (docs/wasm.md section 5.1): each unit's object is
+                 * its module, named by its canonical name, its path in the
+                 * build directory *)
                 let save = fun(path: String contents: String): Ok
                     begin
                         let w = writer.file(path)
@@ -766,7 +764,7 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                             vector.append(:String command "gc=y,function-references=y,tail-call=y,exceptions=y")
                             vector.append(:String command "-C")
                             vector.append(:String command "collector=copying")
-                            (* 8 MB of stack, as natively (section 8.1), not
+                            (* 8 MB of stack, as natively (section 8.2), not
                              * wasmtime's 512 KB *)
                             vector.append(:String command "-W")
                             vector.append(:String command "max-wasm-stack=8388608")
@@ -953,8 +951,8 @@ let jitRun(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagba
         end
         flushDumps()
         if {options.kernel orif options.interactive} andif kernel.serving(r) then
-            (* A host's session, which calls kernel.request (docs/wasm-plan.md
-             * step 11) *)
+            (* A host's session, which calls kernel.request (docs/wasm.md
+             * section 6.1) *)
             writer.flush(writer.output)
             diagbag.renderAll(bag sm writer.err)
             writer.flush(writer.err)
@@ -1081,7 +1079,7 @@ let run(): Ok =
                     for i = 0 upto {extent options.includePaths - 1} do
                         vector.append(:String e.includePaths options.includePaths[i])
                     end
-                    (* The runtime's units in Quest (docs/wasm-plan.md section
+                    (* The runtime's units in Quest (docs/wasm.md section
                      * 4.5), found under runtime/, which the library's wasm
                      * variants import (lib/dynamic.wasm imports wasm/core),
                      * so that a program is checked as it is compiled *)
@@ -1165,9 +1163,9 @@ let buildProgram(): Ok =
  * (compile, or -o) and nothing asks for another path: no whole program, no
  * phase or dump, no --echo, no compile --emit-c or --print-result, a file
  * rather than -e or standard input, and a backend other than wasm, whose
- * program is its one unit until step 9 of docs/wasm-plan.md; anything else is
- * run. A unit file is
- * compiled alone unless a phase or -e asks for it to be run *)
+ * program run() builds and runs (docs/wasm.md section 8.2); anything else is
+ * run. A unit file is compiled alone unless a phase or -e asks for it to be
+ * run *)
 if workers.isUnitMode(system.args) then
     workers.unitMain(system.args)
 else

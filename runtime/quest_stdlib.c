@@ -581,7 +581,7 @@ QString *quest_real_format(double r, QChar style, int64_t digits) {
          * bare. Apple's snprintf keeps them on an exact tie that rounds to
          * even in the exponent form (9805 at 3 digits gives 9.80e+03, not
          * 9.8e+03), so they are dropped here, as the wasm target's
-         * util/realconv does (docs/wasm-plan.md step 32) */
+         * util/realconv does (docs/wasm.md section 4.3) */
         char *e = strchr(buf, 'e');
         char *end = e != NULL ? e : buf + n;
         if (memchr(buf, '.', (size_t)(end - buf)) != NULL) {

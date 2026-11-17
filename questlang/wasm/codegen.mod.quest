@@ -1,6 +1,6 @@
 (* Quest Self-Hosted Compiler: The wasm Code Generator Implementation
  *
- * The interface says what it compiles. docs/wasm-plan.md specifies the
+ * The interface says what it compiles. docs/wasm.md specifies the
  * representation it follows (section 2), closures (section 3), and a module
  * for each unit (section 5.1). The module's sections, by their banners: the
  * module's and a function's state, closures' types, values, aggregates,
@@ -111,7 +111,7 @@ export
         isCore: Bool
         (* Whether the unit is a phrase unit, a JIT's input (docs/jit.md
          * section 3.2), whose echoes are written with print's echoText, so
-         * that they can be captured (docs/wasm-plan.md step 13) *)
+         * that they can be captured (docs/wasm.md section 6.1) *)
         isPhrase: Bool
         (* The variables held in a location (section 2.6): var and out
          * parameters, given their location, and the variables whose address
@@ -172,7 +172,7 @@ export
         end
 
     (* A value's representation in a local, a parameter, or a result (section
-     * 3.2 of the plan), from its type's *)
+     * 3.2), from its type's *)
     let valType(t: ir.Type): ValType =
         case layout.representationKind(t)
             when repInt, repWord then model.i64
@@ -671,7 +671,7 @@ export
             emit(f model.i32Const(n))
             if n is 0 then
                 (* none from the segment, which a unit whose literals are all
-                 * empty lacks (wasm-review.md section 1.3, 3) *)
+                 * empty lacks (section 2.7) *)
                 emit(f model.i32Const(0))
                 emit(f i1(ops.arrayNewDefault rt.index("bytes")))
             else
@@ -888,7 +888,7 @@ export
         end
 
     (* ======================================================================
-     * Aggregates (section 2 of the plan)
+     * Aggregates (section 2)
      * ====================================================================== *)
 
     let heapOf(t: Int): model.HeapType = option heapIndex of model.HeapType with let index = t end
@@ -1337,7 +1337,7 @@ export
     (* The atom's value as a variable held boxed or not, as boxed says: a
      * record or variant held boxed (a var parameter, a local whose address
      * is taken) is one eqref, its box, where the value's own form is its two
-     * parts (wasm-review.md section 2.1, 1) *)
+     * parts (section 2.5) *)
     let atomAs(f: F a: ir.Atom boxed: Bool): Ok =
         begin
             atom(f a)
@@ -1393,7 +1393,7 @@ export
     (* A tuple or option read through a view map may be a proxy: the value
      * of a bounded type parameter whose type argument is a supertype of the
      * value's, upcast (natively quest_view_tuple_slot and its siblings take
-     * one; wasm-review.md section 2.1, 2). A component read so is read
+     * one; section 2.3). A component read so is read
      * through the proxy; one written, or its address taken, is the
      * original's *)
     let viewedRead(access: ir.Access m: maybe.T(ir.Variable)): ir.Access =
@@ -2217,7 +2217,7 @@ export
         end
 
     (* ======================================================================
-     * The library's externals (step 9)
+     * The library's externals (section 4.2)
      * ====================================================================== *)
 
     (* The C symbol of the library's member path.member, if it is an external
@@ -3123,7 +3123,7 @@ export
                 emit(f i(ops.refI31))
             elsif maybe.isSome(:String libraryException(name)) then
                 emit(f i1(ops.globalGet builtinException(maybe.unwrap(:String libraryException(name)))))
-            else fail("the module member " <> name <> " (step 9)")
+            else fail("the module member " <> name)
             end
         end
 
@@ -3917,7 +3917,7 @@ export
      * closures at, each with a maker, a closure of three parameters (the
      * closure, the two types) that makes one; registered with the core as
      * the unit starts, so that the core's adaptClosure finds them (natively
-     * the adapters have no limit; wasm-review.md section 2.4, 1) *)
+     * the adapters have no limit; section 3.2) *)
     let adaptersPast(f: F arities: Array(Int)): Ok =
         for k = 0 upto extent arities - 1 do
             let g = f.g
@@ -4730,8 +4730,8 @@ export
                 end
             else maybe.none(:Tuple other: ir.Atom result: ir.Variable end)
         end
-    (* An accumulating recursion (the SSA's accumulate pass, wasm-review.md
-     * section 3, 1): a function returning an Int, one of whose blocks
+    (* An accumulating recursion (the SSA's accumulate pass, section 3.3): a
+     * function returning an Int, one of whose blocks
      * returns its own call's result plus (or times) another value, is a loop
      * with an accumulator. Each such site adds (or multiplies) the other
      * value into the accumulator and branches to the loop around the
@@ -5410,7 +5410,7 @@ export
         end
 
     (* A function's parameters' and result's representations, its signature
-     * (section 3.2 of the plan); unsupported for a value parameter held
+     * (section 3.2); unsupported for a value parameter held
      * boxed *)
     let signature(g: G fn: ir.Function): Signature =
         begin
@@ -5441,11 +5441,10 @@ export
              * position branches, its parameters set, rather than return_call:
              * V8 checks for termination at a loop's back edge, not at a tail
              * call, so that the page can end the worker running an endless
-             * self recursion (step 13's finding 1, remedy (a)); a mutual
-             * recursion's tail calls still cannot be interrupted there
-             * (docs/wasm-plan.md step 20). Left out if no such call is
-             * compiled. It begins after the prologue, below; an accumulating
-             * recursion's accumulator is set here, before it *)
+             * self recursion (section 3.3); a mutual recursion's tail calls
+             * still cannot be interrupted there (section 6.4). Left out if no
+             * such call is compiled. It begins after the prologue, below; an
+             * accumulating recursion's accumulator is set here, before it *)
             f.accOp := accumulation(f fn)
             if f.accOp > 0 then
                 f.accLocal := scratch(f model.i64)
@@ -5490,7 +5489,7 @@ export
             (* A module's function that uses what the backend cannot yet
              * compile fails when it is called, not when its unit is
              * compiled, so that the rest of the unit, a library's above all,
-             * runs (step 9); a program's, and the runtime's, fail here *)
+             * runs (section 4.1); a program's, and the runtime's, fail here *)
             let lenient = not(g.unit.isProgram) andif not(g.isRuntime)
             let compiled = try
                     begin
@@ -5506,7 +5505,7 @@ export
                         end
                         (* the loop, after the prologue, so that a self tail
                          * call does not read the closure's captures and make
-                         * the view maps again (wasm-review.md section 3, 7) *)
+                         * the view maps again (section 3.3) *)
                         let loopAt = vector.length(:Inst f.code)
                         emit(f model.loopInst(empty selfLabel))
                         open(f selfLabel option labelRepeat of LabelKind end)
@@ -5642,7 +5641,7 @@ export
             let nmodules = vector.length(:ir.Module unit.modules)
             (* A phrase unit, though a program's, is compiled as a module's,
              * its init the input's entry, which the JIT's host calls
-             * (docs/wasm-plan.md step 13) *)
+             * (section 5.1) *)
             let asProgram = unit.isProgram andif maybe.isNone(:ir.Phrase unit.phrase)
             let moduleName = if asProgram orif {nmodules is 0} then "main"
                 else vector.get(:ir.Module unit.modules {nmodules - 1}).name
@@ -5863,7 +5862,7 @@ export
                 runtimeImport("wasm/core" "setFlags" array of e n n end array of e end)
                 runtimeImport("wasm/core" "boundVar" array of n end array of e end)
                 runtimeImport("wasm/core" "instantiate" array of e e end array of e end)
-                (* records' tables and views (step 17) *)
+                (* records' tables and views (section 2.5) *)
                 runtimeImport("wasm/core" "viewDict" array of e e end array of e end)
                 runtimeImport("wasm/core" "storedField" array of e e n e end array of e end)
                 runtimeImport("wasm/core" "convert" array of e e e end array of e end)
@@ -5974,9 +5973,8 @@ export
                                 end
                             when opCallExternal with c then
                                 coreFunction(c.symbol)
-                                (* The host's functions (docs/wasm-plan.md step
-                                 * 13), each of Ints as i32s; and print's
-                                 * capture *)
+                                (* The host's functions (section 4.5), each
+                                 * of Ints as i32s; and print's capture *)
                                 let hostPrefix = "wasm.host."
                                 if strutil.startsWith(c.symbol hostPrefix) then
                                     let field = stringOp.getSub(c.symbol stringOp.length(hostPrefix)
@@ -6210,8 +6208,7 @@ export
                 exportMembers(mod "")
                 (* A phrase unit's declared modules, which later inputs import
                  * by their names (qj_N_k), exported as NAME.FIELD, which the
-                 * host gives them as the module NAME's (docs/wasm-plan.md
-                 * step 13) *)
+                 * host gives them as the module NAME's (section 5.1) *)
                 if g.isPhrase then
                     for k = 0 upto nmodules - 2 do
                         let declared = vector.get(:ir.Module unit.modules k)

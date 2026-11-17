@@ -1,5 +1,5 @@
-"""The WebAssembly encoder and printer (questlang/wasm, docs/wasm-plan.md
-section 8.1, step 2) agree with wasm-tools and the engines. The questlang
+"""The WebAssembly encoder and printer (questlang/wasm, docs/wasm.md
+section 8.1) agree with wasm-tools and the engines. The questlang
 test wasm_encode (tests/source/questlang/wasm_encode.quest) prints a corpus
 of modules built by hand, each a header (";; module LABEL" or ";; run
 LABEL"), its text, and ";; bytes" with the encoder's bytes in hex, as
@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 GOLDEN = ROOT / "tests" / "golden" / "run" / "questlang" / "wasm_encode.out"
 
 # wasmtime's features for the backend's modules, and its collector
-# (docs/wasm-plan.md section 1)
+# (docs/wasm.md section 1)
 WASMTIME = ["wasmtime", "run", "-W", "gc=y,function-references=y,tail-call=y,exceptions=y", "-C", "collector=copying"]
 
 # A host that runs a WASI command in node, given its file: it provides only

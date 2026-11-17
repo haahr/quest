@@ -236,7 +236,7 @@ header word that marks it read-only (`Q_HEADER_READONLY`) and its `QString` ([c-
 (`quest_string_freeze`, or the bootstrap's read-only `QString`).
 
 The WASM backend marks a read-only string by a bit of its hash field, since its strings have no header word
-([wasm-plan.md](wasm-plan.md) §2.8), and makes each distinct literal of a unit one string, in a global, the first time
+([wasm.md](wasm.md) §2.7, §2.8), and makes each distinct literal of a unit one string, in a global, the first time
 it is evaluated.
 
 ---

@@ -23,7 +23,7 @@ self-hosted compiler (or --compiler, such as ./questboot), the originals by
 mlton. With --interpret, the conversions are not built but run by the
 compiler's tree-walking interpreter (--stop-after interpret); with --jit, by
 its JIT (docs/jit.md), each run compiling the program again. With --backend
-wasm, a conversion is built to WebAssembly modules (docs/wasm-plan.md) and run
+wasm, a conversion is built to WebAssembly modules (docs/wasm.md) and run
 by node (runtime/wasm/run.mjs), or by wasmtime with --wasm-engine wasmtime, as
 the driver runs them; --node-stack sets node's stack. A build
 directory reused across compiler changes can keep units the new compiler would

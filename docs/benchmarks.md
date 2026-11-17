@@ -2625,13 +2625,12 @@ Time against the C backend's, at a load of 2.2 to 3.8, without value numbering (
 
 ## 25. The compiler on WebAssembly (2026-11-14)
 
-Milestone 1 of [wasm-plan.md](wasm-plan.md) (step 10): the self-hosted driver, compiled by the native compiler with
-`--backend wasm` (198 modules), compiles itself with `--backend wasm` in node 26.13 and in wasmtime 50.0.1, and
-writes the same 198 modules, byte for byte, as the native compiler does. Each run builds into a fresh directory with
-`-j 1` (the target runs no processes, so the build is sequential), on a machine at load about 2.8, twice for the
-native and node runs. The scripts are in the session's scratchpad, not the tree; the commands are those of §8.1
-step 10 there. Since step 13 the driver that wasmtime runs is built with `--variant questlang/jit/target=none`, since
-the wasm JIT needs a JavaScript host; node's is the plain build.
+The self-hosted driver, compiled by the native compiler with `--backend wasm` (198 modules), compiles itself with
+`--backend wasm` in node 26.13 and in wasmtime 50.0.1, and writes the same 198 modules, byte for byte, as the native
+compiler does ([wasm.md](wasm.md) §8.2). Each run builds into a fresh directory with `-j 1` (the target runs no
+processes, so the build is sequential), on a machine at load about 2.8, twice for the native and node runs. The
+scripts are in the session's scratchpad, not the tree. The driver that wasmtime runs is built with `--variant
+questlang/jit/target=none` (wasm.md §5.3), since the wasm JIT needs a JavaScript host; node's is the plain build.
 
 | Run | Wall | User | Maximum resident |
 |---|---|---|---|
@@ -2647,9 +2646,9 @@ it for the run goldens, which are small.
 
 **What the time goes to** (node's `--cpu-prof`, 0.5 ms samples, 57.3 s), by function, self time:
 
-- **Boxing `Int`s** (§2.4, §9.5): the base's `unboxInt` 6.5 percent and `boxInt` 3.5, about 10 in all, for the
+- **Boxing `Int`s** (wasm.md §2.2, §9.5): the base's `unboxInt` 6.5 percent and `boxInt` 3.5, about 10 in all, for the
   `Int`s that slots hold: vectors' and hash maps' elements, tuples' components, and the generic code's values.
-- **The adapters** (§3.2) the represent pass makes, `qa_adapt.*` in `collections/vector` and `util/maybe`: about 8
+- **The adapters** (wasm.md §3.2) the represent pass makes, `qa_adapt.*` in `collections/vector` and `util/maybe`: about 8
   percent, nearly all of them adapters this target does not need, around `vector.append`, `get`, and
   `maybe.unwrap`.
 - **Calls across units:** `collections/vector`'s `append` (9.9) and `get` (6.6), and `hashmap`'s `findIndex` (4.8),
@@ -2660,12 +2659,12 @@ it for the run goldens, which are small.
 
 **The stack:** the least `--stack-size` with which the driver compiles a unit to wasm in node, found by bisection,
 is 126 KB for a recursive Fibonacci program and 296 KB for `questlang/syntax/tokenizer.mod.quest`, the same with
-`--liftoff-only` as without; both within a worker's 512 KB (§6.2).
+`--liftoff-only` as without; both within a worker's 512 KB (wasm.md §6.2).
 
-### 25.1. Step 21: what the profile asked for (2026-11-15)
+### 25.1. What the profile asked for (2026-11-15)
 
-Step 21 of [wasm-plan.md](wasm-plan.md) took up what §25's profile named, measured each change, and ran the MLton
-suite in node for the first time. Each timing below was taken after three minutes with the load average below 5,
+The work that followed took up what §25's profile named, measured each change, and ran the MLton suite in node for
+the first time. Each timing below was taken after three minutes with the load average below 5,
 the drivers alternating; the scripts are in the session's scratchpad, not the tree.
 
 **Self-compilation in node**, `--backend wasm -j 1` into a fresh build directory, each change against the driver
@@ -2698,17 +2697,17 @@ the same work:
 | Native (arm64-built stage 2), `--backend wasm` | 38.9, 40.0 s | 36.3, 37.2 s | 3.59, 3.60 GB |
 | node | 47.8, 47.3 s | 58.3, 60.5 s | 3.47, 3.48 GB |
 
-node takes **1.21** of the native compiler's wall time, against 1.63 in step 10; the native time is above §25's
-34.2 s since the compiler has grown by milestone 4's code. **The run suite** (`--phase run_c_compiled -j 1`, the
-300 programs): wasmtime 44.2 s wall, node 60.5 s, each starting a fresh engine per program.
+node takes **1.21** of the native compiler's wall time, against 1.63 in §25; the native time is above §25's 34.2 s
+since the compiler has grown by the rest of the language's code. **The run suite** (`--phase run_c_compiled -j 1`,
+the 300 programs): wasmtime 44.2 s wall, node 60.5 s, each starting a fresh engine per program.
 
-**The MLton suite in node** (`benchmarks/mlton/run.py --backend wasm`, new in step 21: built to WebAssembly and run
+**The MLton suite in node** (`benchmarks/mlton/run.py --backend wasm`, new then: built to WebAssembly and run
 by `runtime/wasm/run.mjs` with 7800 KB of stack, `--scale 0.25`, one run each):
 
 - **Checked** against MLton's output: 45 of 46 agree. raytrace's image differs in 396 of its 120,000 pixels, edge
   pixels whose rays a last bit of `sin` or `acos` decides: built natively with its mathematical functions taken
   from `util/realmath`, it writes the WebAssembly build's image byte for byte, so the difference is msun's against
-  Apple's libm (§4.3 of the plan), not this target's.
+  Apple's libm (wasm.md §4.3), not this target's.
 - **Found:** two faults of the wasm backend, fixed in part 3 (`48d6267d`): `isnot` on tuples or options that may be
   proxies computed `is` (logic's occurs check failed at its first unification; `language/isnot_shared_tuples`),
   and a call at the end of an `if`'s arm, a switch's case, or a join's body was never a tail call (mandelbrot's and

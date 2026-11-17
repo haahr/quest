@@ -70,7 +70,7 @@ export
         entry("raisedText" array of model.eqref model.eqref end array of model.eqref end)
         (* Fatal errors held (nonzero) or not: while the JIT's host runs an
          * input, fatal keeps its report, for fatalReport, and traps, so that
-         * the input fails and the driver goes on (docs/wasm-plan.md step 20);
+         * the input fails and the driver goes on (docs/wasm.md section 4.2);
          * starting to hold clears the report kept. The report kept, or null *)
         entry("holdFatal" array of model.i32 end none)
         entry("fatalReport" none array of model.eqref end)
@@ -208,7 +208,8 @@ export
     let stringMemoryText = piece(72 40)
     (* The longest string the runtime makes, in bytes: one longer is out of
      * memory, as natively an allocation that fails is, rather than a size
-     * that wraps or an engine's trap (wasm-review.md section 1.3, 1) *)
+     * that wraps or an engine's trap (docs/wasm.md section 2.10, and
+     * section 10 on V8's limit) *)
     let maxBytes = 1073741824
 
     let runtimeModule(): model.Module =
@@ -321,8 +322,7 @@ export
              * 64 KB), so the iovec is advanced by the count and written again
              * until none is left; "try again" (6) is tried again; and another
              * error leaves its number in local err, which the caller returns
-             * for the core to raise writer.error (wasm-review.md section 1.2,
-             * 1) *)
+             * for the core to raise writer.error (docs/wasm.md section 4.2) *)
             let write(fd: Array(Inst) err: Int): Array(Inst) = cat(array of
                 array of
                     c32(0) c32(16) i1(ops.i32Store 0)
@@ -555,7 +555,7 @@ export
                         c32(0) i1(ops.localGet 6) i1(ops.localGet 7) i(ops.refAsNonNull) i1(ops.structNew tString)
                     end
                 end))
-            (* An Int in a slot (section 2.2 of the plan): an i31 if it fits
+            (* An Int in a slot (docs/wasm.md section 2.2): an i31 if it fits
              * 31 bits as a signed number, else a box. It fits when n + 2^30,
              * compared unsigned, is below 2^31: one test for both ends *)
             add("boxInt" typeOf[11] array of "n" end array of :model.Local end array of
@@ -997,7 +997,7 @@ export
                 tuple let field = "memory" let kind = option exportMemory of model.ExportKind end let index = 0 end)
             (* A closure that captures nothing, for a host that calls a unit's
              * exported function, whose first parameter is its closure, as a
-             * direct call passes its unit's own (docs/wasm-plan.md step 11) *)
+             * direct call passes its unit's own (docs/wasm.md section 3.1) *)
             vector.append(:model.Export m.exports tuple
                 let field = "noClosure" let kind = option exportGlobal of model.ExportKind end
                 let index = vector.length(:model.Global m.globals)

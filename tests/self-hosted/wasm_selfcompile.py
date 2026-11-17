@@ -1,5 +1,5 @@
-"""Checks that the driver compiled to wasm compiles itself (docs/wasm-plan.md
-steps 10 and 22): the driver built with DRIVER --backend wasm -o, then that
+"""Checks that the driver compiled to wasm compiles itself (docs/wasm.md
+section 8.2): the driver built with DRIVER --backend wasm -o, then that
 driver, run in node by runtime/wasm/run.mjs, building the driver again with
 --backend wasm into a fresh directory. The two builds must be the same: the
 same units, each unit's module and the program's and the runtime's the same

@@ -1,4 +1,4 @@
-// The worker of the page (docs/wasm-plan.md step 12): a Session
+// The worker of the page (docs/wasm.md section 6.5): a Session
 // (session.mjs) of the driver's modules, which the page compiled and passes
 // in, over a Host (host.mjs) whose files are mounts of these kinds:
 //

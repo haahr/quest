@@ -99,7 +99,7 @@ run with `--echo`.
 
 **The rule** (`quest_put_value`): a component of a bound variable's type is written at the witness only for the
 innermost auto value's own parameter (bound variable index 0). A reference to an enclosing auto type's parameter
-(index 1, `a2` here) is written `<hidden>`, as the wasm runtime does since step 26 (wasm-review.md §2.4, 5).
+(index 1, `a2` here) is written `<hidden>`, as the wasm runtime does too ([wasm.md](wasm.md) §4.2).
 
 **The interpreters** write the value itself, `6`, having the value in hand.
 

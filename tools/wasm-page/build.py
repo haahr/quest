@@ -1,4 +1,4 @@
-"""Builds the page of the REPL on WasmGC (docs/wasm-plan.md step 12): a
+"""Builds the page of the REPL on WasmGC (docs/wasm.md section 6.5): a
 directory of static files that any static server serves, such as
 
     python3 -m http.server -d .build/wasm-page
@@ -93,11 +93,11 @@ def built_from(data: bytes, commit: str | None) -> bytes:
 def stamped(name: str, data: bytes, stamp: str) -> bytes:
     """data, the page's file name, with the build's stamp written in, so
     that a browser's cache or a partial deployment never pairs one build's
-    files with another's (docs/wasm-review.md section 2.3, 5). In a script or
-    HTML file, each quoted name of one of the page's scripts ("./ui.mjs")
-    gets ?v=STAMP, a URL of its own for each build. In page.mjs, BUILD, "dev"
-    in the sources, becomes the stamp: page.mjs adds it to the archives' URLs
-    in the same way and checks it against the driver archive's stamp member.
+    files with another's (docs/wasm.md section 6.5). In a script or HTML
+    file, each quoted name of one of the page's scripts ("./ui.mjs") gets
+    ?v=STAMP, a URL of its own for each build. In page.mjs, BUILD, "dev" in
+    the sources, becomes the stamp: page.mjs adds it to the archives' URLs in
+    the same way and checks it against the driver archive's stamp member.
     Other files are returned unchanged."""
     if not (name.endswith(".mjs") or name.endswith(".html")):
         return data

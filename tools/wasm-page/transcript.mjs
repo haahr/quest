@@ -1,11 +1,10 @@
-// The page's transcript (docs/wasm-plan.md step 30): text appended to an
+// The page's transcript (docs/wasm.md section 6.5): text appended to an
 // element, gathered and added once a frame. A program that prints in a loop
 // sends a message for each write, and a change to the element, with the
-// layout a scroll then reads, for each was quadratic and froze the page
-// (wasm-review.md section 2.3, 1). Each frame's text of a kind is one text
-// node added to that kind's last span; scroller, the element that scrolls
-// (the element itself unless given), stays scrolled to its end if it was
-// there.
+// layout a scroll then reads, for each was quadratic and froze the page.
+// Each frame's text of a kind is one text node added to that kind's last
+// span; scroller, the element that scrolls (the element itself unless
+// given), stays scrolled to its end if it was there.
 
 export class Transcript {
   constructor(element, scroller = element) {

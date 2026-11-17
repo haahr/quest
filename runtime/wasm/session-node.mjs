@@ -1,5 +1,5 @@
-// The driver compiled to wasm, as a session in node (docs/wasm-plan.md step
-// 11), standing in for `quest` where the tests run one:
+// The driver compiled to wasm, as a session in node (docs/wasm.md sections
+// 6.1 and 8.2), standing in for `quest` where the tests run one:
 //
 //     node --no-warnings session-node.mjs [--stack-kb N] DRIVER.wasm --kernel [ARG...]
 //     node --no-warnings session-node.mjs [--stack-kb N] DRIVER.wasm -i [FILE] [ARG...]
@@ -8,12 +8,12 @@
 // DRIVER.wasm.units beside it, as the driver's -o writes them. The session
 // runs in a worker whose stack is N KB (512 by default, a Chromium worker's),
 // and whose heap --heap-mb limits, if given (main), compiling each input with
-// the driver's JIT (step 13), or interpreting it with --no-jit.
+// the driver's JIT, or interpreting it with --no-jit.
 //
 // With --kernel it speaks the kernel's protocol (docs/jupyter-kernel.md
 // section 2): requests from descriptor 3, records to descriptor 4, a SIGINT
 // ending the input running, as `interrupted`, by ending the worker and
-// replaying the session in a new one (section 6.4 of the plan). With -i it
+// replaying the session in a new one (docs/wasm.md section 6.4). With -i it
 // reads lines from standard input as the REPL does, writing its prompts and
 // results, so that the REPL's transcripts run against it.
 
@@ -35,7 +35,7 @@ if (isMainThread) await main(); else serve();
 
 // All of b (a string or bytes) written to fd: a write to a pipe may take only
 // some, and one to a pipe whose reader is slow may say "try again" (EAGAIN),
-// after which this waits a millisecond (wasm-review.md section 1.2, 1)
+// after which this waits a millisecond
 const pause = new Int32Array(new SharedArrayBuffer(4));
 function writeAll(fd, b) {
   let bytes = typeof b === "string" ? Buffer.from(b) : b;
@@ -57,8 +57,7 @@ function serve() {
   const write = fd => b => writeAll(fd, b);
   // A request's records as they come, but its last, done, which the main
   // thread writes when it has the reply, so that an interrupt handled before
-  // the reply cannot follow it with a second done (wasm-review.md section
-  // 2.2, 5)
+  // the reply cannot follow it with a second done
   const record = (b, r) => { if (!("done" in r)) writeAll(4, b); };
   const session = new Session({
     modules, args, env, cwd, mounts: {"/": new NodeMount(fs, "/")},
@@ -100,10 +99,10 @@ async function main() {
   let stackKb = 512;
   if (argv[0] === "--stack-kb") { stackKb = Number(argv[1]); argv.splice(0, 2); }
   // A limit for the worker's heap, if given: node ends a worker that it
-  // finds over its limit, and the session replays in a new one
-  // (wasm-review.md section 2.2, 4). Not by default: with WebAssembly's GC
-  // objects V8 aborts the whole process at the limit for a large
-  // allocation, and slows near it for small ones (docs/wasm-plan.md step 30)
+  // finds over its limit, and the session replays in a new one. Not by
+  // default: with WebAssembly's GC objects V8 aborts the whole process at
+  // the limit for a large allocation, and slows near it for small ones
+  // (docs/wasm.md section 7)
   let heapMb = null;
   if (argv[0] === "--heap-mb") { heapMb = Number(argv[1]); argv.splice(0, 2); }
   const [driver, ...rest] = argv;
@@ -185,7 +184,7 @@ async function main() {
   });
   // An interrupt during a request ends it: a new worker replays the inputs
   // that committed. One while that worker replays them ends the replay too,
-  // and the session starts again without them (wasm-review.md section 4, 7)
+  // and the session starts again without them (docs/wasm.md section 6.4)
   let restarting = null;
   const interrupt = async () => {
     if (restarting) {

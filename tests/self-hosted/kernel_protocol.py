@@ -12,7 +12,7 @@ the JIT, a whole-program build (docs/jit.md section 3.10), is checked with
 --no-jit alone.
 
 With --session, DRIVER is the driver compiled to wasm as a session in node
-(runtime/wasm/session-node.mjs, docs/wasm-plan.md steps 11 and 13), checked
+(runtime/wasm/session-node.mjs, docs/wasm.md section 6.1), checked
 with its JIT and interpreted, less what a session lacks: system.run, and
 io/readline's lines.
 
@@ -169,8 +169,8 @@ def check_cells(driver: str, options: list[str], label: str, scratch: Path, sess
         cells = [("a loop", "let lost = 1\nlet var i = 0\nwhile true do i := i + 1 end")]
         # Not in a session: a worker running WebAssembly's tail calls in a
         # loop (return_call) cannot be ended, as V8 checks for termination
-        # at loops' back edges and not at tail calls (docs/wasm-plan.md step
-        # 13)
+        # at loops' back edges and not at tail calls (docs/wasm.md section
+        # 6.4)
         if label == "jit" and not session:
             cells.append(("a recursion", "let lost = 1\nlet rec spin(n: Int): Int = spin(n + 1)\nspin(0)"))
         for what, cell in cells:

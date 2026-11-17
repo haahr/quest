@@ -1,6 +1,6 @@
-// The host of a session (docs/wasm-plan.md step 11): the part of WASI's first
-// preview that the runtime module imports, implemented in JavaScript over a
-// table of mounts, for node and for a page alike.
+// The host of a session (docs/wasm.md sections 4.4 and 6.1): the part of WASI's
+// first preview that the runtime module imports, implemented in JavaScript
+// over a table of mounts, for node and for a page alike.
 //
 // Every path is absolute inside the host. A mount serves the files under its
 // path; the longest mount whose path is a prefix of a file's serves it. A
@@ -22,9 +22,9 @@
 
 // Whether e is an engine's stack overflow, which no standard names: V8's and
 // JavaScriptCore's RangeError, SpiderMonkey's InternalError, "too much
-// recursion" (docs/wasm-plan.md step 23). A host function that makes the
+// recursion" (docs/wasm.md section 6.3). A host function that makes the
 // errors it catches error numbers lets this one through, so that the input
-// fails as natively rather than see a file missing (step 24)
+// fails as natively rather than see a file missing
 export function isStackOverflow(e) {
   return e instanceof RangeError || (e?.name === "InternalError" && /recursion/i.test(String(e.message)));
 }
@@ -133,9 +133,8 @@ export class MemoryMount {
     this.entries.delete(rel);
     this.made("rmdir", rel);
   }
-  // As a file system renames (wasm-review.md section 2.3, 4): not into
-  // itself; a directory onto an empty directory only, a file onto a file
-  // only; what was at the target replaced
+  // As a file system renames: not into itself; a directory onto an empty
+  // directory only, a file onto a file only; what was at the target replaced
   rename(rel, toRel) {
     this.changing();
     if (!this.entries.has(rel)) throw new Errno(E.NOENT);
@@ -163,7 +162,7 @@ export class MemoryMount {
   }
 }
 
-// A mount over a URL prefix, read only (docs/wasm-plan.md section 5.2): a
+// A mount over a URL prefix, read only (docs/wasm.md section 5.2): a
 // file's path relative to the mount, appended to the prefix, is the URL it is
 // fetched from, at most once. get(url) fetches synchronously, giving the
 // bytes, or null when the server has no such file; any other failure throws
@@ -541,9 +540,9 @@ export class Host {
     if (create || truncate) {
       // Made now, so that it exists while open, and written through with
       // each write, so that what a flush gives the file is in it, as
-      // natively (wasm-review.md section 2.3, 3). The core's writers give
-      // WASI a file's bytes 64 KB at a time, so each write copies what the
-      // file has so far, once for each 64 KB
+      // natively. The core's writers give WASI a file's bytes 64 KB at a
+      // time, so each write copies what the file has so far, once for each
+      // 64 KB
       const file = {kind: "file", bytes: new Uint8Array(0), at: 0, data: new Uint8Array(0)};
       if (!s || truncate) mount.write(rel, new Uint8Array(0));
       file.write = b => {

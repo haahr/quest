@@ -1,5 +1,5 @@
-// Checks a page that tools/wasm-page/build wrote (docs/wasm-plan.md steps 12
-// and 14) in node, without a browser: its archives unpacked and the driver's
+// Checks a page that tools/wasm-page/build wrote (docs/wasm.md section 6.5)
+// in node, without a browser: its archives unpacked and the driver's
 // modules compiled as the page does (page.mjs's load), and its worker's
 // session (worker.mjs's serve) run in this thread, with the JIT and then
 // interpreted, with a URL prefix read from a directory rather than a server.
@@ -89,7 +89,7 @@ for (const jit of [true, false]) {
   expect(`${mode}: a file written is in the page's copy`, new TextDecoder().decode(first.copy.read("work/note.txt")),
          "hi");
   // A file flushed and not closed is in the page's copy, as natively; a
-  // rename into itself or of /quest refused (docs/wasm-plan.md step 30)
+  // rename into itself or of /quest refused (docs/wasm.md section 4.4)
   first.execute('import writer: Writer\nlet flushed = writer.file("flushed.txt")\n' +
                 'writer.putString(flushed "seen")\nwriter.flush(flushed)');
   expect(`${mode}: a file flushed is in the page's copy`,

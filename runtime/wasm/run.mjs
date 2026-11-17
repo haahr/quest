@@ -1,5 +1,5 @@
-// Runs a program the wasm backend compiled (docs/wasm-plan.md, steps 3 and
-// 9) in node:
+// Runs a program the wasm backend compiled (docs/wasm.md sections 5.1 and
+// 8.2) in node:
 //
 //     node --no-warnings run.mjs [--module NAME=UNIT.wasm]... RUNTIME.wasm PROGRAM.wasm [ARG...]
 //
@@ -43,7 +43,7 @@ const wasi = new WASI({
 class Exit { constructor(code) { this.code = code; } }
 // node's fd_read of a pipe with nothing in it yet says "try again" (EAGAIN,
 // 6) where a read natively waits, so a read waits here a few milliseconds at
-// a time until the data comes (wasm-review.md section 1.2, 3)
+// a time until the data comes
 const pause = new Int32Array(new SharedArrayBuffer(4));
 function fd_read(...args) {
   for (;;) {
@@ -69,7 +69,7 @@ try {
 } catch (e) {
   if (isStackOverflow(e)) {
     // as natively an overflow no handler caught ends a program
-    // (docs/wasm-plan.md step 31)
+    // (docs/wasm.md section 6.3)
     process.stderr.write("Exception: stack.overflow\n");
     process.exitCode = 1;
   } else {

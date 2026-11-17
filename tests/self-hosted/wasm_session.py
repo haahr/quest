@@ -1,5 +1,5 @@
-"""Checks the driver compiled to wasm as a session in node (docs/wasm-plan.md
-steps 11 and 13): the driver built with DRIVER --backend wasm -o, then run by
+"""Checks the driver compiled to wasm as a session in node (docs/wasm.md
+section 6.1): the driver built with DRIVER --backend wasm -o, then run by
 runtime/wasm/session-node.mjs in a worker with a Chromium worker's stack
 (512 KB), interpreting each input (--no-jit) and compiling each with its JIT.
 
@@ -13,10 +13,11 @@ runtime/wasm/session-node.mjs in a worker with a Chromium worker's stack
   the interpreter's limit, rolled back by a replay; with the JIT, an
   overflow in an input's own code, rolled back with no replay, and one in
   the compiler, by a replay; each with the bindings before it kept;
-- the review's programs for recovery (docs/wasm-review.md section 2.2), and
+- a review's programs for recovery (REVIEW; docs/wasm.md section 6.3), and
   a replay that cannot run an input again;
-- the page (step 12) that tools/wasm-page/build writes from the same driver,
-  its archives and its worker's session run in node (wasm_page.mjs).
+- the page (docs/wasm.md section 6.5) that tools/wasm-page/build writes from
+  the same driver, its archives and its worker's session run in node
+  (wasm_page.mjs).
 
 Skipped, reporting nothing wrong, where node is missing.
 run_tests.py --self-hosted runs it (docs/testing.md).
@@ -62,7 +63,7 @@ PENDING_TRANSCRIPTS = {
     },
     "jit": {
         # An uncaught exception shows its raise's site and <main> alone
-        # (decision 12, docs/wasm-plan.md section 2.9)
+        # (decision 12, docs/wasm.md section 2.9)
         "earlier_function_error": "a traceback is the raise site only (decision 12)",
         "module_errors": "a traceback is the raise site only (decision 12)",
     },
@@ -158,11 +159,11 @@ def check_recovery(command: list[str], scratch: Path) -> list[str]:
     return problems
 
 
-# The review's programs for recovery (docs/wasm-review.md §2.2, 1, 2 and 7),
-# each in a fresh session: its inputs, and what the last must answer, its
+# Programs for recovery that a review found failing (docs/wasm.md sections
+# 6.3 and 7, item 13), each in a fresh session: its inputs, and what the last must answer, its
 # results or its error's name
 REVIEW = [
-    ("the subtype trail after an overflow (§2.2, 1)", [
+    ("the subtype trail after an overflow", [
         "import dynamic: Dynamic",
         "Let P = Tuple a: Tuple x: Int y: Tuple z: Int w: Int end end b: String end",
         "Let Q = Tuple a: Tuple x: Int y: Tuple z: Int w: Int end end b: Int end",
@@ -172,13 +173,13 @@ REVIEW = [
         "let rec deep(n: Int): Int = begin let unused = test() n - deep(n + 1) end",
         "deep(0)",
         "test()"], ["-1 : Int"]),
-    ("an overflow inside a host's file call (§2.2, 2)", [
+    ("an overflow inside a host's file call", [
         "import system : System",
         'let rec down(n: Int): Int = if system.fileExists("flag") then n - down(n + 1) else 0 end',
         "down(0)"], "stack.overflow"),
     # Natively the open raises writer.error; here the bytes, not records, go
     # to the client's standard error, and the session goes on
-    ("a write to the session's own descriptor 4 (§2.2, 7)", [
+    ("a write to the session's own descriptor 4", [
         "import writer : Writer",
         'let f = writer.file("/dev/fd/4")',
         'writer.putString(f "not a record\\n")',
@@ -210,7 +211,7 @@ def check_review(command: list[str], scratch: Path) -> list[str]:
 
 def check_lost(command: list[str], scratch: Path) -> list[str]:
     """A replay that cannot run an input again says so, with the names it no
-    longer has, and the session goes on (docs/wasm-review.md section 2.2, 3):
+    longer has, and the session goes on (docs/wasm.md section 6.3):
     the input removed a file, which is gone when the replay runs it again"""
     problems = []
     (scratch / "gone.txt").write_text("x\n")

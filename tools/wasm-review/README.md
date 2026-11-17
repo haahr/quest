@@ -1,8 +1,9 @@
 # Probes From the Review of the WebAssembly Backend
 
-The generators and drivers behind [docs/wasm-review.md](../../docs/wasm-review.md), kept as a start for tests. None
-is run by `tools/check`. Each takes a scratch directory, `OUT` below, and writes its programs, builds, and outputs
-there; give it one outside the tree. They need `wasmtime` and `node`, and the page's probes need Chrome.
+The generators and drivers behind a review of the wasm backend (2026-11-15; what it found still open is in
+[docs/wasm.md](../../docs/wasm.md) §10), kept as a start for tests. None is run by `tools/check`. Each takes a
+scratch directory, `OUT` below, and writes its programs, builds, and outputs there; give it one outside the tree.
+They need `wasmtime` and `node`, and the page's probes need Chrome.
 
 Every comparison is of three runs of one program: compiled by arm64 (the reference), and by the wasm backend in
 wasmtime and in node. [compare.sh](compare.sh) does it for any `NAME.quest` in the current directory and exits 1 if

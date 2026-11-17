@@ -279,11 +279,11 @@ the whole ones, all empty. The self-hosted driver's REPL and `-e` run on the JIT
 `@skip-phase: jit` or `@skip-phase: run_c_compiled`, and `-e`'s transcript on the JIT; the whole modes skip the tests
 marked `@skip-phase: whole` (§2.4);
 `tests/self-hosted/pending-jit.txt` lists the differences that remain. `wasm` and `wasm-node` compile each
-program with the wasm backend ([wasm-plan.md](wasm-plan.md)) and run its module and the runtime's in wasmtime and in
+program with the wasm backend ([wasm.md](wasm.md)) and run its module and the runtime's in wasmtime and in
 node (`--wasm-engine node`, through `runtime/wasm/run.mjs`); `tests/self-hosted/pending-wasm.txt` lists what they do not
-yet pass, each test under the step of the plan that adds what it needs. `wasm-jit` runs the run goldens' programs
-as `jit-files` does, with the driver compiled to wasm, in node, its JIT compiling each to a module (wasm-plan.md step
-13); `tests/self-hosted/pending-wasm-jit.txt` lists what it does not yet pass, by what each needs. Each is skipped
+yet pass, by what each needs. `wasm-jit` runs the run goldens' programs
+as `jit-files` does, with the driver compiled to wasm, in node, its JIT compiling each to a module (wasm.md §6.1);
+`tests/self-hosted/pending-wasm-jit.txt` lists what it does not yet pass, by what each needs. Each is skipped
 where its engine is not installed. `tools/check` runs `wasm-node` always, and `wasm` and `wasm-jit` only for a change to
 the wasm backend's own files (its `WASM_PATHS`: `questlang/wasm/`, `runtime/wasm/`, `questlang/jit/`, a `.wasm`
 variant, `lib/`, `tools/wasm-page/`, and the wasm tests) or with `--all`: the two add the engines' differences and the
@@ -315,12 +315,12 @@ units they import are in `tests/self-hosted/wasm/units`, imported as `units/NAME
 the driver with `--backend wasm` and runs it as a session in node (`runtime/wasm/session-node.mjs`, in a worker with a
 browser worker's 512 KB of stack), interpreted and with its JIT: the REPL's transcripts against their goldens, but
 for those it names as pending, the kernel's protocol (`kernel_protocol.py --session`), and a session's recovery from
-a stack overflow, interpreted by replay (wasm-plan.md step 11), with the JIT in an input's own code without one and
-in the compiler by one (step 13); and it builds the page (`tools/wasm-page/build`, step 12) from the same driver and
+a stack overflow (wasm.md §6.3), interpreted by replay, with the JIT in an input's own code without one and
+in the compiler by one; and it builds the page (`tools/wasm-page/build`, wasm.md §6.5) from the same driver and
 checks it in node (`tests/self-hosted/wasm_page.mjs`): its archives, and its worker's session, with the JIT and
-interpreted (step 14). `self-hosted/wasm_selfcompile` builds the driver with `--backend wasm`, has that driver, in
+interpreted. `self-hosted/wasm_selfcompile` builds the driver with `--backend wasm`, has that driver, in
 node, build the driver again, and requires the two builds to be the same, every unit's module and the program's and
-the runtime's byte for byte (wasm-plan.md steps 10 and 22). The page in a browser is checked by
+the runtime's byte for byte (wasm.md §8.2). The page in a browser is checked by
 `tools/wasm-page/build --check`, which no suite runs, in headless Chrome or Firefox or in Safari (`--browser`): its
 `check.html` runs the transcripts with the JIT, and `check.html?jit=0` interpreted. The
 generated C has no goldens: `tools/c-diff` shows how a

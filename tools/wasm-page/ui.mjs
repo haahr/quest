@@ -1,4 +1,4 @@
-// The page's prompt (docs/wasm-plan.md step 12): a line editor with history
+// The page's prompt (docs/wasm.md section 6.5): a line editor with history
 // and completion, the transcript, and the buttons, over a PageSession
 // (page.mjs) that the REPL's loop (repl.mjs) drives as the native REPL's
 // does, a line at a time.
@@ -128,8 +128,7 @@ async function drain() {
     append(line + "\n", "input");
     const began = performance.now();
     await repl.line(line);
-    // after the session ended, its status stays "Ended" (wasm-review.md
-    // section 4, 9)
+    // after the session ended, its status stays "Ended"
     if (session.status === null) status.textContent = `Last input: ${Math.round(performance.now() - began)} ms`;
   }
   draining = false;
@@ -239,7 +238,6 @@ $("info").addEventListener("click", () => showSupport($("support").hidden));
 $("interrupt").addEventListener("click", () => { interrupt(); input.focus(); });
 $("restart").addEventListener("click", async () => {
   // the old session's request and queue answered, so that drain returns
-  // (wasm-review.md section 2.3, 2)
   session.close();
   pending.length = 0;
   shown.clear();
@@ -254,8 +252,8 @@ window.quest = {written, pending, get session() { return session; }, get loaded(
 
 // A prefix or a file to load from another origin than the page's is the
 // link's choice, not the user's: the page asks first, since a program from
-// there can read what the page's origin serves (wasm-review.md section 2.3,
-// 6). A prefix of the page's own origin needs no answer.
+// there can read what the page's origin serves (docs/wasm.md section 6.5).
+// A prefix of the page's own origin needs no answer.
 function crossOrigin() {
   const others = [...options.prefixes, ...(options.load && /^[a-z]+:/i.test(options.load) ? [options.load] : [])]
     .filter(p => new URL(p, location.href).origin !== location.origin);
