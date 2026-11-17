@@ -87,7 +87,11 @@ def main() -> int:
         # One unit first, so that the library's units are built once
         compile_unit(compiler, tree, names[0], args.phase, build)
         with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
-            return list(pool.map(lambda u: compile_unit(compiler, tree, u, args.phase, build), names))
+            results = list(pool.map(lambda u: compile_unit(compiler, tree, u, args.phase, build), names))
+        # Workers sharing the build directory can race to write one import's
+        # artifacts, and the loser fails with system.error; a unit that failed
+        # is compiled again alone, when nothing else is writing
+        return [compile_unit(compiler, tree, u, args.phase, build) if r[0] != 0 else r for u, r in zip(names, results)]
 
     base, working = side("base"), side("working")
     status = 0
