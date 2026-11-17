@@ -43,7 +43,7 @@ export
      * ====================================================================== *)
 
     let maybeText(s: maybe.T(String)): json.Value =
-        if maybe.isSome(:String s) then json.string(maybe.unwrap(:String s)) else json.null end
+        if maybe.isSome(s) then json.string(maybe.unwrap(s)) else json.null end
 
     let encodeError(e: diagnostics.CompilerError): String =
         begin
@@ -55,22 +55,22 @@ export
             json.put(o "isFatal" json.bool(e.isFatal))
             json.put(o "help" maybeText(e.help))
             let notes = vector.new(:json.Value)
-            for i = 0 upto {vector.length(:String e.notes) - 1} do
-                vector.append(:json.Value notes json.string(vector.get(:String e.notes i)))
+            for i = 0 upto {vector.length(e.notes) - 1} do
+                vector.append(notes json.string(vector.get(e.notes i)))
             end
             json.put(o "notes" json.arrayValue(notes))
             json.put(o "file" maybeText(e.file))
             json.put(o "silent" json.bool(e.silent))
             let labels = vector.new(:json.Value)
-            for i = 0 upto {vector.length(:diagnostics.Label e.labels) - 1} do
-                let l = vector.get(:diagnostics.Label e.labels i)
+            for i = 0 upto {vector.length(e.labels) - 1} do
+                let l = vector.get(e.labels i)
                 let lo = json.newObject()
                 json.put(lo "file" json.string(l.sp.file))
                 json.put(lo "start" json.int(l.sp.startOffset))
                 json.put(lo "end" json.int(l.sp.endOffset))
                 json.put(lo "message" json.string(l.message))
                 json.put(lo "isPrimary" json.bool(l.isPrimary))
-                vector.append(:json.Value labels json.object(lo))
+                vector.append(labels json.object(lo))
             end
             json.put(o "labels" json.arrayValue(labels))
             json.dump(json.object(o))
@@ -84,10 +84,10 @@ export
             json.dump(json.object(o))
         end
 
-    let member(o: json.Object name: String): json.Value = maybe.unwrapOr(:json.Value json.get(o name) json.null)
+    let member(o: json.Object name: String): json.Value = maybe.unwrapOr(json.get(o name) json.null)
     let text(v: json.Value): String = case v when jString with x then x.s else "" end
     let maybeString(v: json.Value): maybe.T(String) =
-        case v when jString with x then maybe.some(:String x.s) else maybe.none(:String) end
+        case v when jString with x then maybe.some(x.s) else maybe.none(:String) end
     let number(v: json.Value): Int = case v when jNumber with x then strutil.toInt(x.text) else 0 end
     let flag(v: json.Value): Bool = case v when jBool with x then x.b else false end
     let items(v: json.Value): vector.T(json.Value) =
@@ -97,8 +97,8 @@ export
     let register(file: String): Ok =
         if {stringOp.length(file) > 0} andif system.isFile(file) then
             let text = files.readText(file)
-            if maybe.isSome(:String text) then
-                diagnostics.registerSource(location.newSourceMap(file maybe.unwrap(:String text)))
+            if maybe.isSome(text) then
+                diagnostics.registerSource(location.newSourceMap(file maybe.unwrap(text)))
             end
         end
 
@@ -106,17 +106,17 @@ export
         begin
             let notes = vector.new(:String)
             let noteItems = items(member(o "notes"))
-            for i = 0 upto {vector.length(:json.Value noteItems) - 1} do
-                vector.append(:String notes text(vector.get(:json.Value noteItems i)))
+            for i = 0 upto {vector.length(noteItems) - 1} do
+                vector.append(notes text(vector.get(noteItems i)))
             end
             let labels = vector.new(:diagnostics.Label)
             let labelItems = items(member(o "labels"))
-            for i = 0 upto {vector.length(:json.Value labelItems) - 1} do
-                case vector.get(:json.Value labelItems i)
+            for i = 0 upto {vector.length(labelItems) - 1} do
+                case vector.get(labelItems i)
                     when jObject with x then
                         let file = text(member(x.o "file"))
                         register(file)
-                        vector.append(:diagnostics.Label labels tuple
+                        vector.append(labels tuple
                             let sp = location.span(file number(member(x.o "start")) number(member(x.o "end")))
                             let message = text(member(x.o "message"))
                             let isPrimary = flag(member(x.o "isPrimary"))
@@ -125,7 +125,7 @@ export
                 end
             end
             let file = maybeString(member(o "file"))
-            if maybe.isSome(:String file) then register(maybe.unwrap(:String file)) end
+            if maybe.isSome(file) then register(maybe.unwrap(file)) end
             tuple
                 let message = text(member(o "message"))
                 let offset = number(member(o "offset"))
@@ -140,20 +140,20 @@ export
         end
 
     let raiseFailure(o: Outcome): Ok =
-        if maybe.isSome(:String o.failure) then
-            let failure = maybe.unwrap(:String o.failure)
-            let decoded = try maybe.some(:json.Value json.parse(failure))
+        if maybe.isSome(o.failure) then
+            let failure = maybe.unwrap(o.failure)
+            let decoded = try maybe.some(json.parse(failure))
                 when json.error then maybe.none(:json.Value) end
-            let obj = if maybe.isSome(:json.Value decoded) then
-                case maybe.unwrap(:json.Value decoded) when jObject with x then maybe.some(:json.Object x.o)
+            let obj = if maybe.isSome(decoded) then
+                case maybe.unwrap(decoded) when jObject with x then maybe.some(x.o)
                     else maybe.none(:json.Object) end
             else
                 maybe.none(:json.Object)
             end
-            if maybe.isNone(:json.Object obj) then
+            if maybe.isNone(obj) then
                 raise compilerRunner.failure with failure end
             else
-                let fields = maybe.unwrap(:json.Object obj)
+                let fields = maybe.unwrap(obj)
                 if eq(text(member(fields "kind")) "compiler") then
                     diagnostics.raiseError(:Ok decodeError(fields))
                 else
@@ -171,7 +171,7 @@ export
     let command(driver: String batch: Array(Job) worker: Int): Array(String) =
         begin
             let args = vector.new(:String)
-            let add = fun(s: String): Ok vector.append(:String args s)
+            let add = fun(s: String): Ok vector.append(args s)
             let job = batch[0]
             add(driver)
             for b = 0 upto {extent batch - 1} do
@@ -186,17 +186,17 @@ export
                 add("-I")
                 add(job.searchPaths[i])
             end
-            if maybe.isSome(:String job.buildDir) then
+            if maybe.isSome(job.buildDir) then
                 add("--build-dir")
-                add(maybe.unwrap(:String job.buildDir))
+                add(maybe.unwrap(job.buildDir))
             end
-            if maybe.isSome(:String job.programDir) then
+            if maybe.isSome(job.programDir) then
                 add("--program-dir")
-                add(maybe.unwrap(:String job.programDir))
+                add(maybe.unwrap(job.programDir))
             end
-            if maybe.isSome(:String job.compiler) then
+            if maybe.isSome(job.compiler) then
                 add("--cc")
-                add(maybe.unwrap(:String job.compiler))
+                add(maybe.unwrap(job.compiler))
             end
             if job.nogc then add("--nogc") end
             for i = 0 upto {extent job.extraCFlags - 1} do
@@ -209,7 +209,7 @@ export
                 add("--report-inferable")
                 add(job.reportInferable)
             end
-            vector.toArray(:String args)
+            vector.toArray(args)
         end
 
     (* Each job of a batch's outcome, from how its child ended. A child that
@@ -231,18 +231,18 @@ export
                 let newline = strutil.find(r.stdout "\n")
                 let failed = if newline > 0 then strutil.tryToInt(stringOp.getSub(r.stdout 0 newline))
                     else maybe.none(:Int) end
-                if maybe.isSome(:Int failed) then
-                    let f = maybe.unwrap(:Int failed)
+                if maybe.isSome(failed) then
+                    let f = maybe.unwrap(failed)
                     let error = stringOp.getSub(r.stdout {newline + 1} {{stringOp.length(r.stdout) - newline} - 1})
-                    outcomes[f] := outcome(f maybe.some(:String error))
+                    outcomes[f] := outcome(f maybe.some(error))
                     for b = {f + 1} upto {extent batch - 1} do
-                        outcomes[b] := outcome(b maybe.some(:String encodeMessage("skipped" "the compilation of "
+                        outcomes[b] := outcome(b maybe.some(encodeMessage("skipped" "the compilation of "
                             <> batch[b].source <> " was skipped after " <> batch[f].source <> " failed")))
                     end
                 else
                     let crash = encodeMessage("crash" "the compilation of " <> batch[0].source <> " and "
                         <> conv.int(extent batch - 1) <> " more stopped with " <> conv.int(r.code) <> ": " <> r.stderr)
-                    for b = 0 upto {extent batch - 1} do outcomes[b] := outcome(b maybe.some(:String crash)) end
+                    for b = 0 upto {extent batch - 1} do outcomes[b] := outcome(b maybe.some(crash)) end
                 end
             end
             outcomes
@@ -268,16 +268,16 @@ export
                 let members = vector.new(:Int)
                 let var j = c
                 while j < extent jobs do
-                    vector.append(:Int members j)
+                    vector.append(members j)
                     j := j + count
                 end
-                let indexes = vector.toArray(:Int members)
-                vector.append(:process.T children process.spawn(command(driver batchOf(indexes) {c + 1})))
-                vector.append(:Array(Int) batches indexes)
+                let indexes = vector.toArray(members)
+                vector.append(children process.spawn(command(driver batchOf(indexes) {c + 1})))
+                vector.append(batches indexes)
             end
             for c = 0 upto {count - 1} do
-                let indexes = vector.get(:Array(Int) batches c)
-                let results = batchOutcomes(batchOf(indexes) process.wait(vector.get(:process.T children c)))
+                let indexes = vector.get(batches c)
+                let results = batchOutcomes(batchOf(indexes) process.wait(vector.get(children c)))
                 for b = 0 upto {extent indexes - 1} do outcomes[indexes[b]] := results[b] end
             end
             outcomes
@@ -312,32 +312,32 @@ export
                 if eq(arg "--nogc") then
                     nogc := true
                 elsif eq(arg "--unit-module") then
-                    vector.append(:String sources value)
+                    vector.append(sources value)
                 elsif eq(arg "--target-dir") then
-                    vector.append(:String targetDirs value)
+                    vector.append(targetDirs value)
                 elsif eq(arg "--worker") then
                     worker := value
                 elsif eq(arg "-I") then
-                    vector.append(:String searchPaths value)
+                    vector.append(searchPaths value)
                 elsif eq(arg "--build-dir") then
-                    buildDir := maybe.some(:String value)
+                    buildDir := maybe.some(value)
                 elsif eq(arg "--program-dir") then
-                    programDir := maybe.some(:String value)
+                    programDir := maybe.some(value)
                 elsif eq(arg "--cc") then
-                    compiler := maybe.some(:String value)
+                    compiler := maybe.some(value)
                 elsif eq(arg "--cflag") then
-                    vector.append(:String cflags value)
+                    vector.append(cflags value)
                 elsif eq(arg "--backend") then
                     backend := value
                 elsif eq(arg "--report-inferable") then
                     reportInferable := value
                 elsif eq(arg "--unit-backend") then
                     let o = choice.parseOverride(value)
-                    if maybe.isSome(:choice.Override o) then vector.append(:choice.Override overrides maybe.unwrap(:choice.Override o)) end
+                    if maybe.isSome(o) then vector.append(overrides maybe.unwrap(o)) end
                 elsif eq(arg "--variant") then
                     let v = choice.parseVariant(value)
-                    if maybe.isSome(:choice.Alternative v) then
-                        vector.append(:choice.Alternative variants maybe.unwrap(:choice.Alternative v))
+                    if maybe.isSome(v) then
+                        vector.append(variants maybe.unwrap(v))
                     end
                 end
                 let step = if eq(arg "--nogc") then 1 else 2 end
@@ -349,35 +349,35 @@ export
             stdlib.install()
             (* One resolver for the batch, as a serial build has one for all *)
             let backends = tuple
-                let default = backend let overrides = vector.toArray(:choice.Override overrides)
-                let variants = vector.toArray(:choice.Alternative variants)
+                let default = backend let overrides = vector.toArray(overrides)
+                let variants = vector.toArray(variants)
             end
             let resolver = graph.newResolver()
             resolver.variantOf := fun(unit: String): String choice.variantFor(backends unit)
             let var failed = maybe.none(:String)
-            for b = 0 upto {vector.length(:String sources) - 1} do
-                if maybe.isNone(:String failed) then
+            for b = 0 upto {vector.length(sources) - 1} do
+                if maybe.isNone(failed) then
                     let failure = try
                         begin
                             typecheck.install()
-                            moduleCompiler.compileModuleFile(vector.get(:String sources b)
-                                maybe.some(:String vector.get(:String targetDirs b)) vector.toArray(:String searchPaths)
-                                compiler nogc vector.toArray(:String cflags) buildDir programDir
-                                maybe.some(:graph.Resolver resolver) backends reportInferable)
+                            moduleCompiler.compileModuleFile(vector.get(sources b)
+                                maybe.some(vector.get(targetDirs b)) vector.toArray(searchPaths)
+                                compiler nogc vector.toArray(cflags) buildDir programDir
+                                maybe.some(resolver) backends reportInferable)
                             maybe.none(:String)
                         end
                     when diagnostics.compilerError with err then
-                        maybe.some(:String encodeError(err))
+                        maybe.some(encodeError(err))
                     when compilerRunner.failure with m then
-                        maybe.some(:String encodeMessage("runner" m))
+                        maybe.some(encodeMessage("runner" m))
                     end
-                    if maybe.isSome(:String failure) then
-                        failed := maybe.some(:String conv.int(b) <> "\n" <> maybe.unwrap(:String failure))
+                    if maybe.isSome(failure) then
+                        failed := maybe.some(conv.int(b) <> "\n" <> maybe.unwrap(failure))
                     end
                 end
             end
-            if maybe.isSome(:String failed) then
-                writer.putString(writer.output maybe.unwrap(:String failed))
+            if maybe.isSome(failed) then
+                writer.putString(writer.output maybe.unwrap(failed))
                 writer.flush(writer.output)
                 writer.flush(writer.err)
                 system.sysexit(1)

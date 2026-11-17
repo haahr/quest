@@ -31,16 +31,16 @@ export
     let callee(st: Stmt): maybe.T(Variable) =
         begin
             let c = walk.statementCall(st)
-            if maybe.isSome(:nodes.OpCall c) then maybe.unwrap(:nodes.OpCall c).callee else maybe.none(:Variable) end
+            if maybe.isSome(c) then maybe.unwrap(c).callee else maybe.none(:Variable) end
         end
 
     (* A statement's call, which it is known to make *)
-    let callIn(st: Stmt): nodes.OpCall = maybe.unwrap(:nodes.OpCall walk.statementCall(st))
+    let callIn(st: Stmt): nodes.OpCall = maybe.unwrap(walk.statementCall(st))
 
     let calls(st: Stmt f: nodes.Function): Bool =
         begin
             let c = callee(st)
-            maybe.isSome(:Variable c) andif nodes.same(maybe.unwrap(:Variable c) f.v)
+            maybe.isSome(c) andif nodes.same(maybe.unwrap(c) f.v)
         end
 
     let returnsOk(st: Stmt): Bool =
@@ -63,30 +63,30 @@ export
     end
 
     let rec gather(u: Unit b: Body): Ok =
-        for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
-            let st = vector.get(:Stmt b.statements i)
+        for i = 0 upto {vector.length(b.statements) - 1} do
+            let st = vector.get(b.statements i)
             let used = walk.statementUses(st)
             for j = 0 upto {extent used - 1} do
                 case used[j]
                     when atomVar with x then
-                        hashMap.insert(:Int :Int u.uses x.v.id 1 + maybe.unwrapOr(:Int hashMap.get(:Int :Int u.uses x.v.id) 0))
+                        hashMap.insert(u.uses x.v.id 1 + maybe.unwrapOr(hashMap.get(u.uses x.v.id) 0))
                         ok
                     when atomConst then ok
                 end
             end
             let c = callee(st)
-            if maybe.isSome(:Variable c) then
-                let id = maybe.unwrap(:Variable c).id
-                if not(hashMap.contains(:Int :vector.T(Site) u.sites id)) then
-                    hashMap.insert(:Int :vector.T(Site) u.sites id vector.new(:Site))
+            if maybe.isSome(c) then
+                let id = maybe.unwrap(c).id
+                if not(hashMap.contains(u.sites id)) then
+                    hashMap.insert(u.sites id vector.new(:Site))
                 end
-                vector.append(:Site hashMap.find(:Int :vector.T(Site) u.sites id) tuple let body = b let index = i end)
+                vector.append(hashMap.find(u.sites id) tuple let body = b let index = i end)
             end
             case st
                 when sFuns with x then
                     for k = 0 upto {extent x.functions - 1} do
-                        vector.append(:nodes.Function u.functions x.functions[k])
-                        hashMap.insert(:Int :nodes.StmtFuns u.funs x.functions[k].v.id x)
+                        vector.append(u.functions x.functions[k])
+                        hashMap.insert(u.funs x.functions[k].v.id x)
                         gather(u x.functions[k].body)
                     end
                 else ok
@@ -98,9 +98,9 @@ export
     (* The ids of a body and of the bodies it holds, its functions' too *)
     let rec bodyIds(b: Body ids: hashMap.T(Int Bool)): Ok =
         begin
-            hashMap.insert(:Int :Bool ids b.id true)
-            for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
-                let st = vector.get(:Stmt b.statements i)
+            hashMap.insert(ids b.id true)
+            for i = 0 upto {vector.length(b.statements) - 1} do
+                let st = vector.get(b.statements i)
                 case st
                     when sFuns with x then for k = 0 upto {extent x.functions - 1} do bodyIds(x.functions[k].body ids) end
                     else ok
@@ -125,19 +125,19 @@ export
      * from f *)
     let rec scan(f: nodes.Function sc: Scan b: Body allowed: Bool fallsOk: Bool): Ok =
         begin
-            let n = vector.length(:Stmt b.statements)
+            let n = vector.length(b.statements)
             for k = 0 upto {n - 1} do
-                let st = vector.get(:Stmt b.statements k)
-                let next = if {k + 1} < n then maybe.some(:Stmt vector.get(:Stmt b.statements k + 1)) else maybe.none(:Stmt) end
-                let okNext = maybe.isSome(:Stmt next) andif returnsOk(maybe.unwrap(:Stmt next)) andif {{k + 2} is n}
+                let st = vector.get(b.statements k)
+                let next = if {k + 1} < n then maybe.some(vector.get(b.statements k + 1)) else maybe.none(:Stmt) end
+                let okNext = maybe.isSome(next) andif returnsOk(maybe.unwrap(next)) andif {{k + 2} is n}
                 (* Falling off the statement returns ok *)
                 let tail = allowed andif {{{{k + 1} is n} andif fallsOk} orif okNext}
                 if calls(st f) then
                     sc.calls := sc.calls + 1
                     case st
                         when sLet with x then
-                            let returned = if maybe.isSome(:Stmt next) andif {{k + 2} is n} then
-                                case maybe.unwrap(:Stmt next)
+                            let returned = if maybe.isSome(next) andif {{k + 2} is n} then
+                                case maybe.unwrap(next)
                                     when sReturn with r then
                                         case r.value when atomVar with y then nodes.same(y.v x.v) else false end
                                     else false
@@ -146,11 +146,11 @@ export
                                 false
                             end
                             if allowed andif returned then
-                                vector.append(:Tail sc.tails tuple let body = b let index = k let withReturn = true end)
+                                vector.append(sc.tails tuple let body = b let index = k let withReturn = true end)
                             end
                         when sDo then
                             if tail then
-                                vector.append(:Tail sc.tails tuple let body = b let index = k let withReturn = okNext end)
+                                vector.append(sc.tails tuple let body = b let index = k let withReturn = okNext end)
                             end
                         else ok
                     end
@@ -160,12 +160,12 @@ export
                     when sSwitch with x then
                         begin
                             for j = 0 upto {extent x.cases - 1} do scan(f sc x.cases[j].body allowed tail) end
-                            if maybe.isSome(:Body x.elseBody) then scan(f sc maybe.unwrap(:Body x.elseBody) allowed tail) end
+                            if maybe.isSome(x.elseBody) then scan(f sc maybe.unwrap(x.elseBody) allowed tail) end
                         end
                     when sInspect with x then
                         begin
                             for j = 0 upto {extent x.cases - 1} do scan(f sc x.cases[j].body allowed tail) end
-                            if maybe.isSome(:Body x.elseBody) then scan(f sc maybe.unwrap(:Body x.elseBody) allowed tail) end
+                            if maybe.isSome(x.elseBody) then scan(f sc maybe.unwrap(x.elseBody) allowed tail) end
                         end
                     when sJoin with x then begin scan(f sc x.continuation allowed tail) scan(f sc x.body allowed tail) end
                     (* Falling off a loop's body repeats it; a try's body is its
@@ -183,8 +183,8 @@ export
     let rec breaksTo(b: Body label: String): Bool =
         begin
             let var found = false
-            for k = 0 upto {vector.length(:Stmt b.statements) - 1} do
-                let st = vector.get(:Stmt b.statements k)
+            for k = 0 upto {vector.length(b.statements) - 1} do
+                let st = vector.get(b.statements k)
                 case st
                     when sBreak with x then
                         found := found orif stringOp.equal(x.label label)
@@ -206,20 +206,20 @@ export
      * would repeat the loop rather than return *)
     let rec endsControl(b: Body): Bool =
         begin
-            let n = vector.length(:Stmt b.statements)
+            let n = vector.length(b.statements)
             if n is 0 then false
             else
-                case vector.get(:Stmt b.statements n - 1)
+                case vector.get(b.statements n - 1)
                     when sReturn, sRaise, sUnreachable, sJump, sBreak, sContinue then true
                     when sIf with x then endsControl(x.thenBody) andif endsControl(x.elseBody)
                     when sSwitch with x then
-                        let var all = maybe.isSome(:Body x.elseBody) andif endsControl(maybe.unwrap(:Body x.elseBody))
+                        let var all = maybe.isSome(x.elseBody) andif endsControl(maybe.unwrap(x.elseBody))
                         for j = 0 upto {extent x.cases - 1} do
                             if not(endsControl(x.cases[j].body)) then all := false end
                         end
                         all
                     when sInspect with x then
-                        let var all = maybe.isNone(:Body x.elseBody) orif endsControl(maybe.unwrap(:Body x.elseBody))
+                        let var all = maybe.isNone(x.elseBody) orif endsControl(maybe.unwrap(x.elseBody))
                         for j = 0 upto {extent x.cases - 1} do
                             if not(endsControl(x.cases[j].body)) then all := false end
                         end
@@ -239,11 +239,11 @@ export
     (* Replaces, in place, the returns of a body of f's (not of its
      * functions') by jumps to label *)
     let rec jumps(b: Body label: String): Ok =
-        for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
-            let s = vector.get(:Stmt b.statements i)
+        for i = 0 upto {vector.length(b.statements) - 1} do
+            let s = vector.get(b.statements i)
             case s
                 when sReturn with x then
-                    vector.set(:Stmt b.statements i option sJump of Stmt with
+                    vector.set(b.statements i option sJump of Stmt with
                         let var pos = x.pos let label = label let var args = array of x.value end
                     end)
                 else
@@ -279,7 +279,7 @@ export
             let loopLabel = "contified" <> conv.int(labels.count)
             labels.count := labels.count + 1
             let joinLabel = "contified" <> conv.int(labels.count)
-            let st = vector.get(:Stmt site.body.statements site.index)
+            let st = vector.get(site.body.statements site.index)
             let call = callIn(st)
             let result = case st when sLet with x then x.v else nodes.newVar("r" f.resultType false) end
             let vars = array of(extent f.params f.v)
@@ -288,18 +288,18 @@ export
                 vars[i] := nodes.newVar(p.hint p.type true)
             end
             (* Each tail call assigns the parameters' variables and repeats *)
-            for t = 0 upto {vector.length(:Tail tails) - 1} do
-                let tail = vector.get(:Tail tails t)
-                let tailCall = vector.get(:Stmt tail.body.statements tail.index)
+            for t = 0 upto {vector.length(tails) - 1} do
+                let tail = vector.get(tails t)
+                let tailCall = vector.get(tail.body.statements tail.index)
                 let c = callIn(tailCall)
                 let kept = vector.new(:Stmt)
-                for i = 0 upto {tail.index - 1} do vector.append(:Stmt kept vector.get(:Stmt tail.body.statements i)) end
+                for i = 0 upto {tail.index - 1} do vector.append(kept vector.get(tail.body.statements i)) end
                 for i = 0 upto {extent vars - 1} do
-                    vector.append(:Stmt kept option sAssign of Stmt with
+                    vector.append(kept option sAssign of Stmt with
                         let var pos = nodes.stmtPos(tailCall) let var v = vars[i] let var value = c.args[i]
                     end)
                 end
-                vector.append(:Stmt kept option sContinue of Stmt with
+                vector.append(kept option sContinue of Stmt with
                     let var pos = nodes.stmtPos(tailCall) let label = loopLabel
                 end)
                 tail.body.statements := kept
@@ -307,41 +307,41 @@ export
             jumps(f.body joinLabel)
             let iteration = vector.new(:Stmt)
             for i = 0 upto {extent vars - 1} do
-                vector.append(:Stmt iteration nodes.letStmt(f.params[i].v nodes.opOfVar(vars[i])))
+                vector.append(iteration nodes.letStmt(f.params[i].v nodes.opOfVar(vars[i])))
             end
-            for i = 0 upto {vector.length(:Stmt f.body.statements) - 1} do
-                vector.append(:Stmt iteration vector.get(:Stmt f.body.statements i))
+            for i = 0 upto {vector.length(f.body.statements) - 1} do
+                vector.append(iteration vector.get(f.body.statements i))
             end
             let inner = vector.new(:Stmt)
             for i = 0 upto {extent vars - 1} do
-                vector.append(:Stmt inner option sVarDecl of Stmt with
-                    let var pos = nodes.stmtPos(st) let var v = vars[i] let var init = maybe.some(:Atom call.args[i])
+                vector.append(inner option sVarDecl of Stmt with
+                    let var pos = nodes.stmtPos(st) let var v = vars[i] let var init = maybe.some(call.args[i])
                 end)
             end
-            vector.append(:Stmt inner option sLoop of Stmt with
+            vector.append(inner option sLoop of Stmt with
                 let label = loopLabel
-                let var body = nodes.bodyOf(vector.toArray(:Stmt iteration))
+                let var body = nodes.bodyOf(vector.toArray(iteration))
             end)
             let rest = vector.new(:Stmt)
-            for i = site.index + 1 upto {vector.length(:Stmt site.body.statements) - 1} do
-                vector.append(:Stmt rest vector.get(:Stmt site.body.statements i))
+            for i = site.index + 1 upto {vector.length(site.body.statements) - 1} do
+                vector.append(rest vector.get(site.body.statements i))
             end
             let before = vector.new(:Stmt)
-            for i = 0 upto {site.index - 1} do vector.append(:Stmt before vector.get(:Stmt site.body.statements i)) end
-            vector.append(:Stmt before option sJoin of Stmt with
+            for i = 0 upto {site.index - 1} do vector.append(before vector.get(site.body.statements i)) end
+            vector.append(before option sJoin of Stmt with
                 let label = joinLabel
                 let var params = array of result end
-                let var continuation = nodes.bodyOf(vector.toArray(:Stmt rest))
-                let var body = nodes.bodyOf(vector.toArray(:Stmt inner))
+                let var continuation = nodes.bodyOf(vector.toArray(rest))
+                let var body = nodes.bodyOf(vector.toArray(inner))
             end)
             site.body.statements := before
             (* The function is the loop now, and its funs statement binds the
              * others (the simplifier removes one that binds none) *)
             let others = vector.new(:nodes.Function)
             for i = 0 upto {extent funs.functions - 1} do
-                if not(nodes.same(funs.functions[i].v f.v)) then vector.append(:nodes.Function others funs.functions[i]) end
+                if not(nodes.same(funs.functions[i].v f.v)) then vector.append(others funs.functions[i]) end
             end
-            funs.functions := vector.toArray(:nodes.Function others)
+            funs.functions := vector.toArray(others)
         end
 
     (* Contifies the first function in all, in the order gather finds them,
@@ -360,24 +360,24 @@ export
             end
             for b = 0 upto {extent all - 1} do gather(u all[b]) end
             let var done = false
-            for i = 0 upto {vector.length(:nodes.Function u.functions) - 1} do
-                let f = vector.get(:nodes.Function u.functions i)
+            for i = 0 upto {vector.length(u.functions) - 1} do
+                let f = vector.get(u.functions i)
                 let var values = extent f.typeParams is 0
                 for k = 0 upto {extent f.params - 1} do
                     if not(stringOp.equal(f.params[k].mode "value")) then values := false end
                 end
-                let sites = maybe.unwrapOr(:vector.T(Site) hashMap.get(:Int :vector.T(Site) u.sites f.v.id) vector.new(:Site))
-                let uses = maybe.unwrapOr(:Int hashMap.get(:Int :Int u.uses f.v.id) 0)
-                if not(done) andif values andif not(hashMap.contains(:Int :Bool pinned f.v.id))
-                    andif {uses is vector.length(:Site sites)} andif {uses > 0} andif endsControl(f.body) then
+                let sites = maybe.unwrapOr(hashMap.get(u.sites f.v.id) vector.new(:Site))
+                let uses = maybe.unwrapOr(hashMap.get(u.uses f.v.id) 0)
+                if not(done) andif values andif not(hashMap.contains(pinned f.v.id))
+                    andif {uses is vector.length(sites)} andif {uses > 0} andif endsControl(f.body) then
                     let sc = tuple let tails = vector.new(:Tail) let var calls = 0 end
                     scan(f sc f.body true false)
                     let inside = hashMap.new(:Int :Bool intEqual hash.int)
                     bodyIds(f.body inside)
                     let outside = vector.new(:Site)
-                    for k = 0 upto {vector.length(:Site sites) - 1} do
-                        let s = vector.get(:Site sites k)
-                        if not(hashMap.contains(:Int :Bool inside s.body.id)) then vector.append(:Site outside s) end
+                    for k = 0 upto {vector.length(sites) - 1} do
+                        let s = vector.get(sites k)
+                        if not(hashMap.contains(inside s.body.id)) then vector.append(outside s) end
                     end
                     (* A function that never calls itself and is not
                      * recursive through others is left to the inliner: as a
@@ -385,10 +385,10 @@ export
                      * loop's, not the module's, and its functions would
                      * capture them *)
                     let loops = {sc.calls > 0}
-                        orif maybe.unwrapOr(:Bool hashMap.get(:Int :Bool recursive f.v.id) false)
-                    if {vector.length(:Site outside) is 1} andif {vector.length(:Tail sc.tails) is sc.calls}
+                        orif maybe.unwrapOr(hashMap.get(recursive f.v.id) false)
+                    if {vector.length(outside) is 1} andif {vector.length(sc.tails) is sc.calls}
                         andif loops andif {{sc.calls + 1} is uses} then
-                        transform(f hashMap.find(:Int :nodes.StmtFuns u.funs f.v.id) vector.get(:Site outside 0) sc.tails labels)
+                        transform(f hashMap.find(u.funs f.v.id) vector.get(outside 0) sc.tails labels)
                         done := true
                     end
                 end

@@ -121,8 +121,8 @@ export
         end
 
     let unwrapped(s: Shape what: maybe.T(Shape) field: String): Shape =
-        if maybe.isSome(:Shape what) then
-            maybe.unwrap(:Shape what)
+        if maybe.isSome(what) then
+            maybe.unwrap(what)
         else
             raise noShape with "a " <> kindName(s.kind) <> " shape has no " <> field end
         end
@@ -131,8 +131,8 @@ export
     let result(s: Shape): Shape = unwrapped(s s.resultShape "result")
     let body(s: Shape): Shape = unwrapped(s s.bodyShape "body")
     let componentShape(c: Component): Shape =
-        if maybe.isSome(:Shape c.shape) then
-            maybe.unwrap(:Shape c.shape)
+        if maybe.isSome(c.shape) then
+            maybe.unwrap(c.shape)
         else
             raise noShape with "a case without a payload has no shape" end
         end
@@ -158,9 +158,9 @@ export
         begin
             let var found = maybe.none(:Component)
             for i = 0 upto {extent items - 1} do
-                if maybe.isNone(:Component found) andif maybe.isSome(:String items[i].name)
-                    andif stringOp.equal(maybe.unwrap(:String items[i].name) name) then
-                    found := maybe.some(:Component items[i])
+                if maybe.isNone(found) andif maybe.isSome(items[i].name)
+                    andif stringOp.equal(maybe.unwrap(items[i].name) name) then
+                    found := maybe.some(items[i])
                 end
             end
             found
@@ -170,22 +170,22 @@ export
     let caseOf(s: Shape name: String): maybe.T(Component) = named(s.cases name)
 
     let sortedComponents(s: Shape): Array(Component) =
-        sort.sorted(:Component s.components fun(a: Component b: Component): Int
-            sort.stringCompare(maybe.unwrapOr(:String a.name "") maybe.unwrapOr(:String b.name "")))
+        sort.sorted(s.components fun(a: Component b: Component): Int
+            sort.stringCompare(maybe.unwrapOr(a.name "") maybe.unwrapOr(b.name "")))
 
     let children(s: Shape): Array(Shape) =
         begin
             let found = vector.new(:Shape)
-            let add = fun(x: maybe.T(Shape)): Ok if maybe.isSome(:Shape x) then vector.append(:Shape found maybe.unwrap(:Shape x)) end
+            let add = fun(x: maybe.T(Shape)): Ok if maybe.isSome(x) then vector.append(found maybe.unwrap(x)) end
             for i = 0 upto {extent s.components - 1} do add(s.components[i].shape) end
             for i = 0 upto {extent s.cases - 1} do add(s.cases[i].shape) end
             add(s.elementShape)
             add(s.resultShape)
             add(s.bodyShape)
             add(s.bound)
-            for i = 0 upto {extent s.params - 1} do vector.append(:Shape found s.params[i].shape) end
+            for i = 0 upto {extent s.params - 1} do vector.append(found s.params[i].shape) end
             for i = 0 upto {extent s.typeParams - 1} do add(s.typeParams[i].bound) end
-            vector.toArray(:Shape found)
+            vector.toArray(found)
         end
 
     let shapesReachable(s: Shape): Array(Shape) =
@@ -193,17 +193,17 @@ export
             let seen = hashMap.new(:Int :Bool intEqual hash.int)
             let found = vector.new(:Shape)
             let stack = vector.new(:Shape)
-            vector.append(:Shape stack s)
-            while not(vector.empty(:Shape stack)) do
-                let n = vector.pop(:Shape stack)
-                if not(hashMap.contains(:Int :Bool seen n.id)) then
-                    hashMap.insert(:Int :Bool seen n.id true)
-                    vector.append(:Shape found n)
+            vector.append(stack s)
+            while not(vector.empty(stack)) do
+                let n = vector.pop(stack)
+                if not(hashMap.contains(seen n.id)) then
+                    hashMap.insert(seen n.id true)
+                    vector.append(found n)
                     let kids = children(n)
-                    for i = 0 upto {extent kids - 1} do vector.append(:Shape stack kids[i]) end
+                    for i = 0 upto {extent kids - 1} do vector.append(stack kids[i]) end
                 end
             end
-            vector.toArray(:Shape found)
+            vector.toArray(found)
         end
 
     let isWordType(t0: Type): Bool =
@@ -244,21 +244,21 @@ export
                         for j = 0 upto {extent x.bindings - 1} do
                             let var mentions = false
                             for k = 0 upto {extent fv - 1} do if fv[k] is x.bindings[j].symbolId then mentions := true end end
-                            if mentions then vector.append(:Int found j) end
+                            if mentions then vector.append(found j) end
                         end
                         found
                     end
                 let seen = hashMap.new(:Int :Bool intEqual hash.int)
                 let pending = mentioned(x.activeIndex)
                 let var result = false
-                while not(result) andif not(vector.empty(:Int pending)) do
-                    let index = vector.pop(:Int pending)
+                while not(result) andif not(vector.empty(pending)) do
+                    let index = vector.pop(pending)
                     if index is x.activeIndex then
                         result := true
-                    elsif not(hashMap.contains(:Int :Bool seen index)) then
-                        hashMap.insert(:Int :Bool seen index true)
+                    elsif not(hashMap.contains(seen index)) then
+                        hashMap.insert(seen index true)
                         let more = mentioned(index)
-                        for k = 0 upto {vector.length(:Int more) - 1} do vector.append(:Int pending vector.get(:Int more k)) end
+                        for k = 0 upto {vector.length(more) - 1} do vector.append(pending vector.get(more k)) end
                     end
                 end
                 result
@@ -268,7 +268,7 @@ export
     let casesByName(t: Type): Type =
         case t.form
             when typeVariant with x then
-                let variants = sort.sorted(:model.VariantField x.variants
+                let variants = sort.sorted(x.variants
                     fun(a: model.VariantField b: model.VariantField): Int sort.stringCompare(a.name b.name))
                 let var ordered = true
                 for i = 0 upto {extent variants - 1} do
@@ -276,7 +276,7 @@ export
                 end
                 if ordered then t else model.variantType(variants) end
             when typeOption with x then
-                let options = sort.sorted(:model.OptionField x.options
+                let options = sort.sorted(x.options
                     fun(a: model.OptionField b: model.OptionField): Int sort.stringCompare(a.name b.name))
                 let var ordered = true
                 for i = 0 upto {extent options - 1} do
@@ -303,11 +303,11 @@ export
         end
 
     let scalarKind(t: Type): maybe.T(ShapeKind) =
-        if model.same(t model.intType) then maybe.some(:ShapeKind shapeInt)
-        elsif model.same(t model.realType) then maybe.some(:ShapeKind shapeReal)
-        elsif model.same(t model.boolType) then maybe.some(:ShapeKind shapeBool)
-        elsif model.same(t model.charType) then maybe.some(:ShapeKind shapeChar)
-        elsif model.same(t model.stringType) then maybe.some(:ShapeKind shapeString)
+        if model.same(t model.intType) then maybe.some(shapeInt)
+        elsif model.same(t model.realType) then maybe.some(shapeReal)
+        elsif model.same(t model.boolType) then maybe.some(shapeBool)
+        elsif model.same(t model.charType) then maybe.some(shapeChar)
+        elsif model.same(t model.stringType) then maybe.some(shapeString)
         else maybe.none(:ShapeKind)
         end
 
@@ -381,16 +381,16 @@ export
      * shape (fillFrom), keeping t as its type. *)
     let rec shapeOf(t: Type): Shape =
         begin
-            let cached = hashMap.get(:Int :Shape built t.id)
-            if maybe.isSome(:Shape cached) then
-                maybe.unwrap(:Shape cached)
+            let cached = hashMap.get(built t.id)
+            if maybe.isSome(cached) then
+                maybe.unwrap(cached)
             elsif isRecursiveType(t) andif usesRecursion(t) then
                 (* The recursive type's shape is its unfolding's, whose
                  * recursive occurrences are this node: enter the shape before
                  * building the unfolding's, so that they refer to it, and fill
                  * it in from the unfolding's *)
                 let s = newShape(shapePending t)
-                hashMap.insert(:Int :Shape built t.id s)
+                hashMap.insert(built t.id s)
                 fillFrom(s shapeOf(model.unfoldLazily(t)))
                 s
             else
@@ -414,7 +414,7 @@ export
                         if model.same(ordered t) then build(t) else shapeOf(ordered) end
                     else build(t)
                 end
-                hashMap.insert(:Int :Shape built t.id s)
+                hashMap.insert(built t.id s)
                 s
             end
         end
@@ -422,15 +422,15 @@ export
     and isRecursiveType(t: Type): Bool = t.form?typeRec orif t.form?typeRecGroup
 
     and kindBound(k: model.Kind): maybe.T(Shape) =
-        if model.isPower(k) then maybe.some(:Shape shapeOf(model.powerBound(k))) else maybe.none(:Shape) end
+        if model.isPower(k) then maybe.some(shapeOf(model.powerBound(k))) else maybe.none(:Shape) end
 
     and fieldComponents(fields: Array(model.RecordField)): Array(Component) =
         begin
             let result = array of(extent fields tuple let name = maybe.none(:String) let shape = maybe.none(:Shape) let isVar = false end)
             for i = 0 upto {extent fields - 1} do
                 result[i] := tuple
-                    let name = maybe.some(:String fields[i].name)
-                    let shape = maybe.some(:Shape shapeOf(fields[i].type))
+                    let name = maybe.some(fields[i].name)
+                    let shape = maybe.some(shapeOf(fields[i].type))
                     let isVar = fields[i].isVar
                 end
             end
@@ -442,8 +442,8 @@ export
             (* The scalar types are single type nodes (model.intType and the
              * rest), recognized by identity *)
             let scalar = scalarKind(t)
-            if maybe.isSome(:ShapeKind scalar) then
-                newShape(maybe.unwrap(:ShapeKind scalar) t)
+            if maybe.isSome(scalar) then
+                newShape(maybe.unwrap(scalar) t)
             elsif isWordType(t) then
                 newShape(shapeWord t)
             else
@@ -458,7 +458,7 @@ export
                         for i = 0 upto {extent values - 1} do
                             components[i] := tuple
                                 let name = values[i].name
-                                let shape = maybe.some(:Shape shapeOf(values[i].type))
+                                let shape = maybe.some(shapeOf(values[i].type))
                                 let isVar = values[i].isVar
                             end
                         end
@@ -475,9 +475,9 @@ export
                         for i = 0 upto {extent x.variants - 1} do
                             let v = x.variants[i]
                             cases[i] := tuple
-                                let name = maybe.some(:String v.name)
-                                let shape = if maybe.isSome(:Type v.type) then
-                                    maybe.some(:Shape shapeOf(maybe.unwrap(:Type v.type)))
+                                let name = maybe.some(v.name)
+                                let shape = if maybe.isSome(v.type) then
+                                    maybe.some(shapeOf(maybe.unwrap(v.type)))
                                 else
                                     maybe.none(:Shape)
                                 end
@@ -493,9 +493,9 @@ export
                         for i = 0 upto {extent x.options - 1} do
                             let o = x.options[i]
                             cases[i] := tuple
-                                let name = maybe.some(:String o.name)
-                                let shape = if maybe.isSome(:Type o.payload) then
-                                    maybe.some(:Shape shapeOf(maybe.unwrap(:Type o.payload)))
+                                let name = maybe.some(o.name)
+                                let shape = if maybe.isSome(o.payload) then
+                                    maybe.some(shapeOf(maybe.unwrap(o.payload)))
                                 else
                                     maybe.none(:Shape)
                                 end
@@ -506,19 +506,19 @@ export
                         s
                     when typeArray with x then
                         let s = newShape(shapeArray t)
-                        s.elementShape := maybe.some(:Shape shapeOf(x.element))
+                        s.elementShape := maybe.some(shapeOf(x.element))
                         s
                     when typeVar with x then
                         let s = newShape(shapeCell t)
-                        s.elementShape := maybe.some(:Shape shapeOf(x.element))
+                        s.elementShape := maybe.some(shapeOf(x.element))
                         s
                     when typeOut with x then
                         let s = newShape(shapeOut t)
-                        s.elementShape := maybe.some(:Shape shapeOf(x.element))
+                        s.elementShape := maybe.some(shapeOf(x.element))
                         s
                     when typeException with x then
                         let s = newShape(shapeException t)
-                        s.elementShape := maybe.some(:Shape shapeOf(x.payload))
+                        s.elementShape := maybe.some(shapeOf(x.payload))
                         s
                     when typeFun with x then
                         let s = newShape(shapeFun t)
@@ -532,7 +532,7 @@ export
                             end
                         end
                         s.params := params
-                        s.resultShape := maybe.some(:Shape shapeOf(x.result))
+                        s.resultShape := maybe.some(shapeOf(x.result))
                         s
                     when typeAll with x then
                         let s = newShape(shapeAll t)
@@ -548,7 +548,7 @@ export
                             end
                         end
                         s.typeParams := typeParams
-                        s.bodyShape := maybe.some(:Shape shapeOf(x.body))
+                        s.bodyShape := maybe.some(shapeOf(x.body))
                         s
                     when typeAuto with x then
                         let s = newShape(shapeAuto t)
@@ -564,7 +564,7 @@ export
                         let s = newShape(shapeTypevar t)
                         s.symbolId := x.symbolId
                         s.name := x.name
-                        s.bound := if maybe.isSome(:model.Kind x.bound) then kindBound(maybe.unwrap(:model.Kind x.bound))
+                        s.bound := if maybe.isSome(x.bound) then kindBound(maybe.unwrap(x.bound))
                             else maybe.none(:Shape) end
                         s
                     (* An abstract type elaborated as such, or a path type
@@ -604,9 +604,9 @@ export
     let rec shapeIn(cache: hashMap.T(Int Shape) open: Bool t0: Type): Shape =
         begin
             let t = model.prune(t0)
-            let cached = hashMap.get(:Int :Shape cache t.id)
-            if maybe.isSome(:Shape cached) then
-                maybe.unwrap(:Shape cached)
+            let cached = hashMap.get(cache t.id)
+            if maybe.isSome(cached) then
+                maybe.unwrap(cached)
             elsif t.hasMeta then
                 (* Solved metavariables stand for their solutions, which are
                  * cached; the type itself is not *)
@@ -617,8 +617,8 @@ export
                 shapeIn(cache open resolved)
             else
                 let stripped = model.stripAliases(if open then transparent(t) else t end)
-                let s = shapeOf(maybe.unwrapOr(:Type canonical.canonicalType(stripped) stripped))
-                hashMap.insert(:Int :Shape cache t.id s)
+                let s = shapeOf(maybe.unwrapOr(canonical.canonicalType(stripped) stripped))
+                hashMap.insert(cache t.id s)
                 s
             end
         end

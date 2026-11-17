@@ -27,12 +27,12 @@ export
     let newSourceMap(file: String text: String): SourceMap =
         begin
             let lineStarts = vector.new(:Int)
-            vector.append(:Int lineStarts 0)
+            vector.append(lineStarts 0)
             let n = stringOp.length(text)
             if n > 0 then
                 for i = 0 upto {n - 1} do
                     if stringOp.getChar(text i) is '\n' then
-                        vector.append(:Int lineStarts {i + 1})
+                        vector.append(lineStarts {i + 1})
                     end
                 end
             end
@@ -60,11 +60,11 @@ export
         sm.text
 
     let lineCount(sm: SourceMap): Int =
-        vector.length(:Int sm.lineStarts)
+        vector.length(sm.lineStarts)
 
     let locate(sm: SourceMap offset: Int): Pos =
         begin
-            let totalLines = vector.length(:Int sm.lineStarts)
+            let totalLines = vector.length(sm.lineStarts)
             let totalLen = stringOp.length(sm.text)
             let var off = offset
             if off < 0 then
@@ -72,14 +72,14 @@ export
             elsif off > totalLen then
                 off := totalLen
             end
-            let k = sort.bisectRightVector(:Int sm.lineStarts off sort.intCompare)
+            let k = sort.bisectRightVector(sm.lineStarts off sort.intCompare)
             let var lineIdx = k - 1
             if lineIdx < 0 then
                 lineIdx := 0
             elsif lineIdx >= totalLines then
                 lineIdx := totalLines - 1
             end
-            let lineStart = vector.get(:Int sm.lineStarts lineIdx)
+            let lineStart = vector.get(sm.lineStarts lineIdx)
             let lineNum = lineIdx + 1
             let colNum = {off - lineStart} + 1
             tuple
@@ -97,15 +97,15 @@ export
 
     let getLine(sm: SourceMap lineNum: Int): String =
         begin
-            let totalLines = vector.length(:Int sm.lineStarts)
+            let totalLines = vector.length(sm.lineStarts)
             if {lineNum < 1} orif {lineNum > totalLines} then
                 ""
             else
-                let startIdx = vector.get(:Int sm.lineStarts {lineNum - 1})
+                let startIdx = vector.get(sm.lineStarts {lineNum - 1})
                 let totalLen = stringOp.length(sm.text)
                 let var endIdx =
                     if lineNum < totalLines then
-                        vector.get(:Int sm.lineStarts lineNum)
+                        vector.get(sm.lineStarts lineNum)
                     else
                         totalLen
                     end

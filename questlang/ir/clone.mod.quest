@@ -44,7 +44,7 @@ export
             let c = newCloner(subst)
             tuple
                 let subst = c.subst let vars = c.vars let labels = c.labels
-                let relabeling = maybe.some(:Labels counter)
+                let relabeling = maybe.some(counter)
             end
         end
 
@@ -53,15 +53,15 @@ export
     (* A label the copy binds, fresh if the cloner relabels: lowering's labels
      * are a prefix and a number, so a suffix of another makes a new one *)
     let freshLabel(c: Cloner label: String): Ok =
-        if maybe.isSome(:Labels c.relabeling) then
-            let l = maybe.unwrap(:Labels c.relabeling)
+        if maybe.isSome(c.relabeling) then
+            let l = maybe.unwrap(c.relabeling)
             l.count := l.count + 1
-            hashMap.insert(:String :String c.labels label label <> "_" <> conv.int(l.count))
+            hashMap.insert(c.labels label label <> "_" <> conv.int(l.count))
             ok
         end
-    let label1(c: Cloner label: String): String = maybe.unwrapOr(:String hashMap.get(:String :String c.labels label) label)
+    let label1(c: Cloner label: String): String = maybe.unwrapOr(hashMap.get(c.labels label) label)
 
-    let bindVar(c: Cloner v: Variable to: Variable): Ok = begin hashMap.insert(:Int :Variable c.vars v.id to) ok end
+    let bindVar(c: Cloner v: Variable to: Variable): Ok = begin hashMap.insert(c.vars v.id to) ok end
 
     let ty(c: Cloner t: Type): Type = if extent t.fv > 0 then model.substitute(t c.subst) else t end
     let tys(c: Cloner ts: Array(Type)): Array(Type) =
@@ -71,23 +71,23 @@ export
             result
         end
     let optTy(c: Cloner t: maybe.T(Type)): maybe.T(Type) =
-        if maybe.isSome(:Type t) then maybe.some(:Type ty(c maybe.unwrap(:Type t))) else t end
+        if maybe.isSome(t) then maybe.some(ty(c maybe.unwrap(t))) else t end
 
     let fresh(c: Cloner v: Variable): Variable =
         begin
             let created = nodes.newVar(v.hint ty(c v.type) v.isMutable)
-            hashMap.insert(:Int :Variable c.vars v.id created)
+            hashMap.insert(c.vars v.id created)
             created
         end
 
-    let var1(c: Cloner v: Variable): Variable = maybe.unwrapOr(:Variable hashMap.get(:Int :Variable c.vars v.id) v)
+    let var1(c: Cloner v: Variable): Variable = maybe.unwrapOr(hashMap.get(c.vars v.id) v)
     let optVar(c: Cloner v: maybe.T(Variable)): maybe.T(Variable) =
-        if maybe.isSome(:Variable v) then maybe.some(:Variable var1(c maybe.unwrap(:Variable v))) else v end
+        if maybe.isSome(v) then maybe.some(var1(c maybe.unwrap(v))) else v end
     let vars(c: Cloner vs: Array(Variable)): Array(Variable) =
         begin
             let result = vector.new(:Variable)
-            for i = 0 upto {extent vs - 1} do vector.append(:Variable result var1(c vs[i])) end
-            vector.toArray(:Variable result)
+            for i = 0 upto {extent vs - 1} do vector.append(result var1(c vs[i])) end
+            vector.toArray(result)
         end
 
     let atom(c: Cloner a: Atom): Atom =
@@ -98,11 +98,11 @@ export
     let atoms(c: Cloner items: Array(Atom)): Array(Atom) =
         begin
             let result = vector.new(:Atom)
-            for i = 0 upto {extent items - 1} do vector.append(:Atom result atom(c items[i])) end
-            vector.toArray(:Atom result)
+            for i = 0 upto {extent items - 1} do vector.append(result atom(c items[i])) end
+            vector.toArray(result)
         end
     let optAtom(c: Cloner a: maybe.T(Atom)): maybe.T(Atom) =
-        if maybe.isSome(:Atom a) then maybe.some(:Atom atom(c maybe.unwrap(:Atom a))) else a end
+        if maybe.isSome(a) then maybe.some(atom(c maybe.unwrap(a))) else a end
 
     let staticDescriptor(c: Cloner d: nodes.StaticDescriptor): nodes.StaticDescriptor = nodes.newStaticDescriptor(ty(c d.type) d.echo)
 
@@ -117,26 +117,26 @@ export
     and descriptors(c: Cloner ds: Array(nodes.Descriptor)): Array(nodes.Descriptor) =
         begin
             let result = vector.new(:nodes.Descriptor)
-            for i = 0 upto {extent ds - 1} do vector.append(:nodes.Descriptor result descriptor(c ds[i])) end
-            vector.toArray(:nodes.Descriptor result)
+            for i = 0 upto {extent ds - 1} do vector.append(result descriptor(c ds[i])) end
+            vector.toArray(result)
         end
 
     let optDescriptor(c: Cloner d: maybe.T(nodes.Descriptor)): maybe.T(nodes.Descriptor) =
-        if maybe.isSome(:nodes.Descriptor d) then maybe.some(:nodes.Descriptor descriptor(c maybe.unwrap(:nodes.Descriptor d))) else d end
+        if maybe.isSome(d) then maybe.some(descriptor(c maybe.unwrap(d))) else d end
 
     let descriptorParams(c: Cloner ps: Array(nodes.DescriptorParam)): Array(nodes.DescriptorParam) =
         begin
             let result = vector.new(:nodes.DescriptorParam)
             for i = 0 upto {extent ps - 1} do
-                vector.append(:nodes.DescriptorParam result tuple let v = var1(c ps[i].v) let symbols = ps[i].symbols end)
+                vector.append(result tuple let v = var1(c ps[i].v) let symbols = ps[i].symbols end)
             end
-            vector.toArray(:nodes.DescriptorParam result)
+            vector.toArray(result)
         end
 
     let tagMap(c: Cloner t: maybe.T(nodes.TagMap)): maybe.T(nodes.TagMap) =
-        if maybe.isSome(:nodes.TagMap t) then
-            let x = maybe.unwrap(:nodes.TagMap t)
-            maybe.some(:nodes.TagMap tuple let id = x.id let target = ty(c x.target) let source = ty(c x.source) end)
+        if maybe.isSome(t) then
+            let x = maybe.unwrap(t)
+            maybe.some(tuple let id = x.id let target = ty(c x.target) let source = ty(c x.source) end)
         else
             t
         end
@@ -146,40 +146,40 @@ export
      * are p's own. Plans are made by the represent pass, after the passes
      * that clone, so a clone meets none in the order the passes run *)
     let rec plan(c: Cloner p: maybe.T(nodes.Plan)): maybe.T(nodes.Plan) =
-        if maybe.isNone(:nodes.Plan p) then
+        if maybe.isNone(p) then
             p
         else
-            let x = maybe.unwrap(:nodes.Plan p)
+            let x = maybe.unwrap(p)
             let copy = nodes.newPlan(x.kind ty(c x.source) ty(c x.target))
             let fields = vector.new(:maybe.T(nodes.Plan))
-            for i = 0 upto {extent x.fields - 1} do vector.append(:maybe.T(nodes.Plan) fields plan(c x.fields[i])) end
-            copy.fields := vector.toArray(:maybe.T(nodes.Plan) fields)
+            for i = 0 upto {extent x.fields - 1} do vector.append(fields plan(c x.fields[i])) end
+            copy.fields := vector.toArray(fields)
             copy.layout := x.layout
             copy.access := x.access
             copy.thunkSymbols := x.thunkSymbols
             copy.descriptors := descriptors(c x.descriptors)
             copy.thunkParams := descriptorParams(c x.thunkParams)
             copy.tagMap := tagMap(c x.tagMap)
-            maybe.some(:nodes.Plan copy)
+            maybe.some(copy)
         end
 
     let plans(c: Cloner ps: Array(maybe.T(nodes.Plan))): Array(maybe.T(nodes.Plan)) =
         begin
             let result = vector.new(:maybe.T(nodes.Plan))
-            for i = 0 upto {extent ps - 1} do vector.append(:maybe.T(nodes.Plan) result plan(c ps[i])) end
-            vector.toArray(:maybe.T(nodes.Plan) result)
+            for i = 0 upto {extent ps - 1} do vector.append(result plan(c ps[i])) end
+            vector.toArray(result)
         end
 
     let offsetTable(c: Cloner t: maybe.T(nodes.OffsetTable)): maybe.T(nodes.OffsetTable) =
-        if maybe.isSome(:nodes.OffsetTable t) then
-            let x = maybe.unwrap(:nodes.OffsetTable t)
-            let registered = if maybe.isSome(:nodes.Registered x.registered) then
-                let r = maybe.unwrap(:nodes.Registered x.registered)
-                maybe.some(:nodes.Registered tuple let view = staticDescriptor(c r.view) let layout = staticDescriptor(c r.layout) end)
+        if maybe.isSome(t) then
+            let x = maybe.unwrap(t)
+            let registered = if maybe.isSome(x.registered) then
+                let r = maybe.unwrap(x.registered)
+                maybe.some(tuple let view = staticDescriptor(c r.view) let layout = staticDescriptor(c r.layout) end)
             else
                 x.registered
             end
-            maybe.some(:nodes.OffsetTable tuple
+            maybe.some(tuple
                 let id = x.id
                 let view = ty(c x.view)
                 let layout = ty(c x.layout)
@@ -193,19 +193,19 @@ export
         begin
             let result = vector.new(:nodes.TypeComponent)
             for i = 0 upto {extent items - 1} do
-                vector.append(:nodes.TypeComponent result tuple let name = items[i].name let type = ty(c items[i].type) end)
+                vector.append(result tuple let name = items[i].name let type = ty(c items[i].type) end)
             end
-            vector.toArray(:nodes.TypeComponent result)
+            vector.toArray(result)
         end
 
     (* Makes fresh variables for every binder in body (and in the functions it
      * binds) *)
     let rec bindAll(c: Cloner b: Body): Ok =
-        for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
-            let s = vector.get(:Stmt b.statements i)
+        for i = 0 upto {vector.length(b.statements) - 1} do
+            let s = vector.get(b.statements i)
             case s
-                when sLet with x then if not(hashMap.contains(:Int :Variable c.vars x.v.id)) then begin fresh(c x.v) ok end end
-                when sVarDecl with x then if not(hashMap.contains(:Int :Variable c.vars x.v.id)) then begin fresh(c x.v) ok end end
+                when sLet with x then if not(hashMap.contains(c.vars x.v.id)) then begin fresh(c x.v) ok end end
+                when sVarDecl with x then if not(hashMap.contains(c.vars x.v.id)) then begin fresh(c x.v) ok end end
                 when sFuns with x then
                     for j = 0 upto {extent x.functions - 1} do
                         let f = x.functions[j]
@@ -216,7 +216,7 @@ export
                 when sLetRec with x then for j = 0 upto {extent x.vars - 1} do fresh(c x.vars[j]) end
                 when sSwitch with x then
                     for j = 0 upto {extent x.cases - 1} do
-                        if maybe.isSome(:Variable x.cases[j].binder) then begin fresh(c maybe.unwrap(:Variable x.cases[j].binder)) ok end end
+                        if maybe.isSome(x.cases[j].binder) then begin fresh(c maybe.unwrap(x.cases[j].binder)) ok end end
                     end
                 when sInspect with x then
                     for j = 0 upto {extent x.cases - 1} do
@@ -236,7 +236,7 @@ export
         end
 
     let rec optBody(c: Cloner b: maybe.T(Body)): maybe.T(Body) =
-        if maybe.isSome(:Body b) then maybe.some(:Body copyBody(c maybe.unwrap(:Body b))) else b end
+        if maybe.isSome(b) then maybe.some(copyBody(c maybe.unwrap(b))) else b end
 
     and copyFunction(c: Cloner f: nodes.Function): nodes.Function =
         begin
@@ -266,8 +266,8 @@ export
                     let var callee = optVar(c x.callee) let var typeArgs = tys(c x.typeArgs) let var moduleRef = x.moduleRef
                     let var member = x.member let var calleeType = optTy(c x.calleeType) let var plans = plans(c x.plans)
                     let var thunkSymbols = x.thunkSymbols let var descriptors = descriptors(c x.descriptors)
-                    let var thunkParams = if maybe.isSome(:Array(nodes.DescriptorParam) x.thunkParams) then
-                        maybe.some(:Array(nodes.DescriptorParam) descriptorParams(c maybe.unwrap(:Array(nodes.DescriptorParam) x.thunkParams)))
+                    let var thunkParams = if maybe.isSome(x.thunkParams) then
+                        maybe.some(descriptorParams(c maybe.unwrap(x.thunkParams)))
                     else
                         x.thunkParams
                     end
@@ -287,7 +287,7 @@ export
                 end
             when opEnvField with x then option opEnvField of Op with let var env = atom(c x.env) let index = x.index end
             when opConvert with x then
-                option opConvert of Op with let var value = atom(c x.value) let var plan = maybe.unwrap(:nodes.Plan plan(c maybe.some(:nodes.Plan x.plan))) end
+                option opConvert of Op with let var value = atom(c x.value) let var plan = maybe.unwrap(plan(c maybe.some(x.plan))) end
             when opMakeTuple with x then
                 option opMakeTuple of Op with
                     let var args = atoms(c x.args) let typeComponents = typeComponents(c x.typeComponents) let var embedded = x.embedded
@@ -299,10 +299,10 @@ export
             when opMakeRecord with x then
                 let fields = vector.new(:nodes.FieldAtom)
                 for i = 0 upto {extent x.fields - 1} do
-                    vector.append(:nodes.FieldAtom fields tuple let name = x.fields[i].name let atom = atom(c x.fields[i].atom) let isVar = x.fields[i].isVar end)
+                    vector.append(fields tuple let name = x.fields[i].name let atom = atom(c x.fields[i].atom) let isVar = x.fields[i].isVar end)
                 end
                 option opMakeRecord of Op with
-                    let var fields = vector.toArray(:nodes.FieldAtom fields) let var embedded = x.embedded
+                    let var fields = vector.toArray(fields) let var embedded = x.embedded
                     let var runtimeOffsets = x.runtimeOffsets let var descriptor = optDescriptor(c x.descriptor)
                     let var offsets = offsetTable(c x.offsets) let var viewDescriptor = optDescriptor(c x.viewDescriptor)
                 end
@@ -361,24 +361,24 @@ export
         tuple let tags = k.tags let var body = copyBody(c k.body) let var binder = optVar(c k.binder) let var components = k.components end
 
     and copyArm(c: Cloner a: maybe.T(nodes.InspectArm)): maybe.T(nodes.InspectArm) =
-        if maybe.isNone(:nodes.InspectArm a) then
+        if maybe.isNone(a) then
             a
         else
-            let x = maybe.unwrap(:nodes.InspectArm a)
+            let x = maybe.unwrap(a)
             let pairs = vector.new(:maybe.T(nodes.DescriptorPair))
             for i = 0 upto {extent x.descriptors - 1} do
                 let p = x.descriptors[i]
-                vector.append(:maybe.T(nodes.DescriptorPair) pairs
-                    if maybe.isSome(:nodes.DescriptorPair p) then
-                        let dp = maybe.unwrap(:nodes.DescriptorPair p)
-                        maybe.some(:nodes.DescriptorPair tuple let source = descriptor(c dp.source) let target = descriptor(c dp.target) end)
+                vector.append(pairs
+                    if maybe.isSome(p) then
+                        let dp = maybe.unwrap(p)
+                        maybe.some(tuple let source = descriptor(c dp.source) let target = descriptor(c dp.target) end)
                     else
                         p
                     end)
             end
-            maybe.some(:nodes.InspectArm tuple
+            maybe.some(tuple
                 let converted = x.converted let exact = x.exact let shared = x.shared let plan = plan(c x.plan)
-                let layoutError = x.layoutError let var descriptors = vector.toArray(:maybe.T(nodes.DescriptorPair) pairs)
+                let layoutError = x.layoutError let var descriptors = vector.toArray(pairs)
             end)
         end
 
@@ -414,27 +414,27 @@ export
             when sDo with x then option sDo of Stmt with let var pos = x.pos let var value = copyOp(c x.value) end
             when sFuns with x then
                 let functions = vector.new(:nodes.Function)
-                for i = 0 upto {extent x.functions - 1} do vector.append(:nodes.Function functions copyFunction(c x.functions[i])) end
-                option sFuns of Stmt with let var functions = vector.toArray(:nodes.Function functions) let recursive = x.recursive end
+                for i = 0 upto {extent x.functions - 1} do vector.append(functions copyFunction(c x.functions[i])) end
+                option sFuns of Stmt with let var functions = vector.toArray(functions) let recursive = x.recursive end
             when sLetRec with x then option sLetRec of Stmt with let var vars = vars(c x.vars) let var body = copyBody(c x.body) end
             when sIf with x then
                 option sIf of Stmt with let var pos = x.pos let var cond = atom(c x.cond) let var thenBody = copyBody(c x.thenBody) let var elseBody = copyBody(c x.elseBody) end
             when sSwitch with x then
                 let cases = vector.new(:nodes.Case)
-                for i = 0 upto {extent x.cases - 1} do vector.append(:nodes.Case cases copyCase(c x.cases[i])) end
+                for i = 0 upto {extent x.cases - 1} do vector.append(cases copyCase(c x.cases[i])) end
                 option sSwitch of Stmt with
-                    let var pos = x.pos let var value = atom(c x.value) let var cases = vector.toArray(:nodes.Case cases) let var elseBody = optBody(c x.elseBody)
+                    let var pos = x.pos let var value = atom(c x.value) let var cases = vector.toArray(cases) let var elseBody = optBody(c x.elseBody)
                     let var access = x.access let var viewMap = optVar(c x.viewMap)
                 end
             when sInspect with x then
                 let cases = vector.new(:nodes.InspectCase)
-                for i = 0 upto {extent x.cases - 1} do vector.append(:nodes.InspectCase cases copyInspectCase(c x.cases[i])) end
+                for i = 0 upto {extent x.cases - 1} do vector.append(cases copyInspectCase(c x.cases[i])) end
                 option sInspect of Stmt with
-                    let var pos = x.pos let var value = atom(c x.value) let var cases = vector.toArray(:nodes.InspectCase cases)
+                    let var pos = x.pos let var value = atom(c x.value) let var cases = vector.toArray(cases)
                     let var elseBody = optBody(c x.elseBody) let autoType = optTy(c x.autoType) let offset = x.offset
-                    let var witness = if maybe.isSome(:nodes.DescriptorParam x.witness) then
-                        let w = maybe.unwrap(:nodes.DescriptorParam x.witness)
-                        maybe.some(:nodes.DescriptorParam tuple let v = var1(c w.v) let symbols = w.symbols end)
+                    let var witness = if maybe.isSome(x.witness) then
+                        let w = maybe.unwrap(x.witness)
+                        maybe.some(tuple let v = var1(c w.v) let symbols = w.symbols end)
                     else
                         x.witness
                     end
@@ -471,7 +471,7 @@ export
     and copyBody(c: Cloner b: Body): Body =
         begin
             let statements = vector.new(:Stmt)
-            for i = 0 upto {vector.length(:Stmt b.statements) - 1} do vector.append(:Stmt statements copyStmt(c vector.get(:Stmt b.statements i))) end
+            for i = 0 upto {vector.length(b.statements) - 1} do vector.append(statements copyStmt(c vector.get(b.statements i))) end
             tuple let id = nodes.newBody().id let var statements = statements end
         end
 end

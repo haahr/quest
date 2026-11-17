@@ -32,7 +32,7 @@ export
      * recursion raises stack.overflow before the stack runs out
      * (docs/wasm.md section 6.2) *)
     let callLimit(limit: maybe.T(Int)): Int =
-        if maybe.isSome(:Int limit) andif {maybe.unwrap(:Int limit) > 0} then maybe.unwrap(:Int limit) else 1000 end
+        if maybe.isSome(limit) andif {maybe.unwrap(limit) > 0} then maybe.unwrap(limit) else 1000 end
     let maxCallDepth = callLimit(strutil.tryToInt(system.getEnv("QUEST_CALL_LIMIT")))
 
     let intArithmetic(op: String a: Int b: Int offset: maybe.T(Int)): Int =
@@ -84,23 +84,23 @@ export
                     when vOption with y then
                         if stringOp.equal(x.v.tag y.v.tag) then
                             let rule = reduce.optionIdentity(t)
-                            if maybe.isNone(:reduce.OptionIdentity rule) then
+                            if maybe.isNone(rule) then
                                 false
                             else
-                                let r = maybe.unwrap(:reduce.OptionIdentity rule)
+                                let r = maybe.unwrap(rule)
                                 let var empty = false
                                 for i = 0 upto {extent r.empty - 1} do
                                     if stringOp.equal(r.empty[i] x.v.tag) then empty := true end
                                 end
                                 if empty then
                                     true
-                                elsif maybe.isSome(:String r.single) andif stringOp.equal(maybe.unwrap(:String r.single) x.v.tag)
-                                    andif maybe.isSome(:model.Value x.v.payload) andif maybe.isSome(:model.Value y.v.payload) then
-                                    case maybe.unwrap(:model.Value x.v.payload)
+                                elsif maybe.isSome(r.single) andif stringOp.equal(maybe.unwrap(r.single) x.v.tag)
+                                    andif maybe.isSome(x.v.payload) andif maybe.isSome(y.v.payload) then
+                                    case maybe.unwrap(x.v.payload)
                                         when vTuple with a then
-                                            case maybe.unwrap(:model.Value y.v.payload)
+                                            case maybe.unwrap(y.v.payload)
                                                 when vTuple with b then
-                                                    sameAt(maybe.unwrap(:tm.Type r.component) a.t.elements[0] b.t.elements[0])
+                                                    sameAt(maybe.unwrap(r.component) a.t.elements[0] b.t.elements[0])
                                                 else false
                                             end
                                         else false
@@ -122,21 +122,21 @@ export
                     when vVariant with y then
                         stringOp.equal(x.v.tag y.v.tag) andif begin
                             let cases = reduce.variantCases(t)
-                            let caseType = if maybe.isNone(:Array(tm.VariantField) cases) then maybe.none(:tm.Type)
+                            let caseType = if maybe.isNone(cases) then maybe.none(:tm.Type)
                                 else
-                                    let f = tm.variantGetField(maybe.unwrap(:Array(tm.VariantField) cases) x.v.tag)
-                                    if maybe.isSome(:tm.VariantField f) then maybe.unwrap(:tm.VariantField f).type
+                                    let f = tm.variantGetField(maybe.unwrap(cases) x.v.tag)
+                                    if maybe.isSome(f) then maybe.unwrap(f).type
                                     else maybe.none(:tm.Type) end
                                 end
-                            if maybe.isNone(:model.Value x.v.payload) orif maybe.isNone(:model.Value y.v.payload) then
-                                maybe.isNone(:model.Value x.v.payload) andif maybe.isNone(:model.Value y.v.payload)
-                            elsif maybe.isNone(:tm.Type caseType) then
+                            if maybe.isNone(x.v.payload) orif maybe.isNone(y.v.payload) then
+                                maybe.isNone(x.v.payload) andif maybe.isNone(y.v.payload)
+                            elsif maybe.isNone(caseType) then
                                 (* Not known to be a variant type: the same
                                  * object only *)
                                 false
                             else
-                                sameAt(maybe.unwrap(:tm.Type caseType) maybe.unwrap(:model.Value x.v.payload)
-                                    maybe.unwrap(:model.Value y.v.payload))
+                                sameAt(maybe.unwrap(caseType) maybe.unwrap(x.v.payload)
+                                    maybe.unwrap(y.v.payload))
                             end
                         end
                     else false

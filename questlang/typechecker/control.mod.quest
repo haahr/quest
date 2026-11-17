@@ -25,7 +25,7 @@ import
 export
     Let Type = model.Type
 
-    let some(e: env.T): kinds.Env = maybe.some(:env.T e)
+    let some(e: env.T): kinds.Env = maybe.some(e)
     let evaluate(t: Type): Type = model.evaluateLazily(t symbols.lookup)
     let isSubtype(a: Type b: Type e: env.T): Bool = subtyping.isSubtype(a b env.lookupOf(e))
     let expr(offset: Int t: Type form: typedAst.ExprForm): typedAst.Expr = typedAst.expr(offset t form)
@@ -45,18 +45,18 @@ export
         begin
             let tags = vector.new(:Tag)
             for i = 0 upto {extent options - 1} do
-                vector.append(:Tag tags tuple let name = options[i].name let payload = options[i].payload end)
+                vector.append(tags tuple let name = options[i].name let payload = options[i].payload end)
             end
-            vector.toArray(:Tag tags)
+            vector.toArray(tags)
         end
 
     let variantTags(variants: Array(model.VariantField)): Array(Tag) =
         begin
             let tags = vector.new(:Tag)
             for i = 0 upto {extent variants - 1} do
-                vector.append(:Tag tags tuple let name = variants[i].name let payload = variants[i].type end)
+                vector.append(tags tuple let name = variants[i].name let payload = variants[i].type end)
             end
-            vector.toArray(:Tag tags)
+            vector.toArray(tags)
         end
 
     (* Checks a case expression's branches against the cases of its target's
@@ -110,8 +110,8 @@ export
                 else
                     begin
                         let bound = kinds.resolveSumBound(targetType some(e))
-                        if maybe.isSome(:Type bound) then
-                            case maybe.unwrap(:Type bound).form
+                        if maybe.isSome(bound) then
+                            case maybe.unwrap(bound).form
                                 when typeVariant with v then variantTags(v.variants)
                                 when typeOption with o then optionTags(o.options)
                                 else failed()
@@ -122,36 +122,36 @@ export
                     end
             end
             let available = hashMap.new(:String :Tag stringOp.equal hash.string)
-            for i = 0 upto {extent tags - 1} do hashMap.insert(:String :Tag available tags[i].name tags[i]) end
+            for i = 0 upto {extent tags - 1} do hashMap.insert(available tags[i].name tags[i]) end
             let covered = hashMap.new(:String :Bool stringOp.equal hash.string)
             let typed = vector.new(:typedAst.CaseBranch)
-            for i = 0 upto {vector.length(:ast.CaseBranch branches) - 1} do
-                let branch = vector.get(:ast.CaseBranch branches i)
-                for j = 0 upto {vector.length(:String branch.tags) - 1} do
-                    let tag = vector.get(:String branch.tags j)
-                    if not(hashMap.contains(:String :Tag available tag)) then
+            for i = 0 upto {vector.length(branches) - 1} do
+                let branch = vector.get(branches i)
+                for j = 0 upto {vector.length(branch.tags) - 1} do
+                    let tag = vector.get(branch.tags j)
+                    if not(hashMap.contains(available tag)) then
                         diagnostics.fail(:Ok "Tag '" <> tag <> "' is not a valid variant of type '" <> model.show(targetType) <>
                             "'" branch.offset)
                     end
-                    hashMap.insert(:String :Bool covered tag true)
+                    hashMap.insert(covered tag true)
                 end
                 Let Arm = Tuple body: typedAst.Expr binder: maybe.T(symbols.ValueSymbol) end
-                let arm: Arm = if maybe.isSome(:String branch.binder) then
-                    let binder = maybe.unwrap(:String branch.binder)
-                    let tagCount = vector.length(:String branch.tags)
+                let arm: Arm = if maybe.isSome(branch.binder) then
+                    let binder = maybe.unwrap(branch.binder)
+                    let tagCount = vector.length(branch.tags)
                     let payloads = vector.new(:Type)
                     for j = 0 upto {tagCount - 1} do
-                        let tag = vector.get(:String branch.tags j)
-                        let payload = hashMap.find(:String :Tag available tag).payload
-                        if maybe.isNone(:Type payload) then
+                        let tag = vector.get(branch.tags j)
+                        let payload = hashMap.find(available tag).payload
+                        if maybe.isNone(payload) then
                             diagnostics.fail(:Ok "Tag '" <> tag <> "' has no payload to bind to '" <> binder <> "'" branch.offset)
                         end
-                        vector.append(:Type payloads maybe.unwrap(:Type payload))
+                        vector.append(payloads maybe.unwrap(payload))
                     end
-                    let binderT = if maybe.isSome(:ast.TypeExpr branch.binderType) then
-                        let t = elaborateTypes.elaborateType(maybe.unwrap(:ast.TypeExpr branch.binderType) e)
+                    let binderT = if maybe.isSome(branch.binderType) then
+                        let t = elaborateTypes.elaborateType(maybe.unwrap(branch.binderType) e)
                         for j = 0 upto {tagCount - 1} do
-                            let payload = vector.get(:Type payloads j)
+                            let payload = vector.get(payloads j)
                             if not(isSubtype(payload t e)) then
                                 diagnostics.fail(:Ok "Binder '" <> binder <> "' type '" <> model.show(t) <>
                                     "' is not compatible with payload '" <> model.show(payload) <> "'" branch.offset)
@@ -159,29 +159,29 @@ export
                         end
                         t
                     else
-                        let first = vector.get(:Type payloads 0)
+                        let first = vector.get(payloads 0)
                         for j = 1 upto {tagCount - 1} do
-                            let payload = vector.get(:Type payloads j)
+                            let payload = vector.get(payloads j)
                             if not(subtyping.isTypeEqual(first payload env.lookupOf(e))) then
                                 diagnostics.fail(:Ok "Binder '" <> binder <> "' would have payload type '" <> model.show(first) <>
-                                    "' for tag '" <> vector.get(:String branch.tags 0) <> "' but '" <> model.show(payload) <>
-                                    "' for tag '" <> vector.get(:String branch.tags j) <> "'; declare a type for it"
+                                    "' for tag '" <> vector.get(branch.tags 0) <> "' but '" <> model.show(payload) <>
+                                    "' for tag '" <> vector.get(branch.tags j) <> "'; declare a type for it"
                                     branch.offset)
                             end
                         end
                         first
                     end
-                    env.localScoped(:Arm e "case_" <> binder fun(s: symbols.Scope): Arm
+                    env.localScoped(e "case_" <> binder fun(s: symbols.Scope): Arm
                         begin
                             let sym = symbols.newValueSymbol(binder binderT false false false c.functionDepth 0)
                             symbols.declareValue(e.currentScope sym)
                             let body = checker.elaborateSubexpr(c branch.body expected e loopDepth)
-                            if maybe.isNone(:Type expected) then
+                            if maybe.isNone(expected) then
                                 let ids = newIds()
-                                hashMap.insert(:Int :Bool ids sym.symbolId true)
+                                hashMap.insert(ids sym.symbolId true)
                                 escape.checkNoEscapingPathTypes(body.type ids "case branch scope" branch.body.span.startOffset)
                             end
-                            tuple let body = body let binder = maybe.some(:symbols.ValueSymbol sym) end
+                            tuple let body = body let binder = maybe.some(sym) end
                         end)
                 else
                     tuple
@@ -189,28 +189,28 @@ export
                         let binder = maybe.none(:symbols.ValueSymbol)
                     end
                 end
-                vector.append(:typedAst.CaseBranch typed tuple
-                    let offset = branch.offset let tags = vector.toArray(:String branch.tags) let body = arm.body
+                vector.append(typed tuple
+                    let offset = branch.offset let tags = vector.toArray(branch.tags) let body = arm.body
                     let binder = arm.binder
                 end)
             end
-            if maybe.isNone(:ast.Expr elseBranch) then
+            if maybe.isNone(elseBranch) then
                 let missing = vector.new(:String)
                 for i = 0 upto {extent tags - 1} do
-                    if not(hashMap.contains(:String :Bool covered tags[i].name)) then
-                        vector.append(:String missing tags[i].name)
+                    if not(hashMap.contains(covered tags[i].name)) then
+                        vector.append(missing tags[i].name)
                     end
                 end
-                if not(vector.empty(:String missing)) then
-                    sort.sortVector(:String missing sort.stringCompare)
+                if not(vector.empty(missing)) then
+                    sort.sortVector(missing sort.stringCompare)
                     let var joined = ""
-                    for i = 0 upto {vector.length(:String missing) - 1} do
-                        joined := if i is 0 then vector.get(:String missing i) else joined <> ", " <> vector.get(:String missing i) end
+                    for i = 0 upto {vector.length(missing) - 1} do
+                        joined := if i is 0 then vector.get(missing i) else joined <> ", " <> vector.get(missing i) end
                     end
                     diagnostics.fail(:Ok "Non-exhaustive case expression missing tags: " <> joined x0.span.startOffset)
                 end
             end
-            vector.toArray(:typedAst.CaseBranch typed)
+            vector.toArray(typed)
         end
 
     let elaborateCase(c: checker.T x0: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
@@ -222,13 +222,13 @@ export
                     let branches = elaborateCaseBranches(c x0 x.target x.branches x.elseBranch targetType expected e loopDepth)
                     let elseTyped = checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
                     let bodies = vector.new(:typedAst.Expr)
-                    for i = 0 upto {extent branches - 1} do vector.append(:typedAst.Expr bodies branches[i].body) end
-                    let types = checker.branchTypes(maybe.none(:Type) vector.toArray(:typedAst.Expr bodies) elseTyped)
-                    let resultType = if maybe.isSome(:Type expected) then
-                        maybe.unwrap(:Type expected)
+                    for i = 0 upto {extent branches - 1} do vector.append(bodies branches[i].body) end
+                    let types = checker.branchTypes(maybe.none(:Type) vector.toArray(bodies) elseTyped)
+                    let resultType = if maybe.isSome(expected) then
+                        maybe.unwrap(expected)
                     elsif extent types > 0 then
                         checks.joinTypes(types e x0.span.startOffset
-                            maybe.some(:String "Cannot find common supertype join for case branch types '{t1}' and '{t2}'"))
+                            maybe.some("Cannot find common supertype join for case branch types '{t1}' and '{t2}'"))
                     else
                         model.okType
                     end
@@ -285,10 +285,10 @@ export
                     begin
                         let idOff = left.span.startOffset
                         let found = checker.lookupValue(c e id.name)
-                        if maybe.isNone(:symbols.ValueSymbol found) then
+                        if maybe.isNone(found) then
                             diagnostics.fail(:Ok "Undefined variable '" <> id.name <> "'" idOff)
                         end
-                        let sym = maybe.unwrap(:symbols.ValueSymbol found)
+                        let sym = maybe.unwrap(found)
                         checker.checkCapturable(c sym idOff)
                         if not(sym.isVar) andif not(sym.isOut) then
                             diagnostics.fail(:Ok "Cannot assign to immutable variable '" <> id.name <> "'" idOff)
@@ -308,10 +308,10 @@ export
                         let targetTyped = checker.synthExpr(c sel.target e loopDepth)
                         let var targetType = evaluate(targetTyped.type)
                         let isTuple = case targetType.form when typeTuple then true else false end
-                        if not(isTuple) andif maybe.isNone(:Type kinds.resolveRecordBound(targetType some(e))) then
+                        if not(isTuple) andif maybe.isNone(kinds.resolveRecordBound(targetType some(e))) then
                             (* A type parameter bounded by a tuple type:
                              * assigned through as its bound *)
-                            targetType := maybe.unwrapOr(:Type kinds.resolveTupleBound(targetType some(e)) targetType)
+                            targetType := maybe.unwrapOr(kinds.resolveTupleBound(targetType some(e)) targetType)
                         end
                         case targetType.form
                             when typeTuple with t then
@@ -327,7 +327,7 @@ export
                                     for i = {extent fields - 1} downto 0 do
                                         let f = fields[i]
                                         let istr = conv.int(i)
-                                        let named = maybe.isSome(:String f.name) andif stringOp.equal(maybe.unwrap(:String f.name) field)
+                                        let named = maybe.isSome(f.name) andif stringOp.equal(maybe.unwrap(f.name) field)
                                         let underscored = {stringOp.length(field) > 1} andif
                                             stringOp.equal(stringOp.getSub(field 0 1) "_") andif
                                             stringOp.equal(stringOp.getSub(field 1 {stringOp.length(field) - 1}) istr)
@@ -350,19 +350,19 @@ export
                             else
                                 begin
                                     let recBound = kinds.resolveRecordBound(targetType some(e))
-                                    if maybe.isNone(:Type recBound) then
+                                    if maybe.isNone(recBound) then
                                         diagnostics.fail(:Ok "Cannot mutate field of non-record type '" <> model.show(targetType) <>
                                             "'" selOff)
                                     end
-                                    let fields = case maybe.unwrap(:Type recBound).form
+                                    let fields = case maybe.unwrap(recBound).form
                                         when typeRecord with r then r.fields
                                         else array of :model.RecordField end
                                     end
                                     let found = model.recordGetField(fields field)
-                                    if maybe.isNone(:model.RecordField found) then
+                                    if maybe.isNone(found) then
                                         diagnostics.fail(:Ok "Record has no field '" <> field <> "'" selOff)
                                     end
-                                    let f = maybe.unwrap(:model.RecordField found)
+                                    let f = maybe.unwrap(found)
                                     if not(f.isVar) then
                                         diagnostics.fail(:Ok "Cannot assign to immutable record field '" <> field <> "'" selOff)
                                     end
@@ -393,8 +393,8 @@ export
                         synthAssignment(c x0 x.left x.right e loopDepth)
                     elsif stringOp.equal(op "andif") orif stringOp.equal(op "orif") then
                         notDesugared(:typedAst.Expr "ExprInfix" x0)
-                    elsif maybe.isSome(:env.InfixOperator infix) then
-                        let o = maybe.unwrap(:env.InfixOperator infix)
+                    elsif maybe.isSome(infix) then
+                        let o = maybe.unwrap(infix)
                         let leftTyped = checker.checkExpr(c x.left o.left e loopDepth)
                         let rightTyped = checker.checkExpr(c x.right o.right e loopDepth)
                         expr(offset o.result infixForm(leftTyped op rightTyped))
@@ -430,14 +430,14 @@ export
             when exprIf with x then
                 begin
                     let offset = x0.span.startOffset
-                    if not(vector.empty(:ast.ElsifBranch x.elsifs)) then notDesugared(:Ok "ExprIf" x0) end
-                    let expected = if x.shortCircuit then maybe.some(:Type model.boolType) else expected0 end
+                    if not(vector.empty(x.elsifs)) then notDesugared(:Ok "ExprIf" x0) end
+                    let expected = if x.shortCircuit then maybe.some(model.boolType) else expected0 end
                     let condTyped = checker.checkExpr(c x.cond model.boolType e loopDepth)
                     let ifForm(thenBranch: typedAst.Expr elseBranch: typedAst.Expr): typedAst.ExprForm =
                         option exprIf of typedAst.ExprForm with
                             let cond = condTyped let thenBranch = thenBranch let elseBranch = elseBranch
                         end
-                    if maybe.isNone(:Type expected) andif maybe.isNone(:ast.Expr x.elseBranch) then
+                    if maybe.isNone(expected) andif maybe.isNone(x.elseBranch) then
                         let thenTyped = checker.synthExpr(c x.thenBranch e loopDepth)
                         let thenOffset = thenTyped.offset
                         let stmt = typedAst.binding(thenOffset option bindExprStmt of typedAst.BindingForm with
@@ -449,12 +449,12 @@ export
                         expr(offset model.okType ifForm(thenBody okExpr(offset)))
                     else
                         let thenTyped = checker.elaborateSubexpr(c x.thenBranch expected e loopDepth)
-                        let elseTyped = checker.elaborateSubexpr(c maybe.unwrap(:ast.Expr x.elseBranch) expected e loopDepth)
-                        let resultType = if maybe.isSome(:Type expected) then
-                            maybe.unwrap(:Type expected)
+                        let elseTyped = checker.elaborateSubexpr(c maybe.unwrap(x.elseBranch) expected e loopDepth)
+                        let resultType = if maybe.isSome(expected) then
+                            maybe.unwrap(expected)
                         else
                             checks.joinTypes(array of thenTyped.type elseTyped.type end e offset
-                                maybe.some(:String "Cannot find common supertype for conditional branches '{t1}' and '{t2}'"))
+                                maybe.some("Cannot find common supertype for conditional branches '{t1}' and '{t2}'"))
                         end
                         expr(offset resultType ifForm(thenTyped elseTyped))
                     end
@@ -469,12 +469,12 @@ export
                     let startTyped = checker.checkExpr(c x.start model.intType e loopDepth)
                     let stopTyped = checker.checkExpr(c x.stop model.intType e loopDepth)
                     Let Loop = Tuple sym: symbols.ValueSymbol body: typedAst.Expr end
-                    let looped = env.localScoped(:Loop e "for_" <> x.varName fun(s: symbols.Scope): Loop
+                    let looped = env.localScoped(e "for_" <> x.varName fun(s: symbols.Scope): Loop
                         begin
                             let sym = symbols.newValueSymbol(x.varName model.intType false false false c.functionDepth 0)
                             symbols.declareValue(e.currentScope sym)
                             c.loopDepth := loopDepth
-                            let body = checker.inLoop(:typedAst.Expr c fun(): typedAst.Expr
+                            let body = checker.inLoop(c fun(): typedAst.Expr
                                 checker.synthExpr(c x.body e c.loopDepth))
                             tuple let sym = sym let body = body end
                         end)
@@ -497,30 +497,30 @@ export
     let elaborateBlock(c: checker.T x0: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
         case x0.form
             when exprBlock with x then
-                env.localScoped(:typedAst.Expr e "block" fun(blockScope: symbols.Scope): typedAst.Expr
+                env.localScoped(e "block" fun(blockScope: symbols.Scope): typedAst.Expr
                     begin
                         let offset = x0.span.startOffset
-                        let n = vector.length(:ast.Decl x.bindings)
+                        let n = vector.length(x.bindings)
                         let typed = vector.new(:typedAst.Binding)
                         let state = tuple let var failed = false end
                         let add(b: maybe.T(typedAst.Binding)): Ok =
-                            if maybe.isSome(:typedAst.Binding b) then
-                                vector.append(:typedAst.Binding typed maybe.unwrap(:typedAst.Binding b))
+                            if maybe.isSome(b) then
+                                vector.append(typed maybe.unwrap(b))
                             else
                                 state.failed := true
                             end
                         for i = 0 upto {n - 2} do
-                            add(bindings.elaborateRecovering(c vector.get(:ast.Decl x.bindings i) e loopDepth))
+                            add(bindings.elaborateRecovering(c vector.get(x.bindings i) e loopDepth))
                         end
                         let var result = maybe.none(:typedAst.Expr)
                         if n > 0 then
-                            let last = vector.get(:ast.Decl x.bindings {n - 1})
+                            let last = vector.get(x.bindings {n - 1})
                             case last.form
                                 when declExprStmt with s then
                                     begin
-                                        result := checker.attempt(:typedAst.Expr c fun(): typedAst.Expr
+                                        result := checker.attempt(c fun(): typedAst.Expr
                                             checker.elaborateSubexpr(c s.expr expected e loopDepth))
-                                        if maybe.isNone(:typedAst.Expr result) then state.failed := true end
+                                        if maybe.isNone(result) then state.failed := true end
                                     end
                                 else
                                     begin
@@ -528,12 +528,12 @@ export
                                         (* Synthesized, a block also has the
                                          * value of an exception declaration it
                                          * ends with *)
-                                        if not(state.failed) andif maybe.isNone(:Type expected) then
-                                            case vector.last(:typedAst.Binding typed).form
+                                        if not(state.failed) andif maybe.isNone(expected) then
+                                            case vector.last(typed).form
                                                 when bindExprStmt with s then
                                                     begin
-                                                        vector.pop(:typedAst.Binding typed)
-                                                        result := maybe.some(:typedAst.Expr s.expr)
+                                                        vector.pop(typed)
+                                                        result := maybe.some(s.expr)
                                                     end
                                                 else ok
                                             end
@@ -544,28 +544,28 @@ export
                         (* A binding that failed was reported: the block fails
                          * without another error *)
                         if state.failed then diagnostics.raiseError(:Ok diagnostics.silentError) end
-                        if maybe.isNone(:typedAst.Expr result) then
-                            if maybe.isSome(:Type expected) andif not(isSubtype(model.okType maybe.unwrap(:Type expected) e)) then
+                        if maybe.isNone(result) then
+                            if maybe.isSome(expected) andif not(isSubtype(model.okType maybe.unwrap(expected) e)) then
                                 let what = if n > 0 then "Block ending with declaration" else "Empty block" end
                                 diagnostics.fail(:Ok what <> " has type Ok, not expected type '" <>
-                                    model.show(maybe.unwrap(:Type expected)) <> "'" offset)
+                                    model.show(maybe.unwrap(expected)) <> "'" offset)
                             end
-                            result := maybe.some(:typedAst.Expr okExpr(offset))
+                            result := maybe.some(okExpr(offset))
                         end
-                        let resultExpr = maybe.unwrap(:typedAst.Expr result)
-                        let resultType = if maybe.isSome(:Type expected) then
-                            maybe.unwrap(:Type expected)
+                        let resultExpr = maybe.unwrap(result)
+                        let resultType = if maybe.isSome(expected) then
+                            maybe.unwrap(expected)
                         else
                             let ids = newIds()
-                            let values = hashMap.values(:String :symbols.ValueSymbol blockScope.values)
-                            for i = 0 upto {vector.length(:symbols.ValueSymbol values) - 1} do
-                                hashMap.insert(:Int :Bool ids vector.get(:symbols.ValueSymbol values i).symbolId true)
+                            let values = hashMap.values(blockScope.values)
+                            for i = 0 upto {vector.length(values) - 1} do
+                                hashMap.insert(ids vector.get(values i).symbolId true)
                             end
                             escape.checkNoEscapingPathTypes(resultExpr.type ids "its scope" resultExpr.offset)
                             resultExpr.type
                         end
                         expr(offset resultType option exprBlock of typedAst.ExprForm with
-                            let bindings = vector.toArray(:typedAst.Binding typed) let result = resultExpr
+                            let bindings = vector.toArray(typed) let result = resultExpr
                         end)
                     end)
             else internal(:typedAst.Expr "a block" x0)

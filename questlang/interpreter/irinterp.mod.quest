@@ -74,51 +74,51 @@ export
             let values = hashMap.new(:Int :maybe.T(Value) intEqual hash.int)
             let types = types
             let raised = hashMap.new(:Int :model.RunError intEqual hash.int)
-            let top = if maybe.isSome(:Frame parent) then
-                let p = maybe.unwrap(:Frame parent)
-                if maybe.isSome(:Frame p.top) then p.top else parent end
+            let top = if maybe.isSome(parent) then
+                let p = maybe.unwrap(parent)
+                if maybe.isSome(p.top) then p.top else parent end
             else
                 maybe.none(:Frame)
             end
         end
 
     let newTypes(): hashMap.T(Int Type) = hashMap.new(:Int :Type intEqual hash.int)
-    let childFrame(parent: Frame): Frame = newFrame(maybe.some(:Frame parent) newTypes())
-    let topOf(f: Frame): Frame = maybe.unwrapOr(:Frame f.top f)
+    let childFrame(parent: Frame): Frame = newFrame(maybe.some(parent) newTypes())
+    let topOf(f: Frame): Frame = maybe.unwrapOr(f.top f)
 
     let setValue(f: Frame v: Variable value: Value): Ok =
-        begin hashMap.insert(:Int :maybe.T(Value) f.values v.id maybe.some(:Value value)) ok end
+        begin hashMap.insert(f.values v.id maybe.some(value)) ok end
 
     (* The slot of a variable, outward from f *)
     let rec slot(f: Frame v: Variable): maybe.T(Value) =
         begin
-            let found = hashMap.get(:Int :maybe.T(Value) f.values v.id)
-            if maybe.isSome(:maybe.T(Value) found) then
-                maybe.unwrap(:maybe.T(Value) found)
-            elsif maybe.isSome(:Frame f.parent) then
-                slot(maybe.unwrap(:Frame f.parent) v)
+            let found = hashMap.get(f.values v.id)
+            if maybe.isSome(found) then
+                maybe.unwrap(found)
+            elsif maybe.isSome(f.parent) then
+                slot(maybe.unwrap(f.parent) v)
             else
                 fail(:maybe.T(Value) "variable '" <> v.hint <> "' is not bound")
             end
         end
 
-    let isUnbound(f: Frame v: Variable): Bool = maybe.isNone(:Value slot(f v))
+    let isUnbound(f: Frame v: Variable): Bool = maybe.isNone(slot(f v))
 
     let lookup(f: Frame v: Variable): Value =
         begin
             let s = slot(f v)
-            if maybe.isNone(:Value s) then model.internalError(:Value "Undefined runtime symbol '" <> v.hint <> "'" none)
-            else maybe.unwrap(:Value s) end
+            if maybe.isNone(s) then model.internalError(:Value "Undefined runtime symbol '" <> v.hint <> "'" none)
+            else maybe.unwrap(s) end
         end
 
     (* Binds a declared variable in the frame that declared it *)
     let rec bindDeclared(f: Frame v: Variable value: Value): Ok =
         begin
-            let found = hashMap.get(:Int :maybe.T(Value) f.values v.id)
-            if maybe.isSome(:maybe.T(Value) found) andif maybe.isNone(:Value maybe.unwrap(:maybe.T(Value) found)) then
+            let found = hashMap.get(f.values v.id)
+            if maybe.isSome(found) andif maybe.isNone(maybe.unwrap(found)) then
                 setValue(f v value)
-            elsif maybe.isSome(:Frame f.parent) then
-                bindDeclared(maybe.unwrap(:Frame f.parent) v value)
+            elsif maybe.isSome(f.parent) then
+                bindDeclared(maybe.unwrap(f.parent) v value)
             else
                 fail(:Ok "declared variable '" <> v.hint <> "' is bound outside its scope")
             end
@@ -126,16 +126,16 @@ export
 
     let rec raisedError(f: Frame v: Variable): maybe.T(model.RunError) =
         begin
-            let found = hashMap.get(:Int :model.RunError f.raised v.id)
-            if maybe.isSome(:model.RunError found) orif maybe.isNone(:Frame f.parent) then found
-            else raisedError(maybe.unwrap(:Frame f.parent) v) end
+            let found = hashMap.get(f.raised v.id)
+            if maybe.isSome(found) orif maybe.isNone(f.parent) then found
+            else raisedError(maybe.unwrap(f.parent) v) end
         end
 
     let rec lookupType(f: Frame symbolId: Int): maybe.T(Type) =
         begin
-            let found = hashMap.get(:Int :Type f.types symbolId)
-            if maybe.isSome(:Type found) orif maybe.isNone(:Frame f.parent) then found
-            else lookupType(maybe.unwrap(:Frame f.parent) symbolId) end
+            let found = hashMap.get(f.types symbolId)
+            if maybe.isSome(found) orif maybe.isNone(f.parent) then found
+            else lookupType(maybe.unwrap(f.parent) symbolId) end
         end
 
     (* t with the type arguments of the type parameters it mentions
@@ -145,9 +145,9 @@ export
             let subst = tm.newSubst()
             for i = 0 upto {extent t.fv - 1} do
                 let bound = lookupType(f t.fv[i])
-                if maybe.isSome(:Type bound) then hashMap.insert(:Int :Type subst t.fv[i] maybe.unwrap(:Type bound)) end
+                if maybe.isSome(bound) then hashMap.insert(subst t.fv[i] maybe.unwrap(bound)) end
             end
-            if hashMap.empty(:Int :Type subst) then t else tm.substitute(t subst) end
+            if hashMap.empty(subst) then t else tm.substitute(t subst) end
         end
 
     let resolveAll(f: Frame types: Array(Type)): Array(Type) =
@@ -180,14 +180,14 @@ export
     end
     Let Signals = maybe.T(Signal)
     let noSignal: Signals = maybe.none(:Signal)
-    let signal(s: Signal): Signals = maybe.some(:Signal s)
+    let signal(s: Signal): Signals = maybe.some(s)
 
     (* A capture of a closure made in a let rec of a variable it has yet to
      * bind *)
     Let Fixup = Tuple values: Array(Value) index: Int v: Variable frame: Frame end
 
     let builtinEqual(a: model.Builtin b: model.Builtin): Bool = a is b
-    let builtinHash(b: model.Builtin): word.T = hash.identityHash(:model.Builtin b)
+    let builtinHash(b: model.Builtin): word.T = hash.identityHash(b)
 
     (* The state of running one IR unit, at any stage, sharing the tree-walking
      * interpreter's runtime frame (renv): its values, its call stack, and the
@@ -250,7 +250,7 @@ export
      * already is *)
     let located(it: Interpreter e: model.RunError offset: maybe.T(Int)): model.RunError =
         begin
-            if maybe.isNone(:Int e.offset) andif maybe.isNone(:location.SourceMap e.sourceMap) andif maybe.isSome(:Int offset) then
+            if maybe.isNone(e.offset) andif maybe.isNone(e.sourceMap) andif maybe.isSome(offset) then
                 e.offset := offset
                 e.sourceMap := it.sourceMap
             end
@@ -262,7 +262,7 @@ export
         try f() when model.runError with e then rethrow(:A located(it e offset)) end
 
     let raising(A::TYPE it: Interpreter exc: model.ExceptionValue offset: maybe.T(Int)): A =
-        at(:A it offset fun(): A model.raiseException(:A exc maybe.none(:Int)))
+        at(it offset fun(): A model.raiseException(:A exc maybe.none(:Int)))
 
     let deref(v0: Value): Value =
         begin
@@ -280,19 +280,19 @@ export
     let moduleValue(it: Interpreter r: nodes.ModuleRef): Value =
         begin
             let id = case r when refModule with x then x.m.id when refImport with x then x.i.id end
-            let found = hashMap.get(:Int :Value it.modules id)
-            if maybe.isNone(:Value found) then fail(:Value "module '" <> nodes.moduleRefName(r) <> "' is not loaded") end
-            maybe.unwrap(:Value found)
+            let found = hashMap.get(it.modules id)
+            if maybe.isNone(found) then fail(:Value "module '" <> nodes.moduleRefName(r) <> "' is not loaded") end
+            maybe.unwrap(found)
         end
 
     let member(it: Interpreter r: nodes.ModuleRef name: String): Value =
         case moduleValue(it r)
             when vRecord with x then
-                let found = hashMap.get(:String :Value x.r.fields name)
-                if maybe.isNone(:Value found) then fail(:Value "module '" <> nodes.moduleRefName(r) <> "' has no member " <> name) end
-                case maybe.unwrap(:Value found)
+                let found = hashMap.get(x.r.fields name)
+                if maybe.isNone(found) then fail(:Value "module '" <> nodes.moduleRefName(r) <> "' has no member " <> name) end
+                case maybe.unwrap(found)
                     when vRef with c then model.deref(c.r)
-                    else maybe.unwrap(:Value found)
+                    else maybe.unwrap(found)
                 end
             else fail(:Value "module '" <> nodes.moduleRefName(r) <> "' is a " <> model.typeName(moduleValue(it r)))
         end
@@ -366,12 +366,12 @@ export
             if not(eq(tagOf(v) tag)) then model.raiseException(:Ok primitives.variantError none) end
             case v
                 when vOption with x then
-                    if maybe.isNone(:Int ordinalIndex) then fail(:Ok "the payload of option case " <> tag <> " without its ordinal") end
-                    let ordinalValue = model.intValue(maybe.unwrap(:Int ordinalIndex))
-                    if maybe.isNone(:Value x.v.payload) then
-                        model.tupleValue(array of ordinalValue end maybe.some(:Array(maybe.T(String)) array of maybe.none(:String) end))
+                    if maybe.isNone(ordinalIndex) then fail(:Ok "the payload of option case " <> tag <> " without its ordinal") end
+                    let ordinalValue = model.intValue(maybe.unwrap(ordinalIndex))
+                    if maybe.isNone(x.v.payload) then
+                        model.tupleValue(array of ordinalValue end maybe.some(array of maybe.none(:String) end))
                     else
-                        let p = maybe.unwrap(:Value x.v.payload)
+                        let p = maybe.unwrap(x.v.payload)
                         case p
                             when vTuple with t then
                                 let n = extent t.t.elements
@@ -382,17 +382,17 @@ export
                                         when vRef with r then model.cellValue(model.deref(r.r))
                                         else t.t.elements[i]
                                     end
-                                    if maybe.isSome(:Array(maybe.T(String)) t.t.labels) then
-                                        labels[i + 1] := maybe.unwrap(:Array(maybe.T(String)) t.t.labels)[i]
+                                    if maybe.isSome(t.t.labels) then
+                                        labels[i + 1] := maybe.unwrap(t.t.labels)[i]
                                     end
                                 end
-                                model.tupleValue(elements maybe.some(:Array(maybe.T(String)) labels))
+                                model.tupleValue(elements maybe.some(labels))
                             else
                                 model.tupleValue(array of ordinalValue p end
-                                    maybe.some(:Array(maybe.T(String)) array of maybe.none(:String) maybe.none(:String) end))
+                                    maybe.some(array of maybe.none(:String) maybe.none(:String) end))
                         end
                     end
-                when vVariant with x then maybe.unwrapOr(:Value x.v.payload model.okValue)
+                when vVariant with x then maybe.unwrapOr(x.v.payload model.okValue)
                 else model.okValue
             end
         end
@@ -415,12 +415,12 @@ export
     let instantiate(c: IrClosure typeArgs: Array(Type)): IrClosure =
         begin
             let bindings = newTypes()
-            hashMap.forEach(:Int :Type c.typeBindings fun(k: Int t: Type): Ok begin hashMap.insert(:Int :Type bindings k t) ok end)
+            hashMap.forEach(c.typeBindings fun(k: Int t: Type): Ok begin hashMap.insert(bindings k t) ok end)
             let var next = 0
             for i = 0 upto {extent c.function.typeParams - 1} do
                 let id = c.function.typeParams[i].symbolId
-                if not(hashMap.contains(:Int :Type c.typeBindings id)) andif {next < extent typeArgs} then
-                    hashMap.insert(:Int :Type bindings id typeArgs[next])
+                if not(hashMap.contains(c.typeBindings id)) andif {next < extent typeArgs} then
+                    hashMap.insert(bindings id typeArgs[next])
                     next := next + 1
                 end
             end
@@ -435,47 +435,47 @@ export
                 let name = c.function.v.hint
                 let fn = fun(args: Array(Value)): Value applyClosure(it c args)
             end
-            hashMap.insert(:model.Builtin :IrClosure it.closures b c)
+            hashMap.insert(it.closures b c)
             option vBuiltin of Value with let b = b end
         end
 
     and irClosureOf(it: Interpreter v: Value): maybe.T(IrClosure) =
         case v
-            when vBuiltin with x then hashMap.get(:model.Builtin :IrClosure it.closures x.b)
+            when vBuiltin with x then hashMap.get(it.closures x.b)
             else maybe.none(:IrClosure)
         end
 
     and inFrame(it: Interpreter name: String b: Body f: Frame): Signals =
         begin
-            vector.append(:String stack(it) name)
+            vector.append(stack(it) name)
             let result = try
                 runBody(it b f)
             when model.runError with e then
                 treewalk.noteFrames(e it.renv)
-                vector.pop(:String stack(it))
+                vector.pop(stack(it))
                 rethrow(:Signals e)
             end
-            vector.pop(:String stack(it))
+            vector.pop(stack(it))
             result
         end
 
     and applyClosure(it: Interpreter c: IrClosure args: Array(Value)): Value =
         begin
             (* IR calls have no offsets, so stack.overflow is not located *)
-            if vector.length(:String stack(it)) >= primitives.maxCallDepth then
+            if vector.length(stack(it)) >= primitives.maxCallDepth then
                 model.raiseException(:Ok primitives.stackOverflow none)
             end
             let types = newTypes()
-            hashMap.forEach(:Int :Type c.typeBindings fun(k: Int t: Type): Ok begin hashMap.insert(:Int :Type types k t) ok end)
-            let f = newFrame(maybe.some(:Frame c.frame) types)
+            hashMap.forEach(c.typeBindings fun(k: Int t: Type): Ok begin hashMap.insert(types k t) ok end)
+            let f = newFrame(maybe.some(c.frame) types)
             let fn = c.function
-            if maybe.isSome(:Variable fn.env) then
-                setValue(f maybe.unwrap(:Variable fn.env) option vArray of Value with let a = maybe.unwrapOr(:Array(Value) c.env array of :Value end) end)
+            if maybe.isSome(fn.env) then
+                setValue(f maybe.unwrap(fn.env) option vArray of Value with let a = maybe.unwrapOr(c.env array of :Value end) end)
             end
             for i = 0 upto {extent fn.params - 1} do if i < extent args then setValue(f fn.params[i].v args[i]) end end
-            let s = if maybe.isNone(:String fn.traceName) then runBody(it fn.body f)
-                else inFrame(it maybe.unwrap(:String fn.traceName) fn.body f) end
-            case maybe.unwrapOr(:Signal s option sigBreak of Signal with let label = "" end)
+            let s = if maybe.isNone(fn.traceName) then runBody(it fn.body f)
+                else inFrame(it maybe.unwrap(fn.traceName) fn.body f) end
+            case maybe.unwrapOr(s option sigBreak of Signal with let label = "" end)
                 when sigReturn with x then x.value
                 else fail(:Value "function '" <> fn.v.hint <> "' ends without returning")
             end
@@ -493,11 +493,11 @@ export
     and typeApply(it: Interpreter callee: Value typeArgs: Array(Type)): Value =
         begin
             let irc = irClosureOf(it callee)
-            if maybe.isSome(:IrClosure irc) then
-                let c = maybe.unwrap(:IrClosure irc)
+            if maybe.isSome(irc) then
+                let c = maybe.unwrap(irc)
                 let inst = instantiate(c typeArgs)
                 let instValue = closureValue(it inst)
-                if {extent c.function.params is 0} andif {hashMap.size(:Int :Type inst.typeBindings) >= extent c.function.typeParams}
+                if {extent c.function.params is 0} andif {hashMap.size(inst.typeBindings) >= extent c.function.typeParams}
                     andif not(isFunctionType(c.function)) then
                     apply(it instValue array of :Value end)
                 else
@@ -515,21 +515,21 @@ export
         end
 
     and calleeValue(it: Interpreter v: maybe.T(Variable) r: maybe.T(nodes.ModuleRef) name: maybe.T(String) f: Frame): Value =
-        if maybe.isSome(:Variable v) then atom(it nodes.atomOfVar(maybe.unwrap(:Variable v)) f)
-        else member(it maybe.unwrap(:nodes.ModuleRef r) maybe.unwrapOr(:String name "")) end
+        if maybe.isSome(v) then atom(it nodes.atomOfVar(maybe.unwrap(v)) f)
+        else member(it maybe.unwrap(r) maybe.unwrapOr(name "")) end
 
     (* The type a descriptor operand describes in the frame *)
     and described(it: Interpreter d: nodes.Descriptor f: Frame): Type =
         case d
             when descVar with x then
-                let t = lookupType(f maybe.unwrapOr(:Int hashMap.get(:Int :Int it.descriptorSymbols x.v.id) ~1))
-                if maybe.isNone(:Type t) then fail(:Ok "descriptor variable '" <> x.v.hint <> "' describes no type here") end
-                maybe.unwrap(:Type t)
+                let t = lookupType(f maybe.unwrapOr(hashMap.get(it.descriptorSymbols x.v.id) ~1))
+                if maybe.isNone(t) then fail(:Ok "descriptor variable '" <> x.v.hint <> "' describes no type here") end
+                maybe.unwrap(t)
             when descStatic with x then resolve(f x.d.type)
             when descInstantiate with x then
                 let args = tm.newSubst()
                 for i = 0 upto {extent x.args - 1} do
-                    hashMap.insert(:Int :Type args tm.reservedSymbolId(holeUse i) described(it x.args[i] f))
+                    hashMap.insert(args tm.reservedSymbolId(holeUse i) described(it x.args[i] f))
                 end
                 tm.substitute(resolve(f x.template) args)
         end
@@ -554,7 +554,7 @@ export
             let values = array of(extent captures model.okValue)
             for i = 0 upto {extent captures - 1} do
                 let pending = case captures[i]
-                    when atomVar with x then isUnbound(f x.v) andif not(vector.empty(:vector.T(Fixup) it.fixups))
+                    when atomVar with x then isUnbound(f x.v) andif not(vector.empty(it.fixups))
                     else false
                 end
                 if pending then
@@ -562,7 +562,7 @@ export
                      * has run *)
                     case captures[i]
                         when atomVar with x then
-                            vector.append(:Fixup vector.last(:vector.T(Fixup) it.fixups)
+                            vector.append(vector.last(it.fixups)
                                 tuple let values = values let index = i let v = x.v let frame = f end)
                         else ok
                     end
@@ -572,9 +572,9 @@ export
             end
             let bindings = newTypes()
             for i = 0 upto {extent code.typeParams - 1} do
-                if i < extent typeArgs then hashMap.insert(:Int :Type bindings code.typeParams[i].symbolId resolve(f typeArgs[i])) end
+                if i < extent typeArgs then hashMap.insert(bindings code.typeParams[i].symbolId resolve(f typeArgs[i])) end
             end
-            closureValue(it tuple let function = code let frame = topOf(f) let typeBindings = bindings let env = maybe.some(:Array(Value) values) end)
+            closureValue(it tuple let function = code let frame = topOf(f) let typeBindings = bindings let env = maybe.some(values) end)
         end
 
     (* A tuple laid out as the tree-walking interpreter lays it out: its type
@@ -582,13 +582,13 @@ export
     and makeTuple(it: Interpreter values: Array(Value) typeComponents: Array(nodes.TypeComponent) result: maybe.T(Variable)
             f: Frame): Value =
         begin
-            let t = formatting.exposedType(maybe.unwrap(:Variable result).type)
+            let t = formatting.exposedType(maybe.unwrap(result).type)
             case t.form
                 when typeTuple with x then
                     if extent typeComponents is 0 then
                         let labels = array of(extent x.fields maybe.none(:String))
                         for i = 0 upto {extent x.fields - 1} do labels[i] := tm.componentName(x.fields[i]) end
-                        model.tupleValue(values if extent labels is extent values then maybe.some(:Array(maybe.T(String)) labels)
+                        model.tupleValue(values if extent labels is extent values then maybe.some(labels)
                             else maybe.none(:Array(maybe.T(String))) end)
                     else
                         let elements = vector.new(:Value)
@@ -599,24 +599,24 @@ export
                             begin
                                 let w = typeComponents[index]
                                 option vTypeValue of Value with
-                                    let t = tuple let type = resolve(f w.type) let bound = bound let name = maybe.some(:String w.name) end
+                                    let t = tuple let type = resolve(f w.type) let bound = bound let name = maybe.some(w.name) end
                                 end
                             end
                         for i = 0 upto {extent x.fields - 1} do
                             labels[i] := tm.componentName(x.fields[i])
                             case x.fields[i]
                                 when tupleTypeFormal with c then
-                                    vector.append(:Value elements witness(nextWitness maybe.some(:tm.Kind c.bound)))
+                                    vector.append(elements witness(nextWitness maybe.some(c.bound)))
                                     nextWitness := nextWitness + 1
                                 when tupleTypeBinding with c then
-                                    vector.append(:Value elements witness(nextWitness c.bound))
+                                    vector.append(elements witness(nextWitness c.bound))
                                     nextWitness := nextWitness + 1
                                 when tupleField then
-                                    vector.append(:Value elements values[nextValue])
+                                    vector.append(elements values[nextValue])
                                     nextValue := nextValue + 1
                             end
                         end
-                        model.tupleValue(vector.toArray(:Value elements) maybe.some(:Array(maybe.T(String)) labels))
+                        model.tupleValue(vector.toArray(elements) maybe.some(labels))
                     end
                 else model.tupleValue(values maybe.none(:Array(maybe.T(String))))
             end
@@ -629,8 +629,8 @@ export
             when opAddrField with x then
                 case deref(atom(it x.base f))
                     when vRecord with r then
-                        let cell = hashMap.get(:String :Value r.r.fields x.name)
-                        if maybe.isSome(:Value cell) andif maybe.unwrap(:Value cell)?vRef then maybe.unwrap(:Value cell)
+                        let cell = hashMap.get(r.r.fields x.name)
+                        if maybe.isSome(cell) andif maybe.unwrap(cell)?vRef then maybe.unwrap(cell)
                         else model.internalError(:Value "Field '" <> x.name <> "' is not mutable" none) end
                     else model.internalError(:Value "Field '" <> x.name <> "' is not mutable" none)
                 end
@@ -689,7 +689,7 @@ export
                     model.boolValue(primitives.sameAt(resolve(f nodes.atomType(x.args[0])) values[0] values[1])
                         is x.op?primIs)
                 else
-                    at(:Value it x.offset fun(): Value prim(it x.op values))
+                    at(it x.offset fun(): Value prim(it x.op values))
                 end
             when opCall with x then
                 checkDescriptors(it x.descriptors x.typeArgs f)
@@ -700,8 +700,8 @@ export
                 checkDescriptors(it x.descriptors x.typeArgs f)
                 typeApply(it calleeValue(it x.callee x.moduleRef x.member f) resolveAll(f x.typeArgs))
             when opModuleMember with x then
-                if maybe.isNone(:String x.member) then moduleValue(it x.moduleRef)
-                else member(it x.moduleRef maybe.unwrap(:String x.member)) end
+                if maybe.isNone(x.member) then moduleValue(it x.moduleRef)
+                else member(it x.moduleRef maybe.unwrap(x.member)) end
             when opBuiltin with x then treewalk.lookup(it.root x.name none)
             when opMakeClosure with x then
                 checkDescriptors(it x.descriptors x.typeArgs f)
@@ -727,37 +727,37 @@ export
                 for i = 0 upto {extent x.fields - 1} do
                     let fa = x.fields[i]
                     let v = atom(it fa.atom f)
-                    hashMap.insert(:String :Value fields fa.name if fa.isVar then model.cellValue(v) else v end)
+                    hashMap.insert(fields fa.name if fa.isVar then model.cellValue(v) else v end)
                 end
                 model.recordValue(fields)
             when opRecordField with x then
                 case deref(atom(it x.recordAtom f))
                     when vTuple with t then model.tupleGet(t.t x.name)
                     when vRecord with r then
-                        let found = hashMap.get(:String :Value r.r.fields x.name)
-                        if maybe.isNone(:Value found) then model.internalError(:Value "no field " <> x.name none) end
-                        deref(maybe.unwrap(:Value found))
+                        let found = hashMap.get(r.r.fields x.name)
+                        if maybe.isNone(found) then model.internalError(:Value "no field " <> x.name none) end
+                        deref(maybe.unwrap(found))
                     else model.internalError(:Value "not a record" none)
                 end
             when opMakeVariant with x then
-                model.variantValue(x.tag if maybe.isSome(:Atom x.payload) then maybe.some(:Value atom(it maybe.unwrap(:Atom x.payload) f))
+                model.variantValue(x.tag if maybe.isSome(x.payload) then maybe.some(atom(it maybe.unwrap(x.payload) f))
                     else maybe.none(:Value) end)
             when opMakeOption with x then
-                let p = if maybe.isSome(:Atom x.payload) then maybe.some(:Value atom(it maybe.unwrap(:Atom x.payload) f)) else maybe.none(:Value) end
-                if maybe.isSome(:Atom x.ordinalAtom) then
-                    let n = case atom(it maybe.unwrap(:Atom x.ordinalAtom) f) when vInt with y then y.n else ~1 end
+                let p = if maybe.isSome(x.payload) then maybe.some(atom(it maybe.unwrap(x.payload) f)) else maybe.none(:Value) end
+                if maybe.isSome(x.ordinalAtom) then
+                    let n = case atom(it maybe.unwrap(x.ordinalAtom) f) when vInt with y then y.n else ~1 end
                     if {n < 0} orif {n >= extent x.cases} then
-                        at(:Ok it x.offset fun(): Ok model.internalError(:Ok "Option ordinal " <> model.toString(model.intValue(n))
+                        at(it x.offset fun(): Ok model.internalError(:Ok "Option ordinal " <> model.toString(model.intValue(n))
                             <> " out of bounds (0 <= ordinal < " <> conv.int(extent x.cases) <> ")" none))
                     end
                     model.optionValue(x.cases[n] p)
                 else
-                    model.optionValue(maybe.unwrapOr(:String x.tag "") p)
+                    model.optionValue(maybe.unwrapOr(x.tag "") p)
                 end
             when opIsTag with x then model.boolValue(eq(tagOf(atom(it x.value f)) x.tag))
             when opPayload with x then
                 let v = atom(it x.value f)
-                at(:Value it x.offset fun(): Value payloadOf(v x.tag x.ordinalIndex))
+                at(it x.offset fun(): Value payloadOf(v x.tag x.ordinalIndex))
             when opOrdinal with x then
                 case atom(it x.value f)
                     when vOption with y then
@@ -782,8 +782,8 @@ export
                     else model.internalError(:Value "not an array" none)
                 end
             when opMakeAuto with x then
-                if maybe.isSome(:nodes.Descriptor x.descriptor) then
-                    checkDescriptors(it array of maybe.unwrap(:nodes.Descriptor x.descriptor) end array of x.witness end f)
+                if maybe.isSome(x.descriptor) then
+                    checkDescriptors(it array of maybe.unwrap(x.descriptor) end array of x.witness end f)
                 end
                 option vAuto of Value with let a = tuple let value = atom(it x.payload f) let type = resolve(f x.witness) end end
             when opMakeException with x then option vException of Value with let e = model.exceptionValue(x.name) end
@@ -792,9 +792,9 @@ export
                     when atomVar with y then raisedError(f y.v)
                     else maybe.none(:model.RunError)
                 end
-                if maybe.isNone(:model.RunError e) then fail(:Ok "exception_payload of a value other than a handler's exception") end
-                case maybe.unwrap(:model.RunError e).cause
-                    when raised with y then maybe.unwrapOr(:Value y.payload model.okValue)
+                if maybe.isNone(e) then fail(:Ok "exception_payload of a value other than a handler's exception") end
+                case maybe.unwrap(e).cause
+                    when raised with y then maybe.unwrapOr(y.payload model.okValue)
                     else model.okValue
                 end
             when opCaughtException with x then
@@ -802,11 +802,11 @@ export
                     when atomVar with y then raisedError(f y.v)
                     else maybe.none(:model.RunError)
                 end
-                if maybe.isNone(:model.RunError e) then fail(:Ok "caught_exception of a value other than a handler's exception") end
+                if maybe.isNone(e) then fail(:Ok "caught_exception of a value other than a handler's exception") end
                 (* With the frames running, as if it left this frame, which it
                  * was raised in if it has none (docs/raised.md section 5) *)
-                treewalk.noteFrames(maybe.unwrap(:model.RunError e) it.renv)
-                option vRaised of Value with let e = maybe.unwrap(:model.RunError e) end
+                treewalk.noteFrames(maybe.unwrap(e) it.renv)
+                option vRaised of Value with let e = maybe.unwrap(e) end
             when opAddrVar then address(it o f)
             when opAddrCell then address(it o f)
             when opAddrField then address(it o f)
@@ -827,12 +827,12 @@ export
                 let value = atom(it x.value f)
                 case deref(atom(it x.base f))
                     when vRecord with r then
-                        let cell = hashMap.get(:String :Value r.r.fields x.name)
-                        let isCell = maybe.isSome(:Value cell) andif maybe.unwrap(:Value cell)?vRef
+                        let cell = hashMap.get(r.r.fields x.name)
+                        let isCell = maybe.isSome(cell) andif maybe.unwrap(cell)?vRef
                         if isCell then
-                            case maybe.unwrap(:Value cell) when vRef with c then model.assign(c.r value) else ok end
+                            case maybe.unwrap(cell) when vRef with c then model.assign(c.r value) else ok end
                         else
-                            begin hashMap.insert(:String :Value r.r.fields x.name value) ok end
+                            begin hashMap.insert(r.r.fields x.name value) ok end
                         end
                     else model.internalError(:Ok "a field store into a value that is not a record" none)
                 end
@@ -862,9 +862,9 @@ export
         begin
             let var result = noSignal
             let var i = 0
-            let n = vector.length(:Stmt b.statements)
-            while maybe.isNone(:Signal result) andif {i < n} do
-                result := statement(it vector.get(:Stmt b.statements i) f)
+            let n = vector.length(b.statements)
+            while maybe.isNone(result) andif {i < n} do
+                result := statement(it vector.get(b.statements i) f)
                 i := i + 1
             end
             result
@@ -873,11 +873,11 @@ export
     and statement(it: Interpreter s: Stmt f: Frame): Signals =
         case s
             when sLet with x then
-                let v = operation(it x.value f maybe.some(:Variable x.v))
-                if hashMap.contains(:Int :Bool it.declared x.v.id) then bindDeclared(f x.v v) else setValue(f x.v v) end
+                let v = operation(it x.value f maybe.some(x.v))
+                if hashMap.contains(it.declared x.v.id) then bindDeclared(f x.v v) else setValue(f x.v v) end
                 noSignal
             when sVarDecl with x then
-                setValue(f x.v model.cellValue(if maybe.isSome(:Atom x.init) then atom(it maybe.unwrap(:Atom x.init) f) else model.okValue end))
+                setValue(f x.v model.cellValue(if maybe.isSome(x.init) then atom(it maybe.unwrap(x.init) f) else model.okValue end))
                 noSignal
             when sAssign with x then
                 case lookup(f x.v)
@@ -898,22 +898,22 @@ export
                 noSignal
             when sLetRec with x then
                 for i = 0 upto {extent x.vars - 1} do
-                    hashMap.insert(:Int :Bool it.declared x.vars[i].id true)
-                    hashMap.insert(:Int :maybe.T(Value) f.values x.vars[i].id maybe.none(:Value))
+                    hashMap.insert(it.declared x.vars[i].id true)
+                    hashMap.insert(f.values x.vars[i].id maybe.none(:Value))
                 end
-                vector.append(:vector.T(Fixup) it.fixups vector.new(:Fixup))
+                vector.append(it.fixups vector.new(:Fixup))
                 let result = try
                     runBody(it x.body f)
                 when model.runError with e then
-                    vector.pop(:vector.T(Fixup) it.fixups)
+                    vector.pop(it.fixups)
                     rethrow(:Signals e)
                 end
-                let fixups = vector.pop(:vector.T(Fixup) it.fixups)
-                for i = 0 upto {vector.length(:Fixup fixups) - 1} do
-                    let fx = vector.get(:Fixup fixups i)
-                    if isUnbound(fx.frame fx.v) andif not(vector.empty(:vector.T(Fixup) it.fixups)) then
+                let fixups = vector.pop(it.fixups)
+                for i = 0 upto {vector.length(fixups) - 1} do
+                    let fx = vector.get(fixups i)
+                    if isUnbound(fx.frame fx.v) andif not(vector.empty(it.fixups)) then
                         (* A variable of an enclosing let rec *)
-                        vector.append(:Fixup vector.last(:vector.T(Fixup) it.fixups) fx)
+                        vector.append(vector.last(it.fixups) fx)
                     else
                         fx.values[fx.index] := lookup(fx.frame fx.v)
                     end
@@ -929,24 +929,24 @@ export
                 let tag = tagOf(v)
                 let var chosen = maybe.none(:nodes.Case)
                 for i = 0 upto {extent x.cases - 1} do
-                    if maybe.isNone(:nodes.Case chosen) then
+                    if maybe.isNone(chosen) then
                         let c = x.cases[i]
-                        for j = 0 upto {extent c.tags - 1} do if eq(c.tags[j] tag) then chosen := maybe.some(:nodes.Case c) end end
+                        for j = 0 upto {extent c.tags - 1} do if eq(c.tags[j] tag) then chosen := maybe.some(c) end end
                     end
                 end
-                if maybe.isSome(:nodes.Case chosen) then
-                    let c = maybe.unwrap(:nodes.Case chosen)
-                    if maybe.isSome(:Variable c.binder) then
+                if maybe.isSome(chosen) then
+                    let c = maybe.unwrap(chosen)
+                    if maybe.isSome(c.binder) then
                         let payload = case v
                             when vVariant with y then y.v.payload
                             when vOption with y then y.v.payload
                             else maybe.none(:Value)
                         end
-                        setValue(f maybe.unwrap(:Variable c.binder) maybe.unwrapOr(:Value payload model.okValue))
+                        setValue(f maybe.unwrap(c.binder) maybe.unwrapOr(payload model.okValue))
                     end
                     runBody(it c.body f)
-                elsif maybe.isSome(:Body x.elseBody) then
-                    runBody(it maybe.unwrap(:Body x.elseBody) f)
+                elsif maybe.isSome(x.elseBody) then
+                    runBody(it maybe.unwrap(x.elseBody) f)
                 else
                     model.internalError(:Signals "Unhandled case tag '" <> tag <> "'" none)
                 end
@@ -955,23 +955,23 @@ export
                     when vAuto with a then
                         let var chosen = maybe.none(:nodes.InspectCase)
                         for i = 0 upto {extent x.cases - 1} do
-                            if maybe.isNone(:nodes.InspectCase chosen) then
+                            if maybe.isNone(chosen) then
                                 let c = x.cases[i]
-                                if maybe.isSome(:nodes.Descriptor c.descriptor) then
-                                    checkDescriptors(it array of maybe.unwrap(:nodes.Descriptor c.descriptor) end array of c.matchType end f)
+                                if maybe.isSome(c.descriptor) then
+                                    checkDescriptors(it array of maybe.unwrap(c.descriptor) end array of c.matchType end f)
                                 end
                                 let matchType = resolve(f c.matchType)
                                 let matches = if c.exact then subtyping.isTypeEqual(a.a.type matchType maybe.none(:tm.Lookup))
                                     else subtyping.isSubtype(a.a.type matchType maybe.none(:tm.Lookup)) end
-                                if matches then chosen := maybe.some(:nodes.InspectCase c) end
+                                if matches then chosen := maybe.some(c) end
                             end
                         end
-                        if maybe.isSome(:nodes.InspectCase chosen) then
-                            let c = maybe.unwrap(:nodes.InspectCase chosen)
+                        if maybe.isSome(chosen) then
+                            let c = maybe.unwrap(chosen)
                             for j = 0 upto {extent c.binders - 1} do setValue(f c.binders[j] a.a.value) end
                             runBody(it c.body f)
-                        elsif maybe.isSome(:Body x.elseBody) then
-                            runBody(it maybe.unwrap(:Body x.elseBody) f)
+                        elsif maybe.isSome(x.elseBody) then
+                            runBody(it maybe.unwrap(x.elseBody) f)
                         else
                             raising(:Signals it model.dynamicError x.offset)
                         end
@@ -982,7 +982,7 @@ export
                 let var running = true
                 while running do
                     let s2 = runBody(it x.body childFrame(f))
-                    case maybe.unwrapOr(:Signal s2 option sigContinue of Signal with let label = x.label end)
+                    case maybe.unwrapOr(s2 option sigContinue of Signal with let label = x.label end)
                         when sigContinue with y then
                             if not(eq(y.label x.label)) then
                                 result := s2
@@ -1004,16 +1004,16 @@ export
                     case e.cause
                         when raised with y then
                             setValue(f x.exc option vException of Value with let e = y.exc end)
-                            hashMap.insert(:Int :model.RunError f.raised x.exc.id e)
+                            hashMap.insert(f.raised x.exc.id e)
                             runBody(it x.handler f)
                         else rethrow(:Signals e)
                     end
                 end
             when sJoin with x then
                 let s2 = runBody(it x.body f)
-                case maybe.unwrapOr(:Signal s2 option sigBreak of Signal with let label = "" end)
+                case maybe.unwrapOr(s2 option sigBreak of Signal with let label = "" end)
                     when sigJump with y then
-                        if eq(y.label x.label) andif maybe.isSome(:Signal s2) then
+                        if eq(y.label x.label) andif maybe.isSome(s2) then
                             for i = 0 upto {extent x.params - 1} do setValue(f x.params[i] y.args[i]) end
                             runBody(it x.continuation f)
                         else
@@ -1036,9 +1036,9 @@ export
             when sContinue with x then signal(option sigContinue of Signal with let label = x.label end)
             when sRaise with x then
                 let exc = atom(it x.exc f)
-                let payload = if maybe.isSome(:Atom x.payload) then maybe.some(:Value atom(it maybe.unwrap(:Atom x.payload) f)) else maybe.none(:Value) end
-                let payloadType = if maybe.isSome(:Atom x.payload) then
-                    case maybe.unwrap(:Atom x.payload) when atomVar with y then maybe.some(:Type y.v.type) else maybe.none(:Type) end
+                let payload = if maybe.isSome(x.payload) then maybe.some(atom(it maybe.unwrap(x.payload) f)) else maybe.none(:Value) end
+                let payloadType = if maybe.isSome(x.payload) then
+                    case maybe.unwrap(x.payload) when atomVar with y then maybe.some(y.v.type) else maybe.none(:Type) end
                 else
                     maybe.none(:Type)
                 end
@@ -1054,8 +1054,8 @@ export
                 end
             when sReraise with x then
                 let e = raisedError(f x.exc)
-                if maybe.isNone(:model.RunError e) then fail(:Ok "reraise of a value other than a handler's exception") end
-                rethrow(:Signals maybe.unwrap(:model.RunError e))
+                if maybe.isNone(e) then fail(:Ok "reraise of a value other than a handler's exception") end
+                rethrow(:Signals maybe.unwrap(e))
             when sUnreachable then fail(:Signals "reached unreachable code")
         end
 
@@ -1063,18 +1063,18 @@ export
 
     let runTopLevel(it: Interpreter b: Body f: Frame frameName: maybe.T(String)): Ok =
         begin
-            let s = if maybe.isNone(:String frameName) then runBody(it b f) else inFrame(it maybe.unwrap(:String frameName) b f) end
-            if maybe.isSome(:Signal s) then fail(:Ok "a top level ends with a terminator") end
+            let s = if maybe.isNone(frameName) then runBody(it b f) else inFrame(it maybe.unwrap(frameName) b f) end
+            if maybe.isSome(s) then fail(:Ok "a top level ends with a terminator") end
         end
 
     let runUnit(unit: nodes.Unit renv: model.Frame): Ok =
         begin
             let symbols = hashMap.new(:Int :Int intEqual hash.int)
-            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
-                let fn = vector.get(:nodes.Function unit.functions i)
+            for i = 0 upto {vector.length(unit.functions) - 1} do
+                let fn = vector.get(unit.functions i)
                 for j = 0 upto {extent fn.descriptorParams - 1} do
                     let p = fn.descriptorParams[j]
-                    if extent p.symbols > 0 then hashMap.insert(:Int :Int symbols p.v.id p.symbols[0]) end
+                    if extent p.symbols > 0 then hashMap.insert(symbols p.v.id p.symbols[0]) end
                 end
             end
             let it: Interpreter = tuple
@@ -1089,32 +1089,32 @@ export
             end
             (* Everything runs in the program's frame, imported modules'
              * initializers included *)
-            vector.append(:String stack(it) diagnostics.mainFrame)
+            vector.append(stack(it) diagnostics.mainFrame)
             try
                 for i = 0 upto {extent unit.imports - 1} do
                     let imp = unit.imports[i]
                     (* Run once per program, and kept in its unit *)
-                    let value = treewalk.loadModuleForInterpreter(imp.modulePath imp.interfacePath renv maybe.some(:String imp.canonicalPath))
-                    hashMap.insert(:Int :Value it.modules imp.id value)
+                    let value = treewalk.loadModuleForInterpreter(imp.modulePath imp.interfacePath renv maybe.some(imp.canonicalPath))
+                    hashMap.insert(it.modules imp.id value)
                 end
-                for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
-                    let m = vector.get(:nodes.Module unit.modules i)
+                for i = 0 upto {vector.length(unit.modules) - 1} do
+                    let m = vector.get(unit.modules i)
                     let f = newFrame(maybe.none(:Frame) newTypes())
-                    runTopLevel(it m.init f maybe.some(:String diagnostics.initFrame(m.name)))
+                    runTopLevel(it m.init f maybe.some(diagnostics.initFrame(m.name)))
                     let fields = model.newFields()
-                    for j = 0 upto {vector.length(:String m.members.names) - 1} do
-                        let n = vector.get(:String m.members.names j)
-                        hashMap.insert(:String :Value fields n lookup(f hashMap.find(:String :Variable m.members.vars n)))
+                    for j = 0 upto {vector.length(m.members.names) - 1} do
+                        let n = vector.get(m.members.names j)
+                        hashMap.insert(fields n lookup(f hashMap.find(m.members.vars n)))
                     end
-                    hashMap.insert(:Int :Value it.modules m.id model.recordValue(fields))
+                    hashMap.insert(it.modules m.id model.recordValue(fields))
                 end
                 runTopLevel(it unit.main newFrame(maybe.none(:Frame) newTypes()) maybe.none(:String))
             when model.runError with e then
                 treewalk.noteFrames(e renv)
-                vector.pop(:String stack(it))
+                vector.pop(stack(it))
                 rethrow(:Ok e)
             end
-            vector.pop(:String stack(it))
+            vector.pop(stack(it))
             ok
         end
 end

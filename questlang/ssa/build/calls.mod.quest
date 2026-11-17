@@ -64,7 +64,7 @@ export
                     let same = if layout.isQVal(shapes.shape(ir.atomType(first))) then
                         let args = array of descriptors.maybeDescriptor(fn o.descriptor) vals.atom1(fn o.args[0]) vals.atom1(fn o.args[1]) end
                         vals.narrowed(fn vals.call1(fn "quest_val_is" args) vals.part(vals.tInt 1 false))
-                    elsif maybe.isSome(:ir.Descriptor o.descriptor)
+                    elsif maybe.isSome(o.descriptor)
                         andif vals.eq(layout.representation(ir.atomType(first)) "QVariantVal") then
                         (* By case and value (docs/extensions.md, Variants as
                          * Values) *)
@@ -76,7 +76,7 @@ export
                         (* A record is its payload: a view changes only its
                          * offset table (quest_record_view) *)
                         vals.binary(fn ssa.opPeq vals.atom(fn o.args[0])[0] vals.atom(fn o.args[1])[0])
-                    elsif maybe.isSome(:ir.Descriptor o.descriptor) then
+                    elsif maybe.isSome(o.descriptor) then
                         (* An option type whose options is compares by case or
                          * component (docs/extensions.md, Options as Values) *)
                         let args = array of descriptors.maybeDescriptor(fn o.descriptor) vals.atom1(fn o.args[0])
@@ -167,10 +167,10 @@ export
             let var at = lead
             for i = 0 upto {extent args - 1} do
                 let n = extent vals.parts(ir.atomType(args[i]))
-                if n is 2 then vector.append(:Int starts at) end
+                if n is 2 then vector.append(starts at) end
                 at := at + {if n is 0 then 1 else n end}
             end
-            vector.toArray(:Int starts)
+            vector.toArray(starts)
         end
 
     (* Which of a call's arguments C passes as one byte, from the IR atoms
@@ -181,17 +181,17 @@ export
             let var at = lead
             for i = 0 upto {extent args - 1} do
                 let ps = vals.parts(ir.atomType(args[i]))
-                if {extent ps is 1} andif {ps[0].width is 1} then vector.append(:Int found at) end
+                if {extent ps is 1} andif {ps[0].width is 1} then vector.append(found at) end
                 at := at + {if extent ps is 0 then 1 else extent ps end}
             end
-            vector.toArray(:Int found)
+            vector.toArray(found)
         end
 
     (* An Int constant's value, if the atom is one *)
     let intConstant(a: Atom): maybe.T(Int) =
         case a
             when atomConst with x then
-                case x.c.value when constInt with k then maybe.some(:Int k.n) else maybe.none(:Int) end
+                case x.c.value when constInt with k then maybe.some(k.n) else maybe.none(:Int) end
             when atomVar then maybe.none(:Int)
         end
 
@@ -204,7 +204,7 @@ export
         begin
             let x(): Int = vals.atom1(fn args[0])
             let y(): Int = vals.atom1(fn args[1])
-            let one(v: Int): maybe.T(Int) = maybe.some(:Int v)
+            let one(v: Int): maybe.T(Int) = maybe.some(v)
             let both(op: ssa.Opcode): maybe.T(Int) = one(vals.binary(fn op x() y()))
             let below(a: Int b: Int): Int = vals.binary(fn ssa.opUlt a b)
             let inverted(v: Int): Int = vals.binary(fn ssa.opXor v vals.constant(fn 1))
@@ -227,19 +227,19 @@ export
                 let a = x()
                 one(inverted(below(y() a)))
             elsif named("quest_word_ge") then one(inverted(below(x() y())))
-            elsif named("quest_word_shift_val") andif maybe.isSome(:Int count) then
+            elsif named("quest_word_shift_val") andif maybe.isSome(count) then
                 (* A left shift by a positive count, a logical right shift by
                  * a negative one, and 0 past either end *)
-                let c = maybe.unwrap(:Int count)
+                let c = maybe.unwrap(count)
                 if {c >= 64} orif {c <= ~64} then
                     one(vals.constant(fn 0))
                 elsif c > 0 then one(vals.binary(fn ssa.opShl x() vals.constant(fn c)))
                 elsif c < 0 then one(vals.binary(fn ssa.opLshr x() vals.constant(fn 0 - c)))
                 else one(x())
                 end
-            elsif named("quest_word_rotate_val") andif maybe.isSome(:Int count) then
+            elsif named("quest_word_rotate_val") andif maybe.isSome(count) then
                 (* A left rotation by the count modulo 64 *)
-                let c = maybe.unwrap(:Int count) % 64
+                let c = maybe.unwrap(count) % 64
                 let s = if c < 0 then c + 64 else c end
                 if s is 0 then
                     one(x())
@@ -272,14 +272,14 @@ export
         begin
             let stmts = f.body.statements
             let var found = maybe.none(:String)
-            if {vector.length(:ir.Stmt stmts) is 2} andif {extent f.descriptorParams is 0} then
-                let call = case vector.get(:ir.Stmt stmts 0)
-                    when sLet with x then maybe.some(:ir.Op x.value)
-                    when sDo with x then maybe.some(:ir.Op x.value)
+            if {vector.length(stmts) is 2} andif {extent f.descriptorParams is 0} then
+                let call = case vector.get(stmts 0)
+                    when sLet with x then maybe.some(x.value)
+                    when sDo with x then maybe.some(x.value)
                     else maybe.none(:ir.Op)
                 end
-                let returns = case vector.get(:ir.Stmt stmts 1) when sReturn then true else false end
-                case maybe.unwrapOr(:ir.Op call option opAtom of ir.Op with let var atom = ir.atomOfVar(f.v) end)
+                let returns = case vector.get(stmts 1) when sReturn then true else false end
+                case maybe.unwrapOr(call option opAtom of ir.Op with let var atom = ir.atomOfVar(f.v) end)
                     when opCallExternal with x then
                         let var forwards = returns andif {extent x.descriptors is 0}
                             andif {extent x.args is extent f.params}
@@ -291,7 +291,7 @@ export
                             end
                             if not(same) then forwards := false end
                         end
-                        if forwards then found := maybe.some(:String x.symbol) end
+                        if forwards then found := maybe.some(x.symbol) end
                     else ok
                 end
             end
@@ -304,10 +304,10 @@ export
      * thunk), or through its function pointer *)
     let rec callClosure(fn: vals.Fn callee: Variable descs: Array(Int) args: Array(Atom)): Array(Int) =
         begin
-            let known = hashMap.get(:Int :ir.OpMakeClosure fn.u.closureVars callee.id)
-            if maybe.isSome(:ir.OpMakeClosure known)
+            let known = hashMap.get(fn.u.closureVars callee.id)
+            if maybe.isSome(known)
                 andif {extent maybe.unwrap(:ir.OpMakeClosure known).typeArgs is 0} then
-                let k = maybe.unwrap(:ir.OpMakeClosure known)
+                let k = maybe.unwrap(known)
                 let env = if extent k.captures is 0 then vals.null(fn)
                     else vals.invariantWord(fn vals.atom1(fn ir.atomOfVar(callee)) runtimeLayout.offset("QClosure" "env") vals.tPtr)
                 end
@@ -315,13 +315,13 @@ export
                  * components (questlang/ir/unbox) *)
                 let ps = if k.code.unboxedResult then vals.unboxedParts(k.code.resultType) else resultParts(callee.type) end
                 let thunked = forwardedExternal(k.code)
-                let inlined = if maybe.isSome(:String thunked) then
-                    inlineExternal(fn maybe.unwrap(:String thunked) args)
+                let inlined = if maybe.isSome(thunked) then
+                    inlineExternal(fn maybe.unwrap(thunked) args)
                 else maybe.none(:Int) end
-                if maybe.isSome(:Int inlined) then
-                    array of maybe.unwrap(:Int inlined) end
-                elsif maybe.isSome(:String thunked) then
-                    directCallOf(fn maybe.unwrap(:String thunked) array of :Int end args ps)
+                if maybe.isSome(inlined) then
+                    array of maybe.unwrap(inlined) end
+                elsif maybe.isSome(thunked) then
+                    directCallOf(fn maybe.unwrap(thunked) array of :Int end args ps)
                 else
                     directCallOf(fn vals.codeName(fn.u k.code) vals.concat(array of env end descs) args ps)
                 end
@@ -342,18 +342,18 @@ export
         end
 
     let moduleOf(r: ir.ModuleRef): maybe.T(ir.Module) =
-        case r when refModule with x then maybe.some(:ir.Module x.m) else maybe.none(:ir.Module) end
+        case r when refModule with x then maybe.some(x.m) else maybe.none(:ir.Module) end
     let importOf(r: ir.ModuleRef): maybe.T(ir.Import) =
-        case r when refImport with x then maybe.some(:ir.Import x.i) else maybe.none(:ir.Import) end
+        case r when refImport with x then maybe.some(x.i) else maybe.none(:ir.Import) end
 
     (* Whether a function type's parameters and result are all held as words
      * or bytes, not QVal words (or the result is Ok): a library function's
      * wrapper then has the C function's signature (as the C printer's
      * libraryExternal requires) *)
     let concrete(t: maybe.T(Type)): Bool =
-        if maybe.isNone(:Type t) then false
+        if maybe.isNone(t) then false
         else
-            case maybe.unwrap(:Type t).form
+            case maybe.unwrap(t).form
                 when typeFun with f then
                     let unboxed(p: Type): Bool =
                         case layout.representationKind(p)
@@ -380,7 +380,7 @@ export
     let libraryOperation(fn: vals.Fn imp: ir.Import member: String o: ir.OpCall): maybe.T(Array(Int)) =
         begin
             let none = maybe.none(:Array(Int))
-            let one(v: Int): maybe.T(Array(Int)) = maybe.some(:Array(Int) array of v end)
+            let one(v: Int): maybe.T(Array(Int)) = maybe.some(array of v end)
             let x(): Int = vals.atom1(fn o.args[0])
             let y(): Int = vals.atom1(fn o.args[1])
             let noSite = fun(): Array(Int) array of :Int end
@@ -395,11 +395,11 @@ export
                     vals.indexPtr(fn vals.invariantWord(fn s runtimeLayout.offset("QString" "data") vals.tPtr) idx)
                 end
             let named(name: String): Bool = vals.eq(member name)
-            if maybe.isNone(:String imp.libPath) orif not(concrete(o.calleeType)) then none
+            if maybe.isNone(imp.libPath) orif not(concrete(o.calleeType)) then none
             else
-                let lib = maybe.unwrap(:String imp.libPath)
+                let lib = maybe.unwrap(imp.libPath)
                 if vals.eq(lib "word") then
-                    if named("shift") andif maybe.isNone(:Int intConstant(o.args[1])) then
+                    if named("shift") andif maybe.isNone(intConstant(o.args[1])) then
                         (* quest_word_shift: left by a positive count, right by
                          * a negative one, 0 by one of 64 or more either way *)
                         begin
@@ -409,7 +409,7 @@ export
                                 representation.choose(fn vals.binary(fn ssa.opUlt by vals.constant(fn 64)) array of vals.tInt end
                                     fun(): Array(Int) array of vals.binary(fn op w by) end
                                     fun(): Array(Int) array of vals.constant(fn 0) end)
-                            maybe.some(:Array(Int) representation.choose(fn vals.binary(fn ssa.opLt n vals.constant(fn 0))
+                            maybe.some(representation.choose(fn vals.binary(fn ssa.opLt n vals.constant(fn 0))
                                 array of vals.tInt end
                                 fun(): Array(Int) shifted(ssa.opLshr vals.binary(fn ssa.opSub vals.constant(fn 0) n))
                                 fun(): Array(Int) shifted(ssa.opShl n)))
@@ -429,7 +429,7 @@ export
                 elsif vals.eq(lib "string") then
                     if named("length") then
                         let s = x()
-                        maybe.some(:Array(Int) representation.choose(fn vals.binary(fn ssa.opPeq s vals.null(fn))
+                        maybe.some(representation.choose(fn vals.binary(fn ssa.opPeq s vals.null(fn))
                             array of vals.tInt end
                             fun(): Array(Int) array of vals.constant(fn 0) end
                             fun(): Array(Int)
@@ -450,7 +450,7 @@ export
                             vals.constant(fn 0))
                         vals.check(fn clear true "quest_raise_string_error" noSite)
                         vals.store(fn address 0 1 vals.atom1(fn o.args[2]))
-                        maybe.some(:Array(Int) array of :Int end)
+                        maybe.some(array of :Int end)
                     else none
                     end
                 else none
@@ -479,11 +479,11 @@ export
                 if held(vals.parts(ir.atomType(args[i]))) then unheld := false end
             end
             let var symbol = maybe.none(:String)
-            if unheld andif maybe.isSome(:String imp.libPath) then
+            if unheld andif maybe.isSome(imp.libPath) then
                 for i = 0 upto {extent externals.functions - 1} do
                     let entry = externals.functions[i]
-                    if vals.eq(entry[0] maybe.unwrap(:String imp.libPath)) andif vals.eq(entry[1] member) then
-                        symbol := maybe.some(:String entry[2])
+                    if vals.eq(entry[0] maybe.unwrap(imp.libPath)) andif vals.eq(entry[1] member) then
+                        symbol := maybe.some(entry[2])
                     end
                 end
             end
@@ -493,36 +493,36 @@ export
     let callOp(fn: vals.Fn o: ir.OpCall): Array(Int) =
         begin
             let descs = descriptors.descriptors(fn o.descriptors)
-            if maybe.isNone(:Variable o.callee) then
-                let r = maybe.unwrap(:ir.ModuleRef o.moduleRef)
-                let member = maybe.unwrap(:String o.member)
-                if maybe.isSome(:ir.Module moduleOf(r)) then
-                    let v = maybe.unwrap(:Variable ir.member(maybe.unwrap(:ir.Module moduleOf(r)).members member))
+            if maybe.isNone(o.callee) then
+                let r = maybe.unwrap(o.moduleRef)
+                let member = maybe.unwrap(o.member)
+                if maybe.isSome(moduleOf(r)) then
+                    let v = maybe.unwrap(ir.member(maybe.unwrap(moduleOf(r)).members member))
                     callClosure(fn v descs o.args)
                 else
-                    let imp = maybe.unwrap(:ir.Import importOf(r))
+                    let imp = maybe.unwrap(importOf(r))
                     let inline = libraryOperation(fn imp member o)
-                    if maybe.isSome(:Array(Int) inline) then maybe.unwrap(:Array(Int) inline)
+                    if maybe.isSome(inline) then maybe.unwrap(inline)
                     else
                         let clean = symbols.mangleModuleName(imp.canonicalPath)
-                        let calleeType = maybe.unwrapOr(:Type o.calleeType model.okType)
+                        let calleeType = maybe.unwrapOr(o.calleeType model.okType)
                         let direct = libraryExternal(imp member o.args calleeType)
-                        let inlined = if maybe.isSome(:String direct) then
-                            inlineExternal(fn maybe.unwrap(:String direct) o.args)
+                        let inlined = if maybe.isSome(direct) then
+                            inlineExternal(fn maybe.unwrap(direct) o.args)
                         else maybe.none(:Int) end
-                        if maybe.isSome(:Int inlined) then
-                            array of maybe.unwrap(:Int inlined) end
-                        elsif maybe.isSome(:String direct) then
+                        if maybe.isSome(inlined) then
+                            array of maybe.unwrap(inlined) end
+                        elsif maybe.isSome(direct) then
                             (* The C function itself, rather than the module's
                              * wrapper, which has its signature *)
-                            directCall(fn maybe.unwrap(:String direct) array of :Int end o.args calleeType)
+                            directCall(fn maybe.unwrap(direct) array of :Int end o.args calleeType)
                         else
                             directCall(fn symbols.mangleModuleIdent(clean member) descs o.args calleeType)
                         end
                     end
                 end
             else
-                callClosure(fn maybe.unwrap(:Variable o.callee) descs o.args)
+                callClosure(fn maybe.unwrap(o.callee) descs o.args)
             end
         end
 
@@ -539,12 +539,12 @@ export
         begin
             let clean = symbols.mangleModuleName(imp.canonicalPath)
             let recordAt = vals.symbolAt(fn symbols.moduleRecordIdent(clean))
-            if maybe.isNone(:Type imp.recordType) then raise vals.unsupported with "module " <> imp.name
+            if maybe.isNone(imp.recordType) then raise vals.unsupported with "module " <> imp.name
                 <> ": its interface is unknown" end end
-            let recType = maybe.unwrap(:Type imp.recordType)
+            let recType = maybe.unwrap(imp.recordType)
             let fields = case recType.form
                 when typeRecord with rt then rt.fields
-                else vector.toArray(:model.RecordField vector.new(:model.RecordField))
+                else vector.toArray(vector.new(:model.RecordField))
             end
             let var fieldType = model.okType
             let var index = 0
@@ -572,16 +572,16 @@ export
     let moduleMember(fn: vals.Fn r: ir.ModuleRef member: maybe.T(String)): Array(Int) =
         case r
             when refModule with x then
-                if maybe.isNone(:String member) then
+                if maybe.isNone(member) then
                     moduleRecord(fn x.m.name)
                 else
-                    vals.read(fn maybe.unwrap(:Variable ir.member(x.m.members maybe.unwrap(:String member))))
+                    vals.read(fn maybe.unwrap(ir.member(x.m.members maybe.unwrap(member))))
                 end
             when refImport with x then
-                if maybe.isNone(:String member) then
+                if maybe.isNone(member) then
                     moduleRecord(fn x.i.canonicalPath)
                 else
-                    importedMember(fn x.i maybe.unwrap(:String member))
+                    importedMember(fn x.i maybe.unwrap(member))
                 end
         end
 end

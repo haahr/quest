@@ -42,13 +42,13 @@ export
 
     let put(o: Object name: String v: Value): Ok =
         begin
-            if not(hashMap.contains(:String :Value o.members name)) then vector.append(:String o.names name) end
-            hashMap.insert(:String :Value o.members name v)
+            if not(hashMap.contains(o.members name)) then vector.append(o.names name) end
+            hashMap.insert(o.members name v)
             ok
         end
 
-    let get(o: Object name: String): maybe.T(Value) = hashMap.get(:String :Value o.members name)
-    let names(o: Object): Array(String) = vector.toArray(:String o.names)
+    let get(o: Object name: String): maybe.T(Value) = hashMap.get(o.members name)
+    let names(o: Object): Array(String) = vector.toArray(o.names)
 
     (* ======================================================================
      * 2. Parsing (json.loads)
@@ -183,7 +183,7 @@ export
                         skipSpace(s)
                         if peek(s) isnot ':' then fail(:Ok) end
                         advance(s)
-                        if s.unique andif hashMap.contains(:String :Value o.members name) then fail(:Ok) end
+                        if s.unique andif hashMap.contains(o.members name) then fail(:Ok) end
                         put(o name parseValue(s))
                         skipSpace(s)
                         if peek(s) is ',' then advance(s)
@@ -202,7 +202,7 @@ export
                 else
                     let var more = true
                     while more do
-                        vector.append(:Value items parseValue(s))
+                        vector.append(items parseValue(s))
                         skipSpace(s)
                         if peek(s) is ',' then advance(s)
                         elsif peek(s) is ']' then begin advance(s) more := false end
@@ -245,12 +245,12 @@ export
 
     let parseShared(text: String): Value =
         begin
-            let known = hashMap.get(:String :Value parsed text)
-            if maybe.isSome(:Value known) then
-                maybe.unwrap(:Value known)
+            let known = hashMap.get(parsed text)
+            if maybe.isSome(known) then
+                maybe.unwrap(known)
             else
                 let v = parse(text)
-                hashMap.insert(:String :Value parsed text v)
+                hashMap.insert(parsed text v)
                 v
             end
         end
@@ -295,9 +295,9 @@ export
             when jArray with x then
                 begin
                     sb.char(b '[')
-                    for i = 0 upto {vector.length(:Value x.items) - 1} do
+                    for i = 0 upto {vector.length(x.items) - 1} do
                         if i > 0 then sb.char(b ',') end
-                        write(b vector.get(:Value x.items i))
+                        write(b vector.get(x.items i))
                     end
                     sb.char(b ']')
                     ok
@@ -305,12 +305,12 @@ export
             when jObject with x then
                 begin
                     sb.char(b '{')
-                    for i = 0 upto {vector.length(:String x.o.names) - 1} do
+                    for i = 0 upto {vector.length(x.o.names) - 1} do
                         if i > 0 then sb.char(b ',') end
-                        let name = vector.get(:String x.o.names i)
+                        let name = vector.get(x.o.names i)
                         quoted(b name)
                         sb.char(b ':')
-                        write(b hashMap.find(:String :Value x.o.members name))
+                        write(b hashMap.find(x.o.members name))
                     end
                     sb.char(b '}')
                     ok
@@ -329,33 +329,33 @@ export
             let newline(depth: Int): Ok = begin sb.char(b '\n') sb.repeat(b ' ' indent * depth) ok end
             case v
                 when jArray with x then
-                    if vector.empty(:Value x.items) then
+                    if vector.empty(x.items) then
                         sb.str(b "[]")
                         ok
                     else
                         sb.char(b '[')
-                        for i = 0 upto {vector.length(:Value x.items) - 1} do
+                        for i = 0 upto {vector.length(x.items) - 1} do
                             if i > 0 then sb.char(b ',') end
                             newline(level + 1)
-                            writeIndented(b vector.get(:Value x.items i) indent {level + 1})
+                            writeIndented(b vector.get(x.items i) indent {level + 1})
                         end
                         newline(level)
                         sb.char(b ']')
                         ok
                     end
                 when jObject with x then
-                    if vector.empty(:String x.o.names) then
+                    if vector.empty(x.o.names) then
                         sb.str(b "{}")
                         ok
                     else
                         sb.char(b '{')
-                        for i = 0 upto {vector.length(:String x.o.names) - 1} do
+                        for i = 0 upto {vector.length(x.o.names) - 1} do
                             if i > 0 then sb.char(b ',') end
                             newline(level + 1)
-                            let name = vector.get(:String x.o.names i)
+                            let name = vector.get(x.o.names i)
                             quoted(b name)
                             sb.str(b ": ")
-                            writeIndented(b hashMap.find(:String :Value x.o.members name) indent {level + 1})
+                            writeIndented(b hashMap.find(x.o.members name) indent {level + 1})
                         end
                         newline(level)
                         sb.char(b '}')

@@ -32,7 +32,7 @@ export
     end
 
     let noType: maybe.T(model.Type) = maybe.none(:model.Type)
-    let typed(t: model.Type): maybe.T(model.Type) = maybe.some(:model.Type t)
+    let typed(t: model.Type): maybe.T(model.Type) = maybe.some(t)
     let noChildren: Array(Child) = array of :Child end
 
     let desc(name: String header: String type: maybe.T(model.Type) children: Array(Child)): Desc =
@@ -59,13 +59,13 @@ export
     let pyIntList(items: Array(Int)): String =
         begin
             let parts = vector.new(:String)
-            for i = 0 upto {extent items - 1} do vector.append(:String parts pyInt(items[i])) end
+            for i = 0 upto {extent items - 1} do vector.append(parts pyInt(items[i])) end
             "[" <> strutil.join(", " parts) <> "]"
         end
 
     let joinSpaced(parts: vector.T(String)): String = strutil.join(" " parts)
 
-    let children(cs: vector.T(Child)): Array(Child) = vector.toArray(:Child cs)
+    let children(cs: vector.T(Child)): Array(Child) = vector.toArray(cs)
 
     let rec exprDesc(e: Expr): Desc =
         begin
@@ -84,7 +84,7 @@ export
                         let params = vector.new(:String)
                         for i = 0 upto {extent x.params - 1} do
                             let p = x.params[i]
-                            vector.append(:String params "(" <> quoted(p.name) <> " : " <> dump.formatCompact(p.type) <> ")")
+                            vector.append(params "(" <> quoted(p.name) <> " : " <> dump.formatCompact(p.type) <> ")")
                         end
                         desc("TypedFun" ":params (" <> joinSpaced(params) <> ")" t array of one(":body" exprDesc(x.body)) end)
                     end
@@ -93,7 +93,7 @@ export
                 when exprTypeApp with x then
                     begin
                         let args = vector.new(:String)
-                        for i = 0 upto {extent x.typeArgs - 1} do vector.append(:String args dump.formatCompact(x.typeArgs[i])) end
+                        for i = 0 upto {extent x.typeArgs - 1} do vector.append(args dump.formatCompact(x.typeArgs[i])) end
                         desc("TypedTypeApp" "[" <> joinSpaced(args) <> "]" t array of one(":func" exprDesc(x.func)) end)
                     end
                 when exprInfix with x then
@@ -104,18 +104,18 @@ export
                         for i = 0 upto {extent x.fields - 1} do
                             let f = x.fields[i]
                             let header = quoted(f.name) <> {if f.isVar then " :var" else "" end}
-                            vector.append(:Desc fields desc("TypedRecordField" header noType array of one(":value" exprDesc(f.value)) end))
+                            vector.append(fields desc("TypedRecordField" header noType array of one(":value" exprDesc(f.value)) end))
                         end
-                        desc("TypedRecord" "" t array of many(":fields" vector.toArray(:Desc fields)) end)
+                        desc("TypedRecord" "" t array of many(":fields" vector.toArray(fields)) end)
                     end
                 when exprTypeWitness with x then
                     desc("TypedTypeWitness" quoted(x.name) <> " = " <> model.show(x.witnessType) noType noChildren)
                 when exprTuple with x then
                     begin
                         let parts = vector.new(:String)
-                        for i = 0 upto {extent x.recGroups - 1} do vector.append(:String parts ":rec " <> pyIntList(x.recGroups[i])) end
+                        for i = 0 upto {extent x.recGroups - 1} do vector.append(parts ":rec " <> pyIntList(x.recGroups[i])) end
                         for i = 0 upto {extent x.simultaneousGroups - 1} do
-                            vector.append(:String parts ":and " <> pyIntList(x.simultaneousGroups[i]))
+                            vector.append(parts ":and " <> pyIntList(x.simultaneousGroups[i]))
                         end
                         desc("TypedTuple" joinSpaced(parts) t array of many(":elements" exprDescs(x.elements)) end)
                     end
@@ -139,7 +139,7 @@ export
                     end)
                 when exprTupleSelectRef with x then
                     begin
-                        let name = maybe.unwrapOr(:String x.field "")
+                        let name = maybe.unwrapOr(x.field "")
                         let field = if stringOp.length(name) > 0 then "." <> name else "._" <> pyInt(x.index) end
                         desc("TypedTupleSelectRef" field <> " (ref)" t array of one(":target" exprDesc(x.target)) end)
                     end
@@ -156,7 +156,7 @@ export
                         let cs = vector.new(:Child)
                         optChild(cs ":ordinal" x.ordinalExpr)
                         optChild(cs ":payload" x.payload)
-                        let header = if maybe.isSome(:String x.tag) then quoted(maybe.unwrap(:String x.tag)) else "ordinal" end
+                        let header = if maybe.isSome(x.tag) then quoted(maybe.unwrap(x.tag)) else "ordinal" end
                         desc("TypedOption" header t children(cs))
                     end
                 when exprAuto with x then
@@ -170,17 +170,17 @@ export
                         let branches = vector.new(:Desc)
                         for i = 0 upto {extent x.branches - 1} do
                             let b = x.branches[i]
-                            let tags = vector.fromArray(:String b.tags)
-                            let binder = if maybe.isSome(:symbols.ValueSymbol b.binder) then
-                                " :binder " <> quoted(maybe.unwrap(:symbols.ValueSymbol b.binder).name)
+                            let tags = vector.fromArray(b.tags)
+                            let binder = if maybe.isSome(b.binder) then
+                                " :binder " <> quoted(maybe.unwrap(b.binder).name)
                             else
                                 ""
                             end
-                            vector.append(:Desc branches desc("TypedCaseBranch" "tags=(" <> strutil.join(", " tags) <> ")" <> binder
+                            vector.append(branches desc("TypedCaseBranch" "tags=(" <> strutil.join(", " tags) <> ")" <> binder
                                 noType array of one(":body" exprDesc(b.body)) end))
                         end
-                        let cs = vector.fromArray(:Child array of
-                            one(":target" exprDesc(x.target)) many(":branches" vector.toArray(:Desc branches))
+                        let cs = vector.fromArray(array of
+                            one(":target" exprDesc(x.target)) many(":branches" vector.toArray(branches))
                         end)
                         optChild(cs ":else" x.elseBranch)
                         desc("TypedCase" "" t children(cs))
@@ -191,10 +191,10 @@ export
                         for i = 0 upto {extent x.branches - 1} do
                             let b = x.branches[i]
                             let header = "match=" <> model.show(b.matchType) <> {if b.exact then " exact" else "" end}
-                            vector.append(:Desc branches desc("TypedInspectBranch" header noType array of one(":body" exprDesc(b.body)) end))
+                            vector.append(branches desc("TypedInspectBranch" header noType array of one(":body" exprDesc(b.body)) end))
                         end
-                        let cs = vector.fromArray(:Child array of
-                            one(":target" exprDesc(x.target)) many(":branches" vector.toArray(:Desc branches))
+                        let cs = vector.fromArray(array of
+                            one(":target" exprDesc(x.target)) many(":branches" vector.toArray(branches))
                         end)
                         optChild(cs ":else" x.elseBranch)
                         desc("TypedInspect" "" t children(cs))
@@ -216,7 +216,7 @@ export
                 when exprException with x then desc("TypedException" quoted(x.name) t noChildren)
                 when exprRaise with x then
                     begin
-                        let cs = vector.fromArray(:Child array of one(":exc" exprDesc(x.exc)) end)
+                        let cs = vector.fromArray(array of one(":exc" exprDesc(x.exc)) end)
                         optChild(cs ":payload" x.payload)
                         desc("TypedRaise" "" t children(cs))
                     end
@@ -225,12 +225,12 @@ export
                         let branches = vector.new(:Desc)
                         for i = 0 upto {extent x.branches - 1} do
                             let b = x.branches[i]
-                            vector.append(:Desc branches desc("TypedTryBranch" "" noType array of
+                            vector.append(branches desc("TypedTryBranch" "" noType array of
                                 one(":exc_pattern" exprDesc(b.excPattern)) one(":body" exprDesc(b.body))
                             end))
                         end
-                        let cs = vector.fromArray(:Child array of
-                            one(":body" exprDesc(x.body)) many(":branches" vector.toArray(:Desc branches))
+                        let cs = vector.fromArray(array of
+                            one(":body" exprDesc(x.body)) many(":branches" vector.toArray(branches))
                         end)
                         optChild(cs ":else" x.elseBranch)
                         desc("TypedTry" "" t children(cs))
@@ -240,11 +240,11 @@ export
     and exprDescs(xs: Array(Expr)): Array(Desc) =
         begin
             let ds = vector.new(:Desc)
-            for i = 0 upto {extent xs - 1} do vector.append(:Desc ds exprDesc(xs[i])) end
-            vector.toArray(:Desc ds)
+            for i = 0 upto {extent xs - 1} do vector.append(ds exprDesc(xs[i])) end
+            vector.toArray(ds)
         end
     and optChild(cs: vector.T(Child) label: String x: maybe.T(Expr)): Ok =
-        if maybe.isSome(:Expr x) then vector.append(:Child cs one(label exprDesc(maybe.unwrap(:Expr x)))) end
+        if maybe.isSome(x) then vector.append(cs one(label exprDesc(maybe.unwrap(x)))) end
     and letValueDesc(v: typedAst.LetValue): Desc =
         desc("TypedLetValue" quoted(v.name) <> {if v.isRec then " :rec" else "" end}
             <> {if v.redefines then " :redefines" else "" end} <> " :type " <>
@@ -259,10 +259,10 @@ export
                     let names = vector.new(:String)
                     let members = vector.new(:Desc)
                     for i = 0 upto {extent x.members - 1} do
-                        vector.append(:String names quoted(x.members[i].name))
-                        vector.append(:Desc members letValueDesc(x.members[i]))
+                        vector.append(names quoted(x.members[i].name))
+                        vector.append(members letValueDesc(x.members[i]))
                     end
-                    desc("TypedLetValueGroup" joinSpaced(names) noType array of many(":members" vector.toArray(:Desc members)) end)
+                    desc("TypedLetValueGroup" joinSpaced(names) noType array of many(":members" vector.toArray(members)) end)
                 end
             when bindLetType with x then letTypeDesc(x.value)
             when bindLetTypeGroup with x then
@@ -270,10 +270,10 @@ export
                     let names = vector.new(:String)
                     let members = vector.new(:Desc)
                     for i = 0 upto {extent x.members - 1} do
-                        vector.append(:String names quoted(x.members[i].name))
-                        vector.append(:Desc members letTypeDesc(x.members[i]))
+                        vector.append(names quoted(x.members[i].name))
+                        vector.append(members letTypeDesc(x.members[i]))
                     end
-                    desc("TypedLetTypeGroup" joinSpaced(names) noType array of many(":members" vector.toArray(:Desc members)) end)
+                    desc("TypedLetTypeGroup" joinSpaced(names) noType array of many(":members" vector.toArray(members)) end)
                 end
             when bindDefKind with x then desc("TypedDefKind" quoted(x.name) <> " :kind " <> model.showKind(x.symbol.kind) noType noChildren)
             when bindExprStmt with x then desc("TypedExprStmt" "" noType array of one(":expr" exprDesc(x.expr)) end)
@@ -288,22 +288,22 @@ export
                     for i = 0 upto {extent x.items - 1} do
                         let item = x.items[i]
                         let names = vector.new(:String)
-                        for j = 0 upto {extent item.names - 1} do vector.append(:String names pyStr(item.names[j])) end
-                        let header = if vector.empty(:String names) then
+                        for j = 0 upto {extent item.names - 1} do vector.append(names pyStr(item.names[j])) end
+                        let header = if vector.empty(names) then
                             ": " <> quoted(item.interfaceName)
                         else
                             "(" <> joinSpaced(names) <> ") : " <> quoted(item.interfaceName)
                         end
-                        vector.append(:Desc items desc("TypedImportItem" header noType noChildren))
+                        vector.append(items desc("TypedImportItem" header noType noChildren))
                     end
-                    desc("TypedImport" "" noType array of many(":items" vector.toArray(:Desc items)) end)
+                    desc("TypedImport" "" noType array of many(":items" vector.toArray(items)) end)
                 end
         end
     and bindingDescs(bs: Array(Binding)): Array(Desc) =
         begin
             let ds = vector.new(:Desc)
-            for i = 0 upto {extent bs - 1} do vector.append(:Desc ds bindingDesc(bs[i])) end
-            vector.toArray(:Desc ds)
+            for i = 0 upto {extent bs - 1} do vector.append(ds bindingDesc(bs[i])) end
+            vector.toArray(ds)
         end
 
     (* ======================================================================
@@ -315,10 +315,10 @@ export
     let rec render(d: Desc indent: Int): String =
         begin
             let parts = vector.new(:String)
-            vector.append(:String parts d.name)
-            if stringOp.length(d.header) > 0 then vector.append(:String parts d.header) end
-            if maybe.isSome(:model.Type d.type) then
-                vector.append(:String parts ":type " <> dump.formatCompact(maybe.unwrap(:model.Type d.type)))
+            vector.append(parts d.name)
+            if stringOp.length(d.header) > 0 then vector.append(parts d.header) end
+            if maybe.isSome(d.type) then
+                vector.append(parts ":type " <> dump.formatCompact(maybe.unwrap(d.type)))
             end
             let header = joinSpaced(parts)
             if extent d.children is 0 then
@@ -326,24 +326,24 @@ export
             else
                 let childPad = pad({indent + 1})
                 let lines = vector.new(:String)
-                vector.append(:String lines "(" <> header)
+                vector.append(lines "(" <> header)
                 for i = 0 upto {extent d.children - 1} do
                     case d.children[i]
-                        when one with c then vector.append(:String lines childPad <> c.label <> " " <> render(c.node {indent + 1}))
+                        when one with c then vector.append(lines childPad <> c.label <> " " <> render(c.node {indent + 1}))
                         when many with c then
                             if extent c.nodes is 0 then
-                                vector.append(:String lines childPad <> c.label <> " ()")
+                                vector.append(lines childPad <> c.label <> " ()")
                             else
-                                vector.append(:String lines childPad <> c.label <> " (")
+                                vector.append(lines childPad <> c.label <> " (")
                                 for j = 0 upto {extent c.nodes - 1} do
-                                    vector.append(:String lines childPad <> "  " <> render(c.nodes[j] {indent + 2}))
+                                    vector.append(lines childPad <> "  " <> render(c.nodes[j] {indent + 2}))
                                 end
-                                vector.append(:String lines childPad <> ")")
+                                vector.append(lines childPad <> ")")
                             end
                     end
                 end
-                let last = vector.length(:String lines) - 1
-                vector.set(:String lines last vector.get(:String lines last) <> ")")
+                let last = vector.length(lines) - 1
+                vector.set(lines last vector.get(lines last) <> ")")
                 strutil.join("\n" lines)
             end
         end

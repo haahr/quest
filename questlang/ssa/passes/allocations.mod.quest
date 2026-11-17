@@ -26,8 +26,8 @@ export
     let spaces(u: ssa.Unit): hashMap.T(String Int) =
         begin
             let m = hashMap.new(:String :Int eq hash.string)
-            for i = 0 upto {vector.length(:ssa.Data u.data) - 1} do
-                let d = vector.get(:ssa.Data u.data i)
+            for i = 0 upto {vector.length(u.data) - 1} do
+                let d = vector.get(u.data i)
                 case d.contents
                     when contentsWords with x then
                         if {extent x.words > 1} andif strutil.startsWith(d.symbol "quest_layout_") then
@@ -35,7 +35,7 @@ export
                                 when wordInt with w then
                                     let flags = w.n / high
                                     let space = if {flags - flags / 2 * 2} is noscanFlag then 1 else 0 end
-                                    begin let ignored = hashMap.insert(:String :Int m d.symbol space) end
+                                    begin let ignored = hashMap.insert(m d.symbol space) end
                                 when wordSymbol then ok
                             end
                         end
@@ -49,13 +49,13 @@ export
      * constants *)
     let constants(f: Function): Tuple isConst: Array(Bool) value: Array(Int) end =
         begin
-            let n = vector.length(:ssa.Type f.types)
+            let n = vector.length(f.types)
             let isConst = array of(n false)
             let value = array of(n 0)
-            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 let blk = ssa.block(f b)
-                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                    let i = vector.get(:ssa.Inst blk.insts k)
+                for k = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts k)
                     if ssa.isOp(i ssa.opConst) then
                         isConst[i.results[0]] := true
                         value[i.results[0]] := i.imm
@@ -69,11 +69,11 @@ export
      * (a layout's address), else "" *)
     let symbolsOf(f: Function): Array(String) =
         begin
-            let found = array of(vector.length(:ssa.Type f.types) "")
-            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+            let found = array of(vector.length(f.types) "")
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 let blk = ssa.block(f b)
-                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                    let i = vector.get(:ssa.Inst blk.insts k)
+                for k = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts k)
                     if ssa.isOp(i ssa.opSymbol) then found[i.results[0]] := i.symbol end
                 end
             end
@@ -87,7 +87,7 @@ export
     let expand(f: Function b: Int k: Int sz: Int space: Int): Ok =
         begin
             let blk = ssa.block(f b)
-            let call = vector.get(:ssa.Inst blk.insts k)
+            let call = vector.get(blk.insts k)
             let layout = call.args[1]
             let obj = call.results[0]
             let at = call.loc
@@ -95,12 +95,12 @@ export
             let total = 8 + {{{sz + 7} / 8} * 8}
             (* The rest of the block, after the call *)
             let tail = vector.new(:ssa.Inst)
-            for j = k + 1 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                vector.append(:ssa.Inst tail vector.get(:ssa.Inst blk.insts j))
+            for j = k + 1 upto {vector.length(blk.insts) - 1} do
+                vector.append(tail vector.get(blk.insts j))
             end
             let term = blk.term
             let termLoc = blk.termLoc
-            while vector.length(:ssa.Inst blk.insts) > k do begin let ignored = vector.pop(:ssa.Inst blk.insts) end end
+            while vector.length(blk.insts) > k do begin let ignored = vector.pop(blk.insts) end end
             let put = fun(b2: Int i: ssa.Inst): Ok begin i.loc := at ssa.append(f b2 i) end
             let value = fun(b2: Int op: ssa.Opcode args: Array(Int) t: ssa.Type imm: Int symbol: String width: Int
                 signed: Bool): Int
@@ -158,7 +158,7 @@ export
              * call *)
             let moved = ssa.block(f rest)
             let baseParam = ssa.newValue(f ssa.typeInt)
-            vector.append(:Int moved.params baseParam)
+            vector.append(moved.params baseParam)
             (* The address the bump gives, the header word's, stays an int
              * here: the object's own is the first ptr the rest of the block
              * has. A ptr at the header would be live wherever the object is
@@ -177,8 +177,8 @@ export
             let mask = binary(rest ssa.opShl constant(rest 1) binary(rest ssa.opAnd index constant(rest 7)))
             let old = value(rest ssa.opLoad array of byteAt end ssa.typeInt 0 "" 1 false)
             store(rest byteAt binary(rest ssa.opOr old mask) 1)
-            for j = 0 upto {vector.length(:ssa.Inst tail) - 1} do
-                vector.append(:ssa.Inst moved.insts vector.get(:ssa.Inst tail j))
+            for j = 0 upto {vector.length(tail) - 1} do
+                vector.append(moved.insts vector.get(tail j))
             end
             moved.term := term
             moved.termLoc := termLoc
@@ -193,16 +193,16 @@ export
             let var b = 0
             (* The blocks the expansions add hold the rest of a block, and are
              * reached in turn *)
-            while b < vector.length(:ssa.Block f.blocks) do
+            while b < vector.length(f.blocks) do
                 let blk = ssa.block(f b)
                 let var k = 0
                 let var expanded = false
-                while not(expanded) andif {k < vector.length(:ssa.Inst blk.insts)} do
-                    let i = vector.get(:ssa.Inst blk.insts k)
+                while not(expanded) andif {k < vector.length(blk.insts)} do
+                    let i = vector.get(blk.insts k)
                     if ssa.isOp(i ssa.opCall) andif eq(i.symbol "quest_alloc") andif {extent i.args is 2}
                         andif {extent i.results is 1} andif cs.isConst[i.args[0]] then
-                        let space = hashMap.get(:String :Int spaces symbolOf(i.args[1]))
-                        expand(f b k cs.value[i.args[0]] maybe.unwrapOr(:Int space 0))
+                        let space = hashMap.get(spaces symbolOf(i.args[1]))
+                        expand(f b k cs.value[i.args[0]] maybe.unwrapOr(space 0))
                         expanded := true
                     end
                     k := k + 1
@@ -214,8 +214,8 @@ export
     let inlineUnit(u: ssa.Unit): Ok =
         begin
             let m = spaces(u)
-            for i = 0 upto {vector.length(:ssa.Function u.functions) - 1} do
-                inlineFunction(vector.get(:ssa.Function u.functions i) m)
+            for i = 0 upto {vector.length(u.functions) - 1} do
+                inlineFunction(vector.get(u.functions i) m)
             end
         end
 end

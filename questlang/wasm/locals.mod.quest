@@ -58,9 +58,9 @@ export
     let reuseIn(f: model.Function): Ok =
         begin
             let nparams = extent f.params
-            let n = vector.length(:model.Local f.locals)
+            let n = vector.length(f.locals)
             let body = f.body
-            let size = vector.length(:Inst body)
+            let size = vector.length(body)
             if n > 0 then
                 let first = array of(n ~1)
                 let last = array of(n ~1)
@@ -70,14 +70,14 @@ export
                 let loops = vector.new(:Range)
                 let opened = vector.new(:Int)
                 for i = 0 upto size - 1 do
-                    let inst = vector.get(:Inst body i)
+                    let inst = vector.get(body i)
                     case inst
                         when instBlock with b then
-                            vector.append(:Int opened if b.kind?kindLoop then i else ~1 end)
-                        when instTryTable then vector.append(:Int opened ~1)
+                            vector.append(opened if b.kind?kindLoop then i else ~1 end)
+                        when instTryTable then vector.append(opened ~1)
                         when instEnd then
-                            let start = vector.pop(:Int opened)
-                            if start >= 0 then vector.append(:Range loops tuple let start = start let stop = i end) end
+                            let start = vector.pop(opened)
+                            if start >= 0 then vector.append(loops tuple let start = start let stop = i end) end
                         else
                             let k = localOf(inst) - nparams
                             if k >= 0 then
@@ -96,8 +96,8 @@ export
                  * loop. One set and used only inside the loop keeps its
                  * range. Inner loops come first, so an outer loop sees the
                  * ranges an inner one widened. *)
-                for j = 0 upto vector.length(:Range loops) - 1 do
-                    let range = vector.get(:Range loops j)
+                for j = 0 upto vector.length(loops) - 1 do
+                    let range = vector.get(loops j)
                     for k = 0 upto n - 1 do
                         if {first[k] >= 0} andif {first[k] <= range.stop} andif {last[k] >= range.start} then
                             let inside = {first[k] > range.start} andif {last[k] < range.stop}
@@ -112,8 +112,8 @@ export
                  * first, which keeps locals of one start in index order;
                  * each takes the first slot of its type free by then *)
                 let order = vector.new(:Int)
-                for k = 0 upto n - 1 do if first[k] >= 0 then vector.append(:Int order k) end end
-                let sorted = vector.toArray(:Int order)
+                for k = 0 upto n - 1 do if first[k] >= 0 then vector.append(order k) end end
+                let sorted = vector.toArray(order)
                 let byStart = array of(size + 1 0)
                 for i = 0 upto extent sorted - 1 do byStart[first[sorted[i]]] := byStart[first[sorted[i]]] + 1 end
                 let var total = 0
@@ -136,43 +136,43 @@ export
                 let ofType = hashMap.new(:String :vector.T(Int) stringOp.equal hash.string)
                 for i = 0 upto extent ordered - 1 do
                     let k = ordered[i]
-                    let local = vector.get(:model.Local f.locals k)
+                    let local = vector.get(f.locals k)
                     let key = typeKey(local.type)
-                    if not(hashMap.contains(:String :vector.T(Int) ofType key)) then
-                        let added = hashMap.insert(:String :vector.T(Int) ofType key vector.new(:Int))
+                    if not(hashMap.contains(ofType key)) then
+                        let added = hashMap.insert(ofType key vector.new(:Int))
                     end
-                    let candidates = hashMap.find(:String :vector.T(Int) ofType key)
+                    let candidates = hashMap.find(ofType key)
                     let var found = ~1
                     let var c = 0
-                    while {found < 0} andif {c < vector.length(:Int candidates)} do
-                        let s = vector.get(:Int candidates c)
-                        if vector.get(:Int slotEnds s) < first[k] then found := s end
+                    while {found < 0} andif {c < vector.length(candidates)} do
+                        let s = vector.get(candidates c)
+                        if vector.get(slotEnds s) < first[k] then found := s end
                         c := c + 1
                     end
                     if found < 0 then
-                        found := vector.length(:model.Local slots)
-                        vector.append(:model.Local slots local)
-                        vector.append(:Int slotEnds last[k])
-                        vector.append(:Int candidates found)
+                        found := vector.length(slots)
+                        vector.append(slots local)
+                        vector.append(slotEnds last[k])
+                        vector.append(candidates found)
                     else
-                        vector.set(:Int slotEnds found last[k])
+                        vector.set(slotEnds found last[k])
                     end
                     slotOf[k] := found
                 end
                 for i = 0 upto size - 1 do
-                    let inst = vector.get(:Inst body i)
+                    let inst = vector.get(body i)
                     let k = localOf(inst) - nparams
-                    if k >= 0 then vector.set(:Inst body i rewrite(inst nparams + slotOf[k])) end
+                    if k >= 0 then vector.set(body i rewrite(inst nparams + slotOf[k])) end
                 end
-                vector.clear(:model.Local f.locals)
-                for s = 0 upto vector.length(:model.Local slots) - 1 do
-                    vector.append(:model.Local f.locals vector.get(:model.Local slots s))
+                vector.clear(f.locals)
+                for s = 0 upto vector.length(slots) - 1 do
+                    vector.append(f.locals vector.get(slots s))
                 end
             end
         end
 
     let reuse(m: model.Module): Ok =
-        for i = 0 upto vector.length(:model.Function m.functions) - 1 do
-            reuseIn(vector.get(:model.Function m.functions i))
+        for i = 0 upto vector.length(m.functions) - 1 do
+            reuseIn(vector.get(m.functions i))
         end
 end

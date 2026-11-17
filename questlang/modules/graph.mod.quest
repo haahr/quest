@@ -38,30 +38,30 @@ export
     let isInterface(k: units.UnitKind): Bool = case k when interfaceUnit then true else false end
 
     let canonicalName(r: Resolved): String =
-        if maybe.isSome(:String r.canonical) then
-            maybe.unwrap(:String r.canonical)
+        if maybe.isSome(r.canonical) then
+            maybe.unwrap(r.canonical)
         else
             let name = if isInterface(r.kind) then
                 (* Its unit file: its source, else its prebuilt .qi *)
-                let file = if maybe.isSome(:String r.source) then r.source else r.prebuilt end
-                if maybe.isSome(:String file) then
-                    paths.canonicalizeModulePath(maybe.unwrap(:String file) r.roots.searchPaths r.roots.programDir)
+                let file = if maybe.isSome(r.source) then r.source else r.prebuilt end
+                if maybe.isSome(file) then
+                    paths.canonicalizeModulePath(maybe.unwrap(file) r.roots.searchPaths r.roots.programDir)
                 else
                     paths.lower(r.path)
                 end
             else
                 paths.canonicalizeModuleName(r.source r.roots.searchPaths r.path r.roots.programDir)
             end
-            r.canonical := maybe.some(:String name)
+            r.canonical := maybe.some(name)
             name
         end
 
     let interfaceName(r: Resolved): String =
-        if maybe.isSome(:String r.ifaceName) then
-            maybe.unwrap(:String r.ifaceName)
+        if maybe.isSome(r.ifaceName) then
+            maybe.unwrap(r.ifaceName)
         else
             let name = paths.canonicalizeInterfaceName(r.source r.roots.searchPaths r.path r.roots.programDir)
-            r.ifaceName := maybe.some(:String name)
+            r.ifaceName := maybe.some(name)
             name
         end
 
@@ -76,8 +76,8 @@ export
     (* The memo's key of a resolution *)
     let keyOf(kind: String path: String fromDir: maybe.T(String) roots: Roots): String =
         begin
-            kind <> "\n" <> path <> "\n" <> maybe.unwrapOr(:String fromDir "") <> "\n"
-                <> maybe.unwrapOr(:String roots.programDir "") <> "\n" <> roots.questLib
+            kind <> "\n" <> path <> "\n" <> maybe.unwrapOr(fromDir "") <> "\n"
+                <> maybe.unwrapOr(roots.programDir "") <> "\n" <> roots.questLib
                 <> if extent roots.searchPaths > 0 then "\n" <> strutil.joinArray("\n" roots.searchPaths) else "" end
         end
 
@@ -91,12 +91,12 @@ export
 
     let memoized(res: Resolver key: String make: All() Resolved): Resolved =
         begin
-            let found = hashMap.get(:String :Resolved res.memo key)
-            if maybe.isSome(:Resolved found) then
-                maybe.unwrap(:Resolved found)
+            let found = hashMap.get(res.memo key)
+            if maybe.isSome(found) then
+                maybe.unwrap(found)
             else
                 let r = make()
-                hashMap.insert(:String :Resolved res.memo key r)
+                hashMap.insert(res.memo key r)
                 r
             end
         end
@@ -107,7 +107,7 @@ export
                 let source = paths.resolveInterfaceSourceFile(path fromDir roots.searchPaths)
                 (* Without a source, the first .qi on the search path, whatever
                  * its ABI version (loading it reports an incompatible one) *)
-                let prebuilt = if maybe.isNone(:String source) then
+                let prebuilt = if maybe.isNone(source) then
                     paths.resolveInterfaceFile(path fromDir roots.searchPaths)
                     else maybe.none(:String)
                 end
@@ -120,9 +120,9 @@ export
                 let own = paths.resolveModuleFile(path fromDir roots.searchPaths)
                 let r = resolved(option moduleUnit of units.UnitKind end path fromDir roots own maybe.none(:String))
                 (* Its variant's file has its canonical name *)
-                if maybe.isSome(:String own) then
-                    let chosen = paths.chooseVariant(maybe.unwrap(:String own) res.variantOf(canonicalName(r)))
-                    resolved(option moduleUnit of units.UnitKind end path fromDir roots maybe.some(:String chosen)
+                if maybe.isSome(own) then
+                    let chosen = paths.chooseVariant(maybe.unwrap(own) res.variantOf(canonicalName(r)))
+                    resolved(option moduleUnit of units.UnitKind end path fromDir roots maybe.some(chosen)
                         maybe.none(:String))
                 else r end
             end)
@@ -130,15 +130,15 @@ export
     let resolveFile(res: Resolver file: String roots: Roots): Resolved =
         memoized(res keyOf("file" file maybe.none(:String) roots) fun(): Resolved
             resolved(units.unitKind(file) paths.stripUnitSuffix(files.baseName(file))
-                maybe.some(:String files.parent(file)) roots maybe.some(:String file) maybe.none(:String)))
+                maybe.some(files.parent(file)) roots maybe.some(file) maybe.none(:String)))
 
     let artifactName(r: Resolved): String =
-        if maybe.isNone(:String r.source) then paths.lower(r.path)
-        else paths.canonicalizeModulePath(maybe.unwrap(:String r.source) r.roots.searchPaths r.roots.programDir)
+        if maybe.isNone(r.source) then paths.lower(r.path)
+        else paths.canonicalizeModulePath(maybe.unwrap(r.source) r.roots.searchPaths r.roots.programDir)
         end
 
     let freshInterfaceQi(r: Resolved): maybe.T(String) =
-        if maybe.isNone(:String r.source) then r.prebuilt
+        if maybe.isNone(r.source) then r.prebuilt
         else paths.resolveInterfaceFile(r.path r.fromDir r.roots.searchPaths)
         end
 
@@ -153,28 +153,28 @@ export
     (* The import paths of the interface in source, which was modified at time
      * if it is a regular file *)
     let importPathsAt(source: String time: maybe.T(Int)): Array(String) =
-        if maybe.isNone(:Int time) then
-            vector.toArray(:String vector.new(:String))
+        if maybe.isNone(time) then
+            vector.toArray(vector.new(:String))
         else
-            let key = files.absolute(source) <> "\n" <> conv.int(maybe.unwrap(:Int time))
-            let found = hashMap.get(:String :Array(String) importPathsMemo key)
-            if maybe.isSome(:Array(String) found) then
-                maybe.unwrap(:Array(String) found)
+            let key = files.absolute(source) <> "\n" <> conv.int(maybe.unwrap(time))
+            let found = hashMap.get(importPathsMemo key)
+            if maybe.isSome(found) then
+                maybe.unwrap(found)
             else
                 let result = vector.new(:String)
                 (* A file that cannot be read or parsed imports nothing here;
                  * compiling it reports why *)
                 try
                     let text = files.readText(source)
-                    if maybe.isSome(:String text) then
-                        let prog = units.parseUnit(location.newSourceMap(source maybe.unwrap(:String text)))
-                        if vector.length(:ast.Phrase prog.form.phrases) is 1 then
-                            case vector.get(:ast.Phrase prog.form.phrases 0).form
+                    if maybe.isSome(text) then
+                        let prog = units.parseUnit(location.newSourceMap(source maybe.unwrap(text)))
+                        if vector.length(prog.form.phrases) is 1 then
+                            case vector.get(prog.form.phrases 0).form
                                 when phraseInterface with x then
-                                    for i = 0 upto {vector.length(:ast.ImportItem x.iface.imports) - 1} do
-                                        let imp = vector.get(:ast.ImportItem x.iface.imports i)
-                                        vector.append(:String result
-                                            maybe.unwrapOr(:String imp.interfacePath imp.interfaceName))
+                                    for i = 0 upto {vector.length(x.iface.imports) - 1} do
+                                        let imp = vector.get(x.iface.imports i)
+                                        vector.append(result
+                                            maybe.unwrapOr(imp.interfacePath imp.interfaceName))
                                     end
                                 else ok
                             end
@@ -183,8 +183,8 @@ export
                 when diagnostics.compilerError then
                     ok
                 end
-                let imports = vector.toArray(:String result)
-                hashMap.insert(:String :Array(String) importPathsMemo key imports)
+                let imports = vector.toArray(result)
+                hashMap.insert(importPathsMemo key imports)
                 imports
             end
         end
@@ -198,7 +198,7 @@ export
             let deps = vector.new(:paths.InterfaceDependency)
             let seen = hashMap.new(:String :Bool stringOp.equal hash.string)
             let visited = hashMap.new(:String :Bool stringOp.equal hash.string)
-            hashMap.insert(:String :Bool visited files.absolute(source) true)
+            hashMap.insert(visited files.absolute(source) true)
             let rec visit(importer: String): Ok =
                 begin
                     let importerDir = files.absolute(files.parent(importer))
@@ -206,27 +206,27 @@ export
                     for i = 0 upto {extent imported - 1} do
                         let path = imported[i]
                         let key = importerDir <> "\n" <> path
-                        if not(hashMap.contains(:String :Bool seen key)) then
-                            hashMap.insert(:String :Bool seen key true)
+                        if not(hashMap.contains(seen key)) then
+                            hashMap.insert(seen key true)
                             let depSource =
-                                resolveInterface(res path maybe.some(:String files.parent(importer)) roots).source
-                            vector.append(:paths.InterfaceDependency deps tuple
-                                let path = path let dir = importerDir let source = maybe.unwrapOr(:String depSource "")
+                                resolveInterface(res path maybe.some(files.parent(importer)) roots).source
+                            vector.append(deps tuple
+                                let path = path let dir = importerDir let source = maybe.unwrapOr(depSource "")
                             end)
-                            if maybe.isSome(:String depSource)
+                            if maybe.isSome(depSource)
                                 andif
-                                    not(hashMap.contains(:String :Bool visited
-                                    files.absolute(maybe.unwrap(:String depSource)))) then
-                                hashMap.insert(:String :Bool visited files.absolute(maybe.unwrap(:String depSource))
+                                    not(hashMap.contains(visited
+                                    files.absolute(maybe.unwrap(depSource)))) then
+                                hashMap.insert(visited files.absolute(maybe.unwrap(depSource))
                                     true)
-                                visit(maybe.unwrap(:String depSource))
+                                visit(maybe.unwrap(depSource))
                             end
                         end
                     end
                     ok
                 end
             visit(source)
-            vector.toArray(:paths.InterfaceDependency deps)
+            vector.toArray(deps)
         end
 
     let unitArtifactDir(buildDir: String canonicalName: String): String =
@@ -272,39 +272,39 @@ export
     let unit(g: UnitGraph kind: units.UnitKind canonicalName: String): Unit =
         begin
             let key = unitKey(kind canonicalName)
-            let found = hashMap.get(:String :Unit g.units key)
-            if maybe.isSome(:Unit found) then
-                maybe.unwrap(:Unit found)
+            let found = hashMap.get(g.units key)
+            if maybe.isSome(found) then
+                maybe.unwrap(found)
             else
                 let u: Unit = tuple
                     let kind = kind let canonicalName = canonicalName let var scope = maybe.none(:symbols.Scope)
                     let var typedModule = maybe.none(:typedAst.Binding) let var exportScope = maybe.none(:symbols.Scope)
                     let var precompiled = false
                 end
-                hashMap.insert(:String :Unit g.units key u)
+                hashMap.insert(g.units key u)
                 u
             end
         end
 
     let find(g: UnitGraph kind: units.UnitKind canonicalName: String): maybe.T(Unit) =
-        hashMap.get(:String :Unit g.units unitKey(kind canonicalName))
+        hashMap.get(g.units unitKey(kind canonicalName))
 
     let interfaceScope(g: UnitGraph canonicalName: String): maybe.T(symbols.Scope) =
         begin
             let found = find(g option interfaceUnit of units.UnitKind end canonicalName)
-            if maybe.isSome(:Unit found) then maybe.unwrap(:Unit found).scope else maybe.none(:symbols.Scope) end
+            if maybe.isSome(found) then maybe.unwrap(found).scope else maybe.none(:symbols.Scope) end
         end
 
     let typedModule(g: UnitGraph canonicalName: String): maybe.T(typedAst.Binding) =
         begin
             let found = find(g option moduleUnit of units.UnitKind end canonicalName)
-            if maybe.isSome(:Unit found) then maybe.unwrap(:Unit found).typedModule else maybe.none(:typedAst.Binding) end
+            if maybe.isSome(found) then maybe.unwrap(found).typedModule else maybe.none(:typedAst.Binding) end
         end
 
     let isPrecompiled(g: UnitGraph name: String): Bool =
         begin
             let found = find(g option moduleUnit of units.UnitKind end name)
-            maybe.isSome(:Unit found) andif maybe.unwrap(:Unit found).precompiled
+            maybe.isSome(found) andif maybe.unwrap(found).precompiled
         end
 
     Let NamedScope = Tuple name: String scope: symbols.Scope end
@@ -312,47 +312,47 @@ export
     let interfaceScopes(g: UnitGraph): Array(NamedScope) =
         begin
             let result = vector.new(:NamedScope)
-            let all = hashMap.values(:String :Unit g.units)
-            for i = 0 upto {vector.length(:Unit all) - 1} do
-                let u = vector.get(:Unit all i)
-                if isInterface(u.kind) andif maybe.isSome(:symbols.Scope u.scope) then
-                    vector.append(:NamedScope result tuple
-                        let name = u.canonicalName let scope = maybe.unwrap(:symbols.Scope u.scope)
+            let all = hashMap.values(g.units)
+            for i = 0 upto {vector.length(all) - 1} do
+                let u = vector.get(all i)
+                if isInterface(u.kind) andif maybe.isSome(u.scope) then
+                    vector.append(result tuple
+                        let name = u.canonicalName let scope = maybe.unwrap(u.scope)
                     end)
                 end
             end
-            vector.toArray(:NamedScope result)
+            vector.toArray(result)
         end
 
     let exportScopes(g: UnitGraph): Array(NamedScope) =
         begin
             let result = vector.new(:NamedScope)
-            let all = hashMap.values(:String :Unit g.units)
-            for i = 0 upto {vector.length(:Unit all) - 1} do
-                let u = vector.get(:Unit all i)
+            let all = hashMap.values(g.units)
+            for i = 0 upto {vector.length(all) - 1} do
+                let u = vector.get(all i)
                 let isModule = case u.kind when moduleUnit then true else false end
-                if isModule andif maybe.isSome(:symbols.Scope u.exportScope) then
-                    vector.append(:NamedScope result tuple
-                        let name = u.canonicalName let scope = maybe.unwrap(:symbols.Scope u.exportScope)
+                if isModule andif maybe.isSome(u.exportScope) then
+                    vector.append(result tuple
+                        let name = u.canonicalName let scope = maybe.unwrap(u.exportScope)
                     end)
                 end
             end
-            vector.toArray(:NamedScope result)
+            vector.toArray(result)
         end
 
     let adopt(g: UnitGraph interfaceScopes: Array(NamedScope) exportScopes: Array(NamedScope)): Ok =
         begin
             for i = 0 upto {extent interfaceScopes - 1} do
                 let n = interfaceScopes[i]
-                unit(g option interfaceUnit of units.UnitKind end n.name).scope := maybe.some(:symbols.Scope n.scope)
+                unit(g option interfaceUnit of units.UnitKind end n.name).scope := maybe.some(n.scope)
             end
             for i = 0 upto {extent exportScopes - 1} do
                 let n = exportScopes[i]
-                unit(g option moduleUnit of units.UnitKind end n.name).exportScope := maybe.some(:symbols.Scope n.scope)
+                unit(g option moduleUnit of units.UnitKind end n.name).exportScope := maybe.some(n.scope)
             end
         end
 
-    let newSession(g: UnitGraph): Ok = hashMap.clear(:String :Resolved g.resolver.memo)
+    let newSession(g: UnitGraph): Ok = hashMap.clear(g.resolver.memo)
 
     Let Snapshot = Array(Unit)
 
@@ -364,14 +364,14 @@ export
         end
 
     let snapshot(g: UnitGraph): Snapshot =
-        vector.toArray(:Unit vector.map(:Unit :Unit hashMap.values(:String :Unit g.units) copyUnit))
+        vector.toArray(vector.map(hashMap.values(g.units) copyUnit))
 
     let restore(g: UnitGraph snap: Snapshot): Ok =
         begin
-            hashMap.clear(:String :Unit g.units)
+            hashMap.clear(g.units)
             (* Copies, so that the snapshot can be restored again *)
             for i = 0 upto {extent snap - 1} do
-                hashMap.insert(:String :Unit g.units unitKey(snap[i].kind snap[i].canonicalName) copyUnit(snap[i]))
+                hashMap.insert(g.units unitKey(snap[i].kind snap[i].canonicalName) copyUnit(snap[i]))
             end
         end
 end

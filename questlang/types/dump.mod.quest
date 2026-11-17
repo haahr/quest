@@ -24,9 +24,9 @@ export
 
     let withIds(ids: Array(Int) more: vector.T(Int)): Array(Int) =
         begin
-            let all = vector.fromArray(:Int ids)
-            for i = 0 upto {vector.length(:Int more) - 1} do vector.append(:Int all vector.get(:Int more i)) end
-            vector.toArray(:Int all)
+            let all = vector.fromArray(ids)
+            for i = 0 upto {vector.length(more) - 1} do vector.append(all vector.get(more i)) end
+            vector.toArray(all)
         end
 
     (* ======================================================================
@@ -65,7 +65,7 @@ export
                     begin
                         let args = vector.new(:String)
                         for i = 0 upto {extent x.arguments - 1} do
-                            vector.append(:String args compact(x.arguments[i] visited depth))
+                            vector.append(args compact(x.arguments[i] visited depth))
                         end
                         compact(x.constructor visited depth) <> "(" <> joined(args) <> ")"
                     end
@@ -76,7 +76,7 @@ export
                         let params = vector.new(:String)
                         for i = 0 upto {extent x.params - 1} do
                             let bound = compactKind(x.params[i].bound visited {depth + 1})
-                            vector.append(:String params x.params[i].name <> " :: " <> bound)
+                            vector.append(params x.params[i].name <> " :: " <> bound)
                         end
                         "Fun(" <> joined(params) <> ") " <> compact(x.body visited {depth + 1})
                     end
@@ -89,7 +89,7 @@ export
                             let p = x.params[i]
                             let prefix = if p.isVar then "var " elsif p.isOut then "out " else "" end
                             let ts = compact(p.type visited {depth + 1})
-                            vector.append(:String params
+                            vector.append(params
                                 if stringOp.length(p.name) > 0 then prefix <> p.name <> ": " <> ts else ts end)
                         end
                         "Fun(" <> joined(params) <> "): " <> compact(x.result visited {depth + 1})
@@ -100,13 +100,13 @@ export
                     else
                         let quantifiers = vector.new(:String)
                         for i = 0 upto {extent x.quantifiers - 1} do
-                            vector.append(:String quantifiers model.showQuantifier(x.quantifiers[i]))
+                            vector.append(quantifiers model.showQuantifier(x.quantifiers[i]))
                         end
                         "All(" <> joined(quantifiers) <> ") " <> compact(x.body visited {depth + 1})
                     end
                 when typeRecord with x then
-                    if maybe.isSome(:String x.provenance) then
-                        "Module '" <> maybe.unwrap(:String x.provenance) <> "'"
+                    if maybe.isSome(x.provenance) then
+                        "Module '" <> maybe.unwrap(x.provenance) <> "'"
                     elsif depth > 3 then
                         "Record ... end"
                     else
@@ -115,9 +115,9 @@ export
                             let f = x.fields[i]
                             let prefix = if f.isVar then "var " else "" end
                             let ts = compact(f.type visited {depth + 1})
-                            vector.append(:String fields prefix <> f.name <> ": " <> ts)
+                            vector.append(fields prefix <> f.name <> ": " <> ts)
                         end
-                        if vector.empty(:String fields) then "Record end" else "Record " <> joined(fields) <> " end" end
+                        if vector.empty(fields) then "Record end" else "Record " <> joined(fields) <> " end" end
                     end
                 when typeTuple with x then
                     if depth > 3 then
@@ -125,12 +125,12 @@ export
                     else
                         let parts = vector.new(:String)
                         for i = 0 upto {extent x.fields - 1} do
-                            vector.append(:String parts case x.fields[i]
+                            vector.append(parts case x.fields[i]
                                 when tupleField with f then
                                     begin
                                         let prefix = if f.isVar then "var " else "" end
                                         let ts = compact(f.type visited {depth + 1})
-                                        let name = maybe.unwrapOr(:String f.name "")
+                                        let name = maybe.unwrapOr(f.name "")
                                         if stringOp.length(name) > 0 then
                                             prefix <> name <> ": " <> ts
                                         else
@@ -143,7 +143,7 @@ export
                                     "Type " <> f.name <> " :: " <> compactKind(f.bound visited {depth + 1})
                             end)
                         end
-                        if vector.empty(:String parts) then "Tuple end" else "Tuple " <> joined(parts) <> " end" end
+                        if vector.empty(parts) then "Tuple end" else "Tuple " <> joined(parts) <> " end" end
                     end
                 when typeVariant with x then
                     if depth > 3 then
@@ -152,15 +152,15 @@ export
                         let parts = vector.new(:String)
                         for i = 0 upto {extent x.variants - 1} do
                             let v = x.variants[i]
-                            let payload = maybe.unwrapOr(:Type v.type model.okType)
-                            vector.append(:String parts if not(model.same(payload model.okType)) then
+                            let payload = maybe.unwrapOr(v.type model.okType)
+                            vector.append(parts if not(model.same(payload model.okType)) then
                                 {if v.isVar then "var " else "" end} <> v.name <> ": " <>
                                     compact(payload visited {depth + 1})
                             else
                                 v.name
                             end)
                         end
-                        if vector.empty(:String parts) then "Variant end" else "Variant " <> joined(parts) <> " end" end
+                        if vector.empty(parts) then "Variant end" else "Variant " <> joined(parts) <> " end" end
                     end
                 when typeOption with x then
                     if depth > 3 then
@@ -169,19 +169,19 @@ export
                         let parts = vector.new(:String)
                         for i = 0 upto {extent x.options - 1} do
                             let o = x.options[i]
-                            vector.append(:String parts if maybe.isSome(:Type o.payload) then
-                                o.name <> " with " <> compact(maybe.unwrap(:Type o.payload) visited {depth + 1})
+                            vector.append(parts if maybe.isSome(o.payload) then
+                                o.name <> " with " <> compact(maybe.unwrap(o.payload) visited {depth + 1})
                             else
                                 o.name
                             end)
                         end
-                        if vector.empty(:String parts) then "Option end" else "Option " <> joined(parts) <> " end" end
+                        if vector.empty(parts) then "Option end" else "Option " <> joined(parts) <> " end" end
                     end
                 when typeRec with x then
                     if hasId(visited x.symbolId) orif {depth > 1} then
                         x.varName
                     else
-                        let seen = withIds(visited vector.fromArray(:Int array of x.symbolId end))
+                        let seen = withIds(visited vector.fromArray(array of x.symbolId end))
                         "Rec(" <> x.varName <> " :: " <> compactKind(x.bound seen {depth + 1}) <> ") " <>
                             compact(x.body seen {depth + 1})
                     end
@@ -192,7 +192,7 @@ export
                             b.name
                         else
                             let ids = vector.new(:Int)
-                            for i = 0 upto {extent x.bindings - 1} do vector.append(:Int ids x.bindings[i].symbolId) end
+                            for i = 0 upto {extent x.bindings - 1} do vector.append(ids x.bindings[i].symbolId) end
                             let seen = withIds(visited ids)
                             "Rec(" <> b.name <> " :: " <> compactKind(b.bound seen {depth + 1}) <> ") " <>
                                 compact(b.body seen {depth + 1})
@@ -275,12 +275,12 @@ export
                     else
                         let lines = vector.new(:String)
                         for i = 0 upto {extent x.fields - 1} do
-                            vector.append(:String lines case x.fields[i]
+                            vector.append(lines case x.fields[i]
                                 when tupleTypeFormal with f then
                                     p <> "    (QTupleTypeFormal '" <> f.name <> "' #" <> conv.int(f.symbolId) <>
                                         " :: " <> model.showKind(f.bound) <> ")"
                                 when tupleField with f then
-                                    p <> "    (QTupleField " <> maybe.unwrapOr(:String f.name "") <>
+                                    p <> "    (QTupleField " <> maybe.unwrapOr(f.name "") <>
                                         {if f.isVar then " :var" else "" end} <> " " <> typeDump(f.type {indent + 2}) <>
                                         ")"
                                 when tupleTypeBinding with f then
@@ -297,7 +297,7 @@ export
                         let lines = vector.new(:String)
                         for i = 0 upto {extent x.fields - 1} do
                             let f = x.fields[i]
-                            vector.append(:String lines p <> "    (QRecordField '" <> f.name <> "'" <>
+                            vector.append(lines p <> "    (QRecordField '" <> f.name <> "'" <>
                                 {if f.isVar then " :var" else "" end} <> " " <> typeDump(f.type {indent + 2}) <> ")")
                         end
                         "(QRecordType\n" <> p <> "  :fields (\n" <> joinLines(lines) <> "\n" <> p <> "  ))"
@@ -309,12 +309,12 @@ export
                         let lines = vector.new(:String)
                         for i = 0 upto {extent x.variants - 1} do
                             let v = x.variants[i]
-                            let payload = if maybe.isSome(:Type v.type) then
-                                " " <> typeDump(maybe.unwrap(:Type v.type) {indent + 2})
+                            let payload = if maybe.isSome(v.type) then
+                                " " <> typeDump(maybe.unwrap(v.type) {indent + 2})
                             else
                                 ""
                             end
-                            vector.append(:String lines p <> "    (QVariantField '" <> v.name <> "'" <> payload <> ")")
+                            vector.append(lines p <> "    (QVariantField '" <> v.name <> "'" <> payload <> ")")
                         end
                         "(QVariantType\n" <> p <> "  :variants (\n" <> joinLines(lines) <> "\n" <> p <> "  ))"
                     end
@@ -325,12 +325,12 @@ export
                         let lines = vector.new(:String)
                         for i = 0 upto {extent x.options - 1} do
                             let o = x.options[i]
-                            let payload = if maybe.isSome(:Type o.payload) then
-                                " " <> typeDump(maybe.unwrap(:Type o.payload) {indent + 2})
+                            let payload = if maybe.isSome(o.payload) then
+                                " " <> typeDump(maybe.unwrap(o.payload) {indent + 2})
                             else
                                 ""
                             end
-                            vector.append(:String lines p <> "    (QOptionField '" <> o.name <> "'" <> payload <> ")")
+                            vector.append(lines p <> "    (QOptionField '" <> o.name <> "'" <> payload <> ")")
                         end
                         "(QOptionType\n" <> p <> "  :options (\n" <> joinLines(lines) <> "\n" <> p <> "  ))"
                     end
@@ -340,7 +340,7 @@ export
                         for i = 0 upto {extent x.params - 1} do
                             let q = x.params[i]
                             let modes = {if q.isVar then " :var" else "" end} <> {if q.isOut then " :out" else "" end}
-                            vector.append(:String lines
+                            vector.append(lines
                                 p <> "    (QParam '" <> q.name <> "'" <> modes <> " " <>
                                     typeDump(q.type {indent + 2}) <> ")")
                         end
@@ -356,7 +356,7 @@ export
                         let lines = vector.new(:String)
                         for i = 0 upto {extent x.quantifiers - 1} do
                             let q = x.quantifiers[i]
-                            vector.append(:String lines p <> "    (QQuantifier '" <> q.name <> "' #" <>
+                            vector.append(lines p <> "    (QQuantifier '" <> q.name <> "' #" <>
                                 conv.int(q.symbolId) <> " " <> kindDump(q.bound {indent + 2}) <> ")")
                         end
                         "(QAllType\n" <> p <> "  :quantifiers (\n" <> joinLines(lines) <> "\n" <> p <> "  )\n" <> p <>
@@ -366,7 +366,7 @@ export
                     begin
                         let lines = vector.new(:String)
                         for i = 0 upto {extent x.arguments - 1} do
-                            vector.append(:String lines p <> "    " <> typeDump(x.arguments[i] {indent + 2}))
+                            vector.append(lines p <> "    " <> typeDump(x.arguments[i] {indent + 2}))
                         end
                         "(QTypeApp\n" <> p <> "  :constructor " <> typeDump(x.constructor {indent + 1}) <> "\n" <> p <>
                             "  :arguments (\n" <> joinLines(lines) <> "\n" <> p <> "  ))"
@@ -380,7 +380,7 @@ export
                         let lines = vector.new(:String)
                         for i = 0 upto {extent x.bindings - 1} do
                             let b = x.bindings[i]
-                            vector.append(:String lines p <> "    (Binding '" <> b.name <> "' #" <>
+                            vector.append(lines p <> "    (Binding '" <> b.name <> "' #" <>
                                 conv.int(b.symbolId) <> " " <> kindDump(b.bound {indent + 2}) <> " " <>
                                 typeDump(b.body {indent + 2}) <> ")")
                         end
@@ -439,7 +439,7 @@ export
                                 let fields = model.tupleValueFields(r.fields)
                                 for i = 0 upto {extent fields - 1} do
                                     let f = fields[i]
-                                    let fieldName = maybe.unwrapOr(:String f.name "")
+                                    let fieldName = maybe.unwrapOr(f.name "")
                                     if stringOp.length(fieldName) > 0 then
                                         emit(" " <> {if f.isVar then "var " else "" end} <> fieldName <> ": ")
                                     else
@@ -454,9 +454,9 @@ export
                                 emit("Variant")
                                 for i = 0 upto {extent r.variants - 1} do
                                     emit(" " <> r.variants[i].name)
-                                    if maybe.isSome(:Type r.variants[i].type) then
+                                    if maybe.isSome(r.variants[i].type) then
                                         emit(": ")
-                                        walk(maybe.unwrap(:Type r.variants[i].type))
+                                        walk(maybe.unwrap(r.variants[i].type))
                                     end
                                 end
                                 emit(" end")
@@ -466,9 +466,9 @@ export
                                 emit("Option")
                                 for i = 0 upto {extent r.options - 1} do
                                     emit(" " <> r.options[i].name)
-                                    if maybe.isSome(:Type r.options[i].payload) then
+                                    if maybe.isSome(r.options[i].payload) then
                                         emit(": ")
-                                        walk(maybe.unwrap(:Type r.options[i].payload))
+                                        walk(maybe.unwrap(r.options[i].payload))
                                     end
                                 end
                                 emit(" end")
@@ -491,7 +491,7 @@ export
                             begin
                                 let names = vector.new(:String)
                                 for i = 0 upto {extent r.quantifiers - 1} do
-                                    vector.append(:String names r.quantifiers[i].name)
+                                    vector.append(names r.quantifiers[i].name)
                                 end
                                 emit("All(" <> joined(names) <> ") ")
                                 walk(r.body)

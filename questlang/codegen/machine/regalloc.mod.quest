@@ -54,9 +54,9 @@ export
     (* v's elements, last first: allocate builds its lists backwards *)
     let reversed(v: vector.T(Int)): Array(Int) =
         begin
-            let n = vector.length(:Int v)
+            let n = vector.length(v)
             let r = array of(n 0)
-            for i = 0 upto {n - 1} do r[i] := vector.get(:Int v {n - 1} - i) end
+            for i = 0 upto {n - 1} do r[i] := vector.get(v {n - 1} - i) end
             r
         end
 
@@ -64,7 +64,7 @@ export
      * its first piece v is not yet defined, so nothing reads it there. *)
     let home(a: Allocation v: Int p: Int): Int =
         begin
-            let k = sort.bisectRight(:Int a.starts[v] p sort.intCompare) - 1
+            let k = sort.bisectRight(a.starts[v] p sort.intCompare) - 1
             if k < 0 then memory else a.homes[v][k] end
         end
     (* A value with a piece in memory is stored when it is defined, unless it
@@ -82,7 +82,7 @@ export
      * it: a binary search for the last range starting at or before p *)
     let covers(it: Interval p: Int): Bool =
         begin
-            let k = sort.bisectRight(:Int it.froms p sort.intCompare) - 1
+            let k = sort.bisectRight(it.froms p sort.intCompare) - 1
             {k >= 0} andif {it.tos[k] >= p}
         end
 
@@ -107,7 +107,7 @@ export
     (* Its first use at or after p, never for none *)
     let nextUse(it: Interval p: Int): Int =
         begin
-            let k = sort.bisectLeft(:Int it.uses p sort.intCompare)
+            let k = sort.bisectLeft(it.uses p sort.intCompare)
             if k < extent it.uses then it.uses[k] else never end
         end
 
@@ -126,29 +126,29 @@ export
                 let a = it.froms[k]
                 let b = it.tos[k]
                 if b < p then
-                    vector.append(:Int hf a)
-                    vector.append(:Int ht b)
+                    vector.append(hf a)
+                    vector.append(ht b)
                 elsif a >= p then
-                    vector.append(:Int cf a)
-                    vector.append(:Int ct b)
+                    vector.append(cf a)
+                    vector.append(ct b)
                 else
-                    vector.append(:Int hf a)
-                    vector.append(:Int ht p - 1)
-                    vector.append(:Int cf p)
-                    vector.append(:Int ct b)
+                    vector.append(hf a)
+                    vector.append(ht p - 1)
+                    vector.append(cf p)
+                    vector.append(ct b)
                 end
             end
             let hu = vector.new(:Int)
             let cu = vector.new(:Int)
             for k = 0 upto {extent it.uses - 1} do
-                if it.uses[k] < p then vector.append(:Int hu it.uses[k]) else vector.append(:Int cu it.uses[k]) end
+                if it.uses[k] < p then vector.append(hu it.uses[k]) else vector.append(cu it.uses[k]) end
             end
-            it.froms := vector.toArray(:Int hf)
-            it.tos := vector.toArray(:Int ht)
-            it.uses := vector.toArray(:Int hu)
+            it.froms := vector.toArray(hf)
+            it.tos := vector.toArray(ht)
+            it.uses := vector.toArray(hu)
             tuple
-                let value = it.value let var froms = vector.toArray(:Int cf) let var tos = vector.toArray(:Int ct)
-                let var uses = vector.toArray(:Int cu) let var reg = ~2
+                let value = it.value let var froms = vector.toArray(cf) let var tos = vector.toArray(ct)
+                let var uses = vector.toArray(cu) let var reg = ~2
             end
         end
 
@@ -169,17 +169,17 @@ export
 
     let swap(h: vector.T(Interval) i: Int j: Int): Ok =
         begin
-            let t = vector.get(:Interval h i)
-            vector.set(:Interval h i vector.get(:Interval h j))
-            vector.set(:Interval h j t)
+            let t = vector.get(h i)
+            vector.set(h i vector.get(h j))
+            vector.set(h j t)
         end
 
     (* Adds it at the end, then moves it up past each parent it comes before *)
     let push(h: vector.T(Interval) it: Interval): Ok =
         begin
-            vector.append(:Interval h it)
-            let var k = vector.length(:Interval h) - 1
-            while {k > 0} andif before(vector.get(:Interval h k) vector.get(:Interval h {k - 1} / 2)) do
+            vector.append(h it)
+            let var k = vector.length(h) - 1
+            while {k > 0} andif before(vector.get(h k) vector.get(h {k - 1} / 2)) do
                 swap(h k {k - 1} / 2)
                 k := {k - 1} / 2
             end
@@ -190,19 +190,19 @@ export
      * child comes before it *)
     let pop(h: vector.T(Interval)): Interval =
         begin
-            let top = vector.get(:Interval h 0)
-            let last = vector.pop(:Interval h)
-            let n = vector.length(:Interval h)
+            let top = vector.get(h 0)
+            let last = vector.pop(h)
+            let n = vector.length(h)
             if n > 0 then
-                vector.set(:Interval h 0 last)
+                vector.set(h 0 last)
                 let var k = 0
                 let var going = true
                 while going do
                     let l = {2 * k} + 1
                     let r = l + 1
                     let var m = k
-                    if {l < n} andif before(vector.get(:Interval h l) vector.get(:Interval h m)) then m := l end
-                    if {r < n} andif before(vector.get(:Interval h r) vector.get(:Interval h m)) then m := r end
+                    if {l < n} andif before(vector.get(h l) vector.get(h m)) then m := l end
+                    if {r < n} andif before(vector.get(h r) vector.get(h m)) then m := r end
                     if m is k then going := false
                     else
                         swap(h k m)
@@ -257,7 +257,7 @@ export
 
     (* Records a new interval or piece, so that the allocation can list every
      * piece at the end *)
-    let made(sc: Scan it: Interval): Ok = vector.append(:Interval sc.intervals it)
+    let made(sc: Scan it: Interval): Ok = vector.append(sc.intervals it)
 
     (* What spilling an interval from p costs: it is loaded again at its
      * next read, so that read's block's frequency, or 0 for none *)
@@ -281,13 +281,13 @@ export
              * reads its operands, and p + 1, where it writes its results: live
              * after the call, not only an argument to it *)
             let var call = never
-            let var k = sort.bisectLeft(:Int sc.calls s sort.intCompare)
+            let var k = sort.bisectLeft(sc.calls s sort.intCompare)
             while {call is never} andif {k < extent sc.calls} andif {sc.calls[k] < e} do
                 if covers(cur sc.calls[k]) andif covers(cur sc.calls[k] + 1) then call := sc.calls[k] + 1 end
                 k := k + 1
             end
             let var handler = never
-            let var j = sort.bisectLeft(:Int sc.handlers s sort.intCompare)
+            let var j = sort.bisectLeft(sc.handlers s sort.intCompare)
             while {handler is never} andif {j < extent sc.handlers} andif {sc.handlers[j] <= e} do
                 if covers(cur sc.handlers[j]) then handler := sc.handlers[j] end
                 j := j + 1
@@ -365,12 +365,12 @@ export
                     let x = cost(sc it s)
                     if x > costs[it.reg] then costs[it.reg] := x end
                 end
-            for k = 0 upto {vector.length(:Interval sc.active) - 1} do
-                let it = vector.get(:Interval sc.active k)
+            for k = 0 upto {vector.length(sc.active) - 1} do
+                let it = vector.get(sc.active k)
                 if sc.classes[it.value] is c then hold(it) end
             end
-            for k = 0 upto {vector.length(:Interval sc.inactive) - 1} do
-                let it = vector.get(:Interval sc.inactive k)
+            for k = 0 upto {vector.length(sc.inactive) - 1} do
+                let it = vector.get(sc.inactive k)
                 if {sc.classes[it.value] is c} andif {intersection(it cur) >= 0} then hold(it) end
             end
             let var best = ~1
@@ -395,12 +395,12 @@ export
             let s = firstPos(cur)
             let block = blocked(sc cur c)
             cur.reg := r
-            let holders = vector.toArray(:Interval sc.active)
+            let holders = vector.toArray(sc.active)
             for k = 0 upto {extent holders - 1} do
                 let it = holders[k]
                 if {sc.classes[it.value] is c} andif {it.reg is r} then splitSpill(sc it s) end
             end
-            let sleepers = vector.toArray(:Interval sc.inactive)
+            let sleepers = vector.toArray(sc.inactive)
             for k = 0 upto {extent sleepers - 1} do
                 let it = sleepers[k]
                 if {sc.classes[it.value] is c} andif {it.reg is r} then
@@ -424,12 +424,12 @@ export
              * stops being free for cur. An active interval holds its register
              * now; an inactive one, until it is next live where cur is. *)
             let free = blocked(sc cur c)
-            for k = 0 upto {vector.length(:Interval sc.active) - 1} do
-                let it = vector.get(:Interval sc.active k)
+            for k = 0 upto {vector.length(sc.active) - 1} do
+                let it = vector.get(sc.active k)
                 if sc.classes[it.value] is c then free[it.reg] := 0 end
             end
-            for k = 0 upto {vector.length(:Interval sc.inactive) - 1} do
-                let it = vector.get(:Interval sc.inactive k)
+            for k = 0 upto {vector.length(sc.inactive) - 1} do
+                let it = vector.get(sc.inactive k)
                 if sc.classes[it.value] is c then
                     let x = intersection(it cur)
                     if {x >= 0} andif {x < free[it.reg]} then free[it.reg] := x end
@@ -442,8 +442,8 @@ export
              * last given, if it has been allocated yet. *)
             let var chosen = ~1
             let hints = sc.hints[cur.value]
-            for k = 0 upto {vector.length(:Int hints) - 1} do
-                let h = vector.get(:Int hints k)
+            for k = 0 upto {vector.length(hints) - 1} do
+                let h = vector.get(hints k)
                 let reg = if h >= sc.firstVirtual then sc.given[h - sc.firstVirtual] else h end
                 for r = 0 upto {n - 1} do
                     if {chosen < 0} andif {sc.pools[c][r] is reg} andif {free[r] > e} then chosen := r end
@@ -493,7 +493,7 @@ export
         Allocation =
         begin
             let nValues = machine.virtuals(f)
-            let nBlocks = vector.length(:machine.Block f.blocks)
+            let nBlocks = vector.length(f.blocks)
             let nRegisters = extent t.registers
             let order = machine.order(f)
             let live = machine.live(f)
@@ -512,7 +512,7 @@ export
             for k = 0 upto {extent order - 1} do
                 let blk = machine.block(f order[k])
                 blockStart[order[k]] := pos
-                pos := pos + {2 * {vector.length(:machine.Inst blk.insts) + 1}}
+                pos := pos + {2 * {vector.length(blk.insts) + 1}}
             end
             let positions = pos
             (* Each block's estimated frequency, and each position's *)
@@ -524,7 +524,7 @@ export
                 let var x = 1000
                 for d = 1 upto if depths[b] < 4 then depths[b] else 4 end do x := x * 8 end
                 frequency[b] := if cold(b) then 1 else x end
-                let n = vector.length(:machine.Inst machine.block(f b).insts)
+                let n = vector.length(machine.block(f b).insts)
                 for p = blockStart[b] upto {blockStart[b] + {2 * {n + 1}}} - 1 do freqAt[p] := frequency[b] end
             end
             let isStart = bitset.new(positions + 1)
@@ -559,26 +559,26 @@ export
                 let b = order[k]
                 let bs = blockStart[b]
                 let insts = machine.block(f b).insts
-                for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
-                    let i = vector.get(:machine.Inst insts j)
+                for j = 0 upto {vector.length(insts) - 1} do
+                    let i = vector.get(insts j)
                     let p = bs + {2 * {j + 1}}
                     for a = 0 upto {extent i.operands - 1} do
                         let o = i.operands[a]
                         if not(virtual(o.reg)) andif allocatable[o.reg] andif not(o.defines) then
-                            let n = vector.length(:Int fixedFroms[o.reg])
-                            if {n > 0} andif {vector.get(:Int fixedFroms[o.reg] n - 1) >= bs} then
-                                vector.set(:Int fixedTos[o.reg] n - 1 p)
+                            let n = vector.length(fixedFroms[o.reg])
+                            if {n > 0} andif {vector.get(fixedFroms[o.reg] n - 1) >= bs} then
+                                vector.set(fixedTos[o.reg] n - 1 p)
                             else
-                                vector.append(:Int fixedFroms[o.reg] bs)
-                                vector.append(:Int fixedTos[o.reg] p)
+                                vector.append(fixedFroms[o.reg] bs)
+                                vector.append(fixedTos[o.reg] p)
                             end
                         end
                     end
                     for a = 0 upto {extent i.operands - 1} do
                         let o = i.operands[a]
                         if not(virtual(o.reg)) andif allocatable[o.reg] andif o.defines then
-                            vector.append(:Int fixedFroms[o.reg] p + 1)
-                            vector.append(:Int fixedTos[o.reg] p + 1)
+                            vector.append(fixedFroms[o.reg] p + 1)
+                            vector.append(fixedTos[o.reg] p + 1)
                         end
                     end
                 end
@@ -593,8 +593,8 @@ export
                     let r = pools[c][j]
                     (* In order of their starts, as the blocks are *)
                     fixed[c][j] := tuple
-                        let value = ~1 let var froms = vector.toArray(:Int fixedFroms[r])
-                        let var tos = vector.toArray(:Int fixedTos[r]) let var uses = array of :Int end let var reg = ~1
+                        let value = ~1 let var froms = vector.toArray(fixedFroms[r])
+                        let var tos = vector.toArray(fixedTos[r]) let var uses = array of :Int end let var reg = ~1
                     end
                 end
             end
@@ -618,26 +618,26 @@ export
              * it when they touch *)
             let addRange(v: Int from: Int to: Int): Ok =
                 begin
-                    let n = vector.length(:Int rangeFroms[v])
-                    if {n > 0} andif {{to + 1} >= vector.get(:Int rangeFroms[v] n - 1)} then
-                        if from < vector.get(:Int rangeFroms[v] n - 1) then
-                            vector.set(:Int rangeFroms[v] n - 1 from)
+                    let n = vector.length(rangeFroms[v])
+                    if {n > 0} andif {{to + 1} >= vector.get(rangeFroms[v] n - 1)} then
+                        if from < vector.get(rangeFroms[v] n - 1) then
+                            vector.set(rangeFroms[v] n - 1 from)
                         end
-                        if to > vector.get(:Int rangeTos[v] n - 1) then vector.set(:Int rangeTos[v] n - 1 to) end
+                        if to > vector.get(rangeTos[v] n - 1) then vector.set(rangeTos[v] n - 1 to) end
                     else
-                        vector.append(:Int rangeFroms[v] from)
-                        vector.append(:Int rangeTos[v] to)
+                        vector.append(rangeFroms[v] from)
+                        vector.append(rangeTos[v] to)
                     end
                 end
             (* A definition at p: the earliest range starts there, or, for a
              * value never used, is just p *)
             let setFrom(v: Int p: Int): Ok =
                 begin
-                    let n = vector.length(:Int rangeFroms[v])
-                    if n > 0 then vector.set(:Int rangeFroms[v] n - 1 p)
+                    let n = vector.length(rangeFroms[v])
+                    if n > 0 then vector.set(rangeFroms[v] n - 1 p)
                     else
-                        vector.append(:Int rangeFroms[v] p)
-                        vector.append(:Int rangeTos[v] p)
+                        vector.append(rangeFroms[v] p)
+                        vector.append(rangeTos[v] p)
                     end
                 end
             (* The same walk finds the calls and the blocks a raise enters, for
@@ -648,11 +648,11 @@ export
                 let b = order[k]
                 let blk = machine.block(f b)
                 let bs = blockStart[b]
-                let n = vector.length(:machine.Inst blk.insts)
+                let n = vector.length(blk.insts)
                 let outs = bitset.elements(liveOut[b])
                 for j = 0 upto {extent outs - 1} do addRange(outs[j] bs bs + {{2 * n} + 1}) end
                 for j = {n - 1} downto 0 do
-                    let i = vector.get(:machine.Inst blk.insts j)
+                    let i = vector.get(blk.insts j)
                     let p = bs + {2 * {j + 1}}
                     for a = 0 upto {extent i.operands - 1} do
                         let o = i.operands[a]
@@ -662,19 +662,19 @@ export
                         let o = i.operands[a]
                         if virtual(o.reg) andif not(o.defines) then
                             addRange(machine.index(f o.reg) bs p)
-                            vector.append(:Int usesAt[machine.index(f o.reg)] p)
+                            vector.append(usesAt[machine.index(f o.reg)] p)
                         end
                     end
-                    if machine.isKind(i machine.kindCall) then vector.append(:Int calls p) end
+                    if machine.isKind(i machine.kindCall) then vector.append(calls p) end
                 end
-                for p = 0 upto {vector.length(:Int blk.params) - 1} do
-                    setFrom(machine.index(f vector.get(:Int blk.params p)) bs)
+                for p = 0 upto {vector.length(blk.params) - 1} do
+                    setFrom(machine.index(f vector.get(blk.params p)) bs)
                 end
-                if blk.raised then vector.append(:Int handlers bs) end
+                if blk.raised then vector.append(handlers bs) end
             end
             let callAt = reversed(calls)
-            let handlerAt = vector.toArray(:Int handlers)
-            sort.sort(:Int handlerAt sort.intCompare)
+            let handlerAt = vector.toArray(handlers)
+            sort.sort(handlerAt sort.intCompare)
             (* The hints: a move's registers, and a jump's arguments and its
              * target's parameters, each other's. A virtual register may be
              * hinted to an allocatable physical one, such as an argument's
@@ -684,21 +684,21 @@ export
             for v = 0 upto {nValues - 1} do hints[v] := vector.new(:Int) end
             let hint(a: Int b: Int): Ok =
                 if virtual(a) andif {virtual(b) orif allocatable[b]} then
-                    vector.append(:Int hints[machine.index(f a)] b)
+                    vector.append(hints[machine.index(f a)] b)
                 end
             let remat = array of(nValues false)
             for b = 0 upto {nBlocks - 1} do
                 let insts = machine.block(f b).insts
-                for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
-                    let i = vector.get(:machine.Inst insts j)
+                for j = 0 upto {vector.length(insts) - 1} do
+                    let i = vector.get(insts j)
                     if machine.isKind(i machine.kindMove) then
                         hint(i.operands[0].reg i.operands[1].reg)
                         hint(i.operands[1].reg i.operands[0].reg)
                     elsif machine.isKind(i machine.kindJump) then
                         let params = machine.block(f i.target).params
                         for a = 0 upto {extent i.operands - 1} do
-                            hint(vector.get(:Int params a) i.operands[a].reg)
-                            hint(i.operands[a].reg vector.get(:Int params a))
+                            hint(vector.get(params a) i.operands[a].reg)
+                            hint(i.operands[a].reg vector.get(params a))
                         end
                     end
                     (* What is rematerialized: the result of an instruction with
@@ -732,7 +732,7 @@ export
             let first = array of(nValues never)
             let last = array of(nValues ~1)
             for v = 0 upto {nValues - 1} do
-                if vector.length(:Int rangeFroms[v]) > 0 then
+                if vector.length(rangeFroms[v]) > 0 then
                     let it = tuple
                         let value = v let var froms = reversed(rangeFroms[v]) let var tos = reversed(rangeTos[v])
                         let var uses = reversed(usesAt[v]) let var reg = ~2
@@ -746,44 +746,44 @@ export
             (* The scan itself. For each interval, from the earliest start:
              * drop the intervals that ended before its start, sort the rest
              * into active and inactive at its start, and allocate it. *)
-            while vector.length(:Interval sc.heap) > 0 do
+            while vector.length(sc.heap) > 0 do
                 let cur = pop(sc.heap)
                 let s = firstPos(cur)
                 let stillActive = vector.new(:Interval)
                 let stillInactive = vector.new(:Interval)
                 let classify(it: Interval): Ok =
                     if lastPos(it) >= s then
-                        if covers(it s) then vector.append(:Interval stillActive it)
-                        else vector.append(:Interval stillInactive it) end
+                        if covers(it s) then vector.append(stillActive it)
+                        else vector.append(stillInactive it) end
                     end
-                for k = 0 upto {vector.length(:Interval sc.active) - 1} do
-                    classify(vector.get(:Interval sc.active k))
+                for k = 0 upto {vector.length(sc.active) - 1} do
+                    classify(vector.get(sc.active k))
                 end
-                for k = 0 upto {vector.length(:Interval sc.inactive) - 1} do
-                    classify(vector.get(:Interval sc.inactive k))
+                for k = 0 upto {vector.length(sc.inactive) - 1} do
+                    classify(vector.get(sc.inactive k))
                 end
                 sc.active := stillActive
                 sc.inactive := stillInactive
                 if not(tryFree(sc cur)) then allocateBlocked(sc cur) end
                 if cur.reg >= 0 then
-                    vector.append(:Interval sc.active cur)
+                    vector.append(sc.active cur)
                     sc.given[cur.value] := pools[classes[cur.value]][cur.reg]
                 end
             end
             (* Each register's pieces, in order *)
             let pieces = array of(nValues vector.new(:Interval))
             for v = 0 upto {nValues - 1} do pieces[v] := vector.new(:Interval) end
-            for k = 0 upto {vector.length(:Interval sc.intervals) - 1} do
-                let it = vector.get(:Interval sc.intervals k)
-                vector.append(:Interval pieces[it.value] it)
+            for k = 0 upto {vector.length(sc.intervals) - 1} do
+                let it = vector.get(sc.intervals k)
+                vector.append(pieces[it.value] it)
             end
             let starts = array of(nValues array of(0 0))
             let homes = array of(nValues array of :Int end)
             let spilled = array of(nValues false)
             let moves = vector.new(:Move)
             for v = 0 upto {nValues - 1} do
-                let ps = vector.toArray(:Interval pieces[v])
-                sort.sort(:Interval ps fun(a: Interval b: Interval): Int sort.intCompare(firstPos(a) firstPos(b)))
+                let ps = vector.toArray(pieces[v])
+                sort.sort(ps fun(a: Interval b: Interval): Int sort.intCompare(firstPos(a) firstPos(b)))
                 let c = classes[v]
                 starts[v] := array of(extent ps 0)
                 homes[v] := array of(extent ps memory)
@@ -797,7 +797,7 @@ export
                      * the block's edges. *)
                     let inside = {k > 0} andif {ps[k].reg >= 0} andif not(bitset.contains(isStart starts[v][k]))
                     if inside andif {homes[v][k] isnot homes[v][k - 1]} then
-                        vector.append(:Move moves tuple
+                        vector.append(moves tuple
                             let at = starts[v][k] let value = v let from = homes[v][k - 1] let to = homes[v][k]
                         end)
                     end
@@ -807,10 +807,10 @@ export
                  * read, nothing would clear it either (a loop's parameter
                  * that only its header defines, say, which the back edge
                  * would store each time round) *)
-                if vector.empty(:Int usesAt[v]) then spilled[v] := false end
+                if vector.empty(usesAt[v]) then spilled[v] := false end
             end
-            let moved = vector.toArray(:Move moves)
-            sort.sort(:Move moved fun(a: Move b: Move): Int
+            let moved = vector.toArray(moves)
+            sort.sort(moved fun(a: Move b: Move): Int
                 if a.at isnot b.at then sort.intCompare(a.at b.at) else sort.intCompare(a.value b.value) end)
             (* The callee-saved registers in use, in the order of the pool *)
             let given = array of(nRegisters false)
@@ -822,14 +822,14 @@ export
             let used = vector.new(:Int)
             for c = 0 upto {targets.classes - 1} do
                 for r = firstCallee[c] upto {extent pools[c] - 1} do
-                    if given[pools[c][r]] then vector.append(:Int used pools[c][r]) end
+                    if given[pools[c][r]] then vector.append(used pools[c][r]) end
                 end
             end
             let ins = array of(nBlocks array of(0 0))
             for b = 0 upto {nBlocks - 1} do ins[b] := bitset.elements(liveIn[b]) end
             tuple
                 let starts = starts let homes = homes let spilled = spilled let remat = remat let moves = moved
-                let blockStart = blockStart let liveIn = ins let calleeUsed = vector.toArray(:Int used)
+                let blockStart = blockStart let liveIn = ins let calleeUsed = vector.toArray(used)
                 let frequency = frequency let first = first let last = last
             end
         end
@@ -868,7 +868,7 @@ export
         code: vector.T(machine.Inst)
     end
 
-    let emit(w: Rewriter i: machine.Inst): Ok = vector.append(:machine.Inst w.code i)
+    let emit(w: Rewriter i: machine.Inst): Ok = vector.append(w.code i)
     let emitAll(w: Rewriter insts: Array(machine.Inst)): Ok = for k = 0 upto {extent insts - 1} do emit(w insts[k]) end
 
     (* A virtual register's memory into a register: loaded from its slot, or
@@ -912,19 +912,19 @@ export
     let parallel(w: Rewriter transfers: vector.T(Transfer)): Ok =
         begin
             let pending = vector.new(:Transfer)
-            for k = 0 upto {vector.length(:Transfer transfers) - 1} do
-                let t = vector.get(:Transfer transfers k)
-                if not(samePlace(t.dst t.src)) then vector.append(:Transfer pending t) end
+            for k = 0 upto {vector.length(transfers) - 1} do
+                let t = vector.get(transfers k)
+                if not(samePlace(t.dst t.src)) then vector.append(pending t) end
             end
-            while vector.length(:Transfer pending) > 0 do
-                let n = vector.length(:Transfer pending)
+            while vector.length(pending) > 0 do
+                let n = vector.length(pending)
                 let var chosen = ~1
                 for k = 0 upto {n - 1} do
                     if chosen < 0 then
-                        let t = vector.get(:Transfer pending k)
+                        let t = vector.get(pending k)
                         let var read = false
                         for j = 0 upto {n - 1} do
-                            if {j isnot k} andif samePlace(vector.get(:Transfer pending j).src t.dst) then
+                            if {j isnot k} andif samePlace(vector.get(pending j).src t.dst) then
                                 read := true
                             end
                         end
@@ -932,14 +932,14 @@ export
                     end
                 end
                 if chosen < 0 then
-                    let t = vector.get(:Transfer pending 0)
+                    let t = vector.get(pending 0)
                     let breaker = w.lowering.scratch[0][1]
                     readInto(w breaker t.src)
-                    vector.set(:Transfer pending 0 transfer(t.dst inRegister(breaker)))
+                    vector.set(pending 0 transfer(t.dst inRegister(breaker)))
                 else
-                    let t = vector.get(:Transfer pending chosen)
+                    let t = vector.get(pending chosen)
                     place(w t.dst t.src)
-                    vector.delete(:Transfer pending chosen)
+                    vector.delete(pending chosen)
                 end
             end
         end
@@ -965,18 +965,18 @@ export
             let transfers = vector.new(:Transfer)
             let params = machine.block(w.f target).params
             for k = 0 upto {extent args - 1} do
-                let param = machine.index(w.f vector.get(:Int params k))
+                let param = machine.index(w.f vector.get(params k))
                 let h = home(w.a param bs)
-                if h isnot memory then vector.append(:Transfer transfers transfer(inRegister(h) at(w args[k] p))) end
+                if h isnot memory then vector.append(transfers transfer(inRegister(h) at(w args[k] p))) end
                 if needsSlot(w.a param) then
-                    vector.append(:Transfer transfers transfer(inMemory(param) at(w args[k] p)))
+                    vector.append(transfers transfer(inMemory(param) at(w args[k] p)))
                 end
             end
             let ins = w.a.liveIn[target]
             for k = 0 upto {extent ins - 1} do
                 let h = home(w.a ins[k] bs)
                 if h isnot memory then
-                    vector.append(:Transfer transfers transfer(inRegister(h) at(w w.f.firstVirtual + ins[k] p)))
+                    vector.append(transfers transfer(inRegister(h) at(w w.f.firstVirtual + ins[k] p)))
                 end
             end
             parallel(w transfers)
@@ -1027,15 +1027,15 @@ export
                     let r = if h isnot memory then h else w.lowering.scratch[c][0] end
                     operands[k] := machine.writes(r)
                     if needsSlot(w.a v) then
-                        vector.append(:Int stores r)
-                        vector.append(:Int stored v)
+                        vector.append(stores r)
+                        vector.append(stored v)
                     end
                 end
             end
             if not(skip) then
                 emit(w machine.inst(i.kind operands i.op i.target))
-                for k = 0 upto {vector.length(:Int stores) - 1} do
-                    emitAll(w w.lowering.store(vector.get(:Int stores k) f.firstVirtual + vector.get(:Int stored k)))
+                for k = 0 upto {vector.length(stores) - 1} do
+                    emitAll(w w.lowering.store(vector.get(stores k) f.firstVirtual + vector.get(stored k)))
                 end
             end
         end
@@ -1069,7 +1069,7 @@ export
      * have all ended before it starts, or a new one. *)
     let shareSlots(f: Function a: Allocation kind: All(v: Int) Int): Array(Int) =
         begin
-            let nBlocks = vector.length(:machine.Block f.blocks)
+            let nBlocks = vector.length(f.blocks)
             let nValues = machine.virtuals(f)
             let first = array of(nValues 0)
             let last = array of(nValues 0)
@@ -1086,22 +1086,22 @@ export
                 let bs = a.blockStart[b]
                 if bs >= 0 then
                     let insts = machine.block(f b).insts
-                    for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
-                        let i = vector.get(:machine.Inst insts j)
+                    for j = 0 upto {vector.length(insts) - 1} do
+                        let i = vector.get(insts j)
                         let p = bs + {2 * {j + 1}}
                         if machine.isKind(i machine.kindJump) then
                             let params = machine.block(f i.target).params
-                            for k = 0 upto {vector.length(:Int params) - 1} do
-                                reach(machine.index(f vector.get(:Int params k)) p)
+                            for k = 0 upto {vector.length(params) - 1} do
+                                reach(machine.index(f vector.get(params k)) p)
                             end
                         end
                     end
                 end
             end
             let stored = vector.new(:Int)
-            for v = 0 upto {nValues - 1} do if needsSlot(a v) then vector.append(:Int stored v) end end
-            let byFirst = vector.toArray(:Int stored)
-            sort.sort(:Int byFirst fun(x: Int y: Int): Int
+            for v = 0 upto {nValues - 1} do if needsSlot(a v) then vector.append(stored v) end end
+            let byFirst = vector.toArray(stored)
+            sort.sort(byFirst fun(x: Int y: Int): Int
                 if first[x] isnot first[y] then sort.intCompare(first[x] first[y]) else sort.intCompare(x y) end)
             let slot = array of(nValues ~1)
             let kinds = vector.new(:Int)
@@ -1110,16 +1110,16 @@ export
                 let v = byFirst[k]
                 let c = kind(f.firstVirtual + v)
                 let var chosen = ~1
-                for s = 0 upto {vector.length(:Int kinds) - 1} do
-                    let free = {vector.get(:Int kinds s) is c} andif {vector.get(:Int ends s) < first[v]}
+                for s = 0 upto {vector.length(kinds) - 1} do
+                    let free = {vector.get(kinds s) is c} andif {vector.get(ends s) < first[v]}
                     if {chosen < 0} andif free then chosen := s end
                 end
                 if chosen < 0 then
-                    chosen := vector.length(:Int kinds)
-                    vector.append(:Int kinds c)
-                    vector.append(:Int ends 0)
+                    chosen := vector.length(kinds)
+                    vector.append(kinds c)
+                    vector.append(ends 0)
                 end
-                vector.set(:Int ends chosen last[v])
+                vector.set(ends chosen last[v])
                 slot[v] := chosen
             end
             slot
@@ -1127,7 +1127,7 @@ export
 
     let rewrite(f: Function a: Allocation lowering: machine.Lowering): Ok =
         begin
-            let nBlocks = vector.length(:machine.Block f.blocks)
+            let nBlocks = vector.length(f.blocks)
             let nothing = machine.inst(machine.kindOrdinary array of :machine.Operand end ~1 ~1)
             let defs = array of(machine.virtuals(f) nothing)
             (* Where each branch target's one branch is. A branch's edge has no
@@ -1138,8 +1138,8 @@ export
             let branchAt = array of(nBlocks ~1)
             for b = 0 upto {nBlocks - 1} do
                 let insts = machine.block(f b).insts
-                for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
-                    let i = vector.get(:machine.Inst insts j)
+                for j = 0 upto {vector.length(insts) - 1} do
+                    let i = vector.get(insts j)
                     for k = 0 upto {extent i.operands - 1} do
                         let o = i.operands[k]
                         if machine.isVirtual(f o.reg) andif o.defines then defs[machine.index(f o.reg)] := i end
@@ -1160,8 +1160,8 @@ export
                 (* A block not reached is left empty *)
                 if bs >= 0 then
                     if branchAt[b] >= 0 then edge(w branchAt[b] b array of :Int end) end
-                    for j = 0 upto {vector.length(:machine.Inst blk.insts) - 1} do
-                        let i = vector.get(:machine.Inst blk.insts j)
+                    for j = 0 upto {vector.length(blk.insts) - 1} do
+                        let i = vector.get(blk.insts j)
                         let p = bs + {2 * {j + 1}}
                         (* Values whose next piece starts at this instruction,
                          * in a register, are moved there from memory or from
@@ -1171,14 +1171,14 @@ export
                          * that moves here too (two values that swap registers,
                          * say) *)
                         let transfers = vector.new(:Transfer)
-                        let var next = sort.bisectLeft(:Int moveAts p sort.intCompare)
+                        let var next = sort.bisectLeft(moveAts p sort.intCompare)
                         while {next < extent a.moves} andif {a.moves[next].at is p} do
                             let m = a.moves[next]
                             let src = if m.from is memory then inMemory(m.value) else inRegister(m.from) end
-                            vector.append(:Transfer transfers transfer(inRegister(m.to) src))
+                            vector.append(transfers transfer(inRegister(m.to) src))
                             next := next + 1
                         end
-                        if vector.length(:Transfer transfers) > 0 then parallel(w transfers) end
+                        if vector.length(transfers) > 0 then parallel(w transfers) end
                         (* A jump's arguments become its edge's moves, so it
                          * keeps no operands *)
                         case i.kind
@@ -1192,9 +1192,9 @@ export
                         end
                     end
                 end
-                vector.clear(:machine.Inst blk.insts)
-                for j = 0 upto {vector.length(:machine.Inst w.code) - 1} do
-                    vector.append(:machine.Inst blk.insts vector.get(:machine.Inst w.code j))
+                vector.clear(blk.insts)
+                for j = 0 upto {vector.length(w.code) - 1} do
+                    vector.append(blk.insts vector.get(w.code j))
                 end
             end
         end

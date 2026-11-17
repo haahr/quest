@@ -171,7 +171,7 @@ export
     (* A new virtual register, of an SSA type *)
     let temp(s: S t: ssa.Type): Int =
         begin
-            vector.append(:ssa.Type s.types t)
+            vector.append(s.types t)
             machine.newVirtual(s.m classOf(t))
         end
 
@@ -180,8 +180,8 @@ export
      * call's arguments and results) *)
     let emitFull(s: S kind: machine.Kind i: minst.Inst reads: Array(Int) writes: Array(Int) target: Int): Ok =
         begin
-            vector.append(:minst.Op s.ops i.op)
-            vector.append(:ssa.Loc s.locs s.loc)
+            vector.append(s.ops i.op)
+            vector.append(s.locs s.loc)
             let n = minst.results(i.op)
             let operands = array of({{extent i.regs + extent reads} + extent writes} machine.reads(0))
             for k = 0 upto {extent i.regs - 1} do
@@ -191,7 +191,7 @@ export
             for k = 0 upto {extent writes - 1} do
                 operands[{extent i.regs + extent reads} + k] := machine.writes(writes[k])
             end
-            machine.append(s.m s.b machine.inst(kind operands vector.length(:minst.Op s.ops) - 1 target))
+            machine.append(s.m s.b machine.inst(kind operands vector.length(s.ops) - 1 target))
         end
     let emit(s: S i: minst.Inst): Ok = emitFull(s machine.kindOrdinary i none none ~1)
     let emitMove(s: S dst: Int src: Int): Ok = emitFull(s machine.kindMove minst.mov(dst src) none none ~1)
@@ -199,11 +199,11 @@ export
     (* A jump to a machine block, with the arguments of its parameters *)
     let jumpTo(s: S mb: Int args: Array(Int)): Ok =
         begin
-            vector.append(:minst.Op s.ops minst.b(labelOf(s mb)).op)
-            vector.append(:ssa.Loc s.locs s.loc)
+            vector.append(s.ops minst.b(labelOf(s mb)).op)
+            vector.append(s.locs s.loc)
             let operands = array of(extent args machine.reads(0))
             for k = 0 upto {extent args - 1} do operands[k] := machine.reads(args[k]) end
-            machine.append(s.m s.b machine.inst(machine.kindJump operands vector.length(:minst.Op s.ops) - 1 mb))
+            machine.append(s.m s.b machine.inst(machine.kindJump operands vector.length(s.ops) - 1 mb))
         end
     let jump(s: S t: ssa.Target): Ok =
         begin
@@ -217,7 +217,7 @@ export
     let edge(s: S t: ssa.Target): Int =
         begin
             let e = machine.newBlock(s.m)
-            vector.append(:Int s.layout e)
+            vector.append(s.layout e)
             let from = s.b
             s.b := e
             jump(s t)
@@ -227,12 +227,12 @@ export
 
     (* The constant a value is, if it is one: an Int's, or the null's 0 *)
     let constOf(s: S v: Int): maybe.T(Int) =
-        if maybe.isNone(:ssa.Inst s.defs[v]) then maybe.none(:Int)
+        if maybe.isNone(s.defs[v]) then maybe.none(:Int)
         else
-            let i = maybe.unwrap(:ssa.Inst s.defs[v])
+            let i = maybe.unwrap(s.defs[v])
             case i.op
-                when opConst then maybe.some(:Int i.imm)
-                when opNull then maybe.some(:Int 0)
+                when opConst then maybe.some(i.imm)
+                when opNull then maybe.some(0)
                 when opRealConst, opSymbol, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor,
                     opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub,
                     opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
@@ -241,7 +241,7 @@ export
                     maybe.none(:Int)
             end
         end
-    let isConst(s: S v: Int n: Int): Bool = maybe.isSome(:Int constOf(s v)) andif {maybe.unwrap(:Int constOf(s v)) is n}
+    let isConst(s: S v: Int n: Int): Bool = maybe.isSome(constOf(s v)) andif {maybe.unwrap(constOf(s v)) is n}
     (* An add's or a sub's immediate: 12 bits, perhaps shifted 12 *)
     let addable(n: Int): Bool =
         {{n >= 0} andif {n < 4096}} orif {{n >= 0} andif {n is {{n / 4096} * 4096}} andif {{n / 4096} < 4096}}
@@ -279,24 +279,24 @@ export
 
     (* Whether a value is a constant an add or a sub takes, either sign *)
     let immediate(s: S v: Int): Bool =
-        maybe.isSome(:Int constOf(s v))
-            andif {addable(maybe.unwrap(:Int constOf(s v))) orif addable(0 - maybe.unwrap(:Int constOf(s v)))}
+        maybe.isSome(constOf(s v))
+            andif {addable(maybe.unwrap(constOf(s v))) orif addable(0 - maybe.unwrap(constOf(s v)))}
 
     (* d := x + y, an immediate for a constant that fits either *)
     let add(s: S d: Int x: Int y: Int): Ok =
-        if immediate(s y) then addConst(s d r(s x) maybe.unwrap(:Int constOf(s y)))
-        elsif immediate(s x) then addConst(s d r(s y) maybe.unwrap(:Int constOf(s x)))
+        if immediate(s y) then addConst(s d r(s x) maybe.unwrap(constOf(s y)))
+        elsif immediate(s x) then addConst(s d r(s y) maybe.unwrap(constOf(s x)))
         else emit(s minst.arith(minst.arithAdd d r(s x) r(s y))) end
 
     let sub(s: S d: Int x: Int y: Int): Ok =
-        if immediate(s y) then addConst(s d r(s x) 0 - maybe.unwrap(:Int constOf(s y)))
+        if immediate(s y) then addConst(s d r(s x) 0 - maybe.unwrap(constOf(s y)))
         else emit(s minst.arith(minst.arithSub d r(s x) r(s y))) end
 
     let shift(s: S a: minst.Arith d: Int x: Int y: Int): Ok =
         begin
             let c = constOf(s y)
-            if maybe.isSome(:Int c) andif {maybe.unwrap(:Int c) >= 0} andif {maybe.unwrap(:Int c) < 64} then
-                emit(s minst.shiftImm(a d r(s x) maybe.unwrap(:Int c)))
+            if maybe.isSome(c) andif {maybe.unwrap(c) >= 0} andif {maybe.unwrap(c) < 64} then
+                emit(s minst.shiftImm(a d r(s x) maybe.unwrap(c)))
             else emit(s minst.arith(a d r(s x) r(s y))) end
         end
 
@@ -347,19 +347,19 @@ export
      * tests it in, if v is one *)
     Let Bit = Tuple value: Int bit: Int end
     let bitOf(defs: Array(maybe.T(ssa.Inst)) v: Int): maybe.T(Bit) =
-        if maybe.isNone(:ssa.Inst defs[v]) then maybe.none(:Bit)
+        if maybe.isNone(defs[v]) then maybe.none(:Bit)
         else
-            let i = maybe.unwrap(:ssa.Inst defs[v])
+            let i = maybe.unwrap(defs[v])
             let constant(a: Int): maybe.T(Int) =
-                if maybe.isSome(:ssa.Inst defs[a]) andif ssa.isOp(maybe.unwrap(:ssa.Inst defs[a]) ssa.opConst) then
-                    maybe.some(:Int maybe.unwrap(:ssa.Inst defs[a]).imm)
+                if maybe.isSome(defs[a]) andif ssa.isOp(maybe.unwrap(defs[a]) ssa.opConst) then
+                    maybe.some(maybe.unwrap(defs[a]).imm)
                 else maybe.none(:Int) end
             let one(n: Int): Bool = word.popCount(word.fromInt(n)) is 1
             let at(n: Int): Int = word.countTrailingZeros(word.fromInt(n))
             (* A copy's source, through conversions between words *)
             let rec source(a: Int): Int =
-                if maybe.isSome(:ssa.Inst defs[a]) then
-                    let d = maybe.unwrap(:ssa.Inst defs[a])
+                if maybe.isSome(defs[a]) then
+                    let d = maybe.unwrap(defs[a])
                     case d.op
                         when opIntToPtr, opPtrToInt, opCopy, opToVal, opFromVal then source(d.args[0])
                         when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv,
@@ -371,13 +371,13 @@ export
                     end
                 else a end
             if not(ssa.isOp(i ssa.opAnd)) then maybe.none(:Bit)
-            elsif maybe.isSome(:Int constant(i.args[1])) andif one(maybe.unwrap(:Int constant(i.args[1]))) then
-                maybe.some(:Bit tuple
-                    let value = source(i.args[0]) let bit = at(maybe.unwrap(:Int constant(i.args[1])))
+            elsif maybe.isSome(constant(i.args[1])) andif one(maybe.unwrap(constant(i.args[1]))) then
+                maybe.some(tuple
+                    let value = source(i.args[0]) let bit = at(maybe.unwrap(constant(i.args[1])))
                 end)
-            elsif maybe.isSome(:Int constant(i.args[0])) andif one(maybe.unwrap(:Int constant(i.args[0]))) then
-                maybe.some(:Bit tuple
-                    let value = source(i.args[1]) let bit = at(maybe.unwrap(:Int constant(i.args[0])))
+            elsif maybe.isSome(constant(i.args[0])) andif one(maybe.unwrap(constant(i.args[0]))) then
+                maybe.some(tuple
+                    let value = source(i.args[1]) let bit = at(maybe.unwrap(constant(i.args[0])))
                 end)
             else maybe.none(:Bit) end
         end
@@ -385,15 +385,15 @@ export
     (* The two comparisons of integers or pointers an and of v's joins, if it
      * is one *)
     let conjunctionOf(defs: Array(maybe.T(ssa.Inst)) v: Int): maybe.T(Array(Int)) =
-        if maybe.isNone(:ssa.Inst defs[v]) orif not(ssa.isOp(maybe.unwrap(:ssa.Inst defs[v]) ssa.opAnd)) then
+        if maybe.isNone(defs[v]) orif not(ssa.isOp(maybe.unwrap(defs[v]) ssa.opAnd)) then
             maybe.none(:Array(Int))
         else
-            let i = maybe.unwrap(:ssa.Inst defs[v])
+            let i = maybe.unwrap(defs[v])
             let compares(a: Int): Bool =
-                maybe.isSome(:ssa.Inst defs[a]) andif isComparison(maybe.unwrap(:ssa.Inst defs[a]).op)
-                    andif not(isRealComparison(maybe.unwrap(:ssa.Inst defs[a]).op))
+                maybe.isSome(defs[a]) andif isComparison(maybe.unwrap(defs[a]).op)
+                    andif not(isRealComparison(maybe.unwrap(defs[a]).op))
             if compares(i.args[0]) andif compares(i.args[1]) andif {i.args[0] isnot i.args[1]} then
-                maybe.some(:Array(Int) i.args)
+                maybe.some(i.args)
             else maybe.none(:Array(Int)) end
         end
 
@@ -403,8 +403,8 @@ export
         else
             let c = constOf(s i.args[1])
             (* cmp of an add's immediate, or cmn of its negation *)
-            if maybe.isSome(:Int c) andif {addable(maybe.unwrap(:Int c)) orif addable(0 - maybe.unwrap(:Int c))} then
-                emit(s minst.cmpImm(r(s i.args[0]) maybe.unwrap(:Int c)))
+            if maybe.isSome(c) andif {addable(maybe.unwrap(c)) orif addable(0 - maybe.unwrap(c))} then
+                emit(s minst.cmpImm(r(s i.args[0]) maybe.unwrap(c)))
             else emit(s minst.cmp(r(s i.args[0]) r(s i.args[1]))) end
         end
 
@@ -422,33 +422,33 @@ export
      * is 8-byte aligned, as any access's page offset must be scaled) and
      * the access is at its start *)
     let localSymbol(s: S v: Int imm: Int): maybe.T(String) =
-        if maybe.isSome(:ssa.Inst s.defs[v]) then
-            let p = maybe.unwrap(:ssa.Inst s.defs[v])
+        if maybe.isSome(s.defs[v]) then
+            let p = maybe.unwrap(s.defs[v])
             if ssa.isOp(p ssa.opSymbol) andif {{p.imm + imm} is 0}
-                    andif hashMap.contains(:String :Bool s.defined p.symbol) then
-                maybe.some(:String p.symbol)
+                    andif hashMap.contains(s.defined p.symbol) then
+                maybe.some(p.symbol)
             else maybe.none(:String) end
         else maybe.none(:String) end
     let address(s: S v: Int imm: Int width: Int): Address =
-        if maybe.isSome(:String localSymbol(s v imm)) then
-            let symbol = maybe.unwrap(:String localSymbol(s v imm))
+        if maybe.isSome(localSymbol(s v imm)) then
+            let symbol = maybe.unwrap(localSymbol(s v imm))
             let t = temp(s ssa.typePtr)
             emit(s minst.adrp(t symbol minst.relocPage))
             tuple let base = t let mode = minst.pageOff(symbol minst.relocPage) let index = ~1 end
         elsif s.indexOf[v] >= 0 then
             tuple
-                let base = r(s maybe.unwrap(:ssa.Inst s.defs[v]).args[0]) let mode = minst.indexed(s.shiftOf[v])
+                let base = r(s maybe.unwrap(s.defs[v]).args[0]) let mode = minst.indexed(s.shiftOf[v])
                 let index = r(s s.indexOf[v])
             end
         else
             let var base = v
             let var offset = imm
-            if maybe.isSome(:ssa.Inst s.defs[v]) then
-                let p = maybe.unwrap(:ssa.Inst s.defs[v])
-                if ssa.isOp(p ssa.opPtrAdd) andif maybe.isSome(:Int constOf(s p.args[1]))
-                        andif fits(imm + maybe.unwrap(:Int constOf(s p.args[1])) width) then
+            if maybe.isSome(s.defs[v]) then
+                let p = maybe.unwrap(s.defs[v])
+                if ssa.isOp(p ssa.opPtrAdd) andif maybe.isSome(constOf(s p.args[1]))
+                        andif fits(imm + maybe.unwrap(constOf(s p.args[1])) width) then
                     base := p.args[0]
-                    offset := imm + maybe.unwrap(:Int constOf(s p.args[1]))
+                    offset := imm + maybe.unwrap(constOf(s p.args[1]))
                 end
             end
             if fits(offset width) then tuple let base = r(s base) let mode = minst.offset(offset) let index = ~1 end
@@ -465,10 +465,10 @@ export
      * a function defined, as select's defined says, with its narrow results
      * extended *)
     let extended(s: S v: Int): Bool =
-        if maybe.isSome(:ssa.Inst s.defs[v]) then
-            let c = maybe.unwrap(:ssa.Inst s.defs[v])
-            ssa.isOp(c ssa.opCall) andif maybe.isSome(:Bool hashMap.get(:String :Bool s.defined c.symbol))
-                andif maybe.unwrap(:Bool hashMap.get(:String :Bool s.defined c.symbol))
+        if maybe.isSome(s.defs[v]) then
+            let c = maybe.unwrap(s.defs[v])
+            ssa.isOp(c ssa.opCall) andif maybe.isSome(hashMap.get(s.defined c.symbol))
+                andif maybe.unwrap(hashMap.get(s.defined c.symbol))
         else false end
 
     (* The registers results come back in *)
@@ -496,10 +496,10 @@ export
                 let p = placed.places[k]
                 if p.reg isnot memory then
                     emitMove(s p.reg r(s i.args[k]))
-                    vector.append(:Int regs p.reg)
+                    vector.append(regs p.reg)
                 end
             end
-            vector.toArray(:Int regs)
+            vector.toArray(regs)
         end
 
     (* A call: its arguments in their places, the call, and its results
@@ -523,10 +523,10 @@ export
                 begin
                     let c1 = constOf(s i.args[1])
                     let c0 = constOf(s i.args[0])
-                    if maybe.isSome(:Int c1) andif minst.isLogical(maybe.unwrap(:Int c1)) then
-                        emit(s minst.logicImm(op d a(0) maybe.unwrap(:Int c1)))
-                    elsif maybe.isSome(:Int c0) andif minst.isLogical(maybe.unwrap(:Int c0)) then
-                        emit(s minst.logicImm(op d a(1) maybe.unwrap(:Int c0)))
+                    if maybe.isSome(c1) andif minst.isLogical(maybe.unwrap(c1)) then
+                        emit(s minst.logicImm(op d a(0) maybe.unwrap(c1)))
+                    elsif maybe.isSome(c0) andif minst.isLogical(maybe.unwrap(c0)) then
+                        emit(s minst.logicImm(op d a(1) maybe.unwrap(c0)))
                     else arith(op) end
                 end
             case i.op
@@ -541,7 +541,7 @@ export
                     end
                 when opNull then emit(s minst.movConst(d 0))
                 when opSymbol then
-                    emit(s minst.symbolAddress(d i.symbol i.imm hashMap.contains(:String :Bool s.defined i.symbol)))
+                    emit(s minst.symbolAddress(d i.symbol i.imm hashMap.contains(s.defined i.symbol)))
                 (* A thread-local's address is a call of its accessor *)
                 when opThreadLocal then
                     emitFull(s machine.kindCall minst.tlvAddress(x0 i.symbol) none none ~1)
@@ -558,7 +558,7 @@ export
                 when opSelect then
                     let c = i.args[0]
                     let cond = if s.fused[c] then
-                            let compare = maybe.unwrap(:ssa.Inst s.defs[c])
+                            let compare = maybe.unwrap(s.defs[c])
                             setFlags(s compare)
                             condition(compare.op)
                         else
@@ -748,7 +748,7 @@ export
             compareConst(s v cases[sorted[mid]])
             branchIf(s minst.condEq targets[sorted[mid]])
             let greater = machine.newBlock(s.m)
-            vector.append(:Int s.layout greater)
+            vector.append(s.layout greater)
             emitFull(s machine.kindBranch minst.bCond(minst.condGt labelOf(s greater)) none none greater)
             search(s v cases targets sorted lo mid - 1 default)
             let from = s.b
@@ -804,34 +804,34 @@ export
                 let bit = bitOf(s.defs x.cond)
                 let both = conjunctionOf(s.defs x.cond)
                 (* A test of one bit: tbnz *)
-                if s.fused[x.cond] andif maybe.isSome(:Bit bit) then
-                    let t = maybe.unwrap(:Bit bit)
+                if s.fused[x.cond] andif maybe.isSome(bit) then
+                    let t = maybe.unwrap(bit)
                     emitFull(s machine.kindBranch minst.tbnz(r(s t.value) t.bit l) none none e)
                 (* A conjunction of comparisons: the first's flags, then, if
                  * its condition holds, the second's, and otherwise flags under
                  * which the second's condition is false *)
-                elsif s.fused[x.cond] andif maybe.isSome(:Array(Int) both) then
-                    let first = maybe.unwrap(:ssa.Inst s.defs[maybe.unwrap(:Array(Int) both)[0]])
-                    let second = maybe.unwrap(:ssa.Inst s.defs[maybe.unwrap(:Array(Int) both)[1]])
+                elsif s.fused[x.cond] andif maybe.isSome(both) then
+                    let first = maybe.unwrap(s.defs[maybe.unwrap(both)[0]])
+                    let second = maybe.unwrap(s.defs[maybe.unwrap(both)[1]])
                     setFlags(s first)
                     let c = constOf(s second.args[1])
                     let falsified = minst.falsifying(condition(second.op))
-                    if maybe.isSome(:Int c) andif {maybe.unwrap(:Int c) >= 0} andif {maybe.unwrap(:Int c) < 32} then
-                        emit(s minst.ccmpImm(r(s second.args[0]) maybe.unwrap(:Int c) falsified condition(first.op)))
+                    if maybe.isSome(c) andif {maybe.unwrap(c) >= 0} andif {maybe.unwrap(c) < 32} then
+                        emit(s minst.ccmpImm(r(s second.args[0]) maybe.unwrap(c) falsified condition(first.op)))
                     else
                         emit(s minst.ccmp(r(s second.args[0]) r(s second.args[1]) falsified condition(first.op)))
                     end
                     emitFull(s machine.kindBranch minst.bCond(condition(second.op) l) none none e)
                 elsif s.fused[x.cond] then
-                    let i = maybe.unwrap(:ssa.Inst s.defs[x.cond])
+                    let i = maybe.unwrap(s.defs[x.cond])
                     let zeroBit = if {extent i.args > 1} andif isConst(s i.args[1] 0) then bitOf(s.defs i.args[0])
                         else maybe.none(:Bit) end
                     let zeroTest = not(isRealComparison(i.op)) andif isConst(s i.args[1] 0) andif {ssa.isOp(i ssa.opEq)
                             orif ssa.isOp(i ssa.opPeq) orif ssa.isOp(i ssa.opNe) orif ssa.isOp(i ssa.opPne)}
                     let zero = ssa.isOp(i ssa.opEq) orif ssa.isOp(i ssa.opPeq)
                     (* A bit compared with 0: tbz or tbnz *)
-                    if zeroTest andif maybe.isSome(:Bit zeroBit) andif s.fused[i.args[0]] then
-                        let t = maybe.unwrap(:Bit zeroBit)
+                    if zeroTest andif maybe.isSome(zeroBit) andif s.fused[i.args[0]] then
+                        let t = maybe.unwrap(zeroBit)
                         let v = r(s t.value)
                         emitFull(s machine.kindBranch if zero then minst.tbz(v t.bit l) else minst.tbnz(v t.bit l) end
                             none none e)
@@ -855,7 +855,7 @@ export
              * every register dead (docs/arm64.md sections 3.6 and 3.8) *)
             when termTry with x then
                 let resume = machine.newBlock(s.m)
-                vector.append(:Int s.layout resume)
+                vector.append(s.layout resume)
                 machine.block(s.m resume).raised := true
                 let field(name: String): minst.Mode = minst.offset(runtimeLayout.offset("QExceptionHandler" name))
                 let handlerRecord = temp(s ssa.typePtr)
@@ -885,7 +885,7 @@ export
     let entry(s: S): Ok =
         begin
             let f = s.f
-            let params = vector.toArray(:Int ssa.block(f 0).params)
+            let params = vector.toArray(ssa.block(f 0).params)
             let types = array of(extent params ssa.typeInt)
             for k = 0 upto {extent params - 1} do types[k] := ssa.typeOf(f params[k]) end
             let placed = placeArguments(types f.signature.params 0)
@@ -911,12 +911,12 @@ export
             jumpTo(s s.blockOf[0] args)
         end
 
-    let pure(s: Selection i: machine.Inst): Bool = minst.pure(vector.get(:minst.Op s.ops i.op))
+    let pure(s: Selection i: machine.Inst): Bool = minst.pure(vector.get(s.ops i.op))
 
     let select(f: ssa.Function prefix: String defined: hashMap.T(String Bool)): Selection =
         begin
-            let nValues = vector.length(:ssa.Type f.types)
-            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let nValues = vector.length(f.types)
+            let nBlocks = vector.length(f.blocks)
             let g = cfg.graph(f)
             (* Each value's definition and uses; the outgoing arguments' area;
              * whether it enters a try *)
@@ -932,10 +932,10 @@ export
                 end
             for b = 0 upto {nBlocks - 1} do
                 let blk = ssa.block(f b)
-                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                    let i = vector.get(:ssa.Inst blk.insts k)
+                for k = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts k)
                     for j = 0 upto {extent i.results - 1} do
-                        defs[i.results[j]] := maybe.some(:ssa.Inst i)
+                        defs[i.results[j]] := maybe.some(i)
                         defBlock[i.results[j]] := b
                     end
                     for j = 0 upto {extent i.args - 1} do uses[i.args[j]] := uses[i.args[j]] + 1 end
@@ -956,41 +956,41 @@ export
                     when termBranch with x then
                         let c = x.cond
                         let here(v: Int): Bool = {defBlock[v] is b} andif {uses[v] is 1}
-                        if maybe.isSome(:ssa.Inst defs[c]) andif isComparison(maybe.unwrap(:ssa.Inst defs[c]).op)
+                        if maybe.isSome(defs[c]) andif isComparison(maybe.unwrap(defs[c]).op)
                                 andif here(c) then
                             fused[c] := true
                             (* A bit compared with 0 for equality, which the
                              * branch tests with tbz or tbnz without the and.
                              * Another comparison (> 0, say) compares the
                              * and's value, so the and stays *)
-                            let i = maybe.unwrap(:ssa.Inst defs[c])
+                            let i = maybe.unwrap(defs[c])
                             let equality = ssa.isOp(i ssa.opEq) orif ssa.isOp(i ssa.opPeq) orif ssa.isOp(i ssa.opNe)
                                 orif ssa.isOp(i ssa.opPne)
-                            if equality andif {extent i.args > 1} andif maybe.isSome(:Bit bitOf(defs i.args[0]))
+                            if equality andif {extent i.args > 1} andif maybe.isSome(bitOf(defs i.args[0]))
                                     andif here(i.args[0])
-                                    andif maybe.isSome(:ssa.Inst defs[i.args[1]])
-                                    andif ssa.isOp(maybe.unwrap(:ssa.Inst defs[i.args[1]]) ssa.opConst)
-                                    andif {maybe.unwrap(:ssa.Inst defs[i.args[1]]).imm is 0} then
+                                    andif maybe.isSome(defs[i.args[1]])
+                                    andif ssa.isOp(maybe.unwrap(defs[i.args[1]]) ssa.opConst)
+                                    andif {maybe.unwrap(defs[i.args[1]]).imm is 0} then
                                 fused[i.args[0]] := true
                             end
-                        elsif maybe.isSome(:Bit bitOf(defs c)) andif here(c) then
+                        elsif maybe.isSome(bitOf(defs c)) andif here(c) then
                             fused[c] := true
-                        elsif maybe.isSome(:Array(Int) conjunctionOf(defs c)) andif here(c)
-                                andif here(maybe.unwrap(:Array(Int) conjunctionOf(defs c))[0])
-                                andif here(maybe.unwrap(:Array(Int) conjunctionOf(defs c))[1]) then
+                        elsif maybe.isSome(conjunctionOf(defs c)) andif here(c)
+                                andif here(maybe.unwrap(conjunctionOf(defs c))[0])
+                                andif here(maybe.unwrap(conjunctionOf(defs c))[1]) then
                             fused[c] := true
-                            fused[maybe.unwrap(:Array(Int) conjunctionOf(defs c))[0]] := true
-                            fused[maybe.unwrap(:Array(Int) conjunctionOf(defs c))[1]] := true
+                            fused[maybe.unwrap(conjunctionOf(defs c))[0]] := true
+                            fused[maybe.unwrap(conjunctionOf(defs c))[1]] := true
                         end
                     when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then ok
                 end
                 (* And into the selects on them *)
                 let insts = ssa.block(f b).insts
-                for k = 0 upto {vector.length(:ssa.Inst insts) - 1} do
-                    let i = vector.get(:ssa.Inst insts k)
+                for k = 0 upto {vector.length(insts) - 1} do
+                    let i = vector.get(insts k)
                     let c = if ssa.isOp(i ssa.opSelect) then i.args[0] else ~1 end
-                    if {c >= 0} andif maybe.isSome(:ssa.Inst defs[c])
-                            andif isComparison(maybe.unwrap(:ssa.Inst defs[c]).op) andif {defBlock[c] is b}
+                    if {c >= 0} andif maybe.isSome(defs[c])
+                            andif isComparison(maybe.unwrap(defs[c]).op) andif {defBlock[c] is b}
                             andif {uses[c] is 1} then
                         fused[c] := true
                     end
@@ -1004,27 +1004,27 @@ export
             let shiftOf = array of(nValues 0)
             let folded = array of(nValues false)
             let constAt(v: Int): maybe.T(Int) =
-                if maybe.isSome(:ssa.Inst defs[v]) andif ssa.isOp(maybe.unwrap(:ssa.Inst defs[v]) ssa.opConst) then
-                    maybe.some(:Int maybe.unwrap(:ssa.Inst defs[v]).imm)
+                if maybe.isSome(defs[v]) andif ssa.isOp(maybe.unwrap(defs[v]) ssa.opConst) then
+                    maybe.some(maybe.unwrap(defs[v]).imm)
                 else maybe.none(:Int) end
             for b = 0 upto {nBlocks - 1} do
                 let insts = ssa.block(f b).insts
-                let here(v: Int): Bool = {defBlock[v] is b} andif {uses[v] is 1} andif maybe.isSome(:ssa.Inst defs[v])
-                for k = 0 upto {vector.length(:ssa.Inst insts) - 1} do
-                    let i = vector.get(:ssa.Inst insts k)
+                let here(v: Int): Bool = {defBlock[v] is b} andif {uses[v] is 1} andif maybe.isSome(defs[v])
+                for k = 0 upto {vector.length(insts) - 1} do
+                    let i = vector.get(insts k)
                     if {ssa.isOp(i ssa.opLoad) orif ssa.isOp(i ssa.opStore)} andif {i.imm is 0} andif here(i.args[0])
-                            andif ssa.isOp(maybe.unwrap(:ssa.Inst defs[i.args[0]]) ssa.opPtrAdd)
-                            andif maybe.isNone(:Int constAt(maybe.unwrap(:ssa.Inst defs[i.args[0]]).args[1])) then
+                            andif ssa.isOp(maybe.unwrap(defs[i.args[0]]) ssa.opPtrAdd)
+                            andif maybe.isNone(constAt(maybe.unwrap(defs[i.args[0]]).args[1])) then
                         let v = i.args[0]
-                        let x = maybe.unwrap(:ssa.Inst defs[v]).args[1]
+                        let x = maybe.unwrap(defs[v]).args[1]
                         let width = if i.width >= 4 then i.width else 1 end
                         let log = if width is 8 then 3 elsif width is 4 then 2 else 0 end
                         folded[v] := true
-                        let scale = if here(x) andif ssa.isOp(maybe.unwrap(:ssa.Inst defs[x]) ssa.opMul) then
-                            constAt(maybe.unwrap(:ssa.Inst defs[x]).args[1])
+                        let scale = if here(x) andif ssa.isOp(maybe.unwrap(defs[x]) ssa.opMul) then
+                            constAt(maybe.unwrap(defs[x]).args[1])
                         else maybe.none(:Int) end
-                        if {log > 0} andif maybe.isSome(:Int scale) andif {maybe.unwrap(:Int scale) is width} then
-                            indexOf[v] := maybe.unwrap(:ssa.Inst defs[x]).args[0]
+                        if {log > 0} andif maybe.isSome(scale) andif {maybe.unwrap(scale) is width} then
+                            indexOf[v] := maybe.unwrap(defs[x]).args[0]
                             shiftOf[v] := log
                             folded[x] := true
                         else
@@ -1034,11 +1034,11 @@ export
                 end
             end
             (* The stack slots, after the outgoing arguments *)
-            let nSlots = vector.length(:ssa.Slot f.slots)
+            let nSlots = vector.length(f.slots)
             let slotAt = array of(nSlots 0)
             let var at = outgoing
             for k = 0 upto {nSlots - 1} do
-                let slot = vector.get(:ssa.Slot f.slots k)
+                let slot = vector.get(f.slots k)
                 at := alignUp(at if slot.align > 8 then slot.align else 8 end)
                 slotAt[k] := at
                 at := at + alignUp(if slot.bytes > 0 then slot.bytes else 8 end 8)
@@ -1056,17 +1056,17 @@ export
                 let var b = 0 let var loc = ssa.noLoc
             end
             for v = 0 upto {nValues - 1} do
-                vector.append(:ssa.Type s.types ssa.typeOf(f v))
+                vector.append(s.types ssa.typeOf(f v))
                 if machine.newVirtual(m classOf(ssa.typeOf(f v))) is 0 then ok end
             end
             s.b := machine.newBlock(m)
-            vector.append(:Int s.layout s.b)
+            vector.append(s.layout s.b)
             for b = 0 upto {nBlocks - 1} do
                 if cfg.reached(g b) then
                     s.blockOf[b] := machine.newBlock(m)
                     let params = ssa.block(f b).params
-                    for k = 0 upto {vector.length(:Int params) - 1} do
-                        vector.append(:Int machine.block(m s.blockOf[b]).params r(s vector.get(:Int params k)))
+                    for k = 0 upto {vector.length(params) - 1} do
+                        vector.append(machine.block(m s.blockOf[b]).params r(s vector.get(params k)))
                     end
                 end
             end
@@ -1075,9 +1075,9 @@ export
                 if cfg.reached(g b) then
                     let blk = ssa.block(f b)
                     s.b := s.blockOf[b]
-                    vector.append(:Int s.layout s.b)
-                    for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                        let i = vector.get(:ssa.Inst blk.insts k)
+                    vector.append(s.layout s.b)
+                    for k = 0 upto {vector.length(blk.insts) - 1} do
+                        let i = vector.get(blk.insts k)
                         s.loc := i.loc
                         if {extent i.results isnot 1} orif not(folded[i.results[0]]) then instruction(s i) end
                     end
@@ -1096,14 +1096,14 @@ export
 
     let make(s: Selection kind: machine.Kind i: minst.Inst): machine.Inst =
         begin
-            vector.append(:minst.Op s.ops i.op)
-            vector.append(:ssa.Loc s.locs ssa.noLoc)
+            vector.append(s.ops i.op)
+            vector.append(s.locs ssa.noLoc)
             let n = minst.results(i.op)
             let operands = array of(extent i.regs machine.reads(0))
             for k = 0 upto {extent i.regs - 1} do
                 operands[k] := if k < n then machine.writes(i.regs[k]) else machine.reads(i.regs[k]) end
             end
-            machine.inst(kind operands vector.length(:minst.Op s.ops) - 1 ~1)
+            machine.inst(kind operands vector.length(s.ops) - 1 ~1)
         end
 
     let rematerializable(s: Selection i: machine.Inst): Bool =
@@ -1115,7 +1115,7 @@ export
             for k = 0 upto {extent i.operands - 1} do
                 if not(i.operands[k].defines) andif {i.operands[k].reg isnot sp} then readsSp := false end
             end
-            machine.isKind(i machine.kindOrdinary) andif case vector.get(:minst.Op s.ops i.op)
+            machine.isKind(i machine.kindOrdinary) andif case vector.get(s.ops i.op)
                 when opMovConst, opSymbolAddress then true
                 when opAddImm then readsSp
                 when opMovImm, opMovz, opMovk, opTlvAddress, opMov, opArith, opSubImm, opLogicImm, opShiftImm, opMsub,
@@ -1143,7 +1143,7 @@ export
                 begin
                     let regs = array of(extent i.operands 0)
                     for k = 0 upto {extent regs - 1} do regs[k] := i.operands[k].reg end
-                    let op = vector.get(:minst.Op s.ops i.op)
+                    let op = vector.get(s.ops i.op)
                     let lines = printer.lines(op regs names)
                     for k = 0 upto {extent lines - 1} do lines[k] := strutil.strip(lines[k]) end
                     (* A jump's arguments, and the fixed registers a call or a

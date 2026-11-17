@@ -24,11 +24,11 @@ export
      * terminator *)
     let useCounts(f: Function): Array(Int) =
         begin
-            let counts = array of(vector.length(:ssa.Type f.types) 0)
-            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+            let counts = array of(vector.length(f.types) 0)
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 let blk = ssa.block(f b)
-                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                    let i = vector.get(:ssa.Inst blk.insts k)
+                for k = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts k)
                     for j = 0 upto {extent i.args - 1} do counts[i.args[j]] := counts[i.args[j]] + 1 end
                 end
                 let uses = ssa.terminatorUses(blk.term)
@@ -43,20 +43,20 @@ export
     let joinCall(f: Function emitted: vector.T(ssa.Inst) parts: vector.T(Int) result: Int loc: ssa.Loc): ssa.Inst =
         begin
             let r = runtimeFunctions.function("quest_string_concat_n")
-            let n = vector.length(:Int parts)
+            let n = vector.length(parts)
             let count = ssa.newValue(f ssa.typeInt)
             let c = ssa.instruction(ssa.opConst array of :Int end array of count end n "" 0 false
                 ssa.signature(array of :ssa.Type end array of :ssa.Type end array of :Int end array of :Int end))
             c.loc := loc
-            vector.append(:ssa.Inst emitted c)
+            vector.append(emitted c)
             let args = array of({most + 1} count)
             for k = 0 upto {most - 1} do
-                if k < n then args[k + 1] := vector.get(:Int parts k)
+                if k < n then args[k + 1] := vector.get(parts k)
                 else
                     let v = ssa.newValue(f ssa.typePtr)
                     let z = ssa.instruction(ssa.opNull array of :Int end array of v end 0 "" 0 false c.signature)
                     z.loc := loc
-                    vector.append(:ssa.Inst emitted z)
+                    vector.append(emitted z)
                     args[k + 1] := v
                 end
             end
@@ -80,24 +80,24 @@ export
             let absorbed = hashMap.new(:Int :Bool intEqual hash.int)
             let var merged = false
             let var memory = 0
-            for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                let i = vector.get(:ssa.Inst blk.insts k)
+            for k = 0 upto {vector.length(blk.insts) - 1} do
+                let i = vector.get(blk.insts k)
                 if isConcat(i) then
                     let parts = vector.new(:Int)
                     for j = 0 upto 1 do
                         let a = i.args[j]
-                        if hashMap.contains(:Int :vector.T(Int) partsOf a) andif {counts[a] is 1}
-                            andif {hashMap.find(:Int :Int memoryOf a) is memory} then
-                            let inner = hashMap.find(:Int :vector.T(Int) partsOf a)
-                            for p = 0 upto {vector.length(:Int inner) - 1} do vector.append(:Int parts vector.get(:Int inner p)) end
-                            hashMap.insert(:Int :Bool absorbed a true)
+                        if hashMap.contains(partsOf a) andif {counts[a] is 1}
+                            andif {hashMap.find(memoryOf a) is memory} then
+                            let inner = hashMap.find(partsOf a)
+                            for p = 0 upto {vector.length(inner) - 1} do vector.append(parts vector.get(inner p)) end
+                            hashMap.insert(absorbed a true)
                             merged := true
                         else
-                            vector.append(:Int parts a)
+                            vector.append(parts a)
                         end
                     end
-                    hashMap.insert(:Int :vector.T(Int) partsOf i.results[0] parts)
-                    hashMap.insert(:Int :Int memoryOf i.results[0] memory)
+                    hashMap.insert(partsOf i.results[0] parts)
+                    hashMap.insert(memoryOf i.results[0] memory)
                     ok
                 elsif ssa.isOp(i ssa.opStore) orif {ssa.isCall(i) andif runtimeFunctions.callWrites(i)} then
                     memory := memory + 1
@@ -105,43 +105,43 @@ export
             end
             if merged then
                 let emitted = vector.new(:ssa.Inst)
-                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                    let i = vector.get(:ssa.Inst blk.insts k)
-                    if not(isConcat(i)) then vector.append(:ssa.Inst emitted i)
-                    elsif hashMap.contains(:Int :Bool absorbed i.results[0]) then ok
+                for k = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts k)
+                    if not(isConcat(i)) then vector.append(emitted i)
+                    elsif hashMap.contains(absorbed i.results[0]) then ok
                     else
-                        let var parts = hashMap.find(:Int :vector.T(Int) partsOf i.results[0])
-                        if vector.length(:Int parts) is 2 then vector.append(:ssa.Inst emitted i)
+                        let var parts = hashMap.find(partsOf i.results[0])
+                        if vector.length(parts) is 2 then vector.append(emitted i)
                         else
                             (* Seven at a time, each group's string the first
                              * part of the rest *)
-                            while vector.length(:Int parts) > most do
+                            while vector.length(parts) > most do
                                 let group = vector.new(:Int)
-                                for p = 0 upto {most - 1} do vector.append(:Int group vector.get(:Int parts p)) end
+                                for p = 0 upto {most - 1} do vector.append(group vector.get(parts p)) end
                                 let joined = ssa.newValue(f ssa.typePtr)
-                                vector.append(:ssa.Inst emitted joinCall(f emitted group joined i.loc))
+                                vector.append(emitted joinCall(f emitted group joined i.loc))
                                 let rest = vector.new(:Int)
-                                vector.append(:Int rest joined)
-                                for p = most upto {vector.length(:Int parts) - 1} do
-                                    vector.append(:Int rest vector.get(:Int parts p))
+                                vector.append(rest joined)
+                                for p = most upto {vector.length(parts) - 1} do
+                                    vector.append(rest vector.get(parts p))
                                 end
                                 parts := rest
                             end
-                            vector.append(:ssa.Inst emitted joinCall(f emitted parts i.results[0] i.loc))
+                            vector.append(emitted joinCall(f emitted parts i.results[0] i.loc))
                         end
                     end
                 end
-                vector.clear(:ssa.Inst blk.insts)
-                for k = 0 upto {vector.length(:ssa.Inst emitted) - 1} do vector.append(:ssa.Inst blk.insts vector.get(:ssa.Inst emitted k)) end
+                vector.clear(blk.insts)
+                for k = 0 upto {vector.length(emitted) - 1} do vector.append(blk.insts vector.get(emitted k)) end
             end
         end
 
     let concatFunction(f: Function): Ok =
         begin
             let counts = useCounts(f)
-            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do concatBlock(f b counts) end
+            for b = 0 upto {vector.length(f.blocks) - 1} do concatBlock(f b counts) end
         end
 
     let concatUnit(u: ssa.Unit): Ok =
-        for i = 0 upto {vector.length(:Function u.functions) - 1} do concatFunction(vector.get(:Function u.functions i)) end
+        for i = 0 upto {vector.length(u.functions) - 1} do concatFunction(vector.get(u.functions i)) end
 end

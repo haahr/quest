@@ -143,10 +143,10 @@ export
         begin
             let var found = maybe.none(:Function)
             for i = 0 upto {extent functions - 1} do
-                if stringOp.equal(functions[i].name name) then found := maybe.some(:Function functions[i]) end
+                if stringOp.equal(functions[i].name name) then found := maybe.some(functions[i]) end
             end
-            if maybe.isNone(:Function found) then raise unknown with name end end
-            maybe.unwrap(:Function found)
+            if maybe.isNone(found) then raise unknown with name end end
+            maybe.unwrap(found)
         end
 
     let callWrites(i: ssa.Inst): Bool =
@@ -187,8 +187,8 @@ export
             elsif stringOp.equal(c "QVariantVal") then pair(ssa.typeInt ssa.typeVal)
             elsif stringOp.equal(c "QVal") then one(ssa.passWord ssa.typeVal)
             (* A larger struct, by its copy's address *)
-            elsif maybe.isSome(:runtimeLayout.Struct runtimeLayout.struct(c)) then
-                let bytes = maybe.unwrap(:runtimeLayout.Struct runtimeLayout.struct(c)).bytes
+            elsif maybe.isSome(runtimeLayout.struct(c)) then
+                let bytes = maybe.unwrap(runtimeLayout.struct(c)).bytes
                 one(option passMemory of ssa.Passed with let bytes = bytes end ssa.typePtr)
             (* Any other, such as int64_t, size_t, or QInt, an integer word *)
             else one(ssa.passWord ssa.typeInt) end
@@ -201,11 +201,11 @@ export
             for i = 0 upto {extent cs - 1} do
                 let p = passing(cs[i])
                 for k = 0 upto {extent p.passed - 1} do
-                    vector.append(:ssa.Passed passed p.passed[k])
-                    vector.append(:ssa.Type types p.types[k])
+                    vector.append(passed p.passed[k])
+                    vector.append(types p.types[k])
                 end
             end
-            tuple let passed = vector.toArray(:ssa.Passed passed) let types = vector.toArray(:ssa.Type types) end
+            tuple let passed = vector.toArray(passed) let types = vector.toArray(types) end
         end
 
     let signature(f: Function): ssa.Signature =

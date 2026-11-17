@@ -17,16 +17,16 @@ export
 
     let definitions(f: ssa.Function): Defs =
         begin
-            let nValues = vector.length(:ssa.Type f.types)
+            let nValues = vector.length(f.types)
             let d = tuple
                 let f = f
                 let defBlock = array of(nValues ~1) let defIndex = array of(nValues ~1)
                 let isConst = array of(nValues false) let constant = array of(nValues 0)
             end
-            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 let blk = ssa.block(f b)
-                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                    let i = vector.get(:ssa.Inst blk.insts k)
+                for k = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts k)
                     for r = 0 upto {extent i.results - 1} do
                         d.defBlock[i.results[r]] := b
                         d.defIndex[i.results[r]] := k
@@ -40,7 +40,7 @@ export
             d
         end
 
-    let defOf(d: Defs v: Int): ssa.Inst = vector.get(:ssa.Inst ssa.block(d.f d.defBlock[v]).insts d.defIndex[v])
+    let defOf(d: Defs v: Int): ssa.Inst = vector.get(ssa.block(d.f d.defBlock[v]).insts d.defIndex[v])
     let definedBy(d: Defs v: Int op: ssa.Opcode): Bool =
         {v >= 0} andif {d.defBlock[v] >= 0} andif ssa.isOp(defOf(d v) op)
     let isConstant(d: Defs v: Int n: Int): Bool = d.isConst[v] andif {d.constant[v] is n}
@@ -56,13 +56,13 @@ export
 
     let reachable(d: Defs reach: Array(Bool) isTest: All(v: Int) Bool): Ok =
         begin
-            let n = vector.length(:ssa.Block d.f.blocks)
+            let n = vector.length(d.f.blocks)
             for b = 0 upto {n - 1} do reach[b] := false end
             let work = vector.new(:Int)
-            let visit(b: Int): Ok = if not(reach[b]) then begin reach[b] := true vector.append(:Int work b) end end
+            let visit(b: Int): Ok = if not(reach[b]) then begin reach[b] := true vector.append(work b) end end
             if n > 0 then visit(0) end
-            while not(vector.empty(:Int work)) do
-                let term = ssa.block(d.f vector.pop(:Int work)).term
+            while not(vector.empty(work)) do
+                let term = ssa.block(d.f vector.pop(work)).term
                 let folded =
                     case term
                         when termBranch with x then
@@ -116,7 +116,7 @@ export
                 begin
                     let i = ssa.inst(op args array of result end)
                     i.loc := loc
-                    vector.append(:ssa.Inst insts i)
+                    vector.append(insts i)
                 end
             case t
                 when typeInt then add(ssa.opConst array of :Int end v)

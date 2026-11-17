@@ -37,39 +37,39 @@ export
     end
 
     let bump(m: hashMap.T(Int Int) id: Int): Ok =
-        begin hashMap.insert(:Int :Int m id 1 + maybe.unwrapOr(:Int hashMap.get(:Int :Int m id) 0)) ok end
-    let countOf(m: hashMap.T(Int Int) v: Variable): Int = maybe.unwrapOr(:Int hashMap.get(:Int :Int m v.id) 0)
+        begin hashMap.insert(m id 1 + maybe.unwrapOr(hashMap.get(m id) 0)) ok end
+    let countOf(m: hashMap.T(Int Int) v: Variable): Int = maybe.unwrapOr(hashMap.get(m v.id) 0)
 
     let gather(f: Facts b: Body): Ok =
         begin
             let stmts = walk.walkStatements(b true)
-            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
-                let st = vector.get(:Stmt stmts i)
+            for i = 0 upto {vector.length(stmts) - 1} do
+                let st = vector.get(stmts i)
                 let op = case st
                     when sLet with x then
                         begin
-                            hashMap.insert(:Int :Op f.defs x.v.id x.value)
-                            maybe.some(:Op x.value)
+                            hashMap.insert(f.defs x.v.id x.value)
+                            maybe.some(x.value)
                         end
-                    when sDo with x then maybe.some(:Op x.value)
+                    when sDo with x then maybe.some(x.value)
                     else maybe.none(:Op)
                 end
-                if maybe.isSome(:Op op) then
-                    case maybe.unwrap(:Op op)
+                if maybe.isSome(op) then
+                    case maybe.unwrap(op)
                         when opCall with c then
-                            if maybe.isSome(:Variable c.callee) then
-                                bump(f.callees maybe.unwrap(:Variable c.callee).id)
-                                vector.append(:Stmt f.calls st)
+                            if maybe.isSome(c.callee) then
+                                bump(f.callees maybe.unwrap(c.callee).id)
+                                vector.append(f.calls st)
                             end
                         when opTupleField with t then
                             case t.tup when atomVar with x then bump(f.reads x.v.id) when atomConst then ok end
                         when opMakeClosure with c then
                             case st
                                 when sLet with x then
-                                    if not(hashMap.contains(:Int :vector.T(Variable) f.closures c.code.id)) then
-                                        hashMap.insert(:Int :vector.T(Variable) f.closures c.code.id vector.new(:Variable))
+                                    if not(hashMap.contains(f.closures c.code.id)) then
+                                        hashMap.insert(f.closures c.code.id vector.new(:Variable))
                                     end
-                                    vector.append(:Variable hashMap.find(:Int :vector.T(Variable) f.closures c.code.id) x.v)
+                                    vector.append(hashMap.find(f.closures c.code.id) x.v)
                                 else ok
                             end
                         else ok
@@ -104,17 +104,17 @@ export
             let found = vector.new(:Variable)
             let var all = true
             let stmts = walk.walkStatements(fun1.body false)
-            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
-                case vector.get(:Stmt stmts i)
+            for i = 0 upto {vector.length(stmts) - 1} do
+                case vector.get(stmts i)
                     when sReturn with r then
                         case r.value
                             when atomVar with x then
-                                let d = hashMap.get(:Int :Op f.defs x.v.id)
-                                let made = maybe.isSome(:Op d) andif
-                                    {case maybe.unwrap(:Op d) when opMakeTuple with t then extent t.embedded is 0 else false end}
+                                let d = hashMap.get(f.defs x.v.id)
+                                let made = maybe.isSome(d) andif
+                                    {case maybe.unwrap(d) when opMakeTuple with t then extent t.embedded is 0 else false end}
                                 if made andif {countOf(f.uses x.v) is 1} andif not(x.v.isMutable)
                                     andif nodes.sameType(x.v.type fun1.resultType) then
-                                    vector.append(:Variable found x.v)
+                                    vector.append(found x.v)
                                 else
                                     all := false
                                 end
@@ -123,7 +123,7 @@ export
                     else ok
                 end
             end
-            if all andif not(vector.empty(:Variable found)) then maybe.some(:vector.T(Variable) found) else maybe.none(:vector.T(Variable)) end
+            if all andif not(vector.empty(found)) then maybe.some(found) else maybe.none(:vector.T(Variable)) end
         end
 
     let unboxUnit(unit: nodes.Unit): nodes.Unit =
@@ -140,16 +140,16 @@ export
             walk.countUses(unit f.uses f.pinned)
             let all = walk.unitBodies(unit)
             for b = 0 upto {extent all - 1} do gather(f all[b]) end
-            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
-                let fun1 = vector.get(:nodes.Function unit.functions i)
-                let closures = maybe.unwrapOr(:vector.T(Variable) hashMap.get(:Int :vector.T(Variable) f.closures fun1.id)
+            for i = 0 upto {vector.length(unit.functions) - 1} do
+                let fun1 = vector.get(unit.functions i)
+                let closures = maybe.unwrapOr(hashMap.get(f.closures fun1.id)
                     vector.new(:Variable))
                 (* Every closure of it is only called *)
-                let var known = {extent fun1.typeParams is 0} andif not(vector.empty(:Variable closures))
+                let var known = {extent fun1.typeParams is 0} andif not(vector.empty(closures))
                     andif unboxable(shapes.shape(fun1.resultType))
-                for k = 0 upto {vector.length(:Variable closures) - 1} do
-                    let c = vector.get(:Variable closures k)
-                    if hashMap.contains(:Int :Bool f.pinned c.id) orif {countOf(f.uses c) isnot countOf(f.callees c)} then
+                for k = 0 upto {vector.length(closures) - 1} do
+                    let c = vector.get(closures k)
+                    if hashMap.contains(f.pinned c.id) orif {countOf(f.uses c) isnot countOf(f.callees c)} then
                         known := false
                     end
                 end
@@ -157,25 +157,25 @@ export
                  * read from *)
                 let results = vector.new(:Variable)
                 if known then
-                    for k = 0 upto {vector.length(:Stmt f.calls) - 1} do
-                        let st = vector.get(:Stmt f.calls k)
+                    for k = 0 upto {vector.length(f.calls) - 1} do
+                        let st = vector.get(f.calls k)
                         let callee = case st
                             when sLet with x then case x.value when opCall with c then c.callee else maybe.none(:Variable) end
                             when sDo with x then case x.value when opCall with c then c.callee else maybe.none(:Variable) end
                             else maybe.none(:Variable)
                         end
                         let var mine = false
-                        for j = 0 upto {vector.length(:Variable closures) - 1} do
-                            if maybe.isSome(:Variable callee)
-                                andif nodes.same(maybe.unwrap(:Variable callee) vector.get(:Variable closures j)) then mine := true end
+                        for j = 0 upto {vector.length(closures) - 1} do
+                            if maybe.isSome(callee)
+                                andif nodes.same(maybe.unwrap(callee) vector.get(closures j)) then mine := true end
                         end
                         if mine then
                             case st
                                 when sLet with x then
                                     if nodes.sameType(x.v.type fun1.resultType) andif not(x.v.isMutable)
-                                        andif not(hashMap.contains(:Int :Bool f.pinned x.v.id))
+                                        andif not(hashMap.contains(f.pinned x.v.id))
                                         andif {countOf(f.uses x.v) is countOf(f.reads x.v)} then
-                                        vector.append(:Variable results x.v)
+                                        vector.append(results x.v)
                                     else
                                         known := false
                                     end
@@ -185,11 +185,11 @@ export
                     end
                 end
                 let tuples = if known then returned(f fun1) else maybe.none(:vector.T(Variable)) end
-                if maybe.isSome(:vector.T(Variable) tuples) then
+                if maybe.isSome(tuples) then
                     fun1.unboxedResult := true
-                    let made = maybe.unwrap(:vector.T(Variable) tuples)
-                    for k = 0 upto {vector.length(:Variable made) - 1} do vector.get(:Variable made k).unboxed := true end
-                    for k = 0 upto {vector.length(:Variable results) - 1} do vector.get(:Variable results k).unboxed := true end
+                    let made = maybe.unwrap(tuples)
+                    for k = 0 upto {vector.length(made) - 1} do vector.get(made k).unboxed := true end
+                    for k = 0 upto {vector.length(results) - 1} do vector.get(results k).unboxed := true end
                 end
             end
             unit

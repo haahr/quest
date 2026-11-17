@@ -22,23 +22,23 @@ export
     let newIds(): Ids = hashMap.new(:Int :Bool intEqual hash.int)
 
     (* ids with one more *)
-    let copy(ids: Ids): Ids = hashMap.filter(:Int :Bool ids fun(k: Int v: Bool): Bool true)
+    let copy(ids: Ids): Ids = hashMap.filter(ids fun(k: Int v: Bool): Bool true)
 
     let plus(ids: Ids id: Int): Ids =
         begin
             let more = copy(ids)
-            hashMap.insert(:Int :Bool more id true)
+            hashMap.insert(more id true)
             more
         end
 
     let union(a: Ids b: Ids): Ids =
         begin
             let both = copy(a)
-            hashMap.forEach(:Int :Bool b fun(k: Int v: Bool): Ok begin hashMap.insert(:Int :Bool both k true) ok end)
+            hashMap.forEach(b fun(k: Int v: Bool): Ok begin hashMap.insert(both k true) ok end)
             both
         end
 
-    let has(ids: Ids id: Int): Bool = hashMap.contains(:Int :Bool ids id)
+    let has(ids: Ids id: Int): Bool = hashMap.contains(ids id)
 
     (* Whether t is contractive in ids (Cardelli and Longo, section 2.4):
      * primitive types and type constructors are contractive; a variable is
@@ -59,7 +59,7 @@ export
                     let length = 1
                     let isFatal = true
                     let help = maybe.none(:String)
-                    let notes = vector.fromArray(:String array of
+                    let notes = vector.fromArray(array of
                         "Compiler terminated to prevent infinite recursion during typechecking."
                     end)
                     let file = maybe.none(:String)
@@ -67,7 +67,7 @@ export
                     let labels = vector.new(:diagnostics.Label)
                 end)
             end
-            let lookup = if maybe.isSome(:env.T e) then symbols.lookup else model.noLookup end
+            let lookup = if maybe.isSome(e) then symbols.lookup else model.noLookup end
             let lazy = model.evaluateLazily(t lookup)
             case lazy.form
                 (* Evaluation has followed the variable's definition, if it
@@ -84,7 +84,7 @@ export
                     begin
                         let groupIds = newIds()
                         for i = 0 upto {extent x.bindings - 1} do
-                            hashMap.insert(:Int :Bool groupIds x.bindings[i].symbolId true)
+                            hashMap.insert(groupIds x.bindings[i].symbolId true)
                         end
                         contractive(x.bindings[x.activeIndex].body union(ids groupIds) e {depth + 1})
                     end
@@ -104,10 +104,9 @@ export
                 let offset = offset
                 let length = 1
                 let isFatal = false
-                let help = maybe.some(:String
-                    "ensure recursive variable appears inside a record, tuple, function, option, variant, or " <>
+                let help = maybe.some("ensure recursive variable appears inside a record, tuple, function, option, variant, or " <>
                         "array type")
-                let notes = vector.fromArray(:String array of
+                let notes = vector.fromArray(array of
                     "definition of '" <> varName <> "' refers directly to itself as a bare alias without a " <>
                         "guarding constructor"
                 end)

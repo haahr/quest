@@ -38,15 +38,15 @@ export
     let withIds(ids: Ids more: Array(nodes.TypeParam)): Ids =
         begin
             let result = newIds()
-            hashMap.forEach(:Int :Bool ids fun(k: Int b: Bool): Ok begin hashMap.insert(:Int :Bool result k b) ok end)
-            for i = 0 upto {extent more - 1} do hashMap.insert(:Int :Bool result more[i].symbolId true) end
+            hashMap.forEach(ids fun(k: Int b: Bool): Ok begin hashMap.insert(result k b) ok end)
+            for i = 0 upto {extent more - 1} do hashMap.insert(result more[i].symbolId true) end
             result
         end
 
     let mentionsAny(t: Type ids: Ids): Bool =
         begin
             let var found = false
-            for i = 0 upto {extent t.fv - 1} do if hashMap.contains(:Int :Bool ids t.fv[i]) then found := true end end
+            for i = 0 upto {extent t.fv - 1} do if hashMap.contains(ids t.fv[i]) then found := true end end
             found
         end
 
@@ -57,18 +57,18 @@ export
         begin
             let seen = newIds()
             let rec holds(s: Shape): Bool =
-                if hashMap.contains(:Int :Bool seen s.id) then
+                if hashMap.contains(seen s.id) then
                     false
                 elsif wanted(s) then
                     true
                 else
-                    hashMap.insert(:Int :Bool seen s.id true)
+                    hashMap.insert(seen s.id true)
                     let kind = s.kind
                     case kind
                         when shapeRecord, shapeVariant then
                             false
                         when shapeTypevar then
-                            maybe.isSome(:Shape s.bound) andif holds(maybe.unwrap(:Shape s.bound))
+                            maybe.isSome(s.bound) andif holds(maybe.unwrap(s.bound))
                         when shapeTuple then
                             let var found = false
                             for i = 0 upto {extent s.components - 1} do
@@ -79,8 +79,8 @@ export
                             let var found = false
                             for i = 0 upto {extent s.cases - 1} do
                                 let c = s.cases[i].shape
-                                if not(found) andif maybe.isSome(:Shape c)
-                                    andif holds(maybe.unwrap(:Shape c)) then found := true end
+                                if not(found) andif maybe.isSome(c)
+                                    andif holds(maybe.unwrap(c)) then found := true end
                             end
                             found
                         when shapeArray, shapeCell, shapeOut then
@@ -131,8 +131,8 @@ export
              * C function takes its type parameters' values in their slot
              * form, a word *)
             let var isExternal = false
-            for i = 0 upto {vector.length(:nodes.Stmt f.body.statements) - 1} do
-                case vector.get(:nodes.Stmt f.body.statements i)
+            for i = 0 upto {vector.length(f.body.statements) - 1} do
+                case vector.get(f.body.statements i)
                     when sLet with s then case s.value when opCallExternal then isExternal := true else ok end
                     else ok
                 end
@@ -249,13 +249,13 @@ export
     end
 
     let rec collect(sp: Specializer b: Body m: maybe.T(nodes.Module) enclosing: Ids): Ok =
-        for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
-            let s = vector.get(:Stmt b.statements i)
+        for i = 0 upto {vector.length(b.statements) - 1} do
+            let s = vector.get(b.statements i)
             case s
                 when sFuns with x then
                     for j = 0 upto {extent x.functions - 1} do
                         let f = x.functions[j]
-                        hashMap.insert(:Int :Definition sp.definitions f.v.id
+                        hashMap.insert(sp.definitions f.v.id
                             tuple let function = f let funs = s let owner = m let enclosing = enclosing end)
                         collect(sp f.body maybe.none(:nodes.Module) withIds(enclosing f.typeParams))
                     end
@@ -269,9 +269,9 @@ export
         begin
             let var found = ""
             let var done = false
-            for i = 0 upto {vector.length(:String m.members.names) - 1} do
-                let n = vector.get(:String m.members.names i)
-                if not(done) andif nodes.same(hashMap.find(:String :Variable m.members.vars n) v) then
+            for i = 0 upto {vector.length(m.members.names) - 1} do
+                let n = vector.get(m.members.names i)
+                if not(done) andif nodes.same(hashMap.find(m.members.vars n) v) then
                     found := n
                     done := true
                 end
@@ -292,48 +292,48 @@ export
             (* By function and type arguments (by symbol and type identity,
              * never by name) *)
             let keyBuilder = vector.new(:String)
-            vector.append(:String keyBuilder conv.int(f.id))
-            for i = 0 upto {extent typeArgs - 1} do vector.append(:String keyBuilder digests.typeIdentityKey(typeArgs[i])) end
+            vector.append(keyBuilder conv.int(f.id))
+            for i = 0 upto {extent typeArgs - 1} do vector.append(keyBuilder digests.typeIdentityKey(typeArgs[i])) end
             let keyText = strutil.join("|" keyBuilder)
-            let existing = hashMap.get(:String :nodes.Function sp.clones keyText)
-            if maybe.isSome(:nodes.Function existing) then
+            let existing = hashMap.get(sp.clones keyText)
+            if maybe.isSome(existing) then
                 existing
             elsif sp.depth >= maxDepth then
                 maybe.none(:nodes.Function)
             else
-                let n = maybe.unwrapOr(:Int hashMap.get(:Int :Int sp.counts f.id) 0)
-                hashMap.insert(:Int :Int sp.counts f.id n + 1)
+                let n = maybe.unwrapOr(hashMap.get(sp.counts f.id) 0)
+                hashMap.insert(sp.counts f.id n + 1)
                 let subst = model.newSubst()
                 for i = 0 upto {extent f.typeParams - 1} do
-                    if i < extent typeArgs then hashMap.insert(:Int :Type subst f.typeParams[i].symbolId typeArgs[i]) end
+                    if i < extent typeArgs then hashMap.insert(subst f.typeParams[i].symbolId typeArgs[i]) end
                 end
                 let cloner = cloning.newCloner(subst)
                 let cloned = cloneFunction(cloner f)
-                hashMap.insert(:String :nodes.Function sp.clones keyText cloned)
+                hashMap.insert(sp.clones keyText cloned)
                 case definition.funs
                     when sFuns with x then
-                        let functions = vector.fromArray(:nodes.Function x.functions)
-                        vector.append(:nodes.Function functions cloned)
-                        x.functions := vector.toArray(:nodes.Function functions)
+                        let functions = vector.fromArray(x.functions)
+                        vector.append(functions cloned)
+                        x.functions := vector.toArray(functions)
                     else ok
                 end
                 (* Only a member gets a member: a function bound inside a
                  * statement of the module's initializer (an if's arm, say)
                  * has the module as its owner too, but no member name *)
-                if maybe.isSome(:nodes.Module definition.owner) then
-                    let m = maybe.unwrap(:nodes.Module definition.owner)
+                if maybe.isSome(definition.owner) then
+                    let m = maybe.unwrap(definition.owner)
                     let name = memberName(m f.v)
                     if not(stringOp.isEmpty(name)) then
                         nodes.addMember(m.members name <> "_spec" <> conv.int(n + 1) cloned.v)
                     end
                 end
-                hashMap.insert(:Int :Definition sp.definitions cloned.v.id
+                hashMap.insert(sp.definitions cloned.v.id
                     tuple let function = cloned let funs = definition.funs let owner = definition.owner let enclosing = definition.enclosing end)
                 (* The clone's local functions are definitions too, whose calls
                  * (in the clone) may be specialized *)
                 collect(sp cloned.body maybe.none(:nodes.Module) definition.enclosing)
-                vector.append(:Pending sp.pending tuple let clone = cloned let enclosing = definition.enclosing let depth = sp.depth + 1 end)
-                maybe.some(:nodes.Function cloned)
+                vector.append(sp.pending tuple let clone = cloned let enclosing = definition.enclosing let depth = sp.depth + 1 end)
+                maybe.some(cloned)
             end
         end
 
@@ -341,14 +341,14 @@ export
      * its callee, or a member of one of the unit's modules *)
     let definitionOf(sp: Specializer callee: maybe.T(Variable) moduleRef: maybe.T(nodes.ModuleRef)
             member: maybe.T(String)): maybe.T(Definition) =
-        if maybe.isSome(:Variable callee) then
-            hashMap.get(:Int :Definition sp.definitions maybe.unwrap(:Variable callee).id)
-        elsif maybe.isSome(:nodes.ModuleRef moduleRef) then
-            case maybe.unwrap(:nodes.ModuleRef moduleRef)
+        if maybe.isSome(callee) then
+            hashMap.get(sp.definitions maybe.unwrap(callee).id)
+        elsif maybe.isSome(moduleRef) then
+            case maybe.unwrap(moduleRef)
                 when refModule with r then
-                    let m = nodes.member(r.m.members maybe.unwrapOr(:String member ""))
-                    if maybe.isSome(:Variable m) then
-                        hashMap.get(:Int :Definition sp.definitions maybe.unwrap(:Variable m).id)
+                    let m = nodes.member(r.m.members maybe.unwrapOr(member ""))
+                    if maybe.isSome(m) then
+                        hashMap.get(sp.definitions maybe.unwrap(m).id)
                     else maybe.none(:Definition) end
                 (* A function of another unit, whose IR this unit does not
                  * have *)
@@ -376,13 +376,13 @@ export
      * generic, rather than convert them at every call *)
     let crossesAbstractLayouts(moduleRef: maybe.T(nodes.ModuleRef) calleeType: maybe.T(Type) typeArgs: Array(Type)):
             Bool =
-        if maybe.isNone(:nodes.ModuleRef moduleRef) orif maybe.isNone(:Type calleeType) then
+        if maybe.isNone(moduleRef) orif maybe.isNone(calleeType) then
             false
         else
-            let q = written.quantified(maybe.unwrap(:Type calleeType))
+            let q = written.quantified(maybe.unwrap(calleeType))
             let subst = model.newSubst()
             for i = 0 upto {extent q.quantifiers - 1} do
-                if i < extent typeArgs then hashMap.insert(:Int :Type subst q.quantifiers[i].symbolId typeArgs[i]) end
+                if i < extent typeArgs then hashMap.insert(subst q.quantifiers[i].symbolId typeArgs[i]) end
             end
             genericLayout.abstractLayoutsDiffer(model.substitute(q.body subst))
         end
@@ -392,17 +392,17 @@ export
             when opCall with call then
                 if extent call.typeArgs > 0 then
                     let definition = definitionOf(sp call.callee call.moduleRef call.member)
-                    if maybe.isSome(:Definition definition) then
-                        let d = maybe.unwrap(:Definition definition)
+                    if maybe.isSome(definition) then
+                        let d = maybe.unwrap(definition)
                         if specializes(d.function call.typeArgs enclosing)
                             andif not(crossesAbstractLayouts(call.moduleRef call.calleeType call.typeArgs)) then
                             let cloned = clone(sp d call.typeArgs)
-                            if maybe.isSome(:nodes.Function cloned) then
-                                let c = maybe.unwrap(:nodes.Function cloned)
-                                if maybe.isSome(:Variable call.callee) then
-                                    call.callee := maybe.some(:Variable c.v)
+                            if maybe.isSome(cloned) then
+                                let c = maybe.unwrap(cloned)
+                                if maybe.isSome(call.callee) then
+                                    call.callee := maybe.some(c.v)
                                 else
-                                    call.member := maybe.some(:String memberName(maybe.unwrap(:nodes.Module d.owner) c.v))
+                                    call.member := maybe.some(memberName(maybe.unwrap(d.owner) c.v))
                                 end
                                 call.typeArgs := array of :Type end
                             end
@@ -422,21 +422,21 @@ export
         case o
             when opTypeApp with app then
                 let definition = definitionOf(sp app.callee app.moduleRef app.member)
-                if maybe.isSome(:Definition definition) andif not(shapes.isFunction(result.type)) then
-                    let d = maybe.unwrap(:Definition definition)
+                if maybe.isSome(definition) andif not(shapes.isFunction(result.type)) then
+                    let d = maybe.unwrap(definition)
                     if {extent d.function.params is 0} andif specializes(d.function app.typeArgs enclosing)
                         andif not(crossesAbstractLayouts(app.moduleRef app.calleeType app.typeArgs)) then
                         let cloned = clone(sp d app.typeArgs)
-                        if maybe.isSome(:nodes.Function cloned) then
-                            let c = maybe.unwrap(:nodes.Function cloned)
+                        if maybe.isSome(cloned) then
+                            let c = maybe.unwrap(cloned)
                             let none = array of :Type end
-                            if maybe.isSome(:Variable app.callee) then
-                                maybe.some(:Op nodes.call(maybe.some(:Variable c.v) none array of :Atom end
+                            if maybe.isSome(app.callee) then
+                                maybe.some(nodes.call(maybe.some(c.v) none array of :Atom end
                                     maybe.none(:nodes.ModuleRef) maybe.none(:String) app.calleeType))
                             else
-                                let member = memberName(maybe.unwrap(:nodes.Module d.owner) c.v)
-                                maybe.some(:Op nodes.call(maybe.none(:Variable) none array of :Atom end app.moduleRef
-                                    maybe.some(:String member) app.calleeType))
+                                let member = memberName(maybe.unwrap(d.owner) c.v)
+                                maybe.some(nodes.call(maybe.none(:Variable) none array of :Atom end app.moduleRef
+                                    maybe.some(member) app.calleeType))
                             end
                         else maybe.none(:Op) end
                     else maybe.none(:Op) end
@@ -445,13 +445,13 @@ export
         end
 
     let rec specializeBody(sp: Specializer b: Body enclosing: Ids): Ok =
-        for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
-            let s = vector.get(:Stmt b.statements i)
+        for i = 0 upto {vector.length(b.statements) - 1} do
+            let s = vector.get(b.statements i)
             case s
                 when sLet with x then
                     specializeCall(sp x.value enclosing)
                     let call = specializeTypeApp(sp x.value x.v enclosing)
-                    if maybe.isSome(:Op call) then x.value := maybe.unwrap(:Op call) end
+                    if maybe.isSome(call) then x.value := maybe.unwrap(call) end
                 when sDo with x then specializeCall(sp x.value enclosing)
                 when sFuns with x then
                     let functions = x.functions
@@ -473,17 +473,17 @@ export
                 let pending = vector.new(:Pending)
                 let var depth = 0
             end
-            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
-                let m = vector.get(:nodes.Module unit.modules i)
-                collect(sp m.init maybe.some(:nodes.Module m) newIds())
+            for i = 0 upto {vector.length(unit.modules) - 1} do
+                let m = vector.get(unit.modules i)
+                collect(sp m.init maybe.some(m) newIds())
             end
             collect(sp unit.main maybe.none(:nodes.Module) newIds())
-            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
-                specializeBody(sp vector.get(:nodes.Module unit.modules i).init newIds())
+            for i = 0 upto {vector.length(unit.modules) - 1} do
+                specializeBody(sp vector.get(unit.modules i).init newIds())
             end
             specializeBody(sp unit.main newIds())
-            while not(vector.empty(:Pending sp.pending)) do
-                let p = vector.pop(:Pending sp.pending)
+            while not(vector.empty(sp.pending)) do
+                let p = vector.pop(sp.pending)
                 sp.depth := p.depth
                 specializeBody(sp p.clone.body p.enclosing)
             end

@@ -18,12 +18,12 @@ export
     let tailCallees(f: Function numbers: hashMap.T(String Int)): vector.T(Int) =
         begin
             let callees = vector.new(:Int)
-            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 case ssa.block(f b).term
                     when termTailCall with x then
-                        let n = hashMap.get(:String :Int numbers x.call.symbol)
-                        if ssa.isOp(x.call ssa.opCall) andif maybe.isSome(:Int n) then
-                            vector.append(:Int callees maybe.unwrap(:Int n))
+                        let n = hashMap.get(numbers x.call.symbol)
+                        if ssa.isOp(x.call ssa.opCall) andif maybe.isSome(n) then
+                            vector.append(callees maybe.unwrap(n))
                         end
                     when termNone, termJump, termBranch, termSwitch, termReturn, termTry, termUnreachable then ok
                 end
@@ -47,10 +47,10 @@ export
                     order[v] := counts.visited
                     low[v] := counts.visited
                     counts.visited := counts.visited + 1
-                    vector.append(:Int stack v)
+                    vector.append(stack v)
                     onStack[v] := true
-                    for k = 0 upto {vector.length(:Int edges[v]) - 1} do
-                        let w = vector.get(:Int edges[v] k)
+                    for k = 0 upto {vector.length(edges[v]) - 1} do
+                        let w = vector.get(edges[v] k)
                         if order[w] < 0 then
                             visit(w)
                             if low[w] < low[v] then low[v] := low[w] end
@@ -61,7 +61,7 @@ export
                     if low[v] is order[v] then
                         let var w = ~1
                         while w isnot v do
-                            w := vector.pop(:Int stack)
+                            w := vector.pop(stack)
                             onStack[w] := false
                             component[w] := counts.components
                         end
@@ -98,11 +98,11 @@ export
      * passes it *)
     let copiable(g: Function): Bool =
         begin
-            let var can = vector.empty(:ssa.Slot g.slots)
+            let var can = vector.empty(g.slots)
             for k = 0 upto {extent g.signature.params - 1} do
                 if not(inRegister(g.signature.params[k])) then can := false end
             end
-            for b = 0 upto {vector.length(:ssa.Block g.blocks) - 1} do
+            for b = 0 upto {vector.length(g.blocks) - 1} do
                 case ssa.block(g b).term
                     when termTry then can := false
                     when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then ok
@@ -117,11 +117,11 @@ export
             let fs = f.signature.results
             let gs = g.signature.results
             let var same = {extent fs is extent gs}
-                andif {vector.length(:ssa.Type f.resultTypes) is vector.length(:ssa.Type g.resultTypes)}
+                andif {vector.length(f.resultTypes) is vector.length(g.resultTypes)}
             if same then
                 for k = 0 upto {extent fs - 1} do if passing(fs[k]) isnot passing(gs[k]) then same := false end end
-                for k = 0 upto {vector.length(:ssa.Type f.resultTypes) - 1} do
-                    if vector.get(:ssa.Type f.resultTypes k) isnot vector.get(:ssa.Type g.resultTypes k) then
+                for k = 0 upto {vector.length(f.resultTypes) - 1} do
+                    if vector.get(f.resultTypes k) isnot vector.get(g.resultTypes k) then
                         same := false
                     end
                 end
@@ -132,7 +132,7 @@ export
     let size(g: Function blocks: Int): Int =
         begin
             let var n = 0
-            for b = 0 upto {blocks - 1} do n := n + vector.length(:ssa.Inst ssa.block(g b).insts) + 1 end
+            for b = 0 upto {blocks - 1} do n := n + vector.length(ssa.block(g b).insts) + 1 end
             n
         end
 
@@ -150,12 +150,12 @@ export
             let numbers = array of(values ~1)
             if spliced then
                 let params = ssa.block(g 0).params
-                for k = 0 upto {vector.length(:Int params) - 1} do numbers[vector.get(:Int params k)] := args[k] end
+                for k = 0 upto {vector.length(params) - 1} do numbers[vector.get(params k)] := args[k] end
             end
             for v = 0 upto {values - 1} do
-                if numbers[v] < 0 then numbers[v] := ssa.newValue(f vector.get(:ssa.Type g.types v)) end
+                if numbers[v] < 0 then numbers[v] := ssa.newValue(f vector.get(g.types v)) end
             end
-            let base = vector.length(:ssa.Block f.blocks)
+            let base = vector.length(f.blocks)
             let first = if spliced then 1 else 0 end
             for b = first upto {blocks - 1} do let ignored = ssa.newBlock(f) end
             let blockOf(b: Int): Int = if spliced andif {b is 0} then at else base + b - first end
@@ -178,12 +178,12 @@ export
                 let from = ssa.block(g b)
                 let to = ssa.block(f blockOf(b))
                 if not(spliced andif {b is 0}) then
-                    for k = 0 upto {vector.length(:Int from.params) - 1} do
-                        vector.append(:Int to.params numbers[vector.get(:Int from.params k)])
+                    for k = 0 upto {vector.length(from.params) - 1} do
+                        vector.append(to.params numbers[vector.get(from.params k)])
                     end
                 end
-                for k = 0 upto {vector.length(:ssa.Inst from.insts) - 1} do
-                    vector.append(:ssa.Inst to.insts copy(vector.get(:ssa.Inst from.insts k)))
+                for k = 0 upto {vector.length(from.insts) - 1} do
+                    vector.append(to.insts copy(vector.get(from.insts k)))
                 end
                 to.term := case from.term
                     when termJump with x then option termJump of ssa.Terminator with let target = retarget(x.target) end
@@ -217,15 +217,15 @@ export
 
     let spliceInto(f: Function at: Int g: Function args: Array(Int)): Ok =
         begin
-            let ignored = copyBlocks(f g vector.length(:ssa.Block g.blocks) vector.length(:ssa.Type g.types) at args)
+            let ignored = copyBlocks(f g vector.length(g.blocks) vector.length(g.types) at args)
         end
 
     let jumpUnit(u: ssa.Unit): Ok =
         begin
-            let n = vector.length(:Function u.functions)
-            let function(k: Int): Function = vector.get(:Function u.functions k)
+            let n = vector.length(u.functions)
+            let function(k: Int): Function = vector.get(u.functions k)
             let numbers = hashMap.new(:String :Int stringOp.equal hash.string)
-            for k = 0 upto {n - 1} do let ignored = hashMap.insert(:String :Int numbers function(k).symbol k) end
+            for k = 0 upto {n - 1} do let ignored = hashMap.insert(numbers function(k).symbol k) end
             let edges = array of(n vector.new(:Int))
             for k = 0 upto {n - 1} do edges[k] := tailCallees(function(k) numbers) end
             let component = components(edges)
@@ -235,8 +235,8 @@ export
             let blocks = array of(n 0)
             let values = array of(n 0)
             for k = 0 upto {n - 1} do
-                blocks[k] := vector.length(:ssa.Block function(k).blocks)
-                values[k] := vector.length(:ssa.Type function(k).types)
+                blocks[k] := vector.length(function(k).blocks)
+                values[k] := vector.length(function(k).types)
             end
             (* The copies made into each function: the first block of each,
              * by the copied function's symbol *)
@@ -252,19 +252,19 @@ export
                     let var spent = 0
                     let pending = vector.new(:Int)
                     let reach(from: Int): Ok =
-                        for e = 0 upto {vector.length(:Int edges[from]) - 1} do
-                            vector.append(:Int pending vector.get(:Int edges[from] e))
+                        for e = 0 upto {vector.length(edges[from]) - 1} do
+                            vector.append(pending vector.get(edges[from] e))
                         end
                     reach(k)
-                    while not(vector.empty(:Int pending)) do
-                        let g = vector.pop(:Int pending)
+                    while not(vector.empty(pending)) do
+                        let g = vector.pop(pending)
                         let cost = size(function(g) blocks[g])
                         if not(copied[g]) andif {component[g] is component[k]} andif copiable(function(g))
                             andif sameResults(f function(g)) andif {{spent + cost} <= budget} then
                             copied[g] := true
                             spent := spent + cost
                             let entry = copyInto(f function(g) blocks[g] values[g])
-                            let ignored = hashMap.insert(:String :Int entries[k] function(g).symbol entry)
+                            let ignored = hashMap.insert(entries[k] function(g).symbol entry)
                             reach(g)
                         end
                     end
@@ -273,15 +273,15 @@ export
             (* Each tail call of a function copied in jumps to its copy *)
             for k = 0 upto {n - 1} do
                 let f = function(k)
-                if not(hashMap.empty(:String :Int entries[k])) then
-                    for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                if not(hashMap.empty(entries[k])) then
+                    for b = 0 upto {vector.length(f.blocks) - 1} do
                         let blk = ssa.block(f b)
                         case blk.term
                             when termTailCall with x then
-                                let entry = hashMap.get(:String :Int entries[k] x.call.symbol)
-                                if maybe.isSome(:Int entry) then
+                                let entry = hashMap.get(entries[k] x.call.symbol)
+                                if maybe.isSome(entry) then
                                     blk.term := option termJump of ssa.Terminator with
-                                        let target = ssa.target(maybe.unwrap(:Int entry) x.call.args)
+                                        let target = ssa.target(maybe.unwrap(entry) x.call.args)
                                     end
                                 end
                             when termNone, termJump, termBranch, termSwitch, termReturn, termTry, termUnreachable then

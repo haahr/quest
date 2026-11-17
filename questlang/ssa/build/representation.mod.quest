@@ -31,7 +31,7 @@ export
         begin
             let var index = 0
             for i = 0 upto {extent s.cases - 1} do
-                if vals.eq(maybe.unwrapOr(:String s.cases[i].name "") tag) then index := i end
+                if vals.eq(maybe.unwrapOr(s.cases[i].name "") tag) then index := i end
             end
             index
         end
@@ -43,7 +43,7 @@ export
             end
             h
         end
-    let componentShape(s: shapes.Shape i: Int): shapes.Shape = maybe.unwrap(:shapes.Shape s.components[i].shape)
+    let componentShape(s: shapes.Shape i: Int): shapes.Shape = maybe.unwrap(s.components[i].shape)
     (* A value chosen by a branch on cond: the values yes makes in one block,
      * or those no makes in another, merged as the parameters, of the types
      * given, of a third block, where fn.cur is left *)
@@ -100,8 +100,8 @@ export
     (* The tag of a variant or option value vs of shape ts, in its numbering,
      * or through the view map of a bounded type parameter's value *)
     let tagOf(fn: vals.Fn vs: Array(Int) ts: shapes.Shape access: ir.Access viewMap: maybe.T(Variable)): Int =
-        if maybe.isSome(:Variable viewMap) then
-            let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable viewMap)))
+        if maybe.isSome(viewMap) then
+            let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(viewMap)))
             case ts.kind
                 when shapeVariant then
                     let index = vals.invariantWord(fn vm runtimeLayout.offset("QViewMap" "index") vals.tPtr)
@@ -121,7 +121,7 @@ export
      * payload of the option at o, in its slot form, read as access says *)
     let optionComponent(fn: vals.Fn o: Int os: shapes.Shape tag: String i: Int access: ir.Access): Array(Int) =
         begin
-            let cs = maybe.unwrap(:shapes.Shape maybe.unwrap(:shapes.Component shapes.caseOf(os tag)).shape)
+            let cs = maybe.unwrap(maybe.unwrap(shapes.caseOf(os tag)).shape)
             let comp = if i < 0 then cs else componentShape(cs i) end
             let offset = 8 + 8 * {if i < 0 then 0 else i end}
             case access

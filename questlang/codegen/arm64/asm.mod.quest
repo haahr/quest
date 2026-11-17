@@ -30,11 +30,11 @@ export
     let functionStart(name: String exported: Bool): Array(String) =
         begin
             let lines = vector.new(:String)
-            vector.append(:String lines ".p2align 4")
-            if exported then vector.append(:String lines ".globl " <> symbol(name)) end
-            vector.append(:String lines symbol(name) <> ":")
-            vector.append(:String lines ".cfi_startproc")
-            vector.toArray(:String lines)
+            vector.append(lines ".p2align 4")
+            if exported then vector.append(lines ".globl " <> symbol(name)) end
+            vector.append(lines symbol(name) <> ":")
+            vector.append(lines ".cfi_startproc")
+            vector.toArray(lines)
         end
     let functionEnd = array of ".cfi_endproc" end
 
@@ -71,17 +71,17 @@ export
                 when contentsZero then "__DATA,__data"
                 when contentsWords then if d.writable then "__DATA,__data" else "__DATA,__const" end
             end
-            vector.append(:String lines ".section " <> section)
-            vector.append(:String lines ".p2align 3")
-            if d.exported then vector.append(:String lines ".globl " <> symbol(d.symbol)) end
-            vector.append(:String lines symbol(d.symbol) <> ":")
+            vector.append(lines ".section " <> section)
+            vector.append(lines ".p2align 3")
+            if d.exported then vector.append(lines ".globl " <> symbol(d.symbol)) end
+            vector.append(lines symbol(d.symbol) <> ":")
             case d.contents
                 when contentsZero with x then
-                    vector.append(:String lines ".space " <> conv.int(if x.bytes > 0 then x.bytes else 1 end))
-                when contentsText with x then vector.append(:String lines ".asciz " <> quoted(x.text))
+                    vector.append(lines ".space " <> conv.int(if x.bytes > 0 then x.bytes else 1 end))
+                when contentsText with x then vector.append(lines ".asciz " <> quoted(x.text))
                 when contentsWords with x then
                     for i = 0 upto {extent x.words - 1} do
-                        vector.append(:String lines ".quad " <> case x.words[i]
+                        vector.append(lines ".quad " <> case x.words[i]
                             when wordInt with w then decimal(w.n)
                             when wordSymbol with w then
                                 symbol(w.symbol) <> if w.addend is 0 then ""
@@ -89,9 +89,9 @@ export
                                     else "-" <> conv.int(0 - w.addend) end
                         end)
                     end
-                    if extent x.words is 0 then vector.append(:String lines ".quad 0") end
+                    if extent x.words is 0 then vector.append(lines ".quad 0") end
             end
-            vector.toArray(:String lines)
+            vector.toArray(lines)
         end
 
     Let FrameFunction = Tuple symbol: String description: Int end
@@ -99,28 +99,28 @@ export
         begin
             let lines = vector.new(:String)
             let n = extent listed
-            vector.append(:String lines ".section __TEXT,__const")
-            vector.append(:String lines ".p2align 2")
-            vector.append(:String lines symbol(name) <> ":")
-            vector.append(:String lines
+            vector.append(lines ".section __TEXT,__const")
+            vector.append(lines ".p2align 2")
+            vector.append(lines symbol(name) <> ":")
+            vector.append(lines
                 if n > 0 then ".long " <> symbol(first) <> "-" <> symbol(name) else ".long 0" end)
-            vector.append(:String lines ".long " <> conv.int(n))
+            vector.append(lines ".long " <> conv.int(n))
             for k = 0 upto {n - 1} do
-                vector.append(:String lines ".long " <> symbol(listed[k].symbol) <> "-" <> symbol(first))
-                vector.append(:String lines ".long " <> conv.int({8 + {8 * n}} + listed[k].description))
+                vector.append(lines ".long " <> symbol(listed[k].symbol) <> "-" <> symbol(first))
+                vector.append(lines ".long " <> conv.int({8 + {8 * n}} + listed[k].description))
             end
             let var at = 0
             while at < extent descriptions do
                 let row = vector.new(:String)
                 let var k = at
                 while {k < extent descriptions} andif {k < {at + 16}} do
-                    vector.append(:String row conv.int(descriptions[k]))
+                    vector.append(row conv.int(descriptions[k]))
                     k := k + 1
                 end
-                vector.append(:String lines ".byte " <> strutil.join(", " row))
+                vector.append(lines ".byte " <> strutil.join(", " row))
                 at := at + 16
             end
-            vector.toArray(:String lines)
+            vector.toArray(lines)
         end
 
     let unitStart = array of ".section __TEXT,__text,regular,pure_instructions" end
@@ -141,11 +141,11 @@ export
             for k = 0 upto {extent paths - 1} do
                 if stringOp.length(paths[k]) > 0 then
                     let s = split(paths[k])
-                    vector.append(:String lines
+                    vector.append(lines
                         ".file " <> conv.int(k + 1) <> " " <> quoted(s.dir) <> " " <> quoted(s.name))
                 end
             end
-            vector.toArray(:String lines)
+            vector.toArray(lines)
         end
 
     Let DebugFunction = Tuple symbol: String endLabel: String end
@@ -174,7 +174,7 @@ export
     let debugInfo(file: String functions: Array(DebugFunction)): Array(String) =
         begin
             let lines = vector.new(:String)
-            let put(line: String): Ok = vector.append(:String lines line)
+            let put(line: String): Ok = vector.append(lines line)
             let bytes(ns: Array(Int)): Ok =
                 begin
                     let texts = array of(extent ns "")
@@ -228,6 +228,6 @@ export
             (* The line table, which the assembler writes here *)
             put(".section __DWARF,__debug_line,regular,debug")
             put("Ldebug_line:")
-            vector.toArray(:String lines)
+            vector.toArray(lines)
         end
 end

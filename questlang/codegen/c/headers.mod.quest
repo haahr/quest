@@ -25,7 +25,7 @@ export
     Let Type = model.Type
 
     let eq(a: String b: String): Bool = stringOp.equal(a b)
-    let add(lines: vector.T(String) line: String): Ok = vector.append(:String lines line)
+    let add(lines: vector.T(String) line: String): Ok = vector.append(lines line)
 
     let cKeywords = array of
         "auto" "break" "case" "char" "const" "continue" "default" "do" "double" "else" "enum" "extern" "float" "for"
@@ -77,11 +77,11 @@ export
             add(lines "")
 
             (* Imported interfaces *)
-            if not(vector.empty(:ast.ImportItem decl.imports)) then
+            if not(vector.empty(decl.imports)) then
                 add(lines "/* --- Imported Interfaces --- */")
-                for i = 0 upto {vector.length(:ast.ImportItem decl.imports) - 1} do
-                    let imp = vector.get(:ast.ImportItem decl.imports i)
-                    let path = paths.lower(maybe.unwrapOr(:String imp.interfacePath imp.interfaceName))
+                for i = 0 upto {vector.length(decl.imports) - 1} do
+                    let imp = vector.get(decl.imports i)
+                    let path = paths.lower(maybe.unwrapOr(imp.interfacePath imp.interfaceName))
                     if not(eq(path "word")) then add(lines "#include \"" <> path <> ".int.h\"") end
                 end
                 add(lines "")
@@ -94,30 +94,30 @@ export
             let collect(t: Type): Ok =
                 begin
                     let found = declarations.collectAggregateTypes(array of t end ctx).aggregates
-                    for i = 0 upto {vector.length(:declarations.Aggregate found) - 1} do
-                        let a = vector.get(:declarations.Aggregate found i)
-                        if not(hashMap.contains(:String :Bool names a.name)) then
-                            hashMap.insert(:String :Bool names a.name true)
-                            vector.append(:declarations.Aggregate aggregates a)
+                    for i = 0 upto {vector.length(found) - 1} do
+                        let a = vector.get(found i)
+                        if not(hashMap.contains(names a.name)) then
+                            hashMap.insert(names a.name true)
+                            vector.append(aggregates a)
                         end
                     end
                     ok
                 end
-            let typeSyms = hashMap.values(:String :symbols.TypeSymbol scope.types)
-            for i = 0 upto {vector.length(:symbols.TypeSymbol typeSyms) - 1} do
-                let d = vector.get(:symbols.TypeSymbol typeSyms i).definition
-                if maybe.isSome(:Type d) then collect(maybe.unwrap(:Type d)) end
+            let typeSyms = hashMap.values(scope.types)
+            for i = 0 upto {vector.length(typeSyms) - 1} do
+                let d = vector.get(typeSyms i).definition
+                if maybe.isSome(d) then collect(maybe.unwrap(d)) end
             end
-            let valueSyms = hashMap.values(:String :symbols.ValueSymbol scope.values)
-            for i = 0 upto {vector.length(:symbols.ValueSymbol valueSyms) - 1} do
-                collect(vector.get(:symbols.ValueSymbol valueSyms i).type)
+            let valueSyms = hashMap.values(scope.values)
+            for i = 0 upto {vector.length(valueSyms) - 1} do
+                collect(vector.get(valueSyms i).type)
             end
-            if not(vector.empty(:declarations.Aggregate aggregates)) then
+            if not(vector.empty(aggregates)) then
                 let emitter = declarations.newEmitter(ctx)
                 let typedefs = declarations.emitForwardTypedefs(emitter aggregates)
-                for i = 0 upto {vector.length(:String typedefs) - 1} do add(lines vector.get(:String typedefs i)) end
+                for i = 0 upto {vector.length(typedefs) - 1} do add(lines vector.get(typedefs i)) end
                 let structs = declarations.emitAggregateStructs(emitter aggregates)
-                for i = 0 upto {vector.length(:String structs) - 1} do add(lines vector.get(:String structs i)) end
+                for i = 0 upto {vector.length(structs) - 1} do add(lines vector.get(structs i)) end
             end
 
             (* Abstract types (erased to QVal in C) *)
@@ -131,16 +131,16 @@ export
                         (* A bounded abstract type (POWER(B)) is held as a value
                          * of B, as the signatures below declare it *)
                         let formal = symbols.lookupTypeLocal(scope s.val.name)
-                        let kind = if maybe.isSome(:symbols.TypeSymbol formal) then
-                            maybe.some(:model.Kind maybe.unwrap(:symbols.TypeSymbol formal).kind)
+                        let kind = if maybe.isSome(formal) then
+                            maybe.some(maybe.unwrap(formal).kind)
                         else
                             maybe.none(:model.Kind)
                         end
-                        let isPower = maybe.isSome(:model.Kind kind) andif model.isPower(maybe.unwrap(:model.Kind kind))
+                        let isPower = maybe.isSome(kind) andif model.isPower(maybe.unwrap(kind))
                         let rep = if isPower then
-                            cType(model.powerBound(maybe.unwrap(:model.Kind kind))) else "QVal" end
-                        let kindText = if maybe.isSome(:model.Kind kind) then
-                            interfaceCompiler.formatKindForQi(maybe.unwrap(:model.Kind kind))
+                            cType(model.powerBound(maybe.unwrap(kind))) else "QVal" end
+                        let kindText = if maybe.isSome(kind) then
+                            interfaceCompiler.formatKindForQi(maybe.unwrap(kind))
                         else
                             "TYPE"
                         end
@@ -150,17 +150,17 @@ export
                         if not(s.val.isRec) then
                             hasTypes := true
                             let typeSym = symbols.lookupTypeLocal(scope s.val.name)
-                            let concrete = if maybe.isSome(:symbols.TypeSymbol typeSym) then
-                                maybe.unwrap(:symbols.TypeSymbol typeSym).definition
+                            let concrete = if maybe.isSome(typeSym) then
+                                maybe.unwrap(typeSym).definition
                             else
                                 maybe.none(:Type)
                             end
                             add(lines "/* Manifest type " <> s.val.name <> " */")
-                            let isRecord = maybe.isSome(:Type concrete)
-                                andif case maybe.unwrap(:Type concrete).form when typeRecord then true else false end
+                            let isRecord = maybe.isSome(concrete)
+                                andif case maybe.unwrap(concrete).form when typeRecord then true else false end
                             if isRecord then
                                 add(lines "typedef struct quest_rec_" <> cName <> "_" <> s.val.name <> " {")
-                                case maybe.unwrap(:Type concrete).form
+                                case maybe.unwrap(concrete).form
                                     when typeRecord with r then
                                         for j = 0 upto {extent r.fields - 1} do
                                             add(lines "    " <> layout.slotRepresentation(r.fields[j].type) <> " "
@@ -172,8 +172,8 @@ export
                                 add(lines "} quest_rec_" <> cName <> "_" <> s.val.name <> ";")
                                 add(lines "typedef QRecordVal quest_type_" <> cName <> "_" <> s.val.name <> ";")
                             else
-                                let c = if maybe.isSome(:Type concrete) then
-                                    cType(maybe.unwrap(:Type concrete)) else "QVal" end
+                                let c = if maybe.isSome(concrete) then
+                                    cType(maybe.unwrap(concrete)) else "QVal" end
                                 add(lines "typedef " <> c <> " quest_type_" <> cName <> "_" <> s.val.name <> ";")
                             end
                         end
@@ -186,29 +186,29 @@ export
             (* Member signatures as function pointer typedefs *)
             add(lines "/* --- Member Signatures for Interface " <> decl.name <> " --- */")
             let var hasValues = false
-            for i = 0 upto {vector.length(:ast.Signature decl.signatures) - 1} do
-                case vector.get(:ast.Signature decl.signatures i)
+            for i = 0 upto {vector.length(decl.signatures) - 1} do
+                case vector.get(decl.signatures i)
                     when sigValue with s then
-                        if maybe.isSome(:String s.val.name) then
+                        if maybe.isSome(s.val.name) then
                             hasValues := true
-                            let name = maybe.unwrap(:String s.val.name)
+                            let name = maybe.unwrap(s.val.name)
                             let valSym = symbols.lookupValueLocal(scope name)
-                            let valType = if maybe.isSome(:symbols.ValueSymbol valSym) then
-                                maybe.some(:Type maybe.unwrap(:symbols.ValueSymbol valSym).type)
+                            let valType = if maybe.isSome(valSym) then
+                                maybe.some(maybe.unwrap(valSym).type)
                             else
                                 maybe.none(:Type)
                             end
-                            let comment = "/* " <> name <> ": " <> if maybe.isSome(:Type valType) then
-                                interfaceCompiler.formatTypeForQi(maybe.unwrap(:Type valType))
+                            let comment = "/* " <> name <> ": " <> if maybe.isSome(valType) then
+                                interfaceCompiler.formatTypeForQi(maybe.unwrap(valType))
                             else
                                 ""
                             end <> " */"
-                            let isFunction = maybe.isSome(:Type valType) andif case maybe.unwrap(:Type valType).form
+                            let isFunction = maybe.isSome(valType) andif case maybe.unwrap(valType).form
                                 when typeFun, typeAll then true
                                 else false
                             end
                             if isFunction then
-                                let t = maybe.unwrap(:Type valType)
+                                let t = maybe.unwrap(valType)
                                 let params = vector.new(:String)
                                 let inner = case t.form
                                     when typeAll with a then
@@ -235,16 +235,16 @@ export
                                         cType(f.result)
                                     else cType(inner)
                                 end
-                                let shown = if vector.empty(:String params) then
-                                    vector.fromArray(:String array of "void" end)
+                                let shown = if vector.empty(params) then
+                                    vector.fromArray(array of "void" end)
                                     else params
                                 end
                                 add(lines comment)
                                 add(lines "typedef " <> ret <> " (*quest_sig_" <> cName <> "_" <> name <> ")("
                                     <> syntax.comma(shown) <> ");")
                             else
-                                let c = if maybe.isSome(:Type valType) then
-                                    cType(maybe.unwrap(:Type valType)) else "QVal" end
+                                let c = if maybe.isSome(valType) then
+                                    cType(maybe.unwrap(valType)) else "QVal" end
                                 add(lines comment)
                                 add(lines "typedef " <> c <> " quest_sig_" <> cName <> "_" <> name <> ";")
                             end

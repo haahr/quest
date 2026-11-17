@@ -162,11 +162,11 @@ let printResult(phrase: typedAst.Binding v: model.Value): Ok =
  * its pipeline has run, they follow what the program writes as it runs, but
  * precede an interpreted program's result and a compiled program's output. *)
 let pendingDumps = vector.new(:String);
-let dump(text: String): Ok = vector.append(:String pendingDumps text);
+let dump(text: String): Ok = vector.append(pendingDumps text);
 let flushDumps(): Ok =
     begin
-        for i = 0 upto {vector.length(:String pendingDumps) - 1} do print(vector.get(:String pendingDumps i)) end
-        vector.clear(:String pendingDumps)
+        for i = 0 upto {vector.length(pendingDumps) - 1} do print(vector.get(pendingDumps i)) end
+        vector.clear(pendingDumps)
     end;
 
 (* Whether the program goes through the C backend: compiled, with compile or
@@ -177,7 +177,7 @@ let cPipeline =
         for i = 0 upto {extent options.dumpAfter - 1} do
             if isOneOf(options.dumpAfter[i] cPhases) then dumpsC := true end
         end
-        compileMode orif maybe.isSome(:String options.output) orif {extent options.extraObjects > 0}
+        compileMode orif maybe.isSome(options.output) orif {extent options.extraObjects > 0}
             orif isOneOf(options.stopAfter cPhases)
             orif dumpsC
     end;
@@ -208,7 +208,7 @@ let irStage(prefix: String): maybe.T(String) =
     begin
         let var found = maybe.none(:String)
         for i = 0 upto {extent irStages - 1} do
-            if stringOp.equal(options.stopAfter prefix <> irStages[i]) then found := maybe.some(:String irStages[i]) end
+            if stringOp.equal(options.stopAfter prefix <> irStages[i]) then found := maybe.some(irStages[i]) end
         end
         found
     end;
@@ -220,13 +220,13 @@ let irStage(prefix: String): maybe.T(String) =
  * those, the phases through the one --stop-after names *)
 let pipeline: Array(String) =
     begin
-        let ps = vector.fromArray(:String array of "tokenize" "parse" "desugar" "typecheck" end)
+        let ps = vector.fromArray(array of "tokenize" "parse" "desugar" "typecheck" end)
         let irThrough = fun(stage: String): Ok
             begin
                 let var i = 0
                 let var more = true
                 while more andif {i < extent irStages} do
-                    vector.append(:String ps "ir_" <> irStages[i])
+                    vector.append(ps "ir_" <> irStages[i])
                     more := not(stringOp.equal(irStages[i] stage))
                     i := i + 1
                 end
@@ -239,35 +239,35 @@ let pipeline: Array(String) =
         end
         if cPipeline then
             irThrough("described")
-            vector.append(:String ps "codegen_c")
+            vector.append(ps "codegen_c")
             (* arm64's code is its assembly, which codegen_c prints too *)
-            if stringOp.equal(programBackend "arm64") then vector.append(:String ps "codegen_arm64") end
+            if stringOp.equal(programBackend "arm64") then vector.append(ps "codegen_arm64") end
             (* and wasm's its module's text *)
-            if choice.isWasm(programBackend) then vector.append(:String ps "codegen_wasm") end
-            if not(compileMode) andif maybe.isNone(:String options.output) then
-                vector.append(:String ps "run_c_compiled")
+            if choice.isWasm(programBackend) then vector.append(ps "codegen_wasm") end
+            if not(compileMode) andif maybe.isNone(options.output) then
+                vector.append(ps "run_c_compiled")
             end
-        elsif maybe.isSome(:String irStage("run_ir_")) then
-            irThrough(maybe.unwrap(:String irStage("run_ir_")))
-            vector.append(:String ps "run_ir_" <> maybe.unwrap(:String irStage("run_ir_")))
+        elsif maybe.isSome(irStage("run_ir_")) then
+            irThrough(maybe.unwrap(irStage("run_ir_")))
+            vector.append(ps "run_ir_" <> maybe.unwrap(irStage("run_ir_")))
         elsif isOneOf(options.stopAfter ssaPhases) orif dumpsSsa then
             (* The SSA of the described IR (docs/ssa.md) *)
             irThrough("described")
-            for i = 0 upto {extent ssaPhases - 1} do vector.append(:String ps ssaPhases[i]) end
+            for i = 0 upto {extent ssaPhases - 1} do vector.append(ps ssaPhases[i]) end
         elsif lastIr >= 0 then
             irThrough(irStages[lastIr])
         else
-            vector.append(:String ps "interpret")
+            vector.append(ps "interpret")
         end
         let through = vector.new(:String)
         let var stopped = false
-        for i = 0 upto {vector.length(:String ps) - 1} do
+        for i = 0 upto {vector.length(ps) - 1} do
             if not(stopped) then
-                vector.append(:String through vector.get(:String ps i))
-                stopped := stringOp.equal(vector.get(:String ps i) options.stopAfter)
+                vector.append(through vector.get(ps i))
+                stopped := stringOp.equal(vector.get(ps i) options.stopAfter)
             end
         end
-        vector.toArray(:String through)
+        vector.toArray(through)
     end;
 
 let reaches(phase: String): Bool = isOneOf(phase pipeline);
@@ -296,7 +296,7 @@ let finish(bag: diagbag.T sm: location.SourceMap): Ok =
 let lowered(program: typedAst.Program e: env.T sm: location.SourceMap printResult: Bool stage: String): nodes.Unit =
     begin
         shapes.setReferencesAlike(choice.isWasm(programBackend))
-        let var unit = lower.lowerProgram(program e maybe.some(:location.SourceMap sm) options.echo printResult)
+        let var unit = lower.lowerProgram(program e maybe.some(sm) options.echo printResult)
         (* A whole program is one unit, its modules merged into it, with only
          * the members it can reach *)
         if options.wholeProgram then unit := whole.dropUnreachable(whole.mergeImports(unit e)) end
@@ -352,7 +352,7 @@ let lowerOnly(program: typedAst.Program e: env.T sm: location.SourceMap bag: dia
     begin
         let var last = irStages[0]
         for i = 0 upto {extent irStages - 1} do if reaches("ir_" <> irStages[i]) then last := irStages[i] end end
-        reportingInternal(:Ok bag ok fun(): Ok
+        reportingInternal(bag ok fun(): Ok
             begin
                 let unit = lowered(program e sm false last)
                 if reaches("ssa_built") then
@@ -368,13 +368,13 @@ let lowerOnly(program: typedAst.Program e: env.T sm: location.SourceMap bag: dia
  * goes to standard output): -o, else the program's file without its .quest
  * (else with .bin added), else a.out *)
 let compileOutput =
-    if maybe.isSome(:String options.output) then options.output
+    if maybe.isSome(options.output) then options.output
     elsif options.emitC then maybe.none(:String)
     elsif options.fromFile then
-        maybe.some(:String if strutil.endsWith(options.file ".quest") then
+        maybe.some(if strutil.endsWith(options.file ".quest") then
             stringOp.getSub(options.file 0 {stringOp.length(options.file) - 6})
         else options.file <> ".bin" end)
-    else maybe.some(:String "a.out")
+    else maybe.some("a.out")
     end;
 
 (* Running compiled code prints the last phrase's result, as the interpreter
@@ -383,7 +383,7 @@ let compiledPrintsResult = options.printResult orif stringOp.equal(options.stopA
 
 (* The build directory, which every C phase reuses and builds interface and
  * module artifacts in (docs/build-process.md section 5.2.4) *)
-let buildDir = files.absolute(maybe.unwrapOr(:String options.buildDir ".build"));
+let buildDir = files.absolute(maybe.unwrapOr(options.buildDir ".build"));
 
 (* Writes an error that is not a diagnostic, as the bootstrap's driver does,
  * and exits with 1 *)
@@ -398,9 +398,9 @@ let failWith(message: String): Ok =
 
 (* The engine that builds the modules a program's C imports *)
 let newEngine(e: env.T): engine.T =
-    engine.reportingInferable(engine.withBackends(engine.parallel(engine.new(maybe.some(:String buildDir)
+    engine.reportingInferable(engine.withBackends(engine.parallel(engine.new(maybe.some(buildDir)
         options.includePaths options.verbose options.nogc options.extraObjects
-        maybe.some(:graph.Resolver e.units.resolver)) options.jobs system.args[0]) options.backends)
+        maybe.some(e.units.resolver)) options.jobs system.args[0]) options.backends)
         options.reportInferable);
 
 (* A whole program is one unit, the program's with its modules', which
@@ -419,7 +419,7 @@ let importRefs(program: typedAst.Program): Array(engine.ImportRef) =
                 when bindImport with x then
                     for j = 0 upto {extent x.items - 1} do
                         let it = x.items[j]
-                        vector.append(:engine.ImportRef refs tuple
+                        vector.append(refs tuple
                             let interfacePath = typedAst.effectiveInterfacePath(it)
                             let names = it.names
                             let modulePaths = typedAst.effectiveModulePaths(it)
@@ -428,7 +428,7 @@ let importRefs(program: typedAst.Program): Array(engine.ImportRef) =
                 else ok
             end
         end
-        vector.toArray(:engine.ImportRef refs)
+        vector.toArray(refs)
     end;
 
 (* The modules a whole program's unit still imports, by canonical name and
@@ -437,11 +437,11 @@ let keptImports(unit: nodes.Unit): Array(passes.ImplicitImport) =
     begin
         let kept = vector.new(:passes.ImplicitImport)
         for i = 0 upto {extent unit.imports - 1} do
-            vector.append(:passes.ImplicitImport kept tuple
+            vector.append(kept tuple
                 let canonicalPath = unit.imports[i].canonicalPath let interfacePath = unit.imports[i].interfacePath
             end)
         end
-        vector.toArray(:passes.ImplicitImport kept)
+        vector.toArray(kept)
     end;
 
 (* Takes a type-checked program through the C backend, as the bootstrap's
@@ -527,16 +527,16 @@ let wasmImports(bytes: String): Array(String) =
                         skip()
                     end
                     let var seen = false
-                    for j = 0 upto vector.length(:String found) - 1 do
-                        if stringOp.equal(vector.get(:String found j) moduleName) then seen := true end
+                    for j = 0 upto vector.length(found) - 1 do
+                        if stringOp.equal(vector.get(found j) moduleName) then seen := true end
                     end
-                    if not(seen) then vector.append(:String found moduleName) end
+                    if not(seen) then vector.append(found moduleName) end
                 end
                 done := true
             end
             at := next
         end
-        vector.toArray(:String found)
+        vector.toArray(found)
     end;
 
 let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
@@ -544,19 +544,18 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
         let located = fun(message: String): Ok
             diagbag.add(bag diagnostics.error(message location.span(location.file(sm) 0 1)))
         Let Translated = maybe.T(Tuple c: String unit: nodes.Unit end)
-        let translated = reportingInternal(:Translated bag maybe.none(:Tuple c: String unit: nodes.Unit end)
+        let translated = reportingInternal(bag maybe.none(:Tuple c: String unit: nodes.Unit end)
             fun(): Translated
                 begin
                     let unit = lowered(program e sm compiledPrintsResult "described")
-                    maybe.some(:Tuple c: String unit: nodes.Unit end
-                        tuple let c = cBackend.unitToC(unit maybe.none(:String) programBackend) let unit = unit end)
+                    maybe.some(tuple let c = cBackend.unitToC(unit maybe.none(:String) programBackend) let unit = unit end)
                 end)
-        if maybe.isSome(:Tuple c: String unit: nodes.Unit end translated) then
-            let t = maybe.unwrap(:Tuple c: String unit: nodes.Unit end translated)
+        if maybe.isSome(translated) then
+            let t = maybe.unwrap(translated)
             if shows("codegen_c") orif shows("codegen_arm64") then dump(t.c) end
             if shows("codegen_wasm") then dump(cBackend.wasmText(t.unit)) end
             let running = reaches("run_c_compiled")
-            let writing = {compileMode orif maybe.isSome(:String options.output)} andif not(options.stopGiven)
+            let writing = {compileMode orif maybe.isSome(options.output)} andif not(options.stopGiven)
                 andif not(options.emitC)
             (* A run's result: its stderr made a diagnostic if it did not exit
              * as expected, and its stdout run_c_compiled's dump, as the
@@ -621,8 +620,8 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                     end
                 end
             if compileMode andif options.emitC andif not(options.stopGiven) then
-                if maybe.isSome(:String compileOutput) then
-                    let target = maybe.unwrap(:String compileOutput)
+                if maybe.isSome(compileOutput) then
+                    let target = maybe.unwrap(compileOutput)
                     try
                         let w = writer.file(target)
                         writer.putString(w t.c)
@@ -652,26 +651,26 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                      * wasm/print, found under runtime/, which every unit the
                      * backend compiles may import *)
                     let runtimeRoot = files.join(paths.projectDir() "runtime")
-                    let includes = vector.copy(:String e.includePaths)
+                    let includes = vector.copy(e.includePaths)
                     let implicit = vector.new(:passes.ImplicitImport)
                     let found = passes.implicitImports(t.unit program)
-                    for k = 0 upto extent found - 1 do vector.append(:passes.ImplicitImport implicit found[k]) end
-                    vector.append(:passes.ImplicitImport implicit
+                    for k = 0 upto extent found - 1 do vector.append(implicit found[k]) end
+                    vector.append(implicit
                         tuple let canonicalPath = "wasm/print" let interfacePath = "wasm/Print" end)
                     (* real's mathematical functions and ^^, which the
                      * backend calls in util/realmath (section 4.3) *)
-                    vector.append(:passes.ImplicitImport implicit
+                    vector.append(implicit
                         tuple let canonicalPath = "util/realmath" let interfacePath = "util/RealMath" end)
-                    let modules = engine.unitModuleRefs(importRefs(program) vector.toArray(:passes.ImplicitImport implicit)
-                        e.currentDir vector.toArray(:String includes) e.programDir e.units.resolver)
+                    let modules = engine.unitModuleRefs(importRefs(program) vector.toArray(implicit)
+                        e.currentDir vector.toArray(includes) e.programDir e.units.resolver)
                     let importer = if strutil.startsWith(options.file "<") then options.file
                         else files.stem(options.file)
                         end
                     let engineIncludes = array of(extent options.includePaths + 1 runtimeRoot)
                     for k = 0 upto extent options.includePaths - 1 do engineIncludes[k] := options.includePaths[k] end
-                    let wasmEngine = engine.withBackends(engine.parallel(engine.new(maybe.some(:String buildDir)
+                    let wasmEngine = engine.withBackends(engine.parallel(engine.new(maybe.some(buildDir)
                         engineIncludes options.verbose options.nogc options.extraObjects
-                        maybe.some(:graph.Resolver e.units.resolver)) options.jobs system.args[0]) options.backends)
+                        maybe.some(e.units.resolver)) options.jobs system.args[0]) options.backends)
                     let objects = engine.buildModules(wasmEngine modules importer e.programDir)
                     (* The units' modules: each named by its canonical name, its
                      * path in the build directory, with the units it imports,
@@ -682,30 +681,30 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                     let needs = vector.new(:Array(String))
                     for k = 0 upto extent objects - 1 do
                         let o = files.absolute(objects[k])
-                        let bytes = maybe.unwrapOr(:String files.readText(o) "")
+                        let bytes = maybe.unwrapOr(files.readText(o) "")
                         if {stringOp.length(bytes) >= 4} andif stringOp.equal(stringOp.getSub(bytes 0 4) "\x00asm")
                             andif strutil.startsWith(o buildDir <> "/") andif strutil.endsWith(o ".o") then
                             let n = stringOp.length(buildDir) + 1
-                            vector.append(:String names stringOp.getSub(o n {{stringOp.length(o) - n} - 2}))
-                            vector.append(:String locations o)
-                            vector.append(:Array(String) needs wasmImports(bytes))
+                            vector.append(names stringOp.getSub(o n {{stringOp.length(o) - n} - 2}))
+                            vector.append(locations o)
+                            vector.append(needs wasmImports(bytes))
                         end
                     end
                     (* In an order that puts each after those it imports, which
                      * the engines instantiate it after *)
                     let units = vector.new(:String)
-                    let placed = array of(vector.length(:String names) false)
+                    let placed = array of(vector.length(names) false)
                     let var progress = true
                     while progress do
                         progress := false
-                        for k = 0 upto vector.length(:String names) - 1 do
+                        for k = 0 upto vector.length(names) - 1 do
                             if not(placed[k]) then
                                 let var ready = true
-                                let ns = vector.get(:Array(String) needs k)
+                                let ns = vector.get(needs k)
                                 for j = 0 upto extent ns - 1 do
-                                    for i = 0 upto vector.length(:String names) - 1 do
+                                    for i = 0 upto vector.length(names) - 1 do
                                         if not(placed[i]) andif {i isnot k}
-                                            andif stringOp.equal(vector.get(:String names i) ns[j]) then
+                                            andif stringOp.equal(vector.get(names i) ns[j]) then
                                             ready := false
                                         end
                                     end
@@ -713,8 +712,8 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                                 if ready then
                                     placed[k] := true
                                     progress := true
-                                    vector.append(:String units
-                                        vector.get(:String names k) <> "=" <> vector.get(:String locations k))
+                                    vector.append(units
+                                        vector.get(names k) <> "=" <> vector.get(locations k))
                                 end
                             end
                         end
@@ -724,15 +723,15 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                          * runtime's, TARGET.runtime.wasm, each unit's,
                          * TARGET.N.wasm, and TARGET.units, a line NAME=PATH
                          * for each unit, in the order to load them *)
-                        let target = files.absolute(maybe.unwrap(:String compileOutput))
+                        let target = files.absolute(maybe.unwrap(compileOutput))
                         save(target t.c)
                         save(target <> ".runtime.wasm" runtimeBytes)
                         let lines = stringBuilder.new()
-                        for k = 0 upto vector.length(:String units) - 1 do
-                            let parts = strutil.split(vector.get(:String units k) "=")
+                        for k = 0 upto vector.length(units) - 1 do
+                            let parts = strutil.split(vector.get(units k) "=")
                             let path = target <> "." <> conv.int(k) <> ".wasm"
-                            save(path maybe.unwrapOr(:String files.readText(vector.get(:String parts 1)) ""))
-                            stringBuilder.str(lines vector.get(:String parts 0) <> "=" <> path <> "\n")
+                            save(path maybe.unwrapOr(files.readText(vector.get(parts 1)) ""))
+                            stringBuilder.str(lines vector.get(parts 0) <> "=" <> path <> "\n")
                         end
                         save(target <> ".units" stringBuilder.toString(lines))
                     else
@@ -745,54 +744,54 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         if stringOp.equal(options.wasmEngine "node") then
                             (* node:wasi is experimental, and says so on standard
                              * error, which a program's own must not have *)
-                            vector.append(:String command "node")
-                            vector.append(:String command "--no-warnings")
+                            vector.append(command "node")
+                            vector.append(command "--no-warnings")
                             (* about 8 MB of stack, as natively and as wasmtime
                              * is given, below the main thread's own (as
                              * benchmarks/run.py's --node-stack) *)
-                            vector.append(:String command "--stack-size=7800")
-                            vector.append(:String command files.join(paths.projectDir() "runtime/wasm/run.mjs"))
-                            for k = 0 upto vector.length(:String units) - 1 do
-                                vector.append(:String command "--module")
-                                vector.append(:String command vector.get(:String units k))
+                            vector.append(command "--stack-size=7800")
+                            vector.append(command files.join(paths.projectDir() "runtime/wasm/run.mjs"))
+                            for k = 0 upto vector.length(units) - 1 do
+                                vector.append(command "--module")
+                                vector.append(command vector.get(units k))
                             end
-                            vector.append(:String command runtimePath)
+                            vector.append(command runtimePath)
                         else
-                            vector.append(:String command "wasmtime")
-                            vector.append(:String command "run")
-                            vector.append(:String command "-W")
-                            vector.append(:String command "gc=y,function-references=y,tail-call=y,exceptions=y")
-                            vector.append(:String command "-C")
-                            vector.append(:String command "collector=copying")
+                            vector.append(command "wasmtime")
+                            vector.append(command "run")
+                            vector.append(command "-W")
+                            vector.append(command "gc=y,function-references=y,tail-call=y,exceptions=y")
+                            vector.append(command "-C")
+                            vector.append(command "collector=copying")
                             (* 8 MB of stack, as natively (section 8.2), not
                              * wasmtime's 512 KB *)
-                            vector.append(:String command "-W")
-                            vector.append(:String command "max-wasm-stack=8388608")
+                            vector.append(command "-W")
+                            vector.append(command "max-wasm-stack=8388608")
                             (* WASI's: / and . opened, the environment, and the
                              * current directory as PWD *)
-                            vector.append(:String command "--dir")
-                            vector.append(:String command "/")
-                            vector.append(:String command "--dir")
-                            vector.append(:String command ".")
-                            vector.append(:String command "-S")
-                            vector.append(:String command "inherit-env=y")
-                            vector.append(:String command "--env")
-                            vector.append(:String command "PWD=" <> system.currentDirectory())
+                            vector.append(command "--dir")
+                            vector.append(command "/")
+                            vector.append(command "--dir")
+                            vector.append(command ".")
+                            vector.append(command "-S")
+                            vector.append(command "inherit-env=y")
+                            vector.append(command "--env")
+                            vector.append(command "PWD=" <> system.currentDirectory())
                             (* an exit status above 125 as a line (exitAbove) *)
-                            vector.append(:String command "--env")
-                            vector.append(:String command "QUEST_WASM_EXIT_LINE=1")
-                            vector.append(:String command "--preload")
-                            vector.append(:String command wasmRuntime.name <> "=" <> runtimePath)
-                            for k = 0 upto vector.length(:String units) - 1 do
-                                vector.append(:String command "--preload")
-                                vector.append(:String command vector.get(:String units k))
+                            vector.append(command "--env")
+                            vector.append(command "QUEST_WASM_EXIT_LINE=1")
+                            vector.append(command "--preload")
+                            vector.append(command wasmRuntime.name <> "=" <> runtimePath)
+                            for k = 0 upto vector.length(units) - 1 do
+                                vector.append(command "--preload")
+                                vector.append(command vector.get(units k))
                             end
                         end
-                        vector.append(:String command program)
+                        vector.append(command program)
                         for k = 0 upto extent options.programArgs - 1 do
-                            vector.append(:String command options.programArgs[k])
+                            vector.append(command options.programArgs[k])
                         end
-                        let r = exitAbove(system.run(vector.toArray(:String command)))
+                        let r = exitAbove(system.run(vector.toArray(command)))
                         if system.fileExists(base) then system.removeFile(base) end
                         if system.fileExists(program) then system.removeFile(program) end
                         if system.fileExists(runtimePath) then system.removeFile(runtimePath) end
@@ -817,9 +816,9 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                  * library's, driver/whole), which are built apart *)
                 let modules = if options.wholeProgram then
                         engine.unitModuleRefs(array of :engine.ImportRef end keptImports(t.unit)
-                            e.currentDir vector.toArray(:String e.includePaths) e.programDir e.units.resolver)
+                            e.currentDir vector.toArray(e.includePaths) e.programDir e.units.resolver)
                     else engine.unitModuleRefs(importRefs(program) passes.implicitImports(t.unit program)
-                        e.currentDir vector.toArray(:String e.includePaths) e.programDir e.units.resolver)
+                        e.currentDir vector.toArray(e.includePaths) e.programDir e.units.resolver)
                     end
                 let importer = if strutil.startsWith(options.file "<") then options.file else files.stem(options.file) end
                 try
@@ -831,10 +830,10 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                          * copies them into a .dSYM bundle beside the binary,
                          * by dsymutil, where lldb finds them *)
                         let assembly = choice.isAssembly(programBackend)
-                        let flags = vector.fromArray(:String cBackend.cFlags(programBackend))
-                        if assembly then vector.append(:String flags "-g") end
-                        compilerRunner.compileCSource(t.c files.absolute(maybe.unwrap(:String compileOutput))
-                            options.nogc maybe.none(:String) objects vector.toArray(:String flags) assembly)
+                        let flags = vector.fromArray(cBackend.cFlags(programBackend))
+                        if assembly then vector.append(flags "-g") end
+                        compilerRunner.compileCSource(t.c files.absolute(maybe.unwrap(compileOutput))
+                            options.nogc maybe.none(:String) objects vector.toArray(flags) assembly)
                     else
                         let binary = compilerRunner.temporaryBinary()
                         compilerRunner.compileCSource(t.c binary false maybe.none(:String) objects
@@ -861,10 +860,10 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
 let runFrame(e: env.T sm: location.SourceMap): model.Frame =
     begin
         let f = treewalk.newRoot(e.units)
-        f.root.includePaths := vector.toArray(:String e.includePaths)
+        f.root.includePaths := vector.toArray(e.includePaths)
         f.root.programDir := e.programDir
         f.currentDir := e.currentDir
-        f.sourceMap := maybe.some(:location.SourceMap sm)
+        f.sourceMap := maybe.some(sm)
         let args = array of({extent options.programArgs + 1} options.file)
         for i = 0 upto {extent options.programArgs - 1} do args[i + 1] := options.programArgs[i] end
         builtins.setSystemArgs(args)
@@ -876,7 +875,7 @@ let runFrame(e: env.T sm: location.SourceMap): model.Frame =
  * every phrase's, with --echo) *)
 let runIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T stage: String): Ok =
     begin
-        reportingInternal(:Ok bag ok fun(): Ok
+        reportingInternal(bag ok fun(): Ok
             begin
                 let unit = lowered(program e sm true stage)
                 let f = runFrame(e sm)
@@ -895,7 +894,7 @@ let interpret(program: typedAst.Program e: env.T sm: location.SourceMap bag: dia
         let f = runFrame(e sm)
         (* The program's phrases run in the outermost frame (docs/exceptions.md
          * section 4) *)
-        vector.append(:String f.root.callStack diagnostics.mainFrame)
+        vector.append(f.root.callStack diagnostics.mainFrame)
         try
             let ran = treewalk.evalProgramPhrasesIn(program f fun(r: treewalk.PhraseResult): Ok
                 if options.echo then printResult(r.phrase r.value) end)
@@ -939,12 +938,12 @@ let jitRun(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagba
         for i = 0 upto {extent options.programArgs - 1} do args[i + 1] := options.programArgs[i] end
         let r = repl.newJit(e runFrame(e sm) args)
         (* The session's files for a debugger are removed as it ends *)
-        let finished = fun(): Ok session.finish(maybe.unwrap(:session.T r.jit))
-        if options.fromFile orif options.fromStdin orif maybe.isSome(:String options.code) then
+        let finished = fun(): Ok session.finish(maybe.unwrap(r.jit))
+        if options.fromFile orif options.fromStdin orif maybe.isSome(options.code) then
             if not(repl.runInput(r program sm bag options.echo)) then
                 finished()
                 writer.flush(writer.output)
-                diagbag.renderAll(bag maybe.unwrapOr(:location.SourceMap r.errorSource sm) writer.err)
+                diagbag.renderAll(bag maybe.unwrapOr(r.errorSource sm) writer.err)
                 writer.flush(writer.err)
                 system.sysexit(1)
             end
@@ -976,27 +975,27 @@ let jitRun(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagba
 let compileUnitFile(): Ok =
     begin
         let bag = diagbag.new()
-        let sm = location.newSourceMap(options.file maybe.unwrapOr(:String files.readText(options.file) ""))
+        let sm = location.newSourceMap(options.file maybe.unwrapOr(files.readText(options.file) ""))
         stdlib.install()
         typecheck.install()
         let includes = array of(extent options.includePaths "")
         for i = 0 upto {extent options.includePaths - 1} do includes[i] := files.absolute(options.includePaths[i]) end
-        let outputDir = if maybe.isSome(:String options.output) then
-            maybe.some(:String files.parent(files.absolute(maybe.unwrap(:String options.output))))
+        let outputDir = if maybe.isSome(options.output) then
+            maybe.some(files.parent(files.absolute(maybe.unwrap(options.output))))
         else
             maybe.none(:String)
         end
         try
             case units.unitKind(options.file)
                 when interfaceUnit then
-                    if maybe.isSome(:String outputDir) then system.makeDirectory(maybe.unwrap(:String outputDir)) end
+                    if maybe.isSome(outputDir) then system.makeDirectory(maybe.unwrap(outputDir)) end
                     headers.compileInterfaceWithHeader(files.absolute(options.file) outputDir includes options.buildDir
                         maybe.none(:String))
                     ok
                 when moduleUnit then
-                    if maybe.isSome(:String outputDir) then system.makeDirectory(maybe.unwrap(:String outputDir)) end
+                    if maybe.isSome(outputDir) then system.makeDirectory(maybe.unwrap(outputDir)) end
                     moduleCompiler.compileModuleFile(files.absolute(options.file) outputDir includes maybe.none(:String)
-                        options.nogc vector.toArray(:String vector.new(:String)) options.buildDir maybe.none(:String)
+                        options.nogc vector.toArray(vector.new(:String)) options.buildDir maybe.none(:String)
                         maybe.none(:graph.Resolver) options.backends options.reportInferable)
                     ok
                 else
@@ -1026,8 +1025,8 @@ let compileUnitFile(): Ok =
  * diagnostics and exits *)
 let run(): Ok =
     begin
-        let source = if maybe.isSome(:String options.code) then
-            maybe.unwrap(:String options.code)
+        let source = if maybe.isSome(options.code) then
+            maybe.unwrap(options.code)
         elsif options.fromStdin then
             readAll(reader.input)
         elsif options.fromFile then
@@ -1057,8 +1056,8 @@ let run(): Ok =
                     e.units.resolver.variantOf := fun(unit: String): String choice.variantFor(options.backends unit)
                     let dir = if options.fromFile then files.parent(files.absolute(options.file))
                         else files.absolute(".") end
-                    e.currentDir := maybe.some(:String dir)
-                    e.programDir := maybe.some(:String dir)
+                    e.currentDir := maybe.some(dir)
+                    e.programDir := maybe.some(dir)
                     e.sourceFile := options.file
                     e.reportInferable := options.reportInferable
                     (* The file -i runs, and the REPL's inputs, are interactive
@@ -1070,21 +1069,21 @@ let run(): Ok =
                          * directory's artifacts, which is searched first;
                          * the JIT's, unless --build-dir names one, are kept
                          * in memory (docs/jit.md section 3.4.1) *)
-                        let artifacts = if options.jit andif maybe.isNone(:String options.buildDir) then memoryFiles.root
+                        let artifacts = if options.jit andif maybe.isNone(options.buildDir) then memoryFiles.root
                             else buildDir end
                         e.compilingC := not(options.wholeProgram)
-                        e.buildDir := maybe.some(:String artifacts)
-                        vector.append(:String e.includePaths artifacts)
+                        e.buildDir := maybe.some(artifacts)
+                        vector.append(e.includePaths artifacts)
                     end
                     for i = 0 upto {extent options.includePaths - 1} do
-                        vector.append(:String e.includePaths options.includePaths[i])
+                        vector.append(e.includePaths options.includePaths[i])
                     end
                     (* The runtime's units in Quest (docs/wasm.md section
                      * 4.5), found under runtime/, which the library's wasm
                      * variants import (lib/dynamic.wasm imports wasm/core),
                      * so that a program is checked as it is compiled *)
                     if choice.isWasm(programBackend) then
-                        vector.append(:String e.includePaths files.join(paths.projectDir() "runtime"))
+                        vector.append(e.includePaths files.join(paths.projectDir() "runtime"))
                     end
                     (* The modules of prebuilt objects are known through their
                      * interfaces alone, by their canonical names and their
@@ -1095,7 +1094,7 @@ let run(): Ok =
                             paths.canonicalizeModulePath(o options.includePaths maybe.none(:String)))
                         byPath.precompiled := true
                         let byName = graph.unit(e.units option moduleUnit of units.UnitKind end
-                            vector.get(:String strutil.split(files.baseName(o) ".") 0))
+                            vector.get(strutil.split(files.baseName(o) ".") 0))
                         byName.precompiled := true
                     end
                     let result = typecheck.elaborateProgram(desugared e)
@@ -1106,15 +1105,15 @@ let run(): Ok =
                     for i = 0 upto {extent result.warnings - 1} do
                         diagbag.add(bag diagnostics.warningDiagnostic(result.warnings[i] options.file))
                     end
-                    if maybe.isSome(:typedAst.Program result.program) then
-                        let typed = maybe.unwrap(:typedAst.Program result.program)
+                    if maybe.isSome(result.program) then
+                        let typed = maybe.unwrap(result.program)
                         if shows("typecheck") then dump(typedAstPrint.dumpProgram(typed)) end
                         if diagbag.hasErrors(bag) then
                             ok
                         elsif reaches("codegen_c") then
                             compiled(typed e sm bag)
-                        elsif maybe.isSome(:String irStage("run_ir_")) andif reaches(options.stopAfter) then
-                            runIr(typed e sm bag maybe.unwrap(:String irStage("run_ir_")))
+                        elsif maybe.isSome(irStage("run_ir_")) andif reaches(options.stopAfter) then
+                            runIr(typed e sm bag maybe.unwrap(irStage("run_ir_")))
                         elsif reaches("ir_core") then
                             lowerOnly(typed e sm bag)
                         elsif reaches("interpret") andif options.jit then
@@ -1140,7 +1139,7 @@ let run(): Ok =
 let buildProgram(): Ok =
     begin
         let bag = diagbag.new()
-        let sm = location.newSourceMap(options.file maybe.unwrapOr(:String files.readText(options.file) ""))
+        let sm = location.newSourceMap(options.file maybe.unwrapOr(files.readText(options.file) ""))
         stdlib.install()
         try
             let eng = engine.reportingInferable(engine.withBackends(engine.parallel(engine.new(options.buildDir
@@ -1171,7 +1170,7 @@ if workers.isUnitMode(system.args) then
 else
     case units.unitKind(options.file)
         when programUnit then
-            if {compileMode orif maybe.isSome(:String options.output)} andif not(options.wholeProgram)
+            if {compileMode orif maybe.isSome(options.output)} andif not(options.wholeProgram)
                 andif not(options.stopGiven) andif {extent options.dumpAfter is 0} andif not(options.echo)
                 andif not(compileMode andif {options.emitC orif options.printResult}) andif options.fromFile
                 andif not(choice.isWasm(programBackend)) then
@@ -1179,6 +1178,6 @@ else
             else
                 run()
             end
-        else if options.stopGiven orif maybe.isSome(:String options.code) then run() else compileUnitFile() end
+        else if options.stopGiven orif maybe.isSome(options.code) then run() else compileUnitFile() end
     end
 end;

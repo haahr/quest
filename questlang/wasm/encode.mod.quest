@@ -176,11 +176,11 @@ export
     let typeSection(b: Builder m: Module): Ok =
         begin
             let groups = m.types
-            if vector.length(:model.RecGroup groups) > 0 then
+            if vector.length(groups) > 0 then
                 let s = sb.new()
-                u32(s vector.length(:model.RecGroup groups))
-                for g = 0 upto vector.length(:model.RecGroup groups) - 1 do
-                    let group = vector.get(:model.RecGroup groups g)
+                u32(s vector.length(groups))
+                for g = 0 upto vector.length(groups) - 1 do
+                    let group = vector.get(groups g)
                     if extent group is 1 then subType(s group[0])
                     else
                         byte(s 0x4E)
@@ -319,11 +319,11 @@ export
         end
 
     let importSection(b: Builder m: Module): Ok =
-        if vector.length(:model.Import m.imports) > 0 then
+        if vector.length(m.imports) > 0 then
             let s = sb.new()
-            u32(s vector.length(:model.Import m.imports))
-            for k = 0 upto vector.length(:model.Import m.imports) - 1 do
-                let i = vector.get(:model.Import m.imports k)
+            u32(s vector.length(m.imports))
+            for k = 0 upto vector.length(m.imports) - 1 do
+                let i = vector.get(m.imports k)
                 name(s i.moduleName)
                 name(s i.field)
                 case i.kind
@@ -347,43 +347,43 @@ export
         end
 
     let functionSection(b: Builder m: Module): Ok =
-        if vector.length(:model.Function m.functions) > 0 then
+        if vector.length(m.functions) > 0 then
             let s = sb.new()
-            u32(s vector.length(:model.Function m.functions))
-            for k = 0 upto vector.length(:model.Function m.functions) - 1 do
-                u32(s vector.get(:model.Function m.functions k).type)
+            u32(s vector.length(m.functions))
+            for k = 0 upto vector.length(m.functions) - 1 do
+                u32(s vector.get(m.functions k).type)
             end
             section(b 3 s)
         end
 
     let memorySection(b: Builder m: Module): Ok =
-        if vector.length(:model.Memory m.memories) > 0 then
+        if vector.length(m.memories) > 0 then
             let s = sb.new()
-            u32(s vector.length(:model.Memory m.memories))
-            for k = 0 upto vector.length(:model.Memory m.memories) - 1 do
-                let mem = vector.get(:model.Memory m.memories k)
+            u32(s vector.length(m.memories))
+            for k = 0 upto vector.length(m.memories) - 1 do
+                let mem = vector.get(m.memories k)
                 limits(s mem.min mem.max)
             end
             section(b 5 s)
         end
 
     let tagSection(b: Builder m: Module): Ok =
-        if vector.length(:model.Tag m.tags) > 0 then
+        if vector.length(m.tags) > 0 then
             let s = sb.new()
-            u32(s vector.length(:model.Tag m.tags))
-            for k = 0 upto vector.length(:model.Tag m.tags) - 1 do
+            u32(s vector.length(m.tags))
+            for k = 0 upto vector.length(m.tags) - 1 do
                 byte(s 0x00)
-                u32(s vector.get(:model.Tag m.tags k).type)
+                u32(s vector.get(m.tags k).type)
             end
             section(b 13 s)
         end
 
     let globalSection(b: Builder m: Module): Ok =
-        if vector.length(:model.Global m.globals) > 0 then
+        if vector.length(m.globals) > 0 then
             let s = sb.new()
-            u32(s vector.length(:model.Global m.globals))
-            for k = 0 upto vector.length(:model.Global m.globals) - 1 do
-                let g = vector.get(:model.Global m.globals k)
+            u32(s vector.length(m.globals))
+            for k = 0 upto vector.length(m.globals) - 1 do
+                let g = vector.get(m.globals k)
                 valType(s g.type)
                 byte(s if g.mutable then 1 else 0 end)
                 expression(s g.init)
@@ -392,11 +392,11 @@ export
         end
 
     let exportSection(b: Builder m: Module): Ok =
-        if vector.length(:model.Export m.exports) > 0 then
+        if vector.length(m.exports) > 0 then
             let s = sb.new()
-            u32(s vector.length(:model.Export m.exports))
-            for k = 0 upto vector.length(:model.Export m.exports) - 1 do
-                let e = vector.get(:model.Export m.exports k)
+            u32(s vector.length(m.exports))
+            for k = 0 upto vector.length(m.exports) - 1 do
+                let e = vector.get(m.exports k)
                 name(s e.field)
                 byte(s case e.kind
                     when exportFunc then 0 when exportMemory then 2 when exportGlobal then 3 when exportTag then 4
@@ -416,28 +416,28 @@ export
     (* The functions ref.func takes, in one declarative segment (flags 3) of
      * function indices (element kind 0, funcref) *)
     let elementSection(b: Builder m: Module): Ok =
-        if vector.length(:Int m.declared) > 0 then
+        if vector.length(m.declared) > 0 then
             let s = sb.new()
             u32(s 1)
             u32(s 3)
             byte(s 0x00)
-            u32(s vector.length(:Int m.declared))
-            for k = 0 upto vector.length(:Int m.declared) - 1 do u32(s vector.get(:Int m.declared k)) end
+            u32(s vector.length(m.declared))
+            for k = 0 upto vector.length(m.declared) - 1 do u32(s vector.get(m.declared k)) end
             section(b 9 s)
         end
 
     let dataCountSection(b: Builder m: Module): Ok =
         begin
             let var needed = false
-            for k = 0 upto vector.length(:model.Function m.functions) - 1 do
-                let body = vector.get(:model.Function m.functions k).body
-                for j = 0 upto vector.length(:Inst body) - 1 do
-                    if namesData(vector.get(:Inst body j)) then needed := true end
+            for k = 0 upto vector.length(m.functions) - 1 do
+                let body = vector.get(m.functions k).body
+                for j = 0 upto vector.length(body) - 1 do
+                    if namesData(vector.get(body j)) then needed := true end
                 end
             end
             if needed then
                 let s = sb.new()
-                u32(s vector.length(:model.Data m.data))
+                u32(s vector.length(m.data))
                 section(b 12 s)
             end
         end
@@ -455,32 +455,32 @@ export
     (* A function's locals, after its parameters, in runs of one type *)
     let locals(b: Builder ls: vector.T(model.Local)): Ok =
         begin
-            let n = vector.length(:model.Local ls)
+            let n = vector.length(ls)
             let runs = vector.new(:Int)
             for k = 0 upto n - 1 do
-                if k is 0 then vector.append(:Int runs k)
-                elsif not(sameType(vector.get(:model.Local ls k).type vector.get(:model.Local ls {k - 1}).type)) then
-                    vector.append(:Int runs k)
+                if k is 0 then vector.append(runs k)
+                elsif not(sameType(vector.get(ls k).type vector.get(ls {k - 1}).type)) then
+                    vector.append(runs k)
                 end
             end
-            u32(b vector.length(:Int runs))
-            for r = 0 upto vector.length(:Int runs) - 1 do
-                let first = vector.get(:Int runs r)
-                let next = if {r + 1} < vector.length(:Int runs) then vector.get(:Int runs {r + 1}) else n end
+            u32(b vector.length(runs))
+            for r = 0 upto vector.length(runs) - 1 do
+                let first = vector.get(runs r)
+                let next = if {r + 1} < vector.length(runs) then vector.get(runs {r + 1}) else n end
                 u32(b next - first)
-                valType(b vector.get(:model.Local ls first).type)
+                valType(b vector.get(ls first).type)
             end
         end
 
     let codeSection(b: Builder m: Module): Ok =
-        if vector.length(:model.Function m.functions) > 0 then
+        if vector.length(m.functions) > 0 then
             let s = sb.new()
-            u32(s vector.length(:model.Function m.functions))
-            for k = 0 upto vector.length(:model.Function m.functions) - 1 do
-                let f = vector.get(:model.Function m.functions k)
+            u32(s vector.length(m.functions))
+            for k = 0 upto vector.length(m.functions) - 1 do
+                let f = vector.get(m.functions k)
                 let body = sb.new()
                 locals(body f.locals)
-                for j = 0 upto vector.length(:Inst f.body) - 1 do instruction(body vector.get(:Inst f.body j)) end
+                for j = 0 upto vector.length(f.body) - 1 do instruction(body vector.get(f.body j)) end
                 byte(body 0x0B)
                 sized(s body)
             end
@@ -488,11 +488,11 @@ export
         end
 
     let dataSection(b: Builder m: Module): Ok =
-        if vector.length(:model.Data m.data) > 0 then
+        if vector.length(m.data) > 0 then
             let s = sb.new()
-            u32(s vector.length(:model.Data m.data))
-            for k = 0 upto vector.length(:model.Data m.data) - 1 do
-                let d = vector.get(:model.Data m.data k)
+            u32(s vector.length(m.data))
+            for k = 0 upto vector.length(m.data) - 1 do
+                let d = vector.get(m.data k)
                 if d.offset < 0 then u32(s 1)
                 else
                     u32(s 0)
@@ -557,26 +557,26 @@ export
     let spaceNames(m: Module kind: All(k: model.ImportKind) Bool defined: Array(String)): Array(String) =
         begin
             let names = vector.new(:String)
-            for k = 0 upto vector.length(:model.Import m.imports) - 1 do
-                let i = vector.get(:model.Import m.imports k)
-                if kind(i.kind) then vector.append(:String names i.name) end
+            for k = 0 upto vector.length(m.imports) - 1 do
+                let i = vector.get(m.imports k)
+                if kind(i.kind) then vector.append(names i.name) end
             end
-            for k = 0 upto extent defined - 1 do vector.append(:String names defined[k]) end
-            vector.toArray(:String names)
+            for k = 0 upto extent defined - 1 do vector.append(names defined[k]) end
+            vector.toArray(names)
         end
 
     (* The labels of a function's structured instructions, in order *)
     let labels(f: model.Function): Array(String) =
         begin
             let names = vector.new(:String)
-            for j = 0 upto vector.length(:Inst f.body) - 1 do
-                case vector.get(:Inst f.body j)
-                    when instBlock with x then vector.append(:String names x.label)
-                    when instTryTable with x then vector.append(:String names x.label)
+            for j = 0 upto vector.length(f.body) - 1 do
+                case vector.get(f.body j)
+                    when instBlock with x then vector.append(names x.label)
+                    when instTryTable with x then vector.append(names x.label)
                     else ok
                 end
             end
-            vector.toArray(:String names)
+            vector.toArray(names)
         end
 
     let isFunc(k: model.ImportKind): Bool = k?importFunc
@@ -589,11 +589,11 @@ export
     let localNames(f: model.Function): Array(String) =
         begin
             let ls = vector.new(:String)
-            for k = 0 upto extent f.params - 1 do vector.append(:String ls f.params[k]) end
-            for k = 0 upto vector.length(:model.Local f.locals) - 1 do
-                vector.append(:String ls vector.get(:model.Local f.locals k).name)
+            for k = 0 upto extent f.params - 1 do vector.append(ls f.params[k]) end
+            for k = 0 upto vector.length(f.locals) - 1 do
+                vector.append(ls vector.get(f.locals k).name)
             end
-            vector.toArray(:String ls)
+            vector.toArray(ls)
         end
 
     (* A struct type's field names; none for another type *)
@@ -618,14 +618,14 @@ export
                 name(one m.name)
                 section(s 0 one)
             end
-            let nf = vector.length(:model.Function m.functions)
+            let nf = vector.length(m.functions)
             let imported = model.importedFunctions(m)
             let functionNames = array of(nf "")
             let defined = array of(nf 0)
             let locals = array of(nf array of :String end)
             let blockLabels = array of(nf array of :String end)
             for k = 0 upto nf - 1 do
-                let f = vector.get(:model.Function m.functions k)
+                let f = vector.get(m.functions k)
                 functionNames[k] := f.name
                 defined[k] := imported + k
                 locals[k] := localNames(f)
@@ -635,32 +635,32 @@ export
             indirect(s 2 defined locals)
             indirect(s 3 defined blockLabels)
             let types = vector.new(:model.SubType)
-            for g = 0 upto vector.length(:model.RecGroup m.types) - 1 do
-                let group = vector.get(:model.RecGroup m.types g)
-                for k = 0 upto extent group - 1 do vector.append(:model.SubType types group[k]) end
+            for g = 0 upto vector.length(m.types) - 1 do
+                let group = vector.get(m.types g)
+                for k = 0 upto extent group - 1 do vector.append(types group[k]) end
             end
-            let nt = vector.length(:model.SubType types)
+            let nt = vector.length(types)
             let typeNames = array of(nt "")
             let typeIndices = array of(nt 0)
             let fields = array of(nt array of :String end)
             for k = 0 upto nt - 1 do
-                typeNames[k] := vector.get(:model.SubType types k).name
+                typeNames[k] := vector.get(types k).name
                 typeIndices[k] := k
-                fields[k] := fieldNames(vector.get(:model.SubType types k))
+                fields[k] := fieldNames(vector.get(types k))
             end
             subsection(s 4 typeNames)
-            let memoryNames = array of(vector.length(:model.Memory m.memories) "")
-            for k = 0 upto extent memoryNames - 1 do memoryNames[k] := vector.get(:model.Memory m.memories k).name end
+            let memoryNames = array of(vector.length(m.memories) "")
+            for k = 0 upto extent memoryNames - 1 do memoryNames[k] := vector.get(m.memories k).name end
             subsection(s 6 spaceNames(m isMemory memoryNames))
-            let globalNames = array of(vector.length(:model.Global m.globals) "")
-            for k = 0 upto extent globalNames - 1 do globalNames[k] := vector.get(:model.Global m.globals k).name end
+            let globalNames = array of(vector.length(m.globals) "")
+            for k = 0 upto extent globalNames - 1 do globalNames[k] := vector.get(m.globals k).name end
             subsection(s 7 spaceNames(m isGlobal globalNames))
-            let dataNames = array of(vector.length(:model.Data m.data) "")
-            for k = 0 upto extent dataNames - 1 do dataNames[k] := vector.get(:model.Data m.data k).name end
+            let dataNames = array of(vector.length(m.data) "")
+            for k = 0 upto extent dataNames - 1 do dataNames[k] := vector.get(m.data k).name end
             subsection(s 9 dataNames)
             indirect(s 10 typeIndices fields)
-            let tagNames = array of(vector.length(:model.Tag m.tags) "")
-            for k = 0 upto extent tagNames - 1 do tagNames[k] := vector.get(:model.Tag m.tags k).name end
+            let tagNames = array of(vector.length(m.tags) "")
+            for k = 0 upto extent tagNames - 1 do tagNames[k] := vector.get(m.tags k).name end
             subsection(s 11 spaceNames(m isTag tagNames))
             if sb.length(s) > 0 then
                 let custom = sb.new()

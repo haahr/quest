@@ -23,16 +23,16 @@ export
             if not(shapes.sameKind(held.kind kind)) then
                 maybe.none(:Type)
             else
-                maybe.some(:Type reduce.normalizeType(if shapes.same(held s) then t else reduce.resolveTypeBound(t) end))
+                maybe.some(reduce.normalizeType(if shapes.same(held s) then t else reduce.resolveTypeBound(t) end))
             end
         end
 
     let arrayElement(t: Type): maybe.T(Type) =
         begin
             let w = writtenStructure(t shapes.shapeArray)
-            if maybe.isSome(:Type w) then
-                case maybe.unwrap(:Type w).form
-                    when typeArray with x then maybe.some(:Type x.element)
+            if maybe.isSome(w) then
+                case maybe.unwrap(w).form
+                    when typeArray with x then maybe.some(x.element)
                     else maybe.none(:Type)
                 end
             else
@@ -66,8 +66,8 @@ export
                         let parts = vector.new(:String)
                         for i = 0 upto {extent x.fields - 1} do
                             case x.fields[i]
-                                when tupleTypeFormal with c then vector.append(:String parts "<Hidden>::" <> model.showKind(c.bound))
-                                when tupleTypeBinding with c then vector.append(:String parts "Let " <> c.name <> " = " <> model.show(c.type))
+                                when tupleTypeFormal with c then vector.append(parts "<Hidden>::" <> model.showKind(c.bound))
+                                when tupleTypeBinding with c then vector.append(parts "Let " <> c.name <> " = " <> model.show(c.type))
                                 when tupleField with c then
                                     let elem = case c.type.form
                                         when typePath then "<hidden>"
@@ -76,11 +76,11 @@ export
                                         when typeAll then "<fun>"
                                         else "<val>"
                                     end
-                                    let named = maybe.isSome(:String c.name) andif not(stringOp.isEmpty(maybe.unwrap(:String c.name)))
-                                    vector.append(:String parts if named then maybe.unwrap(:String c.name) <> "=" <> elem else elem end)
+                                    let named = maybe.isSome(c.name) andif not(stringOp.isEmpty(maybe.unwrap(c.name)))
+                                    vector.append(parts if named then maybe.unwrap(c.name) <> "=" <> elem else elem end)
                             end
                         end
-                        maybe.some(:String if vector.empty(:String parts) then "tuple end"
+                        maybe.some(if vector.empty(parts) then "tuple end"
                             else "tuple " <> strutil.join(" " parts) <> " end" end)
                     end
                 else maybe.none(:String)
@@ -98,17 +98,17 @@ export
                     for i = 0 upto {extent x.fields - 1} do
                         case x.fields[i]
                             when tupleTypeFormal with c then
-                                vector.append(:TypeComponentText found
+                                vector.append(found
                                     tuple let position = position let text = "<Hidden>::" <> model.showKind(c.bound) end)
                             when tupleTypeBinding with c then
-                                vector.append(:TypeComponentText found
+                                vector.append(found
                                     tuple let position = position let text = "Let " <> c.name <> " = " <> model.show(c.type) end)
                             else position := position + 1
                         end
                     end
                 else ok
             end
-            vector.toArray(:TypeComponentText found)
+            vector.toArray(found)
         end
 
     let isRecursiveType(t: Type): Bool = t.form?typeRec orif t.form?typeRecGroup
@@ -134,7 +134,7 @@ export
                 case t.form
                     when typeAlias with x then
                         if isRecursiveType(x.target) then
-                            found := maybe.some(:Int x.target.id)
+                            found := maybe.some(x.target.id)
                             more := false
                         else
                             t := x.target
@@ -142,8 +142,8 @@ export
                     else more := false
                 end
             end
-            if maybe.isSome(:Int found) then found
-            elsif t.form?typeRec then maybe.some(:Int t.id)
+            if maybe.isSome(found) then found
+            elsif t.form?typeRec then maybe.some(t.id)
             else maybe.none(:Int) end
         end
 
@@ -153,7 +153,7 @@ export
         begin
             let t = echoHead(t0)
             let found = vector.new(:EchoChild)
-            let add = fun(key: String child: Type): Ok vector.append(:EchoChild found tuple let key = key let type = child end)
+            let add = fun(key: String child: Type): Ok vector.append(found tuple let key = key let type = child end)
             case t.form
                 when typeTuple with x then
                     let values = model.tupleValueFields(x.fields)
@@ -162,14 +162,14 @@ export
                 when typeArray with x then add("" x.element)
                 when typeOption with x then
                     for i = 0 upto {extent x.options - 1} do
-                        if maybe.isSome(:Type x.options[i].payload) then add(x.options[i].name maybe.unwrap(:Type x.options[i].payload)) end
+                        if maybe.isSome(x.options[i].payload) then add(x.options[i].name maybe.unwrap(x.options[i].payload)) end
                     end
                 when typeVariant with x then
                     for i = 0 upto {extent x.variants - 1} do
-                        if maybe.isSome(:Type x.variants[i].type) then add(x.variants[i].name maybe.unwrap(:Type x.variants[i].type)) end
+                        if maybe.isSome(x.variants[i].type) then add(x.variants[i].name maybe.unwrap(x.variants[i].type)) end
                     end
                 else ok
             end
-            vector.toArray(:EchoChild found)
+            vector.toArray(found)
         end
 end

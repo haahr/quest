@@ -21,14 +21,14 @@ export
             when sIf with x then array of x.thenBody x.elseBody end
             when sSwitch with x then
                 let bodies = vector.new(:Body)
-                for i = 0 upto {extent x.cases - 1} do vector.append(:Body bodies x.cases[i].body) end
-                if maybe.isSome(:Body x.elseBody) then vector.append(:Body bodies maybe.unwrap(:Body x.elseBody)) end
-                vector.toArray(:Body bodies)
+                for i = 0 upto {extent x.cases - 1} do vector.append(bodies x.cases[i].body) end
+                if maybe.isSome(x.elseBody) then vector.append(bodies maybe.unwrap(x.elseBody)) end
+                vector.toArray(bodies)
             when sInspect with x then
                 let bodies = vector.new(:Body)
-                for i = 0 upto {extent x.cases - 1} do vector.append(:Body bodies x.cases[i].body) end
-                if maybe.isSome(:Body x.elseBody) then vector.append(:Body bodies maybe.unwrap(:Body x.elseBody)) end
-                vector.toArray(:Body bodies)
+                for i = 0 upto {extent x.cases - 1} do vector.append(bodies x.cases[i].body) end
+                if maybe.isSome(x.elseBody) then vector.append(bodies maybe.unwrap(x.elseBody)) end
+                vector.toArray(bodies)
             when sLoop with x then array of x.body end
             when sLetRec with x then array of x.body end
             when sTry with x then array of x.body x.handler end
@@ -42,23 +42,23 @@ export
             when sVarDecl with x then array of x.v end
             when sFuns with x then
                 let vars = vector.new(:Variable)
-                for i = 0 upto {extent x.functions - 1} do vector.append(:Variable vars x.functions[i].v) end
-                vector.toArray(:Variable vars)
+                for i = 0 upto {extent x.functions - 1} do vector.append(vars x.functions[i].v) end
+                vector.toArray(vars)
             when sLetRec with x then x.vars
             when sSwitch with x then
                 let vars = vector.new(:Variable)
                 for i = 0 upto {extent x.cases - 1} do
-                    if maybe.isSome(:Variable x.cases[i].binder) then
-                        vector.append(:Variable vars maybe.unwrap(:Variable x.cases[i].binder))
+                    if maybe.isSome(x.cases[i].binder) then
+                        vector.append(vars maybe.unwrap(x.cases[i].binder))
                     end
                 end
-                vector.toArray(:Variable vars)
+                vector.toArray(vars)
             when sInspect with x then
                 let vars = vector.new(:Variable)
                 for i = 0 upto {extent x.cases - 1} do
-                    for j = 0 upto {extent x.cases[i].binders - 1} do vector.append(:Variable vars x.cases[i].binders[j]) end
+                    for j = 0 upto {extent x.cases[i].binders - 1} do vector.append(vars x.cases[i].binders[j]) end
                 end
-                vector.toArray(:Variable vars)
+                vector.toArray(vars)
             when sTry with x then array of x.exc end
             when sJoin with x then x.params
             else array of :Variable end
@@ -66,9 +66,9 @@ export
 
     Let Uses = vector.T(Atom)
 
-    let use(u: Uses a: Atom): Ok = vector.append(:Atom u a)
+    let use(u: Uses a: Atom): Ok = vector.append(u a)
     let useVar(u: Uses v: Variable): Ok = use(u nodes.atomOfVar(v))
-    let useOpt(u: Uses a: maybe.T(Atom)): Ok = if maybe.isSome(:Atom a) then use(u maybe.unwrap(:Atom a)) end
+    let useOpt(u: Uses a: maybe.T(Atom)): Ok = if maybe.isSome(a) then use(u maybe.unwrap(a)) end
     let useAll(u: Uses atoms: Array(Atom)): Ok = for i = 0 upto {extent atoms - 1} do use(u atoms[i]) end
 
     let opUses(o: Op): Array(Atom) =
@@ -79,11 +79,11 @@ export
                 when opPrim with x then useAll(u x.args)
                 when opCall with x then
                     begin
-                        if maybe.isSome(:Variable x.callee) then useVar(u maybe.unwrap(:Variable x.callee)) end
+                        if maybe.isSome(x.callee) then useVar(u maybe.unwrap(x.callee)) end
                         useAll(u x.args)
                     end
                 when opTypeApp with x then
-                    if maybe.isSome(:Variable x.callee) then useVar(u maybe.unwrap(:Variable x.callee)) end
+                    if maybe.isSome(x.callee) then useVar(u maybe.unwrap(x.callee)) end
                 when opCallExternal with x then useAll(u x.args)
                 when opMakeClosure with x then useAll(u x.captures)
                 when opEnvField with x then use(u x.env)
@@ -111,14 +111,14 @@ export
                 when opLoad with x then use(u x.address)
                 else ok
             end
-            vector.toArray(:Atom u)
+            vector.toArray(u)
         end
 
     let statementUses(s: Stmt): Array(Atom) =
         case s
             when sLet with x then opUses(x.value)
             when sDo with x then opUses(x.value)
-            when sVarDecl with x then if maybe.isSome(:Atom x.init) then array of maybe.unwrap(:Atom x.init) end else array of :Atom end end
+            when sVarDecl with x then if maybe.isSome(x.init) then array of maybe.unwrap(x.init) end else array of :Atom end end
             when sAssign with x then array of nodes.atomOfVar(x.v) x.value end
             when sStoreAt with x then array of x.value x.address end
             when sStoreField with x then array of x.value x.base end
@@ -131,7 +131,7 @@ export
             when sReturn with x then array of x.value end
             when sJump with x then x.args
             when sRaise with x then
-                if maybe.isSome(:Atom x.payload) then array of x.exc maybe.unwrap(:Atom x.payload) end else array of x.exc end end
+                if maybe.isSome(x.payload) then array of x.exc maybe.unwrap(x.payload) end else array of x.exc end end
             when sReraise with x then array of nodes.atomOfVar(x.exc) end
             when sTry with x then x.catches
             else array of :Atom end
@@ -141,9 +141,9 @@ export
         begin
             let found = vector.new(:Stmt)
             let rec visit(b: Body): Ok =
-                for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
-                    let s = vector.get(:Stmt b.statements i)
-                    vector.append(:Stmt found s)
+                for i = 0 upto {vector.length(b.statements) - 1} do
+                    let s = vector.get(b.statements i)
+                    vector.append(found s)
                     if intoFunctions then
                         case s
                             when sFuns with x then for j = 0 upto {extent x.functions - 1} do visit(x.functions[j].body) end
@@ -170,15 +170,15 @@ export
     let atoms(items: Array(Atom) f: Rename): Array(Atom) =
         begin
             let mapped = vector.new(:Atom)
-            for i = 0 upto {extent items - 1} do vector.append(:Atom mapped atom(items[i] f)) end
-            vector.toArray(:Atom mapped)
+            for i = 0 upto {extent items - 1} do vector.append(mapped atom(items[i] f)) end
+            vector.toArray(mapped)
         end
 
     let optAtom(a: maybe.T(Atom) f: Rename): maybe.T(Atom) =
-        if maybe.isSome(:Atom a) then maybe.some(:Atom atom(maybe.unwrap(:Atom a) f)) else a end
+        if maybe.isSome(a) then maybe.some(atom(maybe.unwrap(a) f)) else a end
 
     let optVar(v: maybe.T(Variable) f: Rename): maybe.T(Variable) =
-        if maybe.isSome(:Variable v) then maybe.some(:Variable f(maybe.unwrap(:Variable v))) else v end
+        if maybe.isSome(v) then maybe.some(f(maybe.unwrap(v))) else v end
 
     let descriptor(d: nodes.Descriptor f: Rename): nodes.Descriptor =
         case d
@@ -187,20 +187,20 @@ export
         end
 
     let optDescriptor(d: maybe.T(nodes.Descriptor) f: Rename): maybe.T(nodes.Descriptor) =
-        if maybe.isSome(:nodes.Descriptor d) then maybe.some(:nodes.Descriptor descriptor(maybe.unwrap(:nodes.Descriptor d) f)) else d end
+        if maybe.isSome(d) then maybe.some(descriptor(maybe.unwrap(d) f)) else d end
 
     let descriptors(items: Array(nodes.Descriptor) f: Rename): Array(nodes.Descriptor) =
         begin
             let mapped = vector.new(:nodes.Descriptor)
-            for i = 0 upto {extent items - 1} do vector.append(:nodes.Descriptor mapped descriptor(items[i] f)) end
-            vector.toArray(:nodes.Descriptor mapped)
+            for i = 0 upto {extent items - 1} do vector.append(mapped descriptor(items[i] f)) end
+            vector.toArray(mapped)
         end
 
     let vars(items: Array(Variable) f: Rename): Array(Variable) =
         begin
             let mapped = vector.new(:Variable)
-            for i = 0 upto {extent items - 1} do vector.append(:Variable mapped f(items[i])) end
-            vector.toArray(:Variable mapped)
+            for i = 0 upto {extent items - 1} do vector.append(mapped f(items[i])) end
+            vector.toArray(mapped)
         end
 
     (* A map of atoms, for the atoms a node holds *)
@@ -209,12 +209,12 @@ export
     let mapAtoms(items: Array(Atom) g: AtomMap): Array(Atom) =
         begin
             let mapped = vector.new(:Atom)
-            for i = 0 upto {extent items - 1} do vector.append(:Atom mapped g(items[i])) end
-            vector.toArray(:Atom mapped)
+            for i = 0 upto {extent items - 1} do vector.append(mapped g(items[i])) end
+            vector.toArray(mapped)
         end
 
     let mapOptAtom(a: maybe.T(Atom) g: AtomMap): maybe.T(Atom) =
-        if maybe.isSome(:Atom a) then maybe.some(:Atom g(maybe.unwrap(:Atom a))) else a end
+        if maybe.isSome(a) then maybe.some(g(maybe.unwrap(a))) else a end
 
     (* Replaces, in place, the variables o holds as variables (callees,
      * addresses taken, view maps, descriptor variables) by f, and the atoms
@@ -263,10 +263,10 @@ export
                     let fields = vector.new(:nodes.FieldAtom)
                     for i = 0 upto {extent x.fields - 1} do
                         let fa = x.fields[i]
-                        vector.append(:nodes.FieldAtom fields
+                        vector.append(fields
                             tuple let name = fa.name let atom = g(fa.atom) let isVar = fa.isVar end)
                     end
-                    x.fields := vector.toArray(:nodes.FieldAtom fields)
+                    x.fields := vector.toArray(fields)
                     x.descriptor := optDescriptor(x.descriptor f)
                     x.viewDescriptor := optDescriptor(x.viewDescriptor f)
                 end
@@ -417,33 +417,33 @@ export
              * main body after them) *)
             let bound = hashMap.new(:Int :Int intEqual hash.int)
             let rec visit(b: Body where: Int): Ok =
-                for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
-                    let s = vector.get(:Stmt b.statements i)
+                for i = 0 upto {vector.length(b.statements) - 1} do
+                    let s = vector.get(b.statements i)
                     let binders = statementBinders(s)
-                    for j = 0 upto {extent binders - 1} do hashMap.insert(:Int :Int bound binders[j].id where) end
+                    for j = 0 upto {extent binders - 1} do hashMap.insert(bound binders[j].id where) end
                     if not(s?sLoop) then
                         let bodies = statementBodies(s)
                         for j = 0 upto {extent bodies - 1} do visit(bodies[j] where) end
                     end
                 end
-            let n = vector.length(:nodes.Module unit.modules)
-            for i = 0 upto {n - 1} do visit(vector.get(:nodes.Module unit.modules i).init i) end
+            let n = vector.length(unit.modules)
+            for i = 0 upto {n - 1} do visit(vector.get(unit.modules i).init i) end
             visit(unit.main n)
             (* Of those, the ones named where they are not bound: by a function
              * (where is ~1), or by another top level *)
             let found = hashMap.new(:Int :Bool intEqual hash.int)
             let note(v: Variable where: Int): Ok =
                 begin
-                    let b = hashMap.get(:Int :Int bound v.id)
-                    if maybe.isSome(:Int b) andif {{where < 0} orif {maybe.unwrap(:Int b) isnot where}} then
-                        hashMap.insert(:Int :Bool found v.id true)
+                    let b = hashMap.get(bound v.id)
+                    if maybe.isSome(b) andif {{where < 0} orif {maybe.unwrap(b) isnot where}} then
+                        hashMap.insert(found v.id true)
                     end
                 end
             let rec names(b: Body where: Int): Ok =
                 begin
                     let stmts = walkStatements(b false)
-                    for i = 0 upto {vector.length(:Stmt stmts) - 1} do
-                        let s = vector.get(:Stmt stmts i)
+                    for i = 0 upto {vector.length(stmts) - 1} do
+                        let s = vector.get(stmts i)
                         replaceVarsInStmt(s fun(v: Variable): Variable begin note(v where) v end)
                         case s
                             when sFuns with x then
@@ -452,24 +452,24 @@ export
                         end
                     end
                 end
-            for i = 0 upto {n - 1} do names(vector.get(:nodes.Module unit.modules i).init i) end
+            for i = 0 upto {n - 1} do names(vector.get(unit.modules i).init i) end
             names(unit.main n)
-            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
-                names(vector.get(:nodes.Function unit.functions i).body ~1)
+            for i = 0 upto {vector.length(unit.functions) - 1} do
+                names(vector.get(unit.functions i).body ~1)
             end
             (* And a module's members, exports, and record, which other units
              * and the module's exported functions read *)
             let member(v: Variable): Ok =
-                if hashMap.contains(:Int :Int bound v.id) then hashMap.insert(:Int :Bool found v.id true) end
+                if hashMap.contains(bound v.id) then hashMap.insert(found v.id true) end
             let members(ms: nodes.Members): Ok =
-                for j = 0 upto {vector.length(:String ms.names) - 1} do
-                    member(hashMap.find(:String :Variable ms.vars vector.get(:String ms.names j)))
+                for j = 0 upto {vector.length(ms.names) - 1} do
+                    member(hashMap.find(ms.vars vector.get(ms.names j)))
                 end
             for i = 0 upto {n - 1} do
-                let m = vector.get(:nodes.Module unit.modules i)
+                let m = vector.get(unit.modules i)
                 members(m.members)
-                if maybe.isSome(:nodes.Members m.exports) then members(maybe.unwrap(:nodes.Members m.exports)) end
-                if maybe.isSome(:Variable m.recordVar) then member(maybe.unwrap(:Variable m.recordVar)) end
+                if maybe.isSome(m.exports) then members(maybe.unwrap(m.exports)) end
+                if maybe.isSome(m.recordVar) then member(maybe.unwrap(m.recordVar)) end
             end
             found
         end
@@ -501,33 +501,32 @@ export
             let same = fun(a: Int b: Int): Bool a is b
             let known = hashMap.new(:Int :nodes.OpMakeClosure same hash.int)
             let bodies = vector.new(:nodes.Body)
-            vector.append(:nodes.Body bodies unit.main)
-            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
-                vector.append(:nodes.Body bodies vector.get(:nodes.Module unit.modules i).init)
+            vector.append(bodies unit.main)
+            for i = 0 upto {vector.length(unit.modules) - 1} do
+                vector.append(bodies vector.get(unit.modules i).init)
             end
-            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
-                vector.append(:nodes.Body bodies vector.get(:nodes.Function unit.functions i).body)
+            for i = 0 upto {vector.length(unit.functions) - 1} do
+                vector.append(bodies vector.get(unit.functions i).body)
             end
             let stmts = vector.new(:nodes.Stmt)
-            for b = 0 upto {vector.length(:nodes.Body bodies) - 1} do
-                let found = walkStatements(vector.get(:nodes.Body bodies b) false)
-                for k = 0 upto {vector.length(:nodes.Stmt found) - 1} do
-                    vector.append(:nodes.Stmt stmts vector.get(:nodes.Stmt found k))
+            for b = 0 upto {vector.length(bodies) - 1} do
+                let found = walkStatements(vector.get(bodies b) false)
+                for k = 0 upto {vector.length(found) - 1} do
+                    vector.append(stmts vector.get(found k))
                 end
             end
             (* Each function's closures, by its id *)
             let closuresOf = hashMap.new(:Int :vector.T(nodes.OpMakeClosure) same hash.int)
-            for k = 0 upto {vector.length(:nodes.Stmt stmts) - 1} do
-                case vector.get(:nodes.Stmt stmts k)
+            for k = 0 upto {vector.length(stmts) - 1} do
+                case vector.get(stmts k)
                     when sLet with x then
                         case x.value
                             when opMakeClosure with c then
-                                if not(hashMap.contains(:Int :vector.T(nodes.OpMakeClosure) closuresOf c.code.id)) then
-                                    hashMap.insert(:Int :vector.T(nodes.OpMakeClosure) closuresOf c.code.id
+                                if not(hashMap.contains(closuresOf c.code.id)) then
+                                    hashMap.insert(closuresOf c.code.id
                                         vector.new(:nodes.OpMakeClosure))
                                 end
-                                vector.append(:nodes.OpMakeClosure
-                                    hashMap.find(:Int :vector.T(nodes.OpMakeClosure) closuresOf c.code.id) c)
+                                vector.append(hashMap.find(closuresOf c.code.id) c)
                             else ok
                         end
                     else ok
@@ -537,20 +536,20 @@ export
              * binds, the function, and the index *)
             Let Read = Tuple v: nodes.Variable function: Int index: Int end
             let reads = vector.new(:Read)
-            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
-                let fn = vector.get(:nodes.Function unit.functions i)
-                if maybe.isSome(:nodes.Variable fn.env) then
-                    let env = maybe.unwrap(:nodes.Variable fn.env)
+            for i = 0 upto {vector.length(unit.functions) - 1} do
+                let fn = vector.get(unit.functions i)
+                if maybe.isSome(fn.env) then
+                    let env = maybe.unwrap(fn.env)
                     let found = walkStatements(fn.body false)
-                    for k = 0 upto {vector.length(:nodes.Stmt found) - 1} do
-                        case vector.get(:nodes.Stmt found k)
+                    for k = 0 upto {vector.length(found) - 1} do
+                        case vector.get(found k)
                             when sLet with x then
                                 case x.value
                                     when opEnvField with y then
                                         case y.env
                                             when atomVar with e then
                                                 if e.v.id is env.id then
-                                                    vector.append(:Read reads tuple
+                                                    vector.append(reads tuple
                                                         let v = x.v let function = fn.id let index = y.index
                                                     end)
                                                 end
@@ -564,22 +563,22 @@ export
                 end
             end
             let note = fun(v: nodes.Variable c: nodes.OpMakeClosure): Bool
-                if hashMap.contains(:Int :nodes.OpMakeClosure known v.id) then false
-                else begin hashMap.insert(:Int :nodes.OpMakeClosure known v.id c) true end end
+                if hashMap.contains(known v.id) then false
+                else begin hashMap.insert(known v.id c) true end end
             let var changed = true
             while changed do
                 changed := false
-                for k = 0 upto {vector.length(:nodes.Stmt stmts) - 1} do
-                    case vector.get(:nodes.Stmt stmts k)
+                for k = 0 upto {vector.length(stmts) - 1} do
+                    case vector.get(stmts k)
                         when sLet with x then
                             case x.value
                                 when opMakeClosure with c then if note(x.v c) then changed := true end
                                 when opAtom with a then
                                     case a.atom
                                         when atomVar with y then
-                                            let c = hashMap.get(:Int :nodes.OpMakeClosure known y.v.id)
-                                            if maybe.isSome(:nodes.OpMakeClosure c) then
-                                                if note(x.v maybe.unwrap(:nodes.OpMakeClosure c)) then
+                                            let c = hashMap.get(known y.v.id)
+                                            if maybe.isSome(c) then
+                                                if note(x.v maybe.unwrap(c)) then
                                                     changed := true
                                                 end
                                             end
@@ -590,33 +589,33 @@ export
                         else ok
                     end
                 end
-                for r = 0 upto {vector.length(:Read reads) - 1} do
-                    let read = vector.get(:Read reads r)
-                    let cs = hashMap.get(:Int :vector.T(nodes.OpMakeClosure) closuresOf read.function)
-                    if not(hashMap.contains(:Int :nodes.OpMakeClosure known read.v.id))
-                        andif maybe.isSome(:vector.T(nodes.OpMakeClosure) cs) then
-                        let closures = maybe.unwrap(:vector.T(nodes.OpMakeClosure) cs)
+                for r = 0 upto {vector.length(reads) - 1} do
+                    let read = vector.get(reads r)
+                    let cs = hashMap.get(closuresOf read.function)
+                    if not(hashMap.contains(known read.v.id))
+                        andif maybe.isSome(cs) then
+                        let closures = maybe.unwrap(cs)
                         (* The closure every one captures at the index, if all
                          * capture closures of one function *)
                         let var agreed = maybe.none(:nodes.OpMakeClosure)
-                        let var all = vector.length(:nodes.OpMakeClosure closures) > 0
-                        for k = 0 upto {vector.length(:nodes.OpMakeClosure closures) - 1} do
-                            let c = vector.get(:nodes.OpMakeClosure closures k)
+                        let var all = vector.length(closures) > 0
+                        for k = 0 upto {vector.length(closures) - 1} do
+                            let c = vector.get(closures k)
                             let held = if read.index < extent c.captures then
                                 case c.captures[read.index]
-                                    when atomVar with y then hashMap.get(:Int :nodes.OpMakeClosure known y.v.id)
+                                    when atomVar with y then hashMap.get(known y.v.id)
                                     when atomConst then maybe.none(:nodes.OpMakeClosure)
                                 end
                             else maybe.none(:nodes.OpMakeClosure) end
-                            if maybe.isNone(:nodes.OpMakeClosure held) then all := false
-                            elsif maybe.isNone(:nodes.OpMakeClosure agreed) then agreed := held
-                            elsif maybe.unwrap(:nodes.OpMakeClosure agreed).code.id
-                                isnot maybe.unwrap(:nodes.OpMakeClosure held).code.id then
+                            if maybe.isNone(held) then all := false
+                            elsif maybe.isNone(agreed) then agreed := held
+                            elsif maybe.unwrap(agreed).code.id
+                                isnot maybe.unwrap(held).code.id then
                                 all := false
                             end
                         end
-                        if all andif maybe.isSome(:nodes.OpMakeClosure agreed) then
-                            if note(read.v maybe.unwrap(:nodes.OpMakeClosure agreed)) then changed := true end
+                        if all andif maybe.isSome(agreed) then
+                            if note(read.v maybe.unwrap(agreed)) then changed := true end
                         end
                     end
                 end
@@ -627,20 +626,20 @@ export
     let unitBodies(unit: nodes.Unit): Array(nodes.Body) =
         begin
             let found = vector.new(:nodes.Body)
-            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
-                vector.append(:nodes.Body found vector.get(:nodes.Module unit.modules i).init)
+            for i = 0 upto {vector.length(unit.modules) - 1} do
+                vector.append(found vector.get(unit.modules i).init)
             end
-            vector.append(:nodes.Body found unit.main)
-            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
-                vector.append(:nodes.Body found vector.get(:nodes.Function unit.functions i).body)
+            vector.append(found unit.main)
+            for i = 0 upto {vector.length(unit.functions) - 1} do
+                vector.append(found vector.get(unit.functions i).body)
             end
-            vector.toArray(:nodes.Body found)
+            vector.toArray(found)
         end
 
     let statementCall(st: Stmt): maybe.T(nodes.OpCall) =
         begin
             let callOf(o: nodes.Op): maybe.T(nodes.OpCall) =
-                case o when opCall with c then maybe.some(:nodes.OpCall c) else maybe.none(:nodes.OpCall) end
+                case o when opCall with c then maybe.some(c) else maybe.none(:nodes.OpCall) end
             case st
                 when sLet with x then callOf(x.value)
                 when sDo with x then callOf(x.value)
@@ -651,14 +650,14 @@ export
     let countBodyUses(b: Body uses: hashMap.T(Int Int) pinned: hashMap.T(Int Bool)): Ok =
         begin
             let stmts = walkStatements(b true)
-            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
-                let st = vector.get(:Stmt stmts i)
+            for i = 0 upto {vector.length(stmts) - 1} do
+                let st = vector.get(stmts i)
                 let used = statementUses(st)
                 for j = 0 upto {extent used - 1} do
                     case used[j]
                         when atomVar with x then
                             begin
-                                hashMap.insert(:Int :Int uses x.v.id 1 + maybe.unwrapOr(:Int hashMap.get(:Int :Int uses x.v.id) 0))
+                                hashMap.insert(uses x.v.id 1 + maybe.unwrapOr(hashMap.get(uses x.v.id) 0))
                                 ok
                             end
                         when atomConst then ok
@@ -667,7 +666,7 @@ export
                 case st
                     when sLetRec with x then
                         for j = 0 upto {extent x.vars - 1} do
-                            begin hashMap.insert(:Int :Bool pinned x.vars[j].id true) ok end
+                            begin hashMap.insert(pinned x.vars[j].id true) ok end
                         end
                     else ok
                 end
@@ -676,19 +675,19 @@ export
 
     let countUses(unit: nodes.Unit uses: hashMap.T(Int Int) pinned: hashMap.T(Int Bool)): Ok =
         begin
-            hashMap.clear(:Int :Int uses)
-            hashMap.clear(:Int :Bool pinned)
-            let pin(id: Int): Ok = begin hashMap.insert(:Int :Bool pinned id true) ok end
+            hashMap.clear(uses)
+            hashMap.clear(pinned)
+            let pin(id: Int): Ok = begin hashMap.insert(pinned id true) ok end
             let pinMembers(m: nodes.Members): Ok =
-                for i = 0 upto {vector.length(:String m.names) - 1} do
-                    let v = nodes.member(m vector.get(:String m.names i))
-                    if maybe.isSome(:Variable v) then pin(maybe.unwrap(:Variable v).id) end
+                for i = 0 upto {vector.length(m.names) - 1} do
+                    let v = nodes.member(m vector.get(m.names i))
+                    if maybe.isSome(v) then pin(maybe.unwrap(v).id) end
                 end
-            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
-                let m = vector.get(:nodes.Module unit.modules i)
+            for i = 0 upto {vector.length(unit.modules) - 1} do
+                let m = vector.get(unit.modules i)
                 pinMembers(m.members)
-                if maybe.isSome(:nodes.Members m.exports) then pinMembers(maybe.unwrap(:nodes.Members m.exports)) end
-                if maybe.isSome(:Variable m.recordVar) then pin(maybe.unwrap(:Variable m.recordVar).id) end
+                if maybe.isSome(m.exports) then pinMembers(maybe.unwrap(m.exports)) end
+                if maybe.isSome(m.recordVar) then pin(maybe.unwrap(m.recordVar).id) end
             end
             let all = unitBodies(unit)
             for b = 0 upto {extent all - 1} do countBodyUses(all[b] uses pinned) end

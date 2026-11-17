@@ -29,7 +29,7 @@ export
 
     let unsupported: Exception(String) = exception unsupported: String end
     let eq(a: String b: String): Bool = stringOp.equal(a b)
-    let put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok = begin hashMap.insert(:K :V m k v) ok end
+    let put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok = begin hashMap.insert(m k v) ok end
     let contains(xs: Array(Int) x: Int): Bool =
         begin
             let var found = false
@@ -137,7 +137,7 @@ export
     let coldBlocks(s: select.Selection): Array(Bool) =
         begin
             let m = s.f
-            let n = vector.length(:machine.Block m.blocks)
+            let n = vector.length(m.blocks)
             let cold = array of(n false)
             let var changed = true
             while changed do
@@ -149,10 +149,10 @@ export
                         let var leaves = false
                         let var exits = 0
                         let var hot = false
-                        for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
-                            let i = vector.get(:machine.Inst insts j)
+                        for j = 0 upto {vector.length(insts) - 1} do
+                            let i = vector.get(insts j)
                             if machine.isKind(i machine.kindReturn) then
-                                if isBrk(vector.get(:minst.Op s.ops i.op)) then raises := true else leaves := true end
+                                if isBrk(vector.get(s.ops i.op)) then raises := true else leaves := true end
                             end
                             if i.target >= 0 then
                                 exits := exits + 1
@@ -179,7 +179,7 @@ export
     let describeLive(s: select.Selection a: regalloc.Allocation spillAt: Array(Int)): Array(Array(String)) =
         begin
             let m = s.f
-            let nBlocks = vector.length(:machine.Block m.blocks)
+            let nBlocks = vector.length(m.blocks)
             let n = machine.virtuals(m)
             let live = machine.live(m)
             let described = array of(nBlocks array of :String end)
@@ -189,24 +189,24 @@ export
                     let cur = bitset.new(n)
                     bitset.assign(cur live.liveOut[b])
                     let found = vector.new(:String)
-                    for j = {vector.length(:machine.Inst insts) - 1} downto 0 do
-                        let i = vector.get(:machine.Inst insts j)
+                    for j = {vector.length(insts) - 1} downto 0 do
+                        let i = vector.get(insts j)
                         if machine.isKind(i machine.kindCall) then
                             let p = a.blockStart[b] + {2 * {j + 1}}
                             let parts = vector.new(:String)
                             let vs = bitset.elements(cur)
                             for k = 0 upto {extent vs - 1} do
                                 let v = vs[k]
-                                let what = "%" <> conv.int(v) <> " " <> ssa.typeName(vector.get(:ssa.Type s.types v))
+                                let what = "%" <> conv.int(v) <> " " <> ssa.typeName(vector.get(s.types v))
                                 if regalloc.needsSlot(a v) then
-                                    vector.append(:String parts "sp+" <> conv.int(spillAt[v]) <> " " <> what)
+                                    vector.append(parts "sp+" <> conv.int(spillAt[v]) <> " " <> what)
                                 end
                                 let h = regalloc.home(a v p + 1)
                                 if h isnot regalloc.memory then
-                                    vector.append(:String parts target.description.registers[h].name <> " " <> what)
+                                    vector.append(parts target.description.registers[h].name <> " " <> what)
                                 end
                             end
-                            vector.append(:String found strutil.join(", " parts))
+                            vector.append(found strutil.join(", " parts))
                         end
                         for k = 0 upto {extent i.operands - 1} do
                             let o = i.operands[k]
@@ -221,7 +221,7 @@ export
                             end
                         end
                     end
-                    let ordered = vector.toArray(:String found)
+                    let ordered = vector.toArray(found)
                     let r = array of(extent ordered "")
                     for k = 0 upto {extent ordered - 1} do r[k] := ordered[{extent ordered - 1} - k] end
                     described[b] := r
@@ -248,7 +248,7 @@ export
     let callMaps(s: select.Selection a: regalloc.Allocation spillAt: Array(Int)): Array(Array(CallMap)) =
         begin
             let m = s.f
-            let nBlocks = vector.length(:machine.Block m.blocks)
+            let nBlocks = vector.length(m.blocks)
             let n = machine.virtuals(m)
             let live = machine.live(m)
             let maps = array of(nBlocks array of :CallMap end)
@@ -258,8 +258,8 @@ export
                     let cur = bitset.new(n)
                     bitset.assign(cur live.liveOut[b])
                     let found = vector.new(:CallMap)
-                    for j = {vector.length(:machine.Inst insts) - 1} downto 0 do
-                        let i = vector.get(:machine.Inst insts j)
+                    for j = {vector.length(insts) - 1} downto 0 do
+                        let i = vector.get(insts j)
                         for k = 0 upto {extent i.operands - 1} do
                             let o = i.operands[k]
                             if machine.isVirtual(m o.reg) andif o.defines then
@@ -273,10 +273,10 @@ export
                             let vs = bitset.elements(cur)
                             for k = 0 upto {extent vs - 1} do
                                 let v = vs[k]
-                                let class = wordClass(vector.get(:ssa.Type s.types v))
+                                let class = wordClass(vector.get(s.types v))
                                 if class > 0 then
                                     if regalloc.needsSlot(a v) then
-                                        vector.append(:Int slots {2 * {spillAt[v] / 8}} + {class - 1})
+                                        vector.append(slots {2 * {spillAt[v] / 8}} + {class - 1})
                                     else
                                         let h = regalloc.home(a v p + 1)
                                         if h isnot regalloc.memory then
@@ -294,8 +294,8 @@ export
                             end
                             let var registers = 0
                             for x = 9 downto 0 do registers := {4 * registers} + classes[x] end
-                            vector.append(:CallMap found tuple
-                                let registers = registers let slots = vector.toArray(:Int slots)
+                            vector.append(found tuple
+                                let registers = registers let slots = vector.toArray(slots)
                             end)
                         end
                         for k = 0 upto {extent i.operands - 1} do
@@ -305,7 +305,7 @@ export
                             end
                         end
                     end
-                    let backward = vector.toArray(:CallMap found)
+                    let backward = vector.toArray(found)
                     let r = array of(extent backward tuple let registers = 0 let slots = array of :Int end end)
                     for k = 0 upto {extent backward - 1} do r[k] := backward[{extent backward - 1} - k] end
                     maps[b] := r
@@ -334,8 +334,8 @@ export
              * memory *)
             let slots = vector.new(:FrameSlot)
             for k = 0 upto {extent s.slotAt - 1} do
-                let slot = vector.get(:ssa.Slot f.slots k)
-                vector.append(:FrameSlot slots tuple
+                let slot = vector.get(f.slots k)
+                vector.append(slots tuple
                     let offset = s.slotAt[k] let bytes = alignUp(if slot.bytes > 0 then slot.bytes else 8 end 8)
                     let type = maybe.none(:ssa.Type) let id = k
                 end)
@@ -360,7 +360,7 @@ export
              * the try's body, where liveness does not see the handler's uses,
              * so each value keeps a slot of its own. *)
             let kind = fun(v: Int): Int
-                case vector.get(:ssa.Type s.types machine.index(m v))
+                case vector.get(s.types machine.index(m v))
                     when typeInt then 0
                     when typePtr then 1
                     when typeVal then 2
@@ -380,9 +380,9 @@ export
                     let k = slotOf[v]
                     if offsetOf[k] < 0 then
                         offsetOf[k] := at
-                        vector.append(:FrameSlot slots tuple
+                        vector.append(slots tuple
                             let offset = at let bytes = 8
-                            let type = maybe.some(:ssa.Type vector.get(:ssa.Type s.types v)) let id = v
+                            let type = maybe.some(vector.get(s.types v)) let id = v
                         end)
                         at := at + 8
                     end
@@ -391,18 +391,18 @@ export
             end
             let liveAtCalls = if stringOp.equal(system.getEnv("QUEST_LIVE_SLOTS") "1") then
                 describeLive(s a spillAt)
-            else array of(vector.length(:machine.Block m.blocks) array of :String end) end
-            let maps = if s.entersTry then array of(vector.length(:machine.Block m.blocks) array of :CallMap end)
+            else array of(vector.length(m.blocks) array of :String end) end
+            let maps = if s.entersTry then array of(vector.length(m.blocks) array of :CallMap end)
                 else callMaps(s a spillAt) end
             regalloc.rewrite(m a lowering)
             let savedList = vector.new(:Int)
             for k = 0 upto {extent savedFirsts - 1} do
                 let used = contains(a.calleeUsed savedFirsts[k]) orif contains(a.calleeUsed savedSeconds[k])
-                if s.entersTry orif used then vector.append(:Int savedList k) end
+                if s.entersTry orif used then vector.append(savedList k) end
             end
             tuple
-                let selection = s let size = alignUp(at 16) let slots = vector.toArray(:FrameSlot slots)
-                let saved = vector.toArray(:Int savedList) let liveAtCalls = liveAtCalls let maps = maps
+                let selection = s let size = alignUp(at 16) let slots = vector.toArray(slots)
+                let saved = vector.toArray(savedList) let liveAtCalls = liveAtCalls let maps = maps
             end
         end
 
@@ -418,7 +418,7 @@ export
         code: Code
     end
 
-    let emit(e: Emitter i: minst.Inst): Ok = vector.append(:minst.Inst e.code i)
+    let emit(e: Emitter i: minst.Inst): Ok = vector.append(e.code i)
 
     (* The unwind information of the pairs saved: the first of the kth at the
      * CFA less 16 * (k + 2), the second 8 above it. The second's comes first,
@@ -530,15 +530,15 @@ export
             let m = s.f
             let cold = coldBlocks(s)
             let depth = machine.loopDepths(m)
-            let count = vector.length(:Int s.layout)
-            let n = vector.length(:machine.Block m.blocks)
+            let count = vector.length(s.layout)
+            let n = vector.length(m.blocks)
             let at = array of(n ~1)
-            for k = 0 upto {count - 1} do at[vector.get(:Int s.layout k)] := k end
+            for k = 0 upto {count - 1} do at[vector.get(s.layout k)] := k end
             let calls = array of(n false)
             for b = 0 upto {n - 1} do
                 let insts = machine.block(m b).insts
-                for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
-                    if machine.isKind(vector.get(:machine.Inst insts j) machine.kindCall) then calls[b] := true end
+                for j = 0 upto {vector.length(insts) - 1} do
+                    if machine.isKind(vector.get(insts j) machine.kindCall) then calls[b] := true end
                 end
             end
             let placed = array of(n false)
@@ -546,28 +546,28 @@ export
             let place(b: Int): Ok =
                 begin
                     placed[b] := true
-                    vector.append(:Int order b)
+                    vector.append(order b)
                 end
             let open(b: Int): Bool = {at[b] >= 0} andif {final[b] is b} andif not(placed[b]) andif not(cold[b])
             let better(a: Int b: Int): Bool =
                 if depth[a] isnot depth[b] then depth[a] > depth[b]
                 elsif calls[a] isnot calls[b] then not(calls[a])
                 else at[a] < at[b] end
-            let var cur = vector.get(:Int s.layout 0)
+            let var cur = vector.get(s.layout 0)
             let var next = 0
             place(cur)
             let var done = false
             while not(done) do
                 let insts = machine.block(m cur).insts
                 let var best = ~1
-                for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
-                    let t = vector.get(:machine.Inst insts j).target
+                for j = 0 upto {vector.length(insts) - 1} do
+                    let t = vector.get(insts j).target
                     if {t >= 0} andif open(final[t]) andif {{best < 0} orif better(final[t] best)} then
                         best := final[t]
                     end
                 end
                 while {best < 0} andif {next < count} do
-                    if open(vector.get(:Int s.layout next)) then best := vector.get(:Int s.layout next) end
+                    if open(vector.get(s.layout next)) then best := vector.get(s.layout next) end
                     next := next + 1
                 end
                 if best < 0 then done := true
@@ -577,10 +577,10 @@ export
                 end
             end
             for k = 0 upto {count - 1} do
-                let b = vector.get(:Int s.layout k)
+                let b = vector.get(s.layout k)
                 if not(placed[b]) andif {final[b] is b} then place(b) end
             end
-            vector.toArray(:Int order)
+            vector.toArray(order)
         end
 
     (* Whether a function needs no frame record: it saves no registers, has
@@ -594,12 +594,12 @@ export
         else
             let m = c.selection.f
             let var none = true
-            for b = 0 upto {vector.length(:machine.Block m.blocks) - 1} do
+            for b = 0 upto {vector.length(m.blocks) - 1} do
                 let insts = machine.block(m b).insts
-                for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
-                    let i = vector.get(:machine.Inst insts j)
+                for j = 0 upto {vector.length(insts) - 1} do
+                    let i = vector.get(insts j)
                     if machine.isKind(i machine.kindCall) then none := false end
-                    case vector.get(:minst.Op c.selection.ops i.op)
+                    case vector.get(c.selection.ops i.op)
                         when opBl, opBlr then none := false
                         else ok
                     end
@@ -626,15 +626,15 @@ export
             let s = c.selection
             let m = s.f
             let e = tuple let c = c let code = vector.new(:minst.Inst) end
-            let nBlocks = vector.length(:machine.Block m.blocks)
+            let nBlocks = vector.length(m.blocks)
             (* A block that only jumps, which a raise does not enter and which
              * is not the entry, is passed over: what goes to it goes where it
              * does *)
             let passes(b: Int): Bool =
                 begin
                     let blk = machine.block(m b)
-                    {b > 0} andif not(blk.raised) andif {vector.length(:machine.Inst blk.insts) is 1}
-                        andif machine.isKind(vector.get(:machine.Inst blk.insts 0) machine.kindJump)
+                    {b > 0} andif not(blk.raised) andif {vector.length(blk.insts) is 1}
+                        andif machine.isKind(vector.get(blk.insts 0) machine.kindJump)
                 end
             (* Where each block's code is: its own, or, passed over, where its
              * jumps lead (its own again for a cycle of blocks that only
@@ -644,14 +644,14 @@ export
                 let var to = b
                 let var steps = 0
                 while passes(to) andif {steps < nBlocks} do
-                    to := vector.get(:machine.Inst machine.block(m to).insts 0).target
+                    to := vector.get(machine.block(m to).insts 0).target
                     steps := steps + 1
                 end
                 final[b] := if passes(to) then b else to end
             end
             let printed = vector.new(:Int)
             let order = chains(s final)
-            for k = 0 upto {extent order - 1} do vector.append(:Int printed order[k]) end
+            for k = 0 upto {extent order - 1} do vector.append(printed order[k]) end
             let bare = frameless(c)
             if not(bare) then prologue(e) end
             let var liveLabels = 0
@@ -662,20 +662,20 @@ export
              * address made again where it is used keeps its definition's
              * position, so it gives none *)
             let var last = ssa.noLoc
-            for k = 0 upto {vector.length(:Int printed) - 1} do
-                let b = vector.get(:Int printed k)
-                let next = if {k + 1} < vector.length(:Int printed) then vector.get(:Int printed k + 1) else ~1 end
+            for k = 0 upto {vector.length(printed) - 1} do
+                let b = vector.get(printed k)
+                let next = if {k + 1} < vector.length(printed) then vector.get(printed k + 1) else ~1 end
                 emit(e minst.label(select.label(s b)))
                 let insts = machine.block(m b).insts
-                let count = vector.length(:machine.Inst insts)
+                let count = vector.length(insts)
                 let var inverted = false
                 let var calls = 0
                 let var mappedCalls = 0
                 for j = 0 upto {count - 1} do
-                    let i = vector.get(:machine.Inst insts j)
+                    let i = vector.get(insts j)
                     let regs = array of(extent i.operands 0)
                     for r = 0 upto {extent regs - 1} do regs[r] := i.operands[r].reg end
-                    let base = vector.get(:minst.Op s.ops i.op)
+                    let base = vector.get(s.ops i.op)
                     let op = if i.target >= 0 then retarget(base select.label(s final[i.target])) else base end
                     (* A conditional branch to the next block, before the
                      * block's last jump, is its inverse to the jump's target,
@@ -683,14 +683,14 @@ export
                      * block *)
                     let c = peephole.conditional(op)
                     let following = if {j + 1} < count then
-                        maybe.some(:machine.Inst vector.get(:machine.Inst insts j + 1))
+                        maybe.some(vector.get(insts j + 1))
                     else maybe.none(:machine.Inst) end
-                    let invert = maybe.isSome(:peephole.Conditional c) andif {final[i.target] is next} andif {{j + 2} is count}
-                        andif machine.isKind(maybe.unwrap(:machine.Inst following) machine.kindJump)
-                        andif {final[maybe.unwrap(:machine.Inst following).target] isnot next}
+                    let invert = maybe.isSome(c) andif {final[i.target] is next} andif {{j + 2} is count}
+                        andif machine.isKind(maybe.unwrap(following) machine.kindJump)
+                        andif {final[maybe.unwrap(following).target] isnot next}
                     let falls = inverted orif {machine.isKind(i machine.kindJump) andif {final[i.target] is next}}
                     if invert orif not(falls) then
-                        let l = vector.get(:ssa.Loc s.locs i.op)
+                        let l = vector.get(s.locs i.op)
                         if ssa.hasLoc(l) andif not(ssa.sameLoc(l last)) andif not(select.rematerializable(s i)) then
                             emit(e minst.loc(l.file l.line l.col))
                             last := l
@@ -700,16 +700,16 @@ export
                             restore(e)
                         end
                         if invert then
-                            let to = select.label(s final[maybe.unwrap(:machine.Inst following).target])
-                            emit(e tuple let op = maybe.unwrap(:peephole.Conditional c).inverse(to) let regs = regs end)
+                            let to = select.label(s final[maybe.unwrap(following).target])
+                            emit(e tuple let op = maybe.unwrap(c).inverse(to) let regs = regs end)
                             inverted := true
                         else
                             emit(e tuple let op = op let regs = regs end)
                         end
                     end
                     if machine.isKind(i machine.kindCall) andif {mappedCalls < extent e.c.maps[b]} then
-                        emit(e minst.label(marker <> conv.int(vector.length(:CallMap mapped))))
-                        vector.append(:CallMap mapped e.c.maps[b][mappedCalls])
+                        emit(e minst.label(marker <> conv.int(vector.length(mapped))))
+                        vector.append(mapped e.c.maps[b][mappedCalls])
                         mappedCalls := mappedCalls + 1
                     end
                     (* With QUEST_LIVE_SLOTS=1, a symbol at the return address,
@@ -732,18 +732,18 @@ export
             let code = vector.new(:minst.Inst)
             let sites = vector.new(:CallSite)
             let var at = 0
-            for k = 0 upto {vector.length(:minst.Inst relaxed) - 1} do
-                let i = vector.get(:minst.Inst relaxed k)
+            for k = 0 upto {vector.length(relaxed) - 1} do
+                let i = vector.get(relaxed k)
                 case i.op
                     when opLabel with x then
                         if strutil.startsWith(x.label marker) then
-                            vector.append(:CallSite sites tuple
-                                let offset = at let map = vector.get(:CallMap mapped vector.length(:CallSite sites))
+                            vector.append(sites tuple
+                                let offset = at let map = vector.get(mapped vector.length(sites))
                             end)
-                        else vector.append(:minst.Inst code i) end
+                        else vector.append(code i) end
                     else
                         at := at + printer.count(i.op)
-                        vector.append(:minst.Inst code i)
+                        vector.append(code i)
                 end
             end
             let var savedMask = 0
@@ -754,9 +754,9 @@ export
             end
             tuple
                 let code = code
-                let frame = if s.entersTry then maybe.none(:Frame) else maybe.some(:Frame tuple
+                let frame = if s.entersTry then maybe.none(:Frame) else maybe.some(tuple
                     let below = {{16 * extent c.saved} + c.size} / 8 let saved = savedMask
-                    let undescribed = s.slotsEnd / 8 let calls = vector.toArray(:CallSite sites)
+                    let undescribed = s.slotsEnd / 8 let calls = vector.toArray(sites)
                 end) end
             end
         end
@@ -765,19 +765,19 @@ export
         begin
             let made = machineCode(f 0 hashMap.new(:String :Bool eq hash.string))
             let lines = vector.new(:String)
-            if maybe.isSome(:Frame made.frame) then
-                let frame = maybe.unwrap(:Frame made.frame)
+            if maybe.isSome(made.frame) then
+                let frame = maybe.unwrap(made.frame)
                 let pairs = vector.new(:String)
                 let var mask = frame.saved
                 for k = 0 upto {extent savedFirsts - 1} do
                     if {mask % 2} is 1 then
-                        vector.append(:String pairs target.description.registers[savedFirsts[k]].name <> "/"
+                        vector.append(pairs target.description.registers[savedFirsts[k]].name <> "/"
                             <> target.description.registers[savedSeconds[k]].name)
                     end
                     mask := mask / 2
                 end
-                vector.append(:String lines "frame: " <> conv.int(frame.below) <> " words below the record, saves "
-                    <> if vector.empty(:String pairs) then "nothing" else strutil.join(" " pairs) end <> ", "
+                vector.append(lines "frame: " <> conv.int(frame.below) <> " words below the record, saves "
+                    <> if vector.empty(pairs) then "nothing" else strutil.join(" " pairs) end <> ", "
                     <> conv.int(frame.undescribed) <> " words not described")
                 let className(class: Int): String = if class is 1 then "ptr" else "word" end
                 for c = 0 upto {extent frame.calls - 1} do
@@ -786,34 +786,34 @@ export
                     let var registers = site.map.registers
                     for x = 0 upto 9 do
                         if {registers % 4} > 0 then
-                            vector.append(:String parts "x" <> conv.int(19 + x) <> " " <> className(registers % 4))
+                            vector.append(parts "x" <> conv.int(19 + x) <> " " <> className(registers % 4))
                         end
                         registers := registers / 4
                     end
                     for k = 0 upto {extent site.map.slots - 1} do
                         let slot = site.map.slots[k]
-                        vector.append(:String parts
+                        vector.append(parts
                             "sp+" <> conv.int(8 * {slot / 2}) <> " " <> className(1 + {slot % 2}))
                     end
-                    vector.append(:String lines "call returning at " <> conv.int(site.offset) <> ": "
-                        <> if vector.empty(:String parts) then "nothing live" else strutil.join(", " parts) end)
+                    vector.append(lines "call returning at " <> conv.int(site.offset) <> ": "
+                        <> if vector.empty(parts) then "nothing live" else strutil.join(", " parts) end)
                 end
             end
-            vector.toArray(:String lines)
+            vector.toArray(lines)
         end
 
     let function(f: Function index: Int code: Code): Lines =
         begin
             let lines = vector.new(:String)
             let start = asm.functionStart(f.symbol f.exported)
-            for k = 0 upto {extent start - 1} do vector.append(:String lines start[k]) end
-            for k = 0 upto {vector.length(:minst.Inst code) - 1} do
-                let i = vector.get(:minst.Inst code k)
+            for k = 0 upto {extent start - 1} do vector.append(lines start[k]) end
+            for k = 0 upto {vector.length(code) - 1} do
+                let i = vector.get(code k)
                 let ls = printer.lines(i.op i.regs printer.physical)
-                for j = 0 upto {extent ls - 1} do vector.append(:String lines ls[j]) end
+                for j = 0 upto {extent ls - 1} do vector.append(lines ls[j]) end
             end
-            vector.append(:String lines endLabel(index) <> ":")
-            for k = 0 upto {extent asm.functionEnd - 1} do vector.append(:String lines asm.functionEnd[k]) end
+            vector.append(lines endLabel(index) <> ":")
+            for k = 0 upto {extent asm.functionEnd - 1} do vector.append(lines asm.functionEnd[k]) end
             lines
         end
 
@@ -826,26 +826,26 @@ export
     let definedSymbols(u: ssa.Unit): hashMap.T(String Bool) =
         begin
             let defined = hashMap.new(:String :Bool eq hash.string)
-            for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
-                put(:String :Bool defined vector.get(:ssa.Data u.data k).symbol false)
+            for k = 0 upto {vector.length(u.data) - 1} do
+                put(defined vector.get(u.data k).symbol false)
             end
-            let n = vector.length(:Function u.functions)
-            for k = 0 upto {n - 1} do put(:String :Bool defined vector.get(:Function u.functions k).symbol true) end
+            let n = vector.length(u.functions)
+            for k = 0 upto {n - 1} do put(defined vector.get(u.functions k).symbol true) end
             let extends(i: ssa.Inst): Bool =
                 {extent ssa.narrowOf(i.signature.results) is 0} orif {ssa.isOp(i ssa.opCall)
-                    andif maybe.isSome(:Bool hashMap.get(:String :Bool defined i.symbol))
-                    andif maybe.unwrap(:Bool hashMap.get(:String :Bool defined i.symbol))}
+                    andif maybe.isSome(hashMap.get(defined i.symbol))
+                    andif maybe.unwrap(hashMap.get(defined i.symbol))}
             let var changed = true
             while changed do
                 changed := false
                 for k = 0 upto {n - 1} do
-                    let f = vector.get(:Function u.functions k)
-                    if maybe.unwrap(:Bool hashMap.get(:String :Bool defined f.symbol)) then
-                        for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                    let f = vector.get(u.functions k)
+                    if maybe.unwrap(hashMap.get(defined f.symbol)) then
+                        for b = 0 upto {vector.length(f.blocks) - 1} do
                             case ssa.block(f b).term
                                 when termTailCall with x then
                                     if not(extends(x.call)) then
-                                        put(:String :Bool defined f.symbol false)
+                                        put(defined f.symbol false)
                                         changed := true
                                     end
                                 when termNone, termJump, termBranch, termSwitch, termReturn, termTry, termUnreachable
@@ -865,19 +865,19 @@ export
     let hasFrames(u: ssa.Unit): Bool =
         begin
             let var found = false
-            for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
-                if eq(vector.get(:ssa.Data u.data k).symbol framesSymbol) then found := true end
+            for k = 0 upto {vector.length(u.data) - 1} do
+                if eq(vector.get(u.data k).symbol framesSymbol) then found := true end
             end
             found
         end
     let dataBesidesFrames(u: ssa.Unit): Array(ssa.Data) =
         begin
             let kept = vector.new(:ssa.Data)
-            for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
-                let d = vector.get(:ssa.Data u.data k)
-                if not(eq(d.symbol framesSymbol)) then vector.append(:ssa.Data kept d) end
+            for k = 0 upto {vector.length(u.data) - 1} do
+                let d = vector.get(u.data k)
+                if not(eq(d.symbol framesSymbol)) then vector.append(kept d) end
             end
-            vector.toArray(:ssa.Data kept)
+            vector.toArray(kept)
         end
 
     (* An unsigned LEB128 number's bytes *)
@@ -889,10 +889,10 @@ export
                 let low = rest % 128
                 rest := rest / 128
                 if rest is 0 then
-                    vector.append(:Int bytes low)
+                    vector.append(bytes low)
                     more := false
                 else
-                    vector.append(:Int bytes low + 128)
+                    vector.append(bytes low + 128)
                 end
             end
         end
@@ -908,10 +908,10 @@ export
             let listed = vector.new(:encode.Listed)
             let bytes = vector.new(:Int)
             for k = 0 upto {extent frames - 1} do
-                if maybe.isSome(:Frame frames[k]) andif {extent maybe.unwrap(:Frame frames[k]).calls > 0} then
-                    let f = maybe.unwrap(:Frame frames[k])
-                    vector.append(:encode.Listed listed
-                        tuple let index = k let description = vector.length(:Int bytes) end)
+                if maybe.isSome(frames[k]) andif {extent maybe.unwrap(:Frame frames[k]).calls > 0} then
+                    let f = maybe.unwrap(frames[k])
+                    vector.append(listed
+                        tuple let index = k let description = vector.length(bytes) end)
                     leb(bytes f.below)
                     leb(bytes f.saved)
                     leb(bytes f.undescribed)
@@ -928,7 +928,7 @@ export
                 end
             end
             tuple
-                let listed = vector.toArray(:encode.Listed listed) let descriptions = vector.toArray(:Int bytes)
+                let listed = vector.toArray(listed) let descriptions = vector.toArray(bytes)
             end
         end
 
@@ -937,12 +937,12 @@ export
     Let Compiled = Tuple machines: Array(encode.Function) frames: Array(maybe.T(Frame)) end
     let compiled(u: ssa.Unit defined: hashMap.T(String Bool)): Compiled =
         begin
-            let machines = array of(vector.length(:Function u.functions) tuple
+            let machines = array of(vector.length(u.functions) tuple
                 let symbol = "" let exported = false let code = vector.new(:minst.Inst) let endLabel = ""
             end)
-            let frames = array of(vector.length(:Function u.functions) maybe.none(:Frame))
-            for k = 0 upto {vector.length(:Function u.functions) - 1} do
-                let f = vector.get(:Function u.functions k)
+            let frames = array of(vector.length(u.functions) maybe.none(:Frame))
+            for k = 0 upto {vector.length(u.functions) - 1} do
+                let f = vector.get(u.functions k)
                 let made = machineCode(f k defined)
                 machines[k] := tuple
                     let symbol = f.symbol let exported = f.exported let code = made.code let endLabel = endLabel(k)
@@ -957,32 +957,32 @@ export
             let defined = definedSymbols(u)
             let lines = vector.new(:String)
             let appendAll(ls: Array(String)): Ok =
-                for k = 0 upto {extent ls - 1} do vector.append(:String lines ls[k]) end
+                for k = 0 upto {extent ls - 1} do vector.append(lines ls[k]) end
             appendAll(asm.unitStart)
             (* The line table's files, and its debugging information if the
              * unit's own file is known and the unit has code *)
-            let files = vector.toArray(:String u.files)
+            let files = vector.toArray(u.files)
             appendAll(asm.files(files))
             let debugged = {extent files > 0} andif {stringOp.length(files[0]) > 0}
-                andif not(vector.empty(:Function u.functions))
+                andif not(vector.empty(u.functions))
             let made = compiled(u defined)
             let machines = made.machines
             let frames = made.frames
-            for k = 0 upto {vector.length(:Function u.functions) - 1} do
-                let fl = function(vector.get(:Function u.functions k) k machines[k].code)
-                for j = 0 upto {vector.length(:String fl) - 1} do
-                    vector.append(:String lines vector.get(:String fl j))
+            for k = 0 upto {vector.length(u.functions) - 1} do
+                let fl = function(vector.get(u.functions k) k machines[k].code)
+                for j = 0 upto {vector.length(fl) - 1} do
+                    vector.append(lines vector.get(fl j))
                 end
             end
             let data = dataBesidesFrames(u)
             for k = 0 upto {extent data - 1} do
                 let dl = asm.data(data[k])
-                for j = 0 upto {extent dl - 1} do vector.append(:String lines dl[j]) end
+                for j = 0 upto {extent dl - 1} do vector.append(lines dl[j]) end
             end
-            let table = if hasFrames(u) then maybe.some(:encode.Frames frameTable(frames))
+            let table = if hasFrames(u) then maybe.some(frameTable(frames))
                 else maybe.none(:encode.Frames) end
-            if maybe.isSome(:encode.Frames table) then
-                let t = maybe.unwrap(:encode.Frames table)
+            if maybe.isSome(table) then
+                let t = maybe.unwrap(table)
                 let listed = array of(extent t.listed tuple let symbol = "" let description = 0 end)
                 for k = 0 upto {extent listed - 1} do
                     listed[k] := tuple
@@ -993,11 +993,11 @@ export
                     t.descriptions))
             end
             if debugged then
-                let functions = array of(vector.length(:Function u.functions)
+                let functions = array of(vector.length(u.functions)
                     tuple let symbol = "" let endLabel = "" end)
                 for k = 0 upto {extent functions - 1} do
                     functions[k] := tuple
-                        let symbol = vector.get(:Function u.functions k).symbol let endLabel = endLabel(k)
+                        let symbol = vector.get(u.functions k).symbol let endLabel = endLabel(k)
                     end
                 end
                 appendAll(asm.debugInfo(files[0] functions))
@@ -1007,8 +1007,8 @@ export
              * the unit, as comments, which tests/self-hosted/encoder.py
              * compares with what the assembler makes of the rest *)
             if stringOp.equal(system.getEnv("QUEST_CHECK_ENCODING") "1") then
-                let described = encode.describe(encode.unit(machines data vector.toArray(:String u.files) table))
-                for k = 0 upto {extent described - 1} do vector.append(:String lines "// encoded " <> described[k]) end
+                let described = encode.describe(encode.unit(machines data vector.toArray(u.files) table))
+                for k = 0 upto {extent described - 1} do vector.append(lines "// encoded " <> described[k]) end
             end
             strutil.join("\n" lines) <> "\n"
         end
@@ -1016,8 +1016,8 @@ export
     let encodeUnit(u: ssa.Unit): encode.Encoded =
         begin
             let made = compiled(u definedSymbols(u))
-            encode.unit(made.machines dataBesidesFrames(u) vector.toArray(:String u.files)
-                if hasFrames(u) then maybe.some(:encode.Frames frameTable(made.frames))
+            encode.unit(made.machines dataBesidesFrames(u) vector.toArray(u.files)
+                if hasFrames(u) then maybe.some(frameTable(made.frames))
                 else maybe.none(:encode.Frames) end)
         end
 end

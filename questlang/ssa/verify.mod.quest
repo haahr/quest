@@ -17,7 +17,7 @@ export
 
     let verifyError: Exception(String) = exception verifyError: String end
 
-    let blockCount(f: Function): Int = vector.length(:nodes.Block f.blocks)
+    let blockCount(f: Function): Int = vector.length(f.blocks)
 
     let sameType(a: Type b: Type): Bool =
         case a
@@ -33,10 +33,10 @@ export
         begin
             let problems = vector.new(:String)
             let where = "function " <> f.symbol
-            let problem(text: String): Ok = vector.append(:String problems where <> ": " <> text)
+            let problem(text: String): Ok = vector.append(problems where <> ": " <> text)
             let n = blockCount(f)
-            let nValues = vector.length(:Type f.types)
-            let nSlots = vector.length(:nodes.Slot f.slots)
+            let nValues = vector.length(f.types)
+            let nSlots = vector.length(f.slots)
             let g = cfg.graph(f)
             (* Where each value is defined: its block, and its position in it
              * (~1 for a block parameter) *)
@@ -53,15 +53,15 @@ export
                 end
             for b = 0 upto {n - 1} do
                 let blk = nodes.block(f b)
-                for i = 0 upto {vector.length(:Int blk.params) - 1} do define(vector.get(:Int blk.params i) b ~1) end
-                for i = 0 upto {vector.length(:nodes.Inst blk.insts) - 1} do
-                    let inst = vector.get(:nodes.Inst blk.insts i)
+                for i = 0 upto {vector.length(blk.params) - 1} do define(vector.get(blk.params i) b ~1) end
+                for i = 0 upto {vector.length(blk.insts) - 1} do
+                    let inst = vector.get(blk.insts i)
                     for r = 0 upto {extent inst.results - 1} do define(inst.results[r] b i) end
                 end
             end
             (* The entry's parameters are the function's *)
             let entry = nodes.block(f 0)
-            if vector.length(:Int entry.params) isnot vector.length(:Type f.paramTypes) then
+            if vector.length(entry.params) isnot vector.length(f.paramTypes) then
                 problem("its entry block's parameters are not its parameters")
             end
             let use(v: Int b: Int i: Int what: String): Ok =
@@ -159,10 +159,10 @@ export
                         <> " results") end
                     if nodes.isOp(inst nodes.opCall) then
                         let target = callee(inst.symbol)
-                        if maybe.isSome(:Function target) then
-                            let c = maybe.unwrap(:Function target)
-                            argsAre(inst vector.toArray(:Type c.paramTypes) what <> " " <> inst.symbol)
-                            resultsAre(inst vector.toArray(:Type c.resultTypes) what <> " " <> inst.symbol)
+                        if maybe.isSome(target) then
+                            let c = maybe.unwrap(target)
+                            argsAre(inst vector.toArray(c.paramTypes) what <> " " <> inst.symbol)
+                            resultsAre(inst vector.toArray(c.resultTypes) what <> " " <> inst.symbol)
                         end
                     end
                 end
@@ -171,23 +171,23 @@ export
                     problem(what <> " in block " <> conv.int(from) <> " goes to block " <> conv.int(t.block) <> ", which does not exist")
                 else
                     let params = nodes.block(f t.block).params
-                    if extent t.args isnot vector.length(:Int params) then
+                    if extent t.args isnot vector.length(params) then
                         problem(what <> " in block " <> conv.int(from) <> " passes " <> conv.int(extent t.args)
-                            <> " arguments to block " <> conv.int(t.block) <> ", which has " <> conv.int(vector.length(:Int params))
+                            <> " arguments to block " <> conv.int(t.block) <> ", which has " <> conv.int(vector.length(params))
                             <> " parameters")
                     else
                         for k = 0 upto {extent t.args - 1} do
-                            typeIs(t.args[k] nodes.typeOf(f vector.get(:Int params k)) what <> " to block " <> conv.int(t.block))
+                            typeIs(t.args[k] nodes.typeOf(f vector.get(params k)) what <> " to block " <> conv.int(t.block))
                         end
                     end
                 end
-            signatureIsValid(f.signature vector.toArray(:Type f.paramTypes) vector.toArray(:Type f.resultTypes)
+            signatureIsValid(f.signature vector.toArray(f.paramTypes) vector.toArray(f.resultTypes)
                 "the function")
             for b = 0 upto {n - 1} do
                 let blk = nodes.block(f b)
-                let count = vector.length(:nodes.Inst blk.insts)
+                let count = vector.length(blk.insts)
                 for i = 0 upto {count - 1} do
-                    let inst = vector.get(:nodes.Inst blk.insts i)
+                    let inst = vector.get(blk.insts i)
                     let what = nodes.opcodeName(inst.op)
                     for k = 0 upto {extent inst.args - 1} do use(inst.args[k] b i what) end
                     let widthIsValid(): Ok =
@@ -323,12 +323,12 @@ export
                         for k = 0 upto {extent x.targets - 1} do checkTarget(x.targets[k] b "a switch") end
                         checkTarget(x.default b "a switch")
                     when termReturn with x then
-                        if extent x.values isnot vector.length(:Type f.resultTypes) then
+                        if extent x.values isnot vector.length(f.resultTypes) then
                             problem("block " <> conv.int(b) <> " returns " <> conv.int(extent x.values) <> " values, not "
-                                <> conv.int(vector.length(:Type f.resultTypes)))
+                                <> conv.int(vector.length(f.resultTypes)))
                         else
                             for k = 0 upto {extent x.values - 1} do
-                                typeIs(x.values[k] vector.get(:Type f.resultTypes k) "a return")
+                                typeIs(x.values[k] vector.get(f.resultTypes k) "a return")
                             end
                         end
                     when termTailCall with x then
@@ -338,7 +338,7 @@ export
                                 problem("an indirect call has no function")
                             end
                             callIsValid(x.call "a tail " <> what)
-                            resultsAre(x.call vector.toArray(:Type f.resultTypes) "a tail " <> what)
+                            resultsAre(x.call vector.toArray(f.resultTypes) "a tail " <> what)
                         else
                             problem("block " <> conv.int(b) <> "'s tail call is a " <> what)
                         end
@@ -352,14 +352,14 @@ export
                             if {extent hp isnot 1} orif {hp[0] isnot b} then
                                 problem("block " <> conv.int(x.handler) <> ", a try's handler, is reached from elsewhere too")
                             end
-                            if not(vector.empty(:Int nodes.block(f x.handler).params)) then
+                            if not(vector.empty(nodes.block(f x.handler).params)) then
                                 problem("block " <> conv.int(x.handler) <> ", a try's handler, has parameters")
                             end
                         end
                     when termUnreachable then ok
                 end
             end
-            vector.toArray(:String problems)
+            vector.toArray(problems)
         end
 
     let functionProblems(f: Function): Array(String) = problemsIn(f fun(symbol: String): maybe.T(Function)
@@ -368,17 +368,17 @@ export
     let checkUnit(u: nodes.Unit): Ok =
         begin
             let functions = hashMap.new(:String :Function stringOp.equal hash.string)
-            for i = 0 upto {vector.length(:Function u.functions) - 1} do
-                let f = vector.get(:Function u.functions i)
-                let ignored = hashMap.insert(:String :Function functions f.symbol f)
+            for i = 0 upto {vector.length(u.functions) - 1} do
+                let f = vector.get(u.functions i)
+                let ignored = hashMap.insert(functions f.symbol f)
             end
-            let callee = fun(symbol: String): maybe.T(Function) hashMap.get(:String :Function functions symbol)
+            let callee = fun(symbol: String): maybe.T(Function) hashMap.get(functions symbol)
             let all = vector.new(:String)
-            for i = 0 upto {vector.length(:Function u.functions) - 1} do
-                let ps = problemsIn(vector.get(:Function u.functions i) callee)
-                for k = 0 upto {extent ps - 1} do vector.append(:String all ps[k]) end
+            for i = 0 upto {vector.length(u.functions) - 1} do
+                let ps = problemsIn(vector.get(u.functions i) callee)
+                for k = 0 upto {extent ps - 1} do vector.append(all ps[k]) end
             end
-            if not(vector.empty(:String all)) then
+            if not(vector.empty(all)) then
                 raise verifyError with "internal: the SSA is not well formed:\n  " <> strutil.join("\n  " all) end
             end
         end

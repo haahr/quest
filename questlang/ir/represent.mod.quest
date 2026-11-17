@@ -41,11 +41,11 @@ export
     let noLayout: Layout = maybe.none(:nodes.PlanLayout)
     let lookupNone = maybe.none(:model.Lookup)
 
-    let some(p: Plan): maybe.T(Plan) = maybe.some(:Plan p)
+    let some(p: Plan): maybe.T(Plan) = maybe.some(p)
     let newPlan(kind: nodes.PlanKind source: Type target: Type): maybe.T(Plan) = some(nodes.newPlan(kind source target))
     (* Whether there is a plan of kind k *)
     let isPlan(p: maybe.T(Plan) k: nodes.PlanKind): Bool =
-        maybe.isSome(:Plan p) andif nodes.planIs(maybe.unwrap(:Plan p) k)
+        maybe.isSome(p) andif nodes.planIs(maybe.unwrap(p) k)
     (* Whether a plan boxes or unboxes, which changes no slot: a slot holds a
      * value's QVal form *)
     let boxing(p: maybe.T(Plan)): Bool = isPlan(p nodes.planBox) orif isPlan(p nodes.planUnbox)
@@ -57,17 +57,17 @@ export
 
     let bind(inst: Instantiation symbolId: Int t: Type): Ok =
         begin
-            if not(hashMap.contains(:Int :Type inst.subst symbolId)) then vector.append(:Int inst.keys symbolId) end
-            hashMap.insert(:Int :Type inst.subst symbolId t)
+            if not(hashMap.contains(inst.subst symbolId)) then vector.append(inst.keys symbolId) end
+            hashMap.insert(inst.subst symbolId t)
             ok
         end
 
-    let isEmpty(inst: Instantiation): Bool = hashMap.empty(:Int :Type inst.subst)
+    let isEmpty(inst: Instantiation): Bool = hashMap.empty(inst.subst)
 
     let layoutOf(inst: Instantiation toGeneric: Bool): Layout =
-        maybe.some(:nodes.PlanLayout tuple let subst = inst.subst let keys = inst.keys let toGeneric = toGeneric end)
+        maybe.some(tuple let subst = inst.subst let keys = inst.keys let toGeneric = toGeneric end)
     let hasInstantiation(layout: Layout): Bool =
-        maybe.isSome(:nodes.PlanLayout layout) andif not(hashMap.empty(:Int :Type maybe.unwrap(:nodes.PlanLayout layout).subst))
+        maybe.isSome(layout) andif not(hashMap.empty(maybe.unwrap(layout).subst))
 
     let isFunctionKind(s: Shape): Bool = shapes.kindIs(s shapes.shapeFun) orif shapes.kindIs(s shapes.shapeAll)
 
@@ -76,8 +76,8 @@ export
     let arrayElement(t: Type): Type =
         begin
             let element = written.arrayElement(t)
-            if maybe.isNone(:Type element) then unsupported(:Ok "an array operation on a value of type " <> model.show(t)) end
-            maybe.unwrap(:Type element)
+            if maybe.isNone(element) then unsupported(:Ok "an array operation on a value of type " <> model.show(t)) end
+            maybe.unwrap(element)
         end
 
     (* Whether s is a module's abstract type's (or an abstract or path type's)
@@ -108,30 +108,30 @@ export
                 case p
                     when partType with x then
                         if x.t.form?typeVariable then
-                            if not(hashMap.contains(:Int :Bool foundIds x.t.id)) then
-                                hashMap.insert(:Int :Bool foundIds x.t.id true)
-                                vector.append(:Type found x.t)
+                            if not(hashMap.contains(foundIds x.t.id)) then
+                                hashMap.insert(foundIds x.t.id true)
+                                vector.append(found x.t)
                             end
                         elsif extent x.t.fv > 0 then
-                            let memo = hashMap.get(:Int :Array(Type) typeVarsMemo x.t.id)
-                            if maybe.isSome(:Array(Type) memo) then
-                                let vars = maybe.unwrap(:Array(Type) memo)
+                            let memo = hashMap.get(typeVarsMemo x.t.id)
+                            if maybe.isSome(memo) then
+                                let vars = maybe.unwrap(memo)
                                 for i = 0 upto {extent vars - 1} do
-                                    if not(hashMap.contains(:Int :Bool foundIds vars[i].id)) then
-                                        hashMap.insert(:Int :Bool foundIds vars[i].id true)
-                                        vector.append(:Type found vars[i])
+                                    if not(hashMap.contains(foundIds vars[i].id)) then
+                                        hashMap.insert(foundIds vars[i].id true)
+                                        vector.append(found vars[i])
                                     end
                                 end
                             else
-                                vector.forEach(:model.Part model.typeParts(x.t) visit)
+                                vector.forEach(model.typeParts(x.t) visit)
                             end
                         end
                     when partKind with x then
-                        if extent x.k.fv > 0 then vector.forEach(:model.Part model.kindParts(x.k) visit) end
+                        if extent x.k.fv > 0 then vector.forEach(model.kindParts(x.k) visit) end
                 end
             visit(option partType of model.Part with let t = t0 end)
-            let result = vector.toArray(:Type found)
-            hashMap.insert(:Int :Array(Type) typeVarsMemo t0.id result)
+            let result = vector.toArray(found)
+            hashMap.insert(typeVarsMemo t0.id result)
             result
         end
 
@@ -142,22 +142,22 @@ export
         else
             let bounds = hashMap.new(:Int :maybe.T(model.Kind) intEqual hash.int)
             let var same = true
-            let vars = vector.fromArray(:Type typeVars(a))
+            let vars = vector.fromArray(typeVars(a))
             let more = typeVars(b)
-            for i = 0 upto {extent more - 1} do vector.append(:Type vars more[i]) end
-            for i = 0 upto {vector.length(:Type vars) - 1} do
-                case vector.get(:Type vars i).form
+            for i = 0 upto {extent more - 1} do vector.append(vars more[i]) end
+            for i = 0 upto {vector.length(vars) - 1} do
+                case vector.get(vars i).form
                     when typeVariable with v then
-                        let first = hashMap.get(:Int :maybe.T(model.Kind) bounds v.symbolId)
-                        if maybe.isNone(:maybe.T(model.Kind) first) then
-                            begin hashMap.insert(:Int :maybe.T(model.Kind) bounds v.symbolId v.bound) ok end
+                        let first = hashMap.get(bounds v.symbolId)
+                        if maybe.isNone(first) then
+                            begin hashMap.insert(bounds v.symbolId v.bound) ok end
                         else
-                            let f = maybe.unwrap(:maybe.T(model.Kind) first)
-                            let agree = if maybe.isNone(:model.Kind f) orif maybe.isNone(:model.Kind v.bound) then
-                                maybe.isNone(:model.Kind f) andif maybe.isNone(:model.Kind v.bound)
+                            let f = maybe.unwrap(first)
+                            let agree = if maybe.isNone(f) orif maybe.isNone(v.bound) then
+                                maybe.isNone(f) andif maybe.isNone(v.bound)
                             else
-                                model.sameKind(maybe.unwrap(:model.Kind f) maybe.unwrap(:model.Kind v.bound))
-                                    orif subtyping.isKindEqual(maybe.unwrap(:model.Kind f) maybe.unwrap(:model.Kind v.bound) lookupNone)
+                                model.sameKind(maybe.unwrap(f) maybe.unwrap(v.bound))
+                                    orif subtyping.isKindEqual(maybe.unwrap(f) maybe.unwrap(v.bound) lookupNone)
                             end
                             if not(agree) then same := false end
                         end
@@ -171,7 +171,7 @@ export
         begin
             let var found = maybe.none(:shapes.Component)
             for i = {extent cases - 1} downto 0 do
-                if eq(maybe.unwrapOr(:String cases[i].name "") name) then found := maybe.some(:shapes.Component cases[i]) end
+                if eq(maybe.unwrapOr(cases[i].name "") name) then found := maybe.some(cases[i]) end
             end
             found
         end
@@ -183,18 +183,18 @@ export
             let var all = true
             for i = 0 upto {extent s.cases - 1} do
                 let c = s.cases[i]
-                let other = caseNamed(t.cases maybe.unwrapOr(:String c.name ""))
-                if maybe.isNone(:shapes.Component other) then
+                let other = caseNamed(t.cases maybe.unwrapOr(c.name ""))
+                if maybe.isNone(other) then
                     all := false
                 else
-                    let o = maybe.unwrap(:shapes.Component other).shape
-                    let same = if maybe.isSome(:Shape c.shape) andif maybe.isSome(:Shape o)
-                        andif shapes.same(maybe.unwrap(:Shape c.shape) maybe.unwrap(:Shape o)) then
+                    let o = maybe.unwrap(other).shape
+                    let same = if maybe.isSome(c.shape) andif maybe.isSome(o)
+                        andif shapes.same(maybe.unwrap(c.shape) maybe.unwrap(o)) then
                         true
-                    elsif maybe.isNone(:Shape c.shape) orif maybe.isNone(:Shape o) then
-                        maybe.isNone(:Shape c.shape) andif maybe.isNone(:Shape o)
+                    elsif maybe.isNone(c.shape) orif maybe.isNone(o) then
+                        maybe.isNone(c.shape) andif maybe.isNone(o)
                     else
-                        subtyping.isTypeEqual(maybe.unwrap(:Shape c.shape).type maybe.unwrap(:Shape o).type lookupNone)
+                        subtyping.isTypeEqual(maybe.unwrap(c.shape).type maybe.unwrap(o).type lookupNone)
                     end
                     if not(same) then all := false end
                 end
@@ -230,7 +230,7 @@ export
                 end
             else
                 let p = nodes.newPlan(nodes.planRuntime source target)
-                p.layout := maybe.some(:nodes.PlanLayout lay)
+                p.layout := maybe.some(lay)
                 some(p)
             end
         end
@@ -248,16 +248,16 @@ export
                 let renamed = model.newSubst()
                 for i = 0 upto {extent s.quantifiers - 1} do
                     let sq = s.quantifiers[i]
-                    hashMap.insert(:Int :Type renamed t.quantifiers[i].symbolId
-                        model.typeVariable(sq.name sq.symbolId maybe.some(:model.Kind sq.bound)))
+                    hashMap.insert(renamed t.quantifiers[i].symbolId
+                        model.typeVariable(sq.name sq.symbolId maybe.some(sq.bound)))
                 end
                 let subst = model.newSubst()
                 for i = 0 upto {extent s.quantifiers - 1} do
                     let sq = s.quantifiers[i]
                     let var bound = model.substituteInKind(t.quantifiers[i].bound renamed)
                     if subtyping.isKindEqual(bound sq.bound lookupNone) then bound := sq.bound end
-                    hashMap.insert(:Int :Type subst t.quantifiers[i].symbolId
-                        model.typeVariable(sq.name sq.symbolId maybe.some(:model.Kind bound)))
+                    hashMap.insert(subst t.quantifiers[i].symbolId
+                        model.typeVariable(sq.name sq.symbolId maybe.some(bound)))
                 end
                 tInner := model.substitute(tInner subst)
             end
@@ -280,8 +280,8 @@ export
                 case layout.representationKind(t) when repPointer, repQVal then true else false end
             let var only = true
             for i = 0 upto extent fields - 1 do
-                if maybe.isSome(:Plan fields[i]) then
-                    let p = maybe.unwrap(:Plan fields[i])
+                if maybe.isSome(fields[i]) then
+                    let p = maybe.unwrap(fields[i])
                     if not(boxing(fields[i]) andif held(p.source) andif held(p.target)) then only := false end
                 end
             end
@@ -301,11 +301,11 @@ export
      * its layout on as it is, so a recursive type's pair meets the same one
      * again) *)
     let layoutKey(lay: Layout): String =
-        if maybe.isNone(:nodes.PlanLayout lay) then
+        if maybe.isNone(lay) then
             "-"
         else
-            let l = maybe.unwrap(:nodes.PlanLayout lay)
-            conv.int(word.toInt(hash.identityHash(:model.Subst l.subst))) <> if l.toGeneric then "t" else "f" end
+            let l = maybe.unwrap(lay)
+            conv.int(word.toInt(hash.identityHash(l.subst))) <> if l.toGeneric then "t" else "f" end
         end
 
     (* The plan converting a value of type source for use at type target, or
@@ -366,14 +366,14 @@ export
             none
         else
             let key = conv.int(shapes.shape(source).id) <> "," <> conv.int(shapes.shape(target).id) <> "," <> layoutKey(lay)
-            if hashMap.contains(:String :Bool planning key) then
+            if hashMap.contains(planning key) then
                 (* A pair being planned (a recursive type's component): needs no
                  * conversion of its own *)
                 none
             else
-                hashMap.insert(:String :Bool planning key true)
+                hashMap.insert(planning key true)
                 let result = unproxied(planInner(source target lay))
-                hashMap.delete(:String :Bool planning key)
+                hashMap.delete(planning key)
                 result
             end
         end
@@ -384,7 +384,7 @@ export
         if not(isPlan(p nodes.planCast)) then
             p
         else
-            let x = maybe.unwrap(:Plan p)
+            let x = maybe.unwrap(p)
             let ss = layout.resolvedShape(shapes.shape(x.source))
             let ts = layout.resolvedShape(shapes.shape(x.target))
             if {shapes.kindIs(ts shapes.shapeTuple) orif shapes.kindIs(ts shapes.shapeOption)}
@@ -401,32 +401,32 @@ export
         if equal(source target) andif not(hasInstantiation(lay)) then
             none
         else
-            let toGeneric = maybe.isSome(:nodes.PlanLayout lay) andif maybe.unwrap(:nodes.PlanLayout lay).toGeneric
+            let toGeneric = maybe.isSome(lay) andif maybe.unwrap(lay).toGeneric
             let key = conv.int(shapes.shape(source).id) <> "," <> conv.int(shapes.shape(target).id) <> ","
                 <> if toGeneric then "t" else "f" end
-            if hashMap.contains(:String :Bool adapting key) then
+            if hashMap.contains(adapting key) then
                 none
             else
                 let shared = sharedSignatures(source target)
                 if extent shared.sParams isnot extent shared.tParams then
                     unsupported(:Ok "converting a function of type " <> model.show(source) <> " to " <> model.show(target))
                 end
-                let flipped = if maybe.isSome(:nodes.PlanLayout lay) then
-                    let l = maybe.unwrap(:nodes.PlanLayout lay)
+                let flipped = if maybe.isSome(lay) then
+                    let l = maybe.unwrap(lay)
                     layoutOf(tuple let subst = l.subst let keys = l.keys end not(l.toGeneric))
                 else
                     noLayout
                 end
-                hashMap.insert(:String :Bool adapting key true)
+                hashMap.insert(adapting key true)
                 let fields = array of({extent shared.sParams + 1} none)
                 for i = 0 upto {extent shared.sParams - 1} do
                     let tp = shared.tParams[i]
                     fields[i] := if tp.isVar orif tp.isOut then none else plan(tp.type shared.sParams[i].type flipped) end
                 end
                 fields[extent shared.sParams] := plan(shared.sResult shared.tResult lay)
-                hashMap.delete(:String :Bool adapting key)
+                hashMap.delete(adapting key)
                 let var allNone = true
-                for i = 0 upto {extent fields - 1} do if maybe.isSome(:Plan fields[i]) then allNone := false end end
+                for i = 0 upto {extent fields - 1} do if maybe.isSome(fields[i]) then allNone := false end end
                 if allNone andif eq(genericLayout.signatureRepresentation(source) genericLayout.signatureRepresentation(target)) then
                     none
                 elsif shapes.referencesAlike() andif referencesOnly(fields)
@@ -466,22 +466,22 @@ export
                 let cs = layout.shapeRepresentation(ss)
                 let ct = layout.shapeRepresentation(ts)
                 let abstract = abstractPlan(source target ss ts cs ct)
-                if maybe.isSome(:maybe.T(Plan) abstract) then
-                    maybe.unwrap(:maybe.T(Plan) abstract)
+                if maybe.isSome(abstract) then
+                    maybe.unwrap(abstract)
                 elsif not(eq(cs "QVal")) andif not(eq(ct "QVal")) andif isFunctionKind(ss) andif isFunctionKind(ts) then
                     adaptPlan(source target lay)
                 else
                     let laid = if hasInstantiation(lay) andif not(eq(cs "QVal")) andif not(eq(ct "QVal")) then
-                        let lp = layoutPlan(source target maybe.unwrap(:nodes.PlanLayout lay))
+                        let lp = layoutPlan(source target maybe.unwrap(lay))
                         (* A module's abstract type's value is held viewed at
                          * its bound, whatever the layouts *)
-                        if maybe.isSome(:Plan lp) orif not(boundedView(ss) orif boundedView(ts)) then maybe.some(:maybe.T(Plan) lp)
+                        if maybe.isSome(lp) orif not(boundedView(ss) orif boundedView(ts)) then maybe.some(lp)
                         else maybe.none(:maybe.T(Plan)) end
                     else
                         maybe.none(:maybe.T(Plan))
                     end
-                    if maybe.isSome(:maybe.T(Plan) laid) then
-                        maybe.unwrap(:maybe.T(Plan) laid)
+                    if maybe.isSome(laid) then
+                        maybe.unwrap(laid)
                     else
                         viewPlan(source target ss ts cs ct)
                     end
@@ -505,10 +505,10 @@ export
             let instance = if {shapes.kindIs(ss shapes.shapeAbstract) is toGeneric} orif eq(nativeC "QVal") then
                 maybe.none(:genericLayout.AbstractInstance)
             else genericLayout.abstractInstance(abstractT) end
-            if maybe.isNone(:genericLayout.AbstractInstance instance) then
+            if maybe.isNone(instance) then
                 maybe.none(:maybe.T(Plan))
             else
-                let i = maybe.unwrap(:genericLayout.AbstractInstance instance)
+                let i = maybe.unwrap(instance)
                 if genericLayout.genericLayoutAgrees(i.generic i.subst)
                     orif not(equal(model.substitute(i.generic i.subst) nativeT)) then
                     maybe.none(:maybe.T(Plan))
@@ -520,10 +520,10 @@ export
                     end
                 else
                     let inst = newInstantiation()
-                    hashMap.forEach(:Int :Type i.subst fun(k: Int t: Type): Ok bind(inst k t))
+                    hashMap.forEach(i.subst fun(k: Int t: Type): Ok bind(inst k t))
                     let p = nodes.newPlan(nodes.planView source target)
                     p.layout := layoutOf(inst toGeneric)
-                    maybe.some(:maybe.T(Plan) some(p))
+                    maybe.some(some(p))
                 end
             end
         end
@@ -559,10 +559,10 @@ export
             elsif shapes.kindIs(sHeld shapes.shapeVariant) andif shapes.kindIs(tHeld shapes.shapeVariant) then
                 let var sameIndices = true
                 for i = 0 upto {extent sHeld.cases - 1} do
-                    let name = maybe.unwrapOr(:String sHeld.cases[i].name "")
+                    let name = maybe.unwrapOr(sHeld.cases[i].name "")
                     let var index = ~1
                     for j = {extent tHeld.cases - 1} downto 0 do
-                        if eq(maybe.unwrapOr(:String tHeld.cases[j].name "") name) then index := j end
+                        if eq(maybe.unwrapOr(tHeld.cases[j].name "") name) then index := j end
                     end
                     if index isnot i then sameIndices := false end
                 end
@@ -612,7 +612,7 @@ export
                         let p = plan(shapes.componentShape(ss.components[i]).type shapes.componentShape(ts.components[i]).type noLayout)
                         (* A box or unbox changes no slot: a slot holds a
                          * value's QVal form *)
-                        if maybe.isSome(:Plan p) andif not(boxing(p)) then
+                        if maybe.isSome(p) andif not(boxing(p)) then
                             changing := true
                         end
                     end
@@ -635,7 +635,7 @@ export
                      * conversion either way, or only a box or unbox *)
                     let there = plan(shapes.element(ss).type shapes.element(ts).type noLayout)
                     let back = plan(shapes.element(ts).type shapes.element(ss).type noLayout)
-                    let fine = fun(p: maybe.T(Plan)): Bool maybe.isNone(:Plan p) orif boxing(p)
+                    let fine = fun(p: maybe.T(Plan)): Bool maybe.isNone(p) orif boxing(p)
                     fine(there) andif fine(back)
                 else
                     false
@@ -656,11 +656,11 @@ export
             let var changes = false
             for i = 0 upto {extent s.cases - 1} do
                 let c = s.cases[i]
-                let other = caseNamed(t.cases maybe.unwrapOr(:String c.name ""))
-                if maybe.isSome(:Shape c.shape) andif maybe.isSome(:shapes.Component other)
-                    andif maybe.isSome(:Shape maybe.unwrap(:shapes.Component other).shape) then
-                    let p = plan(maybe.unwrap(:Shape c.shape).type maybe.unwrap(:Shape maybe.unwrap(:shapes.Component other).shape).type noLayout)
-                    if maybe.isSome(:Plan p) andif not(boxing(p)) then
+                let other = caseNamed(t.cases maybe.unwrapOr(c.name ""))
+                if maybe.isSome(c.shape) andif maybe.isSome(other)
+                    andif maybe.isSome(maybe.unwrap(other).shape) then
+                    let p = plan(maybe.unwrap(c.shape).type maybe.unwrap(maybe.unwrap(other).shape).type noLayout)
+                    if maybe.isSome(p) andif not(boxing(p)) then
                         changes := true
                     end
                 end
@@ -676,15 +676,15 @@ export
             let var agree = true
             for i = 0 upto {extent s.cases - 1} do
                 let c = s.cases[i]
-                if {i >= extent t.cases} orif not(eq(maybe.unwrapOr(:String t.cases[i].name "") maybe.unwrapOr(:String c.name ""))) then
+                if {i >= extent t.cases} orif not(eq(maybe.unwrapOr(t.cases[i].name "") maybe.unwrapOr(c.name ""))) then
                     agree := false
                 else
                     let tc = t.cases[i]
-                    if maybe.isNone(:Shape c.shape) isnot maybe.isNone(:Shape tc.shape) then
+                    if maybe.isNone(c.shape) isnot maybe.isNone(tc.shape) then
                         agree := false
-                    elsif maybe.isSome(:Shape c.shape) andif agree then
-                        let p = plan(maybe.unwrap(:Shape c.shape).type maybe.unwrap(:Shape tc.shape).type noLayout)
-                        if maybe.isSome(:Plan p) andif not(isPlan(p nodes.planCast)) then agree := false end
+                    elsif maybe.isSome(c.shape) andif agree then
+                        let p = plan(maybe.unwrap(c.shape).type maybe.unwrap(tc.shape).type noLayout)
+                        if maybe.isSome(p) andif not(isPlan(p nodes.planCast)) then agree := false end
                     end
                 end
             end
@@ -733,7 +733,7 @@ export
                     else plan(sc.type tc.type noLayout) end
             end
             let var allNone = true
-            for i = 0 upto {count - 1} do if maybe.isSome(:Plan fields[i]) then allNone := false end end
+            for i = 0 upto {count - 1} do if maybe.isSome(fields[i]) then allNone := false end end
             let var allAgree = true
             for i = 0 upto {n - 1} do
                 if not(slotsAgree(shapes.componentShape(source[i]) shapes.componentShape(target[i]))) then allAgree := false end
@@ -787,7 +787,7 @@ export
         begin
             let a = autoParts(autoType)
             let storedType = model.autoPayloadType(autoType maybe.none(:Type))
-            let armType = model.autoPayloadType(autoType maybe.some(:Type c.matchType))
+            let armType = model.autoPayloadType(autoType maybe.some(c.matchType))
             let var hasVar = false
             for i = 0 upto {extent a.signature - 1} do if a.signature[i].isVar then hasVar := true end end
             let converted = array of(extent a.signature maybe.none(:String))
@@ -796,8 +796,8 @@ export
                 let var mentions = false
                 for j = 0 upto {extent t.fv - 1} do if t.fv[j] is a.symbolId then mentions := true end end
                 converted[i] := if not(mentions) then maybe.none(:String)
-                    elsif isTypeVariable(t a.symbolId) then maybe.some(:String "component")
-                    else maybe.some(:String "mentions") end
+                    elsif isTypeVariable(t a.symbolId) then maybe.some("component")
+                    else maybe.some("mentions") end
             end
             if not(c.exact) then
                 tuple
@@ -841,7 +841,7 @@ export
                         if k < extent t.quantifiers then
                             let tq = t.quantifiers[k]
                             bind(instantiation q.quantifiers[i].symbolId
-                                model.typeVariable(tq.name tq.symbolId maybe.some(:model.Kind tq.bound)))
+                                model.typeVariable(tq.name tq.symbolId maybe.some(tq.bound)))
                         end
                         k := k + 1
                     end
@@ -899,12 +899,12 @@ export
     let convert(a: Atom target: Type before: vector.T(Stmt) lay: Layout): Atom =
         begin
             let p = plan(typeOf(a) target lay)
-            if maybe.isNone(:Plan p) then
+            if maybe.isNone(p) then
                 a
             else
                 let hint = case a when atomVar with x then x.v.hint else "" end
                 let converted = nodes.newVar(hint target false)
-                vector.append(:Stmt before letConvert(converted a maybe.unwrap(:Plan p)))
+                vector.append(before letConvert(converted a maybe.unwrap(p)))
                 nodes.atomOfVar(converted)
             end
         end
@@ -913,9 +913,9 @@ export
         begin
             let result = vector.new(:Atom)
             for i = 0 upto {extent atoms - 1} do
-                vector.append(:Atom result if i < extent types then convert(atoms[i] types[i] before noLayout) else atoms[i] end)
+                vector.append(result if i < extent types then convert(atoms[i] types[i] before noLayout) else atoms[i] end)
             end
-            vector.toArray(:Atom result)
+            vector.toArray(result)
         end
 
     (* Converts the result of a let's operation, of type resultType, to its
@@ -923,14 +923,14 @@ export
     let result(s: nodes.StmtLet resultType: Type after: vector.T(Stmt)): Ok =
         begin
             let p = plan(resultType s.v.type noLayout)
-            if maybe.isSome(:Plan p) then
+            if maybe.isSome(p) then
                 let r = nodes.newVar(s.v.hint resultType false)
-                vector.append(:Stmt after letConvert(s.v nodes.atomOfVar(r) maybe.unwrap(:Plan p)))
+                vector.append(after letConvert(s.v nodes.atomOfVar(r) maybe.unwrap(p)))
                 s.v := r
             end
         end
 
-    let memberType(m: nodes.Module name: String): Type = hashMap.find(:String :Variable m.members.vars name).type
+    let memberType(m: nodes.Module name: String): Type = hashMap.find(m.members.vars name).type
 
     (* The address passed for a var or out argument: the location's own, or that
      * of a temporary of the parameter's representation, copied in from the
@@ -946,18 +946,18 @@ export
             let instantiated = not(isEmpty(instantiation))
             let pOut = plan(paramType locationType if instantiated then layoutOf(instantiation false) else noLayout end)
             let pIn = if param.isOut then none else plan(locationType paramType if instantiated then layoutOf(instantiation true) else noLayout end) end
-            if maybe.isNone(:Plan pOut) andif maybe.isNone(:Plan pIn) then
+            if maybe.isNone(pOut) andif maybe.isNone(pIn) then
                 address
             else
                 let refType = if param.isOut then model.outType(paramType) else model.varType(paramType) end
-                let boxOrNone = fun(p: maybe.T(Plan)): Bool maybe.isNone(:Plan p) orif boxing(p)
+                let boxOrNone = fun(p: maybe.T(Plan)): Bool maybe.isNone(p) orif boxing(p)
                 if layout.isBoxedInSlots(shapes.shape(locationType)) andif layout.isQVal(shapes.shape(paramType))
                     andif boxOrNone(pIn) andif boxOrNone(pOut) then
                     (* The location holds the record or variant boxed, as the
                      * generic parameter's QVal does *)
                     let cast = nodes.newVar("" refType false)
                     let castPlan = nodes.newPlan(nodes.planCast typeOf(address) refType)
-                    vector.append(:Stmt before letConvert(cast address castPlan))
+                    vector.append(before letConvert(cast address castPlan))
                     nodes.atomOfVar(cast)
                 else
                     let temp = nodes.newVar("cell" paramType true)
@@ -965,26 +965,26 @@ export
                     let var init = maybe.none(:Atom)
                     if not(param.isOut) then
                         let current = nodes.newVar("" locationType false)
-                        vector.append(:Stmt before nodes.letStmt(current option opLoad of Op with let var address = address end))
-                        init := maybe.some(:Atom nodes.atomOfVar(current))
-                        if maybe.isSome(:Plan pIn) then
+                        vector.append(before nodes.letStmt(current option opLoad of Op with let var address = address end))
+                        init := maybe.some(nodes.atomOfVar(current))
+                        if maybe.isSome(pIn) then
                             let converted = nodes.newVar("" paramType false)
-                            vector.append(:Stmt before letConvert(converted nodes.atomOfVar(current) maybe.unwrap(:Plan pIn)))
-                            init := maybe.some(:Atom nodes.atomOfVar(converted))
+                            vector.append(before letConvert(converted nodes.atomOfVar(current) maybe.unwrap(pIn)))
+                            init := maybe.some(nodes.atomOfVar(converted))
                         end
                     end
-                    vector.append(:Stmt before option sVarDecl of Stmt with
+                    vector.append(before option sVarDecl of Stmt with
                         let var pos = ~1 let var v = temp let var init = init
                     end)
-                    vector.append(:Stmt before nodes.letStmt(tempAddress option opAddrVar of Op with let var v = temp end))
+                    vector.append(before nodes.letStmt(tempAddress option opAddrVar of Op with let var v = temp end))
                     let var written = nodes.newVar("" paramType false)
-                    vector.append(:Stmt after nodes.letStmt(written nodes.opOfVar(temp)))
-                    if maybe.isSome(:Plan pOut) then
+                    vector.append(after nodes.letStmt(written nodes.opOfVar(temp)))
+                    if maybe.isSome(pOut) then
                         let converted = nodes.newVar("" locationType false)
-                        vector.append(:Stmt after letConvert(converted nodes.atomOfVar(written) maybe.unwrap(:Plan pOut)))
+                        vector.append(after letConvert(converted nodes.atomOfVar(written) maybe.unwrap(pOut)))
                         written := converted
                     end
-                    vector.append(:Stmt after option sStoreAt of Stmt with
+                    vector.append(after option sStoreAt of Stmt with
                         let var pos = ~1 let var value = nodes.atomOfVar(written) let var address = address
                     end)
                     nodes.atomOfVar(tempAddress)
@@ -997,27 +997,27 @@ export
     let call(r: Representer c: nodes.OpCall before: vector.T(Stmt) after: vector.T(Stmt)): Type =
         begin
             r.genericResults := vector.new(:GenericResult)
-            let calleeType = if maybe.isSome(:Variable c.callee) then
-                maybe.some(:Type maybe.unwrap(:Variable c.callee).type)
+            let calleeType = if maybe.isSome(c.callee) then
+                maybe.some(maybe.unwrap(c.callee).type)
             else
-                let fromModule = if maybe.isSome(:nodes.ModuleRef c.moduleRef) then
-                    case maybe.unwrap(:nodes.ModuleRef c.moduleRef)
+                let fromModule = if maybe.isSome(c.moduleRef) then
+                    case maybe.unwrap(c.moduleRef)
                         (* A member of one of the unit's modules, called from
                          * outside it at its interface's types, works at the
                          * module's own: its arguments and result convert at the
                          * boundary *)
-                        when refModule with m then maybe.some(:Type memberType(m.m maybe.unwrapOr(:String c.member "")))
+                        when refModule with m then maybe.some(memberType(m.m maybe.unwrapOr(c.member "")))
                         else maybe.none(:Type)
                     end
                 else
                     maybe.none(:Type)
                 end
-                if maybe.isSome(:Type fromModule) then fromModule else c.calleeType end
+                if maybe.isSome(fromModule) then fromModule else c.calleeType end
             end
-            if maybe.isNone(:Type calleeType) then
-                unsupported(:Ok "a call of " <> maybe.unwrapOr(:String c.member "") <> " whose type is unknown")
+            if maybe.isNone(calleeType) then
+                unsupported(:Ok "a call of " <> maybe.unwrapOr(c.member "") <> " whose type is unknown")
             end
-            let callee = maybe.unwrap(:Type calleeType)
+            let callee = maybe.unwrap(calleeType)
             let signature = written.funSignature(callee)
             let params = signature.params
             (* A polymorphic callee's parameters at the call's type arguments *)
@@ -1038,17 +1038,17 @@ export
                         (* A value of an abstract type's application is laid out
                          * generically already *)
                         let abstract = genericLayout.abstractInstance(typeOf(a))
-                        if instantiated andif maybe.isNone(:genericLayout.AbstractInstance abstract) then
+                        if instantiated andif maybe.isNone(abstract) then
                             a := convert(a model.substitute(p.type instantiation.subst) before noLayout)
                         end
                         a := convert(a p.type before layoutOf(instantiation true))
                     end
                 end
-                vector.append(:Atom args a)
+                vector.append(args a)
             end
-            c.args := vector.toArray(:Atom args)
+            c.args := vector.toArray(args)
             if instantiated then
-                vector.append(:GenericResult r.genericResults tuple
+                vector.append(r.genericResults tuple
                     let generic = signature.result
                     let instantiated = model.substitute(signature.result instantiation.subst)
                     let instantiation = instantiation
@@ -1064,13 +1064,13 @@ export
     let writtenField(t: Type kind: shapes.ShapeKind name: String): maybe.T(Type) =
         begin
             let w = written.writtenStructure(t kind)
-            if maybe.isNone(:Type w) then
+            if maybe.isNone(w) then
                 maybe.none(:Type)
             else
-                case maybe.unwrap(:Type w).form
+                case maybe.unwrap(w).form
                     when typeRecord with x then
                         let f = model.recordGetField(x.fields name)
-                        if maybe.isSome(:model.RecordField f) then maybe.some(:Type maybe.unwrap(:model.RecordField f).type) else maybe.none(:Type) end
+                        if maybe.isSome(f) then maybe.some(maybe.unwrap(f).type) else maybe.none(:Type) end
                     else maybe.none(:Type)
                 end
             end
@@ -1079,13 +1079,13 @@ export
     let writtenComponent(t: Type index: Int): maybe.T(Type) =
         begin
             let w = written.writtenStructure(t shapes.shapeTuple)
-            if maybe.isNone(:Type w) then
+            if maybe.isNone(w) then
                 maybe.none(:Type)
             else
-                case maybe.unwrap(:Type w).form
+                case maybe.unwrap(w).form
                     when typeTuple with x then
                         let values = model.tupleValueFields(x.fields)
-                        if index < extent values then maybe.some(:Type values[index].type) else maybe.none(:Type) end
+                        if index < extent values then maybe.some(values[index].type) else maybe.none(:Type) end
                     else maybe.none(:Type)
                 end
             end
@@ -1094,13 +1094,13 @@ export
     let writtenVariantCase(t: Type tag: String): maybe.T(Type) =
         begin
             let w = written.writtenStructure(t shapes.shapeVariant)
-            if maybe.isNone(:Type w) then
+            if maybe.isNone(w) then
                 maybe.none(:Type)
             else
-                case maybe.unwrap(:Type w).form
+                case maybe.unwrap(w).form
                     when typeVariant with x then
                         let c = model.variantGetField(x.variants tag)
-                        if maybe.isSome(:model.VariantField c) then maybe.unwrap(:model.VariantField c).type else maybe.none(:Type) end
+                        if maybe.isSome(c) then maybe.unwrap(c).type else maybe.none(:Type) end
                     else maybe.none(:Type)
                 end
             end
@@ -1113,8 +1113,8 @@ export
         case o
             when opMakeTuple with x then
                 let w = written.writtenStructure(resultType shapes.shapeTuple)
-                if maybe.isSome(:Type w) then
-                    case maybe.unwrap(:Type w).form
+                if maybe.isSome(w) then
+                    case maybe.unwrap(w).form
                         when typeTuple with t then
                             let values = model.tupleValueFields(t.fields)
                             let types = array of(extent values model.okType)
@@ -1125,23 +1125,23 @@ export
                 end
                 maybe.none(:Type)
             when opMakeVariant with x then
-                if maybe.isSome(:Atom x.payload) then
+                if maybe.isSome(x.payload) then
                     let caseType = writtenVariantCase(resultType x.tag)
-                    if maybe.isSome(:Type caseType) then
-                        x.payload := maybe.some(:Atom convert(maybe.unwrap(:Atom x.payload) maybe.unwrap(:Type caseType) before noLayout))
+                    if maybe.isSome(caseType) then
+                        x.payload := maybe.some(convert(maybe.unwrap(x.payload) maybe.unwrap(caseType) before noLayout))
                     end
                 end
                 maybe.none(:Type)
             when opMakeOption with x then
-                if maybe.isSome(:Atom x.payload) andif maybe.isSome(:String x.tag) then
+                if maybe.isSome(x.payload) andif maybe.isSome(x.tag) then
                     let w = written.writtenStructure(resultType shapes.shapeOption)
-                    if maybe.isSome(:Type w) then
-                        case maybe.unwrap(:Type w).form
+                    if maybe.isSome(w) then
+                        case maybe.unwrap(w).form
                             when typeOption with t then
-                                let c = model.optionGetField(t.options maybe.unwrap(:String x.tag))
-                                if maybe.isSome(:model.OptionField c) andif maybe.isSome(:Type maybe.unwrap(:model.OptionField c).payload) then
-                                    x.payload := maybe.some(:Atom convert(maybe.unwrap(:Atom x.payload)
-                                        maybe.unwrap(:Type maybe.unwrap(:model.OptionField c).payload) before noLayout))
+                                let c = model.optionGetField(t.options maybe.unwrap(x.tag))
+                                if maybe.isSome(c) andif maybe.isSome(maybe.unwrap(c).payload) then
+                                    x.payload := maybe.some(convert(maybe.unwrap(x.payload)
+                                        maybe.unwrap(maybe.unwrap(c).payload) before noLayout))
                                 end
                             else ok
                         end
@@ -1151,8 +1151,8 @@ export
             when opMakeArray with x then
                 let elem = arrayElement(resultType)
                 let args = vector.new(:Atom)
-                for i = 0 upto {extent x.args - 1} do vector.append(:Atom args convert(x.args[i] elem before noLayout)) end
-                x.args := vector.toArray(:Atom args)
+                for i = 0 upto {extent x.args - 1} do vector.append(args convert(x.args[i] elem before noLayout)) end
+                x.args := vector.toArray(args)
                 maybe.none(:Type)
             when opArrayRep with x then
                 x.init := convert(x.init arrayElement(resultType) before noLayout)
@@ -1160,35 +1160,35 @@ export
             when opMakeAuto with x then
                 let storedType = model.autoPayloadType(x.autoType maybe.none(:Type))
                 let p = autoPayloadPlan(typeOf(x.payload) storedType x.autoType)
-                if maybe.isSome(:Plan p) then
+                if maybe.isSome(p) then
                     let stored = nodes.newVar("payload" storedType false)
-                    vector.append(:Stmt before letConvert(stored x.payload maybe.unwrap(:Plan p)))
+                    vector.append(before letConvert(stored x.payload maybe.unwrap(p)))
                     x.payload := nodes.atomOfVar(stored)
                 end
                 maybe.none(:Type)
             when opTupleField with x then writtenComponent(typeOf(x.tup) x.index)
             when opRecordField with x then writtenField(typeOf(x.recordAtom) shapes.shapeRecord x.name)
-            when opIndex with x then maybe.some(:Type arrayElement(typeOf(x.arr)))
+            when opIndex with x then maybe.some(arrayElement(typeOf(x.arr)))
             when opModuleMember with x then
                 case x.moduleRef
                     when refModule with m then
-                        if maybe.isSome(:String x.member) then maybe.some(:Type memberType(m.m maybe.unwrap(:String x.member)))
+                        if maybe.isSome(x.member) then maybe.some(memberType(m.m maybe.unwrap(x.member)))
                         else maybe.none(:Type) end
                     else maybe.none(:Type)
                 end
             when opTypeApp with x then
-                let origType = if maybe.isSome(:Variable x.callee) then
-                    maybe.unwrap(:Variable x.callee).type
+                let origType = if maybe.isSome(x.callee) then
+                    maybe.unwrap(x.callee).type
                 else
-                    let fromModule = if maybe.isSome(:nodes.ModuleRef x.moduleRef) then
-                        case maybe.unwrap(:nodes.ModuleRef x.moduleRef)
-                            when refModule with m then maybe.some(:Type memberType(m.m maybe.unwrapOr(:String x.member "")))
+                    let fromModule = if maybe.isSome(x.moduleRef) then
+                        case maybe.unwrap(x.moduleRef)
+                            when refModule with m then maybe.some(memberType(m.m maybe.unwrapOr(x.member "")))
                             else maybe.none(:Type)
                         end
                     else
                         maybe.none(:Type)
                     end
-                    if maybe.isSome(:Type fromModule) then maybe.unwrap(:Type fromModule) else maybe.unwrapOr(:Type x.calleeType model.okType) end
+                    if maybe.isSome(fromModule) then maybe.unwrap(fromModule) else maybe.unwrapOr(x.calleeType model.okType) end
                 end
                 let plans = typeAppPlans(origType x.typeArgs resultType)
                 x.plans := plans.plans
@@ -1204,7 +1204,7 @@ export
         case s
             when sStoreField with x then writtenField(typeOf(x.base) shapes.shapeRecord x.name)
             when sStoreComponent with x then writtenComponent(typeOf(x.base) x.index)
-            when sStoreElement with x then maybe.some(:Type arrayElement(typeOf(x.base)))
+            when sStoreElement with x then maybe.some(arrayElement(typeOf(x.base)))
             else maybe.none(:Type)
         end
 
@@ -1212,23 +1212,23 @@ export
      * converts them to its binders' types *)
     let inspectCase(autoType: Type c: nodes.InspectCase): Ok =
         if extent c.binders > 0 then
-            c.arm := maybe.some(:nodes.InspectArm inspectArm(autoType c))
-            let armType = model.autoPayloadType(autoType maybe.some(:Type c.matchType))
+            c.arm := maybe.some(inspectArm(autoType c))
+            let armType = model.autoPayloadType(autoType maybe.some(c.matchType))
             let binders = vector.new(:Variable)
             let lets = vector.new(:Stmt)
             for i = 0 upto {extent c.binders - 1} do
                 let b = c.binders[i]
                 let p = plan(armType b.type noLayout)
-                if maybe.isNone(:Plan p) then
-                    vector.append(:Variable binders b)
+                if maybe.isNone(p) then
+                    vector.append(binders b)
                 else
                     let arm = nodes.newVar(b.hint armType false)
-                    vector.append(:Variable binders arm)
-                    vector.append(:Stmt lets letConvert(b nodes.atomOfVar(arm) maybe.unwrap(:Plan p)))
+                    vector.append(binders arm)
+                    vector.append(lets letConvert(b nodes.atomOfVar(arm) maybe.unwrap(p)))
                 end
             end
-            c.binders := vector.toArray(:Variable binders)
-            for i = 0 upto {vector.length(:Stmt c.body.statements) - 1} do vector.append(:Stmt lets vector.get(:Stmt c.body.statements i)) end
+            c.binders := vector.toArray(binders)
+            for i = 0 upto {vector.length(c.body.statements) - 1} do vector.append(lets vector.get(c.body.statements i)) end
             c.body.statements := lets
         end
 
@@ -1254,27 +1254,27 @@ export
                             let writebacks = vector.new(:Stmt)
                             r.genericResults := vector.new(:GenericResult)
                             let resultType = call(r c before writebacks)
-                            if not(vector.empty(:GenericResult r.genericResults)) then
+                            if not(vector.empty(r.genericResults)) then
                                 (* The callee's generic result, converted to its
                                  * type at the type arguments, then to the
                                  * let's *)
-                                let g = vector.get(:GenericResult r.genericResults 0)
+                                let g = vector.get(r.genericResults 0)
                                 let step = plan(g.generic g.instantiated layoutOf(g.instantiation false))
-                                if maybe.isSome(:genericLayout.AbstractInstance genericLayout.abstractInstance(x.v.type)) then
+                                if maybe.isSome(genericLayout.abstractInstance(x.v.type)) then
                                     (* A value of an abstract type's
                                      * application, laid out generically *)
                                     result(x g.generic after)
-                                elsif maybe.isSome(:Plan step) then
+                                elsif maybe.isSome(step) then
                                     let v = x.v
                                     let instantiated = nodes.newVar(v.hint g.instantiated false)
                                     let generic = nodes.newVar(v.hint g.generic false)
-                                    vector.append(:Stmt after letConvert(instantiated nodes.atomOfVar(generic) maybe.unwrap(:Plan step)))
+                                    vector.append(after letConvert(instantiated nodes.atomOfVar(generic) maybe.unwrap(step)))
                                     x.v := generic
                                     let final = plan(g.instantiated v.type noLayout)
-                                    if maybe.isNone(:Plan final) then
-                                        vector.append(:Stmt after nodes.letStmt(v nodes.opOfVar(instantiated)))
+                                    if maybe.isNone(final) then
+                                        vector.append(after nodes.letStmt(v nodes.opOfVar(instantiated)))
                                     else
-                                        vector.append(:Stmt after letConvert(v nodes.atomOfVar(instantiated) maybe.unwrap(:Plan final)))
+                                        vector.append(after letConvert(v nodes.atomOfVar(instantiated) maybe.unwrap(final)))
                                     end
                                 else
                                     (* The generic result is laid out as the
@@ -1284,10 +1284,10 @@ export
                             else
                                 result(x resultType after)
                             end
-                            for i = 0 upto {vector.length(:Stmt writebacks) - 1} do vector.append(:Stmt after vector.get(:Stmt writebacks i)) end
+                            for i = 0 upto {vector.length(writebacks) - 1} do vector.append(after vector.get(writebacks i)) end
                         else
                             let resultType = operation(r x.value x.v.type before)
-                            if maybe.isSome(:Type resultType) then result(x maybe.unwrap(:Type resultType) after) end
+                            if maybe.isSome(resultType) then result(x maybe.unwrap(resultType) after) end
                     end
                 when sDo with x then
                     case x.value
@@ -1295,53 +1295,53 @@ export
                         else ok
                     end
                 when sVarDecl with x then
-                    if maybe.isSome(:Atom x.init) then
-                        x.init := maybe.some(:Atom convert(maybe.unwrap(:Atom x.init) x.v.type before noLayout))
+                    if maybe.isSome(x.init) then
+                        x.init := maybe.some(convert(maybe.unwrap(x.init) x.v.type before noLayout))
                     end
                 when sAssign with x then x.value := convert(x.value x.v.type before noLayout)
                 when sStoreAt then ok
                 when sStoreField with x then
                     let t = storedType(s)
-                    if maybe.isSome(:Type t) then x.value := convert(x.value maybe.unwrap(:Type t) before noLayout) end
+                    if maybe.isSome(t) then x.value := convert(x.value maybe.unwrap(t) before noLayout) end
                 when sStoreComponent with x then
                     let t = storedType(s)
-                    if maybe.isSome(:Type t) then x.value := convert(x.value maybe.unwrap(:Type t) before noLayout) end
+                    if maybe.isSome(t) then x.value := convert(x.value maybe.unwrap(t) before noLayout) end
                 when sStoreElement with x then
                     let t = storedType(s)
-                    if maybe.isSome(:Type t) then x.value := convert(x.value maybe.unwrap(:Type t) before noLayout) end
+                    if maybe.isSome(t) then x.value := convert(x.value maybe.unwrap(t) before noLayout) end
                 when sReturn with x then
-                    if maybe.isSome(:nodes.Function function) then
-                        x.value := convert(x.value maybe.unwrap(:nodes.Function function).resultType before noLayout)
+                    if maybe.isSome(function) then
+                        x.value := convert(x.value maybe.unwrap(function).resultType before noLayout)
                     end
                 when sJump with x then
-                    let params = hashMap.find(:String :Array(Variable) r.joins x.label)
+                    let params = hashMap.find(r.joins x.label)
                     let args = vector.new(:Atom)
                     for i = 0 upto {extent x.args - 1} do
-                        vector.append(:Atom args if i < extent params then convert(x.args[i] params[i].type before noLayout) else x.args[i] end)
+                        vector.append(args if i < extent params then convert(x.args[i] params[i].type before noLayout) else x.args[i] end)
                     end
-                    x.args := vector.toArray(:Atom args)
+                    x.args := vector.toArray(args)
                 when sRaise with x then
-                    if maybe.isSome(:Atom x.payload) then
+                    if maybe.isSome(x.payload) then
                         let w = written.writtenStructure(typeOf(x.exc) shapes.shapeException)
-                        if maybe.isSome(:Type w) then
-                            case maybe.unwrap(:Type w).form
+                        if maybe.isSome(w) then
+                            case maybe.unwrap(w).form
                                 when typeException with e then
-                                    x.payload := maybe.some(:Atom convert(maybe.unwrap(:Atom x.payload) e.payload before noLayout))
+                                    x.payload := maybe.some(convert(maybe.unwrap(x.payload) e.payload before noLayout))
                                 else ok
                             end
                         end
                     end
                 when sInspect with x then
-                    if maybe.isSome(:Type x.autoType) then
-                        for i = 0 upto {extent x.cases - 1} do inspectCase(maybe.unwrap(:Type x.autoType) x.cases[i]) end
+                    if maybe.isSome(x.autoType) then
+                        for i = 0 upto {extent x.cases - 1} do inspectCase(maybe.unwrap(x.autoType) x.cases[i]) end
                     end
                 else ok
             end
             let all = vector.new(:Stmt)
-            for i = 0 upto {vector.length(:Stmt before) - 1} do vector.append(:Stmt all vector.get(:Stmt before i)) end
-            vector.append(:Stmt all s)
-            for i = 0 upto {vector.length(:Stmt after) - 1} do vector.append(:Stmt all vector.get(:Stmt after i)) end
-            vector.toArray(:Stmt all)
+            for i = 0 upto {vector.length(before) - 1} do vector.append(all vector.get(before i)) end
+            vector.append(all s)
+            for i = 0 upto {vector.length(after) - 1} do vector.append(all vector.get(after i)) end
+            vector.toArray(all)
         end
 
     (* A conversion rejected at pos in r's unit (nodes.stmtPos), raised as
@@ -1350,23 +1350,23 @@ export
     let rejectedAt(r: Representer pos: Int message: String): diagnostics.CompilerError =
         begin
             let p = nodes.sourcePos(r.unit pos)
-            if maybe.isNone(:nodes.SourcePos p) then diagnostics.errorAt(message 0)
+            if maybe.isNone(p) then diagnostics.errorAt(message 0)
             else
-                let q = maybe.unwrap(:nodes.SourcePos p)
+                let q = maybe.unwrap(p)
                 let e = diagnostics.errorAt(message pos - nodes.fileOffset(q.file 0))
                 let file = nodes.sourceFile(r.unit q.file)
-                if maybe.isSome(:String file) then diagnostics.inFile(e maybe.unwrap(:String file)) else e end
+                if maybe.isSome(file) then diagnostics.inFile(e maybe.unwrap(file)) else e end
             end
         end
 
     let rec body(r: Representer b: Body function: maybe.T(nodes.Function)): Ok =
         begin
             let statements = vector.new(:Stmt)
-            for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
-                let s = vector.get(:Stmt b.statements i)
+            for i = 0 upto {vector.length(b.statements) - 1} do
+                let s = vector.get(b.statements i)
                 case s
                     when sJoin with x then
-                        begin hashMap.insert(:String :Array(Variable) r.joins x.label x.params) ok end
+                        begin hashMap.insert(r.joins x.label x.params) ok end
                     else ok
                 end
                 let bodies = walk.statementBodies(s)
@@ -1377,7 +1377,7 @@ export
                 let made = try statement(r s function)
                     when rejectedConversion with m then diagnostics.raiseError(:Array(Stmt) rejectedAt(r r.pos m))
                     end
-                for j = 0 upto {extent made - 1} do vector.append(:Stmt statements made[j]) end
+                for j = 0 upto {extent made - 1} do vector.append(statements made[j]) end
             end
             b.statements := statements
         end
@@ -1390,20 +1390,20 @@ export
                 let var genericResults = vector.new(:GenericResult)
                 let var pos = ~1
             end
-            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+            for i = 0 upto {vector.length(unit.modules) - 1} do
                 r.pos := ~1
-                body(r vector.get(:nodes.Module unit.modules i).init maybe.none(:nodes.Function))
+                body(r vector.get(unit.modules i).init maybe.none(:nodes.Function))
             end
             r.pos := ~1
             body(r unit.main maybe.none(:nodes.Function))
-            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
-                let f = vector.get(:nodes.Function unit.functions i)
+            for i = 0 upto {vector.length(unit.functions) - 1} do
+                let f = vector.get(unit.functions i)
                 r.pos := ~1
-                body(r f.body maybe.some(:nodes.Function f))
+                body(r f.body maybe.some(f))
             end
             slots.decideSlots(unit)
             unit.stage := "represented"
-            hashMap.clear(:Int :Array(Type) typeVarsMemo)
+            hashMap.clear(typeVarsMemo)
             unit
         end
 end

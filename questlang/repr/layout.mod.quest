@@ -50,9 +50,9 @@ export
 
     let layoutOf(s: Shape): Layout =
         begin
-            let found = hashMap.get(:Int :Layout layouts s.id)
-            if maybe.isSome(:Layout found) then
-                maybe.unwrap(:Layout found)
+            let found = hashMap.get(layouts s.id)
+            if maybe.isSome(found) then
+                maybe.unwrap(found)
             else
                 let l = tuple
                     let shape = s
@@ -61,7 +61,7 @@ export
                     let var slot = maybe.none(:String)
                     let var proxied = maybe.none(:Bool)
                 end
-                hashMap.insert(:Int :Layout layouts s.id l)
+                hashMap.insert(layouts s.id l)
                 l
             end
         end
@@ -73,16 +73,16 @@ export
             let seen = hashMap.new(:Int :Bool intEqual hash.int)
             let var s = s0
             while {shapes.kindIs(s shapes.shapeTypevar) orif shapes.kindIs(s shapes.shapeAbstract)}
-                andif maybe.isSome(:Shape s.bound)
-                andif not(hashMap.contains(:Int :Bool seen s.id)) do
-                hashMap.insert(:Int :Bool seen s.id true)
-                s := maybe.unwrap(:Shape s.bound)
+                andif maybe.isSome(s.bound)
+                andif not(hashMap.contains(seen s.id)) do
+                hashMap.insert(seen s.id true)
+                s := maybe.unwrap(s.bound)
             end
             s
         end
 
     let heldAtBound(s: Shape): Bool =
-        if maybe.isNone(:Shape s.bound) orif not({shapes.kindIs(s shapes.shapeTypevar)
+        if maybe.isNone(s.bound) orif not({shapes.kindIs(s shapes.shapeTypevar)
             orif shapes.kindIs(s shapes.shapeAbstract)}) then
             false
         elsif shapes.kindIs(s shapes.shapeAbstract) then
@@ -91,7 +91,7 @@ export
             abstractTypes.isAbstractTypeSymbol(s.symbolId)
         end
 
-    let ownView(s: Shape): Bool = shapes.kindIs(s shapes.shapeTypevar) andif maybe.isSome(:Shape s.bound)
+    let ownView(s: Shape): Bool = shapes.kindIs(s shapes.shapeTypevar) andif maybe.isSome(s.bound)
         andif not(heldAtBound(s))
 
     let isWordShaped(t: Type): Bool = shapes.kindIs(shapes.shape(t) shapes.shapeWord)
@@ -120,13 +120,13 @@ export
     let aggregateTagPrefixes = array of "QTuple_" "QRecord_" "QVariant_" "QOption_" "Auto_" end
 
     let withEmpty(prefix: String tags: vector.T(String)): String =
-        prefix <> if vector.empty(:String tags) then "empty" else syntax.joined("_" tags) end
+        prefix <> if vector.empty(tags) then "empty" else syntax.joined("_" tags) end
 
     let rec shapeTag(s: Shape): String =
         begin
             let l = layoutOf(s)
-            if maybe.isSome(:String l.tag) then
-                maybe.unwrap(:String l.tag)
+            if maybe.isSome(l.tag) then
+                maybe.unwrap(l.tag)
             else
                 let raw = rawTag(s)
                 let tag = if stringOp.length(raw) > 64 then
@@ -134,7 +134,7 @@ export
                 else
                     raw
                 end
-                l.tag := maybe.some(:String tag)
+                l.tag := maybe.some(tag)
                 tag
             end
         end
@@ -157,11 +157,11 @@ export
                 when typeRecGroup with x then
                     let subst = model.newSubst()
                     for i = 0 upto {extent x.bindings - 1} do
-                        hashMap.insert(:Int :Type subst x.bindings[i].symbolId canonical.recSelfVar(level + i))
+                        hashMap.insert(subst x.bindings[i].symbolId canonical.recSelfVar(level + i))
                     end
                     let tags = vector.new(:String)
                     for i = 0 upto {extent x.bindings - 1} do
-                        vector.append(:String tags typeTag(model.substitute(x.bindings[i].body subst)))
+                        vector.append(tags typeTag(model.substitute(x.bindings[i].body subst)))
                     end
                     "RecGroup" <> syntax.cInt(level) <> "_" <> syntax.cInt(x.activeIndex) <> "_" <> syntax.joined("_" tags)
                 else rawTagOf(s)
@@ -222,8 +222,8 @@ export
             let selfLevel = if shapes.kindIs(s shapes.shapeTypevar) then canonical.recSelfLevel(s.type)
                 else maybe.none(:Int) end
             let canonicalShape = shapes.shape(s.type)
-            if maybe.isSome(:Int selfLevel) then
-                "Self" <> syntax.cInt(maybe.unwrap(:Int selfLevel))
+            if maybe.isSome(selfLevel) then
+                "Self" <> syntax.cInt(maybe.unwrap(selfLevel))
             elsif not(shapes.same(canonicalShape s)) then
                 (* Equal types share a tag: a type containing recursion is named
                  * by its canonical form *)
@@ -263,14 +263,14 @@ export
             when shapeTuple then
                 let tags = vector.new(:String)
                 for i = 0 upto {extent s.components - 1} do
-                    vector.append(:String tags elementTag(shapes.componentShape(s.components[i])))
+                    vector.append(tags elementTag(shapes.componentShape(s.components[i])))
                 end
                 withEmpty("QTuple_" tags)
             when shapeRecord then
                 let sorted = shapes.sortedComponents(s)
                 let tags = vector.new(:String)
                 for i = 0 upto {extent sorted - 1} do
-                    vector.append(:String tags maybe.unwrapOr(:String sorted[i].name "") <> "_"
+                    vector.append(tags maybe.unwrapOr(sorted[i].name "") <> "_"
                         <> elementTag(shapes.componentShape(sorted[i])))
                 end
                 withEmpty("QRecord_" tags)
@@ -281,9 +281,9 @@ export
                 let tags = vector.new(:String)
                 for i = 0 upto {extent s.cases - 1} do
                     let c = s.cases[i]
-                    let name = maybe.unwrapOr(:String c.name "")
-                    vector.append(:String tags
-                        if maybe.isSome(:Shape c.shape) then name <> "_" <> elementTag(maybe.unwrap(:Shape c.shape)) else name end)
+                    let name = maybe.unwrapOr(c.name "")
+                    vector.append(tags
+                        if maybe.isSome(c.shape) then name <> "_" <> elementTag(maybe.unwrap(c.shape)) else name end)
                 end
                 withEmpty(if shapes.kindIs(s shapes.shapeVariant) then "QVariant_" else "QOption_" end tags)
             when shapeException then "QException"
@@ -332,11 +332,11 @@ export
     let rec shapeRepresentation(s: Shape): String =
         begin
             let l = layoutOf(s)
-            if maybe.isSome(:String l.representation) then
-                maybe.unwrap(:String l.representation)
+            if maybe.isSome(l.representation) then
+                maybe.unwrap(l.representation)
             else
                 let rep = rawRepresentation(s)
-                l.representation := maybe.some(:String rep)
+                l.representation := maybe.some(rep)
                 rep
             end
         end
@@ -347,11 +347,11 @@ export
     and shapeSlotRepresentation(s: Shape): String =
         begin
             let l = layoutOf(s)
-            if maybe.isSome(:String l.slot) then
-                maybe.unwrap(:String l.slot)
+            if maybe.isSome(l.slot) then
+                maybe.unwrap(l.slot)
             else
                 let slot = slotOf(shapeRepresentation(s))
-                l.slot := maybe.some(:String slot)
+                l.slot := maybe.some(slot)
                 slot
             end
         end
@@ -438,7 +438,7 @@ export
     let recordFieldsOf(t: Type): Array(model.RecordField) =
         case t.form
             when typeRecord with r then r.fields
-            else vector.toArray(:model.RecordField vector.new(:model.RecordField))
+            else vector.toArray(vector.new(:model.RecordField))
         end
 
     (* A header and the fields' slots, or with no field, a header and a char,
@@ -470,9 +470,9 @@ export
                 let var most = 0
                 let var anyPayload = false
                 for i = 0 upto {extent o.options - 1} do
-                    if maybe.isSome(:Type o.options[i].payload) then
+                    if maybe.isSome(o.options[i].payload) then
                         anyPayload := true
-                        let n = caseSlots(maybe.unwrap(:Type o.options[i].payload))
+                        let n = caseSlots(maybe.unwrap(o.options[i].payload))
                         if n > most then most := n end
                     end
                 end
@@ -523,7 +523,7 @@ export
                 begin
                     let var found = false
                     for i = 0 upto {extent s.cases - 1} do
-                        if maybe.isSome(:Shape s.cases[i].shape) then found := true end
+                        if maybe.isSome(s.cases[i].shape) then found := true end
                     end
                     found
                 end
@@ -547,10 +547,10 @@ export
             when shapeRecord, shapeVariant, shapeTypevar, shapeAbstract, shapeAuto, shapeOperator then true
             when shapeTuple, shapeOption then proxiedIn(s seen)
             when shapeFun, shapeAll then
-                if hashMap.contains(:Int :Bool seen s.id) then
+                if hashMap.contains(seen s.id) then
                     false
                 else
-                    hashMap.insert(:Int :Bool seen s.id true)
+                    hashMap.insert(seen s.id true)
                     if shapes.kindIs(s shapes.shapeAll) then
                         true
                     else
@@ -570,10 +570,10 @@ export
      * (whose numbering an upcast may change), or an option whose one case's
      * payload is a tuple with such a component *)
     and proxiedIn(s: Shape seen: Seen): Bool =
-        if hashMap.contains(:Int :Bool seen s.id) then
+        if hashMap.contains(seen s.id) then
             false
         else
-            hashMap.insert(:Int :Bool seen s.id true)
+            hashMap.insert(seen s.id true)
             case s.kind
                 when shapeTuple then
                     let var found = false
@@ -590,9 +590,9 @@ export
                         let var found = false
                         for i = 0 upto {extent s.cases - 1} do
                             let c = s.cases[i]
-                            if maybe.isSome(:Shape c.shape)
-                                andif shapes.kindIs(maybe.unwrap(:Shape c.shape) shapes.shapeTuple) then
-                                let payload = maybe.unwrap(:Shape c.shape)
+                            if maybe.isSome(c.shape)
+                                andif shapes.kindIs(maybe.unwrap(c.shape) shapes.shapeTuple) then
+                                let payload = maybe.unwrap(c.shape)
                                 for j = 0 upto {extent payload.components - 1} do
                                     if not(found) andif
                                         componentChangesView(shapes.componentShape(payload.components[j]) seen) then
@@ -615,11 +615,11 @@ export
             false
         else
             let l = layoutOf(s)
-            if maybe.isSome(:Bool l.proxied) then
-                maybe.unwrap(:Bool l.proxied)
+            if maybe.isSome(l.proxied) then
+                maybe.unwrap(l.proxied)
             else
                 let proxied = proxiedIn(s newSeen())
-                l.proxied := maybe.some(:Bool proxied)
+                l.proxied := maybe.some(proxied)
                 proxied
             end
         end
@@ -629,6 +629,6 @@ export
     let heldShape(t: Type kind: shapes.ShapeKind): maybe.T(Shape) =
         begin
             let h = resolvedShape(shapes.shape(t))
-            if shapes.sameKind(h.kind kind) then maybe.some(:Shape h) else maybe.none(:Shape) end
+            if shapes.sameKind(h.kind kind) then maybe.some(h) else maybe.none(:Shape) end
         end
 end

@@ -42,7 +42,7 @@ export
             let cond = c
             let thenBranch = t
             let elsifs = vector.new(:ast.ElsifBranch)
-            let elseBranch = maybe.some(:ast.Expr f)
+            let elseBranch = maybe.some(f)
             let shortCircuit = shortCircuit
         end)
 
@@ -51,7 +51,7 @@ export
         if isBuiltinInfix(op) then
             e
         else
-            ast.exprApp(e.span ast.exprId(e.span op) vector.fromArray(:ast.Expr array of left right end))
+            ast.exprApp(e.span ast.exprId(e.span op) vector.fromArray(array of left right end))
         end
 
     let rewriteInfix(e: ast.Expr left: ast.Expr op: String right: ast.Expr): ast.Expr =
@@ -86,9 +86,9 @@ export
             shortCircuit: Bool
         end): ast.Expr =
         begin
-            let var nested = maybe.unwrapOr(:ast.Expr x.elseBranch ast.exprOk(e.span))
-            for i = {vector.length(:ast.ElsifBranch x.elsifs) - 1} downto 0 do
-                let b = vector.get(:ast.ElsifBranch x.elsifs i)
+            let var nested = maybe.unwrapOr(x.elseBranch ast.exprOk(e.span))
+            for i = {vector.length(x.elsifs) - 1} downto 0 do
+                let b = vector.get(x.elsifs i)
                 let sp = location.span(b.cond.span.file b.cond.span.startOffset e.span.endOffset)
                 nested := conditional(sp b.cond b.thenBranch nested false)
             end
@@ -96,7 +96,7 @@ export
                 let cond = x.cond
                 let thenBranch = x.thenBranch
                 let elsifs = vector.new(:ast.ElsifBranch)
-                let elseBranch = maybe.some(:ast.Expr nested)
+                let elseBranch = maybe.some(nested)
                 let shortCircuit = x.shortCircuit
             end)
         end
@@ -106,9 +106,9 @@ export
     let rewrite(e: ast.Expr): ast.Expr =
         case e.form
             when exprInfix with x then rewriteInfix(e x.left x.op x.right)
-            when exprIf with x then if vector.empty(:ast.ElsifBranch x.elsifs) then e else nestElsifs(e x) end
+            when exprIf with x then if vector.empty(x.elsifs) then e else nestElsifs(e x) end
             when declLetVal with x then
-                if not(vector.empty(:ast.FormalParam x.params)) andif not(x.isRec) andif not(isExternal(x.value)) then
+                if not(vector.empty(x.params)) andif not(x.isRec) andif not(isExternal(x.value)) then
                     let fn = ast.makeExpr(e.span option exprFun of ExprForm with
                         let params = x.params
                         let returnType = x.typeAnnot
@@ -134,9 +134,9 @@ export
      * ====================================================================== *)
 
     let rec expr(e: ast.Expr): ast.Expr = rewrite(ast.makeExpr(e.span walk(e.form)))
-    and exprs(v: vector.T(ast.Expr)): vector.T(ast.Expr) = vector.map(:ast.Expr :ast.Expr v expr)
+    and exprs(v: vector.T(ast.Expr)): vector.T(ast.Expr) = vector.map(v expr)
     and optExpr(o: maybe.T(ast.Expr)): maybe.T(ast.Expr) =
-        if maybe.isSome(:ast.Expr o) then maybe.some(:ast.Expr expr(maybe.unwrap(:ast.Expr o))) else o end
+        if maybe.isSome(o) then maybe.some(expr(maybe.unwrap(o))) else o end
     and tupleBinding(b: ast.TupleFieldBinding): ast.TupleFieldBinding =
         tuple
             let offset = b.offset
@@ -151,7 +151,7 @@ export
             when fieldGroup with x then
                 option fieldGroup of ast.TupleField with
                     let offset = x.offset
-                    let val = vector.map(:ast.TupleFieldBinding :ast.TupleFieldBinding x.val tupleBinding)
+                    let val = vector.map(x.val tupleBinding)
                 end
             when fieldDecl with x then option fieldDecl of ast.TupleField with let val = expr(x.val) end
         end
@@ -162,7 +162,7 @@ export
                 option exprIf of ExprForm with
                     let cond = expr(x.cond)
                     let thenBranch = expr(x.thenBranch)
-                    let elsifs = vector.map(:ast.ElsifBranch :ast.ElsifBranch x.elsifs
+                    let elsifs = vector.map(x.elsifs
                         fun(b: ast.ElsifBranch): ast.ElsifBranch
                             tuple
                                 let cond = expr(b.cond)
@@ -195,11 +195,11 @@ export
                 option exprInfix of ExprForm with let left = expr(x.left) let op = x.op let right = expr(x.right) end
             when exprTuple with x then
                 option exprTuple of ExprForm with
-                    let fields = vector.map(:ast.TupleField :ast.TupleField x.fields tupleField)
+                    let fields = vector.map(x.fields tupleField)
                 end
             when exprRecord with x then
                 option exprRecord of ExprForm with
-                    let fields = vector.map(:ast.RecordBinding :ast.RecordBinding x.fields
+                    let fields = vector.map(x.fields
                         fun(b: ast.RecordBinding): ast.RecordBinding
                             tuple
                                 let offset = b.offset
@@ -252,7 +252,7 @@ export
             when exprCase with x then
                 option exprCase of ExprForm with
                     let target = expr(x.target)
-                    let branches = vector.map(:ast.CaseBranch :ast.CaseBranch x.branches
+                    let branches = vector.map(x.branches
                         fun(b: ast.CaseBranch): ast.CaseBranch
                             tuple
                                 let offset = b.offset
@@ -266,7 +266,7 @@ export
             when exprInspect with x then
                 option exprInspect of ExprForm with
                     let target = expr(x.target)
-                    let branches = vector.map(:ast.InspectBranch :ast.InspectBranch x.branches
+                    let branches = vector.map(x.branches
                         fun(b: ast.InspectBranch): ast.InspectBranch
                             tuple
                                 let offset = b.offset
@@ -285,7 +285,7 @@ export
             when exprTry with x then
                 option exprTry of ExprForm with
                     let body = expr(x.body)
-                    let branches = vector.map(:ast.TryBranch :ast.TryBranch x.branches
+                    let branches = vector.map(x.branches
                         fun(b: ast.TryBranch): ast.TryBranch
                             tuple
                                 let offset = b.offset
@@ -340,5 +340,5 @@ export
         end
 
     let program(p: ast.Program): ast.Program =
-        ast.makeProgram(p.span vector.map(:ast.Phrase :ast.Phrase p.form.phrases phrase))
+        ast.makeProgram(p.span vector.map(p.form.phrases phrase))
 end

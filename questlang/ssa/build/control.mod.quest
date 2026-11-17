@@ -40,38 +40,38 @@ export
             let var found = maybe.none(:Array(Int))
             for i = 0 upto {extent runtimeLayout.constants - 1} do
                 if vals.eq(runtimeLayout.constants[i].name symbol) then
-                    found := maybe.some(:Array(Int) array of vals.constant(fn runtimeLayout.constants[i].value) end)
+                    found := maybe.some(array of vals.constant(fn runtimeLayout.constants[i].value) end)
                 end
             end
             for i = 0 upto {extent runtimeLayout.realConstants - 1} do
                 if vals.eq(runtimeLayout.realConstants[i].name symbol) then
                     let r = runtimeLayout.realConstants[i].value
-                    found := maybe.some(:Array(Int) array of ssa.realConstant(fn.f fn.cur vals.realBitsOf(r)) end)
+                    found := maybe.some(array of ssa.realConstant(fn.f fn.cur vals.realBitsOf(r)) end)
                 end
             end
             for i = 0 upto {extent runtimeLayout.addresses - 1} do
                 if vals.eq(runtimeLayout.addresses[i].name symbol) then
-                    found := maybe.some(:Array(Int) array of vals.symbolAt(fn runtimeLayout.addresses[i].symbol) end)
+                    found := maybe.some(array of vals.symbolAt(fn runtimeLayout.addresses[i].symbol) end)
                 end
             end
             for i = 0 upto {extent runtimeLayout.realBits - 1} do
                 if vals.eq(runtimeLayout.realBits[i].name symbol) then
                     let v = ssa.realConstant(fn.f fn.cur runtimeLayout.realBits[i].value)
-                    found := maybe.some(:Array(Int) array of v end)
+                    found := maybe.some(array of v end)
                 end
             end
             for i = 0 upto {extent runtimeLayout.variables - 1} do
                 if vals.eq(runtimeLayout.variables[i] symbol) then
-                    found := maybe.some(:Array(Int) array of vals.loadWord(fn vals.symbolAt(fn symbol) 0 vals.tPtr) end)
+                    found := maybe.some(array of vals.loadWord(fn vals.symbolAt(fn symbol) 0 vals.tPtr) end)
                 end
             end
             (* A runtime object's address, as C spells it: (&name) *)
             let n = stringOp.length(symbol)
             if {n > 3} andif strutil.startsWith(symbol "(&") andif {stringOp.getChar(symbol n - 1) is ')'} then
-                found := maybe.some(:Array(Int) array of vals.symbolAt(fn stringOp.getSub(symbol 2 {n - 3})) end)
+                found := maybe.some(array of vals.symbolAt(fn stringOp.getSub(symbol 2 {n - 3})) end)
             end
-            if maybe.isNone(:Array(Int) found) then raise vals.unsupported with "the external value " <> symbol end end
-            maybe.unwrap(:Array(Int) found)
+            if maybe.isNone(found) then raise vals.unsupported with "the external value " <> symbol end end
+            maybe.unwrap(found)
         end
 
     (* The values of o, emitted at fn.cur, in the form the variable result
@@ -88,10 +88,10 @@ export
             when opCallExternal with x then
                 let inlined = if extent x.descriptors is 0 then calls.inlineExternal(fn x.symbol x.args)
                     else maybe.none(:Int) end
-                if maybe.isSome(:Int inlined) then
-                    array of maybe.unwrap(:Int inlined) end
+                if maybe.isSome(inlined) then
+                    array of maybe.unwrap(inlined) end
                 else
-                    let resultType = if maybe.isSome(:Variable result) then maybe.unwrap(:Variable result).type
+                    let resultType = if maybe.isSome(result) then maybe.unwrap(result).type
                         else model.okType end
                     let ps = vals.parts(resultType)
                     let args = vals.concat(descriptors.descriptors(fn x.descriptors) vals.callAtoms(fn x.args))
@@ -101,25 +101,25 @@ export
                     calls.resultsOf(fn ps vs)
                 end
             when opMakeClosure with x then makeClosure(fn x)
-            when opEnvField with x then envField(fn x maybe.unwrap(:Variable result).type)
+            when opEnvField with x then envField(fn x maybe.unwrap(result).type)
             when opBuiltin with x then array of vals.symbolAt(fn symbols.mangleIdent(x.name) <> "_closure") end
             when opModuleMember with x then calls.moduleMember(fn x.moduleRef x.member)
             when opMakeTuple with x then
-                if maybe.unwrap(:Variable result).unboxed then
+                if maybe.unwrap(result).unboxed then
                     (* Its components, unallocated: in slot form, which for
                      * those of an unboxed tuple is their value's *)
                     vals.callAtoms(fn x.args)
                 else
-                    aggregates.makeTuple(fn x maybe.unwrap(:Variable result).type)
+                    aggregates.makeTuple(fn x maybe.unwrap(result).type)
                 end
             when opTupleField with x then
-                if maybe.isSome(:Variable x.viewMap) then
+                if maybe.isSome(x.viewMap) then
                     let comp = representation.componentShape(layout.resolvedShape(shapes.shape(ir.atomType(x.tup))) x.index)
-                    let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable x.viewMap)))
+                    let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(x.viewMap)))
                     vals.fromWord(fn vals.call1(fn "quest_view_tuple_element" array of vals.atom1(fn x.tup) vm
                         vals.constant(fn x.index) end)
                         comp.type)
-                elsif maybe.isSome(:Variable ir.atomVarOf(x.tup)) andif maybe.unwrap(:Variable ir.atomVarOf(x.tup)).unboxed then
+                elsif maybe.isSome(ir.atomVarOf(x.tup)) andif maybe.unwrap(ir.atomVarOf(x.tup)).unboxed then
                     array of vals.atom(fn x.tup)[x.index] end
                 else
                     representation.tupleComponent(fn vals.atom1(fn x.tup) layout.resolvedShape(shapes.shape(ir.atomType(x.tup))) x.index x.access)
@@ -128,38 +128,38 @@ export
                 array of vals.call1(fn "quest_alloc_exception" array of vals.symbolAt(fn vals.stringSymbol(fn.u x.name))
                     end) end
             when opConvert with x then
-                let v = case x.value when atomVar with y then maybe.some(:Variable y.v) else maybe.none(:Variable) end
-                if ir.planIs(x.plan ir.planUnbox) andif maybe.isSome(:Variable result)
-                    andif maybe.unwrap(:Variable result).boxed then
+                let v = case x.value when atomVar with y then maybe.some(y.v) else maybe.none(:Variable) end
+                if ir.planIs(x.plan ir.planUnbox) andif maybe.isSome(result)
+                    andif maybe.unwrap(result).boxed then
                     (* A QVal word holds a record or variant as its box *)
                     representation.slotFromWord(fn vals.atom1(fn x.value) x.plan.target)
-                elsif ir.planIs(x.plan ir.planBox) andif maybe.isSome(:Variable v) andif maybe.unwrap(:Variable v).boxed
-                    andif not(maybe.unwrap(:Variable v).isMutable) then
+                elsif ir.planIs(x.plan ir.planBox) andif maybe.isSome(v) andif maybe.unwrap(v).boxed
+                    andif not(maybe.unwrap(v).isMutable) then
                     (* A box is a record's or variant's QVal word *)
                     array of representation.slotToWord(fn vals.atom(fn x.value) x.plan.source) end
                 else
                     aggregates.convert(fn vals.atom(fn x.value) x.plan)
                 end
-            when opMakeRecord with x then aggregates.makeRecord(fn x maybe.unwrap(:Variable result))
+            when opMakeRecord with x then aggregates.makeRecord(fn x maybe.unwrap(result))
             when opRecordField with x then aggregates.recordField(fn vals.atom(fn x.recordAtom)
                 representation.heldShape(ir.atomType(x.recordAtom) shapes.shapeRecord) x)
             when opMakeVariant with x then
-                let vs = representation.heldShape(maybe.unwrap(:Variable result).type shapes.shapeVariant)
+                let vs = representation.heldShape(maybe.unwrap(result).type shapes.shapeVariant)
                 let index = vals.constant(fn representation.tagIndex(vs x.tag))
-                if maybe.isNone(:Atom x.payload) then
+                if maybe.isNone(x.payload) then
                     array of index vals.toVal(fn vals.constant(fn 0)) end
                 else
-                    let pa = maybe.unwrap(:Atom x.payload)
+                    let pa = maybe.unwrap(x.payload)
                     let cs = aggregates.caseShape(vs x.tag)
-                    let caseT = if maybe.isSome(:shapes.Shape cs) then maybe.unwrap(:shapes.Shape cs).type else ir.atomType(pa) end
+                    let caseT = if maybe.isSome(cs) then maybe.unwrap(cs).type else ir.atomType(pa) end
                     array of index representation.slotToWord(fn vals.atom(fn pa) caseT) end
                 end
-            when opMakeOption with x then aggregates.makeOption(fn x maybe.unwrap(:Variable result).type)
+            when opMakeOption with x then aggregates.makeOption(fn x maybe.unwrap(result).type)
             when opIsTag with x then
                 let ts = aggregates.tagShape(ir.atomType(x.value))
                 let tag = representation.tagOf(fn vals.atom(fn x.value) ts x.access x.viewMap)
                 array of vals.binary(fn ssa.opEq tag vals.constant(fn representation.tagIndex(ts x.tag))) end
-            when opPayload with x then aggregates.payload(fn x maybe.unwrap(:Variable result).type)
+            when opPayload with x then aggregates.payload(fn x maybe.unwrap(result).type)
             when opOrdinal with x then
                 (* The tag numbers the shape's cases, ordered by name; the
                  * ordinal counts in the static type's order *)
@@ -167,16 +167,16 @@ export
                 let tag = representation.tagOf(fn vals.atom(fn x.value) ts x.access x.viewMap)
                 let indices = array of(extent ts.cases 0)
                 for i = 0 upto {extent ts.cases - 1} do
-                    let caseName = maybe.unwrapOr(:String ts.cases[i].name "")
+                    let caseName = maybe.unwrapOr(ts.cases[i].name "")
                     let var index = ~1
                     for j = 0 upto {extent x.cases - 1} do if {index < 0}
                         andif vals.eq(x.cases[j] caseName) then index := j end end
                     indices[i] := index
                 end
                 array of aggregates.mapped(fn tag indices) end
-            when opMakeArray with x then aggregates.makeArray(fn x.args maybe.unwrap(:Variable result).type)
+            when opMakeArray with x then aggregates.makeArray(fn x.args maybe.unwrap(result).type)
             when opArrayRep with x then
-                let elem = shapes.element(shapes.shape(maybe.unwrap(:Variable result).type))
+                let elem = shapes.element(shapes.shape(maybe.unwrap(result).type))
                 (* A negative count raises array.error
                  * (quest_check_array_count_at, inline) *)
                 let n = vals.atom1(fn x.count)
@@ -187,10 +187,10 @@ export
             when opIndex with x then
                 let address = aggregates.elementAddress(fn vals.atom1(fn x.arr) vals.atom1(fn x.index) x.offset)
                 representation.slotFromWord(fn vals.loadWord(fn address 0 vals.tVal) aggregates.elementShape(x.arr).type)
-            when opTypeApp with x then aggregates.typeApp(fn x maybe.unwrap(:Variable result))
+            when opTypeApp with x then aggregates.typeApp(fn x maybe.unwrap(result))
             when opAddrVar with x then
                 let pointer = vals.pointerOf(fn x.v)
-                if maybe.isSome(:Int pointer) then array of maybe.unwrap(:Int pointer) end
+                if maybe.isSome(pointer) then array of maybe.unwrap(pointer) end
                 elsif vals.isGlobal(fn x.v) then array of vals.symbolAt(fn vals.globalSymbol(fn.u x.v)) end
                 else array of vals.slotOf(fn x.v) end
                 end
@@ -200,13 +200,13 @@ export
                 let addr = ssa.slotAddress(fn.f fn.cur s)
                 vals.writeLocation(fn addr t vals.atom(fn x.init))
                 array of addr end
-            when opLoad with x then vals.readLocation(fn vals.atom1(fn x.address) maybe.unwrap(:Variable result).type)
+            when opLoad with x then vals.readLocation(fn vals.atom1(fn x.address) maybe.unwrap(result).type)
             when opAddrField with x then
                 array of aggregates.recordSlot(fn vals.atom(fn x.base) representation.heldShape(ir.atomType(x.base) shapes.shapeRecord)
                     x.name x.viewMap) end
             when opAddrComponent with x then
-                if maybe.isSome(:Variable x.viewMap) then
-                    let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable x.viewMap)))
+                if maybe.isSome(x.viewMap) then
+                    let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(x.viewMap)))
                     array of vals.call1(fn "quest_view_tuple_slot" array of vals.atom1(fn x.base) vm vals.constant(fn
                         x.index) end) end
                 else
@@ -226,7 +226,7 @@ export
                 let v = case x.exc when atomVar with y then y.v else ir.newVar("" model.okType false) end
                 let state = vals.handlerState(fn v)
                 representation.slotFromWord(fn vals.loadWord(fn state runtimeLayout.offset("QExceptionState" "payload") vals.tVal)
-                    maybe.unwrap(:Variable result).type)
+                    maybe.unwrap(result).type)
             when opCaughtException with x then
                 (* The handler's state, copied to the heap (docs/raised.md
                  * section 6) *)
@@ -250,18 +250,18 @@ export
                  * the captures, a word for each of their values *)
                 let kinds = vector.new(:objectLayout.Kind)
                 for i = 0 upto {extent x.descriptors - 1} do
-                    vector.append(:objectLayout.Kind kinds option kindPointer of objectLayout.Kind end)
+                    vector.append(kinds option kindPointer of objectLayout.Kind end)
                 end
                 for i = 0 upto {extent x.captures - 1} do
                     let ks = objectLayout.representationKinds(shapes.shape(ir.atomType(x.captures[i])))
-                    for j = 0 upto {extent ks - 1} do vector.append(:objectLayout.Kind kinds ks[j]) end
+                    for j = 0 upto {extent ks - 1} do vector.append(kinds ks[j]) end
                 end
-                if vector.length(:objectLayout.Kind kinds) is 0 then
-                    vector.append(:objectLayout.Kind kinds option kindScalar of objectLayout.Kind end)
+                if vector.length(kinds) is 0 then
+                    vector.append(kinds option kindScalar of objectLayout.Kind end)
                 end
-                let words = vector.length(:objectLayout.Kind kinds)
+                let words = vector.length(kinds)
                 let env = representation.alloc(fn 8 * words objectLayout.register(fn.u.layouts
-                    objectLayout.envLayout(code vector.toArray(:objectLayout.Kind kinds) 8 * words "")))
+                    objectLayout.envLayout(code vector.toArray(kinds) 8 * words "")))
                 let mark = vals.beginInit(fn env)
                 let descs = descriptors.descriptors(fn x.descriptors)
                 for i = 0 upto {extent descs - 1} do vals.store(fn env 8 * i 8 descs[i]) end
@@ -270,12 +270,12 @@ export
                     let a = x.captures[i]
                     let isDeferred = case a
                         when atomVar with y then
-                            maybe.isSome(:vals.Deferred fn.deferred)
-                                andif hashMap.contains(:Int :Bool maybe.unwrap(:vals.Deferred fn.deferred).vars y.v.id)
+                            maybe.isSome(fn.deferred)
+                                andif hashMap.contains(maybe.unwrap(fn.deferred).vars y.v.id)
                         else false
                     end
                     if isDeferred then
-                        vector.append(:vals.DeferredCapture maybe.unwrap(:vals.Deferred fn.deferred).captures
+                        vector.append(maybe.unwrap(fn.deferred).captures
                             tuple let env = env let offset = 8 * at let a = a end)
                         at := at + extent vals.parts(ir.atomType(a))
                     else
@@ -298,8 +298,8 @@ export
      * makeClosure lays it out *)
     and envField(fn: vals.Fn x: ir.OpEnvField t: Type): Array(Int) =
         begin
-            if maybe.isNone(:ir.OpMakeClosure fn.closure) then raise vals.unsupported with "env_field outside a closure" end end
-            let c = maybe.unwrap(:ir.OpMakeClosure fn.closure)
+            if maybe.isNone(fn.closure) then raise vals.unsupported with "env_field outside a closure" end end
+            let c = maybe.unwrap(fn.closure)
             let var at = extent c.descriptors
             for i = 0 upto {x.index - 1} do at := at + extent vals.parts(ir.atomType(c.captures[i])) end
             let env = vals.atom1(fn x.env)
@@ -323,13 +323,13 @@ export
     (* Pops the handlers of the trys entered since depth, for a way out of
      * them *)
     let leaveTo(fn: vals.Fn depth: Int): Ok =
-        if vector.length(:Int fn.handlers) > depth then
-            let h = vector.get(:Int fn.handlers depth)
+        if vector.length(fn.handlers) > depth then
+            let h = vector.get(fn.handlers depth)
             vals.store(fn vals.threadLocal(fn handlerChain) 0 8 vals.loadWord(fn h
                 runtimeLayout.offset("QExceptionHandler" "prev") vals.tPtr))
         end
 
-    let labelDepth(fn: vals.Fn label: String): Int = maybe.unwrapOr(:Int hashMap.get(:String :Int fn.labelDepth label) 0)
+    let labelDepth(fn: vals.Fn label: String): Int = maybe.unwrapOr(hashMap.get(fn.labelDepth label) 0)
 
     (* What s compiles to is at its source position, or, if it has none, at
      * the position of the code before it *)
@@ -337,8 +337,8 @@ export
         begin
             let pos = ir.stmtPos(s)
             let resolved = if pos >= 0 then ir.sourcePos(fn.u.unit pos) else maybe.none(:ir.SourcePos) end
-            if maybe.isSome(:ir.SourcePos resolved) then
-                let r = maybe.unwrap(:ir.SourcePos resolved)
+            if maybe.isSome(resolved) then
+                let r = maybe.unwrap(resolved)
                 fn.f.at := tuple let file = r.file + 1 let line = r.line let col = r.col end
             end
         end
@@ -354,11 +354,11 @@ export
         else
             positioned(fn s)
             case s
-                when sLet with x then vals.write(fn x.v operation(fn x.value maybe.some(:Variable x.v)))
+                when sLet with x then vals.write(fn x.v operation(fn x.value maybe.some(x.v)))
                 when sDo with x then begin operation(fn x.value maybe.none(:Variable)) ok end
                 when sVarDecl with x then
                     if not(vals.isGlobal(fn x.v)) then begin vals.slotOf(fn x.v) ok end end
-                    if maybe.isSome(:Atom x.init) then vals.write(fn x.v vals.atom(fn maybe.unwrap(:Atom x.init))) end
+                    if maybe.isSome(x.init) then vals.write(fn x.v vals.atom(fn maybe.unwrap(x.init))) end
                 when sAssign with x then vals.write(fn x.v vals.atom(fn x.value))
                 when sIf with x then
                     let c = vals.atom1(fn x.cond)
@@ -376,10 +376,10 @@ export
                     if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
                     fn.cur := after
                 when sLoop with x then
-                    vals.put(:String :Int fn.labelDepth x.label vector.length(:Int fn.handlers))
+                    vals.put(fn.labelDepth x.label vector.length(fn.handlers))
                     let head = newBlock(fn)
                     let after = newBlock(fn)
-                    vals.put(:String :vals.LoopTargets fn.loops x.label tuple let head = head let after = after end)
+                    vals.put(fn.loops x.label tuple let head = head let after = after end)
                     vals.jump(fn head vals.noValues)
                     fn.cur := head
                     body(fn x.body)
@@ -387,10 +387,10 @@ export
                     fn.cur := after
                 when sBreak with x then
                     leaveTo(fn labelDepth(fn x.label))
-                    vals.jump(fn hashMap.find(:String :vals.LoopTargets fn.loops x.label).after vals.noValues)
+                    vals.jump(fn hashMap.find(fn.loops x.label).after vals.noValues)
                 when sContinue with x then
                     leaveTo(fn labelDepth(fn x.label))
-                    vals.jump(fn hashMap.find(:String :vals.LoopTargets fn.loops x.label).head vals.noValues)
+                    vals.jump(fn hashMap.find(fn.loops x.label).head vals.noValues)
                 when sJoin with x then
                     (* A join point (ir.sJoin) is a block k with a block
                      * parameter for each part of each of its parameters: the
@@ -410,9 +410,9 @@ export
                         for j = 0 upto {extent ps - 1} do vs[j] := ssa.addParam(fn.f k ps[j].type) end
                         received[i] := vs
                     end
-                    vals.put(:String :Int fn.joins x.label k)
-                    vals.put(:String :Array(Int) fn.joinParts x.label counts)
-                    vals.put(:String :Int fn.labelDepth x.label vector.length(:Int fn.handlers))
+                    vals.put(fn.joins x.label k)
+                    vals.put(fn.joinParts x.label counts)
+                    vals.put(fn.labelDepth x.label vector.length(fn.handlers))
                     let after = newBlock(fn)
                     body(fn x.body)
                     if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
@@ -427,26 +427,26 @@ export
                     (* A parameter of no parts (an Ok) takes nothing, whatever
                      * its argument: a call at Ok of a function whose result is
                      * generic returns a word *)
-                    let counts = hashMap.find(:String :Array(Int) fn.joinParts x.label)
+                    let counts = hashMap.find(fn.joinParts x.label)
                     let passed = vector.new(:Int)
                     for i = 0 upto {extent x.args - 1} do
                         if {i >= extent counts} orif {counts[i] > 0} then
                             let vs = vals.atom(fn x.args[i])
-                            for k = 0 upto {extent vs - 1} do vector.append(:Int passed vs[k]) end
+                            for k = 0 upto {extent vs - 1} do vector.append(passed vs[k]) end
                         end
                     end
-                    let args = vector.toArray(:Int passed)
+                    let args = vector.toArray(passed)
                     leaveTo(fn labelDepth(fn x.label))
-                    vals.jump(fn hashMap.find(:String :Int fn.joins x.label) args)
+                    vals.jump(fn hashMap.find(fn.joins x.label) args)
                 when sReturn with x then
                     (* A C function returning void returns nothing, and Ok
                      * returned as a QVal word is 0 *)
-                    let wanted = vector.length(:ssa.Type fn.f.resultTypes)
+                    let wanted = vector.length(fn.f.resultTypes)
                     let vs = if wanted is 0 then vals.noValues else vals.atom(fn x.value) end
                     let zero = fun(): Int
                         begin
                             let n = vals.constant(fn 0)
-                            case vector.get(:ssa.Type fn.f.resultTypes 0)
+                            case vector.get(fn.f.resultTypes 0)
                                 when typeVal then vals.toVal(fn n)
                                 when typeInt, typePtr, typeReal then n
                             end
@@ -474,9 +474,9 @@ export
                         vals.callVoid(fn "quest_barrier_slot" array of slot end)
                     end
                 when sStoreComponent with x then
-                    if maybe.isSome(:Variable x.viewMap) then
+                    if maybe.isSome(x.viewMap) then
                         let comp = representation.componentShape(layout.resolvedShape(shapes.shape(ir.atomType(x.base))) x.index)
-                        let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable x.viewMap)))
+                        let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(x.viewMap)))
                         let slot = vals.call1(fn "quest_view_tuple_slot" array of vals.atom1(fn x.base) vm
                             vals.constant(fn x.index) end)
                         representation.writeSlot(fn slot comp.type vals.atom(fn x.value))
@@ -532,12 +532,12 @@ export
                 when sLetRec with x then
                     let saved = fn.deferred
                     let vars = hashMap.new(:Int :Bool vals.intEqual hash.int)
-                    for i = 0 upto {extent x.vars - 1} do vals.put(:Int :Bool vars x.vars[i].id true) end
+                    for i = 0 upto {extent x.vars - 1} do vals.put(vars x.vars[i].id true) end
                     let d = tuple let vars = vars let captures = vector.new(:vals.DeferredCapture) end
-                    fn.deferred := maybe.some(:vals.Deferred d)
+                    fn.deferred := maybe.some(d)
                     body(fn x.body)
-                    for i = 0 upto {vector.length(:vals.DeferredCapture d.captures) - 1} do
-                        let c = vector.get(:vals.DeferredCapture d.captures i)
+                    for i = 0 upto {vector.length(d.captures) - 1} do
+                        let c = vector.get(d.captures i)
                         let vs = vals.atom(fn c.a)
                         (* The environment was made before the body ran *)
                         for k = 0 upto {extent vs - 1} do vals.store(fn c.env c.offset + 8 * k 8 vs[k]) end
@@ -561,12 +561,12 @@ export
                 when sEchoText with x then
                     vals.callVoid(fn "quest_echo_text" array of vals.symbolAt(fn vals.stringSymbol(fn.u x.text)) end)
                 when sRaise with x then
-                    let payload = if maybe.isNone(:Atom x.payload) then vals.toVal(fn vals.constant(fn 0))
+                    let payload = if maybe.isNone(x.payload) then vals.toVal(fn vals.constant(fn 0))
                         (* In its slot form (the slots pass boxed a record or
                          * variant), as the C printer's shapeSlotToQval reads it *)
-                        else representation.slotToWord(fn vals.atom(fn maybe.unwrap(:Atom x.payload)) ir.atomType(maybe.unwrap(:Atom x.payload)))
+                        else representation.slotToWord(fn vals.atom(fn maybe.unwrap(x.payload)) ir.atomType(maybe.unwrap(x.payload)))
                     end
-                    if maybe.isSome(:ir.Descriptor x.descriptor) then
+                    if maybe.isSome(x.descriptor) then
                         vals.callVoid(fn "quest_raise_typed_at" array of vals.atom1(fn x.exc) payload
                             descriptors.maybeDescriptor(fn x.descriptor) vals.symbolAt(fn vals.stringSymbol(fn.u x.payloadText))
                             vals.site(fn x.offset) end)
@@ -594,32 +594,32 @@ export
                 blocks[ci] := ssa.newBlock(fn.f)
                 let c = x.cases[ci]
                 for ti = 0 upto {extent c.tags - 1} do
-                    vector.append(:Int cases representation.tagIndex(t c.tags[ti]))
-                    vector.append(:ssa.Target targets ssa.target(blocks[ci] vals.noValues))
+                    vector.append(cases representation.tagIndex(t c.tags[ti]))
+                    vector.append(targets ssa.target(blocks[ci] vals.noValues))
                 end
             end
             let otherwise = ssa.newBlock(fn.f)
             vals.terminate(fn option termSwitch of ssa.Terminator with
-                let value = tag let cases = vector.toArray(:Int cases) let targets = vector.toArray(:ssa.Target targets)
+                let value = tag let cases = vector.toArray(cases) let targets = vector.toArray(targets)
                 let default = ssa.target(otherwise vals.noValues)
             end)
             for ci = 0 upto {extent x.cases - 1} do
                 let c = x.cases[ci]
                 fn.cur := blocks[ci]
-                if maybe.isSome(:Variable c.binder)
-                    andif not(shapes.kindIs(shapes.shape(maybe.unwrap(:Variable c.binder).type) shapes.shapeOk)) then
-                    let binder = maybe.unwrap(:Variable c.binder)
+                if maybe.isSome(c.binder)
+                    andif not(shapes.kindIs(shapes.shape(maybe.unwrap(c.binder).type) shapes.shapeOk)) then
+                    let binder = maybe.unwrap(c.binder)
                     let binderKind = shapes.shape(binder.type).kind
-                    let values = if maybe.isSome(:Variable x.viewMap) andif not(isVariant)
+                    let values = if maybe.isSome(x.viewMap) andif not(isVariant)
                         andif shapes.sameKind(binderKind shapes.shapeTuple) then
                         (* A bounded type parameter's value: its payload, viewed
                          * at the bound's payload type *)
-                        let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable x.viewMap)))
+                        let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(x.viewMap)))
                         array of vals.call1(fn "quest_view_option_payload" array of v[0] vm end) end
-                    elsif maybe.isSome(:Variable x.viewMap) then
+                    elsif maybe.isSome(x.viewMap) then
                         (* A bounded type parameter's value: its payload read
                          * through the view map, converted *)
-                        aggregates.viewPayload(fn v t c.tags[0] vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable x.viewMap))) binder.type)
+                        aggregates.viewPayload(fn v t c.tags[0] vals.atom1(fn ir.atomOfVar(maybe.unwrap(x.viewMap))) binder.type)
                     elsif isVariant then
                         representation.slotFromWord(fn v[1] binder.type)
                     elsif shapes.sameKind(binderKind shapes.shapeTuple) then
@@ -633,8 +633,8 @@ export
                 if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
             end
             fn.cur := otherwise
-            if maybe.isSome(:ir.Body x.elseBody) then
-                body(fn maybe.unwrap(:ir.Body x.elseBody))
+            if maybe.isSome(x.elseBody) then
+                body(fn maybe.unwrap(x.elseBody))
                 if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
             else
                 vals.callVoid(fn "quest_raise_variant_error" vals.noValues)
@@ -650,7 +650,7 @@ export
      * state. *)
     and tryStatement(fn: vals.Fn x: ir.StmtTry): Ok =
         begin
-            let handlerRecord = maybe.unwrap(:runtimeLayout.Struct runtimeLayout.struct("QExceptionHandler"))
+            let handlerRecord = maybe.unwrap(runtimeLayout.struct("QExceptionHandler"))
             let slot = ssa.newSlot(fn.f handlerRecord.bytes 16)
             let h = ssa.slotAddress(fn.f fn.cur slot)
             let chain = vals.threadLocal(fn handlerChain)
@@ -684,9 +684,9 @@ export
                 let slot = slot let body = ssa.target(bodyB vals.noValues) let handler = handlerB
             end)
             fn.cur := bodyB
-            vector.append(:Int fn.handlers h)
+            vector.append(fn.handlers h)
             body(fn x.body)
-            vector.pop(:Int fn.handlers)
+            vector.pop(fn.handlers)
             if not(vals.terminated(fn)) then
                 vals.store(fn vals.threadLocal(fn handlerChain) 0 8 vals.loadWord(fn h
                     runtimeLayout.offset("QExceptionHandler" "prev") vals.tPtr))
@@ -698,7 +698,7 @@ export
             (* The handler's variable: a copy of quest_current_exception, which
              * any raise the handler's code makes, even one it catches itself,
              * overwrites *)
-            let stateRecord = maybe.unwrap(:runtimeLayout.Struct runtimeLayout.struct("QExceptionState"))
+            let stateRecord = maybe.unwrap(runtimeLayout.struct("QExceptionState"))
             let stateSlot = ssa.newSlot(fn.f stateRecord.bytes 8)
             let state = ssa.slotAddress(fn.f fn.cur stateSlot)
             let current = vals.threadLocal(fn currentException)
@@ -715,12 +715,12 @@ export
      * one for each case, as the C printer prints them *)
     and inspectAuto(fn: vals.Fn x: ir.StmtInspect): Ok =
         begin
-            let autoType = maybe.unwrap(:Type x.autoType)
+            let autoType = maybe.unwrap(x.autoType)
             let storedType = model.autoPayloadType(autoType maybe.none(:Type))
             let tgt = vals.atom1(fn x.value)
             let typeDesc = vals.loadWord(fn tgt runtimeLayout.offset("QAuto" "type_desc") vals.tPtr)
-            if maybe.isSome(:ir.DescriptorParam x.witness) then
-                vals.bindToValues(fn maybe.unwrap(:ir.DescriptorParam x.witness).v array of typeDesc end)
+            if maybe.isSome(x.witness) then
+                vals.bindToValues(fn maybe.unwrap(x.witness).v array of typeDesc end)
             end
             let stored = vals.loadWord(fn tgt runtimeLayout.offset("QAuto" "payload") vals.tPtr)
             let after = newBlock(fn)
@@ -743,8 +743,8 @@ export
                 end)
                 fn.cur := caseB
                 if extent c.binders > 0 then
-                    let arm = maybe.unwrap(:ir.InspectArm c.arm)
-                    let armType = model.autoPayloadType(autoType maybe.some(:Type c.matchType))
+                    let arm = maybe.unwrap(c.arm)
+                    let armType = model.autoPayloadType(autoType maybe.some(c.matchType))
                     let a = if arm.exact then
                         let same = vals.narrowed(fn vals.call1(fn "quest_layout_equivalent" array of typeDesc matchDesc
                             end)
@@ -752,8 +752,8 @@ export
                         representation.choose(fn same array of vals.tPtr end
                             fun(): Array(Int)
                                 if arm.shared then array of stored end
-                                elsif maybe.isNone(:ir.Plan arm.plan) then array of stored end
-                                else aggregates.convert(fn array of stored end maybe.unwrap(:ir.Plan arm.plan))
+                                elsif maybe.isNone(arm.plan) then array of stored end
+                                else aggregates.convert(fn array of stored end maybe.unwrap(arm.plan))
                                 end
                             fun(): Array(Int)
                                 begin
@@ -771,8 +771,8 @@ export
                 if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
                 fn.cur := next
             end
-            if maybe.isSome(:ir.Body x.elseBody) then
-                body(fn maybe.unwrap(:ir.Body x.elseBody))
+            if maybe.isSome(x.elseBody) then
+                body(fn maybe.unwrap(x.elseBody))
                 if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
             else
                 vals.callVoid(fn "quest_raise_dynamic_error_at" array of vals.site(fn x.offset) end)
@@ -787,11 +787,11 @@ export
         begin
             let storedFields = case storedType.form
                 when typeTuple with x then model.tupleValueFields(x.fields)
-                else vector.toArray(:model.ValueField vector.new(:model.ValueField))
+                else vector.toArray(vector.new(:model.ValueField))
             end
             let armFields = case armType.form
                 when typeTuple with x then model.tupleValueFields(x.fields)
-                else vector.toArray(:model.ValueField vector.new(:model.ValueField))
+                else vector.toArray(vector.new(:model.ValueField))
             end
             let var n = extent arm.descriptors
             if extent storedFields < n then n := extent storedFields end
@@ -802,10 +802,10 @@ export
             for i = 0 upto {n - 1} do
                 let src = vals.loadWord(fn stored 8 * i vals.tVal)
                 let pair = arm.descriptors[i]
-                if maybe.isNone(:ir.DescriptorPair pair) then
+                if maybe.isNone(pair) then
                     vals.store(fn a 8 * i 8 src)
                 else
-                    let pr = maybe.unwrap(:ir.DescriptorPair pair)
+                    let pr = maybe.unwrap(pair)
                     let w = vals.call1(fn "quest_convert" array of src descriptors.descriptor(fn pr.source)
                         descriptors.descriptor(fn pr.target) end)
                     vals.store(fn a 8 * i 8 w)
@@ -816,5 +816,5 @@ export
         end
 
     and body(fn: vals.Fn b: ir.Body): Ok =
-        for i = 0 upto {vector.length(:ir.Stmt b.statements) - 1} do statement(fn vector.get(:ir.Stmt b.statements i)) end
+        for i = 0 upto {vector.length(b.statements) - 1} do statement(fn vector.get(b.statements i)) end
 end

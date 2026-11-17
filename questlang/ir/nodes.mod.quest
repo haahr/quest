@@ -525,7 +525,7 @@ export
 
     let newBody(): Body = tuple let id = nextId() let var statements = vector.new(:Stmt) end
     let bodyOf(statements: Array(Stmt)): Body =
-        tuple let id = nextId() let var statements = vector.fromArray(:Stmt statements) end
+        tuple let id = nextId() let var statements = vector.fromArray(statements) end
 
     let newStaticDescriptor(t: Type echo: Bool): StaticDescriptor = tuple let id = nextId() let type = t let echo = echo end
 
@@ -613,12 +613,12 @@ export
 
     let addMember(m: Members name: String v: Variable): Ok =
         begin
-            if not(hashMap.contains(:String :Variable m.vars name)) then vector.append(:String m.names name) end
-            hashMap.insert(:String :Variable m.vars name v)
+            if not(hashMap.contains(m.vars name)) then vector.append(m.names name) end
+            hashMap.insert(m.vars name v)
             ok
         end
 
-    let member(m: Members name: String): maybe.T(Variable) = hashMap.get(:String :Variable m.vars name)
+    let member(m: Members name: String): maybe.T(Variable) = hashMap.get(m.vars name)
 
     let newModule(name: String interfaceName: String init: Body members: Members): Module =
         tuple
@@ -666,35 +666,35 @@ export
 
     let fileMap(u: Unit file: Int): maybe.T(location.SourceMap) =
         if file is 0 then u.sourceMap
-        elsif {file > 0} andif {file <= vector.length(:maybe.T(location.SourceMap) u.mergedSources)} then
-            vector.get(:maybe.T(location.SourceMap) u.mergedSources {file - 1})
+        elsif {file > 0} andif {file <= vector.length(u.mergedSources)} then
+            vector.get(u.mergedSources {file - 1})
         else maybe.none(:location.SourceMap) end
 
     let sourceFile(u: Unit file: Int): maybe.T(String) =
         begin
             let sm = fileMap(u file)
-            if maybe.isNone(:location.SourceMap sm) then maybe.none(:String)
-            else maybe.some(:String location.file(maybe.unwrap(:location.SourceMap sm))) end
+            if maybe.isNone(sm) then maybe.none(:String)
+            else maybe.some(location.file(maybe.unwrap(sm))) end
         end
 
     let sourcePos(u: Unit offset: Int): maybe.T(SourcePos) =
         begin
             let file = if offset < 0 then ~1 else offset / fileSpan end
             let sm = fileMap(u file)
-            if maybe.isNone(:location.SourceMap sm) then maybe.none(:SourcePos)
+            if maybe.isNone(sm) then maybe.none(:SourcePos)
             else
-                let pos = location.locate(maybe.unwrap(:location.SourceMap sm) offset - {file * fileSpan})
-                maybe.some(:SourcePos tuple let file = file let line = pos.line let col = pos.col end)
+                let pos = location.locate(maybe.unwrap(sm) offset - {file * fileSpan})
+                maybe.some(tuple let file = file let line = pos.line let col = pos.col end)
             end
         end
 
     let site(u: Unit offset: Int): maybe.T(String) =
         begin
             let pos = sourcePos(u offset)
-            if maybe.isNone(:SourcePos pos) then maybe.none(:String)
+            if maybe.isNone(pos) then maybe.none(:String)
             else
-                let p = maybe.unwrap(:SourcePos pos)
-                maybe.some(:String maybe.unwrap(:String sourceFile(u p.file)) <> ":" <> conv.int(p.line) <> ":"
+                let p = maybe.unwrap(pos)
+                maybe.some(maybe.unwrap(sourceFile(u p.file)) <> ":" <> conv.int(p.line) <> ":"
                     <> conv.int(p.col))
             end
         end
@@ -775,10 +775,10 @@ export
         begin
             let var found = maybe.none(:Prim)
             for i = 0 upto {extent prims - 1} do
-                if stringOp.equal(primName(prims[i]) name) then found := maybe.some(:Prim prims[i]) end
+                if stringOp.equal(primName(prims[i]) name) then found := maybe.some(prims[i]) end
             end
-            if maybe.isNone(:Prim found) then raise noSuchPrim with name end end
-            maybe.unwrap(:Prim found)
+            if maybe.isNone(found) then raise noSuchPrim with name end end
+            maybe.unwrap(found)
         end
 
     let comparesIdentity(p: Prim): Bool =
@@ -1000,11 +1000,11 @@ export
         end
 
     let terminated(b: Body): Bool =
-        not(vector.empty(:Stmt b.statements)) andif isTerminator(vector.last(:Stmt b.statements))
+        not(vector.empty(b.statements)) andif isTerminator(vector.last(b.statements))
 
     let atomVarOf(a: Atom): maybe.T(Variable) =
         case a
-            when atomVar with x then maybe.some(:Variable x.v)
+            when atomVar with x then maybe.some(x.v)
             else maybe.none(:Variable)
         end
 

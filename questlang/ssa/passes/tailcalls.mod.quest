@@ -24,16 +24,16 @@ export
      * the callee runs *)
     let slotsEscape(f: Function): Bool =
         begin
-            let n = vector.length(:ssa.Type f.types)
+            let n = vector.length(f.types)
             let derived = array of(n false)
             let var changed = true
             while changed do
                 changed := false
                 let mark(v: Int): Bool = if derived[v] then false else begin derived[v] := true true end end
-                for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                for b = 0 upto {vector.length(f.blocks) - 1} do
                     let blk = ssa.block(f b)
-                    for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                        let i = vector.get(:ssa.Inst blk.insts k)
+                    for k = 0 upto {vector.length(blk.insts) - 1} do
+                        let i = vector.get(blk.insts k)
                         let from = case i.op
                             when opSlot then true
                             when opAdd, opSub, opPtrAdd then derived[i.args[0]] orif derived[i.args[1]]
@@ -54,7 +54,7 @@ export
                         begin
                             let params = ssa.block(f t.block).params
                             for a = 0 upto {extent t.args - 1} do
-                                if derived[t.args[a]] andif mark(vector.get(:Int params a)) then changed := true end
+                                if derived[t.args[a]] andif mark(vector.get(params a)) then changed := true end
                             end
                         end
                     let ts = ssa.targets(blk.term)
@@ -68,10 +68,10 @@ export
                     for i = 0 upto {extent vs - 1} do if derived[vs[i]] then found := true end end
                     found
                 end
-            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 let blk = ssa.block(f b)
-                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                    let i = vector.get(:ssa.Inst blk.insts k)
+                for k = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts k)
                     if ssa.isOp(i ssa.opStore) then
                         if derived[i.args[1]] then escapes := true end
                     elsif ssa.isCall(i) then
@@ -95,7 +95,7 @@ export
     let rec returnsWithin(f: Function t: ssa.Target values: Array(Int) depth: Int): Bool =
         begin
             let blk = ssa.block(f t.block)
-            let params = vector.toArray(:Int blk.params)
+            let params = vector.toArray(blk.params)
             let passed(vs: Array(Int)): Array(Int) =
                 begin
                     let r = array of(extent vs 0)
@@ -105,7 +105,7 @@ export
                     end
                     r
                 end
-            if {depth > 8} orif not(vector.empty(:ssa.Inst blk.insts)) then
+            if {depth > 8} orif not(vector.empty(blk.insts)) then
                 false
             else
                 case blk.term
@@ -122,9 +122,9 @@ export
     let markFunction(f: Function): Ok =
         if not(slotsEscape(f)) then
             let var marked = false
-            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 let blk = ssa.block(f b)
-                let n = vector.length(:ssa.Inst blk.insts)
+                let n = vector.length(blk.insts)
                 let isExtension(i: ssa.Inst): Bool = ssa.isOp(i ssa.opZext8) orif ssa.isOp(i ssa.opSext8)
                 (* The call, and what it returns: its results, or the extension
                  * of its byte, which this function's caller makes again
@@ -133,29 +133,29 @@ export
                 let var returned = array of(0 0)
                 let var pops = 0
                 if n > 0 then
-                    let last = vector.get(:ssa.Inst blk.insts {n - 1})
+                    let last = vector.get(blk.insts {n - 1})
                     if ssa.isCall(last) then
-                        call := maybe.some(:ssa.Inst last)
+                        call := maybe.some(last)
                         returned := last.results
                         pops := 1
                     elsif {n > 1} andif isExtension(last) then
-                        let before = vector.get(:ssa.Inst blk.insts {n - 2})
+                        let before = vector.get(blk.insts {n - 2})
                         if ssa.isCall(before) andif sameValues(last.args before.results) then
-                            call := maybe.some(:ssa.Inst before)
+                            call := maybe.some(before)
                             returned := last.results
                             pops := 2
                         end
                     end
                 end
-                if maybe.isSome(:ssa.Inst call) then
+                if maybe.isSome(call) then
                     let tail = case blk.term
                         when termReturn with x then sameValues(x.values returned)
                         when termJump with x then returnsThrough(f x.target returned)
                         when termNone, termBranch, termSwitch, termTailCall, termTry, termUnreachable then false
                     end
                     if tail then
-                        for k = 1 upto pops do let ignored = vector.pop(:ssa.Inst blk.insts) end
-                        let c = maybe.unwrap(:ssa.Inst call)
+                        for k = 1 upto pops do let ignored = vector.pop(blk.insts) end
+                        let c = maybe.unwrap(call)
                         blk.term := option termTailCall of ssa.Terminator with let call = c end
                         blk.termLoc := c.loc
                         marked := true
@@ -167,7 +167,7 @@ export
         end
 
     let markUnit(u: ssa.Unit): Ok =
-        for i = 0 upto {vector.length(:Function u.functions) - 1} do
-            markFunction(vector.get(:Function u.functions i))
+        for i = 0 upto {vector.length(u.functions) - 1} do
+            markFunction(vector.get(u.functions i))
         end
 end

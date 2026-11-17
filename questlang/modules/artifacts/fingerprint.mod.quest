@@ -47,7 +47,7 @@ export
 
     let sorted(lines: vector.T(String)): String =
         begin
-            sort.sortVector(:String lines sort.stringCompare)
+            sort.sortVector(lines sort.stringCompare)
             strutil.join("" lines)
         end
 
@@ -66,9 +66,9 @@ export
             let importLines = vector.new(:String)
             let useLines = vector.new(:String)
             for i = 0 upto {extent imps - 1} do
-                vector.append(:String importLines "import " <> imps[i] <> "\n")
+                vector.append(importLines "import " <> imps[i] <> "\n")
                 let path = importedPath(imps[i])
-                vector.append(:String useLines "uses " <> path <> " " <> imported(path) <> "\n")
+                vector.append(useLines "uses " <> path <> " " <> imported(path) <> "\n")
             end
             let typeLines = vector.new(:String)
             let types = interfaceCompiler.itemsOf(interfaceCompiler.fieldOf(r "types"))
@@ -76,14 +76,14 @@ export
                 let t = types[i]
                 let manifest = if interfaceCompiler.boolOf(interfaceCompiler.fieldOf(t "isManifest")) then " = " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(t "manifestType"))
                     else "" end
-                vector.append(:String typeLines
+                vector.append(typeLines
                     "type " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(t "name")) <> " " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(t "kind")) <> manifest <> "\n")
             end
             let valueLines = vector.new(:String)
             let vals = interfaceCompiler.itemsOf(interfaceCompiler.fieldOf(r "values"))
             for i = 0 upto {extent vals - 1} do
                 let v = vals[i]
-                vector.append(:String valueLines
+                vector.append(valueLines
                     "value " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(v "name")) <> ": " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(v "typeSig")) <> "\n")
             end
             sha256.hexDigest("abi " <> conv.int(abi.abiVersion) <> "\ninterface " <> canonical <> "\n"
@@ -100,31 +100,31 @@ export
             let resolved = env.resolveInterface(e name)
             let canonical = graph.interfaceName(resolved)
             let root = loader.resolvedArtifactRoot(e resolved)
-            let qi = if maybe.isSome(:String root) then
-                maybe.some(:String interfaceCompiler.ensureResolvedInterfaceArtifacts(resolved
-                    maybe.unwrap(:String root) maybe.none(:interfaceCompiler.OnCompiled) e.units.resolver).qiFile)
+            let qi = if maybe.isSome(root) then
+                maybe.some(interfaceCompiler.ensureResolvedInterfaceArtifacts(resolved
+                    maybe.unwrap(root) maybe.none(:interfaceCompiler.OnCompiled) e.units.resolver).qiFile)
             else
                 graph.freshInterfaceQi(resolved)
             end
-            if maybe.isNone(:String qi) orif not(strutil.endsWith(maybe.unwrap(:String qi) ".qi"))
-                orif not(files.isFile(maybe.unwrap(:String qi))) then
+            if maybe.isNone(qi) orif not(strutil.endsWith(maybe.unwrap(qi) ".qi"))
+                orif not(files.isFile(maybe.unwrap(qi))) then
                 (* A builtin interface, which changes only with the ABI *)
                 sha256.hexDigest("abi " <> conv.int(abi.abiVersion) <> "\ninterface " <> canonical <> "\nbuiltin\n")
             else
-                let file = maybe.unwrap(:String qi)
+                let file = maybe.unwrap(qi)
                 let mtime = files.modifiedNs(file)
-                let cached = hashMap.get(:String :Known known file)
-                if maybe.isSome(:Known cached) andif {maybe.unwrap(:Known cached).mtime >= mtime} then
-                    maybe.unwrap(:Known cached).fingerprint
+                let cached = hashMap.get(known file)
+                if maybe.isSome(cached) andif {maybe.unwrap(cached).mtime >= mtime} then
+                    maybe.unwrap(cached).fingerprint
                 else
                     let text = files.readText(file)
-                    if maybe.isNone(:String text) then diagnostics.fail(:Ok "Error reading .qi file '" <> file <> "'" 0) end
+                    if maybe.isNone(text) then diagnostics.fail(:Ok "Error reading .qi file '" <> file <> "'" 0) end
                     (* Its imports are resolved from its own directory *)
-                    let dir = files.parent(maybe.unwrapOr(:String resolved.source file))
+                    let dir = files.parent(maybe.unwrapOr(resolved.source file))
                     let saved = e.currentDir
                     let importedFingerprint(path: String): String =
                         begin
-                            e.currentDir := maybe.some(:String dir)
+                            e.currentDir := maybe.some(dir)
                             let result = try ofInterface(path e) else with r then
                                 e.currentDir := saved
                                 raised.reraise(:String r)
@@ -132,8 +132,8 @@ export
                             e.currentDir := saved
                             result
                         end
-                    let result = ofQi(canonical maybe.unwrap(:String text) importedFingerprint)
-                    hashMap.insert(:String :Known known file tuple let mtime = mtime let fingerprint = result end)
+                    let result = ofQi(canonical maybe.unwrap(text) importedFingerprint)
+                    hashMap.insert(known file tuple let mtime = mtime let fingerprint = result end)
                     result
                 end
             end

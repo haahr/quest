@@ -15,7 +15,7 @@ import
 export
     Let Code = vector.T(minst.Inst)
     let eq(a: String b: String): Bool = stringOp.equal(a b)
-    let put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok = begin hashMap.insert(:K :V m k v) ok end
+    let put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok = begin hashMap.insert(m k v) ok end
 
     (* How far, in instructions, a conditional branch may reach: 1 MB less a
      * margin; a test of a bit's, 32 KB less a margin *)
@@ -27,23 +27,23 @@ export
     Let Conditional = Tuple inverse: All(l: String) minst.Op target: String reach: Int end
     let conditional(op: minst.Op): maybe.T(Conditional) =
         case op
-            when opCbz with x then maybe.some(:Conditional tuple
+            when opCbz with x then maybe.some(tuple
                 let inverse = fun(l: String): minst.Op option opCbnz of minst.Op with let label = l end
                 let target = x.label let reach = branchReach
             end)
-            when opCbnz with x then maybe.some(:Conditional tuple
+            when opCbnz with x then maybe.some(tuple
                 let inverse = fun(l: String): minst.Op option opCbz of minst.Op with let label = l end
                 let target = x.label let reach = branchReach
             end)
-            when opTbz with x then maybe.some(:Conditional tuple
+            when opTbz with x then maybe.some(tuple
                 let inverse = fun(l: String): minst.Op minst.tbnz(0 x.bit l).op
                 let target = x.label let reach = bitBranchReach
             end)
-            when opTbnz with x then maybe.some(:Conditional tuple
+            when opTbnz with x then maybe.some(tuple
                 let inverse = fun(l: String): minst.Op minst.tbz(0 x.bit l).op
                 let target = x.label let reach = bitBranchReach
             end)
-            when opBCond with x then maybe.some(:Conditional tuple
+            when opBCond with x then maybe.some(tuple
                 let inverse = fun(l: String): minst.Op minst.bCond(minst.inverse(x.cond) l).op let target = x.label
                 let reach = branchReach
             end)
@@ -69,10 +69,10 @@ export
                 changed := false
                 let at = hashMap.new(:String :Int eq hash.string)
                 let var n = 0
-                for k = 0 upto {vector.length(:minst.Inst current) - 1} do
-                    let i = vector.get(:minst.Inst current k)
+                for k = 0 upto {vector.length(current) - 1} do
+                    let i = vector.get(current k)
                     case i.op
-                        when opLabel with x then put(:String :Int at x.label n)
+                        when opLabel with x then put(at x.label n)
                         when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith,
                             opAddImm, opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm,
                             opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff,
@@ -83,33 +83,33 @@ export
                 end
                 let next = vector.new(:minst.Inst)
                 let var position = 0
-                for k = 0 upto {vector.length(:minst.Inst current) - 1} do
-                    let i = vector.get(:minst.Inst current k)
+                for k = 0 upto {vector.length(current) - 1} do
+                    let i = vector.get(current k)
                     let c = conditional(i.op)
                     let var far = false
                     (* The inverse branch relaxing makes, to an _r label,
                      * only jumps over the b after it, so is never far *)
-                    if maybe.isSome(:Conditional c) then
-                        let target = maybe.unwrap(:Conditional c).target
-                        let t = hashMap.get(:String :Int at target)
-                        if not(strutil.startsWith(target prefix <> "_r")) andif maybe.isSome(:Int t) then
-                            let d = maybe.unwrap(:Int t) - position
-                            let within = if maybe.unwrap(:Conditional c).reach < reach then
-                                maybe.unwrap(:Conditional c).reach else reach end
+                    if maybe.isSome(c) then
+                        let target = maybe.unwrap(c).target
+                        let t = hashMap.get(at target)
+                        if not(strutil.startsWith(target prefix <> "_r")) andif maybe.isSome(t) then
+                            let d = maybe.unwrap(t) - position
+                            let within = if maybe.unwrap(c).reach < reach then
+                                maybe.unwrap(c).reach else reach end
                             far := {d > within} orif {{0 - d} > within}
                         end
                     end
                     if far then
                         count := count + 1
                         let skip = prefix <> "_r" <> conv.int(count)
-                        vector.append(:minst.Inst next tuple
-                            let op = maybe.unwrap(:Conditional c).inverse(skip) let regs = i.regs
+                        vector.append(next tuple
+                            let op = maybe.unwrap(c).inverse(skip) let regs = i.regs
                         end)
-                        vector.append(:minst.Inst next minst.b(maybe.unwrap(:Conditional c).target))
-                        vector.append(:minst.Inst next minst.label(skip))
+                        vector.append(next minst.b(maybe.unwrap(c).target))
+                        vector.append(next minst.label(skip))
                         changed := true
                     else
-                        vector.append(:minst.Inst next i)
+                        vector.append(next i)
                     end
                     position := position + printer.count(i.op)
                 end
@@ -123,7 +123,7 @@ export
     let access(i: minst.Inst): maybe.T(Access) =
         begin
             let made = fun(load: Bool offset: Int): maybe.T(Access)
-                maybe.some(:Access tuple let load = load let t = i.regs[0] let base = i.regs[1] let offset = offset end)
+                maybe.some(tuple let load = load let t = i.regs[0] let base = i.regs[1] let offset = offset end)
             let at = fun(load: Bool m: minst.Mode): maybe.T(Access)
                 case m
                     when modeOffset with x then made(load x.imm)
@@ -205,9 +205,9 @@ export
      * at once, took 1.22 of its time so: docs/benchmarks.md section 17.2) *)
     let pairs(code: Code): Code =
         begin
-            let n = vector.length(:minst.Inst code)
+            let n = vector.length(code)
             let accesses = array of(n maybe.none(:Access))
-            for k = 0 upto {n - 1} do accesses[k] := access(vector.get(:minst.Inst code k)) end
+            for k = 0 upto {n - 1} do accesses[k] := access(vector.get(code k)) end
             (* What replaces each instruction (none for one dropped), and
              * whether it is already in a pair *)
             let replaced = array of(n maybe.none(:minst.Inst))
@@ -218,8 +218,8 @@ export
             (* Each label's place in the code *)
             let labelAt = hashMap.new(:String :Int eq hash.string)
             for k = 0 upto {n - 1} do
-                case vector.get(:minst.Inst code k).op
-                    when opLabel with x then put(:String :Int labelAt x.label k)
+                case vector.get(code k).op
+                    when opLabel with x then put(labelAt x.label k)
                     else ok
                 end
             end
@@ -236,16 +236,16 @@ export
                     let var steps = 0
                     let var going = true
                     while going andif {k < n} andif {steps < forwardWindow} do
-                        let next = vector.get(:minst.Inst code k)
+                        let next = vector.get(code k)
                         let var to = k + 1
-                        if maybe.isSome(:Access accesses[k]) then
-                            let x = maybe.unwrap(:Access accesses[k])
+                        if maybe.isSome(accesses[k]) then
+                            let x = maybe.unwrap(accesses[k])
                             if x.load andif {x.base is base} andif {{x.offset is low} orif {x.offset is {low + 8}}} then
                                 let other = if x.offset is low then low + 8 else low end
                                 let var partnered = false
                                 for d = 1 upto 4 do
-                                    if {{k + d} < n} andif maybe.isSome(:Access accesses[k + d]) then
-                                        let y = maybe.unwrap(:Access accesses[k + d])
+                                    if {{k + d} < n} andif maybe.isSome(accesses[k + d]) then
+                                        let y = maybe.unwrap(accesses[k + d])
                                         if y.load andif {y.base is base} andif {y.offset is other} then
                                             partnered := true
                                         end
@@ -257,8 +257,8 @@ export
                         end
                         case next.op
                             when opB with x then
-                                let target = hashMap.get(:String :Int labelAt x.label)
-                                if maybe.isSome(:Int target) then to := maybe.unwrap(:Int target)
+                                let target = hashMap.get(labelAt x.label)
+                                if maybe.isSome(target) then to := maybe.unwrap(target)
                                 else going := false end
                             when opBSymbol, opBl, opBlr, opBr, opRet, opBrk then going := false
                             else ok
@@ -272,36 +272,36 @@ export
                     hazard
                 end
             for i = 0 upto {n - 1} do
-                if maybe.isSome(:Access accesses[i]) andif not(paired[i]) then
-                    let a = maybe.unwrap(:Access accesses[i])
+                if maybe.isSome(accesses[i]) andif not(paired[i]) then
+                    let a = maybe.unwrap(accesses[i])
                     for r = 0 upto 64 do
                         written[r] := false
                         read[r] := false
                     end
-                    let first = vector.get(:minst.Inst code i)
+                    let first = vector.get(code i)
                     for r = 0 upto {minst.results(first.op) - 1} do written[first.regs[r]] := true end
                     let var j = i + 1
                     let var looking = true
                     while looking andif {j < n} andif {j <= {i + pairWindow}} do
-                        let next = vector.get(:minst.Inst code j)
+                        let next = vector.get(code j)
                         let c = crossing(next.op)
-                        let fits = maybe.isSome(:Access accesses[j]) andif not(paired[j])
-                            andif pairable(a maybe.unwrap(:Access accesses[j]) written read)
+                        let fits = maybe.isSome(accesses[j]) andif not(paired[j])
+                            andif pairable(a maybe.unwrap(accesses[j]) written read)
                         let partner = fits andif {a.load orif not(halfLoaded(j + 1 a.base
-                            if a.offset < maybe.unwrap(:Access accesses[j]).offset then a.offset
-                            else maybe.unwrap(:Access accesses[j]).offset end))}
+                            if a.offset < maybe.unwrap(accesses[j]).offset then a.offset
+                            else maybe.unwrap(accesses[j]).offset end))}
                         if partner then
-                            let b = maybe.unwrap(:Access accesses[j])
+                            let b = maybe.unwrap(accesses[j])
                             let lowFirst = a.offset < b.offset
                             let lo = if lowFirst then a.t else b.t end
                             let hi = if lowFirst then b.t else a.t end
                             let low = if lowFirst then a.offset else b.offset end
                             let m = if low is 0 then minst.modeBase else minst.offset(low) end
                             if a.load then
-                                replaced[i] := maybe.some(:minst.Inst minst.ldp(lo hi a.base m))
+                                replaced[i] := maybe.some(minst.ldp(lo hi a.base m))
                                 dropped[j] := true
                             else
-                                replaced[j] := maybe.some(:minst.Inst minst.stp(lo hi a.base m))
+                                replaced[j] := maybe.some(minst.stp(lo hi a.base m))
                                 dropped[i] := true
                             end
                             paired[i] := true
@@ -320,10 +320,10 @@ export
             end
             let merged = vector.new(:minst.Inst)
             for k = 0 upto {n - 1} do
-                if maybe.isSome(:minst.Inst replaced[k]) then
-                    vector.append(:minst.Inst merged maybe.unwrap(:minst.Inst replaced[k]))
+                if maybe.isSome(replaced[k]) then
+                    vector.append(merged maybe.unwrap(replaced[k]))
                 elsif not(dropped[k]) then
-                    vector.append(:minst.Inst merged vector.get(:minst.Inst code k))
+                    vector.append(merged vector.get(code k))
                 end
             end
             merged

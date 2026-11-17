@@ -16,7 +16,7 @@ export
      * Bytes
      * ====================================================================== *)
 
-    let byte(b: Bytes n: Int): Ok = vector.append(:Int b n)
+    let byte(b: Bytes n: Int): Ok = vector.append(b n)
 
     (* n's low size bytes, least significant first *)
     let little(b: Bytes n: Int size: Int): Ok =
@@ -69,9 +69,9 @@ export
         end
 
     let append(b: Bytes more: Bytes): Ok =
-        for i = 0 upto {vector.length(:Int more) - 1} do byte(b vector.get(:Int more i)) end
+        for i = 0 upto {vector.length(more) - 1} do byte(b vector.get(more i)) end
 
-    let padTo(b: Bytes alignment: Int): Ok = while {vector.length(:Int b) % alignment} isnot 0 do byte(b 0) end
+    let padTo(b: Bytes alignment: Int): Ok = while {vector.length(b) % alignment} isnot 0 do byte(b 0) end
 
     (* =========================================================================
      * DWARF
@@ -136,7 +136,7 @@ export
             end
             uleb(body 0)
             let b = vector.new(:Int)
-            u32(b vector.length(:Int body))
+            u32(b vector.length(body))
             append(b body)
             b
         end
@@ -206,10 +206,10 @@ export
             let b = vector.new(:Int)
             let rest = vector.new(:Int)
             u16(rest 4)
-            u32(rest vector.length(:Int header))
+            u32(rest vector.length(header))
             append(rest header)
             append(rest program)
-            u32(b vector.length(:Int rest))
+            u32(b vector.length(rest))
             append(b rest)
             b
         end
@@ -232,14 +232,14 @@ export
             let commandBytes = {72 + {80 * {1 + extent sections}}} + 24
             let dataStart = 32 + commandBytes
             let var debugBytes = 0
-            for i = 0 upto {extent sections - 1} do debugBytes := debugBytes + vector.length(:Int sections[i].bytes) end
+            for i = 0 upto {extent sections - 1} do debugBytes := debugBytes + vector.length(sections[i].bytes) end
             let contents = codeBytes + debugBytes
             let symbolsAt = {{{dataStart + contents} + 7} / 8} * 8
             let names = vector.new(:Int)
             byte(names 0)
             let nameAt = array of(extent e.functions 0)
             for k = 0 upto {extent e.functions - 1} do
-                nameAt[k] := vector.length(:Int names)
+                nameAt[k] := vector.length(names)
                 cString(names "_" <> e.functions[k].name)
             end
             let namesAt = symbolsAt + {16 * extent e.functions}
@@ -260,14 +260,14 @@ export
              * address, but one at a small address from the object itself *)
             let var offset = dataStart + codeBytes
             for i = 0 upto {extent sections - 1} do
-                let size = vector.length(:Int sections[i].bytes)
+                let size = vector.length(sections[i].bytes)
                 name16(b sections[i].name) name16(b "__DWARF")
                 u64(b 0) u64(b size) u32(b offset) u32(b 0) u32(b 0) u32(b 0)
                 u32(b 0x02000000) u32(b 0) u32(b 0) u32(b 0)
                 offset := offset + size
             end
             (* LC_SYMTAB *)
-            u32(b 2) u32(b 24) u32(b symbolsAt) u32(b extent e.functions) u32(b namesAt) u32(b vector.length(:Int names))
+            u32(b 2) u32(b 24) u32(b symbolsAt) u32(b extent e.functions) u32(b namesAt) u32(b vector.length(names))
             (* The code as encoded, its relocations not applied: lldb reads
              * the loaded code from the process at codeAddress *)
             for k = 0 upto {extent e.code - 1} do u32(b e.code[k]) end
@@ -279,7 +279,7 @@ export
             end
             append(b names)
             let s = stringBuilder.new()
-            for i = 0 upto {vector.length(:Int b) - 1} do stringBuilder.char(s ascii.char(vector.get(:Int b i))) end
+            for i = 0 upto {vector.length(b) - 1} do stringBuilder.char(s ascii.char(vector.get(b i))) end
             stringBuilder.toString(s)
         end
 end

@@ -43,9 +43,9 @@ export
     let comparesAsOption(t: Type): Bool =
         shapes.shape(t).kind?shapeOption andif begin
             let rule = reduce.optionIdentity(t)
-            maybe.isSome(:reduce.OptionIdentity rule)
+            maybe.isSome(rule)
                 andif {{extent maybe.unwrap(:reduce.OptionIdentity rule).empty > 0}
-                    orif maybe.isSome(:String maybe.unwrap(:reduce.OptionIdentity rule).single)}
+                    orif maybe.isSome(maybe.unwrap(rule).single)}
         end
 
     (* The structure of layout.heldShape(t kind), raising unsupportedDescriptor
@@ -53,9 +53,9 @@ export
     let heldStructure(t: Type kind: shapes.ShapeKind): Type =
         begin
             let h = layout.heldShape(t kind)
-            if maybe.isNone(:Shape h) then raise unsupportedDescriptor with "not a " <> shapes.kindName(kind) <> ": "
+            if maybe.isNone(h) then raise unsupportedDescriptor with "not a " <> shapes.kindName(kind) <> ": "
                 <> model.show(t) end end
-            maybe.unwrap(:Shape h).structure
+            maybe.unwrap(h).structure
         end
 
     let baseValueKind(kind: shapes.ShapeKind): String =
@@ -90,36 +90,36 @@ export
                 array of :Type end
             else
                 let isFree = hashMap.new(:Int :Bool intEqual hash.int)
-                for i = 0 upto {extent free - 1} do hashMap.insert(:Int :Bool isFree free[i] true) end
+                for i = 0 upto {extent free - 1} do hashMap.insert(isFree free[i] true) end
                 let found = vector.new(:Type)
                 let foundIds = hashMap.new(:Int :Bool intEqual hash.int)
                 let seen = hashMap.new(:Int :Bool intEqual hash.int)
                 let note = fun(node: Type symbolId: Int): Ok
-                    if hashMap.contains(:Int :Bool isFree symbolId) andif wanted(symbolId)
-                        andif not(hashMap.contains(:Int :Bool foundIds symbolId)) then
-                        hashMap.insert(:Int :Bool foundIds symbolId true)
-                        vector.append(:Type found node)
+                    if hashMap.contains(isFree symbolId) andif wanted(symbolId)
+                        andif not(hashMap.contains(foundIds symbolId)) then
+                        hashMap.insert(foundIds symbolId true)
+                        vector.append(found node)
                     end
                 let rec visit(p: model.Part): Ok =
                     case p
                         when partType with x then
-                            if not(hashMap.contains(:Int :Bool seen x.t.id)) then
-                                hashMap.insert(:Int :Bool seen x.t.id true)
+                            if not(hashMap.contains(seen x.t.id)) then
+                                hashMap.insert(seen x.t.id true)
                                 case x.t.form
                                     when typeVariable with v then note(x.t v.symbolId)
                                     when typeAbstract with v then note(x.t v.symbolId)
                                     else ok
                                 end
-                                vector.forEach(:model.Part model.typeParts(x.t) visit)
+                                vector.forEach(model.typeParts(x.t) visit)
                             end
                         when partKind with x then
-                            if not(hashMap.contains(:Int :Bool seen x.k.id)) then
-                                hashMap.insert(:Int :Bool seen x.k.id true)
-                                vector.forEach(:model.Part model.kindParts(x.k) visit)
+                            if not(hashMap.contains(seen x.k.id)) then
+                                hashMap.insert(seen x.k.id true)
+                                vector.forEach(model.kindParts(x.k) visit)
                             end
                     end
                 visit(option partType of model.Part with let t = t end)
-                vector.toArray(:Type found)
+                vector.toArray(found)
             end
         end
 
@@ -133,7 +133,7 @@ export
     let boundOf(v: Type): maybe.T(model.Kind) =
         case v.form
             when typeVariable with x then x.bound
-            when typeAbstract with x then maybe.some(:model.Kind x.bound)
+            when typeAbstract with x then maybe.some(x.bound)
             else maybe.none(:model.Kind)
         end
 
@@ -151,7 +151,7 @@ export
     let isConstant(template: Type): Bool =
         begin
             let s = shapes.opaqueShape(template)
-            if isConstantKind(s.kind) orif maybe.isSome(:Int descriptors.boundVarIndex(s.structure)) then
+            if isConstantKind(s.kind) orif maybe.isSome(descriptors.boundVarIndex(s.structure)) then
                 true
             else
                 case s.structure.form
@@ -200,10 +200,10 @@ export
     let static(d: Describer t: Type echo: Bool): nodes.StaticDescriptor =
         begin
             let key = if echo then "e" <> conv.int(t.id) else "s" <> conv.int(shapes.opaqueShape(t).id) end
-            if not(hashMap.contains(:String :nodes.StaticDescriptor d.staticKeys key)) then
+            if not(hashMap.contains(d.staticKeys key)) then
                 let listed = nodes.newStaticDescriptor(t echo)
-                hashMap.insert(:String :nodes.StaticDescriptor d.staticKeys key listed)
-                vector.append(:nodes.StaticDescriptor d.data.descriptors listed)
+                hashMap.insert(d.staticKeys key listed)
+                vector.append(d.data.descriptors listed)
             end
             nodes.newStaticDescriptor(t echo)
         end
@@ -214,11 +214,11 @@ export
     let checkAvailable(d: Describer t: Type): Ok =
         begin
             let missing = freeTypeVars(t fun(sid: Int): Bool
-                hashMap.contains(:Int :Bool d.unavailable sid) andif not(hashMap.contains(:Int :Variable d.scope sid)))
+                hashMap.contains(d.unavailable sid) andif not(hashMap.contains(d.scope sid)))
             if extent missing > 0 then
                 let names = vector.new(:String)
                 for i = 0 upto {extent missing - 1} do
-                    vector.append(:String names case missing[i].form
+                    vector.append(names case missing[i].form
                         when typeVariable with x then x.name
                         when typeAbstract with x then x.name
                         else ""
@@ -240,7 +240,7 @@ export
         else
             let subst = model.newSubst()
             for i = 0 upto {extent holes - 1} do
-                hashMap.insert(:Int :Type subst symbolOf(holes[i]) descriptors.holeVar(i boundOf(holes[i])))
+                hashMap.insert(subst symbolOf(holes[i]) descriptors.holeVar(i boundOf(holes[i])))
             end
             let template = model.substitute(t subst)
             if isConstant(template) then
@@ -258,17 +258,17 @@ export
         begin
             let v = shapes.opaqueShape(t).type
             let scoped = case v.form
-                when typeVariable with x then hashMap.get(:Int :Variable d.scope x.symbolId)
-                when typeAbstract with x then hashMap.get(:Int :Variable d.scope x.symbolId)
+                when typeVariable with x then hashMap.get(d.scope x.symbolId)
+                when typeAbstract with x then hashMap.get(d.scope x.symbolId)
                 else maybe.none(:Variable)
             end
-            if maybe.isSome(:Variable scoped) then
-                descVar(maybe.unwrap(:Variable scoped))
+            if maybe.isSome(scoped) then
+                descVar(maybe.unwrap(scoped))
             else
-                if not(hashMap.empty(:Int :Bool d.unavailable)) then checkAvailable(d t) end
-                let params = freeTypeVars(t fun(sid: Int): Bool hashMap.contains(:Int :Variable d.scope sid))
+                if not(hashMap.empty(d.unavailable)) then checkAvailable(d t) end
+                let params = freeTypeVars(t fun(sid: Int): Bool hashMap.contains(d.scope sid))
                 let args = array of(extent params option descStatic of Descriptor with let d = nodes.newStaticDescriptor(t false) end)
-                for i = 0 upto {extent params - 1} do args[i] := descVar(hashMap.find(:Int :Variable d.scope symbolOf(params[i]))) end
+                for i = 0 upto {extent params - 1} do args[i] := descVar(hashMap.find(d.scope symbolOf(params[i]))) end
                 template(d t params args)
             end
         end
@@ -277,20 +277,20 @@ export
      * lays it out at the call's type arguments *)
     let layoutDescriptor(d: Describer t: Type lay: nodes.PlanLayout): Descriptor =
         begin
-            if not(hashMap.empty(:Int :Bool d.unavailable)) then checkAvailable(d t) end
-            let params = freeTypeVars(t fun(sid: Int): Bool hashMap.contains(:Int :Type lay.subst sid))
+            if not(hashMap.empty(d.unavailable)) then checkAvailable(d t) end
+            let params = freeTypeVars(t fun(sid: Int): Bool hashMap.contains(lay.subst sid))
             let inScope = freeTypeVars(t fun(sid: Int): Bool
-                hashMap.contains(:Int :Variable d.scope sid) andif not(hashMap.contains(:Int :Type lay.subst sid)))
-            let holes = vector.fromArray(:Type params)
+                hashMap.contains(d.scope sid) andif not(hashMap.contains(lay.subst sid)))
+            let holes = vector.fromArray(params)
             let args = vector.new(:Descriptor)
             for i = 0 upto {extent params - 1} do
-                vector.append(:Descriptor args describeType(d hashMap.find(:Int :Type lay.subst symbolOf(params[i]))))
+                vector.append(args describeType(d hashMap.find(lay.subst symbolOf(params[i]))))
             end
             for i = 0 upto {extent inScope - 1} do
-                vector.append(:Type holes inScope[i])
-                vector.append(:Descriptor args descVar(hashMap.find(:Int :Variable d.scope symbolOf(inScope[i]))))
+                vector.append(holes inScope[i])
+                vector.append(args descVar(hashMap.find(d.scope symbolOf(inScope[i]))))
             end
-            template(d t vector.toArray(:Type holes) vector.toArray(:Descriptor args))
+            template(d t vector.toArray(holes) vector.toArray(args))
         end
 
     (* Runs f in the scope of a thunk taking type parameters named by symbols,
@@ -299,18 +299,18 @@ export
         begin
             let made = vector.new(:nodes.DescriptorParam)
             for k = 0 upto {extent symbols - 1} do
-                vector.append(:nodes.DescriptorParam made
+                vector.append(made
                     tuple let v = nodes.newVar("qd_" <> conv.int(k) nodes.descriptorType false) let symbols = symbols[k] end)
             end
-            let params = vector.toArray(:nodes.DescriptorParam made)
+            let params = vector.toArray(made)
             let savedScope = d.scope
             let savedUnavailable = d.unavailable
             let unavailable = hashMap.new(:Int :Bool intEqual hash.int)
-            hashMap.forEach(:Int :Bool d.unavailable fun(k: Int b: Bool): Ok begin hashMap.insert(:Int :Bool unavailable k b) ok end)
-            hashMap.forEach(:Int :Variable d.scope fun(k: Int v: Variable): Ok begin hashMap.insert(:Int :Bool unavailable k true) ok end)
+            hashMap.forEach(d.unavailable fun(k: Int b: Bool): Ok begin hashMap.insert(unavailable k b) ok end)
+            hashMap.forEach(d.scope fun(k: Int v: Variable): Ok begin hashMap.insert(unavailable k true) ok end)
             let scope = newScope()
             for k = 0 upto {extent params - 1} do
-                for j = 0 upto {extent params[k].symbols - 1} do hashMap.insert(:Int :Variable scope params[k].symbols[j] params[k].v) end
+                for j = 0 upto {extent params[k].symbols - 1} do hashMap.insert(scope params[k].symbols[j] params[k].v) end
             end
             d.unavailable := unavailable
             d.scope := scope
@@ -327,13 +327,13 @@ export
     let tagMap(d: Describer target: Type source: Type): nodes.TagMap =
         begin
             let key = conv.int(shapes.shape(target).id) <> "," <> conv.int(shapes.shape(source).id)
-            let found = hashMap.get(:String :nodes.TagMap d.tagKeys key)
-            if maybe.isSome(:nodes.TagMap found) then
-                maybe.unwrap(:nodes.TagMap found)
+            let found = hashMap.get(d.tagKeys key)
+            if maybe.isSome(found) then
+                maybe.unwrap(found)
             else
                 let table = tuple let id = shapes.shape(target).id let target = target let source = source end
-                hashMap.insert(:String :nodes.TagMap d.tagKeys key table)
-                vector.append(:nodes.TagMap d.data.tagMaps table)
+                hashMap.insert(d.tagKeys key table)
+                vector.append(d.data.tagMaps table)
                 table
             end
         end
@@ -346,17 +346,17 @@ export
     let offsetTable(d: Describer view: Type lay: Type registered: Bool): nodes.OffsetTable =
         begin
             let key = conv.int(shapes.shape(view).id) <> "," <> conv.int(shapes.shape(lay).id)
-            let found = hashMap.get(:String :nodes.OffsetTable d.offsetKeys key)
-            let table = if maybe.isSome(:nodes.OffsetTable found) then
-                maybe.unwrap(:nodes.OffsetTable found)
+            let found = hashMap.get(d.offsetKeys key)
+            let table = if maybe.isSome(found) then
+                maybe.unwrap(found)
             else
                 let t = tuple let id = shapes.shape(view).id let view = view let layout = lay let var registered = maybe.none(:nodes.Registered) end
-                hashMap.insert(:String :nodes.OffsetTable d.offsetKeys key t)
-                vector.append(:nodes.OffsetTable d.data.offsetTables t)
+                hashMap.insert(d.offsetKeys key t)
+                vector.append(d.data.offsetTables t)
                 t
             end
-            if registered andif maybe.isNone(:nodes.Registered table.registered) then
-                table.registered := maybe.some(:nodes.Registered tuple let view = static(d view false) let layout = static(d lay false) end)
+            if registered andif maybe.isNone(table.registered) then
+                table.registered := maybe.some(tuple let view = static(d view false) let layout = static(d lay false) end)
             end
             table
         end
@@ -366,27 +366,27 @@ export
     (* Gives a plan (and the plans in it) the descriptors it converts by, in
      * place *)
     let rec describePlan(d: Describer p0: maybe.T(Plan)): Ok =
-        if maybe.isSome(:Plan p0) then
-            let p = maybe.unwrap(:Plan p0)
+        if maybe.isSome(p0) then
+            let p = maybe.unwrap(p0)
             case p.kind
                 when planRecordView then
                     p.descriptors := array of describeType(d heldStructure(p.target shapes.shapeRecord)) end
                 when planView then
-                    p.descriptors := if maybe.isNone(:nodes.PlanLayout p.layout) then
+                    p.descriptors := if maybe.isNone(p.layout) then
                         array of describeType(d p.source) describeType(d p.target) end
                     else
                         (* A value of an abstract type's application, laid out
                          * as its module's generic code lays out the
                          * representation (represent's abstractPlan) *)
-                        let lay = maybe.unwrap(:nodes.PlanLayout p.layout)
+                        let lay = maybe.unwrap(p.layout)
                         let abstractT = if lay.toGeneric then p.target else p.source end
-                        let generic = maybe.unwrap(:genericLayout.AbstractInstance genericLayout.abstractInstance(abstractT)).generic
+                        let generic = maybe.unwrap(genericLayout.abstractInstance(abstractT)).generic
                         let genericD = layoutDescriptor(d generic lay)
                         if lay.toGeneric then array of describeType(d p.source) genericD end
                         else array of genericD describeType(d p.target) end end
                     end
                 when planRuntime then
-                    let lay = maybe.unwrap(:nodes.PlanLayout p.layout)
+                    let lay = maybe.unwrap(p.layout)
                     let genericType = if lay.toGeneric then p.target else p.source end
                     let genericD = layoutDescriptor(d genericType lay)
                     let nativeD = describeType(d model.substitute(genericType lay.subst))
@@ -395,7 +395,7 @@ export
                 when planVariantTags then
                     let map = tagMap(d heldStructure(p.target shapes.shapeVariant)
                         heldStructure(p.source shapes.shapeVariant))
-                    p.tagMap := maybe.some(:nodes.TagMap map)
+                    p.tagMap := maybe.some(map)
                 when planCopy then
                     for i = 0 upto {extent p.fields - 1} do describePlan(d p.fields[i]) end
                 when planAdapt then
@@ -419,23 +419,23 @@ export
             let held = layout.resolvedShape(s)
             let heldKind = shapes.kindIs(held shapes.shapeRecord) orif shapes.kindIs(held shapes.shapeVariant)
                 orif shapes.kindIs(held shapes.shapeOption) orif shapes.kindIs(held shapes.shapeTuple)
-            if not(layout.ownView(s)) orif not(heldKind) orif not(hashMap.contains(:Int :Variable d.scope s.symbolId)) then
+            if not(layout.ownView(s)) orif not(heldKind) orif not(hashMap.contains(d.scope s.symbolId)) then
                 maybe.none(:Variable)
             else
-                let found = hashMap.get(:Int :nodes.ViewMapParam d.viewMaps s.symbolId)
-                if maybe.isSome(:nodes.ViewMapParam found) then
-                    maybe.some(:Variable maybe.unwrap(:nodes.ViewMapParam found).v)
+                let found = hashMap.get(d.viewMaps s.symbolId)
+                if maybe.isSome(found) then
+                    maybe.some(maybe.unwrap(found).v)
                 else
                     let name = if stringOp.isEmpty(s.name) then "t" else strutil.replace(s.name "." "_") end
                     let param = tuple
                         let v = nodes.newVar("view_" <> name nodes.viewMapType false)
                         let symbol = s.symbolId
-                        let descriptor = hashMap.find(:Int :Variable d.scope s.symbolId)
+                        let descriptor = hashMap.find(d.scope s.symbolId)
                         let bound = describeType(d held.structure)
                     end
-                    hashMap.insert(:Int :nodes.ViewMapParam d.viewMaps s.symbolId param)
-                    vector.append(:nodes.ViewMapParam d.viewMapOrder param)
-                    maybe.some(:Variable param.v)
+                    hashMap.insert(d.viewMaps s.symbolId param)
+                    vector.append(d.viewMapOrder param)
+                    maybe.some(param.v)
                 end
             end
         end
@@ -443,11 +443,11 @@ export
     let describeTypes(d: Describer types: Array(Type)): Array(Descriptor) =
         begin
             let result = vector.new(:Descriptor)
-            for i = 0 upto {extent types - 1} do vector.append(:Descriptor result describeType(d types[i])) end
-            vector.toArray(:Descriptor result)
+            for i = 0 upto {extent types - 1} do vector.append(result describeType(d types[i])) end
+            vector.toArray(result)
         end
 
-    let memberType(m: nodes.Module name: String): Type = hashMap.find(:String :Variable m.members.vars name).type
+    let memberType(m: nodes.Module name: String): Type = hashMap.find(m.members.vars name).type
 
     (* Gives operation o, which the let of result binds (none for a do), the
      * descriptors it needs at run time, in place (docs/ir.md section 8.4):
@@ -489,12 +489,12 @@ export
                 when opPrim with x then
                     if nodes.comparesIdentity(x.op) andif {extent x.args > 0} then
                         let a = x.args[0]
-                        let isHandler = case a when atomVar with y then hashMap.contains(:Int :Bool d.handlerVars y.v.id) else false end
+                        let isHandler = case a when atomVar with y then hashMap.contains(d.handlerVars y.v.id) else false end
                         (* A QVal word, an option is compares by case, or a
                          * variant, which is compares by case and value *)
                         if not(isHandler) andif {layout.isQVal(shapes.shape(typeOf(a))) orif comparesAsOption(typeOf(a))
                             orif stringOp.equal(layout.representation(typeOf(a)) "QVariantVal")} then
-                            x.descriptor := maybe.some(:Descriptor describeType(d typeOf(a)))
+                            x.descriptor := maybe.some(describeType(d typeOf(a)))
                         end
                     end
                 when opCall with x then x.descriptors := describeTypes(d x.typeArgs)
@@ -502,58 +502,58 @@ export
                 when opMakeClosure with x then x.descriptors := describeTypes(d x.typeArgs)
                 when opTypeApp with x then
                     x.descriptors := describeTypes(d x.typeArgs)
-                    let origType = if maybe.isSome(:Variable x.callee) then
-                        maybe.unwrap(:Variable x.callee).type
+                    let origType = if maybe.isSome(x.callee) then
+                        maybe.unwrap(x.callee).type
                     else
-                        let fromModule = if maybe.isSome(:nodes.ModuleRef x.moduleRef) then
-                            case maybe.unwrap(:nodes.ModuleRef x.moduleRef)
-                                when refModule with m then maybe.some(:Type memberType(m.m maybe.unwrapOr(:String x.member "")))
+                        let fromModule = if maybe.isSome(x.moduleRef) then
+                            case maybe.unwrap(x.moduleRef)
+                                when refModule with m then maybe.some(memberType(m.m maybe.unwrapOr(x.member "")))
                                 else maybe.none(:Type)
                             end
                         else
                             maybe.none(:Type)
                         end
-                        if maybe.isSome(:Type fromModule) then maybe.unwrap(:Type fromModule) else maybe.unwrapOr(:Type x.calleeType model.okType) end
+                        if maybe.isSome(fromModule) then maybe.unwrap(fromModule) else maybe.unwrapOr(x.calleeType model.okType) end
                     end
                     if shapes.isFunction(origType) then
                         (* The instance is a thunk, whose plans convert its
                          * arguments and result *)
                         thunk(d x.thunkSymbols fun(params: Array(nodes.DescriptorParam)): Ok
                             begin
-                                x.thunkParams := maybe.some(:Array(nodes.DescriptorParam) params)
+                                x.thunkParams := maybe.some(params)
                                 for i = 0 upto {extent x.plans - 1} do describePlan(d x.plans[i]) end
                             end)
                     else
                         for i = 0 upto {extent x.plans - 1} do describePlan(d x.plans[i]) end
                     end
-                when opConvert with x then describePlan(d maybe.some(:Plan x.plan))
+                when opConvert with x then describePlan(d maybe.some(x.plan))
                 when opMakeRecord with x then
                     let fields = array of(extent x.fields tuple let name = "" let type = model.okType let isVar = false end)
                     for i = 0 upto {extent x.fields - 1} do
                         fields[i] := tuple let name = x.fields[i].name let type = typeOf(x.fields[i].atom) let isVar = x.fields[i].isVar end
                     end
                     let concrete = model.recordType(fields maybe.none(:String))
-                    let held = layout.heldShape(maybe.unwrap(:Variable result).type shapes.shapeRecord)
-                    let target = if maybe.isSome(:Shape held) then maybe.unwrap(:Shape held).structure else concrete end
-                    x.descriptor := maybe.some(:Descriptor describeType(d concrete))
+                    let held = layout.heldShape(maybe.unwrap(result).type shapes.shapeRecord)
+                    let target = if maybe.isSome(held) then maybe.unwrap(held).structure else concrete end
+                    x.descriptor := maybe.some(describeType(d concrete))
                     if x.runtimeOffsets then
-                        x.viewDescriptor := maybe.some(:Descriptor describeType(d target))
+                        x.viewDescriptor := maybe.some(describeType(d target))
                     else
                         let targetD = describeType(d target)
-                        let registered = maybe.unwrap(:Descriptor x.descriptor)?descStatic andif targetD?descStatic
-                        x.offsets := maybe.some(:nodes.OffsetTable offsetTable(d target concrete registered))
+                        let registered = maybe.unwrap(x.descriptor)?descStatic andif targetD?descStatic
+                        x.offsets := maybe.some(offsetTable(d target concrete registered))
                     end
                 when opRecordField with x then
                     if x.stored then
-                        let rs = maybe.unwrap(:Shape layout.heldShape(typeOf(x.recordAtom) shapes.shapeRecord))
+                        let rs = maybe.unwrap(layout.heldShape(typeOf(x.recordAtom) shapes.shapeRecord))
                         let fields = shapes.sortedComponents(rs)
                         let var field = fields[0]
                         for i = {extent fields - 1} downto 0 do
-                            if eq(maybe.unwrapOr(:String fields[i].name "") x.name) then field := fields[i] end
+                            if eq(maybe.unwrapOr(fields[i].name "") x.name) then field := fields[i] end
                         end
-                        x.descriptor := maybe.some(:Descriptor describeType(d shapes.componentShape(field).type))
+                        x.descriptor := maybe.some(describeType(d shapes.componentShape(field).type))
                     end
-                when opMakeAuto with x then x.descriptor := maybe.some(:Descriptor describeType(d x.witness))
+                when opMakeAuto with x then x.descriptor := maybe.some(describeType(d x.witness))
                 else ok
             end
         end
@@ -578,36 +578,36 @@ export
      * The arm's descriptors, and its plan's for an exact case, are described
      * with A's symbol bound to the witness *)
     let describeInspect(d: Describer x: nodes.StmtInspect): Ok =
-        if maybe.isSome(:Type x.autoType) then
-            let autoType = maybe.unwrap(:Type x.autoType)
+        if maybe.isSome(x.autoType) then
+            let autoType = maybe.unwrap(x.autoType)
             let symbol = case autoType.form when typeAuto with a then a.symbolId else 0 end
             let witness = tuple let v = nodes.newVar("witness" nodes.descriptorType false) let symbols = array of symbol end end
-            x.witness := maybe.some(:nodes.DescriptorParam witness)
+            x.witness := maybe.some(witness)
             let storedType = model.autoPayloadType(autoType maybe.none(:Type))
             let storedFields = case storedType.form when typeTuple with t then model.tupleValueFields(t.fields) else array of :model.ValueField end end
             for i = 0 upto {extent x.cases - 1} do
                 let c = x.cases[i]
-                c.descriptor := maybe.some(:Descriptor describeType(d c.matchType))
-                if {extent c.binders > 0} andif maybe.isSome(:nodes.InspectArm c.arm) then
-                    let arm = maybe.unwrap(:nodes.InspectArm c.arm)
-                    let armType = model.autoPayloadType(autoType maybe.some(:Type c.matchType))
+                c.descriptor := maybe.some(describeType(d c.matchType))
+                if {extent c.binders > 0} andif maybe.isSome(c.arm) then
+                    let arm = maybe.unwrap(c.arm)
+                    let armType = model.autoPayloadType(autoType maybe.some(c.matchType))
                     let armFields = case armType.form when typeTuple with t then model.tupleValueFields(t.fields) else array of :model.ValueField end end
                     let saved = d.scope
                     let scope = newScope()
-                    hashMap.forEach(:Int :Variable saved fun(k: Int v: Variable): Ok begin hashMap.insert(:Int :Variable scope k v) ok end)
-                    hashMap.insert(:Int :Variable scope symbol witness.v)
+                    hashMap.forEach(saved fun(k: Int v: Variable): Ok begin hashMap.insert(scope k v) ok end)
+                    hashMap.insert(scope symbol witness.v)
                     d.scope := scope
                     let n = if extent arm.converted < extent storedFields then extent arm.converted else extent storedFields end
                     let m = if n < extent armFields then n else extent armFields end
                     let pairs = array of(m maybe.none(:nodes.DescriptorPair))
                     for j = 0 upto {m - 1} do
                         let how = arm.converted[j]
-                        pairs[j] := if maybe.isNone(:String how) then
+                        pairs[j] := if maybe.isNone(how) then
                             maybe.none(:nodes.DescriptorPair)
-                        elsif eq(maybe.unwrap(:String how) "component") then
-                            maybe.some(:nodes.DescriptorPair tuple let source = descVar(witness.v) let target = describeType(d armFields[j].type) end)
+                        elsif eq(maybe.unwrap(how) "component") then
+                            maybe.some(tuple let source = descVar(witness.v) let target = describeType(d armFields[j].type) end)
                         else
-                            maybe.some(:nodes.DescriptorPair tuple
+                            maybe.some(tuple
                                 let source = describeType(d storedFields[j].type)
                                 let target = describeType(d armFields[j].type)
                             end)
@@ -623,8 +623,8 @@ export
     let rec body(d: Describer b: Body): Ok =
         begin
             let statements = vector.new(:Stmt)
-            for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
-                vector.append(:Stmt statements statement(d vector.get(:Stmt b.statements i)))
+            for i = 0 upto {vector.length(b.statements) - 1} do
+                vector.append(statements statement(d vector.get(b.statements i)))
             end
             b.statements := statements
         end
@@ -637,37 +637,37 @@ export
         begin
             let var replaced = maybe.none(:Stmt)
             case s
-                when sLet with x then operation(d x.value maybe.some(:Variable x.v))
+                when sLet with x then operation(d x.value maybe.some(x.v))
                 when sDo with x then operation(d x.value maybe.none(:Variable))
                 when sInspect with x then describeInspect(d x)
-                when sTry with x then begin hashMap.insert(:Int :Bool d.handlerVars x.exc.id true) ok end
+                when sTry with x then begin hashMap.insert(d.handlerVars x.exc.id true) ok end
                 when sStoreField with x then x.viewMap := viewMap(d x.base)
                 when sStoreComponent with x then x.viewMap := viewMap(d x.base)
                 when sSwitch with x then x.viewMap := viewMap(d x.value)
                 when sEcho with x then
                     let text = if stringOp.isEmpty(x.prefix) then maybe.none(:String) else written.packageText(x.type) end
-                    if maybe.isSome(:String text) then
+                    if maybe.isSome(text) then
                         (* A package's components are hidden, so its line is
                          * known statically, from its type as written *)
-                        replaced := maybe.some(:Stmt option sEchoText of Stmt with
-                            let text = x.prefix <> maybe.unwrap(:String text)
+                        replaced := maybe.some(option sEchoText of Stmt with
+                            let text = x.prefix <> maybe.unwrap(text)
                         end)
                     elsif stringOp.isEmpty(echoValueKind(x.type)) then
                         let closed = extent freeTypeVars(x.type fun(sid: Int): Bool hashMap.contains(:Int :Variable d.scope sid)) is 0
-                        x.descriptor := maybe.some(:Descriptor if closed then descStatic(static(d x.type true)) else describeType(d x.type) end)
+                        x.descriptor := maybe.some(if closed then descStatic(static(d x.type true)) else describeType(d x.type) end)
                     end
                 when sRaise with x then
                     (* The payload is shown by its type, written as echo
                      * writes a value *)
-                    if maybe.isSome(:Atom x.payload) andif not(stringOp.isEmpty(x.payloadText)) then
-                        let t = typeOf(maybe.unwrap(:Atom x.payload))
+                    if maybe.isSome(x.payload) andif not(stringOp.isEmpty(x.payloadText)) then
+                        let t = typeOf(maybe.unwrap(x.payload))
                         let closed = extent freeTypeVars(t fun(sid: Int): Bool hashMap.contains(:Int :Variable d.scope sid)) is 0
-                        x.descriptor := maybe.some(:Descriptor if closed then descStatic(static(d t true)) else describeType(d t) end)
+                        x.descriptor := maybe.some(if closed then descStatic(static(d t true)) else describeType(d t) end)
                     end
                 else ok
             end
-            if maybe.isSome(:Stmt replaced) then
-                maybe.unwrap(:Stmt replaced)
+            if maybe.isSome(replaced) then
+                maybe.unwrap(replaced)
             else
                 let bodies = walk.statementBodies(s)
                 for i = 0 upto {extent bodies - 1} do body(d bodies[i]) end
@@ -686,20 +686,20 @@ export
             let made = vector.new(:nodes.DescriptorParam)
             for i = 0 upto {extent f.typeParams - 1} do
                 let tp = f.typeParams[i]
-                vector.append(:nodes.DescriptorParam made tuple
+                vector.append(made tuple
                     let v = nodes.newVar("descriptor_" <> tp.name nodes.descriptorType false) let symbols = array of tp.symbolId
                     end
                 end)
             end
-            let params = vector.toArray(:nodes.DescriptorParam made)
+            let params = vector.toArray(made)
             f.descriptorParams := params
             let scope = newScope()
-            for i = 0 upto {extent params - 1} do hashMap.insert(:Int :Variable scope params[i].symbols[0] params[i].v) end
+            for i = 0 upto {extent params - 1} do hashMap.insert(scope params[i].symbols[0] params[i].v) end
             d.scope := scope
             d.viewMaps := hashMap.new(:Int :nodes.ViewMapParam intEqual hash.int)
             d.viewMapOrder := vector.new(:nodes.ViewMapParam)
             body(d f.body)
-            f.viewMaps := vector.toArray(:nodes.ViewMapParam d.viewMapOrder)
+            f.viewMaps := vector.toArray(d.viewMapOrder)
             d.viewMaps := hashMap.new(:Int :nodes.ViewMapParam intEqual hash.int)
             d.viewMapOrder := vector.new(:nodes.ViewMapParam)
             d.scope := newScope()
@@ -714,24 +714,24 @@ export
             let entries = abstractTypes.moduleAbstractTypes(canon)
             for i = 0 upto {extent entries - 1} do
                 let entry = entries[i]
-                let var rep = shapes.opaqueShape(maybe.unwrap(:Type entry.rep)).type
+                let var rep = shapes.opaqueShape(maybe.unwrap(entry.rep)).type
                 let var arity = 0
                 let var kind = case entry.typeVar.form when typeVariable with x then x.bound else maybe.none(:model.Kind) end
                 let var more = true
                 while more do
-                    if maybe.isSome(:model.Kind kind) then
-                        case maybe.unwrap(:model.Kind kind).form
+                    if maybe.isSome(kind) then
+                        case maybe.unwrap(kind).form
                             when kindAll with k then
                                 arity := arity + 1
-                                kind := maybe.some(:model.Kind k.resultKind)
+                                kind := maybe.some(k.resultKind)
                             else more := false
                         end
                     else
                         more := false
                     end
                 end
-                let isTypeKind = maybe.isSome(:model.Kind kind) andif maybe.unwrap(:model.Kind kind).form?kindType
-                let isPower = maybe.isSome(:model.Kind kind) andif maybe.unwrap(:model.Kind kind).form?kindPower
+                let isTypeKind = maybe.isSome(kind) andif maybe.unwrap(kind).form?kindType
+                let isPower = maybe.isSome(kind) andif maybe.unwrap(kind).form?kindPower
                 let var usable = {isTypeKind orif isPower} andif not({arity > 0} andif isPower)
                 if usable andif {arity > 0} then
                     case rep.form
@@ -741,8 +741,8 @@ export
                             else
                                 let subst = model.newSubst()
                                 for j = 0 upto {extent op.params - 1} do
-                                    hashMap.insert(:Int :Type subst op.params[j].symbolId
-                                        descriptors.holeVar(j maybe.some(:model.Kind op.params[j].bound)))
+                                    hashMap.insert(subst op.params[j].symbolId
+                                        descriptors.holeVar(j maybe.some(op.params[j].bound)))
                                 end
                                 rep := model.substitute(op.body subst)
                             end
@@ -750,12 +750,12 @@ export
                     end
                 end
                 if usable then
-                    vector.append(:nodes.AbstractTypeEntry found tuple
+                    vector.append(found tuple
                         let name = entry.globalName let arity = arity let descriptor = static(d rep false)
                     end)
                 end
             end
-            vector.toArray(:nodes.AbstractTypeEntry found)
+            vector.toArray(found)
         end
 
     (* =========================================================================
@@ -777,21 +777,21 @@ export
     end
 
     let add(c: Collector t: Type): Ok =
-        if not(hashMap.contains(:Int :Bool c.seenTypes t.id)) then
-            hashMap.insert(:Int :Bool c.seenTypes t.id true)
-            vector.append(:Type c.found t)
+        if not(hashMap.contains(c.seenTypes t.id)) then
+            hashMap.insert(c.seenTypes t.id true)
+            vector.append(c.found t)
         end
 
-    let addOpt(c: Collector t: maybe.T(Type)): Ok = if maybe.isSome(:Type t) then add(c maybe.unwrap(:Type t)) end
+    let addOpt(c: Collector t: maybe.T(Type)): Ok = if maybe.isSome(t) then add(c maybe.unwrap(t)) end
 
     (* A node seen for the first time: its id noted *)
     let first(c: Collector id: Int): Bool =
-        if hashMap.contains(:Int :Bool c.seenNodes id) then false
-        else begin hashMap.insert(:Int :Bool c.seenNodes id true) true end end
+        if hashMap.contains(c.seenNodes id) then false
+        else begin hashMap.insert(c.seenNodes id true) true end end
 
     let rec kindTypes(c: Collector k: model.Kind): Ok =
-        if not(hashMap.contains(:Int :Bool c.seenKinds k.id)) then
-            hashMap.insert(:Int :Bool c.seenKinds k.id true)
+        if not(hashMap.contains(c.seenKinds k.id)) then
+            hashMap.insert(c.seenKinds k.id true)
             case k.form
                 when kindPower with x then add(c x.bound)
                 when kindAll with x then begin kindTypes(c x.paramKind) kindTypes(c x.resultKind) end
@@ -800,9 +800,9 @@ export
         end
 
     let variable(c: Collector v: Variable): Ok = if first(c v.id) then add(c v.type) end
-    let optVariable(c: Collector v: maybe.T(Variable)): Ok = if maybe.isSome(:Variable v) then variable(c maybe.unwrap(:Variable v)) end
+    let optVariable(c: Collector v: maybe.T(Variable)): Ok = if maybe.isSome(v) then variable(c maybe.unwrap(v)) end
     let atom(c: Collector a: Atom): Ok = case a when atomVar with x then variable(c x.v) else ok end
-    let optAtom(c: Collector a: maybe.T(Atom)): Ok = if maybe.isSome(:Atom a) then atom(c maybe.unwrap(:Atom a)) end
+    let optAtom(c: Collector a: maybe.T(Atom)): Ok = if maybe.isSome(a) then atom(c maybe.unwrap(a)) end
     let atoms(c: Collector items: Array(Atom)): Ok = for i = 0 upto {extent items - 1} do atom(c items[i]) end
     let types(c: Collector items: Array(Type)): Ok = for i = 0 upto {extent items - 1} do add(c items[i]) end
 
@@ -818,16 +818,16 @@ export
         end
 
     let rec planTypes(c: Collector p0: maybe.T(Plan)): Ok =
-        if maybe.isSome(:Plan p0) then
-            let p = maybe.unwrap(:Plan p0)
+        if maybe.isSome(p0) then
+            let p = maybe.unwrap(p0)
             if first(c p.id) then
                 add(c p.source)
                 add(c p.target)
                 for i = 0 upto {extent p.fields - 1} do planTypes(c p.fields[i]) end
-                if maybe.isSome(:nodes.PlanLayout p.layout) then
-                    let lay = maybe.unwrap(:nodes.PlanLayout p.layout)
-                    for i = 0 upto {vector.length(:Int lay.keys) - 1} do
-                        add(c hashMap.find(:Int :Type lay.subst vector.get(:Int lay.keys i)))
+                if maybe.isSome(p.layout) then
+                    let lay = maybe.unwrap(p.layout)
+                    for i = 0 upto {vector.length(lay.keys) - 1} do
+                        add(c hashMap.find(lay.subst vector.get(lay.keys i)))
                     end
                 end
             end
@@ -840,20 +840,20 @@ export
         end
 
     and optModuleRef(c: Collector r: maybe.T(nodes.ModuleRef)): Ok =
-        if maybe.isSome(:nodes.ModuleRef r) then moduleRefTypes(c maybe.unwrap(:nodes.ModuleRef r)) end
+        if maybe.isSome(r) then moduleRefTypes(c maybe.unwrap(r)) end
 
     and importTypes(c: Collector i: nodes.Import): Ok = if first(c i.id) then addOpt(c i.recordType) end
 
     and membersTypes(c: Collector m: nodes.Members): Ok =
-        for i = 0 upto {vector.length(:String m.names) - 1} do
-            variable(c hashMap.find(:String :Variable m.vars vector.get(:String m.names i)))
+        for i = 0 upto {vector.length(m.names) - 1} do
+            variable(c hashMap.find(m.vars vector.get(m.names i)))
         end
 
     and moduleTypes(c: Collector m: nodes.Module): Ok =
         if first(c m.id) then
             bodyTypes(c m.init)
             membersTypes(c m.members)
-            if maybe.isSome(:nodes.Members m.exports) then membersTypes(c maybe.unwrap(:nodes.Members m.exports)) end
+            if maybe.isSome(m.exports) then membersTypes(c maybe.unwrap(m.exports)) end
             optVariable(c m.recordVar)
             for i = 0 upto {extent m.abstractTypes - 1} do add(c m.abstractTypes[i].descriptor.type) end
         end
@@ -891,7 +891,7 @@ export
             when opCallExternal with x then begin types(c x.typeArgs) atoms(c x.args) end
             when opMakeClosure with x then begin functionTypes(c x.code) atoms(c x.captures) types(c x.typeArgs) end
             when opEnvField with x then atom(c x.env)
-            when opConvert with x then begin atom(c x.value) planTypes(c maybe.some(:Plan x.plan)) end
+            when opConvert with x then begin atom(c x.value) planTypes(c maybe.some(x.plan)) end
             when opMakeTuple with x then
                 begin
                     atoms(c x.args)
@@ -929,7 +929,7 @@ export
             else ok
         end
 
-    and optBodyTypes(c: Collector b: maybe.T(Body)): Ok = if maybe.isSome(:Body b) then bodyTypes(c maybe.unwrap(:Body b)) end
+    and optBodyTypes(c: Collector b: maybe.T(Body)): Ok = if maybe.isSome(b) then bodyTypes(c maybe.unwrap(b)) end
 
     and stmtTypes(c: Collector s: Stmt): Ok =
         case s
@@ -959,10 +959,10 @@ export
                 end
             when sInspect with x then
                 begin
-                    if maybe.isSome(:Type x.autoType) then
+                    if maybe.isSome(x.autoType) then
                         for i = 0 upto {extent x.cases - 1} do
                             if extent x.cases[i].binders > 0 then
-                                add(c model.autoPayloadType(maybe.unwrap(:Type x.autoType) maybe.some(:Type x.cases[i].matchType)))
+                                add(c model.autoPayloadType(maybe.unwrap(x.autoType) maybe.some(x.cases[i].matchType)))
                             end
                         end
                     end
@@ -972,7 +972,7 @@ export
                         add(c k.matchType)
                         for j = 0 upto {extent k.binders - 1} do variable(c k.binders[j]) end
                         bodyTypes(c k.body)
-                        if maybe.isSome(:nodes.InspectArm k.arm) then planTypes(c maybe.unwrap(:nodes.InspectArm k.arm).plan) end
+                        if maybe.isSome(k.arm) then planTypes(c maybe.unwrap(k.arm).plan) end
                     end
                     optBodyTypes(c x.elseBody)
                     addOpt(c x.autoType)
@@ -992,8 +992,8 @@ export
             when sRaise with x then
                 begin
                     atom(c x.exc) optAtom(c x.payload)
-                    if maybe.isSome(:Atom x.payload) andif not(stringOp.isEmpty(x.payloadText)) then
-                        add(c typeOf(maybe.unwrap(:Atom x.payload)))
+                    if maybe.isSome(x.payload) andif not(stringOp.isEmpty(x.payloadText)) then
+                        add(c typeOf(maybe.unwrap(x.payload)))
                     end
                 end
             when sReraise with x then variable(c x.exc)
@@ -1002,7 +1002,7 @@ export
 
     and bodyTypes(c: Collector b: Body): Ok =
         if first(c b.id) then
-            for i = 0 upto {vector.length(:Stmt b.statements) - 1} do stmtTypes(c vector.get(:Stmt b.statements i)) end
+            for i = 0 upto {vector.length(b.statements) - 1} do stmtTypes(c vector.get(b.statements i)) end
         end
 
     let unitTypes(unit: nodes.Unit): Array(Type) =
@@ -1013,19 +1013,19 @@ export
                 let seenNodes = hashMap.new(:Int :Bool intEqual hash.int)
                 let seenKinds = hashMap.new(:Int :Bool intEqual hash.int)
             end
-            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do moduleTypes(c vector.get(:nodes.Module unit.modules i)) end
+            for i = 0 upto {vector.length(unit.modules) - 1} do moduleTypes(c vector.get(unit.modules i)) end
             bodyTypes(c unit.main)
-            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do functionTypes(c vector.get(:nodes.Function unit.functions i)) end
+            for i = 0 upto {vector.length(unit.functions) - 1} do functionTypes(c vector.get(unit.functions i)) end
             for i = 0 upto {extent unit.imports - 1} do importTypes(c unit.imports[i]) end
-            if maybe.isSome(:nodes.StaticData unit.staticData) then
-                let data = maybe.unwrap(:nodes.StaticData unit.staticData)
-                for i = 0 upto {vector.length(:nodes.OffsetTable data.offsetTables) - 1} do
-                    let table = vector.get(:nodes.OffsetTable data.offsetTables i)
+            if maybe.isSome(unit.staticData) then
+                let data = maybe.unwrap(unit.staticData)
+                for i = 0 upto {vector.length(data.offsetTables) - 1} do
+                    let table = vector.get(data.offsetTables i)
                     add(c table.view)
                     add(c table.layout)
                 end
             end
-            vector.toArray(:Type c.found)
+            vector.toArray(c.found)
         end
 
     let describeUnit(unit: nodes.Unit): nodes.Unit =
@@ -1047,17 +1047,17 @@ export
                 let var viewMapOrder = vector.new(:nodes.ViewMapParam)
                 let handlerVars = hashMap.new(:Int :Bool intEqual hash.int)
             end
-            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
-                let m = vector.get(:nodes.Module unit.modules i)
+            for i = 0 upto {vector.length(unit.modules) - 1} do
+                let m = vector.get(unit.modules i)
                 body(d m.init)
                 m.abstractTypes := abstractTypesOf(d m.name)
             end
             body(d unit.main)
-            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do function(d vector.get(:nodes.Function unit.functions i)) end
+            for i = 0 upto {vector.length(unit.functions) - 1} do function(d vector.get(unit.functions i)) end
             (* As the bootstrap's, before the unit has its static data *)
             let found = unitTypes(unit)
-            for i = 0 upto {extent found - 1} do vector.append(:Type d.data.types found[i]) end
-            unit.staticData := maybe.some(:nodes.StaticData d.data)
+            for i = 0 upto {extent found - 1} do vector.append(d.data.types found[i]) end
+            unit.staticData := maybe.some(d.data)
             unit.stage := "described"
             unit
         end

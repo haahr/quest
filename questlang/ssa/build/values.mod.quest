@@ -34,7 +34,7 @@ export
     let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
     let fail(A::TYPE what: String): A = raise unsupported with what end
-    let put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok = begin hashMap.insert(:K :V m k v) ok end
+    let put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok = begin hashMap.insert(m k v) ok end
 
     let tInt = ssa.typeInt
     let tPtr = ssa.typePtr
@@ -106,9 +106,9 @@ export
             let all = vector.new(:Part)
             for i = 0 upto {extent rs.components - 1} do
                 let ps = slotParts(shapes.componentShape(rs.components[i]).type)
-                for k = 0 upto {extent ps - 1} do vector.append(:Part all ps[k]) end
+                for k = 0 upto {extent ps - 1} do vector.append(all ps[k]) end
             end
-            vector.toArray(:Part all)
+            vector.toArray(all)
         end
 
     (* The parts of a variable's value: a boxed variable (a record or a variant
@@ -224,91 +224,91 @@ export
         begin
             let var n = 1
             let var name = base
-            while hashMap.contains(:String :Bool u.usedNames name) do
+            while hashMap.contains(u.usedNames name) do
                 n := n + 1
                 name := base <> "_" <> conv.int(n)
             end
-            put(:String :Bool u.usedNames name true)
+            put(u.usedNames name true)
             name
         end
 
     (* The symbol of f's code, made unique in the unit the first time *)
     let codeName(u: UnitBuilder f: ir.Function): String =
         begin
-            if not(hashMap.contains(:Int :String u.codeNames f.id)) then
+            if not(hashMap.contains(u.codeNames f.id)) then
                 let base = symbols.mangleIdent(if stringOp.length(f.v.hint) > 0 then f.v.hint else "fun" end)
                 let bare = if strutil.startsWith(base "qv_") then stringOp.getSub(base 3 {stringOp.length(base) - 3}) else base end
-                put(:Int :String u.codeNames f.id freshName(u "qf_" <> bare))
+                put(u.codeNames f.id freshName(u "qf_" <> bare))
             end
-            hashMap.find(:Int :String u.codeNames f.id)
+            hashMap.find(u.codeNames f.id)
         end
 
     (* The symbol of global v; the first time, also its zeroed storage in the
      * unit's static data, and its root entry if it may hold a pointer *)
     let globalSymbol(u: UnitBuilder v: Variable): String =
         begin
-            if not(hashMap.contains(:Int :String u.globalSymbols v.id)) then
+            if not(hashMap.contains(u.globalSymbols v.id)) then
                 let base = symbols.mangleIdent(if stringOp.length(v.hint) > 0 then v.hint else "global" end)
                 let bare = if strutil.startsWith(base "qv_") then stringOp.getSub(base 3 {stringOp.length(base) - 3}) else base end
                 let symbol = freshName(u "g_" <> bare)
-                put(:Int :String u.globalSymbols v.id symbol)
+                put(u.globalSymbols v.id symbol)
                 let ps = varParts(v)
                 let n = extent ps
-                vector.append(:ssa.Data u.built.data tuple
+                vector.append(u.built.data tuple
                     let symbol = symbol let exported = false let writable = true
                     let contents = option contentsZero of ssa.Contents with let bytes = 8 * {if n > 0 then n else 1 end} end
                 end)
                 if partsHoldPointer(ps) then
-                    vector.append(:RootEntry u.roots tuple let symbol = symbol let words = n end)
+                    vector.append(u.roots tuple let symbol = symbol let words = n end)
                 end
             end
-            hashMap.find(:Int :String u.globalSymbols v.id)
+            hashMap.find(u.globalSymbols v.id)
         end
 
     (* The symbol of the C string s; the first time, also its static data *)
     let stringSymbol(u: UnitBuilder s: String): String =
         begin
-            if not(hashMap.contains(:String :String u.strings s)) then
+            if not(hashMap.contains(u.strings s)) then
                 u.stringCount := u.stringCount + 1
                 let symbol = "qs_" <> conv.int(u.stringCount)
-                put(:String :String u.strings s symbol)
-                vector.append(:ssa.Data u.built.data tuple
+                put(u.strings s symbol)
+                vector.append(u.built.data tuple
                     let symbol = symbol let exported = false let writable = false
                     let contents = option contentsText of ssa.Contents with let text = s end
                 end)
             end
-            hashMap.find(:String :String u.strings s)
+            hashMap.find(u.strings s)
         end
 
     let stringObject(u: UnitBuilder s: String): String =
         begin
-            if not(hashMap.contains(:String :String u.stringObjects s)) then
+            if not(hashMap.contains(u.stringObjects s)) then
                 let bytes = stringSymbol(u s)
                 let symbol = "qso_" <> stringOp.getSub(bytes 3 {stringOp.length(bytes) - 3})
-                put(:String :String u.stringObjects s symbol)
+                put(u.stringObjects s symbol)
                 let header = option wordSymbol of ssa.Word with
                     let symbol = "quest_layout_string"
                     let addend = word.toInt(word.shift(word.fromInt(1) runtimeLayout.constant("Q_HEADER_READONLY_BIT")))
                 end
-                vector.append(:ssa.Data u.built.data ssa.words(symbol false false array of
+                vector.append(u.built.data ssa.words(symbol false false array of
                     header
                     option wordInt of ssa.Word with let n = stringOp.length(s) end
                     option wordSymbol of ssa.Word with let symbol = bytes let addend = 0 end
                 end))
             end
-            hashMap.find(:String :String u.stringObjects s)
+            hashMap.find(u.stringObjects s)
         end
 
     let optionTable(u: UnitBuilder key: String count: Int): String =
         begin
-            if not(hashMap.contains(:String :String u.optionTables key)) then
+            if not(hashMap.contains(u.optionTables key)) then
                 let symbol = freshName(u "qc_" <> key)
-                put(:String :String u.optionTables key symbol)
+                put(u.optionTables key symbol)
                 let words = array of(count option wordInt of ssa.Word with let n = 0 end)
                 for i = 0 upto {count - 1} do words[i] := option wordInt of ssa.Word with let n = i end end
-                vector.append(:ssa.Data u.built.data ssa.words(symbol false false words))
+                vector.append(u.built.data ssa.words(symbol false false words))
             end
-            hashMap.find(:String :String u.optionTables key)
+            hashMap.find(u.optionTables key)
         end
 
     (* =========================================================================
@@ -338,8 +338,8 @@ export
      * (beginInit), and counts the call *)
     let mayCollect(fn: Fn): Ok =
         begin
-            for i = 0 upto {vector.length(:Int fn.initObjects) - 1} do
-                if fn.calls > vector.get(:Int fn.initMarks i) then barrierOn(fn vector.get(:Int fn.initObjects i)) end
+            for i = 0 upto {vector.length(fn.initObjects) - 1} do
+                if fn.calls > vector.get(fn.initMarks i) then barrierOn(fn vector.get(fn.initObjects i)) end
             end
             fn.calls := fn.calls + 1
         end
@@ -363,16 +363,16 @@ export
     let callVoid(fn: Fn name: String args: Array(Int)): Ok = begin runtime(fn name args) ok end
     let beginInit(fn: Fn obj: Int): Int =
         begin
-            vector.append(:Int fn.initObjects obj)
-            vector.append(:Int fn.initMarks fn.calls)
+            vector.append(fn.initObjects obj)
+            vector.append(fn.initMarks fn.calls)
             fn.calls
         end
     let endInit(fn: Fn mark: Int obj: Int): Ok =
         begin
             let var found = false
-            while not(found) andif not(vector.empty(:Int fn.initObjects)) do
-                vector.pop(:Int fn.initMarks)
-                found := vector.pop(:Int fn.initObjects) is obj
+            while not(found) andif not(vector.empty(fn.initObjects)) do
+                vector.pop(fn.initMarks)
+                found := vector.pop(fn.initObjects) is obj
             end
             if fn.calls > mark then barrierOn(fn obj) else ok end
         end
@@ -443,25 +443,25 @@ export
     (* The source site of a raise or a check, a C string, or NULL *)
     let site(fn: Fn offset: maybe.T(Int)): Int =
         begin
-            let s = if maybe.isNone(:Int offset) then maybe.none(:String)
-                else ir.site(fn.u.unit maybe.unwrap(:Int offset)) end
-            if maybe.isNone(:String s) then null(fn) else symbolAt(fn stringSymbol(fn.u maybe.unwrap(:String s))) end
+            let s = if maybe.isNone(offset) then maybe.none(:String)
+                else ir.site(fn.u.unit maybe.unwrap(offset)) end
+            if maybe.isNone(s) then null(fn) else symbolAt(fn stringSymbol(fn.u maybe.unwrap(s))) end
         end
 
     (* =========================================================================
      * Variables
      * ====================================================================== *)
 
-    let isGlobal(fn: Fn v: Variable): Bool = hashMap.contains(:Int :Bool fn.u.globals v.id)
+    let isGlobal(fn: Fn v: Variable): Bool = hashMap.contains(fn.u.globals v.id)
 
     (* How a variable is held, if anything holds it *)
     let binding(fn: Fn v: Variable): maybe.T(Binding) =
-        if hashMap.contains(:Int :Binding fn.bindings v.id) then
-            hashMap.get(:Int :Binding fn.bindings v.id)
-        elsif isGlobal(fn v) then maybe.some(:Binding option bindGlobal of Binding end)
+        if hashMap.contains(fn.bindings v.id) then
+            hashMap.get(fn.bindings v.id)
+        elsif isGlobal(fn v) then maybe.some(option bindGlobal of Binding end)
         else maybe.none(:Binding) end
 
-    let bind(fn: Fn v: Variable b: Binding): Ok = put(:Int :Binding fn.bindings v.id b)
+    let bind(fn: Fn v: Variable b: Binding): Ok = put(fn.bindings v.id b)
     let bindToValues(fn: Fn v: Variable vs: Array(Int)): Ok =
         bind(fn v option bindValues of Binding with let values = vs end)
     let bindToPointer(fn: Fn v: Variable address: Int): Ok =
@@ -473,10 +473,10 @@ export
     let pointerOf(fn: Fn v: Variable): maybe.T(Int) =
         begin
             let b = binding(fn v)
-            if maybe.isNone(:Binding b) then maybe.none(:Int)
+            if maybe.isNone(b) then maybe.none(:Int)
             else
-                case maybe.unwrap(:Binding b)
-                    when bindPointer with x then maybe.some(:Int x.address)
+                case maybe.unwrap(b)
+                    when bindPointer with x then maybe.some(x.address)
                     when bindValues, bindSlot, bindHandler, bindGlobal then maybe.none(:Int)
                 end
             end
@@ -487,8 +487,8 @@ export
         begin
             let b = binding(fn v)
             let var state = ~1
-            if maybe.isSome(:Binding b) then
-                case maybe.unwrap(:Binding b)
+            if maybe.isSome(b) then
+                case maybe.unwrap(b)
                     when bindHandler with x then state := x.state
                     when bindValues, bindSlot, bindPointer, bindGlobal then ok
                 end
@@ -502,8 +502,8 @@ export
         begin
             let var s = ~1
             let b = binding(fn v)
-            if maybe.isSome(:Binding b) then
-                case maybe.unwrap(:Binding b)
+            if maybe.isSome(b) then
+                case maybe.unwrap(b)
                     when bindSlot with x then s := x.slot
                     when bindValues, bindPointer, bindHandler, bindGlobal then ok
                 end
@@ -549,11 +549,11 @@ export
     let read(fn: Fn v: Variable): Array(Int) =
         begin
             let b = binding(fn v)
-            if maybe.isNone(:Binding b) then
+            if maybe.isNone(b) then
                 raise unsupported with "a use of variable " <> v.hint <> " (" <> conv.int(v.id)
                     <> "), which nothing binds" end
             end
-            case maybe.unwrap(:Binding b)
+            case maybe.unwrap(b)
                 when bindHandler with x then
                     array of loadWord(fn x.state runtimeLayout.offset("QExceptionState" "exc") tPtr) end
                 when bindValues with x then x.values
@@ -567,10 +567,10 @@ export
     let write(fn: Fn v: Variable values: Array(Int)): Ok =
         begin
             let b = binding(fn v)
-            if maybe.isNone(:Binding b) then
+            if maybe.isNone(b) then
                 if v.isMutable then writeParts(fn slotOf(fn v) varParts(v) values) else bindToValues(fn v values) end
             else
-                case maybe.unwrap(:Binding b)
+                case maybe.unwrap(b)
                     when bindPointer with x then
                         writeParts(fn x.address locationParts(v.type) values)
                         if holdsPointer(v.type) then callVoid(fn "quest_barrier_slot" array of x.address end) end
@@ -609,7 +609,7 @@ export
             when atomConst with x then constValues(fn x.c)
             when atomVar with x then
                 let vs = read(fn x.v)
-                if x.v.boxed andif {x.v.isMutable orif maybe.isSome(:Int pointerOf(fn x.v))} then
+                if x.v.boxed andif {x.v.isMutable orif maybe.isSome(pointerOf(fn x.v))} then
                     readValue(fn vs[0] x.v.type)
                 else
                     vs
@@ -805,7 +805,7 @@ export
     let finish(fn: Fn): Ok =
         begin
             let f = fn.f
-            let n = vector.length(:ssa.Block f.blocks)
+            let n = vector.length(f.blocks)
             for b = 0 upto {n - 1} do
                 if not(ssa.isTerminated(f b)) then ssa.terminate(f b ssa.termUnreachable) end
             end

@@ -47,7 +47,7 @@ export
     Let Action = All(ctx: Ctx args: Array(Val)) Val
 
     let absent: Val = option absent of Val end
-    let list(items: vector.T(Val)): Val = option list of Val with let items = vector.toArray(:Val items) end
+    let list(items: vector.T(Val)): Val = option list of Val with let items = vector.toArray(items) end
     let elements(v: Val): Array(Val) = case v when list with l then l.items else raise error with "not a list" end end
 
     (* ======================================================================
@@ -81,7 +81,7 @@ export
         case t
             when target with x then
                 fun(items: Array(Construct)): Ok
-                    vector.append(:Rule x.target.rules tuple let items = items let action = action end)
+                    vector.append(x.target.rules tuple let items = items let action = action end)
             else
                 raise error with "rule: not a syntax target" end
         end
@@ -89,8 +89,8 @@ export
     (* A failed token's name in the expected list: its kind, with its lexeme if
      * it has one *)
     let tokenName(kind: tokens.TokenKind lexeme: maybe.T(String)): String =
-        if maybe.isSome(:String lexeme) then
-            tokens.tokenKindName(kind) <> "('" <> maybe.unwrap(:String lexeme) <> "')"
+        if maybe.isSome(lexeme) then
+            tokens.tokenKindName(kind) <> "('" <> maybe.unwrap(lexeme) <> "')"
         else
             tokens.tokenKindName(kind)
         end
@@ -101,9 +101,9 @@ export
         end
 
     let t(kind: tokens.TokenKind): Construct = token(kind maybe.none(:String) false)
-    let tLex(kind: tokens.TokenKind lexeme: String): Construct = token(kind maybe.some(:String lexeme) false)
+    let tLex(kind: tokens.TokenKind lexeme: String): Construct = token(kind maybe.some(lexeme) false)
     let p(kind: tokens.TokenKind): Construct = token(kind maybe.none(:String) true)
-    let pLex(kind: tokens.TokenKind lexeme: String): Construct = token(kind maybe.some(:String lexeme) true)
+    let pLex(kind: tokens.TokenKind lexeme: String): Construct = token(kind maybe.some(lexeme) true)
 
     let isSilent(c: Construct): Bool =
         case c
@@ -217,17 +217,17 @@ export
 
     let newParser(g: Grammar toks: vector.T(tokens.Token) sm: location.SourceMap bag: diagbag.T): Parser =
         begin
-            let kept = vector.filter(:tokens.Token toks fun(tok: tokens.Token): Bool not(isEof(tok)))
-            vector.append(:tokens.Token kept
-                if vector.empty(:tokens.Token toks) then
+            let kept = vector.filter(toks fun(tok: tokens.Token): Bool not(isEof(tok)))
+            vector.append(kept
+                if vector.empty(toks) then
                     tokens.eofToken(location.file(sm) 0)
                 else
-                    vector.last(:tokens.Token toks)
+                    vector.last(toks)
                 end)
             tuple
                 let file = location.file(sm)
                 let bag = bag
-                let toks = vector.toArray(:tokens.Token kept)
+                let toks = vector.toArray(kept)
                 let targets = g.count
                 var memo = array of :Memo end
                 var farthest = 0
@@ -242,14 +242,14 @@ export
     let recordFailure(ps: Parser pos: Int expected: String): Ok =
         if pos > ps.farthest then
             ps.farthest := pos
-            vector.clear(:String ps.expected)
-            hashMap.clear(:String :Bool ps.expectedSet)
-            vector.append(:String ps.expected expected)
-            hashMap.insert(:String :Bool ps.expectedSet expected true)
+            vector.clear(ps.expected)
+            hashMap.clear(ps.expectedSet)
+            vector.append(ps.expected expected)
+            hashMap.insert(ps.expectedSet expected true)
             ok
-        elsif {pos is ps.farthest} andif not(hashMap.contains(:String :Bool ps.expectedSet expected)) then
-            vector.append(:String ps.expected expected)
-            hashMap.insert(:String :Bool ps.expectedSet expected true)
+        elsif {pos is ps.farthest} andif not(hashMap.contains(ps.expectedSet expected)) then
+            vector.append(ps.expected expected)
+            hashMap.insert(ps.expectedSet expected true)
             ok
         end
 
@@ -260,7 +260,7 @@ export
             when token with x then
                 let tok = peek(ps pos)
                 if sameKind(tok.kind x.kind) andif
-                    {maybe.isNone(:String x.lexeme) orif stringOp.equal(tok.lexeme maybe.unwrap(:String x.lexeme))} then
+                    {maybe.isNone(x.lexeme) orif stringOp.equal(tok.lexeme maybe.unwrap(x.lexeme))} then
                     matched(option tok of Val with let val = tok end {pos + 1})
                 else
                     recordFailure(ps pos x.name)
@@ -282,7 +282,7 @@ export
                             (* Each repetition must make progress, so a
                              * construct that matches nothing ends it *)
                             if m.next <= current then exit end
-                            vector.append(:Val results m.val)
+                            vector.append(results m.val)
                             current := m.next
                         else
                             exit
@@ -305,14 +305,14 @@ export
                 case evaluate(ps x.item pos)
                     when matched with first then
                         let results = vector.new(:Val)
-                        vector.append(:Val results first.val)
+                        vector.append(results first.val)
                         let var current = first.next
                         loop
                             case evaluate(ps x.separator current)
                                 when matched with separator then
                                     case evaluate(ps x.item separator.next)
                                         when matched with item then
-                                            vector.append(:Val results item.val)
+                                            vector.append(results item.val)
                                             current := item.next
                                         else
                                             exit
@@ -337,7 +337,7 @@ export
             while matching andif {i < extent(items)} do
                 case evaluate(ps items[i] current)
                     when matched with m then
-                        if not(isSilent(items[i])) then vector.append(:Val results m.val) end
+                        if not(isSilent(items[i])) then vector.append(results m.val) end
                         current := m.next
                         i := i + 1
                     else
@@ -362,15 +362,15 @@ export
                     let var outcome = failed
                     let var i = 0
                     let rules = target.rules
-                    while i < vector.length(:Rule rules) do
-                        let r = vector.get(:Rule rules i)
+                    while i < vector.length(rules) do
+                        let r = vector.get(rules i)
                         case matchItems(ps r.items pos)
                             when matched with m then
                                 let start = peek(ps pos).span.startOffset
                                 let stop = if m.next > pos then peek(ps {m.next - 1}).span.endOffset else start end
                                 let ctx: Ctx = tuple let file = ps.file let start = start let stop = stop let bag = ps.bag end
                                 outcome := matched(r.action(ctx elements(m.val)) m.next)
-                                i := vector.length(:Rule rules)
+                                i := vector.length(rules)
                             else
                                 i := i + 1
                         end
@@ -385,8 +385,8 @@ export
     let syntaxError(ps: Parser): Val =
         begin
             let tok = peek(ps ps.farthest)
-            sort.sortVector(:String ps.expected sort.stringCompare)
-            let expected = if vector.empty(:String ps.expected) then "valid syntax" else strutil.join(", " ps.expected) end
+            sort.sortVector(ps.expected sort.stringCompare)
+            let expected = if vector.empty(ps.expected) then "valid syntax" else strutil.join(", " ps.expected) end
             let length = tok.span.endOffset - tok.span.startOffset
             let sp = location.span(ps.file tok.span.startOffset {tok.span.startOffset + {if length < 1 then 1 else length end}})
             diagbag.addStoppingError(ps.bag sp
@@ -411,8 +411,8 @@ export
             end
             spare.memo := array of :Memo end
             ps.farthest := 0
-            vector.clear(:String ps.expected)
-            hashMap.clear(:String :Bool ps.expectedSet)
+            vector.clear(ps.expected)
+            hashMap.clear(ps.expectedSet)
             (* The start target itself does not count as expected *)
             let outcome = case start when target with x then parseTarget(ps x.target 0) else evaluate(ps start 0) end
             spare.memo := ps.memo

@@ -89,8 +89,8 @@ export
     (* Gives value v type t, the numbers before it int until defined *)
     let setType(f: Function v: Int t: Type): Ok =
         begin
-            while vector.length(:Type f.types) <= v do vector.append(:Type f.types nodes.typeInt) end
-            vector.set(:Type f.types v t)
+            while vector.length(f.types) <= v do vector.append(f.types nodes.typeInt) end
+            vector.set(f.types v t)
         end
 
     (* A typed value, %n: type, defined *)
@@ -109,10 +109,10 @@ export
             let vs = vector.new(:Int)
             skip(l)
             if peek(l) is '%' then
-                vector.append(:Int vs value(l))
-                while lit(l ",") do vector.append(:Int vs value(l)) end
+                vector.append(vs value(l))
+                while lit(l ",") do vector.append(vs value(l)) end
             end
-            vector.toArray(:Int vs)
+            vector.toArray(vs)
         end
 
     (* [a b c] *)
@@ -120,8 +120,8 @@ export
         begin
             expect(l "[")
             let xs = vector.new(:Int)
-            while not(lit(l "]")) do vector.append(:Int xs integer(l)) end
-            vector.toArray(:Int xs)
+            while not(lit(l "]")) do vector.append(xs integer(l)) end
+            vector.toArray(xs)
         end
 
     (* A block's name, bN *)
@@ -168,20 +168,20 @@ export
                 elsif lit(l "memory") then
                     expect(l "[")
                     while not(lit(l "]")) do
-                        vector.append(:Int memory integer(l))
+                        vector.append(memory integer(l))
                         expect(l ":")
-                        vector.append(:Int bytes integer(l))
+                        vector.append(bytes integer(l))
                     end
                 else more := false end
             end
             let result = if lit(l "result") then
-                if lit(l "narrow") then maybe.some(:nodes.Passed nodes.passByte)
-                elsif lit(l "int32") then maybe.some(:nodes.Passed nodes.passInt32)
+                if lit(l "narrow") then maybe.some(nodes.passByte)
+                elsif lit(l "int32") then maybe.some(nodes.passInt32)
                 else fail(:maybe.T(nodes.Passed) l "expected narrow or int32") end
             else maybe.none(:nodes.Passed) end
             tuple
-                let pairs = pairs let narrow = narrow let memory = vector.toArray(:Int memory)
-                let bytes = vector.toArray(:Int bytes) let int32 = int32 let result = result
+                let pairs = pairs let narrow = narrow let memory = vector.toArray(memory)
+                let bytes = vector.toArray(bytes) let int32 = int32 let result = result
             end
         end
 
@@ -194,8 +194,7 @@ export
                 s := nodes.withParam(s w.memory[k] option passMemory of nodes.Passed with let bytes = w.bytes[k] end)
             end
             for k = 0 upto {extent w.int32 - 1} do s := nodes.withParam(s w.int32[k] nodes.passInt32) end
-            if maybe.isSome(:nodes.Passed w.result) then s := nodes.withResult(s maybe.unwrap(:nodes.Passed
-                w.result)) end
+            if maybe.isSome(w.result) then s := nodes.withResult(s maybe.unwrap(w.result)) end
             s
         end
 
@@ -207,7 +206,7 @@ export
         begin
             let ts = array of(extent vs nodes.typeInt)
             for k = 0 upto {extent vs - 1} do
-                if vs[k] < vector.length(:Type f.types) then ts[k] := nodes.typeOf(f vs[k]) end
+                if vs[k] < vector.length(f.types) then ts[k] := nodes.typeOf(f vs[k]) end
             end
             ts
         end
@@ -223,7 +222,7 @@ export
             let call(op: nodes.Opcode args: Array(Int) symbol: String): nodes.Inst =
                 begin
                     let i = make(op args 0 symbol 0 false)
-                    vector.append(:Pending pending tuple let inst = i let written = written(l) end)
+                    vector.append(pending tuple let inst = i let written = written(l) end)
                     i
                 end
             (* load8, load1s, store4: the width, and for a load whether it
@@ -254,8 +253,8 @@ export
                 make(nodes.opStore array of address value(l) end offset "" w false)
             else
                 let op = nodes.opcodeNamed(name)
-                if maybe.isNone(:nodes.Opcode op) then fail(:Ok l "unknown opcode " <> name) end
-                let o = maybe.unwrap(:nodes.Opcode op)
+                if maybe.isNone(op) then fail(:Ok l "unknown opcode " <> name) end
+                let o = maybe.unwrap(op)
                 case o
                     when opConst, opRealConst, opSlot then make(o none integer(l) "" 0 false)
                     when opThreadLocal then make(o none 0 word(l) 0 false)
@@ -288,17 +287,17 @@ export
             let results = vector.new(:Int)
             skip(l)
             if peek(l) is '%' then
-                vector.append(:Int results typedValue(f l))
-                while lit(l ",") do vector.append(:Int results typedValue(f l)) end
+                vector.append(results typedValue(f l))
+                while lit(l ",") do vector.append(results typedValue(f l)) end
                 expect(l "=")
             end
-            instructionBody(l vector.toArray(:Int results) pending)
+            instructionBody(l vector.toArray(results) pending)
         end
 
     (* A terminator, if the line is one *)
     let terminator(f: Function l: Line pending: vector.T(Pending)): maybe.T(nodes.Terminator) =
         begin
-            let some = fun(t: nodes.Terminator): maybe.T(nodes.Terminator) maybe.some(:nodes.Terminator t)
+            let some = fun(t: nodes.Terminator): maybe.T(nodes.Terminator) maybe.some(t)
             let start = l.at
             skip(l)
             if lit(l "(no terminator)") then some(nodes.termNone)
@@ -320,15 +319,14 @@ export
                     let cases = vector.new(:Int)
                     let targets = vector.new(:nodes.Target)
                     while not(lit(l "]")) do
-                        if not(vector.empty(:Int cases)) then expect(l ",") end
-                        vector.append(:Int cases integer(l))
+                        if not(vector.empty(cases)) then expect(l ",") end
+                        vector.append(cases integer(l))
                         expect(l ":")
-                        vector.append(:nodes.Target targets target(l))
+                        vector.append(targets target(l))
                     end
                     expect(l "default")
                     some(option termSwitch of nodes.Terminator with
-                        let value = v let cases = vector.toArray(:Int cases) let targets = vector.toArray(:nodes.Target
-                            targets)
+                        let value = v let cases = vector.toArray(cases) let targets = vector.toArray(targets)
                         let default = target(l)
                     end)
                 elsif stringOp.equal(name "return") then
@@ -375,21 +373,21 @@ export
             expect(l "(")
             if not(lit(l ")")) then
                 let first = typedValue(f l)
-                vector.append(:Type f.paramTypes nodes.typeOf(f first))
-                while lit(l ",") do vector.append(:Type f.paramTypes nodes.typeOf(f typedValue(f l))) end
+                vector.append(f.paramTypes nodes.typeOf(f first))
+                while lit(l ",") do vector.append(f.paramTypes nodes.typeOf(f typedValue(f l))) end
                 expect(l ")")
             end
             let params = written(l)
             if lit(l ":") then
-                vector.append(:Type f.resultTypes typeNamed(l))
-                while lit(l ",") do vector.append(:Type f.resultTypes typeNamed(l)) end
+                vector.append(f.resultTypes typeNamed(l))
+                while lit(l ",") do vector.append(f.resultTypes typeNamed(l)) end
             end
             let result = written(l)
             let w = tuple
                 let pairs = params.pairs let narrow = params.narrow let memory = params.memory let bytes = params.bytes
                 let int32 = params.int32 let result = result.result
             end
-            f.signature := signatureOf(vector.toArray(:Type f.paramTypes) vector.toArray(:Type f.resultTypes) w)
+            f.signature := signatureOf(vector.toArray(f.paramTypes) vector.toArray(f.resultTypes) w)
             if lit(l "slots") then
                 expect(l "[")
                 while not(lit(l "]")) do
@@ -406,11 +404,11 @@ export
     let blockHeader(f: Function l: Line): Int =
         begin
             let b = blockNumber(l)
-            while vector.length(:nodes.Block f.blocks) <= b do let ignored = nodes.newBlock(f) end
+            while vector.length(f.blocks) <= b do let ignored = nodes.newBlock(f) end
             expect(l "(")
             if not(lit(l ")")) then
-                vector.append(:Int nodes.block(f b).params typedValue(f l))
-                while lit(l ",") do vector.append(:Int nodes.block(f b).params typedValue(f l)) end
+                vector.append(nodes.block(f b).params typedValue(f l))
+                while lit(l ",") do vector.append(nodes.block(f b).params typedValue(f l)) end
                 expect(l ")")
             end
             expect(l ":")
@@ -458,18 +456,18 @@ export
                     expect(l "[")
                     let ws = vector.new(:nodes.Word)
                     while not(lit(l "]")) do
-                        if not(vector.empty(:nodes.Word ws)) then expect(l ",") end
+                        if not(vector.empty(ws)) then expect(l ",") end
                         skip(l)
                         if isDigit(peek(l)) orif {peek(l) is '~'} orif {peek(l) is '-'} then
-                            vector.append(:nodes.Word ws option wordInt of nodes.Word with let n = integer(l) end)
+                            vector.append(ws option wordInt of nodes.Word with let n = integer(l) end)
                         else
                             let s = word(l)
                             let addend = if lit(l "+") then integer(l) else 0 end
-                            vector.append(:nodes.Word ws option wordSymbol of nodes.Word with let symbol = s
+                            vector.append(ws option wordSymbol of nodes.Word with let symbol = s
                                 let addend = addend end)
                         end
                     end
-                    option contentsWords of nodes.Contents with let words = vector.toArray(:nodes.Word ws) end
+                    option contentsWords of nodes.Contents with let words = vector.toArray(ws) end
                 else fail(:nodes.Contents l "expected zero, text, or words") end
             tuple let symbol = symbol let exported = exported let writable = writable let contents = contents end
         end
@@ -481,33 +479,33 @@ export
             let lines = strutil.splitlines(text)
             let var current = maybe.none(:Function)
             let var b = ~1
-            for i = 0 upto {vector.length(:String lines) - 1} do
-                let l = tuple let text = vector.get(:String lines i) let number = i + 1 let var at = 0 end
+            for i = 0 upto {vector.length(lines) - 1} do
+                let l = tuple let text = vector.get(lines i) let number = i + 1 let var at = 0 end
                 let finished = fun(): Ok if not(atEnd(l)) then fail(:Ok l "unexpected " <> stringOp.getSub(l.text l.at
                     stringOp.length(l.text) - l.at)) end
                 skip(l)
                 if atEnd(l) then ok
                 elsif strutil.startsWith(l.text "function ") then
-                    current := maybe.some(:Function header(l))
+                    current := maybe.some(header(l))
                     b := ~1
                     finished()
                 elsif strutil.startsWith(l.text "}") then
-                    if maybe.isNone(:Function current) then fail(:Ok l "a } outside a function") end
-                    let f = maybe.unwrap(:Function current)
-                    for k = 0 upto {vector.length(:Pending pending) - 1} do
-                        let p = vector.get(:Pending pending k)
+                    if maybe.isNone(current) then fail(:Ok l "a } outside a function") end
+                    let f = maybe.unwrap(current)
+                    for k = 0 upto {vector.length(pending) - 1} do
+                        let p = vector.get(pending k)
                         p.inst.signature := signatureOf(typesOf(f p.inst.args) typesOf(f p.inst.results) p.written)
                     end
-                    vector.clear(:Pending pending)
-                    vector.append(:Function u.functions f)
+                    vector.clear(pending)
+                    vector.append(u.functions f)
                     current := maybe.none(:Function)
                 elsif strutil.startsWith(l.text "data ") then
-                    vector.append(:nodes.Data u.data datum(l))
+                    vector.append(u.data datum(l))
                     finished()
-                elsif maybe.isNone(:Function current) then
+                elsif maybe.isNone(current) then
                     fail(:Ok l "a line outside a function")
                 else
-                    let f = maybe.unwrap(:Function current)
+                    let f = maybe.unwrap(current)
                     (* A block's header starts in the first column, and the
                      * lines of its code are indented under it (the printer's
                      * layout) *)
@@ -518,13 +516,13 @@ export
                     elsif lit(l "@") then f.at := loc(l)
                     else
                         let t = terminator(f l pending)
-                        if maybe.isSome(:nodes.Terminator t) then nodes.terminate(f b maybe.unwrap(:nodes.Terminator t))
+                        if maybe.isSome(t) then nodes.terminate(f b maybe.unwrap(t))
                         else nodes.append(f b instruction(f l pending)) end
                     end
                     finished()
                 end
             end
-            if maybe.isSome(:Function current) then raise readError with "a function without its }" end end
+            if maybe.isSome(current) then raise readError with "a function without its }" end end
             u
         end
 end

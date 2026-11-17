@@ -25,8 +25,8 @@ export
 
     (* Whether f returns one int, passed as a word *)
     let returnsInt(f: Function): Bool =
-        if {vector.length(:ssa.Type f.resultTypes) isnot 1} orif {extent f.signature.results isnot 1} then false
-        elsif vector.get(:ssa.Type f.resultTypes 0) isnot ssa.typeInt then false
+        if {vector.length(f.resultTypes) isnot 1} orif {extent f.signature.results isnot 1} then false
+        elsif vector.get(f.resultTypes 0) isnot ssa.typeInt then false
         else
             case f.signature.results[0]
                 when passWord then true
@@ -62,15 +62,15 @@ export
                 ssa.isOp(i ssa.opCall) andif stringOp.equal(i.symbol f.symbol) andif {extent i.results is 1}
             let var op = ssa.inst(ssa.opCopy array of :Int end array of :Int end)
             let var chosen = false
-            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 let blk = ssa.block(f b)
-                let n = vector.length(:ssa.Inst blk.insts)
+                let n = vector.length(blk.insts)
                 if n > 0 then
-                    let last = vector.get(:ssa.Inst blk.insts {n - 1})
+                    let last = vector.get(blk.insts {n - 1})
                     if isSelf(last) andif returns(f blk last.results[0]) then
-                        vector.append(:Site found tuple let block = b let call = last let op = last let other = ~1 end)
+                        vector.append(found tuple let block = b let call = last let op = last let other = ~1 end)
                     elsif {n > 1} andif combines(last) andif returns(f blk last.results[0]) then
-                        let before = vector.get(:ssa.Inst blk.insts {n - 2})
+                        let before = vector.get(blk.insts {n - 2})
                         let r = before.results
                         let a = last.args
                         if isSelf(before) andif {a[0] isnot a[1]} andif {{a[0] is r[0]} orif {a[1] is r[0]}}
@@ -78,7 +78,7 @@ export
                             op := last
                             chosen := true
                             let other = if a[0] is r[0] then a[1] else a[0] end
-                            vector.append(:Site found tuple
+                            vector.append(found tuple
                                 let block = b let call = before let op = last let other = other
                             end)
                         end
@@ -87,17 +87,17 @@ export
             end
             (* Without a combining site, tail calls are left to the
              * backends *)
-            if not(chosen) then vector.clear(:Site found) end
+            if not(chosen) then vector.clear(found) end
             found
         end
 
     let accumulateFunction(f: Function): Ok =
         if returnsInt(f) andif not(tailCalls.slotsEscape(f)) then
             let found = sites(f)
-            if not(vector.empty(:Site found)) then
-                let var op = vector.get(:Site found 0).op
-                for k = 0 upto {vector.length(:Site found) - 1} do
-                    if vector.get(:Site found k).other >= 0 then op := vector.get(:Site found k).op end
+            if not(vector.empty(found)) then
+                let var op = vector.get(found 0).op
+                for k = 0 upto {vector.length(found) - 1} do
+                    if vector.get(found k).other >= 0 then op := vector.get(found k).op end
                 end
                 (* The header: the entry's instructions and terminator, and
                  * parameters for the function's, which replace them, and the
@@ -105,16 +105,16 @@ export
                 let entry = ssa.block(f 0)
                 let header = ssa.newBlock(f)
                 let h = ssa.block(f header)
-                let params = vector.toArray(:Int entry.params)
-                let fresh = array of(vector.length(:ssa.Type f.types) ~1)
+                let params = vector.toArray(entry.params)
+                let fresh = array of(vector.length(f.types) ~1)
                 for k = 0 upto {extent params - 1} do
                     fresh[params[k]] := ssa.addParam(f header ssa.typeOf(f params[k]))
                 end
                 let acc = ssa.addParam(f header ssa.typeInt)
-                for k = 0 upto {vector.length(:ssa.Inst entry.insts) - 1} do
-                    vector.append(:ssa.Inst h.insts vector.get(:ssa.Inst entry.insts k))
+                for k = 0 upto {vector.length(entry.insts) - 1} do
+                    vector.append(h.insts vector.get(entry.insts k))
                 end
-                vector.clear(:ssa.Inst entry.insts)
+                vector.clear(entry.insts)
                 h.term := entry.term
                 h.termLoc := entry.termLoc
                 entry.term := ssa.termNone
@@ -125,16 +125,16 @@ export
                  * site's call's arguments, an array it shares with the
                  * block's instruction, but other is a number of the site's
                  * own, so it is renamed here. *)
-                for k = 0 upto {vector.length(:Site found) - 1} do
-                    let s = vector.get(:Site found k)
+                for k = 0 upto {vector.length(found) - 1} do
+                    let s = vector.get(found k)
                     let b = if s.block is 0 then header else s.block end
                     let blk = ssa.block(f b)
-                    let ignored = vector.pop(:ssa.Inst blk.insts)
+                    let ignored = vector.pop(blk.insts)
                     if s.other < 0 then
                         blk.term := jump(header withLast(s.call.args acc))
                         blk.termLoc := s.call.loc
                     else
-                        let ignoredCall = vector.pop(:ssa.Inst blk.insts)
+                        let ignoredCall = vector.pop(blk.insts)
                         f.at := s.op.loc
                         let next = ssa.binary(f b s.op.op acc replace(s.other))
                         blk.term := jump(header withLast(s.call.args next))
@@ -143,7 +143,7 @@ export
                 end
                 (* Each return combines what it returns with the
                  * accumulator *)
-                for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                for b = 0 upto {vector.length(f.blocks) - 1} do
                     let blk = ssa.block(f b)
                     case blk.term
                         when termReturn with x then
@@ -161,7 +161,7 @@ export
         end
 
     let accumulateUnit(u: ssa.Unit): Ok =
-        for i = 0 upto {vector.length(:Function u.functions) - 1} do
-            accumulateFunction(vector.get(:Function u.functions i))
+        for i = 0 upto {vector.length(u.functions) - 1} do
+            accumulateFunction(vector.get(u.functions i))
         end
 end

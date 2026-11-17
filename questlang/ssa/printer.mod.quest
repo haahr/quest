@@ -127,32 +127,32 @@ export
             let b = sb.new()
             let params = nodes.block(f 0).params
             sb.str(b "function " <> f.symbol <> if f.exported then " exported" else "" end <> "(")
-            for i = 0 upto {vector.length(:Int params) - 1} do
-                sb.str(b if i > 0 then ", " else "" end <> typed(f vector.get(:Int params i)))
+            for i = 0 upto {vector.length(params) - 1} do
+                sb.str(b if i > 0 then ", " else "" end <> typed(f vector.get(params i)))
             end
             sb.str(b ")")
             sb.str(b paramsText(f.signature))
-            if not(vector.empty(:nodes.Type f.resultTypes)) then
+            if not(vector.empty(f.resultTypes)) then
                 sb.str(b ": ")
-                for i = 0 upto {vector.length(:nodes.Type f.resultTypes) - 1} do
-                    sb.str(b if i > 0 then ", " else "" end <> nodes.typeName(vector.get(:nodes.Type f.resultTypes i)))
+                for i = 0 upto {vector.length(f.resultTypes) - 1} do
+                    sb.str(b if i > 0 then ", " else "" end <> nodes.typeName(vector.get(f.resultTypes i)))
                 end
             end
             sb.str(b resultText(f.signature))
-            if not(vector.empty(:nodes.Slot f.slots)) then
+            if not(vector.empty(f.slots)) then
                 sb.str(b " slots [")
-                for i = 0 upto {vector.length(:nodes.Slot f.slots) - 1} do
-                    let s = vector.get(:nodes.Slot f.slots i)
+                for i = 0 upto {vector.length(f.slots) - 1} do
+                    let s = vector.get(f.slots i)
                     sb.str(b if i > 0 then " " else "" end <> conv.int(s.bytes) <> ":" <> conv.int(s.align))
                 end
                 sb.str(b "]")
             end
             sb.str(b " {\n")
-            for bi = 0 upto {vector.length(:nodes.Block f.blocks) - 1} do
+            for bi = 0 upto {vector.length(f.blocks) - 1} do
                 let blk = nodes.block(f bi)
                 sb.str(b blockName(bi) <> "(")
-                for i = 0 upto {vector.length(:Int blk.params) - 1} do
-                    sb.str(b if i > 0 then ", " else "" end <> typed(f vector.get(:Int blk.params i)))
+                for i = 0 upto {vector.length(blk.params) - 1} do
+                    sb.str(b if i > 0 then ", " else "" end <> typed(f vector.get(blk.params i)))
                 end
                 sb.str(b "):\n")
                 (* A block's code starts at no position *)
@@ -162,8 +162,8 @@ export
                         sb.str(b "  " <> locText(l) <> "\n")
                         state.last := l
                     end
-                for i = 0 upto {vector.length(:nodes.Inst blk.insts) - 1} do
-                    let inst = vector.get(:nodes.Inst blk.insts i)
+                for i = 0 upto {vector.length(blk.insts) - 1} do
+                    let inst = vector.get(blk.insts i)
                     at(inst.loc)
                     sb.str(b "  " <> instText(f inst) <> "\n")
                 end
@@ -201,13 +201,13 @@ export
     let formatUnit(u: nodes.Unit): String =
         begin
             let b = sb.new()
-            for i = 0 upto {vector.length(:Function u.functions) - 1} do
+            for i = 0 upto {vector.length(u.functions) - 1} do
                 if i > 0 then sb.str(b "\n") end
-                sb.strShared(b formatFunction(vector.get(:Function u.functions i)))
+                sb.strShared(b formatFunction(vector.get(u.functions i)))
             end
-            if not(vector.empty(:nodes.Data u.data)) then sb.str(b "\n") end
-            for i = 0 upto {vector.length(:nodes.Data u.data) - 1} do
-                sb.strShared(b formatData(vector.get(:nodes.Data u.data i)))
+            if not(vector.empty(u.data)) then sb.str(b "\n") end
+            for i = 0 upto {vector.length(u.data) - 1} do
+                sb.strShared(b formatData(vector.get(u.data i)))
             end
             sb.toString(b)
         end

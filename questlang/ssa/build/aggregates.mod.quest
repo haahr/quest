@@ -38,7 +38,7 @@ export
                     vals.runtime(fn "quest_record_view" array of vs[0] vs[1] descriptors.descriptor(fn
                         plan.descriptors[0]) end)
                 when planVariantTags then
-                    let table = maybe.unwrap(:ir.TagMap plan.tagMap)
+                    let table = maybe.unwrap(plan.tagMap)
                     let map = staticdata.describeTagMap(table.target table.source)
                     let scaled = vals.binary(fn ssa.opMul vs[0] vals.constant(fn 8))
                     array of vals.invariantWord(fn vals.indexPtr(fn vals.symbolAt(fn map.symbol) scaled) 0 vals.tInt) vs[1] end
@@ -57,7 +57,7 @@ export
                             plan.descriptors[1]) end)
                     vals.fromWord(fn converted plan.target)
                 when planRuntime then
-                    let l = maybe.unwrap(:ir.PlanLayout plan.layout)
+                    let l = maybe.unwrap(plan.layout)
                     let genericType = if l.toGeneric then plan.target else plan.source end
                     let nativeType = model.substitute(genericType l.subst)
                     let fromType = if l.toGeneric then nativeType else genericType end
@@ -68,11 +68,11 @@ export
                             plan.descriptors[1]) end)
                     vals.fromWord(fn converted toType)
                 when planAdapt then
-                    if maybe.isNone(:ir.Function plan.thunk) then
+                    if maybe.isNone(plan.thunk) then
                         raise vals.unsupported with "an adapt plan without its adapter" end
                     end
                     let clos = representation.alloc(fn 16 objectLayout.closureSymbol)
-                    let code = vals.symbolAt(fn vals.codeName(fn.u maybe.unwrap(:ir.Function plan.thunk)))
+                    let code = vals.symbolAt(fn vals.codeName(fn.u maybe.unwrap(plan.thunk)))
                     vals.store(fn clos runtimeLayout.offset("QClosure" "fn") 8 code)
                     vals.store(fn clos runtimeLayout.offset("QClosure" "env") 8 vs[0])
                     array of clos end
@@ -91,18 +91,18 @@ export
                         let fc = representation.tupleComponent(fn source sourceS i plan.access[i])
                         let fp = plan.fields[i]
                         let byDescriptor =
-                            maybe.isSome(:ir.Plan fp) andif ir.planIs(maybe.unwrap(:ir.Plan fp) ir.planView)
+                            maybe.isSome(fp) andif ir.planIs(maybe.unwrap(fp) ir.planView)
                         let converted = if byDescriptor then
                             (* Converted by descriptor, from the slot's QVal
                              * form to the target slot's *)
-                            let f = maybe.unwrap(:ir.Plan fp)
+                            let f = maybe.unwrap(fp)
                             let word = representation.slotToWord(fn fc sc.type)
                             let w = vals.call1(fn "quest_convert"
                                 array of word descriptors.descriptor(fn f.descriptors[0]) descriptors.descriptor(fn
                                     f.descriptors[1]) end)
                             representation.slotFromWord(fn w tc.type)
-                        elsif maybe.isSome(:ir.Plan fp) then
-                            slotStore(fn convert(fn slotLoad(fn fc sc.type) maybe.unwrap(:ir.Plan fp)) tc.type)
+                        elsif maybe.isSome(fp) then
+                            slotStore(fn convert(fn slotLoad(fn fc sc.type) maybe.unwrap(fp)) tc.type)
                         else
                             representation.slotFromWord(fn representation.slotToWord(fn fc sc.type) tc.type)
                         end
@@ -152,10 +152,10 @@ export
             let res = vector.new(:shapes.Shape)
             for i = 0 upto {extent args - 1} do
                 for j = 0 upto {extent embedded - 1} do
-                    if embedded[j] is i then vector.append(:shapes.Shape res shapes.shape(types[i])) end
+                    if embedded[j] is i then vector.append(res shapes.shape(types[i])) end
                 end
             end
-            vector.toArray(:shapes.Shape res)
+            vector.toArray(res)
         end
 
     let noBoxes = array of :shapes.Shape end
@@ -188,7 +188,7 @@ export
         begin
             let fields = shapes.sortedComponents(rs)
             let var index = 0
-            for i = 0 upto {extent fields - 1} do if vals.eq(maybe.unwrapOr(:String fields[i].name "") field) then index := i end end
+            for i = 0 upto {extent fields - 1} do if vals.eq(maybe.unwrapOr(fields[i].name "") field) then index := i end end
             index
         end
 
@@ -198,8 +198,8 @@ export
     let recordSlot(fn: vals.Fn vs: Array(Int) rs: shapes.Shape field: String viewMap: maybe.T(Variable)): Int =
         begin
             let k = fieldIndex(rs field)
-            if maybe.isSome(:Variable viewMap) then
-                let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable viewMap)))
+            if maybe.isSome(viewMap) then
+                let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(viewMap)))
                 vals.call1(fn "quest_view_record_slot" array of vs[0] vs[1] vm vals.constant(fn k) end)
             else
                 vals.indexPtr(fn vs[0] vals.invariantWord(fn vs[1] 8 * k vals.tInt))
@@ -207,15 +207,15 @@ export
         end
 
     let fieldShape(rs: shapes.Shape field: String): shapes.Shape =
-        maybe.unwrap(:shapes.Shape shapes.sortedComponents(rs)[fieldIndex(rs field)].shape)
+        maybe.unwrap(shapes.sortedComponents(rs)[fieldIndex(rs field)].shape)
 
     let recordField(fn: vals.Fn vs: Array(Int) rs: shapes.Shape o: ir.OpRecordField): Array(Int) =
         begin
             let fs = fieldShape(rs o.name)
             if not(o.stored) then
                 representation.readSlot(fn recordSlot(fn vs rs o.name o.viewMap) fs.type)
-            elsif maybe.isSome(:Variable o.viewMap) then
-                let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable o.viewMap)))
+            elsif maybe.isSome(o.viewMap) then
+                let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(o.viewMap)))
                 let w = vals.call1(fn "quest_view_record_field"
                     array of vs[0] vs[1] vm vals.constant(fn fieldIndex(rs o.name)) end)
                 vals.fromWord(fn w fs.type)
@@ -247,32 +247,32 @@ export
             let fields = vector.new(:model.RecordField)
             for i = 0 upto {extent o.fields - 1} do
                 let f = o.fields[i]
-                vector.append(:model.RecordField fields tuple let name = f.name let type = ir.atomType(f.atom) let isVar = f.isVar end)
+                vector.append(fields tuple let name = f.name let type = ir.atomType(f.atom) let isVar = f.isVar end)
             end
-            let concrete = model.recordType(vector.toArray(:model.RecordField fields) maybe.none(:String))
+            let concrete = model.recordType(vector.toArray(fields) maybe.none(:String))
             let structBytes = layout.recordBytes(concrete)
             (* The box, then the payload, then the embedded boxes *)
             let stored = vector.new(:Int)
             for i = 0 upto {extent o.fields - 1} do
                 if not(shapes.kindIs(shapes.shape(ir.atomType(o.fields[i].atom)) shapes.shapeOk)) then
-                    vector.append(:Int stored i)
+                    vector.append(stored i)
                 end
             end
             let argList = vector.new(:Atom)
             let typeList = vector.new(:Type)
             let offsetList = vector.new(:Int)
             let embedded = vector.new(:Int)
-            for j = 0 upto {vector.length(:Int stored) - 1} do
-                let i = vector.get(:Int stored j)
-                vector.append(:Atom argList o.fields[i].atom)
-                vector.append(:Type typeList ir.atomType(o.fields[i].atom))
-                vector.append(:Int offsetList layout.recordFieldOffset(concrete o.fields[i].name))
-                for k = 0 upto {extent o.embedded - 1} do if o.embedded[k] is i then vector.append(:Int embedded j) end end
+            for j = 0 upto {vector.length(stored) - 1} do
+                let i = vector.get(stored j)
+                vector.append(argList o.fields[i].atom)
+                vector.append(typeList ir.atomType(o.fields[i].atom))
+                vector.append(offsetList layout.recordFieldOffset(concrete o.fields[i].name))
+                for k = 0 upto {extent o.embedded - 1} do if o.embedded[k] is i then vector.append(embedded j) end end
             end
-            let args = vector.toArray(:Atom argList)
-            let types = vector.toArray(:Type typeList)
-            let offsets = vector.toArray(:Int offsetList)
-            let embeddedArray = vector.toArray(:Int embedded)
+            let args = vector.toArray(argList)
+            let types = vector.toArray(typeList)
+            let offsets = vector.toArray(offsetList)
+            let embeddedArray = vector.toArray(embedded)
             let boxes = embeddedShapes(args types embeddedArray)
             let box = representation.alloc(fn 16 + structBytes + 16 * extent boxes
                 objectLayout.register(fn.u.layouts objectLayout.recordLayout(concrete "" boxes)))
@@ -284,7 +284,7 @@ export
                 vals.call1(fn "quest_record_dict" array of descriptors.maybeDescriptor(fn o.viewDescriptor)
                     descriptors.maybeDescriptor(fn o.descriptor) end)
             else
-                let table = maybe.unwrap(:ir.OffsetTable o.offsets)
+                let table = maybe.unwrap(o.offsets)
                 vals.symbolAt(fn staticdata.describeOffsetTable(fn.u.naming table.view table.layout).symbol)
             end
             vals.store(fn box runtimeLayout.offset("QRecordVal" "val") 8 payload)
@@ -300,7 +300,7 @@ export
     let caseShape(s: shapes.Shape tag: String): maybe.T(shapes.Shape) =
         begin
             let c = shapes.caseOf(s tag)
-            if maybe.isSome(:shapes.Component c) then maybe.unwrap(:shapes.Component c).shape else maybe.none(:shapes.Shape) end
+            if maybe.isSome(c) then maybe.unwrap(c).shape else maybe.none(:shapes.Shape) end
         end
 
     let tagShape(t: Type): shapes.Shape =
@@ -351,10 +351,10 @@ export
                 objectLayout.register(fn.u.layouts objectLayout.optionLayout(os "" o.tag)))
             let mark = vals.beginInit(fn opt)
             let var tag = o.tag
-            if maybe.isSome(:Atom o.ordinalAtom) then
+            if maybe.isSome(o.ordinalAtom) then
                 (* The ordinal counts in the type's cases as written; the tag
                  * numbers the shape's, ordered by name *)
-                let ordinalAtom = maybe.unwrap(:Atom o.ordinalAtom)
+                let ordinalAtom = maybe.unwrap(o.ordinalAtom)
                 (* One outside the cases raises (quest_check_option_ordinal_at,
                  * inline): ult takes a negative one for a large one *)
                 let checked = vals.atom1(fn ordinalAtom)
@@ -369,26 +369,26 @@ export
                     else ~1
                 end
                 tag := if {n >= 0}
-                    andif {n < extent o.cases} then maybe.some(:String o.cases[n]) else os.cases[0].name end
+                    andif {n < extent o.cases} then maybe.some(o.cases[n]) else os.cases[0].name end
             else
                 vals.store(fn opt runtimeLayout.offset("QOptionHeader" "tag") 8
-                    vals.constant(fn representation.tagIndex(os maybe.unwrapOr(:String tag ""))))
+                    vals.constant(fn representation.tagIndex(os maybe.unwrapOr(tag ""))))
             end
-            if maybe.isSome(:Atom o.payload) andif maybe.isSome(:String tag) then
-                let tagName = maybe.unwrap(:String tag)
+            if maybe.isSome(o.payload) andif maybe.isSome(tag) then
+                let tagName = maybe.unwrap(tag)
                 let pt = caseShape(os tagName)
-                let payloadAtom = maybe.unwrap(:Atom o.payload)
+                let payloadAtom = maybe.unwrap(o.payload)
                 let pv = vals.atom(fn payloadAtom)
-                if maybe.isSome(:shapes.Shape pt)
-                    andif shapes.kindIs(maybe.unwrap(:shapes.Shape pt) shapes.shapeTuple) then
-                    let pts = maybe.unwrap(:shapes.Shape pt)
+                if maybe.isSome(pt)
+                    andif shapes.kindIs(maybe.unwrap(pt) shapes.shapeTuple) then
+                    let pts = maybe.unwrap(pt)
                     let ps = shapes.shape(ir.atomType(payloadAtom))
                     for i = 0 upto {extent pts.components - 1} do
                         let comp = representation.componentShape(pts i)
                         representation.writeSlot(fn vals.offsetPtr(fn opt 8 + 8 * i) comp.type representation.tupleComponent(fn pv[0] ps i o.access[i]))
                     end
                 else
-                    let st = if maybe.isSome(:shapes.Shape pt) then maybe.unwrap(:shapes.Shape pt).type else ir.atomType(payloadAtom) end
+                    let st = if maybe.isSome(pt) then maybe.unwrap(pt).type else ir.atomType(payloadAtom) end
                     representation.writeSlot(fn vals.offsetPtr(fn opt 8) st pv)
                 end
             end
@@ -400,7 +400,7 @@ export
     let caseWithoutComponents(os: shapes.Shape tag: String): Bool =
         begin
             let pt = caseShape(os tag)
-            maybe.isNone(:shapes.Shape pt) orif {extent maybe.unwrap(:shapes.Shape pt).components is 0}
+            maybe.isNone(pt) orif {extent maybe.unwrap(:shapes.Shape pt).components is 0}
         end
 
     let makeOption(fn: vals.Fn o: ir.OpMakeOption t: Type): Array(Int) =
@@ -408,16 +408,16 @@ export
             let os = layout.resolvedShape(shapes.shape(t))
             let var allWithout = true
             for i = 0 upto {extent os.cases - 1} do
-                if not(caseWithoutComponents(os maybe.unwrapOr(:String os.cases[i].name ""))) then allWithout := false end
+                if not(caseWithoutComponents(os maybe.unwrapOr(os.cases[i].name ""))) then allWithout := false end
             end
             (* A case without components is its constant, in the option
              * struct's table (docs/c-representation.md section 5.3) *)
             let table = fun(): Int vals.symbolAt(fn vals.optionTable(fn.u layout.shapeTag(os) extent os.cases))
-            if maybe.isNone(:Atom o.ordinalAtom) andif maybe.isSome(:String o.tag)
-                andif caseWithoutComponents(os maybe.unwrap(:String o.tag)) then
-                array of vals.offsetPtr(fn table() 8 * representation.tagIndex(os maybe.unwrap(:String o.tag))) end
-            elsif maybe.isSome(:Atom o.ordinalAtom) andif allWithout then
-                let ordinalAtom = maybe.unwrap(:Atom o.ordinalAtom)
+            if maybe.isNone(o.ordinalAtom) andif maybe.isSome(o.tag)
+                andif caseWithoutComponents(os maybe.unwrap(o.tag)) then
+                array of vals.offsetPtr(fn table() 8 * representation.tagIndex(os maybe.unwrap(o.tag))) end
+            elsif maybe.isSome(o.ordinalAtom) andif allWithout then
+                let ordinalAtom = maybe.unwrap(o.ordinalAtom)
                 let checked = vals.atom1(fn ordinalAtom)
                 vals.check(fn vals.binary(fn ssa.opUlt checked vals.constant(fn extent os.cases)) true
                     "quest_option_ordinal_error_at"
@@ -444,8 +444,8 @@ export
             let mark = vals.beginInit(fn tup)
             let pt = caseShape(os tag)
             if offset > 0 then vals.store(fn tup 0 8 vals.constant(fn ordinalValue)) end
-            if maybe.isSome(:shapes.Shape pt) andif shapes.kindIs(maybe.unwrap(:shapes.Shape pt) shapes.shapeTuple) then
-                let pts = maybe.unwrap(:shapes.Shape pt)
+            if maybe.isSome(pt) andif shapes.kindIs(maybe.unwrap(pt) shapes.shapeTuple) then
+                let pts = maybe.unwrap(pt)
                 for i = 0 upto {extent pts.components - 1} do
                     if {i + offset} < n then
                         let src = representation.optionComponent(fn opt os tag i access[i])
@@ -457,7 +457,7 @@ export
                         representation.writeSlot(fn vals.offsetPtr(fn tup 8 * {i + offset}) wanted.type value)
                     end
                 end
-            elsif maybe.isSome(:shapes.Shape pt) then
+            elsif maybe.isSome(pt) then
                 let comp = representation.componentShape(ts offset)
                 representation.writeSlot(fn vals.offsetPtr(fn tup 8 * offset) comp.type representation.optionComponent(fn opt os tag ~1 access[0]))
             end
@@ -495,7 +495,7 @@ export
             let cs = caseShape(ts tag)
             case ts.kind
                 when shapeVariant then
-                    let caseT = if maybe.isSome(:shapes.Shape cs) then maybe.unwrap(:shapes.Shape cs).type else t end
+                    let caseT = if maybe.isSome(cs) then maybe.unwrap(cs).type else t end
                     vals.fromWord(fn vals.call1(fn "quest_view_part" array of vm vals.constant(fn b) vs[1] end) caseT)
                 when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
                     shapeTuple, shapeRecord, shapeOption, shapeArray, shapeCell, shapeOut, shapeException, shapeFun,
@@ -510,8 +510,8 @@ export
                             objectLayout.register(fn.u.layouts objectLayout.tupleLayout(tupleS "" noBoxes)))
                         let mark = vals.beginInit(fn tup)
                         let var count = 0
-                        if maybe.isSome(:shapes.Shape cs) then
-                            let pt = maybe.unwrap(:shapes.Shape cs)
+                        if maybe.isSome(cs) then
+                            let pt = maybe.unwrap(cs)
                             count := if shapes.kindIs(pt shapes.shapeTuple) then extent pt.components else 1 end
                         end
                         let offset = n - count
@@ -544,19 +544,19 @@ export
             vals.callVoid(fn "quest_raise_variant_error_at" array of vals.site(fn o.offset) end)
             vals.terminate(fn ssa.termUnreachable)
             fn.cur := good
-            if maybe.isSome(:Variable o.viewMap) then
-                let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable o.viewMap)))
+            if maybe.isSome(o.viewMap) then
+                let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(o.viewMap)))
                 let result = viewPayload(fn vs ts o.tag vm t)
                 if shapes.kindIs(ts shapes.shapeOption) then
-                    vals.store(fn result[0] 0 8 vals.constant(fn maybe.unwrapOr(:Int o.ordinalIndex 0)))
+                    vals.store(fn result[0] 0 8 vals.constant(fn maybe.unwrapOr(o.ordinalIndex 0)))
                 end
                 result
             elsif shapes.kindIs(ts shapes.shapeVariant) then
                 let cs = caseShape(ts o.tag)
-                let caseT = if maybe.isSome(:shapes.Shape cs) then maybe.unwrap(:shapes.Shape cs).type else t end
+                let caseT = if maybe.isSome(cs) then maybe.unwrap(cs).type else t end
                 representation.slotFromWord(fn vs[1] caseT)
             else
-                array of optionCaseTuple(fn vs[0] ts o.tag t 1 o.components maybe.unwrapOr(:Int o.ordinalIndex 0)) end
+                array of optionCaseTuple(fn vs[0] ts o.tag t 1 o.components maybe.unwrapOr(o.ordinalIndex 0)) end
             end
         end
 
@@ -619,26 +619,26 @@ export
      * so one with thunk parameters raises unsupported *)
     let typeApp(fn: vals.Fn o: ir.OpTypeApp result: Variable): Array(Int) =
         begin
-            if maybe.isSome(:Array(ir.DescriptorParam) o.thunkParams) then
+            if maybe.isSome(o.thunkParams) then
                 raise vals.unsupported with "a type application whose instance is a function, not its thunk's closure" end
             end
             let descs = descriptors.descriptors(fn o.descriptors)
             let var origType = model.okType
-            let called = if maybe.isSome(:Variable o.callee) then
-                let callee = maybe.unwrap(:Variable o.callee)
+            let called = if maybe.isSome(o.callee) then
+                let callee = maybe.unwrap(o.callee)
                 origType := callee.type
                 let clos = vals.atom1(fn ir.atomOfVar(callee))
                 callClosureWith(fn clos descs calls.resultParts(callee.type))
             else
-                let r = maybe.unwrap(:ir.ModuleRef o.moduleRef)
+                let r = maybe.unwrap(o.moduleRef)
                 case r
                     when refImport with x then
-                        origType := maybe.unwrapOr(:Type o.calleeType model.okType)
+                        origType := maybe.unwrapOr(o.calleeType model.okType)
                         let symbol = symbols.mangleModuleIdent(symbols.mangleModuleName(x.i.canonicalPath)
-                            maybe.unwrap(:String o.member))
+                            maybe.unwrap(o.member))
                         vals.callQuest(fn symbol descs vals.noValues vals.noValues calls.resultParts(origType))
                     when refModule with x then
-                        let member = maybe.unwrap(:Variable ir.member(x.m.members maybe.unwrap(:String o.member)))
+                        let member = maybe.unwrap(ir.member(x.m.members maybe.unwrap(o.member)))
                         origType := member.type
                         let clos = vals.atom1(fn ir.atomOfVar(member))
                         callClosureWith(fn clos descs calls.resultParts(member.type))
@@ -646,6 +646,6 @@ export
             end
             let values = calls.resultsOf(fn calls.resultParts(origType) called)
             let pl = o.plans[0]
-            if maybe.isNone(:ir.Plan pl) then values else convert(fn values maybe.unwrap(:ir.Plan pl)) end
+            if maybe.isNone(pl) then values else convert(fn values maybe.unwrap(pl)) end
         end
 end

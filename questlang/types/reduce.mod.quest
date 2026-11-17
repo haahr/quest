@@ -52,7 +52,7 @@ export
                                 if extent op.params is extent app.arguments then
                                     let subst = model.newSubst()
                                     for i = 0 upto {extent op.params - 1} do
-                                        hashMap.insert(:Int :Type subst op.params[i].symbolId app.arguments[i])
+                                        hashMap.insert(subst op.params[i].symbolId app.arguments[i])
                                     end
                                     t := model.substitute(op.body subst)
                                 else
@@ -80,7 +80,7 @@ export
     let unfoldRecursiveAny(t: Type): maybe.T(Type) =
         begin
             let u = unfolding(t)
-            if isRecursive(u) orif isApp(u) then maybe.none(:Type) else maybe.some(:Type u) end
+            if isRecursive(u) orif isApp(u) then maybe.none(:Type) else maybe.some(u) end
         end
     (* Whether a recursive type that unfolds to t is represented as t is:
      * true for the constructed types below (a tuple's values by a pointer to
@@ -105,7 +105,7 @@ export
     let unfoldRecursive(t: Type): maybe.T(Type) =
         begin
             let u = unfolding(t)
-            if isUnfoldedRepresentation(u) then maybe.some(:Type u) else maybe.none(:Type) end
+            if isUnfoldedRepresentation(u) then maybe.some(u) else maybe.none(:Type) end
         end
     (* Reduced forms by the id of the type node *)
     let normalized = hashMap.new(:Int :Type intEqual hash.int)
@@ -123,15 +123,15 @@ export
             let var found = false
             if isRecursive(t) then
                 let unfolded = unfoldRecursiveAny(t)
-                if maybe.isSome(:Type unfolded) then
-                    result := maybe.unwrap(:Type unfolded)
+                if maybe.isSome(unfolded) then
+                    result := maybe.unwrap(unfolded)
                     found := true
                 end
             end
             if not(found) andif isApp(t) then
                 let unfolded = unfoldRecursive(t)
-                if maybe.isSome(:Type unfolded) then
-                    result := maybe.unwrap(:Type unfolded)
+                if maybe.isSome(unfolded) then
+                    result := maybe.unwrap(unfolded)
                 else
                     let reduced = betaReduceHead(t)
                     if not(isApp(reduced) orif isRecursive(reduced)) then
@@ -152,12 +152,12 @@ export
             if t.hasMeta then
                 normalizeUncached(t)
             else
-                let found = hashMap.get(:Int :Type normalized t.id)
-                if maybe.isSome(:Type found) then
-                    maybe.unwrap(:Type found)
+                let found = hashMap.get(normalized t.id)
+                if maybe.isSome(found) then
+                    maybe.unwrap(found)
                 else
                     let result = normalizeUncached(t)
-                    hashMap.insert(:Int :Type normalized t.id result)
+                    hashMap.insert(normalized t.id result)
                     result
                 end
             end
@@ -180,19 +180,19 @@ export
             let var done = false
             while not(done) do
                 let bound = model.powerBoundOf(curr)
-                if maybe.isNone(:Type bound) then
+                if maybe.isNone(bound) then
                     done := true
                 else
                     let var seen = false
-                    for i = 0 upto {vector.length(:Type visited) - 1} do
-                        let v = vector.get(:Type visited i)
+                    for i = 0 upto {vector.length(visited) - 1} do
+                        let v = vector.get(visited i)
                         if sameNode(v curr) then seen := true end
                     end
                     if seen then
                         done := true
                     else
-                        vector.append(:Type visited curr)
-                        curr := model.prune(maybe.unwrap(:Type bound))
+                        vector.append(visited curr)
+                        curr := model.prune(maybe.unwrap(bound))
                     end
                 end
             end
@@ -230,13 +230,13 @@ export
                 let reps = model.newSubst()
                 for i = 0 upto {extent curr.fv - 1} do
                     let e = abstractTypes.abstractTypeBySymbol(curr.fv[i])
-                    if maybe.isSome(:abstractTypes.ModuleAbstractType e)
-                        andif maybe.isSome(:Type maybe.unwrap(:abstractTypes.ModuleAbstractType e).rep) then
-                        hashMap.insert(:Int :Type reps curr.fv[i]
-                            maybe.unwrap(:Type maybe.unwrap(:abstractTypes.ModuleAbstractType e).rep))
+                    if maybe.isSome(e)
+                        andif maybe.isSome(maybe.unwrap(e).rep) then
+                        hashMap.insert(reps curr.fv[i]
+                            maybe.unwrap(maybe.unwrap(e).rep))
                     end
                 end
-                let var exposed = if hashMap.size(:Int :Type reps) > 0 then
+                let var exposed = if hashMap.size(reps) > 0 then
                     normalizeType(model.substitute(curr reps)) else curr end
                 if model.same(exposed curr) then exposed := normalizeType(resolveTypeBound(curr)) end
                 if model.same(exposed curr) then stuck := true else curr := exposed end
@@ -255,8 +255,8 @@ export
                     let var component = maybe.none(:Type)
                     for i = 0 upto {extent x.options - 1} do
                         let o = x.options[i]
-                        let fields = if maybe.isSome(:Type o.payload) then
-                            case normalizeType(maybe.unwrap(:Type o.payload)).form
+                        let fields = if maybe.isSome(o.payload) then
+                            case normalizeType(maybe.unwrap(o.payload)).form
                                 when typeTuple with y then y.fields
                                 else array of :model.TupleComponent end
                             end
@@ -264,15 +264,15 @@ export
                             array of :model.TupleComponent end
                         end
                         if extent fields is 0 then
-                            vector.append(:String empty o.name)
+                            vector.append(empty o.name)
                         else
                             withComponents := withComponents + 1
                             if extent fields is 1 then
                                 case fields[0]
                                     when tupleField with f then
                                         if not(f.isVar) then
-                                            single := maybe.some(:String o.name)
-                                            component := maybe.some(:Type f.type)
+                                            single := maybe.some(o.name)
+                                            component := maybe.some(f.type)
                                         end
                                     else ok
                                 end
@@ -283,8 +283,8 @@ export
                         single := maybe.none(:String)
                         component := maybe.none(:Type)
                     end
-                    maybe.some(:OptionIdentity tuple
-                        let empty = vector.toArray(:String empty) let single = single let component = component
+                    maybe.some(tuple
+                        let empty = vector.toArray(empty) let single = single let component = component
                     end)
                 else maybe.none(:OptionIdentity)
             end
@@ -292,7 +292,7 @@ export
 
     let variantCases(t: Type): maybe.T(Array(model.VariantField)) =
         case exposedType(t fun(u: Type): Bool u.form?typeVariant).form
-            when typeVariant with x then maybe.some(:Array(model.VariantField) x.variants)
+            when typeVariant with x then maybe.some(x.variants)
             else maybe.none(:Array(model.VariantField))
         end
     Def FunQuantifiers = Tuple quantifiers: Array(model.Quantifier) body: Type end
@@ -305,12 +305,12 @@ export
                 case curr.form
                     when typeAll with x then
                         for i = 0 upto {extent x.quantifiers - 1} do
-                            vector.append(:model.Quantifier quants x.quantifiers[i])
+                            vector.append(quants x.quantifiers[i])
                         end
                         curr := normalizeType(x.body)
                     else done := true
                 end
             end
-            tuple let quantifiers = vector.toArray(:model.Quantifier quants) let body = curr end
+            tuple let quantifiers = vector.toArray(quants) let body = curr end
         end
 end

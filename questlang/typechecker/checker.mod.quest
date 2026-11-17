@@ -82,8 +82,8 @@ export
         end
 
     let elaborateSubexpr(c: T expr: ast.Expr expected: maybe.T(model.Type) e: env.T loopDepth: Int): typedAst.Expr =
-        if maybe.isSome(:model.Type expected) then
-            checkExpr(c expr maybe.unwrap(:model.Type expected) e loopDepth)
+        if maybe.isSome(expected) then
+            checkExpr(c expr maybe.unwrap(expected) e loopDepth)
         else
             synthExpr(c expr e loopDepth)
         end
@@ -91,8 +91,8 @@ export
     let elaborateOptionalBranch(
         c: T expr: maybe.T(ast.Expr) expected: maybe.T(model.Type) e: env.T loopDepth: Int
     ): maybe.T(typedAst.Expr) =
-        if maybe.isSome(:ast.Expr expr) then
-            maybe.some(:typedAst.Expr elaborateSubexpr(c maybe.unwrap(:ast.Expr expr) expected e loopDepth))
+        if maybe.isSome(expr) then
+            maybe.some(elaborateSubexpr(c maybe.unwrap(expr) expected e loopDepth))
         else
             maybe.none(:typedAst.Expr)
         end
@@ -102,12 +102,12 @@ export
     ): Array(model.Type) =
         begin
             let types = vector.new(:model.Type)
-            if maybe.isSome(:model.Type initial) then vector.append(:model.Type types maybe.unwrap(:model.Type initial)) end
-            for i = 0 upto {extent bodies - 1} do vector.append(:model.Type types bodies[i].type) end
-            if maybe.isSome(:typedAst.Expr elseBranch) then
-                vector.append(:model.Type types maybe.unwrap(:typedAst.Expr elseBranch).type)
+            if maybe.isSome(initial) then vector.append(types maybe.unwrap(initial)) end
+            for i = 0 upto {extent bodies - 1} do vector.append(types bodies[i].type) end
+            if maybe.isSome(elseBranch) then
+                vector.append(types maybe.unwrap(elseBranch).type)
             end
-            vector.toArray(:model.Type types)
+            vector.toArray(types)
         end
 
     let checkSubsumption(
@@ -125,20 +125,20 @@ export
         if not(sym.isVar) orif sym.isParam orif sym.isOut orif {sym.functionDepth > 0} then
             false
         else
-            let var scope = maybe.some(:symbols.Scope c.env.currentScope)
+            let var scope = maybe.some(c.env.currentScope)
             let var searching = true
-            while searching andif maybe.isSome(:symbols.Scope scope) do
-                let s = maybe.unwrap(:symbols.Scope scope)
-                let found = hashMap.get(:String :symbols.ValueSymbol s.values sym.name)
-                if maybe.isSome(:symbols.ValueSymbol found) andif {maybe.unwrap(:symbols.ValueSymbol found).symbolId is sym.symbolId} then
+            while searching andif maybe.isSome(scope) do
+                let s = maybe.unwrap(scope)
+                let found = hashMap.get(s.values sym.name)
+                if maybe.isSome(found) andif {maybe.unwrap(found).symbolId is sym.symbolId} then
                     searching := false
                 else
                     scope := s.parent
                 end
             end
             let var isGlobal = true
-            while isGlobal andif maybe.isSome(:symbols.Scope scope) do
-                let s = maybe.unwrap(:symbols.Scope scope)
+            while isGlobal andif maybe.isSome(scope) do
+                let s = maybe.unwrap(scope)
                 if s.isLocal then isGlobal := false end
                 scope := s.parent
             end
@@ -167,7 +167,7 @@ export
     let lookupValue(c: T e: env.T name: String): maybe.T(symbols.ValueSymbol) =
         begin
             let sym = env.lookupValue(e name)
-            if maybe.isSome(:symbols.ValueSymbol sym) then checkPoisoned(maybe.unwrap(:symbols.ValueSymbol sym)) end
+            if maybe.isSome(sym) then checkPoisoned(maybe.unwrap(sym)) end
             sym
         end
 
@@ -175,8 +175,8 @@ export
 
     let recordError(c: T err: diagnostics.CompilerError): Ok =
         begin
-            vector.append(:diagnostics.CompilerError c.errors err)
-            if vector.length(:diagnostics.CompilerError c.errors) >= maxErrors then
+            vector.append(c.errors err)
+            if vector.length(c.errors) >= maxErrors then
                 diagnostics.raiseError(:Ok tuple
                     let message = "Too many errors (" <> conv.int(maxErrors) <> "); stopping"
                     let offset = err.offset
@@ -195,7 +195,7 @@ export
 
     let attempt(A::TYPE c: T body: All() A): maybe.T(A) =
         try
-            maybe.some(:A body())
+            maybe.some(body())
         when diagnostics.compilerError with err then
             if err.isFatal then diagnostics.raiseError(:Ok err) end
             if not(err.silent) then report(c err) end

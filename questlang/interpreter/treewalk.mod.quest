@@ -35,7 +35,7 @@ export
     Let PhraseResult = Tuple phrase: typedAst.Binding value: model.Value end
 
     let none = maybe.none(:Int)
-    let at(offset: Int): maybe.T(Int) = maybe.some(:Int offset)
+    let at(offset: Int): maybe.T(Int) = maybe.some(offset)
     let intEqual(a: Int b: Int): Bool = a is b
 
     (* The loop exit (the bootstrap's _LoopExit) *)
@@ -71,37 +71,37 @@ export
             let root = root
         end
 
-    let pushScope(f: Frame): Frame = newFrame(maybe.some(:Frame f) f.currentDir f.sourceMap f.root)
+    let pushScope(f: Frame): Frame = newFrame(maybe.some(f) f.currentDir f.sourceMap f.root)
 
     let define(f: Frame name: String v: Value): Ok =
-        begin hashMap.insert(:String :Value f.bindings name v) ok end
+        begin hashMap.insert(f.bindings name v) ok end
 
     let rec madeException(f: Frame symbolId: Int): maybe.T(model.ExceptionValue) =
         begin
-            let found = hashMap.get(:Int :model.ExceptionValue f.madeExceptions symbolId)
-            if maybe.isSome(:model.ExceptionValue found) orif maybe.isNone(:Frame f.parent) then
+            let found = hashMap.get(f.madeExceptions symbolId)
+            if maybe.isSome(found) orif maybe.isNone(f.parent) then
                 found
             else
-                madeException(maybe.unwrap(:Frame f.parent) symbolId)
+                madeException(maybe.unwrap(f.parent) symbolId)
             end
         end
 
     let bindTypes(f: Frame bindings: hashMap.T(Int tm.Type)): Ok =
         begin
-            let ids = hashMap.keys(:Int :tm.Type bindings)
-            for i = 0 upto {vector.length(:Int ids) - 1} do
-                let id = vector.get(:Int ids i)
-                hashMap.insert(:Int :tm.Type f.typeBindings id hashMap.find(:Int :tm.Type bindings id))
+            let ids = hashMap.keys(bindings)
+            for i = 0 upto {vector.length(ids) - 1} do
+                let id = vector.get(ids i)
+                hashMap.insert(f.typeBindings id hashMap.find(bindings id))
             end
         end
 
     let rec lookupType(f: Frame symbolId: Int): maybe.T(tm.Type) =
         begin
-            let found = hashMap.get(:Int :tm.Type f.typeBindings symbolId)
-            if maybe.isSome(:tm.Type found) orif maybe.isNone(:Frame f.parent) then
+            let found = hashMap.get(f.typeBindings symbolId)
+            if maybe.isSome(found) orif maybe.isNone(f.parent) then
                 found
             else
-                lookupType(maybe.unwrap(:Frame f.parent) symbolId)
+                lookupType(maybe.unwrap(f.parent) symbolId)
             end
         end
 
@@ -112,11 +112,11 @@ export
             let subst = tm.newSubst()
             for i = 0 upto {extent t.fv - 1} do
                 let bound = lookupType(f t.fv[i])
-                if maybe.isSome(:tm.Type bound) then
-                    hashMap.insert(:Int :tm.Type subst t.fv[i] maybe.unwrap(:tm.Type bound))
+                if maybe.isSome(bound) then
+                    hashMap.insert(subst t.fv[i] maybe.unwrap(bound))
                 end
             end
-            if hashMap.empty(:Int :tm.Type subst) then t else tm.substitute(t subst) end
+            if hashMap.empty(subst) then t else tm.substitute(t subst) end
         end
 
     (* The standard library module named name (or named so but for case), which
@@ -126,14 +126,14 @@ export
             let var found = maybe.none(:Array(String))
             for i = 0 upto {extent stdlib.standardModules - 1} do
                 if stringOp.equal(stdlib.standardModules[i][0] name) then
-                    found := maybe.some(:Array(String) stdlib.standardModules[i])
+                    found := maybe.some(stdlib.standardModules[i])
                 end
             end
-            if maybe.isNone(:Array(String) found) then
+            if maybe.isNone(found) then
                 for i = 0 upto {extent stdlib.standardModules - 1} do
-                    if maybe.isNone(:Array(String) found)
+                    if maybe.isNone(found)
                         andif stringOp.equal(paths.lower(stdlib.standardModules[i][0]) paths.lower(name)) then
-                        found := maybe.some(:Array(String) stdlib.standardModules[i])
+                        found := maybe.some(stdlib.standardModules[i])
                     end
                 end
             end
@@ -149,18 +149,18 @@ export
 
     let rec lookup(f: Frame name: String offset: maybe.T(Int)): Value =
         begin
-            let found = hashMap.get(:String :Value f.bindings name)
-            if maybe.isSome(:Value found) then
-                maybe.unwrap(:Value found)
-            elsif maybe.isSome(:Frame f.parent) then
-                lookup(maybe.unwrap(:Frame f.parent) name offset)
+            let found = hashMap.get(f.bindings name)
+            if maybe.isSome(found) then
+                maybe.unwrap(found)
+            elsif maybe.isSome(f.parent) then
+                lookup(maybe.unwrap(f.parent) name offset)
             else
                 let std = standardModule(name)
-                if maybe.isNone(:Array(String) std) then
+                if maybe.isNone(std) then
                     model.internalError(:Value "Undefined runtime symbol '" <> name <> "'" offset)
                 end
-                let normName = maybe.unwrap(:Array(String) std)[0]
-                let modVal = hooks.loadModule(normName maybe.unwrap(:Array(String) std)[1] f maybe.none(:String))
+                let normName = maybe.unwrap(std)[0]
+                let modVal = hooks.loadModule(normName maybe.unwrap(std)[1] f maybe.none(:String))
                 define(f normName modVal)
                 if not(stringOp.equal(name normName)) then define(f name modVal) end
                 modVal
@@ -169,14 +169,14 @@ export
 
     let rec assignName(f: Frame name: String v: Value offset: maybe.T(Int)): Ok =
         begin
-            let found = hashMap.get(:String :Value f.bindings name)
-            if maybe.isSome(:Value found) then
-                case maybe.unwrap(:Value found)
+            let found = hashMap.get(f.bindings name)
+            if maybe.isSome(found) then
+                case maybe.unwrap(found)
                     when vRef with r then model.assign(r.r v)
                     else define(f name v)
                 end
-            elsif maybe.isSome(:Frame f.parent) then
-                assignName(maybe.unwrap(:Frame f.parent) name v offset)
+            elsif maybe.isSome(f.parent) then
+                assignName(maybe.unwrap(f.parent) name v offset)
             else
                 model.internalError(:Ok "Cannot assign to undefined symbol '" <> name <> "'" offset)
             end
@@ -296,8 +296,8 @@ export
             when exprFun with x then
                 begin
                     let stack = f.root.callStack
-                    let enclosing = if vector.empty(:String stack) then diagnostics.mainFrame
-                        else vector.get(:String stack {vector.length(:String stack) - 1}) end
+                    let enclosing = if vector.empty(stack) then diagnostics.mainFrame
+                        else vector.get(stack {vector.length(stack) - 1}) end
                     let params = array of(extent x.params "")
                     for i = 0 upto {extent x.params - 1} do params[i] := x.params[i].name end
                     option vClosure of Value with
@@ -318,10 +318,10 @@ export
 
     let bindTypesInto(into: hashMap.T(Int tm.Type) from: hashMap.T(Int tm.Type)): Ok =
         begin
-            let ids = hashMap.keys(:Int :tm.Type from)
-            for i = 0 upto {vector.length(:Int ids) - 1} do
-                let id = vector.get(:Int ids i)
-                hashMap.insert(:Int :tm.Type into id hashMap.find(:Int :tm.Type from id))
+            let ids = hashMap.keys(from)
+            for i = 0 upto {vector.length(ids) - 1} do
+                let id = vector.get(ids i)
+                hashMap.insert(into id hashMap.find(from id))
             end
         end
 
@@ -334,8 +334,8 @@ export
             let var next = 0
             for i = 0 upto {extent c.typeParamIds - 1} do
                 let id = c.typeParamIds[i]
-                if not(hashMap.contains(:Int :tm.Type c.typeBindings id)) andif {next < extent typeArgs} then
-                    hashMap.insert(:Int :tm.Type bindings id typeArgs[next])
+                if not(hashMap.contains(c.typeBindings id)) andif {next < extent typeArgs} then
+                    hashMap.insert(bindings id typeArgs[next])
                     next := next + 1
                 end
             end
@@ -352,31 +352,31 @@ export
         begin
             let var all = c.typeOnly
             for i = 0 upto {extent c.typeParamIds - 1} do
-                if not(hashMap.contains(:Int :tm.Type c.typeBindings c.typeParamIds[i])) then all := false end
+                if not(hashMap.contains(c.typeBindings c.typeParamIds[i])) then all := false end
             end
             all
         end
 
     let reversedStack(f: Frame): Array(String) =
         begin
-            let n = vector.length(:String f.root.callStack)
+            let n = vector.length(f.root.callStack)
             let frames = array of(n "")
-            for i = 0 upto {n - 1} do frames[i] := vector.get(:String f.root.callStack {{n - 1} - i}) end
+            for i = 0 upto {n - 1} do frames[i] := vector.get(f.root.callStack {{n - 1} - i}) end
             frames
         end
 
     let noteFrames(e: model.RunError f: Frame): Ok =
-        if maybe.isNone(:Array(String) e.frames) then e.frames := maybe.some(:Array(String) reversedStack(f)) end
+        if maybe.isNone(e.frames) then e.frames := maybe.some(reversedStack(f)) end
 
     (* An error leaving code that ran in f: located in f's file unless code it
      * called located it already, with the frames running *)
     let leaving(e: model.RunError f: Frame): Ok =
         begin
-            if maybe.isNone(:location.SourceMap e.sourceMap) then e.sourceMap := f.sourceMap end
+            if maybe.isNone(e.sourceMap) then e.sourceMap := f.sourceMap end
             noteFrames(e f)
         end
 
-    let popStack(f: Frame): Ok = begin vector.pop(:String f.root.callStack) ok end
+    let popStack(f: Frame): Ok = begin vector.pop(f.root.callStack) ok end
 
     (* ======================================================================
      * 3. Named exceptions made in advance
@@ -392,7 +392,7 @@ export
             for i = 0 upto {extent exceptions - 1} do
                 case exceptions[i].form
                     when exprException with x then
-                        if hashMap.contains(:String :Value f.bindings x.name) then rebinds := true end
+                        if hashMap.contains(f.bindings x.name) then rebinds := true end
                     else ok
                 end
             end
@@ -402,8 +402,8 @@ export
                     when exprException with x then
                         let excVal = model.exceptionValue(x.name)
                         define(g x.name option vException of Value with let e = excVal end)
-                        hashMap.insert(:Int :model.ExceptionValue g.madeExceptions
-                            maybe.unwrap(:symbols.ValueSymbol x.symbol).symbolId excVal)
+                        hashMap.insert(g.madeExceptions
+                            maybe.unwrap(x.symbol).symbolId excVal)
                         ok
                     else ok
                 end
@@ -441,10 +441,10 @@ export
         begin
             let ord = model.intValue(caseIndex)
             let noLabel = maybe.none(:String)
-            if maybe.isNone(:Value t.payload) then
-                model.tupleValue(array of ord end maybe.some(:Array(maybe.T(String)) array of noLabel end))
+            if maybe.isNone(t.payload) then
+                model.tupleValue(array of ord end maybe.some(array of noLabel end))
             else
-                case maybe.unwrap(:Value t.payload)
+                case maybe.unwrap(t.payload)
                     when vTuple with x then
                         let n = extent x.t.elements
                         let elements = array of({n + 1} ord)
@@ -454,15 +454,15 @@ export
                                 when vRef with r then model.cellValue(model.deref(r.r))
                                 else x.t.elements[i]
                             end
-                            if maybe.isSome(:Array(maybe.T(String)) x.t.labels)
+                            if maybe.isSome(x.t.labels)
                                 andif {i < extent maybe.unwrap(:Array(maybe.T(String)) x.t.labels)} then
-                                labels[i + 1] := maybe.unwrap(:Array(maybe.T(String)) x.t.labels)[i]
+                                labels[i + 1] := maybe.unwrap(x.t.labels)[i]
                             end
                         end
-                        model.tupleValue(elements maybe.some(:Array(maybe.T(String)) labels))
+                        model.tupleValue(elements maybe.some(labels))
                     else
-                        model.tupleValue(array of ord maybe.unwrap(:Value t.payload) end
-                            maybe.some(:Array(maybe.T(String)) array of noLabel noLabel end))
+                        model.tupleValue(array of ord maybe.unwrap(t.payload) end
+                            maybe.some(array of noLabel noLabel end))
                 end
             end
         end
@@ -474,7 +474,7 @@ export
             when typeTuple with x then
                 let labels = array of(extent x.fields maybe.none(:String))
                 for i = 0 upto {extent x.fields - 1} do labels[i] := tm.componentName(x.fields[i]) end
-                maybe.some(:Array(maybe.T(String)) labels)
+                maybe.some(labels)
             else maybe.none(:Array(maybe.T(String)))
         end
 
@@ -483,7 +483,7 @@ export
         begin
             let var found = maybe.none(:Array(Int))
             for i = 0 upto {extent groups - 1} do
-                if {extent groups[i] > 0} andif {groups[i][0] is index} then found := maybe.some(:Array(Int) groups[i]) end
+                if {extent groups[i] > 0} andif {groups[i][0] is index} then found := maybe.some(groups[i]) end
             end
             found
         end
@@ -508,8 +508,8 @@ export
             let var found = false
             for i = 0 upto {extent members - 1} do
                 let name = typedAst.declaredName(members[i])
-                if maybe.isSome(:String name)
-                    andif hashMap.contains(:String :Value f.bindings maybe.unwrap(:String name))
+                if maybe.isSome(name)
+                    andif hashMap.contains(f.bindings maybe.unwrap(name))
                     andif not(redefines(members[i])) then
                     found := true
                 end
@@ -569,7 +569,7 @@ export
                 when exprSelectRef with x then
                     case unwrapRefs(evalExpr(x.target f))
                         when vRecord with r then
-                            let cell = hashMap.find(:String :Value r.r.fields x.field)
+                            let cell = hashMap.find(r.r.fields x.field)
                             if cell?vRef then cell
                             else model.internalError(:Value "Field '" <> x.field <> "' is not mutable" offset) end
                         else model.internalError(:Value "Field selection target must be Record" offset)
@@ -591,8 +591,8 @@ export
                     case target
                         when vTuple with t then
                             let var idx = x.index
-                            if {idx < 0} andif maybe.isSome(:String x.field) then
-                                idx := maybe.unwrapOr(:Int hashMap.get(:String :Int t.t.nameToIndex maybe.unwrap(:String x.field)) ~1)
+                            if {idx < 0} andif maybe.isSome(x.field) then
+                                idx := maybe.unwrapOr(hashMap.get(t.t.nameToIndex maybe.unwrap(x.field)) ~1)
                             end
                             if {idx < 0} orif {idx >= extent t.t.elements} then
                                 model.internalError(:Ok "Tuple component out of bounds" offset)
@@ -617,9 +617,9 @@ export
                         when exprSelect with s then
                             case unwrapRefs(evalExpr(s.target f))
                                 when vRecord with r then
-                                    case hashMap.find(:String :Value r.r.fields s.field)
+                                    case hashMap.find(r.r.fields s.field)
                                         when vRef with cell then model.assign(cell.r rhs)
-                                        else begin hashMap.insert(:String :Value r.r.fields s.field rhs) ok end
+                                        else begin hashMap.insert(r.r.fields s.field rhs) ok end
                                     end
                                 when vTuple with t then model.tupleSetByName(t.t s.field rhs)
                                 else model.internalError(:Ok "Field assignment target must be Record or Tuple" offset)
@@ -737,21 +737,21 @@ export
                     let fields = model.newFields()
                     for i = 0 upto {extent x.fields - 1} do
                         let v = evalExpr(x.fields[i].value f)
-                        hashMap.insert(:String :Value fields x.fields[i].name if x.fields[i].isVar then model.cellValue(v) else v end)
+                        hashMap.insert(fields x.fields[i].name if x.fields[i].isVar then model.cellValue(v) else v end)
                     end
                     model.recordValue(fields)
                 when exprTypeWitness with x then
                     option vTypeValue of Value with
-                        let t = tuple let type = x.witnessType let bound = x.bound let name = maybe.some(:String x.name) end
+                        let t = tuple let type = x.witnessType let bound = x.bound let name = maybe.some(x.name) end
                     end
                 when exprTuple with x then evalTuple(e.type x.elements x.simultaneousGroups f)
                 when exprSelect with x then
                     let target = unwrapRefs(evalExpr(x.target f))
                     case target
                         when vRecord with r then
-                            case hashMap.find(:String :Value r.r.fields x.field)
+                            case hashMap.find(r.r.fields x.field)
                                 when vRef with cell then model.deref(cell.r)
-                                else hashMap.find(:String :Value r.r.fields x.field)
+                                else hashMap.find(r.r.fields x.field)
                             end
                         when vTuple with t then model.tupleGet(t.t x.field)
                         else model.internalError(:Value "Cannot select field '" <> x.field <> "' from " <> model.typeName(target) offset)
@@ -799,8 +799,8 @@ export
                     end
                 when exprOption with x then
                     let payload = evalMaybe(x.payload f)
-                    if maybe.isSome(:Expr x.ordinalExpr) then
-                        case evalExpr(maybe.unwrap(:Expr x.ordinalExpr) f)
+                    if maybe.isSome(x.ordinalExpr) then
+                        case evalExpr(maybe.unwrap(x.ordinalExpr) f)
                             when vInt with n then
                                 let optType = tm.evaluateLazily(e.type tm.noLookup)
                                 case optType.form
@@ -813,10 +813,10 @@ export
                                     else model.internalError(:Value "Expected Option type, got " <> tm.show(optType) offset)
                                 end
                             else model.internalError(:Value "Option ordinal must evaluate to Int, got "
-                                <> model.typeName(evalExpr(maybe.unwrap(:Expr x.ordinalExpr) f)) offset)
+                                <> model.typeName(evalExpr(maybe.unwrap(x.ordinalExpr) f)) offset)
                         end
                     else
-                        model.optionValue(maybe.unwrapOr(:String x.tag "") payload)
+                        model.optionValue(maybe.unwrapOr(x.tag "") payload)
                     end
                 when exprVariantCheck with x then
                     let target = evalExpr(x.target f)
@@ -831,7 +831,7 @@ export
                     case target
                         when vVariant with v then
                             if not(stringOp.equal(v.v.tag x.tag)) then model.raiseException(:Ok primitives.variantError offset) end
-                            maybe.unwrapOr(:Value v.v.payload model.okValue)
+                            maybe.unwrapOr(v.v.payload model.okValue)
                         when vOption with v then
                             if not(stringOp.equal(v.v.tag x.tag)) then model.raiseException(:Ok primitives.variantError offset) end
                             optionAssertion(v.v position(reduce.optionCaseNames(x.target.type) x.tag))
@@ -852,29 +852,29 @@ export
                     end
                     if branch >= 0 then
                         let b = x.branches[branch]
-                        if maybe.isSome(:symbols.ValueSymbol b.binder) then
+                        if maybe.isSome(b.binder) then
                             let child = pushScope(f)
-                            define(child maybe.unwrap(:symbols.ValueSymbol b.binder).name
-                                maybe.unwrapOr(:Value tagged.payload model.okValue))
+                            define(child maybe.unwrap(b.binder).name
+                                maybe.unwrapOr(tagged.payload model.okValue))
                             evalExpr(b.body child)
                         else
                             evalExpr(b.body f)
                         end
-                    elsif maybe.isSome(:Expr x.elseBranch) then
-                        evalExpr(maybe.unwrap(:Expr x.elseBranch) f)
+                    elsif maybe.isSome(x.elseBranch) then
+                        evalExpr(maybe.unwrap(x.elseBranch) f)
                     else
                         model.internalError(:Value "Unhandled case tag '" <> tagged.tag <> "'" offset)
                     end
 
                 (* Exceptions *)
                 when exprException with x then
-                    let made = if maybe.isSome(:symbols.ValueSymbol x.symbol) then
-                        madeException(f maybe.unwrap(:symbols.ValueSymbol x.symbol).symbolId)
+                    let made = if maybe.isSome(x.symbol) then
+                        madeException(f maybe.unwrap(x.symbol).symbolId)
                     else
                         maybe.none(:model.ExceptionValue)
                     end
                     let excVal = option vException of Value with
-                        let e = maybe.unwrapOr(:model.ExceptionValue made model.exceptionValue(x.name))
+                        let e = maybe.unwrapOr(made model.exceptionValue(x.name))
                     end
                     if stringOp.length(x.name) > 0 then define(f x.name excVal) end
                     excVal
@@ -882,8 +882,8 @@ export
                     case evalExpr(x.exc f)
                         when vException with exc then
                             let payload = evalMaybe(x.payload f)
-                            let payloadType = if maybe.isSome(:Expr x.payload) then
-                                maybe.some(:tm.Type maybe.unwrap(:Expr x.payload).type)
+                            let payloadType = if maybe.isSome(x.payload) then
+                                maybe.some(maybe.unwrap(x.payload).type)
                             else
                                 maybe.none(:tm.Type)
                             end
@@ -908,16 +908,15 @@ export
                             when raised with r then
                                 let var handled = maybe.none(:Value)
                                 let var i = 0
-                                while maybe.isNone(:Value handled) andif {i < extent x.branches} do
+                                while maybe.isNone(handled) andif {i < extent x.branches} do
                                     let b = x.branches[i]
                                     case evalExpr(b.excPattern f)
                                         when vException with p then
                                             if p.e is r.exc then
-                                                handled := maybe.some(:Value
-                                                    if maybe.isSome(:symbols.ValueSymbol b.binder) then
+                                                handled := maybe.some(if maybe.isSome(b.binder) then
                                                         let child = pushScope(f)
-                                                        define(child maybe.unwrap(:symbols.ValueSymbol b.binder).name
-                                                            maybe.unwrapOr(:Value r.payload model.okValue))
+                                                        define(child maybe.unwrap(b.binder).name
+                                                            maybe.unwrapOr(r.payload model.okValue))
                                                         evalExpr(b.body child)
                                                     else
                                                         evalExpr(b.body f)
@@ -927,10 +926,10 @@ export
                                     end
                                     i := i + 1
                                 end
-                                if maybe.isSome(:Value handled) then
-                                    maybe.unwrap(:Value handled)
-                                elsif maybe.isSome(:Expr x.elseBranch) then
-                                    if maybe.isSome(:symbols.ValueSymbol x.elseBinder) then
+                                if maybe.isSome(handled) then
+                                    maybe.unwrap(handled)
+                                elsif maybe.isSome(x.elseBranch) then
+                                    if maybe.isSome(x.elseBinder) then
                                         (* The else branch names the
                                          * exception: the error itself,
                                          * which raised.reraise raises
@@ -941,11 +940,11 @@ export
                                          * neither *)
                                         leaving(err f)
                                         let child = pushScope(f)
-                                        define(child maybe.unwrap(:symbols.ValueSymbol x.elseBinder).name
+                                        define(child maybe.unwrap(x.elseBinder).name
                                             option vRaised of Value with let e = err end)
-                                        evalExpr(maybe.unwrap(:Expr x.elseBranch) child)
+                                        evalExpr(maybe.unwrap(x.elseBranch) child)
                                     else
-                                        evalExpr(maybe.unwrap(:Expr x.elseBranch) f)
+                                        evalExpr(maybe.unwrap(x.elseBranch) f)
                                     end
                                 else
                                     rethrow(:Value err)
@@ -960,7 +959,7 @@ export
                         when vAuto with a then
                             let var result = maybe.none(:Value)
                             let var i = 0
-                            while maybe.isNone(:Value result) andif {i < extent x.branches} do
+                            while maybe.isNone(result) andif {i < extent x.branches} do
                                 let b = x.branches[i]
                                 let matchType = resolveType(f b.matchType)
                                 let matches = if b.exact then
@@ -969,8 +968,7 @@ export
                                     subtyping.isSubtype(a.a.type matchType maybe.none(:tm.Lookup))
                                 end
                                 if matches then
-                                    result := maybe.some(:Value
-                                        if extent b.binders > 0 then
+                                    result := maybe.some(if extent b.binders > 0 then
                                             let child = pushScope(f)
                                             for j = 0 upto {extent b.binders - 1} do define(child b.binders[j].name a.a.value) end
                                             evalExpr(b.body child)
@@ -980,10 +978,10 @@ export
                                 end
                                 i := i + 1
                             end
-                            if maybe.isSome(:Value result) then
-                                maybe.unwrap(:Value result)
-                            elsif maybe.isSome(:Expr x.elseBranch) then
-                                evalExpr(maybe.unwrap(:Expr x.elseBranch) f)
+                            if maybe.isSome(result) then
+                                maybe.unwrap(result)
+                            elsif maybe.isSome(x.elseBranch) then
+                                evalExpr(maybe.unwrap(x.elseBranch) f)
                             else
                                 model.raiseException(:Value model.dynamicError offset)
                             end
@@ -994,7 +992,7 @@ export
         end
 
     and evalMaybe(e: maybe.T(Expr) f: Frame): maybe.T(Value) =
-        if maybe.isSome(:Expr e) then maybe.some(:Value evalExpr(maybe.unwrap(:Expr e) f)) else maybe.none(:Value) end
+        if maybe.isSome(e) then maybe.some(evalExpr(maybe.unwrap(e) f)) else maybe.none(:Value) end
 
     and indexOf(v: Value offset: maybe.T(Int)): Int =
         case v
@@ -1013,16 +1011,16 @@ export
             let var idx = 0
             while idx < extent elements do
                 let found = groupAt(groups idx)
-                let group = maybe.unwrapOr(:Array(Int) found array of idx end)
+                let group = maybe.unwrapOr(found array of idx end)
                 let values = array of(extent group model.okValue)
                 for i = 0 upto {extent group - 1} do values[i] := evalExpr(elements[group[i]] tupEnv) end
-                if {extent group > 1} orif maybe.isSome(:Array(Int) found) then tupEnv := pushScope(tupEnv) end
+                if {extent group > 1} orif maybe.isSome(found) then tupEnv := pushScope(tupEnv) end
                 for i = 0 upto {extent group - 1} do
                     let j = group[i]
                     elems[j] := values[i]
-                    if maybe.isSome(:Array(maybe.T(String)) labels) andif {j < extent maybe.unwrap(:Array(maybe.T(String)) labels)} then
-                        let label = maybe.unwrap(:Array(maybe.T(String)) labels)[j]
-                        if maybe.isSome(:String label) then define(tupEnv maybe.unwrap(:String label) values[i]) end
+                    if maybe.isSome(labels) andif {j < extent maybe.unwrap(:Array(maybe.T(String)) labels)} then
+                        let label = maybe.unwrap(labels)[j]
+                        if maybe.isSome(label) then define(tupEnv maybe.unwrap(label) values[i]) end
                     end
                 end
                 idx := idx + extent group
@@ -1035,11 +1033,11 @@ export
             let env = c.env
             (* A call that would make more than maxCallDepth calls active raises
              * stack.overflow at offset, which the caller locates in its file *)
-            if vector.length(:String env.root.callStack) >= primitives.maxCallDepth then
+            if vector.length(env.root.callStack) >= primitives.maxCallDepth then
                 model.raiseException(:Ok primitives.stackOverflow offset)
             end
             checkInterrupt(offset)
-            vector.append(:String env.root.callStack c.traceName)
+            vector.append(env.root.callStack c.traceName)
             let result = try
                 case c.body.form
                     when exprExternal with x then
@@ -1047,10 +1045,10 @@ export
                          * applications bound, resolved *)
                         let types = vector.new(:tm.Type)
                         for i = 0 upto {extent c.typeParamIds - 1} do
-                            let t = hashMap.get(:Int :tm.Type c.typeBindings c.typeParamIds[i])
-                            if maybe.isSome(:tm.Type t) then vector.append(:tm.Type types maybe.unwrap(:tm.Type t)) end
+                            let t = hashMap.get(c.typeBindings c.typeParamIds[i])
+                            if maybe.isSome(t) then vector.append(types maybe.unwrap(t)) end
                         end
-                        builtins.callExternal(x.symbol vector.toArray(:tm.Type types) args)
+                        builtins.callExternal(x.symbol vector.toArray(types) args)
                     else
                         let callEnv = pushScope(env)
                         bindTypes(callEnv c.typeBindings)
@@ -1075,7 +1073,7 @@ export
     (* The value of a let binding of name: a function's closure is bound to the
      * name *)
     and evalBoundValue(name: String value: Expr f: Frame): Value =
-        if value.form?exprFun then makeClosure(value f maybe.some(:String name) maybe.none(:String))
+        if value.form?exprFun then makeClosure(value f maybe.some(name) maybe.none(:String))
         else evalExpr(value f) end
 
     and defineMembers(members: Array(typedAst.LetValue) values: Array(Value) f: Frame): Ok =
@@ -1084,13 +1082,13 @@ export
     and memberNames(members: Array(typedAst.LetValue)): maybe.T(Array(maybe.T(String))) =
         begin
             let names = array of(extent members maybe.none(:String))
-            for i = 0 upto {extent members - 1} do names[i] := maybe.some(:String members[i].name) end
-            maybe.some(:Array(maybe.T(String)) names)
+            for i = 0 upto {extent members - 1} do names[i] := maybe.some(members[i].name) end
+            maybe.some(names)
         end
 
     and evalLetValue(v: typedAst.LetValue f: Frame): Value =
         if v.isRec andif v.value.form?exprFun then
-            let closure = makeClosure(v.value f maybe.some(:String v.name) maybe.some(:String v.name))
+            let closure = makeClosure(v.value f maybe.some(v.name) maybe.some(v.name))
             bindLet(v closure f)
             closure
         else
@@ -1101,7 +1099,7 @@ export
 
     and runModuleInit(name: String bindings: Array(Binding) modEnv: Frame): Frame =
         begin
-            vector.append(:String modEnv.root.callStack diagnostics.initFrame(name))
+            vector.append(modEnv.root.callStack diagnostics.initFrame(name))
             let var g = modEnv
             try
                 for i = 0 upto {extent bindings - 1} do g := evalScopedBinding(bindings[i] g).frame end
@@ -1117,10 +1115,10 @@ export
     and exportsOf(scope: symbols.Scope modEnv: Frame): Value =
         begin
             let fields = model.newFields()
-            let names = hashMap.keys(:String :symbols.ValueSymbol scope.values)
-            for i = 0 upto {vector.length(:String names) - 1} do
-                let n = vector.get(:String names i)
-                hashMap.insert(:String :Value fields n lookup(modEnv n none))
+            let names = hashMap.keys(scope.values)
+            for i = 0 upto {vector.length(names) - 1} do
+                let n = vector.get(names i)
+                hashMap.insert(fields n lookup(modEnv n none))
             end
             model.recordValue(fields)
         end
@@ -1157,7 +1155,7 @@ export
                     let canonicals = typedAst.effectiveCanonicalModulePaths(item)
                     for j = 0 upto {extent item.names - 1} do
                         let modVal = hooks.loadModule(modPaths[j] typedAst.effectiveInterfacePath(item) f
-                            maybe.some(:String canonicals[j]))
+                            maybe.some(canonicals[j]))
                         define(f item.names[j] modVal)
                     end
                 end
@@ -1219,49 +1217,49 @@ export
     let loadModuleForInterpreter(name: String expectedInterface: String f: Frame canonicalName: maybe.T(String)): Value =
         begin
             let root = f.root
-            let known = if maybe.isSome(:String canonicalName) then
-                hashMap.get(:String :Value root.moduleValues maybe.unwrap(:String canonicalName))
+            let known = if maybe.isSome(canonicalName) then
+                hashMap.get(root.moduleValues maybe.unwrap(canonicalName))
             else
                 maybe.none(:Value)
             end
-            if maybe.isSome(:Value known) then
-                maybe.unwrap(:Value known)
+            if maybe.isSome(known) then
+                maybe.unwrap(known)
             else
                 let g = root.units
                 let resolved = graph.resolveModule(g.resolver name f.currentDir graph.rootsOf(root.includePaths root.programDir))
                 let canon = graph.canonicalName(resolved)
-                let loaded = hashMap.get(:String :Value root.moduleValues canon)
-                if maybe.isSome(:Value loaded) then
-                    maybe.unwrap(:Value loaded)
+                let loaded = hashMap.get(root.moduleValues canon)
+                if maybe.isSome(loaded) then
+                    maybe.unwrap(loaded)
                 elsif uninterpreted(canon) then
                     model.internalError(:Value "'" <> canon <> "' cannot be interpreted: compile the program instead"
                         maybe.none(:Int))
                 else
                     let var typedMod = graph.typedModule(g canon)
-                    if maybe.isNone(:Binding typedMod) then
+                    if maybe.isNone(typedMod) then
                         let typeEnv = env.new()
                         typeEnv.units := graph.newGraphWith(g.resolver)
                         for i = 0 upto {extent root.includePaths - 1} do
-                            vector.append(:String typeEnv.includePaths root.includePaths[i])
+                            vector.append(typeEnv.includePaths root.includePaths[i])
                         end
                         typeEnv.currentDir := f.currentDir
                         typeEnv.programDir := root.programDir
-                        typedMod := maybe.some(:Binding elaboration.loadModule(name expectedInterface typeEnv))
+                        typedMod := maybe.some(elaboration.loadModule(name expectedInterface typeEnv))
                         graph.unit(g option moduleUnit of units.UnitKind end canon).typedModule := typedMod
                     end
                     let modEnv = pushScope(f)
-                    if maybe.isSome(:String resolved.source) then
-                        let file = maybe.unwrap(:String resolved.source)
-                        modEnv.currentDir := maybe.some(:String files.parent(file))
+                    if maybe.isSome(resolved.source) then
+                        let file = maybe.unwrap(resolved.source)
+                        modEnv.currentDir := maybe.some(files.parent(file))
                         let sm = location.newSourceMap(files.displayName(file)
-                            maybe.unwrapOr(:String files.readText(file) ""))
+                            maybe.unwrapOr(files.readText(file) ""))
                         diagnostics.registerSource(sm)
-                        modEnv.sourceMap := maybe.some(:location.SourceMap sm)
+                        modEnv.sourceMap := maybe.some(sm)
                     end
-                    case maybe.unwrap(:Binding typedMod).form
+                    case maybe.unwrap(typedMod).form
                         when bindModule with m then
                             let exported = exportsOf(m.scope runModuleInit(m.name m.bindings modEnv))
-                            hashMap.insert(:String :Value root.moduleValues canon exported)
+                            hashMap.insert(root.moduleValues canon exported)
                             exported
                         else model.internalError(:Value "Not a module: " <> name none)
                     end
@@ -1287,10 +1285,10 @@ export
                 let s = evalScopedBinding(p.phrases[i] f)
                 f := s.frame
                 let r: PhraseResult = tuple let phrase = p.phrases[i] let value = s.value end
-                vector.append(:PhraseResult results r)
+                vector.append(results r)
                 on(r)
             end
-            tuple let results = vector.toArray(:PhraseResult results) let frame = f end
+            tuple let results = vector.toArray(results) let frame = f end
         end
 
     let evalProgramPhrases(p: typedAst.Program f: Frame on: All(r: PhraseResult) Ok): Array(PhraseResult) =
@@ -1300,7 +1298,7 @@ export
 
     (* A copy of m, with its equality and hash *)
     let copyValues(m: hashMap.T(String Value)): hashMap.T(String Value) =
-        hashMap.filter(:String :Value m fun(k: String v: Value): Bool true)
+        hashMap.filter(m fun(k: String v: Value): Bool true)
 
     let snapshot(f: Frame): Snapshot =
         tuple let bindings = copyValues(f.bindings) let moduleValues = copyValues(f.root.moduleValues) end
@@ -1308,8 +1306,8 @@ export
     let restore(f: Frame snap: Snapshot): Ok =
         begin
             f.bindings := copyValues(snap.bindings)
-            hashMap.clear(:String :Value f.root.moduleValues)
-            hashMap.forEach(:String :Value snap.moduleValues fun(k: String v: Value): Ok
-                begin hashMap.insert(:String :Value f.root.moduleValues k v) ok end)
+            hashMap.clear(f.root.moduleValues)
+            hashMap.forEach(snap.moduleValues fun(k: String v: Value): Ok
+                begin hashMap.insert(f.root.moduleValues k v) ok end)
         end
 end

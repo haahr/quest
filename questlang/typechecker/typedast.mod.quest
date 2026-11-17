@@ -129,10 +129,10 @@ export
 
     let binding(offset: Int form: BindingForm): Binding = tuple let offset = offset let form = form end
 
-    let effectiveModulePaths(item: ImportItem): Array(String) = maybe.unwrapOr(:Array(String) item.modulePaths item.names)
-    let effectiveInterfacePath(item: ImportItem): String = maybe.unwrapOr(:String item.interfacePath item.interfaceName)
+    let effectiveModulePaths(item: ImportItem): Array(String) = maybe.unwrapOr(item.modulePaths item.names)
+    let effectiveInterfacePath(item: ImportItem): String = maybe.unwrapOr(item.interfacePath item.interfaceName)
     let effectiveCanonicalModulePaths(item: ImportItem): Array(String) =
-        maybe.unwrapOr(:Array(String) item.canonicalModulePaths effectiveModulePaths(item))
+        maybe.unwrapOr(item.canonicalModulePaths effectiveModulePaths(item))
 
     let bindingMembers(b: Binding): Array(Binding) =
         case b.form
@@ -141,20 +141,20 @@ export
                     let members = vector.new(:Binding)
                     for i = 0 upto {extent g.members - 1} do
                         let m = g.members[i]
-                        vector.append(:Binding members binding(m.offset option bindLetValue of BindingForm with let value = m end))
+                        vector.append(members binding(m.offset option bindLetValue of BindingForm with let value = m end))
                     end
-                    vector.toArray(:Binding members)
+                    vector.toArray(members)
                 end
             else array of b end
         end
 
     let declaredName(b: Binding): maybe.T(String) =
         case b.form
-            when bindLetValue with x then maybe.some(:String x.value.name)
-            when bindLetType with x then maybe.some(:String x.value.name)
-            when bindDefKind with x then maybe.some(:String x.name)
-            when bindInterface with x then maybe.some(:String x.name)
-            when bindModule with x then maybe.some(:String x.name)
+            when bindLetValue with x then maybe.some(x.value.name)
+            when bindLetType with x then maybe.some(x.value.name)
+            when bindDefKind with x then maybe.some(x.name)
+            when bindInterface with x then maybe.some(x.name)
+            when bindModule with x then maybe.some(x.name)
             else maybe.none(:String)
         end
 
@@ -165,22 +165,22 @@ export
     let mapArray(A::TYPE xs: Array(A) g: All(x: A) A): Array(A) =
         begin
             let result = vector.new(:A)
-            for i = 0 upto {extent xs - 1} do vector.append(:A result g(xs[i])) end
-            vector.toArray(:A result)
+            for i = 0 upto {extent xs - 1} do vector.append(result g(xs[i])) end
+            vector.toArray(result)
         end
 
     let mapMaybe(A::TYPE x: maybe.T(A) g: All(x: A) A): maybe.T(A) =
-        if maybe.isSome(:A x) then maybe.some(:A g(maybe.unwrap(:A x))) else x end
+        if maybe.isSome(x) then maybe.some(g(maybe.unwrap(x))) else x end
 
     let rec mapTypes(e: Expr f: All(t: model.Type) model.Type): Expr =
         begin
             let m(x: Expr): Expr = mapTypes(x f)
-            let ms(xs: Array(Expr)): Array(Expr) = mapArray(:Expr xs m)
-            let mm(x: maybe.T(Expr)): maybe.T(Expr) = mapMaybe(:Expr x m)
+            let ms(xs: Array(Expr)): Array(Expr) = mapArray(xs m)
+            let mm(x: maybe.T(Expr)): maybe.T(Expr) = mapMaybe(x m)
             let form = case e.form
                 when exprFun with x then
                     option exprFun of ExprForm with
-                        let params = mapArray(:Param x.params fun(p: Param): Param
+                        let params = mapArray(x.params fun(p: Param): Param
                             tuple
                                 let offset = p.offset let name = p.name let symbol = p.symbol let type = f(p.type)
                                 let isVar = p.isVar let isOut = p.isOut
@@ -192,13 +192,13 @@ export
                 when exprApp with x then option exprApp of ExprForm with let func = m(x.func) let args = ms(x.args) end
                 when exprTypeApp with x then
                     option exprTypeApp of ExprForm with
-                        let func = m(x.func) let typeArgs = mapArray(:model.Type x.typeArgs f)
+                        let func = m(x.func) let typeArgs = mapArray(x.typeArgs f)
                     end
                 when exprInfix with x then
                     option exprInfix of ExprForm with let left = m(x.left) let op = x.op let right = m(x.right) end
                 when exprRecord with x then
                     option exprRecord of ExprForm with
-                        let fields = mapArray(:RecordField x.fields fun(r: RecordField): RecordField
+                        let fields = mapArray(x.fields fun(r: RecordField): RecordField
                             tuple let offset = r.offset let name = r.name let value = m(r.value) let isVar = r.isVar end)
                     end
                 when exprTypeWitness with x then
@@ -244,24 +244,24 @@ export
                 when exprCase with x then
                     option exprCase of ExprForm with
                         let target = m(x.target)
-                        let branches = mapArray(:CaseBranch x.branches fun(b: CaseBranch): CaseBranch
+                        let branches = mapArray(x.branches fun(b: CaseBranch): CaseBranch
                             tuple let offset = b.offset let tags = b.tags let body = m(b.body) let binder = b.binder end)
                         let elseBranch = mm(x.elseBranch)
                     end
                 when exprInspect with x then
                     option exprInspect of ExprForm with
                         let target = m(x.target)
-                        let branches = mapArray(:InspectBranch x.branches fun(b: InspectBranch): InspectBranch
+                        let branches = mapArray(x.branches fun(b: InspectBranch): InspectBranch
                             tuple
                                 let offset = b.offset let matchType = f(b.matchType) let binders = b.binders
                                 let body = m(b.body) let exact = b.exact
                             end)
                         let elseBranch = mm(x.elseBranch)
-                        let autoType = mapMaybe(:model.Type x.autoType f)
+                        let autoType = mapMaybe(x.autoType f)
                     end
                 when exprBlock with x then
                     option exprBlock of ExprForm with
-                        let bindings = mapArray(:Binding x.bindings fun(b: Binding): Binding mapBindingTypes(b f))
+                        let bindings = mapArray(x.bindings fun(b: Binding): Binding mapBindingTypes(b f))
                         let result = m(x.result)
                     end
                 when exprIf with x then
@@ -277,13 +277,13 @@ export
                     end
                 when exprException with x then
                     option exprException of ExprForm with
-                        let name = x.name let payloadType = mapMaybe(:model.Type x.payloadType f) let symbol = x.symbol
+                        let name = x.name let payloadType = mapMaybe(x.payloadType f) let symbol = x.symbol
                     end
                 when exprRaise with x then option exprRaise of ExprForm with let exc = m(x.exc) let payload = mm(x.payload) end
                 when exprTry with x then
                     option exprTry of ExprForm with
                         let body = m(x.body)
-                        let branches = mapArray(:TryBranch x.branches fun(b: TryBranch): TryBranch
+                        let branches = mapArray(x.branches fun(b: TryBranch): TryBranch
                             tuple
                                 let offset = b.offset let excPattern = m(b.excPattern) let body = m(b.body)
                                 let binder = b.binder
@@ -302,11 +302,11 @@ export
                     let offset = v.offset let name = v.name let value = mapTypes(v.value f) let symbol = v.symbol
                     let isRec = v.isRec let redefines = v.redefines
                 end
-            let bs(xs: Array(Binding)): Array(Binding) = mapArray(:Binding xs fun(x: Binding): Binding mapBindingTypes(x f))
+            let bs(xs: Array(Binding)): Array(Binding) = mapArray(xs fun(x: Binding): Binding mapBindingTypes(x f))
             let form = case b.form
                 when bindLetValue with x then option bindLetValue of BindingForm with let value = letValue(x.value) end
                 when bindLetValueGroup with x then
-                    option bindLetValueGroup of BindingForm with let members = mapArray(:LetValue x.members letValue) end
+                    option bindLetValueGroup of BindingForm with let members = mapArray(x.members letValue) end
                 when bindExprStmt with x then option bindExprStmt of BindingForm with let expr = mapTypes(x.expr f) end
                 when bindInterface with x then
                     option bindInterface of BindingForm with
@@ -338,12 +338,12 @@ export
         begin
             let s(x: Expr): Ok = scanExpr(x found)
             let ss(xs: Array(Expr)): Ok = for i = 0 upto {extent xs - 1} do s(xs[i]) end
-            let sm(x: maybe.T(Expr)): Ok = if maybe.isSome(:Expr x) then s(maybe.unwrap(:Expr x)) end
+            let sm(x: maybe.T(Expr)): Ok = if maybe.isSome(x) then s(maybe.unwrap(x)) end
             case e.form
                 when exprFun then ok
                 when exprBlock then ok
                 when exprException with x then
-                    if stringOp.length(x.name) > 0 then vector.append(:Expr found e) end
+                    if stringOp.length(x.name) > 0 then vector.append(found e) end
                 when exprApp with x then begin s(x.func) ss(x.args) end
                 when exprTypeApp with x then s(x.func)
                 when exprInfix with x then begin s(x.left) s(x.right) end
@@ -409,16 +409,16 @@ export
     let withoutDirect(found: Found direct: maybe.T(Expr)): Array(Expr) =
         begin
             let result = vector.new(:Expr)
-            for i = 0 upto {vector.length(:Expr found) - 1} do
-                let exc = vector.get(:Expr found i)
-                let isDirect = maybe.isSome(:Expr direct) andif {exc is maybe.unwrap(:Expr direct)}
+            for i = 0 upto {vector.length(found) - 1} do
+                let exc = vector.get(found i)
+                let isDirect = maybe.isSome(direct) andif {exc is maybe.unwrap(direct)}
                 let hasSymbol = case exc.form
-                    when exprException with x then maybe.isSome(:symbols.ValueSymbol x.symbol)
+                    when exprException with x then maybe.isSome(x.symbol)
                     else false
                 end
-                if not(isDirect) andif hasSymbol then vector.append(:Expr result exc) end
+                if not(isDirect) andif hasSymbol then vector.append(result exc) end
             end
-            vector.toArray(:Expr result)
+            vector.toArray(result)
         end
 
     let scopeExceptions(b: Binding): Array(Expr) =
@@ -426,8 +426,8 @@ export
             let found = vector.new(:Expr)
             scanBinding(b found)
             let direct = case b.form
-                when bindExprStmt with x then maybe.some(:Expr x.expr)
-                when bindLetValue with x then maybe.some(:Expr x.value.value)
+                when bindExprStmt with x then maybe.some(x.expr)
+                when bindLetValue with x then maybe.some(x.value.value)
                 else maybe.none(:Expr)
             end
             withoutDirect(found direct)
@@ -437,14 +437,14 @@ export
         begin
             let found = vector.new(:Expr)
             scanBinding(b found)
-            vector.toArray(:Expr found)
+            vector.toArray(found)
         end
 
     let exprScopeExceptions(e: Expr): Array(Expr) =
         begin
             let found = vector.new(:Expr)
             scanExpr(e found)
-            withoutDirect(found maybe.some(:Expr e))
+            withoutDirect(found maybe.some(e))
         end
 
     (* A child of a node: an expression or a binding, in the order of the node's
@@ -456,24 +456,24 @@ export
 
     let ex(e: Expr): Child = option childExpr of Child with let e = e end
     let opt(e: maybe.T(Expr)): Array(Child) =
-        if maybe.isSome(:Expr e) then
-            array of ex(maybe.unwrap(:Expr e)) end
+        if maybe.isSome(e) then
+            array of ex(maybe.unwrap(e)) end
         else
             array of :Child end
         end
     let exs(es: Array(Expr)): Array(Child) =
         begin
             let children = vector.new(:Child)
-            for i = 0 upto {extent es - 1} do vector.append(:Child children ex(es[i])) end
-            vector.toArray(:Child children)
+            for i = 0 upto {extent es - 1} do vector.append(children ex(es[i])) end
+            vector.toArray(children)
         end
     let concat(parts: Array(Array(Child))): Array(Child) =
         begin
             let children = vector.new(:Child)
             for i = 0 upto {extent parts - 1} do
-                for j = 0 upto {extent parts[i] - 1} do vector.append(:Child children parts[i][j]) end
+                for j = 0 upto {extent parts[i] - 1} do vector.append(children parts[i][j]) end
             end
-            vector.toArray(:Child children)
+            vector.toArray(children)
         end
 
     let children(e: Expr): Array(Child) =
@@ -485,8 +485,8 @@ export
             when exprRecord with x then
                 begin
                     let values = vector.new(:Expr)
-                    for i = 0 upto {extent x.fields - 1} do vector.append(:Expr values x.fields[i].value) end
-                    exs(vector.toArray(:Expr values))
+                    for i = 0 upto {extent x.fields - 1} do vector.append(values x.fields[i].value) end
+                    exs(vector.toArray(values))
                 end
             when exprTuple with x then exs(x.elements)
             when exprSelect with x then array of ex(x.target) end
@@ -508,23 +508,23 @@ export
             when exprCase with x then
                 begin
                     let bodies = vector.new(:Expr)
-                    for i = 0 upto {extent x.branches - 1} do vector.append(:Expr bodies x.branches[i].body) end
-                    concat(array of array of ex(x.target) end exs(vector.toArray(:Expr bodies)) opt(x.elseBranch) end)
+                    for i = 0 upto {extent x.branches - 1} do vector.append(bodies x.branches[i].body) end
+                    concat(array of array of ex(x.target) end exs(vector.toArray(bodies)) opt(x.elseBranch) end)
                 end
             when exprInspect with x then
                 begin
                     let bodies = vector.new(:Expr)
-                    for i = 0 upto {extent x.branches - 1} do vector.append(:Expr bodies x.branches[i].body) end
-                    concat(array of array of ex(x.target) end exs(vector.toArray(:Expr bodies)) opt(x.elseBranch) end)
+                    for i = 0 upto {extent x.branches - 1} do vector.append(bodies x.branches[i].body) end
+                    concat(array of array of ex(x.target) end exs(vector.toArray(bodies)) opt(x.elseBranch) end)
                 end
             when exprBlock with x then
                 begin
                     let children = vector.new(:Child)
                     for i = 0 upto {extent x.bindings - 1} do
-                        vector.append(:Child children option childBinding of Child with let b = x.bindings[i] end)
+                        vector.append(children option childBinding of Child with let b = x.bindings[i] end)
                     end
-                    vector.append(:Child children ex(x.result))
-                    vector.toArray(:Child children)
+                    vector.append(children ex(x.result))
+                    vector.toArray(children)
                 end
             when exprIf with x then array of ex(x.cond) ex(x.thenBranch) ex(x.elseBranch) end
             when exprWhile with x then array of ex(x.cond) ex(x.body) end
@@ -535,10 +535,10 @@ export
                 begin
                     let parts = vector.new(:Expr)
                     for i = 0 upto {extent x.branches - 1} do
-                        vector.append(:Expr parts x.branches[i].excPattern)
-                        vector.append(:Expr parts x.branches[i].body)
+                        vector.append(parts x.branches[i].excPattern)
+                        vector.append(parts x.branches[i].body)
                     end
-                    concat(array of array of ex(x.body) end exs(vector.toArray(:Expr parts)) opt(x.elseBranch) end)
+                    concat(array of array of ex(x.body) end exs(vector.toArray(parts)) opt(x.elseBranch) end)
                 end
             else array of :Child end
         end
@@ -549,25 +549,25 @@ export
             when bindLetValueGroup with x then
                 begin
                     let values = vector.new(:Expr)
-                    for i = 0 upto {extent x.members - 1} do vector.append(:Expr values x.members[i].value) end
-                    exs(vector.toArray(:Expr values))
+                    for i = 0 upto {extent x.members - 1} do vector.append(values x.members[i].value) end
+                    exs(vector.toArray(values))
                 end
             when bindExprStmt with x then array of ex(x.expr) end
             when bindInterface with x then
                 begin
                     let children = vector.new(:Child)
                     for i = 0 upto {extent x.signatures - 1} do
-                        vector.append(:Child children option childBinding of Child with let b = x.signatures[i] end)
+                        vector.append(children option childBinding of Child with let b = x.signatures[i] end)
                     end
-                    vector.toArray(:Child children)
+                    vector.toArray(children)
                 end
             when bindModule with x then
                 begin
                     let children = vector.new(:Child)
                     for i = 0 upto {extent x.bindings - 1} do
-                        vector.append(:Child children option childBinding of Child with let b = x.bindings[i] end)
+                        vector.append(children option childBinding of Child with let b = x.bindings[i] end)
                     end
-                    vector.toArray(:Child children)
+                    vector.toArray(children)
                 end
             else array of :Child end
         end

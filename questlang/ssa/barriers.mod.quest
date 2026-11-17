@@ -29,18 +29,18 @@ export
         for k = 0 upto {extent runtimeFunctions.functions - 1} do
             let r = runtimeFunctions.functions[k]
             let kind = if r.effects.allocates then callCollects else callOther end
-            let ignored = hashMap.insert(:String :Int m r.name kind)
+            let ignored = hashMap.insert(m r.name kind)
         end
-        let a = hashMap.insert(:String :Int m "quest_alloc" callAllocation)
-        let b = hashMap.insert(:String :Int m "quest_barrier" callBarrier)
-        let c = hashMap.insert(:String :Int m "quest_barrier_slot" callSlotBarrier)
+        let a = hashMap.insert(m "quest_alloc" callAllocation)
+        let b = hashMap.insert(m "quest_barrier" callBarrier)
+        let c = hashMap.insert(m "quest_barrier_slot" callSlotBarrier)
         m
     end
     let callKind(i: ssa.Inst): Int =
         if ssa.isOp(i ssa.opCallIndirect) then callCollects
         else
-            let found = hashMap.get(:String :Int kinds i.symbol)
-            if maybe.isSome(:Int found) then maybe.unwrap(:Int found) else callCollects end
+            let found = hashMap.get(kinds i.symbol)
+            if maybe.isSome(found) then maybe.unwrap(found) else callCollects end
         end
 
     (* A store the rule covers: the object's value, the bytes from it to the
@@ -75,8 +75,8 @@ export
     let functionProblems(f: Function): Array(String) =
         begin
             let problems = vector.new(:String)
-            let nBlocks = vector.length(:ssa.Block f.blocks)
-            let nValues = vector.length(:ssa.Type f.types)
+            let nBlocks = vector.length(f.blocks)
+            let nValues = vector.length(f.types)
             (* Each value's defining instruction, if an instruction defines
              * it *)
             let defined = array of(nValues false)
@@ -84,8 +84,8 @@ export
             let defAt = array of(nValues 0)
             for b = 0 upto {nBlocks - 1} do
                 let insts = ssa.block(f b).insts
-                for j = 0 upto {vector.length(:ssa.Inst insts) - 1} do
-                    let i = vector.get(:ssa.Inst insts j)
+                for j = 0 upto {vector.length(insts) - 1} do
+                    let i = vector.get(insts j)
                     for r = 0 upto {extent i.results - 1} do
                         defined[i.results[r]] := true
                         defs[i.results[r]] := insts
@@ -94,8 +94,8 @@ export
                 end
             end
             let isDef(v: Int op: ssa.Opcode): Bool =
-                defined[v] andif ssa.isOp(vector.get(:ssa.Inst defs[v] defAt[v]) op)
-            let defOf(v: Int): ssa.Inst = vector.get(:ssa.Inst defs[v] defAt[v])
+                defined[v] andif ssa.isOp(vector.get(defs[v] defAt[v]) op)
+            let defOf(v: Int): ssa.Inst = vector.get(defs[v] defAt[v])
             (* Where an address comes from: the value its ptrAdds and copies
              * start at, and the bytes they add, if constants *)
             let resolve(v: Int extra: Int): Tuple root: Int offset: Int exact: Bool end =
@@ -140,12 +140,12 @@ export
             let storeOf = hashMap.new(:Int :Int fun(a: Int b: Int): Bool a is b hash.int)
             let starts = array of(nBlocks 0)
             for b = 1 upto {nBlocks - 1} do
-                starts[b] := starts[b - 1] + vector.length(:ssa.Inst ssa.block(f b - 1).insts)
+                starts[b] := starts[b - 1] + vector.length(ssa.block(f b - 1).insts)
             end
             for b = 0 upto {nBlocks - 1} do
                 let insts = ssa.block(f b).insts
-                for j = 0 upto {vector.length(:ssa.Inst insts) - 1} do
-                    let i = vector.get(:ssa.Inst insts j)
+                for j = 0 upto {vector.length(insts) - 1} do
+                    let i = vector.get(insts j)
                     if ssa.isOp(i ssa.opStore) andif {i.width is 8} then
                         let pointer = heapPointer(i.args[1])
                         let place = resolve(i.args[0] i.imm)
@@ -153,9 +153,9 @@ export
                         let rooted = isDef(root ssa.opSlot) orif isDef(root ssa.opSymbol)
                             orif isDef(root ssa.opThreadLocal) orif isDef(root ssa.opNull)
                         if pointer andif not(rooted) then
-                            let id = vector.length(:Store stores)
-                            let ignored = hashMap.insert(:Int :Int storeOf starts[b] + j id)
-                            vector.append(:Store stores tuple
+                            let id = vector.length(stores)
+                            let ignored = hashMap.insert(storeOf starts[b] + j id)
+                            vector.append(stores tuple
                                 let root = root let offset = place.offset let exact = place.exact
                                 let address = i.args[0] let imm = i.imm let block = b let index = j
                             end)
@@ -163,7 +163,7 @@ export
                     end
                 end
             end
-            let nStores = vector.length(:Store stores)
+            let nStores = vector.length(stores)
             if nStores > 0 then
                 let g = cfg.graph(f)
                 (* The handlers of tries, entered with nothing owed *)
@@ -196,8 +196,8 @@ export
                                 if report then
                                     let ids = bitset.elements(owed)
                                     for k = 0 upto {extent ids - 1} do
-                                        vector.append(:String problems "function " <> f.symbol <> ": "
-                                            <> describe(vector.get(:Store stores ids[k])) <> " has no barrier before "
+                                        vector.append(problems "function " <> f.symbol <> ": "
+                                            <> describe(vector.get(stores ids[k])) <> " has no barrier before "
                                             <> what)
                                     end
                                 end
@@ -209,7 +209,7 @@ export
                                 let place = resolve(i.args[0] 0)
                                 let ids = bitset.elements(owed)
                                 for k = 0 upto {extent ids - 1} do
-                                    let s = vector.get(:Store stores ids[k])
+                                    let s = vector.get(stores ids[k])
                                     let answered = if kind is callBarrier then s.root is place.root
                                         else {{s.address is i.args[0]} andif {s.imm is 0}} orif {s.exact
                                             andif place.exact andif {s.root is place.root}
@@ -218,14 +218,14 @@ export
                                 end
                             end
                         let insts = ssa.block(f b).insts
-                        for j = 0 upto {vector.length(:ssa.Inst insts) - 1} do
-                            let i = vector.get(:ssa.Inst insts j)
+                        for j = 0 upto {vector.length(insts) - 1} do
+                            let i = vector.get(insts j)
                             if ssa.isOp(i ssa.opStore) then
-                                let id = hashMap.get(:Int :Int storeOf starts[b] + j)
-                                if maybe.isSome(:Int id) then
-                                    let s = vector.get(:Store stores maybe.unwrap(:Int id))
+                                let id = hashMap.get(storeOf starts[b] + j)
+                                if maybe.isSome(id) then
+                                    let s = vector.get(stores maybe.unwrap(id))
                                     if not(bitset.contains(fresh s.root)) then
-                                        begin let ignored = bitset.insert(owed maybe.unwrap(:Int id)) end
+                                        begin let ignored = bitset.insert(owed maybe.unwrap(id)) end
                                     end
                                 end
                             elsif ssa.isCall(i) then
@@ -296,17 +296,17 @@ export
                     transfer(b fresh owed true)
                 end
             end
-            vector.toArray(:String problems)
+            vector.toArray(problems)
         end
 
     let checkUnit(u: ssa.Unit): Ok =
         begin
             let all = vector.new(:String)
-            for i = 0 upto {vector.length(:Function u.functions) - 1} do
-                let ps = functionProblems(vector.get(:Function u.functions i))
-                for k = 0 upto {extent ps - 1} do vector.append(:String all ps[k]) end
+            for i = 0 upto {vector.length(u.functions) - 1} do
+                let ps = functionProblems(vector.get(u.functions i))
+                for k = 0 upto {extent ps - 1} do vector.append(all ps[k]) end
             end
-            if not(vector.empty(:String all)) then
+            if not(vector.empty(all)) then
                 raise barrierError with "internal: the SSA misses write barriers:\n  " <> strutil.join("\n  " all) end
             end
         end

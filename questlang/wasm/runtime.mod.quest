@@ -215,7 +215,7 @@ export
     let runtimeModule(): model.Module =
         begin
             let m = model.newModule("quest.runtime")
-            vector.append(:model.RecGroup m.types rt.group)
+            vector.append(m.types rt.group)
             let tString = rt.index("string")
             let tBytes = rt.index("bytes")
             let tBoxInt = rt.index("boxInt")
@@ -226,18 +226,18 @@ export
             for k = 0 upto extent builtinExceptions - 1 do
                 let exceptionName = builtinExceptions[k]
                 let init = vector.new(:Inst)
-                vector.append(:Inst init c32(0))
-                vector.append(:Inst init c32(0))
-                vector.append(:Inst init c32(stringOp.length(exceptionName)))
+                vector.append(init c32(0))
+                vector.append(init c32(0))
+                vector.append(init c32(stringOp.length(exceptionName)))
                 for j = 0 upto stringOp.length(exceptionName) - 1 do
-                    vector.append(:Inst init c32(ascii.val(stringOp.getChar(exceptionName j))))
+                    vector.append(init c32(ascii.val(stringOp.getChar(exceptionName j))))
                 end
-                vector.append(:Inst init i2(ops.arrayNewFixed tBytes stringOp.length(exceptionName)))
-                vector.append(:Inst init i1(ops.structNew tString))
-                vector.append(:Inst init i1(ops.structNew tException))
-                vector.append(:model.Global m.globals tuple
+                vector.append(init i2(ops.arrayNewFixed tBytes stringOp.length(exceptionName)))
+                vector.append(init i1(ops.structNew tString))
+                vector.append(init i1(ops.structNew tException))
+                vector.append(m.globals tuple
                     let name = exceptionName let type = model.ref(tException) let mutable = false
-                    let init = vector.toArray(:Inst init)
+                    let init = vector.toArray(init)
                 end)
             end
             let sLength = rt.field("string" "length")
@@ -254,9 +254,9 @@ export
             let nullBytes = model.refNull(tBytes)
             let funcType(params: Array(model.ValType) results: Array(model.ValType)): Int =
                 begin
-                    let n = vector.length(:model.RecGroup m.types)
+                    let n = vector.length(m.types)
                     let base = {extent rt.group} + {n - 1}
-                    vector.append(:model.RecGroup m.types array of
+                    vector.append(m.types array of
                         tuple let name = "" let final = true let supers = array of :Int end
                             let composite = option compFunc of model.Composite with
                                 let params = params let results = results end
@@ -271,27 +271,27 @@ export
                     i1(ops.structNew tString)
                 end
             let add(name: String t: Int params: Array(String) locals: Array(model.Local) body: Array(Inst)): Ok =
-                vector.append(:model.Function m.functions tuple
+                vector.append(m.functions tuple
                     let name = name let type = t let params = params
-                    let locals = vector.fromArray(:model.Local locals) let body = vector.fromArray(:Inst body)
+                    let locals = vector.fromArray(locals) let body = vector.fromArray(body)
                 end)
             let cat(parts: Array(Array(Inst))): Array(Inst) =
                 begin
                     let all = vector.new(:Inst)
                     for k = 0 upto extent parts - 1 do
-                        for j = 0 upto extent parts[k] - 1 do vector.append(:Inst all parts[k][j]) end
+                        for j = 0 upto extent parts[k] - 1 do vector.append(all parts[k][j]) end
                     end
-                    vector.toArray(:Inst all)
+                    vector.toArray(all)
                 end
 
             let wasi = "wasi_snapshot_preview1"
-            vector.append(:model.Import m.imports tuple
+            vector.append(m.imports tuple
                 let moduleName = wasi let field = "fd_write" let name = "fdWrite"
                 let kind = option importFunc of model.ImportKind with
                     let type = funcType(array of model.i32 model.i32 model.i32 model.i32 end array of model.i32 end)
                 end
             end)
-            vector.append(:model.Import m.imports tuple
+            vector.append(m.imports tuple
                 let moduleName = wasi let field = "proc_exit" let name = "procExit"
                 let kind = option importFunc of model.ImportKind with
                     let type = funcType(array of model.i32 end none)
@@ -303,17 +303,17 @@ export
                 for j = 0 upto stringOp.length(ps) - 1 do
                     if stringOp.getChar(ps j) is 'I' then params[j] := model.i64 end
                 end
-                vector.append(:model.Import m.imports tuple
+                vector.append(m.imports tuple
                     let moduleName = wasi let field = wasiFunctions[k][0] let name = wasiFunctions[k][0]
                     let kind = option importFunc of model.ImportKind with
                         let type = funcType(params array of model.i32 end)
                     end
                 end)
             end
-            vector.append(:model.Memory m.memories tuple let name = "memory" let min = 1 let max = ~1 end)
-            vector.append(:model.Tag m.tags
+            vector.append(m.memories tuple let name = "memory" let min = 1 let max = ~1 end)
+            vector.append(m.tags
                 tuple let name = "error" let type = funcType(array of model.eqref end none) end)
-            vector.append(:model.Data m.data tuple let name = "text" let bytes = text let offset = ~1 end)
+            vector.append(m.data tuple let name = "text" let bytes = text let offset = ~1 end)
             let typeOf = array of(extent exports 0)
             for k = 0 upto extent exports - 1 do typeOf[k] := funcType(exports[k].params exports[k].results) end
 
@@ -753,7 +753,7 @@ export
                 array of i1(ops.localGet k) i(ops.refIsNull) i(ops.i32Eqz) model.ifInst(empty "") end
             let partsIn = vector.new(:Inst)
             let appendAll = fun(xs: Array(Inst)): Ok
-                for j = 0 upto extent xs - 1 do vector.append(:Inst partsIn xs[j]) end
+                for j = 0 upto extent xs - 1 do vector.append(partsIn xs[j]) end
             for k = 0 upto 6 do
                 appendAll(present(k))
                 appendAll(array of
@@ -785,7 +785,7 @@ export
             add("concatN" typeOf[25] array of "p0" "p1" "p2" "p3" "p4" "p5" "p6" end
                 array of local("total" model.i64) local("at" model.i32) local("out" nullBytes)
                     local("part" nullString) end
-                vector.toArray(:Inst partsIn))
+                vector.toArray(partsIn))
             (* Memory's helpers: an address is an i64, wrapped *)
             let k0 = extent fixedExports - 9
             let addr = array of i1(ops.localGet 0) i(ops.i32WrapI64) end
@@ -841,13 +841,13 @@ export
                 let body = vector.new(:Inst)
                 for j = 0 upto stringOp.length(ps) - 1 do
                     names[j] := "a" <> conv.int(j)
-                    vector.append(:Inst body i1(ops.localGet j))
-                    if stringOp.getChar(ps j) is 'i' then vector.append(:Inst body i(ops.i32WrapI64)) end
+                    vector.append(body i1(ops.localGet j))
+                    if stringOp.getChar(ps j) is 'i' then vector.append(body i(ops.i32WrapI64)) end
                 end
-                vector.append(:Inst body i1(ops.call 2 + k))
-                vector.append(:Inst body i(ops.i64ExtendI32U))
+                vector.append(body i1(ops.call 2 + k))
+                vector.append(body i(ops.i64ExtendI32U))
                 add(wasiFunctions[k][0] typeOf[{extent fixedExports} + k] names array of :model.Local end
-                    vector.toArray(:Inst body))
+                    vector.toArray(body))
             end
             (* The functions only the runtime calls, after those it exports *)
             (* Grows the memory to hold need bytes *)
@@ -993,40 +993,40 @@ export
                     end
                 end))
 
-            vector.append(:model.Export m.exports
+            vector.append(m.exports
                 tuple let field = "memory" let kind = option exportMemory of model.ExportKind end let index = 0 end)
             (* A closure that captures nothing, for a host that calls a unit's
              * exported function, whose first parameter is its closure, as a
              * direct call passes its unit's own (docs/wasm.md section 3.1) *)
-            vector.append(:model.Export m.exports tuple
+            vector.append(m.exports tuple
                 let field = "noClosure" let kind = option exportGlobal of model.ExportKind end
-                let index = vector.length(:model.Global m.globals)
+                let index = vector.length(m.globals)
             end)
-            vector.append(:model.Global m.globals tuple
+            vector.append(m.globals tuple
                 let name = "noClosure" let type = model.ref(rt.index("clos")) let mutable = false
                 let init = array of c32(0) i1(ops.structNew rt.index("clos")) end
             end)
             (* holdFatal's: whether fatal errors are held, and the report kept *)
-            vector.append(:model.Global m.globals tuple
+            vector.append(m.globals tuple
                 let name = "fatalHeld" let type = model.i32 let mutable = true let init = array of c32(0) end
             end)
-            vector.append(:model.Global m.globals tuple
+            vector.append(m.globals tuple
                 let name = "fatalReport" let type = model.eqref let mutable = true
                 let init = array of
                     option instRefNull of Inst with let heap = option heapNone of model.HeapType end end
                 end
             end)
             for k = 0 upto extent builtinExceptions - 1 do
-                vector.append(:model.Export m.exports tuple
+                vector.append(m.exports tuple
                     let field = exceptionField(builtinExceptions[k])
                     let kind = option exportGlobal of model.ExportKind end
                     let index = k
                 end)
             end
-            vector.append(:model.Export m.exports
+            vector.append(m.exports
                 tuple let field = tagField let kind = option exportTag of model.ExportKind end let index = 0 end)
             for k = 0 upto extent exports - 1 do
-                vector.append(:model.Export m.exports tuple
+                vector.append(m.exports tuple
                     let field = exports[k].field let kind = option exportFunc of model.ExportKind end
                     let index = {2 + wasiCount} + k
                 end)

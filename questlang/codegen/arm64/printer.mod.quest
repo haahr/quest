@@ -162,7 +162,7 @@ export
                  * first by a mov, which sets the rest, and the others by
                  * movk *)
                 when opMovConst with x then
-                    if minst.isMovImm(x.imm) then vector.append(:minst.Inst code minst.movImm(d x.imm))
+                    if minst.isMovImm(x.imm) then vector.append(code minst.movImm(d x.imm))
                     else
                         let w = word.fromInt(x.imm)
                         let half(k: Int): Int = word.toInt(word.extract(w 16 * k 16))
@@ -184,47 +184,47 @@ export
                                         else word.toInt(word.xorBits(word.fromInt(~1)
                                             word.shift(word.fromInt(65535 - half(k)) 16 * k)))
                                         end
-                                    vector.append(:minst.Inst code minst.movImm(d base))
+                                    vector.append(code minst.movImm(d base))
                                     first := false
-                                else vector.append(:minst.Inst code minst.movk(d half(k) 16 * k)) end
+                                else vector.append(code minst.movk(d half(k) 16 * k)) end
                             end
                         end
                     end
                 when opSymbolAddress with x then
                     if x.local then
-                        vector.append(:minst.Inst code minst.adrp(d x.symbol minst.relocPage))
-                        vector.append(:minst.Inst code minst.addPageOff(d d x.symbol))
+                        vector.append(code minst.adrp(d x.symbol minst.relocPage))
+                        vector.append(code minst.addPageOff(d d x.symbol))
                     else
-                        vector.append(:minst.Inst code minst.adrp(d x.symbol minst.relocGot))
-                        vector.append(:minst.Inst code minst.load(minst.load64 d d minst.pageOff(x.symbol
+                        vector.append(code minst.adrp(d x.symbol minst.relocGot))
+                        vector.append(code minst.load(minst.load64 d d minst.pageOff(x.symbol
                             minst.relocGot)))
                     end
                     (* An offset past the symbol (small, as the SSA's are) *)
                     if x.offset is 0 then ok
                     elsif {x.offset > 0} andif {x.offset < 4096} then
-                        vector.append(:minst.Inst code minst.addImm(d d x.offset 0))
+                        vector.append(code minst.addImm(d d x.offset 0))
                     elsif {x.offset < 0} andif {x.offset > ~4096} then
-                        vector.append(:minst.Inst code minst.subImm(d d 0 - x.offset))
+                        vector.append(code minst.subImm(d d 0 - x.offset))
                     else
-                        vector.append(:minst.Inst code minst.movImm(target.x(17) x.offset))
-                        vector.append(:minst.Inst code minst.arith(minst.arithAdd d d target.x(17)))
+                        vector.append(code minst.movImm(target.x(17) x.offset))
+                        vector.append(code minst.arith(minst.arithAdd d d target.x(17)))
                     end
                 (* Darwin's thread-local access: the variable's descriptor's
                  * address into x0, then a call of the accessor in its first
                  * word, which returns the variable's address in x0 *)
                 when opTlvAddress with x then
-                    vector.append(:minst.Inst code minst.adrp(d x.symbol minst.relocTlv))
-                    vector.append(:minst.Inst code minst.load(minst.load64 d d minst.pageOff(x.symbol minst.relocTlv)))
-                    vector.append(:minst.Inst code minst.load(minst.load64 target.x(16) d minst.modeBase))
-                    vector.append(:minst.Inst code minst.blr(target.x(16)))
+                    vector.append(code minst.adrp(d x.symbol minst.relocTlv))
+                    vector.append(code minst.load(minst.load64 d d minst.pageOff(x.symbol minst.relocTlv)))
+                    vector.append(code minst.load(minst.load64 target.x(16) d minst.modeBase))
+                    vector.append(code minst.blr(target.x(16)))
                 when opMovImm, opMovz, opMovk, opMov, opArith, opAddImm, opSubImm, opLogicImm, opShiftImm, opMsub,
                     opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore, opLdp,
                     opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz,
                     opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa,
                     opCfiOffset, opLoc then
-                    vector.append(:minst.Inst code tuple let op = op let regs = rs end)
+                    vector.append(code tuple let op = op let regs = rs end)
             end
-            vector.toArray(:minst.Inst code)
+            vector.toArray(code)
         end
 
     let count(op: minst.Op): Int =

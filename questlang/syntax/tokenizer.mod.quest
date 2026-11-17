@@ -36,8 +36,8 @@ export
      * ====================================================================== *)
 
     let newTable(): Table = hashmap.new(:String :K stringOp.equal hash.string)
-    let add(m: Table s: String k: K): Ok = begin hashmap.insert(:String :K m s k) ok end
-    let lookup(m: Table s: String): maybe.T(K) = hashmap.get(:String :K m s)
+    let add(m: Table s: String k: K): Ok = begin hashmap.insert(m s k) ok end
+    let lookup(m: Table s: String): maybe.T(K) = hashmap.get(m s)
 
     let initKeywords(): Table =
         begin
@@ -108,7 +108,7 @@ export
 
     (* The tables are never changed, so every tokenizer shares them *)
     let keywordTable = initKeywords()
-    let keywordNames(): Array(String) = vector.toArray(:String hashmap.keys(:String :K keywordTable))
+    let keywordNames(): Array(String) = vector.toArray(hashmap.keys(keywordTable))
     let reservedPunctuationTable = initReservedPunctuation()
     let delimiterTable = initDelimiters()
 
@@ -351,14 +351,14 @@ export
             let norm = strutil.replace(lexeme "~" "-")
             if isReal then
                 let r = strutil.tryToReal(norm)
-                if maybe.isNone(:Real r) then error(tok start "Invalid real literal '" <> lexeme <> "'") end
-                finish(tok option realLit of K end start tokens.valReal(maybe.unwrapOr(:Real r 0.0)))
+                if maybe.isNone(r) then error(tok start "Invalid real literal '" <> lexeme <> "'") end
+                finish(tok option realLit of K end start tokens.valReal(maybe.unwrapOr(r 0.0)))
             else
                 let n = strutil.tryToInt(norm)
                 (* The lexeme is digits, so it is not an Int only if it is out
                  * of range *)
-                if maybe.isNone(:Int n) then error(tok start "Integer literal '" <> lexeme <> "' out of range") end
-                finish(tok option intLit of K end start tokens.valInt(maybe.unwrapOr(:Int n 0)))
+                if maybe.isNone(n) then error(tok start "Integer literal '" <> lexeme <> "' out of range") end
+                finish(tok option intLit of K end start tokens.valInt(maybe.unwrapOr(n 0)))
             end
         end
 
@@ -414,7 +414,7 @@ export
             let start = tok.cursor
             skipWhile(tok test)
             let lexeme = stringOp.getSub(tok.text start {tok.cursor - start})
-            finish(tok maybe.unwrapOr(:K lookup(table lexeme) otherwise) start tokens.valNone())
+            finish(tok maybe.unwrapOr(lookup(table lexeme) otherwise) start tokens.valNone())
         end
 
     (* A symbolic operator stops before ~ followed by a digit, which starts a
@@ -438,9 +438,9 @@ export
                 let start = tok.cursor
                 let c = currentChar(tok)
                 let delimiter = lookup(delimiterTable stringOp.new(1 c))
-                if maybe.isSome(:K delimiter) then
+                if maybe.isSome(delimiter) then
                     tok.cursor := tok.cursor + 1
-                    finish(tok maybe.unwrap(:K delimiter) start tokens.valNone())
+                    finish(tok maybe.unwrap(delimiter) start tokens.valNone())
                 elsif strutil.isDigit(c) orif {{c is '~'} andif strutil.isDigit(peekChar(tok 1))} then
                     lexNumber(tok)
                 elsif c is '\'' then
@@ -464,8 +464,8 @@ export
      * ====================================================================== *)
 
     let nextToken(tok: T): tokens.Token =
-        if maybe.isSome(:tokens.Token tok.peeked) then
-            let t = maybe.unwrap(:tokens.Token tok.peeked)
+        if maybe.isSome(tok.peeked) then
+            let t = maybe.unwrap(tok.peeked)
             tok.peeked := maybe.none(:tokens.Token)
             t
         else
@@ -474,10 +474,10 @@ export
 
     let peekToken(tok: T): tokens.Token =
         begin
-            if maybe.isNone(:tokens.Token tok.peeked) then
-                tok.peeked := maybe.some(:tokens.Token readNextToken(tok))
+            if maybe.isNone(tok.peeked) then
+                tok.peeked := maybe.some(readNextToken(tok))
             end
-            maybe.unwrap(:tokens.Token tok.peeked)
+            maybe.unwrap(tok.peeked)
         end
 
     let tokenizeAll(tok: T): vector.T(tokens.Token) =
@@ -485,7 +485,7 @@ export
             let v = vector.new(:tokens.Token)
             loop
                 let t = nextToken(tok)
-                vector.append(:tokens.Token v t)
+                vector.append(v t)
                 case t.kind when eof then exit else ok end
             end
             v
@@ -494,8 +494,8 @@ export
     let formatDump(tokensList: vector.T(tokens.Token) sm: location.SourceMap showValues: Bool): String =
         begin
             let b = sb.new()
-            for i = 0 upto {vector.length(:tokens.Token tokensList) - 1} do
-                let t = vector.get(:tokens.Token tokensList i)
+            for i = 0 upto {vector.length(tokensList) - 1} do
+                let t = vector.get(tokensList i)
                 let loc = location.locate(sm t.span.startOffset)
                 if i > 0 then sb.char(b '\n') end
                 sb.int(b loc.line)
@@ -511,16 +511,16 @@ export
                 let number = pyRepr.number
                 let shown = if not(showValues) then maybe.none(:String) else
                     case t.value
-                        when intVal with x then maybe.some(:String number(conv.int(x.val)))
-                        when realVal with x then maybe.some(:String number(conv.real(x.val)))
-                        when charVal with x then maybe.some(:String pyRepr.str(stringOp.new(1 x.val)))
-                        when stringVal with x then maybe.some(:String pyRepr.str(x.val))
+                        when intVal with x then maybe.some(number(conv.int(x.val)))
+                        when realVal with x then maybe.some(number(conv.real(x.val)))
+                        when charVal with x then maybe.some(pyRepr.str(stringOp.new(1 x.val)))
+                        when stringVal with x then maybe.some(pyRepr.str(x.val))
                         else maybe.none(:String)
                     end
                 end
-                if maybe.isSome(:String shown) then
+                if maybe.isSome(shown) then
                     sb.str(b "\t(value=")
-                    sb.str(b maybe.unwrap(:String shown))
+                    sb.str(b maybe.unwrap(shown))
                     sb.char(b ')')
                 end
             end

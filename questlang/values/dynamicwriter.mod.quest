@@ -31,9 +31,9 @@ export
     (* The identity of a value that may be shared: what `is` compares *)
     let identityHash(v: Value): word.T =
         case v
-            when vRecord with x then hash.identityHash(:model.RecordValue x.r)
-            when vArray with x then hash.identityHash(:Array(Value) x.a)
-            when vTuple with x then hash.identityHash(:model.TupleValue x.t)
+            when vRecord with x then hash.identityHash(x.r)
+            when vArray with x then hash.identityHash(x.a)
+            when vTuple with x then hash.identityHash(x.t)
             else hash.int(0)
         end
     let newIdentityMap(V::TYPE): hashMap.T(Value V) = hashMap.new(:Value :V model.same identityHash)
@@ -97,9 +97,9 @@ export
                 if stringOp.equal(node.shape.kind "abstract") then
                     r := node.children[extent node.children - 1]
                 elsif stringOp.equal(node.shape.kind "param") then
-                    let n = vector.length(:Ref w.witnesses)
+                    let n = vector.length(w.witnesses)
                     if node.shape.count >= n then fail(:Ok) end
-                    r := vector.get(:Ref w.witnesses {{n - 1} - node.shape.count})
+                    r := vector.get(w.witnesses {{n - 1} - node.shape.count})
                 else
                     done := true
                 end
@@ -118,7 +118,7 @@ export
             if extent t.elements isnot {extent node.children - offset} then fail(:Ok) end
             let components = vector.new(:Pair)
             for i = 0 upto {extent t.elements - 1} do
-                vector.append(:Pair components pair(t.elements[i] node.children[offset + i]))
+                vector.append(components pair(t.elements[i] node.children[offset + i]))
             end
             tuple let witness = dynamicJson.ref(w.graph a.type) let components = components end
         end
@@ -137,12 +137,12 @@ export
             let var result = maybe.none(:Ref)
             let var found = false
             for i = 0 upto {extent node.shape.labels - 1} do
-                let payloadRef = if node.shape.flags[i] then maybe.some(:Ref node.children[next]) else maybe.none(:Ref) end
+                let payloadRef = if node.shape.flags[i] then maybe.some(node.children[next]) else maybe.none(:Ref) end
                 if node.shape.flags[i] then next := next + 1 end
                 if not(found) andif stringOp.equal(dynamicJson.fieldName(node.shape.labels[i]) tag) then
                     found := true
-                    if maybe.isSome(:Ref payloadRef) andif not(isRef(maybe.unwrap(:Ref payloadRef) "Ok")) then
-                        let p = maybe.unwrap(:Ref payloadRef)
+                    if maybe.isSome(payloadRef) andif not(isRef(maybe.unwrap(payloadRef) "Ok")) then
+                        let p = maybe.unwrap(payloadRef)
                         if stringOp.equal(node.shape.kind "option") andif not(stringOp.equal(kindOf(w.graph p) "tuple")) then
                             fail(:Ok)
                         end
@@ -166,7 +166,7 @@ export
                             case x.a.value
                                 when vTuple with t then
                                     if extent t.t.elements isnot 1 then fail(:Ok) end
-                                    vector.append(:Pair target pair(t.t.elements[0] dynamicJson.ref(w.graph x.a.type)))
+                                    vector.append(target pair(t.t.elements[0] dynamicJson.ref(w.graph x.a.type)))
                                 else fail(:Ok)
                             end
                         else fail(:Ok)
@@ -180,8 +180,8 @@ export
                         when vRecord with x then
                             for i = 0 upto {extent node.shape.labels - 1} do
                                 let name = dynamicJson.fieldName(node.shape.labels[i])
-                                if not(hashMap.contains(:String :Value x.r.fields name)) then fail(:Ok) end
-                                vector.append(:Pair target pair(hashMap.find(:String :Value x.r.fields name) node.children[i]))
+                                if not(hashMap.contains(x.r.fields name)) then fail(:Ok) end
+                                vector.append(target pair(hashMap.find(x.r.fields name) node.children[i]))
                             end
                         else fail(:Ok)
                     end
@@ -190,23 +190,23 @@ export
                         when vTuple with x then
                             if extent x.t.elements < extent node.children then fail(:Ok) end
                             for i = 0 upto {extent node.children - 1} do
-                                vector.append(:Pair target pair(x.t.elements[i] node.children[i]))
+                                vector.append(target pair(x.t.elements[i] node.children[i]))
                             end
                         else fail(:Ok)
                     end
                 elsif stringOp.equal(kind "array") then
                     case v
                         when vArray with x then
-                            for i = 0 upto {extent x.a - 1} do vector.append(:Pair target pair(x.a[i] node.children[0])) end
+                            for i = 0 upto {extent x.a - 1} do vector.append(target pair(x.a[i] node.children[0])) end
                         else fail(:Ok)
                     end
                 elsif stringOp.equal(kind "variant") orif stringOp.equal(kind "option") then
                     let payloadRef = casePayload(w v node)
-                    if maybe.isSome(:Ref payloadRef) then
-                        let p = maybe.unwrap(:Ref payloadRef)
-                        let payload = maybe.unwrapOr(:Value tagged(v).payload model.okValue)
+                    if maybe.isSome(payloadRef) then
+                        let p = maybe.unwrap(payloadRef)
+                        let payload = maybe.unwrapOr(tagged(v).payload model.okValue)
                         if stringOp.equal(kind "variant") then
-                            vector.append(:Pair target pair(payload p))
+                            vector.append(target pair(payload p))
                         else
                             (* An option's components are stored in the option
                              * value itself (as in compiled code), so they are
@@ -216,7 +216,7 @@ export
                                 when vTuple with x then
                                     if extent x.t.elements < extent components then fail(:Ok) end
                                     for i = 0 upto {extent components - 1} do
-                                        vector.append(:Pair target pair(x.t.elements[i] components[i]))
+                                        vector.append(target pair(x.t.elements[i] components[i]))
                                     end
                                 else fail(:Ok)
                             end
@@ -226,8 +226,8 @@ export
                     ok
                 elsif stringOp.equal(kind "auto") then
                     let parts = autoParts(w v r)
-                    for i = 0 upto {vector.length(:Pair parts.components) - 1} do
-                        vector.append(:Pair target vector.get(:Pair parts.components i))
+                    for i = 0 upto {vector.length(parts.components) - 1} do
+                        vector.append(target vector.get(parts.components i))
                     end
                 else
                     (* Functions and exceptions cannot be externed *)
@@ -242,11 +242,11 @@ export
             let v = derefValue(v0)
             let var done = false
             if hasIdentity(v) then
-                if hashMap.contains(:Value :Bool w.seen v) then
-                    hashMap.insert(:Value :Bool w.shared v true)
+                if hashMap.contains(w.seen v) then
+                    hashMap.insert(w.shared v true)
                     done := true
                 else
-                    hashMap.insert(:Value :Bool w.seen v true)
+                    hashMap.insert(w.seen v true)
                     ok
                 end
             end
@@ -254,17 +254,17 @@ export
                 let c = concrete(w r)
                 if not(isBuiltin(c)) andif stringOp.equal(kindOf(w.graph c) "auto") then
                     let parts = autoParts(w v c)
-                    vector.append(:Ref w.witnesses parts.witness)
-                    for i = 0 upto {vector.length(:Pair parts.components) - 1} do
-                        let p = vector.get(:Pair parts.components i)
+                    vector.append(w.witnesses parts.witness)
+                    for i = 0 upto {vector.length(parts.components) - 1} do
+                        let p = vector.get(parts.components i)
                         scan(w p.value p.ref)
                     end
-                    vector.pop(:Ref w.witnesses)
+                    vector.pop(w.witnesses)
                     ok
                 else
                     let cs = children(w v r)
-                    for i = 0 upto {vector.length(:Pair cs) - 1} do
-                        let p = vector.get(:Pair cs i)
+                    for i = 0 upto {vector.length(cs) - 1} do
+                        let p = vector.get(cs i)
                         scan(w p.value p.ref)
                     end
                 end
@@ -292,48 +292,48 @@ export
                     let target = json.newObject()
                     json.put(target "@type" json.null)
                     json.put(target "@value" json.null)
-                    vector.append(:Ref w.roots parts.witness)
-                    vector.append(:Nested w.nested tuple let target = target let witness = parts.witness end)
-                    vector.append(:Ref w.witnesses parts.witness)
+                    vector.append(w.roots parts.witness)
+                    vector.append(w.nested tuple let target = target let witness = parts.witness end)
+                    vector.append(w.witnesses parts.witness)
                     let items = vector.new(:json.Value)
-                    for i = 0 upto {vector.length(:Pair parts.components) - 1} do
-                        let p = vector.get(:Pair parts.components i)
-                        vector.append(:json.Value items encodeValue(w p.value p.ref))
+                    for i = 0 upto {vector.length(parts.components) - 1} do
+                        let p = vector.get(parts.components i)
+                        vector.append(items encodeValue(w p.value p.ref))
                     end
-                    vector.pop(:Ref w.witnesses)
+                    vector.pop(w.witnesses)
                     json.put(target "@value" json.arrayValue(items))
                     json.object(target)
                 else
                     let var objId = ~1
                     let var reference = maybe.none(:json.Value)
-                    if hasIdentity(v) andif hashMap.contains(:Value :Bool w.shared v) then
-                        if hashMap.contains(:Value :Int w.ids v) then
+                    if hasIdentity(v) andif hashMap.contains(w.shared v) then
+                        if hashMap.contains(w.ids v) then
                             let o = json.newObject()
-                            json.put(o "@ref" json.int(hashMap.find(:Value :Int w.ids v)))
-                            reference := maybe.some(:json.Value json.object(o))
+                            json.put(o "@ref" json.int(hashMap.find(w.ids v)))
+                            reference := maybe.some(json.object(o))
                         else
-                            objId := hashMap.size(:Value :Int w.ids) + 1
-                            hashMap.insert(:Value :Int w.ids v objId)
+                            objId := hashMap.size(w.ids) + 1
+                            hashMap.insert(w.ids v objId)
                             ok
                         end
                     end
-                    if maybe.isSome(:json.Value reference) then
-                        maybe.unwrap(:json.Value reference)
+                    if maybe.isSome(reference) then
+                        maybe.unwrap(reference)
                     elsif stringOp.equal(kind "record") then
                         let target = json.newObject()
                         if objId > 0 then json.put(target "@id" json.int(objId)) end
                         let cs = children(w v r)
-                        for i = 0 upto {vector.length(:Pair cs) - 1} do
-                            let p = vector.get(:Pair cs i)
+                        for i = 0 upto {vector.length(cs) - 1} do
+                            let p = vector.get(cs i)
                             json.put(target dynamicJson.fieldName(node.shape.labels[i]) encodeValue(w p.value p.ref))
                         end
                         json.object(target)
                     elsif stringOp.equal(kind "tuple") orif stringOp.equal(kind "array") then
                         let items = vector.new(:json.Value)
                         let cs = children(w v r)
-                        for i = 0 upto {vector.length(:Pair cs) - 1} do
-                            let p = vector.get(:Pair cs i)
-                            vector.append(:json.Value items encodeValue(w p.value p.ref))
+                        for i = 0 upto {vector.length(cs) - 1} do
+                            let p = vector.get(cs i)
+                            vector.append(items encodeValue(w p.value p.ref))
                         end
                         if objId > 0 then
                             let target = json.newObject()
@@ -346,21 +346,21 @@ export
                     elsif stringOp.equal(kind "variant") orif stringOp.equal(kind "option") then
                         let payloadRef = casePayload(w v node)
                         let tag = tagged(v).tag
-                        if maybe.isNone(:Ref payloadRef) then
+                        if maybe.isNone(payloadRef) then
                             json.string(tag)
                         else
                             let target = json.newObject()
                             if stringOp.equal(kind "option") then
                                 let items = vector.new(:json.Value)
                                 let cs = children(w v r)
-                                for i = 0 upto {vector.length(:Pair cs) - 1} do
-                                    let p = vector.get(:Pair cs i)
-                                    vector.append(:json.Value items encodeValue(w p.value p.ref))
+                                for i = 0 upto {vector.length(cs) - 1} do
+                                    let p = vector.get(cs i)
+                                    vector.append(items encodeValue(w p.value p.ref))
                                 end
                                 json.put(target tag json.arrayValue(items))
                             else
-                                json.put(target tag encodeValue(w maybe.unwrapOr(:Value tagged(v).payload model.okValue)
-                                    maybe.unwrap(:Ref payloadRef)))
+                                json.put(target tag encodeValue(w maybe.unwrapOr(tagged(v).payload model.okValue)
+                                    maybe.unwrap(payloadRef)))
                             end
                             json.object(target)
                         end
@@ -390,12 +390,12 @@ export
             json.null
         elsif stringOp.equal(name "Dynamic") then
             let cs = children(w v builtin("Dynamic"))
-            let p = vector.get(:Pair cs 0)
+            let p = vector.get(cs 0)
             let target = json.newObject()
             json.put(target "@type" json.null)
             json.put(target "@value" json.null)
-            vector.append(:Ref w.roots p.ref)
-            vector.append(:Nested w.nested tuple let target = target let witness = p.ref end)
+            vector.append(w.roots p.ref)
+            vector.append(w.nested tuple let target = target let witness = p.ref end)
             json.put(target "@value" encodeValue(w p.value p.ref))
             json.object(target)
         else
@@ -419,11 +419,11 @@ export
                 else fail(:Value)
             end
             let root = dynamicJson.ref(w.graph a.type)
-            vector.append(:Ref w.roots root)
+            vector.append(w.roots root)
             let value = encodeValue(w element root)
             let table = dynamicJson.canonicalTable(w.graph.nodes w.roots)
-            for i = 0 upto {vector.length(:Nested w.nested) - 1} do
-                let n = vector.get(:Nested w.nested i)
+            for i = 0 upto {vector.length(w.nested) - 1} do
+                let n = vector.get(w.nested i)
                 json.put(n.target "@type" dynamicJson.refJson(n.witness table))
             end
             let document = json.newObject()

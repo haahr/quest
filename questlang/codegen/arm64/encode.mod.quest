@@ -188,7 +188,7 @@ export
                     if target >= 0 then
                         base + field({target - at} / 4 26)
                     else
-                        vector.append(:Reloc relocs tuple
+                        vector.append(relocs tuple
                             let offset = at let kind = option relocBranch26 of RelocKind end let symbol = symbol
                             let addend = 0
                         end)
@@ -196,7 +196,7 @@ export
                     end
                 end
             let reloc(kind: RelocKind symbol: String): Ok =
-                vector.append(:Reloc relocs
+                vector.append(relocs
                     tuple let offset = at let kind = kind let symbol = symbol let addend = 0 end)
             (* A label's distance from here, in instructions, as a field of
              * bits *)
@@ -386,32 +386,32 @@ export
                 let f = functions[k]
                 while {at % 16} isnot 0 do at := at + 4 end
                 let start = at
-                for j = 0 upto {vector.length(:minst.Inst f.code) - 1} do
-                    let i = vector.get(:minst.Inst f.code j)
+                for j = 0 upto {vector.length(f.code) - 1} do
+                    let i = vector.get(f.code j)
                     case i.op
-                        when opLabel with x then begin hashMap.insert(:String :Int labels x.label at) ok end
-                        when opJumpTable with x then begin hashMap.insert(:String :Int labels x.label at) ok end
+                        when opLabel with x then begin hashMap.insert(labels x.label at) ok end
+                        when opJumpTable with x then begin hashMap.insert(labels x.label at) ok end
                         else at := at + 4 * printer.count(i.op)
                     end
                 end
-                hashMap.insert(:String :Int labels f.endLabel at)
-                vector.append(:Symbol symbols tuple
+                hashMap.insert(labels f.endLabel at)
+                vector.append(symbols tuple
                     let name = f.symbol let offset = start let size = at - start let exported = f.exported
                 end)
             end
             let labelOffset(l: String): Int =
                 begin
-                    let found = hashMap.get(:String :Int labels l)
-                    if maybe.isNone(:Int found) then raise unencodable with "label " <> l end end
-                    maybe.unwrap(:Int found)
+                    let found = hashMap.get(labels l)
+                    if maybe.isNone(found) then raise unencodable with "label " <> l end end
+                    maybe.unwrap(found)
                 end
             (* A function's recursive calls of itself, which asm resolves: the
              * function being encoded, if it is not exported *)
             let var current = maybe.none(:Symbol)
             let localFunction(symbol: String): Int =
-                if maybe.isSome(:Symbol current) andif eq(maybe.unwrap(:Symbol current).name symbol)
-                    andif not(maybe.unwrap(:Symbol current).exported) then
-                    maybe.unwrap(:Symbol current).offset
+                if maybe.isSome(current) andif eq(maybe.unwrap(current).name symbol)
+                    andif not(maybe.unwrap(current).exported) then
+                    maybe.unwrap(current).offset
                 else ~1 end
             let code = array of(at / 4 0)
             let codeRelocs = vector.new(:Reloc)
@@ -419,16 +419,16 @@ export
             let var pc = 0
             for k = 0 upto {extent functions - 1} do
                 let f = functions[k]
-                current := maybe.some(:Symbol vector.get(:Symbol symbols k))
+                current := maybe.some(vector.get(symbols k))
                 while {pc % 16} isnot 0 do
                     code[pc / 4] := 0xD503201F
                     pc := pc + 4
                 end
-                for j = 0 upto {vector.length(:minst.Inst f.code) - 1} do
-                    let i = vector.get(:minst.Inst f.code j)
+                for j = 0 upto {vector.length(f.code) - 1} do
+                    let i = vector.get(f.code j)
                     case i.op
                         when opLoc with x then
-                            vector.append(:Line lines tuple
+                            vector.append(lines tuple
                                 let offset = pc let file = x.file let line = x.line let column = x.col
                             end)
                         when opLabel, opJumpTable, opJumpTableEnd, opCfiDefCfa, opCfiOffset then ok
@@ -450,28 +450,28 @@ export
             let littleEndian(n: Int): Ok =
                 begin
                     let w = words.fromInt(n)
-                    for b = 0 upto 7 do vector.append(:Int bytes words.toInt(words.extract(w 8 * b 8))) end
+                    for b = 0 upto 7 do vector.append(bytes words.toInt(words.extract(w 8 * b 8))) end
                 end
             for k = 0 upto {extent data - 1} do
                 let d = data[k]
-                while {vector.length(:Int bytes) % 8} isnot 0 do vector.append(:Int bytes 0) end
-                let start = vector.length(:Int bytes)
+                while {vector.length(bytes) % 8} isnot 0 do vector.append(bytes 0) end
+                let start = vector.length(bytes)
                 case d.contents
                     when contentsZero with x then
-                        for b = 1 upto {if x.bytes > 0 then x.bytes else 1 end} do vector.append(:Int bytes 0) end
+                        for b = 1 upto {if x.bytes > 0 then x.bytes else 1 end} do vector.append(bytes 0) end
                     when contentsText with x then
                         for c = 0 upto {stringOp.length(x.text) - 1} do
-                            vector.append(:Int bytes ascii.val(stringOp.getChar(x.text c)))
+                            vector.append(bytes ascii.val(stringOp.getChar(x.text c)))
                         end
-                        vector.append(:Int bytes 0)
+                        vector.append(bytes 0)
                     when contentsWords with x then
                         if extent x.words is 0 then littleEndian(0) end
                         for w = 0 upto {extent x.words - 1} do
                             case x.words[w]
                                 when wordInt with v then littleEndian(v.n)
                                 when wordSymbol with v then
-                                    vector.append(:Reloc dataRelocs tuple
-                                        let offset = vector.length(:Int bytes)
+                                    vector.append(dataRelocs tuple
+                                        let offset = vector.length(bytes)
                                         let kind = option relocAbsolute64 of RelocKind end
                                         let symbol = v.symbol let addend = v.addend
                                     end)
@@ -479,8 +479,8 @@ export
                             end
                         end
                 end
-                vector.append(:Symbol dataSymbols tuple
-                    let name = d.symbol let offset = start let size = vector.length(:Int bytes) - start
+                vector.append(dataSymbols tuple
+                    let name = d.symbol let offset = start let size = vector.length(bytes) - start
                     let exported = d.exported
                 end)
             end
@@ -489,14 +489,14 @@ export
              * offset in the code and its description's in the table; and the
              * descriptions *)
             let frameWords = vector.new(:Int)
-            if maybe.isSome(:Frames frames) then
-                let t = maybe.unwrap(:Frames frames)
+            if maybe.isSome(frames) then
+                let t = maybe.unwrap(frames)
                 let n = extent t.listed
-                vector.append(:Int frameWords 0)
-                vector.append(:Int frameWords n)
+                vector.append(frameWords 0)
+                vector.append(frameWords n)
                 for k = 0 upto {n - 1} do
-                    vector.append(:Int frameWords vector.get(:Symbol symbols t.listed[k].index).offset)
-                    vector.append(:Int frameWords {8 + {8 * n}} + t.listed[k].description)
+                    vector.append(frameWords vector.get(symbols t.listed[k].index).offset)
+                    vector.append(frameWords {8 + {8 * n}} + t.listed[k].description)
                 end
                 let var next = 0
                 while next < extent t.descriptions do
@@ -505,17 +505,17 @@ export
                         w := {256 * w}
                             + if {next + b} < extent t.descriptions then t.descriptions[next + b] else 0 end
                     end
-                    vector.append(:Int frameWords w)
+                    vector.append(frameWords w)
                     next := next + 4
                 end
             end
             tuple
-                let code = code let codeRelocs = vector.toArray(:Reloc codeRelocs)
-                let functions = vector.toArray(:Symbol symbols)
-                let data = vector.toArray(:Int bytes) let dataRelocs = vector.toArray(:Reloc dataRelocs)
-                let dataSymbols = vector.toArray(:Symbol dataSymbols)
-                let lines = vector.toArray(:Line lines) let files = files
-                let frames = vector.toArray(:Int frameWords)
+                let code = code let codeRelocs = vector.toArray(codeRelocs)
+                let functions = vector.toArray(symbols)
+                let data = vector.toArray(bytes) let dataRelocs = vector.toArray(dataRelocs)
+                let dataSymbols = vector.toArray(dataSymbols)
+                let lines = vector.toArray(lines) let files = files
+                let frames = vector.toArray(frameWords)
             end
         end
 
@@ -543,15 +543,15 @@ export
             let lines = vector.new(:String)
             for k = 0 upto {extent e.functions - 1} do
                 let f = e.functions[k]
-                vector.append(:String lines
+                vector.append(lines
                     "function " <> f.name <> " " <> conv.int(f.offset) <> " " <> conv.int(f.size))
             end
             for k = 0 upto {extent e.code - 1} do
-                vector.append(:String lines "code " <> conv.int(4 * k) <> " " <> hex(e.code[k] 8))
+                vector.append(lines "code " <> conv.int(4 * k) <> " " <> hex(e.code[k] 8))
             end
             let relocLines(section: String rs: Array(Reloc)): Ok =
                 for k = 0 upto {extent rs - 1} do
-                    vector.append(:String lines "reloc " <> section <> " " <> conv.int(rs[k].offset) <> " "
+                    vector.append(lines "reloc " <> section <> " " <> conv.int(rs[k].offset) <> " "
                         <> kindName(rs[k].kind) <> " " <> rs[k].symbol <> " " <> conv.int(rs[k].addend))
                 end
             relocLines("code" e.codeRelocs)
@@ -559,14 +559,14 @@ export
             for k = 0 upto {extent e.dataSymbols - 1} do
                 let s = e.dataSymbols[k]
                 let b = vector.new(:String)
-                for i = s.offset upto {s.offset + s.size - 1} do vector.append(:String b hex(e.data[i] 2)) end
-                vector.append(:String lines "data " <> s.name <> " " <> conv.int(s.offset) <> " " <> strutil.join("" b))
+                for i = s.offset upto {s.offset + s.size - 1} do vector.append(b hex(e.data[i] 2)) end
+                vector.append(lines "data " <> s.name <> " " <> conv.int(s.offset) <> " " <> strutil.join("" b))
             end
             if extent e.frames > 0 then
                 let b = vector.new(:String)
-                for k = 0 upto {extent e.frames - 1} do vector.append(:String b hex(e.frames[k] 8)) end
-                vector.append(:String lines "frames " <> strutil.join(" " b))
+                for k = 0 upto {extent e.frames - 1} do vector.append(b hex(e.frames[k] 8)) end
+                vector.append(lines "frames " <> strutil.join(" " b))
             end
-            vector.toArray(:String lines)
+            vector.toArray(lines)
         end
 end

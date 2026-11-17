@@ -38,7 +38,7 @@ export
         size: Int
     end
 
-    let isCall(s: Stmt): Bool = maybe.isSome(:nodes.OpCall walk.statementCall(s))
+    let isCall(s: Stmt): Bool = maybe.isSome(walk.statementCall(s))
 
     let callSize = 2
 
@@ -46,8 +46,8 @@ export
         begin
             let stmts = walk.walkStatements(b true)
             let var n = 0
-            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
-                n := n + if isCall(vector.get(:Stmt stmts i)) then callSize else 1 end
+            for i = 0 upto {vector.length(stmts) - 1} do
+                n := n + if isCall(vector.get(stmts i)) then callSize else 1 end
             end
             n
         end
@@ -62,11 +62,11 @@ export
             let found = vector.new(:nodes.Function)
             for b = 0 upto {extent all - 1} do
                 let stmts = walk.walkStatements(all[b] true)
-                for i = 0 upto {vector.length(:Stmt stmts) - 1} do
-                    case vector.get(:Stmt stmts i)
+                for i = 0 upto {vector.length(stmts) - 1} do
+                    case vector.get(stmts i)
                         when sFuns with x then
                             for j = 0 upto {extent x.functions - 1} do
-                                vector.append(:nodes.Function found x.functions[j])
+                                vector.append(found x.functions[j])
                             end
                         else ok
                     end
@@ -81,19 +81,19 @@ export
         begin
             let found = vector.new(:Int)
             let stmts = walk.walkStatements(f.body false)
-            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
-                let used = walk.statementUses(vector.get(:Stmt stmts i))
+            for i = 0 upto {vector.length(stmts) - 1} do
+                let used = walk.statementUses(vector.get(stmts i))
                 for j = 0 upto {extent used - 1} do
                     case used[j]
                         when atomVar with x then
-                            if hashMap.contains(:Int :nodes.Function functions x.v.id) then
-                                vector.append(:Int found x.v.id)
+                            if hashMap.contains(functions x.v.id) then
+                                vector.append(found x.v.id)
                             end
                         when atomConst then ok
                     end
                 end
             end
-            vector.toArray(:Int found)
+            vector.toArray(found)
         end
 
     (* Tarjan's strongly connected components of the graph of which functions
@@ -108,39 +108,39 @@ export
             let numbers = tuple let var next = 0 let var count = 0 end
             let rec visit(id: Int): Ok =
                 begin
-                    hashMap.insert(:Int :Int index id numbers.next)
-                    hashMap.insert(:Int :Int low id numbers.next)
+                    hashMap.insert(index id numbers.next)
+                    hashMap.insert(low id numbers.next)
                     numbers.next := numbers.next + 1
-                    vector.append(:Int stack id)
-                    hashMap.insert(:Int :Bool onStack id true)
-                    let targets = named(hashMap.find(:Int :nodes.Function functions id) functions)
+                    vector.append(stack id)
+                    hashMap.insert(onStack id true)
+                    let targets = named(hashMap.find(functions id) functions)
                     for k = 0 upto {extent targets - 1} do
                         let t = targets[k]
-                        if not(hashMap.contains(:Int :Int index t)) then
+                        if not(hashMap.contains(index t)) then
                             visit(t)
-                            if hashMap.find(:Int :Int low t) < hashMap.find(:Int :Int low id) then
-                                hashMap.insert(:Int :Int low id hashMap.find(:Int :Int low t))
+                            if hashMap.find(low t) < hashMap.find(low id) then
+                                hashMap.insert(low id hashMap.find(low t))
                             end
-                        elsif hashMap.contains(:Int :Bool onStack t) then
-                            if hashMap.find(:Int :Int index t) < hashMap.find(:Int :Int low id) then
-                                hashMap.insert(:Int :Int low id hashMap.find(:Int :Int index t))
+                        elsif hashMap.contains(onStack t) then
+                            if hashMap.find(index t) < hashMap.find(low id) then
+                                hashMap.insert(low id hashMap.find(index t))
                             end
                         end
                     end
-                    if hashMap.find(:Int :Int low id) is hashMap.find(:Int :Int index id) then
+                    if hashMap.find(low id) is hashMap.find(index id) then
                         let var more = true
                         while more do
-                            let member = vector.pop(:Int stack)
-                            hashMap.delete(:Int :Bool onStack member)
-                            hashMap.insert(:Int :Int result member numbers.count)
+                            let member = vector.pop(stack)
+                            hashMap.delete(onStack member)
+                            hashMap.insert(result member numbers.count)
                             more := member isnot id
                         end
                         numbers.count := numbers.count + 1
                     end
                 end
-            for i = 0 upto {vector.length(:nodes.Function order) - 1} do
-                let id = vector.get(:nodes.Function order i).v.id
-                if not(hashMap.contains(:Int :Int index id)) then visit(id) end
+            for i = 0 upto {vector.length(order) - 1} do
+                let id = vector.get(order i).v.id
+                if not(hashMap.contains(index id)) then visit(id) end
             end
             result
         end
@@ -151,19 +151,19 @@ export
     let freeVariables(f: nodes.Function): Array(Variable) =
         begin
             let bound = hashMap.new(:Int :Bool intEqual hash.int)
-            for i = 0 upto {extent f.params - 1} do hashMap.insert(:Int :Bool bound f.params[i].v.id true) end
-            hashMap.insert(:Int :Bool bound f.v.id true)
+            for i = 0 upto {extent f.params - 1} do hashMap.insert(bound f.params[i].v.id true) end
+            hashMap.insert(bound f.v.id true)
             let stmts = walk.walkStatements(f.body true)
-            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
-                let st = vector.get(:Stmt stmts i)
+            for i = 0 upto {vector.length(stmts) - 1} do
+                let st = vector.get(stmts i)
                 let binders = walk.statementBinders(st)
-                for k = 0 upto {extent binders - 1} do hashMap.insert(:Int :Bool bound binders[k].id true) end
+                for k = 0 upto {extent binders - 1} do hashMap.insert(bound binders[k].id true) end
                 case st
                     when sFuns with x then
                         for k = 0 upto {extent x.functions - 1} do
                             let g = x.functions[k]
                             for j = 0 upto {extent g.params - 1} do
-                                hashMap.insert(:Int :Bool bound g.params[j].v.id true)
+                                hashMap.insert(bound g.params[j].v.id true)
                             end
                         end
                     else ok
@@ -171,21 +171,21 @@ export
             end
             let found = vector.new(:Variable)
             let seen = hashMap.new(:Int :Bool intEqual hash.int)
-            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
-                let used = walk.statementUses(vector.get(:Stmt stmts i))
+            for i = 0 upto {vector.length(stmts) - 1} do
+                let used = walk.statementUses(vector.get(stmts i))
                 for k = 0 upto {extent used - 1} do
                     case used[k]
                         when atomVar with x then
-                            if not(hashMap.contains(:Int :Bool bound x.v.id))
-                                andif not(hashMap.contains(:Int :Bool seen x.v.id)) then
-                                hashMap.insert(:Int :Bool seen x.v.id true)
-                                vector.append(:Variable found x.v)
+                            if not(hashMap.contains(bound x.v.id))
+                                andif not(hashMap.contains(seen x.v.id)) then
+                                hashMap.insert(seen x.v.id true)
+                                vector.append(found x.v)
                             end
                         when atomConst then ok
                     end
                 end
             end
-            vector.toArray(:Variable found)
+            vector.toArray(found)
         end
 
     (* Whether a function's body, or a function it binds, calls an external
@@ -194,14 +194,14 @@ export
         begin
             let stmts = walk.walkStatements(f.body true)
             let var found = false
-            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
-                let o = case vector.get(:Stmt stmts i)
-                    when sLet with x then maybe.some(:nodes.Op x.value)
-                    when sDo with x then maybe.some(:nodes.Op x.value)
+            for i = 0 upto {vector.length(stmts) - 1} do
+                let o = case vector.get(stmts i)
+                    when sLet with x then maybe.some(x.value)
+                    when sDo with x then maybe.some(x.value)
                     else maybe.none(:nodes.Op)
                 end
-                if maybe.isSome(:nodes.Op o) then
-                    case maybe.unwrap(:nodes.Op o)
+                if maybe.isSome(o) then
+                    case maybe.unwrap(o)
                         when opCallExternal with x then if extent x.typeArgs > 0 then found := true end
                         else ok
                     end
@@ -214,8 +214,8 @@ export
     let callOfVariable(st: Stmt v: Variable): maybe.T(nodes.OpCall) =
         begin
             let c = walk.statementCall(st)
-            if maybe.isSome(:nodes.OpCall c) andif maybe.isSome(:Variable maybe.unwrap(:nodes.OpCall c).callee)
-                andif nodes.same(maybe.unwrap(:Variable maybe.unwrap(:nodes.OpCall c).callee) v)
+            if maybe.isSome(c) andif maybe.isSome(maybe.unwrap(c).callee)
+                andif nodes.same(maybe.unwrap(maybe.unwrap(c).callee) v)
             then c
             else maybe.none(:nodes.OpCall) end
         end
@@ -238,11 +238,11 @@ export
             let var other = false
             let var any = false
             let stmts = walk.walkStatements(f.body true)
-            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
-                let st = vector.get(:Stmt stmts i)
+            for i = 0 upto {vector.length(stmts) - 1} do
+                let st = vector.get(stmts i)
                 let call = callOfVariable(st f.v)
-                if maybe.isSome(:nodes.OpCall call) then
-                    let c = maybe.unwrap(:nodes.OpCall call)
+                if maybe.isSome(call) then
+                    let c = maybe.unwrap(call)
                     if {extent c.args isnot extent f.params} orif {extent c.typeArgs isnot extent f.typeParams} then
                         other := true
                     else
@@ -287,10 +287,10 @@ export
             let order = collect(all)
             let functions = hashMap.new(:Int :nodes.Function intEqual hash.int)
             let sizes = hashMap.new(:Int :Int intEqual hash.int)
-            for i = 0 upto {vector.length(:nodes.Function order) - 1} do
-                let f = vector.get(:nodes.Function order i)
-                hashMap.insert(:Int :nodes.Function functions f.v.id f)
-                hashMap.insert(:Int :Int sizes f.v.id size(f.body))
+            for i = 0 upto {vector.length(order) - 1} do
+                let f = vector.get(order i)
+                hashMap.insert(functions f.v.id f)
+                hashMap.insert(sizes f.v.id size(f.body))
             end
             let var total = 0
             for b = 0 upto {extent all - 1} do total := total + size(all[b]) end
@@ -298,43 +298,43 @@ export
             (* A function is recursive if it names itself, or another of its
              * component *)
             let members = hashMap.new(:Int :Int intEqual hash.int)
-            for i = 0 upto {vector.length(:nodes.Function order) - 1} do
-                let c = hashMap.find(:Int :Int numbers vector.get(:nodes.Function order i).v.id)
-                hashMap.insert(:Int :Int members c 1 + maybe.unwrapOr(:Int hashMap.get(:Int :Int members c) 0))
+            for i = 0 upto {vector.length(order) - 1} do
+                let c = hashMap.find(numbers vector.get(order i).v.id)
+                hashMap.insert(members c 1 + maybe.unwrapOr(hashMap.get(members c) 0))
             end
             let recursive = hashMap.new(:Int :Bool intEqual hash.int)
-            for i = 0 upto {vector.length(:nodes.Function order) - 1} do
-                let f = vector.get(:nodes.Function order i)
+            for i = 0 upto {vector.length(order) - 1} do
+                let f = vector.get(order i)
                 let targets = named(f functions)
-                let var self = hashMap.find(:Int :Int members hashMap.find(:Int :Int numbers f.v.id)) > 1
+                let var self = hashMap.find(members hashMap.find(numbers f.v.id)) > 1
                 for k = 0 upto {extent targets - 1} do if targets[k] is f.v.id then self := true end end
-                hashMap.insert(:Int :Bool recursive f.v.id self)
+                hashMap.insert(recursive f.v.id self)
             end
             let closed = hashMap.new(:Int :Bool intEqual hash.int)
             let free = hashMap.new(:Int :Array(Variable) intEqual hash.int)
-            for i = 0 upto {vector.length(:nodes.Function order) - 1} do
-                let f = vector.get(:nodes.Function order i)
+            for i = 0 upto {vector.length(order) - 1} do
+                let f = vector.get(order i)
                 let named = freeVariables(f)
-                hashMap.insert(:Int :Array(Variable) free f.v.id named)
-                hashMap.insert(:Int :Bool closed f.v.id extent named is 0)
+                hashMap.insert(free f.v.id named)
+                hashMap.insert(closed f.v.id extent named is 0)
             end
             (* A function recursive through itself alone may have static
              * parameters *)
             let static = hashMap.new(:Int :Array(Bool) intEqual hash.int)
-            for i = 0 upto {vector.length(:nodes.Function order) - 1} do
-                let f = vector.get(:nodes.Function order i)
-                let alone = hashMap.find(:Int :Int members hashMap.find(:Int :Int numbers f.v.id)) is 1
-                if alone andif hashMap.find(:Int :Bool recursive f.v.id) then
+            for i = 0 upto {vector.length(order) - 1} do
+                let f = vector.get(order i)
+                let alone = hashMap.find(members hashMap.find(numbers f.v.id)) is 1
+                if alone andif hashMap.find(recursive f.v.id) then
                     let params = staticParams(f)
                     let var some = false
                     for k = 0 upto {extent params - 1} do if params[k] then some := true end end
-                    if some then hashMap.insert(:Int :Array(Bool) static f.v.id params) end
+                    if some then hashMap.insert(static f.v.id params) end
                 end
             end
             let externals = hashMap.new(:Int :Bool intEqual hash.int)
-            for i = 0 upto {vector.length(:nodes.Function order) - 1} do
-                let f = vector.get(:nodes.Function order i)
-                hashMap.insert(:Int :Bool externals f.v.id callsExternalAtTypes(f))
+            for i = 0 upto {vector.length(order) - 1} do
+                let f = vector.get(order i)
+                hashMap.insert(externals f.v.id callsExternalAtTypes(f))
             end
             tuple
                 let functions = functions
@@ -356,10 +356,10 @@ export
     (* The returns of a function's body (not those of the functions it binds),
      * each replaced, in place, by what replaced makes of its value *)
     let rec returns(b: Body replaced: All(a: Atom pos: Int) Stmt): Ok =
-        for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
-            let s = vector.get(:Stmt b.statements i)
+        for i = 0 upto {vector.length(b.statements) - 1} do
+            let s = vector.get(b.statements i)
             case s
-                when sReturn with x then vector.set(:Stmt b.statements i replaced(x.value x.pos))
+                when sReturn with x then vector.set(b.statements i replaced(x.value x.pos))
                 else
                     let inner = walk.statementBodies(s)
                     for k = 0 upto {extent inner - 1} do returns(inner[k] replaced) end
@@ -371,8 +371,8 @@ export
     let rec countReturns(b: Body): Int =
         begin
             let var n = 0
-            for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
-                let s = vector.get(:Stmt b.statements i)
+            for i = 0 upto {vector.length(b.statements) - 1} do
+                let s = vector.get(b.statements i)
                 case s
                     when sReturn then n := n + 1
                     else
@@ -391,7 +391,7 @@ export
             let subst = model.newSubst()
             for i = 0 upto {extent f.typeParams - 1} do
                 if i < extent typeArgs then
-                    hashMap.insert(:Int :model.Type subst f.typeParams[i].symbolId typeArgs[i])
+                    hashMap.insert(subst f.typeParams[i].symbolId typeArgs[i])
                 end
             end
             clone.newRelabelingCloner(subst labels)
@@ -406,58 +406,58 @@ export
             clone.bindVar(c v local)
             let binding = nodes.letStmt(local reads[i].op)
             nodes.positionAt(binding pos)
-            vector.append(:Stmt bound binding)
+            vector.append(bound binding)
         end
 
     let expand(f: nodes.Function typeArgs: Array(model.Type) args: Array(Atom) byRef: Array(maybe.T(Variable))
         reads: Array(Read) into: maybe.T(Variable) pos: Int rest: Array(Stmt) labels: clone.Labels): Array(Stmt) =
         begin
             let c = clonerAt(f typeArgs labels)
-            let result = maybe.unwrapOr(:Variable into nodes.newVar("r" clone.ty(c f.resultType) false))
+            let result = maybe.unwrapOr(into nodes.newVar("r" clone.ty(c f.resultType) false))
             let bound = vector.new(:Stmt)
             for i = 0 upto {extent f.params - 1} do
                 let p = f.params[i].v
-                if {i < extent byRef} andif maybe.isSome(:Variable byRef[i]) then
-                    clone.bindVar(c p maybe.unwrap(:Variable byRef[i]))
+                if {i < extent byRef} andif maybe.isSome(byRef[i]) then
+                    clone.bindVar(c p maybe.unwrap(byRef[i]))
                 else
                     let binding = nodes.letStmt(clone.fresh(c p) nodes.opOfAtom(args[i]))
                     nodes.positionAt(binding pos)
-                    vector.append(:Stmt bound binding)
+                    vector.append(bound binding)
                 end
             end
             bindReads(c reads pos bound)
             clone.bindAll(c f.body)
             let body = clone.copyBody(c f.body)
-            let n = vector.length(:Stmt body.statements)
-            let last = if n > 0 then case vector.get(:Stmt body.statements n - 1) when sReturn then true else false end
+            let n = vector.length(body.statements)
+            let last = if n > 0 then case vector.get(body.statements n - 1) when sReturn then true else false end
                 else false end
             if last andif {countReturns(body) is 1} then
                 (* Its one return is its end: its value is the call's *)
-                let value = case vector.pop(:Stmt body.statements) when sReturn with x then x.value else okAtom() end
-                let all = vector.copy(:Stmt bound)
-                for i = 0 upto {vector.length(:Stmt body.statements) - 1} do
-                    vector.append(:Stmt all vector.get(:Stmt body.statements i))
+                let value = case vector.pop(body.statements) when sReturn with x then x.value else okAtom() end
+                let all = vector.copy(bound)
+                for i = 0 upto {vector.length(body.statements) - 1} do
+                    vector.append(all vector.get(body.statements i))
                 end
                 let resultBinding = nodes.letStmt(result nodes.opOfAtom(value))
                 nodes.positionAt(resultBinding pos)
-                vector.append(:Stmt all resultBinding)
-                for i = 0 upto {extent rest - 1} do vector.append(:Stmt all rest[i]) end
-                vector.toArray(:Stmt all)
+                vector.append(all resultBinding)
+                for i = 0 upto {extent rest - 1} do vector.append(all rest[i]) end
+                vector.toArray(all)
             else
                 labels.count := labels.count + 1
                 let label = "inlined" <> conv.int(labels.count)
                 returns(body fun(a: Atom pos: Int): Stmt
                     option sJump of Stmt with let var pos = pos let label = label let var args = array of a end end)
-                let inner = vector.copy(:Stmt bound)
-                for i = 0 upto {vector.length(:Stmt body.statements) - 1} do
-                    vector.append(:Stmt inner vector.get(:Stmt body.statements i))
+                let inner = vector.copy(bound)
+                for i = 0 upto {vector.length(body.statements) - 1} do
+                    vector.append(inner vector.get(body.statements i))
                 end
                 array of
                     option sJoin of Stmt with
                         let label = label
                         let var params = array of result end
                         let var continuation = nodes.bodyOf(rest)
-                        let var body = nodes.bodyOf(vector.toArray(:Stmt inner))
+                        let var body = nodes.bodyOf(vector.toArray(inner))
                     end
                 end
             end
@@ -467,7 +467,7 @@ export
         reads: Array(Read) into: maybe.T(Variable) pos: Int rest: Array(Stmt) labels: clone.Labels): Array(Stmt) =
         begin
             let c = clonerAt(f typeArgs labels)
-            let result = maybe.unwrapOr(:Variable into nodes.newVar("r" clone.ty(c f.resultType) false))
+            let result = maybe.unwrapOr(into nodes.newVar("r" clone.ty(c f.resultType) false))
             let bound = vector.new(:Stmt)
             bindReads(c reads pos bound)
             (* The local function's parameters, and the arguments it is called
@@ -487,51 +487,51 @@ export
                                 let q = clone.fresh(c p)
                                 let binding = nodes.letStmt(q nodes.opOfAtom(args[i]))
                                 nodes.positionAt(binding pos)
-                                vector.append(:Stmt bound binding)
+                                vector.append(bound binding)
                             end
                     end
                 else
                     let q = clone.fresh(c p)
-                    vector.append(:nodes.ParamEntry params tuple let v = q let mode = "value" end)
-                    vector.append(:model.Param types tuple
+                    vector.append(params tuple let v = q let mode = "value" end)
+                    vector.append(types tuple
                         let name = q.hint let type = q.type let isVar = false let isOut = false
                     end)
-                    vector.append(:Atom passed args[i])
+                    vector.append(passed args[i])
                 end
             end
             let resultType = clone.ty(c f.resultType)
-            let inner = nodes.newVar(f.v.hint model.funType(vector.toArray(:model.Param types) resultType) false)
+            let inner = nodes.newVar(f.v.hint model.funType(vector.toArray(types) resultType) false)
             clone.bindVar(c f.v inner)
             clone.bindAll(c f.body)
             let body = clone.copyBody(c f.body)
             (* Its calls of itself, on the other arguments *)
             let stmts = walk.walkStatements(body true)
-            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
-                let call = callOfVariable(vector.get(:Stmt stmts i) inner)
-                if maybe.isSome(:nodes.OpCall call) then
-                    let x = maybe.unwrap(:nodes.OpCall call)
+            for i = 0 upto {vector.length(stmts) - 1} do
+                let call = callOfVariable(vector.get(stmts i) inner)
+                if maybe.isSome(call) then
+                    let x = maybe.unwrap(call)
                     let kept = vector.new(:Atom)
                     for k = 0 upto {extent x.args - 1} do
-                        if not(static[k]) then vector.append(:Atom kept x.args[k]) end
+                        if not(static[k]) then vector.append(kept x.args[k]) end
                     end
-                    x.args := vector.toArray(:Atom kept)
+                    x.args := vector.toArray(kept)
                     x.typeArgs := array of :model.Type end
                     x.calleeType := maybe.none(:model.Type)
                 end
             end
-            let g = nodes.newFunction(inner array of :nodes.TypeParam end vector.toArray(:nodes.ParamEntry params)
+            let g = nodes.newFunction(inner array of :nodes.TypeParam end vector.toArray(params)
                 resultType body f.traceName)
-            let all = vector.copy(:Stmt bound)
+            let all = vector.copy(bound)
             let funs = option sFuns of Stmt with
                 let var functions = array of g end
                 let recursive = true
             end
-            vector.append(:Stmt all funs)
-            let call = nodes.letStmt(result nodes.call(maybe.some(:Variable inner) array of :model.Type end
-                vector.toArray(:Atom passed) maybe.none(:nodes.ModuleRef) maybe.none(:String) maybe.none(:model.Type)))
+            vector.append(all funs)
+            let call = nodes.letStmt(result nodes.call(maybe.some(inner) array of :model.Type end
+                vector.toArray(passed) maybe.none(:nodes.ModuleRef) maybe.none(:String) maybe.none(:model.Type)))
             nodes.positionAt(call pos)
-            vector.append(:Stmt all call)
-            for i = 0 upto {extent rest - 1} do vector.append(:Stmt all rest[i]) end
-            vector.toArray(:Stmt all)
+            vector.append(all call)
+            for i = 0 upto {extent rest - 1} do vector.append(all rest[i]) end
+            vector.toArray(all)
         end
 end

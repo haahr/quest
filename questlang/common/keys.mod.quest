@@ -47,12 +47,12 @@ export
 
     let str(k: T s: String): Ok =
         begin
-            let known = hashMap.get(:String :Int k.strings s)
-            if maybe.isSome(:Int known) then
-                int(k maybe.unwrap(:Int known))
+            let known = hashMap.get(k.strings s)
+            if maybe.isSome(known) then
+                int(k maybe.unwrap(known))
             else
-                let n = hashMap.size(:String :Int k.strings)
-                hashMap.insert(:String :Int k.strings s n)
+                let n = hashMap.size(k.strings)
+                hashMap.insert(k.strings s n)
                 int(k n)
             end
         end
@@ -80,36 +80,36 @@ export
     let lookup(k: T bucket: maybe.T(vector.T(Entry))): maybe.T(Int) =
         begin
             let var found = maybe.none(:Int)
-            if maybe.isSome(:vector.T(Entry) bucket) then
-                let entries = maybe.unwrap(:vector.T(Entry) bucket)
-                for i = 0 upto {vector.length(:Entry entries) - 1} do
-                    if maybe.isNone(:Int found) andif isBuffer(k vector.get(:Entry entries i).key) then
-                        found := maybe.some(:Int vector.get(:Entry entries i).number)
+            if maybe.isSome(bucket) then
+                let entries = maybe.unwrap(bucket)
+                for i = 0 upto {vector.length(entries) - 1} do
+                    if maybe.isNone(found) andif isBuffer(k vector.get(entries i).key) then
+                        found := maybe.some(vector.get(entries i).number)
                     end
                 end
             end
             found
         end
 
-    let find(k: T): maybe.T(Int) = lookup(k hashMap.get(:Int :vector.T(Entry) k.buckets bufferHash(k)))
+    let find(k: T): maybe.T(Int) = lookup(k hashMap.get(k.buckets bufferHash(k)))
 
     let intern(k: T): Int =
         begin
             let h = bufferHash(k)
-            let bucket = hashMap.get(:Int :vector.T(Entry) k.buckets h)
+            let bucket = hashMap.get(k.buckets h)
             let found = lookup(k bucket)
-            if maybe.isSome(:Int found) then
-                maybe.unwrap(:Int found)
+            if maybe.isSome(found) then
+                maybe.unwrap(found)
             else
                 let key = array of(k.length 0)
                 for i = 0 upto {k.length - 1} do key[i] := k.data[i] end
                 let n = k.count
                 k.count := n + 1
                 let entry = tuple let key = key let number = n end
-                if maybe.isSome(:vector.T(Entry) bucket) then
-                    vector.append(:Entry maybe.unwrap(:vector.T(Entry) bucket) entry)
+                if maybe.isSome(bucket) then
+                    vector.append(maybe.unwrap(bucket) entry)
                 else
-                    hashMap.insert(:Int :vector.T(Entry) k.buckets h vector.fromArray(:Entry array of entry end))
+                    hashMap.insert(k.buckets h vector.fromArray(array of entry end))
                     ok
                 end
                 n

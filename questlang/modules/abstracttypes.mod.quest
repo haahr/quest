@@ -30,21 +30,21 @@ export
 
     let abstractTypeSymbolId(globalName: String): Int =
         begin
-            let found = hashMap.get(:String :Int symbolIds globalName)
-            if maybe.isSome(:Int found) then
-                maybe.unwrap(:Int found)
+            let found = hashMap.get(symbolIds globalName)
+            if maybe.isSome(found) then
+                maybe.unwrap(found)
             else
                 let symbolId = symbols.allocateSymbolId()
-                hashMap.insert(:String :Int symbolIds globalName symbolId)
-                hashMap.insert(:Int :Bool abstractSymbolIds symbolId true)
-                hashMap.insert(:Int :String globalNames symbolId globalName)
+                hashMap.insert(symbolIds globalName symbolId)
+                hashMap.insert(abstractSymbolIds symbolId true)
+                hashMap.insert(globalNames symbolId globalName)
                 symbolId
             end
         end
 
-    let isAbstractTypeSymbol(symbolId: Int): Bool = hashMap.contains(:Int :Bool abstractSymbolIds symbolId)
+    let isAbstractTypeSymbol(symbolId: Int): Bool = hashMap.contains(abstractSymbolIds symbolId)
 
-    let abstractTypeGlobalName(symbolId: Int): maybe.T(String) = hashMap.get(:Int :String globalNames symbolId)
+    let abstractTypeGlobalName(symbolId: Int): maybe.T(String) = hashMap.get(globalNames symbolId)
 
     let symbolOf(typeVar: model.Type): Int = case typeVar.form when typeVariable with v then v.symbolId else 0 end
 
@@ -54,19 +54,19 @@ export
      * id, so an older opaque type's id still finds its own entry *)
     let recordType(globalName: String typeVar: model.Type linked: Bool): ModuleAbstractType =
         begin
-            let found = hashMap.get(:String :ModuleAbstractType byName globalName)
-            let entry = if maybe.isSome(:ModuleAbstractType found) andif
-                    model.same(maybe.unwrap(:ModuleAbstractType found).typeVar typeVar) andif
-                    {maybe.unwrap(:ModuleAbstractType found).linked is linked} then
-                maybe.unwrap(:ModuleAbstractType found)
+            let found = hashMap.get(byName globalName)
+            let entry = if maybe.isSome(found) andif
+                    model.same(maybe.unwrap(found).typeVar typeVar) andif
+                    {maybe.unwrap(found).linked is linked} then
+                maybe.unwrap(found)
             else
                 (* Elaborating the module's interface again (for another
                  * importer) keeps the representation its source gave the same
                  * symbol *)
-                let kept = if maybe.isSome(:ModuleAbstractType found)
-                    andif {maybe.unwrap(:ModuleAbstractType found).linked is linked}
-                    andif {symbolOf(maybe.unwrap(:ModuleAbstractType found).typeVar) is symbolOf(typeVar)} then
-                    maybe.unwrap(:ModuleAbstractType found).rep
+                let kept = if maybe.isSome(found)
+                    andif {maybe.unwrap(found).linked is linked}
+                    andif {symbolOf(maybe.unwrap(found).typeVar) is symbolOf(typeVar)} then
+                    maybe.unwrap(found).rep
                 else
                     maybe.none(:model.Type)
                 end
@@ -75,11 +75,11 @@ export
                     let var rep = kept
                     let instances = vector.new(:Instance)
                 end
-                hashMap.insert(:String :ModuleAbstractType byName globalName e)
+                hashMap.insert(byName globalName e)
                 e
             end
             let symbolId = symbolOf(typeVar)
-            hashMap.insert(:Int :ModuleAbstractType bySymbol symbolId entry)
+            hashMap.insert(bySymbol symbolId entry)
             entry
         end
 
@@ -94,8 +94,8 @@ export
     let registerAbstractTypeRepresentation(globalName: String typeVar: model.Type rep: model.Type): Ok =
         begin
             represented.count := represented.count + 1
-            if represented.apart then begin hashMap.insert(:String :Bool apartNames globalName true) ok end end
-            recordType(globalName typeVar true).rep := maybe.some(:model.Type rep)
+            if represented.apart then begin hashMap.insert(apartNames globalName true) ok end end
+            recordType(globalName typeVar true).rep := maybe.some(rep)
         end
 
     let representationCount(): Int = represented.count
@@ -107,17 +107,17 @@ export
     let unbounded(e: ModuleAbstractType): Bool =
         case e.typeVar.form
             when typeVariable with v then
-                not(maybe.isSome(:model.Kind v.bound) andif model.isPower(maybe.unwrap(:model.Kind v.bound)))
+                not(maybe.isSome(v.bound) andif model.isPower(maybe.unwrap(v.bound)))
             else true
         end
 
     let representations(): model.Subst =
         begin
             let s = model.newSubst()
-            hashMap.forEach(:Int :ModuleAbstractType bySymbol fun(k: Int e: ModuleAbstractType): Ok
-                if maybe.isSome(:model.Type e.rep) andif unbounded(e)
-                    andif not(hashMap.contains(:String :Bool apartNames e.globalName)) then
-                    begin hashMap.insert(:Int :model.Type s k maybe.unwrap(:model.Type e.rep)) ok end
+            hashMap.forEach(bySymbol fun(k: Int e: ModuleAbstractType): Ok
+                if maybe.isSome(e.rep) andif unbounded(e)
+                    andif not(hashMap.contains(apartNames e.globalName)) then
+                    begin hashMap.insert(s k maybe.unwrap(e.rep)) ok end
                 end)
             s
         end
@@ -126,20 +126,20 @@ export
         recordType(globalName typeVar false)
 
     let abstractTypeBySymbol(symbolId: Int): maybe.T(ModuleAbstractType) =
-        hashMap.get(:Int :ModuleAbstractType bySymbol symbolId)
+        hashMap.get(bySymbol symbolId)
     let abstractTypeByName(globalName: String): maybe.T(ModuleAbstractType) =
-        hashMap.get(:String :ModuleAbstractType byName globalName)
+        hashMap.get(byName globalName)
 
     let moduleAbstractTypes(canon: String): Array(ModuleAbstractType) =
         begin
             let prefix = canon <> "."
             let found = vector.new(:ModuleAbstractType)
-            hashMap.forEach(:String :ModuleAbstractType byName fun(name: String e: ModuleAbstractType): Ok
-                if e.linked andif maybe.isSome(:model.Type e.rep) andif strutil.startsWith(name prefix)
+            hashMap.forEach(byName fun(name: String e: ModuleAbstractType): Ok
+                if e.linked andif maybe.isSome(e.rep) andif strutil.startsWith(name prefix)
                     andif not(strutil.contains(stringOp.getSub(name stringOp.length(prefix) {stringOp.length(name) - stringOp.length(prefix)}) ".")) then
-                    vector.append(:ModuleAbstractType found e)
+                    vector.append(found e)
                 end)
-            vector.toArray(:ModuleAbstractType sort.sortedVector(:ModuleAbstractType found
+            vector.toArray(sort.sortedVector(found
                 fun(a: ModuleAbstractType b: ModuleAbstractType): Int sort.stringCompare(a.globalName b.globalName)))
         end
 end

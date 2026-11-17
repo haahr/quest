@@ -36,7 +36,7 @@ export
 
     let chain(loading: vector.T(String) last: String): String =
         begin
-            if vector.length(:String loading) is 0 then last
+            if vector.length(loading) is 0 then last
             else strutil.join(" -> " loading) <> " -> " <> last
             end
         end
@@ -46,10 +46,10 @@ export
     let readUnit(file: String what: String): location.SourceMap =
         begin
             let text = files.readText(file)
-            if maybe.isNone(:String text) then
+            if maybe.isNone(text) then
                 diagnostics.fail(:Ok "Error reading " <> what <> " file '" <> file <> "'" 0)
             end
-            let sm = location.newSourceMap(files.displayName(file) maybe.unwrap(:String text))
+            let sm = location.newSourceMap(files.displayName(file) maybe.unwrap(text))
             diagnostics.registerSource(sm)
             sm
         end
@@ -59,11 +59,11 @@ export
     let loading(A::TYPE e: env.T dir: String stack: vector.T(String) name: String body: All() A): A =
         begin
             let savedDir = e.currentDir
-            e.currentDir := maybe.some(:String dir)
-            vector.append(:String stack name)
+            e.currentDir := maybe.some(dir)
+            vector.append(stack name)
             let restore = fun(): Ok
                 begin
-                    vector.pop(:String stack)
+                    vector.pop(stack)
                     e.currentDir := savedDir
                 end
             let result = try
@@ -89,18 +89,18 @@ export
                     for i = 1 upto levels do d := files.parent(d) end
                     files.absolute(d)
                 end
-            if maybe.isSome(:String e.buildDir) then
-                maybe.some(:String files.absolute(maybe.unwrap(:String e.buildDir)))
+            if maybe.isSome(e.buildDir) then
+                maybe.some(files.absolute(maybe.unwrap(e.buildDir)))
             elsif not(e.compilingC) then
                 maybe.none(:String)
-            elsif maybe.isSome(:String resolved.source) then
-                maybe.some(:String ancestor(maybe.unwrap(:String resolved.source)
+            elsif maybe.isSome(resolved.source) then
+                maybe.some(ancestor(maybe.unwrap(resolved.source)
                     extent files.parts(graph.canonicalName(resolved))))
-            elsif maybe.isSome(:String resolved.prebuilt) andif strutil.contains(resolved.path "/") then
-                maybe.some(:String ancestor(maybe.unwrap(:String resolved.prebuilt)
+            elsif maybe.isSome(resolved.prebuilt) andif strutil.contains(resolved.path "/") then
+                maybe.some(ancestor(maybe.unwrap(resolved.prebuilt)
                     extent files.parts(paths.lower(resolved.path))))
             else
-                maybe.some(:String files.absolute(maybe.unwrapOr(:String e.currentDir ".")))
+                maybe.some(files.absolute(maybe.unwrapOr(e.currentDir ".")))
             end
         end
 
@@ -108,13 +108,13 @@ export
      * but the build directory, which holds only artifacts *)
     let listedIncludePaths(e: env.T): Array(String) =
         begin
-            let built = if maybe.isSome(:String e.buildDir) then files.absolute(maybe.unwrap(:String e.buildDir)) else "" end
+            let built = if maybe.isSome(e.buildDir) then files.absolute(maybe.unwrap(e.buildDir)) else "" end
             let listed = vector.new(:String)
-            for i = 0 upto {vector.length(:String e.includePaths) - 1} do
-                let p = vector.get(:String e.includePaths i)
-                if not(stringOp.equal(files.absolute(p) built)) then vector.append(:String listed p) end
+            for i = 0 upto {vector.length(e.includePaths) - 1} do
+                let p = vector.get(e.includePaths i)
+                if not(stringOp.equal(files.absolute(p) built)) then vector.append(listed p) end
             end
-            vector.toArray(:String listed)
+            vector.toArray(listed)
         end
 
     (* The scope of the interface name, as an import in e names it, loaded
@@ -148,7 +148,7 @@ export
             let resolved = env.resolveInterface(e name)
             let intSource = resolved.source
             (* Its source, else its prebuilt .qi *)
-            let unitFile = if maybe.isSome(:String resolved.source) then resolved.source else resolved.prebuilt end
+            let unitFile = if maybe.isSome(resolved.source) then resolved.source else resolved.prebuilt end
             let canon = graph.canonicalName(resolved)
             let register(scope: Scope): Scope =
                 begin
@@ -156,23 +156,23 @@ export
                     let declName = paths.lastSegment(name)
                     if not(stringOp.equal(declName name)) then env.registerInterface(e declName scope) end
                     if not(stringOp.equal(canon name)) then env.registerInterface(e canon scope) end
-                    if maybe.isSome(:String unitFile) then
-                        graph.unit(e.units option interfaceUnit of units.UnitKind end canon).scope := maybe.some(:Scope scope)
+                    if maybe.isSome(unitFile) then
+                        graph.unit(e.units option interfaceUnit of units.UnitKind end canon).scope := maybe.some(scope)
                     end
                     scope
                 end
-            let existing = if maybe.isNone(:String unitFile) then
+            let existing = if maybe.isNone(unitFile) then
                 env.lookupInterface(e name)
             else
                 let loaded = graph.interfaceScope(e.units canon)
-                if maybe.isSome(:Scope loaded) then maybe.some(:Scope register(maybe.unwrap(:Scope loaded))) else loaded end
+                if maybe.isSome(loaded) then maybe.some(register(maybe.unwrap(loaded))) else loaded end
             end
-            if maybe.isSome(:Scope existing) then
-                maybe.unwrap(:Scope existing)
+            if maybe.isSome(existing) then
+                maybe.unwrap(existing)
             else
                 (* Cycle detection *)
-                for i = 0 upto {vector.length(:String e.loadingInterfaces) - 1} do
-                    if stringOp.equal(vector.get(:String e.loadingInterfaces i) canon) then
+                for i = 0 upto {vector.length(e.loadingInterfaces) - 1} do
+                    if stringOp.equal(vector.get(e.loadingInterfaces i) canon) then
                         diagnostics.fail(:Ok "Cyclic dependency detected in interface imports: " <>
                             chain(e.loadingInterfaces canon) 0)
                     end
@@ -180,16 +180,16 @@ export
                 (* The .qi records the interface's imports as written in its
                  * source, so they are resolved from there *)
                 let loadQi = fun(qi: String): Scope
-                    loading(:Scope e files.parent(maybe.unwrapOr(:String intSource qi)) e.loadingInterfaces canon
+                    loading(e files.parent(maybe.unwrapOr(intSource qi)) e.loadingInterfaces canon
                         fun(): Scope
-                        env.withUnitNames(:Scope e fun(): Scope interfaceCompiler.loadInterfaceFromQiFile(qi e)))
+                        env.withUnitNames(e fun(): Scope interfaceCompiler.loadInterfaceFromQiFile(qi e)))
                 (* With a build directory, or in C compilation, the interface is
                  * loaded from its .qi, which is rebuilt first if stale
                  * (docs/build-process.md section 5) *)
                 let root = resolvedArtifactRoot(e resolved)
                 let var fromArtifacts = maybe.none(:Scope)
-                if maybe.isSome(:String root) then
-                    let outRoot = maybe.unwrap(:String root)
+                if maybe.isSome(root) then
+                    let outRoot = maybe.unwrap(root)
                     let qi = interfaceCompiler.ensureResolvedInterfaceArtifacts(resolved outRoot
                         maybe.none(:interfaceCompiler.OnCompiled) e.units.resolver).qiFile
                     if files.isFile(qi) then
@@ -205,35 +205,35 @@ export
                          * tests pass with outRoot last *)
                         env.searchFirst(e outRoot)
                         let mtime = files.modifiedNs(qi)
-                        let cached = hashMap.get(:String :LoadedQi loadedQis qi)
-                        let scope = if maybe.isSome(:LoadedQi cached) andif
-                                {maybe.unwrap(:LoadedQi cached).mtime >= mtime} then
-                            maybe.unwrap(:LoadedQi cached).scope
+                        let cached = hashMap.get(loadedQis qi)
+                        let scope = if maybe.isSome(cached) andif
+                                {maybe.unwrap(cached).mtime >= mtime} then
+                            maybe.unwrap(cached).scope
                         else
                             let s = loadQi(qi)
-                            hashMap.insert(:String :LoadedQi loadedQis qi tuple let mtime = mtime let scope = s end)
+                            hashMap.insert(loadedQis qi tuple let mtime = mtime let scope = s end)
                             s
                         end
-                        fromArtifacts := maybe.some(:Scope register(scope))
+                        fromArtifacts := maybe.some(register(scope))
                     end
                 end
                 (* A fresh .qi on the search path (from a standalone
                  * compilation), else the source *)
-                let fresh = if maybe.isSome(:Scope fromArtifacts) then
+                let fresh = if maybe.isSome(fromArtifacts) then
                     maybe.none(:String) else graph.freshInterfaceQi(resolved) end
-                if maybe.isSome(:Scope fromArtifacts) then
-                    maybe.unwrap(:Scope fromArtifacts)
-                elsif maybe.isNone(:String fresh) then
+                if maybe.isSome(fromArtifacts) then
+                    maybe.unwrap(fromArtifacts)
+                elsif maybe.isNone(fresh) then
                     diagnostics.fail(:Scope "Undefined interface '" <> name <> "': cannot find interface file for '"
                         <> name <>
                         "' (looked for '" <> normName <> ".qi' or '" <> normName <> ".int.quest' in " <>
                         pyRepr.strList(paths.searchedDirs(e.currentDir listedIncludePaths(e))) <> ")" 0)
-                elsif strutil.endsWith(maybe.unwrap(:String fresh) ".qi") then
-                    register(loadQi(maybe.unwrap(:String fresh)))
+                elsif strutil.endsWith(maybe.unwrap(fresh) ".qi") then
+                    register(loadQi(maybe.unwrap(fresh)))
                 else
-                    let file = maybe.unwrap(:String fresh)
+                    let file = maybe.unwrap(fresh)
                     let sm = readUnit(file "interface")
-                    let scope = env.withUnitSource(:Scope e location.file(sm) fun(): Scope
+                    let scope = env.withUnitSource(e location.file(sm) fun(): Scope
                         begin
                             let prog = units.parseUnit(sm)
                             let decl = case units.unitDeclaration(prog file)
@@ -245,9 +245,9 @@ export
                                     <> "' has name '" <>
                                     decl.name <> "', which does not match file name" 0)
                             end
-                            let typed = loading(:typedAst.Binding e files.parent(file) e.loadingInterfaces canon
+                            let typed = loading(e files.parent(file) e.loadingInterfaces canon
                                 fun(): typedAst.Binding
-                                    env.withUnitNames(:typedAst.Binding e fun(): typedAst.Binding
+                                    env.withUnitNames(e fun(): typedAst.Binding
                                         elaboration.elaborateInterface(decl 0 e)))
                             let s = case typed.form
                                 when bindInterface with x then x.scope
@@ -267,12 +267,12 @@ export
             let filePath = resolved.source
             let canon = graph.canonicalName(resolved)
             let u = graph.unit(e.units option moduleUnit of units.UnitKind end canon)
-            if maybe.isSome(:typedAst.Binding u.typedModule) then
-                maybe.unwrap(:typedAst.Binding u.typedModule)
+            if maybe.isSome(u.typedModule) then
+                maybe.unwrap(u.typedModule)
             else
                 (* Cycle detection *)
-                for i = 0 upto {vector.length(:String e.loadingModules) - 1} do
-                    if stringOp.equal(paths.lower(vector.get(:String e.loadingModules i)) paths.lower(canon)) then
+                for i = 0 upto {vector.length(e.loadingModules) - 1} do
+                    if stringOp.equal(paths.lower(vector.get(e.loadingModules i)) paths.lower(canon)) then
                         diagnostics.fail(:Ok "Cyclic dependency detected in module imports: " <>
                             chain(e.loadingModules canon) 0)
                     end
@@ -280,8 +280,8 @@ export
                 let synthesizePrecompiled(): typedAst.Binding =
                     begin
                         let found = env.lookupInterface(e expectedInterface)
-                        let target = if maybe.isSome(:Scope found) then
-                            maybe.unwrap(:Scope found)
+                        let target = if maybe.isSome(found) then
+                            maybe.unwrap(found)
                         else
                             loadInterface(expectedInterface e)
                         end
@@ -293,13 +293,13 @@ export
                          * be the type of an else binder, docs/raised.md
                          * section 3.2), else os/code's value.T would differ
                          * from os/value's *)
-                        let exportScope = if maybe.isSome(:Scope u.exportScope) then
-                            maybe.unwrap(:Scope u.exportScope)
+                        let exportScope = if maybe.isSome(u.exportScope) then
+                            maybe.unwrap(u.exportScope)
                         else
                             let externalTypes = elaboration.extractModuleExternalTypes(filePath)
                             let s = elaboration.createModuleExportScope(paths.declaredModuleName(filePath canon) canon
-                                target e maybe.some(:hashMap.T(String model.Type) externalTypes))
-                            u.exportScope := maybe.some(:Scope s)
+                                target e maybe.some(externalTypes))
+                            u.exportScope := maybe.some(s)
                             s
                         end
                         env.registerModule(e canon exportScope)
@@ -309,24 +309,24 @@ export
                             let scope = exportScope let isPrecompiled = true
                             let symbolId = maybe.none(:Int)
                         end)
-                        u.typedModule := maybe.some(:typedAst.Binding typed)
+                        u.typedModule := maybe.some(typed)
                         typed
                     end
                 if u.precompiled then
                     synthesizePrecompiled()
                 elsif e.compilingC andif {strutil.contains(canon "/") orif strutil.contains(name "/")}
-                    andif maybe.isSome(:String filePath) then
+                    andif maybe.isSome(filePath) then
                     (* Separate compilation of hierarchical modules: importers
                      * are typed against the module's interface, and building
                      * its object is left to the build (docs/build-process.md
                      * section 7.3) *)
                     u.precompiled := true
                     synthesizePrecompiled()
-                elsif maybe.isNone(:String filePath) then
+                elsif maybe.isNone(filePath) then
                     (* Without a source, the module's canonical name is the name
                      * imported *)
-                    let objFile = paths.resolveObjectFile(name e.currentDir vector.toArray(:String e.includePaths))
-                    if maybe.isSome(:String objFile) then
+                    let objFile = paths.resolveObjectFile(name e.currentDir vector.toArray(e.includePaths))
+                    if maybe.isSome(objFile) then
                         u.precompiled := true
                         synthesizePrecompiled()
                     else
@@ -336,7 +336,7 @@ export
                             pyRepr.strList(paths.searchedDirs(e.currentDir listedIncludePaths(e))) <> ")" 0)
                     end
                 else
-                    loadModuleSource(name expectedInterface e maybe.unwrap(:String filePath) canon u)
+                    loadModuleSource(name expectedInterface e maybe.unwrap(filePath) canon u)
                 end
             end
         end
@@ -357,16 +357,16 @@ export
         begin
             let sm = readUnit(file "module")
             let fileName = files.baseName(file)
-            let typed = env.withUnitSource(:typedAst.Binding e location.file(sm) fun(): typedAst.Binding
+            let typed = env.withUnitSource(e location.file(sm) fun(): typedAst.Binding
                 begin
                     let prog = units.parseUnit(sm)
                     let phrases = prog.form.phrases
-                    let n = vector.length(:ast.Phrase phrases)
+                    let n = vector.length(phrases)
                     if n isnot 1 then
                         diagnostics.fail(:Ok "Module file '" <> fileName <> "' must contain only a single module definition, " <>
                             "but found " <> conv.int(n) <> " phrases" 0)
                     end
-                    let p = vector.get(:ast.Phrase phrases 0)
+                    let p = vector.get(phrases 0)
                     let decl = case p.form
                         when phraseModule with x then x.modDecl
                         else
@@ -393,17 +393,17 @@ export
                     let savedScope = e.currentScope
                     let restoreScope = fun(): Ok e.currentScope := savedScope
                     let elaborated = try
-                        loading(:typedAst.Binding e files.parent(file) e.loadingModules canon fun(): typedAst.Binding
-                            env.withUnitNames(:typedAst.Binding e fun(): typedAst.Binding
+                        loading(e files.parent(file) e.loadingModules canon fun(): typedAst.Binding
+                            env.withUnitNames(e fun(): typedAst.Binding
                                 begin
-                                    if maybe.isSome(:Scope importerInterface) andif
-                                            maybe.isNone(:String env.resolveInterface(e decl.interfaceName).source) then
-                                        env.registerInterface(e decl.interfaceName maybe.unwrap(:Scope importerInterface))
-                                    elsif maybe.isNone(:Scope env.lookupInterface(e decl.interfaceName)) then
+                                    if maybe.isSome(importerInterface) andif
+                                            maybe.isNone(env.resolveInterface(e decl.interfaceName).source) then
+                                        env.registerInterface(e decl.interfaceName maybe.unwrap(importerInterface))
+                                    elsif maybe.isNone(env.lookupInterface(e decl.interfaceName)) then
                                         loadInterface(decl.interfaceName e)
                                         ok
                                     end
-                                    e.currentScope := symbols.newScope(maybe.some(:Scope e.baseScope) "temp_load_" <> decl.name)
+                                    e.currentScope := symbols.newScope(maybe.some(e.baseScope) "temp_load_" <> decl.name)
                                     elaboration.elaborateModule(decl p.span.startOffset e)
                                 end))
                     else with r then
@@ -432,7 +432,7 @@ export
             let scope = elaboration.moduleScope(named)
             env.registerModule(e name scope)
             if not(stringOp.equal(canon name)) then env.registerModule(e canon scope) end
-            u.typedModule := maybe.some(:typedAst.Binding named)
+            u.typedModule := maybe.some(named)
             named
         end
 

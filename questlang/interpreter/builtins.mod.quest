@@ -78,9 +78,9 @@ export
     (* What system.run and process.wait give, as the interpreted tuple *)
     let waited(r: process.Result): Value =
         begin
-            let label(name: String): maybe.T(String) = maybe.some(:String name)
+            let label(name: String): maybe.T(String) = maybe.some(name)
             model.tupleValue(array of vInt(r.code) vString(r.stdout) vString(r.stderr) end
-                maybe.some(:Array(maybe.T(String)) array of label("code") label("stdout") label("stderr") end))
+                maybe.some(array of label("code") label("stdout") label("stderr") end))
         end
 
     let texts(xs: Array(Value)): Array(String) =
@@ -97,15 +97,15 @@ export
     let statted(path: String follow: Bool): Value =
         begin
             let found = if follow then fileStats.find(path) else fileStats.lfind(path) end
-            let label(name: String): maybe.T(String) = maybe.some(:String name)
-            let labels = maybe.some(:Array(maybe.T(String)) array of label("kind") label("size") label("mode")
+            let label(name: String): maybe.T(String) = maybe.some(name)
+            let labels = maybe.some(array of label("kind") label("size") label("mode")
                 label("accessTime") label("modifiedTime") label("changeTime") label("accessNs") label("modifiedNs")
                 label("changeNs") end)
-            if maybe.isNone(:fileStats.T found) then
+            if maybe.isNone(found) then
                 model.tupleValue(array of vInt(~1) vInt(0) vInt(0) vReal(0.0) vReal(0.0) vReal(0.0) vInt(0) vInt(0)
                     vInt(0) end labels)
             else
-                let s = maybe.unwrap(:fileStats.T found)
+                let s = maybe.unwrap(found)
                 let kind = if s.kind?file then 0 elsif s.kind?directory then 1 elsif s.kind?symlink then 2 else 3 end
                 model.tupleValue(array of vInt(kind) vInt(s.size) vInt(s.mode) vReal(s.accessTime)
                     vReal(s.modifiedTime) vReal(s.changeTime) vInt(s.accessNs) vInt(s.modifiedNs) vInt(s.changeNs)
@@ -147,8 +147,8 @@ export
 
     let table = model.newFields()
     let fn(symbol: String f: All(args: Args) Value): Ok =
-        begin hashMap.insert(:String :Value table symbol model.builtinValue(symbol guarded(f))) ok end
-    let value(symbol: String v: Value): Ok = begin hashMap.insert(:String :Value table symbol v) ok end
+        begin hashMap.insert(table symbol model.builtinValue(symbol guarded(f))) ok end
+    let value(symbol: String v: Value): Ok = begin hashMap.insert(table symbol v) ok end
     (* An exception, under its symbol and the symbol's name ((&quest_exc_x) and
      * quest_exc_x) *)
     let exc(name: String e: model.ExceptionValue): Ok =
@@ -157,13 +157,13 @@ export
     (* The type of t's variant case tag, if t is known to be a variant type
      * with that case and the case has a value *)
     let variantCaseType(t: maybe.T(tm.Type) tag: String): maybe.T(tm.Type) =
-        if maybe.isNone(:tm.Type t) then maybe.none(:tm.Type)
+        if maybe.isNone(t) then maybe.none(:tm.Type)
         else
-            let cases = reduce.variantCases(maybe.unwrap(:tm.Type t))
-            if maybe.isNone(:Array(tm.VariantField) cases) then maybe.none(:tm.Type)
+            let cases = reduce.variantCases(maybe.unwrap(t))
+            if maybe.isNone(cases) then maybe.none(:tm.Type)
             else
-                let f = tm.variantGetField(maybe.unwrap(:Array(tm.VariantField) cases) tag)
-                if maybe.isSome(:tm.VariantField f) then maybe.unwrap(:tm.VariantField f).type
+                let f = tm.variantGetField(maybe.unwrap(cases) tag)
+                if maybe.isSome(f) then maybe.unwrap(f).type
                 else maybe.none(:tm.Type) end
             end
         end
@@ -180,58 +180,58 @@ export
      * that could change after it is stored (a var component). *)
     let rec identityHash(t: maybe.T(tm.Type) v: Value): word.T =
         case v
-            when vInt with x then hash.identityHash(:Int x.n)
-            when vWord with x then hash.identityHash(:word.T x.w)
-            when vBool with x then hash.identityHash(:Bool x.b)
-            when vChar with x then hash.identityHash(:Char x.c)
-            when vReal with x then hash.identityHash(:Real x.r ++ 0.0)
-            when vOk then hash.identityHash(:Int 0)
-            when vString with x then hash.identityHash(:String x.s)
-            when vRecord with x then hash.identityHash(:model.RecordValue x.r)
-            when vTuple with x then hash.identityHash(:model.TupleValue x.t)
-            when vArray with x then hash.identityHash(:Array(Value) x.a)
+            when vInt with x then hash.identityHash(x.n)
+            when vWord with x then hash.identityHash(x.w)
+            when vBool with x then hash.identityHash(x.b)
+            when vChar with x then hash.identityHash(x.c)
+            when vReal with x then hash.identityHash(x.r ++ 0.0)
+            when vOk then hash.identityHash(0)
+            when vString with x then hash.identityHash(x.s)
+            when vRecord with x then hash.identityHash(x.r)
+            when vTuple with x then hash.identityHash(x.t)
+            when vArray with x then hash.identityHash(x.a)
             when vVariant with x then
-                if maybe.isNone(:Value x.v.payload) then hash.string(x.v.tag)
+                if maybe.isNone(x.v.payload) then hash.string(x.v.tag)
                 else
                     let caseType = variantCaseType(t x.v.tag)
-                    if maybe.isNone(:tm.Type caseType) then hash.identityHash(:model.Tagged x.v)
-                    else hash.combine(hash.string(x.v.tag) identityHash(caseType maybe.unwrap(:Value x.v.payload))) end
+                    if maybe.isNone(caseType) then hash.identityHash(x.v)
+                    else hash.combine(hash.string(x.v.tag) identityHash(caseType maybe.unwrap(x.v.payload))) end
                 end
             when vOption with x then
-                let rule = if maybe.isNone(:tm.Type t) then maybe.none(:reduce.OptionIdentity)
-                    else reduce.optionIdentity(maybe.unwrap(:tm.Type t)) end
-                if maybe.isNone(:reduce.OptionIdentity rule) then
-                    hash.identityHash(:model.Tagged x.v)
+                let rule = if maybe.isNone(t) then maybe.none(:reduce.OptionIdentity)
+                    else reduce.optionIdentity(maybe.unwrap(t)) end
+                if maybe.isNone(rule) then
+                    hash.identityHash(x.v)
                 else
-                    let r = maybe.unwrap(:reduce.OptionIdentity rule)
+                    let r = maybe.unwrap(rule)
                     let var empty = false
                     for i = 0 upto {extent r.empty - 1} do
                         if stringOp.equal(r.empty[i] x.v.tag) then empty := true end
                     end
                     if empty then
                         hash.string(x.v.tag)
-                    elsif maybe.isSome(:String r.single) andif stringOp.equal(maybe.unwrap(:String r.single) x.v.tag)
-                        andif maybe.isSome(:Value x.v.payload) then
-                        case maybe.unwrap(:Value x.v.payload)
+                    elsif maybe.isSome(r.single) andif stringOp.equal(maybe.unwrap(r.single) x.v.tag)
+                        andif maybe.isSome(x.v.payload) then
+                        case maybe.unwrap(x.v.payload)
                             when vTuple with p then
                                 hash.combine(hash.string(x.v.tag) identityHash(r.component p.t.elements[0]))
-                            else hash.identityHash(:model.Tagged x.v)
+                            else hash.identityHash(x.v)
                         end
                     else
-                        hash.identityHash(:model.Tagged x.v)
+                        hash.identityHash(x.v)
                     end
                 end
-            when vClosure with x then hash.identityHash(:model.Closure x.c)
-            when vBuiltin with x then hash.identityHash(:model.Builtin x.b)
-            when vRef with x then hash.identityHash(:model.Ref x.r)
-            when vAuto with x then hash.identityHash(:model.AutoValue x.a)
-            when vException with x then hash.identityHash(:model.ExceptionValue x.e)
-            when vWriter with x then hash.identityHash(:writer.T x.w)
-            when vReader with x then hash.identityHash(:reader.T x.rd)
-            when vStringBuilder with x then hash.identityHash(:stringBuilder.T x.sb)
-            when vProcess with x then hash.identityHash(:process.T x.p)
-            when vRaised with x then hash.identityHash(:model.RunError x.e)
-            when vTypeValue with x then hash.identityHash(:model.TypeValue x.t)
+            when vClosure with x then hash.identityHash(x.c)
+            when vBuiltin with x then hash.identityHash(x.b)
+            when vRef with x then hash.identityHash(x.r)
+            when vAuto with x then hash.identityHash(x.a)
+            when vException with x then hash.identityHash(x.e)
+            when vWriter with x then hash.identityHash(x.w)
+            when vReader with x then hash.identityHash(x.rd)
+            when vStringBuilder with x then hash.identityHash(x.sb)
+            when vProcess with x then hash.identityHash(x.p)
+            when vRaised with x then hash.identityHash(x.e)
+            when vTypeValue with x then hash.identityHash(x.t)
         end
 
     let systemArgs = tuple let var args = array of :String end end
@@ -440,7 +440,7 @@ export
                 vBool(stringOp.precedesSub(str(a[0]) int(a[1]) int(a[2]) str(a[3]) int(a[4]) int(a[5]))))
             (* strutil.tryToReal has checked the syntax, as nativeToReal's
              * callers do *)
-            fn("quest_strutil_to_real" fun(a: Args): Value vReal(maybe.unwrap(:Real strutil.tryToReal(str(a[0])))))
+            fn("quest_strutil_to_real" fun(a: Args): Value vReal(maybe.unwrap(strutil.tryToReal(str(a[0])))))
 
             (* StringBuilder: an interpreted builder is one of the host's,
              * whose functions are the natives' *)
@@ -549,15 +549,15 @@ export
         if stringOp.equal(symbol "quest_system_args") then
             strings(systemArgs.args)
         else
-            let found = hashMap.get(:String :Value table symbol)
-            if maybe.isNone(:Value found) then
+            let found = hashMap.get(table symbol)
+            if maybe.isNone(found) then
                 model.internalError(:Value "Undefined external symbol '" <> symbol <> "' in interpreter" maybe.none(:Int))
             end
-            maybe.unwrap(:Value found)
+            maybe.unwrap(found)
         end
     let callExternal(symbol: String types: Array(tm.Type) args: Args): Value =
         if stringOp.equal(symbol "quest_identity_hash") andif extent types is 1 then
-            vWord(identityHash(maybe.some(:tm.Type types[0]) args[0]))
+            vWord(identityHash(maybe.some(types[0]) args[0]))
         else
             case resolveExternal(symbol)
                 when vBuiltin with b then b.b.fn(args)

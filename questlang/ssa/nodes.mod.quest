@@ -140,8 +140,8 @@ export
     let indicesWhere(ps: Array(Passed) pick: All(p: Passed) Bool): Array(Int) =
         begin
             let found = vector.new(:Int)
-            for k = 0 upto {extent ps - 1} do if pick(ps[k]) then vector.append(:Int found k) end end
-            vector.toArray(:Int found)
+            for k = 0 upto {extent ps - 1} do if pick(ps[k]) then vector.append(found k) end end
+            vector.toArray(found)
         end
     let pairsOf(ps: Array(Passed)): Array(Int) =
         indicesWhere(ps fun(p: Passed): Bool
@@ -250,23 +250,23 @@ export
 
     let newValue(f: Function t: Type): Int =
         begin
-            vector.append(:Type f.types t)
-            vector.length(:Type f.types) - 1
+            vector.append(f.types t)
+            vector.length(f.types) - 1
         end
 
     let newBlock(f: Function): Int =
         begin
-            vector.append(:Block f.blocks tuple
+            vector.append(f.blocks tuple
                 let params = vector.new(:Int)
                 let insts = vector.new(:Inst)
                 let var term = termNone
                 let var termLoc = noLoc
             end)
-            vector.length(:Block f.blocks) - 1
+            vector.length(f.blocks) - 1
         end
 
-    let block(f: Function b: Int): Block = vector.get(:Block f.blocks b)
-    let typeOf(f: Function v: Int): Type = vector.get(:Type f.types v)
+    let block(f: Function b: Int): Block = vector.get(f.blocks b)
+    let typeOf(f: Function v: Int): Type = vector.get(f.types v)
     let typeCode(t: Type): Int =
         case t when typeInt then 0 when typePtr then 1 when typeReal then 2 when typeVal then 3 end
     let typeOfCode(code: Int): Type =
@@ -281,14 +281,14 @@ export
     let addParam(f: Function b: Int t: Type): Int =
         begin
             let v = newValue(f t)
-            vector.append(:Int block(f b).params v)
+            vector.append(block(f b).params v)
             v
         end
 
     let newSlot(f: Function bytes: Int align: Int): Int =
         begin
-            vector.append(:Slot f.slots tuple let bytes = bytes let align = align end)
-            vector.length(:Slot f.slots) - 1
+            vector.append(f.slots tuple let bytes = bytes let align = align end)
+            vector.length(f.slots) - 1
         end
 
     let newFunction(symbol: String exported: Bool params: Array(Type) results: Array(Type)): Function =
@@ -296,8 +296,8 @@ export
             let f = tuple
                 let symbol = symbol
                 let exported = exported
-                let paramTypes = vector.fromArray(:Type params)
-                let resultTypes = vector.fromArray(:Type results)
+                let paramTypes = vector.fromArray(params)
+                let resultTypes = vector.fromArray(results)
                 let var signature = signature(params results none none)
                 let types = vector.new(:Type)
                 let blocks = vector.new(:Block)
@@ -318,7 +318,7 @@ export
     let append(f: Function b: Int i: Inst): Ok =
         begin
             if not(hasLoc(i.loc)) then i.loc := f.at end
-            vector.append(:Inst block(f b).insts i)
+            vector.append(block(f b).insts i)
         end
 
     let instruction(op: Opcode args: Array(Int) results: Array(Int) imm: Int symbol: String width: Int signed: Bool
@@ -503,9 +503,9 @@ export
     let replaceUses(f: Function replace: All(v: Int) Int): Ok =
         begin
             let all(vs: Array(Int)): Ok = for a = 0 upto {extent vs - 1} do vs[a] := replace(vs[a]) end
-            for b = 0 upto {vector.length(:Block f.blocks) - 1} do
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 let blk = block(f b)
-                for k = 0 upto {vector.length(:Inst blk.insts) - 1} do all(vector.get(:Inst blk.insts k).args) end
+                for k = 0 upto {vector.length(blk.insts) - 1} do all(vector.get(blk.insts k).args) end
                 let ts = targets(blk.term)
                 for k = 0 upto {extent ts - 1} do all(ts[k].args) end
                 case blk.term
@@ -622,19 +622,19 @@ export
         begin
             let var found = maybe.none(:Opcode)
             for i = 0 upto {extent opcodes - 1} do
-                if stringOp.equal(opcodeName(opcodes[i]) name) then found := maybe.some(:Opcode opcodes[i]) end
+                if stringOp.equal(opcodeName(opcodes[i]) name) then found := maybe.some(opcodes[i]) end
             end
             found
         end
 
     let definitions(f: Function): Array(maybe.T(Inst)) =
         begin
-            let defs = array of(vector.length(:Type f.types) maybe.none(:Inst))
-            for b = 0 upto {vector.length(:Block f.blocks) - 1} do
+            let defs = array of(vector.length(f.types) maybe.none(:Inst))
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 let insts = block(f b).insts
-                for k = 0 upto {vector.length(:Inst insts) - 1} do
-                    let i = vector.get(:Inst insts k)
-                    for j = 0 upto {extent i.results - 1} do defs[i.results[j]] := maybe.some(:Inst i) end
+                for k = 0 upto {vector.length(insts) - 1} do
+                    let i = vector.get(insts k)
+                    for j = 0 upto {extent i.results - 1} do defs[i.results[j]] := maybe.some(i) end
                 end
             end
             defs

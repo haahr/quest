@@ -26,7 +26,7 @@ export
             let var start = 0
             for i = 0 upto n do
                 if {i is n} orif {stringOp.getChar(p i) is '/'} then
-                    if i > start then vector.append(:String result stringOp.getSub(p start {i - start})) end
+                    if i > start then vector.append(result stringOp.getSub(p start {i - start})) end
                     start := i + 1
                 end
             end
@@ -35,15 +35,15 @@ export
     let parent(p: String): String =
         begin
             let cs = components(p)
-            if vector.length(:String cs) <= 1 then
+            if vector.length(cs) <= 1 then
                 if isAbsolute(p) then "/" else "." end
             else
-                vector.pop(:String cs)
+                vector.pop(cs)
                 let b = sb.new()
                 if isAbsolute(p) then sb.char(b '/') end
-                for i = 0 upto {vector.length(:String cs) - 1} do
+                for i = 0 upto {vector.length(cs) - 1} do
                     if i > 0 then sb.char(b '/') end
-                    sb.str(b vector.get(:String cs i))
+                    sb.str(b vector.get(cs i))
                 end
                 sb.toString(b)
             end
@@ -51,15 +51,15 @@ export
     let baseName(p: String): String =
         begin
             let cs = components(p)
-            if vector.empty(:String cs) then "" else vector.last(:String cs) end
+            if vector.empty(cs) then "" else vector.last(cs) end
         end
     let parts(p: String): Array(String) =
         begin
             let result = vector.new(:String)
-            if isAbsolute(p) then vector.append(:String result "/") end
+            if isAbsolute(p) then vector.append(result "/") end
             let cs = components(p)
-            for i = 0 upto {vector.length(:String cs) - 1} do vector.append(:String result vector.get(:String cs i)) end
-            vector.toArray(:String result)
+            for i = 0 upto {vector.length(cs) - 1} do vector.append(result vector.get(cs i)) end
+            vector.toArray(result)
         end
     let relativeTo(p: String root: String): maybe.T(String) =
         begin
@@ -78,7 +78,7 @@ export
                     sb.str(b ps[i])
                 end
                 let s = sb.toString(b)
-                maybe.some(:String if stringOp.length(s) is 0 then "." else s end)
+                maybe.some(if stringOp.length(s) is 0 then "." else s end)
             else
                 maybe.none(:String)
             end
@@ -86,7 +86,7 @@ export
     let displayName(p: String): String =
         begin
             let rel = relativeTo(absolute(p) absolute(system.currentDirectory()))
-            maybe.unwrapOr(:String rel p)
+            maybe.unwrapOr(rel p)
         end
     let readText(file: String): maybe.T(String) =
         if memoryFiles.isMemory(file) then
@@ -95,7 +95,7 @@ export
             maybe.none(:String)
         else
             try
-                maybe.some(:String filePath.readText(filePath.fromString(file)))
+                maybe.some(filePath.readText(filePath.fromString(file)))
             when system.error then
                 maybe.none(:String)
             end
@@ -103,8 +103,8 @@ export
     let fileTime(file: String): maybe.T(Int) =
         begin
             let s = fileStats.find(file)
-            if maybe.isSome(:fileStats.T s) andif {maybe.unwrap(:fileStats.T s).kind?file} then
-                maybe.some(:Int maybe.unwrap(:fileStats.T s).modifiedNs)
+            if maybe.isSome(s) andif {maybe.unwrap(s).kind?file} then
+                maybe.some(maybe.unwrap(s).modifiedNs)
             else
                 maybe.none(:Int)
             end
@@ -112,7 +112,7 @@ export
     (* A file in memory is newer than every file *)
     let modifiedNs(p: String): Int = if memoryFiles.isMemory(p) then 9223372036854775807 else fileStats.stat(p).modifiedNs end
     let isFile(p: String): Bool =
-        if memoryFiles.isMemory(p) then maybe.isSome(:String memoryFiles.read(p)) else system.isFile(p) end
+        if memoryFiles.isMemory(p) then maybe.isSome(memoryFiles.read(p)) else system.isFile(p) end
     (* What this process's temporary files are named with: none but the
      * driver's workers set one (build/workers) *)
     let worker = tuple let var tag = "" end

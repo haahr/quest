@@ -133,15 +133,15 @@ export
     let fresh(names: hashMap.T(String Int) base: String): String =
         begin
             let root = if stringOp.isEmpty(base) then "v" else base end
-            let n = maybe.unwrapOr(:Int hashMap.get(:String :Int names root) 0)
-            hashMap.insert(:String :Int names root n + 1)
+            let n = maybe.unwrapOr(hashMap.get(names root) 0)
+            hashMap.insert(names root n + 1)
             if n is 0 then root else root <> "." <> conv.int(n) end
         end
 
     let typeCount(m: model.Module): Int =
         begin
             let var n = 0
-            for k = 0 upto vector.length(:model.RecGroup m.types) - 1 do
+            for k = 0 upto vector.length(m.types) - 1 do
                 n := n + extent vector.get(:model.RecGroup m.types k)
             end
             n
@@ -156,17 +156,17 @@ export
             for k = 0 upto extent results - 1 do sb.str(key " " <> printer.valType(g.m results[k])) end
             (* toString empties the builder, so the key is taken once *)
             let text = sb.toString(key)
-            let known = hashMap.get(:String :Int g.funcTypes text)
-            if maybe.isSome(:Int known) then maybe.unwrap(:Int known)
+            let known = hashMap.get(g.funcTypes text)
+            if maybe.isSome(known) then maybe.unwrap(known)
             else
                     let n = typeCount(g.m)
-                    vector.append(:model.RecGroup g.m.types array of
+                    vector.append(g.m.types array of
                         tuple let name = "" let final = true let supers = array of :Int end
                             let composite = option compFunc of model.Composite with
                                 let params = params let results = results end
                         end
                     end)
-                    hashMap.insert(:String :Int g.funcTypes text n)
+                    hashMap.insert(g.funcTypes text n)
                     n
             end
         end
@@ -300,7 +300,7 @@ export
             end
         end
 
-    let emit(f: F x: Inst): Ok = vector.append(:Inst f.code x)
+    let emit(f: F x: Inst): Ok = vector.append(f.code x)
 
     let sameKind(a: LabelKind b: LabelKind): Bool =
         case a
@@ -309,10 +309,10 @@ export
         end
 
     let open(f: F name: String kind: LabelKind): Ok =
-        vector.append(:Label f.labels tuple let name = name let kind = kind end)
+        vector.append(f.labels tuple let name = name let kind = kind end)
     let close(f: F): Ok =
         begin
-            vector.pop(:Label f.labels)
+            vector.pop(f.labels)
             emit(f model.endInst)
         end
 
@@ -320,8 +320,8 @@ export
     let hasLabel(f: F name: String): Bool =
         begin
             let var found = false
-            for k = 0 upto vector.length(:Label f.labels) - 1 do
-                if stringOp.equal(vector.get(:Label f.labels k).name name) then found := true end
+            for k = 0 upto vector.length(f.labels) - 1 do
+                if stringOp.equal(vector.get(f.labels k).name name) then found := true end
             end
             found
         end
@@ -329,17 +329,17 @@ export
     (* The depth of a branch to the label named name of kind kind *)
     let depth(f: F name: String kind: LabelKind): Int =
         begin
-            let n = vector.length(:Label f.labels)
+            let n = vector.length(f.labels)
             let var found = ~1
             for k = 0 upto n - 1 do
-                let l = vector.get(:Label f.labels k)
+                let l = vector.get(f.labels k)
                 if stringOp.equal(l.name name) andif sameKind(l.kind kind) then found := {n - 1} - k end
             end
             if found < 0 then fail("a branch to " <> name <> ", which is not open") end
             found
         end
 
-    let isGlobal(f: F v: ir.Variable): Bool = hashMap.contains(:Int :Bool f.g.globalIds v.id)
+    let isGlobal(f: F v: ir.Variable): Bool = hashMap.contains(f.g.globalIds v.id)
 
     (* The shape of a value of type t, through its bound, if it has one *)
     let shapeOf(t: ir.Type): shapes.Shape = layout.resolvedShape(shapes.shape(t))
@@ -353,9 +353,9 @@ export
             let ts = vector.new(:ValType)
             for k = 0 upto extent s.components - 1 do
                 let ps = parts(componentType(s k))
-                for j = 0 upto extent ps - 1 do vector.append(:ValType ts ps[j]) end
+                for j = 0 upto extent ps - 1 do vector.append(ts ps[j]) end
             end
-            vector.toArray(:ValType ts)
+            vector.toArray(ts)
         end
     (* Where an unboxed tuple's component index begins among its values *)
     let componentOffset(s: shapes.Shape index: Int): Int =
@@ -369,7 +369,7 @@ export
      * unboxed tuple's components, a boxed record's box, or its type's
      * parts *)
     let varParts(g: G v: ir.Variable): Array(ValType) =
-        if hashMap.contains(:Int :Bool g.located v.id) then locationParts
+        if hashMap.contains(g.located v.id) then locationParts
         elsif v.unboxed then componentTypes(v.type)
         elsif v.boxed then array of model.eqref end
         else parts(v.type)
@@ -378,10 +378,10 @@ export
     (* v's globals, made the first time it is named: the first of one for
      * each of its parts *)
     let global(f: F v: ir.Variable): Int =
-        if hashMap.contains(:Int :Int f.g.globals v.id) then hashMap.find(:Int :Int f.g.globals v.id)
+        if hashMap.contains(f.g.globals v.id) then hashMap.find(f.g.globals v.id)
         else
                 let ts = varParts(f.g v)
-                let n = model.importedGlobals(f.g.m) + vector.length(:model.Global f.g.m.globals)
+                let n = model.importedGlobals(f.g.m) + vector.length(f.g.m.globals)
                 for k = 0 upto extent ts - 1 do
                     let init = case ts[k]
                         when valI64 then model.i64Const(0)
@@ -389,20 +389,20 @@ export
                         when valF64 then model.f64Const(0.0)
                         else option instRefNull of Inst with let heap = option heapNone of model.HeapType end end
                     end
-                    vector.append(:model.Global f.g.m.globals tuple
+                    vector.append(f.g.m.globals tuple
                         let name = fresh(f.g.names v.hint) let type = ts[k] let mutable = true
                         let init = array of init end
                     end)
                 end
-                hashMap.insert(:Int :Int f.g.globals v.id n)
+                hashMap.insert(f.g.globals v.id n)
                 n
         end
 
     (* A new local of type t, for the code's own use *)
     let scratch(f: F t: ValType): Int =
         begin
-            let n = f.nparams + vector.length(:model.Local f.declared)
-            vector.append(:model.Local f.declared tuple let name = fresh(f.names "t") let type = t end)
+            let n = f.nparams + vector.length(f.declared)
+            vector.append(f.declared tuple let name = fresh(f.names "t") let type = t end)
             n
         end
 
@@ -423,7 +423,7 @@ export
     let addType(g: G sub: model.SubType): Int =
         begin
             let n = typeCount(g.m)
-            vector.append(:model.RecGroup g.m.types array of sub end)
+            vector.append(g.m.types array of sub end)
             n
         end
     let fieldOf(name: String t: ValType mutable: Bool): model.Field =
@@ -467,14 +467,14 @@ export
             if not(shapes.kindIs(s shapes.shapeFun)) then fail("a call of a value of no function type") end
             (* each quantifier's descriptors first (section 3.2) *)
             let ps = vector.new(:ValType)
-            for k = 0 upto q.count - 1 do vector.append(:ValType ps model.eqref) end
+            for k = 0 upto q.count - 1 do vector.append(ps model.eqref) end
             for k = 0 upto extent s.params - 1 do
                 let pp = if stringOp.equal(s.params[k].mode "value") then parts(s.params[k].shape.type)
                     else locationParts
                     end
-                for j = 0 upto extent pp - 1 do vector.append(:ValType ps pp[j]) end
+                for j = 0 upto extent pp - 1 do vector.append(ps pp[j]) end
             end
-            tuple let params = vector.toArray(:ValType ps) let results = parts(shapes.result(s).type) end
+            tuple let params = vector.toArray(ps) let results = parts(shapes.result(s).type) end
             end
         end
     (* How many parameters a function type has, its descriptors among them *)
@@ -487,7 +487,7 @@ export
      * closure it adapts, of that closure's type, where a lifted function's
      * has the placeholder type Ok *)
     let isAdapter(fn: ir.Function): Bool =
-        maybe.isSome(:ir.Variable fn.env) andif not(layout.representationKind(maybe.unwrap(:ir.Variable fn.env).type)?repVoid)
+        maybe.isSome(fn.env) andif not(layout.representationKind(maybe.unwrap(fn.env).type)?repVoid)
 
     (* How many of a function's type parameters its closure supplies, as
      * captures, rather than its callers (the rest) *)
@@ -519,11 +519,11 @@ export
     let closU(g: G n: Int): Int =
         begin
             let key = "U" <> conv.int(n)
-            if hashMap.contains(:String :Int g.closTypes key) then hashMap.find(:String :Int g.closTypes key)
+            if hashMap.contains(g.closTypes key) then hashMap.find(g.closTypes key)
             else
                 let t = addType(g structSub("closU" <> conv.int(n) false tClos
                     array of hashField fieldOf("uniform" model.ref(uniformType(g n)) false) end))
-                hashMap.insert(:String :Int g.closTypes key t)
+                hashMap.insert(g.closTypes key t)
                 t
             end
         end
@@ -538,14 +538,14 @@ export
     let closS(g: G sig: Signature n: Int): Int =
         begin
             let key = "S" <> conv.int(n) <> ":" <> sigText(g sig)
-            if hashMap.contains(:String :Int g.closTypes key) then hashMap.find(:String :Int g.closTypes key)
+            if hashMap.contains(g.closTypes key) then hashMap.find(g.closTypes key)
             else
                 let u = closU(g n)
                 let t = addType(g structSub("" false u array of
                     hashField fieldOf("uniform" model.ref(uniformType(g n)) false)
                     fieldOf("native" model.ref(nativeType(g sig)) false)
                 end))
-                hashMap.insert(:String :Int g.closTypes key t)
+                hashMap.insert(g.closTypes key t)
                 t
             end
         end
@@ -554,29 +554,29 @@ export
      * its parts a mutable field (so that a recursive value's can be filled
      * in) *)
     let ownType(g: G fn: ir.Function): Int =
-        if hashMap.contains(:Int :Int g.ownTypes fn.id) then hashMap.find(:Int :Int g.ownTypes fn.id)
+        if hashMap.contains(g.ownTypes fn.id) then hashMap.find(g.ownTypes fn.id)
         else
             let sig = closureSig(fn.v.type)
             let n = arity(fn.v.type)
             let fields = vector.new(:model.Field)
-            vector.append(:model.Field fields hashField)
-            vector.append(:model.Field fields fieldOf("uniform" model.ref(uniformType(g n)) false))
-            vector.append(:model.Field fields fieldOf("native" model.ref(nativeType(g sig)) false))
+            vector.append(fields hashField)
+            vector.append(fields fieldOf("uniform" model.ref(uniformType(g n)) false))
+            vector.append(fields fieldOf("native" model.ref(nativeType(g sig)) false))
             for k = 0 upto capturedDescriptors(fn) - 1 do
-                vector.append(:model.Field fields fieldOf("d" <> conv.int(k) model.eqref true))
+                vector.append(fields fieldOf("d" <> conv.int(k) model.eqref true))
             end
-            let captures = maybe.unwrapOr(:Array(ir.Type) hashMap.get(:Int :Array(ir.Type) g.captureTypes fn.id)
+            let captures = maybe.unwrapOr(hashMap.get(g.captureTypes fn.id)
                 array of :ir.Type end)
             for k = 0 upto extent captures - 1 do
                 let ps = parts(captures[k])
                 for j = 0 upto extent ps - 1 do
                     let suffix = if j > 0 then "." <> conv.int(j) else "" end
-                    vector.append(:model.Field fields fieldOf("c" <> conv.int(k) <> suffix ps[j] true))
+                    vector.append(fields fieldOf("c" <> conv.int(k) <> suffix ps[j] true))
                 end
             end
             let t = addType(g structSub(fresh(g.names fn.v.hint <> ".closure") true closS(g sig n)
-                vector.toArray(:model.Field fields)))
-            hashMap.insert(:Int :Int g.ownTypes fn.id t)
+                vector.toArray(fields)))
+            hashMap.insert(g.ownTypes fn.id t)
             t
         end
 
@@ -584,7 +584,7 @@ export
      * its capture index *)
     let captureField(g: G fn: ir.Function index: Int): Int =
         begin
-            let captures = maybe.unwrapOr(:Array(ir.Type) hashMap.get(:Int :Array(ir.Type) g.captureTypes fn.id)
+            let captures = maybe.unwrapOr(hashMap.get(g.captureTypes fn.id)
                 array of :ir.Type end)
             let var at = 3 + capturedDescriptors(fn)
             for k = 0 upto index - 1 do at := at + extent parts(captures[k]) end
@@ -595,26 +595,26 @@ export
      * function's code take a reference only to a function the module
      * declares (model.Module.declared) *)
     let declare(g: G index: Int): Ok =
-        if not(hashMap.contains(:Int :Bool g.declaredFns index)) then
-            hashMap.insert(:Int :Bool g.declaredFns index true)
-            vector.append(:Int g.m.declared index)
+        if not(hashMap.contains(g.declaredFns index)) then
+            hashMap.insert(g.declaredFns index true)
+            vector.append(g.m.declared index)
         end
 
     (* v's local, made the first time it is bound; an unboxed tuple's first,
      * of one for each of its components *)
     let local(f: F v: ir.Variable): Int =
-        if hashMap.contains(:Int :Int f.locals v.id) then hashMap.find(:Int :Int f.locals v.id)
+        if hashMap.contains(f.locals v.id) then hashMap.find(f.locals v.id)
         else
-                let n = f.nparams + vector.length(:model.Local f.declared)
+                let n = f.nparams + vector.length(f.declared)
                 let ts = varParts(f.g v)
                 for k = 0 upto extent ts - 1 do
-                    vector.append(:model.Local f.declared tuple let name = fresh(f.names v.hint) let type = ts[k] end)
+                    vector.append(f.declared tuple let name = fresh(f.names v.hint) let type = ts[k] end)
                 end
-                hashMap.insert(:Int :Int f.locals v.id n)
+                hashMap.insert(f.locals v.id n)
                 n
         end
 
-    let isLocated(f: F v: ir.Variable): Bool = hashMap.contains(:Int :Bool f.g.located v.id)
+    let isLocated(f: F v: ir.Variable): Bool = hashMap.contains(f.g.located v.id)
 
     (* Stores the values on the stack in v's own parts: a located variable's
      * location itself *)
@@ -637,10 +637,10 @@ export
             if isGlobal(f v) then
                 let first = global(f v)
                 for k = 0 upto n - 1 do emit(f i1(ops.globalGet first + k)) end
-            elsif not(hashMap.contains(:Int :Int f.locals v.id)) then
+            elsif not(hashMap.contains(f.locals v.id)) then
                 fail("the variable " <> v.hint <> ", which has no value here")
             else
-                let first = hashMap.find(:Int :Int f.locals v.id)
+                let first = hashMap.find(f.locals v.id)
                 for k = 0 upto n - 1 do emit(f i1(ops.localGet first + k)) end
             end
         end
@@ -652,8 +652,8 @@ export
     (* A new mutable global of the unit, null to begin with *)
     let newGlobal(g: G name: String): Int =
         begin
-            let n = model.importedGlobals(g.m) + vector.length(:model.Global g.m.globals)
-            vector.append(:model.Global g.m.globals tuple
+            let n = model.importedGlobals(g.m) + vector.length(g.m.globals)
+            vector.append(g.m.globals tuple
                 let name = fresh(g.names name) let type = model.eqref let mutable = true
                 let init = array of option instRefNull of Inst with let heap = option heapNone of model.HeapType end end end
             end)
@@ -698,10 +698,10 @@ export
      * with thousands of literals the time to make them all *)
     let questLiteral(f: F s: String): Ok =
         begin
-            if not(hashMap.contains(:String :Int f.g.literalGlobals s)) then
-                hashMap.insert(:String :Int f.g.literalGlobals s newGlobal(f.g "literal"))
+            if not(hashMap.contains(f.g.literalGlobals s)) then
+                hashMap.insert(f.g.literalGlobals s newGlobal(f.g "literal"))
             end
-            let held = hashMap.find(:String :Int f.g.literalGlobals s)
+            let held = hashMap.find(f.g.literalGlobals s)
             emit(f i1(ops.globalGet held))
             emit(f i(ops.refIsNull))
             emit(f model.ifInst(empty ""))
@@ -742,7 +742,7 @@ export
     let intBoxing(g: G field: String): Int =
         begin
             let key = "own." <> field
-            if hashMap.contains(:String :Int g.runtimeFunctions key) then hashMap.find(:String :Int g.runtimeFunctions key)
+            if hashMap.contains(g.runtimeFunctions key) then hashMap.find(g.runtimeFunctions key)
             else
                 let tBoxInt = rt.index("boxInt")
                 let i31 = option heapI31 of model.HeapType end
@@ -787,12 +787,12 @@ export
                     emit(f i(ops.i31GetS))
                     emit(f i(ops.i64ExtendI32S))
                 end
-                let index = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
-                vector.append(:model.Function g.m.functions tuple
+                let index = model.importedFunctions(g.m) + vector.length(g.m.functions)
+                vector.append(g.m.functions tuple
                     let name = fresh(g.names field) let type = funcType(g array of if boxing then model.i64 else model.eqref end end results)
                     let params = array of if boxing then "n" else "e" end end let locals = f.declared let body = f.code
                 end)
-                hashMap.insert(:String :Int g.runtimeFunctions key index)
+                hashMap.insert(g.runtimeFunctions key index)
                 index
             end
         end
@@ -802,8 +802,8 @@ export
     let runtimeCall(f: F field: String): Ok =
         if stringOp.equal(field "boxInt") orif stringOp.equal(field "unboxInt") then
             emit(f i1(ops.call intBoxing(f.g field)))
-        elsif hashMap.contains(:String :Int f.g.runtimeFunctions field) then
-            emit(f i1(ops.call hashMap.find(:String :Int f.g.runtimeFunctions field)))
+        elsif hashMap.contains(f.g.runtimeFunctions field) then
+            emit(f i1(ops.call hashMap.find(f.g.runtimeFunctions field)))
         else fail("the runtime's " <> field)
         end
 
@@ -820,8 +820,8 @@ export
 
     (* The site of an offset, as an uncaught report writes it *)
     let siteText(f: F offset: maybe.T(Int)): String =
-        if maybe.isNone(:Int offset) then ""
-        else maybe.unwrapOr(:String ir.site(f.g.unit maybe.unwrap(:Int offset)) "")
+        if maybe.isNone(offset) then ""
+        else maybe.unwrapOr(ir.site(f.g.unit maybe.unwrap(offset)) "")
         end
 
     (* Raises the built-in exception named name, with payload Ok, at the
@@ -920,8 +920,8 @@ export
      * pushes noClosure's global before the arguments; a host function
      * (quest.host) takes none *)
     let runtimeUnitCall(f: F key: String): Ok =
-        if hashMap.contains(:String :Int f.g.runtimeUnits key) then
-            emit(f i1(ops.call hashMap.find(:String :Int f.g.runtimeUnits key)))
+        if hashMap.contains(f.g.runtimeUnits key) then
+            emit(f i1(ops.call hashMap.find(f.g.runtimeUnits key)))
         else fail("the runtime's " <> key)
         end
 
@@ -954,38 +954,38 @@ export
      * in: the forms of the latter, in their order *)
     let descriptorGlobals(g: G): vector.T(staticdata.DescriptorForm) =
         begin
-            let data = maybe.unwrap(:ir.StaticData g.unit.staticData)
+            let data = maybe.unwrap(g.unit.staticData)
             for k = 0 upto extent baseSymbols - 1 do
-                hashMap.insert(:String :Int g.descGlobals baseSymbols[k] newGlobal(g baseSymbols[k]))
+                hashMap.insert(g.descGlobals baseSymbols[k] newGlobal(g baseSymbols[k]))
             end
             let plain = vector.new(:ir.Type)
             let echoed = vector.new(:ir.Type)
-            for k = 0 upto vector.length(:ir.StaticDescriptor data.descriptors) - 1 do
-                let d = vector.get(:ir.StaticDescriptor data.descriptors k)
-                vector.append(:ir.Type if d.echo then echoed else plain end d.type)
+            for k = 0 upto vector.length(data.descriptors) - 1 do
+                let d = vector.get(data.descriptors k)
+                vector.append(if d.echo then echoed else plain end d.type)
             end
             (* and the representations of its modules' abstract types, which it
              * registers *)
-            for k = 0 upto vector.length(:ir.Module g.unit.modules) - 1 do
-                let entries = vector.get(:ir.Module g.unit.modules k).abstractTypes
-                for j = 0 upto extent entries - 1 do vector.append(:ir.Type plain entries[j].descriptor.type) end
+            for k = 0 upto vector.length(g.unit.modules) - 1 do
+                let entries = vector.get(g.unit.modules k).abstractTypes
+                for j = 0 upto extent entries - 1 do vector.append(plain entries[j].descriptor.type) end
             end
             let collected = try
-                    staticdata.collectDescriptors(plain echoed maybe.some(:staticdata.RecordNaming g.naming)
+                    staticdata.collectDescriptors(plain echoed maybe.some(g.naming)
                         hashMap.new(:String :Bool stringOp.equal hash.string))
                 when staticdata.missingDescriptor with msg then
                     fail("a descriptor: " <> msg)
                     staticdata.collectDescriptors(vector.new(:ir.Type) vector.new(:ir.Type)
-                        maybe.some(:staticdata.RecordNaming g.naming) hashMap.new(:String :Bool stringOp.equal hash.string))
+                        maybe.some(g.naming) hashMap.new(:String :Bool stringOp.equal hash.string))
                 end
             let forms = vector.new(:staticdata.DescriptorForm)
             for k = 0 upto extent staticdata.descriptorKinds - 1 do
                 let fs = staticdata.formsOf(collected staticdata.descriptorKinds[k])
-                for j = 0 upto vector.length(:staticdata.DescriptorForm fs) - 1 do
-                    let form = vector.get(:staticdata.DescriptorForm fs j)
-                    if not(hashMap.contains(:String :Int g.descGlobals form.symbol)) then
-                        hashMap.insert(:String :Int g.descGlobals form.symbol newGlobal(g form.tag))
-                        vector.append(:staticdata.DescriptorForm forms form)
+                for j = 0 upto vector.length(fs) - 1 do
+                    let form = vector.get(fs j)
+                    if not(hashMap.contains(g.descGlobals form.symbol)) then
+                        hashMap.insert(g.descGlobals form.symbol newGlobal(g form.tag))
+                        vector.append(forms form)
                     end
                 end
             end
@@ -994,7 +994,7 @@ export
 
     (* The global of the descriptor a symbol names *)
     let descGlobal(f: F symbol: String): Int =
-        if hashMap.contains(:String :Int f.g.descGlobals symbol) then hashMap.find(:String :Int f.g.descGlobals symbol)
+        if hashMap.contains(f.g.descGlobals symbol) then hashMap.find(f.g.descGlobals symbol)
         else raise unsupported with "the descriptor " <> symbol <> ", which the unit does not make" end
         end
 
@@ -1003,11 +1003,11 @@ export
      * it *)
     let formOf(g: G d: ir.StaticDescriptor): staticdata.DescriptorForm =
         try
-            let naming = maybe.some(:staticdata.RecordNaming g.naming)
+            let naming = maybe.some(g.naming)
             let echo = if d.echo then staticdata.echoDescriptorForm(d.type naming)
                 else maybe.none(:staticdata.DescriptorForm)
                 end
-            if maybe.isSome(:staticdata.DescriptorForm echo) then maybe.unwrap(:staticdata.DescriptorForm echo)
+            if maybe.isSome(echo) then maybe.unwrap(echo)
             else staticdata.descriptorForm(d.type naming)
             end
         when staticdata.missingDescriptor with msg then raise unsupported with "a descriptor: " <> msg end
@@ -1029,10 +1029,10 @@ export
                 end
             when descVar with x then atomParts(f ir.atomOfVar(x.v))
             when descInstantiate with x then
-                let form = try staticdata.descriptorForm(x.template maybe.some(:staticdata.RecordNaming f.g.naming))
+                let form = try staticdata.descriptorForm(x.template maybe.some(f.g.naming))
                     when staticdata.missingDescriptor with msg then
                         fail("a descriptor: " <> msg)
-                        staticdata.descriptorForm(x.template maybe.some(:staticdata.RecordNaming f.g.naming))
+                        staticdata.descriptorForm(x.template maybe.some(f.g.naming))
                     end
                 if stringOp.equal(form.kind "base") then emit(f i1(ops.globalGet descGlobal(f form.symbol)))
                 else
@@ -1061,7 +1061,7 @@ export
     let partsOf(d: staticdata.Descriptor): Array(Part) =
         begin
             let flagged = fun(label: maybe.T(String) r: staticdata.Ref flags: Int): Part
-                tuple let label = maybe.unwrapOr(:String label "") let ref = r let flags = flags end
+                tuple let label = maybe.unwrapOr(label "") let ref = r let flags = flags end
             let part = fun(label: maybe.T(String) r: staticdata.Ref): Part flagged(label r 0)
             let components = fun(cs: Array(staticdata.Component)): Array(Part)
                 begin
@@ -1073,7 +1073,7 @@ export
                 begin
                     let ps = array of(extent cs part(maybe.none(:String) staticdata.nullRef))
                     for j = 0 upto extent cs - 1 do
-                        ps[cs[j].tagIndex] := flagged(maybe.some(:String cs[j].name) cs[j].payload
+                        ps[cs[j].tagIndex] := flagged(maybe.some(cs[j].name) cs[j].payload
                             if cs[j].isVar then 1 else 0 end)
                     end
                     ps
@@ -1113,8 +1113,8 @@ export
                  * makeDescriptors makes, and its storage, the bound *)
                 when payloadStored with x then
                     array of
-                        part(maybe.some(:String "type") staticdata.nullRef)
-                        part(maybe.some(:String "storage") x.storage)
+                        part(maybe.some("type") staticdata.nullRef)
+                        part(maybe.some("storage") x.storage)
                     end
                 when payloadOpaque with x then
                     (* an abstract type operator's application: its
@@ -1148,15 +1148,15 @@ export
                 emit(f i1(ops.globalSet descGlobal(f baseSymbols[k])))
             end
             let partOf = fun(t: ir.Type): staticdata.DescriptorForm
-                staticdata.descriptorForm(t maybe.some(:staticdata.RecordNaming f.g.naming))
+                staticdata.descriptorForm(t maybe.some(f.g.naming))
             let described = vector.new(:staticdata.Descriptor)
-            for k = 0 upto vector.length(:staticdata.DescriptorForm forms) - 1 do
-                let form = vector.get(:staticdata.DescriptorForm forms k)
-                vector.append(:staticdata.Descriptor described
-                    staticdata.describeDescriptor(form maybe.some(:staticdata.RecordNaming f.g.naming) partOf))
+            for k = 0 upto vector.length(forms) - 1 do
+                let form = vector.get(forms k)
+                vector.append(described
+                    staticdata.describeDescriptor(form maybe.some(f.g.naming) partOf))
             end
-            for k = 0 upto vector.length(:staticdata.Descriptor described) - 1 do
-                let d = vector.get(:staticdata.Descriptor described k)
+            for k = 0 upto vector.length(described) - 1 do
+                let d = vector.get(described k)
                 noClosure()
                 emit(f model.i64Const(kindOf(d.kindConstant)))
                 literal(f d.name)
@@ -1165,8 +1165,8 @@ export
                 callCore("newDesc")
                 emit(f i1(ops.globalSet descGlobal(f d.form.symbol)))
             end
-            for k = 0 upto vector.length(:staticdata.Descriptor described) - 1 do
-                let d = vector.get(:staticdata.Descriptor described k)
+            for k = 0 upto vector.length(described) - 1 do
+                let d = vector.get(described k)
                 let at = descGlobal(f d.form.symbol)
                 let ps = partsOf(d)
                 for j = 0 upto extent ps - 1 do
@@ -1277,7 +1277,7 @@ export
     (* A slot's value, read as the variable target holds it: unboxed unless
      * target is held boxed *)
     let unboxFor(f: F t: ir.Type target: maybe.T(ir.Variable)): Ok =
-        if maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).boxed then ok else unbox(f t) end
+        if maybe.isSome(target) andif maybe.unwrap(target).boxed then ok else unbox(f t) end
     (* The atom's value: a located variable's read through its location *)
     let atom(f: F a: ir.Atom): Ok =
         begin
@@ -1286,7 +1286,7 @@ export
                 when atomVar with x then
                     if isLocated(f x.v) then
                         emit(f i1(ops.arrayGet tSlots))
-                        unboxFor(f x.v.type maybe.some(:ir.Variable x.v))
+                        unboxFor(f x.v.type maybe.some(x.v))
                     end
                 else ok
             end
@@ -1397,9 +1397,9 @@ export
      * through the proxy; one written, or its address taken, is the
      * original's *)
     let viewedRead(access: ir.Access m: maybe.T(ir.Variable)): ir.Access =
-        if maybe.isSome(:ir.Variable m) then ir.proxy else access end
+        if maybe.isSome(m) then ir.proxy else access end
     let viewedSlot(access: ir.Access m: maybe.T(ir.Variable)): ir.Access =
-        if maybe.isSome(:ir.Variable m) andif access?direct then ir.original else access end
+        if maybe.isSome(m) andif access?direct then ir.original else access end
 
     (* An i32 on the stack mapped through table, as a br_table to constants;
      * nothing when table is the identity *)
@@ -1469,7 +1469,7 @@ export
 
     (* The value of view map m's variable, the argument after the closure of
      * the core's functions that read through a view map (quest_view_map) *)
-    let viewMapOf(f: F m: maybe.T(ir.Variable)): Ok = atomParts(f ir.atomOfVar(maybe.unwrap(:ir.Variable m)))
+    let viewMapOf(f: F m: maybe.T(ir.Variable)): Ok = atomParts(f ir.atomOfVar(maybe.unwrap(m)))
 
     (* The value on the stack, part i of a value read through a view map,
      * converted to the bound's type for it *)
@@ -1491,8 +1491,8 @@ export
         begin
             let s = shapeOf(ir.atomType(x.tup))
             let held = ir.atomVarOf(x.tup)
-            if maybe.isSome(:ir.Variable held) andif maybe.unwrap(:ir.Variable held).unboxed then
-                let first = local(f maybe.unwrap(:ir.Variable held)) + componentOffset(s x.index)
+            if maybe.isSome(held) andif maybe.unwrap(held).unboxed then
+                let first = local(f maybe.unwrap(held)) + componentOffset(s x.index)
                 for j = 0 upto extent parts(componentType(s x.index)) - 1 do emit(f i1(ops.localGet first + j)) end
             else
                 atom(f x.tup)
@@ -1504,7 +1504,7 @@ export
                     emit(f model.i32Const(x.index))
                     emit(f i1(ops.arrayGet tSlots))
                 end
-                if maybe.isSome(:ir.Variable x.viewMap) then viewPartOnStack(f x.viewMap x.index) end
+                if maybe.isSome(x.viewMap) then viewPartOnStack(f x.viewMap x.index) end
                 unboxFor(f componentType(s x.index) target)
             end
         end
@@ -1526,7 +1526,7 @@ export
         begin
             let var index = ~1
             for k = 0 upto extent s.cases - 1 do
-                if stringOp.equal(maybe.unwrapOr(:String s.cases[k].name "") tag) then index := k end
+                if stringOp.equal(maybe.unwrapOr(s.cases[k].name "") tag) then index := k end
             end
             if index < 0 then fail("an option or variant of no case " <> tag) end
             index
@@ -1538,9 +1538,9 @@ export
     let caseForm(s: shapes.Shape tag: String): CaseForm =
         begin
             let c = s.cases[tagIndex(s tag)]
-            if maybe.isNone(:shapes.Shape c.shape) then tuple let count = 0 let isTuple = true end
+            if maybe.isNone(c.shape) then tuple let count = 0 let isTuple = true end
             else
-                let cs = maybe.unwrap(:shapes.Shape c.shape)
+                let cs = maybe.unwrap(c.shape)
                 if shapes.kindIs(cs shapes.shapeTuple) then
                     tuple let count = extent cs.components let isTuple = true end
                 else tuple let count = 1 let isTuple = false end
@@ -1572,8 +1572,8 @@ export
             atom(f value)
             runtimeCall(f "decimal")
             runtimeCall(f "concat")
-            let site = if maybe.isNone(:Int offset) then ""
-                else maybe.unwrapOr(:String ir.site(f.g.unit maybe.unwrap(:Int offset)) "")
+            let site = if maybe.isNone(offset) then ""
+                else maybe.unwrapOr(ir.site(f.g.unit maybe.unwrap(offset)) "")
                 end
             literal(f " out of bounds (0 <= ordinal < " <> conv.int(count) <> ")\n"
                 <> {if stringOp.isEmpty(site) then "" else "  at " <> site <> "\n" end})
@@ -1588,7 +1588,7 @@ export
     let payloadSlots(f: F x: ir.OpMakeOption s: shapes.Shape tag: String): Ok =
         begin
             let form = caseForm(s tag)
-            if maybe.isNone(:ir.Atom x.payload) orif {form.count is 0} then
+            if maybe.isNone(x.payload) orif {form.count is 0} then
                 emit(f i2(ops.arrayNewFixed tSlots 0))
             elsif form.isTuple then
                 (* The payload tuple's components, copied *)
@@ -1597,7 +1597,7 @@ export
                 emit(f i1(ops.arrayNewDefault tSlots))
                 emit(f i1(ops.localTee slots))
                 emit(f model.i32Const(0))
-                atom(f maybe.unwrap(:ir.Atom x.payload))
+                atom(f maybe.unwrap(x.payload))
                 accessAs(f tTuple anyIndirect(x.access))
                 emit(f i2(ops.structGet tTuple fSlots))
                 emit(f model.i32Const(0))
@@ -1606,7 +1606,7 @@ export
                 emit(f i1(ops.localGet slots))
                 emit(f i(ops.refAsNonNull))
             else
-                boxedAtom(f maybe.unwrap(:ir.Atom x.payload))
+                boxedAtom(f maybe.unwrap(x.payload))
                 emit(f i2(ops.arrayNewFixed tSlots 1))
             end
         end
@@ -1618,8 +1618,8 @@ export
         begin
             let s = optionShape(t)
             emit(f model.i32Const(0))
-            if maybe.isSome(:ir.Atom x.ordinalAtom) then
-                let index = maybe.unwrap(:ir.Atom x.ordinalAtom)
+            if maybe.isSome(x.ordinalAtom) then
+                let index = maybe.unwrap(x.ordinalAtom)
                 atom(f index)
                 emit(f model.i64Const(extent s.cases))
                 emit(f i(ops.i64LtU))
@@ -1634,7 +1634,7 @@ export
                     else ~1
                 end
                 let laidOut = if {n >= 0} andif {n < extent x.cases} then x.cases[n]
-                    else maybe.unwrapOr(:String s.cases[0].name "")
+                    else maybe.unwrapOr(s.cases[0].name "")
                     end
                 payloadSlots(f x s laidOut)
                 atom(f index)
@@ -1643,7 +1643,7 @@ export
                 for k = 0 upto extent x.cases - 1 do tags[k] := tagIndex(s x.cases[k]) end
                 mapI32(f tags)
             else
-                let tag = maybe.unwrapOr(:String x.tag "")
+                let tag = maybe.unwrapOr(x.tag "")
                 payloadSlots(f x s tag)
                 emit(f model.i32Const(tagIndex(s tag)))
             end
@@ -1700,7 +1700,7 @@ export
         begin
             let s = shapeOf(ir.atomType(x.value))
             let held = scratch(f model.eqref)
-            let viewed = maybe.isSome(:ir.Variable x.viewMap)
+            let viewed = maybe.isSome(x.viewMap)
             if viewed then
                 variantAtom(f x.value)
                 emit(f i1(ops.localSet held))
@@ -1726,7 +1726,7 @@ export
     let payload(f: F x: ir.OpPayload t: ir.Type): Ok =
         begin
             let s = optionShape(ir.atomType(x.value))
-            let viewed = maybe.isSome(:ir.Variable x.viewMap)
+            let viewed = maybe.isSome(x.viewMap)
             if viewed then viewTag(f x.value x.viewMap) else tagOf(f x.value x.access) end
             emit(f model.i32Const(tagIndex(s x.tag)))
             emit(f i(ops.i32Ne))
@@ -1742,7 +1742,7 @@ export
             emit(f i1(ops.localSet slots))
             emit(f i1(ops.localGet slots))
             emit(f model.i32Const(0))
-            emit(f model.i32Const(maybe.unwrapOr(:Int x.ordinalIndex 0)))
+            emit(f model.i32Const(maybe.unwrapOr(x.ordinalIndex 0)))
             emit(f i(ops.refI31))
             emit(f i1(ops.arraySet tSlots))
             let count = if form.count < {n - 1} then form.count else n - 1 end
@@ -1794,7 +1794,7 @@ export
             let var withComponents = ~1
             let var others = 0
             for k = 0 upto extent s.cases - 1 do
-                let form = caseForm(s maybe.unwrapOr(:String s.cases[k].name ""))
+                let form = caseForm(s maybe.unwrapOr(s.cases[k].name ""))
                 if form.count is 0 then empties[k] := 1
                 else
                     others := others + 1
@@ -1803,10 +1803,10 @@ export
             end
             let var singleWord = false
             if others is 1 then
-                let form = caseForm(s maybe.unwrapOr(:String s.cases[withComponents].name ""))
+                let form = caseForm(s maybe.unwrapOr(s.cases[withComponents].name ""))
                 let c = s.cases[withComponents]
                 let one = if form.isTuple then
-                        {form.count is 1} andif not(maybe.unwrap(:shapes.Shape c.shape).components[0].isVar)
+                        {form.count is 1} andif not(maybe.unwrap(c.shape).components[0].isVar)
                     else true end
                 singleWord := one
             end
@@ -1831,7 +1831,7 @@ export
             if singleWord then
                 (* the case with the component: its components compared *)
                 let c = s.cases[withComponents]
-                let cs = maybe.unwrap(:shapes.Shape c.shape)
+                let cs = maybe.unwrap(c.shape)
                 let componentT = if shapes.kindIs(cs shapes.shapeTuple) then componentType(cs 0) else cs.type end
                 emit(f i1(ops.localGet ta))
                 emit(f model.i32Const(withComponents))
@@ -2054,10 +2054,10 @@ export
                      * their tags and components through the proxies, as the
                      * core's valIs compares them (quest_option_is) *)
                     let proxied = not(x.access?direct) andif not(f.g.isRuntime)
-                    if proxied andif maybe.isSome(:ir.Descriptor x.descriptor)
-                        andif hashMap.contains(:String :Int f.g.runtimeUnits "wasm/core.valIs") then
+                    if proxied andif maybe.isSome(x.descriptor)
+                        andif hashMap.contains(f.g.runtimeUnits "wasm/core.valIs") then
                         emit(f i1(ops.globalGet f.g.noClosure))
-                        descriptor(f maybe.unwrap(:ir.Descriptor x.descriptor))
+                        descriptor(f maybe.unwrap(x.descriptor))
                         atom(f x.args[0])
                         atom(f x.args[1])
                         runtimeUnitCall(f "wasm/core.valIs")
@@ -2075,12 +2075,12 @@ export
                     (* by case and value, the core's valIs at the variant's
                      * descriptor (quest_variant_is; docs/extensions.md,
                      * Variants as Values) *)
-                    if maybe.isNone(:ir.Descriptor x.descriptor)
-                        orif not(hashMap.contains(:String :Int f.g.runtimeUnits "wasm/core.valIs")) then
+                    if maybe.isNone(x.descriptor)
+                        orif not(hashMap.contains(f.g.runtimeUnits "wasm/core.valIs")) then
                         fail("is on variants without their descriptor")
                     end
                     emit(f i1(ops.globalGet f.g.noClosure))
-                    descriptor(f maybe.unwrap(:ir.Descriptor x.descriptor))
+                    descriptor(f maybe.unwrap(x.descriptor))
                     boxedAtom(f x.args[0])
                     boxedAtom(f x.args[1])
                     runtimeUnitCall(f "wasm/core.valIs")
@@ -2099,7 +2099,7 @@ export
                     emit(f i(ops.refEq))
                     if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
                 else
-                if maybe.isSome(:ir.Descriptor x.descriptor) andif atomType(x.args[0])?valRef then
+                if maybe.isSome(x.descriptor) andif atomType(x.args[0])?valRef then
                     (* a type parameter's values, as slots hold them: the same
                      * reference, or two boxed Ints of one value *)
                     let tBox = rt.index("boxInt")
@@ -2113,11 +2113,11 @@ export
                     emit(f model.ifInst(option blockValue of model.BlockType with let type = model.i32 end ""))
                     emit(f model.i32Const(1))
                     emit(f model.elseInst)
-                    if hashMap.contains(:String :Int f.g.runtimeUnits "wasm/core.valIs") then
+                    if hashMap.contains(f.g.runtimeUnits "wasm/core.valIs") then
                         (* by the descriptor, which may be an abstract type's
                          * whose representation compares otherwise *)
                         emit(f i1(ops.globalGet f.g.noClosure))
-                        descriptor(f maybe.unwrap(:ir.Descriptor x.descriptor))
+                        descriptor(f maybe.unwrap(x.descriptor))
                         emit(f i1(ops.localGet a))
                         emit(f i1(ops.localGet b))
                         runtimeUnitCall(f "wasm/core.valIs")
@@ -2227,7 +2227,7 @@ export
             let var found = maybe.none(:String)
             for k = 0 upto extent externals.functions - 1 do
                 let e = externals.functions[k]
-                if stringOp.equal(e[0] path) andif stringOp.equal(e[1] member) then found := maybe.some(:String e[2]) end
+                if stringOp.equal(e[0] path) andif stringOp.equal(e[1] member) then found := maybe.some(e[2]) end
             end
             found
         end
@@ -2289,7 +2289,7 @@ export
         begin
             let var found = maybe.none(:Array(String))
             for k = 0 upto extent coreExternals - 1 do
-                if stringOp.equal(coreExternals[k][0] symbol) then found := maybe.some(:Array(String) coreExternals[k]) end
+                if stringOp.equal(coreExternals[k][0] symbol) then found := maybe.some(coreExternals[k]) end
             end
             found
         end
@@ -2306,7 +2306,7 @@ export
             let var found = maybe.none(:String)
             for k = 0 upto extent realconvExternals - 1 do
                 if stringOp.equal(realconvExternals[k][0] symbol) then
-                    found := maybe.some(:String realconvExternals[k][1])
+                    found := maybe.some(realconvExternals[k][1])
                 end
             end
             found
@@ -2328,7 +2328,7 @@ export
             let var found = maybe.none(:Array(String))
             for k = 0 upto extent realmathExternals - 1 do
                 if stringOp.equal(realmathExternals[k][0] symbol) then
-                    found := maybe.some(:Array(String) realmathExternals[k])
+                    found := maybe.some(realmathExternals[k])
                 end
             end
             found
@@ -2419,14 +2419,14 @@ export
                 atom(f args[1])
                 runtimeUnitCall(f "util/realconv.toString")
                 runtimeUnitCall(f "wasm/core.sbAppendString")
-            elsif maybe.isSome(:String realconv) then
+            elsif maybe.isSome(realconv) then
                 emit(f i1(ops.globalGet f.g.noClosure))
                 atoms(f args)
-                runtimeUnitCall(f "util/realconv." <> maybe.unwrap(:String realconv))
-            elsif maybe.isSome(:Array(String) realmath) then
+                runtimeUnitCall(f "util/realconv." <> maybe.unwrap(realconv))
+            elsif maybe.isSome(realmath) then
                 emit(f i1(ops.globalGet f.g.noClosure))
                 atoms(f args)
-                runtimeUnitCall(f "util/realmath." <> maybe.unwrap(:Array(String) realmath)[1])
+                runtimeUnitCall(f "util/realmath." <> maybe.unwrap(realmath)[1])
             elsif {named("quest_writer_put_string") orif named("quest_writer_put_char")} andif not(f.g.isCore) then
                 (* a standard stream's writer, an i31ref, written by the
                  * runtime at once; a file's by the core, which buffers *)
@@ -2444,13 +2444,13 @@ export
                 emit(f i1(ops.globalGet f.g.noClosure))
                 emit(f i1(ops.localGet w))
                 atom(f args[1])
-                runtimeUnitCall(f "wasm/core." <> maybe.unwrap(:Array(String) core)[1])
+                runtimeUnitCall(f "wasm/core." <> maybe.unwrap(core)[1])
                 emit(f model.endInst)
-            elsif maybe.isSome(:Array(String) core) then
+            elsif maybe.isSome(core) then
                 emit(f i1(ops.globalGet f.g.noClosure))
                 descriptors(f descs)
                 if named("quest_identity_hash") then boxedAtom(f args[0]) else atoms(f args) end
-                runtimeUnitCall(f "wasm/core." <> maybe.unwrap(:Array(String) core)[1])
+                runtimeUnitCall(f "wasm/core." <> maybe.unwrap(core)[1])
                 if named("quest_reader_ready") then emit(f i(ops.i64ExtendI32U)) end
             (* string *)
             elsif named("quest_string_alloc") then through("stringNew")
@@ -2496,13 +2496,13 @@ export
             elsif named("quest_system_exit") then
                 (* the files' writers flushed first, as C's exit does; then
                  * fatal, with no message, ends the run at the status *)
-                if hashMap.contains(:String :Int f.g.runtimeUnits "wasm/core.flushWriters") then
+                if hashMap.contains(f.g.runtimeUnits "wasm/core.flushWriters") then
                     emit(f i1(ops.globalGet f.g.noClosure))
                     runtimeUnitCall(f "wasm/core.flushWriters")
                     emit(f i(ops.drop))
                 end
                 literal(f "")
-                if hashMap.contains(:String :Int f.g.runtimeUnits "wasm/core.exitStatus") then
+                if hashMap.contains(f.g.runtimeUnits "wasm/core.exitStatus") then
                     emit(f i1(ops.globalGet f.g.noClosure))
                     atom(f args[0])
                     runtimeUnitCall(f "wasm/core.exitStatus")
@@ -2843,9 +2843,9 @@ export
             elsif named("quest_writer_err") then
                 emit(f model.i32Const(2))
                 emit(f i(ops.refI31))
-            elsif maybe.isSome(:Array(String) core) then
+            elsif maybe.isSome(core) then
                 emit(f i1(ops.globalGet f.g.noClosure))
-                runtimeUnitCall(f "wasm/core." <> maybe.unwrap(:Array(String) core)[1])
+                runtimeUnitCall(f "wasm/core." <> maybe.unwrap(core)[1])
             else pending(f "the library's external " <> symbol <> ", which this target lacks for now")
             end
         end
@@ -2853,14 +2853,14 @@ export
     (* The function a call names directly, if it does: a known closure's code
      * (walk.knownClosures), with no type arguments *)
     let directCallee(f: F x: ir.OpCall): maybe.T(Int) =
-        if maybe.isNone(:ir.Variable x.callee) then maybe.none(:Int)
+        if maybe.isNone(x.callee) then maybe.none(:Int)
         else
-            let c = maybe.unwrap(:ir.Variable x.callee)
-            if not(hashMap.contains(:Int :ir.OpMakeClosure f.g.known c.id)) then maybe.none(:Int)
+            let c = maybe.unwrap(x.callee)
+            if not(hashMap.contains(f.g.known c.id)) then maybe.none(:Int)
             else
-                let k = hashMap.find(:Int :ir.OpMakeClosure f.g.known c.id)
+                let k = hashMap.find(f.g.known c.id)
                 if {extent x.typeArgs is 0} andif {extent k.typeArgs is 0} then
-                    hashMap.get(:Int :Int f.g.functions k.code.id)
+                    hashMap.get(f.g.functions k.code.id)
                 else maybe.none(:Int)
                 end
             end
@@ -2870,8 +2870,8 @@ export
      * captures anything, else any closure, which it does not read *)
     let closureArg(f: F x: ir.OpCall): Ok =
         begin
-            let c = maybe.unwrap(:ir.Variable x.callee)
-            let k = hashMap.find(:Int :ir.OpMakeClosure f.g.known c.id)
+            let c = maybe.unwrap(x.callee)
+            let k = hashMap.find(f.g.known c.id)
             if extent k.captures > 0 then
                 atom(f ir.atomOfVar(c))
                 castTo(f tClos)
@@ -2912,7 +2912,7 @@ export
      * the arguments boxed and the result unboxed; as a tail call, when tail *)
     let closureCall(f: F x: ir.OpCall tail: Bool): Ok =
         begin
-            let c = maybe.unwrap(:ir.Variable x.callee)
+            let c = maybe.unwrap(x.callee)
             let sig = closureSig(c.type)
             let n = arity(c.type)
             let s = closS(f.g sig n)
@@ -2967,55 +2967,55 @@ export
     let call(f: F x: ir.OpCall): Ok =
         begin
             let direct = directCallee(f x)
-            if maybe.isSome(:Int direct) then
+            if maybe.isSome(direct) then
                 closureArg(f x)
                 descriptors(f x.descriptors)
                 atoms(f x.args)
-                emit(f i1(ops.call maybe.unwrap(:Int direct)))
-            elsif maybe.isSome(:ir.Variable x.callee) then closureCall(f x false)
-            elsif maybe.isNone(:ir.ModuleRef x.moduleRef) then fail("a call of no function")
+                emit(f i1(ops.call maybe.unwrap(direct)))
+            elsif maybe.isSome(x.callee) then closureCall(f x false)
+            elsif maybe.isNone(x.moduleRef) then fail("a call of no function")
             else
-                case maybe.unwrap(:ir.ModuleRef x.moduleRef)
+                case maybe.unwrap(x.moduleRef)
                     when refImport with imp then
-                        let member = maybe.unwrapOr(:String x.member "")
-                        let symbol = if maybe.isSome(:String imp.i.libPath) then
-                                externalSymbol(maybe.unwrap(:String imp.i.libPath) member)
+                        let member = maybe.unwrapOr(x.member "")
+                        let symbol = if maybe.isSome(imp.i.libPath) then
+                                externalSymbol(maybe.unwrap(imp.i.libPath) member)
                             else maybe.none(:String)
                             end
-                        if maybe.isSome(:String symbol) then
+                        if maybe.isSome(symbol) then
                             (* an external of the library, compiled in place *)
-                            externalCall(f maybe.unwrap(:String symbol) x.args x.descriptors maybe.none(:ir.Variable))
-                        elsif f.g.isCore andif maybe.isSome(:String imp.i.libPath) then
+                            externalCall(f maybe.unwrap(symbol) x.args x.descriptors maybe.none(:ir.Variable))
+                        elsif f.g.isCore andif maybe.isSome(imp.i.libPath) then
                             fail("the runtime's call of the library's " <> imp.i.canonicalPath <> "." <> member
                                 <> ", which the backend does not compile itself")
                         else
                             (* the function the unit exports by name (section
                              * 5.1), at its interface type's signature *)
                             let key = imp.i.canonicalPath <> "." <> member
-                            if not(hashMap.contains(:String :Int f.g.importFunctions key)) then
+                            if not(hashMap.contains(f.g.importFunctions key)) then
                                 fail("a call of the unit " <> imp.i.canonicalPath <> "'s " <> member)
                             end
                             emit(f i1(ops.globalGet f.g.noClosure))
                             descriptors(f x.descriptors)
                             atoms(f x.args)
-                            emit(f i1(ops.call hashMap.find(:String :Int f.g.importFunctions key)))
+                            emit(f i1(ops.call hashMap.find(f.g.importFunctions key)))
                         end
                     when refModule with r then
                         (* the member's variable, a global of the unit *)
-                        let member = maybe.unwrapOr(:String x.member "")
+                        let member = maybe.unwrapOr(x.member "")
                         let v = ir.member(r.m.members member)
-                        if maybe.isNone(:ir.Variable v) then fail("a call of no member " <> member) end
+                        if maybe.isNone(v) then fail("a call of no member " <> member) end
                         let y = tuple
                             let var callee = v let var typeArgs = x.typeArgs let var args = x.args
                             let var moduleRef = maybe.none(:ir.ModuleRef) let var member = maybe.none(:String)
                             let var calleeType = x.calleeType let var descriptors = x.descriptors
                         end
                         let direct = directCallee(f y)
-                        if maybe.isSome(:Int direct) then
+                        if maybe.isSome(direct) then
                             closureArg(f y)
                             descriptors(f y.descriptors)
                             atoms(f y.args)
-                            emit(f i1(ops.call maybe.unwrap(:Int direct)))
+                            emit(f i1(ops.call maybe.unwrap(direct)))
                         else closureCall(f y false)
                         end
                 end
@@ -3028,7 +3028,7 @@ export
      * unbox, or a cast does *)
     let typeApp(f: F x: ir.OpTypeApp target: maybe.T(ir.Variable)): Ok =
         begin
-            if maybe.isSome(:Array(ir.DescriptorParam) x.thunkParams) then
+            if maybe.isSome(x.thunkParams) then
                 fail("a type application whose instance is a function, not its thunk's closure")
             end
             let asCall = fun(callee: maybe.T(ir.Variable) moduleRef: maybe.T(ir.ModuleRef)): ir.OpCall
@@ -3037,12 +3037,12 @@ export
                     let var moduleRef = moduleRef let var member = x.member let var calleeType = x.calleeType
                     let var descriptors = x.descriptors
                 end
-            if maybe.isSome(:ir.Variable x.callee) then closureCall(f asCall(x.callee maybe.none(:ir.ModuleRef)) false)
-            elsif maybe.isNone(:ir.ModuleRef x.moduleRef) then fail("a type application of no function")
+            if maybe.isSome(x.callee) then closureCall(f asCall(x.callee maybe.none(:ir.ModuleRef)) false)
+            elsif maybe.isNone(x.moduleRef) then fail("a type application of no function")
             else call(f asCall(maybe.none(:ir.Variable) x.moduleRef))
             end
-            if {extent x.plans > 0} andif maybe.isSome(:ir.Plan x.plans[0]) then
-                let plan = maybe.unwrap(:ir.Plan x.plans[0])
+            if {extent x.plans > 0} andif maybe.isSome(x.plans[0]) then
+                let plan = maybe.unwrap(x.plans[0])
                 case plan.kind
                     when planBox, planSlotBox then box(f plan.source)
                     when planUnbox, planSlotUnbox then unboxFor(f plan.target target)
@@ -3064,7 +3064,7 @@ export
             end
             let var found = maybe.none(:String)
             for k = 0 upto {extent pairs / 2} - 1 do
-                if stringOp.equal(pairs[2 * k] name) then found := maybe.some(:String pairs[{2 * k} + 1]) end
+                if stringOp.equal(pairs[2 * k] name) then found := maybe.some(pairs[{2 * k} + 1]) end
             end
             found
         end
@@ -3079,7 +3079,7 @@ export
             let fields = shapes.sortedComponents(vs)
             let var k = ~1
             for j = 0 upto extent fields - 1 do
-                if stringOp.equal(maybe.unwrapOr(:String fields[j].name "") name) then k := j end
+                if stringOp.equal(maybe.unwrapOr(fields[j].name "") name) then k := j end
             end
             if k < 0 then fail("a record type without the field " <> name) end
             let d = scratch(f model.eqref)
@@ -3100,19 +3100,19 @@ export
     let knownLibraryMember(f: F x: ir.OpModuleMember): Bool =
         begin
             let name = case x.moduleRef
-                when refImport with imp then maybe.unwrapOr(:String imp.i.libPath "") <> "."
-                    <> maybe.unwrapOr(:String x.member "")
+                when refImport with imp then maybe.unwrapOr(imp.i.libPath "") <> "."
+                    <> maybe.unwrapOr(x.member "")
                 when refModule then ""
             end
             stringOp.equal(name "writer.output") orif stringOp.equal(name "writer.err")
-                orif maybe.isSome(:String libraryException(name))
+                orif maybe.isSome(libraryException(name))
         end
 
     let libraryMember(f: F x: ir.OpModuleMember): Ok =
         begin
             let name = case x.moduleRef
-                when refImport with imp then maybe.unwrapOr(:String imp.i.libPath "") <> "."
-                    <> maybe.unwrapOr(:String x.member "")
+                when refImport with imp then maybe.unwrapOr(imp.i.libPath "") <> "."
+                    <> maybe.unwrapOr(x.member "")
                 when refModule then ""
             end
             if stringOp.equal(name "writer.output") then
@@ -3121,8 +3121,8 @@ export
             elsif stringOp.equal(name "writer.err") then
                 emit(f model.i32Const(2))
                 emit(f i(ops.refI31))
-            elsif maybe.isSome(:String libraryException(name)) then
-                emit(f i1(ops.globalGet builtinException(maybe.unwrap(:String libraryException(name)))))
+            elsif maybe.isSome(libraryException(name)) then
+                emit(f i1(ops.globalGet builtinException(maybe.unwrap(libraryException(name)))))
             else fail("the module member " <> name)
             end
         end
@@ -3135,48 +3135,48 @@ export
     let member(f: F x: ir.OpModuleMember target: maybe.T(ir.Variable)): Ok =
         case x.moduleRef
             when refImport with imp then
-                if maybe.isSome(:String imp.i.libPath) andif {f.g.isCore orif knownLibraryMember(f x)} then
+                if maybe.isSome(imp.i.libPath) andif {f.g.isCore orif knownLibraryMember(f x)} then
                     libraryMember(f x)
-                elsif maybe.isNone(:String x.member) then
+                elsif maybe.isNone(x.member) then
                     (* the unit itself, its record *)
-                    if not(hashMap.contains(:String :Int f.g.importRecords imp.i.canonicalPath)) then
+                    if not(hashMap.contains(f.g.importRecords imp.i.canonicalPath)) then
                         fail("the unit " <> imp.i.canonicalPath <> "'s record")
                     end
-                    let first = hashMap.find(:String :Int f.g.importRecords imp.i.canonicalPath)
+                    let first = hashMap.find(f.g.importRecords imp.i.canonicalPath)
                     emit(f i1(ops.globalGet first))
                     emit(f i1(ops.globalGet first + 1))
-                    if maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).boxed then
-                        box(f maybe.unwrap(:ir.Variable target).type)
+                    if maybe.isSome(target) andif maybe.unwrap(target).boxed then
+                        box(f maybe.unwrap(target).type)
                     end
                 else
-                    let m = maybe.unwrapOr(:String x.member "")
-                    if not(hashMap.contains(:String :Int f.g.importRecords imp.i.canonicalPath))
-                        orif maybe.isNone(:ir.Type imp.i.recordType) then
+                    let m = maybe.unwrapOr(x.member "")
+                    if not(hashMap.contains(f.g.importRecords imp.i.canonicalPath))
+                        orif maybe.isNone(imp.i.recordType) then
                         fail("the unit " <> imp.i.canonicalPath <> "'s record")
                     end
-                    let first = hashMap.find(:String :Int f.g.importRecords imp.i.canonicalPath)
-                    let recordType = maybe.unwrap(:ir.Type imp.i.recordType)
+                    let first = hashMap.find(f.g.importRecords imp.i.canonicalPath)
+                    let recordType = maybe.unwrap(imp.i.recordType)
                     emit(f i1(ops.globalGet first))
                     emit(f i1(ops.globalGet first + 1))
                     fieldSlotOnStack(f recordType m)
                     emit(f i1(ops.arrayGet rt.index("slots")))
-                    let c = maybe.unwrap(:shapes.Component shapes.component(shapeOf(recordType) m))
+                    let c = maybe.unwrap(shapes.component(shapeOf(recordType) m))
                     unboxFor(f shapes.componentShape(c).type target)
                 end
             when refModule with r then
-                if maybe.isNone(:String x.member) then
+                if maybe.isNone(x.member) then
                     (* the module itself, its record *)
-                    if maybe.isNone(:ir.Variable r.m.recordVar) then fail("a module without its record") end
-                    let rv = maybe.unwrap(:ir.Variable r.m.recordVar)
+                    if maybe.isNone(r.m.recordVar) then fail("a module without its record") end
+                    let rv = maybe.unwrap(r.m.recordVar)
                     atom(f ir.atomOfVar(rv))
-                    let boxedTarget = maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).boxed
+                    let boxedTarget = maybe.isSome(target) andif maybe.unwrap(target).boxed
                     if boxedTarget andif not(rv.boxed) then
-                        box(f maybe.unwrap(:ir.Variable target).type)
+                        box(f maybe.unwrap(target).type)
                     end
                 else
-                    let v = ir.member(r.m.members maybe.unwrapOr(:String x.member ""))
-                    if maybe.isNone(:ir.Variable v) then fail("no member " <> maybe.unwrapOr(:String x.member "")) end
-                    atom(f ir.atomOfVar(maybe.unwrap(:ir.Variable v)))
+                    let v = ir.member(r.m.members maybe.unwrapOr(x.member ""))
+                    if maybe.isNone(v) then fail("no member " <> maybe.unwrapOr(x.member "")) end
+                    atom(f ir.atomOfVar(maybe.unwrap(v)))
                 end
         end
 
@@ -3190,29 +3190,29 @@ export
             let vs = shapes.sortedComponents(shapeOf(view))
             let ls = shapes.sortedComponents(shapeOf(layout))
             let key = conv.int(shapeOf(view).id) <> ":" <> conv.int(shapeOf(layout).id)
-            if hashMap.contains(:String :Int f.g.dicts key) then hashMap.find(:String :Int f.g.dicts key)
+            if hashMap.contains(f.g.dicts key) then hashMap.find(f.g.dicts key)
             else
                 let init = vector.new(:Inst)
                 for k = 0 upto extent vs - 1 do
-                    let name = maybe.unwrapOr(:String vs[k].name "")
+                    let name = maybe.unwrapOr(vs[k].name "")
                     let var at = ~1
                     for j = 0 upto extent ls - 1 do
-                        if stringOp.equal(maybe.unwrapOr(:String ls[j].name "") name) then at := j end
+                        if stringOp.equal(maybe.unwrapOr(ls[j].name "") name) then at := j end
                     end
                     if at < 0 then fail("a view's field " <> name <> " that the record does not have") end
-                    vector.append(:Inst init model.i32Const(at))
+                    vector.append(init model.i32Const(at))
                 end
-                vector.append(:Inst init i2(ops.arrayNewFixed rt.index("i32s") extent vs))
+                vector.append(init i2(ops.arrayNewFixed rt.index("i32s") extent vs))
                 (* no field stored at another type: only the core's tables,
                  * made from descriptors, say otherwise *)
-                vector.append(:Inst init option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
-                vector.append(:Inst init i1(ops.structNew tDict))
-                let n = model.importedGlobals(f.g.m) + vector.length(:model.Global f.g.m.globals)
-                vector.append(:model.Global f.g.m.globals tuple
+                vector.append(init option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
+                vector.append(init i1(ops.structNew tDict))
+                let n = model.importedGlobals(f.g.m) + vector.length(f.g.m.globals)
+                vector.append(f.g.m.globals tuple
                     let name = fresh(f.g.names "dict") let type = model.ref(tDict) let mutable = false
-                    let init = vector.toArray(:Inst init)
+                    let init = vector.toArray(init)
                 end)
-                hashMap.insert(:String :Int f.g.dicts key n)
+                hashMap.insert(f.g.dicts key n)
                 n
             end
         end
@@ -3221,8 +3221,8 @@ export
      * table; boxed if target is held boxed *)
     let makeRecord(f: F x: ir.OpMakeRecord target: maybe.T(ir.Variable)): Ok =
         begin
-            let runtime = x.runtimeOffsets orif maybe.isNone(:ir.OffsetTable x.offsets)
-            if runtime andif {maybe.isNone(:ir.Descriptor x.viewDescriptor) orif maybe.isNone(:ir.Descriptor x.descriptor)}
+            let runtime = x.runtimeOffsets orif maybe.isNone(x.offsets)
+            if runtime andif {maybe.isNone(x.viewDescriptor) orif maybe.isNone(x.descriptor)}
             then fail("a record whose table is known only at run time, without its descriptors") end
             (* its fields in name order: its layout's *)
             let names = array of(extent x.fields "")
@@ -3239,16 +3239,16 @@ export
             emit(f model.i32Const(0))
             (* the descriptor of its own type, its layout, which its tables
              * are made for (quest_record_layout) *)
-            let made = if maybe.isNone(:ir.Descriptor x.descriptor) then false
+            let made = if maybe.isNone(x.descriptor) then false
                 else
-                    case maybe.unwrap(:ir.Descriptor x.descriptor)
-                        when descStatic with d then hashMap.contains(:String :Int f.g.descGlobals formOf(f.g d.d).symbol)
+                    case maybe.unwrap(x.descriptor)
+                        when descStatic with d then hashMap.contains(f.g.descGlobals formOf(f.g d.d).symbol)
                         else true
                     end
                 end
             (* none where the unit makes no descriptor for it, a record no
              * view needs (a closure's captures) *)
-            if made then descriptor(f maybe.unwrap(:ir.Descriptor x.descriptor))
+            if made then descriptor(f maybe.unwrap(x.descriptor))
             else emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
             end
             for k = 0 upto extent names - 1 do
@@ -3269,14 +3269,14 @@ export
                 emit(f i1(ops.localTee payload))
                 emit(f i1(ops.globalGet f.g.noClosure))
                 emit(f i1(ops.localGet payload))
-                descriptor(f maybe.unwrap(:ir.Descriptor x.viewDescriptor))
+                descriptor(f maybe.unwrap(x.viewDescriptor))
                 runtimeUnitCall(f "wasm/core.viewDict")
             else
-                let table = maybe.unwrap(:ir.OffsetTable x.offsets)
+                let table = maybe.unwrap(x.offsets)
                 emit(f i1(ops.globalGet dict(f table.view table.layout)))
             end
-            if maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).boxed then
-                box(f maybe.unwrap(:ir.Variable target).type)
+            if maybe.isSome(target) andif maybe.unwrap(target).boxed then
+                box(f maybe.unwrap(target).type)
             end
         end
 
@@ -3286,7 +3286,7 @@ export
             let fields = shapes.sortedComponents(vs)
             let var k = ~1
             for j = 0 upto extent fields - 1 do
-                if stringOp.equal(maybe.unwrapOr(:String fields[j].name "") name) then k := j end
+                if stringOp.equal(maybe.unwrapOr(fields[j].name "") name) then k := j end
             end
             k
         end
@@ -3323,8 +3323,8 @@ export
      * from its slot, through its view's table *)
     let recordField(f: F x: ir.OpRecordField target: maybe.T(ir.Variable)): Ok =
         begin
-            let c = maybe.unwrap(:shapes.Component shapes.component(shapeOf(ir.atomType(x.recordAtom)) x.name))
-            if maybe.isSome(:ir.Variable x.viewMap) then
+            let c = maybe.unwrap(shapes.component(shapeOf(ir.atomType(x.recordAtom)) x.name))
+            if maybe.isSome(x.viewMap) then
                 (* the bound's field, through the map of the type argument's
                  * fields, converted from the type it is stored at *)
                 let payload = scratch(f model.eqref)
@@ -3339,7 +3339,7 @@ export
                 emit(f model.i64Const(fieldIndex(shapeOf(ir.atomType(x.recordAtom)) x.name)))
                 runtimeUnitCall(f "wasm/core.viewRecordField")
             elsif x.stored then
-                if maybe.isNone(:ir.Descriptor x.descriptor) then fail("a stored field without its descriptor") end
+                if maybe.isNone(x.descriptor) then fail("a stored field without its descriptor") end
                 let dict = scratch(f model.eqref)
                 let value = scratch(f model.eqref)
                 recordAtom(f x.recordAtom)
@@ -3351,7 +3351,7 @@ export
                 emit(f i1(ops.localGet value))
                 emit(f i1(ops.localGet dict))
                 emit(f model.i64Const(fieldIndex(shapeOf(ir.atomType(x.recordAtom)) x.name)))
-                descriptor(f maybe.unwrap(:ir.Descriptor x.descriptor))
+                descriptor(f maybe.unwrap(x.descriptor))
                 runtimeUnitCall(f "wasm/core.storedField")
             else
                 fieldSlot(f x.recordAtom x.name)
@@ -3366,9 +3366,9 @@ export
      * its signature is the uniform one, else a function that unboxes the
      * arguments, calls it, and boxes the result *)
     let uniformEntry(g: G fn: ir.Function): Int =
-        if hashMap.contains(:Int :Int g.uniforms fn.id) then hashMap.find(:Int :Int g.uniforms fn.id)
+        if hashMap.contains(g.uniforms fn.id) then hashMap.find(g.uniforms fn.id)
         else
-            let native = hashMap.find(:Int :Int g.functions fn.id)
+            let native = hashMap.find(g.functions fn.id)
             let sig = closureSig(fn.v.type)
             let n = arity(fn.v.type)
             let index = if isUniform(sig n) then native
@@ -3405,14 +3405,14 @@ export
                             box(f result)
                         end
                     end
-                    let at = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
-                    vector.append(:model.Function g.m.functions tuple
+                    let at = model.importedFunctions(g.m) + vector.length(g.m.functions)
+                    vector.append(g.m.functions tuple
                         let name = fresh(g.names fn.v.hint <> ".uniform") let type = uniformType(g n) let params = names
                         let locals = f.declared let body = f.code
                     end)
                     at
                 end
-            hashMap.insert(:Int :Int g.uniforms fn.id index)
+            hashMap.insert(g.uniforms fn.id index)
             index
         end
 
@@ -3422,7 +3422,7 @@ export
      * result's components and so has another type; the closure is there for
      * fn's captures, which a direct call reads from it *)
     let trapNative(g: G fn: ir.Function): Int =
-        if hashMap.contains(:Int :Int g.trapNatives fn.id) then hashMap.find(:Int :Int g.trapNatives fn.id)
+        if hashMap.contains(g.trapNatives fn.id) then hashMap.find(g.trapNatives fn.id)
         else
             let sig = closureSig(fn.v.type)
             let names = array of({extent sig.params + 1} "")
@@ -3430,31 +3430,31 @@ export
             for k = 1 upto extent sig.params do names[k] := "a" <> conv.int(k - 1) end
             let f = newF(g names sig.results ~1)
             emit(f i(ops.unreachable))
-            let at = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
-            vector.append(:model.Function g.m.functions tuple
+            let at = model.importedFunctions(g.m) + vector.length(g.m.functions)
+            vector.append(g.m.functions tuple
                 let name = fresh(g.names fn.v.hint <> ".native") let type = nativeType(g sig) let params = names
                 let locals = f.declared let body = f.code
             end)
-            hashMap.insert(:Int :Int g.trapNatives fn.id at)
+            hashMap.insert(g.trapNatives fn.id at)
             at
         end
 
     (* A function's static closure, which captures nothing: an immutable
      * global, made once *)
     let staticClosure(g: G fn: ir.Function): Int =
-        if hashMap.contains(:Int :Int g.staticClosures fn.id) then hashMap.find(:Int :Int g.staticClosures fn.id)
+        if hashMap.contains(g.staticClosures fn.id) then hashMap.find(g.staticClosures fn.id)
         else
             let own = ownType(g fn)
             let u = uniformEntry(g fn)
-            let native = hashMap.find(:Int :Int g.functions fn.id)
+            let native = hashMap.find(g.functions fn.id)
             declare(g u)
             declare(g native)
-            let n = model.importedGlobals(g.m) + vector.length(:model.Global g.m.globals)
-            vector.append(:model.Global g.m.globals tuple
+            let n = model.importedGlobals(g.m) + vector.length(g.m.globals)
+            vector.append(g.m.globals tuple
                 let name = fresh(g.names fn.v.hint <> ".static") let type = model.ref(own) let mutable = false
                 let init = array of model.i32Const(0) i1(ops.refFunc u) i1(ops.refFunc native) i1(ops.structNew own) end
             end)
-            hashMap.insert(:Int :Int g.staticClosures fn.id n)
+            hashMap.insert(g.staticClosures fn.id n)
             n
         end
 
@@ -3490,12 +3490,12 @@ export
                 castTo(f tDict)
                 emit(f i1(ops.structNew tRecBox))
             when planVariantTags then
-                let table = maybe.unwrap(:ir.TagMap plan.tagMap)
+                let table = maybe.unwrap(plan.tagMap)
                 let sourceS = shapeOf(table.source)
                 let targetS = shapeOf(table.target)
                 let tags = array of(extent sourceS.cases 0)
                 for k = 0 upto extent sourceS.cases - 1 do
-                    tags[k] := tagIndex(targetS maybe.unwrapOr(:String sourceS.cases[k].name ""))
+                    tags[k] := tagIndex(targetS maybe.unwrapOr(sourceS.cases[k].name ""))
                 end
                 let held = scratch(f model.eqref)
                 unbox(f plan.source)
@@ -3505,12 +3505,12 @@ export
                 box(f plan.target)
             when planCopy then copyTuple(f plan)
             when planAdapt then
-                if maybe.isNone(:ir.Function plan.thunk) then fail("an adapt plan without its adapter") end
-                let fn = maybe.unwrap(:ir.Function plan.thunk)
+                if maybe.isNone(plan.thunk) then fail("an adapt plan without its adapter") end
+                let fn = maybe.unwrap(plan.thunk)
                 if capturedDescriptors(fn) > 0 then fail("an adapter whose closure supplies descriptors") end
                 let own = ownType(f.g fn)
                 let u = uniformEntry(f.g fn)
-                let native = hashMap.find(:Int :Int f.g.functions fn.id)
+                let native = hashMap.find(f.g.functions fn.id)
                 declare(f.g u)
                 declare(f.g native)
                 let v = scratch(f model.eqref)
@@ -3542,7 +3542,7 @@ export
                 emit(f i1(ops.localGet slots))
                 emit(f model.i32Const(i))
                 emit(f i1(ops.arrayGet tSlots))
-                if maybe.isSome(:ir.Plan plan.fields[i]) then slotConvert(f maybe.unwrap(:ir.Plan plan.fields[i])) end
+                if maybe.isSome(plan.fields[i]) then slotConvert(f maybe.unwrap(plan.fields[i])) end
             end
             emit(f i2(ops.arrayNewFixed tSlots n))
             emit(f i1(ops.structNew tTuple))
@@ -3561,12 +3561,12 @@ export
             when planAdapt then
                 (* a closure of the adapter (ir/thunks), which captures the
                  * closure it adapts *)
-                if maybe.isNone(:ir.Function x.plan.thunk) then fail("an adapt plan without its adapter") end
-                let fn = maybe.unwrap(:ir.Function x.plan.thunk)
+                if maybe.isNone(x.plan.thunk) then fail("an adapt plan without its adapter") end
+                let fn = maybe.unwrap(x.plan.thunk)
                 if capturedDescriptors(fn) > 0 then fail("an adapter whose closure supplies descriptors") end
                 let own = ownType(f.g fn)
                 let u = uniformEntry(f.g fn)
-                let native = hashMap.find(:Int :Int f.g.functions fn.id)
+                let native = hashMap.find(f.g.functions fn.id)
                 declare(f.g u)
                 declare(f.g native)
                 emit(f model.i32Const(0))
@@ -3579,19 +3579,19 @@ export
                 atom(f x.value)
                 if not(f.g.isRuntime) then accessAs(f tTuple ir.original) end
             when planVariantTags then
-                let table = maybe.unwrap(:ir.TagMap x.plan.tagMap)
+                let table = maybe.unwrap(x.plan.tagMap)
                 let sourceS = shapeOf(table.source)
                 let targetS = shapeOf(table.target)
                 let tags = array of(extent sourceS.cases 0)
                 for k = 0 upto extent sourceS.cases - 1 do
-                    tags[k] := tagIndex(targetS maybe.unwrapOr(:String sourceS.cases[k].name ""))
+                    tags[k] := tagIndex(targetS maybe.unwrapOr(sourceS.cases[k].name ""))
                 end
                 let held = scratch(f model.eqref)
                 variantAtom(f x.value)
                 emit(f i1(ops.localSet held))
                 mapI32(f tags)
                 emit(f i1(ops.localGet held))
-                if maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).boxed then
+                if maybe.isSome(target) andif maybe.unwrap(target).boxed then
                     box(f x.plan.target)
                 end
             when planRecordView then
@@ -3608,7 +3608,7 @@ export
                 emit(f i1(ops.localSet dict))
                 emit(f i1(ops.localGet payload))
                 emit(f i1(ops.localGet dict))
-                if maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).boxed then
+                if maybe.isSome(target) andif maybe.unwrap(target).boxed then
                     box(f x.plan.target)
                 end
             when planView, planRuntime, planCopy then
@@ -3627,7 +3627,7 @@ export
      * it sees the operator, as for the primitive); String's <>; and Bool's
      * eager /\ and \/ *)
     let builtinClosure(g: G name: String): Int =
-        if hashMap.contains(:String :Int g.builtins name) then hashMap.find(:String :Int g.builtins name)
+        if hashMap.contains(g.builtins name) then hashMap.find(g.builtins name)
         else
             let named = fun(n: String): Bool stringOp.equal(name n)
             let isOneOf = fun(ns: Array(String)): Bool
@@ -3704,8 +3704,8 @@ export
                     else ops.i32Or end))
                 if realArithmetic then notNaN(nf maybe.none(:Int)) end
             end
-            let native = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
-            vector.append(:model.Function g.m.functions tuple
+            let native = model.importedFunctions(g.m) + vector.length(g.m.functions)
+            vector.append(g.m.functions tuple
                 let name = fresh(g.names "builtin" <> name) let type = nativeType(g sig)
                 let params = array of "closure" "a" "b" end
                 let locals = nf.declared let body = nf.code
@@ -3733,21 +3733,21 @@ export
                 when valI32 then emit(uf i(ops.refI31))
                 else ok
             end
-            let uniform = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
-            vector.append(:model.Function g.m.functions tuple
+            let uniform = model.importedFunctions(g.m) + vector.length(g.m.functions)
+            vector.append(g.m.functions tuple
                 let name = fresh(g.names "builtin" <> name <> ".uniform") let type = uniformType(g 2)
                 let params = array of "closure" "a" "b" end let locals = uf.declared let body = uf.code
             end)
             declare(g native)
             declare(g uniform)
-            let n = model.importedGlobals(g.m) + vector.length(:model.Global g.m.globals)
-            vector.append(:model.Global g.m.globals tuple
+            let n = model.importedGlobals(g.m) + vector.length(g.m.globals)
+            vector.append(g.m.globals tuple
                 let name = fresh(g.names "builtin" <> name <> ".static") let type = model.ref(s) let mutable = false
                 let init = array of
                     model.i32Const(0) i1(ops.refFunc uniform) i1(ops.refFunc native) i1(ops.structNew s)
                 end
             end)
-            hashMap.insert(:String :Int g.builtins name n)
+            hashMap.insert(g.builtins name n)
             n
         end
 
@@ -3801,8 +3801,8 @@ export
             emit(f i2(ops.structGet t 4))
             emit(f i1(ops.localGet result))
             emit(f i1(ops.call adaptResult))
-            let at = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
-            vector.append(:model.Function g.m.functions tuple
+            let at = model.importedFunctions(g.m) + vector.length(g.m.functions)
+            vector.append(g.m.functions tuple
                 let name = fresh(g.names "adapt" <> conv.int(n) <> ".uniform") let type = uniformType(g n)
                 let params = names let locals = f.declared let body = f.code
             end)
@@ -3817,16 +3817,16 @@ export
      * function *)
     let maxAdapted = 8
     let adapters(g: G): Int =
-        if hashMap.contains(:String :Int g.runtimeFunctions "adaptClosure") then
-            hashMap.find(:String :Int g.runtimeFunctions "adaptClosure")
+        if hashMap.contains(g.runtimeFunctions "adaptClosure") then
+            hashMap.find(g.runtimeFunctions "adaptClosure")
         else
             let helper = fun(name: String): Int
                 begin
                     let var found = ~1
-                    for k = 0 upto vector.length(:ir.Function g.unit.functions) - 1 do
-                        let fn = vector.get(:ir.Function g.unit.functions k)
+                    for k = 0 upto vector.length(g.unit.functions) - 1 do
+                        let fn = vector.get(g.unit.functions k)
                         if {found < 0} andif stringOp.equal(fn.v.hint name) then
-                            found := hashMap.find(:Int :Int g.functions fn.id)
+                            found := hashMap.find(g.functions fn.id)
                         end
                     end
                     if found < 0 then fail("the core's " <> name) end
@@ -3870,13 +3870,13 @@ export
             castTo(f closU(g 3))
             emit(f i2(ops.structGet closU(g 3) 1))
             emit(f i1(ops.callRef uniformType(g 3)))
-            let index = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
-            vector.append(:model.Function g.m.functions tuple
+            let index = model.importedFunctions(g.m) + vector.length(g.m.functions)
+            vector.append(g.m.functions tuple
                 let name = fresh(g.names "adaptClosure")
                 let type = funcType(g array of model.eqref model.eqref model.eqref model.i64 end array of model.eqref end)
                 let params = names let locals = f.declared let body = f.code
             end)
-            hashMap.insert(:String :Int g.runtimeFunctions "adaptClosure" index)
+            hashMap.insert(g.runtimeFunctions "adaptClosure" index)
             index
         end
 
@@ -3888,29 +3888,29 @@ export
             let bodies = walk.unitBodies(unit)
             for b = 0 upto extent bodies - 1 do
                 let ss = walk.walkStatements(bodies[b] true)
-                for k = 0 upto vector.length(:ir.Stmt ss) - 1 do
-                    let op = case vector.get(:ir.Stmt ss k)
-                        when sLet with x then maybe.some(:ir.Op x.value)
-                        when sDo with x then maybe.some(:ir.Op x.value)
+                for k = 0 upto vector.length(ss) - 1 do
+                    let op = case vector.get(ss k)
+                        when sLet with x then maybe.some(x.value)
+                        when sDo with x then maybe.some(x.value)
                         else maybe.none(:ir.Op)
                     end
-                    if maybe.isSome(:ir.Op op) then
-                        case maybe.unwrap(:ir.Op op)
+                    if maybe.isSome(op) then
+                        case maybe.unwrap(op)
                             when opCall with x then
-                                if maybe.isSome(:ir.Variable x.callee) then
-                                    let n = arity(maybe.unwrap(:ir.Variable x.callee).type)
+                                if maybe.isSome(x.callee) then
+                                    let n = arity(maybe.unwrap(x.callee).type)
                                     let var seen = n <= maxAdapted
-                                    for j = 0 upto vector.length(:Int found) - 1 do
-                                        if vector.get(:Int found j) is n then seen := true end
+                                    for j = 0 upto vector.length(found) - 1 do
+                                        if vector.get(found j) is n then seen := true end
                                     end
-                                    if not(seen) then vector.append(:Int found n) end
+                                    if not(seen) then vector.append(found n) end
                                 end
                             else ok
                         end
                     end
                 end
             end
-            vector.toArray(:Int found)
+            vector.toArray(found)
         end
 
     (* The adapters of the arities past the core's that the unit calls
@@ -3922,8 +3922,8 @@ export
         for k = 0 upto extent arities - 1 do
             let g = f.g
             let n = arities[k]
-            let a = adapterOf(g n hashMap.find(:String :Int g.runtimeUnits "wasm/core.adaptArg")
-                hashMap.find(:String :Int g.runtimeUnits "wasm/core.adaptResult"))
+            let a = adapterOf(g n hashMap.find(g.runtimeUnits "wasm/core.adaptArg")
+                hashMap.find(g.runtimeUnits "wasm/core.adaptResult"))
             let mf = newF(g array of "maker" "v" "from" "to" end array of model.eqref end ~1)
             emit(mf model.i32Const(0))
             emit(mf i1(ops.refFunc a.entry))
@@ -3931,8 +3931,8 @@ export
             emit(mf i1(ops.localGet 2))
             emit(mf i1(ops.localGet 3))
             emit(mf i1(ops.structNew a.type))
-            let maker = model.importedFunctions(g.m) + vector.length(:model.Function g.m.functions)
-            vector.append(:model.Function g.m.functions tuple
+            let maker = model.importedFunctions(g.m) + vector.length(g.m.functions)
+            vector.append(g.m.functions tuple
                 let name = fresh(g.names "adapt" <> conv.int(n) <> ".maker") let type = uniformType(g 3)
                 let params = array of "maker" "v" "from" "to" end let locals = mf.declared let body = mf.code
             end)
@@ -3963,7 +3963,7 @@ export
                 let own = ownType(f.g fn)
                 let u = uniformEntry(f.g fn)
                 let native = if fn.unboxedResult then trapNative(f.g fn)
-                    else hashMap.find(:Int :Int f.g.functions fn.id) end
+                    else hashMap.find(f.g.functions fn.id) end
                 declare(f.g u)
                 declare(f.g native)
                 emit(f model.i32Const(0))
@@ -3975,7 +3975,7 @@ export
                 for k = 0 upto extent x.captures - 1 do
                     let a = x.captures[k]
                     let pending = case a
-                        when atomVar with v then hashMap.contains(:Int :Bool f.deferred v.v.id)
+                        when atomVar with v then hashMap.contains(f.deferred v.v.id)
                         else false
                     end
                     if pending then
@@ -3993,19 +3993,19 @@ export
                                     end)
                             end
                         end
-                        vector.append(:Patch later tuple
+                        vector.append(later tuple
                             let holder = 0 let own = own let field = captureField(f.g fn k) let parts = ps let atom = a
                         end)
                     else atom(f a)
                     end
                 end
                 emit(f i1(ops.structNew own))
-                if not(vector.empty(:Patch later)) then
+                if not(vector.empty(later)) then
                     let holder = scratch(f model.eqref)
                     emit(f i1(ops.localTee holder))
-                    for k = 0 upto vector.length(:Patch later) - 1 do
-                        let pt = vector.get(:Patch later k)
-                        vector.append(:Patch f.patches
+                    for k = 0 upto vector.length(later) - 1 do
+                        let pt = vector.get(later k)
+                        vector.append(f.patches
                             tuple let holder = holder let own = pt.own let field = pt.field let parts = pt.parts
                                 let atom = pt.atom end)
                     end
@@ -4117,10 +4117,10 @@ export
                         case c.c.value when constString with s then s.s else "" end
                     else ""
                 end
-                if not(hashMap.contains(:String :Int f.g.importRecords unitName)) then
+                if not(hashMap.contains(f.g.importRecords unitName)) then
                     fail("importedRecord of a unit not imported: " <> unitName)
                 end
-                emit(f i1(ops.globalGet hashMap.find(:String :Int f.g.importRecords unitName)))
+                emit(f i1(ops.globalGet hashMap.find(f.g.importRecords unitName)))
             elsif named("recordSet") then
                 (* a record's field, by its index in name order, set *)
                 let tRecord = rt.index("record")
@@ -4134,8 +4134,8 @@ export
             elsif named("toAny") then boxedAtom(f args[0])
             elsif named("fromAny") then
                 atom(f args[0])
-                if maybe.isSome(:ir.Variable target) then
-                    unboxFor(f maybe.unwrap(:ir.Variable target).type target)
+                if maybe.isSome(target) then
+                    unboxFor(f maybe.unwrap(target).type target)
                 end
             elsif named("same") then
                 atoms(f args)
@@ -4388,7 +4388,7 @@ export
     let operation(f: F o: ir.Op target: maybe.T(ir.Variable)): Ok =
         begin
         let targetType = fun(): ir.Type
-            if maybe.isSome(:ir.Variable target) then maybe.unwrap(:ir.Variable target).type
+            if maybe.isSome(target) then maybe.unwrap(target).type
             else raise unsupported with "an aggregate made and not bound" end
             end
         case o
@@ -4397,8 +4397,8 @@ export
                 (* a record or variant copied between a variable that holds it
                  * boxed (a var parameter's, whose slot holds it so) and one
                  * that does not *)
-                if maybe.isSome(:ir.Variable target) then
-                    let v = maybe.unwrap(:ir.Variable target)
+                if maybe.isSome(target) then
+                    let v = maybe.unwrap(target)
                     let boxedHere = isBoxedVar(x.atom)
                     if {isRecord(v.type) orif isVariant(v.type)} andif {boxedHere isnot v.boxed} then
                         if boxedHere then unbox(f v.type) else box(f v.type) end
@@ -4411,24 +4411,24 @@ export
             when opEnvField with x then
                 (* capture x.index, from the fields of the function's own
                  * closure type that hold its parts *)
-                let fn = hashMap.find(:Int :ir.Function f.g.byId f.fnId)
+                let fn = hashMap.find(f.g.byId f.fnId)
                 let own = ownType(f.g fn)
                 let at = captureField(f.g fn x.index)
-                let captures = hashMap.find(:Int :Array(ir.Type) f.g.captureTypes fn.id)
+                let captures = hashMap.find(f.g.captureTypes fn.id)
                 for j = 0 upto extent parts(captures[x.index]) - 1 do
                     atom(f x.env)
                     castTo(f own)
                     emit(f i2(ops.structGet own at + j))
                 end
             when opMakeTuple with x then
-                if maybe.isSome(:ir.Variable target) andif maybe.unwrap(:ir.Variable target).unboxed then
+                if maybe.isSome(target) andif maybe.unwrap(target).unboxed then
                     atoms(f x.args)
                 else newTuple(f x.args)
                 end
             when opTupleField with x then tupleField(f x target)
             when opMakeOption with x then makeOption(f x targetType())
             when opIsTag with x then
-                if maybe.isSome(:ir.Variable x.viewMap) then
+                if maybe.isSome(x.viewMap) then
                     viewTag(f x.value x.viewMap)
                     emit(f model.i32Const(tagIndex(shapeOf(ir.atomType(x.value)) x.tag)))
                 elsif isVariantShape(ir.atomType(x.value)) then
@@ -4447,14 +4447,14 @@ export
                 end
             when opOrdinal with x then
                 let s = optionShape(ir.atomType(x.value))
-                if maybe.isSome(:ir.Variable x.viewMap) then viewTag(f x.value x.viewMap)
+                if maybe.isSome(x.viewMap) then viewTag(f x.value x.viewMap)
                 else tagOf(f x.value x.access)
                 end
                 (* The tag numbers the shape's cases, by name; the ordinal
                  * counts the static type's, as written *)
                 let ordinals = array of(extent s.cases 0)
                 for k = 0 upto extent s.cases - 1 do
-                    let name = maybe.unwrapOr(:String s.cases[k].name "")
+                    let name = maybe.unwrapOr(s.cases[k].name "")
                     for j = 0 upto extent x.cases - 1 do
                         if stringOp.equal(x.cases[j] name) then ordinals[k] := j end
                     end
@@ -4481,24 +4481,24 @@ export
             when opExceptionPayload with x then
                 atom(f x.exc)
                 runtimeCall(f "payloadOf")
-                if maybe.isSome(:ir.Variable target) then unboxFor(f maybe.unwrap(:ir.Variable target).type target) end
+                if maybe.isSome(target) then unboxFor(f maybe.unwrap(target).type target) end
             (* the handler's state, a $raised, which raised.reraise throws *)
             when opCaughtException with x then atom(f x.exc)
             when opMakeVariant with x then
                 (* its tag, in its type's numbering, and its payload as a
                  * slot holds it; a case with none holds ok *)
                 emit(f model.i32Const(tagIndex(shapeOf(targetType()) x.tag)))
-                if maybe.isSome(:ir.Atom x.payload) then boxedAtom(f maybe.unwrap(:ir.Atom x.payload))
+                if maybe.isSome(x.payload) then boxedAtom(f maybe.unwrap(x.payload))
                 else
                     emit(f model.i32Const(0))
                     emit(f i(ops.refI31))
                 end
-                if maybe.unwrap(:ir.Variable target).boxed then box(f targetType()) end
+                if maybe.unwrap(target).boxed then box(f targetType()) end
             when opMakeAuto with x then
                 (* its witness's descriptor and its other components' tuple *)
-                if maybe.isNone(:ir.Descriptor x.descriptor) then fail("an auto value without its witness") end
+                if maybe.isNone(x.descriptor) then fail("an auto value without its witness") end
                 emit(f model.i32Const(0))
-                descriptor(f maybe.unwrap(:ir.Descriptor x.descriptor))
+                descriptor(f maybe.unwrap(x.descriptor))
                 boxedAtom(f x.payload)
                 emit(f i1(ops.structNew rt.index("auto")))
             (* Locations (section 2.6): a slot array and an index *)
@@ -4510,7 +4510,7 @@ export
                 emit(f i2(ops.arrayNewFixed tSlots 1))
                 emit(f model.i32Const(0))
             when opAddrField with x then
-                if maybe.isSome(:ir.Variable x.viewMap) then viewFieldSlot(f x.base x.name x.viewMap)
+                if maybe.isSome(x.viewMap) then viewFieldSlot(f x.base x.name x.viewMap)
                 else fieldSlot(f x.base x.name)
                 end
             when opAddrComponent with x then
@@ -4551,12 +4551,12 @@ export
         begin
             let kind = describe.echoValueKind(x.type)
             let suffix = if stringOp.isEmpty(x.prefix) then " : " <> genericLayout.qtypeToNameStr(x.type) else "" end
-            if stringOp.isEmpty(kind) andif maybe.isSome(:ir.Descriptor x.descriptor) then
+            if stringOp.isEmpty(kind) andif maybe.isSome(x.descriptor) then
                 (* written by its descriptor, by print's echo *)
                 emit(f i1(ops.globalGet f.g.noClosure))
                 literal(f x.prefix)
                 boxedAtom(f x.value)
-                descriptor(f maybe.unwrap(:ir.Descriptor x.descriptor))
+                descriptor(f maybe.unwrap(x.descriptor))
                 literal(f suffix)
                 runtimeUnitCall(f "wasm/print.echo")
                 emit(f i(ops.drop))
@@ -4626,13 +4626,13 @@ export
         if {extent s.params} isnot 1 then false
         else
             let ss = s.continuation.statements
-            if vector.length(:ir.Stmt ss) isnot 1 then false
+            if vector.length(ss) isnot 1 then false
             else
-                case vector.get(:ir.Stmt ss 0)
+                case vector.get(ss 0)
                     when sReturn with r then isVar(r.value s.params[0])
                     when sJump with j then
                         {extent j.args is 1} andif isVar(j.args[0] s.params[0])
-                        andif maybe.unwrapOr(:Bool hashMap.get(:String :Bool f.returning j.label) false)
+                        andif maybe.unwrapOr(hashMap.get(f.returning j.label) false)
                     else false
                 end
             end
@@ -4644,13 +4644,13 @@ export
     let returnsResult(f: F v: maybe.T(ir.Variable) next: ir.Stmt): Bool =
         case next
             when sReturn with r then
-                if maybe.isSome(:ir.Variable v) then isVar(r.value maybe.unwrap(:ir.Variable v))
+                if maybe.isSome(v) then isVar(r.value maybe.unwrap(v))
                 else case r.value when atomConst with c then c.c.value?constOk else false end
                 end
             when sJump with j then
-                maybe.isSome(:ir.Variable v) andif {extent j.args is 1}
-                andif isVar(j.args[0] maybe.unwrap(:ir.Variable v))
-                andif maybe.unwrapOr(:Bool hashMap.get(:String :Bool f.returning j.label) false)
+                maybe.isSome(v) andif {extent j.args is 1}
+                andif isVar(j.args[0] maybe.unwrap(v))
+                andif maybe.unwrapOr(hashMap.get(f.returning j.label) false)
             else false
         end
 
@@ -4664,14 +4664,14 @@ export
                     case x.value
                         when opCall with c then
                             if isGlobal(f x.v) then maybe.none(:Found)
-                            else maybe.some(:Found tuple let call = c let v = maybe.some(:ir.Variable x.v) end)
+                            else maybe.some(tuple let call = c let v = maybe.some(x.v) end)
                             end
                         else maybe.none(:Found)
                     end
                 when sDo with x then
                     case x.value
                         when opCall with c then
-                            maybe.some(:Found tuple let call = c let v = maybe.none(:ir.Variable) end)
+                            maybe.some(tuple let call = c let v = maybe.none(:ir.Variable) end)
                         else maybe.none(:Found)
                     end
                 else maybe.none(:Found)
@@ -4683,15 +4683,15 @@ export
     let insideTry(f: F): Bool =
         begin
             let var inside = false
-            for k = 0 upto vector.length(:Label f.labels) - 1 do
-                if vector.get(:Label f.labels k).kind?labelTry then inside := true end
+            for k = 0 upto vector.length(f.labels) - 1 do
+                if vector.get(f.labels k).kind?labelTry then inside := true end
             end
             inside
         end
 
     (* The index of the function being compiled, ~1 for the top level *)
     let selfIndex(f: F): Int =
-        if f.fnId < 0 then ~1 else maybe.unwrapOr(:Int hashMap.get(:Int :Int f.g.functions f.fnId) ~1) end
+        if f.fnId < 0 then ~1 else maybe.unwrapOr(hashMap.get(f.g.functions f.fnId) ~1) end
     (* If s binds a direct call of the function itself: its variable and the
      * call *)
     let isSelfCall(f: F s: ir.Stmt): maybe.T(Tuple v: ir.Variable call: ir.OpCall end) =
@@ -4700,8 +4700,8 @@ export
                 case x.value
                     when opCall with c then
                         let d = directCallee(f c)
-                        if maybe.isSome(:Int d) andif {maybe.unwrap(:Int d) is selfIndex(f)} andif {selfIndex(f) >= 0} then
-                            maybe.some(:Tuple v: ir.Variable call: ir.OpCall end tuple let v = x.v let call = c end)
+                        if maybe.isSome(d) andif {maybe.unwrap(d) is selfIndex(f)} andif {selfIndex(f) >= 0} then
+                            maybe.some(tuple let v = x.v let call = c end)
                         else maybe.none(:Tuple v: ir.Variable call: ir.OpCall end)
                         end
                     else maybe.none(:Tuple v: ir.Variable call: ir.OpCall end)
@@ -4719,11 +4719,9 @@ export
                         if {thisOp is 0} orif {{op > 0} andif {thisOp isnot op}} orif {extent p.args isnot 2} then
                             maybe.none(:Tuple other: ir.Atom result: ir.Variable end)
                         elsif isVar(p.args[0] v) andif not(isVar(p.args[1] v)) then
-                            maybe.some(:Tuple other: ir.Atom result: ir.Variable end
-                                tuple let other = p.args[1] let result = x.v end)
+                            maybe.some(tuple let other = p.args[1] let result = x.v end)
                         elsif isVar(p.args[1] v) andif not(isVar(p.args[0] v)) then
-                            maybe.some(:Tuple other: ir.Atom result: ir.Variable end
-                                tuple let other = p.args[0] let result = x.v end)
+                            maybe.some(tuple let other = p.args[0] let result = x.v end)
                         else maybe.none(:Tuple other: ir.Atom result: ir.Variable end)
                         end
                     else maybe.none(:Tuple other: ir.Atom result: ir.Variable end)
@@ -4749,16 +4747,15 @@ export
             let ss = walk.walkStatements(fn.body true)
             let var op = 0
             let var tried = false
-            for k = 0 upto vector.length(:ir.Stmt ss) - 1 do
-                case vector.get(:ir.Stmt ss k) when sTry then tried := true else ok end
-                if {op is 0} andif {{k + 1} < vector.length(:ir.Stmt ss)} then
-                    let call = isSelfCall(f vector.get(:ir.Stmt ss k))
-                    if maybe.isSome(:Tuple v: ir.Variable call: ir.OpCall end call) then
-                        let v = maybe.unwrap(:Tuple v: ir.Variable call: ir.OpCall end call).v
-                        let next = vector.get(:ir.Stmt ss k + 1)
+            for k = 0 upto vector.length(ss) - 1 do
+                case vector.get(ss k) when sTry then tried := true else ok end
+                if {op is 0} andif {{k + 1} < vector.length(ss)} then
+                    let call = isSelfCall(f vector.get(ss k))
+                    if maybe.isSome(call) then
+                        let v = maybe.unwrap(call).v
+                        let next = vector.get(ss k + 1)
                         for candidate = 1 upto 2 do
-                            if {op is 0} andif maybe.isSome(:Tuple other: ir.Atom result: ir.Variable end
-                                combining(next v candidate)) then op := candidate end
+                            if {op is 0} andif maybe.isSome(combining(next v candidate)) then op := candidate end
                         end
                     end
                 end
@@ -4774,18 +4771,18 @@ export
         if {f.accOp is 0} orif {{k + 1} >= extent ss} then 0
         else
             let call = isSelfCall(f ss[k])
-            if maybe.isNone(:Tuple v: ir.Variable call: ir.OpCall end call) then 0
+            if maybe.isNone(call) then 0
             else
-                let site = maybe.unwrap(:Tuple v: ir.Variable call: ir.OpCall end call)
+                let site = maybe.unwrap(call)
                 let c = combining(ss[k + 1] site.v f.accOp)
-                let next = if {k + 2} < extent ss then maybe.some(:ir.Stmt ss[k + 2]) else after end
-                if maybe.isNone(:Tuple other: ir.Atom result: ir.Variable end c) orif maybe.isNone(:ir.Stmt next)
+                let next = if {k + 2} < extent ss then maybe.some(ss[k + 2]) else after end
+                if maybe.isNone(c) orif maybe.isNone(next)
                     orif not(returnsResult(f
-                        maybe.some(:ir.Variable maybe.unwrap(:Tuple other: ir.Atom result: ir.Variable end c).result)
-                        maybe.unwrap(:ir.Stmt next))) then 0
+                        maybe.some(maybe.unwrap(c).result)
+                        maybe.unwrap(next))) then 0
                 else
                     emit(f i1(ops.localGet f.accLocal))
-                    atomAs(f maybe.unwrap(:Tuple other: ir.Atom result: ir.Variable end c).other false)
+                    atomAs(f maybe.unwrap(c).other false)
                     combine(f)
                     emit(f i1(ops.localSet f.accLocal))
                     closureArg(f site.call)
@@ -4808,30 +4805,30 @@ export
     let tailCall(f: F s: ir.Stmt next: ir.Stmt): Bool =
         begin
             let found = callIn(f s)
-            if maybe.isNone(:Found found) orif insideTry(f) then false
-            elsif {f.accOp > 0} andif maybe.isNone(:Tuple v: ir.Variable call: ir.OpCall end isSelfCall(f s)) then
+            if maybe.isNone(found) orif insideTry(f) then false
+            elsif {f.accOp > 0} andif maybe.isNone(isSelfCall(f s)) then
                 (* in an accumulating recursion, which combines what it
                  * returns, only itself *)
                 false
             else
-                let c = maybe.unwrap(:Found found).call
+                let c = maybe.unwrap(found).call
                 let direct = directCallee(f c)
-                if maybe.isNone(:Int direct) then
-                    if maybe.isSome(:ir.Variable c.callee) andif returnsResult(f maybe.unwrap(:Found found).v next)
-                        andif sameTypes(closureSig(maybe.unwrap(:ir.Variable c.callee).type).results f.results) then
+                if maybe.isNone(direct) then
+                    if maybe.isSome(c.callee) andif returnsResult(f maybe.unwrap(found).v next)
+                        andif sameTypes(closureSig(maybe.unwrap(c.callee).type).results f.results) then
                         closureCall(f c true)
                         true
                     else false
                     end
                 else
-                    let d = maybe.unwrap(:Int direct)
+                    let d = maybe.unwrap(direct)
                     let callee = model.typeAt(f.g.m model.functionType(f.g.m d))
                     let results = case callee.composite when compFunc with t then t.results else noTypes end
-                    if returnsResult(f maybe.unwrap(:Found found).v next) andif sameTypes(results f.results) then
+                    if returnsResult(f maybe.unwrap(found).v next) andif sameTypes(results f.results) then
                         closureArg(f c)
                         atoms(f c.args)
                         if {f.fnId >= 0} andif hasLabel(f selfLabel)
-                            andif {maybe.unwrapOr(:Int hashMap.get(:Int :Int f.g.functions f.fnId) ~1) is d} then
+                            andif {maybe.unwrapOr(hashMap.get(f.g.functions f.fnId) ~1) is d} then
                             (* itself: its parameters set, last first, and a
                              * branch to the loop around its code *)
                             for k = 0 upto f.nparams - 1 do emit(f i1(ops.localSet {f.nparams - 1} - k)) end
@@ -4852,8 +4849,8 @@ export
         case o
             when opCall with x then
                 let direct = directCallee(f x)
-                if maybe.isSome(:Int direct) then
-                    case model.typeAt(f.g.m model.functionType(f.g.m maybe.unwrap(:Int direct))).composite
+                if maybe.isSome(direct) then
+                    case model.typeAt(f.g.m model.functionType(f.g.m maybe.unwrap(direct))).composite
                         when compFunc with t then extent t.results
                         else 1
                     end
@@ -4869,8 +4866,7 @@ export
                 case x.value
                     when opPrim with p then
                         if p.op?primConcat andif {extent p.args is 2} then
-                            maybe.some(:Tuple v: ir.Variable args: Array(ir.Atom) end
-                                tuple let v = x.v let args = p.args end)
+                            maybe.some(tuple let v = x.v let args = p.args end)
                         else maybe.none(:Tuple v: ir.Variable args: Array(ir.Atom) end)
                         end
                     else maybe.none(:Tuple v: ir.Variable args: Array(ir.Atom) end)
@@ -4889,30 +4885,30 @@ export
     let concatSite(f: F ss: Array(ir.Stmt) k: Int): Int =
         begin
             let first = concatOf(ss[k])
-            if maybe.isNone(:Tuple v: ir.Variable args: Array(ir.Atom) end first) then 0
+            if maybe.isNone(first) then 0
             else
                 let once = fun(v: ir.Variable): Bool
-                    {maybe.unwrapOr(:Int hashMap.get(:Int :Int f.g.uses v.id) 0) is 1} andif not(isLocated(f v))
-                        andif not(hashMap.contains(:Int :Bool f.g.pinned v.id))
-                        andif not(hashMap.contains(:Int :Bool f.g.globalIds v.id))
-                let start = maybe.unwrap(:Tuple v: ir.Variable args: Array(ir.Atom) end first)
-                let var parts = vector.fromArray(:ir.Atom start.args)
+                    {maybe.unwrapOr(hashMap.get(f.g.uses v.id) 0) is 1} andif not(isLocated(f v))
+                        andif not(hashMap.contains(f.g.pinned v.id))
+                        andif not(hashMap.contains(f.g.globalIds v.id))
+                let start = maybe.unwrap(first)
+                let var parts = vector.fromArray(start.args)
                 let var last = start.v
                 let var j = k + 1
                 let var going = true
                 while going andif {j < extent ss} do
                     let c = concatOf(ss[j])
-                    if maybe.isNone(:Tuple v: ir.Variable args: Array(ir.Atom) end c) orif not(once(last)) then
+                    if maybe.isNone(c) orif not(once(last)) then
                         going := false
                     else
-                        let next = maybe.unwrap(:Tuple v: ir.Variable args: Array(ir.Atom) end c)
+                        let next = maybe.unwrap(c)
                         if isVar(next.args[0] last) andif not(isVar(next.args[1] last)) then
-                            vector.append(:ir.Atom parts next.args[1])
+                            vector.append(parts next.args[1])
                         elsif isVar(next.args[1] last) andif not(isVar(next.args[0] last)) then
                             let joined = vector.new(:ir.Atom)
-                            vector.append(:ir.Atom joined next.args[0])
-                            for p = 0 upto vector.length(:ir.Atom parts) - 1 do
-                                vector.append(:ir.Atom joined vector.get(:ir.Atom parts p))
+                            vector.append(joined next.args[0])
+                            for p = 0 upto vector.length(parts) - 1 do
+                                vector.append(joined vector.get(parts p))
                             end
                             parts := joined
                         else going := false
@@ -4925,13 +4921,13 @@ export
                 end
                 if j is k + 1 then 0
                 else
-                    let n = vector.length(:ir.Atom parts)
+                    let n = vector.length(parts)
                     let var at = 0
                     let var held = false
                     while at < n do
                         let room = if held then 6 else 7 end
                         let take = if {n - at} < room then n - at else room end
-                        for p = at upto {at + take} - 1 do atom(f vector.get(:ir.Atom parts p)) end
+                        for p = at upto {at + take} - 1 do atom(f vector.get(parts p)) end
                         for p = take + {if held then 1 else 0 end} upto 6 do
                             emit(f option instRefNull of Inst with let heap = option heapEq of model.HeapType end end)
                         end
@@ -4951,17 +4947,17 @@ export
      * after b's) *)
     let rec body(f: F b: ir.Body): Ok =
         begin
-            let ss = vector.toArray(:ir.Stmt b.statements)
+            let ss = vector.toArray(b.statements)
             let outer = f.after
             let var k = 0
             while k < extent ss do
                 let last = {k + 1} >= extent ss
-                let next = if last then outer else maybe.some(:ir.Stmt ss[k + 1]) end
+                let next = if last then outer else maybe.some(ss[k + 1]) end
                 let taken = accumulateSite(f ss k outer)
                 let chained = if taken > 0 then 0 else concatSite(f ss k) end
                 if taken > 0 then k := k + taken
                 elsif chained > 0 then k := k + chained
-                elsif maybe.isSome(:ir.Stmt next) andif tailCall(f ss[k] maybe.unwrap(:ir.Stmt next)) then
+                elsif maybe.isSome(next) andif tailCall(f ss[k] maybe.unwrap(next)) then
                     k := k + if last then 1 else 2 end
                 else
                     f.after := next
@@ -4975,7 +4971,7 @@ export
     and statement(f: F s: ir.Stmt): Ok =
         case s
             when sLet with x then
-                operation(f x.value maybe.some(:ir.Variable x.v))
+                operation(f x.value maybe.some(x.v))
                 store(f x.v)
             when sDo with x then
                 operation(f x.value maybe.none(:ir.Variable))
@@ -4995,7 +4991,7 @@ export
             when sSwitch with x then switch(f x)
             when sVarDecl with x then
                 if isLocated(f x.v) then
-                    if maybe.isSome(:ir.Atom x.init) then atomFor(f maybe.unwrap(:ir.Atom x.init) x.v)
+                    if maybe.isSome(x.init) then atomFor(f maybe.unwrap(x.init) x.v)
                     else
                         (* no value until it is assigned: a slot that holds
                          * none, which its box would have been *)
@@ -5003,8 +4999,8 @@ export
                         if not(x.v.boxed) then unbox(f x.v.type) end
                     end
                     declareLocated(f x.v)
-                elsif maybe.isSome(:ir.Atom x.init) then
-                    atomFor(f maybe.unwrap(:ir.Atom x.init) x.v)
+                elsif maybe.isSome(x.init) then
+                    atomFor(f maybe.unwrap(x.init) x.v)
                     store(f x.v)
                 elsif not(isGlobal(f x.v)) then
                     local(f x.v)
@@ -5034,14 +5030,14 @@ export
             when sBreak with x then emit(f i1(ops.br depth(f x.label option labelExit of LabelKind end)))
             when sContinue with x then emit(f i1(ops.br depth(f x.label option labelRepeat of LabelKind end)))
             when sJoin with x then
-                hashMap.insert(:String :Bool f.returning x.label returnsParam(f x))
-                hashMap.insert(:String :Array(ir.Variable) f.joins x.label x.params)
+                hashMap.insert(f.returning x.label returnsParam(f x))
+                hashMap.insert(f.joins x.label x.params)
                 let joined = vector.new(:ValType)
                 for k = 0 upto extent x.params - 1 do
                     let ps = varParts(f.g x.params[k])
-                    for j = 0 upto extent ps - 1 do vector.append(:ValType joined ps[j]) end
+                    for j = 0 upto extent ps - 1 do vector.append(joined ps[j]) end
                 end
-                let types = vector.toArray(:ValType joined)
+                let types = vector.toArray(joined)
                 emit(f model.blockInst(empty x.label <> ".after"))
                 open(f x.label option labelAfter of LabelKind end)
                 emit(f model.blockInst(blockOf(f types) x.label))
@@ -5055,7 +5051,7 @@ export
                 body(f x.continuation)
                 close(f)
             when sJump with x then
-                let params = maybe.unwrap(:Array(ir.Variable) hashMap.get(:String :Array(ir.Variable) f.joins x.label))
+                let params = maybe.unwrap(hashMap.get(f.joins x.label))
                 for k = 0 upto extent x.args - 1 do atomFor(f x.args[k] params[k]) end
                 emit(f i1(ops.br depth(f x.label option labelJoin of LabelKind end)))
             when sReturn with x then
@@ -5069,8 +5065,8 @@ export
             when sRaise with x then
                 atom(f x.exc)
                 let var kind = 0
-                if maybe.isSome(:ir.Atom x.payload) then
-                    let pl = maybe.unwrap(:ir.Atom x.payload)
+                if maybe.isSome(x.payload) then
+                    let pl = maybe.unwrap(x.payload)
                     boxedAtom(f pl)
                     if not(stringOp.isEmpty(x.payloadText)) then kind := payloadKind(ir.atomType(pl)) end
                 else
@@ -5081,8 +5077,8 @@ export
                 literal(f x.payloadText)
                 emit(f model.i32Const(kind))
                 (* a payload written by its descriptor, the report's *)
-                if {kind is 9} andif maybe.isSome(:ir.Descriptor x.descriptor) then
-                    descriptor(f maybe.unwrap(:ir.Descriptor x.descriptor))
+                if {kind is 9} andif maybe.isSome(x.descriptor) then
+                    descriptor(f maybe.unwrap(x.descriptor))
                 else emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
                 end
                 runtimeCall(f "raise")
@@ -5095,7 +5091,7 @@ export
                 (* A try_table that catches the one tag (section 2.9); its
                  * handler binds the state, tests it, and raises it again if
                  * nothing it names matches *)
-                let base = "try" <> conv.int(vector.length(:Inst f.code))
+                let base = "try" <> conv.int(vector.length(f.code))
                 emit(f model.blockInst(empty ""))
                 open(f base <> ".after" option labelIf of LabelKind end)
                 emit(f model.blockInst(option blockValue of model.BlockType with let type = model.eqref end ""))
@@ -5126,7 +5122,7 @@ export
                 boxedAtom(f x.value)
                 emit(f i1(ops.arraySet tSlots))
             when sStoreField with x then
-                if maybe.isSome(:ir.Variable x.viewMap) then viewFieldSlot(f x.base x.name x.viewMap)
+                if maybe.isSome(x.viewMap) then viewFieldSlot(f x.base x.name x.viewMap)
                 else fieldSlot(f x.base x.name)
                 end
                 boxedAtom(f x.value)
@@ -5134,13 +5130,13 @@ export
             when sLetRec with x then
                 (* The body makes the values, whose closures' captures of them
                  * are filled in once it has *)
-                let first = vector.length(:Patch f.patches)
-                for k = 0 upto extent x.vars - 1 do hashMap.insert(:Int :Bool f.deferred x.vars[k].id true) end
+                let first = vector.length(f.patches)
+                for k = 0 upto extent x.vars - 1 do hashMap.insert(f.deferred x.vars[k].id true) end
                 f.after := maybe.none(:ir.Stmt)
                 body(f x.body)
-                for k = 0 upto extent x.vars - 1 do hashMap.delete(:Int :Bool f.deferred x.vars[k].id) end
-                while vector.length(:Patch f.patches) > first do
-                    let pt = vector.pop(:Patch f.patches)
+                for k = 0 upto extent x.vars - 1 do hashMap.delete(f.deferred x.vars[k].id) end
+                while vector.length(f.patches) > first do
+                    let pt = vector.pop(f.patches)
                     let n = extent pt.parts
                     if n is 1 then
                         emit(f i1(ops.localGet pt.holder))
@@ -5186,16 +5182,16 @@ export
             emit(f i1(ops.localGet value))
             emit(f i2(ops.structGet rt.index("auto") 2))
             emit(f i1(ops.localSet stored))
-            if maybe.isSome(:ir.DescriptorParam x.witness) then
+            if maybe.isSome(x.witness) then
                 emit(f i1(ops.localGet witness))
-                emit(f i1(ops.localSet local(f maybe.unwrap(:ir.DescriptorParam x.witness).v)))
+                emit(f i1(ops.localSet local(f maybe.unwrap(x.witness).v)))
             end
             emit(f model.blockInst(empty ""))
             open(f "inspect.after" option labelIf of LabelKind end)
             for ci = 0 upto extent x.cases - 1 do
                 let c = x.cases[ci]
-                if maybe.isNone(:ir.Descriptor c.descriptor) then fail("an inspect case without its descriptor") end
-                let match = maybe.unwrap(:ir.Descriptor c.descriptor)
+                if maybe.isNone(c.descriptor) then fail("an inspect case without its descriptor") end
+                let match = maybe.unwrap(c.descriptor)
                 emit(f i1(ops.globalGet f.g.noClosure))
                 emit(f i1(ops.localGet witness))
                 descriptor(f match)
@@ -5210,11 +5206,11 @@ export
                 emit(f model.ifInst(empty ""))
                 open(f "" option labelIf of LabelKind end)
                 if extent c.binders > 0 then
-                    let arm = maybe.unwrap(:ir.InspectArm c.arm)
+                    let arm = maybe.unwrap(c.arm)
                     if arm.exact then
                         emit(f i1(ops.localGet stored))
-                        if not(arm.shared) andif maybe.isSome(:ir.Plan arm.plan) then
-                            slotConvert(f maybe.unwrap(:ir.Plan arm.plan))
+                        if not(arm.shared) andif maybe.isSome(arm.plan) then
+                            slotConvert(f maybe.unwrap(arm.plan))
                         end
                     else
                         (* a new tuple of the components, each converted *)
@@ -5226,8 +5222,8 @@ export
                         emit(f model.i32Const(0))
                         let n = extent arm.descriptors
                         for j = 0 upto n - 1 do
-                            if maybe.isSome(:ir.DescriptorPair arm.descriptors[j]) then
-                                let pr = maybe.unwrap(:ir.DescriptorPair arm.descriptors[j])
+                            if maybe.isSome(arm.descriptors[j]) then
+                                let pr = maybe.unwrap(arm.descriptors[j])
                                 emit(f i1(ops.globalGet f.g.noClosure))
                                 emit(f i1(ops.localGet slots))
                                 emit(f model.i32Const(j))
@@ -5258,7 +5254,7 @@ export
                 end
                 close(f)
             end
-            if maybe.isSome(:ir.Body x.elseBody) then body(f maybe.unwrap(:ir.Body x.elseBody))
+            if maybe.isSome(x.elseBody) then body(f maybe.unwrap(x.elseBody))
             else raiseAt(f "dynamic.error" x.offset)
             end
             close(f)
@@ -5272,7 +5268,7 @@ export
      * payload. With no else, raises variant.tagMismatch *)
     and switch(f: F x: ir.StmtSwitch): Ok =
         begin
-            let viewed = maybe.isSome(:ir.Variable x.viewMap)
+            let viewed = maybe.isSome(x.viewMap)
             let isV = isVariantShape(ir.atomType(x.value))
             let s = if isV then shapeOf(ir.atomType(x.value)) else optionShape(ir.atomType(x.value)) end
             let opt = scratch(f model.refNull(tOption))
@@ -5292,7 +5288,7 @@ export
                 accessAs(f tOption x.access)
                 emit(f i1(ops.localSet opt))
             end
-            let base = "switch" <> conv.int(vector.length(:Inst f.code))
+            let base = "switch" <> conv.int(vector.length(f.code))
             let m = extent x.cases
             emit(f model.blockInst(empty ""))
             open(f base <> ".after" option labelIf of LabelKind end)
@@ -5319,14 +5315,14 @@ export
             for k = 0 upto m - 1 do
                 close(f)
                 let c = x.cases[k]
-                if maybe.isSome(:ir.Variable c.binder) then
-                    let binder = maybe.unwrap(:ir.Variable c.binder)
+                if maybe.isSome(c.binder) then
+                    let binder = maybe.unwrap(c.binder)
                     let b = tagIndex(s c.tags[0])
                     if isV then
                         (* the variant's payload, whatever its type *)
                         emit(f i1(ops.localGet vPayload))
                         if viewed then viewPartOnStack(f x.viewMap b) end
-                        unboxFor(f binder.type maybe.some(:ir.Variable binder))
+                        unboxFor(f binder.type maybe.some(binder))
                         store(f binder)
                     elsif viewed andif not(shapes.kindIs(shapes.shape(binder.type) shapes.shapeOk)) then
                         (* the case's payload through the map, itself, or a
@@ -5381,7 +5377,7 @@ export
                 end
             end
             close(f)
-            if maybe.isSome(:ir.Body x.elseBody) then body(f maybe.unwrap(:ir.Body x.elseBody))
+            if maybe.isSome(x.elseBody) then body(f maybe.unwrap(x.elseBody))
             else raiseAt(f "variant.tagMismatch" maybe.none(:Int))
             end
             close(f)
@@ -5393,7 +5389,7 @@ export
 
     (* Fills in the function at index, which has no parameters *)
     let fill(f: F index: Int name: String type: Int): Ok =
-        vector.set(:model.Function f.g.m.functions {index - model.importedFunctions(f.g.m)} tuple
+        vector.set(f.g.m.functions {index - model.importedFunctions(f.g.m)} tuple
             let name = name let type = type let params = array of :String end let locals = f.declared let body = f.code
         end)
 
@@ -5418,16 +5414,16 @@ export
              * type parameters its callers supply, then each parameter's
              * parts *)
             let params = vector.new(:ValType)
-            vector.append(:ValType params model.ref(tClos))
-            for k = 0 upto quantified(fn.v.type).count - 1 do vector.append(:ValType params model.eqref) end
+            vector.append(params model.ref(tClos))
+            for k = 0 upto quantified(fn.v.type).count - 1 do vector.append(params model.eqref) end
             for k = 0 upto extent fn.params - 1 do
                 let located = not(stringOp.equal(fn.params[k].mode "value"))
                 if fn.params[k].v.boxed andif not(located) then fail("a parameter held boxed") end
                 let ps = paramParts(g fn k)
-                for j = 0 upto extent ps - 1 do vector.append(:ValType params ps[j]) end
+                for j = 0 upto extent ps - 1 do vector.append(params ps[j]) end
             end
             let results = if fn.unboxedResult then componentTypes(fn.resultType) else parts(fn.resultType) end
-            tuple let params = vector.toArray(:ValType params) let results = results end
+            tuple let params = vector.toArray(params) let results = results end
         end
 
     (* A function of the unit, whose index and type are already given *)
@@ -5452,13 +5448,13 @@ export
                 emit(f i1(ops.localSet f.accLocal))
                 f.selfTail := true
             end
-            if maybe.isSome(:ir.Variable fn.env) andif not(isAdapter(fn)) then
-                hashMap.insert(:Int :Int f.locals maybe.unwrap(:ir.Variable fn.env).id 0)
+            if maybe.isSome(fn.env) andif not(isAdapter(fn)) then
+                hashMap.insert(f.locals maybe.unwrap(fn.env).id 0)
             end
             let var at = 1
             let captured = capturedDescriptors(fn)
             for k = captured upto extent fn.descriptorParams - 1 do
-                hashMap.insert(:Int :Int f.locals fn.descriptorParams[k].v.id at)
+                hashMap.insert(f.locals fn.descriptorParams[k].v.id at)
                 names[at] := fresh(f.names fn.descriptorParams[k].v.hint)
                 at := at + 1
             end
@@ -5469,7 +5465,7 @@ export
                 emit(f i1(ops.localGet 0))
                 castTo(f own)
                 emit(f i2(ops.structGet own captureField(g fn 0)))
-                emit(f i1(ops.localSet local(f maybe.unwrap(:ir.Variable fn.env))))
+                emit(f i1(ops.localSet local(f maybe.unwrap(fn.env))))
             end
             (* the descriptors its closure supplies, from the closure *)
             for k = 0 upto captured - 1 do
@@ -5480,7 +5476,7 @@ export
                 emit(f i1(ops.localSet local(f fn.descriptorParams[k].v)))
             end
             for k = 0 upto extent fn.params - 1 do
-                hashMap.insert(:Int :Int f.locals fn.params[k].v.id at)
+                hashMap.insert(f.locals fn.params[k].v.id at)
                 for j = 0 upto extent paramParts(g fn k) - 1 do
                     names[at] := fresh(f.names fn.params[k].v.hint)
                     at := at + 1
@@ -5506,7 +5502,7 @@ export
                         (* the loop, after the prologue, so that a self tail
                          * call does not read the closure's captures and make
                          * the view maps again (section 3.3) *)
-                        let loopAt = vector.length(:Inst f.code)
+                        let loopAt = vector.length(f.code)
                         emit(f model.loopInst(empty selfLabel))
                         open(f selfLabel option labelRepeat of LabelKind end)
                         body(f fn.body)
@@ -5516,16 +5512,16 @@ export
                             (* no call branches to the loop: its instruction,
                              * at loopAt, and its end, the last but the
                              * unreachable, dropped *)
-                            let n = vector.length(:Inst f.code)
+                            let n = vector.length(f.code)
                             let kept = vector.new(:Inst)
                             for k = 0 upto n - 1 do
                                 if {k isnot loopAt} andif {k isnot {n - 2}} then
-                                    vector.append(:Inst kept vector.get(:Inst f.code k))
+                                    vector.append(kept vector.get(f.code k))
                                 end
                             end
-                            vector.clear(:Inst f.code)
-                            for k = 0 upto vector.length(:Inst kept) - 1 do
-                                vector.append(:Inst f.code vector.get(:Inst kept k))
+                            vector.clear(f.code)
+                            for k = 0 upto vector.length(kept) - 1 do
+                                vector.append(f.code vector.get(kept k))
                             end
                         end
                         f
@@ -5536,9 +5532,9 @@ export
                     pending(pf fn.v.hint <> ": " <> m)
                     pf
                 end
-            let at = maybe.unwrap(:Int hashMap.get(:Int :Int g.functions fn.id)) - model.importedFunctions(g.m)
-            let given = vector.get(:model.Function g.m.functions at)
-            vector.set(:model.Function g.m.functions at tuple
+            let at = maybe.unwrap(hashMap.get(g.functions fn.id)) - model.importedFunctions(g.m)
+            let given = vector.get(g.m.functions at)
+            vector.set(g.m.functions at tuple
                 let name = given.name let type = given.type let params = names let locals = compiled.declared
                 let body = compiled.code
             end)
@@ -5547,7 +5543,7 @@ export
     (* The name of the unit an import names, as its module is named: a
      * library unit's by its path in lib/, which an implicit import's
      * canonical name (arrayOp) may not be *)
-    let unitName(i: ir.Import): String = maybe.unwrapOr(:String i.libPath i.canonicalPath)
+    let unitName(i: ir.Import): String = maybe.unwrapOr(i.libPath i.canonicalPath)
 
     (* Whether the unit moduleName's import i is of a unit's module, its
      * record and its init: not the core's of the library's units, whose
@@ -5555,7 +5551,7 @@ export
      * util/realmath's of real, which they take only as externals too, and
      * whose module's functions call theirs *)
     let isUnitImport(moduleName: String i: ir.Import): Bool =
-        if stringOp.equal(moduleName "wasm/core") then maybe.isNone(:String i.libPath)
+        if stringOp.equal(moduleName "wasm/core") then maybe.isNone(i.libPath)
         elsif stringOp.equal(moduleName "util/realconv") orif stringOp.equal(moduleName "util/realmath") then
             not(stringOp.equal(i.canonicalPath "real"))
         else true
@@ -5587,23 +5583,23 @@ export
     let locatedVariables(unit: ir.Unit): hashMap.T(Int Bool) =
         begin
             let found = hashMap.new(:Int :Bool intEqual hash.int)
-            for k = 0 upto vector.length(:ir.Function unit.functions) - 1 do
-                let fn = vector.get(:ir.Function unit.functions k)
+            for k = 0 upto vector.length(unit.functions) - 1 do
+                let fn = vector.get(unit.functions k)
                 for j = 0 upto extent fn.params - 1 do
                     if not(stringOp.equal(fn.params[j].mode "value")) then
-                        hashMap.insert(:Int :Bool found fn.params[j].v.id true)
+                        hashMap.insert(found fn.params[j].v.id true)
                     end
                 end
             end
             let bodies = walk.unitBodies(unit)
             for b = 0 upto extent bodies - 1 do
                 let ss = walk.walkStatements(bodies[b] true)
-                for k = 0 upto vector.length(:ir.Stmt ss) - 1 do
-                    case vector.get(:ir.Stmt ss k)
+                for k = 0 upto vector.length(ss) - 1 do
+                    case vector.get(ss k)
                         when sLet with x then
                             case x.value
                                 when opAddrVar with y then
-                                    hashMap.insert(:Int :Bool found y.v.id true)
+                                    hashMap.insert(found y.v.id true)
                                     ok
                                 else ok
                             end
@@ -5620,15 +5616,15 @@ export
     let registerAbstracts(f: F m: ir.Module): Ok =
         for k = 0 upto extent m.abstractTypes - 1 do
             let e = m.abstractTypes[k]
-            let naming = maybe.some(:staticdata.RecordNaming f.g.naming)
+            let naming = maybe.some(f.g.naming)
             let symbol = try staticdata.descriptorForm(e.descriptor.type naming).symbol
                 when staticdata.missingDescriptor then ""
                 end
-            if not(stringOp.isEmpty(symbol)) andif hashMap.contains(:String :Int f.g.descGlobals symbol) then
+            if not(stringOp.isEmpty(symbol)) andif hashMap.contains(f.g.descGlobals symbol) then
                 emit(f i1(ops.globalGet f.g.noClosure))
                 literal(f e.name)
                 emit(f model.i64Const(e.arity))
-                emit(f i1(ops.globalGet hashMap.find(:String :Int f.g.descGlobals symbol)))
+                emit(f i1(ops.globalGet hashMap.find(f.g.descGlobals symbol)))
                 runtimeUnitCall(f "wasm/core.registerAbstract")
                 emit(f i(ops.drop))
             end
@@ -5638,19 +5634,19 @@ export
         begin
             (* A module file's module is its unit's last, after any it
              * defines inline *)
-            let nmodules = vector.length(:ir.Module unit.modules)
+            let nmodules = vector.length(unit.modules)
             (* A phrase unit, though a program's, is compiled as a module's,
              * its init the input's entry, which the JIT's host calls
              * (section 5.1) *)
-            let asProgram = unit.isProgram andif maybe.isNone(:ir.Phrase unit.phrase)
+            let asProgram = unit.isProgram andif maybe.isNone(unit.phrase)
             let moduleName = if asProgram orif {nmodules is 0} then "main"
-                else vector.get(:ir.Module unit.modules {nmodules - 1}).name
+                else vector.get(unit.modules {nmodules - 1}).name
                 end
             let m = model.newModule(moduleName)
-            vector.append(:model.RecGroup m.types rt.group)
+            vector.append(m.types rt.group)
             (* The built-in exceptions, the first globals *)
             for k = 0 upto extent runtime.builtinExceptions - 1 do
-                vector.append(:model.Import m.imports tuple
+                vector.append(m.imports tuple
                     let moduleName = runtime.name let field = runtime.exceptionField(runtime.builtinExceptions[k])
                     let name = runtime.builtinExceptions[k]
                     let kind = option importGlobal of model.ImportKind with
@@ -5663,10 +5659,10 @@ export
             let records = hashMap.new(:String :Int stringOp.equal hash.string)
             for k = 0 upto extent unit.imports - 1 do
                 let i = unit.imports[k]
-                if isUnitImport(moduleName i) andif not(hashMap.contains(:String :Int records i.canonicalPath)) then
-                    hashMap.insert(:String :Int records i.canonicalPath model.importedGlobals(m))
+                if isUnitImport(moduleName i) andif not(hashMap.contains(records i.canonicalPath)) then
+                    hashMap.insert(records i.canonicalPath model.importedGlobals(m))
                     for j = 0 upto 1 do
-                        vector.append(:model.Import m.imports tuple
+                        vector.append(m.imports tuple
                             let moduleName = unitName(i)
                             let field = if j is 0 then "record.payload" else "record.dict" end
                             let name = ""
@@ -5679,8 +5675,8 @@ export
             end
             (* The closure a direct call of a function that captures nothing
              * passes, which it never reads *)
-            let noClosure = model.importedGlobals(m) + vector.length(:model.Global m.globals)
-            vector.append(:model.Global m.globals tuple
+            let noClosure = model.importedGlobals(m) + vector.length(m.globals)
+            vector.append(m.globals tuple
                 let name = "noClosure" let type = model.ref(rt.index("clos")) let mutable = false
                 let init = array of model.i32Const(0) model.op(ops.structNew array of rt.index("clos") end) end
             end)
@@ -5714,7 +5710,7 @@ export
                 let descGlobals = hashMap.new(:String :Int stringOp.equal hash.string)
                 let isRuntime = isRuntimeUnit(moduleName)
                 let isCore = stringOp.equal(moduleName "wasm/core")
-                let isPhrase = maybe.isSome(:ir.Phrase unit.phrase)
+                let isPhrase = maybe.isSome(unit.phrase)
                 let located = locatedVariables(unit)
                 let naming = staticdata.newRecordNaming()
                 let uses = hashMap.new(:Int :Int intEqual hash.int)
@@ -5724,29 +5720,29 @@ export
             (* Each function, and the types of what its closures capture: an
              * adapter's (ir/thunks), whose environment is the closure it
              * adapts, of that closure's type, captures that closure *)
-            for k = 0 upto vector.length(:ir.Function unit.functions) - 1 do
-                let fn = vector.get(:ir.Function unit.functions k)
-                hashMap.insert(:Int :ir.Function g.byId fn.id fn)
+            for k = 0 upto vector.length(unit.functions) - 1 do
+                let fn = vector.get(unit.functions k)
+                hashMap.insert(g.byId fn.id fn)
                 if isAdapter(fn) then
-                    hashMap.insert(:Int :Array(ir.Type) g.captureTypes fn.id
-                        array of maybe.unwrap(:ir.Variable fn.env).type end)
+                    hashMap.insert(g.captureTypes fn.id
+                        array of maybe.unwrap(fn.env).type end)
                 end
             end
             let bodies = walk.unitBodies(unit)
             for b = 0 upto extent bodies - 1 do
                 let ss = walk.walkStatements(bodies[b] false)
-                for k = 0 upto vector.length(:ir.Stmt ss) - 1 do
-                    case vector.get(:ir.Stmt ss k)
+                for k = 0 upto vector.length(ss) - 1 do
+                    case vector.get(ss k)
                         when sLet with x then
                             case x.value
                                 when opMakeClosure with c then
-                                    if not(hashMap.contains(:Int :Array(ir.Type) g.captureTypes c.code.id)) then
+                                    if not(hashMap.contains(g.captureTypes c.code.id)) then
                                         let ts = vector.new(:ir.Type)
                                         for j = 0 upto extent c.captures - 1 do
-                                            vector.append(:ir.Type ts ir.atomType(c.captures[j]))
+                                            vector.append(ts ir.atomType(c.captures[j]))
                                         end
-                                        hashMap.insert(:Int :Array(ir.Type) g.captureTypes c.code.id
-                                            vector.toArray(:ir.Type ts))
+                                        hashMap.insert(g.captureTypes c.code.id
+                                            vector.toArray(ts))
                                     end
                                 else ok
                             end
@@ -5757,13 +5753,13 @@ export
             (* The runtime's functions and tag, imported first *)
             for k = 0 upto extent runtime.exports - 1 do
                 let e = runtime.exports[k]
-                vector.append(:model.Import m.imports tuple
+                vector.append(m.imports tuple
                     let moduleName = runtime.name let field = e.field let name = fresh(g.names e.field)
                     let kind = option importFunc of model.ImportKind with let type = funcType(g e.params e.results) end
                 end)
-                hashMap.insert(:String :Int g.runtimeFunctions e.field k)
+                hashMap.insert(g.runtimeFunctions e.field k)
             end
-            vector.append(:model.Import m.imports tuple
+            vector.append(m.imports tuple
                 let moduleName = runtime.name let field = runtime.tagField let name = fresh(g.names "error")
                 let kind = option importTag of model.ImportKind with
                     let type = funcType(g array of model.eqref end noTypes)
@@ -5774,7 +5770,7 @@ export
             let importFunction = fun(unitName: String field: String type: Int): Int
                 begin
                     let index = model.importedFunctions(m)
-                    vector.append(:model.Import m.imports tuple
+                    vector.append(m.imports tuple
                         let moduleName = unitName let field = field let name = fresh(g.names unitName <> "." <> field)
                         let kind = option importFunc of model.ImportKind with let type = type end
                     end)
@@ -5783,8 +5779,8 @@ export
             for k = 0 upto extent unit.imports - 1 do
                 let i = unit.imports[k]
                 if isUnitImport(moduleName i)
-                    andif not(hashMap.contains(:String :Int g.importInits i.canonicalPath)) then
-                    hashMap.insert(:String :Int g.importInits i.canonicalPath
+                    andif not(hashMap.contains(g.importInits i.canonicalPath)) then
+                    hashMap.insert(g.importInits i.canonicalPath
                         importFunction(unitName(i) "init" funcType(g noTypes noTypes)))
                 end
             end
@@ -5796,15 +5792,14 @@ export
              * descriptors too, registering their representations'
              * (registerAbstracts) *)
             let var abstracts = false
-            for k = 0 upto vector.length(:ir.Module unit.modules) - 1 do
+            for k = 0 upto vector.length(unit.modules) - 1 do
                 if extent vector.get(:ir.Module unit.modules k).abstractTypes > 0 then abstracts := true end
             end
-            let described = not(isRuntimeUnit(moduleName)) andif maybe.isSome(:ir.StaticData unit.staticData)
-                andif {abstracts orif {vector.length(:ir.StaticDescriptor
-                    maybe.unwrap(:ir.StaticData unit.staticData).descriptors) > 0}}
+            let described = not(isRuntimeUnit(moduleName)) andif maybe.isSome(unit.staticData)
+                andif {abstracts orif {vector.length(maybe.unwrap(unit.staticData).descriptors) > 0}}
             let runtimeImport = fun(unitName: String field: String params: Array(ValType)
                 results: Array(ValType)): Bool
-                hashMap.insert(:String :Int g.runtimeUnits unitName <> "." <> field
+                hashMap.insert(g.runtimeUnits unitName <> "." <> field
                     importFunction(unitName field funcType(g withClosure(params) results)))
             let e = model.eqref
             let n = model.i64
@@ -5816,24 +5811,24 @@ export
             let echoBodies = walk.unitBodies(unit)
             for b = 0 upto extent echoBodies - 1 do
                 let ss = walk.walkStatements(echoBodies[b] true)
-                for k = 0 upto vector.length(:ir.Stmt ss) - 1 do
-                    case vector.get(:ir.Stmt ss k)
+                for k = 0 upto vector.length(ss) - 1 do
+                    case vector.get(ss k)
                         when sEcho with x then
                             if stringOp.isEmpty(describe.echoValueKind(x.type))
-                                andif maybe.isSome(:ir.Descriptor x.descriptor) then echoes := true end
+                                andif maybe.isSome(x.descriptor) then echoes := true end
                         else ok
                     end
                 end
             end
             let printed = {described andif echoes} orif {asProgram andif not(isRuntimeUnit(moduleName))}
             if printed then
-                hashMap.insert(:String :Int g.runtimeUnits "wasm/print.init"
+                hashMap.insert(g.runtimeUnits "wasm/print.init"
                     importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
                 runtimeImport("wasm/print" "show" array of e e end array of e end)
             end
             if g.isPhrase then
-                if not(hashMap.contains(:String :Int g.runtimeUnits "wasm/print.init")) then
-                    hashMap.insert(:String :Int g.runtimeUnits "wasm/print.init"
+                if not(hashMap.contains(g.runtimeUnits "wasm/print.init")) then
+                    hashMap.insert(g.runtimeUnits "wasm/print.init"
                         importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
                 end
                 runtimeImport("wasm/print" "echoText" array of e end array of e end)
@@ -5853,7 +5848,7 @@ export
                 runtimeImport("wasm/core" "registerAdapter" array of n e end array of e end)
             end
             if described then
-                hashMap.insert(:String :Int g.runtimeUnits "wasm/core.init"
+                hashMap.insert(g.runtimeUnits "wasm/core.init"
                     importFunction("wasm/core" "init" funcType(g noTypes noTypes)))
                 runtimeImport("wasm/core" "base" array of n end array of e end)
                 runtimeImport("wasm/core" "newDesc" array of n e n n end array of e end)
@@ -5885,45 +5880,45 @@ export
             let allBodies = walk.unitBodies(unit)
             for b = 0 upto extent allBodies - 1 do
                 let ss = walk.walkStatements(allBodies[b] true)
-                for k = 0 upto vector.length(:ir.Stmt ss) - 1 do
+                for k = 0 upto vector.length(ss) - 1 do
                     (* echo of a Real writes it with util/realconv *)
-                    case vector.get(:ir.Stmt ss k)
+                    case vector.get(ss k)
                         when sEcho with x then
                             if stringOp.equal(describe.echoValueKind(x.type) "Real")
-                                andif not(hashMap.contains(:String :Int g.runtimeUnits "util/realconv.magnitude")) then
+                                andif not(hashMap.contains(g.runtimeUnits "util/realconv.magnitude")) then
                                 runtimeImport("util/realconv" "magnitude" array of model.f64 end
                                     array of model.eqref end)
                             end
                         else ok
                     end
-                    let op = case vector.get(:ir.Stmt ss k)
-                        when sLet with x then maybe.some(:ir.Op x.value)
-                        when sDo with x then maybe.some(:ir.Op x.value)
+                    let op = case vector.get(ss k)
+                        when sLet with x then maybe.some(x.value)
+                        when sDo with x then maybe.some(x.value)
                         else maybe.none(:ir.Op)
                     end
-                    if maybe.isSome(:ir.Op op) then
+                    if maybe.isSome(op) then
                         let register = fun(callee: maybe.T(ir.Variable) moduleRef: maybe.T(ir.ModuleRef)
                             member: maybe.T(String) calleeType: maybe.T(ir.Type)): Ok
-                            if maybe.isSome(:ir.ModuleRef moduleRef) andif maybe.isNone(:ir.Variable callee) then
-                                case maybe.unwrap(:ir.ModuleRef moduleRef)
+                            if maybe.isSome(moduleRef) andif maybe.isNone(callee) then
+                                case maybe.unwrap(moduleRef)
                                     when refImport with imp then
-                                        let key = imp.i.canonicalPath <> "." <> maybe.unwrapOr(:String member "")
-                                        let known = hashMap.contains(:String :Int g.importFunctions key)
-                                        let fast = maybe.isSome(:String imp.i.libPath) andif
-                                            maybe.isSome(:String externalSymbol(maybe.unwrap(:String imp.i.libPath)
-                                                maybe.unwrapOr(:String member "")))
+                                        let key = imp.i.canonicalPath <> "." <> maybe.unwrapOr(member "")
+                                        let known = hashMap.contains(g.importFunctions key)
+                                        let fast = maybe.isSome(imp.i.libPath) andif
+                                            maybe.isSome(externalSymbol(maybe.unwrap(imp.i.libPath)
+                                                maybe.unwrapOr(member "")))
                                         if isUnitImport(moduleName imp.i) andif not(known) andif not(fast)
-                                            andif maybe.isSome(:ir.Type calleeType) then
-                                            let sig = closureSig(maybe.unwrap(:ir.Type calleeType))
-                                            hashMap.insert(:String :Int g.importFunctions key
+                                            andif maybe.isSome(calleeType) then
+                                            let sig = closureSig(maybe.unwrap(calleeType))
+                                            hashMap.insert(g.importFunctions key
                                                 importFunction(unitName(imp.i)
-                                                    maybe.unwrapOr(:String member "") nativeType(g sig)))
+                                                    maybe.unwrapOr(member "") nativeType(g sig)))
                                         end
                                     else ok
                                 end
                             end
                         let realconvImport = fun(field: String): Ok
-                            if not(hashMap.contains(:String :Int g.runtimeUnits "util/realconv." <> field)) then
+                            if not(hashMap.contains(g.runtimeUnits "util/realconv." <> field)) then
                                 if stringOp.equal(field "toReal") then
                                     runtimeImport("util/realconv" field array of model.eqref end array of model.f64 end)
                                 elsif stringOp.equal(field "format") then
@@ -5933,40 +5928,40 @@ export
                                 end
                             end
                         let realmathImport = fun(field: String arity: Int): Ok
-                            if not(hashMap.contains(:String :Int g.runtimeUnits "util/realmath." <> field)) then
+                            if not(hashMap.contains(g.runtimeUnits "util/realmath." <> field)) then
                                 runtimeImport("util/realmath" field array of(arity model.f64) array of model.f64 end)
                             end
                         let coreFunction = fun(symbol: String): Ok
                             if stringOp.equal(symbol "quest_system_exit") andif not(g.isCore) then
-                                if not(hashMap.contains(:String :Int g.runtimeUnits "wasm/core.exitStatus")) then
+                                if not(hashMap.contains(g.runtimeUnits "wasm/core.exitStatus")) then
                                     runtimeImport("wasm/core" "exitStatus" repTypes("n") repTypes("n"))
                                 end
-                            elsif maybe.isSome(:Array(String) realmathFunction(symbol)) then
-                                let e = maybe.unwrap(:Array(String) realmathFunction(symbol))
+                            elsif maybe.isSome(realmathFunction(symbol)) then
+                                let e = maybe.unwrap(realmathFunction(symbol))
                                 realmathImport(e[1] if stringOp.equal(e[2] "2") then 2 else 1 end)
-                            elsif maybe.isSome(:String realconvFunction(symbol)) then
-                                realconvImport(maybe.unwrap(:String realconvFunction(symbol)))
+                            elsif maybe.isSome(realconvFunction(symbol)) then
+                                realconvImport(maybe.unwrap(realconvFunction(symbol)))
                                 let append = "wasm/core.sbAppendString"
                                 if stringOp.equal(symbol "quest_sb_append_real")
-                                    andif not(hashMap.contains(:String :Int g.runtimeUnits append)) then
+                                    andif not(hashMap.contains(g.runtimeUnits append)) then
                                     runtimeImport("wasm/core" "sbAppendString" repTypes("ee") repTypes("e"))
                                 end
-                            elsif not(g.isCore) andif maybe.isSome(:Array(String) coreExternal(symbol)) then
-                                let e = maybe.unwrap(:Array(String) coreExternal(symbol))
-                                if not(hashMap.contains(:String :Int g.runtimeUnits "wasm/core." <> e[1])) then
+                            elsif not(g.isCore) andif maybe.isSome(coreExternal(symbol)) then
+                                let e = maybe.unwrap(coreExternal(symbol))
+                                if not(hashMap.contains(g.runtimeUnits "wasm/core." <> e[1])) then
                                     runtimeImport("wasm/core" e[1] repTypes(e[2]) repTypes(e[3]))
                                 end
                             end
-                        case maybe.unwrap(:ir.Op op)
+                        case maybe.unwrap(op)
                             when opCall with c then
                                 register(c.callee c.moduleRef c.member c.calleeType)
-                                if maybe.isNone(:ir.Variable c.callee) andif maybe.isSome(:ir.ModuleRef c.moduleRef) then
-                                    case maybe.unwrap(:ir.ModuleRef c.moduleRef)
+                                if maybe.isNone(c.callee) andif maybe.isSome(c.moduleRef) then
+                                    case maybe.unwrap(c.moduleRef)
                                         when refImport with imp then
-                                            if maybe.isSome(:String imp.i.libPath) then
-                                                let sym = externalSymbol(maybe.unwrap(:String imp.i.libPath)
-                                                    maybe.unwrapOr(:String c.member ""))
-                                                if maybe.isSome(:String sym) then coreFunction(maybe.unwrap(:String sym)) end
+                                            if maybe.isSome(imp.i.libPath) then
+                                                let sym = externalSymbol(maybe.unwrap(imp.i.libPath)
+                                                    maybe.unwrapOr(c.member ""))
+                                                if maybe.isSome(sym) then coreFunction(maybe.unwrap(sym)) end
                                             end
                                         else ok
                                     end
@@ -5979,28 +5974,28 @@ export
                                 if strutil.startsWith(c.symbol hostPrefix) then
                                     let field = stringOp.getSub(c.symbol stringOp.length(hostPrefix)
                                         {stringOp.length(c.symbol) - stringOp.length(hostPrefix)})
-                                    if not(hashMap.contains(:String :Int g.runtimeUnits "quest.host." <> field)) then
-                                        hashMap.insert(:String :Int g.runtimeUnits "quest.host." <> field
+                                    if not(hashMap.contains(g.runtimeUnits "quest.host." <> field)) then
+                                        hashMap.insert(g.runtimeUnits "quest.host." <> field
                                             importFunction("quest.host" field funcType(g
                                                 array of(extent c.args model.i32) array of model.i32 end)))
                                     end
                                 elsif stringOp.equal(c.symbol "wasm.raisedName") then
-                                    if not(hashMap.contains(:String :Int g.runtimeUnits "wasm/print.show")) then
+                                    if not(hashMap.contains(g.runtimeUnits "wasm/print.show")) then
                                         runtimeImport("wasm/print" "show" array of e e end array of e end)
                                     end
-                                    if not(hashMap.contains(:String :Int g.runtimeUnits "wasm/print.init")) then
-                                        hashMap.insert(:String :Int g.runtimeUnits "wasm/print.init"
+                                    if not(hashMap.contains(g.runtimeUnits "wasm/print.init")) then
+                                        hashMap.insert(g.runtimeUnits "wasm/print.init"
                                             importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
                                     end
                                 elsif stringOp.equal(c.symbol "wasm.print.capture") orif
                                     stringOp.equal(c.symbol "wasm.print.captured") then
                                     let field = stringOp.getSub(c.symbol 11 {stringOp.length(c.symbol) - 11})
-                                    if not(hashMap.contains(:String :Int g.runtimeUnits "wasm/print." <> field)) then
+                                    if not(hashMap.contains(g.runtimeUnits "wasm/print." <> field)) then
                                         runtimeImport("wasm/print" field noTypes array of e end)
                                     end
                                     (* print initialized before its capture *)
-                                    if not(hashMap.contains(:String :Int g.runtimeUnits "wasm/print.init")) then
-                                        hashMap.insert(:String :Int g.runtimeUnits "wasm/print.init"
+                                    if not(hashMap.contains(g.runtimeUnits "wasm/print.init")) then
+                                        hashMap.insert(g.runtimeUnits "wasm/print.init"
                                             importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
                                     end
                                 end
@@ -6015,41 +6010,41 @@ export
             end
             (* A program's _start flushes the files' writers when it ends *)
             if g.unit.isProgram andif not(g.isRuntime)
-                andif not(hashMap.contains(:String :Int g.runtimeUnits "wasm/core.flushWriters")) then
+                andif not(hashMap.contains(g.runtimeUnits "wasm/core.flushWriters")) then
                 runtimeImport("wasm/core" "flushWriters" repTypes("") repTypes("e"))
             end
             (* The core initialized before any of its functions is called *)
             let usesCore = fun(): Bool
                 begin
-                    let var any = hashMap.contains(:String :Int g.runtimeUnits "wasm/core.flushWriters")
-                        orif hashMap.contains(:String :Int g.runtimeUnits "wasm/core.exitStatus")
+                    let var any = hashMap.contains(g.runtimeUnits "wasm/core.flushWriters")
+                        orif hashMap.contains(g.runtimeUnits "wasm/core.exitStatus")
                     for k = 0 upto extent coreExternals - 1 do
-                        if hashMap.contains(:String :Int g.runtimeUnits "wasm/core." <> coreExternals[k][1]) then
+                        if hashMap.contains(g.runtimeUnits "wasm/core." <> coreExternals[k][1]) then
                             any := true
                         end
                     end
                     any
                 end
-            let usesRealconv = hashMap.contains(:String :Int g.runtimeUnits "util/realconv.toString")
-                orif hashMap.contains(:String :Int g.runtimeUnits "util/realconv.toReal")
-                orif hashMap.contains(:String :Int g.runtimeUnits "util/realconv.magnitude")
-            let usesRealconv1 = usesRealconv orif hashMap.contains(:String :Int g.runtimeUnits "util/realconv.format")
+            let usesRealconv = hashMap.contains(g.runtimeUnits "util/realconv.toString")
+                orif hashMap.contains(g.runtimeUnits "util/realconv.toReal")
+                orif hashMap.contains(g.runtimeUnits "util/realconv.magnitude")
+            let usesRealconv1 = usesRealconv orif hashMap.contains(g.runtimeUnits "util/realconv.format")
             if usesRealconv1 then
-                hashMap.insert(:String :Int g.runtimeUnits "util/realconv.init"
+                hashMap.insert(g.runtimeUnits "util/realconv.init"
                     importFunction("util/realconv" "init" funcType(g noTypes noTypes)))
             end
             let var usesRealmath = false
             for k = 0 upto extent realmathExternals - 1 do
-                if hashMap.contains(:String :Int g.runtimeUnits "util/realmath." <> realmathExternals[k][1]) then
+                if hashMap.contains(g.runtimeUnits "util/realmath." <> realmathExternals[k][1]) then
                     usesRealmath := true
                 end
             end
             if usesRealmath then
-                hashMap.insert(:String :Int g.runtimeUnits "util/realmath.init"
+                hashMap.insert(g.runtimeUnits "util/realmath.init"
                     importFunction("util/realmath" "init" funcType(g noTypes noTypes)))
             end
-            if usesCore() andif not(hashMap.contains(:String :Int g.runtimeUnits "wasm/core.init")) then
-                hashMap.insert(:String :Int g.runtimeUnits "wasm/core.init"
+            if usesCore() andif not(hashMap.contains(g.runtimeUnits "wasm/core.init")) then
+                hashMap.insert(g.runtimeUnits "wasm/core.init"
                     importFunction("wasm/core" "init" funcType(g noTypes noTypes)))
             end
             (* Each function's index and type, before any is compiled, so that
@@ -6058,20 +6053,20 @@ export
              * it is compiled *)
             let base = model.importedFunctions(m)
             let placeholder = funcType(g noTypes noTypes)
-            for k = 0 upto vector.length(:ir.Function unit.functions) - 1 do
-                let fn = vector.get(:ir.Function unit.functions k)
+            for k = 0 upto vector.length(unit.functions) - 1 do
+                let fn = vector.get(unit.functions k)
                 let sig = signature(g fn)
-                hashMap.insert(:Int :Int g.functions fn.id base + k)
-                vector.append(:model.Function m.functions tuple
+                hashMap.insert(g.functions fn.id base + k)
+                vector.append(m.functions tuple
                     let name = fresh(g.names fn.v.hint) let type = funcType(g sig.params sig.results)
                     let params = array of :String end let locals = vector.new(:model.Local) let body = vector.new(:Inst)
                 end)
             end
             (* The top level's and _start's (a module's init), before the
              * uniform entries that compiling the functions makes *)
-            let mainIndex = base + vector.length(:ir.Function unit.functions)
+            let mainIndex = base + vector.length(unit.functions)
             for k = 0 upto if asProgram then 1 else 0 end do
-                vector.append(:model.Function m.functions tuple
+                vector.append(m.functions tuple
                     let name = "" let type = placeholder let params = array of :String end
                     let locals = vector.new(:model.Local) let body = vector.new(:Inst)
                 end)
@@ -6079,13 +6074,13 @@ export
             let descIndex = mainIndex + if asProgram then 2 else 1 end
             let forms = if described then descriptorGlobals(g) else vector.new(:staticdata.DescriptorForm) end
             if described then
-                vector.append(:model.Function m.functions tuple
+                vector.append(m.functions tuple
                     let name = "" let type = placeholder let params = array of :String end
                     let locals = vector.new(:model.Local) let body = vector.new(:Inst)
                 end)
             end
-            for k = 0 upto vector.length(:ir.Function unit.functions) - 1 do
-                function(g vector.get(:ir.Function unit.functions k))
+            for k = 0 upto vector.length(unit.functions) - 1 do
+                function(g vector.get(unit.functions k))
             end
             (* The runtime's units initialized, and the unit's descriptors
              * made, first in its initializer *)
@@ -6096,35 +6091,35 @@ export
             end
             let initRuntime = fun(f: F): Ok
                 begin
-                    if hashMap.contains(:String :Int g.runtimeUnits "wasm/core.init") then
-                        emit(f i1(ops.call hashMap.find(:String :Int g.runtimeUnits "wasm/core.init")))
+                    if hashMap.contains(g.runtimeUnits "wasm/core.init") then
+                        emit(f i1(ops.call hashMap.find(g.runtimeUnits "wasm/core.init")))
                     end
-                    if hashMap.contains(:String :Int g.runtimeUnits "util/realconv.init") then
-                        emit(f i1(ops.call hashMap.find(:String :Int g.runtimeUnits "util/realconv.init")))
+                    if hashMap.contains(g.runtimeUnits "util/realconv.init") then
+                        emit(f i1(ops.call hashMap.find(g.runtimeUnits "util/realconv.init")))
                     end
-                    if hashMap.contains(:String :Int g.runtimeUnits "util/realmath.init") then
-                        emit(f i1(ops.call hashMap.find(:String :Int g.runtimeUnits "util/realmath.init")))
+                    if hashMap.contains(g.runtimeUnits "util/realmath.init") then
+                        emit(f i1(ops.call hashMap.find(g.runtimeUnits "util/realmath.init")))
                     end
                     if described then emit(f i1(ops.call descIndex)) end
                     if {described andif echoes} orif g.isPhrase
-                        orif hashMap.contains(:String :Int g.runtimeUnits "wasm/print.capture") then
-                        emit(f i1(ops.call hashMap.find(:String :Int g.runtimeUnits "wasm/print.init")))
+                        orif hashMap.contains(g.runtimeUnits "wasm/print.capture") then
+                        emit(f i1(ops.call hashMap.find(g.runtimeUnits "wasm/print.init")))
                     end
                 end
             (* Each unit imported initialized, in the order of the imports *)
             let initImports = fun(f: F): Ok
                 for k = 0 upto extent unit.imports - 1 do
                     if isUnitImport(moduleName unit.imports[k]) then
-                        emit(f i1(ops.call hashMap.find(:String :Int g.importInits unit.imports[k].canonicalPath)))
+                        emit(f i1(ops.call hashMap.find(g.importInits unit.imports[k].canonicalPath)))
                     end
                 end
             if not(asProgram) then
                 (* A module's init, guarded by a flag, as in C (section 5.1);
                  * its record's globals, which its body sets, exported, and
                  * its functions at their interface types' signatures *)
-                let mod = vector.get(:ir.Module unit.modules {nmodules - 1})
-                let flag = model.importedGlobals(m) + vector.length(:model.Global m.globals)
-                vector.append(:model.Global m.globals tuple
+                let mod = vector.get(unit.modules {nmodules - 1})
+                let flag = model.importedGlobals(m) + vector.length(m.globals)
+                vector.append(m.globals tuple
                     let name = "initialized" let type = model.i32 let mutable = true
                     let init = array of model.i32Const(0) end
                 end)
@@ -6137,22 +6132,22 @@ export
                 emit(initF i1(ops.globalSet flag))
                 initRuntime(initF)
                 initImports(initF)
-                for k = 0 upto nmodules - 1 do registerAbstracts(initF vector.get(:ir.Module unit.modules k)) end
+                for k = 0 upto nmodules - 1 do registerAbstracts(initF vector.get(unit.modules k)) end
                 adaptersPast(initF pastArities)
-                for k = 0 upto nmodules - 1 do body(initF vector.get(:ir.Module unit.modules k).init) end
+                for k = 0 upto nmodules - 1 do body(initF vector.get(unit.modules k).init) end
                 (* and a phrase unit's top level, as the native entry runs it *)
                 if g.isPhrase then body(initF unit.main) end
                 fill(initF mainIndex "init" placeholder)
                 let exportFunction = fun(field: String index: Int): Ok
-                    vector.append(:model.Export m.exports tuple
+                    vector.append(m.exports tuple
                         let field = field let kind = option exportFunc of model.ExportKind end let index = index
                     end)
                 exportFunction("init" mainIndex)
-                if maybe.isNone(:ir.Variable mod.recordVar) then fail("a module without its record") end
-                let recordVar = maybe.unwrap(:ir.Variable mod.recordVar)
+                if maybe.isNone(mod.recordVar) then fail("a module without its record") end
+                let recordVar = maybe.unwrap(mod.recordVar)
                 let first = global(initF recordVar)
                 for j = 0 upto 1 do
-                    vector.append(:model.Export m.exports tuple
+                    vector.append(m.exports tuple
                         let field = if j is 0 then "record.payload" else "record.dict" end
                         let kind = option exportGlobal of model.ExportKind end let index = first + j
                     end)
@@ -6161,17 +6156,17 @@ export
                  * signatures, exported with prefix before their names *)
                 let exportMembers = fun(mod: ir.Module prefix: String): Ok
                     begin
-                        let members = maybe.unwrapOr(:ir.Members mod.exports mod.members)
-                        let recordShape = shapeOf(maybe.unwrap(:ir.Variable mod.recordVar).type)
-                        for k = 0 upto vector.length(:String members.names) - 1 do
-                            let name = vector.get(:String members.names k)
-                            let v = maybe.unwrap(:ir.Variable ir.member(members name))
+                        let members = maybe.unwrapOr(mod.exports mod.members)
+                        let recordShape = shapeOf(maybe.unwrap(mod.recordVar).type)
+                        for k = 0 upto vector.length(members.names) - 1 do
+                            let name = vector.get(members.names k)
+                            let v = maybe.unwrap(ir.member(members name))
                             let c = shapes.component(recordShape name)
-                            let isFunction = hashMap.contains(:Int :ir.OpMakeClosure g.known v.id)
-                            if maybe.isSome(:shapes.Component c) andif isFunction then
-                                let interfaceType = shapes.componentShape(maybe.unwrap(:shapes.Component c)).type
-                                let fn = hashMap.find(:Int :ir.OpMakeClosure g.known v.id).code
-                                let native = hashMap.find(:Int :Int g.functions fn.id)
+                            let isFunction = hashMap.contains(g.known v.id)
+                            if maybe.isSome(c) andif isFunction then
+                                let interfaceType = shapes.componentShape(maybe.unwrap(c)).type
+                                let fn = hashMap.find(g.known v.id).code
+                                let native = hashMap.find(g.functions fn.id)
                                 let outer = closureSig(interfaceType)
                                 let inner = signature(g fn)
                                 let innerParams = array of(extent inner.params - 1 model.i64)
@@ -6194,8 +6189,8 @@ export
                                     end
                                     emit(wf i1(ops.call native))
                                     convertRep(wf inner.results[0] outer.results[0])
-                                    let at = model.importedFunctions(m) + vector.length(:model.Function m.functions)
-                                    vector.append(:model.Function m.functions tuple
+                                    let at = model.importedFunctions(m) + vector.length(m.functions)
+                                    vector.append(m.functions tuple
                                         let name = fresh(g.names name <> ".export") let type = nativeType(g outer)
                                         let params = names
                                         let locals = wf.declared let body = wf.code
@@ -6211,11 +6206,11 @@ export
                  * host gives them as the module NAME's (section 5.1) *)
                 if g.isPhrase then
                     for k = 0 upto nmodules - 2 do
-                        let declared = vector.get(:ir.Module unit.modules k)
-                        if maybe.isSome(:ir.Variable declared.recordVar) then
-                            let at = global(initF maybe.unwrap(:ir.Variable declared.recordVar))
+                        let declared = vector.get(unit.modules k)
+                        if maybe.isSome(declared.recordVar) then
+                            let at = global(initF maybe.unwrap(declared.recordVar))
                             for j = 0 upto 1 do
-                                vector.append(:model.Export m.exports tuple
+                                vector.append(m.exports tuple
                                     let field = declared.name
                                         <> if j is 0 then ".record.payload" else ".record.dict" end
                                     let kind = option exportGlobal of model.ExportKind end let index = at + j
@@ -6228,7 +6223,7 @@ export
             else
             (* The program's top level *)
             let flushWriters = fun(f: F): Ok
-                if hashMap.contains(:String :Int g.runtimeUnits "wasm/core.flushWriters") then
+                if hashMap.contains(g.runtimeUnits "wasm/core.flushWriters") then
                     emit(f i1(ops.globalGet g.noClosure))
                     runtimeUnitCall(f "wasm/core.flushWriters")
                     emit(f i(ops.drop))
@@ -6236,11 +6231,11 @@ export
             let mainF = newF(g array of :String end noTypes ~1)
             initRuntime(mainF)
             initImports(mainF)
-            for k = 0 upto nmodules - 1 do registerAbstracts(mainF vector.get(:ir.Module unit.modules k)) end
+            for k = 0 upto nmodules - 1 do registerAbstracts(mainF vector.get(unit.modules k)) end
             adaptersPast(mainF pastArities)
             (* the modules the program defines, in order, then its top
              * level *)
-            for k = 0 upto nmodules - 1 do body(mainF vector.get(:ir.Module unit.modules k).init) end
+            for k = 0 upto nmodules - 1 do body(mainF vector.get(unit.modules k).init) end
             body(mainF unit.main)
             fill(mainF mainIndex fresh(g.names "main") placeholder)
             (* _start: the top level, and an uncaught exception's report *)
@@ -6280,12 +6275,12 @@ export
             flushWriters(start)
             runtimeCall(start "uncaught")
             fill(start mainIndex + 1 "_start" placeholder)
-            vector.append(:model.Export m.exports tuple
+            vector.append(m.exports tuple
                 let field = "_start" let kind = option exportFunc of model.ExportKind end let index = mainIndex + 1
             end)
             end
             if sb.length(g.strings) > 0 then
-                vector.append(:model.Data m.data
+                vector.append(m.data
                     tuple let name = "strings" let bytes = sb.toString(g.strings) let offset = ~1 end)
             end
             (* The locals that are never live together share one *)

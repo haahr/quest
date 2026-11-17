@@ -59,7 +59,7 @@ export
         begin
             let var found = false
             for i = 0 upto {extent s.type.fv - 1} do
-                if hashMap.contains(:Int :Type subst s.type.fv[i]) then found := true end
+                if hashMap.contains(subst s.type.fv[i]) then found := true end
             end
             found
         end
@@ -68,15 +68,15 @@ export
     let storedValueAgrees(v: Shape arg: Type place: String): Bool =
         begin
             let argC = layout.representation(arg)
-            if maybe.isSome(:Shape v.bound) andif layout.ownView(v) then
+            if maybe.isSome(v.bound) andif layout.ownView(v) then
                 (* Held as arg's own value, in the representation of the
                  * bound *)
-                let boundC = layout.shapeRepresentation(maybe.unwrap(:Shape v.bound))
+                let boundC = layout.shapeRepresentation(maybe.unwrap(v.bound))
                 eq(argC boundC) orif {endsWith(argC "*") andif endsWith(boundC "*")}
-            elsif maybe.isSome(:Shape v.bound) then
+            elsif maybe.isSome(v.bound) then
                 (* Held as a value of the bound, viewed at it, which agrees with
                  * one of arg only when both are the same scalar *)
-                eq(argC layout.shapeRepresentation(maybe.unwrap(:Shape v.bound))) andif strings.isOneOf(argC wordScalars)
+                eq(argC layout.shapeRepresentation(maybe.unwrap(v.bound))) andif strings.isOneOf(argC wordScalars)
                     andif {not(eq(place registerPlace)) orif strings.isOneOf(argC registerWords)}
             elsif eq(place registerPlace) then
                 strings.isOneOf(argC registerWords) orif endsWith(argC "*")
@@ -90,7 +90,7 @@ export
     (* The symbol of the type variable s is the shape of, if it is one *)
     let typeParameter(s: Shape): maybe.T(Int) =
         case s.type.form
-            when typeVariable with x then maybe.some(:Int x.symbolId)
+            when typeVariable with x then maybe.some(x.symbolId)
             else maybe.none(:Int)
         end
     (* Whether a value of shape s, laid out natively with subst's arguments for
@@ -104,13 +104,13 @@ export
             let symbol = typeParameter(s)
             if not(mentions(s subst)) then
                 true
-            elsif maybe.isSome(:Int symbol) then
-                let arg = hashMap.get(:Int :Type subst maybe.unwrap(:Int symbol))
-                if maybe.isSome(:Type arg) then storedValueAgrees(s maybe.unwrap(:Type arg) place) else true end
-            elsif shapes.isRecursive(s) andif hashMap.contains(:Int :Bool seen s.id) then
+            elsif maybe.isSome(symbol) then
+                let arg = hashMap.get(subst maybe.unwrap(symbol))
+                if maybe.isSome(arg) then storedValueAgrees(s maybe.unwrap(arg) place) else true end
+            elsif shapes.isRecursive(s) andif hashMap.contains(seen s.id) then
                 true
             else
-                if shapes.isRecursive(s) then hashMap.insert(:Int :Bool seen s.id true) end
+                if shapes.isRecursive(s) then hashMap.insert(seen s.id true) end
                 let slot = fun(component: Shape): Bool agrees(component subst slotPlace seen)
                 case s.kind
                     (* An application of an abstract operator, whose values are
@@ -126,8 +126,8 @@ export
                         let var all = true
                         for i = 0 upto {extent s.cases - 1} do
                             let c = s.cases[i].shape
-                            if all andif maybe.isSome(:Shape c)
-                                andif not(slot(maybe.unwrap(:Shape c))) then all := false end
+                            if all andif maybe.isSome(c)
+                                andif not(slot(maybe.unwrap(c))) then all := false end
                         end
                         all
                     (* An exception's payload is raised in a QVal word, read as
@@ -153,7 +153,7 @@ export
             end
         end
     let genericLayoutAgrees(t: Type subst: model.Subst): Bool =
-        hashMap.empty(:Int :Type subst) orif agrees(shapes.shape(t) subst slotPlace newSeen())
+        hashMap.empty(subst) orif agrees(shapes.shape(t) subst slotPlace newSeen())
     let genericLayoutCopiesMutableData(t: Type subst: model.Subst): Bool =
         begin
             let seen = newSeen()
@@ -166,10 +166,10 @@ export
             let rec visit(s: Shape): Bool =
                 if not(mentions(s subst)) then
                     false
-                elsif shapes.isRecursive(s) andif hashMap.contains(:Int :Bool seen s.id) then
+                elsif shapes.isRecursive(s) andif hashMap.contains(seen s.id) then
                     false
                 else
-                    if shapes.isRecursive(s) then hashMap.insert(:Int :Bool seen s.id true) end
+                    if shapes.isRecursive(s) then hashMap.insert(seen s.id true) end
                     case s.kind
                         when shapeArray then disagrees(shapes.element(s) slotPlace) orif visit(shapes.element(s))
                         when shapeCell, shapeOut then disagrees(shapes.element(s) cellPlace)
@@ -195,8 +195,8 @@ export
                             let var any = false
                             for i = 0 upto {extent s.cases - 1} do
                                 let c = s.cases[i]
-                                if not(any) andif maybe.isSome(:Shape c.shape) then
-                                    let cs = maybe.unwrap(:Shape c.shape)
+                                if not(any) andif maybe.isSome(c.shape) then
+                                    let cs = maybe.unwrap(c.shape)
                                     if {c.isVar andif disagrees(cs slotPlace)} orif visit(cs) then any := true end
                                 end
                             end
@@ -205,8 +205,8 @@ export
                             let var any = false
                             for i = 0 upto {extent s.cases - 1} do
                                 let c = s.cases[i]
-                                if not(any) andif maybe.isSome(:Shape c.shape)
-                                    andif visit(maybe.unwrap(:Shape c.shape)) then
+                                if not(any) andif maybe.isSome(c.shape)
+                                    andif visit(maybe.unwrap(c.shape)) then
                                     any := true
                                 end
                             end
@@ -237,23 +237,23 @@ export
                     (* A transparent one (in a whole program) is laid out as its
                      * representation is, everywhere *)
                     let transparent = shapes.transparentAbstractTypes()
-                        andif maybe.isSome(:abstractTypes.ModuleAbstractType entry)
-                        andif abstractTypes.unbounded(maybe.unwrap(:abstractTypes.ModuleAbstractType entry))
-                    let written = if maybe.isSome(:abstractTypes.ModuleAbstractType entry) andif not(transparent) then
-                        maybe.unwrap(:abstractTypes.ModuleAbstractType entry).rep
+                        andif maybe.isSome(entry)
+                        andif abstractTypes.unbounded(maybe.unwrap(entry))
+                    let written = if maybe.isSome(entry) andif not(transparent) then
+                        maybe.unwrap(entry).rep
                     else maybe.none(:Type) end
-                    if maybe.isNone(:Type written) then
+                    if maybe.isNone(written) then
                         none
                     else
-                        let rep = shapes.shape(maybe.unwrap(:Type written)).type
+                        let rep = shapes.shape(maybe.unwrap(written)).type
                         case rep.form
                             when typeOperator with op then
                                 if extent op.params is extent x.arguments then
                                     let subst = model.newSubst()
                                     for i = 0 upto {extent op.params - 1} do
-                                        hashMap.insert(:Int :Type subst op.params[i].symbolId x.arguments[i])
+                                        hashMap.insert(subst op.params[i].symbolId x.arguments[i])
                                     end
-                                    maybe.some(:AbstractInstance tuple let generic = op.body let subst = subst end)
+                                    maybe.some(tuple let generic = op.body let subst = subst end)
                                 else none end
                             else none
                         end
@@ -265,10 +265,10 @@ export
         begin
             let seen = newSeen()
             let rec visit(s: Shape): Bool =
-                if hashMap.contains(:Int :Bool seen s.id) then
+                if hashMap.contains(seen s.id) then
                     false
                 else
-                    hashMap.insert(:Int :Bool seen s.id true)
+                    hashMap.insert(seen s.id true)
                     (* An abstract application with a known representation
                      * differs when that representation's generic layout
                      * disagrees with its native one; any other shape when one
@@ -277,29 +277,29 @@ export
                         begin
                             let var found = false
                             for i = 0 upto {extent shapes0 - 1} do
-                                if not(found) andif maybe.isSome(:Shape shapes0[i])
-                                    andif visit(maybe.unwrap(:Shape shapes0[i])) then found := true end
+                                if not(found) andif maybe.isSome(shapes0[i])
+                                    andif visit(maybe.unwrap(shapes0[i])) then found := true end
                             end
                             found
                         end
                     let inner = vector.new(:maybe.T(Shape))
                     for i = 0 upto {extent s.components - 1} do
-                        vector.append(:maybe.T(Shape) inner maybe.some(:Shape shapes.componentShape(s.components[i])))
+                        vector.append(inner maybe.some(shapes.componentShape(s.components[i])))
                     end
-                    for i = 0 upto {extent s.cases - 1} do vector.append(:maybe.T(Shape) inner s.cases[i].shape) end
+                    for i = 0 upto {extent s.cases - 1} do vector.append(inner s.cases[i].shape) end
                     for i = 0 upto {extent s.params - 1} do
-                        vector.append(:maybe.T(Shape) inner maybe.some(:Shape s.params[i].shape))
+                        vector.append(inner maybe.some(s.params[i].shape))
                     end
-                    vector.append(:maybe.T(Shape) inner s.elementShape)
-                    vector.append(:maybe.T(Shape) inner s.resultShape)
-                    vector.append(:maybe.T(Shape) inner s.bodyShape)
+                    vector.append(inner s.elementShape)
+                    vector.append(inner s.resultShape)
+                    vector.append(inner s.bodyShape)
                     let instance = if shapes.kindIs(s shapes.shapeAbstract) then abstractInstance(s.type)
                         else maybe.none(:AbstractInstance) end
-                    if maybe.isSome(:AbstractInstance instance) then
-                        let i = maybe.unwrap(:AbstractInstance instance)
+                    if maybe.isSome(instance) then
+                        let i = maybe.unwrap(instance)
                         not(genericLayoutAgrees(i.generic i.subst))
                     else
-                        any(vector.toArray(:maybe.T(Shape) inner))
+                        any(vector.toArray(inner))
                     end
                 end
             visit(shapes.shape(t))
@@ -361,9 +361,9 @@ export
                         let var all = true
                         for i = 0 upto {extent y.fields - 1} do
                             let f = model.recordGetField(x.fields y.fields[i].name)
-                            if maybe.isNone(:model.RecordField f) then
+                            if maybe.isNone(f) then
                                 all := false
-                            elsif not(typeEqual(maybe.unwrap(:model.RecordField f).type y.fields[i].type)) then
+                            elsif not(typeEqual(maybe.unwrap(f).type y.fields[i].type)) then
                                 all := false
                             end
                         end

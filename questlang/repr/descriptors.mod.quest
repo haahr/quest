@@ -22,9 +22,9 @@ export
         case t.form
             when typeVariable with x then
                 let entry = abstractTypes.abstractTypeBySymbol(x.symbolId)
-                if maybe.isSome(:abstractTypes.ModuleAbstractType entry) then
-                    if maybe.unwrap(:abstractTypes.ModuleAbstractType entry).linked then
-                        maybe.some(:String maybe.unwrap(:abstractTypes.ModuleAbstractType entry).globalName)
+                if maybe.isSome(entry) then
+                    if maybe.unwrap(entry).linked then
+                        maybe.some(maybe.unwrap(entry).globalName)
                     else
                         maybe.none(:String)
                     end
@@ -48,9 +48,9 @@ export
     let reservedIndex(symbolId: Int use: model.ReservedSymbolUse): maybe.T(Int) =
         begin
             let decoded = model.reservedSymbolUse(symbolId)
-            if maybe.isSome(:model.Decoded decoded)
-                andif {ordinal(maybe.unwrap(:model.Decoded decoded).use) is ordinal(use)} then
-                maybe.some(:Int maybe.unwrap(:model.Decoded decoded).index)
+            if maybe.isSome(decoded)
+                andif {ordinal(maybe.unwrap(decoded).use) is ordinal(use)} then
+                maybe.some(maybe.unwrap(decoded).index)
             else
                 maybe.none(:Int)
             end
@@ -86,22 +86,22 @@ export
             let rec visit(p: model.Part): Ok =
                 case p
                     when partType with x then
-                        if not(hashMap.contains(:Int :Bool seen x.t.id)) then
-                            hashMap.insert(:Int :Bool seen x.t.id true)
+                        if not(hashMap.contains(seen x.t.id)) then
+                            hashMap.insert(seen x.t.id true)
                             case x.t.form
                                 when typeVariable with v then
-                                    if maybe.isSome(:Int boundVarIndex(x.t)) andif not(hashMap.contains(:Int :Bool foundIds v.symbolId)) then
-                                        hashMap.insert(:Int :Bool foundIds v.symbolId true)
-                                        vector.append(:Type found x.t)
+                                    if maybe.isSome(boundVarIndex(x.t)) andif not(hashMap.contains(foundIds v.symbolId)) then
+                                        hashMap.insert(foundIds v.symbolId true)
+                                        vector.append(found x.t)
                                     end
                                 else ok
                             end
-                            vector.forEach(:model.Part model.typeParts(x.t) visit)
+                            vector.forEach(model.typeParts(x.t) visit)
                         end
                     when partKind with x then
-                        if not(hashMap.contains(:Int :Bool seen x.k.id)) then
-                            hashMap.insert(:Int :Bool seen x.k.id true)
-                            vector.forEach(:model.Part model.kindParts(x.k) visit)
+                        if not(hashMap.contains(seen x.k.id)) then
+                            hashMap.insert(seen x.k.id true)
+                            vector.forEach(model.kindParts(x.k) visit)
                         end
                 end
             visit(start)
@@ -112,12 +112,12 @@ export
     let shiftSubst(present: vector.T(Type) by: Int): model.Subst =
         begin
             let subst = model.newSubst()
-            for i = 0 upto {vector.length(:Type present) - 1} do
-                case vector.get(:Type present i).form
+            for i = 0 upto {vector.length(present) - 1} do
+                case vector.get(present i).form
                     when typeVariable with x then
                         begin
-                            hashMap.insert(:Int :Type subst x.symbolId
-                                boundVar(maybe.unwrap(:Int boundVarIndex(vector.get(:Type present i))) + by x.bound))
+                            hashMap.insert(subst x.symbolId
+                                boundVar(maybe.unwrap(boundVarIndex(vector.get(present i))) + by x.bound))
                             ok
                         end
                     else ok
@@ -131,13 +131,13 @@ export
     let shiftType(t: Type by: Int): Type =
         begin
             let present = boundVarsIn(option partType of model.Part with let t = t end)
-            if vector.empty(:Type present) orif {by is 0} then t else model.substitute(t shiftSubst(present by)) end
+            if vector.empty(present) orif {by is 0} then t else model.substitute(t shiftSubst(present by)) end
         end
 
     let shiftKind(k: Kind by: Int): Kind =
         begin
             let present = boundVarsIn(option partKind of model.Part with let k = k end)
-            if vector.empty(:Type present) orif {by is 0} then k else model.substituteInKind(k shiftSubst(present by)) end
+            if vector.empty(present) orif {by is 0} then k else model.substituteInKind(k shiftSubst(present by)) end
         end
 
     let rec canonicalFunType(t0: Type): Type =
@@ -169,8 +169,8 @@ export
                         let shifted = shiftKind(quants[k].bound k)
                         let subst = model.newSubst()
                         for j = 0 upto {k - 1} do
-                            hashMap.insert(:Int :Type subst quants[j].symbolId
-                                boundVar({k - 1} - j maybe.some(:Kind newQuants[j].bound)))
+                            hashMap.insert(subst quants[j].symbolId
+                                boundVar({k - 1} - j maybe.some(newQuants[j].bound)))
                         end
                         newQuants[k] := tuple
                             let name = "$" <> syntax.cInt(k)
@@ -180,8 +180,8 @@ export
                     end
                     let placeholders = model.newSubst()
                     for k = 0 upto {n - 1} do
-                        hashMap.insert(:Int :Type placeholders quants[k].symbolId
-                            boundVar({n - 1} - k maybe.some(:Kind newQuants[k].bound)))
+                        hashMap.insert(placeholders quants[k].symbolId
+                            boundVar({n - 1} - k maybe.some(newQuants[k].bound)))
                     end
                     let body0 = model.substitute(shiftType(x.body n) placeholders)
                     let body = if body0.form?typeFun then canonicalFunType(body0) else body0 end
@@ -196,7 +196,7 @@ export
         case t.form
             when typeAuto with x then
                 let kindBound = shiftKind(x.kindBound 1)
-                let placeholder = boundVar(0 maybe.some(:Kind kindBound))
+                let placeholder = boundVar(0 maybe.some(kindBound))
                 let placeholderId = model.reservedSymbolId(boundVarUse 0)
                 let subst = model.singleSubst(x.symbolId placeholder)
                 let signature = array of(extent x.signature tuple let name = "" let type = model.okType let isVar = false end)

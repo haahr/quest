@@ -15,17 +15,17 @@ export
     let int(n: Int): ssa.Word = option wordInt of ssa.Word with let n = n end
     let address(symbol: String): ssa.Word = option wordSymbol of ssa.Word with let symbol = symbol let addend = 0 end
     let flag(b: Bool): ssa.Word = int(if b then 1 else 0 end)
-    let add(ws: Words w: ssa.Word): Ok = vector.append(:ssa.Word ws w)
+    let add(ws: Words w: ssa.Word): Ok = vector.append(ws w)
     (* Zero words, appended until ws holds at least bytes bytes *)
-    let padTo(ws: Words bytes: Int): Ok = while {8 * vector.length(:ssa.Word ws)} < bytes do add(ws int(0)) end
-    let bytes(name: String): Int = maybe.unwrap(:runtimeLayout.Struct runtimeLayout.struct(name)).bytes
+    let padTo(ws: Words bytes: Int): Ok = while {8 * vector.length(ws)} < bytes do add(ws int(0)) end
+    let bytes(name: String): Int = maybe.unwrap(runtimeLayout.struct(name)).bytes
 
     let refWord(r: staticdata.Ref): ssa.Word =
         if stringOp.length(r.symbol) is 0 then int(0)
         else option wordSymbol of ssa.Word with let symbol = r.symbol let addend = r.index * bytes("QTypeDescriptor") end
         end
 
-    let datum(symbol: String ws: Words): ssa.Data = ssa.words(symbol false false vector.toArray(:ssa.Word ws))
+    let datum(symbol: String ws: Words): ssa.Data = ssa.words(symbol false false vector.toArray(ws))
 
     (* Sets the word at base plus member's offset in structName, which is a
      * multiple of 8, padding with zero words up to it *)
@@ -33,7 +33,7 @@ export
         begin
             let at = {base + runtimeLayout.offset(structName member)} / 8
             padTo(ws 8 * {at + 1})
-            vector.set(:ssa.Word ws at w)
+            vector.set(ws at w)
         end
 
     (* A flag as byte k of a word *)
@@ -58,9 +58,9 @@ export
         begin
             let kindsSymbol = "qlk_" <> l.tag
             let all = vector.new(:objectLayout.Kind)
-            for i = 0 upto {extent l.words - 1} do vector.append(:objectLayout.Kind all l.words[i]) end
-            for i = 0 upto {extent l.element - 1} do vector.append(:objectLayout.Kind all l.element[i]) end
-            let packed = objectLayout.packedKinds(vector.toArray(:objectLayout.Kind all))
+            for i = 0 upto {extent l.words - 1} do vector.append(all l.words[i]) end
+            for i = 0 upto {extent l.element - 1} do vector.append(all l.element[i]) end
+            let packed = objectLayout.packedKinds(vector.toArray(all))
             let kws = vector.new(:ssa.Word)
             for i = 0 upto {extent packed - 1} do add(kws int(packed[i])) end
             let s = "QLayout"
@@ -82,7 +82,7 @@ export
             let tag = d.tag
             let res = vector.new(:ssa.Data)
             let named(name: maybe.T(String)): ssa.Word =
-                if maybe.isSome(:String name) then address(text(maybe.unwrap(:String name))) else int(0) end
+                if maybe.isSome(name) then address(text(maybe.unwrap(name))) else int(0) end
             let descriptor(symbol: String kind: String name: String size: Int extra: ssa.Word): Ok =
                 begin
                     let s = "QTypeDescriptor"
@@ -93,13 +93,13 @@ export
                     put(ws 0 s "alignment" int(8))
                     put(ws 0 s "is_subtype" address("quest_is_subtype"))
                     put(ws 0 s "extra" extra)
-                    vector.append(:ssa.Data res datum(symbol ws))
+                    vector.append(res datum(symbol ws))
                 end
             let plain(extra: ssa.Word): Ok = descriptor("quest_type_" <> tag d.kindConstant d.name d.size.bytes extra)
             (* A struct the extra field points at *)
             let extra(symbol: String ws: Words): Ok =
                 begin
-                    vector.append(:ssa.Data res datum(symbol ws))
+                    vector.append(res datum(symbol ws))
                     plain(address(symbol))
                 end
             (* The jth element of a struct's final array, of elements of the
@@ -138,7 +138,7 @@ export
                     let args = vector.new(:ssa.Word)
                     for j = 0 upto {extent x.args - 1} do add(args refWord(x.args[j])) end
                     padTo(args 8)
-                    vector.append(:ssa.Data res datum("qopaque_args_" <> tag args))
+                    vector.append(res datum("qopaque_args_" <> tag args))
                     let s = "QOpaqueTypeDescriptor"
                     let ws = struct(s)
                     put(ws 0 s "arg_count" int(extent x.args))
@@ -163,7 +163,7 @@ export
                     if extent x.bounds > 0 then
                         let bs = vector.new(:ssa.Word)
                         for j = 0 upto {extent x.bounds - 1} do add(bs refWord(x.bounds[j])) end
-                        vector.append(:ssa.Data res datum("qfun_bounds_" <> tag bs))
+                        vector.append(res datum("qfun_bounds_" <> tag bs))
                     end
                     let s = "QFunTypeDescriptor"
                     let p = "QFunParamDescriptor"
@@ -223,7 +223,7 @@ export
                             put(cs at tc "position" int(x.typeComponents[j].position))
                             put(cs at tc "text" address(text(x.typeComponents[j].text)))
                         end
-                        vector.append(:ssa.Data res datum("qtup_components_" <> tag cs))
+                        vector.append(res datum("qtup_components_" <> tag cs))
                     end
                     let s = "QTupleTypeDescriptor"
                     let c = "QTupleElementDescriptor"
@@ -239,6 +239,6 @@ export
                 when payloadVariant with x then cases(x.cases)
                 when payloadOption with x then cases(x.cases)
             end
-            vector.toArray(:ssa.Data res)
+            vector.toArray(res)
         end
 end

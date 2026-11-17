@@ -55,7 +55,7 @@ export
                 (* a variant's file, NAME.VARIANT.mod.quest, is NAME's *)
                 let path = stringOp.getSub(full p size)
                 let dot = strutil.rfind(path ".")
-                maybe.some(:String if dot > strutil.rfind(path "/") then stringOp.getSub(path 0 dot) else path end)
+                maybe.some(if dot > strutil.rfind(path "/") then stringOp.getSub(path 0 dot) else path end)
             else
                 maybe.none(:String)
             end
@@ -99,7 +99,7 @@ export
     let lastSegment(name: String): String =
         begin
             let cs = files.components(name)
-            if vector.empty(:String cs) then name else vector.last(:String cs) end
+            if vector.empty(cs) then name else vector.last(cs) end
         end
 
     (* The name each module source text declares *)
@@ -108,35 +108,35 @@ export
     let declaredModuleName(file: maybe.T(String) canonName: String): String =
         begin
             let fallback = lastSegment(canonName)
-            let text = if maybe.isSome(:String file) then files.readText(maybe.unwrap(:String file)) else maybe.none(:String) end
-            let known = if maybe.isSome(:String text) then
-                hashMap.get(:String :String declaredNames maybe.unwrap(:String text))
+            let text = if maybe.isSome(file) then files.readText(maybe.unwrap(file)) else maybe.none(:String) end
+            let known = if maybe.isSome(text) then
+                hashMap.get(declaredNames maybe.unwrap(text))
             else
                 maybe.none(:String)
             end
-            if maybe.isNone(:String text) then
+            if maybe.isNone(text) then
                 fallback
-            elsif maybe.isSome(:String known) then
-                maybe.unwrap(:String known)
+            elsif maybe.isSome(known) then
+                maybe.unwrap(known)
             else
                 try
-                    let sm = location.newSourceMap(maybe.unwrap(:String file) maybe.unwrap(:String text))
+                    let sm = location.newSourceMap(maybe.unwrap(file) maybe.unwrap(text))
                     let toks = tokenizer.tokenizeAll(tokenizer.new(sm diagbag.new()))
                     let var name = fallback
                     let var found = false
-                    for i = 0 upto {vector.length(:tokens.Token toks) - 2} do
+                    for i = 0 upto {vector.length(toks) - 2} do
                         if not(found) then
-                            case vector.get(:tokens.Token toks i).kind
+                            case vector.get(toks i).kind
                                 when kwModule then
                                     begin
-                                        name := vector.get(:tokens.Token toks {i + 1}).lexeme
+                                        name := vector.get(toks {i + 1}).lexeme
                                         found := true
                                     end
                                 else ok
                             end
                         end
                     end
-                    hashMap.insert(:String :String declaredNames maybe.unwrap(:String text) name)
+                    hashMap.insert(declaredNames maybe.unwrap(text) name)
                     name
                 when diagbag.fatalError then
                     fallback
@@ -148,12 +148,12 @@ export
     let searchDirs(currentDir: maybe.T(String) includePaths: Array(String)): vector.T(String) =
         begin
             let dirs = vector.new(:String)
-            if maybe.isSome(:String currentDir) then vector.append(:String dirs maybe.unwrap(:String currentDir)) end
-            for i = 0 upto {extent includePaths - 1} do vector.append(:String dirs includePaths[i]) end
+            if maybe.isSome(currentDir) then vector.append(dirs maybe.unwrap(currentDir)) end
+            for i = 0 upto {extent includePaths - 1} do vector.append(dirs includePaths[i]) end
             let envLib = system.getEnv("QUEST_LIB")
-            if stringOp.length(envLib) > 0 then vector.append(:String dirs envLib) end
-            if system.isDirectory(libDir()) then vector.append(:String dirs libDir()) end
-            vector.append(:String dirs projectDir())
+            if stringOp.length(envLib) > 0 then vector.append(dirs envLib) end
+            if system.isDirectory(libDir()) then vector.append(dirs libDir()) end
+            vector.append(dirs projectDir())
             dirs
         end
 
@@ -161,10 +161,10 @@ export
         begin
             let dirs = searchDirs(currentDir includePaths)
             let var found = maybe.none(:String)
-            for i = 0 upto {vector.length(:String dirs) - 1} do
-                if maybe.isNone(:String found) then
-                    let candidate = files.join(vector.get(:String dirs i) filename)
-                    if system.isFile(candidate) then found := maybe.some(:String files.absolute(candidate)) end
+            for i = 0 upto {vector.length(dirs) - 1} do
+                if maybe.isNone(found) then
+                    let candidate = files.join(vector.get(dirs i) filename)
+                    if system.isFile(candidate) then found := maybe.some(files.absolute(candidate)) end
                 end
             end
             found
@@ -180,55 +180,55 @@ export
     Let InterfaceDependency = Tuple path: String dir: String source: String end
 
     let sameSource(found: maybe.T(String) recorded: String): Bool =
-        if maybe.isNone(:String found) orif {stringOp.length(recorded) is 0} then
-            maybe.isNone(:String found) andif {stringOp.length(recorded) is 0}
+        if maybe.isNone(found) orif {stringOp.length(recorded) is 0} then
+            maybe.isNone(found) andif {stringOp.length(recorded) is 0}
         else
-            stringOp.equal(files.absolute(maybe.unwrap(:String found)) files.absolute(recorded))
+            stringOp.equal(files.absolute(maybe.unwrap(found)) files.absolute(recorded))
         end
 
     let recordedDependencies(qi: String): maybe.T(Array(InterfaceDependency)) =
         begin
             let none = maybe.none(:Array(InterfaceDependency))
             let text = files.readText(qi)
-            if maybe.isNone(:String text) then
+            if maybe.isNone(text) then
                 none
             else
                 let member(v: json.Value name: String): maybe.T(json.Value) =
                     case v when jObject with x then json.get(x.o name) else maybe.none(:json.Value) end
                 let str(v: maybe.T(json.Value)): maybe.T(String) =
-                    if maybe.isNone(:json.Value v) then maybe.none(:String)
-                    else case maybe.unwrap(:json.Value v) when jString with x then maybe.some(:String x.s)
+                    if maybe.isNone(v) then maybe.none(:String)
+                    else case maybe.unwrap(v) when jString with x then maybe.some(x.s)
                         else maybe.none(:String) end
                     end
                 try
-                    let value = member(json.parseShared(maybe.unwrap(:String text)) "value")
-                    let deps = if maybe.isSome(:json.Value value) then member(maybe.unwrap(:json.Value value) "deps")
+                    let value = member(json.parseShared(maybe.unwrap(text)) "value")
+                    let deps = if maybe.isSome(value) then member(maybe.unwrap(value) "deps")
                         else maybe.none(:json.Value)
                     end
-                    if maybe.isNone(:json.Value deps) then
+                    if maybe.isNone(deps) then
                         none
                     else
-                        case maybe.unwrap(:json.Value deps)
+                        case maybe.unwrap(deps)
                             when jArray with x then
                                 let result = vector.new(:InterfaceDependency)
                                 let var valid = true
-                                for i = 0 upto {vector.length(:json.Value x.items) - 1} do
-                                    let d = vector.get(:json.Value x.items i)
+                                for i = 0 upto {vector.length(x.items) - 1} do
+                                    let d = vector.get(x.items i)
                                     let path = str(member(d "path"))
                                     let dir = str(member(d "dir"))
                                     let source = str(member(d "source"))
-                                    if maybe.isSome(:String path) andif maybe.isSome(:String dir)
-                                        andif maybe.isSome(:String source) then
-                                        vector.append(:InterfaceDependency result tuple
-                                            let path = maybe.unwrap(:String path) let dir = maybe.unwrap(:String dir)
-                                            let source = maybe.unwrap(:String source)
+                                    if maybe.isSome(path) andif maybe.isSome(dir)
+                                        andif maybe.isSome(source) then
+                                        vector.append(result tuple
+                                            let path = maybe.unwrap(path) let dir = maybe.unwrap(dir)
+                                            let source = maybe.unwrap(source)
                                         end)
                                     else
                                         valid := false
                                     end
                                 end
                                 if valid then
-                                    maybe.some(:Array(InterfaceDependency) vector.toArray(:InterfaceDependency result))
+                                    maybe.some(vector.toArray(result))
                                 else none
                                 end
                             else none
@@ -246,18 +246,18 @@ export
         begin
             let var change = maybe.none(:String)
             for i = 0 upto {extent deps - 1} do
-                if maybe.isNone(:String change) then
+                if maybe.isNone(change) then
                     let dep = deps[i]
                     let fromDir = if stringOp.length(dep.dir) > 0 then
-                        maybe.some(:String dep.dir) else maybe.none(:String) end
+                        maybe.some(dep.dir) else maybe.none(:String) end
                     let src = resolveSource(dep.path fromDir includePaths)
                     let shown(s: String): String = if stringOp.length(s) > 0 then s else "no source" end
                     if not(sameSource(src dep.source)) then
-                        change := maybe.some(:String "interface '" <> dep.path <> "' now resolves to "
-                            <> shown(maybe.unwrapOr(:String src "")) <> ", not " <> shown(dep.source))
-                    elsif maybe.isSome(:String src)
-                        andif {files.modifiedNs(maybe.unwrap(:String src)) > artifactTime} then
-                        change := maybe.some(:String "imported interface " <> maybe.unwrap(:String src) <> " is newer")
+                        change := maybe.some("interface '" <> dep.path <> "' now resolves to "
+                            <> shown(maybe.unwrapOr(src "")) <> ", not " <> shown(dep.source))
+                    elsif maybe.isSome(src)
+                        andif {files.modifiedNs(maybe.unwrap(src)) > artifactTime} then
+                        change := maybe.some("imported interface " <> maybe.unwrap(src) <> " is newer")
                     end
                 end
             end
@@ -269,8 +269,8 @@ export
     let dependenciesUnchanged(qi: String includePaths: Array(String)): Bool =
         begin
             let deps = recordedDependencies(qi)
-            maybe.isSome(:Array(InterfaceDependency) deps)
-                andif maybe.isNone(:String dependencyChange(maybe.unwrap(:Array(InterfaceDependency) deps) includePaths
+            maybe.isSome(deps)
+                andif maybe.isNone(dependencyChange(maybe.unwrap(deps) includePaths
                     files.modifiedNs(qi) resolveInterfaceSourceFile))
         end
 
@@ -279,62 +279,62 @@ export
             let source = resolveInterfaceSourceFile(name currentDir includePaths)
             let dirs = searchDirs(currentDir includePaths)
             let var found = maybe.none(:String)
-            for i = 0 upto {vector.length(:String dirs) - 1} do
-                if maybe.isNone(:String found) then
-                    let candidate = files.join(vector.get(:String dirs i) lower(name) <> ".qi")
+            for i = 0 upto {vector.length(dirs) - 1} do
+                if maybe.isNone(found) then
+                    let candidate = files.join(vector.get(dirs i) lower(name) <> ".qi")
                     if system.isFile(candidate) then
-                        if maybe.isNone(:String source) then
-                            found := maybe.some(:String files.absolute(candidate))
+                        if maybe.isNone(source) then
+                            found := maybe.some(files.absolute(candidate))
                         else
-                            let src = maybe.unwrap(:String source)
+                            let src = maybe.unwrap(source)
                             if abi.hasCurrentAbi(candidate)
                                 andif {files.modifiedNs(candidate) >= files.modifiedNs(src)}
                                 andif abi.builtFrom(candidate src)
                                     andif dependenciesUnchanged(candidate includePaths) then
-                                found := maybe.some(:String files.absolute(candidate))
+                                found := maybe.some(files.absolute(candidate))
                             end
                         end
                     end
                 end
             end
-            if maybe.isSome(:String found) then found else source end
+            if maybe.isSome(found) then found else source end
         end
 
     let searchedDirs(currentDir: maybe.T(String) includePaths: Array(String)): Array(String) =
-        vector.toArray(:String searchDirs(currentDir includePaths))
+        vector.toArray(searchDirs(currentDir includePaths))
 
     let canonicalRoots(includePaths: Array(String) programDir: maybe.T(String)): Array(String) =
         begin
             let roots = vector.new(:String)
             let envLib = system.getEnv("QUEST_LIB")
-            if stringOp.length(envLib) > 0 then vector.append(:String roots files.absolute(envLib)) end
-            for i = 0 upto {extent includePaths - 1} do vector.append(:String roots files.absolute(includePaths[i])) end
-            if system.isDirectory(libDir()) then vector.append(:String roots libDir()) end
-            vector.append(:String roots projectDir())
+            if stringOp.length(envLib) > 0 then vector.append(roots files.absolute(envLib)) end
+            for i = 0 upto {extent includePaths - 1} do vector.append(roots files.absolute(includePaths[i])) end
+            if system.isDirectory(libDir()) then vector.append(roots libDir()) end
+            vector.append(roots projectDir())
             (* Deepest first; a stable sort, as Python's *)
-            let n = vector.length(:String roots)
+            let n = vector.length(roots)
             for i = 1 upto {n - 1} do
                 let var j = i
                 while {j > 0} andif
                         {extent files.parts(vector.get(:String roots {j - 1})) < extent files.parts(vector.get(:String roots j))} do
-                    let t = vector.get(:String roots j)
-                    vector.set(:String roots j vector.get(:String roots {j - 1}))
-                    vector.set(:String roots {j - 1} t)
+                    let t = vector.get(roots j)
+                    vector.set(roots j vector.get(roots {j - 1}))
+                    vector.set(roots {j - 1} t)
                     j := j - 1
                 end
             end
-            if maybe.isSome(:String programDir) then vector.append(:String roots files.absolute(maybe.unwrap(:String programDir))) end
+            if maybe.isSome(programDir) then vector.append(roots files.absolute(maybe.unwrap(programDir))) end
             (* Without repetitions, in order *)
             let unique = vector.new(:String)
-            for i = 0 upto {vector.length(:String roots) - 1} do
-                let r = vector.get(:String roots i)
+            for i = 0 upto {vector.length(roots) - 1} do
+                let r = vector.get(roots i)
                 let var seen = false
-                for j = 0 upto {vector.length(:String unique) - 1} do
-                    if stringOp.equal(vector.get(:String unique j) r) then seen := true end
+                for j = 0 upto {vector.length(unique) - 1} do
+                    if stringOp.equal(vector.get(unique j) r) then seen := true end
                 end
-                if not(seen) then vector.append(:String unique r) end
+                if not(seen) then vector.append(unique r) end
             end
-            vector.toArray(:String unique)
+            vector.toArray(unique)
         end
 
     let isNameComponent(s: String): Bool =
@@ -350,32 +350,32 @@ export
     let canonicalizeModulePath(file: String includePaths: Array(String) programDir: maybe.T(String)): String =
         begin
             let resolved = files.absolute(file)
-            let var components = vector.fromArray(:String array of files.baseName(resolved) end)
+            let var components = vector.fromArray(array of files.baseName(resolved) end)
             let roots = canonicalRoots(includePaths programDir)
             let var found = false
             for i = 0 upto {extent roots - 1} do
                 if not(found) then
                     let rel = files.relativeTo(resolved roots[i])
-                    if maybe.isSome(:String rel) then
-                        components := vector.fromArray(:String files.parts(maybe.unwrap(:String rel)))
+                    if maybe.isSome(rel) then
+                        components := vector.fromArray(files.parts(maybe.unwrap(rel)))
                         found := true
                     end
                 end
             end
-            let n = vector.length(:String components)
-            vector.set(:String components {n - 1} stripUnitSuffix(vector.get(:String components {n - 1})))
+            let n = vector.length(components)
+            vector.set(components {n - 1} stripUnitSuffix(vector.get(components {n - 1})))
             let b = sb.new()
             let var bad = maybe.none(:String)
             for i = 0 upto {n - 1} do
-                let c = vector.get(:String components i)
+                let c = vector.get(components i)
                 if i > 0 then sb.char(b '/') end
                 sb.str(b c)
-                if maybe.isNone(:String bad) andif not(isNameComponent(c)) then bad := maybe.some(:String c) end
+                if maybe.isNone(bad) andif not(isNameComponent(c)) then bad := maybe.some(c) end
             end
             let name = sb.toString(b)
-            if maybe.isSome(:String bad) then
+            if maybe.isSome(bad) then
                 diagnostics.fail(:Ok "Invalid module path '" <> name <> "' for '" <> resolved <> "': '" <>
-                    maybe.unwrap(:String bad) <> "' contains characters other than letters and digits, which are the " <>
+                    maybe.unwrap(bad) <> "' contains characters other than letters and digits, which are the " <>
                     "only ones allowed in the directory and file names of interfaces and modules" 0)
             end
             name
@@ -384,10 +384,10 @@ export
     let canonicalizeInterfaceName(
         file: maybe.T(String) includePaths: Array(String) declaredName: String programDir: maybe.T(String)
     ): String =
-        if maybe.isNone(:String file) then
+        if maybe.isNone(file) then
             declaredName
         else
-            let canonMod = canonicalizeModulePath(maybe.unwrap(:String file) includePaths programDir)
+            let canonMod = canonicalizeModulePath(maybe.unwrap(file) includePaths programDir)
             let base = lastSegment(declaredName)
             if strutil.contains(canonMod "/") then
                 files.parent(canonMod) <> "/" <> base
@@ -401,10 +401,10 @@ export
     let canonicalizeModuleName(
         file: maybe.T(String) includePaths: Array(String) rawName: String programDir: maybe.T(String)
     ): String =
-        if maybe.isNone(:String file) then
+        if maybe.isNone(file) then
             rawName
         else
-            canonicalizeModulePath(maybe.unwrap(:String file) includePaths programDir)
+            canonicalizeModulePath(maybe.unwrap(file) includePaths programDir)
         end
 
     let findCanonicalModuleSource(canonName: String includePaths: Array(String) programDir: maybe.T(String))
@@ -415,9 +415,9 @@ export
             let var found = maybe.none(:String)
             for i = 0 upto {extent roots - 1} do
                 let candidate = files.join(roots[i] relative)
-                if maybe.isNone(:String found) andif system.isFile(candidate)
+                if maybe.isNone(found) andif system.isFile(candidate)
                     andif stringOp.equal(canonicalizeModulePath(candidate includePaths programDir) canonName) then
-                    found := maybe.some(:String files.absolute(candidate))
+                    found := maybe.some(files.absolute(candidate))
                 end
             end
             found

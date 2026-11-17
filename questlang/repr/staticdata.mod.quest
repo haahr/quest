@@ -53,7 +53,7 @@ export
             let kind = kind let tag = tag let type = t let name = name let expr = "" let struct = ""
             let display = maybe.none(:Type) let symbol = "quest_type_" <> tag let index = 0
         end
-    let ofType(kind: String tag: String t: Type): DescriptorForm = described(kind tag maybe.some(:Type t) "")
+    let ofType(kind: String tag: String t: Type): DescriptorForm = described(kind tag maybe.some(t) "")
 
     (* =========================================================================
      * Record naming
@@ -78,7 +78,7 @@ export
     let recordFields(t: Type): Array(model.RecordField) =
         case t.form
             when typeRecord with r then r.fields
-            else vector.toArray(:model.RecordField vector.new(:model.RecordField))
+            else vector.toArray(vector.new(:model.RecordField))
         end
 
     let compareFields(a: model.RecordField b: model.RecordField): Int = sort.stringCompare(a.name b.name)
@@ -95,21 +95,21 @@ export
             let s = shapes.opaqueShape(t)
             let unsorted = if shapes.kindIs(s shapes.shapeRecord) then recordFields(s.structure)
                 else recordFields(t) end
-            let fields = sort.sorted(:model.RecordField unsorted compareFields)
+            let fields = sort.sorted(unsorted compareFields)
             let items = vector.new(:String)
             for i = 0 upto {extent fields - 1} do
                 let f = fields[i]
                 let parts = vector.new(:String)
-                vector.append(:String parts pyRepr.str(f.name))
-                vector.append(:String parts pyRepr.str(layout.typeTag(f.type)))
-                vector.append(:String parts pyRepr.str(digests.typeDigest(f.type)))
+                vector.append(parts pyRepr.str(f.name))
+                vector.append(parts pyRepr.str(layout.typeTag(f.type)))
+                vector.append(parts pyRepr.str(digests.typeDigest(f.type)))
                 (* In a whole program, a field of a transparent abstract type
                  * and one of its representation are laid out alike but
                  * described apart *)
                 if shapes.transparentAbstractTypes() then
-                    vector.append(:String parts syntax.cInt(shapes.opaqueShape(f.type).id))
+                    vector.append(parts syntax.cInt(shapes.opaqueShape(f.type).id))
                 end
-                vector.append(:String items pyRepr.tupleOf(parts))
+                vector.append(items pyRepr.tupleOf(parts))
             end
             pyRepr.tupleOf(items)
         end
@@ -117,10 +117,10 @@ export
     let registerAlias(ctx: RecordNaming aliasName: String t: Type): Ok =
         begin
             let key = shapeKey(t)
-            if not(hashMap.contains(:String :String ctx.aliasByShape key)) then
+            if not(hashMap.contains(ctx.aliasByShape key)) then
                 let name = aliasName <> "_" <> digests.textDigest(key)
-                hashMap.insert(:String :String ctx.aliasByShape key name)
-                hashMap.insert(:String :String ctx.canonicalNames key name)
+                hashMap.insert(ctx.aliasByShape key name)
+                hashMap.insert(ctx.canonicalNames key name)
             end
             ok
         end
@@ -128,18 +128,18 @@ export
     let recordName(ctx: RecordNaming t: Type): String =
         begin
             let key = shapeKey(t)
-            let found = hashMap.get(:String :String ctx.canonicalNames key)
-            if maybe.isSome(:String found) then
-                maybe.unwrap(:String found)
+            let found = hashMap.get(ctx.canonicalNames key)
+            if maybe.isSome(found) then
+                maybe.unwrap(found)
             else
                 let name = "record_" <> digests.textDigest(key)
-                hashMap.insert(:String :String ctx.canonicalNames key name)
+                hashMap.insert(ctx.canonicalNames key name)
                 name
             end
         end
 
     let recordStructName(t: Type ctx: maybe.T(RecordNaming)): String =
-        if maybe.isSome(:RecordNaming ctx) then "QT_" <> recordName(maybe.unwrap(:RecordNaming ctx) t)
+        if maybe.isSome(ctx) then "QT_" <> recordName(maybe.unwrap(ctx) t)
         else layout.typeTag(t)
         end
 
@@ -159,8 +159,8 @@ export
     let opaqueName(t: Type): String =
         begin
             let globalName = descriptors.moduleAbstractTypeName(t)
-            if maybe.isSome(:String globalName) then
-                maybe.unwrap(:String globalName)
+            if maybe.isSome(globalName) then
+                maybe.unwrap(globalName)
             else
                 let p = digests.printedType(t)
                 if p.length <= digests.printedTextLimit then model.show(t)
@@ -172,7 +172,7 @@ export
     (* A scalar's descriptor, the runtime's own *)
     let baseExpr(kind: shapes.ShapeKind): maybe.T(String) =
         begin
-            let some(s: String): maybe.T(String) = maybe.some(:String s)
+            let some(s: String): maybe.T(String) = maybe.some(s)
             case kind
                 when shapeInt then some("&quest_type_Int")
                 when shapeReal then some("&quest_type_Real")
@@ -187,7 +187,7 @@ export
         end
 
     let boundIsPower(b: maybe.T(model.Kind)): Bool =
-        maybe.isSome(:model.Kind b) andif model.isPower(maybe.unwrap(:model.Kind b))
+        maybe.isSome(b) andif model.isPower(maybe.unwrap(b))
 
     (* Decided in order: a descriptor template's hole; a scalar, a Word, the
      * empty tuple, or a bound variable (an element of quest_type_bound_vars),
@@ -201,17 +201,17 @@ export
         begin
             let s = shapes.opaqueShape(t0)
             let hole = descriptors.holeIndex(s.type)
-            if maybe.isSome(:Int hole) then
+            if maybe.isSome(hole) then
                 (* A template's hole (described as such, not by the bound a
                  * bounded type variable resolves to) *)
-                let index = maybe.unwrap(:Int hole)
+                let index = maybe.unwrap(hole)
                 let bound = case s.type.form when typeVariable with v then v.bound else maybe.none(:model.Kind) end
                 let tag = "hole_" <> syntax.cInt(index) <> if boundIsPower(bound) then
-                    "_" <> digests.typeDigest(model.powerBound(maybe.unwrap(:model.Kind bound)))
+                    "_" <> digests.typeDigest(model.powerBound(maybe.unwrap(bound)))
                 else
                     ""
                 end
-                described("hole" tag maybe.some(:Type s.type) syntax.cInt(index))
+                described("hole" tag maybe.some(s.type) syntax.cInt(index))
             else
                 (* Equal types share a descriptor: a type is described by its
                  * shape's structure, the unfolding of its canonical form *)
@@ -221,22 +221,22 @@ export
                 let abstractName = descriptors.moduleAbstractTypeName(t)
                 let isEmptyTuple = case t.form when typeTuple with x then extent x.fields is 0 else false end
                 let isBoundedVariable = case t.form when typeVariable with v then boundIsPower(v.bound) else false end
-                if maybe.isSome(:String baseExpr(s.kind)) then
-                    let expr = maybe.unwrap(:String baseExpr(s.kind))
+                if maybe.isSome(baseExpr(s.kind)) then
+                    let expr = maybe.unwrap(baseExpr(s.kind))
                     base(expr stringOp.getSub(expr 1 stringOp.length(expr) - 1) 0)
                 elsif shapes.kindIs(s shapes.shapeWord) then
                     base("&quest_type_Word" "quest_type_Word" 0)
-                elsif maybe.isSome(:Int boundVar) then
-                    let index = maybe.unwrap(:Int boundVar)
+                elsif maybe.isSome(boundVar) then
+                    let index = maybe.unwrap(boundVar)
                     base("(&quest_type_bound_vars[" <> syntax.cInt(index) <> "])" "quest_type_bound_vars" index)
                 elsif isEmptyTuple then
                     base("&quest_type_EmptyTuple" "quest_type_EmptyTuple" 0)
-                elsif isBoundedVariable andif maybe.isSome(:String abstractName) then
+                elsif isBoundedVariable andif maybe.isSome(abstractName) then
                     (* A module's abstract type with a bound: opaque, and held
                      * outside the module in the representation of its bound,
                      * viewed at the bound (a stored descriptor) *)
-                    let g = maybe.unwrap(:String abstractName)
-                    described("stored" "stored_" <> digests.textDigest(g) maybe.some(:Type t) g)
+                    let g = maybe.unwrap(abstractName)
+                    described("stored" "stored_" <> digests.textDigest(g) maybe.some(t) g)
                 elsif shapes.kindIs(held shapes.shapeRecord) then
                     (* A type variable bounded by a record, variant, or option
                      * type is described by its bound *)
@@ -263,7 +263,7 @@ export
                             (* An application of an abstract type operator
                              * (list.T(Int)): opaque, compared by the
                              * operator's name and the arguments *)
-                            described("opaque" "opaque_" <> digests.typeDigest(t) maybe.some(:Type t)
+                            described("opaque" "opaque_" <> digests.typeDigest(t) maybe.some(t)
                                 opaqueName(x.constructor))
                         when typeArray then ofType("array" "array_" <> digests.typeDigest(t) t)
                         when typeException then ofType("exception" "exception_" <> digests.typeDigest(t) t)
@@ -274,8 +274,8 @@ export
                             let name = if stringOp.length(x.name) > 0 then x.name else x.cType end
                             named(name)
                         else
-                            if maybe.isSome(:String abstractName) then
-                                let g = maybe.unwrap(:String abstractName)
+                            if maybe.isSome(abstractName) then
+                                let g = maybe.unwrap(abstractName)
                                 opaque("opaque_" <> digests.textDigest(g) g)
                             else
                                 case t.form
@@ -332,13 +332,13 @@ export
             let identity = written.recursiveIdentity(t)
             let var inner = recursive
             let var repeated = false
-            if maybe.isSome(:Int identity) then
-                let id = maybe.unwrap(:Int identity)
-                for i = 0 upto {vector.length(:Int recursive) - 1} do
-                    if vector.get(:Int recursive i) is id then repeated := true end
+            if maybe.isSome(identity) then
+                let id = maybe.unwrap(identity)
+                for i = 0 upto {vector.length(recursive) - 1} do
+                    if vector.get(recursive i) is id then repeated := true end
                 end
-                inner := vector.copy(:Int recursive)
-                vector.append(:Int inner id)
+                inner := vector.copy(recursive)
+                vector.append(inner id)
             end
             if repeated then
                 maybe.none(:String)
@@ -353,12 +353,12 @@ export
                 let var anyPart = false
                 for i = 0 upto {extent children - 1} do
                     let key = echoKey(children[i].type inner)
-                    if maybe.isSome(:String key) then anyPart := true end
+                    if maybe.isSome(key) then anyPart := true end
                     let pair = vector.new(:String)
-                    vector.append(:String pair pyRepr.str(children[i].key))
-                    let keyText = if maybe.isSome(:String key) then pyRepr.str(maybe.unwrap(:String key)) else "None" end
-                    vector.append(:String pair keyText)
-                    vector.append(:String parts pyRepr.tupleOf(pair))
+                    vector.append(pair pyRepr.str(children[i].key))
+                    let keyText = if maybe.isSome(key) then pyRepr.str(maybe.unwrap(key)) else "None" end
+                    vector.append(pair keyText)
+                    vector.append(parts pyRepr.tupleOf(pair))
                 end
                 if {extent own is 0} andif not(anyPart) then
                     maybe.none(:String)
@@ -366,15 +366,15 @@ export
                     let owned = vector.new(:String)
                     for i = 0 upto {extent own - 1} do
                         let pair = vector.new(:String)
-                        vector.append(:String pair conv.int(own[i].position))
-                        vector.append(:String pair pyRepr.str(own[i].text))
-                        vector.append(:String owned pyRepr.tupleOf(pair))
+                        vector.append(pair conv.int(own[i].position))
+                        vector.append(pair pyRepr.str(own[i].text))
+                        vector.append(owned pyRepr.tupleOf(pair))
                     end
                     let whole = vector.new(:String)
-                    vector.append(:String whole pyRepr.str(headClassName(head)))
-                    vector.append(:String whole pyRepr.listOf(owned))
-                    vector.append(:String whole pyRepr.listOf(parts))
-                    maybe.some(:String pyRepr.tupleOf(whole))
+                    vector.append(whole pyRepr.str(headClassName(head)))
+                    vector.append(whole pyRepr.listOf(owned))
+                    vector.append(whole pyRepr.listOf(parts))
+                    maybe.some(pyRepr.tupleOf(whole))
                 end
             end
         end
@@ -382,7 +382,7 @@ export
     let echoDescriptorForm(t: Type ctx: maybe.T(RecordNaming)): maybe.T(DescriptorForm) =
         begin
             let key = echoKey(t vector.new(:Int))
-            if maybe.isNone(:String key) then
+            if maybe.isNone(key) then
                 maybe.none(:DescriptorForm)
             else
                 let f = descriptorForm(t ctx)
@@ -395,15 +395,15 @@ export
                         elsif eq(f.kind "record") then f.tag
                         else ""
                     end
-                    let tag = f.tag <> "_echo_" <> digests.textDigest(maybe.unwrap(:String key))
-                    maybe.some(:DescriptorForm tuple
+                    let tag = f.tag <> "_echo_" <> digests.textDigest(maybe.unwrap(key))
+                    maybe.some(tuple
                         let kind = f.kind
                         let tag = tag
                         let type = f.type
                         let name = f.name
                         let expr = f.expr
                         let struct = struct
-                        let display = maybe.some(:Type written.echoHead(t))
+                        let display = maybe.some(written.echoHead(t))
                         let symbol = "quest_type_" <> tag
                         let index = 0
                     end)
@@ -420,16 +420,16 @@ export
     let sortedFields(t: Type): Array(model.RecordField) =
         begin
             let compare(a: model.RecordField b: model.RecordField): Int = sort.stringCompare(a.name b.name)
-            sort.sorted(:model.RecordField recordFields(t) compare)
+            sort.sorted(recordFields(t) compare)
         end
     let valueFields(t: Type): Array(model.ValueField) =
         case t.form
             when typeTuple with x then model.tupleValueFields(x.fields)
-            else vector.toArray(:model.ValueField vector.new(:model.ValueField))
+            else vector.toArray(vector.new(:model.ValueField))
         end
     let kindBound(k: maybe.T(model.Kind)): maybe.T(Type) =
-        if maybe.isSome(:model.Kind k) andif model.isPower(maybe.unwrap(:model.Kind k)) then
-            maybe.some(:Type model.powerBound(maybe.unwrap(:model.Kind k)))
+        if maybe.isSome(k) andif model.isPower(maybe.unwrap(k)) then
+            maybe.some(model.powerBound(maybe.unwrap(k)))
         else
             maybe.none(:Type)
         end
@@ -449,8 +449,8 @@ export
             while shapes.kindIs(s shapes.shapeAll) do
                 for i = 0 upto {extent s.typeParams - 1} do
                     let b = s.typeParams[i].bound
-                    vector.append(:maybe.T(Type) bounds
-                        if maybe.isSome(:Shape b) then maybe.some(:Type maybe.unwrap(:Shape b).type)
+                    vector.append(bounds
+                        if maybe.isSome(b) then maybe.some(maybe.unwrap(b).type)
                         else maybe.none(:Type)
                         end)
                 end
@@ -462,7 +462,7 @@ export
             else
                 for i = 0 upto {extent s.params - 1} do
                     let p = s.params[i]
-                    vector.append(:model.Param params tuple
+                    vector.append(params tuple
                         let name = p.name let type = p.shape.type
                         let isVar = eq(p.mode "var") let isOut = eq(p.mode "out")
                     end)
@@ -484,7 +484,7 @@ export
     end
 
     let formsOf(c: Collected kind: String): vector.T(DescriptorForm) =
-        hashMap.find(:String :vector.T(DescriptorForm) c.byKind kind)
+        hashMap.find(c.byKind kind)
 
     let collectDescriptors(ts: vector.T(Type) echoTypes: vector.T(Type) ctx: maybe.T(RecordNaming)
         emittedBefore: hashMap.T(String Bool)): Collected =
@@ -494,29 +494,29 @@ export
                 let byKind = hashMap.new(:String :vector.T(DescriptorForm) eq hash.string)
             end
             for i = 0 upto {extent descriptorKinds - 1} do
-                hashMap.insert(:String :vector.T(DescriptorForm) c.byKind descriptorKinds[i] vector.new(:DescriptorForm))
+                hashMap.insert(c.byKind descriptorKinds[i] vector.new(:DescriptorForm))
             end
             let seen = hashMap.new(:String :Bool eq hash.string)
             let isNew(tag: String): Bool =
-                not(hashMap.contains(:String :Bool seen tag)) andif not(hashMap.contains(:String :Bool emittedBefore tag))
+                not(hashMap.contains(seen tag)) andif not(hashMap.contains(emittedBefore tag))
             let remember(f: DescriptorForm): Ok =
                 begin
-                    hashMap.insert(:String :Bool seen f.tag true)
-                    vector.append(:String c.tags f.tag)
-                    vector.append(:DescriptorForm formsOf(c f.kind) f)
+                    hashMap.insert(seen f.tag true)
+                    vector.append(c.tags f.tag)
+                    vector.append(formsOf(c f.kind) f)
                 end
-            let typeOf(f: DescriptorForm): Type = maybe.unwrap(:Type f.type)
+            let typeOf(f: DescriptorForm): Type = maybe.unwrap(f.type)
 
             (* Collects t's descriptor and its parts', each once. A base
              * descriptor is the runtime's, not the unit's, and a type with
              * none is left out *)
             let rec visit(t: Type): Ok =
                 begin
-                    let form = try maybe.some(:DescriptorForm descriptorForm(t ctx))
+                    let form = try maybe.some(descriptorForm(t ctx))
                         when missingDescriptor then maybe.none(:DescriptorForm)
                     end
-                    if maybe.isSome(:DescriptorForm form) then
-                        let f = maybe.unwrap(:DescriptorForm form)
+                    if maybe.isSome(form) then
+                        let f = maybe.unwrap(form)
                         if not(eq(f.kind "base")) andif isNew(f.tag) then
                             remember(f)
                             visitParts(f)
@@ -524,7 +524,7 @@ export
                     end
                     ok
                 end
-            and visitMaybe(t: maybe.T(Type)): Ok = if maybe.isSome(:Type t) then visit(maybe.unwrap(:Type t)) end
+            and visitMaybe(t: maybe.T(Type)): Ok = if maybe.isSome(t) then visit(maybe.unwrap(t)) end
             and visitParts(f: DescriptorForm): Ok =
                 begin
                     let kind = f.kind
@@ -552,7 +552,7 @@ export
                         case typeOf(f).form when typeException with x then visit(x.payload) else ok end
                     elsif eq(kind "hole") orif eq(kind "stored") then
                         visitMaybe(variableBound(typeOf(f)))
-                    elsif eq(kind "opaque") andif maybe.isSome(:Type f.type) then
+                    elsif eq(kind "opaque") andif maybe.isSome(f.type) then
                         case typeOf(f).form
                             when typeApp with x then
                                 for i = 0 upto {extent x.arguments - 1} do visit(x.arguments[i]) end
@@ -561,17 +561,17 @@ export
                     elsif eq(kind "auto") then
                         case typeOf(f).form
                             when typeAuto with x then
-                                visitMaybe(kindBound(maybe.some(:model.Kind x.kindBound)))
+                                visitMaybe(kindBound(maybe.some(x.kindBound)))
                                 for i = 0 upto {extent x.signature - 1} do visit(x.signature[i].type) end
                             else ok
                         end
                     elsif eq(kind "fun") then
                         let sig = funShapeSignature(typeOf(f))
-                        for i = 0 upto {vector.length(:maybe.T(Type) sig.bounds) - 1} do
-                            visitMaybe(vector.get(:maybe.T(Type) sig.bounds i))
+                        for i = 0 upto {vector.length(sig.bounds) - 1} do
+                            visitMaybe(vector.get(sig.bounds i))
                         end
-                        for i = 0 upto {vector.length(:model.Param sig.params) - 1} do
-                            visit(vector.get(:model.Param sig.params i).type)
+                        for i = 0 upto {vector.length(sig.params) - 1} do
+                            visit(vector.get(sig.params i).type)
                         end
                         visit(sig.result)
                     end
@@ -584,19 +584,19 @@ export
                 begin
                     visit(t)
                     let form = echoDescriptorForm(t ctx)
-                    if maybe.isSome(:DescriptorForm form) then
-                        let f = maybe.unwrap(:DescriptorForm form)
+                    if maybe.isSome(form) then
+                        let f = maybe.unwrap(form)
                         if isNew(f.tag) then
                             remember(f)
-                            let children = written.echoChildren(maybe.unwrap(:Type f.display))
+                            let children = written.echoChildren(maybe.unwrap(f.display))
                             for i = 0 upto {extent children - 1} do visitEcho(children[i].type) end
                         end
                     end
                     ok
                 end
 
-            for i = 0 upto {vector.length(:Type ts) - 1} do visit(vector.get(:Type ts i)) end
-            for i = 0 upto {vector.length(:Type echoTypes) - 1} do visitEcho(vector.get(:Type echoTypes i)) end
+            for i = 0 upto {vector.length(ts) - 1} do visit(vector.get(ts i)) end
+            for i = 0 upto {vector.length(echoTypes) - 1} do visitEcho(vector.get(echoTypes i)) end
             c
         end
 
@@ -648,27 +648,27 @@ export
 
     let describeDescriptor(f: DescriptorForm ctx: maybe.T(RecordNaming) partOf: All(t: Type) DescriptorForm): Descriptor =
         begin
-            let t = maybe.unwrapOr(:Type f.type model.okType)
+            let t = maybe.unwrapOr(f.type model.okType)
             let refType(x: Type): Ref = refOf(partOf(x))
-            let refMaybe(x: maybe.T(Type)): Ref = if maybe.isSome(:Type x) then refType(maybe.unwrap(:Type x)) else nullRef end
+            let refMaybe(x: maybe.T(Type)): Ref = if maybe.isSome(x) then refType(maybe.unwrap(x)) else nullRef end
             (* The descriptor of a part of the form's type (keyed as
              * echoChildren keys it): for an echo-only descriptor, the part's
              * echo-only descriptor if it has one *)
             let partRef(key: String x: maybe.T(Type)): Ref =
-                if maybe.isNone(:Type x) then
+                if maybe.isNone(x) then
                     nullRef
                 else
                     let var shown = maybe.none(:DescriptorForm)
-                    if maybe.isSome(:Type f.display) then
-                        let children = written.echoChildren(maybe.unwrap(:Type f.display))
+                    if maybe.isSome(f.display) then
+                        let children = written.echoChildren(maybe.unwrap(f.display))
                         for i = 0 upto {extent children - 1} do
-                            if maybe.isNone(:DescriptorForm shown) andif eq(children[i].key key) then
+                            if maybe.isNone(shown) andif eq(children[i].key key) then
                                 shown := echoDescriptorForm(children[i].type ctx)
                             end
                         end
                     end
-                    if maybe.isSome(:DescriptorForm shown) then refOf(maybe.unwrap(:DescriptorForm shown))
-                    else refType(maybe.unwrap(:Type x))
+                    if maybe.isSome(shown) then refOf(maybe.unwrap(shown))
+                    else refType(maybe.unwrap(x))
                     end
                 end
             let made(kindConstant: String name: String sz: Size payload: Payload): Descriptor =
@@ -681,7 +681,7 @@ export
             let kind = f.kind
             if eq(kind "opaque") then
                 let var payload = option payloadNone of Payload end
-                if maybe.isSome(:Type f.type) then
+                if maybe.isSome(f.type) then
                     case t.form
                         when typeApp with x then
                             let args = array of(extent x.arguments nullRef)
@@ -692,30 +692,30 @@ export
                 end
                 made("QTYPE_KIND_OPAQUE" f.name pointerSize("sizeof(QVal)") payload)
             elsif eq(kind "stored") then
-                let bound = maybe.unwrap(:Type variableBound(t))
+                let bound = maybe.unwrap(variableBound(t))
                 made("QTYPE_KIND_STORED" f.name size("sizeof(" <> layout.representation(t) <> ")" layout.representationBytes(t))
                     option payloadStored of Payload with let storage = refType(bound) end)
             elsif eq(kind "hole") then
                 let bound = variableBound(t)
-                let bounded = maybe.isSome(:Type bound)
+                let bounded = maybe.isSome(bound)
                 let sz = if bounded then size("sizeof(" <> layout.representation(t) <> ")" layout.representationBytes(t))
                     else pointerSize("sizeof(QVal)")
                 end
                 made("QTYPE_KIND_HOLE" "?" <> f.name sz option payloadHole of Payload with
-                    let index = maybe.unwrapOr(:Int descriptors.holeIndex(t) 0)
+                    let index = maybe.unwrapOr(descriptors.holeIndex(t) 0)
                     let storage = refMaybe(bound)
                 end)
             elsif eq(kind "fun") then
                 let sig = funShapeSignature(t)
-                let params = array of(vector.length(:model.Param sig.params)
+                let params = array of(vector.length(sig.params)
                     tuple let type = nullRef let isVar = false let isOut = false end)
-                for j = 0 upto {vector.length(:model.Param sig.params) - 1} do
-                    let p = vector.get(:model.Param sig.params j)
+                for j = 0 upto {vector.length(sig.params) - 1} do
+                    let p = vector.get(sig.params j)
                     params[j] := tuple let type = refType(p.type) let isVar = p.isVar let isOut = p.isOut end
                 end
-                let bounds = array of(vector.length(:maybe.T(Type) sig.bounds) nullRef)
-                for j = 0 upto {vector.length(:maybe.T(Type) sig.bounds) - 1} do
-                    bounds[j] := refMaybe(vector.get(:maybe.T(Type) sig.bounds j))
+                let bounds = array of(vector.length(sig.bounds) nullRef)
+                for j = 0 upto {vector.length(sig.bounds) - 1} do
+                    bounds[j] := refMaybe(vector.get(sig.bounds j))
                 end
                 made("QTYPE_KIND_FUN" dump.shortTypeName(t) pointerSize("sizeof(QClosure *)")
                     option payloadFun of Payload with let params = params let result = refType(sig.result) let bounds = bounds end)
@@ -730,7 +730,7 @@ export
                         for j = 0 upto {extent x.signature - 1} do
                             let s = x.signature[j]
                             components[j] := tuple
-                                let name = maybe.some(:String s.name)
+                                let name = maybe.some(s.name)
                                 let type = refType(s.type)
                                 let offset = offsetof(structName "_" <> syntax.cInt(j) 8 * j)
                                 let isVar = s.isVar
@@ -739,7 +739,7 @@ export
                         let payloadSize = if n > 0 then sizeofStruct(structName layout.slotsBytes(n)) else size("0" 0) end
                         made("QTYPE_KIND_AUTO" dump.shortTypeName(t) pointerSize("sizeof(QAuto *)")
                             option payloadAuto of Payload with
-                                let bound = refMaybe(kindBound(maybe.some(:model.Kind x.kindBound)))
+                                let bound = refMaybe(kindBound(maybe.some(x.kindBound)))
                                 let payloadSize = payloadSize
                                 let components = components
                             end)
@@ -750,7 +750,7 @@ export
                 made("QTYPE_KIND_EXCEPTION" dump.shortTypeName(t) pointerSize("sizeof(void *)")
                     option payloadException of Payload with let payloadType = payloadType end)
             elsif eq(kind "array") then
-                let element = case t.form when typeArray with x then partRef("" maybe.some(:Type x.element)) else nullRef end
+                let element = case t.form when typeArray with x then partRef("" maybe.some(x.element)) else nullRef end
                 made("QTYPE_KIND_ARRAY" dump.shortTypeName(t) pointerSize("sizeof(void *)")
                     option payloadArray of Payload with let element = element end)
             elsif eq(kind "record") then
@@ -762,8 +762,8 @@ export
                 for j = 0 upto {n - 1} do
                     let fld = fields[j]
                     components[j] := tuple
-                        let name = maybe.some(:String fld.name)
-                        let type = partRef(fld.name maybe.some(:Type fld.type))
+                        let name = maybe.some(fld.name)
+                        let type = partRef(fld.name maybe.some(fld.type))
                         let offset = offsetof(structName "qf_" <> fld.name 8 + 8 * j)
                         let isVar = fld.isVar
                     end
@@ -780,7 +780,7 @@ export
                 let n = extent fields
                 (* Its type components, which only echo writes: with alias
                  * names in an echo-only descriptor *)
-                let written0 = written.tupleTypeComponents(maybe.unwrapOr(:Type f.display t))
+                let written0 = written.tupleTypeComponents(maybe.unwrapOr(f.display t))
                 let typeComponents = array of(extent written0 tuple let position = 0 let text = "" end)
                 for j = 0 upto {extent written0 - 1} do
                     typeComponents[j] := tuple let position = written0[j].position let text = written0[j].text end
@@ -791,7 +791,7 @@ export
                     let fld = fields[j]
                     elements[j] := tuple
                         let name = fld.name
-                        let type = partRef(syntax.cInt(j) maybe.some(:Type fld.type))
+                        let type = partRef(syntax.cInt(j) maybe.some(fld.type))
                         let offset = offsetof(structName "_" <> syntax.cInt(j) 8 * j)
                         let isVar = fld.isVar
                     end
@@ -805,20 +805,20 @@ export
                     when typeVariant with v then
                         for j = 0 upto {extent v.variants - 1} do
                             let c = v.variants[j]
-                            vector.append(:Case cases tuple
+                            vector.append(cases tuple
                                 let name = c.name let payload = partRef(c.name c.type) let tagIndex = j let isVar = c.isVar
                             end)
                         end
                     when typeOption with o then
                         for j = 0 upto {extent o.options - 1} do
                             let c = o.options[j]
-                            vector.append(:Case cases tuple
+                            vector.append(cases tuple
                                 let name = c.name let payload = partRef(c.name c.payload) let tagIndex = j let isVar = false
                             end)
                         end
                     else ok
                 end
-                let all = vector.toArray(:Case cases)
+                let all = vector.toArray(cases)
                 if eq(kind "variant") then
                     made("QTYPE_KIND_VARIANT" dump.shortTypeName(t) size("sizeof(QVariantVal)" 16)
                         option payloadVariant of Payload with let cases = all end)
@@ -836,7 +836,7 @@ export
 
     let describeOffsetTable(ctx: RecordNaming view: Type layout: Type): OffsetTableData =
         begin
-            let sourceStruct = recordStructName(layout maybe.some(:RecordNaming ctx))
+            let sourceStruct = recordStructName(layout maybe.some(ctx))
             let fields = sortedFields(view)
             let laidOut = sortedFields(layout)
             let offsets = array of(extent fields size("" 0))
@@ -859,7 +859,7 @@ export
             let variantsOf(t: Type): Array(model.VariantField) =
                 case t.form
                     when typeVariant with v then v.variants
-                    else vector.toArray(:model.VariantField vector.new(:model.VariantField))
+                    else vector.toArray(vector.new(:model.VariantField))
                 end
             let targetCases = variantsOf(target)
             let sourceCases = variantsOf(source)

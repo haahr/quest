@@ -19,7 +19,7 @@ export
     let unsupported: Exception(String) = exception unsupported: String end
     let eq(a: String b: String): Bool = stringOp.equal(a b)
     let intEqual(a: Int b: Int): Bool = a is b
-    let put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok = begin hashMap.insert(:K :V m k v) ok end
+    let put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok = begin hashMap.insert(m k v) ok end
 
     let cFlags = array of
         "-std=gnu11" "-Wno-pedantic" "-fno-strict-aliasing" "-fno-builtin" "-Wno-unused" "-Wno-unused-parameter"
@@ -140,11 +140,11 @@ export
                         e := "(int)" <> v(a)
                     when passWord, passReal, passPairRest then ok
                 end
-                vector.append(:String types t)
-                vector.append(:String exprs e)
+                vector.append(types t)
+                vector.append(exprs e)
                 k := k + {if pair then 2 else 1 end}
             end
-            let params = if vector.empty(:String types) then "void" else syntax.comma(types) end
+            let params = if vector.empty(types) then "void" else syntax.comma(types) end
             tuple
                 let fnType = resultOf(i.signature.results i.results f) <> " (*)(" <> params <> ")"
                 let args = syntax.comma(exprs) let results = i.results
@@ -257,7 +257,7 @@ export
                     sb.strShared(b v(t.args[k])) sb.str(b "; ")
                 end
                 for k = 0 upto {extent t.args - 1} do
-                    sb.strShared(b v(vector.get(:Int params k))) sb.str(b " = t") sb.int(b k) sb.str(b "; ")
+                    sb.strShared(b v(vector.get(params k))) sb.str(b " = t") sb.int(b k) sb.str(b "; ")
                 end
                 sb.str(b "} goto ") sb.strShared(b blockLabel(t.block)) sb.str(b ";")
                 sb.toString(b)
@@ -308,7 +308,7 @@ export
     (* The C type a function returns, and its parameters' declarations *)
     let resultType(f: Function): String =
         begin
-            let rs = vector.toArray(:ssa.Type f.resultTypes)
+            let rs = vector.toArray(f.resultTypes)
             if extent rs is 1 then
                 case f.signature.results[0]
                     when passByte then "uint8_t"
@@ -326,14 +326,14 @@ export
     let param(f: Function k: Int named: Bool): Param =
         begin
             let params = ssa.block(f 0).params
-            let n = vector.get(:Int params k)
+            let n = vector.get(params k)
             let pk = "p" <> conv.int(k)
             let declared(t: String name: String): String = t <> if named then " " <> name else "" end
             let direct = fun(t: String): Param
                 tuple let decl = declared(t v(n)) let entry = array of :String end let words = 1 end
             case f.signature.params[k]
                 when passPair then
-                    let second = vector.get(:Int params k + 1)
+                    let second = vector.get(params k + 1)
                     tuple
                         let decl = declared("QSsaPair" pk)
                         let entry = array of
@@ -366,12 +366,12 @@ export
         begin
             let decls = vector.new(:String)
             let var k = 0
-            while k < vector.length(:Int ssa.block(f 0).params) do
+            while k < vector.length(ssa.block(f 0).params) do
                 let pm = param(f k named)
-                vector.append(:String decls pm.decl)
+                vector.append(decls pm.decl)
                 k := k + pm.words
             end
-            if vector.empty(:String decls) then "void" else syntax.comma(decls) end
+            if vector.empty(decls) then "void" else syntax.comma(decls) end
         end
 
     let linkage(f: Function): String = if f.exported then "" else "static " end
@@ -384,7 +384,7 @@ export
     let function(buf: Builder f: Function): Ok =
         begin
             let var hasTry = false
-            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 case ssa.block(f b).term
                     when termTry then hasTry := true
                     when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then ok
@@ -393,15 +393,15 @@ export
             let p = tuple let f = f let buf = buf let hasTry = hasTry end
             text(buf prototype(f true) <> " {\n")
             let params = ssa.block(f 0).params
-            let isParam = array of(vector.length(:ssa.Type f.types) false)
-            for k = 0 upto {vector.length(:Int params) - 1} do isParam[vector.get(:Int params k)] := true end
+            let isParam = array of(vector.length(f.types) false)
+            for k = 0 upto {vector.length(params) - 1} do isParam[vector.get(params k)] := true end
             let var k = 0
-            while k < vector.length(:Int params) do
+            while k < vector.length(params) do
                 let pm = param(f k true)
                 for j = 0 upto {extent pm.entry - 1} do line(p pm.entry[j]) end
                 k := k + pm.words
             end
-            for n = 0 upto {vector.length(:ssa.Type f.types) - 1} do
+            for n = 0 upto {vector.length(f.types) - 1} do
                 if not(isParam[n]) then
                     let t = typeOf(f n)
                     let decl = case t when typePtr then "char *" <> volatile(p) <> " "
@@ -409,15 +409,15 @@ export
                     line(p decl <> v(n) <> ";")
                 end
             end
-            for s = 0 upto {vector.length(:ssa.Slot f.slots) - 1} do
-                let slot = vector.get(:ssa.Slot f.slots s)
+            for s = 0 upto {vector.length(f.slots) - 1} do
+                let slot = vector.get(f.slots s)
                 line(p "unsigned char s" <> conv.int(s) <> "[" <> conv.int(if slot.bytes > 0 then slot.bytes else 1 end)
                     <> "] __attribute__((aligned(" <> conv.int(if slot.align > 8 then slot.align else 8 end) <> ")));")
             end
-            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 let blk = ssa.block(f b)
                 text(buf blockLabel(b) <> ":;\n")
-                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do instruction(p vector.get(:ssa.Inst blk.insts k)) end
+                for k = 0 upto {vector.length(blk.insts) - 1} do instruction(p vector.get(blk.insts k)) end
                 terminator(p blk.term)
             end
             text(buf "}\n\n")
@@ -432,7 +432,7 @@ export
             when wordInt with x then "(void *)(uintptr_t)" <> intLiteral(x.n)
             when wordSymbol with x then
                 (* A thread-local's address is not a constant *)
-                if hashMap.contains(:String :Bool threadLocals x.symbol) then
+                if hashMap.contains(threadLocals x.symbol) then
                     raise unsupported with "ssac: static data holding a thread-local's address, " <> x.symbol end
                 end
                 "(void *)((char *)(void *)" <> x.symbol <> " + " <> decimal(x.addend) <> ")"
@@ -460,8 +460,8 @@ export
             when contentsText with x then dataDeclaration(d) <> " = " <> syntax.cString(x.text) <> ";"
             when contentsWords with x then
                 let ws = vector.new(:String)
-                for k = 0 upto {extent x.words - 1} do vector.append(:String ws wordText(x.words[k] threadLocals)) end
-                if extent x.words is 0 then vector.append(:String ws "0") end
+                for k = 0 upto {extent x.words - 1} do vector.append(ws wordText(x.words[k] threadLocals)) end
+                if extent x.words is 0 then vector.append(ws "0") end
                 dataDeclaration(d) <> " = { " <> syntax.comma(ws) <> " };"
         end
 
@@ -475,18 +475,18 @@ export
             let defined = hashMap.new(:String :Bool eq hash.string)
             (* The thread-locals the unit's code takes the addresses of *)
             let threadLocals = hashMap.new(:String :Bool eq hash.string)
-            for k = 0 upto {vector.length(:Function u.functions) - 1} do
-                put(:String :Bool defined vector.get(:Function u.functions k).symbol true)
+            for k = 0 upto {vector.length(u.functions) - 1} do
+                put(defined vector.get(u.functions k).symbol true)
             end
-            for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do put(:String :Bool defined vector.get(:ssa.Data u.data k).symbol true) end
+            for k = 0 upto {vector.length(u.data) - 1} do put(defined vector.get(u.data k).symbol true) end
             (* The symbols the unit refers to but does not define, in order *)
             let externs = vector.new(:String)
             let seen = hashMap.new(:String :Bool eq hash.string)
             let refer(symbol: String): Ok =
-                if {stringOp.length(symbol) > 0} andif not(hashMap.contains(:String :Bool defined symbol))
-                    andif not(hashMap.contains(:String :Bool seen symbol)) then
-                    put(:String :Bool seen symbol true)
-                    vector.append(:String externs symbol)
+                if {stringOp.length(symbol) > 0} andif not(hashMap.contains(defined symbol))
+                    andif not(hashMap.contains(seen symbol)) then
+                    put(seen symbol true)
+                    vector.append(externs symbol)
                 end
             (* The sizes of the composites passed through memory *)
             let memorySizes = hashMap.new(:Int :Bool intEqual hash.int)
@@ -494,29 +494,29 @@ export
                 begin
                     if ssa.isOp(i ssa.opSymbol) orif ssa.isOp(i ssa.opCall) then refer(i.symbol) end
                     if ssa.isOp(i ssa.opThreadLocal) then
-                        put(:String :Bool threadLocals i.symbol true)
+                        put(threadLocals i.symbol true)
                         refer(i.symbol)
                     end
                     for k = 0 upto {extent i.signature.params - 1} do
                         case i.signature.params[k]
-                            when passMemory with x then put(:Int :Bool memorySizes x.bytes true)
+                            when passMemory with x then put(memorySizes x.bytes true)
                             when passWord, passReal, passPair, passPairRest, passByte, passInt32 then ok
                         end
                     end
                 end
-            for k = 0 upto {vector.length(:Function u.functions) - 1} do
-                let f = vector.get(:Function u.functions k)
-                for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+            for k = 0 upto {vector.length(u.functions) - 1} do
+                let f = vector.get(u.functions k)
+                for b = 0 upto {vector.length(f.blocks) - 1} do
                     let blk = ssa.block(f b)
-                    for j = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do referInst(f vector.get(:ssa.Inst blk.insts j)) end
+                    for j = 0 upto {vector.length(blk.insts) - 1} do referInst(f vector.get(blk.insts j)) end
                     case blk.term
                         when termTailCall with x then referInst(f x.call)
                         when termNone, termJump, termBranch, termSwitch, termReturn, termTry, termUnreachable then ok
                     end
                 end
             end
-            for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
-                case vector.get(:ssa.Data u.data k).contents
+            for k = 0 upto {vector.length(u.data) - 1} do
+                case vector.get(u.data k).contents
                     when contentsWords with x then
                         for j = 0 upto {extent x.words - 1} do
                             case x.words[j] when wordSymbol with w then refer(w.symbol) else ok end
@@ -528,9 +528,9 @@ export
             sb.str(buf "/* Emitted by the Quest SSA's C printer (ssac) */\n")
             sb.str(buf "#include <stdint.h>\n\n")
             sb.str(buf "typedef struct { uint64_t w0, w1; } QSsaPair;\n")
-            let sizes = hashMap.keys(:Int :Bool memorySizes)
-            for k = 0 upto {vector.length(:Int sizes) - 1} do
-                let n = vector.get(:Int sizes k)
+            let sizes = hashMap.keys(memorySizes)
+            for k = 0 upto {vector.length(sizes) - 1} do
+                let n = vector.get(sizes k)
                 sb.str(buf "typedef struct { unsigned char b[" <> conv.int(n) <> "]; } " <> memoryType(n) <> ";\n")
             end
             sb.str(buf
@@ -540,26 +540,26 @@ export
             sb.str(buf "extern int _setjmp(int *) __attribute__((returns_twice));\n\n")
             (* Only an extern's address is used, so its declared size is
              * arbitrary *)
-            for k = 0 upto {vector.length(:String externs) - 1} do
-                let symbol = vector.get(:String externs k)
+            for k = 0 upto {vector.length(externs) - 1} do
+                let symbol = vector.get(externs k)
                 sb.str(buf
-                    if hashMap.contains(:String :Bool threadLocals symbol) then
+                    if hashMap.contains(threadLocals symbol) then
                         "extern __thread uint64_t " <> symbol <> "[8];\n"
                     else "extern char " <> symbol <> "[];\n" end)
             end
             sb.str(buf "\n")
-            for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
-                sb.str(buf dataDeclaration(vector.get(:ssa.Data u.data k)) <> ";\n")
+            for k = 0 upto {vector.length(u.data) - 1} do
+                sb.str(buf dataDeclaration(vector.get(u.data k)) <> ";\n")
             end
-            for k = 0 upto {vector.length(:Function u.functions) - 1} do
-                sb.str(buf prototype(vector.get(:Function u.functions k) false) <> ";\n")
-            end
-            sb.str(buf "\n")
-            for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
-                sb.str(buf dataDefinition(vector.get(:ssa.Data u.data k) threadLocals) <> "\n")
+            for k = 0 upto {vector.length(u.functions) - 1} do
+                sb.str(buf prototype(vector.get(u.functions k) false) <> ";\n")
             end
             sb.str(buf "\n")
-            for k = 0 upto {vector.length(:Function u.functions) - 1} do function(buf vector.get(:Function u.functions
+            for k = 0 upto {vector.length(u.data) - 1} do
+                sb.str(buf dataDefinition(vector.get(u.data k) threadLocals) <> "\n")
+            end
+            sb.str(buf "\n")
+            for k = 0 upto {vector.length(u.functions) - 1} do function(buf vector.get(u.functions
                 k)) end
             sb.toString(buf)
         end

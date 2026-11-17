@@ -49,7 +49,7 @@ export
      * ====================================================================== *)
 
     let address(v: value.T): Int = value.be(:Int v)
-    let pointer(n: Int): value.T = value.new(:Int n)
+    let pointer(n: Int): value.T = value.new(n)
     let codeBase(l: T): Int = address(code.base(l.code))
     let dataBase(l: T): Int = address(code.base(l.data))
     let alignUp(n: Int a: Int): Int = {{{n + a} - 1} / a} * a
@@ -82,20 +82,20 @@ export
     let hostSymbol(name: String): Int =
         begin
             let found = code.symbol(name)
-            if maybe.isNone(:value.T found) then raise loadError with "undefined symbol " <> name end end
-            address(maybe.unwrap(:value.T found))
+            if maybe.isNone(found) then raise loadError with "undefined symbol " <> name end end
+            address(maybe.unwrap(found))
         end
 
     (* A slot holding a symbol's address, made once: a GOT entry *)
     let slot(l: T name: String resolve: All(name: String) Int): Int =
         begin
-            let found = hashMap.get(:String :Int l.slots name)
-            if maybe.isSome(:Int found) then
-                maybe.unwrap(:Int found)
+            let found = hashMap.get(l.slots name)
+            if maybe.isSome(found) then
+                maybe.unwrap(found)
             else
                 let at = dataBase(l) + allocateData(l 8)
                 writeWord(l at resolve(name))
-                hashMap.insert(:String :Int l.slots name at)
+                hashMap.insert(l.slots name at)
                 at
             end
         end
@@ -129,9 +129,9 @@ export
      * once: adrp x16, ldr x16, br x16 *)
     let stub(l: T name: String resolve: All(name: String) Int): Int =
         begin
-            let found = hashMap.get(:String :Int l.stubs name)
-            if maybe.isSome(:Int found) then
-                maybe.unwrap(:Int found)
+            let found = hashMap.get(l.stubs name)
+            if maybe.isSome(found) then
+                maybe.unwrap(found)
             else
                 let s = slot(l name resolve)
                 let offset = allocateCode(l 12)
@@ -141,7 +141,7 @@ export
                     0xF9400210 (* ldr x16, [x16] *) + pageOffset(0xF9400210 s)
                     0xD61F0200 (* br x16 *)
                 end)
-                hashMap.insert(:String :Int l.stubs name at)
+                hashMap.insert(l.stubs name at)
                 at
             end
         end
@@ -165,21 +165,21 @@ export
              * before it, then the driver's *)
             let own = hashMap.new(:String :Int eq hash.string)
             for k = 0 upto {extent e.functions - 1} do
-                hashMap.insert(:String :Int own e.functions[k].name codeAt + e.functions[k].offset)
+                hashMap.insert(own e.functions[k].name codeAt + e.functions[k].offset)
             end
             for k = 0 upto {extent e.dataSymbols - 1} do
-                hashMap.insert(:String :Int own e.dataSymbols[k].name dataAt + e.dataSymbols[k].offset)
+                hashMap.insert(own e.dataSymbols[k].name dataAt + e.dataSymbols[k].offset)
             end
-            if extent e.frames > 0 then begin hashMap.insert(:String :Int own "qr_frames" framesAt) ok end end
+            if extent e.frames > 0 then begin hashMap.insert(own "qr_frames" framesAt) ok end end
             let loaded(name: String): maybe.T(Int) =
                 begin
-                    let mine = hashMap.get(:String :Int own name)
-                    if maybe.isSome(:Int mine) then mine else hashMap.get(:String :Int l.exported name) end
+                    let mine = hashMap.get(own name)
+                    if maybe.isSome(mine) then mine else hashMap.get(l.exported name) end
                 end
             let resolve(name: String): Int =
                 begin
                     let found = loaded(name)
-                    if maybe.isSome(:Int found) then maybe.unwrap(:Int found) else hostSymbol(name) end
+                    if maybe.isSome(found) then maybe.unwrap(found) else hostSymbol(name) end
                 end
             (* The code, its relocated fields filled *)
             let text = array of(extent e.code 0)
@@ -192,7 +192,7 @@ export
                 text[i] := w + case r.kind
                     when relocBranch26 then
                         let found = loaded(r.symbol)
-                        let target = if maybe.isSome(:Int found) then maybe.unwrap(:Int found)
+                        let target = if maybe.isSome(found) then maybe.unwrap(found)
                             else stub(l r.symbol resolve) end
                         field({target - pc} / 4 26)
                     when relocPage21 then page(resolve(r.symbol) pc)
@@ -239,17 +239,17 @@ export
             end
             for k = 0 upto {extent e.functions - 1} do
                 if e.functions[k].exported then
-                    hashMap.insert(:String :Int l.exported e.functions[k].name codeAt + e.functions[k].offset)
+                    hashMap.insert(l.exported e.functions[k].name codeAt + e.functions[k].offset)
                 end
             end
             for k = 0 upto {extent e.dataSymbols - 1} do
                 if e.dataSymbols[k].exported then
-                    hashMap.insert(:String :Int l.exported e.dataSymbols[k].name dataAt + e.dataSymbols[k].offset)
+                    hashMap.insert(l.exported e.dataSymbols[k].name dataAt + e.dataSymbols[k].offset)
                 end
             end
             let result = hashMap.new(:String :value.T eq hash.string)
-            hashMap.forEach(:String :Int own fun(name: String a: Int): Ok
-                begin hashMap.insert(:String :value.T result name pointer(a)) ok end)
+            hashMap.forEach(own fun(name: String a: Int): Ok
+                begin hashMap.insert(result name pointer(a)) ok end)
             result
         end
 end

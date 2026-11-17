@@ -48,22 +48,22 @@ export
     (* The pieces of items separated by spaces *)
     let spaced(pieces: vector.T(Piece) items: Array(Piece)): Ok =
         for i = 0 upto {extent items - 1} do
-            if i > 0 then vector.append(:Piece pieces text(" ")) end
-            vector.append(:Piece pieces items[i])
+            if i > 0 then vector.append(pieces text(" ")) end
+            vector.append(pieces items[i])
         end
     let framed(head: String items: Array(Piece)): vector.T(Piece) =
         begin
             let pieces = vector.new(:Piece)
             if extent items > 0 then
-                vector.append(:Piece pieces text(head <> " "))
+                vector.append(pieces text(head <> " "))
                 spaced(pieces items)
-                vector.append(:Piece pieces text(" end"))
+                vector.append(pieces text(" end"))
             else
-                vector.append(:Piece pieces text(head <> " end"))
+                vector.append(pieces text(head <> " end"))
             end
             pieces
         end
-    let pieces(items: Array(Piece)): vector.T(Piece) = vector.fromArray(:Piece items)
+    let pieces(items: Array(Piece)): vector.T(Piece) = vector.fromArray(items)
     (* The text of a node as a list of literal strings and the parts printed in
      * between, mirroring the bootstrap's __str__ methods; a node not listed
      * prints as one string *)
@@ -82,8 +82,8 @@ export
                         end
                         framed("Tuple" items)
                     when typeRecord with y then
-                        if maybe.isSome(:String y.provenance) andif not(stringOp.isEmpty(maybe.unwrap(:String y.provenance))) then
-                            pieces(array of text("Module '" <> maybe.unwrap(:String y.provenance) <> "'") end)
+                        if maybe.isSome(y.provenance) andif not(stringOp.isEmpty(maybe.unwrap(y.provenance))) then
+                            pieces(array of text("Module '" <> maybe.unwrap(y.provenance) <> "'") end)
                         else
                             let items = array of(extent y.fields text(""))
                             for i = 0 upto {extent y.fields - 1} do
@@ -110,8 +110,8 @@ export
                             items[i] := part(option pParam of Printable with let p = y.params[i] end)
                         end
                         spaced(result items)
-                        vector.append(:Piece result text("): "))
-                        vector.append(:Piece result ofType(y.result))
+                        vector.append(result text("): "))
+                        vector.append(result ofType(y.result))
                         result
                     when typeVar with y then pieces(array of text("Var(") ofType(y.element) text(")") end)
                     when typeArray with y then pieces(array of text("Array(") ofType(y.element) text(")") end)
@@ -123,8 +123,8 @@ export
                             items[i] := part(option pQuantifier of Printable with let q = y.quantifiers[i] end)
                         end
                         spaced(result items)
-                        vector.append(:Piece result text(") "))
-                        vector.append(:Piece result ofType(y.body))
+                        vector.append(result text(") "))
+                        vector.append(result ofType(y.body))
                         result
                     when typeAuto with y then
                         let result = if model.isPower(y.kindBound) then
@@ -139,7 +139,7 @@ export
                             items[i] := part(option pRecordField of Printable with let f = y.signature[i] end)
                         end
                         spaced(result items)
-                        vector.append(:Piece result text(" end"))
+                        vector.append(result text(" end"))
                         result
                     when typeOperator with y then
                         let result = pieces(array of text("Fun(") end)
@@ -148,15 +148,15 @@ export
                             items[i] := part(option pTypeFormal of Printable with let f = y.params[i] end)
                         end
                         spaced(result items)
-                        vector.append(:Piece result text(") "))
-                        vector.append(:Piece result ofType(y.body))
+                        vector.append(result text(") "))
+                        vector.append(result ofType(y.body))
                         result
                     when typeApp with y then
                         let result = pieces(array of ofType(y.constructor) text("(") end)
                         let items = array of(extent y.arguments text(""))
                         for i = 0 upto {extent y.arguments - 1} do items[i] := ofType(y.arguments[i]) end
                         spaced(result items)
-                        vector.append(:Piece result text(")"))
+                        vector.append(result text(")"))
                         result
                     when typeRec with y then
                         pieces(array of text("Rec(" <> y.varName <> " :: ") ofKind(y.bound) text(") ") ofType(y.body) end)
@@ -175,8 +175,8 @@ export
                 case x.c
                     when tupleField with f then
                         let prefix = if f.isVar then "var " else "" end
-                        let head = if maybe.isSome(:String f.name) andif not(stringOp.isEmpty(maybe.unwrap(:String f.name))) then
-                            prefix <> maybe.unwrap(:String f.name) <> ": "
+                        let head = if maybe.isSome(f.name) andif not(stringOp.isEmpty(maybe.unwrap(f.name))) then
+                            prefix <> maybe.unwrap(f.name) <> ": "
                         else
                             prefix <> ":"
                         end
@@ -184,26 +184,26 @@ export
                     when tupleTypeFormal with f then pieces(array of text(f.name <> "::") ofKind(f.bound) end)
                     when tupleTypeBinding with f then
                         let result = pieces(array of text("Let " <> f.name) end)
-                        if maybe.isSome(:model.Kind f.bound) then
-                            vector.append(:Piece result text("::"))
-                            vector.append(:Piece result ofKind(maybe.unwrap(:model.Kind f.bound)))
+                        if maybe.isSome(f.bound) then
+                            vector.append(result text("::"))
+                            vector.append(result ofKind(maybe.unwrap(f.bound)))
                         end
-                        vector.append(:Piece result text(" = "))
-                        vector.append(:Piece result ofType(f.type))
+                        vector.append(result text(" = "))
+                        vector.append(result ofType(f.type))
                         result
                 end
             when pRecordField with x then
                 pieces(array of text(if x.f.isVar then "var " else "" end <> x.f.name <> ": ") ofType(x.f.type) end)
             when pVariantField with x then
                 let prefix = if x.f.isVar then "var " else "" end
-                if maybe.isSome(:Type x.f.type) then
-                    pieces(array of text(prefix <> x.f.name <> ": ") ofType(maybe.unwrap(:Type x.f.type)) end)
+                if maybe.isSome(x.f.type) then
+                    pieces(array of text(prefix <> x.f.name <> ": ") ofType(maybe.unwrap(x.f.type)) end)
                 else
                     pieces(array of text(prefix <> x.f.name) end)
                 end
             when pOptionField with x then
-                if maybe.isSome(:Type x.f.payload) then
-                    pieces(array of text(x.f.name <> " with ") ofType(maybe.unwrap(:Type x.f.payload)) end)
+                if maybe.isSome(x.f.payload) then
+                    pieces(array of text(x.f.name <> " with ") ofType(maybe.unwrap(x.f.payload)) end)
                 else
                     pieces(array of text(x.f.name) end)
                 end
@@ -226,8 +226,8 @@ export
             else
                 let b = sb.new()
                 let ps = printedParts(node)
-                for i = 0 upto {vector.length(:Piece ps) - 1} do
-                    case vector.get(:Piece ps i)
+                for i = 0 upto {vector.length(ps) - 1} do
+                    case vector.get(ps i)
                         when pieceText with y then sb.strShared(b y.s)
                         when piecePart with y then sb.strShared(b textOf(y.p))
                     end
@@ -245,8 +245,8 @@ export
             let var length = 0
             let joined = sb.new()
             let ps = printedParts(node)
-            for i = 0 upto {vector.length(:Piece ps) - 1} do
-                case vector.get(:Piece ps i)
+            for i = 0 upto {vector.length(ps) - 1} do
+                case vector.get(ps i)
                     when pieceText with y then
                         length := length + stringOp.length(y.s)
                         sb.strShared(joined y.s)
@@ -271,19 +271,19 @@ export
         begin
             let node = case node0 when pType with x then option pType of Printable with let t = model.prune(x.t) end else node0 end
             let key = case node
-                when pType with x then if x.t.hasMeta then maybe.none(:Int) else maybe.some(:Int x.t.id) end
-                when pKind with x then if x.k.hasMeta then maybe.none(:Int) else maybe.some(:Int x.k.id) end
+                when pType with x then if x.t.hasMeta then maybe.none(:Int) else maybe.some(x.t.id) end
+                when pKind with x then if x.k.hasMeta then maybe.none(:Int) else maybe.some(x.k.id) end
                 else maybe.none(:Int)
             end
-            if maybe.isNone(:Int key) then
+            if maybe.isNone(key) then
                 printedUncached(node)
             else
-                let found = hashMap.get(:Int :Printed printedMemo maybe.unwrap(:Int key))
-                if maybe.isSome(:Printed found) then
-                    maybe.unwrap(:Printed found)
+                let found = hashMap.get(printedMemo maybe.unwrap(key))
+                if maybe.isSome(found) then
+                    maybe.unwrap(found)
                 else
                     let p = printedUncached(node)
-                    hashMap.insert(:Int :Printed printedMemo maybe.unwrap(:Int key) p)
+                    hashMap.insert(printedMemo maybe.unwrap(key) p)
                     p
                 end
             end

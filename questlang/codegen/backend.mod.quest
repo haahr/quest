@@ -103,8 +103,8 @@ export
              * (docs/wasm.md section 5.3), in a custom section *)
             Let Datum = Tuple symbol: String text: String end
             encode.encode(wasmModule(unit)) <> encode.customSection("quest.runtime" runtimeStamp())
-                <> if maybe.isSome(:Datum datum) then
-                encode.customSection("quest.fingerprint" maybe.unwrap(:Datum datum).text)
+                <> if maybe.isSome(datum) then
+                encode.customSection("quest.fingerprint" maybe.unwrap(datum).text)
             else "" end
         else
             (* the native backends' (codegen/native), which a driver compiled
@@ -137,14 +137,14 @@ export
             if verify.irChecksEnabled() then verify.checkUnit(unit) end
             (* The unit's module is the one that exports *)
             let var symbol = ""
-            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
-                let md = vector.get(:nodes.Module unit.modules i)
-                if maybe.isSome(:nodes.Members md.exports) then
+            for i = 0 upto {vector.length(unit.modules) - 1} do
+                let md = vector.get(unit.modules i)
+                if maybe.isSome(md.exports) then
                     symbol := symbols.fingerprintIdent(symbols.mangleModuleName(md.name))
                 end
             end
             shapes.setReferencesAlike(stringOp.equal(backend "wasm"))
             unitWithDatum(passes.runPasses(unit) interfaceHeader backend
-                maybe.some(:Tuple symbol: String text: String end tuple let symbol = symbol let text = fingerprint end))
+                maybe.some(tuple let symbol = symbol let text = fingerprint end))
         end
 end

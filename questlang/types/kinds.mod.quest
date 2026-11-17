@@ -21,25 +21,25 @@ export
     let kindError(A::TYPE message: String): A = diagnostics.fail(:A message 0)
 
     let lookupOf(e: Env): model.Lookup =
-        if maybe.isSome(:env.T e) then symbols.lookup else model.noLookup end
+        if maybe.isSome(e) then symbols.lookup else model.noLookup end
 
     let subEnv(e: Env): subtyping.Env =
-        if maybe.isSome(:env.T e) then env.lookupOf(maybe.unwrap(:env.T e)) else maybe.none(:model.Lookup) end
+        if maybe.isSome(e) then env.lookupOf(maybe.unwrap(e)) else maybe.none(:model.Lookup) end
 
     let evaluate(t: Type e: Env): Type = model.evaluateLazily(t lookupOf(e))
     let evaluateKind(k: Kind e: Env): Kind = model.evaluateKindLazily(k lookupOf(e))
 
     (* body in a scope of e's, if there is an environment *)
     let inScope(e: Env name: String body: All() Ok): Ok =
-        if maybe.isSome(:env.T e) then
-            env.scoped(:Ok maybe.unwrap(:env.T e) name fun(s: symbols.Scope): Ok body())
+        if maybe.isSome(e) then
+            env.scoped(maybe.unwrap(e) name fun(s: symbols.Scope): Ok body())
         else
             body()
         end
 
     let declare(e: Env name: String symbolId: Int kind: Kind definition: maybe.T(Type)): Ok =
-        if maybe.isSome(:env.T e) then
-            env.declareTypeVariable(maybe.unwrap(:env.T e) name symbolId kind definition)
+        if maybe.isSome(e) then
+            env.declareTypeVariable(maybe.unwrap(e) name symbolId kind definition)
             ok
         end
 
@@ -56,10 +56,10 @@ export
     let newKinds(): hashMap.T(Int Kind) = hashMap.new(:Int :Kind fun(a: Int b: Int): Bool a is b hash.int)
 
     let sameEnv(a: Env b: Env): Bool =
-        if maybe.isSome(:env.T a) andif maybe.isSome(:env.T b) then
-            hash.identityEqual(:env.T maybe.unwrap(:env.T a) maybe.unwrap(:env.T b))
+        if maybe.isSome(a) andif maybe.isSome(b) then
+            hash.identityEqual(maybe.unwrap(a) maybe.unwrap(b))
         else
-            maybe.isNone(:env.T a) andif maybe.isNone(:env.T b)
+            maybe.isNone(a) andif maybe.isNone(b)
         end
 
     (* ======================================================================
@@ -85,15 +85,15 @@ export
                             end)
                     end
                 when kindVar with x then
-                    if maybe.isSome(:env.T e) then
-                        let en = maybe.unwrap(:env.T e)
+                    if maybe.isSome(e) then
+                        let en = maybe.unwrap(e)
                         let found = env.lookupKindById(en x.symbolId)
-                        let sym = if maybe.isSome(:symbols.KindSymbol found) then
+                        let sym = if maybe.isSome(found) then
                             found
                         else
                             env.lookupKind(en x.name)
                         end
-                        if maybe.isNone(:symbols.KindSymbol sym) then
+                        if maybe.isNone(sym) then
                             kindError(:Ok "Unbound kind variable '" <> x.name <> "' (#" <> conv.int(x.symbolId) <> ")")
                         end
                     end
@@ -131,22 +131,22 @@ export
         case t.form
             when typeMeta then synthUncached(t e)
             else
-                if maybe.isSome(:Memo memo.active) then
-                    let m = maybe.unwrap(:Memo memo.active)
+                if maybe.isSome(memo.active) then
+                    let m = maybe.unwrap(memo.active)
                     if not(sameEnv(m.e e)) then
                         synthUncached(t e)
                     else
-                        let hit = hashMap.get(:Int :Kind m.kinds t.id)
-                        if maybe.isSome(:Kind hit) then
-                            maybe.unwrap(:Kind hit)
+                        let hit = hashMap.get(m.kinds t.id)
+                        if maybe.isSome(hit) then
+                            maybe.unwrap(hit)
                         else
                             let k = synthUncached(t e)
-                            hashMap.insert(:Int :Kind m.kinds t.id k)
+                            hashMap.insert(m.kinds t.id k)
                             k
                         end
                     end
                 else
-                    memo.active := maybe.some(:Memo tuple let kinds = newKinds() let e = e end)
+                    memo.active := maybe.some(tuple let kinds = newKinds() let e = e end)
                     let k = try
                         synthUncached(t e)
                     else with r then
@@ -201,9 +201,9 @@ export
                                 when tupleTypeBinding with f then
                                     begin
                                         checkKind(f.type model.typeKind e)
-                                        if maybe.isSome(:env.T e) then
-                                            declare(e f.name env.freshSymbolId(maybe.unwrap(:env.T e))
-                                                maybe.unwrapOr(:Kind f.bound model.typeKind) maybe.some(:Type f.type))
+                                        if maybe.isSome(e) then
+                                            declare(e f.name env.freshSymbolId(maybe.unwrap(e))
+                                                maybe.unwrapOr(f.bound model.typeKind) maybe.some(f.type))
                                         end
                                     end
                             end
@@ -219,7 +219,7 @@ export
                 begin
                     for i = 0 upto {extent x.variants - 1} do
                         let p = x.variants[i].type
-                        if maybe.isSome(:Type p) then checkKind(maybe.unwrap(:Type p) model.typeKind e) end
+                        if maybe.isSome(p) then checkKind(maybe.unwrap(p) model.typeKind e) end
                     end
                     model.typeKind
                 end
@@ -227,7 +227,7 @@ export
                 begin
                     for i = 0 upto {extent x.options - 1} do
                         let p = x.options[i].payload
-                        if maybe.isSome(:Type p) then checkKind(maybe.unwrap(:Type p) model.typeKind e) end
+                        if maybe.isSome(p) then checkKind(maybe.unwrap(p) model.typeKind e) end
                     end
                     model.typeKind
                 end
@@ -241,18 +241,18 @@ export
             when typeArray with x then begin checkKind(x.element model.typeKind e) model.typeKind end
             when typeOut with x then begin checkKind(x.element model.typeKind e) model.typeKind end
             when typeVariable with x then
-                if maybe.isSome(:Kind x.bound) then
-                    maybe.unwrap(:Kind x.bound)
+                if maybe.isSome(x.bound) then
+                    maybe.unwrap(x.bound)
                 else
-                    let sym = if maybe.isSome(:env.T e) then
-                        let en = maybe.unwrap(:env.T e)
+                    let sym = if maybe.isSome(e) then
+                        let en = maybe.unwrap(e)
                         let found = env.lookupTypeById(en x.symbolId)
-                        if maybe.isSome(:symbols.TypeSymbol found) then found else env.lookupType(en x.name) end
+                        if maybe.isSome(found) then found else env.lookupType(en x.name) end
                     else
                         maybe.none(:symbols.TypeSymbol)
                     end
-                    if maybe.isSome(:symbols.TypeSymbol sym) then
-                        maybe.unwrap(:symbols.TypeSymbol sym).kind
+                    if maybe.isSome(sym) then
+                        maybe.unwrap(sym).kind
                     else
                         kindError(:Kind "Unbound type variable '" <> x.name <> "' (#" <> conv.int(x.symbolId) <> ")")
                     end
@@ -302,7 +302,7 @@ export
                 end
             when typeRecGroup with x then
                 begin
-                    if maybe.isSome(:env.T e) then
+                    if maybe.isSome(e) then
                         inScope(e "rec_group" fun(): Ok
                             begin
                                 for i = 0 upto {extent x.bindings - 1} do
@@ -365,8 +365,8 @@ export
 
     let unfoldHead(t: Type): maybe.T(Type) =
         case t.form
-            when typeRec then maybe.some(:Type model.unfoldLazily(t))
-            when typeRecGroup then maybe.some(:Type model.unfoldLazily(t))
+            when typeRec then maybe.some(model.unfoldLazily(t))
+            when typeRecGroup then maybe.some(model.unfoldLazily(t))
             when typeApp with x then
                 begin
                     let ctor = model.unalias(x.constructor)
@@ -375,9 +375,9 @@ export
                             if extent f.params is extent x.arguments then
                                 let subst = model.newSubst()
                                 for i = 0 upto {extent f.params - 1} do
-                                    hashMap.insert(:Int :Type subst f.params[i].symbolId x.arguments[i])
+                                    hashMap.insert(subst f.params[i].symbolId x.arguments[i])
                                 end
-                                maybe.some(:Type model.substitute(f.body subst))
+                                maybe.some(model.substitute(f.body subst))
                             else
                                 maybe.none(:Type)
                             end
@@ -395,15 +395,15 @@ export
     let boundedVariable(t: Type): maybe.T(Bounded) =
         begin
             let boundOf = fun(id: Int k: maybe.T(Kind)): maybe.T(Bounded)
-                if maybe.isSome(:Kind k) andif model.isPower(maybe.unwrap(:Kind k)) then
-                    maybe.some(:Bounded tuple let id = id let bound = model.powerBound(maybe.unwrap(:Kind k)) end)
+                if maybe.isSome(k) andif model.isPower(maybe.unwrap(k)) then
+                    maybe.some(tuple let id = id let bound = model.powerBound(maybe.unwrap(k)) end)
                 else
                     maybe.none(:Bounded)
                 end
             case t.form
                 when typeVariable with x then boundOf(x.symbolId x.bound)
-                when typeAbstract with x then boundOf(x.symbolId maybe.some(:Kind x.bound))
-                when typePath with x then boundOf({~1 * t.id} maybe.some(:Kind x.bound))
+                when typeAbstract with x then boundOf(x.symbolId maybe.some(x.bound))
+                when typePath with x then boundOf({~1 * t.id} maybe.some(x.bound))
                 else maybe.none(:Bounded)
             end
         end
@@ -422,9 +422,9 @@ export
             let var result = maybe.none(:Type)
             let var searching = true
             while searching do
-                let lazy = if maybe.isSome(:env.T e) then evaluate(current e) else model.unalias(current) end
+                let lazy = if maybe.isSome(e) then evaluate(current e) else model.unalias(current) end
                 if wanted(lazy) then
-                    result := maybe.some(:Type lazy)
+                    result := maybe.some(lazy)
                     searching := false
                 else
                     let isHead = case lazy.form
@@ -434,27 +434,27 @@ export
                         else false
                     end
                     if isHead then
-                        if hashMap.contains(:Int :Bool unfolded lazy.id) then
+                        if hashMap.contains(unfolded lazy.id) then
                             searching := false
                         else
-                            hashMap.insert(:Int :Bool unfolded lazy.id true)
+                            hashMap.insert(unfolded lazy.id true)
                             let next = unfoldHead(lazy)
-                            if maybe.isNone(:Type next) then
+                            if maybe.isNone(next) then
                                 searching := false
                             else
-                                current := maybe.unwrap(:Type next)
+                                current := maybe.unwrap(next)
                             end
                         end
                     else
                         let bounded = boundedVariable(lazy)
-                        if maybe.isNone(:Bounded bounded) then
+                        if maybe.isNone(bounded) then
                             searching := false
                         else
-                            let b = maybe.unwrap(:Bounded bounded)
-                            if hashMap.contains(:Int :Bool visited b.id) then
+                            let b = maybe.unwrap(bounded)
+                            if hashMap.contains(visited b.id) then
                                 searching := false
                             else
-                                hashMap.insert(:Int :Bool visited b.id true)
+                                hashMap.insert(visited b.id true)
                                 current := b.bound
                             end
                         end
@@ -516,7 +516,7 @@ export
                 case current.form
                     when typeOption then
                         begin
-                            result := maybe.some(:Type current)
+                            result := maybe.some(current)
                             searching := false
                         end
                     when typeRec with r then
@@ -527,7 +527,7 @@ export
                     when typeApp with a then
                         begin
                             let var ctor = a.constructor
-                            if maybe.isSome(:env.T e) then
+                            if maybe.isSome(e) then
                                 case ctor.form
                                     when typeVariable then ctor := evaluate(ctor e)
                                     when typeAbstract then ctor := evaluate(ctor e)
@@ -545,13 +545,13 @@ export
                                             extent a.arguments
                                         end
                                         for i = 0 upto {n - 1} do
-                                            hashMap.insert(:Int :Type subst f.params[i].symbolId a.arguments[i])
+                                            hashMap.insert(subst f.params[i].symbolId a.arguments[i])
                                         end
                                         current := model.substitute(f.body subst)
                                         advanced := true
                                     end
                                 else
-                                    if maybe.isSome(:env.T e) then
+                                    if maybe.isSome(e) then
                                         let lazy = evaluate(current e)
                                         case lazy.form
                                             when typeApp then ok
@@ -568,15 +568,15 @@ export
                 end
                 if searching andif not(advanced) then
                     let bounded = boundedVariable(current)
-                    if maybe.isSome(:Bounded bounded) then
-                        let b = maybe.unwrap(:Bounded bounded)
-                        if hashMap.contains(:Int :Bool visited b.id) then
+                    if maybe.isSome(bounded) then
+                        let b = maybe.unwrap(bounded)
+                        if hashMap.contains(visited b.id) then
                             searching := false
                         else
-                            hashMap.insert(:Int :Bool visited b.id true)
+                            hashMap.insert(visited b.id true)
                             current := b.bound
                         end
-                    elsif maybe.isSome(:env.T e) then
+                    elsif maybe.isSome(e) then
                         let lazy = evaluate(current e)
                         if not(model.same(lazy current)) andif {formTag(lazy) isnot formTag(current)} then
                             current := lazy

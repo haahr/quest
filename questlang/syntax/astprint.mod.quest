@@ -61,9 +61,9 @@ export
                     if {extent x.fields > 0} andif stringOp.equal(x.fields[0].name "offset") then
                         s
                     else
-                        let fields = vector.fromArray(:Field array of f("offset" int(offset)) end)
-                        for i = 0 upto {extent x.fields - 1} do vector.append(:Field fields x.fields[i]) end
-                        node(x.name vector.toArray(:Field fields))
+                        let fields = vector.fromArray(array of f("offset" int(offset)) end)
+                        for i = 0 upto {extent x.fields - 1} do vector.append(fields x.fields[i]) end
+                        node(x.name vector.toArray(fields))
                     end
                 else s
             end
@@ -72,9 +72,9 @@ export
         end
 
     let optional(A::TYPE m: maybe.T(A) dumpA: All(a: A) S): S =
-        if maybe.isSome(:A m) then dumpA(maybe.unwrap(:A m)) else none end
-    let optStr(m: maybe.T(String)): S = optional(:String m str)
-    let each(A::TYPE v: vector.T(A) dumpA: All(a: A) S): S = seq(vector.toArray(:S vector.map(:A :S v dumpA)))
+        if maybe.isSome(m) then dumpA(maybe.unwrap(m)) else none end
+    let optStr(m: maybe.T(String)): S = optional(m str)
+    let each(A::TYPE v: vector.T(A) dumpA: All(a: A) S): S = seq(vector.toArray(vector.map(v dumpA)))
 
     let mode(m: ast.ParamMode): S =
         atom(case m when modeValue then "VALUE" when modeVar then "VAR" when modeOut then "OUT" end)
@@ -100,30 +100,30 @@ export
             when typePath with p then node("TypePath" array of f("path" strs(p.path)) end)
             when typeAll with a then
                 node("TypeAll" array of
-                    f("quantifiers" each(:ast.Quantifier a.quantifiers quantifier)) f("result_type" ty(a.resultType))
+                    f("quantifiers" each(a.quantifiers quantifier)) f("result_type" ty(a.resultType))
                 end)
-            when typeTuple with x then node("TypeTuple" array of f("fields" each(:ast.Signature x.fields signature)) end)
+            when typeTuple with x then node("TypeTuple" array of f("fields" each(x.fields signature)) end)
             when typeRecord with x then
-                node("TypeRecord" array of f("fields" each(:ast.RecordFieldSig x.fields recordFieldSig)) end)
+                node("TypeRecord" array of f("fields" each(x.fields recordFieldSig)) end)
             when typeOption with x then
-                node("TypeOption" array of f("variants" each(:ast.OptionFieldSig x.variants optionFieldSig)) end)
+                node("TypeOption" array of f("variants" each(x.variants optionFieldSig)) end)
             when typeVariant with x then
-                node("TypeVariant" array of f("fields" each(:ast.VariantFieldSig x.fields variantFieldSig)) end)
+                node("TypeVariant" array of f("fields" each(x.fields variantFieldSig)) end)
             when typeAuto with x then
                 node("TypeAuto" array of
                     f("type_param" optStr(x.typeParam)) f("kind_bound" ty(x.kindBound))
-                    f("signature" each(:ast.FieldSig x.signature fieldSig))
+                    f("signature" each(x.signature fieldSig))
                 end)
             when typeFun with x then
                 node("TypeFun" array of
-                    f("params" each(:ast.TypeFormal x.params typeFormal))
-                    f("result_kind" optional(:ast.KindExpr x.resultKind ty)) f("body" ty(x.body))
+                    f("params" each(x.params typeFormal))
+                    f("result_kind" optional(x.resultKind ty)) f("body" ty(x.body))
                 end)
             when typeRec with x then
                 node("TypeRec" array of f("var_name" str(x.varName)) f("bound" ty(x.bound)) f("body" ty(x.body)) end)
             when typeApp with x then
                 node("TypeApp" array of
-                    f("constructor" ty(x.constructor)) f("arguments" each(:ast.TypeExpr x.arguments ty))
+                    f("constructor" ty(x.constructor)) f("arguments" each(x.arguments ty))
                 end)
             when typeInfix with x then
                 node("TypeInfix" array of f("left" ty(x.left)) f("op" str(x.op)) f("right" ty(x.right)) end)
@@ -140,7 +140,7 @@ export
         end))
     and fieldSig(s: ast.FieldSig): S =
         at(s.offset node("FieldSig" array of
-            f("name" optStr(s.name)) f("type_sig" optional(:ast.TypeExpr s.typeSig ty)) f("mode" mode(s.mode))
+            f("name" optStr(s.name)) f("type_sig" optional(s.typeSig ty)) f("mode" mode(s.mode))
         end))
     and recordFieldSig(s: ast.RecordFieldSig): S =
         at(s.offset node("RecordFieldSig" array of
@@ -148,7 +148,7 @@ export
         end))
     and optionFieldSig(s: ast.OptionFieldSig): S =
         at(s.offset node("OptionFieldSig" array of
-            f("tag" str(s.tag)) f("payload_sig" each(:ast.Signature s.payloadSig signature))
+            f("tag" str(s.tag)) f("payload_sig" each(s.payloadSig signature))
         end))
     and variantFieldSig(s: ast.VariantFieldSig): S =
         at(s.offset node("VariantFieldSig" array of
@@ -158,8 +158,8 @@ export
         at(p.offset node("TypeFormal" array of f("name" str(p.name)) f("bound" ty(p.bound)) end))
     and typeBinding(b: ast.TypeBinding): S =
         at(b.offset node("TypeBinding" array of
-            f("name" str(b.name)) f("type_val" ty(b.typeVal)) f("params" each(:ast.TypeFormal b.params typeFormal))
-            f("bound" optional(:ast.KindExpr b.bound ty)) f("is_rec" flag(b.isRec)) f("is_def" flag(b.isDef))
+            f("name" str(b.name)) f("type_val" ty(b.typeVal)) f("params" each(b.params typeFormal))
+            f("bound" optional(b.bound ty)) f("is_rec" flag(b.isRec)) f("is_def" flag(b.isDef))
         end))
     and signature(s: ast.Signature): S =
         case s
@@ -167,7 +167,7 @@ export
             when sigType with x then typeFormal(x.val)
             when sigTypeBinding with x then typeBinding(x.val)
             when sigTypeBindingGroup with x then
-                at(x.offset node("TypeBindingGroup" array of f("bindings" each(:ast.TypeBinding x.val typeBinding)) end))
+                at(x.offset node("TypeBindingGroup" array of f("bindings" each(x.val typeBinding)) end))
             when sigKindBinding with x then
                 at(x.val.offset node("DefKindBinding" array of
                     f("name" str(x.val.name)) f("kind_val" ty(x.val.kindVal))
@@ -176,10 +176,10 @@ export
 
     let formalParam(p: ast.FormalParam): S =
         at(p.offset node("FormalParam" array of
-            f("name" str(p.name)) f("type_annot" optional(:ast.TypeExpr p.typeAnnot ty)) f("mode" mode(p.mode))
+            f("name" str(p.name)) f("type_annot" optional(p.typeAnnot ty)) f("mode" mode(p.mode))
         end))
 
-    let optTy(m: maybe.T(ast.TypeExpr)): S = optional(:ast.TypeExpr m ty)
+    let optTy(m: maybe.T(ast.TypeExpr)): S = optional(m ty)
 
     (* ======================================================================
      * 3. Expressions and Declarations
@@ -188,10 +188,10 @@ export
     let importItem(i: ast.ImportItem): S =
         at(i.offset node("ImportItem" array of
             f("names" strs(i.names)) f("interface_name" str(i.interfaceName))
-            f("module_paths" optional(:vector.T(String) i.modulePaths strs)) f("interface_path" optStr(i.interfacePath))
+            f("module_paths" optional(i.modulePaths strs)) f("interface_path" optStr(i.interfacePath))
         end))
 
-    let importPhrase(p: ast.ImportPhrase): S = node("ImportPhrase" array of f("items" each(:ast.ImportItem p.items importItem)) end)
+    let importPhrase(p: ast.ImportPhrase): S = node("ImportPhrase" array of f("items" each(p.items importItem)) end)
 
     let rec ex(e: ast.Expr): S = at(e.span.startOffset exForm(e))
     and exForm(e: ast.Expr): S =
@@ -208,11 +208,11 @@ export
             when exprExternal with x then node("ExprExternal" array of f("symbol" str(x.symbol)) end)
             when typeArg with x then node("TypeArgument" array of f("type_val" ty(x.typeVal)) end)
             when kindArg with x then node("KindArgument" array of f("kind_val" ty(x.kindVal)) end)
-            when exprBlock with x then node("ExprBlock" array of f("bindings" each(:ast.Expr x.bindings ex)) end)
+            when exprBlock with x then node("ExprBlock" array of f("bindings" each(x.bindings ex)) end)
             when exprIf with x then
                 node("ExprIf" array of
                     f("cond" ex(x.cond)) f("then_branch" ex(x.thenBranch))
-                    f("elsifs" each(:ast.ElsifBranch x.elsifs elsifBranch)) f("else_branch" optEx(x.elseBranch))
+                    f("elsifs" each(x.elsifs elsifBranch)) f("else_branch" optEx(x.elseBranch))
                     f("short_circuit" flag(x.shortCircuit))
                 end)
             when exprWhile with x then node("ExprWhile" array of f("cond" ex(x.cond)) f("body" ex(x.body)) end)
@@ -225,19 +225,19 @@ export
                 end)
             when exprFun with x then
                 node("ExprFun" array of
-                    f("params" each(:ast.FormalParam x.params formalParam)) f("return_type" optTy(x.returnType))
-                    f("body" ex(x.body)) f("type_params" each(:ast.TypeFormal x.typeParams typeFormal))
+                    f("params" each(x.params formalParam)) f("return_type" optTy(x.returnType))
+                    f("body" ex(x.body)) f("type_params" each(x.typeParams typeFormal))
                 end)
             when exprApp with x then
-                node("ExprApp" array of f("func" ex(x.func)) f("args" each(:ast.Expr x.args ex)) end)
+                node("ExprApp" array of f("func" ex(x.func)) f("args" each(x.args ex)) end)
             when exprInfix with x then
                 node("ExprInfix" array of f("left" ex(x.left)) f("op" str(x.op)) f("right" ex(x.right)) end)
-            when exprTuple with x then node("ExprTuple" array of f("fields" each(:ast.TupleField x.fields tupleField)) end)
+            when exprTuple with x then node("ExprTuple" array of f("fields" each(x.fields tupleField)) end)
             when exprRecord with x then
-                node("ExprRecord" array of f("fields" each(:ast.RecordBinding x.fields recordBinding)) end)
+                node("ExprRecord" array of f("fields" each(x.fields recordBinding)) end)
             when exprArray with x then
                 node("ExprArray" array of
-                    f("elements" each(:ast.Expr x.elements ex)) f("element_type" optTy(x.elementType))
+                    f("elements" each(x.elements ex)) f("element_type" optTy(x.elementType))
                 end)
             when exprArrayRep with x then
                 node("ExprArrayRep" array of f("count" ex(x.count)) f("init_val" ex(x.initVal)) end)
@@ -270,12 +270,12 @@ export
                 node("ExprVariantAssert" array of f("target" ex(x.target)) f("tag" str(x.tag)) end)
             when exprCase with x then
                 node("ExprCase" array of
-                    f("target" ex(x.target)) f("branches" each(:ast.CaseBranch x.branches caseBranch))
+                    f("target" ex(x.target)) f("branches" each(x.branches caseBranch))
                     f("else_branch" optEx(x.elseBranch))
                 end)
             when exprInspect with x then
                 node("ExprInspect" array of
-                    f("target" ex(x.target)) f("branches" each(:ast.InspectBranch x.branches inspectBranch))
+                    f("target" ex(x.target)) f("branches" each(x.branches inspectBranch))
                     f("else_branch" optEx(x.elseBranch))
                 end)
             when exprException with x then
@@ -286,30 +286,30 @@ export
                 end)
             when exprTry with x then
                 node("ExprTry" array of
-                    f("body" ex(x.body)) f("branches" each(:ast.TryBranch x.branches tryBranch))
+                    f("body" ex(x.body)) f("branches" each(x.branches tryBranch))
                     f("else_branch" optEx(x.elseBranch)) f("else_binder" optStr(x.elseBinder))
                     f("else_binder_type" optTy(x.elseBinderType))
                 end)
             when declLetVal with x then
                 node("LetValueBinding" array of
-                    f("name" str(x.name)) f("value" ex(x.value)) f("params" each(:ast.FormalParam x.params formalParam))
+                    f("name" str(x.name)) f("value" ex(x.value)) f("params" each(x.params formalParam))
                     f("type_annot" optTy(x.typeAnnot)) f("is_rec" flag(x.isRec)) f("is_var" flag(x.isVar))
                 end)
             when declLetValGroup with x then
-                node("LetValueBindingGroup" array of f("bindings" each(:ast.Decl x.bindings ex)) end)
+                node("LetValueBindingGroup" array of f("bindings" each(x.bindings ex)) end)
             when declTypeBinding with x then
                 typeBinding(tuple
                     let offset = e.span.startOffset let name = x.name let typeVal = x.typeVal let params = x.params
                     let bound = x.bound let isRec = x.isRec let isDef = x.isDef
                 end)
             when declTypeBindingGroup with x then
-                node("TypeBindingGroup" array of f("bindings" each(:ast.Decl x.bindings ex)) end)
+                node("TypeBindingGroup" array of f("bindings" each(x.bindings ex)) end)
             when declDefKind with x then
                 node("DefKindBinding" array of f("name" str(x.name)) f("kind_val" ty(x.kindVal)) end)
             when declExprStmt with x then node("ExprStmt" array of f("expr" ex(x.expr)) end)
             when declImport with x then importPhrase(x.phrase)
         end
-    and optEx(m: maybe.T(ast.Expr)): S = optional(:ast.Expr m ex)
+    and optEx(m: maybe.T(ast.Expr)): S = optional(m ex)
     (* Python holds an elsif as a plain (cond, then) tuple *)
     and elsifBranch(b: ast.ElsifBranch): S = seq(array of ex(b.cond) ex(b.thenBranch) end)
     and tupleField(t: ast.TupleField): S =
@@ -317,7 +317,7 @@ export
             when fieldVal with v then tupleBinding(v.val)
             when fieldGroup with g then
                 at(g.offset node("TupleBindingGroup" array of
-                    f("bindings" each(:ast.TupleFieldBinding g.val tupleBinding))
+                    f("bindings" each(g.val tupleBinding))
                 end))
             when fieldDecl with d then ex(d.val)
         end
@@ -336,7 +336,7 @@ export
     and inspectBranch(i: ast.InspectBranch): S =
         at(i.offset node("InspectBranch" array of
             f("match_type" ty(i.matchType))
-            f("binders" each(:ast.InspectBinder i.binders
+            f("binders" each(i.binders
                 fun(x: ast.InspectBinder): S seq(array of str(x.name) optTy(x.typeAnnot) end)))
             f("body" ex(i.body))
         end))
@@ -355,14 +355,14 @@ export
             when phraseImport with x then importPhrase(x.phrase)
             when phraseInterface with x then
                 node("InterfaceDecl" array of
-                    f("name" str(x.iface.name)) f("signatures" each(:ast.Signature x.iface.signatures signature))
-                    f("imports" each(:ast.ImportItem x.iface.imports importItem)) f("is_unsound" flag(x.iface.isUnsound))
+                    f("name" str(x.iface.name)) f("signatures" each(x.iface.signatures signature))
+                    f("imports" each(x.iface.imports importItem)) f("is_unsound" flag(x.iface.isUnsound))
                 end)
             when phraseModule with x then
                 node("ModuleDecl" array of
                     f("name" str(x.modDecl.name)) f("interface_name" str(x.modDecl.interfaceName))
-                    f("bindings" each(:ast.Decl x.modDecl.bindings ex))
-                    f("imports" each(:ast.ImportItem x.modDecl.imports importItem))
+                    f("bindings" each(x.modDecl.bindings ex))
+                    f("imports" each(x.modDecl.imports importItem))
                     f("is_unsound" flag(x.modDecl.isUnsound))
                 end)
             when phraseDecl with x then ex(x.decl)
@@ -370,7 +370,7 @@ export
         end)
 
     let program(p: ast.Program): S =
-        at(p.span.startOffset node("Program" array of f("phrases" each(:ast.Phrase p.form.phrases phrase)) end))
+        at(p.span.startOffset node("Program" array of f("phrases" each(p.form.phrases phrase)) end))
 
     (* ======================================================================
      * 5. Rendering, with ast_dump's layout rules
@@ -391,7 +391,7 @@ export
         case v
             when nil then true
             when flag with x then not(x.value)
-            when strs with x then vector.length(:String x.items) is 0
+            when strs with x then vector.length(x.items) is 0
             when seq with x then extent x.items is 0
             else false
         end
@@ -407,9 +407,9 @@ export
 
     (* The items of a tuple of strings, quoted and separated by sep *)
     let quoted(b: sb.T items: vector.T(String) sep: String): Ok =
-        for i = 0 upto {vector.length(:String items) - 1} do
+        for i = 0 upto {vector.length(items) - 1} do
             if i > 0 then sb.str(b sep) end
-            sb.str(b pyRepr.str(vector.get(:String items i)))
+            sb.str(b pyRepr.str(vector.get(items i)))
         end
 
     (* A simple value as a field of a node *)
@@ -431,7 +431,7 @@ export
             when strs with x then
                 sb.char(b '(')
                 quoted(b x.items ", ")
-                if vector.length(:String x.items) is 1 then sb.char(b ',') end
+                if vector.length(x.items) is 1 then sb.char(b ',') end
                 sb.char(b ')')
             else simpleField(b v)
         end

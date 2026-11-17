@@ -83,11 +83,11 @@ export
                 let phrase = program.phrases[i]
                 case phrase.form
                     when bindLetValue with x then
-                        if not(x.value.redefines) then vector.append(:symbols.ValueSymbol found x.value.symbol) end
+                        if not(x.value.redefines) then vector.append(found x.value.symbol) end
                     when bindLetValueGroup with x then
                         for j = 0 upto {extent x.members - 1} do
                             if not(x.members[j].redefines) then
-                                vector.append(:symbols.ValueSymbol found x.members[j].symbol)
+                                vector.append(found x.members[j].symbol)
                             end
                         end
                     else ok
@@ -96,9 +96,9 @@ export
                     when bindExprStmt with x then
                         case x.expr.form
                             when exprException with y then
-                                if maybe.isSome(:symbols.ValueSymbol y.symbol) then
-                                    let declared = maybe.unwrap(:symbols.ValueSymbol y.symbol)
-                                    vector.append(:symbols.ValueSymbol found declared)
+                                if maybe.isSome(y.symbol) then
+                                    let declared = maybe.unwrap(y.symbol)
+                                    vector.append(found declared)
                                 end
                             else ok
                         end
@@ -122,7 +122,7 @@ export
                 let d = ascii.val(stringOp.getChar(text i)) - 48
                 if {d < 0} orif {d > 9} then valid := false else n := {10 * n} + d end
             end
-            if valid then maybe.some(:Int n) else maybe.none(:Int) end
+            if valid then maybe.some(n) else maybe.none(:Int) end
         end
 
     (* Where a site, FILE:LINE:COL, is: the source of the input or module file
@@ -135,20 +135,20 @@ export
             if before < 0 then
                 nowhere
             else
-                let found = hashMap.get(:String :location.SourceMap s.sources stringOp.getSub(site 0 before))
+                let found = hashMap.get(s.sources stringOp.getSub(site 0 before))
                 let line = number(stringOp.getSub(site before + 1 {last - before} - 1))
                 let col = number(stringOp.getSub(site last + 1 {stringOp.length(site) - last} - 1))
-                if maybe.isNone(:location.SourceMap found) orif maybe.isNone(:Int line) orif maybe.isNone(:Int col) then
+                if maybe.isNone(found) orif maybe.isNone(line) orif maybe.isNone(col) then
                     nowhere
                 else
-                    let text = location.text(maybe.unwrap(:location.SourceMap found))
+                    let text = location.text(maybe.unwrap(found))
                     let var offset = 0
                     let var lines = 1
-                    while {lines < maybe.unwrap(:Int line)} andif {offset < stringOp.length(text)} do
+                    while {lines < maybe.unwrap(line)} andif {offset < stringOp.length(text)} do
                         if stringOp.getChar(text offset) is '\n' then lines := lines + 1 end
                         offset := offset + 1
                     end
-                    tuple let sourceMap = found let offset = maybe.some(:Int offset + maybe.unwrap(:Int col) - 1) end
+                    tuple let sourceMap = found let offset = maybe.some(offset + maybe.unwrap(col) - 1) end
                 end
             end
         end
@@ -160,7 +160,7 @@ export
      * loaded before (section 3.4). *)
     let checkImport(s: T imp: nodes.Import): Ok =
         if strutil.startsWith(imp.canonicalPath "qj_") orif {stringOp.length(imp.interfacePath) is 0}
-            orif hashMap.contains(:String :Bool s.loaded imp.canonicalPath) then
+            orif hashMap.contains(s.loaded imp.canonicalPath) then
             ok
         else
             let built = target.fingerprint(s.target imp.canonicalPath)
@@ -203,15 +203,15 @@ export
      * hook the module system would otherwise call back to; the input's is put
      * back after. *)
     let rec loadModuleFile(s: T canonical: String source: String): Ok =
-        if target.has(s.target canonical) orif hashMap.contains(:String :Bool s.loaded canonical) then
+        if target.has(s.target canonical) orif hashMap.contains(s.loaded canonical) then
             ok
         else
             let e = s.e
             let saved = elaboration.hooks.elaborateBinding
             typecheck.install()
             let m = try
-                moduleCompiler.moduleFileUnit(source vector.toArray(:String e.includePaths) e.buildDir e.programDir
-                    maybe.some(:graph.Resolver e.units.resolver))
+                moduleCompiler.moduleFileUnit(source vector.toArray(e.includePaths) e.buildDir e.programDir
+                    maybe.some(e.units.resolver))
             else with r then
                 elaboration.hooks.elaborateBinding := saved
                 raised.reraise(:moduleCompiler.ModuleUnit r)
@@ -222,9 +222,9 @@ export
                 importedAt(fun(): Ok loadModuleFile(s imp.name imp.source) imp.offset location.file(m.sourceMap))
             end
             compileAndLoad(s m.unit)
-            hashMap.insert(:String :location.SourceMap s.sources location.file(m.sourceMap) m.sourceMap)
-            hashMap.insert(:String :Bool s.loaded canonical true)
-            vector.append(:String s.loadedNow canonical)
+            hashMap.insert(s.sources location.file(m.sourceMap) m.sourceMap)
+            hashMap.insert(s.loaded canonical true)
+            vector.append(s.loadedNow canonical)
         end
 
     (* The offset of the import item in program that imports the module
@@ -239,8 +239,8 @@ export
                             let item = x.items[k]
                             let paths = typedAst.effectiveCanonicalModulePaths(item)
                             for j = 0 upto {extent paths - 1} do
-                                if maybe.isNone(:Int found) andif stringOp.equal(paths[j] canonical) then
-                                    found := maybe.some(:Int item.offset)
+                                if maybe.isNone(found) andif stringOp.equal(paths[j] canonical) then
+                                    found := maybe.some(item.offset)
                                 end
                             end
                         end
@@ -256,16 +256,16 @@ export
     let loadImported(s: T imp: nodes.Import program: typedAst.Program file: String): Ok =
         if strutil.startsWith(imp.canonicalPath "qj_") orif {stringOp.length(imp.interfacePath) is 0}
             orif target.has(s.target imp.canonicalPath)
-            orif hashMap.contains(:String :Bool s.loaded imp.canonicalPath) then
+            orif hashMap.contains(s.loaded imp.canonicalPath) then
             ok
         else
             let source = env.resolveModule(s.e imp.canonicalPath).source
-            if maybe.isNone(:String source) then
+            if maybe.isNone(source) then
                 fail(:Ok "module '" <> imp.canonicalPath <> "' is not in the driver, and has no source to compile")
             end
-            let load = fun(): Ok loadModuleFile(s imp.canonicalPath maybe.unwrap(:String source))
+            let load = fun(): Ok loadModuleFile(s imp.canonicalPath maybe.unwrap(source))
             let site = importOffset(program imp.canonicalPath)
-            if maybe.isSome(:Int site) then importedAt(load maybe.unwrap(:Int site) file) else load() end
+            if maybe.isSome(site) then importedAt(load maybe.unwrap(site) file) else load() end
         end
 
     (* A module a later input may name: an imported one, by its record, as
@@ -277,31 +277,31 @@ export
      * moduleName the unit declared *)
     let remember(s: T symbolId: Int holder: String recordType: tm.Type): Ok =
         begin
-            hashMap.insert(:Int :lower.Earlier s.earlier symbolId tuple
+            hashMap.insert(s.earlier symbolId tuple
                 let holder = holder let field = "" let recordType = recordType let isVar = false let boxed = false
             end)
             ok
         end
     let rememberImport(s: T unit: nodes.Unit item: typedAst.ImportItem): Ok =
-        if maybe.isSome(:Array(maybe.T(Int)) item.symbolIds) then
-            let ids = maybe.unwrap(:Array(maybe.T(Int)) item.symbolIds)
+        if maybe.isSome(item.symbolIds) then
+            let ids = maybe.unwrap(item.symbolIds)
             let canonical = typedAst.effectiveCanonicalModulePaths(item)
             for j = 0 upto {extent ids - 1} do
                 for u = 0 upto {extent unit.imports - 1} do
                     let imp = unit.imports[u]
-                    if maybe.isSome(:Int ids[j]) andif {j < extent canonical}
-                        andif stringOp.equal(imp.canonicalPath canonical[j]) andif maybe.isSome(:tm.Type imp.recordType)
+                    if maybe.isSome(ids[j]) andif {j < extent canonical}
+                        andif stringOp.equal(imp.canonicalPath canonical[j]) andif maybe.isSome(imp.recordType)
                     then
-                        remember(s maybe.unwrap(:Int ids[j]) imp.canonicalPath maybe.unwrap(:tm.Type imp.recordType))
+                        remember(s maybe.unwrap(ids[j]) imp.canonicalPath maybe.unwrap(imp.recordType))
                     end
                 end
             end
         end
     let rememberModule(s: T unit: nodes.Unit symbolId: Int moduleName: String): Ok =
-        for j = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
-            let dm = vector.get(:nodes.Module unit.modules j)
-            if stringOp.equal(dm.name moduleName) andif maybe.isSome(:nodes.Variable dm.recordVar) then
-                remember(s symbolId moduleName maybe.unwrap(:nodes.Variable dm.recordVar).type)
+        for j = 0 upto {vector.length(unit.modules) - 1} do
+            let dm = vector.get(unit.modules j)
+            if stringOp.equal(dm.name moduleName) andif maybe.isSome(dm.recordVar) then
+                remember(s symbolId moduleName maybe.unwrap(dm.recordVar).type)
             end
         end
 
@@ -311,12 +311,12 @@ export
         begin
             let parts = strutil.split(text lower.phraseSeparator <> "\n")
             let shown = vector.new(:String)
-            for i = 1 upto {vector.length(:String parts) - 1} do
-                let p = vector.get(:String parts i)
-                vector.append(:String shown
+            for i = 1 upto {vector.length(parts) - 1} do
+                let p = vector.get(parts i)
+                vector.append(shown
                     if strutil.endsWith(p "\n") then stringOp.getSub(p 0 stringOp.length(p) - 1) else p end)
             end
-            vector.toArray(:String shown)
+            vector.toArray(shown)
         end
 
     (* run's work, without its rollback of loaded modules. The input gets the
@@ -340,9 +340,9 @@ export
             s.count := s.count + 1
             let number = s.count
             let name = lower.phraseModuleName(number)
-            hashMap.insert(:String :location.SourceMap s.sources sourcePrefix <> conv.int(number) sourceMap)
+            hashMap.insert(s.sources sourcePrefix <> conv.int(number) sourceMap)
             let compiled = location.newSourceMap(sourcePrefix <> conv.int(number) location.text(sourceMap))
-            let unit = try lower.lowerPhrases(program s.e maybe.some(:location.SourceMap compiled) number s.earlier echo
+            let unit = try lower.lowerPhrases(program s.e maybe.some(compiled) number s.earlier echo
                 printResult capture)
                 when lower.loweringError with m then fail(:nodes.Unit m)
                 end
@@ -351,8 +351,8 @@ export
             end
             (* The input's own module, qj_N, which lowerPhrases puts after
              * the modules the input declares *)
-            let m = vector.get(:nodes.Module unit.modules vector.length(:nodes.Module unit.modules) - 1)
-            let recordType = maybe.unwrap(:nodes.Variable m.recordVar).type
+            let m = vector.get(unit.modules vector.length(unit.modules) - 1)
+            let recordType = maybe.unwrap(m.recordVar).type
             compileAndLoad(s unit)
             case target.run(s.target name capture)
                 when raised with r then
@@ -368,9 +368,9 @@ export
                         let shown = if capture then shownByPhrase(x.shown) else array of :String end end
                         (* Its bindings, for the inputs after it *)
                         let bound = boundSymbols(program)
-                        for i = 0 upto {vector.length(:symbols.ValueSymbol bound) - 1} do
-                            let sym = vector.get(:symbols.ValueSymbol bound i)
-                            hashMap.insert(:Int :lower.Earlier s.earlier sym.symbolId tuple
+                        for i = 0 upto {vector.length(bound) - 1} do
+                            let sym = vector.get(bound i)
+                            hashMap.insert(s.earlier sym.symbolId tuple
                                 let holder = name let field = lower.phraseField(sym.symbolId)
                                 let recordType = recordType
                                 let isVar = sym.isVar let boxed = lower.boxesSlot(s.e sym)
@@ -382,8 +382,8 @@ export
                                 when bindImport with x then
                                     for k = 0 upto {extent x.items - 1} do rememberImport(s unit x.items[k]) end
                                 when bindModule with x then
-                                    if maybe.isSome(:Int x.symbolId) then
-                                        rememberModule(s unit maybe.unwrap(:Int x.symbolId) name <> "_" <> x.name)
+                                    if maybe.isSome(x.symbolId) then
+                                        rememberModule(s unit maybe.unwrap(x.symbolId) name <> "_" <> x.name)
                                     end
                                 else ok
                             end
@@ -399,10 +399,10 @@ export
     let run(s: T program: typedAst.Program sourceMap: location.SourceMap echo: Bool printResult: Bool capture: Bool):
         Outcome =
         begin
-            vector.clear(:String s.loadedNow)
+            vector.clear(s.loadedNow)
             let forget = fun(): Ok
-                for i = 0 upto {vector.length(:String s.loadedNow) - 1} do
-                    begin hashMap.delete(:String :Bool s.loaded vector.get(:String s.loadedNow i)) ok end
+                for i = 0 upto {vector.length(s.loadedNow) - 1} do
+                    begin hashMap.delete(s.loaded vector.get(s.loadedNow i)) ok end
                 end
             let outcome = try
                 runInput(s program sourceMap echo printResult capture)

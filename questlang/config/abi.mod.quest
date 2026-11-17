@@ -21,17 +21,17 @@ export
     let recordedField(artifact: String key: String): maybe.T(json.Value) =
         begin
             let text = files.readText(artifact)
-            if maybe.isNone(:String text) then
+            if maybe.isNone(text) then
                 maybe.none(:json.Value)
             else
                 try
-                    let top = json.parseShared(maybe.unwrap(:String text))
+                    let top = json.parseShared(maybe.unwrap(text))
                     let data = case top
                         when jObject with x then
                             let value = json.get(x.o "value")
-                            let isObject = maybe.isSome(:json.Value value)
-                                andif case maybe.unwrap(:json.Value value) when jObject then true else false end
-                            if isObject then maybe.unwrap(:json.Value value) else top end
+                            let isObject = maybe.isSome(value)
+                                andif case maybe.unwrap(value) when jObject then true else false end
+                            if isObject then maybe.unwrap(value) else top end
                         else top
                     end
                     case data
@@ -47,10 +47,10 @@ export
     let recordedAbi(artifact: String): maybe.T(Int) =
         begin
             let field = recordedField(artifact "abi")
-            if maybe.isNone(:json.Value field) then
+            if maybe.isNone(field) then
                 maybe.none(:Int)
             else
-                case maybe.unwrap(:json.Value field)
+                case maybe.unwrap(field)
                     when jNumber with x then if x.isInteger then strutil.tryToInt(x.text) else maybe.none(:Int) end
                     else maybe.none(:Int)
                 end
@@ -60,11 +60,11 @@ export
     let recordedProducer(artifact: String): maybe.T(String) =
         begin
             let field = recordedField(artifact "producer")
-            if maybe.isNone(:json.Value field) then
+            if maybe.isNone(field) then
                 maybe.none(:String)
             else
-                case maybe.unwrap(:json.Value field)
-                    when jString with x then maybe.some(:String x.s)
+                case maybe.unwrap(field)
+                    when jString with x then maybe.some(x.s)
                     else maybe.none(:String)
                 end
             end
@@ -74,17 +74,17 @@ export
         begin
             let found = recordedAbi(artifact)
             let by = recordedProducer(artifact)
-            maybe.isSome(:Int found) andif {maybe.unwrap(:Int found) is abiVersion}
-                andif maybe.isSome(:String by) andif stringOp.equal(maybe.unwrap(:String by) producer)
+            maybe.isSome(found) andif {maybe.unwrap(found) is abiVersion}
+                andif maybe.isSome(by) andif stringOp.equal(maybe.unwrap(by) producer)
         end
 
     let builtFrom(artifact: String source: String): Bool =
         begin
             let field = recordedField(artifact "source")
-            if maybe.isNone(:json.Value field) then
+            if maybe.isNone(field) then
                 false
             else
-                case maybe.unwrap(:json.Value field)
+                case maybe.unwrap(field)
                     when jString with x then
                         {stringOp.length(x.s) > 0}
                             andif stringOp.equal(pathLib.resolve(x.s) pathLib.resolve(source))
@@ -97,14 +97,14 @@ export
         begin
             let found = recordedAbi(artifact)
             let by = recordedProducer(artifact)
-            if maybe.isSome(:Int found) andif {maybe.unwrap(:Int found) is abiVersion} then
-                let byText = if maybe.isSome(:String by) then "producer '" <> maybe.unwrap(:String by) <> "'"
+            if maybe.isSome(found) andif {maybe.unwrap(found) is abiVersion} then
+                let byText = if maybe.isSome(by) then "producer '" <> maybe.unwrap(by) <> "'"
                     else "no producer"
                 end
                 "Precompiled artifact '" <> artifact <> "' records " <> byText <> ", but this compiler is '"
                     <> producer <> "', and its source is not available to rebuild it"
             else
-                let foundText = if maybe.isSome(:Int found) then "ABI version " <> conv.int(maybe.unwrap(:Int found))
+                let foundText = if maybe.isSome(found) then "ABI version " <> conv.int(maybe.unwrap(found))
                     else "no ABI version"
                 end
                 "Precompiled artifact '" <> artifact <> "' records " <> foundText

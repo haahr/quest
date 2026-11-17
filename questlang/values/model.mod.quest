@@ -122,11 +122,11 @@ export
     let tupleOf(elements: Array(Value) labels: maybe.T(Array(maybe.T(String)))): TupleValue =
         begin
             let nameToIndex = hashMap.new(:String :Int stringOp.equal hash.string)
-            if maybe.isSome(:Array(maybe.T(String)) labels) then
-                let ls = maybe.unwrap(:Array(maybe.T(String)) labels)
+            if maybe.isSome(labels) then
+                let ls = maybe.unwrap(labels)
                 for i = 0 upto {extent ls - 1} do
-                    if maybe.isSome(:String ls[i]) then
-                        hashMap.insert(:String :Int nameToIndex maybe.unwrap(:String ls[i]) i)
+                    if maybe.isSome(ls[i]) then
+                        hashMap.insert(nameToIndex maybe.unwrap(ls[i]) i)
                     end
                 end
             end
@@ -160,11 +160,11 @@ export
 
     let tupleIndex(t: TupleValue name: String): Int =
         begin
-            let found = hashMap.get(:String :Int t.nameToIndex name)
-            if maybe.isNone(:Int found) then
+            let found = hashMap.get(t.nameToIndex name)
+            if maybe.isNone(found) then
                 raise fieldMissing with "Tuple has no labeled component '" <> name <> "'" end
             end
-            maybe.unwrap(:Int found)
+            maybe.unwrap(found)
         end
 
     let tupleGet(t: TupleValue name: String): Value = t.elements[tupleIndex(t name)]
@@ -191,7 +191,7 @@ export
     (* The bootstrap's QTuple.set_by_name: by label, or a numeric name (n or _n)
      * by position *)
     let tupleSetByName(t: TupleValue name: String v: Value): Ok =
-        if hashMap.contains(:String :Int t.nameToIndex name) then
+        if hashMap.contains(t.nameToIndex name) then
             t.elements[tupleIndex(t name)] := v
         elsif isDigits(name) then
             t.elements[digitsValue(name)] := v
@@ -347,9 +347,9 @@ export
     let joined(parts: vector.T(String)): String =
         begin
             let b = stringBuilder.new()
-            for i = 0 upto {vector.length(:String parts) - 1} do
+            for i = 0 upto {vector.length(parts) - 1} do
                 if i > 0 then stringBuilder.char(b ' ') end
-                stringBuilder.strShared(b vector.get(:String parts i))
+                stringBuilder.strShared(b vector.get(parts i))
             end
             stringBuilder.toString(b)
         end
@@ -361,14 +361,14 @@ export
     let isVisited(visited: Visited v: Value): Bool =
         begin
             let var found = false
-            for i = 0 upto {vector.length(:Value visited) - 1} do
-                if same(vector.get(:Value visited i) v) then found := true end
+            for i = 0 upto {vector.length(visited) - 1} do
+                if same(vector.get(visited i) v) then found := true end
             end
             found
         end
 
     let sortedNames(fields: hashMap.T(String Value)): vector.T(String) =
-        sort.sortedVector(:String hashMap.keys(:String :Value fields) sort.stringCompare)
+        sort.sortedVector(hashMap.keys(fields) sort.stringCompare)
 
     let rec show(v: Value visited: Visited): String =
         case v
@@ -384,12 +384,12 @@ export
                     begin
                         let names = sortedNames(x.r.fields)
                         let parts = vector.new(:String)
-                        for i = 0 upto {vector.length(:String names) - 1} do
-                            let name = vector.get(:String names i)
-                            vector.append(:String parts
-                                name <> "=" <> show(hashMap.find(:String :Value x.r.fields name) visited))
+                        for i = 0 upto {vector.length(names) - 1} do
+                            let name = vector.get(names i)
+                            vector.append(parts
+                                name <> "=" <> show(hashMap.find(x.r.fields name) visited))
                         end
-                        if vector.empty(:String parts) then "record end" else "record " <> joined(parts) <> " end" end
+                        if vector.empty(parts) then "record end" else "record " <> joined(parts) <> " end" end
                     end)
             when vTuple with x then
                 guarded(v visited "tuple" fun(): String
@@ -398,36 +398,36 @@ export
                         for i = 0 upto {extent x.t.elements - 1} do
                             let shown = show(x.t.elements[i] visited)
                             let label = labelAt(x.t i)
-                            vector.append(:String parts
-                                if maybe.isSome(:String label) then maybe.unwrap(:String label) <> "=" <> shown else shown end)
+                            vector.append(parts
+                                if maybe.isSome(label) then maybe.unwrap(label) <> "=" <> shown else shown end)
                         end
-                        if vector.empty(:String parts) then "tuple end" else "tuple " <> joined(parts) <> " end" end
+                        if vector.empty(parts) then "tuple end" else "tuple " <> joined(parts) <> " end" end
                     end)
             when vArray with x then
                 guarded(v visited "array of" fun(): String
                     begin
                         let parts = vector.new(:String)
-                        for i = 0 upto {extent x.a - 1} do vector.append(:String parts show(x.a[i] visited)) end
-                        if vector.empty(:String parts) then "array of end" else "array of " <> joined(parts) <> " end" end
+                        for i = 0 upto {extent x.a - 1} do vector.append(parts show(x.a[i] visited)) end
+                        if vector.empty(parts) then "array of end" else "array of " <> joined(parts) <> " end" end
                     end)
             when vVariant with x then tagged("variant" x.v visited)
             when vOption with x then tagged("option" x.v visited)
             when vClosure with x then
-                if maybe.isSome(:String x.c.name) then "<fun:" <> maybe.unwrap(:String x.c.name) <> ">" else "<fun>" end
+                if maybe.isSome(x.c.name) then "<fun:" <> maybe.unwrap(x.c.name) <> ">" else "<fun>" end
             when vBuiltin with x then "<builtin:" <> x.b.name <> ">"
             when vRef with x then
                 if isVisited(visited v) then
                     "ref(...)"
                 else
-                    vector.append(:Value visited v)
+                    vector.append(visited v)
                     let shown = show(deref(x.r) visited)
-                    vector.pop(:Value visited)
+                    vector.pop(visited)
                     "ref(" <> shown <> ")"
                 end
             when vAuto with x then "auto(" <> show(x.a.value visited) <> " : " <> tm.show(x.a.type) <> ")"
             when vException with x then
-                if maybe.isSome(:Value x.e.payload) then
-                    "exception " <> x.e.name <> " with " <> show(maybe.unwrap(:Value x.e.payload) visited)
+                if maybe.isSome(x.e.payload) then
+                    "exception " <> x.e.name <> " with " <> show(maybe.unwrap(x.e.payload) visited)
                 else
                     "exception " <> x.e.name
                 end
@@ -442,20 +442,20 @@ export
         if isVisited(visited v) then
             opening <> " ... end"
         else
-            vector.append(:Value visited v)
+            vector.append(visited v)
             let shown = body()
-            vector.pop(:Value visited)
+            vector.pop(visited)
             shown
         end
     and tagged(keyword: String t: Tagged visited: Visited): String =
-        if maybe.isSome(:Value t.payload) then
-            keyword <> " " <> t.tag <> " with " <> show(maybe.unwrap(:Value t.payload) visited) <> " end"
+        if maybe.isSome(t.payload) then
+            keyword <> " " <> t.tag <> " with " <> show(maybe.unwrap(t.payload) visited) <> " end"
         else
             keyword <> " " <> t.tag <> " end"
         end
     and labelAt(t: TupleValue i: Int): maybe.T(String) =
-        if maybe.isSome(:Array(maybe.T(String)) t.labels) andif {i < extent maybe.unwrap(:Array(maybe.T(String)) t.labels)} then
-            maybe.unwrap(:Array(maybe.T(String)) t.labels)[i]
+        if maybe.isSome(t.labels) andif {i < extent maybe.unwrap(:Array(maybe.T(String)) t.labels)} then
+            maybe.unwrap(t.labels)[i]
         else
             maybe.none(:String)
         end
@@ -489,11 +489,11 @@ export
     let runErrorMessage(e: RunError): String =
         case e.cause
             when raised with x then
-                let hasPayload = maybe.isSome(:Value x.payload) andif not(maybe.unwrap(:Value x.payload)?vOk)
+                let hasPayload = maybe.isSome(x.payload) andif not(maybe.unwrap(x.payload)?vOk)
                 if hasPayload then
                     let typeStr =
-                        if maybe.isSome(:tm.Type x.payloadType) then ":" <> tm.show(maybe.unwrap(:tm.Type x.payloadType)) else "" end
-                    "Exception: " <> x.exc.name <> " with " <> toString(maybe.unwrap(:Value x.payload)) <> typeStr
+                        if maybe.isSome(x.payloadType) then ":" <> tm.show(maybe.unwrap(x.payloadType)) else "" end
+                    "Exception: " <> x.exc.name <> " with " <> toString(maybe.unwrap(x.payload)) <> typeStr
                 else
                     "Exception: " <> x.exc.name
                 end

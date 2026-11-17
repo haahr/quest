@@ -73,13 +73,13 @@ export
      * IR's dumps and runs, the interpreter's, the backends', and the SSA's *)
     let phases =
         begin
-            let all = vector.fromArray(:String array of "tokenize" "parse" "desugar" "typecheck" end)
-            for i = 0 upto {extent irStages - 1} do vector.append(:String all "ir_" <> irStages[i]) end
-            for i = 0 upto {extent irStages - 1} do vector.append(:String all "run_ir_" <> irStages[i]) end
-            vector.append(:String all "interpret")
-            for i = 0 upto {extent cPhases - 1} do vector.append(:String all cPhases[i]) end
-            for i = 0 upto {extent ssaPhases - 1} do vector.append(:String all ssaPhases[i]) end
-            vector.toArray(:String all)
+            let all = vector.fromArray(array of "tokenize" "parse" "desugar" "typecheck" end)
+            for i = 0 upto {extent irStages - 1} do vector.append(all "ir_" <> irStages[i]) end
+            for i = 0 upto {extent irStages - 1} do vector.append(all "run_ir_" <> irStages[i]) end
+            vector.append(all "interpret")
+            for i = 0 upto {extent cPhases - 1} do vector.append(all cPhases[i]) end
+            for i = 0 upto {extent ssaPhases - 1} do vector.append(all ssaPhases[i]) end
+            vector.toArray(all)
         end
 
     (* Object files given to link with the program *)
@@ -220,16 +220,16 @@ export
                     stopGiven := true
                     i := i + 2
                 elsif strings.isOneOf(arg array of "--build-dir" "--build_dir" end) andif valued then
-                    buildDir := maybe.some(:String system.args[i + 1])
+                    buildDir := maybe.some(system.args[i + 1])
                     i := i + 2
                 elsif strings.isOneOf(arg array of "--dump-after" "--dump_after" end) andif valued then
-                    vector.append(:String dumpAfter system.args[i + 1])
+                    vector.append(dumpAfter system.args[i + 1])
                     i := i + 2
                 elsif strings.isOneOf(arg array of "-o" "--output" end) andif valued then
-                    output := maybe.some(:String system.args[i + 1])
+                    output := maybe.some(system.args[i + 1])
                     i := i + 2
                 elsif strings.isOneOf(arg array of "-I" "--include" end) andif valued then
-                    vector.append(:String includePaths system.args[i + 1])
+                    vector.append(includePaths system.args[i + 1])
                     i := i + 2
                 elsif strings.isOneOf(arg array of "-c" "--compile-only" end) then
                     compileOnly := true
@@ -240,10 +240,10 @@ export
                 elsif {stringOp.equal(arg "-j")} andif valued then
                     (* How many modules a build compiles at once *)
                     let n = strutil.tryToInt(system.args[i + 1])
-                    if maybe.isNone(:Int n) orif {maybe.unwrap(:Int n) < 1} then
+                    if maybe.isNone(n) orif {maybe.unwrap(n) < 1} then
                         usage("-j takes a number of modules at least 1, not '" <> system.args[i + 1] <> "'")
                     end
-                    jobs := maybe.unwrap(:Int n)
+                    jobs := maybe.unwrap(n)
                     i := i + 2
                 elsif strings.isOneOf(arg array of "--whole-program" "--whole_program" end) then
                     wholeProgram := true
@@ -266,19 +266,19 @@ export
                     i := i + 2
                 elsif stringOp.equal(arg "--unit-backend") andif valued then
                     let o = choice.parseOverride(system.args[i + 1])
-                    if maybe.isNone(:choice.Override o) then
+                    if maybe.isNone(o) then
                         usage("--unit-backend takes UNIT=BACKEND, with BACKEND c, ssac, arm64, or wasm, not '"
                             <> system.args[i + 1] <> "'")
                     end
-                    vector.append(:choice.Override unitBackends maybe.unwrap(:choice.Override o))
+                    vector.append(unitBackends maybe.unwrap(o))
                     i := i + 2
                 elsif stringOp.equal(arg "--variant") andif valued then
                     let v = choice.parseVariant(system.args[i + 1])
-                    if maybe.isNone(:choice.Alternative v) then
+                    if maybe.isNone(v) then
                         usage("--variant takes UNIT=VARIANT, VARIANT letters and digits, not '" <> system.args[i + 1]
                             <> "'")
                     end
-                    vector.append(:choice.Alternative variants maybe.unwrap(:choice.Alternative v))
+                    vector.append(variants maybe.unwrap(v))
                     i := i + 2
                 elsif strings.isOneOf(arg array of "--expected-exit" "--expected_exit" end) andif valued andif not(compileMode) then
                     (* What a compiled program's exit status must be; the
@@ -286,7 +286,7 @@ export
                     expectedExit := strutil.toInt(system.args[i + 1])
                     i := i + 2
                 elsif strings.isOneOf(arg array of "-e" "--eval" "--code" "--command" end) andif valued then
-                    code := maybe.some(:String system.args[i + 1])
+                    code := maybe.some(system.args[i + 1])
                     i := i + 2
                 elsif stringOp.equal(arg "--show-offsets") andif not(compileMode) then
                     showOffsets := true
@@ -338,7 +338,7 @@ export
                     writer.putString(writer.output usageText)
                     system.sysexit(0)
                 elsif isObjectFile(arg) then
-                    vector.append(:String extraObjects if system.fileExists(arg) then files.absolute(arg) else arg end)
+                    vector.append(extraObjects if system.fileExists(arg) then files.absolute(arg) else arg end)
                     i := i + 1
                 elsif {stringOp.length(arg) > 1} andif {stringOp.getChar(arg 0) is '-'} andif not(stringOp.equal(arg "--"))
                     then
@@ -362,14 +362,14 @@ export
                     (* The arguments after a -- or the program file are the
                      * program's *)
                     if not(stringOp.equal(arg "--")) then file := arg end
-                    for j = {i + 1} upto {extent system.args - 1} do vector.append(:String programArgs system.args[j]) end
+                    for j = {i + 1} upto {extent system.args - 1} do vector.append(programArgs system.args[j]) end
                     i := extent system.args
                 end
             end
             (* Objects given without -o or a phase are linked with the program,
              * which runs compiled *)
-            if not(compileMode) andif {vector.length(:String extraObjects) > 0} andif maybe.isNone(:String output)
-                andif not(stopGiven) andif vector.empty(:String dumpAfter) then
+            if not(compileMode) andif {vector.length(extraObjects) > 0} andif maybe.isNone(output)
+                andif not(stopGiven) andif vector.empty(dumpAfter) then
                 stopAfter := "run_c_compiled"
             end
             (* compile neither runs the program nor interprets it *)
@@ -377,20 +377,20 @@ export
                 strings.isOneOf(phase phases) andif not(compileMode andif {strutil.startsWith(phase "run_")
                     orif stringOp.equal(phase "interpret")})
             if not(allowed(stopAfter)) then usage("unknown phase '" <> stopAfter <> "'") end
-            for j = 0 upto {vector.length(:String dumpAfter) - 1} do
-                if not(allowed(vector.get(:String dumpAfter j))) then
-                    usage("unknown phase '" <> vector.get(:String dumpAfter j) <> "'")
+            for j = 0 upto {vector.length(dumpAfter) - 1} do
+                if not(allowed(vector.get(dumpAfter j))) then
+                    usage("unknown phase '" <> vector.get(dumpAfter j) <> "'")
                 end
             end
             (* codegen_arm64 compiles the program with arm64, unless a backend
              * is given (which must then be arm64, checked once the program's
              * backend is known) *)
-            if {stringOp.equal(stopAfter "codegen_arm64") orif strings.isOneOf("codegen_arm64" vector.toArray(:String dumpAfter))}
+            if {stringOp.equal(stopAfter "codegen_arm64") orif strings.isOneOf("codegen_arm64" vector.toArray(dumpAfter))}
                 andif not(backendGiven) then
                 backend := "arm64"
             end
             (* codegen_wasm, with wasm *)
-            if {stringOp.equal(stopAfter "codegen_wasm") orif strings.isOneOf("codegen_wasm" vector.toArray(:String dumpAfter))}
+            if {stringOp.equal(stopAfter "codegen_wasm") orif strings.isOneOf("codegen_wasm" vector.toArray(dumpAfter))}
                 andif not(backendGiven) then
                 backend := "wasm"
             end
@@ -398,13 +398,13 @@ export
              * given; compile's own last phase is codegen_c, which means only
              * that it writes the binary, through any backend *)
             if {{stopGiven andif stringOp.equal(stopAfter "codegen_c")}
-                orif strings.isOneOf("codegen_c" vector.toArray(:String dumpAfter)) orif emitC} andif not(backendGiven) then
+                orif strings.isOneOf("codegen_c" vector.toArray(dumpAfter)) orif emitC} andif not(backendGiven) then
                 backend := "c"
             end
             (* With neither a file nor a program, the REPL starts on an empty
              * program at a terminal; otherwise standard input holds the
              * program, as it does for a file of - *)
-            let noProgram = stringOp.equal(file "") andif maybe.isNone(:String code)
+            let noProgram = stringOp.equal(file "") andif maybe.isNone(code)
             let atTerminal = system.isTerminal(0)
             if kernel andif not(noProgram) then usage("--kernel takes neither FILE nor -e PROGRAM") end
             if compileMode andif noProgram andif atTerminal then usage("compile takes a FILE, -, or -e PROGRAM") end
@@ -416,8 +416,8 @@ export
              * --wasm-engine's engine, not on the native JIT. -e, -i, the
              * kernel, and the REPL, which run on the JIT, are refused with it
              * (docs/wasm.md section 8.2) *)
-            let plainRun = not(stopGiven) andif not(compileMode) andif maybe.isNone(:String output)
-                andif {vector.length(:String dumpAfter) is 0}
+            let plainRun = not(stopGiven) andif not(compileMode) andif maybe.isNone(output)
+                andif {vector.length(dumpAfter) is 0}
             let runWasm = plainRun andif stringOp.equal(backend "wasm") andif fromFile andif not(interactive)
                 andif not(kernel)
             if plainRun andif stringOp.equal(backend "wasm") andif not(runWasm) then
@@ -429,7 +429,7 @@ export
                 let stopAfter = stopAfter
                 (* The program's name, as the bootstrap's diagnostics name it,
                  * and as system.args gives it *)
-                let file = if maybe.isSome(:String code) then "<string>"
+                let file = if maybe.isSome(code) then "<string>"
                     elsif fromStdin then "<stdin>"
                     elsif fromFile then file
                     else "<repl>" end
@@ -447,15 +447,15 @@ export
                 let jobs = jobs
                 let wholeProgram = wholeProgram
                 let backends = tuple
-                    let default = backend let overrides = vector.toArray(:choice.Override unitBackends)
-                    let variants = vector.toArray(:choice.Alternative variants)
+                    let default = backend let overrides = vector.toArray(unitBackends)
+                    let variants = vector.toArray(variants)
                 end
                 let wasmEngine = wasmEngine
                 let runWasm = runWasm
                 let expectedExit = expectedExit
-                let dumpAfter = vector.toArray(:String dumpAfter)
-                let extraObjects = vector.toArray(:String extraObjects)
-                let includePaths = vector.toArray(:String includePaths)
+                let dumpAfter = vector.toArray(dumpAfter)
+                let extraObjects = vector.toArray(extraObjects)
+                let includePaths = vector.toArray(includePaths)
                 let interactive = interactive orif {noProgram andif atTerminal}
                 let kernel = kernel
                 (* A program run, a file's, -e's, or the REPL's inputs, runs on
@@ -464,8 +464,8 @@ export
                  * this driver cannot host the JIT (docs/jit.md section 3.10) *)
                 let jit = {jit andif not(runWasm)} orif {not(noJit) andif not(compileMode) andif not(stopGiven)
                     andif stringOp.equal(stopAfter "interpret") andif {extent dumpAfter is 0} andif not(showOffsets)
-                    andif not(showValues) andif not(wholeProgram) andif maybe.isNone(:String session.refusal())}
-                let programArgs = vector.toArray(:String programArgs)
+                    andif not(showValues) andif not(wholeProgram) andif maybe.isNone(session.refusal())}
+                let programArgs = vector.toArray(programArgs)
                 let compileOnly = compileOnly
                 let emitC = emitC
                 let nogc = nogc

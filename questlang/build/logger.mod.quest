@@ -13,7 +13,7 @@ export
 
     let new(logFile: maybe.T(String) verbose: Bool): T =
         begin
-            if maybe.isSome(:String logFile) then system.makeDirectory(files.parent(maybe.unwrap(:String logFile))) end
+            if maybe.isSome(logFile) then system.makeDirectory(files.parent(maybe.unwrap(logFile))) end
             tuple let logFile = logFile let verbose = verbose end
         end
 
@@ -38,22 +38,22 @@ export
     let batchSize = 64
 
     let flushTo(file: String): Ok =
-        if not(vector.empty(:String pending)) then
+        if not(vector.empty(pending)) then
             let args = vector.new(:String)
-            vector.append(:String args "sh")
-            vector.append(:String args "-c")
-            vector.append(:String args batchScript)
-            vector.append(:String args file)
-            for i = 0 upto {vector.length(:String pending) - 1} do
-                vector.append(:String args vector.get(:String pending i))
+            vector.append(args "sh")
+            vector.append(args "-c")
+            vector.append(args batchScript)
+            vector.append(args file)
+            for i = 0 upto {vector.length(pending) - 1} do
+                vector.append(args vector.get(pending i))
             end
-            shell(vector.toArray(:String args) "")
-            vector.clear(:String pending)
+            shell(vector.toArray(args) "")
+            vector.clear(pending)
         end
 
     let log(l: T tag: String message: String): Ok =
         begin
-            let file = maybe.unwrapOr(:String l.logFile "")
+            let file = maybe.unwrapOr(l.logFile "")
             if l.verbose orif stringOp.isEmpty(file) then
                 if not(stringOp.isEmpty(file)) then flushTo(file) end
                 let entry = shell(array of "sh" "-c" appendScript file tag <> ": " <> message end
@@ -63,10 +63,10 @@ export
                     writer.flush(writer.err)
                 end
             else
-                vector.append(:String pending tag <> ": " <> message)
-                if vector.length(:String pending) >= batchSize then flushTo(file) end
+                vector.append(pending tag <> ": " <> message)
+                if vector.length(pending) >= batchSize then flushTo(file) end
             end
         end
 
-    let flush(l: T): Ok = if maybe.isSome(:String l.logFile) then flushTo(maybe.unwrap(:String l.logFile)) end
+    let flush(l: T): Ok = if maybe.isSome(l.logFile) then flushTo(maybe.unwrap(l.logFile)) end
 end

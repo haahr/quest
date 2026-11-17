@@ -31,28 +31,28 @@ export
         end
     let newBlock(f: Function): Int =
         begin
-            vector.append(:Block f.blocks tuple
+            vector.append(f.blocks tuple
                 let params = vector.new(:Int) let insts = vector.new(:Inst) let var raised = false
             end)
-            vector.length(:Block f.blocks) - 1
+            vector.length(f.blocks) - 1
         end
-    let block(f: Function b: Int): Block = vector.get(:Block f.blocks b)
+    let block(f: Function b: Int): Block = vector.get(f.blocks b)
     let newVirtual(f: Function c: targets.Class): Int =
         begin
-            vector.append(:targets.Class f.classes c)
-            {f.firstVirtual + vector.length(:targets.Class f.classes)} - 1
+            vector.append(f.classes c)
+            {f.firstVirtual + vector.length(f.classes)} - 1
         end
     let addParam(f: Function b: Int c: targets.Class): Int =
         begin
             let r = newVirtual(f c)
-            vector.append(:Int block(f b).params r)
+            vector.append(block(f b).params r)
             r
         end
-    let append(f: Function b: Int i: Inst): Ok = vector.append(:Inst block(f b).insts i)
+    let append(f: Function b: Int i: Inst): Ok = vector.append(block(f b).insts i)
     let isVirtual(f: Function r: Int): Bool = r >= f.firstVirtual
     let index(f: Function r: Int): Int = r - f.firstVirtual
-    let virtualClass(f: Function r: Int): targets.Class = vector.get(:targets.Class f.classes r - f.firstVirtual)
-    let virtuals(f: Function): Int = vector.length(:targets.Class f.classes)
+    let virtualClass(f: Function r: Int): targets.Class = vector.get(f.classes r - f.firstVirtual)
+    let virtuals(f: Function): Int = vector.length(f.classes)
 
     let reads(r: Int): Operand = tuple let var reg = r let defines = false end
     let writes(r: Int): Operand = tuple let var reg = r let defines = true end
@@ -79,7 +79,7 @@ export
      * does not track who reads it), so it keeps its instruction *)
     let removeDead(f: Function pure: All(i: Inst) Bool): Ok =
         begin
-            let nBlocks = vector.length(:Block f.blocks)
+            let nBlocks = vector.length(f.blocks)
             let uses = array of(virtuals(f) 0)
             let count(i: Inst by: Int): Ok =
                 for a = 0 upto {extent i.operands - 1} do
@@ -101,7 +101,7 @@ export
                 end
             for b = 0 upto {nBlocks - 1} do
                 let insts = block(f b).insts
-                for j = 0 upto {vector.length(:Inst insts) - 1} do count(vector.get(:Inst insts j) 1) end
+                for j = 0 upto {vector.length(insts) - 1} do count(vector.get(insts j) 1) end
             end
             let var changed = true
             while changed do
@@ -109,16 +109,16 @@ export
                 for b = 0 upto {nBlocks - 1} do
                     let insts = block(f b).insts
                     let kept = vector.new(:Inst)
-                    for j = 0 upto {vector.length(:Inst insts) - 1} do
-                        let i = vector.get(:Inst insts j)
+                    for j = 0 upto {vector.length(insts) - 1} do
+                        let i = vector.get(insts j)
                         if dead(i) then
                             count(i ~1)
                             changed := true
-                        else vector.append(:Inst kept i) end
+                        else vector.append(kept i) end
                     end
-                    vector.clear(:Inst insts)
-                    for j = 0 upto {vector.length(:Inst kept) - 1} do
-                        vector.append(:Inst insts vector.get(:Inst kept j))
+                    vector.clear(insts)
+                    for j = 0 upto {vector.length(kept) - 1} do
+                        vector.append(insts vector.get(kept j))
                     end
                 end
             end
@@ -128,16 +128,16 @@ export
         begin
             let blk = block(f b)
             let succs = vector.new(:Int)
-            for k = 0 upto {vector.length(:Inst blk.insts) - 1} do
-                let i = vector.get(:Inst blk.insts k)
-                if i.target >= 0 then vector.append(:Int succs i.target) end
+            for k = 0 upto {vector.length(blk.insts) - 1} do
+                let i = vector.get(blk.insts k)
+                if i.target >= 0 then vector.append(succs i.target) end
             end
-            vector.toArray(:Int succs)
+            vector.toArray(succs)
         end
 
     let order(f: Function): Array(Int) =
         begin
-            let n = vector.length(:Block f.blocks)
+            let n = vector.length(f.blocks)
             let succs = array of(n array of :Int end)
             for b = 0 upto {n - 1} do succs[b] := successors(f b) end
             cfg.reversePostorder(succs)
@@ -145,7 +145,7 @@ export
 
     let loopDepths(f: Function): Array(Int) =
         begin
-            let n = vector.length(:Block f.blocks)
+            let n = vector.length(f.blocks)
             let succs = array of(n array of :Int end)
             for b = 0 upto {n - 1} do succs[b] := successors(f b) end
             cfg.loopDepths(cfg.graphOf(succs))
@@ -160,7 +160,7 @@ export
     let live(f: Function): Live =
         begin
             let n = virtuals(f)
-            let nBlocks = vector.length(:Block f.blocks)
+            let nBlocks = vector.length(f.blocks)
             let blocks = order(f)
             let defs = array of(nBlocks bitset.new(0))
             let uses = array of(nBlocks bitset.new(0))
@@ -177,11 +177,11 @@ export
             for k = 0 upto {extent blocks - 1} do
                 let b = blocks[k]
                 let blk = block(f b)
-                for p = 0 upto {vector.length(:Int blk.params) - 1} do
-                    add(defs[b] index(f vector.get(:Int blk.params p)))
+                for p = 0 upto {vector.length(blk.params) - 1} do
+                    add(defs[b] index(f vector.get(blk.params p)))
                 end
-                for j = 0 upto {vector.length(:Inst blk.insts) - 1} do
-                    let i = vector.get(:Inst blk.insts j)
+                for j = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts j)
                     for a = 0 upto {extent i.operands - 1} do
                         let o = i.operands[a]
                         if isVirtual(f o.reg) andif not(o.defines)
@@ -219,20 +219,20 @@ export
     let format(f: Function name: All(r: Int) String line: All(i: Inst) String): String =
         begin
             let text = sb.new()
-            for b = 0 upto {vector.length(:Block f.blocks) - 1} do
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 let blk = block(f b)
                 sb.str(text "b" <> conv.int(b))
-                if vector.length(:Int blk.params) > 0 then
+                if vector.length(blk.params) > 0 then
                     sb.str(text "(")
-                    for p = 0 upto {vector.length(:Int blk.params) - 1} do
+                    for p = 0 upto {vector.length(blk.params) - 1} do
                         if p > 0 then sb.str(text " ") end
-                        sb.str(text name(vector.get(:Int blk.params p)))
+                        sb.str(text name(vector.get(blk.params p)))
                     end
                     sb.str(text ")")
                 end
                 sb.str(text if blk.raised then ": raised\n" else ":\n" end)
-                for j = 0 upto {vector.length(:Inst blk.insts) - 1} do
-                    let i = vector.get(:Inst blk.insts j)
+                for j = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts j)
                     sb.str(text "\t" <> line(i))
                     if i.target >= 0 then sb.str(text " -> b" <> conv.int(i.target)) end
                     sb.str(text "\n")

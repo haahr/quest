@@ -57,8 +57,8 @@ export
 
     let numberFunction(f: Function): Ok =
         begin
-            let n = vector.length(:ssa.Type f.types)
-            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let n = vector.length(f.types)
+            let nBlocks = vector.length(f.blocks)
             let g = cfg.graph(f)
             (* What each value is replaced by, a chain ending at a value that
              * stays *)
@@ -72,8 +72,8 @@ export
                 end
             let defs = ssa.definitions(f)
             let constantOf(v: Int): maybe.T(Int) =
-                if maybe.isSome(:ssa.Inst defs[v]) andif ssa.isOp(maybe.unwrap(:ssa.Inst defs[v]) ssa.opConst) then
-                    maybe.some(:Int maybe.unwrap(:ssa.Inst defs[v]).imm)
+                if maybe.isSome(defs[v]) andif ssa.isOp(maybe.unwrap(defs[v]) ssa.opConst) then
+                    maybe.some(maybe.unwrap(defs[v]).imm)
                 else maybe.none(:Int) end
 
             (* The jumps to each block, and the parameters every jump binds
@@ -83,7 +83,7 @@ export
             for b = 0 upto {nBlocks - 1} do incoming[b] := vector.new(:ssa.Target) end
             for b = 0 upto {nBlocks - 1} do
                 let ts = ssa.targets(ssa.block(f b).term)
-                for k = 0 upto {extent ts - 1} do vector.append(:ssa.Target incoming[ts[k].block] ts[k]) end
+                for k = 0 upto {extent ts - 1} do vector.append(incoming[ts[k].block] ts[k]) end
             end
             let dropped = array of(n false)
             let var changed = true
@@ -92,13 +92,13 @@ export
                 for b = 1 upto {nBlocks - 1} do
                     let params = ssa.block(f b).params
                     let jumps = incoming[b]
-                    for j = 0 upto {vector.length(:Int params) - 1} do
-                        let p = vector.get(:Int params j)
-                        if not(dropped[p]) andif not(vector.empty(:ssa.Target jumps)) then
+                    for j = 0 upto {vector.length(params) - 1} do
+                        let p = vector.get(params j)
+                        if not(dropped[p]) andif not(vector.empty(jumps)) then
                             let var same = ~1
                             let var trivial = true
-                            for k = 0 upto {vector.length(:ssa.Target jumps) - 1} do
-                                let a = find(vector.get(:ssa.Target jumps k).args[j])
+                            for k = 0 upto {vector.length(jumps) - 1} do
+                                let a = find(vector.get(jumps k).args[j])
                                 if a isnot p then
                                     if same < 0 then same := a elsif a isnot same then trivial := false end
                                 end
@@ -124,11 +124,11 @@ export
                     while more do
                         more := false
                         let def = defs[base]
-                        if maybe.isSome(:ssa.Inst def) andif ssa.isOp(maybe.unwrap(:ssa.Inst def) ssa.opPtrAdd) then
-                            let d = maybe.unwrap(:ssa.Inst def)
+                        if maybe.isSome(def) andif ssa.isOp(maybe.unwrap(def) ssa.opPtrAdd) then
+                            let d = maybe.unwrap(def)
                             let c = constantOf(find(d.args[1]))
-                            if maybe.isSome(:Int c) then
-                                off := off + maybe.unwrap(:Int c)
+                            if maybe.isSome(c) then
+                                off := off + maybe.unwrap(c)
                                 base := find(d.args[0])
                                 more := true
                             elsif index < 0 then
@@ -165,7 +165,7 @@ export
                         for a = 0 upto {extent i.args - 1} do
                             let v = find(i.args[a])
                             let c = constantOf(v)
-                            args[a] := if maybe.isSome(:Int c) then "#" <> conv.int(maybe.unwrap(:Int c))
+                            args[a] := if maybe.isSome(c) then "#" <> conv.int(maybe.unwrap(c))
                                 else conv.int(v) end
                         end
                         if commutative(i.op) andif {extent args is 2} andif stringOp.precedes(args[1] args[0]) then
@@ -190,8 +190,8 @@ export
             let madeIn = hashMap.new(:String :Int stringOp.equal hash.string)
             let enter(text: String v: Int b: Int): Ok =
                 begin
-                    let ignored = hashMap.insert(:String :Int table text v)
-                    let alsoIgnored = hashMap.insert(:String :Int madeIn text b)
+                    let ignored = hashMap.insert(table text v)
+                    let alsoIgnored = hashMap.insert(madeIn text b)
                 end
             let handler = array of(nBlocks false)
             for b = 0 upto {nBlocks - 1} do
@@ -200,9 +200,9 @@ export
             let memoryAtEnd = array of(nBlocks 0)
             let var generations = 0
             let stack = vector.new(:Int)
-            if nBlocks > 0 then vector.append(:Int stack 0) end
-            while not(vector.empty(:Int stack)) do
-                let b = vector.pop(:Int stack)
+            if nBlocks > 0 then vector.append(stack 0) end
+            while not(vector.empty(stack)) do
+                let b = vector.pop(stack)
                 let blk = ssa.block(f b)
                 let kept = vector.new(:ssa.Inst)
                 (* The words this block loads, by address: a whole word's load
@@ -212,17 +212,17 @@ export
                  * a pair just stored took psdes-random's loop from 1.39 to 1.90
                  * of C's time, as an ldp did not *)
                 let words = hashMap.new(:String :Bool stringOp.equal hash.string)
-                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                    let i = vector.get(:ssa.Inst blk.insts k)
+                for k = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts k)
                     if ssa.isOp(i ssa.opLoad) andif {i.width is 8} then
-                        let ignored = hashMap.insert(:String :Bool words addressKey(i.args[0] i.imm) true)
+                        let ignored = hashMap.insert(words addressKey(i.args[0] i.imm) true)
                     end
                 end
                 let paired(i: ssa.Inst): Bool =
                     if ssa.isOp(i ssa.opLoad) andif {i.width is 8} then
                         let a = address(i.args[0] i.imm)
-                        hashMap.contains(:String :Bool words a.base <> " " <> conv.int(a.offset + 8))
-                            orif hashMap.contains(:String :Bool words a.base <> " " <> conv.int(a.offset - 8))
+                        hashMap.contains(words a.base <> " " <> conv.int(a.offset + 8))
+                            orif hashMap.contains(words a.base <> " " <> conv.int(a.offset - 8))
                     else false end
                 let var memory = 0
                 if {extent g.preds[b] is 1} andif not(handler[b]) then memory := memoryAtEnd[g.preds[b][0]]
@@ -230,22 +230,22 @@ export
                     generations := generations + 1
                     memory := generations
                 end
-                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                    let i = vector.get(:ssa.Inst blk.insts k)
+                for k = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts k)
                     if ssa.isOp(i ssa.opCopy) then repl[i.results[0]] := find(i.args[0])
                     elsif numbered(i) andif {extent i.results is 1} then
                         let text = key(i b memory)
-                        let found = hashMap.get(:String :Int table text)
-                        let at = maybe.unwrapOr(:Int hashMap.get(:String :Int madeIn text) ~1)
-                        if maybe.isSome(:Int found) andif cfg.dominates(g at b)
+                        let found = hashMap.get(table text)
+                        let at = maybe.unwrapOr(hashMap.get(madeIn text) ~1)
+                        if maybe.isSome(found) andif cfg.dominates(g at b)
                                 andif {{at is b} orif not(paired(i))} then
-                            repl[i.results[0]] := maybe.unwrap(:Int found)
+                            repl[i.results[0]] := maybe.unwrap(found)
                         else
                             enter(text i.results[0] b)
-                            vector.append(:ssa.Inst kept i)
+                            vector.append(kept i)
                         end
                     elsif ssa.isOp(i ssa.opStore) then
-                        vector.append(:ssa.Inst kept i)
+                        vector.append(kept i)
                         generations := generations + 1
                         memory := generations
                         (* What a whole word's store stores is what a load of
@@ -255,21 +255,21 @@ export
                             enter(loadKey(8 false ssa.typeName(ssa.typeOf(f v)) i.args[0] i.imm memory) v b)
                         end
                     elsif ssa.isCall(i) then
-                        vector.append(:ssa.Inst kept i)
+                        vector.append(kept i)
                         if runtimeFunctions.callWrites(i) then
                             generations := generations + 1
                             memory := generations
                         end
-                    else vector.append(:ssa.Inst kept i) end
+                    else vector.append(kept i) end
                 end
                 memoryAtEnd[b] := memory
-                vector.clear(:ssa.Inst blk.insts)
-                for k = 0 upto {vector.length(:ssa.Inst kept) - 1} do
-                    vector.append(:ssa.Inst blk.insts vector.get(:ssa.Inst kept k))
+                vector.clear(blk.insts)
+                for k = 0 upto {vector.length(kept) - 1} do
+                    vector.append(blk.insts vector.get(kept k))
                 end
                 let children = g.children[b]
                 for c = 0 upto {extent children - 1} do
-                    vector.append(:Int stack children[{extent children - 1} - c])
+                    vector.append(stack children[{extent children - 1} - c])
                 end
             end
             ssa.replaceUses(f find)
@@ -281,28 +281,28 @@ export
                     let to = ssa.block(f ts[k].block).params
                     let args = vector.new(:Int)
                     for j = 0 upto {extent ts[k].args - 1} do
-                        if not(dropped[vector.get(:Int to j)]) then vector.append(:Int args ts[k].args[j]) end
+                        if not(dropped[vector.get(to j)]) then vector.append(args ts[k].args[j]) end
                     end
-                    ts[k].args := vector.toArray(:Int args)
+                    ts[k].args := vector.toArray(args)
                 end
             end
             for b = 0 upto {nBlocks - 1} do
                 let params = ssa.block(f b).params
                 let left = vector.new(:Int)
-                for j = 0 upto {vector.length(:Int params) - 1} do
-                    let p = vector.get(:Int params j)
-                    if not(dropped[p]) then vector.append(:Int left p) end
+                for j = 0 upto {vector.length(params) - 1} do
+                    let p = vector.get(params j)
+                    if not(dropped[p]) then vector.append(left p) end
                 end
-                vector.clear(:Int params)
-                for j = 0 upto {vector.length(:Int left) - 1} do vector.append(:Int params vector.get(:Int left j)) end
+                vector.clear(params)
+                for j = 0 upto {vector.length(left) - 1} do vector.append(params vector.get(left j)) end
             end
 
             (* The instructions left without uses, to a fixed point *)
             let uses = array of(n 0)
             for b = 0 upto {nBlocks - 1} do
                 let blk = ssa.block(f b)
-                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                    let i = vector.get(:ssa.Inst blk.insts k)
+                for k = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts k)
                     for a = 0 upto {extent i.args - 1} do uses[i.args[a]] := uses[i.args[a]] + 1 end
                 end
                 let us = ssa.terminatorUses(blk.term)
@@ -320,24 +320,24 @@ export
                 for b = 0 upto {nBlocks - 1} do
                     let insts = ssa.block(f b).insts
                     let kept = vector.new(:ssa.Inst)
-                    for k = 0 upto {vector.length(:ssa.Inst insts) - 1} do
-                        let i = vector.get(:ssa.Inst insts {vector.length(:ssa.Inst insts) - 1} - k)
+                    for k = 0 upto {vector.length(insts) - 1} do
+                        let i = vector.get(insts {vector.length(insts) - 1} - k)
                         if unused(i) then
                             for a = 0 upto {extent i.args - 1} do uses[i.args[a]] := uses[i.args[a]] - 1 end
                             changed := true
-                        else vector.append(:ssa.Inst kept i) end
+                        else vector.append(kept i) end
                     end
-                    vector.clear(:ssa.Inst insts)
-                    for k = 0 upto {vector.length(:ssa.Inst kept) - 1} do
-                        let last = vector.length(:ssa.Inst kept) - 1
-                        vector.append(:ssa.Inst insts vector.get(:ssa.Inst kept last - k))
+                    vector.clear(insts)
+                    for k = 0 upto {vector.length(kept) - 1} do
+                        let last = vector.length(kept) - 1
+                        vector.append(insts vector.get(kept last - k))
                     end
                 end
             end
         end
 
     let numberUnit(u: ssa.Unit): Ok =
-        for i = 0 upto {vector.length(:Function u.functions) - 1} do
-            numberFunction(vector.get(:Function u.functions i))
+        for i = 0 upto {vector.length(u.functions) - 1} do
+            numberFunction(vector.get(u.functions i))
         end
 end

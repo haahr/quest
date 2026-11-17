@@ -36,10 +36,10 @@ export
     let tagShape(t: Type): maybe.T(Shape) =
         begin
             let v = layout.heldShape(t shapes.shapeVariant)
-            if maybe.isSome(:Shape v) then v else layout.heldShape(t shapes.shapeOption) end
+            if maybe.isSome(v) then v else layout.heldShape(t shapes.shapeOption) end
         end
 
-    let boxed(s: maybe.T(Shape)): Bool = maybe.isSome(:Shape s) andif layout.isBoxedInSlots(maybe.unwrap(:Shape s))
+    let boxed(s: maybe.T(Shape)): Bool = maybe.isSome(s) andif layout.isBoxedInSlots(maybe.unwrap(s))
 
     (* The shape of the payload of an exception of type t *)
     let exceptionPayload(t: Type): maybe.T(Shape) =
@@ -57,28 +57,28 @@ export
 
     let optionComponentAccesses(os: Shape tag: maybe.T(String)): Array(nodes.Access) =
         begin
-            let c = if maybe.isSome(:String tag) then shapes.caseOf(os maybe.unwrap(:String tag)) else maybe.none(:shapes.Component) end
-            if maybe.isNone(:shapes.Component c) orif maybe.isNone(:Shape maybe.unwrap(:shapes.Component c).shape) then
+            let c = if maybe.isSome(tag) then shapes.caseOf(os maybe.unwrap(tag)) else maybe.none(:shapes.Component) end
+            if maybe.isNone(c) orif maybe.isNone(maybe.unwrap(c).shape) then
                 array of :nodes.Access end
             else
-                let payload = maybe.unwrap(:Shape maybe.unwrap(:shapes.Component c).shape)
+                let payload = maybe.unwrap(maybe.unwrap(c).shape)
                 let comps = vector.new(:Shape)
                 case payload.kind
                     when shapeTuple then
                         for i = 0 upto {extent payload.components - 1} do
-                            vector.append(:Shape comps shapes.componentShape(payload.components[i]))
+                            vector.append(comps shapes.componentShape(payload.components[i]))
                         end
                     when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
                         shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell, shapeOut, shapeException,
                         shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
                         shapePending then
-                        vector.append(:Shape comps payload)
+                        vector.append(comps payload)
                 end
                 let proxied = layout.mayBeProxied(os)
-                let result = array of(vector.length(:Shape comps) nodes.direct)
-                for i = 0 upto {vector.length(:Shape comps) - 1} do
+                let result = array of(vector.length(comps) nodes.direct)
+                for i = 0 upto {vector.length(comps) - 1} do
                     result[i] := if not(proxied) then nodes.direct
-                        elsif layout.changesView(vector.get(:Shape comps i)) then nodes.proxy
+                        elsif layout.changesView(vector.get(comps i)) then nodes.proxy
                         else nodes.original end
                 end
                 result
@@ -96,14 +96,14 @@ export
      * tag's, or for a computed ordinal, a constant one's, else the first
      * case's *)
     let optionCaseTag(os: Shape cases: Array(String) tag: maybe.T(String) ordinalAtom: maybe.T(Atom)): maybe.T(String) =
-        if maybe.isNone(:Atom ordinalAtom) then
+        if maybe.isNone(ordinalAtom) then
             tag
         else
-            let n = case maybe.unwrap(:Atom ordinalAtom)
+            let n = case maybe.unwrap(ordinalAtom)
                 when atomConst with x then case x.c.value when constInt with y then y.n else ~1 end
                 else ~1
             end
-            if {n >= 0} andif {n < extent cases} then maybe.some(:String cases[n]) else os.cases[0].name end
+            if {n >= 0} andif {n < extent cases} then maybe.some(cases[n]) else os.cases[0].name end
         end
 
     let newBox(hint: String t: Type): Variable =
@@ -128,7 +128,7 @@ export
     end
 
     let isFresh(st: SlotState a: Atom): Bool =
-        case a when atomVar with x then hashMap.contains(:Int :Bool st.fresh x.v.id) else false end
+        case a when atomVar with x then hashMap.contains(st.fresh x.v.id) else false end
 
     (* A record or variant atom in its slot form: its box (remembered, or a new
      * one, made by a let added to before) *)
@@ -136,20 +136,20 @@ export
         begin
             let own = case a
                 when atomVar with x then
-                    if x.v.boxed andif not(x.v.isMutable) then maybe.some(:Atom a)
+                    if x.v.boxed andif not(x.v.isMutable) then maybe.some(a)
                     else
-                        let remembered = hashMap.get(:Int :Variable st.boxes x.v.id)
-                        if maybe.isSome(:Variable remembered) then maybe.some(:Atom nodes.atomOfVar(maybe.unwrap(:Variable remembered)))
+                        let remembered = hashMap.get(st.boxes x.v.id)
+                        if maybe.isSome(remembered) then maybe.some(nodes.atomOfVar(maybe.unwrap(remembered)))
                         else maybe.none(:Atom) end
                     end
                 else maybe.none(:Atom)
             end
-            if maybe.isSome(:Atom own) then
-                maybe.unwrap(:Atom own)
+            if maybe.isSome(own) then
+                maybe.unwrap(own)
             else
                 let t = typeOf(a)
                 let box = newBox("box" t)
-                vector.append(:Stmt before nodes.letStmt(box option opConvert of Op with
+                vector.append(before nodes.letStmt(box option opConvert of Op with
                     let var value = a let var plan = nodes.newPlan(nodes.planSlotBox t t)
                 end))
                 nodes.atomOfVar(box)
@@ -160,28 +160,28 @@ export
         if boxed(s) then slot(st a before) else a end
 
     let optSlotIfBoxed(st: SlotState a: maybe.T(Atom) s: maybe.T(Shape) before: vector.T(Stmt)): maybe.T(Atom) =
-        if maybe.isSome(:Atom a) then maybe.some(:Atom slotIfBoxed(st maybe.unwrap(:Atom a) s before)) else a end
+        if maybe.isSome(a) then maybe.some(slotIfBoxed(st maybe.unwrap(a) s before)) else a end
 
     (* Binds a case's binder to its payload's box, from which a let at the
      * case's start reads the value *)
     let unboxBinder(st: SlotState c: nodes.Case): Ok =
         begin
-            let b = maybe.unwrap(:Variable c.binder)
+            let b = maybe.unwrap(c.binder)
             let box = newBox(if stringOp.isEmpty(b.hint) then "box" else b.hint <> "_box" end b.type)
-            c.binder := maybe.some(:Variable box)
+            c.binder := maybe.some(box)
             let statements = vector.new(:Stmt)
-            vector.append(:Stmt statements nodes.letStmt(b slotUnbox(box b.type)))
-            for i = 0 upto {vector.length(:Stmt c.body.statements) - 1} do vector.append(:Stmt statements vector.get(:Stmt c.body.statements i)) end
+            vector.append(statements nodes.letStmt(b slotUnbox(box b.type)))
+            for i = 0 upto {vector.length(c.body.statements) - 1} do vector.append(statements vector.get(c.body.statements i)) end
             c.body.statements := statements
-            hashMap.insert(:Int :Variable st.boxes b.id box)
+            hashMap.insert(st.boxes b.id box)
             ok
         end
 
     let caseShape(s: Shape tag: String fallback: Type): Shape =
         begin
             let c = shapes.caseOf(s tag)
-            if maybe.isSome(:shapes.Component c) andif maybe.isSome(:Shape maybe.unwrap(:shapes.Component c).shape) then
-                maybe.unwrap(:Shape maybe.unwrap(:shapes.Component c).shape)
+            if maybe.isSome(c) andif maybe.isSome(maybe.unwrap(c).shape) then
+                maybe.unwrap(maybe.unwrap(c).shape)
             else
                 shapes.shape(fallback)
             end
@@ -190,10 +190,10 @@ export
     (* A switch's case of a variant, whose binder takes the payload: a record or
      * variant in its slot form *)
     let variantCase(st: SlotState vs: Shape c: nodes.Case): Ok =
-        if maybe.isSome(:Variable c.binder) then
-            let b = maybe.unwrap(:Variable c.binder)
+        if maybe.isSome(c.binder) then
+            let b = maybe.unwrap(c.binder)
             if not(shapes.kindIs(shapes.shape(b.type) shapes.shapeOk))
-                andif boxed(maybe.some(:Shape caseShape(vs c.tags[0] b.type))) then
+                andif boxed(maybe.some(caseShape(vs c.tags[0] b.type))) then
                 unboxBinder(st c)
             end
         end
@@ -202,12 +202,12 @@ export
      * its components, read as decided, or a payload that is not a tuple in its
      * slot form *)
     let optionCase(st: SlotState os: Shape c: nodes.Case): Ok =
-        if maybe.isSome(:Variable c.binder) then
-            let b = maybe.unwrap(:Variable c.binder)
+        if maybe.isSome(c.binder) then
+            let b = maybe.unwrap(c.binder)
             if not(shapes.kindIs(shapes.shape(b.type) shapes.shapeOk)) then
-                c.components := optionComponentAccesses(os maybe.some(:String c.tags[0]))
+                c.components := optionComponentAccesses(os maybe.some(c.tags[0]))
                 if not(shapes.kindIs(shapes.shape(b.type) shapes.shapeTuple))
-                    andif boxed(maybe.some(:Shape caseShape(os c.tags[0] b.type))) then
+                    andif boxed(maybe.some(caseShape(os c.tags[0] b.type))) then
                     unboxBinder(st c)
                 end
             end
@@ -217,7 +217,7 @@ export
      * when the view is not the literal's type or a supertype of it by width
      * alone *)
     let runtimeOffsets(fields: Array(nodes.FieldAtom) v: maybe.T(Variable)): Bool =
-        if maybe.isNone(:Variable v) then
+        if maybe.isNone(v) then
             false
         else
             let recordFields = array of(extent fields tuple let name = "" let type = model.okType let isVar = false end)
@@ -225,14 +225,14 @@ export
                 recordFields[i] := tuple let name = fields[i].name let type = typeOf(fields[i].atom) let isVar = fields[i].isVar end
             end
             let concrete = model.recordType(recordFields maybe.none(:String))
-            let h = layout.heldShape(maybe.unwrap(:Variable v).type shapes.shapeRecord)
-            let target = if maybe.isSome(:Shape h) then maybe.unwrap(:Shape h).structure else concrete end
+            let h = layout.heldShape(maybe.unwrap(v).type shapes.shapeRecord)
+            let target = if maybe.isSome(h) then maybe.unwrap(h).structure else concrete end
             not(subtyping.isTypeEqual(target concrete maybe.none(:model.Lookup)) orif genericLayout.isRecordSubtype(concrete target))
         end
 
     let hasBox(st: SlotState a: Atom): Bool =
         case a
-            when atomVar with x then {x.v.boxed andif not(x.v.isMutable)} orif hashMap.contains(:Int :Variable st.boxes x.v.id)
+            when atomVar with x then {x.v.boxed andif not(x.v.isMutable)} orif hashMap.contains(st.boxes x.v.id)
             else false
         end
 
@@ -254,13 +254,13 @@ export
                 end
             when opRecordField with x then
                 let rs = layout.heldShape(typeOf(x.recordAtom) shapes.shapeRecord)
-                if maybe.isNone(:Shape rs) then
+                if maybe.isNone(rs) then
                     false
                 else
-                    let fields = shapes.sortedComponents(maybe.unwrap(:Shape rs))
+                    let fields = shapes.sortedComponents(maybe.unwrap(rs))
                     let var field = fields[0]
                     for i = {extent fields - 1} downto 0 do
-                        if eq(maybe.unwrapOr(:String fields[i].name "") x.name) then field := fields[i] end
+                        if eq(maybe.unwrapOr(fields[i].name "") x.name) then field := fields[i] end
                     end
                     let fieldShape = shapes.componentShape(field)
                     let own = layout.ownView(shapes.shape(typeOf(x.recordAtom)))
@@ -273,31 +273,31 @@ export
                         x.stored := true
                         false
                     else
-                        boxed(maybe.some(:Shape fieldShape))
+                        boxed(maybe.some(fieldShape))
                     end
                 end
             when opIndex with x then boxed(shapes.shape(typeOf(x.arr)).elementShape)
-            when opLoad with x then boxed(maybe.some(:Shape locatedShape(x.address)))
+            when opLoad with x then boxed(maybe.some(locatedShape(x.address)))
             when opModuleMember with x then
                 case x.moduleRef
                     when refImport then
-                        maybe.isSome(:String x.member) andif maybe.isSome(:Variable v)
-                            andif boxed(maybe.some(:Shape shapes.shape(maybe.unwrap(:Variable v).type)))
+                        maybe.isSome(x.member) andif maybe.isSome(v)
+                            andif boxed(maybe.some(shapes.shape(maybe.unwrap(v).type)))
                     else false
                 end
             when opConvert with x then
                 let p = x.plan
-                if nodes.planIs(p nodes.planUnbox) andif boxed(maybe.some(:Shape shapes.shape(p.target))) then
+                if nodes.planIs(p nodes.planUnbox) andif boxed(maybe.some(shapes.shape(p.target))) then
                     (* A QVal word holds a record or variant as its box *)
                     true
                 else
                     if nodes.planIs(p nodes.planBox) then
                         case x.value
                             when atomVar with y then
-                                let remembered = hashMap.get(:Int :Variable st.boxes y.v.id)
+                                let remembered = hashMap.get(st.boxes y.v.id)
                                 (* A record's or variant's QVal word is its box:
                                  * the one it was read from serves *)
-                                if maybe.isSome(:Variable remembered) then x.value := nodes.atomOfVar(maybe.unwrap(:Variable remembered)) end
+                                if maybe.isSome(remembered) then x.value := nodes.atomOfVar(maybe.unwrap(remembered)) end
                             else ok
                         end
                     end
@@ -323,40 +323,40 @@ export
                     let f = x.fields[i]
                     let var a = f.atom
                     let s = shapes.shape(typeOf(a))
-                    if not(shapes.kindIs(s shapes.shapeOk)) andif boxed(maybe.some(:Shape s)) then
-                        if hasBox(st a) then a := slot(st a before) else vector.append(:Int embedded i) end
+                    if not(shapes.kindIs(s shapes.shapeOk)) andif boxed(maybe.some(s)) then
+                        if hasBox(st a) then a := slot(st a before) else vector.append(embedded i) end
                     end
-                    vector.append(:nodes.FieldAtom fields tuple let name = f.name let atom = a let isVar = f.isVar end)
+                    vector.append(fields tuple let name = f.name let atom = a let isVar = f.isVar end)
                 end
-                x.fields := vector.toArray(:nodes.FieldAtom fields)
-                x.embedded := vector.toArray(:Int embedded)
+                x.fields := vector.toArray(fields)
+                x.embedded := vector.toArray(embedded)
                 x.runtimeOffsets := runtimeOffsets(x.fields v)
-                maybe.isSome(:Variable v)
+                maybe.isSome(v)
             when opMakeTuple with x then
-                let components = if maybe.isSome(:Variable v) then shapes.shape(maybe.unwrap(:Variable v).type).components
+                let components = if maybe.isSome(v) then shapes.shape(maybe.unwrap(v).type).components
                     else array of :shapes.Component end end
                 let args = vector.new(:Atom)
                 let embedded = vector.new(:Int)
                 for i = 0 upto {extent x.args - 1} do
                     let var a = x.args[i]
                     if {i < extent components} andif boxed(components[i].shape) then
-                        if hasBox(st a) then a := slot(st a before) else vector.append(:Int embedded i) end
+                        if hasBox(st a) then a := slot(st a before) else vector.append(embedded i) end
                     end
-                    vector.append(:Atom args a)
+                    vector.append(args a)
                 end
-                x.args := vector.toArray(:Atom args)
-                x.embedded := vector.toArray(:Int embedded)
+                x.args := vector.toArray(args)
+                x.embedded := vector.toArray(embedded)
                 false
             when opMakeOption with x then
-                if maybe.isSome(:Variable v) then
-                    let os = layout.heldShape(maybe.unwrap(:Variable v).type shapes.shapeOption)
-                    let tag = if maybe.isSome(:Shape os) then optionCaseTag(maybe.unwrap(:Shape os) x.cases x.tag x.ordinalAtom)
+                if maybe.isSome(v) then
+                    let os = layout.heldShape(maybe.unwrap(v).type shapes.shapeOption)
+                    let tag = if maybe.isSome(os) then optionCaseTag(maybe.unwrap(os) x.cases x.tag x.ordinalAtom)
                         else maybe.none(:String) end
-                    if maybe.isSome(:Atom x.payload) andif maybe.isSome(:String tag) then
-                        let c = shapes.caseOf(maybe.unwrap(:Shape os) maybe.unwrap(:String tag))
-                        let pt = if maybe.isSome(:shapes.Component c) then maybe.unwrap(:shapes.Component c).shape else maybe.none(:Shape) end
-                        if maybe.isSome(:Shape pt) andif shapes.kindIs(maybe.unwrap(:Shape pt) shapes.shapeTuple) then
-                            let payload = maybe.unwrap(:Atom x.payload)
+                    if maybe.isSome(x.payload) andif maybe.isSome(tag) then
+                        let c = shapes.caseOf(maybe.unwrap(os) maybe.unwrap(tag))
+                        let pt = if maybe.isSome(c) then maybe.unwrap(c).shape else maybe.none(:Shape) end
+                        if maybe.isSome(pt) andif shapes.kindIs(maybe.unwrap(pt) shapes.shapeTuple) then
+                            let payload = maybe.unwrap(x.payload)
                             let ps = shapes.shape(typeOf(payload))
                             let fresh = isFresh(st payload)
                             let n = extent maybe.unwrap(:Shape pt).components
@@ -370,30 +370,30 @@ export
                 end
                 false
             when opMakeVariant with x then
-                if maybe.isSome(:Variable v) andif maybe.isSome(:Atom x.payload) then
-                    let vs = layout.heldShape(maybe.unwrap(:Variable v).type shapes.shapeVariant)
-                    let c = if maybe.isSome(:Shape vs) then shapes.caseOf(maybe.unwrap(:Shape vs) x.tag) else maybe.none(:shapes.Component) end
+                if maybe.isSome(v) andif maybe.isSome(x.payload) then
+                    let vs = layout.heldShape(maybe.unwrap(v).type shapes.shapeVariant)
+                    let c = if maybe.isSome(vs) then shapes.caseOf(maybe.unwrap(vs) x.tag) else maybe.none(:shapes.Component) end
                     x.payload := optSlotIfBoxed(st x.payload
-                        if maybe.isSome(:shapes.Component c) then maybe.unwrap(:shapes.Component c).shape else maybe.none(:Shape) end before)
+                        if maybe.isSome(c) then maybe.unwrap(c).shape else maybe.none(:Shape) end before)
                 end
                 false
             (* Whether the binder is boxed: by its own type, the payload's (the
              * exception's variable, x.exc, has the bare type Exception) *)
             when opExceptionPayload then
-                maybe.isSome(:Variable v) andif boxed(maybe.some(:Shape shapes.shape(maybe.unwrap(:Variable v).type)))
+                maybe.isSome(v) andif boxed(maybe.some(shapes.shape(maybe.unwrap(v).type)))
             when opIsTag with x then
                 if not(layout.ownView(shapes.shape(typeOf(x.value)))) then
                     let ts = tagShape(typeOf(x.value))
-                    if maybe.isSome(:Shape ts) andif shapes.kindIs(maybe.unwrap(:Shape ts) shapes.shapeOption) then
-                        x.access := optionTagAccess(maybe.unwrap(:Shape ts))
+                    if maybe.isSome(ts) andif shapes.kindIs(maybe.unwrap(ts) shapes.shapeOption) then
+                        x.access := optionTagAccess(maybe.unwrap(ts))
                     end
                 end
                 false
             when opOrdinal with x then
                 if not(layout.ownView(shapes.shape(typeOf(x.value)))) then
                     let ts = tagShape(typeOf(x.value))
-                    if maybe.isSome(:Shape ts) andif shapes.kindIs(maybe.unwrap(:Shape ts) shapes.shapeOption) then
-                        x.access := optionTagAccess(maybe.unwrap(:Shape ts))
+                    if maybe.isSome(ts) andif shapes.kindIs(maybe.unwrap(ts) shapes.shapeOption) then
+                        x.access := optionTagAccess(maybe.unwrap(ts))
                     end
                 end
                 false
@@ -403,32 +403,32 @@ export
                     false
                 else
                     let ts = tagShape(typeOf(x.value))
-                    if maybe.isSome(:Shape ts) andif shapes.kindIs(maybe.unwrap(:Shape ts) shapes.shapeOption) then
-                        x.access := optionTagAccess(maybe.unwrap(:Shape ts))
-                        x.components := optionComponentAccesses(maybe.unwrap(:Shape ts) maybe.some(:String x.tag))
+                    if maybe.isSome(ts) andif shapes.kindIs(maybe.unwrap(ts) shapes.shapeOption) then
+                        x.access := optionTagAccess(maybe.unwrap(ts))
+                        x.components := optionComponentAccesses(maybe.unwrap(ts) maybe.some(x.tag))
                         false
-                    elsif maybe.isSome(:Shape ts) then
-                        let c = shapes.caseOf(maybe.unwrap(:Shape ts) x.tag)
-                        boxed(if maybe.isSome(:shapes.Component c) then maybe.unwrap(:shapes.Component c).shape else maybe.none(:Shape) end)
+                    elsif maybe.isSome(ts) then
+                        let c = shapes.caseOf(maybe.unwrap(ts) x.tag)
+                        boxed(if maybe.isSome(c) then maybe.unwrap(c).shape else maybe.none(:Shape) end)
                     else
                         false
                     end
                 end
             when opMakeArray with x then
-                if maybe.isSome(:Variable v) then
-                    let elem = shapes.shape(maybe.unwrap(:Variable v).type).elementShape
+                if maybe.isSome(v) then
+                    let elem = shapes.shape(maybe.unwrap(v).type).elementShape
                     let args = vector.new(:Atom)
-                    for i = 0 upto {extent x.args - 1} do vector.append(:Atom args slotIfBoxed(st x.args[i] elem before)) end
-                    x.args := vector.toArray(:Atom args)
+                    for i = 0 upto {extent x.args - 1} do vector.append(args slotIfBoxed(st x.args[i] elem before)) end
+                    x.args := vector.toArray(args)
                 end
                 false
             when opArrayRep with x then
-                if maybe.isSome(:Variable v) then
-                    x.init := slotIfBoxed(st x.init shapes.shape(maybe.unwrap(:Variable v).type).elementShape before)
+                if maybe.isSome(v) then
+                    x.init := slotIfBoxed(st x.init shapes.shape(maybe.unwrap(v).type).elementShape before)
                 end
                 false
             when opAddrCell with x then
-                x.init := slotIfBoxed(st x.init maybe.some(:Shape shapes.shape(typeOf(x.init))) before)
+                x.init := slotIfBoxed(st x.init maybe.some(shapes.shape(typeOf(x.init))) before)
                 false
             when opAddrComponent with x then
                 if not(layout.ownView(shapes.shape(typeOf(x.base)))) then
@@ -469,15 +469,15 @@ export
                     when opAtom with y then isFresh(st y.atom)
                     else false
                 end
-                if freshValue then hashMap.insert(:Int :Bool st.fresh v.id true) end
+                if freshValue then hashMap.insert(st.fresh v.id true) end
                 if isAtom then
                     case x.value
                         when opAtom with y then
                             case y.atom
                                 when atomVar with z then
-                                    let remembered = hashMap.get(:Int :Variable st.boxes z.v.id)
-                                    if maybe.isSome(:Variable remembered) then
-                                        hashMap.insert(:Int :Variable st.boxes v.id maybe.unwrap(:Variable remembered))
+                                    let remembered = hashMap.get(st.boxes z.v.id)
+                                    if maybe.isSome(remembered) then
+                                        hashMap.insert(st.boxes v.id maybe.unwrap(remembered))
                                     end
                                 else ok
                             end
@@ -486,19 +486,19 @@ export
                     array of s end
                 else
                     let before = vector.new(:Stmt)
-                    if not(operation(st x.value maybe.some(:Variable v) before)) then
-                        vector.append(:Stmt before s)
-                        vector.toArray(:Stmt before)
+                    if not(operation(st x.value maybe.some(v) before)) then
+                        vector.append(before s)
+                        vector.toArray(before)
                     else
                         (* The operation reads the value in its slot form, a
                          * box: bound to a boxed variable, from which the value
                          * is read *)
                         let box = newBox(if stringOp.isEmpty(v.hint) then "box" else v.hint <> "_box" end v.type)
                         x.v := box
-                        hashMap.insert(:Int :Variable st.boxes v.id box)
-                        vector.append(:Stmt before s)
-                        vector.append(:Stmt before nodes.letStmt(v slotUnbox(box v.type)))
-                        vector.toArray(:Stmt before)
+                        hashMap.insert(st.boxes v.id box)
+                        vector.append(before s)
+                        vector.append(before nodes.letStmt(v slotUnbox(box v.type)))
+                        vector.toArray(before)
                     end
                 end
             else array of s end
@@ -517,11 +517,11 @@ export
                     (* A bounded type parameter's value: its payloads are
                      * read through the view map, converted, as values *)
                     ok
-                elsif maybe.isSome(:Shape ts) andif shapes.kindIs(maybe.unwrap(:Shape ts) shapes.shapeOption) then
-                    x.access := optionTagAccess(maybe.unwrap(:Shape ts))
-                    for i = 0 upto {extent x.cases - 1} do optionCase(st maybe.unwrap(:Shape ts) x.cases[i]) end
-                elsif maybe.isSome(:Shape ts) then
-                    for i = 0 upto {extent x.cases - 1} do variantCase(st maybe.unwrap(:Shape ts) x.cases[i]) end
+                elsif maybe.isSome(ts) andif shapes.kindIs(maybe.unwrap(ts) shapes.shapeOption) then
+                    x.access := optionTagAccess(maybe.unwrap(ts))
+                    for i = 0 upto {extent x.cases - 1} do optionCase(st maybe.unwrap(ts) x.cases[i]) end
+                elsif maybe.isSome(ts) then
+                    for i = 0 upto {extent x.cases - 1} do variantCase(st maybe.unwrap(ts) x.cases[i]) end
                 end
             else ok
         end
@@ -538,16 +538,16 @@ export
                 when sLet then ok
                 when sDo with x then begin operation(st x.value maybe.none(:Variable) before) ok end
                 when sVarDecl with x then
-                    if x.v.boxed andif maybe.isSome(:Atom x.init) then x.init := maybe.some(:Atom slot(st maybe.unwrap(:Atom x.init) before)) end
+                    if x.v.boxed andif maybe.isSome(x.init) then x.init := maybe.some(slot(st maybe.unwrap(x.init) before)) end
                 when sAssign with x then if x.v.boxed then x.value := slot(st x.value before) end
-                when sStoreAt with x then x.value := slotIfBoxed(st x.value maybe.some(:Shape locatedShape(x.address)) before)
+                when sStoreAt with x then x.value := slotIfBoxed(st x.value maybe.some(locatedShape(x.address)) before)
                 when sStoreField with x then
                     let rs = layout.heldShape(typeOf(x.base) shapes.shapeRecord)
                     let var field = maybe.none(:Shape)
-                    if maybe.isSome(:Shape rs) then
-                        let fields = shapes.sortedComponents(maybe.unwrap(:Shape rs))
+                    if maybe.isSome(rs) then
+                        let fields = shapes.sortedComponents(maybe.unwrap(rs))
                         for i = {extent fields - 1} downto 0 do
-                            if eq(maybe.unwrapOr(:String fields[i].name "") x.name) then field := fields[i].shape end
+                            if eq(maybe.unwrapOr(fields[i].name "") x.name) then field := fields[i].shape end
                         end
                     end
                     x.value := slotIfBoxed(st x.value field before)
@@ -567,15 +567,15 @@ export
                 when sStoreElement with x then x.value := slotIfBoxed(st x.value shapes.shape(typeOf(x.base)).elementShape before)
                 when sSwitch then ok (* switchCases, before its cases' bodies *)
                 when sRaise with x then
-                    if maybe.isSome(:Atom x.payload) then x.payload := optSlotIfBoxed(st x.payload exceptionPayload(typeOf(x.exc)) before) end
-                when sEcho with x then x.value := slotIfBoxed(st x.value maybe.some(:Shape shapes.shape(x.type)) before)
+                    if maybe.isSome(x.payload) then x.payload := optSlotIfBoxed(st x.payload exceptionPayload(typeOf(x.exc)) before) end
+                when sEcho with x then x.value := slotIfBoxed(st x.value maybe.some(shapes.shape(x.type)) before)
                 else ok
             end
             case s
                 when sLet then letStatement(st s)
                 else
-                    vector.append(:Stmt before s)
-                    vector.toArray(:Stmt before)
+                    vector.append(before s)
+                    vector.toArray(before)
             end
         end
 
@@ -585,13 +585,13 @@ export
     let rec body(st: SlotState b: Body): Ok =
         begin
             let statements = vector.new(:Stmt)
-            for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
-                let s = vector.get(:Stmt b.statements i)
+            for i = 0 upto {vector.length(b.statements) - 1} do
+                let s = vector.get(b.statements i)
                 switchCases(st s)
                 let bodies = walk.statementBodies(s)
                 for j = 0 upto {extent bodies - 1} do body(st bodies[j]) end
                 let made = statement(st s)
-                for j = 0 upto {extent made - 1} do vector.append(:Stmt statements made[j]) end
+                for j = 0 upto {extent made - 1} do vector.append(statements made[j]) end
             end
             b.statements := statements
         end
@@ -604,23 +604,23 @@ export
              * types *)
             for i = 0 upto {extent bodies - 1} do
                 let stmts = walk.walkStatements(bodies[i] false)
-                for j = 0 upto {vector.length(:Stmt stmts) - 1} do
-                    case vector.get(:Stmt stmts j)
+                for j = 0 upto {vector.length(stmts) - 1} do
+                    case vector.get(stmts j)
                         when sLet with x then
                             case x.value
                                 when opAddrVar with y then
-                                    if boxed(maybe.some(:Shape shapes.shape(y.v.type))) then y.v.boxed := true end
+                                    if boxed(maybe.some(shapes.shape(y.v.type))) then y.v.boxed := true end
                                 else ok
                             end
                         else ok
                     end
                 end
             end
-            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
-                let f = vector.get(:nodes.Function unit.functions i)
+            for i = 0 upto {vector.length(unit.functions) - 1} do
+                let f = vector.get(unit.functions i)
                 for j = 0 upto {extent f.params - 1} do
                     let p = f.params[j]
-                    if not(eq(p.mode "value")) andif boxed(maybe.some(:Shape shapes.shape(p.v.type))) then p.v.boxed := true end
+                    if not(eq(p.mode "value")) andif boxed(maybe.some(shapes.shape(p.v.type))) then p.v.boxed := true end
                 end
             end
             for i = 0 upto {extent bodies - 1} do

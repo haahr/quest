@@ -22,8 +22,8 @@ export
     let onlyConstants(blk: ssa.Block): Bool =
         begin
             let var all = true
-            for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                let i = vector.get(:ssa.Inst blk.insts k)
+            for k = 0 upto {vector.length(blk.insts) - 1} do
+                let i = vector.get(blk.insts k)
                 if not(ssa.isOp(i ssa.opConst) orif ssa.isOp(i ssa.opSymbol)) then all := false end
             end
             all
@@ -40,10 +40,10 @@ export
             let var going = true
             while going do
                 going := false
-                if extent at.args > 0 then result := maybe.some(:ssa.Target at)
+                if extent at.args > 0 then result := maybe.some(at)
                 else
                     let blk = ssa.block(f at.block)
-                    if {vector.length(:Int blk.params) is 0} andif {steps < longest} andif onlyConstants(blk) then
+                    if {vector.length(blk.params) is 0} andif {steps < longest} andif onlyConstants(blk) then
                         case blk.term
                             when termJump with x then
                                 at := x.target
@@ -61,12 +61,12 @@ export
     (* The word of static data that is v, if an opConst or an opSymbol
      * defines it *)
     let wordOf(defs: Defs v: Int): maybe.T(ssa.Word) =
-        if maybe.isNone(:ssa.Inst defs[v]) then maybe.none(:ssa.Word)
+        if maybe.isNone(defs[v]) then maybe.none(:ssa.Word)
         else
-            let i = maybe.unwrap(:ssa.Inst defs[v])
-            if ssa.isOp(i ssa.opConst) then maybe.some(:ssa.Word option wordInt of ssa.Word with let n = i.imm end)
+            let i = maybe.unwrap(defs[v])
+            if ssa.isOp(i ssa.opConst) then maybe.some(option wordInt of ssa.Word with let n = i.imm end)
             elsif ssa.isOp(i ssa.opSymbol) then
-                maybe.some(:ssa.Word option wordSymbol of ssa.Word with let symbol = i.symbol let addend = i.imm end)
+                maybe.some(option wordSymbol of ssa.Word with let symbol = i.symbol let addend = i.imm end)
             else maybe.none(:ssa.Word) end
         end
 
@@ -102,21 +102,21 @@ export
             for k = 0 upto {extent cases - 1} do
                 if fits then
                     arms[k] := follow(f targets[k])
-                    if maybe.isNone(:ssa.Target arms[k]) then fits := false end
+                    if maybe.isNone(arms[k]) then fits := false end
                 end
             end
             if not(fits) then maybe.none(:Plan)
             else
                 let size = spread + 1
-                let first = maybe.unwrap(:ssa.Target arms[0])
+                let first = maybe.unwrap(arms[0])
                 let join = first.block
                 let n = extent first.args
                 let other = follow(f default)
                 let gaps = size > extent cases
-                let defaultArm = maybe.isSome(:ssa.Target other) andif {maybe.unwrap(:ssa.Target other).block is join}
+                let defaultArm = maybe.isSome(other) andif {maybe.unwrap(other).block is join}
                 if gaps andif not(defaultArm) then fits := false end
                 for k = 0 upto {extent cases - 1} do
-                    if maybe.unwrap(:ssa.Target arms[k]).block isnot join then fits := false end
+                    if maybe.unwrap(arms[k]).block isnot join then fits := false end
                 end
                 let params = ssa.block(f join).params
                 let varies = array of(n false)
@@ -128,12 +128,12 @@ export
                         let v = first.args[p]
                         same[p] := v
                         for k = 1 upto {extent cases - 1} do
-                            if maybe.unwrap(:ssa.Target arms[k]).args[p] isnot v then varies[p] := true end
+                            if maybe.unwrap(arms[k]).args[p] isnot v then varies[p] := true end
                         end
-                        if gaps andif {maybe.unwrap(:ssa.Target other).args[p] isnot v} then varies[p] := true end
+                        if gaps andif {maybe.unwrap(other).args[p] isnot v} then varies[p] := true end
                         if varies[p] then
                             anyVaries := true
-                            case ssa.typeOf(f vector.get(:Int params p))
+                            case ssa.typeOf(f vector.get(params p))
                                 when typeReal then fits := false
                                 when typeInt, typePtr, typeVal then ok
                             end
@@ -144,15 +144,15 @@ export
                     for p = 0 upto {n - 1} do
                         if varies[p] then
                             (* The default's word fills the gaps *)
-                            let filler = if gaps then wordOf(defs maybe.unwrap(:ssa.Target other).args[p])
-                                else maybe.some(:ssa.Word option wordInt of ssa.Word with let n = 0 end) end
-                            if maybe.isNone(:ssa.Word filler) then fits := false
+                            let filler = if gaps then wordOf(defs maybe.unwrap(other).args[p])
+                                else maybe.some(option wordInt of ssa.Word with let n = 0 end) end
+                            if maybe.isNone(filler) then fits := false
                             else
-                                let ws = array of(size maybe.unwrap(:ssa.Word filler))
+                                let ws = array of(size maybe.unwrap(filler))
                                 for k = 0 upto {extent cases - 1} do
-                                    let w = wordOf(defs maybe.unwrap(:ssa.Target arms[k]).args[p])
-                                    if maybe.isNone(:ssa.Word w) then fits := false
-                                    else ws[cases[k] - least] := maybe.unwrap(:ssa.Word w) end
+                                    let w = wordOf(defs maybe.unwrap(arms[k]).args[p])
+                                    if maybe.isNone(w) then fits := false
+                                    else ws[cases[k] - least] := maybe.unwrap(w) end
                                 end
                                 words[p] := ws
                             end
@@ -160,7 +160,7 @@ export
                     end
                 end
                 if fits andif anyVaries then
-                    maybe.some(:Plan tuple
+                    maybe.some(tuple
                         let join = join let least = least let size = size
                         let varies = varies let same = same let words = words
                     end)
@@ -192,9 +192,9 @@ export
                 if p.varies[k] then
                     let name = if tables is 0 then symbol else symbol <> "_" <> conv.int(tables) end
                     tables := tables + 1
-                    vector.append(:ssa.Data u.data ssa.words(name false false p.words[k]))
+                    vector.append(u.data ssa.words(name false false p.words[k]))
                     let address = ssa.ptrAdd(f load ssa.symbolAddress(f load name) offset)
-                    args[k] := ssa.invariantLoad(f load address 0 8 false ssa.typeOf(f vector.get(:Int params k)))
+                    args[k] := ssa.invariantLoad(f load address 0 8 false ssa.typeOf(f vector.get(params k)))
                 else args[k] := p.same[k] end
             end
             ssa.terminate(f load option termJump of ssa.Terminator with let target = ssa.target(p.join args) end)
@@ -203,13 +203,13 @@ export
     let tableFunction(u: ssa.Unit f: Function): Ok =
         begin
             let g = cfg.graph(f)
-            let nBlocks = vector.length(:ssa.Block f.blocks)
-            let defs = array of(vector.length(:ssa.Type f.types) maybe.none(:ssa.Inst))
+            let nBlocks = vector.length(f.blocks)
+            let defs = array of(vector.length(f.types) maybe.none(:ssa.Inst))
             for b = 0 upto {nBlocks - 1} do
                 let insts = ssa.block(f b).insts
-                for k = 0 upto {vector.length(:ssa.Inst insts) - 1} do
-                    let i = vector.get(:ssa.Inst insts k)
-                    for j = 0 upto {extent i.results - 1} do defs[i.results[j]] := maybe.some(:ssa.Inst i) end
+                for k = 0 upto {vector.length(insts) - 1} do
+                    let i = vector.get(insts k)
+                    for j = 0 upto {extent i.results - 1} do defs[i.results[j]] := maybe.some(i) end
                 end
             end
             let at = f.at
@@ -219,8 +219,8 @@ export
                     case ssa.block(f b).term
                         when termSwitch with x then
                             let p = plan(f defs x.cases x.targets x.default)
-                            if maybe.isSome(:Plan p) then
-                                convert(u f b x.value x.default maybe.unwrap(:Plan p)
+                            if maybe.isSome(p) then
+                                convert(u f b x.value x.default maybe.unwrap(p)
                                     "qt_" <> f.symbol <> "_" <> conv.int(made))
                                 made := made + 1
                             end
@@ -233,7 +233,7 @@ export
         end
 
     let tableUnit(u: ssa.Unit): Ok =
-        for i = 0 upto {vector.length(:Function u.functions) - 1} do
-            tableFunction(u vector.get(:Function u.functions i))
+        for i = 0 upto {vector.length(u.functions) - 1} do
+            tableFunction(u vector.get(u.functions i))
         end
 end

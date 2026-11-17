@@ -12,18 +12,18 @@ export
     let lower(f: Function b: Int k: Int): Ok =
         begin
             let blk = ssa.block(f b)
-            let i = vector.get(:ssa.Inst blk.insts k)
+            let i = vector.get(blk.insts k)
             let p = i.args[0]
             let at = i.loc
             f.at := at
             (* The rest of the block, after the instruction *)
             let tail = vector.new(:ssa.Inst)
-            for j = k + 1 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                vector.append(:ssa.Inst tail vector.get(:ssa.Inst blk.insts j))
+            for j = k + 1 upto {vector.length(blk.insts) - 1} do
+                vector.append(tail vector.get(blk.insts j))
             end
             let term = blk.term
             let termLoc = blk.termLoc
-            while vector.length(:ssa.Inst blk.insts) > k do begin let ignored = vector.pop(:ssa.Inst blk.insts) end end
+            while vector.length(blk.insts) > k do begin let ignored = vector.pop(blk.insts) end end
             let none = array of :Int end
             let tag = runtimeLayout.constant("QUEST_PROXY_TAG")
             let tested = ssa.binary(f b ssa.opAnd ssa.emit(f b ssa.opPtrToInt array of p end ssa.typeInt)
@@ -47,9 +47,9 @@ export
             plainBlk.termLoc := at
             (* The rest: the object is the instruction's result *)
             let moved = ssa.block(f rest)
-            vector.append(:Int moved.params i.results[0])
-            for j = 0 upto {vector.length(:ssa.Inst tail) - 1} do
-                vector.append(:ssa.Inst moved.insts vector.get(:ssa.Inst tail j))
+            vector.append(moved.params i.results[0])
+            for j = 0 upto {vector.length(tail) - 1} do
+                vector.append(moved.insts vector.get(tail j))
             end
             moved.term := term
             moved.termLoc := termLoc
@@ -60,12 +60,12 @@ export
             let var b = 0
             (* The blocks a split adds hold the rest of a block, and are
              * reached in turn *)
-            while b < vector.length(:ssa.Block f.blocks) do
+            while b < vector.length(f.blocks) do
                 let blk = ssa.block(f b)
                 let var k = 0
                 let var split = false
-                while not(split) andif {k < vector.length(:ssa.Inst blk.insts)} do
-                    if ssa.isOp(vector.get(:ssa.Inst blk.insts k) ssa.opUnproxy) then
+                while not(split) andif {k < vector.length(blk.insts)} do
+                    if ssa.isOp(vector.get(blk.insts k) ssa.opUnproxy) then
                         lower(f b k)
                         split := true
                     end
@@ -76,7 +76,7 @@ export
         end
 
     let lowerUnit(u: ssa.Unit): Ok =
-        for i = 0 upto {vector.length(:ssa.Function u.functions) - 1} do
-            lowerFunction(vector.get(:ssa.Function u.functions i))
+        for i = 0 upto {vector.length(u.functions) - 1} do
+            lowerFunction(vector.get(u.functions i))
         end
 end

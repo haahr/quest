@@ -74,7 +74,7 @@ export
     let pointers(s: State): Ok =
         begin
             let f = s.f
-            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let nBlocks = vector.length(f.blocks)
             for v = 0 upto {extent s.ptr - 1} do s.ptr[v] := ~1 end
             for a = 0 upto {extent s.allocValue - 1} do
                 for w = 0 upto {extent s.selfHas[a] - 1} do s.selfHas[a][w] := false end
@@ -89,8 +89,8 @@ export
                 for b = 0 upto {nBlocks - 1} do
                     if s.reach[b] then
                         let blk = ssa.block(f b)
-                        for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                            let i = vector.get(:ssa.Inst blk.insts k)
+                        for k = 0 upto {vector.length(blk.insts) - 1} do
+                            let i = vector.get(blk.insts k)
                             if ssa.isOp(i ssa.opPtrAdd) then
                                 let p = i.args[0]
                                 if {s.ptr[p] >= 0} andif s.d.isConst[i.args[1]] then
@@ -133,7 +133,7 @@ export
                             let t = ts[k]
                             let params = ssa.block(f t.block).params
                             for j = 0 upto {extent t.args - 1} do
-                                let p = vector.get(:Int params j)
+                                let p = vector.get(params j)
                                 if bound[p] is ~1 then bound[p] := t.args[j]
                                 elsif bound[p] isnot t.args[j] then bound[p] := ~2 end
                             end
@@ -153,7 +153,7 @@ export
     let check(s: State): Ok =
         begin
             let f = s.f
-            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let nBlocks = vector.length(f.blocks)
             let isPointer(v: Int): Bool = {s.ptr[v] >= 0} andif s.alive[s.ptr[v]]
             (* Whether every use of v, reached, is a proxy test *)
             let onlyProxyTests(v: Int): Bool =
@@ -162,8 +162,8 @@ export
                     for b = 0 upto {nBlocks - 1} do
                         if s.reach[b] then
                             let blk = ssa.block(f b)
-                            for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                                let i = vector.get(:ssa.Inst blk.insts k)
+                            for k = 0 upto {vector.length(blk.insts) - 1} do
+                                let i = vector.get(blk.insts k)
                                 for j = 0 upto {extent i.args - 1} do
                                     if {i.args[j] is v} andif
                                         {{extent i.results is 0} orif not(isProxyTest(s i.results[0]))}
@@ -180,8 +180,8 @@ export
             for b = 0 upto {nBlocks - 1} do
                 if s.reach[b] then
                     let blk = ssa.block(f b)
-                    for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                        let i = vector.get(:ssa.Inst blk.insts k)
+                    for k = 0 upto {vector.length(blk.insts) - 1} do
+                        let i = vector.get(blk.insts k)
                         for j = 0 upto {extent i.args - 1} do
                             let v = i.args[j]
                             if isPointer(v) then
@@ -231,7 +231,7 @@ export
                         for j = 0 upto {extent t.args - 1} do
                             let v = t.args[j]
                             if isPointer(v) then
-                                let p = vector.get(:Int params j)
+                                let p = vector.get(params j)
                                 if {s.ptr[p] isnot s.ptr[v]} orif {s.off[p] isnot s.off[v]} then
                                     escapes(s s.ptr[v] "passed to a block that is not only its")
                                 end
@@ -256,8 +256,8 @@ export
     (* The analysis of f *)
     let solve(f: Function): State =
         begin
-            let nValues = vector.length(:ssa.Type f.types)
-            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let nValues = vector.length(f.types)
+            let nBlocks = vector.length(f.blocks)
             let d = proxyFold.definitions(f)
             let isConst = d.isConst
             let constant = d.constant
@@ -265,19 +265,19 @@ export
             let sizes = vector.new(:Int)
             for b = 0 upto {nBlocks - 1} do
                 let blk = ssa.block(f b)
-                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                    let i = vector.get(:ssa.Inst blk.insts k)
+                for k = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts k)
                     if ssa.isOp(i ssa.opCall) andif stringOp.equal(i.symbol "quest_alloc") andif
                         {extent i.args is 2} andif {extent i.results is 1} andif isConst[i.args[0]] andif
                         {constant[i.args[0]] > 0}
                     then
-                        vector.append(:Int values i.results[0])
-                        vector.append(:Int sizes constant[i.args[0]])
+                        vector.append(values i.results[0])
+                        vector.append(sizes constant[i.args[0]])
                     end
                 end
             end
-            let n = vector.length(:Int values)
-            let allocBytes = vector.toArray(:Int sizes)
+            let n = vector.length(values)
+            let allocBytes = vector.toArray(sizes)
             let selfHas = array of(n array of(0 false))
             let selfOff = array of(n array of(0 0))
             for a = 0 upto {n - 1} do
@@ -286,7 +286,7 @@ export
             end
             let s = tuple
                 let f = f let d = d
-                let allocValue = vector.toArray(:Int values) let allocBytes = allocBytes
+                let allocValue = vector.toArray(values) let allocBytes = allocBytes
                 let alive = array of(n true) let reasons = array of(n "")
                 let ptr = array of(nValues ~1) let off = array of(nValues 0)
                 let selfHas = selfHas let selfOff = selfOff
@@ -336,7 +336,7 @@ export
             let var removed = 0
             for a = 0 upto {n - 1} do if s.alive[a] then removed := removed + 1 end end
             if removed > 0 then
-                let nBlocks = vector.length(:ssa.Block f.blocks)
+                let nBlocks = vector.length(f.blocks)
                 (* Each word's type, from its stores, else its loads, so that
                  * its zero is of the type promotion needs; and whether it is
                  * accessed other than by its first byte *)
@@ -350,8 +350,8 @@ export
                     for b = 0 upto {nBlocks - 1} do
                         if s.reach[b] then
                             let blk = ssa.block(f b)
-                            for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                                let i = vector.get(:ssa.Inst blk.insts k)
+                            for k = 0 upto {vector.length(blk.insts) - 1} do
+                                let i = vector.get(blk.insts k)
                                 let access = ssa.isOp(i ssa.opLoad) orif ssa.isOp(i ssa.opStore)
                                 if access andif isPointer(i.args[0]) then
                                     let a = s.ptr[i.args[0]]
@@ -392,8 +392,8 @@ export
                                 ok
                         end
                         let kept = vector.new(:ssa.Inst)
-                        for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                            let i = vector.get(:ssa.Inst blk.insts k)
+                        for k = 0 upto {vector.length(blk.insts) - 1} do
+                            let i = vector.get(blk.insts k)
                             let result = if extent i.results > 0 then i.results[0] else ~1 end
                             let access = ssa.isOp(i ssa.opLoad) orif ssa.isOp(i ssa.opStore)
                             if {result >= 0} andif isPointer(result) andif {s.allocValue[s.ptr[result]] is result} then
@@ -402,7 +402,7 @@ export
                                 let slot = ssa.instruction(ssa.opSlot array of :Int end i.results
                                     ssa.newSlot(f {words * 8} 8) "" 0 false ssa.emptySignature)
                                 slot.loc := i.loc
-                                vector.append(:ssa.Inst kept slot)
+                                vector.append(kept slot)
                                 for w = 0 upto {words - 1} do
                                     if not(s.selfHas[a][w]) then
                                         let zero = proxyFold.zeroOf(f kept typeOfCode(wordType[a][w]) i.loc)
@@ -410,7 +410,7 @@ export
                                         let store = ssa.instruction(ssa.opStore array of result zero end
                                             array of :Int end {w * 8} "" width false ssa.emptySignature)
                                         store.loc := i.loc
-                                        vector.append(:ssa.Inst kept store)
+                                        vector.append(kept store)
                                     end
                                 end
                             elsif {result >= 0} andif isPointer(result) then ok
@@ -421,7 +421,7 @@ export
                                 let zero = ssa.instruction(ssa.opConst array of :Int end i.results 0 "" 0 false
                                     ssa.emptySignature)
                                 zero.loc := i.loc
-                                vector.append(:ssa.Inst kept zero)
+                                vector.append(kept zero)
                             elsif access andif isPointer(i.args[0]) then
                                 let p = i.args[0]
                                 i.imm := s.off[p] + i.imm
@@ -429,12 +429,12 @@ export
                                 (* A slot in a loop is reused each time
                                  * round, so what it holds is not invariant *)
                                 i.invariant := false
-                                vector.append(:ssa.Inst kept i)
-                            else vector.append(:ssa.Inst kept i) end
+                                vector.append(kept i)
+                            else vector.append(kept i) end
                         end
-                        vector.clear(:ssa.Inst blk.insts)
-                        for k = 0 upto {vector.length(:ssa.Inst kept) - 1} do
-                            vector.append(:ssa.Inst blk.insts vector.get(:ssa.Inst kept k))
+                        vector.clear(blk.insts)
+                        for k = 0 upto {vector.length(kept) - 1} do
+                            vector.append(blk.insts vector.get(kept k))
                         end
                     end
                 end
@@ -447,22 +447,22 @@ export
                             let params = ssa.block(f t.block).params
                             let args = vector.new(:Int)
                             for j = 0 upto {extent t.args - 1} do
-                                if not(isPointer(vector.get(:Int params j))) then vector.append(:Int args t.args[j]) end
+                                if not(isPointer(vector.get(params j))) then vector.append(args t.args[j]) end
                             end
-                            t.args := vector.toArray(:Int args)
+                            t.args := vector.toArray(args)
                         end
                     end
                 end
                 for b = 0 upto {nBlocks - 1} do
                     let params = ssa.block(f b).params
                     let left = vector.new(:Int)
-                    for j = 0 upto {vector.length(:Int params) - 1} do
-                        let p = vector.get(:Int params j)
-                        if not(isPointer(p)) then vector.append(:Int left p) end
+                    for j = 0 upto {vector.length(params) - 1} do
+                        let p = vector.get(params j)
+                        if not(isPointer(p)) then vector.append(left p) end
                     end
-                    vector.clear(:Int params)
-                    for j = 0 upto {vector.length(:Int left) - 1} do
-                        vector.append(:Int params vector.get(:Int left j))
+                    vector.clear(params)
+                    for j = 0 upto {vector.length(left) - 1} do
+                        vector.append(params vector.get(left j))
                     end
                 end
                 (* The blocks only a proxy's arm reached, now unreached,
@@ -475,8 +475,8 @@ export
     let escapeUnit(u: ssa.Unit): Int =
         begin
             let var count = 0
-            for i = 0 upto {vector.length(:Function u.functions) - 1} do
-                count := count + escapeFunction(vector.get(:Function u.functions i))
+            for i = 0 upto {vector.length(u.functions) - 1} do
+                count := count + escapeFunction(vector.get(u.functions i))
             end
             count
         end

@@ -57,30 +57,30 @@ export
         end
     (* Adds a variable to the scope (one already in it stays, as it was) *)
     let withVar(scope: Scope v: Variable): Ok =
-        if not(hashMap.contains(:Int :Bool scope.vars v.id)) then
-            hashMap.insert(:Int :Bool scope.vars v.id true)
-            if v.isMutable then hashMap.insert(:Int :Bool scope.localMutables v.id true) end
-            if not(vector.empty(:vector.T(Variable) scope.logs)) then
-                vector.append(:Variable vector.last(:vector.T(Variable) scope.logs) v)
+        if not(hashMap.contains(scope.vars v.id)) then
+            hashMap.insert(scope.vars v.id true)
+            if v.isMutable then hashMap.insert(scope.localMutables v.id true) end
+            if not(vector.empty(scope.logs)) then
+                vector.append(vector.last(scope.logs) v)
             end
         end
     let withVars(scope: Scope vs: Array(Variable)): Ok = for i = 0 upto {extent vs - 1} do withVar(scope vs[i]) end
     (* Runs f with the variables it adds to the scope removed afterwards *)
     let nested(scope: Scope f: All() Ok): Ok =
         begin
-            vector.append(:vector.T(Variable) scope.logs vector.new(:Variable))
+            vector.append(scope.logs vector.new(:Variable))
             f()
-            let log = vector.pop(:vector.T(Variable) scope.logs)
-            for i = 0 upto {vector.length(:Variable log) - 1} do
-                let v = vector.get(:Variable log i)
-                hashMap.delete(:Int :Bool scope.vars v.id)
-                hashMap.delete(:Int :Bool scope.localMutables v.id)
+            let log = vector.pop(scope.logs)
+            for i = 0 upto {vector.length(log) - 1} do
+                let v = vector.get(log i)
+                hashMap.delete(scope.vars v.id)
+                hashMap.delete(scope.localMutables v.id)
             end
         end
     let copyIds(ids: Ids): Ids =
         begin
             let copy = newIds()
-            hashMap.forEach(:Int :Bool ids fun(k: Int v: Bool): Ok begin hashMap.insert(:Int :Bool copy k v) ok end)
+            hashMap.forEach(ids fun(k: Int v: Bool): Ok begin hashMap.insert(copy k v) ok end)
             copy
         end
     Let Verifier = Tuple
@@ -94,13 +94,13 @@ export
         var functions: maybe.T(Ids)
         var represented: Bool
     end
-    let problem(v: Verifier text: String): Ok = vector.append(:String v.problems text)
+    let problem(v: Verifier text: String): Ok = vector.append(v.problems text)
     let bind(v: Verifier x: Variable where: String): Ok =
         begin
-            if hashMap.contains(:Int :Bool v.bound x.id) then
+            if hashMap.contains(v.bound x.id) then
                 problem(v where <> ": variable '" <> x.hint <> "' is bound more than once")
             end
-            hashMap.insert(:Int :Bool v.bound x.id true)
+            hashMap.insert(v.bound x.id true)
             (* Every variable has a shape (computing it raises if not) *)
             shapes.shape(x.type)
             ok
@@ -108,21 +108,21 @@ export
     let use(v: Verifier a: Atom scope: Scope where: String): Ok =
         case a
             when atomVar with x then
-                if not(hashMap.contains(:Int :Bool scope.vars x.v.id)) then
+                if not(hashMap.contains(scope.vars x.v.id)) then
                     problem(v where <> ": variable '" <> x.v.hint <> "' is used outside its scope")
-                elsif hashMap.contains(:Int :Bool scope.outerMutables x.v.id) then
+                elsif hashMap.contains(scope.outerMutables x.v.id) then
                     problem(v where <> ": function uses mutable variable '" <> x.v.hint <> "' of an enclosing function")
                 end
             else ok
         end
     let useVar(v: Verifier x: Variable scope: Scope where: String): Ok = use(v nodes.atomOfVar(x) scope where)
     let moduleRef(v: Verifier r: maybe.T(nodes.ModuleRef) where: String): Ok =
-        if maybe.isSome(:nodes.ModuleRef r) then
-            let id = case maybe.unwrap(:nodes.ModuleRef r)
+        if maybe.isSome(r) then
+            let id = case maybe.unwrap(r)
                 when refModule with x then x.m.id
                 when refImport with x then x.i.id
             end
-            if not(hashMap.contains(:Int :Bool v.modules id)) then
+            if not(hashMap.contains(v.modules id)) then
                 problem(v where <> ": reference to a module that is not the unit's or imported by it")
             end
         end
@@ -132,16 +132,16 @@ export
                 when opConvert then
                     if not(v.represented) then problem(v where <> ": convert before the represent pass") end
                 when opMakeClosure with x then
-                    if maybe.isNone(:Ids v.functions) then
+                    if maybe.isNone(v.functions) then
                         problem(v where <> ": MakeClosure before closure conversion")
-                    elsif not(hashMap.contains(:Int :Bool maybe.unwrap(:Ids v.functions) x.code.id)) then
+                    elsif not(hashMap.contains(maybe.unwrap(v.functions) x.code.id)) then
                         problem(v where <> ": a closure of a function that is not the unit's")
                     end
                 when opEnvField then
-                    if maybe.isNone(:Ids v.functions) then problem(v where <> ": EnvField before closure conversion") end
+                    if maybe.isNone(v.functions) then problem(v where <> ": EnvField before closure conversion") end
                 when opCall with x then moduleRef(v x.moduleRef where)
                 when opTypeApp with x then moduleRef(v x.moduleRef where)
-                when opModuleMember with x then moduleRef(v maybe.some(:nodes.ModuleRef x.moduleRef) where)
+                when opModuleMember with x then moduleRef(v maybe.some(x.moduleRef) where)
                 else ok
             end
             let uses = walk.opUses(o)
@@ -149,8 +149,8 @@ export
         end
     let sameNames(a: Array(String) b: Array(String)): Bool =
         begin
-            let sa = sort.sorted(:String a sort.stringCompare)
-            let sb = sort.sorted(:String b sort.stringCompare)
+            let sa = sort.sorted(a sort.stringCompare)
+            let sb = sort.sorted(b sort.stringCompare)
             let var same = extent sa is extent sb
             if same then for i = 0 upto {extent sa - 1} do if not(eq(sa[i] sb[i])) then same := false end end end
             same
@@ -161,17 +161,17 @@ export
             let optionShape = fun(t: model.Type): maybe.T(shapes.Shape)
                 begin
                     let s = layout.resolvedShape(shapes.shape(t))
-                    if shapes.kindIs(s shapes.shapeOption) then maybe.some(:shapes.Shape s)
+                    if shapes.kindIs(s shapes.shapeOption) then maybe.some(s)
                         else maybe.none(:shapes.Shape) end
                 end
             let check = fun(cases: Array(String) t: model.Type): Ok
                 begin
                     let s = optionShape(t)
-                    if maybe.isSome(:shapes.Shape s) then
+                    if maybe.isSome(s) then
                         let caseNames = vector.new(:String)
-                        let sc = maybe.unwrap(:shapes.Shape s).cases
-                        for i = 0 upto {extent sc - 1} do vector.append(:String caseNames maybe.unwrapOr(:String sc[i].name "")) end
-                        if not(sameNames(cases vector.toArray(:String caseNames))) then
+                        let sc = maybe.unwrap(s).cases
+                        for i = 0 upto {extent sc - 1} do vector.append(caseNames maybe.unwrapOr(sc[i].name "")) end
+                        if not(sameNames(cases vector.toArray(caseNames))) then
                             problem(v where <> ": an ordinal counts in cases (" <> strutil.joinArray(" " cases)
                                 <> ") of an option of type " <> model.show(t))
                         end
@@ -180,11 +180,11 @@ export
             case o
                 when opOrdinal with y then
                     case y.value when atomVar with z then check(y.cases z.v.type) else ok end
-                when opMakeOption with y then if maybe.isSome(:Atom y.ordinalAtom) then check(y.cases x.type) end
+                when opMakeOption with y then if maybe.isSome(y.ordinalAtom) then check(y.cases x.type) end
                 when opPayload with y then
                     case y.value
                         when atomVar with z then
-                            if maybe.isSome(:shapes.Shape optionShape(z.v.type)) andif maybe.isNone(:Int y.ordinalIndex) then
+                            if maybe.isSome(optionShape(z.v.type)) andif maybe.isNone(y.ordinalIndex) then
                                 problem(v where <> ": the payload of option case " <> y.tag <> " without its ordinal")
                             end
                         else ok
@@ -217,7 +217,7 @@ export
             let savedTop = scope.topLevel
             let outer = copyIds(scope.outerMutables)
             if not(scope.topLevel) then
-                hashMap.forEach(:Int :Bool scope.localMutables fun(k: Int b: Bool): Ok begin hashMap.insert(:Int :Bool outer k b) ok end)
+                hashMap.forEach(scope.localMutables fun(k: Int b: Bool): Ok begin hashMap.insert(outer k b) ok end)
             end
             scope.joins := vector.new(:JoinPoint)
             scope.loops := vector.new(:String)
@@ -227,9 +227,9 @@ export
             scope.topLevel := false
             nested(scope fun(): Ok
                 begin
-                    if maybe.isSome(:Variable f.env) then
-                        bind(v maybe.unwrap(:Variable f.env) where)
-                        withVar(scope maybe.unwrap(:Variable f.env))
+                    if maybe.isSome(f.env) then
+                        bind(v maybe.unwrap(f.env) where)
+                        withVar(scope maybe.unwrap(f.env))
                     end
                     for i = 0 upto {extent f.params - 1} do
                         let p = f.params[i]
@@ -256,9 +256,9 @@ export
     and body(v: Verifier b: Body scope: Scope where: String): Ok =
         nested(scope fun(): Ok
             begin
-                let n = vector.length(:Stmt b.statements)
+                let n = vector.length(b.statements)
                 for i = 0 upto {n - 1} do
-                    let s = vector.get(:Stmt b.statements i)
+                    let s = vector.get(b.statements i)
                     if nodes.isTerminator(s) andif {i isnot {n - 1}} then
                         problem(v where <> ": a " <> statementName(s) <> " is followed by other statements")
                     end
@@ -277,7 +277,7 @@ export
                 end
             when sVarDecl with x then
                 begin
-                    if maybe.isSome(:Atom x.init) then use(v maybe.unwrap(:Atom x.init) scope where) end
+                    if maybe.isSome(x.init) then use(v maybe.unwrap(x.init) scope where) end
                     bind(v x.v where)
                     if not(x.v.isMutable) then problem(v where <> ": var declares immutable variable '" <> x.v.hint <> "'") end
                     withVar(scope x.v)
@@ -295,7 +295,7 @@ export
             when sDo with x then operation(v x.value scope where)
             when sFuns with x then
                 begin
-                    if maybe.isSome(:Ids v.functions) then problem(v where <> ": a funs statement after closure conversion") end
+                    if maybe.isSome(v.functions) then problem(v where <> ": a funs statement after closure conversion") end
                     for i = 0 upto {extent x.functions - 1} do bind(v x.functions[i].v where) end
                     if x.recursive then
                         for i = 0 upto {extent x.functions - 1} do withVar(scope x.functions[i].v) end
@@ -325,14 +325,14 @@ export
                         let c = x.cases[i]
                         nested(scope fun(): Ok
                             begin
-                                if maybe.isSome(:Variable c.binder) then
-                                    bind(v maybe.unwrap(:Variable c.binder) where)
-                                    withVar(scope maybe.unwrap(:Variable c.binder))
+                                if maybe.isSome(c.binder) then
+                                    bind(v maybe.unwrap(c.binder) where)
+                                    withVar(scope maybe.unwrap(c.binder))
                                 end
                                 body(v c.body scope where)
                             end)
                     end
-                    if maybe.isSome(:Body x.elseBody) then body(v maybe.unwrap(:Body x.elseBody) scope where) end
+                    if maybe.isSome(x.elseBody) then body(v maybe.unwrap(x.elseBody) scope where) end
                 end
             when sInspect with x then
                 begin
@@ -346,18 +346,18 @@ export
                                 body(v c.body scope where)
                             end)
                     end
-                    if maybe.isSome(:Body x.elseBody) then body(v maybe.unwrap(:Body x.elseBody) scope where) end
+                    if maybe.isSome(x.elseBody) then body(v maybe.unwrap(x.elseBody) scope where) end
                 end
             when sLoop with x then
                 begin
                     let var inUse = false
-                    for i = 0 upto {vector.length(:String scope.loops) - 1} do
-                        if eq(vector.get(:String scope.loops i) x.label) then inUse := true end
+                    for i = 0 upto {vector.length(scope.loops) - 1} do
+                        if eq(vector.get(scope.loops i) x.label) then inUse := true end
                     end
                     if inUse then problem(v where <> ": loop label '" <> x.label <> "' is already in use") end
-                    vector.append(:String scope.loops x.label)
+                    vector.append(scope.loops x.label)
                     body(v x.body scope where)
-                    vector.pop(:String scope.loops)
+                    vector.pop(scope.loops)
                     ok
                 end
             when sTry with x then
@@ -374,8 +374,8 @@ export
             when sJoin with x then
                 begin
                     let var inUse = false
-                    for i = 0 upto {vector.length(:JoinPoint scope.joins) - 1} do
-                        if eq(vector.get(:JoinPoint scope.joins i).label x.label) then inUse := true end
+                    for i = 0 upto {vector.length(scope.joins) - 1} do
+                        if eq(vector.get(scope.joins i).label x.label) then inUse := true end
                     end
                     if inUse then problem(v where <> ": join label '" <> x.label <> "' is already in use") end
                     for i = 0 upto {extent x.params - 1} do bind(v x.params[i] where) end
@@ -384,9 +384,9 @@ export
                             withVars(scope x.params)
                             body(v x.continuation scope where)
                         end)
-                    vector.append(:JoinPoint scope.joins tuple let label = x.label let arity = extent x.params end)
+                    vector.append(scope.joins tuple let label = x.label let arity = extent x.params end)
                     body(v x.body scope where)
-                    vector.pop(:JoinPoint scope.joins)
+                    vector.pop(scope.joins)
                     ok
                 end
             when sEcho with x then use(v x.value scope where)
@@ -400,8 +400,8 @@ export
                 begin
                     useAll(v x.args scope where)
                     let var arity = ~1
-                    for i = 0 upto {vector.length(:JoinPoint scope.joins) - 1} do
-                        let j = vector.get(:JoinPoint scope.joins i)
+                    for i = 0 upto {vector.length(scope.joins) - 1} do
+                        let j = vector.get(scope.joins i)
                         if {arity < 0} andif eq(j.label x.label) then arity := j.arity end
                     end
                     if arity < 0 then
@@ -416,7 +416,7 @@ export
             when sRaise with x then
                 begin
                     use(v x.exc scope where)
-                    if maybe.isSome(:Atom x.payload) then use(v maybe.unwrap(:Atom x.payload) scope where) end
+                    if maybe.isSome(x.payload) then use(v maybe.unwrap(x.payload) scope where) end
                 end
             when sReraise with x then useVar(v x.exc scope where)
             when sUnreachable then ok
@@ -426,8 +426,8 @@ export
     and loopLabel(v: Verifier kind: String label: String scope: Scope where: String): Ok =
         begin
             let var found = false
-            for i = 0 upto {vector.length(:String scope.loops) - 1} do
-                if eq(vector.get(:String scope.loops i) label) then found := true end
+            for i = 0 upto {vector.length(scope.loops) - 1} do
+                if eq(vector.get(scope.loops i) label) then found := true end
             end
             if not(found) then problem(v where <> ": " <> kind <> " of '" <> label <> "', which is not an enclosing loop") end
         end

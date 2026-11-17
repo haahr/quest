@@ -14,16 +14,16 @@ export
     let formAddress(fn: vals.Fn f: staticdata.DescriptorForm): Int =
         begin
             ssa.symbolPlus(fn.f fn.cur f.symbol
-                f.index * maybe.unwrap(:runtimeLayout.Struct runtimeLayout.struct("QTypeDescriptor")).bytes)
+                f.index * maybe.unwrap(runtimeLayout.struct("QTypeDescriptor")).bytes)
         end
 
     (* The static descriptor of a static descriptor operand: its echo form,
      * if it has one *)
     let staticFormOf(u: vals.UnitBuilder d: ir.StaticDescriptor): staticdata.DescriptorForm =
         begin
-            let ctx = maybe.some(:staticdata.RecordNaming u.naming)
+            let ctx = maybe.some(u.naming)
             let echo = if d.echo then staticdata.echoDescriptorForm(d.type ctx) else maybe.none(:staticdata.DescriptorForm) end
-            if maybe.isSome(:staticdata.DescriptorForm echo) then maybe.unwrap(:staticdata.DescriptorForm echo)
+            if maybe.isSome(echo) then maybe.unwrap(echo)
             else staticdata.descriptorForm(d.type ctx) end
         end
 
@@ -32,7 +32,7 @@ export
             when descVar with x then vals.atom1(fn ir.atomOfVar(x.v))
             when descStatic with x then formAddress(fn staticFormOf(fn.u x.d))
             when descInstantiate with x then
-                let form = staticdata.descriptorForm(x.template maybe.some(:staticdata.RecordNaming fn.u.naming))
+                let form = staticdata.descriptorForm(x.template maybe.some(fn.u.naming))
                 if vals.eq(form.kind "base") then
                     formAddress(fn form)
                 else
@@ -61,7 +61,7 @@ export
         end
 
     let maybeDescriptor(fn: vals.Fn d: maybe.T(ir.Descriptor)): Int =
-        if maybe.isSome(:ir.Descriptor d) then descriptor(fn maybe.unwrap(:ir.Descriptor d))
+        if maybe.isSome(d) then descriptor(fn maybe.unwrap(d))
         else raise vals.unsupported with "a run-time use of a type without its descriptor" end
         end
 end
