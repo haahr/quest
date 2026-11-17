@@ -16,8 +16,10 @@ import {Jit, isStackOverflow} from "./jit.mjs";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-// A request's line: JSON whose strings are UTF-8's bytes, each above 126
-// escaped as \u00XX, as the kernel's client writes them
+// A request's line, as the kernel's client writes it: JSON whose strings hold
+// the UTF-8 bytes of request's, a character for each byte, each above 126
+// escaped as \u00XX, since the driver's strings are bytes
+// (docs/jupyter-kernel.md section 2)
 export function requestLine(request) {
   const bytesOf = s => Array.from(encoder.encode(s), b => String.fromCharCode(b)).join("");
   const asBytes = v => typeof v === "string" ? bytesOf(v)
@@ -79,7 +81,6 @@ function withoutLoad(args) {
   return args;
 }
 
-// Thrown by start or request when the driver exits: its status
 // The names an input's records show it bound: each result's let or Let
 function boundNames(records) {
   const names = [];
@@ -91,6 +92,7 @@ function boundNames(records) {
   return names;
 }
 
+// Thrown by start or request when the driver exits: its status
 export class Exited extends Error {
   constructor(status) { super(`the driver exited with status ${status}`); this.status = status; }
 }
@@ -128,6 +130,8 @@ export class Session {
     const o = this.options;
     let pending = new Uint8Array(0);
     this.records = [];
+    // Descriptor 4's writes, split into lines: a write may end part way
+    // through a line, which waits in pending for the rest
     const record = bytes => {
       const all = new Uint8Array(pending.length + bytes.length);
       all.set(pending);

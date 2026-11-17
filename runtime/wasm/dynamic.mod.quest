@@ -27,6 +27,9 @@ export
      * Values as slots hold them
      * ====================================================================== *)
 
+    (* Conversions between native values and the uniform form a slot holds
+     * (an eqref: docs/wasm-plan.md section 2.1), and operations on values in
+     * that form, each an intrinsic *)
     let toInt(x: Any): Int = external "wasm.fromAny"
     let toBool(x: Any): Bool = external "wasm.fromAny"
     let toChar(x: Any): Char = external "wasm.fromAny"
@@ -63,13 +66,16 @@ export
     let newAuto(d: Any payload: Any): Any = external "wasm.newAuto"
     let newTuple(slots: Array(Any)): Any = external "wasm.newTuple"
     let newOption(tag: Int slots: Array(Any)): Any = external "wasm.newOption"
-    (* dynamic.error *)
+    (* Raises dynamic.error. Its type is Ok, so a caller that must return a
+     * value follows it with a placeholder that is never used *)
     let fail(): Ok = external "wasm.dynamicError"
 
     let none(): Desc = core.base(core.kindNone)
+    (* Whether d's part i is var (flagged 1) *)
     let isVarPart(d: Desc i: Int): Bool = {i < extent d.flags} andif {d.flags[i] is 1}
 
-    (* Auto A::TYPE with a: A end, whose one component is the value *)
+    (* Whether d is Auto A::TYPE with a: A end, whose one component is the
+     * value (quest_is_dynamic_type) *)
     let isDynamic(d: Desc): Bool =
         {d.kind is core.kindAuto} andif {extent d.parts is 1} andif stringOp.equal(d.labels[0] "a")
             andif not(isVarPart(d 0)) andif {d.parts[0].kind is core.kindBoundVar}
@@ -82,9 +88,11 @@ export
             orif {{d.kind is core.kindOpaque} andif {extent d.parts is 0} andif stringOp.equal(d.name "word.T")}
 
     (* The witnesses of the auto values being written or read, innermost
-     * last, which a component of an auto type's parameter's type is written
-     * or read at (quest_witness_of). Descriptors here have one bound variable,
-     * which stands for the innermost *)
+     * last (quest_witnesses). An auto type's components refer to its type
+     * parameter as a bound variable whose index i counts auto types outward
+     * (docs/dynamic.md section 2.2), so a component of that type is written
+     * or read at the witness of the i-th auto value out. extern and intern
+     * reset it *)
     let witnesses = tuple let var items = array of :Desc end let var count = 0 end
     let pushWitness(w: Desc): Ok =
         begin
@@ -97,6 +105,8 @@ export
             witnesses.count := witnesses.count + 1
         end
     let popWitness(): Ok = witnesses.count := witnesses.count - 1
+    (* The witness for d, a bound variable (quest_witness_of); dynamic.error
+     * if there is no auto value that far out *)
     let witnessOf(d: Desc): Desc =
         begin
             let i = core.boundIndex(d)
@@ -112,10 +122,10 @@ export
     let unstored(d: Desc v: Any): Any =
         if core.storage(d).kind is core.kindNone then v else core.convert(v core.storage(d) core.storedType(d)) end
 
-    (* The type a value is written or read at: its stored type's, an abstract
-     * type's representation, an auto type's parameter's witness. A cyclic
-     * table, whose types never reach one, fails after as many steps as no
-     * table needs (natively its recursion overflows the stack) *)
+    (* The type a value is written or read at (quest_concrete): its stored
+     * type's, an abstract type's representation, an auto type's parameter's
+     * witness. A cyclic table, whose types never reach one, fails after more
+     * steps than any well-formed table needs, instead of looping *)
     let concrete(d0: Desc): Desc =
         begin
             let var d = core.storedType(d0)
@@ -145,6 +155,7 @@ export
      * Text out
      * ====================================================================== *)
 
+    (* A string built from pieces, which text concatenates once at the end *)
     Def Text = Tuple var pieces: Array(String) var count: Int end
     let newOut(): Text = tuple let var pieces = array of(64 "") let var count = 0 end
     let put(o: Text s: String): Ok =
@@ -200,6 +211,9 @@ export
     let unsigned(n: Int): String =
         if n >= 0 then decimal(n)
         else
+            (* Read as unsigned, n is 2h + low, with h the non-negative n
+             * shifted right a bit; so n / 10 is h / 5, and the last digit is
+             * twice h's remainder mod 5, plus low *)
             let h = shrU(n 1)
             let var q = h / 5
             let low = if {n % 2} is 0 then 0 else 1 end
@@ -211,14 +225,13 @@ export
             decimal(q) <> decimal(r)
         end
 
-    (* A finite real as Python's repr writes it: the shortest digits that read
-     * back exactly, positional when the decimal exponent is in [-4, 16) (with
-     * ".0" for whole numbers), and otherwise d.ddde+XX; an infinity as the
-     * string "Infinity" or "-Infinity" *)
-    (* A real's bits, which tell an infinity or a zero without its digits:
-     * realText derived them twice, once for magnitude's test of those
-     * (wasm-review.md section 4, 5) *)
+    (* A real's bits, from which realText tells an infinity or a zero
+     * without computing its digits *)
     let realBits(r: Real): Int = external "wasm.realBits"
+    (* A finite real as Python's repr writes it (quest_write_real): the
+     * shortest digits that read back exactly, positional when the decimal
+     * exponent is in [-4, 16) (with ".0" for whole numbers), and otherwise
+     * d.ddde+XX; an infinity as the JSON string "Infinity" or "-Infinity" *)
     let realText(r: Real): String =
         begin
             let sign = if signBit(r) then "-" else "" end
@@ -295,6 +308,10 @@ export
      * then a function's result, the cases with payloads, an abstract type's
      * arguments then its representation, an auto type's components) *)
     Def Node = Tuple var kind: Int var labels: Array(String) var hasPayload: Array(Bool) var children: Array(Int) end
+    (* The types met while writing (QTypeGraph): a node for each descriptor,
+     * with the descriptor, so that one met again maps to the same node; and
+     * the roots, the dynamic value's type and the witnesses of the auto
+     * values inside it *)
     Def Graph = Tuple
         var nodes: Array(Node)
         var descs: Array(Desc)
@@ -324,6 +341,7 @@ export
             let var children = array of :Int end
         end
 
+    (* Adds an empty node for d, which addNode fills: its index *)
     let newNode(g: Graph d: Desc): Int =
         begin
             if g.count >= extent g.nodes then
@@ -344,8 +362,9 @@ export
         end
 
     (* The ref of a descriptor's type, adding nodes for it and the types it
-     * mentions; dynamic.error for types the format cannot express:
-     * polymorphic functions, and abstract types other than modules' *)
+     * mentions (quest_tg_ref); dynamic.error for types the format cannot
+     * express: polymorphic functions, and abstract types other than modules'.
+     * A descriptor has at most one node, found by identity *)
     let rec ref(g: Graph d0: Desc): Int =
         begin
             let d = core.storedType(d0)
@@ -367,6 +386,8 @@ export
             end
         end
 
+    (* Adds and fills d's node: its index. The node is added before its
+     * children's refs are taken, so a recursive type's cycle ends at it *)
     and addNode(g: Graph d: Desc): Int =
         begin
             let index = newNode(g d)
@@ -413,7 +434,8 @@ export
                 node.children := array of ref(g d.parts[0]) end
             elsif k is core.kindFun then
                 (* its parameters by mode, then its result; a polymorphic
-                 * function's type cannot be written *)
+                 * function's type, one with a quantifier's bound (a part
+                 * flagged 8), cannot be written *)
                 let var params = 0
                 for i = 0 upto n - 1 do
                     if d.flags[i] is 8 then fail() end
@@ -435,7 +457,8 @@ export
                 if isWord(d) then node.kind := nodeExternal
                 else
                     (* a module's abstract type: its global name, its
-                     * arguments, its representation *)
+                     * arguments, its representation (parts flagged 16 are a
+                     * representation a document recorded, not arguments) *)
                     node.kind := nodeAbstract
                     let var args = 0
                     for i = 0 upto n - 1 do if d.flags[i] isnot 16 then args := args + 1 end end
@@ -477,6 +500,8 @@ export
             g.rootCount := g.rootCount + 1
         end
 
+    (* Whether a and b agree in all but their children: kind, labels, and
+     * which cases have payloads (quest_tn_same_shape) *)
     let sameShape(a: Node b: Node): Bool =
         begin
             let var same = {a.kind is b.kind} andif {extent a.labels is extent b.labels}
@@ -490,8 +515,11 @@ export
             same
         end
 
+    (* A ref's class; a built-in type's ref is its own *)
     let classOf(cls: Array(Int) r: Int): Int = if r < 0 then r else cls[r] end
 
+    (* Numbers r's class and then its children's, each that is not yet
+     * numbered (quest_tg_visit) *)
     let rec visit(g: Graph r: Int): Ok =
         if {r >= 0} andif {g.number[g.cls[r]] < 0} then
             g.number[g.cls[r]] := g.orderCount
@@ -501,9 +529,16 @@ export
             for i = 0 upto extent node.children - 1 do visit(g node.children[i]) end
         end
 
-    (* Merges structurally equivalent nodes (partition refinement from shapes
-     * to the coarsest bisimulation) and numbers the classes in the order a
-     * depth-first walk from the roots first reaches them *)
+    (* Merges structurally equivalent nodes and numbers the classes left, so
+     * that equal types always give the same table (quest_tg_canonicalize).
+     * Two nodes are equivalent when they have the same shape and their
+     * children, in order, are equivalent. Types can be cyclic, so this is
+     * found by partition refinement: the classes start as the nodes of each
+     * shape, and are split by their children's classes until a round splits
+     * none, which leaves the coarsest such partition (the coarsest
+     * bisimulation). The classes are numbered in the order a depth-first walk
+     * from the roots first reaches them. Each round is quadratic in the
+     * number of nodes *)
     let canonicalize(g: Graph): Ok =
         begin
             let n = g.count
@@ -552,9 +587,13 @@ export
             for r = 0 upto g.rootCount - 1 do visit(g g.roots[r]) end
         end
 
+    (* A ref as the table writes it: a built-in type's name, or its node's
+     * class's number *)
     let writeRef(o: Text g: Graph r: Int): Ok =
         if r < 0 then jsonString(o builtinNames[0 - r]) else put(o decimal(g.number[g.cls[r]])) end
 
+    (* The type table: a node of each class, in their numbers' order, in the
+     * forms of docs/dynamic.md section 2.2 (quest_write_type_table) *)
     let writeTable(o: Text g: Graph): Ok =
         begin
             put(o "[")
@@ -658,7 +697,8 @@ export
      * ====================================================================== *)
 
     (* The objects reached, each with how many times and its "@id" once it
-     * has been written *)
+     * has been written (QPtrTable). Objects are compared by identity, with a
+     * linear search where C hashes *)
     Def Shared = Tuple obj: Any var count: Int var id: Int end
     Def Table = Tuple var items: Array(Shared) var count: Int end
     let newTable(): Table = tuple let var items = array of :Shared end let var count = 0 end
@@ -688,7 +728,9 @@ export
             end
         end
 
-    (* A record's field i, at the type the record is seen at *)
+    (* A record's field i, at the type d the record is seen at, through its
+     * dictionary, which maps the fields of that type to the payload's slots
+     * (docs/wasm-plan.md section 2.5) *)
     let field(v: Any i: Int d: Desc): Any =
         begin
             let payload = recPayload(v)
@@ -696,15 +738,19 @@ export
             core.storedField(recordSlot(payload dictIndex(dict i)) dict i d.parts[i])
         end
 
-    (* A variant's or option's case, and whether it is written as its bare
-     * tag: its index *)
+    (* The index of the case v holds, of the variant or option type d;
+     * dynamic.error if d has no such case *)
     let caseOf(d: Desc v: Any): Int =
         begin
             let tag = if d.kind is core.kindOption then core.tagAt(v) else variantTag(v) end
             if {tag < 0} orif {tag >= extent d.parts} then fail() end
             tag
         end
+    (* Whether a case whose payload type is p is written as its bare name:
+     * one with no payload or an Ok payload *)
     let isBare(p: Desc): Bool = {p.kind is core.kindNone} orif {p.kind is core.kindOk}
+    (* The components' types of the option type d's case tag, whose payload
+     * type is a tuple's *)
     let payloadParts(d: Desc tag: Int): Array(Desc) =
         begin
             let p = core.storedType(d.parts[tag])
@@ -712,6 +758,13 @@ export
             p.parts
         end
 
+    (* The first pass of writing (quest_scan_value): counts in t the records,
+     * tuples, and arrays reached in v0, of type d0, so that emit knows which
+     * are shared, and adds to g as roots the types of the auto values inside.
+     * An object reached again is not entered again, which ends cycles. A
+     * record is counted by its payload, which all its views share; a tuple
+     * through a proxy, by the original; the empty tuple, never
+     * (docs/dynamic.md section 2.5) *)
     let rec scan(d0: Desc v0: Any t: Table g: Graph): Ok =
         begin
             let v = unstored(d0 v0)
@@ -756,11 +809,13 @@ export
             end
         end
 
+    (* The next "@id" to give, from 1 *)
     Def Ids = Tuple var next: Int end
 
-    (* Writes the start of a record, tuple, or array: {"@ref":n} (true) if it
-     * was written before, or else gives it an "@id" when it is reached more
-     * than once: the id, or 0 *)
+    (* Starts writing obj, a record's payload, a tuple, or an array
+     * (quest_emit_shared). If it was written before, writes {"@ref":n} for it
+     * and gives written true; else gives the "@id" it gets now if it is
+     * reached more than once, or 0 *)
     Def Start = Tuple written: Bool id: Int end
     let startShared(o: Text t: Table ids: Ids obj: Any): Start =
         begin
@@ -776,6 +831,13 @@ export
             end
         end
 
+    (* The second pass of writing (quest_emit_value): v0, of type d0, as JSON
+     * in the forms of docs/dynamic.md section 2.4: a scalar for a base value,
+     * an object of its fields for a record, an array for a tuple or an array,
+     * a case's name or {name: payload} for a variant or option, and
+     * {"@type": ref, "@value": v} for an auto value. An object scan found
+     * reached more than once is written in full with an "@id" where it first
+     * occurs, and as {"@ref": n} after (section 2.5) *)
     let rec emit(o: Text d0: Desc v0: Any t: Table g: Graph ids: Ids): Ok =
         begin
             let v = unstored(d0 v0)
@@ -869,6 +931,10 @@ export
             end
         end
 
+    (* quest_dynamic_extern: scans d's value, makes the canonical type table,
+     * then builds the document as one string, so that a value that fails
+     * writes nothing. The witnesses are reset first, since an earlier call
+     * that raised may have left some *)
     let extern(wr: writer.T d: Any): Ok =
         begin
             witnesses.count := 0
@@ -895,6 +961,9 @@ export
      * Reading: JSON
      * ====================================================================== *)
 
+    (* A parsed JSON value (QJsonValue). An integer keeps its text: a word.T is
+     * read from it, since a word can exceed an Int's range, and so is a Real
+     * written as an integer *)
     Def Rec J = Option
         jNull
         jBool with b: Bool end
@@ -911,6 +980,8 @@ export
     (* Whether the reader has more; a closed one has none, as C's reader takes
      * it, so that intern of one raises dynamic.error *)
     let more(src: Source): Bool = try reader.more(src.rd) when reader.error then false end
+    (* The next character's code without consuming it, or ~1 at the end
+     * (quest_json_peek); next consumes it *)
     let peek(src: Source): Int =
         if not(more(src)) then ~1
         else
@@ -928,6 +999,7 @@ export
         while {peek(src) is 32} orif {peek(src) is 9} orif {peek(src) is 10} orif {peek(src) is 13} do skip(src) end
     let expect(src: Source c: Int): Ok = if next(src) isnot c then fail() end
 
+    (* A hex digit's value; dynamic.error for any other character *)
     let hexValue(c: Int): Int =
         if {c >= 48} andif {c <= 57} then c - 48
         elsif {c >= 97} andif {c <= 102} then c - 87
@@ -937,7 +1009,9 @@ export
             0
         end
 
-    (* A JSON string's bytes: a \u escape of one below 256 is that byte *)
+    (* A JSON string's bytes (quest_parse_json_string): a \u escape of one
+     * below 256 is that byte. dynamic.error for an unterminated string, an
+     * unknown escape, or a \u escape above 255, since a character is a byte *)
     let readString(src: Source): String =
         begin
             expect(src 34)
@@ -1038,6 +1112,8 @@ export
             if next(src) isnot ascii.val(stringOp.getChar(word i)) then fail() end
         end
 
+    (* The JSON value at src, after any whitespace (quest_parse_json_value),
+     * leaving src just after it; dynamic.error for malformed JSON *)
     let rec readJson(src: Source): J =
         begin
             skipSpace(src)
@@ -1123,6 +1199,11 @@ export
             end
         end
 
+    (* Access to JSON values, raising dynamic.error where the shape is wrong:
+     * get gives an object's value for a key (none for a missing key or a
+     * non-object), must requires one, size counts an object's keys or an
+     * array's items (0 for anything else), items gives an array's, and
+     * stringOf a string's text *)
     let get(j: J key: String): maybe.T(J) =
         case j
             when jObject with o then
@@ -1180,8 +1261,11 @@ export
             d
         end
 
+    (* A document's type table: a descriptor for each node, by index *)
     Def Types = Tuple descs: Array(Desc) end
 
+    (* The descriptor of a type reference: a node's index in t, or a built-in
+     * type's name (quest_table_ref) *)
     let tableRef(t: Types r: J): Desc =
         case r
             when jInt with x then
@@ -1232,7 +1316,7 @@ export
     (* A descriptor for every node of the table: first each node's kind and
      * its parts' count, then the parts, which may refer to any node; then
      * the representations of abstract types checked against the ones their
-     * modules register *)
+     * modules register (quest_read_type_table) *)
     let readTypes(j: J): Types =
         begin
             let nodes = items(j)
@@ -1286,6 +1370,8 @@ export
                 elsif k is core.kindOpaque then
                     let args = get(node "args")
                     let xs = if maybe.isSome(:J args) then items(maybe.unwrap(:J args)) else array of :J end end
+                    (* its arguments, then the representation the document
+                     * records, flagged 16 so that it is not taken for one *)
                     for a = 0 upto extent xs - 1 do core.setPart(d a tableRef(t xs[a]) "") end
                     core.setPart(d extent xs tableRef(t must(get(node "rep"))) "rep")
                     core.setFlags(d extent xs 16)
@@ -1333,6 +1419,7 @@ export
                             core.setPart(d a tableRef(t ps[a].ref) labelName(ps[a].label))
                             if labelVar(ps[a].label) then core.setFlags(d a 1) end
                         end
+                        (* its bound, if it has one, a last part flagged 32 *)
                         case must(get(v "bound"))
                             when jNull then ok
                             else
@@ -1376,6 +1463,8 @@ export
      * Reading: values
      * ====================================================================== *)
 
+    (* The objects read with an "@id", each with the type it was read at, for
+     * the "@ref"s after it (QReadContext) *)
     Def IdEntry = Tuple id: Int value: Any desc: Desc end
     Def Context = Tuple types: Types var ids: Array(IdEntry) var count: Int end
 
@@ -1385,6 +1474,8 @@ export
             for i = 0 upto cx.count - 1 do if {found < 0} andif {cx.ids[i].id is id} then found := i end end
             found
         end
+    (* Enters value, of type d, under the id idNode (quest_id_insert);
+     * dynamic.error for an id that is not an integer or is given twice *)
     let insertId(cx: Context idNode: J value: Any d: Desc): Ok =
         case idNode
             when jInt with x then
@@ -1401,7 +1492,7 @@ export
         end
 
     (* {"@ref": n}: the object, at d, from the type it was read at, which must
-     * be a subtype of d *)
+     * be a subtype of d (quest_read_ref); none if node has no "@ref" *)
     let readRef(cx: Context node: J d: Desc): maybe.T(Any) =
         begin
             let r = get(node "@ref")
@@ -1419,6 +1510,13 @@ export
             end
         end
 
+    (* The value of type d0 that node writes, as slots hold it
+     * (quest_read_value). A record, tuple, or array with an "@id" is made
+     * with its slots unfilled and entered in cx before its components are
+     * read, so that an "@ref" to it inside it, a cycle, finds it.
+     * dynamic.error when node does not fit d0: the wrong JSON kind, a missing
+     * or extra field or component, an unknown case, or a bad "@id" or
+     * "@ref" *)
     let rec readValue(cx: Context node: J d0: Desc): Any =
         begin
             let d = concrete(d0)
@@ -1572,6 +1670,9 @@ export
             end
         end
 
+    (* quest_dynamic_intern: a document of exactly the keys "quest" (version
+     * 1), "types", "type", and "value", whose value is read at its type and
+     * made a dynamic value *)
     let intern(rd: reader.T): Any =
         begin
             let root = readJson(tuple let rd = rd end)

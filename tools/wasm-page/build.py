@@ -91,11 +91,14 @@ def built_from(data: bytes, commit: str | None) -> bytes:
 
 
 def stamped(name: str, data: bytes, stamp: str) -> bytes:
-    """A page's script or HTML file with the build's stamp: each import of
-    another of its scripts, and each archive fetched, named with ?v=STAMP,
-    so that a cache never pairs one build's files with another's; and
-    page.mjs's BUILD, which it checks against the driver archive's stamp
-    member (wasm-review.md section 2.3, 5)"""
+    """data, the page's file name, with the build's stamp written in, so
+    that a browser's cache or a partial deployment never pairs one build's
+    files with another's (docs/wasm-review.md section 2.3, 5). In a script or
+    HTML file, each quoted name of one of the page's scripts ("./ui.mjs")
+    gets ?v=STAMP, a URL of its own for each build. In page.mjs, BUILD, "dev"
+    in the sources, becomes the stamp: page.mjs adds it to the archives' URLs
+    in the same way and checks it against the driver archive's stamp member.
+    Other files are returned unchanged."""
     if not (name.endswith(".mjs") or name.endswith(".html")):
         return data
     text = data.decode()
@@ -108,6 +111,10 @@ def stamped(name: str, data: bytes, stamp: str) -> bytes:
 
 
 def build_driver(driver: str, build_dir: Path) -> Path:
+    """The driver's program module, build_dir/quest.wasm, compiled by driver
+    with --backend wasm; -o writes the runtime's module and the list of units
+    beside it, and the units' objects and .qi files go to build_dir/build.
+    Exits with the compiler's output if it fails."""
     target = build_dir / "quest.wasm"
     environment = {**os.environ, "QUEST_HOME": str(ROOT)}
     result = subprocess.run([driver, "--backend", "wasm", "--build-dir", str(build_dir / "build"), "-o", str(target),
@@ -119,8 +126,9 @@ def build_driver(driver: str, build_dir: Path) -> Path:
 
 
 def driver_members(program: Path) -> list[tuple[str, bytes]]:
-    """The driver's modules: the runtime's, the program's, and the units', in
-    the order they are instantiated"""
+    """The driver's modules, as archive members: the runtime's, the
+    program's, and each unit's as units/NAME, in the order they are
+    instantiated. program.units lists the units as NAME=PATH."""
     members = [("runtime.wasm", Path(f"{program}.runtime.wasm").read_bytes()), ("program.wasm", program.read_bytes())]
     for entry in Path(f"{program}.units").read_text().split():
         name, _, file = entry.partition("=")

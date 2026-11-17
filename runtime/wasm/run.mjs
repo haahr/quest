@@ -1,15 +1,16 @@
-// Runs a program the wasm backend compiled (docs/wasm-plan.md, steps 3 and 9) in node:
+// Runs a program the wasm backend compiled (docs/wasm-plan.md, steps 3 and
+// 9) in node:
 //
 //     node --no-warnings run.mjs [--module NAME=UNIT.wasm]... RUNTIME.wasm PROGRAM.wasm [ARG...]
 //
-// The runtime module (questlang/wasm/runtime) is instantiated first, over WASI's
-// first preview as node:wasi provides it, with the program's arguments, the
-// environment, and two directories opened: / for absolute paths and . for the
-// rest, as the driver opens them for wasmtime. Then each unit's module, named by
-// its canonical name, in the order given, which puts each after those it
-// imports, and last the program's, each over the exports of those before it, as
-// wasmtime's --preload links them; then the program's _start runs. Bytes cross
-// through the runtime's memory (section 4.4).
+// The runtime module (questlang/wasm/runtime) is instantiated first, over
+// WASI's first preview as node:wasi provides it, with the program's
+// arguments, the environment, and two directories opened: / for absolute
+// paths and . for the rest, as the driver opens them for wasmtime. Then each
+// unit's module, named by its canonical name, in the order given, which puts
+// each after those it imports, and last the program's, each over the exports
+// of those before it, as wasmtime's --preload links them; then the program's
+// _start runs. Bytes cross through the runtime's memory (section 4.4).
 
 import fs from "node:fs";
 import process from "node:process";

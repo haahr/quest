@@ -1,6 +1,20 @@
-# Generates the step-0 probes of docs/wasm-plan.md as WebAssembly text.
+"""Writes the step-0 probes of docs/wasm-plan.md (their results are in
+section 9) as WebAssembly text, NAME.wat here for each; build.sh assembles
+them, run.mjs, stack.mjs, and limits.mjs run them in node, and wt.sh and
+wtlimits.sh in wasmtime. Each measures a choice of the value representation
+(section 2) on shapes the compiler uses: a tuple as a slot array or a flat
+struct (tuples); an array of eqref or of i64, at a known type (arrays) and
+through another module's generic get and set (vec, called by user); a
+parameter of its precise type or an eqref cast on entry (vec and user); the
+stack's depth with many locals and few (stack); and each engine's largest
+array (limits)."""
 import os
 HERE = os.path.dirname(os.path.abspath(__file__))
+# The types the probes share, a subset of section 2's. $boxInt holds an Int
+# too wide for an i31ref. $tuple is decision 1's tuple, its components in a
+# slot array, and $tup4 the flat struct of four fields it is measured against.
+# $arrayEq and $arrayI64 are an array of eqref or of i64 elements, the two
+# subtypes of $array that vec tells apart by a cast.
 PRELUDE = '''
  (rec
   (type $boxInt (struct (field i64)))
@@ -17,17 +31,29 @@ PRELUDE = '''
  )
 '''
 def box(x):
+    """Text for x, an i64 expression, as an eqref (section 2.2): an i31ref if
+    the value equals the sign extension of its low 31 bits (shifted left 33
+    and back), else a $boxInt. The function must declare an i64 local $bx."""
     return f'''(block (result eqref) (local.set $bx {x})
       (if (result eqref) (i64.eq (i64.shr_s (i64.shl (local.get $bx) (i64.const 33)) (i64.const 33)) (local.get $bx))
         (then (ref.i31 (i32.wrap_i64 (local.get $bx))))
         (else (struct.new $boxInt (local.get $bx)))))'''
 def unbox(x):
+    """Text for x, an eqref expression made by box, as an i64: an i31ref's
+    value, sign-extended, or else the $boxInt's field"""
     return f'''(block $done (result i64)
         (block $isbox (result eqref)
           (br $done (i64.extend_i32_s (i31.get_s (br_on_cast_fail $isbox eqref (ref i31) {x})))))
         (struct.get $boxInt 0 (ref.cast (ref $boxInt))))'''
 
 def tuples():
+    """The tuples probe (section 9.1): buildA and buildB make a complete
+    binary tree of depth d, each node a tuple of a kind (d itself), a span,
+    and two children (i31 zeros at the leaves); walkA and walkB sum the kinds
+    and spans. A's tuples are $tuple, B's $tup4. With big, a node's span is
+    id * 2^32 + d, full-width as a merged file's span is, and so boxed;
+    without, it is id, which fits 31 bits. runA and runB build a tree builds
+    times, then walk the last one walks times and return the walks' sum."""
     def variant(v):
         if v == 'A':
             ty = '$tuple'
@@ -66,9 +92,16 @@ def tuples():
    (local.get $acc))'''
     return f'(module {PRELUDE} {variant("A")} {variant("B")})'
 
+# The value stored at index i: i, which fits 31 bits, or with $big, i times
+# an odd 64-bit constant, full-width as a Word hash is
 VAL = '(select (i64.mul (local.get $i) (i64.const 0x9E3779B97F4A7C15)) (local.get $i) (local.get $big))'
 
 def arrays():
+    """The arrays probe at a known element type (section 9.2): fillEq and
+    fillI make an array of n elements of VAL, as eqref (boxing those that do
+    not fit 31 bits, decision 2) or as i64; sumEq and sumI add them up.
+    runEq and runI fill an array fills times, then sum the last one sums
+    times."""
     def runner(v, ty, fill, summ):
         return f'''
  (func (export "run{v}") (param $n i32) (param $big i32) (param $fills i32) (param $sums i32) (result i64)
@@ -107,6 +140,13 @@ def arrays():
 )'''
 
 def vec():
+    """The module that user calls, standing for a generic vector in another
+    unit (sections 9.2 and 9.3). U arrays are $arrayEq ("uniform"), T arrays
+    $arrayI64 ("typed"); getT and setT find which by a cast, and for a typed
+    array box what they return and unbox what they are given. Every get and
+    set checks its index, trapping (unreachable) when it is out of bounds.
+    fPrecise and fCast read a field of a string, a tuple, and an array, given
+    at their own types or as eqrefs that are cast on entry (decision 3)."""
     bounds = lambda s: f'(if (i64.ge_u (local.get $i) (i64.extend_i32_u (array.len (local.get {s})))) (then (unreachable)))'
     tcast = '(br_on_cast_fail $eq (ref $array) (ref $arrayI64) (ref.cast (ref $array) (local.get $a)))'
     lens = '''(i64.extend_i32_u (i32.add (struct.get $string $len (local.get $s))
@@ -156,6 +196,10 @@ def vec():
 )'''
 
 def user():
+    """The module that calls vec through imports, as code in another unit
+    would: runU and runT set every element of an n-element array fills
+    times, then get them all sums times and return their sum; callPrecise
+    and callCast call fPrecise or fCast n times."""
     def run(v):
         return f'''
  (func (export "run{v}") (param $n i32) (param $big i32) (param $fills i32) (param $sums i32) (result i64)
@@ -200,6 +244,12 @@ def user():
 )'''
 
 def stack(nlocals=40):
+    """The stack probe (section 9.4): recursive functions, each counting its
+    calls in the exported global depth, so that stack.mjs can read how deep
+    it went before the engine's RangeError. distinct has nlocals i64 locals,
+    each computed from the one before; reused does the same steps in two
+    locals; small has no locals. In distinct and reused, n and acc are live
+    across the recursive call."""
     out = []
     for reuse, nm in ((False, 'distinct'), (True, 'reused')):
         name = (lambda i: f'$l{i % 2}') if reuse else (lambda i: f'$l{i}')
@@ -223,6 +273,9 @@ def stack(nlocals=40):
     return f'''(module (global $depth (export "depth") (mut i32) (i32.const 0)) {''.join(out)})'''
 
 def limits():
+    """The limits probe (section 9.4): newEq, newI64, and newI8 make an array
+    of n elements of each kind and return its length, for limits.mjs and
+    wtlimits.sh to find by bisection the largest n that does not trap"""
     return f'''(module {PRELUDE}
  (func (export "newEq") (param i32) (result i32) (array.len (array.new_default $slots (local.get 0))))
  (func (export "newI64") (param i32) (result i32) (array.len (array.new_default $i64s (local.get 0))))

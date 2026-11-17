@@ -1,4 +1,5 @@
-// The deepest recursion of each function, on this thread and in a worker of 512 KB of stack.
+// The deepest recursion of each function, on node's main thread and in
+// workers of 512 KB and 1 MB of stack.
 import { readFileSync } from 'node:fs';
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
 const measure = () => {

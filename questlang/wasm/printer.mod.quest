@@ -23,7 +23,9 @@ export
      * Numbers, names, and strings
      * ====================================================================== *)
 
-    (* n in decimal, with - for a negative one, as the text format has it *)
+    (* n in decimal, with - for a negative one, as the text format has it
+     * (conv.int writes ~). The magnitude is written as an unsigned word, so
+     * that the least Int, whose negation is itself, comes out right *)
     let signed(n: Int): String =
         if n >= 0 then conv.int(n)
         else
@@ -201,7 +203,9 @@ export
     Def Context = Tuple locals: Array(String) labels: vector.T(String) end
 
     (* A branch's target at depth d: its label's name, if it has one and no
-     * label within it has the same name, else d *)
+     * label within it has the same name (the text format takes a name to
+     * the innermost label of that name), else d. Depth n, past every block,
+     * is the function's body *)
     let label(c: Context d: Int): String =
         begin
             let n = vector.length(:String c.labels)
@@ -350,7 +354,8 @@ export
         end
 
     (* Instructions flat, one to a line, after indent spaces and two more for
-     * each structured instruction they are in *)
+     * each structured instruction they are in; an else or an end is
+     * indented as its block's start is *)
     let instructions(b: Builder m: Module ns: Names c: Context insts: vector.T(Inst) indent: Int): Ok =
         for k = 0 upto vector.length(:Inst insts) - 1 do
             let i = vector.get(:Inst insts k)

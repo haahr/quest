@@ -1,5 +1,6 @@
 #!/bin/sh
-# The largest array of each element kind that wasmtime will make, by bisection (a process for each try).
+# The largest array of each element kind that wasmtime will make, by
+# bisection (a process for each try).
 cd "$(dirname "$0")" || exit 1
 W="wasmtime run -W gc=y,function-references=y -C collector=copying"
 for f in newEq newI64 newI8; do

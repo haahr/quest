@@ -1,9 +1,9 @@
-"""The wasm backend's table of the library's externals covers lib/ (docs/wasm-plan.md
-section 4.2 and step 9): every external value and function a module of lib/
-binds names a C symbol that questlang/wasm/codegen compiles, by name, or is one
-this target lacks for now, listed here with what it waits for. A symbol on
-neither list is one a change to lib/ added and the table missed; one on both
-is one the table has since learned, to take off LACKING.
+"""The wasm backend's table of the library's externals covers lib/
+(docs/wasm-plan.md section 4.2 and step 9): every external value and function
+a module of lib/ binds names a C symbol that questlang/wasm/codegen compiles,
+by name or by prefix, or is one listed in LACKING with the reason the table
+does not. A symbol on neither list is one a change to lib/ added and the
+table missed; one on both is one the table compiles, to take off LACKING.
 
     python -m unittest tests.python.test_wasm_externals
 """
@@ -17,10 +17,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 CODEGEN = ROOT / "questlang" / "wasm" / "codegen.mod.quest"
 
-# The externals the table compiles to a failure when called, by what they wait for
+# The externals of lib/ the table does not compile, each with why
 LACKING = {
-    # dynamic's serialization, which the module's wasm variant writes in Quest
-    # (step 18), so that the table never sees them
+    # dynamic's serialization, bound in lib/dynamic.mod.quest; on this target
+    # lib/dynamic.wasm.mod.quest, the module's wasm variant, replaces it and
+    # writes them in Quest (step 18), so the table never sees them
     "quest_dynamic_extern", "quest_dynamic_intern",
 }
 
@@ -28,6 +29,8 @@ EXTERNAL = re.compile(r'\blet\s+\w+[^=]*=\s*external\s+"([^"]+)"')
 
 
 def library_externals() -> set[str]:
+    """The C symbols every module of lib/ binds with external, its wasm
+    variants included"""
     symbols = set()
     for path in (ROOT / "lib").rglob("*.mod.quest"):
         symbols.update(EXTERNAL.findall(path.read_text()))

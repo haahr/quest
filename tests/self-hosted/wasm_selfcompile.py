@@ -73,6 +73,9 @@ def compare(native: Path, wasm: Path) -> list[str]:
 
 
 def check(driver: str, driver_wasm: str | None) -> list[str]:
+    """What differs between the wasm driver that driver builds (or
+    driver_wasm, if given) and the one it builds of itself in node, or why
+    either build failed; nothing where node is missing"""
     if shutil.which("node") is None:
         return []
     with tempfile.TemporaryDirectory() as d:

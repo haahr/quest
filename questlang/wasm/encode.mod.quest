@@ -99,6 +99,10 @@ export
      * Types
      * ====================================================================== *)
 
+    (* An abstract heap type is one byte; a type index is a signed LEB128
+     * number, as is a block type's index, so that its first byte, positive,
+     * is never taken for an abstract type's code, which read signed is
+     * negative *)
     let heapType(b: Builder h: HeapType): Ok =
         case h
             when heapAny then byte(b 0x6E) when heapEq then byte(b 0x6D) when heapI31 then byte(b 0x6C)
@@ -269,6 +273,7 @@ export
                 heapType(b x.type.heap)
             when instBrOnCast with x then
                 opcode(b 0xFB if x.fail then 25 else 24 end)
+                (* flags: bit 0 the source type nullable, bit 1 the target *)
                 byte(b {if x.from.nullable then 1 else 0 end} + {if x.to.nullable then 2 else 0 end})
                 u32(b x.label)
                 heapType(b x.from.heap)
@@ -408,7 +413,8 @@ export
             section(b 8 s)
         end
 
-    (* The functions ref.func takes, in one declarative segment of funcref *)
+    (* The functions ref.func takes, in one declarative segment (flags 3) of
+     * function indices (element kind 0, funcref) *)
     let elementSection(b: Builder m: Module): Ok =
         if vector.length(:Int m.declared) > 0 then
             let s = sb.new()
@@ -600,6 +606,10 @@ export
             else array of :String end
         end
 
+    (* The custom section "name", its subsections by id in increasing order,
+     * as the format requires: 0 the module, 1 functions, 2 locals, 3
+     * labels, 4 types, 6 memories, 7 globals, 9 data segments, 10 fields,
+     * and 11 tags; one with no names is left out *)
     let nameSection(b: Builder m: Module): Ok =
         begin
             let s = sb.new()
@@ -665,6 +675,9 @@ export
             let b = sb.new()
             (* The magic number, "\0asm", and the version, 1 *)
             sb.str(b "\x00asm\x01\x00\x00\x00")
+            (* The sections in the order the format requires, which is not
+             * their ids': the tag section (13) between memory and global, the
+             * data count (12) before code *)
             typeSection(b m)
             importSection(b m)
             functionSection(b m)

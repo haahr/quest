@@ -1,4 +1,11 @@
-(* Quest Self-Hosted Compiler: The wasm Code Generator Implementation *)
+(* Quest Self-Hosted Compiler: The wasm Code Generator Implementation
+ *
+ * The interface says what it compiles. docs/wasm-plan.md specifies the
+ * representation it follows (section 2), closures (section 3), and a module
+ * for each unit (section 5.1). The module's sections, by their banners: the
+ * module's and a function's state, closures' types, values, aggregates,
+ * descriptors, the library's externals, statements, and the unit as a
+ * whole. *)
 
 module codegen : Codegen
 import
@@ -44,12 +51,14 @@ export
      * The module's state
      * ====================================================================== *)
 
-    (* What compiling the unit's functions shares: the module made; each
-     * global variable's global, each function's index (by Function.id), and
-     * each known closure (walk.knownClosures), by variable id; the runtime's
-     * functions by field; the function types made, by their text; the string
-     * literals' bytes, the one data segment; and the names given, so that each
-     * is given once *)
+    (* What compiling the unit's functions shares: the module made; the ids of
+     * the unit's global variables (walk.globalVariables), each one's global,
+     * each function's index (by Function.id), and each known closure
+     * (walk.knownClosures), by variable id; the runtime's functions by field;
+     * the function types made, by their text; the string literals' bytes, the
+     * one data segment; the names given, so that each is given once; and the
+     * records' field tables made (dict), by their view's and layout's shape
+     * ids *)
     Def G = Tuple
         unit: ir.Unit
         m: model.Module
@@ -68,8 +77,10 @@ export
         (* Closures (section 3.1): the closure types by signature, each
          * function's own closure type, static closure, and uniform entry,
          * by its id; the types each function captures; the functions by
-         * id; the functions declared for ref.func; and the closure passed
-         * to a direct call of a function that captures nothing *)
+         * id; the functions declared for ref.func; the global of the closure
+         * passed to a direct call of a function that captures nothing; and
+         * the static closures of built-in operators used as values
+         * (builtinClosure), by operator *)
         closTypes: hashMap.T(String Int)
         ownTypes: hashMap.T(Int Int)
         staticClosures: hashMap.T(Int Int)
@@ -174,18 +185,20 @@ export
                 model.eqref
         end
 
-    (* The values a value of type t is held as: two for a record, its payload
-     * and its view's table, and two for a variant, its tag and its payload
-     * (section 2.5); two for a location, a slot array and an index in it
-     * (section 2.6); else one *)
     let isRecord(t: ir.Type): Bool = layout.representationKind(t)?repRecord
     let isVariant(t: ir.Type): Bool = layout.representationKind(t)?repVariant
     let locationParts = array of model.refNull(rt.index("slots")) model.i32 end
+    (* Whether t is the type of a location (section 2.6): a cell's, or an
+     * out parameter's *)
     let isLocation(t: ir.Type): Bool =
         begin
             let s = layout.resolvedShape(shapes.shape(t))
             shapes.kindIs(s shapes.shapeCell) orif shapes.kindIs(s shapes.shapeOut)
         end
+    (* The values a value of type t is held as: two for a record, its payload
+     * and its view's table, and two for a variant, its tag and its payload
+     * (section 2.5); two for a location, a slot array and an index in it
+     * (section 2.6); else one *)
     let parts(t: ir.Type): Array(ValType) =
         if isRecord(t) then array of model.eqref model.eqref end
         elsif isVariant(t) then array of model.i32 model.eqref end
@@ -211,8 +224,9 @@ export
 
     (* A structured instruction open around the code being made: an IR
      * label's loop (its exit, a block, or its repetition, the loop), a join
-     * point (its continuation's entry, or the end after it), or an if *)
-    (* labelTry: a try's body, which a tail call would leave (insideTry) *)
+     * point (its continuation's entry, or the end after it), an if, or a
+     * try's body (labelTry), inside which a call is never a tail call, since
+     * a tail call would leave the try (insideTry) *)
     Def LabelKind = Option labelExit labelRepeat labelJoin labelAfter labelIf labelTry end
     Def Label = Tuple name: String kind: LabelKind end
 
@@ -251,8 +265,8 @@ export
          * body, which repeats, or a try's *)
         var after: maybe.T(ir.Stmt)
         (* An accumulating recursion's (accumulation): the operation its
-         * results combine with, 0 for none, 1 for +, 2 for times, and its accumulator's
-         * local *)
+         * results combine with, 0 for none, 1 for +, 2 for times, and its
+         * accumulator's local *)
         var accOp: Int
         var accLocal: Int
     end
@@ -421,9 +435,6 @@ export
             let composite = option compStruct of model.Composite with let fields = fields end
         end
 
-    (* A function type's closure signature (section 3.2): its parameters'
-     * and result's parts, after the closure; and how many parameters it has
-     * in Quest *)
     (* A function type's quantifiers' type parameters, how many, and its
      * body, a function's shape or, for a type-only function, its result's *)
     Def Quantified = Tuple count: Int body: shapes.Shape end
@@ -443,6 +454,10 @@ export
     let typeOnlySig(q: Quantified): Signature =
         tuple let params = array of(q.count model.eqref) let results = parts(q.body.type) end
 
+    (* A function type's closure signature (section 3.2): a descriptor for
+     * each of its quantifiers' type parameters, then each parameter's parts
+     * (a location's for a var or out parameter), and its result's parts; the
+     * closure itself, which comes first, is not among them (withClosure) *)
     let closureSig(t: ir.Type): Signature =
         begin
             let q = quantified(t)
@@ -576,6 +591,9 @@ export
             at
         end
 
+    (* Declares the function index for ref.func, once: WebAssembly lets a
+     * function's code take a reference only to a function the module
+     * declares (model.Module.declared) *)
     let declare(g: G index: Int): Ok =
         if not(hashMap.contains(:Int :Bool g.declaredFns index)) then
             hashMap.insert(:Int :Bool g.declaredFns index true)
@@ -732,6 +750,8 @@ export
                 let results = array of if boxing then model.eqref else model.i64 end end
                 let f = newF(g array of if boxing then "n" else "e" end end results ~1)
                 if boxing then
+                    (* n fits in 31 bits when n + 2^30, read as unsigned, is
+                     * below 2^31 *)
                     emit(f i1(ops.localGet 0))
                     emit(f model.i64Const(0x40000000))
                     emit(f i(ops.i64Add))
@@ -746,6 +766,8 @@ export
                     emit(f i1(ops.structNew tBoxInt))
                     emit(f model.endInst)
                 else
+                    (* an i31 branches out of the block to be sign-extended;
+                     * anything else is a $boxInt, whose i64 it returns *)
                     emit(f model.blockInst(option blockValue of model.BlockType with
                         let type = model.refTo(false i31)
                     end "small"))
@@ -775,6 +797,8 @@ export
             end
         end
 
+    (* A call of the runtime's function field (boxInt and unboxInt the
+     * unit's own copies); unsupported if the runtime has none *)
     let runtimeCall(f: F field: String): Ok =
         if stringOp.equal(field "boxInt") orif stringOp.equal(field "unboxInt") then
             emit(f i1(ops.call intBoxing(f.g field)))
@@ -783,7 +807,6 @@ export
         else fail("the runtime's " <> field)
         end
 
-    (* Raises the run-time error named name at the operation's offset *)
     (* A built-in exception's global, imported from the runtime first *)
     let builtinException(name: String): Int =
         begin
@@ -801,6 +824,8 @@ export
         else maybe.unwrapOr(:String ir.site(f.g.unit maybe.unwrap(:Int offset)) "")
         end
 
+    (* Raises the built-in exception named name, with payload Ok, at the
+     * site of offset, through the runtime's raise; nothing follows it *)
     let raiseAt(f: F name: String offset: maybe.T(Int)): Ok =
         begin
             emit(f i1(ops.globalGet builtinException(name)))
@@ -818,6 +843,7 @@ export
     let notNaN(f: F offset: maybe.T(Int)): Ok =
         begin
             let r = scratch(f model.f64)
+            (* a NaN is the one value not equal to itself *)
             emit(f i1(ops.localTee r))
             emit(f i1(ops.localGet r))
             emit(f i(ops.f64Ne))
@@ -847,8 +873,10 @@ export
             emit(f i(ops.i64TruncSatF64S))
         end
 
-    (* How the uncaught report writes a payload of type t (the runtime's show):
-     * by the kind echo writes it by; 9 for one that needs a descriptor *)
+    (* How the uncaught report writes a payload of type t: the kind the
+     * runtime's show and raise take, 1 to 8 for a value echo writes with no
+     * descriptor (Int, Bool, Char, String, Ok, Word, a function, an abstract
+     * type's value, in that order), 9 for one that needs a descriptor *)
     let payloadKind(t: ir.Type): Int =
         begin
             let kind = describe.echoValueKind(t)
@@ -882,11 +910,15 @@ export
      * Descriptors (section 4.5)
      * ====================================================================== *)
 
-    (* Whether the unit is one of the runtime's, which import no runtime
-     * unit but the core *)
+    (* Whether the unit named name is one of the runtime's, which import no
+     * runtime unit but the core *)
     let isRuntimeUnit(name: String): Bool =
         stringOp.equal(name "wasm/core") orif stringOp.equal(name "wasm/print")
 
+    (* A call of the runtime unit's function key ("wasm/core.member"). A
+     * Quest function's native entry takes its closure first, so the caller
+     * pushes noClosure's global before the arguments; a host function
+     * (quest.host) takes none *)
     let runtimeUnitCall(f: F key: String): Ok =
         if hashMap.contains(:String :Int f.g.runtimeUnits key) then
             emit(f i1(ops.call hashMap.find(:String :Int f.g.runtimeUnits key)))
@@ -909,7 +941,8 @@ export
             found
         end
     (* The C runtime's descriptors, which staticdata names by symbol, and
-     * their kinds; every bound variable is one, written <hidden> *)
+     * their kinds (kindOf's numbers); quest_type_bound_vars is the bound
+     * variable of index 0, the others made by the core's boundVar *)
     let baseSymbols = array of
         "quest_type_Int" "quest_type_Real" "quest_type_Bool" "quest_type_Char" "quest_type_String" "quest_type_Ok"
         "quest_type_Word" "quest_type_EmptyTuple" "quest_type_bound_vars"
@@ -965,6 +998,9 @@ export
         else raise unsupported with "the descriptor " <> symbol <> ", which the unit does not make" end
         end
 
+    (* The form of static descriptor d: its echo form when d is echoed and has
+     * one, else its plain form; unsupported if staticdata cannot describe
+     * it *)
     let formOf(g: G d: ir.StaticDescriptor): staticdata.DescriptorForm =
         try
             let naming = maybe.some(:staticdata.RecordNaming g.naming)
@@ -977,8 +1013,10 @@ export
         when staticdata.missingDescriptor with msg then raise unsupported with "a descriptor: " <> msg end
         end
 
-    (* A descriptor operand's value, an eqref: a static one's global; a
-     * descriptor variable's and an instantiation come with step 7 *)
+    (* A descriptor operand's value, an eqref: a static one's global (a bound
+     * variable's past index 0 from the core's boundVar); a descriptor
+     * variable's value; or an instantiation, its template's descriptor with
+     * the arguments filling its holes (the core's instantiate) *)
     let rec descriptor(f: F d: ir.Descriptor): Ok =
         case d
             when descStatic with x then
@@ -991,7 +1029,6 @@ export
                 end
             when descVar with x then atomParts(f ir.atomOfVar(x.v))
             when descInstantiate with x then
-                (* the template's, its holes filled by the core *)
                 let form = try staticdata.descriptorForm(x.template maybe.some(:staticdata.RecordNaming f.g.naming))
                     when staticdata.missingDescriptor with msg then
                         fail("a descriptor: " <> msg)
@@ -1017,6 +1054,10 @@ export
      * a quantifier's bound, 32 an auto type's bound) *)
     Def Part = Tuple label: String ref: staticdata.Ref flags: Int end
 
+    (* Descriptor d's parts, in the order wasm/core numbers them: a tuple's
+     * elements, a record's fields, an option's or variant's cases by tag, an
+     * array's element, an exception's payload, and the rest as below; none
+     * for any other kind *)
     let partsOf(d: staticdata.Descriptor): Array(Part) =
         begin
             let flagged = fun(label: maybe.T(String) r: staticdata.Ref flags: Int): Part
@@ -1037,8 +1078,8 @@ export
                     end
                     ps
                 end
-            (* a function type's parameters, each by its mode, then its
-             * result *)
+            (* a function type's parameters, each flagged by its mode, then
+             * its result, then its quantifiers' bounds *)
             let function = fun(params: Array(staticdata.FunParam) result: staticdata.Ref bs: Array(staticdata.Ref)): Array(Part)
                 begin
                     let n = extent params
@@ -1085,6 +1126,8 @@ export
             end
         end
 
+    (* A tuple descriptor's texts for its type components, each with its
+     * position; none for any other descriptor *)
     let textsOf(d: staticdata.Descriptor): Array(staticdata.TypeComponentText) =
         case d.payload
             when payloadTuple with x then x.typeComponents
@@ -1138,6 +1181,7 @@ export
                         emit(f model.i64Const(0))
                         callCore("newDesc")
                     elsif stringOp.isEmpty(ps[j].ref.symbol) then
+                        (* no descriptor: the core's of kind none *)
                         noClosure()
                         emit(f model.i64Const(0))
                         callCore("base")
@@ -1173,13 +1217,14 @@ export
         end
 
 
-    (* The value on the stack, of type t, as a slot holds it (section 4.1):
-     * an Int or Word an i31 or a box, a Bool or Char an i31, a reference
-     * itself *)
     let tRecord = rt.index("record")
     let tDict = rt.index("dict")
     let tRecBox = rt.index("recBox")
     let tVarBox = rt.index("varBox")
+    (* The value on the stack, of type t, as a slot holds it (sections 2.1
+     * and 4.1): an Int or Word an i31 or a $boxInt, a Real a $boxReal, a Bool
+     * or Char an i31, a record's two parts a $recBox and a variant's a
+     * $varBox, a reference itself *)
     let box(f: F t: ir.Type): Ok =
         if isVariant(t) then emit(f i1(ops.structNew tVarBox))
         elsif isRecord(t) then
@@ -1198,6 +1243,7 @@ export
                 else ok
             end
         end
+    (* The slot's eqref on the stack as a value of type t, box's inverse *)
     let unbox(f: F t: ir.Type): Ok =
         if isVariant(t) then
             let b = scratch(f model.refNull(tVarBox))
@@ -1301,8 +1347,10 @@ export
         end
     let atomFor(f: F a: ir.Atom v: ir.Variable): Ok = atomAs(f a v.boxed)
 
-    (* Ends the program at what step 4 cannot run: a proxy, which nothing in
-     * the compiler makes (section 10.1) *)
+    (* Ends the program, through the runtime's fatal with status 1, saying
+     * that this backend does not run what yet: a proxy in the runtime's own
+     * units, a library external the target lacks, a module's function it
+     * could not compile *)
     let pending(f: F what: String): Ok =
         begin
             literal(f "wasm: " <> what <> ", which this backend does not yet run\n")
@@ -1380,7 +1428,8 @@ export
 
     (* --- Tuples --- *)
 
-    (* A new tuple of the atoms, each boxed as its slot holds it *)
+    (* A new tuple of the atoms, each boxed as its slot holds it; at most
+     * 10,000, array.new_fixed's limit of operands (section 2.11) *)
     let newTuple(f: F args: Array(ir.Atom)): Ok =
         begin
             if extent args > 10000 then fail("a tuple of more than 10,000 components") end
@@ -1390,9 +1439,10 @@ export
             emit(f i1(ops.structNew tTuple))
         end
 
-    (* The eqref on the stack, which may be a proxy, read: a field of the
-     * struct t (or element index of its slots, if index >= 0) when it is
-     * one, else the core's function through, as an i32 tag or an eqref *)
+    (* The eqref on the stack, which may be a proxy, read: when it is a t,
+     * its field (an i32, the tag) or, if index >= 0, element index of its
+     * slots (an eqref); else, a proxy, the same read through the core's
+     * function through *)
     let proxyAware(f: F t: Int field: Int index: Int through: String): Ok =
         begin
             let v = scratch(f model.eqref)
@@ -1417,8 +1467,8 @@ export
             emit(f model.endInst)
         end
 
-    (* Through a view map (section 4.2's core, quest_view_map): a call of
-     * the core's that takes the map, the map's variable's value *)
+    (* The value of view map m's variable, the argument after the closure of
+     * the core's functions that read through a view map (quest_view_map) *)
     let viewMapOf(f: F m: maybe.T(ir.Variable)): Ok = atomParts(f ir.atomOfVar(maybe.unwrap(:ir.Variable m)))
 
     (* The value on the stack, part i of a value read through a view map,
@@ -1434,6 +1484,9 @@ export
             runtimeUnitCall(f "wasm/core.viewPart")
         end
 
+    (* Component x.index of a tuple: an unboxed tuple's from its locals;
+     * else read from its slots, through a proxy or the view map when it may
+     * be read through one, and unboxed unless target is held boxed *)
     let tupleField(f: F x: ir.OpTupleField target: maybe.T(ir.Variable)): Ok =
         begin
             let s = shapeOf(ir.atomType(x.tup))
@@ -1502,6 +1555,8 @@ export
             a
         end
 
+    (* The access of a read of several components at once: original if any
+     * of theirs is not direct (each a proxy's original), else direct *)
     let anyIndirect(access: Array(ir.Access)): ir.Access =
         begin
             let var a = ir.direct
@@ -1556,6 +1611,9 @@ export
             end
         end
 
+    (* A new option of type t: of case x.tag, or, from an ordinal, of the
+     * case x.cases[ordinal], after a test that the ordinal is in range; the
+     * ordinal maps to the case's tag, its index in name order *)
     let makeOption(f: F x: ir.OpMakeOption t: ir.Type): Ok =
         begin
             let s = optionShape(t)
@@ -1611,7 +1669,8 @@ export
                 variantAtom(f value)
                 emit(f i(ops.drop))
             else
-                (* a proxy's tag in its own numbering, the view map's actual's *)
+                (* a proxy's tag in its own numbering, the view map's
+                 * actual's *)
                 tagOf(f value ir.proxy)
             end
             emit(f i1(ops.localSet tag))
@@ -1635,8 +1694,6 @@ export
             runtimeUnitCall(f "wasm/core.viewOptionComponent")
         end
 
-    (* opt!tag: a new tuple of the case's ordinal and then its components,
-     * after a test of the tag that raises variant.tagMismatch *)
     (* v!tag on a variant: its payload, after a test of the tag that raises
      * variant.tagMismatch *)
     let variantPayload(f: F x: ir.OpPayload t: ir.Type target: maybe.T(ir.Variable)): Ok =
@@ -1663,6 +1720,9 @@ export
             unboxFor(f t target)
         end
 
+    (* opt!tag: a new tuple of the case's ordinal and then its components,
+     * after a test of the tag that raises variant.tagMismatch; the
+     * components copied, never shared with the option *)
     let payload(f: F x: ir.OpPayload t: ir.Type): Ok =
         begin
             let s = optionShape(ir.atomType(x.value))
@@ -1845,6 +1905,8 @@ export
     let maxElements = 134217720
 
     (* Raises arrayOp.error unless the Int index is within the array *)
+    (* Raises arrayOp.error at offset unless index is in arr's bounds; the
+     * comparison is unsigned, so that a negative index fails it too *)
     let checkIndex(f: F arr: ir.Atom index: ir.Atom offset: maybe.T(Int)): Ok =
         begin
             atom(f index)
@@ -1860,6 +1922,7 @@ export
             emit(f model.endInst)
         end
 
+    (* The slots of arr and index as an i32, for array.get or array.set *)
     let elements(f: F arr: ir.Atom index: ir.Atom): Ok =
         begin
             atom(f arr)
@@ -1869,6 +1932,8 @@ export
             emit(f i(ops.i32WrapI64))
         end
 
+    (* A new array of the atoms, each boxed; at most 10,000, as for a
+     * tuple *)
     let makeArray(f: F args: Array(ir.Atom) t: ir.Type): Ok =
         begin
             if extent args > 10000 then fail("an array of more than 10,000 elements written out") end
@@ -1974,6 +2039,8 @@ export
             when primGe then compare(f x ops.i64GeS ops.i32GeU)
             when primIs, primIsnot then
                 if shapes.kindIs(shapeOf(ir.atomType(x.args[0])) shapes.shapeException) then
+                    (* the same exception, either one perhaps a handler's
+                     * state that holds it *)
                     for k = 0 upto 1 do
                         atom(f x.args[k])
                         runtimeCall(f "exceptionOf")
@@ -2019,6 +2086,8 @@ export
                     runtimeUnitCall(f "wasm/core.valIs")
                     if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
                 elsif isRecord(ir.atomType(x.args[0])) then
+                    (* the same payload, whatever the views: a boxed
+                     * record's from its box, else its first part *)
                     for k = 0 upto 1 do
                         atom(f x.args[k])
                         if isBoxedVar(x.args[k]) then
@@ -2283,6 +2352,7 @@ export
             runtimeCall(f "concat")
         end
 
+    (* The representations codes names, as coreExternals codes them *)
     let repTypes(codes: String): Array(ValType) =
         begin
             let ts = array of(stringOp.length(codes) model.eqref)
@@ -2329,8 +2399,9 @@ export
         end
 
     (* A call of the library's external symbol (section 4.2): to the base,
-     * to the core, or an instruction sequence; one this target lacks fails
-     * when it is called *)
+     * the runtime that is not Quest (runtimeCall); to a runtime unit in
+     * Quest (wasm/core, util/realconv, util/realmath); or an instruction
+     * sequence in place. One this target lacks fails when it is called *)
     let externalCall(f: F symbol: String args: Array(ir.Atom) descs: Array(ir.Descriptor)
         target: maybe.T(ir.Variable)): Ok =
         begin
@@ -2423,7 +2494,8 @@ export
                 castTo(f rt.index("raised"))
                 emit(f i1(ops.throw 0))
             elsif named("quest_system_exit") then
-                (* the files' writers flushed first, as C's exit does *)
+                (* the files' writers flushed first, as C's exit does; then
+                 * fatal, with no message, ends the run at the status *)
                 if hashMap.contains(:String :Int f.g.runtimeUnits "wasm/core.flushWriters") then
                     emit(f i1(ops.globalGet f.g.noClosure))
                     runtimeUnitCall(f "wasm/core.flushWriters")
@@ -2538,7 +2610,9 @@ export
                 emit(f model.endInst)
                 emit(f model.endInst)
             elsif named("quest_word_extract_val") orif named("quest_word_replace_val") then
-                (* the field of width bits at pos, its width cut to the word *)
+                (* the field of width bits at pos, its width cut to the word;
+                 * for pos outside 0 to 63 or width <= 0, extract gives 0 and
+                 * replace the word unchanged *)
                 let replacing = named("quest_word_replace_val")
                 let w = args[0]
                 let pos = args[if replacing then 2 else 1 end]
@@ -2827,6 +2901,8 @@ export
             castI31(f)
             emit(f i(ops.i31GetU))
         end
+    (* Whether parameter k of function shape s takes a location: a var or
+     * out parameter, or one whose type is a location's *)
     let isLocatedParam(s: shapes.Shape k: Int): Bool =
         shapes.kindIs(s shapes.shapeFun)
             andif {not(stringOp.equal(s.params[k].mode "value")) orif isLocation(s.params[k].shape.type)}
@@ -2871,6 +2947,8 @@ export
             emit(f i1(ops.localGet held))
             castTo(f u)
             emit(f i2(ops.structGet u 1))
+            (* a result that is one eqref needs no unboxing, so a tail call
+             * can return the uniform entry's result itself *)
             let q = quantified(c.type)
             let result = if shapes.kindIs(q.body shapes.shapeFun) then shapes.result(q.body).type else q.body.type end
             let plain = {extent sig.results is 1} andif sig.results[0]?valRef andif not(isRecord(result))
@@ -2883,6 +2961,9 @@ export
             emit(f model.endInst)
         end
 
+    (* A call, not in tail position: a direct call of a function of the unit
+     * or, by name, of another unit; a library external, compiled in place;
+     * or a call through the callee's closure *)
     let call(f: F x: ir.OpCall): Ok =
         begin
             let direct = directCallee(f x)
@@ -2971,7 +3052,8 @@ export
             end
         end
 
-    (* The built-in exception a library module's error member is *)
+    (* The built-in exception a library module's error member is, the member
+     * named by its module's library path (arrayop.error is arrayOp.error) *)
     let libraryException(name: String): maybe.T(String) =
         begin
             let pairs = array of
@@ -3011,6 +3093,10 @@ export
             emit(f i1(ops.arrayGet rt.index("i32s")))
         end
 
+    (* Whether x is a library member the backend makes itself, not read from
+     * its unit's record: writer's standard streams, the i31s 1 and 2 that the
+     * base writes to at once, and the error members that are built-in
+     * exceptions *)
     let knownLibraryMember(f: F x: ir.OpModuleMember): Bool =
         begin
             let name = case x.moduleRef
@@ -3042,8 +3128,10 @@ export
         end
 
     (* A module member as a value: another unit's, read from its record,
-     * whose two globals it exports (section 5.1); the library's, through the
-     * runtime until the library is compiled; the unit's own, its global *)
+     * whose two globals it exports (section 5.1), or the record itself; a
+     * library member the backend makes itself (knownLibraryMember, and any
+     * in the core, which imports no library unit); the unit's own, its
+     * variable *)
     let member(f: F x: ir.OpModuleMember target: maybe.T(ir.Variable)): Ok =
         case x.moduleRef
             when refImport with imp then
@@ -3228,6 +3316,11 @@ export
             emit(f i(ops.i32WrapI64))
         end
 
+    (* Field x.name of a record, unboxed unless target is held boxed: read
+     * through the view map for a bounded type parameter's value; through
+     * the core's storedField for a field a subtype's record may hold at
+     * another type (x.stored, docs/c-representation.md section 5.2); else
+     * from its slot, through its view's table *)
     let recordField(f: F x: ir.OpRecordField target: maybe.T(ir.Variable)): Ok =
         begin
             let c = maybe.unwrap(:shapes.Component shapes.component(shapeOf(ir.atomType(x.recordAtom)) x.name))
@@ -3294,6 +3387,7 @@ export
                     if fn.unboxedResult then emit(f i(ops.unreachable))
                     else
                         emit(f i1(ops.localGet 0))
+                        (* descriptors pass as they are *)
                         for k = 0 upto n - 1 do
                             emit(f i1(ops.localGet k + 1))
                             if k >= q.count then
@@ -3885,6 +3979,8 @@ export
                         else false
                     end
                     if pending then
+                        (* a placeholder for each part, its field set once
+                         * the value is bound (f.patches, filled by sLetRec) *)
                         let ps = parts(ir.atomType(a))
                         for j = 0 upto extent ps - 1 do
                             case ps[j]
@@ -4108,7 +4204,8 @@ export
                 atoms(f args)
                 runtimeCall(f "putString")
             elsif named("putTo") orif named("putCharTo") then
-                (* to a standard stream's writer, its descriptor *)
+                (* to a standard stream's writer, the i31 of its file
+                 * descriptor *)
                 atoms(f args)
                 runtimeCall(f if named("putTo") then "putString" else "putChar" end)
             elsif named("convInt") then
@@ -4312,6 +4409,8 @@ export
             when opModuleMember with x then member(f x target)
             when opMakeClosure with x then makeClosure(f x)
             when opEnvField with x then
+                (* capture x.index, from the fields of the function's own
+                 * closure type that hold its parts *)
                 let fn = hashMap.find(:Int :ir.Function f.g.byId f.fnId)
                 let own = ownType(f.g fn)
                 let at = captureField(f.g fn x.index)
@@ -4579,9 +4678,6 @@ export
             end
         end
 
-    (* Makes s and next a tail call, if s's call's result is what next
-     * returns, the callee is called directly, and its results are the
-     * function's; whether it did *)
     (* Whether the code is inside a try's body, which a tail call would
      * leave, and with it the handler *)
     let insideTry(f: F): Bool =
@@ -4593,20 +4689,11 @@ export
             inside
         end
 
-    (* An accumulating recursion (the SSA's accumulate pass, wasm-review.md
-     * section 3, 1): a function returning an Int, one of whose blocks
-     * returns its own call's result plus (or times) another value, is a loop
-     * with an accumulator. Each such site adds (or multiplies) the other
-     * value into the accumulator and branches to the loop around the
-     * function's code, its parameters set, as a self tail call does; each
-     * other return gives what it returns combined with the accumulator,
-     * which starts at the operation's identity. A tail call of another
-     * function would return without it, so in such a function none is made.
-     * The operation: 1 for +, 2 for times, 0 for none, found in the body as the
-     * first call of the function itself whose result the next statement
-     * combines; no try, whose handler would see the accumulation *)
+    (* The index of the function being compiled, ~1 for the top level *)
     let selfIndex(f: F): Int =
         if f.fnId < 0 then ~1 else maybe.unwrapOr(:Int hashMap.get(:Int :Int f.g.functions f.fnId) ~1) end
+    (* If s binds a direct call of the function itself: its variable and the
+     * call *)
     let isSelfCall(f: F s: ir.Stmt): maybe.T(Tuple v: ir.Variable call: ir.OpCall end) =
         case s
             when sLet with x then
@@ -4621,8 +4708,8 @@ export
                 end
             else maybe.none(:Tuple v: ir.Variable call: ir.OpCall end)
         end
-    (* Whether s combines v with another value by op (1 for +, 2 for times): that value,
-     * and the variable s binds *)
+    (* Whether s combines v with another value by op (1 for +, 2 for times,
+     * 0 for either): that value, and the variable s binds *)
     let combining(s: ir.Stmt v: ir.Variable op: Int): maybe.T(Tuple other: ir.Atom result: ir.Variable end) =
         case s
             when sLet with x then
@@ -4643,6 +4730,19 @@ export
                 end
             else maybe.none(:Tuple other: ir.Atom result: ir.Variable end)
         end
+    (* An accumulating recursion (the SSA's accumulate pass, wasm-review.md
+     * section 3, 1): a function returning an Int, one of whose blocks
+     * returns its own call's result plus (or times) another value, is a loop
+     * with an accumulator. Each such site adds (or multiplies) the other
+     * value into the accumulator and branches to the loop around the
+     * function's code, its parameters set, as a self tail call does; each
+     * other return gives what it returns combined with the accumulator,
+     * which starts at the operation's identity. A tail call of another
+     * function would return without it, so in such a function none is made.
+     * accumulation gives the operation: 1 for +, 2 for times, 0 for none, found
+     * in the body as the first call of the function itself whose result the
+     * next statement combines; none in a function with a try, whose handler
+     * would see the accumulation *)
     let accumulation(f: F fn: ir.Function): Int =
         if {extent f.results isnot 1} orif not(f.results[0]?valI64) orif fn.unboxedResult then 0
         else
@@ -4698,6 +4798,13 @@ export
             end
         end
 
+    (* Makes s and next a tail call, if s's call's result is what next
+     * returns, the callee's results are the function's, and the code is in
+     * no try (in an accumulating recursion, only a call of itself): a call
+     * of the function itself branches to the loop around its code
+     * (selfLabel), another direct call is a return_call, and a call through
+     * a closure a return_call_ref, or a call and a return where the uniform
+     * entry's result must be unboxed. Whether it did *)
     let tailCall(f: F s: ir.Stmt next: ir.Stmt): Bool =
         begin
             let found = callIn(f s)
@@ -4838,6 +4945,10 @@ export
             end
         end
 
+    (* The statements of b: an accumulation site, a chain of <>s joined
+     * (concatSite), or a tail call where one starts, else each statement
+     * with f.after set to the one after it (for the last, the statement
+     * after b's) *)
     let rec body(f: F b: ir.Body): Ok =
         begin
             let ss = vector.toArray(:ir.Stmt b.statements)
@@ -5037,7 +5148,8 @@ export
                         atom(f pt.atom)
                         emit(f i2(ops.structSet pt.own pt.field))
                     else
-                        (* each part from a local of its own, set in its field *)
+                        (* each part from a local of its own, set in its
+                         * field *)
                         let held = array of(n 0)
                         for j = 0 upto n - 1 do held[j] := scratch(f pt.parts[j]) end
                         atom(f pt.atom)
@@ -5054,10 +5166,6 @@ export
             when sInspect with x then inspectAuto(f x)
         end
 
-    (* A switch on an option's tag (variants are milestone 4's): a block for
-     * each case, inside one for else and one for the end, entered by a
-     * br_table on the tag; a case's binder is the option itself, which
-     * shares its components, or its one component *)
     (* inspect (an auto value's type component tested, docs/ir.md section
      * 5): a case matches when the witness is a subtype of its type, or for
      * an exact case equal to it, as the core's isSubtype says. Its binders get
@@ -5156,6 +5264,12 @@ export
             close(f)
         end
 
+    (* A switch on an option's or a variant's tag: a block for each case,
+     * inside one for else and one for the end, entered by a br_table on the
+     * tag (through the view map or a proxy where the value may be read
+     * through one). An option case's binder is the option itself, which
+     * shares its components, or its one component; a variant case's, its
+     * payload. With no else, raises variant.tagMismatch *)
     and switch(f: F x: ir.StmtSwitch): Ok =
         begin
             let viewed = maybe.isSome(:ir.Variable x.viewMap)
@@ -5296,8 +5410,8 @@ export
         end
 
     (* A function's parameters' and result's representations, its signature
-     * (section 3.2 of the plan), or unsupported for what step 3 does not
-     * compile *)
+     * (section 3.2 of the plan); unsupported for a value parameter held
+     * boxed *)
     let signature(g: G fn: ir.Function): Signature =
         begin
             (* The closure first (section 3.1), then the descriptors of the
@@ -5400,8 +5514,9 @@ export
                         close(f)
                         emit(f i(ops.unreachable))
                         if not(f.selfTail) then
-                            (* the loop's instruction and its end, at the end
-                             * but for unreachable, dropped *)
+                            (* no call branches to the loop: its instruction,
+                             * at loopAt, and its end, the last but the
+                             * unreachable, dropped *)
                             let n = vector.length(:Inst f.code)
                             let kept = vector.new(:Inst)
                             for k = 0 upto n - 1 do
@@ -5430,9 +5545,6 @@ export
             end)
         end
 
-    (* Whether an import is another unit, compiled to a module of its own,
-     * rather than the library, whose members the runtime has until the
-     * library is compiled *)
     (* The name of the unit an import names, as its module is named: a
      * library unit's by its path in lib/, which an implicit import's
      * canonical name (arrayOp) may not be *)
@@ -5677,12 +5789,13 @@ export
                         importFunction(unitName(i) "init" funcType(g noTypes noTypes)))
                 end
             end
-            (* The runtime's units, for a unit whose code uses descriptors:
-             * the core's constructors, which its initializer makes them
-             * with, and print's echo; each at its interface's closure
-             * signature *)
-            (* a unit whose modules have abstract types registers their
-             * representations' descriptors (registerAbstracts) *)
+            (* The runtime's units' functions, each at its interface's
+             * closure signature: for a unit whose code uses descriptors
+             * (described), the core's constructors, which its initializer
+             * makes them with; print's echo; the core's proxies and
+             * adapters. A unit whose modules have abstract types uses
+             * descriptors too, registering their representations'
+             * (registerAbstracts) *)
             let var abstracts = false
             for k = 0 upto vector.length(:ir.Module unit.modules) - 1 do
                 if extent vector.get(:ir.Module unit.modules k).abstractTypes > 0 then abstracts := true end
@@ -5696,8 +5809,6 @@ export
                     importFunction(unitName field funcType(g withClosure(params) results)))
             let e = model.eqref
             let n = model.i64
-            (* A program's report of an uncaught exception writes a payload
-             * by its descriptor with print's show *)
             (* print's echo, for a unit that echoes a value its descriptor
              * writes; and a program's report of an uncaught exception
              * writes a payload by its descriptor with print's show. No
@@ -5768,6 +5879,10 @@ export
                 runtimeImport("wasm/core" "viewOptionPayload" array of e e end array of e end)
                 if echoes then runtimeImport("wasm/print" "echo" array of e e e e end array of e end) end
             end
+            (* What the unit's statements call: each other unit's function
+             * called by name (register), unless it is a library external
+             * compiled in place; and the runtime units' functions behind the
+             * externals, intrinsics, and operators it uses *)
             let allBodies = walk.unitBodies(unit)
             for b = 0 upto extent allBodies - 1 do
                 let ss = walk.walkStatements(allBodies[b] true)

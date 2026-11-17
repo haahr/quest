@@ -1,8 +1,14 @@
-"""The WebAssembly encoder and printer (questlang/wasm, docs/wasm-plan.md section 8.1, step 2) agree with wasm-tools and
-the engines: the questlang test wasm_encode prints a corpus of modules built by hand, each as its text and, in comments
-after it, the encoder's bytes in hex. For each, wasm-tools parse of the text must be those bytes and they must validate;
-the module marked run is a WASI command, which wasmtime and node must each run, writing what the golden's expect lines
-say. Skipped where wasm-tools, wasmtime, or node is missing."""
+"""The WebAssembly encoder and printer (questlang/wasm, docs/wasm-plan.md
+section 8.1, step 2) agree with wasm-tools and the engines. The questlang
+test wasm_encode (tests/source/questlang/wasm_encode.quest) prints a corpus
+of modules built by hand, each a header (";; module LABEL" or ";; run
+LABEL"), its text, and ";; bytes" with the encoder's bytes in hex, as
+comments; its golden is the corpus these tests read. For each module,
+wasm-tools parse of
+the text must give those bytes, and they must validate. The module marked
+run is a WASI command, which wasmtime and node must each run, writing what
+the golden's ";; expect" lines say. Skipped where wasm-tools, wasmtime, or
+node is missing."""
 
 from __future__ import annotations
 
@@ -16,10 +22,12 @@ import unittest
 ROOT = Path(__file__).resolve().parent.parent.parent
 GOLDEN = ROOT / "tests" / "golden" / "run" / "questlang" / "wasm_encode.out"
 
-# wasmtime's features for the backend's modules, and its collector (docs/wasm-plan.md section 1)
+# wasmtime's features for the backend's modules, and its collector
+# (docs/wasm-plan.md section 1)
 WASMTIME = ["wasmtime", "run", "-W", "gc=y,function-references=y,tail-call=y,exceptions=y", "-C", "collector=copying"]
 
-# A WASI command in node, with only the fd_write it imports, writing to standard output
+# A host that runs a WASI command in node, given its file: it provides only
+# fd_write, the one import the run module has, writing to the descriptor asked
 NODE_HOST = r"""
 const fs = require("fs");
 const bytes = fs.readFileSync(process.argv[2]);
@@ -43,7 +51,8 @@ WebAssembly.instantiate(bytes, imports).then(({instance}) => {
 
 
 class Module:
-    """One module of the golden: its kind (module or run), its label, its text, and its bytes"""
+    """One module of the golden: its kind (module or run), its label, its
+    text's lines, and its bytes as lines of hex"""
 
     def __init__(self, kind: str, label: str) -> None:
         self.kind = kind
@@ -53,7 +62,8 @@ class Module:
 
 
 def corpus() -> tuple[list[Module], str]:
-    """The golden's modules, and the output its expect lines give the one to run"""
+    """The golden's modules, and the output its expect lines give the one to
+    run"""
     modules: list[Module] = []
     expected = []
     in_bytes = False
@@ -110,7 +120,8 @@ class TestWasm(unittest.TestCase):
                 self.assertEqual(checked.returncode, 0, checked.stderr)
 
     def test_a_malformed_module_fails(self) -> None:
-        # The check can fail: a function whose body adds an i64 to an i32 parses but does not validate
+        # The check can fail: a function whose body adds an i64 to an i32
+        # parses but does not validate
         module = next(m for m in self.modules if m.label == "numbers")
         text = "\n".join(module.text).replace("i64.add", "i32.add", 1)
         path = Path(self.scratch.name) / "broken.wasm"

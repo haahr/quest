@@ -1,7 +1,18 @@
 (* Quest WebAssembly Runtime: The Core
  *
- * Monomorphic, and importing nothing (docs/wasm-plan.md section 4.5): it
- * uses no library unit's Quest code, and so no maybe, vector, or hashMap. *)
+ * The C runtime's quest_types.c and quest_views.c in Quest (descriptors,
+ * instantiation, subtyping, conversion, proxies, view maps, is), and the
+ * library's externals that are Quest on this target, over intrinsics,
+ * externals named wasm.NAME that the backend compiles in place
+ * (docs/wasm-plan.md sections 4.2 and 4.5).
+ *
+ * It is monomorphic, since generic code's descriptors would need its own
+ * instantiate to be made, and it runs no library unit's Quest code, since
+ * every library unit imports it: it uses no maybe, vector, or hashMap, but
+ * tables written out over arrays and searched in order. string, system,
+ * real, writer, and reader it takes only for their externals and
+ * exceptions, which the backend compiles in place (wasm/codegen's
+ * isUnitImport). *)
 
 unsound module core : Core
 import
@@ -20,7 +31,9 @@ export
         labels: Array(String)
         positions: Array(Int)
         texts: Array(String)
-        (* each part's flags: 1 var, 2 out, 4 a function's result *)
+        (* each part's flags: 1 var, 2 out, 4 a function's result, 8 a
+         * quantifier's bound, 16 an abstract type's representation a
+         * document recorded, 32 an auto type's bound *)
         flags: Array(Int)
     end
 
@@ -46,6 +59,8 @@ export
     let kindStored = 19
     let kindCount = 20
 
+    (* The base descriptors' names, by kind: a type's as written, and
+     * "Tuple end" for the empty tuple *)
     let names = array of
         "" "Int" "Real" "Bool" "Char" "String" "Ok" "Word.T" "fun" "Tuple end" "record" "option" "variant" "array"
         "exception" "opaque" "auto" "?" "?" "stored"
@@ -125,7 +140,10 @@ export
 
     (* The instances made, each by its template and arguments, and the
      * descriptors an instantiation has copied, each by its original, so that
-     * a cycle closes; each a list grown by doubling *)
+     * a cycle closes; each a list grown by doubling. updating counts the
+     * additions to this and the core's other shared tables (record tables,
+     * view maps) in progress: one a stack overflow cut short leaves it
+     * above zero (updating) *)
     Def Instance = Tuple template: Desc args: Array(Desc) result: Desc end
     let instances = tuple
         let var items = array of :Instance end
@@ -193,6 +211,11 @@ export
             end
         end
 
+    (* d with its holes filled by args (a hole past them left as it is): a
+     * descriptor without parts is itself, and any other is copied once per
+     * instantiation, recorded in instances.copied before its parts are
+     * copied, so that a part that leads back to it gets the copy and a
+     * cyclic template gives a cyclic instance *)
     let rec copy(d: Desc args: Array(Desc)): Desc =
         if d.kind is kindHole then
             let k = holeIndex(d)
@@ -226,6 +249,9 @@ export
             end
         end
 
+    (* t with its holes filled by args, made once for each template and
+     * arguments, compared by identity: one instance is one descriptor, which
+     * subtyping and the record tables can then compare by identity *)
     let instantiate(t: Desc args: Array(Desc)): Desc =
         begin
             let var found = ~1
@@ -256,7 +282,9 @@ export
         end
 
 
-    (* The registry of abstract types' representations (see below) *)
+    (* The registry of abstract types' representations, by global name
+     * (quest_register_abstract_type; see "Abstract types" below); the first
+     * registration of a name is kept *)
     Def Abstract = Tuple name: String arity: Int rep: Desc end
     let abstracts = tuple let var items = array of :Abstract end let var count = 0 end
 
@@ -428,6 +456,7 @@ export
             binders.count := binders.count + 1
             binders.count - 1
         end
+    (* scope with binder b innermost, a new array *)
     let within(scope: Array(Int) b: Int): Array(Int) =
         begin
             let r = array of({extent scope + 1} b)
@@ -458,7 +487,8 @@ export
             orif {{d.kind is kindOpaque} andif {extent d.parts is 0} andif stringOp.equal(d.name "word.T")}
 
     (* Whether sub is a subtype of sup (quest_is_subtype): subtypeIn from
-     * empty scopes, with a proof's fuel and binders anew *)
+     * empty scopes, with the fuel and binders begun anew unless a proof is
+     * in progress (the trail not empty) *)
     let rec isSubtype(sub: Desc sup: Desc): Bool =
         begin
             if trail.count is 0 then
@@ -468,7 +498,11 @@ export
             subtypeIn(sub array of :Int end sup array of :Int end)
         end
 
-    (* Whether sub, in the scope ss, is a subtype of sup, in ts *)
+    (* Whether sub, in the scope ss, is a subtype of sup, in ts: true at
+     * once for the same descriptor under the same binders, or a pair on the
+     * trail; else the pair is on the trail while its parts are compared. A
+     * proof cut short, by a stack overflow say, leaves its pairs on the
+     * trail, which recover empties *)
     and subtypeIn(sub0: Desc ss: Array(Int) sup0: Desc ts: Array(Int)): Bool =
         begin
             let sub = storedType(sub0)
@@ -872,19 +906,23 @@ export
 
     let mayBeProxied(d: Desc): Bool = mayBeProxiedIn(proxiedType(d) newWalk())
 
-    (* Whether values of type a can be used at type b as they are, as far as
-     * their views go (quest_layout_equivalent, here, where every slot holds
-     * a value in one form): the same type, or tuples whose components are,
-     * a prefix of a's, or records, variants, and options whose fields or
-     * cases are, by name and position *)
+    (* The pairs viewEquivalent is proving, assumed to hold, as the trail
+     * is for subtyping *)
     Def EquivPair = Tuple sub: Desc sup: Desc end
     let equivTrail = tuple let var items = array of :EquivPair end let var count = 0 end
 
+    (* The proofs in progress forgotten, after a call an overflow, a trap, or
+     * a fatal error cut short (the interface's recover) *)
     let recover(): Ok =
         begin
             trail.count := 0
             equivTrail.count := 0
         end
+    (* Whether values of type a can be used at type b as they are, as far as
+     * their views go (quest_layout_equivalent, here, where every slot holds
+     * a value in one form): the same type, or tuples whose components are,
+     * a prefix of a's, or records, variants, and options whose fields or
+     * cases are, by name and position *)
     let rec viewEquivalent(a0: Desc b0: Desc): Bool =
         begin
             let a = storedType(a0)
@@ -1069,10 +1107,14 @@ export
             end
         end
 
-    (* v, as a slot holds it, of type from, seen at type to (quest_convert):
-     * a record's box with the table for its payload at to; a variant's box
-     * adapted; anything else as it is, until tuples', options', and
-     * functions' views are built *)
+    (* v, as a slot holds it, of type from, seen at type to (quest_convert),
+     * each type first taken to the one its values are held as (storedRep and
+     * concreteRep): a record a new box of its payload with the table for to;
+     * a variant's box adapted; an auto value's components converted; a
+     * closure as it is if to is a subtype of from too (the two are one
+     * type), else behind an adapter; a tuple or option as it is, as a
+     * proxy, as its proxy's original, or copied; anything else, and a value
+     * whose two types' kinds differ, as it is *)
     and convert(v: Any from0: Desc to0: Desc): Any =
         begin
             let from = concreteRep(storedRep(from0))
@@ -1130,9 +1172,6 @@ export
     and elementAt(v: Any i: Int): Any = if isProxy(v) then proxyElement(v i) else slotOf(v i) end
     and optionElementAt(v: Any i: Int): Any = if isProxy(v) then proxyOptionElement(v i) else slotOf(v i) end
 
-    (* A copy of the tuple or option v, of type from, laid out as to, which
-     * values are never proxies of: its components converted
-     * (quest_copy_viewed) *)
     (* An adapter's argument k (a descriptor for each quantifier, then the
      * parameters): a value parameter's converted from the adapter's type to
      * the closure's, contravariantly; a var or out parameter's location as
@@ -1152,6 +1191,9 @@ export
             if {r < extent to.parts} andif {r < extent from.parts} then convert(v from.parts[r] to.parts[r]) else v end
         end
 
+    (* A copy of the tuple or option v, of type from, laid out as to, which
+     * values are never proxies of: its components converted
+     * (quest_copy_viewed) *)
     and copyViewed(v: Any from: Desc to: Desc): Any =
         if to.kind is kindTuple then
             let n = extent to.parts
@@ -1391,7 +1433,8 @@ export
      * ====================================================================== *)
 
     (* The type is compares a value of type d at: a stored type's type, an
-     * abstract type's representation (quest_identity_type) *)
+     * abstract type's representation, followed for at most 64 steps, as
+     * quest_identity_type does *)
     let identityType(d0: Desc): Desc =
         begin
             let var d = d0
@@ -1765,6 +1808,8 @@ export
             all
         end
 
+    (* The program's arguments: their pointers at bufferAt, and their bytes
+     * after the pointers *)
     let systemArgs(): Array(String) =
         begin
             argsSizesGet(results results + 4)
@@ -1800,6 +1845,7 @@ export
         {stringOp.length(s) >= stringOp.length(prefix)}
             andif stringOp.equal(stringOp.getSub(s 0 stringOp.length(prefix)) prefix)
 
+    (* name's value in the environment, or "" *)
     let getEnv(name: String): String =
         begin
             let env = environment()
@@ -1817,6 +1863,9 @@ export
     Def Preopen = Tuple fd: Int name: String end
     let opened = tuple let var found = false let var all = array of :Preopen end let var cwd = "" end
 
+    (* WASI numbers the directories the host opens from descriptor 3 up,
+     * and fd_prestat_get fails past the last; the current directory begins
+     * as PWD *)
     let preopens(): Array(Preopen) =
         begin
             if not(opened.found) then
@@ -1915,6 +1964,10 @@ export
     (* Seconds, as Python computes st_mtime from st_mtime_ns *)
     let seconds(ns: Int): Real = realOp.int(ns / 1000000000) ++ {realOp.int(ns % 1000000000) ** 0.000000001}
 
+    (* path's stat, from the filestat path_filestat_get writes at results
+     * (following a symbolic link with lookup flag 1): the file type at 16,
+     * the size at 32, and the three times in nanoseconds at 40, 48, and 56.
+     * 493 is 0o755 and 420 0o644 *)
     let fileStat(path: String follow: Bool): Stat =
         begin
             let r = resolve(path)
@@ -2046,6 +2099,11 @@ export
             names[j + 1] := x
         end
 
+    (* The names in the directory path, sorted, but . and ..: fd_readdir
+     * fills the buffer with entries from cookie on, each a 24-byte header
+     * (the next entry's cookie at 0, the name's length at 16) and the name.
+     * A full buffer may end in a cut entry, so the next call starts at the
+     * last whole one's cookie *)
     let listDirectory(path: String): Array(String) =
         begin
             let fd = open(path 2)
@@ -2091,8 +2149,7 @@ export
      * 64 KB at a time, when it is flushed or closed, and when the program
      * ends (flushWriters), as C's stdio buffers them. A byte at a time, a
      * call into the host each, the MLton benchmarks ray and output1 took 50
-     * and 37 times as long as natively (benchmarks.md section 25). The files'
-     * writers open, the first count of them *)
+     * and 37 times as long as natively (benchmarks.md section 25) *)
     Let FileWriter = Tuple fd: Int pending: Buffer var open: Bool end
     let fileWriterAny(w: FileWriter): Any = external "wasm.toAny"
     let anyFileWriter(x: Any): FileWriter = external "wasm.fromAny"
@@ -2102,6 +2159,7 @@ export
     let putCharStatus(w: Any c: Char): Any = external "wasm.putCharTo"
     let putStringTo(w: Any s: String): Ok = if smallValue(putStringStatus(w s)) isnot 0 then writerError() end
     let putCharTo(w: Any c: Char): Ok = if smallValue(putCharStatus(w c)) isnot 0 then writerError() end
+    (* The files' writers open, the first count of them, for flushWriters *)
     let openWriters = tuple let var all = array of(8 nullAny()) let var count = 0 end
     let pendingLimit = 65536
 
@@ -2150,7 +2208,6 @@ export
             if f.pending.length >= pendingLimit then flushWriter(f) end
         end
 
-    (* A substring outside s raises writer.error, as natively *)
     (* system.exit's status as the engine can give it: wasmtime gives none
      * above 125, so where the driver runs a program in it, setting
      * QUEST_WASM_EXIT_LINE, such a status is 125 and a last line on standard
@@ -2163,6 +2220,7 @@ export
         else code
         end
 
+    (* A substring outside s raises writer.error, as natively *)
     let writerPutSubString(w: Any s: String start: Int size: Int): Ok =
         if {start < 0} orif {size < 0} orif {start > {stringOp.length(s) - size}} then writerError()
         elsif isSmall(w) then putStringTo(w stringOp.getSub(s start size))

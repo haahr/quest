@@ -39,6 +39,8 @@ const shown = new Transcript(transcript, console_);
 const toEnd = () => { console_.scrollTop = console_.scrollHeight; };
 function append(text, kind) { shown.append(text, kind); }
 
+// Shows a display's bundle, {MIMETYPE: DATA}, in the transcript after the
+// text before it: HTML, an image, or else its plain text
 function show(bundle) {
   shown.flush();
   const div = document.createElement("div");
@@ -71,8 +73,12 @@ function show(bundle) {
 
 let loaded = null, session = null, repl = null;
 let prompt = ">>  ";
+// The lines submitted that the REPL has not yet taken, and whether drain is
+// taking them
 const pending = [];
 let draining = false;
+// The lines submitted that are not blank, and the one the arrow keys are at
+// (history.length past the last)
 const history = [];
 let historyAt = 0;
 
@@ -82,6 +88,8 @@ function setPrompt(text) {
   promptLabel.textContent = text;
 }
 
+// Starts a session whose files are files (a MemoryMount's entries), or the
+// default, an empty /work, when undefined; then the prompt is ready
 async function begin(files) {
   session = new PageSession(loaded, {
     ...options, files,
@@ -110,6 +118,8 @@ async function begin(files) {
   input.focus();
 }
 
+// Gives the lines pending to the REPL one at a time, each shown after the
+// prompt it answers, until none is left or the session ends
 async function drain() {
   draining = true;
   while (pending.length > 0 && session.status === null) {
@@ -125,6 +135,7 @@ async function drain() {
   draining = false;
 }
 
+// Queues lines, as typed or pasted, for drain
 function submit(lines) {
   for (const line of lines) {
     if (line.trim() !== "") history.push(line);
@@ -134,6 +145,8 @@ function submit(lines) {
   if (!draining) drain();
 }
 
+// Ctrl-C: ends the input running, and drops the lines typed ahead; at the
+// prompt, drops the phrase in progress instead
 async function interrupt() {
   if (session.busy()) {
     pending.length = 0;
@@ -151,6 +164,9 @@ async function interrupt() {
 // The byte offset of a string's end, as the protocol counts
 const byteLength = s => new TextEncoder().encode(s).length;
 
+// Tab: asks the session to complete the word at the cursor, given the
+// phrase so far, and puts in what all its matches begin with, listing them
+// if there are several
 async function complete() {
   if (session.busy() || pending.length > 0) return;
   const before = repl.lines.map(l => l + "\n").join("");

@@ -26,7 +26,8 @@ export
             when valRef with r then if r.nullable then "null " <> heapKey(r.heap) else heapKey(r.heap) end
         end
 
-    (* The local an instruction reads or writes, or ~1 *)
+    (* The local an instruction reads or writes (local.get, local.set, or
+     * local.tee: opcodes 0x20 to 0x22), or ~1 *)
     let localOf(inst: Inst): Int =
         case inst
             when instOp with x then
@@ -36,14 +37,24 @@ export
     let isGet(inst: Inst): Bool =
         case inst when instOp with x then {x.op.prefix is 0} andif {x.op.code is 0x20} else false end
 
+    (* inst, one of localOf's three, on the local index instead *)
     let rewrite(inst: Inst index: Int): Inst =
         case inst
             when instOp with x then option instOp of model.Inst with let op = x.op let args = array of index end end
             else inst
         end
 
+    (* A loop's extent: the positions in the body of its start and its end *)
     Def Range = Tuple start: Int stop: Int end
 
+    (* reuse for one function f, in place. A position is an index into f's
+     * body, and local k here is local nparams + k of the function, the
+     * parameters being kept as they are. Each local's live range, from its
+     * first use to its last and widened for loops, is found first; then the
+     * locals, in order of where they start, each take the first slot of
+     * their type whose locals have all ended before it starts, or a new one.
+     * Taking ranges in order of start so needs no more slots of a type than
+     * the most locals of that type live at once. *)
     let reuseIn(f: model.Function): Ok =
         begin
             let nparams = extent f.params
@@ -78,7 +89,13 @@ export
                             end
                     end
                 end
-                (* Live across a loop's repetition: the whole loop *)
+                (* Live across a loop's repetition: the whole loop. A local
+                 * used in a loop whose range crosses the loop's start or
+                 * end, or whose first use is a read, may carry a value from
+                 * one iteration to the next, so its range takes in the whole
+                 * loop. One set and used only inside the loop keeps its
+                 * range. Inner loops come first, so an outer loop sees the
+                 * ranges an inner one widened. *)
                 for j = 0 upto vector.length(:Range loops) - 1 do
                     let range = vector.get(:Range loops j)
                     for k = 0 upto n - 1 do
@@ -91,8 +108,9 @@ export
                         end
                     end
                 end
-                (* The locals by where they start; each takes the first slot
-                 * of its type free by then *)
+                (* The locals by where they start, by a counting sort on
+                 * first, which keeps locals of one start in index order;
+                 * each takes the first slot of its type free by then *)
                 let order = vector.new(:Int)
                 for k = 0 upto n - 1 do if first[k] >= 0 then vector.append(:Int order k) end end
                 let sorted = vector.toArray(:Int order)
@@ -113,7 +131,8 @@ export
                 let slotOf = array of(n ~1)
                 let slots = vector.new(:model.Local)
                 let slotEnds = vector.new(:Int)
-                (* The slots of each type *)
+                (* The slots of each type, by typeKey; slotEnds holds where
+                 * each slot's latest local ends *)
                 let ofType = hashMap.new(:String :vector.T(Int) stringOp.equal hash.string)
                 for i = 0 upto extent ordered - 1 do
                     let k = ordered[i]

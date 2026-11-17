@@ -1,5 +1,6 @@
 #!/bin/sh
-# Times the probes in wasmtime: wall-clock seconds for each process, compilation included (about 0.02 s).
+# Times the probes in wasmtime: wall-clock seconds for each process,
+# compilation included (about 0.02 s).
 cd "$(dirname "$0")" || exit 1
 W="wasmtime run -W gc=y,function-references=y,tail-call=y -C collector=copying"
 t() {

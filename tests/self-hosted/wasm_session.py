@@ -13,6 +13,8 @@ runtime/wasm/session-node.mjs in a worker with a Chromium worker's stack
   the interpreter's limit, rolled back by a replay; with the JIT, an
   overflow in an input's own code, rolled back with no replay, and one in
   the compiler, by a replay; each with the bindings before it kept;
+- the review's programs for recovery (docs/wasm-review.md section 2.2), and
+  a replay that cannot run an input again;
 - the page (step 12) that tools/wasm-page/build writes from the same driver,
   its archives and its worker's session run in node (wasm_page.mjs).
 
@@ -68,6 +70,9 @@ PENDING_TRANSCRIPTS = {
 
 
 def build(driver: str, into: Path) -> Path:
+    """The program module of the driver compiled by driver with --backend
+    wasm, into/quest.wasm, with its runtime and units beside it; raises
+    CalledProcessError if the build fails"""
     target = into / "quest.wasm"
     environment = {**os.environ, "QUEST_HOME": str(ROOT_DIR)}
     subprocess.run([driver, "--backend", "wasm", "--build-dir", str(into / "build"), "-o", str(target),
@@ -85,6 +90,9 @@ def wrapper(driver_wasm: Path, into: Path) -> Path:
 
 
 def check_transcripts(command: list[str], mode: str) -> list[str]:
+    """The REPL's transcripts that command, a session in mode ("interpreted"
+    or "jit"), does not answer as their goldens do, but for those pending or
+    skipped in mode"""
     problems = []
     for source in discover_repl_tests():
         if source.stem in PENDING_TRANSCRIPTS[mode]:
@@ -103,6 +111,9 @@ def check_transcripts(command: list[str], mode: str) -> list[str]:
 
 
 def check_recovery(command: list[str], scratch: Path) -> list[str]:
+    """Whether a session survives a stack overflow with the bindings made
+    before it, and without those of the input that overflowed: interpreted,
+    and with the JIT in an input's own code and in the compiler"""
     problems = []
     environment = {**os.environ, "QUEST_HOME": str(ROOT_DIR)}
     # A limit the stack cannot hold, so that the engine's overflow comes first
@@ -123,10 +134,9 @@ def check_recovery(command: list[str], scratch: Path) -> list[str]:
     # in an earlier input's array stays, as a raise's store does; and one in
     # the compiler, on a phrase whose operators chain past what its stack
     # holds, replays the inputs that committed, which made the array afresh.
-    # (An array, since an earlier input's own var, read in kernel mode, is a
-    # location, which the wasm backend lacks until milestone 4, and an
-    # earlier input's tuple's field is not yet read by the JIT on either
-    # target.)
+    # The array, an object an earlier input made and this one changes in
+    # place, tells the two apart: a rollback keeps the store, a replay does
+    # not.
     s = Session(command, cwd=str(scratch), env=environment)
     try:
         s.execute("let held = array of 1 end")
@@ -178,6 +188,8 @@ REVIEW = [
 
 
 def check_review(command: list[str], scratch: Path) -> list[str]:
+    """REVIEW's programs whose last input does not answer as expected, or
+    whose session ends"""
     problems = []
     environment = {**os.environ, "QUEST_HOME": str(ROOT_DIR)}
     (scratch / "flag").write_text("x\n")
@@ -207,6 +219,7 @@ def check_lost(command: list[str], scratch: Path) -> list[str]:
         s.execute("import system : System")
         s.execute('let removed = begin system.removeFile("gone.txt") 5 end')
         s.execute("let after = removed + 1")
+        # An overflow in the compiler, as in check_recovery, so a replay
         reply = s.execute("1 + " * 3000 + "1")
         rendered = (reply.error or {}).get("rendered", "")
         if "no longer bound: removed, after" not in rendered:
@@ -235,6 +248,9 @@ def check_page(driver_wasm: Path, into: Path) -> list[str]:
 
 
 def check(driver: str, driver_wasm: str | None) -> list[str]:
+    """Every problem the module docstring's checks find in the wasm driver
+    that driver builds (or driver_wasm, if given); nothing where node is
+    missing"""
     if shutil.which("node") is None:
         print("node is missing: the session is not checked")
         return []

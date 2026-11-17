@@ -145,7 +145,9 @@ export
     let local(name: String t: model.ValType): model.Local = tuple let name = name let type = t end
 
     (* The function index of each import and function, in the order they are
-     * added below *)
+     * added below: fd_write, proc_exit, and WASI's other imports; then a
+     * function for each of exports, in its order (the first 22, through
+     * payloadOf, named here); then the runtime's own helpers, from ensure *)
     let fdWrite = 0
     let procExit = 1
     let putString = 2 + wasiCount
@@ -554,7 +556,8 @@ export
                     end
                 end))
             (* An Int in a slot (section 2.2 of the plan): an i31 if it fits
-             * 31 bits as a signed number, else a box *)
+             * 31 bits as a signed number, else a box. It fits when n + 2^30,
+             * compared unsigned, is below 2^31: one test for both ends *)
             add("boxInt" typeOf[11] array of "n" end array of :model.Local end array of
                 i1(ops.localGet 0) model.i64Const(0x40000000) i(ops.i64Add) model.i64Const(0x80000000) i(ops.i64LtU)
                 model.ifInst(result(model.eqref) "")
@@ -578,8 +581,9 @@ export
             (* A fatal error's report, which no handler catches, and the
              * status the program ends with, as the C runtime's quest_fail_at
              * (1) and its collector's out of memory (70) end a program; or
-             * while fatal errors are held, the report kept and a trap. Not
-             * system.exit's, whose report is empty *)
+             * while fatal errors are held, the report kept and a trap. An
+             * empty report is never held: system.exit's is empty, and ends
+             * the program even while an input runs *)
             add("fatal" typeOf[13] array of "report" "status" end array of :model.Local end array of
                 i1(ops.globalGet heldGlobal) model.ifInst(empty "")
                 i1(ops.localGet 0) castTo(tString) i2(ops.structGet tString sLength) model.ifInst(empty "")
@@ -855,7 +859,9 @@ export
                 model.endInst
             end)
             (* n in decimal, after sign when negative: ~ as conv.int writes it,
-             * - as echo does *)
+             * - as echo does. The digits come from 0 - n, divided unsigned,
+             * so the least Int, whose negation is itself, is written right;
+             * 20 bytes hold 19 digits and a sign *)
             add("digits" funcType(array of model.i64 model.i32 end array of model.eqref end) array of "n" "sign" end
                 array of local("buf" nullBytes) local("p" model.i32) local("m" model.i64) local("out" nullBytes) end
                 array of
@@ -915,6 +921,8 @@ export
                 pieceString(stringMemoryText)
                 array of c32(70) i1(ops.call fatal) i(ops.unreachable) end
             end))
+            (* Raises string.error (global 3, builtinExceptions[3]) with no
+             * payload and no site *)
             add("stringError" funcType(none none) array of :String end array of :model.Local end cat(array of
                 array of i1(ops.globalGet 3) c32(0) i(ops.refI31) end
                 pieceString(emptyText) pieceString(emptyText)
@@ -926,7 +934,10 @@ export
             end))
             (* A payload as echo writes a value (quest_put_value), by its kind:
              * 1 Int, 2 Bool, 3 Char, 4 String, 5 Ok, 6 Word, 7 a function, 8
-             * an abstract type's value; anything else waits for descriptors *)
+             * an abstract type's value; any other <val>. A payload of kind 9
+             * is written by its descriptor (wasm/print), and its callers,
+             * uncaught and raisedText, call this only when that text is
+             * absent *)
             let kindIs(k: Int): Array(Inst) = array of i1(ops.localGet 1) c32(k) i(ops.i32Eq) end
             let eqrefResult = result(model.eqref)
             add("show" funcType(array of model.eqref model.i32 end array of model.eqref end)

@@ -40,6 +40,8 @@ INCLUDES = ["-I", str(CASES)]
 
 
 def run(command: list[str], cwd: str, environment: dict[str, str]) -> tuple[int, str, str]:
+    """command's exit status, standard output, and standard error; a run
+    past TIMEOUT is status -1, with the timeout as its error"""
     try:
         r = subprocess.run(command, capture_output=True, text=True, cwd=cwd, env=environment, timeout=TIMEOUT)
     except subprocess.TimeoutExpired:
@@ -48,6 +50,9 @@ def run(command: list[str], cwd: str, environment: dict[str, str]) -> tuple[int,
 
 
 def check_program(driver: str, program: Path, update: bool) -> list[str]:
+    """What is wrong with one program of CASES (the module docstring's
+    list), each problem as a line; with update, its text golden is written,
+    not compared. A build that fails ends the checks of this program."""
     environment = {**os.environ, "QUEST_HOME": str(ROOT_DIR)}
     problems: list[str] = []
     name = program.stem
@@ -140,8 +145,12 @@ def check_stale_runtime(driver: str) -> list[str]:
         objects = [o for o in build.rglob("*.wasm") if b"quest.runtime" in o.read_bytes()]
         if not objects:
             return ["a stale runtime: no object carries quest.runtime"]
-        # another stamp, of the same length and with the same times, as an
-        # earlier runtime's would be
+        # Each object as an earlier runtime's compiler would have left it:
+        # each digit of the stamp, which ends the object after the name
+        # quest.runtime, advanced by one, so that it differs at the same
+        # length; and the file's times restored, so that only the stamp, not
+        # the times, tells the build (questlang/build/engine's
+        # artifactStaleness) that the object is stale
         for o in objects:
             data = o.read_bytes()
             times = o.stat()
@@ -158,6 +167,9 @@ def check_stale_runtime(driver: str) -> list[str]:
 
 
 def check(driver: str, update: bool = False) -> list[str]:
+    """Every problem with driver's wasm programs, the driver's own run of a
+    program in an engine, and its rebuild of a stale object; nothing where
+    wasmtime or node is missing"""
     if shutil.which("wasmtime") is None or shutil.which("node") is None:
         print("wasmtime or node is not installed: skipped")
         return []

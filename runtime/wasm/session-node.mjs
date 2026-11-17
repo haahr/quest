@@ -7,8 +7,8 @@
 // DRIVER.wasm is the driver's program module, DRIVER.wasm.runtime.wasm and
 // DRIVER.wasm.units beside it, as the driver's -o writes them. The session
 // runs in a worker whose stack is N KB (512 by default, a Chromium worker's),
-// compiling each input with the driver's JIT (step 13), or interpreting it
-// with --no-jit.
+// and whose heap --heap-mb limits, if given (main), compiling each input with
+// the driver's JIT (step 13), or interpreting it with --no-jit.
 //
 // With --kernel it speaks the kernel's protocol (docs/jupyter-kernel.md
 // section 2): requests from descriptor 3, records to descriptor 4, a SIGINT
@@ -125,6 +125,8 @@ async function main() {
   // the first)
   let committed = null;
   let worker = null;
+  // What takes the worker's next message: startWorker's, until the worker
+  // has started, then each request's
   let waiting = null;
   const startWorker = () => new Promise(resolve => {
     worker = new Worker(new URL(import.meta.url), {

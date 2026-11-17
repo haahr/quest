@@ -3,13 +3,20 @@
  * The runtime's core (docs/wasm-plan.md sections 4.2 and 4.5), a unit the wasm
  * backend compiles and every other unit it compiles imports: descriptors,
  * types as run-time values, which a unit's initializer makes for the types
- * its code describes, by the constructors below. Only the wasm backend
- * compiles it; it imports nothing, and reaches the engine's objects through
- * intrinsics, externals named wasm.NAME that the backend compiles in place.
+ * its code describes, by the constructors below; and what compiled code asks
+ * of them at run time: instantiation, subtyping, conversion between views,
+ * proxies, view maps, and polymorphic is. It also holds the library's
+ * externals that are Quest on this target (strings, the identity hash, and
+ * files over WASI). Only the wasm backend compiles it. It runs no library
+ * unit's Quest code: it takes string's, system's, real's, writer's, and
+ * reader's members only as externals and exceptions, which the backend
+ * compiles in place, and reaches the engine's objects through intrinsics,
+ * externals named wasm.NAME that the backend compiles in place too.
  *
- * Any is every value as a slot holds it, an eqref: an Int, Bool, or Char an
- * i31 (or an Int a $boxInt), a record its pair boxed, and the rest the
- * object itself. *)
+ * Any is every value as a slot holds it, an eqref (docs/wasm-plan.md section
+ * 2.1): an Int, Bool, or Char an i31 (an Int too wide for 31 bits a
+ * $boxInt), a Real a $boxReal, a record or a variant its pair boxed ($recBox,
+ * $varBox), and the rest the object itself. *)
 
 unsound interface Core
 export
@@ -17,12 +24,15 @@ export
 
     (* A type as a run-time value, as the C runtime's QTypeDescriptor is: its
      * kind (below), its name as written, and its parts by kind: a tuple's
-     * elements, a record's fields in name order, an option's cases in the
-     * order of its tags, an array's element, an exception's payload. labels
-     * are the parts' names (an element's, "" for none; a field's; a case's),
-     * and positions and texts a tuple's type components, written by echo as
-     * text before the element at the position. A recursive type's
-     * descriptor is cyclic: its parts are filled in after it is made. *)
+     * elements, a record's fields in name order, an option's or variant's
+     * cases in the order of its tags (a case without a payload kindNone), an
+     * array's element, an exception's payload, a function's parameters and
+     * result, an auto type's components, an abstract type's arguments. labels
+     * are the parts' names (an element's, "" for none; a field's; a case's).
+     * positions and texts are a tuple's type components, written by echo as
+     * text before the element at the position; a bound variable's index is
+     * its one position instead. A recursive type's descriptor is cyclic: its
+     * parts are filled in after it is made. *)
     Def Rec Desc = Tuple
         kind: Int
         name: String
@@ -30,13 +40,15 @@ export
         labels: Array(String)
         positions: Array(Int)
         texts: Array(String)
-        (* each part's flags: 1 var, 2 out, 4 a function's result (a
-         * function type's parts are its parameters and then its result) *)
+        (* each part's flags: 1 var, 2 out, 4 a function's result, 8 a
+         * function's quantifier's bound (after its result), 16 the
+         * representation a document recorded for an abstract type (after its
+         * arguments), 32 an auto type's bound (after its components) *)
         flags: Array(Int)
     end
 
-    (* The kinds, which the backend's (wasm/codegen) numbering matches; none
-     * is an option case's payload when it has none *)
+    (* The kinds, which wasm/codegen's kindOf numbers alike; kindNone stands
+     * for no type: a case's payload when it has none, a part not yet set *)
     kindNone: Int
     kindInt: Int
     kindReal: Int
@@ -93,13 +105,17 @@ export
     viewDict(payload: Any view: Desc): Any
     (* v, as a slot holds it, of type from seen at type to (quest_convert) *)
     convert(v: Any from: Desc to: Desc): Any
-    (* An adapter's argument and result converted, and the registry of the
-     * makers of adapters past the core's arities, for the backend's units *)
+    (* For a closure seen at another function type through an adapter: its
+     * argument k and its result converted, and the registry of the makers of
+     * adapters past the arities the core makes itself, which units that call
+     * closures of those arities register their makers in *)
     adaptArg(from: Desc to: Desc k: Int v: Any): Any
     adaptResult(from: Desc to: Desc v: Any): Any
     registerAdapter(n: Int maker: Any): Ok
     (* system.exit's status as the engine can give it *)
     exitStatus(code: Int): Int
+    (* The maker registered for arity n's adapters; dynamic.error if none
+     * is, v (the closure to adapt) given back only to have a result *)
     adapterFor(v: Any n: Int): Any
     (* A record's field i read as its payload stores it, v, seen at to
      * through table dict, converted if it is stored at another type *)
@@ -116,30 +132,35 @@ export
     viewRecordField(payload: Any dict: Any m: Any k: Int): Any
     viewOptionComponent(opt: Any m: Any b: Int j: Int): Any
     viewOptionPayload(opt: Any m: Any): Any
-    (* Proxies (docs/c-representation.md section 5.8): the object a value
-     * is, a proxy's original; through a proxy, an option's tag, a tuple's
-     * component, an option's payload's component, and a case binder's
-     * payload; and a tuple's or option's tag and components, a proxy's or
-     * not *)
+    (* The object a value is: a proxy's original, or the value itself
+     * (proxies: docs/c-representation.md section 5.8) *)
     unproxy(v: Any): Any
-    (* The registry of abstract types' representations
-     * (quest_register_abstract_type): a module's, registered where it
-     * begins; a type's representation, or none; and is at the type d
-     * describes, on values as slots hold them (quest_val_is) *)
+    (* Registers an abstract type's representation, by the type's global
+     * name, as its module begins (quest_register_abstract_type); the first
+     * registration of a name is kept *)
     registerAbstract(name: String arity: Int rep: Desc): Ok
     (* A stored type's descriptor's type, and its storage, the bound its
-     * values are held as, or none *)
+     * values are held as, or none; and an abstract type's representation:
+     * its module's as registered, else the one a document recorded, else
+     * none *)
     storedType(d: Desc): Desc
     storage(d: Desc): Desc
     abstractRep(d: Desc): Desc
-    (* Whether an abstract type of the name is registered, at any arity; and
-     * its representation as registered, or none (a document's checked) *)
+    (* Whether an abstract type of the name is registered, at any arity; its
+     * representation as registered only, or none (which wasm/dynamic checks
+     * a document's recorded one against); and is at the type d describes,
+     * on values as slots hold them (quest_val_is) *)
     isRegistered(name: String): Bool
     registeredRep(d: Desc): Desc
     valIs(d: Desc a: Any b: Any): Bool
     (* An auto value's witness, and dynamic.copy (quest_dynamic_copy) *)
     autoWitness(x: Any): Desc
     dynamicCopy(d: Any): Any
+    (* Through a proxy: an option's tag in the proxy's type's numbering, a
+     * tuple's component i, an option's payload's component i, and the
+     * payload its case binder is; and a tuple's or option's tag and
+     * components whether it is a proxy or not. Each component is read from
+     * the original and converted to the type it is seen at *)
     proxyTag(p: Any): Int
     proxyElement(p: Any i: Int): Any
     proxyOptionElement(p: Any i: Int): Any

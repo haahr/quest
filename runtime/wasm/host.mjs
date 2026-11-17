@@ -13,11 +13,12 @@
 //     list(rel)          a directory's names
 //     mkdir(rel), unlink(rel), rmdir(rel), rename(rel, toRel)
 //
-// A file opened is read whole when it is opened and written whole when it is
-// closed. Two paths are streams, not files: /dev/fd/3, whose reads give the
-// requests the host queued (requests), and /dev/fd/4, whose writes are the
-// session's records (onRecord), as the kernel's descriptors are natively
-// (docs/jupyter-kernel.md section 2).
+// A file opened to read is read whole when it is opened; one opened to create
+// or truncate is written whole, all it holds so far, after each write to it
+// (Host's open). Two paths are streams, not files: /dev/fd/3, whose reads
+// give the requests the host queued (requests), and /dev/fd/4, whose writes
+// are the session's records (onRecord), as the kernel's descriptors are
+// natively (docs/jupyter-kernel.md section 2).
 
 // Whether e is an engine's stack overflow, which no standard names: V8's and
 // JavaScriptCore's RangeError, SpiderMonkey's InternalError, "too much
@@ -28,6 +29,8 @@ export function isStackOverflow(e) {
   return e instanceof RangeError || (e?.name === "InternalError" && /recursion/i.test(String(e.message)));
 }
 
+// A failure a mount or a call gives: code is one of E's WASI error numbers,
+// which makeImports's wrapper returns as the call's result
 export class Errno extends Error {
   constructor(code, what) { super(what || `errno ${code}`); this.code = code; }
 }
@@ -72,7 +75,9 @@ export class MemoryMount {
       if (rel !== "") this.entries.set(rel, typeof bytes === "string" ? encoder.encode(bytes) : bytes);
     }
   }
+  // The directory that holds rel, "" for one at the top
   parent(rel) { return rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : ""; }
+  // Refuses a change to a read-only mount (ROFS, a read-only file system)
   changing() { if (this.readOnly) throw new Errno(E.ROFS); }
   // Tells changed of a change made
   made(...change) { if (this.changed) this.changed(change); }
@@ -201,7 +206,10 @@ export class UrlMount {
 // file imports nothing of node's, and loads in a page)
 export class NodeMount {
   constructor(fs, root) { this.fs = fs; this.root = root === "/" ? "" : root; }
+  // rel's path in node's file system
   real(rel) { return rel === "" ? (this.root || "/") : this.root + "/" + rel; }
+  // f's result, a failure of node's (an Error whose code is ENOENT and the
+  // like) made the Errno WASI names, but a stack overflow let through
   call(f) {
     try {
       return f();
@@ -213,6 +221,7 @@ export class NodeMount {
       throw new Errno(E.IO, String(e));
     }
   }
+  // null, not an error, for a file missing, as a mount's stat gives
   stat(rel) {
     let s;
     try {
@@ -270,6 +279,10 @@ export class Host {
   // A request the next read of /dev/fd/3 gives, with its newline
   queue(line) { this.requests.push(encoder.encode(line + "\n")); }
 
+  // The mount that serves path, and path relative to it: the first of the
+  // mounts, which are sorted longest path first, whose path is path or a
+  // prefix of it that ends at a slash. Throws NOENT when none is (no mount at
+  // /).
   mountOf(path) {
     for (const {path: at, mount} of this.mounts) {
       if (path === at) return {mount, rel: ""};
@@ -278,6 +291,7 @@ export class Host {
     }
     throw new Errno(E.NOENT);
   }
+  // What is at path, as a mount's stat gives it, or null for nothing
   stat(path) {
     // A mount's own path is a directory, though no mount above holds it
     for (const {path: at} of this.mounts) {
@@ -290,6 +304,9 @@ export class Host {
     const {mount, rel} = this.mountOf(path);
     return mount.stat(rel);
   }
+  // The names in the directory path: its mount's, if it has the directory,
+  // and the first name of each mount below it, so that /quest lists lib where
+  // only /quest/lib is mounted
   list(path) {
     const {mount, rel} = this.mountOf(path);
     let names;
@@ -335,6 +352,9 @@ export class Host {
       at += b.length + 1;
     });
   }
+  // The count of items, at countAt, and the bytes putStrings takes for them,
+  // at sizeAt, as args_sizes_get and environ_sizes_get give them, so that
+  // the runtime can allocate the space before it asks for the strings
   sizes(items, countAt, sizeAt) {
     const v = this.view();
     v.setUint32(countAt, items.length, true);
@@ -345,6 +365,10 @@ export class Host {
   // ------------------------------------------------------------------------
   // The calls, each giving its errno
 
+  // The functions the runtime imports as wasi_snapshot_preview1. Each gives
+  // 0, or the code of an Errno it throws; anything else thrown (an Exit, a
+  // stack overflow) goes on to whoever called into the instance. Each
+  // argument named at or into is an address in the runtime's memory.
   makeImports() {
     const call = f => (...args) => {
       try {
@@ -359,6 +383,7 @@ export class Host {
       args_get: call((p, b) => this.putStrings(this.args, p, b)),
       environ_sizes_get: call((c, s) => this.sizes(this.environment(), c, s)),
       environ_get: call((p, b) => this.putStrings(this.environment(), p, b)),
+      // A preopen's prestat: tag 0, a directory, then its name's length
       fd_prestat_get: call((fd, at) => {
         const d = this.fds.get(fd);
         if (!d || d.kind !== "preopen") throw new Errno(E.BADF);
@@ -378,6 +403,8 @@ export class Host {
         this.fds.set(fd, d);
         this.view().setUint32(into, fd, true);
       }),
+      // Into count buffers, each an address and a length at iovs; a short
+      // read ends it, as the data available has run out
       fd_read: call((fd, iovs, count, into) => {
         const d = this.fds.get(fd);
         if (!d) throw new Errno(E.BADF);
@@ -412,6 +439,12 @@ export class Host {
         this.fds.delete(fd);
         if (d.close) d.close();
       }),
+      // The entries from index cookie on, as many as n bytes hold, each a
+      // dirent of 24 bytes and then its name. A dirent holds the next entry's
+      // cookie at 0, an inode number at 8 (the index here too), the name's
+      // length at 16, and its type at 20 (0, unknown). The last entry is cut
+      // off where the buffer ends, as WASI has it: a caller that gets a full
+      // buffer reads again for the rest.
       fd_readdir: call((fd, at, n, cookie, into) => {
         const d = this.fds.get(fd);
         if (!d || d.kind !== "directory") throw new Errno(E.BADF);
@@ -432,6 +465,10 @@ export class Host {
         }
         v.setUint32(into, used, true);
       }),
+      // A filestat of 64 bytes: the device and inode at 0 and 8, left 0; the
+      // file's type at 16 (3 a directory, 4 a regular file); the link count
+      // at 24; the size at 32; and the times of access, modification, and
+      // status change at 40, 48, and 56, in nanoseconds
       path_filestat_get: call((fd, flags, at, n, into) => {
         const s = this.stat(this.path(fd, at, n));
         if (!s) throw new Errno(E.NOENT);
@@ -474,8 +511,12 @@ export class Host {
     };
   }
 
-  // What path_open gives for path: a stream, a directory, or a file read
-  // whole, to be written whole when it is closed if it was opened to write
+  // The descriptor path_open makes for path, given WASI's oflags (1 create,
+  // 2 directory, 4 exclusive, 8 truncate; exclusive is not checked): a
+  // stream, a directory with its names listed now, a file opened to read,
+  // read whole now, or a file opened to create or truncate, written whole
+  // after each write (below). A file opened with neither has no write, and a
+  // write to it fails (BADF).
   open(path, oflags) {
     const create = (oflags & 1) !== 0, directory = (oflags & 2) !== 0, truncate = (oflags & 8) !== 0;
     if (path === "/dev/fd/3") return {kind: "requests"};
@@ -518,7 +559,9 @@ export class Host {
     return {kind: "file", data: mount.read(rel), at: 0};
   }
 
-  // Up to n bytes from the descriptor d
+  // Up to n bytes from the descriptor d: fewer at a file's end, and none from
+  // the requests when none is queued, or from standard input, which a session
+  // has none of
   read(d, n) {
     if (d.kind === "file") {
       const got = d.data.subarray(d.at, d.at + n);

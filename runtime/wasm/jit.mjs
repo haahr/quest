@@ -40,6 +40,8 @@ export class Jit {
     // Each unit's interface fingerprint (docs/jit.md section 3.3.1), from its
     // module's custom section quest.fingerprint
     this.fingerprints = new Map();
+    // The pieces of the module the next load instantiates, as give passed
+    // them
     this.given = [];
     this.memory = null;
     this.core = null;
@@ -51,7 +53,10 @@ export class Jit {
       give: (at, n) => { this.given.push(this.bytes(at, n).slice()); return 0; },
       load: (at, n) => this.load(this.string(at, n), at),
       run: (at, n) => this.run(this.string(at, n)),
+      // 1 if the unit is one of the driver's own, else 0
       has: (at, n) => (this.driver.has(this.string(at, n)) ? 1 : 0),
+      // The unit's fingerprint, written over its name at at: its length, or
+      // 0 if the unit has none
       fingerprint: (at, n) => {
         const fp = this.fingerprints.get(this.string(at, n));
         return fp === undefined ? 0 : this.put(at, fp);
@@ -89,6 +94,11 @@ export class Jit {
     return b.length;
   }
 
+  // Instantiates the module given since the last load as the unit name: 0,
+  // or the length of the error's message, written at at. Each module the
+  // unit declares becomes a unit of its own, of the fields exported as
+  // MODULE.FIELD, with the unit's init, which an importer imports from each
+  // unit it imports.
   load(name, at) {
     const all = new Uint8Array(this.given.reduce((n, b) => n + b.length, 0));
     let k = 0;
@@ -114,6 +124,9 @@ export class Jit {
     }
   }
 
+  // Calls the init of the unit name: 0, or 1, 2, or 3 for an overflow, a
+  // trap, or a fatal error it caught (see the top of this file). Anything
+  // else thrown, a Quest exception among them, goes on to the caller.
   run(name) {
     const runtime = this.units["quest.runtime"];
     runtime.holdFatal(1);
@@ -126,8 +139,10 @@ export class Jit {
       const overflow = isStackOverflow(e);
       if (!overflow && !(e instanceof WebAssembly.RuntimeError)) throw e;
       if (this.core && Number(this.core.updating(this.noClosure)) !== 0) this.mustReplay = true;
-      // What the call left half done that a replay would not undo: the
-      // proofs and the values being shown, none in progress now
+      // What the call left half done that the count of updates (updating)
+      // does not cover, and so no replay undoes: the assumptions of the
+      // core's subtype and equivalence proofs (its trails), and print's
+      // nesting of the values being shown; none is in progress now
       for (const unit of ["wasm/core", "wasm/print"]) this.units[unit]?.recover?.(this.noClosure);
       return overflow ? 1 : runtime.fatalReport() !== null ? 3 : 2;
     } finally {

@@ -10,9 +10,11 @@
 //
 // The page posts one message to start the session, with what it needs, then
 // one for each request, {line}; the worker posts the driver's writes as they
-// are made ({stdout}, {stderr}, {record}: bytes), then {started} or
-// {exited: STATUS}, and for each request {records, commit, committed}: the
-// input it committed, and after a replay the inputs committed.
+// are made ({stdout}, {stderr}, {record}: bytes) and each change to the
+// session's files ({change}), then {started} or {exited: STATUS}, and for each
+// request {records, commit, committed}: the input it committed, and after a
+// replay the inputs committed. An exception that the session lets escape,
+// other than the driver's exit, it posts as {failed: TEXT}.
 
 import {Errno, E, MemoryMount, UrlMount, isStackOverflow} from "./host.mjs";
 import {Session, Exited} from "./session.mjs";

@@ -17,6 +17,8 @@ export class Transcript {
     this.waiting = [];
   }
 
+  // Queues text of kind (a span's class: out, err, input, note) for the next
+  // frame, joined to the text queued before it if that is of the same kind
   append(text, kind) {
     const last = this.queued.at(-1);
     if (last && last.kind === kind) last.text += text;

@@ -1,5 +1,6 @@
 // Times the probes in node: the best of five runs after a warm-up, in ms.
-// COL=0 or COL=1 runs one column only, so that one variant's heap does not disturb the other's.
+// COL=0 or COL=1 runs one column only, so that one variant's heap does not
+// disturb the other's.
 import { readFileSync } from 'node:fs';
 const here = new URL('.', import.meta.url);
 const load = (name, imports = {}) =>

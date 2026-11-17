@@ -1,44 +1,38 @@
 (* Quest Self-Hosted Compiler: The wasm Code Generator Interface
  *
- * A program's unit, described (docs/ir.md), as a WebAssembly module
- * (wasm/model, docs/wasm-plan.md section 4.1) that imports the runtime module
- * (wasm/runtime) and exports _start, a WASI command's entry, which runs the
- * program's top level and reports an uncaught exception.
+ * A unit's represented IR (docs/ir.md) as a WebAssembly module on WasmGC
+ * (wasm/model), as docs/wasm-plan.md specifies: values (section 2),
+ * closures (section 3), the runtime it imports (section 4), and a module
+ * for each unit (section 5.1).
  *
- * Step 3 of the plan compiles Int, Word, Bool, Char, String, and Ok values;
- * statements' control flow, join points and loops among it, as blocks and
- * branches (section 4.1); direct calls of the unit's functions, made tail
- * calls wherever a call's result reaches a return, through join points that
- * only pass it on (section 3.3); string literals, from a data segment; the
- * library's output and conversions to text, through the runtime; and a
- * phrase's value echoed, when its type's kind says how to write it with no
- * descriptor (describe.echoValueKind). Division and remainder test their
- * divisor before the instruction that would trap (section 2.10). Every
- * reference is an eqref, cast where it is used.
+ * Values: an Int, Word, Bool, Char, or Real is a WebAssembly number; a
+ * record is two values, its payload and its view's table, a variant two,
+ * its tag and its payload, and a location (section 2.6) two, a slot array
+ * and an index; anything else is an eqref, cast where it is used. A slot of
+ * an aggregate holds each value boxed (section 2.1). Tuples are $tuples
+ * over slots, and unboxed tuples (ir/unbox) a value for each component,
+ * returned as several results; options are tagged in name order; arrays
+ * test their indices and counts first. A value that may be a proxy, or
+ * that is read through a view map, is read through the runtime's core.
  *
- * Step 4 adds aggregates (sections 2.3 to 2.5): tuples as $tuples over slots,
- * and unboxed tuples (ir/unbox) as a value for each component, returned as
- * several results; options, tagged in name order, whose case binders share
- * the option, compared by the options-as-values rules; arrays, their indices
- * and counts tested first; and records, a payload and its view's table,
- * boxed in a slot. A slot holds each value boxed as section 2.2 says. A read
- * that may meet a proxy tests for one and, finding it, ends the program as
- * pending, since nothing makes one yet.
+ * Code: statements' joins, loops, switches, and trys are blocks, branches,
+ * and try_tables (section 4.1). A call of the unit's own function is
+ * direct, and a tail call wherever its result reaches a return (section
+ * 3.3); a call through a closure takes its native entry when the closure is
+ * of the callee type's signature, else its uniform entry (section 3.1).
+ * Division and remainder test their divisor before the instruction that
+ * would trap (section 2.10).
  *
- * Step 5 adds closures (section 3): every native entry takes its closure
- * first; each signature has its uniform and native closure types, and each
- * function its own, with its captures; a function that captures nothing has a
- * static closure; and a call through a closure takes its native entry when
- * the closure is of the callee type's signature, else its uniform entry.
+ * The runtime: the base, which wasm/runtime builds, and the units in Quest,
+ * wasm/core and wasm/print (section 4.2). The library's externals compile
+ * to calls of them, of util/realconv and util/realmath, or to instructions
+ * in place, as do the intrinsics (section 4.5) that the runtime's units
+ * use. The unit's initializer makes the descriptors its code needs through
+ * the core.
  *
- * Step 15 adds locations (section 2.6): a slot array and an index, which a
- * var or out parameter receives, and which a value of a location's type is.
- * A variable whose address is taken is held in a slot array of its own from
- * its declaration, and read and written through it; a location crosses a
- * uniform entry in a slot array of two, its slot array and its index.
- *
- * What it cannot compile yet raises unsupported, naming it and the step of
- * the plan that adds it. *)
+ * What it cannot compile raises unsupported, naming it; in a module's unit
+ * (not a program's, nor the runtime's), a function it cannot compile ends
+ * the program when it is called instead. *)
 
 interface Codegen
 import
@@ -50,7 +44,8 @@ export
     (* A unit's module (docs/wasm-plan.md section 5.1): a program's, which
      * exports _start, or a module file's, which exports its init, its
      * record's two globals, and its functions, each at its interface type's
-     * closure signature; each imports the units it does by their canonical
-     * names *)
+     * closure signature. A phrase unit, a JIT's input, is compiled as a
+     * module file's, its init running its top level. Each imports the units
+     * it does by their names, a library unit's its path in lib/ *)
     unitModule(unit: ir.Unit): model.Module
 end

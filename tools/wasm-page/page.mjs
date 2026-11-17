@@ -18,14 +18,14 @@ async function fetchBytes(url) {
   return new Uint8Array(await response.arrayBuffer());
 }
 
-// The driver's modules, compiled, and the library's files: what every session
-// of the page starts from. timings records how long each part took, in
-// milliseconds, and sizes the archives' bytes.
 // The build these scripts are from, which build.py writes here and as the
 // driver archive's stamp member; "dev" in the sources, which no check is
 // made for
 const BUILD = "dev";
 
+// The driver's modules, compiled, and the library's files: what every session
+// of the page starts from. timings records how long each part took, in
+// milliseconds, and sizes the archives' bytes.
 export async function load(base = new URL(".", import.meta.url)) {
   const timings = {}, sizes = {};
   const started = performance.now();
@@ -93,6 +93,8 @@ export class PageSession {
             ...args];
   }
 
+  // The driver's environment: the library under /quest, the session's files
+  // under /work, the URL prefixes on QUEST_PATH, and then options.env's
   environment() {
     const prefixes = (this.options.prefixes || []).map((_, i) => `/remote/${i}`);
     return {QUEST_HOME: "/quest", QUEST_KERNEL: "1", PWD: "/work", HOME: "/work",
@@ -156,6 +158,9 @@ export class PageSession {
     }
   }
 
+  // The driver exited, or its worker failed: the request running and those
+  // queued answered as failed, and the session ended for good (status set,
+  // so that later requests fail at once)
   exit(status, resolve) {
     this.status = status;
     // a record cut off with its worker is no part of the next's
@@ -194,6 +199,7 @@ export class PageSession {
     });
   }
 
+  // Sends the next request queued to the worker, unless one is running
   next() {
     if (this.running || this.queue.length === 0 || !this.worker) return;
     this.running = this.queue.shift();
@@ -201,6 +207,7 @@ export class PageSession {
     this.worker.postMessage({line: this.running.line});
   }
 
+  // Answers the request running with its records, then sends the next
   finish(records) {
     const r = this.running;
     this.running = null;

@@ -141,6 +141,9 @@ export
         begin
             let bytes = try
                 begin
+                    (* The passes hold a pointer and a boxed value alike, as
+                     * the wasm backend's one eqref, which whoever runs them
+                     * for a wasm unit sets: here the target *)
                     shapes.setReferencesAlike(true)
                     encode.encode(wasm.unitModule(passes.runPasses(unit)))
                 end
@@ -156,6 +159,9 @@ export
             let n = vector.length(:nodes.Module unit.modules)
             if n is 0 then fail(:Ok "a unit with no module") end
             let name = vector.get(:nodes.Module unit.modules n - 1).name
+            (* The bytes given, then loaded under the unit's last module's
+             * name; a load that fails leaves its message at area and gives
+             * its length *)
             let given = hostGive(area put(bytes))
             let failed = hostLoad(area put(name))
             if failed > 0 then fail(:Ok fromMemory(area failed)) end
@@ -166,6 +172,9 @@ export
             let shown = fun(): String if capture then captured() else "" end
             if capture then startCapture() end
             try
+                (* What the host caught at its frame: 0 nothing, 1 the
+                 * engine's stack overflow, 2 a trap, 3 a fatal error, whose
+                 * report the runtime kept (fatalReport) *)
                 let status = hostRun(area put(name))
                 if status is 0 then
                     option ran of Ran with let shown = shown() end
@@ -192,5 +201,6 @@ export
             end
         end
 
+    (* Nothing to remove: this target writes nothing for a debugger *)
     let finish(t: T): Ok = begin let unused = system.getEnv("QUEST_JIT_DEBUG") ok end
 end

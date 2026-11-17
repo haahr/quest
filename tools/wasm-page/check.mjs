@@ -38,6 +38,9 @@ function nativePaths(text) {
     .replaceAll("/quest", "<root>").replaceAll("/work", "<scratch>");
 }
 
+// Runs the transcript source in a new session, its directives (@load,
+// @args, @env) applied: its standard output, standard error, and exit
+// status, in the golden's form and with native paths, and how long it took
 async function transcript(loaded, name, source) {
   const loadFile = directive(source, "load");
   const args = (directive(source, "args") || "").split(/\s+/).filter(Boolean);
