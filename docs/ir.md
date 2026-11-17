@@ -646,7 +646,8 @@ the runtime's helpers inline ([ssa.md](ssa.md) §4); clang inlines within a C un
 **The simplifier** (`questlang/ir/simplify`, dumped as `ir_simplified`, run as `run_ir_simplified`) runs in rounds,
 at most six, each followed by contification:
 
-- copy propagation, only between variables of one type, so that no later pass sees a variable's type change;
+- copy propagation, only between variables of equal types (spelled the same way or not: an alias and the type it
+  names are one type), so that no later pass sees a variable's type change;
 - constant propagation (not of Strings, whose identity `is` compares) and folding, with `if` and `switch` on
   constants; `Int` arithmetic wraps, so only division can raise, and a division by zero is not folded;
 - dead `let`s, closures, allocations, and modules' members nothing reads included, and unused `funs`;

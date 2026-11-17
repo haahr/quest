@@ -953,8 +953,6 @@ the program's top level contains its loop twice, once for each use. The longest-
 ...
   let %1: Fun(string: String): Int = member string.length @31:28
   let %2: Fun(a: Int b: Int): Bool = builtin > @31:43
-  let key: Fun(e: String): Int = %1 @31:15
-  let isGreater: Fun(x: Int y: Int): Bool = %2 @31:15
   let n: Int = prim extent(words) @15:17
   let %3: Bool = prim is(n, 0) @16:12
   if %3 { @16:9
@@ -962,7 +960,7 @@ the program's top level contains its loop twice, once for each use. The longest-
   }
   var best: Int = 0 @17:9
   let %4: String = index(words, 0) @18:31
-  let %5: Int = call key(%4) @18:27
+  let %5: Int = call %1(%4) @18:27
   var bestKey: Int = %5 @18:9
   let %6: Int = prim -(n, 1) @19:24
   var i: Int = 1 @19:9
@@ -971,8 +969,8 @@ the program's top level contains its loop twice, once for each use. The longest-
     loop L1_1 {
       let i.1: Int = i @19:9
       let %8: String = index(words, i.1) @20:25
-      let k: Int = call key(%8) @20:21
-      let %9: Bool = call isGreater(k, bestKey) @21:16
+      let k: Int = call %1(%8) @20:21
+      let %9: Bool = call %2(k, bestKey) @21:16
       if %9 { @21:13
         best := i.1 @22:17
         bestKey := k @23:17
@@ -995,9 +993,11 @@ the source position it came from (line 20, column 25), which the compiler keeps 
 debugger, can point at the source. Each step also records its position after inlining, so the loop's lines still point
 into `argmax`, not into the call.
 
-Two things are left as calls: `key` and `isGreater`. `string.length` is a function in another module, compiled on its
-own, so its body is not available to inline, and `>` is used as a value, so it is a closure the runtime provides. Both
-remain *calls through a closure*: a call of a value that holds a pointer to code and the environment the code needs.
+The parameters `key` and `isGreater` are gone too: inlining bound each to its argument (`let key = %1`), and the
+simplifier replaced each such copy by the value it copies, since the two have the same type. Two things are left as
+calls: `%1`, `string.length`, and `%2`, `>`. `string.length` is a function in another module, compiled on its own, so
+its body is not available to inline, and `>` is used as a value, so it is a closure the runtime provides. Both remain
+*calls through a closure*: a call of a value that holds a pointer to code and the environment the code needs.
 
 ## 16. ssa: Instructions in a Graph
 

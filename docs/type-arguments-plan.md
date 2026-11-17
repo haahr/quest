@@ -5,13 +5,19 @@ infers many of them. This plan removes every written type argument that inferenc
 can be rerun from any base, since the edits touch most of `questlang/` and conflict with every change in flight. The
 lasting results are the process and its tools; the edits themselves are redone, from a fresh rebase, when they land.
 
-## 1. Where It Stands (2026-11-15)
+## 1. Where It Stands (2026-11-17)
 
 - **§2.1, the report,** is on main (`2d416c77`): `--report-inferable[=equal|exact]`, described in
   [type-system.md](type-system.md) §6.9.
 - **§2.2, the tools,** are `tools/omit-type-args` and `tools/compare-codegen` ([testing.md](testing.md) §2.9). A
   trial run in `exact` mode at `fcaa43a9` omitted 3,757 calls inferable from their arguments and 434 that need their
   expected type, none restored, and every unit's assembly compared equal; its edits were discarded.
+- **§2.3** is on main by another route: `bc522266` compares types in simplify's copies and unbox's tests by their
+  normal forms (`nodes.sameType`, through `reduce.normalizeType`, which sees through aliases), to make parallel
+  builds deterministic. Two changes this work found land with it: a bug in both compilers' specialization (a call at
+  a type argument that numbers its bound's option or variant cases otherwise made bad code, so such calls stay
+  generic), and six tests that kept their calls generic by a let at the function's polymorphic type, which the
+  simplifier propagates, read the function out of an array instead ([testing.md](testing.md) §2.10).
 - **A first removal,** with the report's first form (the environment variable `QUEST_REPORT_INFERABLE`, exact type
   nodes), is on branch `questlang/infer-type-args` (local), to be abandoned (§2.4): `566fef29` omits the 3,756 calls
   inferable from their value arguments alone, and `2ce3ff3d` the 434 inferable only with the expected type, found
@@ -76,7 +82,8 @@ edits, as tooling-only changes have ([testing.md](testing.md)).
 
 Three tests decide by type identity: `simplify`'s `copied` (copy propagation) and the two in `unbox` (`x.v.type.id
 is fun1.resultType.id`, lines 116 and 175). Each becomes a test of equal types, the identity first and
-`subtyping.isTypeEqual` after, as `represent.equal` and `genericLayout.typeEqual` already do. Before relying on it:
+`subtyping.isTypeEqual` after, as `represent.equal` and `genericLayout.typeEqual` already do. (Main's `bc522266`
+made the three tests compare normal forms instead, which comes to the same for aliases.) Before relying on it:
 
 - **The verifier** (`ir/verify`) must accept a use of a variable whose type is equal to the one it replaces but
   spelled otherwise.

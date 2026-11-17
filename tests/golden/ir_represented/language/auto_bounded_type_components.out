@@ -1,41 +1,41 @@
 import writer = "writer" : Writer
 import conv = "conv" : Conv
 fun mk0 [A::<: Big](x: A): AnyBig {
-  let %1: Tuple a: A end = tuple(box x) @19:42
-  let %2: AnyBig = auto[A](%1) @19:34
+  let %1: Tuple a: A end = tuple(box x) @20:42
+  let %2: AnyBig = auto[A](%1) @20:34
   return %2
 }
 fun unbox0 [A::<: Big](b: AnyBig, default: A): A {
-  inspect b { @25:48
+  inspect b { @26:48
     case A (x.1: Tuple a: A end) converting (component): {
-      let box: box(A) = tuple_field(x.1, 0) via proxy @25:77
+      let box: box(A) = tuple_field(x.1, 0) via proxy @26:77
       let %3: A = convert(box, slot_unbox)
-      return %3 @25:48
+      return %3 @26:48
     }
     else: {
-      return default @25:48
+      return default @26:48
     }
   }
 }
 fun roundTrip0 [A::<: Big](x.2: A): A {
-  let %4: AnyBig = call mk [A](x.2) @33:45
-  let %5: A = call unbox [A](%4, x.2) @33:36
+  let %4: AnyBig = call mk [A](x.2) @34:45
+  let %5: A = call unbox [A](%4, x.2) @34:36
   return %5
 }
 fun mkObj0 [A::<: Object](x.3: A): AnyObject {
-  let %6: Tuple a: A end = tuple(box x.3) @42:51
-  let %7: AnyObject = auto[A](%6) @42:43
+  let %6: Tuple a: A end = tuple(box x.3) @43:51
+  let %7: AnyObject = auto[A](%6) @43:43
   return %7
 }
 fun unboxObj0 [A::<: Object](b.1: AnyObject, default.1: A): A {
-  inspect b.1 { @46:57
+  inspect b.1 { @47:57
     case A (x.4: Tuple a: A end) converting (component): {
-      let box.1: box(A) = tuple_field(x.4, 0) via proxy @46:86
+      let box.1: box(A) = tuple_field(x.4, 0) via proxy @47:86
       let %8: A = convert(box.1, slot_unbox)
-      return %8 @46:57
+      return %8 @47:57
     }
     else: {
-      return default.1 @46:57
+      return default.1 @47:57
     }
   }
 }
@@ -46,302 +46,310 @@ fun same0 [A::<: Object](x.6: A): A {
   return x.6
 }
 fun viaGeneric0 [B::<: Small](y: B): B {
-  let %9: B = call id [B](y) @60:39
+  let %9: B = call id [B](y) @61:39
   return %9
 }
 main {
-  let small: Small = variant(c, true) @14:20
-  let other: Small = variant(b, "other") @15:20
+  let small: Small = variant(c, true) @15:20
+  let other: Small = variant(b, "other") @16:20
   let mk0.1: All(A <: Big) Fun(x: A): AnyBig = closure mk0 {}
-  let mk: All(A <: Big) Fun(x: A): AnyBig = mk0.1 @20:37
+  let %10: Array(All(A <: Big) Fun(x: A): AnyBig) = array(mk0.1) @21:38
+  let mk: All(A <: Big) Fun(x: A): AnyBig = index(%10, 0) @21:38
   join k2(r: String) {
-    let %10: writer.T = member writer.output @9:44
-    let %11: String = prim <>(r, "\n") @9:58
-    let %12: Ok = call writer.putString(%10, %11) @9:27
+    let %11: writer.T = member writer.output @10:44
+    let %12: String = prim <>(r, "\n") @10:58
+    let %13: Ok = call writer.putString(%11, %12) @10:27
     join k3(r.1: String) {
-      let %13: writer.T = member writer.output @9:44
-      let %14: String = prim <>(r.1, "\n") @9:58
-      let %15: Ok = call writer.putString(%13, %14) @9:27
+      let %14: writer.T = member writer.output @10:44
+      let %15: String = prim <>(r.1, "\n") @10:58
+      let %16: Ok = call writer.putString(%14, %15) @10:27
       let unbox0.1: All(A <: Big) Fun(b: AnyBig default: A): A = closure unbox0 {}
-      let unbox: All(A <: Big) Fun(b: AnyBig default: A): A = unbox0.1 @26:51
-      let %16: Tuple a: Small end = tuple(box small) @27:34
-      let payload: Tuple a: A end = convert(%16, cast)
-      let direct: AnyBig = auto[Small](payload) @27:22
-      let %17: Small = call unbox [Small](direct, other) @28:8
-      join inlined1(%18: String) {
-        let %19: writer.T = member writer.output @9:44
-        let %20: String = prim <>(%18, "\n") @9:58
-        let %21: Ok = call writer.putString(%19, %20) @9:27
-        let %22: Big = variant(a, 0) @29:26
-        let %23: Big = call unbox [Big](direct, %22) @29:8
-        join inlined2(%24: String) {
-          let %25: writer.T = member writer.output @9:44
-          let %26: String = prim <>(%24, "\n") @9:58
-          let %27: Ok = call writer.putString(%25, %26) @9:27
-          let %28: AnyBig = call mk [Small](small) @32:21
-          let %29: Small = call unbox [Small](%28, other) @32:8
-          join inlined3(%30: String) {
-            let %31: writer.T = member writer.output @9:44
-            let %32: String = prim <>(%30, "\n") @9:58
-            let %33: Ok = call writer.putString(%31, %32) @9:27
+      let %17: Array(All(A <: Big) Fun(b: AnyBig default: A): A) = array(unbox0.1) @27:52
+      let unbox: All(A <: Big) Fun(b: AnyBig default: A): A = index(%17, 0) @27:52
+      let %18: Tuple a: Small end = tuple(box small) @28:34
+      let payload: Tuple a: A end = convert(%18, cast)
+      let direct: AnyBig = auto[Small](payload) @28:22
+      let %19: Small = call unbox [Small](direct, other) @29:8
+      join inlined1(%20: String) {
+        let %21: writer.T = member writer.output @10:44
+        let %22: String = prim <>(%20, "\n") @10:58
+        let %23: Ok = call writer.putString(%21, %22) @10:27
+        let %24: Big = variant(a, 0) @30:26
+        let %25: Big = call unbox [Big](direct, %24) @30:8
+        join inlined2(%26: String) {
+          let %27: writer.T = member writer.output @10:44
+          let %28: String = prim <>(%26, "\n") @10:58
+          let %29: Ok = call writer.putString(%27, %28) @10:27
+          let %30: AnyBig = call mk [Small](small) @33:21
+          let %31: Small = call unbox [Small](%30, other) @33:8
+          join inlined3(%32: String) {
+            let %33: writer.T = member writer.output @10:44
+            let %34: String = prim <>(%32, "\n") @10:58
+            let %35: Ok = call writer.putString(%33, %34) @10:27
             let roundTrip0.1: All(A <: Big) Fun(x: A): A = closure roundTrip0 {}
-            let roundTrip: All(A <: Big) Fun(x: A): A = roundTrip0.1 @34:39
-            let %34: Small = call roundTrip [Small](small) @35:8
-            join inlined4(%35: String) {
-              let %36: writer.T = member writer.output @9:44
-              let %37: String = prim <>(%35, "\n") @9:58
-              let %38: Ok = call writer.putString(%36, %37) @9:27
-              let %39: Small = call roundTrip [Small](other) @36:8
-              join inlined5(%40: String) {
-                let %41: writer.T = member writer.output @9:44
-                let %42: String = prim <>(%40, "\n") @9:58
-                let %43: Ok = call writer.putString(%41, %42) @9:27
+            let %36: Array(All(A <: Big) Fun(x: A): A) = array(roundTrip0.1) @35:40
+            let roundTrip: All(A <: Big) Fun(x: A): A = index(%36, 0) @35:40
+            let %37: Small = call roundTrip [Small](small) @36:8
+            join inlined4(%38: String) {
+              let %39: writer.T = member writer.output @10:44
+              let %40: String = prim <>(%38, "\n") @10:58
+              let %41: Ok = call writer.putString(%39, %40) @10:27
+              let %42: Small = call roundTrip [Small](other) @37:8
+              join inlined5(%43: String) {
+                let %44: writer.T = member writer.output @10:44
+                let %45: String = prim <>(%43, "\n") @10:58
+                let %46: Ok = call writer.putString(%44, %45) @10:27
                 let mkObj0.1: All(A <: Object) Fun(x: A): AnyObject = closure mkObj0 {}
-                let mkObj: All(A <: Object) Fun(x: A): AnyObject = mkObj0.1 @43:46
-                let car_box: box(Car) = record(age = 3, fuel = "diesel") @44:16
+                let %47: Array(All(A <: Object) Fun(x: A): AnyObject) = array(mkObj0.1) @44:47
+                let mkObj: All(A <: Object) Fun(x: A): AnyObject = index(%47, 0) @44:47
+                let car_box: box(Car) = record(age = 3, fuel = "diesel") @45:16
                 let car: Car = convert(car_box, slot_unbox)
                 join k5(r.2: String) {
-                  let %44: writer.T = member writer.output @9:44
-                  let %45: String = prim <>(r.2, "\n") @9:58
-                  let %46: Ok = call writer.putString(%44, %45) @9:27
+                  let %48: writer.T = member writer.output @10:44
+                  let %49: String = prim <>(r.2, "\n") @10:58
+                  let %50: Ok = call writer.putString(%48, %49) @10:27
                   let unboxObj0.1: All(A <: Object) Fun(b: AnyObject default: A): A = closure unboxObj0 {}
-                  let unboxObj: All(A <: Object) Fun(b: AnyObject default: A): A = unboxObj0.1 @47:60
-                  let %47: AnyObject = call mkObj [Car](car) @48:17
-                  let box.2: box(Record age: Int fuel: String end) = record(age = 0, fuel = "none") @48:33
-                  let %48: Record age: Int fuel: String end = convert(box.2, slot_unbox)
-                  let %49: Car = call unboxObj [Car](%47, %48) @48:3
-                  let %50: String = record_field(%49, fuel) @48:3
-                  let %51: writer.T = member writer.output @9:44
-                  let %52: String = prim <>(%50, "\n") @9:58
-                  let %53: Ok = call writer.putString(%51, %52) @9:27
-                  let %54: AnyObject = call mkObj [Car](car) @49:29
-                  let box.3: box(Record age: Int end) = record(age = 0) @49:45
-                  let %55: Record age: Int end = convert(box.3, slot_unbox)
-                  let %56: Object = call unboxObj [Object](%54, %55) @49:12
-                  let %57: Int = record_field(%56, age) @49:12
-                  let %58: String = call conv.int(%57) @49:3
-                  let %59: writer.T = member writer.output @9:44
-                  let %60: String = prim <>(%58, "\n") @9:58
-                  let %61: Ok = call writer.putString(%59, %60) @9:27
+                  let %51: Array(All(A <: Object) Fun(b: AnyObject default: A): A) = array(unboxObj0.1) @48:61
+                  let unboxObj: All(A <: Object) Fun(b: AnyObject default: A): A = index(%51, 0) @48:61
+                  let %52: AnyObject = call mkObj [Car](car) @49:17
+                  let box.2: box(Record age: Int fuel: String end) = record(age = 0, fuel = "none") @49:33
+                  let %53: Record age: Int fuel: String end = convert(box.2, slot_unbox)
+                  let %54: Car = call unboxObj [Car](%52, %53) @49:3
+                  let %55: String = record_field(%54, fuel) @49:3
+                  let %56: writer.T = member writer.output @10:44
+                  let %57: String = prim <>(%55, "\n") @10:58
+                  let %58: Ok = call writer.putString(%56, %57) @10:27
+                  let %59: AnyObject = call mkObj [Car](car) @50:29
+                  let box.3: box(Record age: Int end) = record(age = 0) @50:45
+                  let %60: Record age: Int end = convert(box.3, slot_unbox)
+                  let %61: Object = call unboxObj [Object](%59, %60) @50:12
+                  let %62: Int = record_field(%61, age) @50:12
+                  let %63: String = call conv.int(%62) @50:3
+                  let %64: writer.T = member writer.output @10:44
+                  let %65: String = prim <>(%63, "\n") @10:58
+                  let %66: Ok = call writer.putString(%64, %65) @10:27
                   let id0.1: All(A <: Big) Fun(x: A): A = closure id0 {}
-                  let id: All(A <: Big) Fun(x: A): A = id0.1 @53:32
-                  let %62: Small = call id [Small](small) @55:13
-                  join inlined6(%63: String) {
-                    let %64: writer.T = member writer.output @9:44
-                    let %65: String = prim <>(%63, "\n") @9:58
-                    let %66: Ok = call writer.putString(%64, %65) @9:27
-                    let %67: Small = call id [Small](other) @56:8
-                    join inlined7(%68: String) {
-                      let %69: writer.T = member writer.output @9:44
-                      let %70: String = prim <>(%68, "\n") @9:58
-                      let %71: Ok = call writer.putString(%69, %70) @9:27
+                  let %67: Array(All(A <: Big) Fun(x: A): A) = array(id0.1) @54:33
+                  let id: All(A <: Big) Fun(x: A): A = index(%67, 0) @54:33
+                  let %68: Small = call id [Small](small) @56:13
+                  join inlined6(%69: String) {
+                    let %70: writer.T = member writer.output @10:44
+                    let %71: String = prim <>(%69, "\n") @10:58
+                    let %72: Ok = call writer.putString(%70, %71) @10:27
+                    let %73: Small = call id [Small](other) @57:8
+                    join inlined7(%74: String) {
+                      let %75: writer.T = member writer.output @10:44
+                      let %76: String = prim <>(%74, "\n") @10:58
+                      let %77: Ok = call writer.putString(%75, %76) @10:27
                       let same0.1: All(A <: Object) Fun(x: A): A = closure same0 {}
-                      let same: All(A <: Object) Fun(x: A): A = same0.1 @58:37
-                      let %72: Car = call same [Car](car) @59:3
-                      let %73: String = record_field(%72, fuel) @59:3
-                      let %74: writer.T = member writer.output @9:44
-                      let %75: String = prim <>(%73, "\n") @9:58
-                      let %76: Ok = call writer.putString(%74, %75) @9:27
+                      let %78: Array(All(A <: Object) Fun(x: A): A) = array(same0.1) @59:38
+                      let same: All(A <: Object) Fun(x: A): A = index(%78, 0) @59:38
+                      let %79: Car = call same [Car](car) @60:3
+                      let %80: String = record_field(%79, fuel) @60:3
+                      let %81: writer.T = member writer.output @10:44
+                      let %82: String = prim <>(%80, "\n") @10:58
+                      let %83: Ok = call writer.putString(%81, %82) @10:27
                       let viaGeneric0.1: All(B <: Small) Fun(y: B): B = closure viaGeneric0 {}
-                      let viaGeneric: All(B <: Small) Fun(y: B): B = viaGeneric0.1 @61:42
-                      let %77: Small = call viaGeneric [Small](small) @62:13
-                      join inlined8(%78: String) {
-                        let %79: writer.T = member writer.output @9:44
-                        let %80: String = prim <>(%78, "\n") @9:58
-                        let %81: Ok = call writer.putString(%79, %80) @9:27
+                      let %84: Array(All(B <: Small) Fun(y: B): B) = array(viaGeneric0.1) @62:43
+                      let viaGeneric: All(B <: Small) Fun(y: B): B = index(%84, 0) @62:43
+                      let %85: Small = call viaGeneric [Small](small) @63:13
+                      join inlined8(%86: String) {
+                        let %87: writer.T = member writer.output @10:44
+                        let %88: String = prim <>(%86, "\n") @10:58
+                        let %89: Ok = call writer.putString(%87, %88) @10:27
                       } in {
-                        switch tag(%77) { @54:35
+                        switch tag(%85) { @55:35
                           case b (t: String): {
-                            jump inlined8(t) @54:35
+                            jump inlined8(t) @55:35
                           }
                           case c (f: Bool): {
-                            let %82: String = call conv.bool(f) @54:82
-                            jump inlined8(%82) @54:35
+                            let %90: String = call conv.bool(f) @55:82
+                            jump inlined8(%90) @55:35
                           }
                         }
                       }
                     } in {
-                      let %83: Big = convert(%67, variant_tags)
-                      let x.7: Big = %83 @56:3
-                      switch tag(x.7) { @13:5
+                      let %91: Big = convert(%73, variant_tags)
+                      let x.7: Big = %91 @57:3
+                      switch tag(x.7) { @14:5
                         case a (n: Int): {
-                          let %84: String = call conv.int(n) @13:31
-                          jump inlined7(%84) @13:5
+                          let %92: String = call conv.int(n) @14:31
+                          jump inlined7(%92) @14:5
                         }
                         case b (t.1: String): {
-                          jump inlined7(t.1) @13:5
+                          jump inlined7(t.1) @14:5
                         }
                         case c (f.1: Bool): {
-                          let %85: String = call conv.bool(f.1) @13:83
-                          jump inlined7(%85) @13:5
+                          let %93: String = call conv.bool(f.1) @14:83
+                          jump inlined7(%93) @14:5
                         }
                       }
                     }
                   } in {
-                    switch tag(%62) { @54:35
+                    switch tag(%68) { @55:35
                       case b (t.2: String): {
-                        jump inlined6(t.2) @54:35
+                        jump inlined6(t.2) @55:35
                       }
                       case c (f.2: Bool): {
-                        let %86: String = call conv.bool(f.2) @54:82
-                        jump inlined6(%86) @54:35
+                        let %94: String = call conv.bool(f.2) @55:82
+                        jump inlined6(%94) @55:35
                       }
                     }
                   }
                 } in {
-                  let %87: AnyObject = call mkObj [Car](car) @45:11
-                  inspect %87 { @45:3
+                  let %95: AnyObject = call mkObj [Car](car) @46:11
+                  inspect %95 { @46:3
                     case Car (t.3: Tuple a: Car end) converting (component): {
-                      let box.4: box(Car) = tuple_field(t.3, 0) via proxy @45:48
-                      let %88: Car = convert(box.4, slot_unbox)
-                      let %89: String = record_field(%88, fuel) @45:48
-                      jump k5(%89) @45:3
+                      let box.4: box(Car) = tuple_field(t.3, 0) via proxy @46:48
+                      let %96: Car = convert(box.4, slot_unbox)
+                      let %97: String = record_field(%96, fuel) @46:48
+                      jump k5(%97) @46:3
                     }
                     else: {
-                      jump k5("no") @45:3
+                      jump k5("no") @46:3
                     }
                   }
                 }
               } in {
-                let %90: Big = convert(%39, variant_tags)
-                let x.8: Big = %90 @36:3
-                switch tag(x.8) { @13:5
+                let %98: Big = convert(%42, variant_tags)
+                let x.8: Big = %98 @37:3
+                switch tag(x.8) { @14:5
                   case a (n.1: Int): {
-                    let %91: String = call conv.int(n.1) @13:31
-                    jump inlined5(%91) @13:5
+                    let %99: String = call conv.int(n.1) @14:31
+                    jump inlined5(%99) @14:5
                   }
                   case b (t.4: String): {
-                    jump inlined5(t.4) @13:5
+                    jump inlined5(t.4) @14:5
                   }
                   case c (f.3: Bool): {
-                    let %92: String = call conv.bool(f.3) @13:83
-                    jump inlined5(%92) @13:5
+                    let %100: String = call conv.bool(f.3) @14:83
+                    jump inlined5(%100) @14:5
                   }
                 }
               }
             } in {
-              let %93: Big = convert(%34, variant_tags)
-              let x.9: Big = %93 @35:3
-              switch tag(x.9) { @13:5
+              let %101: Big = convert(%37, variant_tags)
+              let x.9: Big = %101 @36:3
+              switch tag(x.9) { @14:5
                 case a (n.2: Int): {
-                  let %94: String = call conv.int(n.2) @13:31
-                  jump inlined4(%94) @13:5
+                  let %102: String = call conv.int(n.2) @14:31
+                  jump inlined4(%102) @14:5
                 }
                 case b (t.5: String): {
-                  jump inlined4(t.5) @13:5
+                  jump inlined4(t.5) @14:5
                 }
                 case c (f.4: Bool): {
-                  let %95: String = call conv.bool(f.4) @13:83
-                  jump inlined4(%95) @13:5
+                  let %103: String = call conv.bool(f.4) @14:83
+                  jump inlined4(%103) @14:5
                 }
               }
             }
           } in {
-            let %96: Big = convert(%29, variant_tags)
-            let x.10: Big = %96 @32:3
-            switch tag(x.10) { @13:5
+            let %104: Big = convert(%31, variant_tags)
+            let x.10: Big = %104 @33:3
+            switch tag(x.10) { @14:5
               case a (n.3: Int): {
-                let %97: String = call conv.int(n.3) @13:31
-                jump inlined3(%97) @13:5
+                let %105: String = call conv.int(n.3) @14:31
+                jump inlined3(%105) @14:5
               }
               case b (t.6: String): {
-                jump inlined3(t.6) @13:5
+                jump inlined3(t.6) @14:5
               }
               case c (f.5: Bool): {
-                let %98: String = call conv.bool(f.5) @13:83
-                jump inlined3(%98) @13:5
+                let %106: String = call conv.bool(f.5) @14:83
+                jump inlined3(%106) @14:5
               }
             }
           }
         } in {
-          switch tag(%23) { @13:5
+          switch tag(%25) { @14:5
             case a (n.4: Int): {
-              let %99: String = call conv.int(n.4) @13:31
-              jump inlined2(%99) @13:5
+              let %107: String = call conv.int(n.4) @14:31
+              jump inlined2(%107) @14:5
             }
             case b (t.7: String): {
-              jump inlined2(t.7) @13:5
+              jump inlined2(t.7) @14:5
             }
             case c (f.6: Bool): {
-              let %100: String = call conv.bool(f.6) @13:83
-              jump inlined2(%100) @13:5
+              let %108: String = call conv.bool(f.6) @14:83
+              jump inlined2(%108) @14:5
             }
           }
         }
       } in {
-        let %101: Big = convert(%17, variant_tags)
-        let x.11: Big = %101 @28:3
-        switch tag(x.11) { @13:5
+        let %109: Big = convert(%19, variant_tags)
+        let x.11: Big = %109 @29:3
+        switch tag(x.11) { @14:5
           case a (n.5: Int): {
-            let %102: String = call conv.int(n.5) @13:31
-            jump inlined1(%102) @13:5
+            let %110: String = call conv.int(n.5) @14:31
+            jump inlined1(%110) @14:5
           }
           case b (t.8: String): {
-            jump inlined1(t.8) @13:5
+            jump inlined1(t.8) @14:5
           }
           case c (f.7: Bool): {
-            let %103: String = call conv.bool(f.7) @13:83
-            jump inlined1(%103) @13:5
+            let %111: String = call conv.bool(f.7) @14:83
+            jump inlined1(%111) @14:5
           }
         }
       }
     } in {
-      let %104: AnyBig = call mk [Small](small) @22:11
-      inspect %104 { @22:3
+      let %112: AnyBig = call mk [Small](small) @23:11
+      inspect %112 { @23:3
         case Big (t.9: Tuple a: Big end) converting (component): {
-          let box.5: box(Big) = tuple_field(t.9, 0) via proxy @22:54
-          let %105: Big = convert(box.5, slot_unbox)
-          join inlined9(%106: String) {
-            jump k3(%106) @22:3
+          let box.5: box(Big) = tuple_field(t.9, 0) via proxy @23:54
+          let %113: Big = convert(box.5, slot_unbox)
+          join inlined9(%114: String) {
+            jump k3(%114) @23:3
           } in {
-            switch tag(%105) { @13:5
+            switch tag(%113) { @14:5
               case a (n.6: Int): {
-                let %107: String = call conv.int(n.6) @13:31
-                jump inlined9(%107) @13:5
+                let %115: String = call conv.int(n.6) @14:31
+                jump inlined9(%115) @14:5
               }
               case b (t.10: String): {
-                jump inlined9(t.10) @13:5
+                jump inlined9(t.10) @14:5
               }
               case c (f.8: Bool): {
-                let %108: String = call conv.bool(f.8) @13:83
-                jump inlined9(%108) @13:5
+                let %116: String = call conv.bool(f.8) @14:83
+                jump inlined9(%116) @14:5
               }
             }
           }
         }
         else: {
-          jump k3("no") @22:3
+          jump k3("no") @23:3
         }
       }
     }
   } in {
-    let %109: AnyBig = call mk [Small](small) @21:11
-    inspect %109 { @21:3
+    let %117: AnyBig = call mk [Small](small) @22:11
+    inspect %117 { @22:3
       case Small (t.11: Tuple a: Small end) converting (component): {
-        let box.6: box(Small) = tuple_field(t.11, 0) via proxy @21:56
-        let %110: Small = convert(box.6, slot_unbox)
-        join inlined10(%111: String) {
-          jump k2(%111) @21:3
+        let box.6: box(Small) = tuple_field(t.11, 0) via proxy @22:56
+        let %118: Small = convert(box.6, slot_unbox)
+        join inlined10(%119: String) {
+          jump k2(%119) @22:3
         } in {
-          let %112: Big = convert(%110, variant_tags)
-          let x.12: Big = %112 @21:51
-          switch tag(x.12) { @13:5
+          let %120: Big = convert(%118, variant_tags)
+          let x.12: Big = %120 @22:51
+          switch tag(x.12) { @14:5
             case a (n.7: Int): {
-              let %113: String = call conv.int(n.7) @13:31
-              jump inlined10(%113) @13:5
+              let %121: String = call conv.int(n.7) @14:31
+              jump inlined10(%121) @14:5
             }
             case b (t.12: String): {
-              jump inlined10(t.12) @13:5
+              jump inlined10(t.12) @14:5
             }
             case c (f.9: Bool): {
-              let %114: String = call conv.bool(f.9) @13:83
-              jump inlined10(%114) @13:5
+              let %122: String = call conv.bool(f.9) @14:83
+              jump inlined10(%122) @14:5
             }
           }
         }
       }
       else: {
-        jump k2("no") @21:3
+        jump k2("no") @22:3
       }
     }
   }

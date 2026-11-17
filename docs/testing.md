@@ -610,6 +610,22 @@ calls inferable from their arguments, then those that need their expected type, 
 and then compares, since omitting a type argument must change no code. Their parts that need no compiler are
 tested by `tests/python/test_omit_type_args.py`.
 
+### 2.10. Keeping Calls Generic
+
+The self-hosted compiler specializes a direct call of a polymorphic function (ir.md §8.1) and inlines small ones
+(§8.6), so a test of what generic code does must call through a value the compiler cannot see is the function. A
+let of the function, even at its polymorphic type written out (`let bump: All(A <: P x: A) Int = bump0`), is not
+enough: the simplifier propagates the copy, whatever the type's spelling, and the call is direct again. The tests
+read the function out of an array instead, which the IR's passes never see into, since arrays are mutable:
+
+```quest
+let bump: All(A <: P x: A) Int = {array of bump0 end}[0];
+```
+
+`bounded_parameters_own_view`, `auto_bounded_type_components`, `auto_open_types`, `proxy_components`,
+`var_arguments_in_slots`, `view_proxies`, `proxied_type_arguments`, and `bounded_abstract_type_arguments` call their
+generic functions so; their `ssa` goldens show the calls generic.
+
 ## 3. Diagnostic & Error Testing Framework (`tests/errors/`)
 
 ### 3.1. Design Motivation
