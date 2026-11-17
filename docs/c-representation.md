@@ -1299,7 +1299,12 @@ parameter, the size of the stored payload, and for each component its name, its 
 `quest_type_bound_vars[0]`, so equal auto types have equal descriptors), and its offset in the payload (every
 component is a slot holding its `QVal` form, §5.1). Runtime subtyping of auto types
 follows §6.7: a subtype bound and, as for tuples, a prefix of the components with matching names. Serialization
-supports auto values with one component.
+supports auto values with one component. Echo writes an auto value as `auto :T with ... end`, a component whose type
+is a type parameter at that parameter's witness: `quest_put_value` keeps a stack of the type components of the auto
+values being written, innermost first, and writes a component of type `quest_type_bound_vars[i]` at the `i`th, so in
+`auto :Int with 5 auto :String with "s" 6 end end` at `Auto A::TYPE with a: A inner: Auto B::TYPE with b: B a2: A
+end end` the inner `a2` is written `6`, as the interpreters write it and as `dynamic.extern` writes such a component
+([dynamic.md](dynamic.md) §2.4). A variable with no witness is written `<hidden>`.
 
 - **Construction:** `auto :T with ... end` builds the `Tuple S[T/A] end` struct, converts it to the stored layout
   with the payload's own plan (`auto_payload_plan` in `ir/represent.py`: closure adapters, and conversions of

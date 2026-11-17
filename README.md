@@ -385,8 +385,6 @@ C runtime), which link to the rest.
   backend against MLton.
 - [docs/profiling.md](docs/profiling.md): finding out why compiled code runs as fast as it does (`tools/perf/`).
 - [docs/diagnostics.md](docs/diagnostics.md): how errors are reported.
-- [docs/interpreter-disagreements.md](docs/interpreter-disagreements.md): where the interpreters and compiled code
-  disagreed, and how each was settled.
 - [docs/instructions.md](docs/instructions.md): the guide for contributors, people and models: workflow, commands,
   conventions, and Quest syntax traps.
 
@@ -398,5 +396,5 @@ C runtime), which link to the rest.
 - [docs/release-compiler.md](docs/release-compiler.md): releases of the self-hosted compiler (`tools/release`), from
   which `./quest` is built.
 - [docs/tasklist.md](docs/tasklist.md): open bugs and planned tasks.
-- [docs/strings-plan.md](docs/strings-plan.md) and [docs/type-arguments-plan.md](docs/type-arguments-plan.md): plans
-  in progress, for how strings are built and for omitting the type arguments that inference finds.
+- [docs/type-arguments-plan.md](docs/type-arguments-plan.md): a plan in progress, for omitting the type arguments
+  that inference finds.
