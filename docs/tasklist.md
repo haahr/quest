@@ -229,18 +229,6 @@ a new test) reads its documents from standard input.
 
 ---
 
-## Bounded quantifiers in interfaces are untested on the wasm backend
-
-**Problem.** An interface's `All(A::POWER(Small) x: A) Int` (ABI 77) was checked on every target on `main`, but not on
-the wasm backend's view maps, which were not on `main` then.
-
-**Where to start.** `tests/source/modules/bounded_generic_import.quest` (with `geom/bounded`) and
-`modules/bounded_abstract_types` (with `geom/held`), compiled to wasm.
-
-**Done when.** Both pass on the wasm backend, or it is fixed so that they do.
-
----
-
 ## Faults the wasm review reported that no probe reproduced
 
 **Problem.** The wasm review (docs/wasm-review.md §7, on the wasm branch) reported three faults that probes written
