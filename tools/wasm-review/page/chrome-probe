@@ -1,0 +1,30 @@
+#!/bin/sh
+# chrome-probe PAGE QUERY [SECONDS]: serves the built page in the directory
+# PAGE (tools/wasm-page/build -o PAGE), opens it in headless Chrome with a
+# probe's script added after the page's own, and prints the probe's lines. QUERY is
+# the page's query, probe=NAME choosing the probe (see probe.mjs and
+# probe2.mjs for their names). PROBE_JS names the script (probe.mjs), PORT
+# the server's port (8765), CHROME the browser's binary. The probe ends by
+# logging PROBE-DONE; without it the wait is SECONDS (90).
+HERE=$(cd "$(dirname "$0")" && pwd)
+. "$HERE/../../python.sh"
+page=$(cd "$1" && pwd) || exit 1
+PORT=${PORT:-8765}
+JS=${PROBE_JS:-probe.mjs}
+CHROME=${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}
+cp "$HERE/$JS" "$page/$JS" || exit 1
+sed "s|</body>|<script type=\"module\" src=\"$JS\"></script></body>|" "$page/index.html" > "$page/probe.html"
+work=$(mktemp -d)
+(cd "$page" && exec "$PY" -m http.server "$PORT" --bind 127.0.0.1 > /dev/null 2>&1) &
+server=$!
+sleep 1
+"$CHROME" --headless=new --user-data-dir="$work/profile" --no-first-run --enable-logging=stderr --v=0 \
+  "http://127.0.0.1:$PORT/probe.html?$2" > "$work/chrome.log" 2>&1 &
+chrome=$!
+n=0
+while [ $n -lt "${3:-90}" ] && ! grep -q 'PROBE-DONE' "$work/chrome.log"; do sleep 1; n=$((n + 1)); done
+kill $chrome $server 2> /dev/null
+wait $chrome $server 2> /dev/null
+grep -o 'PROBE[:-].*' "$work/chrome.log" | sed 's/", source: http.*//'
+grep -i 'CONSOLE' "$work/chrome.log" | grep -v PROBE | head -5
+rm -rf "$work"

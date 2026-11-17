@@ -1,0 +1,55 @@
+(* Reads the documents docs/FROM.json to docs/TO.json, the two numbers on standard input, and prints for each
+   whether dynamic.intern took it, what it left unread, and the value written again by dynamic.extern. *)
+import dynamic: Dynamic;
+import ab = u/ab : u/Ab ;
+let dir = "docs/";
+let say(s: String): Ok = writer.putString(writer.output s <> "\n");
+let keep = ab.sum(ab.mk(1 2));
+let rest(rd: reader.T): String =
+    begin
+        let var n = 0
+        let var first = ~1
+        while reader.more(rd) do
+            let c = reader.getChar(rd)
+            if n is 0 then first := ascii.val(c) end
+            n := n + 1
+        end
+        " rest=" <> conv.int(n) <> "/" <> conv.int(first)
+    end;
+let one(i: Int): Bool =
+    try
+        let rd = reader.file(dir <> conv.int(i) <> ".json")
+        writer.putString(writer.output conv.int(i) <> ": ")
+        try
+            let d = dynamic.intern(rd)
+            writer.putString(writer.output "ok" <> rest(rd) <> " ")
+            try dynamic.extern(writer.output d) when dynamic.error then writer.putString(writer.output "<extern error>") end
+            say("")
+        when dynamic.error then say("<dynamic.error>")
+        when reader.error then say("<reader.error>")
+        when real.error then say("<real.error>")
+        when int.error then say("<int.error>")
+        when string.error then say("<string.error>")
+        when arrayOp.error then say("<array.error>")
+        end
+        reader.close(rd)
+        writer.flush(writer.output)
+        true
+    when reader.error then false
+    end;
+(* the range of documents, two numbers on standard input *)
+let number(): Int =
+    begin
+        let var n = 0
+        let var going = true
+        while going andif reader.more(reader.input) do
+            let c = ascii.val(reader.getChar(reader.input))
+            if {c >= 48} andif {c <= 57} then n := {n * 10} + {c - 48} else going := false end
+        end
+        n
+    end;
+let from = number();
+let to = number();
+let var i = from;
+while {i <= to} andif one(i) do i := i + 1 end;
+say("done " <> conv.int(i));
