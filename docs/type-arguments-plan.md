@@ -12,21 +12,21 @@ lasting results are the process and its tools; the edits themselves are redone, 
 - **§2.2, the tools,** are `tools/omit-type-args` and `tools/compare-codegen` ([testing.md](testing.md) §2.9). A
   trial run in `exact` mode at `fcaa43a9` omitted 3,757 calls inferable from their arguments and 434 that need their
   expected type, none restored, and every unit's assembly compared equal; its edits were discarded.
-- **§2.3** is on main by another route: `bc522266` compares types in simplify's copies and unbox's tests by their
-  normal forms (`nodes.sameType`, through `reduce.normalizeType`, which sees through aliases), to make parallel
-  builds deterministic. Two changes this work found land with it: a bug in both compilers' specialization (a call at
-  a type argument that numbers its bound's option or variant cases otherwise made bad code, so such calls stay
-  generic), and six tests that kept their calls generic by a let at the function's polymorphic type, which the
-  simplifier propagates, read the function out of an array instead ([testing.md](testing.md) §2.10).
-- **A first removal,** with the report's first form (the environment variable `QUEST_REPORT_INFERABLE`, exact type
-  nodes), is on branch `questlang/infer-type-args` (local), to be abandoned (§2.4): `566fef29` omits the 3,756 calls
-  inferable from their value arguments alone, and `2ce3ff3d` the 434 inferable only with the expected type, found
-  after the first pass, since a call that needs its expected type can lose it when the call around it loses its own
-  type arguments. Every module's arm64 assembly at `2ce3ff3d` is main's, but for source positions (§2.2's
-  comparison).
+- **§2.3** is on main (`96a99b19`, `1ad37963`), partly by another route: `bc522266` had made simplify's copies and
+  unbox's tests compare types by their normal forms (`nodes.sameType`, through `reduce.normalizeType`, which sees
+  through aliases) to make parallel builds deterministic, and `1ad37963` adds equal types (`subtyping.isTypeEqual`),
+  so that function types differing only in parameter names count as one. With it landed a bug fix in both compilers'
+  specialization (a call at a type argument that numbers its bound's option or variant cases otherwise made bad code,
+  so such calls stay generic), and eight tests that kept their calls generic by a let at the function's polymorphic
+  type read the function out of an array instead ([testing.md](testing.md) §2.10). The 17 MLton benchmarks whose
+  code changed ran at a geometric mean of 0.993, and the driver builds in the same time.
+- **§2.4** is on branch `questlang/omit-type-args`, from `1ad37963`: `ef46b044` omits the type arguments of 11,768
+  calls inferable from their arguments, `9913d446` those of 1,178 inferable with their expected type (none restored),
+  and every one of `questlang/`'s 178 units compiles to the same arm64 assembly as before, but for source positions.
+  The first removal (`566fef29`, `2ce3ff3d` on `questlang/infer-type-args`, exact mode) is abandoned.
 
-**Why aliases stay.** About 7,700 more calls are inferable to an equal type but not the same node: a type argument
-written as an alias (`:Type` for `model.Type`, `:Entry`) is inferred as the type the alias names. Omitting those
+**Why aliases stayed, before §2.3.** About 7,700 more calls are inferable to an equal type but not the same node: a
+type argument written as an alias (`:Type` for `model.Type`, `:Entry`) is inferred as the type the alias names. Omitting those
 changed three modules' code, because `simplify` propagates a copy only between variables of the same type node
 (`simplify.mod.quest`, the `copied` test, `y.v.type.id is x.v.type.id`), and an alias is not the type it names; a
 copy whose two variables' types are spelled differently stays. ir.md §4.1 says passes decide by shapes, and the
