@@ -224,7 +224,7 @@ internal error.
   such a global: the module's initialization stores it, guarded by the module's flag, and each use would load it, in
   every iteration of a loop that uses it ([benchmarks.md](benchmarks.md) §15.5). Only a unit's own globals are seen, so
   only those are folded: another unit loads an exported member. `ssa_constants` shows each case.
-- **`ssa/passes/concats`** joins chains of `<>` ([strings-plan.md](strings-plan.md) §6). A call of
+- **`ssa/passes/concats`** joins chains of `<>` ([libraries.md](libraries.md) §1.2). A call of
   `quest_string_concat` whose argument is the result of another in the same block, used only there, with no store or
   call that may write memory between them, takes that one's parts, and the chain becomes one call of
   `quest_string_concat_n`, which allocates the whole string once and copies each part once; a chain of more than seven

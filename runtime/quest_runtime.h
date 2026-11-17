@@ -304,7 +304,7 @@ static_assert(offsetof(QExceptionState, payload) == 8, qexception_state_payload_
 /* A string literal, as the C backends define it once in static data: its header word, which marks it read-only
  * (Q_HEADER_READONLY), then the string, whose bytes are a C string literal. Every evaluation of the literal is
  * (QString *)&name.string, the same object; string.setChar and string.setSub raise string.error on it, and the
- * collector, which ignores addresses outside its heap, never frees it (docs/strings-plan.md section 5). */
+ * collector, which ignores addresses outside its heap, never frees it (docs/extensions.md, String Literals). */
 typedef struct QStaticString {
     uintptr_t header;
     QString   string;

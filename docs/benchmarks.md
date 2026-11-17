@@ -2781,10 +2781,11 @@ profile of their own. The data are in `benchmarks/mlton/baselines/2026-11-15/`: 
 
 ## 26. Strings: the builder, capacity, static literals, chains (2026-11-16 to 2026-11-17)
 
-[strings-plan.md](strings-plan.md) steps 1–6, measured by its step 0's method: each step's stage-2 compiler building
-its own tree's driver through arm64 from an empty build directory, at `-j 1` and `-j 8`, the compilers alternating
-for three rounds (best of three shown, seconds); one `-j 1` build's collector statistics; and four microbenchmarks,
-best user time of five runs. The machine was quiet (load 2–3).
+The strings plan's steps 1–6 (retired 2026-11-17; [libraries.md](libraries.md) §1.2,
+[extensions.md](extensions.md#string-literals), [ssa.md](ssa.md) §4.1), measured by its step 0's method: each step's
+stage-2 compiler building its own tree's driver through arm64 from an empty build directory, at `-j 1` and `-j 8`, the
+compilers alternating for three rounds (best of three shown, seconds); one `-j 1` build's collector statistics; and four
+microbenchmarks, best user time of five runs. The machine was quiet (load 2–3).
 
 Two groups, since main moved between them: base (main before step 1) and step 3 build the same driver, of 84,831 lines of
 `questlang/`; steps 4 to 6, rebased onto main after the WASM backend landed, build one of 96,169 to 96,476 lines, so

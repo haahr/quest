@@ -2,7 +2,7 @@
 Q_HEADER_READONLY set (by quest_string_freeze, as the self-hosted interpreter
 marks its literals) raises string.error on string.setChar and string.setSub,
 and is otherwise a string; the bit survives collections, and other strings
-stay writable (docs/strings-plan.md section 5)."""
+stay writable (docs/extensions.md, String Literals)."""
 
 import os
 import sys

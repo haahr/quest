@@ -584,7 +584,7 @@ class CPrinter:
 
     def string_literal(self, s: str) -> str:
         """The string literal s: its static object, defined once in the unit,
-        and the same at every evaluation (docs/strings-plan.md section 5)."""
+        and the same at every evaluation (docs/extensions.md, String Literals)."""
         name = self.string_objects.get(s)
         if name is None:
             name = f"qsl_{len(self.string_objects) + 1}"

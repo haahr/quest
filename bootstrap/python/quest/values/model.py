@@ -242,7 +242,7 @@ class QChar(QValue):
 class QString(QValue):
     """A string. A literal's is read-only (literal_string), as compiled code's
     literals are static and marked read-only: string.setChar and string.setSub
-    raise string.error on it (docs/strings-plan.md section 5)."""
+    raise string.error on it (docs/extensions.md, String Literals)."""
 
     def __init__(self, value: str, readonly: bool = False):
         self.value = str(value)

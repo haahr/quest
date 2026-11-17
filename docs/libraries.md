@@ -71,9 +71,11 @@ end
 ### 1.2. `util/stringBuilder : util/StringBuilder`
 
 String accumulator with $O(N)$ construction, backed by a native buffer in the runtime (`quest_sb_*` in
-`runtime/quest_stdlib.c`, with a matching implementation in each interpreter). Short appends are written into a fixed
-512-byte working buffer, and numbers are formatted straight into it; a full buffer becomes a finished chunk, and a
-string longer than 256 characters is copied into a chunk of its own.
+`runtime/quest_stdlib.c`, with a matching implementation in each interpreter). Short appends are written into a
+working buffer, made on the first append at 32 bytes and doubled up to 512, and numbers are formatted straight into
+it; a full buffer becomes a finished chunk, and a string longer than 256 characters is copied into a chunk of its
+own. `toString` hands over a buffer that holds everything rather than copying it (sizes chosen by timing,
+[benchmarks.md](benchmarks.md) §26.1).
 
 A builder is an abstract native type, as `writer.T` is, and each operation is a function of the module that is the
 runtime's function itself, so an append is one direct call and a new builder one allocation. The functions that add to
@@ -96,6 +98,11 @@ writer.putString(writer.output sb.toString(b))
   changes a string once made.
 - **`toString` empties the builder:** it returns a new string, after which the builder is as `clear` leaves it, and
   can be reused without affecting strings it returned earlier.
+- **`<>` or the builder.** A chain of `<>` allocates its result once (the SSA's `concats` pass, [ssa.md](ssa.md)
+  §4.1, and WASM's backend), so a string that can be written as one `<>` expression within one function is written
+  that way, conditionals as operands (`if c then x else "" end`); a builder used in straight-line code would cost its
+  buffer and its `toString` besides. A string accumulated across a loop's iterations, or by helpers that take the
+  builder, uses the builder or `strutil.join`, since `s := s <> piece` in a loop copies `s` each time.
 - The object style, a recursive tuple of closures whose appends return the builder so that calls chain
   (`b.str("x = ").int(x)`), is what this module was; it cost a tuple and eleven closures per builder and a closure call
   per append, and now survives as a test of the compiler (`tests/source/modules/chainbuilder`).
