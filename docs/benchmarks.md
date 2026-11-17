@@ -2778,3 +2778,37 @@ what is left above ten times native is imp-for (27), wc-scanStream (20), matrix-
 knuth-bendix (11), each of its own code: wc-scanStream's time is its loop, inlined into `main`. They wait for a
 profile of their own. The data are in `benchmarks/mlton/baselines/2026-11-15/`: `quest-wasm-node-48d6267d.jsonl`
 (the first timing, with MLton's) and `quest-wasm-node-b2ccb26f.jsonl`.
+
+## 26. Strings: the builder, capacity, static literals, chains (2026-11-16 to 2026-11-17)
+
+[strings-plan.md](strings-plan.md) steps 1–6, measured by its step 0's method: each step's stage-2 compiler building
+its own tree's driver through arm64 from an empty build directory, at `-j 1` and `-j 8`, the compilers alternating
+for three rounds (best of three shown, seconds); one `-j 1` build's collector statistics; and four microbenchmarks,
+best user time of five runs. The machine was quiet (load 2–3).
+
+Two groups, since main moved between them: base (main before step 1) and step 3 build the same driver, of 84,831 lines of
+`questlang/`; steps 4 to 6, rebased onto main after the WASM backend landed, build one of 96,169 to 96,476 lines, so
+their builds are slower and allocate more for that reason alone, and compare only with each other.
+
+| | `-j 8` real | `-j 8` user | `-j 1` user | allocated | heap max |
+|---|---:|---:|---:|---:|---:|
+| base | 20.07 | 91.94 | 58.65 | 62.2 GB | 3.73 GB |
+| step 3 (builder, capacity, read-only bit) | 18.83 | 88.48 | 56.61 | 59.0 GB | 3.62 GB |
+| step 4 (static literals) | 26.35 | 100.12 | 68.31 | 65.7 GB | 4.84 GB |
+| step 5 (chains) | 26.84 | 98.82 | 68.41 | 63.6 GB | 5.01 GB |
+| step 6 (source rewrite) | 26.83 | 98.97 | 68.55 | 63.8 GB | 4.95 GB |
+
+An earlier run (2026-11-16, best `-j 1` user: base 58.62, step 1 58.07, step 2 57.54, step 3 56.80) put steps 1 and
+2 between base and step 3, each a little faster. Steps 1–3 together save 6% of the `-j 8` time and 5% of the allocation. Step 5 allocates 3% less than
+step 4 and saves 1% of `-j 8` user time, with no change in wall time; step 6 changes nothing measurable, as expected
+of a rewrite of a dozen loops, few of them hot. Step 4's own gain on the compiler is hidden by the change of tree.
+
+| microbenchmark (user s) | base | step 3 | step 4 | step 5 | step 6 |
+|---|---:|---:|---:|---:|---:|
+| `sbsmall` (many short builders) | 0.64 | 0.43 | 0.38 | 0.39 | 0.38 |
+| `sblong` (one long builder) | 0.31 | 0.31 | 0.31 | 0.31 | 0.31 |
+| `concat` (chains of `<>`) | 0.50 | 0.51 | 0.40 | 0.31 | 0.31 |
+| `literals` (a literal per call) | 0.21 | 0.21 | 0.03 | 0.03 | 0.03 |
+
+The builder as functions (step 1) makes a short builder a third cheaper; static literals (step 4) make a literal
+free, and a chain's literal parts no longer allocated; chains (step 5) take another fifth off `concat`.
