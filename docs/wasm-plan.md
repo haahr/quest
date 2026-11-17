@@ -907,6 +907,11 @@ one: an input that overflowed ended the session's worker, until step 23 (§6.3).
 it was tested in, and on failing to start, what an engine needs. Not tested: Chromium's other browsers (Edge),
 mobile browsers, and Linux and Windows.
 
+The page is published as the repository's GitHub Pages site by `tools/wasm-page/publish --push`, which builds it in a
+worktree of a commit on `origin/main` (with `--built-from`, so its about note names the commit) and force-pushes it
+as the one commit of the branch `gh-pages`: the built archives keep no history, here or on GitHub. Without `--push`
+it builds and commits the site in `.build/wasm-publish/` to try first; `--local` does that for an unpushed commit.
+
 ## 7. Accepted Differences From the Native Backends
 
 1. **Tracebacks** are the raise site only (§2.9).

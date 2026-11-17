@@ -10,13 +10,15 @@ of the library's units the driver's build made when --qi is given. An archive
 is the format runtime/wasm/archive.mjs reads.
 
     tools/wasm-page/build [-o DIR] [--driver DRIVER | --driver-wasm PATH [--driver-build B]] [--qi]
-                          [--tests] [--check [--browser chrome|firefox|safari]]
+                          [--built-from COMMIT] [--tests] [--check [--browser chrome|firefox|safari]]
 
 DRIVER is ./quest unless given; --driver-wasm takes a driver already built
 (PATH its program module, with PATH.runtime.wasm and PATH.units beside it)
 rather than building one, which takes a minute, and B is its build directory,
 where --qi finds the .qi files (PATH's directory's build/ unless given).
---tests adds check.html, which runs the REPL's transcripts (tests/repl) in the
+--built-from names the commit the page was built from in its about note,
+linked to the commit on GitHub (tools/wasm-page/publish gives it); without it
+the note names none. --tests adds check.html, which runs the REPL's transcripts (tests/repl) in the
 page against their goldens. --check implies --tests, and then runs check.html
 in a browser, served from DIR on a port of localhost, with the JIT and then
 interpreted: Google Chrome or Chromium (the default) or Firefox, headless, each
@@ -73,6 +75,19 @@ def build_stamp(files: list[tuple[str, bytes]]) -> str:
     for name, data in files:
         h.update(name.encode() + b"\0" + len(data).to_bytes(8, "little") + data)
     return h.hexdigest()[:16]
+
+
+def built_from(data: bytes, commit: str | None) -> bytes:
+    """index.html with its note's "Built from" shown, naming commit (a full
+    hash), or left hidden without one"""
+    if commit is None:
+        return data
+    text = data.decode()
+    hidden = '<span id="built-from" hidden>'
+    if hidden not in text:
+        sys.exit("build: index.html has no built-from note for --built-from")
+    text = text.replace(hidden, '<span id="built-from">').replace("@COMMIT@", commit).replace("@SHORT@", commit[:8])
+    return text.encode()
 
 
 def stamped(name: str, data: bytes, stamp: str) -> bytes:
@@ -216,6 +231,7 @@ def main() -> None:
     parser.add_argument("--driver-wasm")
     parser.add_argument("--driver-build", help="the build directory of --driver-wasm's driver, for --qi")
     parser.add_argument("--qi", action="store_true", help="add the library's .qi files to its archive")
+    parser.add_argument("--built-from", metavar="COMMIT", help="the commit (a full hash) the about note names")
     parser.add_argument("--tests", action="store_true", help="add check.html and the REPL's transcripts")
     parser.add_argument("--check", action="store_true", help="run check.html in a browser (--browser)")
     parser.add_argument("--browser", choices=sorted(BROWSERS), default="chrome",
@@ -242,6 +258,7 @@ def main() -> None:
         shutil.rmtree(out)
     out.mkdir(parents=True)
     sources = [(name, (HERE / name).read_bytes()) for name in PAGE_FILES + (CHECK_FILES if options.tests else [])]
+    sources = [(name, built_from(data, options.built_from) if name == "index.html" else data) for name, data in sources]
     sources += [(name, (ROOT / "runtime" / "wasm" / name).read_bytes()) for name in HOST_FILES]
     members = driver_members(program)
     lib_members = library_members(qi_dir if options.qi else None)
