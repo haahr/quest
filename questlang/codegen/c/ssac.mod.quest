@@ -248,18 +248,20 @@ export
     let jumpText(p: Printer t: ssa.Target): String =
         begin
             let params = ssa.block(p.f t.block).params
-            let var text = ""
-            if extent t.args > 0 then
-                text := "{ "
+            if extent t.args is 0 then "goto " <> blockLabel(t.block) <> ";"
+            else
+                let b = sb.new()
+                sb.str(b "{ ")
                 for k = 0 upto {extent t.args - 1} do
-                    text := text <> cType(typeOf(p.f t.args[k])) <> " t" <> conv.int(k) <> " = " <> v(t.args[k]) <> "; "
+                    sb.strShared(b cType(typeOf(p.f t.args[k]))) sb.str(b " t") sb.int(b k) sb.str(b " = ")
+                    sb.strShared(b v(t.args[k])) sb.str(b "; ")
                 end
                 for k = 0 upto {extent t.args - 1} do
-                    text := text <> v(vector.get(:Int params k)) <> " = t" <> conv.int(k) <> "; "
+                    sb.strShared(b v(vector.get(:Int params k))) sb.str(b " = t") sb.int(b k) sb.str(b "; ")
                 end
-                text := text <> "} "
+                sb.str(b "} goto ") sb.strShared(b blockLabel(t.block)) sb.str(b ";")
+                sb.toString(b)
             end
-            text <> "goto " <> blockLabel(t.block) <> ";"
         end
 
     (* A return: of one result, cast to the C type the signature says *)

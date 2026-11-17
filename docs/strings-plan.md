@@ -355,7 +355,14 @@ measurement repeats step 0's and goes into `benchmarks.md`.
    literals, empty strings, a part mutated after the concatenation, and an intermediate used twice (which must stay
    split). *Done when* `--stop-after ir_…` shows chains as one `concat`, the C and arm64 call
    `quest_string_concat_n` once per chain, the full `tools/check` passes, and the gain is measured.
-6. **`<>` or the builder** (§7), in the compiler (`questlang/`) and `lib/`: straight-line builders become chains,
+6. **`<>` or the builder** (§7), done 2026-11-17 ("Accumulate strings in loops by builders and joins, not <>"). Of
+   the builders, only `syntax/tokenizer.charRepr` was straight-line and became a chain; the rest build in loops or pass
+   the builder to helpers, and `wasm/printer.signed` keeps one for `sb.word`, the only way to print a `Word`. The
+   loops that grew a string by `s := s <> piece` became a builder or `strutil.join`: `ssa/passes/valueNumbers`'s key
+   (one per instruction numbered), `ssa/printer`'s three, `c/ssac.jumpText`, `ir/thunks`'s two keys,
+   `modules/graph.keyOf`, `modules/loader.chain`, `repr/objectlayout.withBoxes`, and `wasm/printer.fractionDigits`.
+   Left as they are: straight-line `:=` under `if`s (`ir/printer`, `c/printer`), error messages
+   (`typecheck`, `elaborateTypes`), and listings (`arm64/select`, `wasm/printer.hexWord`). As planned: in the compiler (`questlang/`) and `lib/`: straight-line builders become chains,
    accumulating `<>` becomes a builder. No ABI bump. *Done when* the full `tools/check` passes with no golden
    changed, a search finds no builder used only in straight-line code outside the kept cases, and the gain is
    measured.

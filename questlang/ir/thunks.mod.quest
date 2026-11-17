@@ -10,6 +10,7 @@ import
     questlang/repr/digests : questlang/repr/Digests
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
+    util/strutil : util/Strutil
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
@@ -51,11 +52,11 @@ export
         else
             let lay = maybe.unwrap(:nodes.PlanLayout l)
             let keys = sort.sorted(:Int vector.toArray(:Int lay.keys) sort.intCompare)
-            let var text = if lay.toGeneric then "True" else "False" end
+            let pairs = array of(extent keys "")
             for i = 0 upto {extent keys - 1} do
-                text := text <> "\n" <> conv.int(keys[i]) <> "=" <> typeKey(hashMap.find(:Int :Type lay.subst keys[i]))
+                pairs[i] := "\n" <> conv.int(keys[i]) <> "=" <> typeKey(hashMap.find(:Int :Type lay.subst keys[i]))
             end
-            text
+            {if lay.toGeneric then "True" else "False" end} <> strutil.joinArray("" pairs)
         end
 
     (* An adapt plan's fields and thunk parameters, which the plan gives up to
@@ -252,11 +253,8 @@ export
         begin
             let typeArgKeys = vector.new(:String)
             for i = 0 upto {extent o.typeArgs - 1} do vector.append(:String typeArgKeys typeKey(o.typeArgs[i])) end
-            let var joined = ""
-            for i = 0 upto {vector.length(:String typeArgKeys) - 1} do
-                joined := joined <> if i > 0 then "\t" else "" end <> vector.get(:String typeArgKeys i)
-            end
-            let key = "type_app\n" <> typeKey(origType) <> "\n" <> typeKey(targetType) <> "\n" <> joined
+            let key = "type_app\n" <> typeKey(origType) <> "\n" <> typeKey(targetType) <> "\n"
+                <> strutil.join("\t" typeArgKeys)
             let found = hashMap.get(:String :Function t.thunks key)
             if maybe.isSome(:Function found) then
                 maybe.unwrap(:Function found)

@@ -40,19 +40,17 @@ export
     let paramsText(s: nodes.Signature): String =
         begin
             let memory = nodes.memoryOf(s.params)
-            let var text = listed("pairs" nodes.pairsOf(s.params)) <> listed("narrow" nodes.narrowOf(s.params))
-            if extent memory > 0 then
-                text := text <> " memory ["
-                for k = 0 upto {extent memory - 1} do
-                    let bytes = case s.params[memory[k]]
-                        when passMemory with x then x.bytes
-                        when passWord, passReal, passPair, passPairRest, passByte, passInt32 then 0
-                    end
-                    text := text <> if k > 0 then " " else "" end <> conv.int(memory[k]) <> ":" <> conv.int(bytes)
+            let places = array of(extent memory "")
+            for k = 0 upto {extent memory - 1} do
+                let bytes = case s.params[memory[k]]
+                    when passMemory with x then x.bytes
+                    when passWord, passReal, passPair, passPairRest, passByte, passInt32 then 0
                 end
-                text := text <> "]"
+                places[k] := conv.int(memory[k]) <> ":" <> conv.int(bytes)
             end
-            text <> listed("int32" nodes.int32Of(s.params))
+            listed("pairs" nodes.pairsOf(s.params)) <> listed("narrow" nodes.narrowOf(s.params))
+                <> if extent memory > 0 then " memory [" <> strutil.joinArray(" " places) <> "]" else "" end
+                <> listed("int32" nodes.int32Of(s.params))
         end
 
     (* How a signature's one result is passed, where not in a word: as a
@@ -69,11 +67,9 @@ export
 
     let instText(f: Function i: nodes.Inst): String =
         begin
-            let var lhs = ""
-            for r = 0 upto {extent i.results - 1} do
-                lhs := lhs <> if r > 0 then ", " else "" end <> typed(f i.results[r])
-            end
-            let head = if extent i.results > 0 then lhs <> " = " else "" end
+            let results = array of(extent i.results "")
+            for r = 0 upto {extent i.results - 1} do results[r] := typed(f i.results[r]) end
+            let head = if extent i.results > 0 then strutil.joinArray(", " results) <> " = " else "" end
             let name = nodes.opcodeName(i.op)
             let body = case i.op
                 when opConst then name <> " " <> conv.int(i.imm)
@@ -106,11 +102,9 @@ export
             when termJump with x then "jump " <> targetText(x.target)
             when termBranch with x then "branch " <> value(x.cond) <> ", " <> targetText(x.ifTrue) <> ", " <> targetText(x.ifFalse)
             when termSwitch with x then
-                let var text = "switch " <> value(x.value) <> " ["
-                for i = 0 upto {extent x.cases - 1} do
-                    text := text <> if i > 0 then ", " else "" end <> conv.int(x.cases[i]) <> ": " <> targetText(x.targets[i])
-                end
-                text <> "] default " <> targetText(x.default)
+                let arms = array of(extent x.cases "")
+                for i = 0 upto {extent x.cases - 1} do arms[i] := conv.int(x.cases[i]) <> ": " <> targetText(x.targets[i]) end
+                "switch " <> value(x.value) <> " [" <> strutil.joinArray(", " arms) <> "] default " <> targetText(x.default)
             when termReturn with x then if extent x.values > 0 then "return " <> values(x.values) else "return" end
             when termTailCall with x then "tail " <> instText(f x.call)
             when termTry with x then

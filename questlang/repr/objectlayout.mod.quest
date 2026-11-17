@@ -10,6 +10,7 @@ import
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/hash : util/Hash
+    sb = util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
     conv : Conv
 export
@@ -80,13 +81,13 @@ export
      * kind, which tells a variant's box (a) from a record's (p) *)
     let withBoxes(words: vector.T(Kind) boxes: Array(shapes.Shape)): String =
         begin
-            let var suffix = ""
+            let suffix = sb.new()
             for i = 0 upto {extent boxes - 1} do
                 let ks = boxKinds(boxes[i])
                 for j = 0 upto {extent ks - 1} do vector.append(:Kind words ks[j]) end
-                suffix := suffix <> kindLetter(ks[1])
+                sb.strShared(suffix kindLetter(ks[1]))
             end
-            if extent boxes is 0 then "" else "_b" <> suffix end
+            if extent boxes is 0 then "" else "_b" <> sb.toString(suffix) end
         end
 
     let fixed(tag: String words: vector.T(Kind) bytes: Int cSize: String): Layout =
