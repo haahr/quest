@@ -3,12 +3,14 @@
 // sends a message for each write, and a change to the element, with the
 // layout a scroll then reads, for each was quadratic and froze the page
 // (wasm-review.md section 2.3, 1). Each frame's text of a kind is one text
-// node added to that kind's last span; the element stays scrolled to its
-// end if it was there.
+// node added to that kind's last span; scroller, the element that scrolls
+// (the element itself unless given), stays scrolled to its end if it was
+// there.
 
 export class Transcript {
-  constructor(element) {
+  constructor(element, scroller = element) {
     this.element = element;
+    this.scroller = scroller;
     this.queued = [];
     this.asked = false;
     // resolved when what is queued now has been added
@@ -28,9 +30,9 @@ export class Transcript {
   // What is queued, added now
   flush() {
     this.asked = false;
-    const e = this.element;
+    const e = this.element, s = this.scroller;
     if (this.queued.length > 0) {
-      const atEnd = e.scrollTop + e.clientHeight >= e.scrollHeight - 4;
+      const atEnd = s.scrollTop + s.clientHeight >= s.scrollHeight - 4;
       for (const {text, kind} of this.queued.splice(0)) {
         const last = e.lastChild;
         if (last && last.nodeType === 1 && last.className === kind && last.tagName === "SPAN") {
@@ -42,7 +44,7 @@ export class Transcript {
           e.append(span);
         }
       }
-      if (atEnd) e.scrollTop = e.scrollHeight;
+      if (atEnd) s.scrollTop = s.scrollHeight;
     }
     for (const resolve of this.waiting.splice(0)) resolve();
   }

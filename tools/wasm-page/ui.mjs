@@ -18,7 +18,8 @@ import {Transcript} from "./transcript.mjs";
 import {requestLine, decodeRecord} from "./session.mjs";
 
 const $ = id => document.getElementById(id);
-const transcript = $("transcript"), input = $("input"), promptLabel = $("prompt"), status = $("status");
+const transcript = $("transcript"), console_ = $("console"), input = $("input"), promptLabel = $("prompt"),
+  status = $("status");
 const query = new URLSearchParams(location.search);
 const options = {
   prefixes: query.getAll("path"),
@@ -32,7 +33,10 @@ const options = {
 // golden by hand (window.quest.written)
 const written = {stdout: "", stderr: ""};
 
-const shown = new Transcript(transcript);
+// The transcript and the prompt's line after it scroll together, as at a
+// terminal
+const shown = new Transcript(transcript, console_);
+const toEnd = () => { console_.scrollTop = console_.scrollHeight; };
 function append(text, kind) { shown.append(text, kind); }
 
 function show(bundle) {
@@ -62,7 +66,7 @@ function show(bundle) {
     div.style.whiteSpace = "pre-wrap";
   }
   transcript.append(div);
-  transcript.scrollTop = transcript.scrollHeight;
+  toEnd();
 }
 
 let loaded = null, session = null, repl = null;
@@ -171,6 +175,13 @@ $("line").addEventListener("submit", e => {
   const line = input.value;
   input.value = "";
   submit([line]);
+  // the line echoed, and the prompt's line after it, in view
+  shown.settled().then(toEnd);
+});
+
+// A click in the transcript types at the prompt, unless it selects text
+console_.addEventListener("click", () => {
+  if (!input.disabled && getSelection().isCollapsed) input.focus({preventScroll: true});
 });
 
 input.addEventListener("paste", e => {
@@ -201,6 +212,14 @@ input.addEventListener("keydown", e => {
   }
 });
 
+// The circled i shows and hides the note about Quest and the browsers the
+// page runs in
+function showSupport(shown) {
+  $("support").hidden = !shown;
+  $("info").setAttribute("aria-expanded", String(shown));
+  if (shown) console_.scrollTop = 0;
+}
+$("info").addEventListener("click", () => showSupport($("support").hidden));
 $("interrupt").addEventListener("click", () => { interrupt(); input.focus(); });
 $("restart").addEventListener("click", async () => {
   // the old session's request and queue answered, so that drain returns
@@ -240,6 +259,8 @@ try {
   await begin(undefined);
 } catch (e) {
   status.textContent = "Failed to start";
+  // the note says which browsers have what the page needs
+  showSupport(true);
   append(String(e.stack || e) + "\n", "err");
   // most likely an engine without what the driver's modules use
   append("The page needs WebAssembly's garbage collection, tail calls, and exceptions (exnref), which recent " +
