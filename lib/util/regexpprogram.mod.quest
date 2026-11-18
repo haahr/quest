@@ -28,6 +28,10 @@ export
         classes: Array(Bool)
         groups: Int
         names: Array(String)
+        startSet: Array(Bool)
+        anchored: Bool
+        literal: maybe.T(String)
+        prefix: String
     end
 
     let maxSize = 100000
@@ -219,6 +223,63 @@ export
             end
         end
 
+    (* How a program's matches begin: the bytes they can begin with, unless
+     * one can be empty (an empty set), and whether every one begins at the
+     * subject's start. It follows every path from the start that consumes no
+     * byte, through the assertions as though they held: a match that would
+     * begin with a byte must begin with one the paths reach *)
+    let starts(op: Array(Int) x: Array(Int) y: Array(Int) classes: Array(Bool))
+        : Tuple set: Array(Bool) anchored: Bool end =
+        begin
+            let size = extent op
+            let set = array of(256 false)
+            let var canSkip = true
+            let var anchored = true
+            (* the paths, as (pc, whether a \A was passed), visited once
+             * each *)
+            let seen = array of({2 * size} false)
+            let stack = vector.new(:Int)
+            vector.append(:Int stack 0)
+            while vector.length(:Int stack) > 0 do
+                let top = vector.length(:Int stack) - 1
+                let item = vector.get(:Int stack top)
+                let removed = vector.pop(:Int stack)
+                let pc = item / 2
+                let passed = {item % 2} is 1
+                if not(seen[item]) then
+                    seen[item] := true
+                    let o = op[pc]
+                    let push(next: Int through: Bool): Ok =
+                        vector.append(:Int stack {2 * next} + if through then 1 else 0 end)
+                    if o is opJump then push(x[pc] passed)
+                    elsif o is opSplit then begin push(x[pc] passed) push(y[pc] passed) end
+                    elsif o is opSave then push(pc + 1 passed)
+                    elsif o is opAssert then push(pc + 1 passed \/ {x[pc] is 2})
+                    elsif o is opMatch then
+                        canSkip := false
+                        if not(passed) then anchored := false end
+                    else
+                        if not(passed) then anchored := false end
+                        if o is opByte then set[x[pc]] := true
+                        else for b = 0 upto 255 do if classes[{256 * x[pc]} + b] then set[b] := true end end
+                        end
+                    end
+                end
+            end
+            tuple let set = if canSkip then set else array of :Bool end end let anchored = anchored end
+        end
+
+    (* Bytes every match of n begins with: a first part's, through groups and
+     * repetitions of at least one *)
+    let rec prefixOf(n: syn.Node): String =
+        case n
+            when bytes with b then b.s
+            when concat with x then prefixOf(x.parts[0])
+            when capture with x then prefixOf(x.body)
+            when repeat with x then if x.min >= 1 then prefixOf(x.body) else "" end
+            else ""
+        end
+
     let compile(n: syn.Node): Program =
         begin
             let c = tuple
@@ -242,13 +303,24 @@ export
                 let s = vector.get(:bitset.T c.sets k)
                 for b = 0 upto 255 do if bitset.contains(s b) then classes[{256 * k} + b] := true end end
             end
+            let op = vector.toArray(:Int c.op)
+            let x = vector.toArray(:Int c.x)
+            let y = vector.toArray(:Int c.y)
+            let start = starts(op x y classes)
             tuple
-                let op = vector.toArray(:Int c.op)
-                let x = vector.toArray(:Int c.x)
-                let y = vector.toArray(:Int c.y)
+                let op = op
+                let x = x
+                let y = y
                 let classes = classes
                 let groups = vector.length(:String c.names) - 1
                 let names = vector.toArray(:String c.names)
+                let startSet = start.set
+                let anchored = start.anchored
+                let literal = case tree
+                    when bytes with b then maybe.some(:String b.s)
+                    else maybe.none(:String)
+                end
+                let prefix = prefixOf(tree)
             end
         end
 

@@ -1,0 +1,80 @@
+(* util/regexp's benchmark (docs/regexp-plan.md step 5; benchmarks/regexp/
+ * README.md): one workload, named by the first argument, over the file the
+ * second names, repeated as many times as the third says. It prints one
+ * number, which regexp.go and regexp.py print too. *)
+
+import regexp = util/regexp : util/Regexp;
+import util/maybe : util/Maybe;
+import util/strutil : util/Strutil;
+import sb = util/stringBuilder : util/StringBuilder;
+import collections/vector : collections/Vector;
+import stringOp = string : StringOp;
+import reader: Reader;
+import writer: Writer;
+import system: System;
+import conv: Conv;
+
+let contents(path: String): String =
+    begin
+        let r = reader.file(path)
+        let buf = sb.new()
+        while reader.more(r) do sb.str(buf reader.getString(r 65536)) end
+        reader.close(r)
+        sb.toString(buf)
+    end;
+
+let workload = system.args[1];
+let text = contents(system.args[2]);
+let repeat = strutil.toInt(system.args[3]);
+let lines = strutil.splitlines(text);
+let nlines = vector.length(:String lines);
+let named(name: String): Bool = stringOp.equal(workload name);
+
+(* The number of lines r is found in *)
+let containing(r: regexp.T): Int =
+    begin
+        let var n = 0
+        for i = 0 upto {nlines - 1} do if regexp.contains(r vector.get(:String lines i)) then n := n + 1 end end
+        n
+    end;
+
+(* The sum, over the lines r is found in, of what f makes of the match *)
+let summed(r: regexp.T f: All(m: regexp.Match) Int): Int =
+    begin
+        let var n = 0
+        for i = 0 upto {nlines - 1} do
+            let m = regexp.find(r vector.get(:String lines i))
+            if maybe.isSome(:regexp.Match m) then n := n + f(maybe.unwrap(:regexp.Match m)) end
+        end
+        n
+    end;
+
+let once(): Int =
+    if named("walk") then
+        begin
+            (* the lines walked as the others walk them, and no regexp: the
+             * harness's own cost *)
+            let var total = 0
+            for i = 0 upto {nlines - 1} do total := total + stringOp.length(vector.get(:String lines i)) end
+            total
+        end
+    elsif named("literal") then containing(regexp.compile("ERROR"))
+    elsif named("caseless") then containing(regexp.compile("(?i)error"))
+    elsif named("alternation") then containing(regexp.compile("\\b(?:timeout|refused|reset|unreachable)\\b"))
+    elsif named("prefix") then summed(regexp.compile("user=(\\w+)") fun(m: regexp.Match): Int regexp.size(m 1))
+    elsif named("date") then
+        summed(regexp.compile("(\\d{4})-(\\d\\d)-(\\d\\d)T(\\d\\d):(\\d\\d):(\\d\\d)")
+            fun(m: regexp.Match): Int strutil.toInt(regexp.group(m 4)))
+    elsif named("anchored") then
+        summed(regexp.compile("^([A-Z]+) ") fun(m: regexp.Match): Int if stringOp.equal(regexp.group(m 1) "WARN")
+            then 1 else 0 end)
+    elsif named("tokens") then
+        vector.length(:regexp.Match regexp.findAll(regexp.compile("[A-Za-z_]\\w*|\\d+|\"(?:[^\"\\\\]|\\\\.)*\"|\\S")
+            text))
+    elsif named("replace") then stringOp.length(regexp.replaceAll(regexp.compile("\\s+") text " "))
+    else begin writer.putString(writer.err "regexp.quest: no workload " <> workload <> "\n") system.sysexit(2) 0 end
+    end;
+
+let var result = 0;
+for i = 1 upto repeat do result := once() end;
+writer.putString(writer.output conv.int(result) <> "\n")

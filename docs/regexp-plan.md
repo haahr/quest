@@ -15,8 +15,8 @@ the library, are built (§6).
    the pattern prefers (alternatives in order, greedy quantifiers longest first). Not POSIX's leftmost-longest.
 4. **Bytes, not characters.** A Quest `String` is bytes and a `Char` a byte (stringop.int.quest), so the library
    matches bytes: `.` matches any byte but newline, a class is a set of bytes, and offsets are byte offsets, as
-   `stringOp.getSub` takes them. A UTF-8 mode, where `.` and classes match encoded code points, is a later step
-   (§6) that changes no signature.
+   `stringOp.getSub` takes them. Quest has no UTF-8 (user, 2026-11-17), so there is no UTF-8 mode: a byte
+   above 127 is a byte like any other.
 5. **Offsets are start and size**, as `getSub(source start size)` takes them, not start and end (`end` is a keyword).
 6. **The name is `regexp`** (user, 2026-11-17), Unix's traditional abbreviation (Spencer's `regexp(3)`, Emacs, Tcl,
    Go), for a language from 1989. Where "re" abbreviates "regular expression" in a name, it is written `re` or `RE`,
@@ -294,12 +294,12 @@ range, to get the captures. It is the largest piece and the one most worth leavi
 - **The corpora's files** are copied from Go's distribution (`$(go env GOROOT)/src/regexp/testdata/`) into
   `tests/data/regexp/`, with a README giving each file's source and keeping its license: BSD for RE2's and Go's, and
   AT&T's own permissive license, which covers `testregex`'s data, for the `.dat` files. A list there names each case
-  skipped and why: Unicode classes (`\pL`) and RE2's `\C`, and non-ASCII subjects until the UTF-8 step (§6), so no
+  skipped and why: Unicode classes (`\pL`) and RE2's `\C`, and non-ASCII patterns and subjects, so no
   case is skipped silently.
 - **A live comparison against Go's `regexp`** (`tests/python/`), for what the corpora miss: a generator makes random
   patterns in this syntax and random subjects, a small Go program gives the expected match and groups, and the library
   must agree. Go's, not Python's `re`, because Go's is RE2's semantics exactly where Python's differs in corners (`$`
-  before a final newline). Subjects are ASCII, since Go matches UTF-8 and this library bytes, until the UTF-8 step.
+  before a final newline). Subjects are ASCII, since Go matches UTF-8 and this library bytes.
   Skipped where Go is not installed, as the wasm tests are without their engines.
 - **A test of linear time:** `(a*)*b` and `(a|aa)*b` against 100,000 `a`s finish well within the test's time limit,
   where a backtracking matcher would not finish at all.
@@ -337,11 +337,32 @@ range, to get the captures. It is the largest piece and the one most worth leavi
    and in node, on RE2's search tests and the comparisons with Go, and the three golden tests pass in the wasm,
    wasm-node, and wasm-jit modes.
 4. **Fast paths:** literal patterns, literal prefixes, anchors, and capture-free tests, each measured.
+   *Built 2026-11-17,* each measured by step 5's benchmark (`benchmarks/regexp/baselines/`): each search's scratch
+   (thread lists, stack, slots) kept for its program's next search, rather than made each time; a search with no
+   thread running skipping to the next byte a match can begin with (the program's start set, worked out once, through
+   assertions as though they held) or to a multi-byte literal prefix's next occurrence; a pattern every match of
+   which begins at `\A` tried at the start only; and a pattern that is bytes and nothing else searched for directly.
+   The tests that make no match already ran without capture slots. The corpora and RE2's exhaustive tests pass.
 5. **The benchmark**, and then the lazy DFA if it is wanted.
-6. **UTF-8 mode** (`(?u)`, and perhaps by default later): `.` and classes over code points, compiled to byte
-   sequences as RE2 compiles them, so the VM is unchanged.
+   *Benchmark built 2026-11-17:* `benchmarks/regexp/`, eight workloads in Quest, Go, and Python. After step 4, on
+   ten repetitions (seconds; Go's `regexp`, like this library, does not backtrack):
 
-Steps 1 to 3 are the library; 4 to 6 make it faster or wider without changing its interface. **Landing** (user,
-2026-11-17): steps 1 to 3 are built and committed one by one, each with its own tests run as it lands (its goldens
-in every phase, `run_tests.py -k`, with both compilers); then one full `tools/check`, since `lib/` changes run every
-suite, wasm's included; then the user is asked before the push.
+   | Workload | util/regexp | Go | Python | /Go |
+   | :--- | ---: | ---: | ---: | ---: |
+   | literal | 0.12 | 0.06 | 0.14 | 2.1 |
+   | caseless | 0.65 | 1.09 | 0.45 | 0.60 |
+   | alternation | 0.62 | 1.45 | 0.66 | 0.42 |
+   | prefix (one group) | 0.50 | 0.15 | 0.20 | 3.3 |
+   | date (six groups) | 2.65 | 0.34 | 0.38 | 7.8 |
+   | anchored (one group) | 0.42 | 0.13 | 0.23 | 3.2 |
+   | tokens (`findAll`) | 1.41 | 1.20 | 0.64 | 1.2 |
+   | replace (`replaceAll`) | 0.62 | 0.63 | 0.41 | 0.99 |
+
+   The lazy DFA awaits the user's review of these (2026-11-17).
+
+Steps 1 to 3 are the library; 4 and 5 make it faster without changing its interface. **Landing** (user,
+2026-11-17): steps 1 to 3 were built and committed one by one, each with its own tests run as it landed (its goldens
+in every phase, `run_tests.py -k`, with both compilers); then, rather than a full `tools/check`, since the library
+changes nothing that existed, a targeted set: its tests in the stress modes and in the ssac, arm64-program, and
+arm64-whole modes, the unit tests that read all of `lib/` (the ABI corpus, the externals tables, the standard
+library's modules), and the wasm page's check; then the user was asked before the push (cb7f2303).

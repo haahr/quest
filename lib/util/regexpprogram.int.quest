@@ -1,6 +1,7 @@
 interface RegexpProgram
 import
     syn = util/regexpSyntax : util/RegexpSyntax
+    util/maybe : util/Maybe
 export
     (* =========================================================================
      * Regular Expression Programs (RegexpProgram)
@@ -40,6 +41,17 @@ export
         groups: Int
         (* Group i's name, "" for an unnamed group (names[0] is "") *)
         names: Array(String)
+        (* What a search may skip by, worked out once (docs/regexp-plan.md
+         * step 4): the bytes a match can begin with (startSet[b]), or an
+         * empty array if a match can be empty; whether every match begins
+         * at the subject's start (\A, or ^ without the m flag); and the
+         * pattern's bytes, if it is nothing else (literal, a pattern without
+         * groups) *)
+        startSet: Array(Bool)
+        anchored: Bool
+        literal: maybe.T(String)
+        (* Bytes every match begins with, "" if none are known *)
+        prefix: String
     end
 
     (* The most instructions a program may have *)

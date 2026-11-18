@@ -48,20 +48,99 @@ export
             if a is 4 then before isnot after else before is after end
         end
 
+    (* What a search works in, made for one program and number of slots: the
+     * two thread lists; the slots of the thread being added, and the work
+     * still to do in adding it (an instruction to visit, pc >= 0, or a slot to
+     * put back as it was, ~1 - slot and its value, two entries each); slots
+     * all unset; and the best match's. Busy while a search uses it *)
+    Let Scratch = Tuple
+        program: prog.Program
+        nslots: Int
+        var busy: Bool
+        first: List
+        second: List
+        work: Array(Int)
+        stack: Array(Int)
+        unset: Array(Int)
+        best: Array(Int)
+    end
+
+    (* The scratch the last search made, kept for the next search of its
+     * program, since making one costs as much as a short search: a search
+     * reuses it unless a search of it is running (one in a replaceWith
+     * function, say) *)
+    let kept = tuple let var last = maybe.none(:Scratch) end
+
+    let obtain(p: prog.Program nslots: Int): Scratch =
+        begin
+            let reusable = maybe.isSome(:Scratch kept.last) andif begin
+                let k = maybe.unwrap(:Scratch kept.last)
+                {k.program is p} andif {k.nslots is nslots} andif not(k.busy)
+            end
+            if reusable then
+                let k = maybe.unwrap(:Scratch kept.last)
+                k.busy := true
+                k
+            else
+                let size = extent p.op
+                let k = tuple
+                    let program = p
+                    let nslots = nslots
+                    let var busy = true
+                    let first = newList(size nslots)
+                    let second = newList(size nslots)
+                    let work = array of(nslots ~1)
+                    let stack = array of({6 * size} + 4 0)
+                    let unset = array of(nslots ~1)
+                    let best = array of(nslots ~1)
+                end
+                kept.last := maybe.some(:Scratch k)
+                k
+            end
+        end
+
+    (* A pattern that is bytes and nothing else, found directly: its first
+     * byte, then the rest compared, rather than run as a program *)
+    let literalSearch(p: prog.Program lit: String s: String start: Int anchored: Bool full: Bool nslots: Int)
+        : maybe.T(Array(Int)) =
+        begin
+            let n = stringOp.length(s)
+            let m = stringOp.length(lit)
+            let first = stringOp.getChar(lit 0)
+            let at(i: Int): Bool = stringOp.equalSub(s i m lit 0 m)
+            let var found = ~1
+            if anchored \/ full then
+                if {{start + m} <= n} andif {not(full) orif {{start + m} is n}} andif at(start) then found := start end
+            else
+                let var i = start
+                let last = n - m
+                while {i <= last} /\ {found < 0} do
+                    if {stringOp.getChar(s i) is first} andif at(i) then found := i else i := i + 1 end
+                end
+            end
+            if found < 0 then maybe.none(:Array(Int))
+            elsif nslots is 0 then maybe.some(:Array(Int) array of :Int end)
+            else maybe.some(:Array(Int) array of found found + m end)
+            end
+        end
+
     let search(p: prog.Program s: String start: Int anchored: Bool full: Bool captures: Bool): maybe.T(Array(Int)) =
         begin
             let n = stringOp.length(s)
             let size = extent p.op
             let nslots = if captures then 2 * {p.groups + 1} else 0 end
-            let var cur = newList(size nslots)
-            let var nxt = newList(size nslots)
-            (* The slots of the thread being added, and the work still to do in
-             * adding it: an instruction to visit (pc >= 0), or a slot to put
-             * back as it was ((~1 - slot) and its value), two entries each *)
-            let work = array of(nslots ~1)
-            let stack = array of({6 * size} + 4 0)
-            let unset = array of(nslots ~1)
-            let best = array of(nslots ~1)
+            if maybe.isSome(:String p.literal) then
+                literalSearch(p maybe.unwrap(:String p.literal) s start anchored full nslots)
+            else
+            let scratch = obtain(p nslots)
+            let var cur = scratch.first
+            let var nxt = scratch.second
+            cur.count := 0
+            nxt.count := 0
+            let work = scratch.work
+            let stack = scratch.stack
+            let unset = scratch.unset
+            let best = scratch.best
 
             (* Adds to l the thread at pc0, at offset at, with the slots
              * src[off ...]: it and every instruction it reaches without
@@ -114,11 +193,31 @@ export
                     end
                 end
 
+            (* an anchored pattern is tried at start only, and a search with no
+             * thread running skips to a byte a match can begin with *)
+            let once = anchored \/ p.anchored
+            let skip = p.startSet
+            let canSkip = extent skip > 0
+            let prefixSize = stringOp.length(p.prefix)
+            let prefixFirst = if prefixSize > 0 then stringOp.getChar(p.prefix 0) else ' ' end
             let var matched = false
             let var pos = start
             let var running = true
             while running do
-                if not(matched) andif {not(anchored) orif {pos is start}} then add(cur 0 pos unset 0) end
+                if {cur.count is 0} andif not(matched) andif not(once) andif canSkip then
+                    if prefixSize > 1 then
+                        (* to the prefix's next occurrence *)
+                        let at(i: Int): Bool =
+                            {{i + prefixSize} <= n} andif {stringOp.getChar(s i) is prefixFirst}
+                                andif stringOp.equalSub(s i prefixSize p.prefix 0 prefixSize)
+                        while {pos < n} andif not(at(pos)) do pos := pos + 1 end
+                    else
+                        while {pos < n} andif not(skip[byteAt(s pos)]) do pos := pos + 1 end
+                    end
+                    (* a match begins with a byte, and none is left *)
+                    if pos >= n then running := false end
+                end
+                if running andif not(matched) andif {not(once) orif {pos is start}} then add(cur 0 pos unset 0) end
                 if cur.count > 0 then
                     let c = if pos < n then byteAt(s pos) else ~1 end
                     nxt.count := 0
@@ -148,11 +247,21 @@ export
                     let t = cur
                     cur := nxt
                     nxt := t
-                elsif matched \/ anchored then
+                elsif matched \/ once then
                     running := false
                 end
-                if pos >= n then running := false else pos := pos + 1 end
+                if {pos >= n} \/ not(running) then running := false else pos := pos + 1 end
             end
-            if matched then maybe.some(:Array(Int) best) else maybe.none(:Array(Int)) end
+            scratch.busy := false
+            if matched then
+                (* a copy, since a match keeps its slots and the scratch is
+                 * reused *)
+                let slots = array of(nslots ~1)
+                for k = 0 upto {nslots - 1} do slots[k] := best[k] end
+                maybe.some(:Array(Int) slots)
+            else
+                maybe.none(:Array(Int))
+            end
+            end
         end
 end

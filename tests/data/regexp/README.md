@@ -13,8 +13,8 @@ which tests Go's `regexp` package with them. `tests/python/test_regexp.py` runs 
 ## What is skipped
 
 A case is skipped, and counted as skipped in the test's output, when:
-- its pattern or its subject has a byte above 127: Go and RE2 match UTF-8, this library bytes, until its UTF-8 step
-  (§6, step 6);
+- its pattern or its subject has a byte above 127: Go and RE2 match UTF-8, this library bytes (Quest has no
+  UTF-8);
 - its pattern uses a Unicode class (`\p`, `\P`) or RE2's `\C`, which this library does not have;
 - (the AT&T files) it is not an extended-syntax (`E`) test, or Go's `regexp` does not compile its pattern.
 
