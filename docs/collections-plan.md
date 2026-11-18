@@ -2,7 +2,7 @@
 
 `collections/sortedMap`, `collections/sortedSet`, `collections/heap`, `collections/deque`, and `util/random`: the
 second and third of [future-libraries.md](future-libraries.md)'s "clearly missing" libraries. All are Quest alone,
-so they run alike on every target, the browser included. Not started; this is the interfaces' design, for review.
+so they run alike on every target, the browser included. Steps 1 to 3 are built (§5).
 
 ## 1. Decisions
 
@@ -314,5 +314,12 @@ end
 1. **`util/random`.**
 2. **`heap` and `deque`.**
 3. **`sortedMap` and `sortedSet`,** on `collections/btree`.
+
+*Built 2026-11-18:* steps 1 to 3, each with its golden test, passing in every phase of both compilers and in the
+arm64, ssac, arm64-whole, JIT, wasm, wasm-node, and wasm-jit modes. `util/random`'s known answers are recomputed by
+`tests/python/test_random.py` with a reference implementation; `fromClock` mixes a count of its calls into the
+clocks, since two calls can read the same ones. The B-tree's test grows a map to three levels (1,200 keys) and
+empties it in a random order, checked against a model at every step; a change of a value during `forEach` is allowed,
+an added or removed key raises `error`. libraries.md has §1.11 and §2.5 to §2.8.
 4. **libraries.md's sections** for all five, and `regalloc`'s heap moved to `collections/heap` if it measures no
    slower, after a release has the library (docs/release-compiler.md §2).

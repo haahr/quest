@@ -575,6 +575,44 @@ end
 
 ---
 
+### 1.11. `util/random : util/Random`
+
+Pseudo-random numbers in Quest ([collections-plan.md](collections-plan.md) §2.5): xoshiro256**, seeded by SplitMix64,
+so the same seed gives the same numbers on every target. `new(seed)` is deterministic, for tests and benchmarks;
+`fromClock()` seeds from `os/time` (§4.5) for different numbers each run; there is no hidden shared generator.
+Bounded integers are unbiased, by Lemire's method. Not for cryptography. `tests/source/stdlib/random_operations.quest`
+tests it, and `tests/python/test_random.py` recomputes its known answers with a reference implementation.
+
+#### Interface Summary
+
+```quest
+interface Random
+import
+    collections/vector : collections/Vector
+    word : Word
+export
+    T::TYPE
+    error: Exception
+    new(seed: Int): T
+    fromClock(): T
+    copy(r: T): T
+    split(r: T): T
+    bits(r: T): word.T
+    anyInt(r: T): Int
+    below(r: T n: Int): Int
+    between(r: T lo: Int hi: Int): Int
+    fraction(r: T): Real
+    bool(r: T): Bool
+    normal(r: T): Real
+    shuffle: All(A::TYPE) All(r: T a: Array(A)) Ok
+    shuffleVector: All(A::TYPE) All(r: T v: vector.T(A)) Ok
+    choice: All(A::TYPE) All(r: T a: Array(A)) A
+    sample: All(A::TYPE) All(r: T a: Array(A) k: Int) vector.T(A)
+end
+```
+
+---
+
 ## 2. Collections (`lib/collections/`)
 
 ### 2.1. `collections/vector : collections/Vector`
@@ -933,6 +971,170 @@ end
 
 `tests/source/stdlib/bitset_operations.quest` tests it at word boundaries, through every operation and whether it
 changes a set, with errors, and in a dataflow fixpoint.
+
+---
+
+### 2.5. `collections/sortedMap : collections/SortedMap`
+
+A map in the order of a comparison given when it is made ([collections-plan.md](collections-plan.md) §2.1): `hashMap`'s
+operations, plus the least and greatest entries, the nearest on either side of a key, ranges from `lo` (included) to
+`hi` (excluded), and a key's rank. It is a B-tree of minimum degree 16, `collections/btree`, which counts the keys
+below each node. Adding or removing a key while `forEach` walks the map raises `error`; changing a value does not.
+`tests/source/stdlib/sortedmap_operations.quest` grows a map to three levels and empties it against a model.
+
+#### Interface Summary
+
+```quest
+interface SortedMap
+import
+    util/maybe : util/Maybe
+    collections/vector : collections/Vector
+export
+    T::ALL(K::TYPE) ALL(V::TYPE) TYPE
+    Def Entry = Fun(K::TYPE V::TYPE) Record key: K value: V end
+    error: Exception
+    new: All(K::TYPE V::TYPE) All(compare: All(a: K b: K) Int) T(K V)
+    size: All(K::TYPE V::TYPE) All(m: T(K V)) Int
+    empty: All(K::TYPE V::TYPE) All(m: T(K V)) Bool
+    get: All(K::TYPE V::TYPE) All(m: T(K V) key: K) maybe.T(V)
+    contains: All(K::TYPE V::TYPE) All(m: T(K V) key: K) Bool
+    find: All(K::TYPE V::TYPE) All(m: T(K V) key: K) V
+    insert: All(K::TYPE V::TYPE) All(m: T(K V) key: K value: V) Bool
+    delete: All(K::TYPE V::TYPE) All(m: T(K V) key: K) maybe.T(V)
+    clear: All(K::TYPE V::TYPE) All(m: T(K V)) Ok
+    copy: All(K::TYPE V::TYPE) All(m: T(K V)) T(K V)
+    least: All(K::TYPE V::TYPE) All(m: T(K V)) maybe.T(Entry(K V))
+    greatest: All(K::TYPE V::TYPE) All(m: T(K V)) maybe.T(Entry(K V))
+    floor: All(K::TYPE V::TYPE) All(m: T(K V) key: K) maybe.T(Entry(K V))
+    ceiling: All(K::TYPE V::TYPE) All(m: T(K V) key: K) maybe.T(Entry(K V))
+    below: All(K::TYPE V::TYPE) All(m: T(K V) key: K) maybe.T(Entry(K V))
+    above: All(K::TYPE V::TYPE) All(m: T(K V) key: K) maybe.T(Entry(K V))
+    removeLeast: All(K::TYPE V::TYPE) All(m: T(K V)) maybe.T(Entry(K V))
+    removeGreatest: All(K::TYPE V::TYPE) All(m: T(K V)) maybe.T(Entry(K V))
+    keys: All(K::TYPE V::TYPE) All(m: T(K V)) vector.T(K)
+    values: All(K::TYPE V::TYPE) All(m: T(K V)) vector.T(V)
+    entries: All(K::TYPE V::TYPE) All(m: T(K V)) vector.T(Entry(K V))
+    forEach: All(K::TYPE V::TYPE) All(m: T(K V) action: All(k: K v: V) Ok) Ok
+    forEachInRange: All(K::TYPE V::TYPE) All(m: T(K V) lo: K hi: K action: All(k: K v: V) Ok) Ok
+    entriesInRange: All(K::TYPE V::TYPE) All(m: T(K V) lo: K hi: K) vector.T(Entry(K V))
+    rank: All(K::TYPE V::TYPE) All(m: T(K V) key: K) Int
+    map: All(K::TYPE V::TYPE W::TYPE) All(m: T(K V) f: All(k: K v: V) W) T(K W)
+    filter: All(K::TYPE V::TYPE) All(m: T(K V) pred: All(k: K v: V) Bool) T(K V)
+end
+```
+
+---
+
+### 2.6. `collections/sortedSet : collections/SortedSet`
+
+A set in the order of a comparison ([collections-plan.md](collections-plan.md) §2.2), on the same B-tree as
+`sortedMap`: `hashSet`'s operations, with the order queries, ranges, and rank of §2.5.
+
+#### Interface Summary
+
+```quest
+interface SortedSet
+import
+    util/maybe : util/Maybe
+    collections/vector : collections/Vector
+export
+    T::ALL(A::TYPE) TYPE
+    error: Exception
+    new: All(A::TYPE) All(compare: All(a: A b: A) Int) T(A)
+    size: All(A::TYPE) All(s: T(A)) Int
+    empty: All(A::TYPE) All(s: T(A)) Bool
+    contains: All(A::TYPE) All(s: T(A) elem: A) Bool
+    insert: All(A::TYPE) All(s: T(A) elem: A) Bool
+    delete: All(A::TYPE) All(s: T(A) elem: A) Bool
+    clear: All(A::TYPE) All(s: T(A)) Ok
+    copy: All(A::TYPE) All(s: T(A)) T(A)
+    least: All(A::TYPE) All(s: T(A)) maybe.T(A)
+    greatest: All(A::TYPE) All(s: T(A)) maybe.T(A)
+    floor: All(A::TYPE) All(s: T(A) elem: A) maybe.T(A)
+    ceiling: All(A::TYPE) All(s: T(A) elem: A) maybe.T(A)
+    below: All(A::TYPE) All(s: T(A) elem: A) maybe.T(A)
+    above: All(A::TYPE) All(s: T(A) elem: A) maybe.T(A)
+    removeLeast: All(A::TYPE) All(s: T(A)) maybe.T(A)
+    removeGreatest: All(A::TYPE) All(s: T(A)) maybe.T(A)
+    elements: All(A::TYPE) All(s: T(A)) vector.T(A)
+    forEach: All(A::TYPE) All(s: T(A) action: All(elem: A) Ok) Ok
+    forEachInRange: All(A::TYPE) All(s: T(A) lo: A hi: A action: All(elem: A) Ok) Ok
+    elementsInRange: All(A::TYPE) All(s: T(A) lo: A hi: A) vector.T(A)
+    rank: All(A::TYPE) All(s: T(A) elem: A) Int
+    union: All(A::TYPE) All(s1: T(A) s2: T(A)) T(A)
+    intersection: All(A::TYPE) All(s1: T(A) s2: T(A)) T(A)
+    difference: All(A::TYPE) All(s1: T(A) s2: T(A)) T(A)
+    isSubset: All(A::TYPE) All(s1: T(A) s2: T(A)) Bool
+    equal: All(A::TYPE) All(s1: T(A) s2: T(A)) Bool
+    filter: All(A::TYPE) All(s: T(A) pred: All(elem: A) Bool) T(A)
+end
+```
+
+---
+
+### 2.7. `collections/heap : collections/Heap`
+
+A priority queue ([collections-plan.md](collections-plan.md) §2.3): a binary heap in a vector, the least element by its
+comparison first (`sort.reverse` of one, for the greatest), built from a vector in linear time. Push and pop only: no
+handles, so no decrease-key.
+
+#### Interface Summary
+
+```quest
+interface Heap
+import
+    collections/vector : collections/Vector
+export
+    T::ALL(A::TYPE) TYPE
+    error: Exception
+    new: All(A::TYPE) All(compare: All(a: A b: A) Int) T(A)
+    fromVector: All(A::TYPE) All(v: vector.T(A) compare: All(a: A b: A) Int) T(A)
+    size: All(A::TYPE) All(h: T(A)) Int
+    empty: All(A::TYPE) All(h: T(A)) Bool
+    push: All(A::TYPE) All(h: T(A) elem: A) Ok
+    pop: All(A::TYPE) All(h: T(A)) A
+    peek: All(A::TYPE) All(h: T(A)) A
+    pushPop: All(A::TYPE) All(h: T(A) elem: A) A
+    clear: All(A::TYPE) All(h: T(A)) Ok
+    elements: All(A::TYPE) All(h: T(A)) vector.T(A)
+end
+```
+
+---
+
+### 2.8. `collections/deque : collections/Deque`
+
+A double-ended queue ([collections-plan.md](collections-plan.md) §2.4): a ring buffer, its capacity doubled when full,
+with pushes and pops at both ends in constant time and its elements indexed from the front.
+
+#### Interface Summary
+
+```quest
+interface Deque
+import
+    collections/vector : collections/Vector
+export
+    T::ALL(A::TYPE) TYPE
+    error: Exception
+    new: All(A::TYPE) T(A)
+    newWithCapacity: All(A::TYPE) All(capacity: Int) T(A)
+    length: All(A::TYPE) All(d: T(A)) Int
+    empty: All(A::TYPE) All(d: T(A)) Bool
+    pushFront: All(A::TYPE) All(d: T(A) elem: A) Ok
+    pushBack: All(A::TYPE) All(d: T(A) elem: A) Ok
+    popFront: All(A::TYPE) All(d: T(A)) A
+    popBack: All(A::TYPE) All(d: T(A)) A
+    front: All(A::TYPE) All(d: T(A)) A
+    back: All(A::TYPE) All(d: T(A)) A
+    get: All(A::TYPE) All(d: T(A) index: Int) A
+    set: All(A::TYPE) All(d: T(A) index: Int value: A) Ok
+    clear: All(A::TYPE) All(d: T(A)) Ok
+    copy: All(A::TYPE) All(d: T(A)) T(A)
+    forEach: All(A::TYPE) All(d: T(A) action: All(elem: A) Ok) Ok
+    toVector: All(A::TYPE) All(d: T(A)) vector.T(A)
+    fromVector: All(A::TYPE) All(v: vector.T(A)) T(A)
+end
+```
 
 ---
 

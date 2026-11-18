@@ -10,12 +10,13 @@ below).
 1. **Time, `os/time`** (runtime). *Built 2026-11-18, as `os/time` and `util/datetime`
    ([time-plan.md](time-plan.md)).* Quest has no clock: util/regexp's benchmark times whole processes from Python for
    lack of one. A monotonic clock, the wall clock, sleep, and dates formatted and parsed.
-2. **Ordered collections, `collections/sortedMap` and `collections/heap`.** No sorted map or set (iteration in order,
-   range queries, the least and greatest keys), and no priority queue: a balanced tree (red-black, or a B-tree) and a
-   binary heap, in Quest. A deque belongs here too.
-3. **Random numbers, `util/random`.** No generator: a seeded, deterministic one (PCG or xoshiro), in Quest, with
-   integers in a range, reals, and shuffling. For tests and benchmarks; util/regexp's benchmark generates its inputs
-   in Python for lack of one.
+2. **Ordered collections, `collections/sortedMap` and `collections/heap`.** *Built 2026-11-18, with
+   `collections/sortedSet` and `collections/deque` ([collections-plan.md](collections-plan.md)).* No sorted map or set
+   (iteration in order, range queries, the least and greatest keys), and no priority queue: a balanced tree
+   (red-black, or a B-tree) and a binary heap, in Quest. A deque belongs here too.
+3. **Random numbers, `util/random`.** *Built 2026-11-18 ([collections-plan.md](collections-plan.md)).* No generator:
+   a seeded, deterministic one (PCG or xoshiro), in Quest, with integers in a range, reals, and shuffling. For tests
+   and benchmarks; util/regexp's benchmark generates its inputs in Python for lack of one.
 
 ## Written already, inside the compiler
 
