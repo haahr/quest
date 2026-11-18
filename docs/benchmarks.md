@@ -19,7 +19,8 @@ arbitrary-precision integers (§15), measures the collector's steps (§16 to §1
 MLton (§20), compares the C and arm64 backends again and records the switch of the default to arm64 (§21), records the
 arm64-built compiler's gap to the C-built one narrowed (§22), times the reuse of a case binder's box (§23), keeps
 the arm64 performance review (§24), measures the compiler compiled to WebAssembly, and the MLton suite on it
-(§25), measures the strings work (§26), and times every backend, WebAssembly included, at one commit (§27).
+(§25), measures the strings work (§26), times every backend, WebAssembly included, at one commit (§27), and
+measures the collections tuned on the compiler (§28).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -2930,3 +2931,52 @@ Time against MLton's (below 1 is faster); `*` marks §27.3's ssac times.
 | wc-scanStream | 8192 | 5.73 | 9.70 | 3.25 | 3.60 | 89.8 |
 | zebra | 16 | 2.94 | 4.54 | 7.16 | 5.48 | 12.1 |
 | zern | 4096 | 3.44 | 1.21 | 1.17 | 1.37 | 8.98 |
+
+## 28. Tuning vector and hashMap on the compiler (2026-11-17)
+
+`collections/vector` and `collections/hashMap` ([libraries.md](libraries.md) §2.1, §2.2) tuned on a build of the
+compiler's driver (96,658 lines of `questlang/` and 8,727 of `lib/`). None of the MLton conversions uses either module,
+so the suite's programs are unchanged; only the compiler (and other programs using them) can be faster.
+
+### 28.1. What a driver build does with them
+
+Counted by a temporary counter in the runtime that the two modules called (not committed), over one `-j 1` build of
+the driver from an empty build directory:
+
+- **hashMap:** 23.1 million maps, of which only 2.48 million (11%) ever held a key, 970,000 more than 8, and
+  124,000 more than 64. Four functions make most of the empty ones: `model.stripAliases` (7.7 million, two a call),
+  `symbols.newScope` (5.3 million, five a scope), `canonical.build` (3.7 million), and `layout.resolvedShape`
+  (1.0 million). Lookups: 148 million, 47% hits, 72% at the first probe. Deletes: 178,000.
+- **vector:** 227 million vectors, 93 million of them a map's four dense vectors. Of the 68 million others that
+  held an element, 49% held one at most, 72% two, 91% six, and 0.5% more than 64.
+
+An empty map was a 96-byte tuple, an 8-slot indices array, and four vectors (a tuple and an empty array each),
+360 bytes; an empty vector is 48 bytes (its tuple and an empty array, which `array of :T end` allocates each time,
+and which stays so, since sharing one would make two empty arrays `is` the same); a vector's first append allocated
+6 slots.
+
+### 28.2. The changes
+
+- **hashMap:** a map's arrays are a table of their own, made on its first insert, so an empty map is its own tuple
+  alone; the table holds plain arrays rather than four vectors, each dense array as long as the 2/3 of the indices
+  it fills before the table grows; the deleted flags are allocated on the first delete; growing copies the arrays
+  directly rather than appending entry by entry; `newWithCapacity(n)` holds n entries without growing (it grew
+  before n). A first table of 4 slots rather than 8 allocated 0.4% more, so 8 stays.
+- **vector:** the first append allocates 4 slots rather than 6, and growth doubles rather than adding half; `copy`,
+  `concat`, and `fromArray` allocate exactly their elements rather than at least 6. Over the measured lengths,
+  doubling from 4 allocates 8.0 GB of arrays against 10.0 GB growing by half from 6 (from 2, 7.9 GB, in 22% more
+  arrays; from 8 by half, 10.7 GB): growing by half passes through more arrays, each with its 16-byte header.
+
+### 28.3. Measurements
+
+Each compiler built by the release compiler (`79495c86`) from main at `900aa5c3` with the change or changes in its
+`lib/`, building its own tree's driver through arm64 from an empty build directory: allocation from one `-j 1`
+build's collector statistics; times best of three, the compilers alternating, once the load average had been under
+5 for three minutes (it was 3.9 at the start, 5.8 at the end).
+
+| | allocated | heap max | `-j 1` real | `-j 1` user | `-j 8` real | `-j 8` user |
+|---|---:|---:|---:|---:|---:|---:|
+| main | 64.5 GB | 4.94 GB | 78.87 | 72.85 | 27.62 | 105.14 |
+| vector alone | 62.4 GB | 4.45 GB | | | | |
+| hashMap alone | 53.1 GB | 3.93 GB | | | | |
+| both | 50.8 GB (−21%) | 4.61 GB | 67.01 (−15%) | 61.56 (−15%) | 24.16 (−13%) | 90.87 (−14%) |
