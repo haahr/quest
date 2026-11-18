@@ -1,0 +1,128 @@
+(* Checks util/regexp against expected matches (tests/python/test_regexp.py,
+ * docs/regexp-plan.md section 5). Its argument is a file of cases, one a
+ * line:
+ *
+ *     PATTERN SUBJECT FULL PARTIAL
+ *
+ * PATTERN and SUBJECT in hexadecimal (two digits a byte, - for none), and
+ * FULL and PARTIAL the expected match of \A(?:PATTERN)\z and of PATTERN in
+ * SUBJECT: - for none, or each group's start-end, comma-separated, - for a
+ * group that took no part. It prints each case that differs, and then a line
+ * "cases N failures M". *)
+
+import regexp = util/regexp : util/Regexp;
+import util/maybe : util/Maybe;
+import sb = util/stringBuilder : util/StringBuilder;
+import util/strutil : util/Strutil;
+import collections/vector : collections/Vector;
+import stringOp = string : StringOp;
+import reader: Reader;
+import writer: Writer;
+import system: System;
+import ascii: Ascii;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+let contents(path: String): String =
+    begin
+        let r = reader.file(path)
+        let buf = sb.new()
+        while reader.more(r) do sb.str(buf reader.getString(r 65536)) end
+        reader.close(r)
+        sb.toString(buf)
+    end;
+
+let hexDigit(c: Char): Int =
+    begin
+        let b = ascii.val(c)
+        if b <= 57 then b - 48 elsif b <= 70 then b - 55 else b - 87 end
+    end;
+
+let unhex(h: String): String =
+    if stringOp.equal(h "-") then ""
+    else
+        let n = stringOp.length(h) / 2
+        let s = stringOp.new(n ' ')
+        for i = 0 upto {n - 1} do
+            stringOp.setChar(s i ascii.char({hexDigit(stringOp.getChar(h 2 * i)) * 16}
+                + hexDigit(stringOp.getChar(h {2 * i} + 1))))
+        end
+        s
+    end;
+
+(* A match as the cases write it *)
+let written(m: maybe.T(regexp.Match) groups: Int): String =
+    if maybe.isNone(:regexp.Match m) then "-"
+    else
+        let x = maybe.unwrap(:regexp.Match m)
+        let buf = sb.new()
+        for i = 0 upto groups do
+            if i > 0 then sb.char(buf ',') end
+            if regexp.matched(x i) then
+                sb.int(buf regexp.start(x i))
+                sb.char(buf '-')
+                sb.int(buf regexp.start(x i) + regexp.size(x i))
+            else
+                sb.char(buf '-')
+            end
+        end
+        sb.toString(buf)
+    end;
+
+let lines = strutil.splitlines(contents(system.args[1]));
+let counts = tuple let var cases = 0 let var failures = 0 end;
+let var lastPattern = "";
+let var compiled = maybe.none(:Tuple re: regexp.T full: regexp.T end);
+let var compileError = "";
+for i = 0 upto {vector.length(:String lines) - 1} do
+    let fields = strutil.split(vector.get(:String lines i) " ")
+    if vector.length(:String fields) is 4 then
+        counts.cases := counts.cases + 1
+        let patternHex = vector.get(:String fields 0)
+        let subject = unhex(vector.get(:String fields 1))
+        let wantFull = vector.get(:String fields 2)
+        let wantPartial = vector.get(:String fields 3)
+        if not(stringOp.equal(patternHex lastPattern)) then
+            lastPattern := patternHex
+            let pattern = unhex(patternHex)
+            compiled := try
+                begin
+                    let re = regexp.compile(pattern)
+                    let full = regexp.compile("\\A(?:" <> pattern <> ")\\z")
+                    compileError := ""
+                    maybe.some(:Tuple re: regexp.T full: regexp.T end tuple let re = re let full = full end)
+                end
+            when regexp.syntax with e then
+                begin
+                    compileError := e.message <> " at " <> conv.int(e.offset)
+                    maybe.none(:Tuple re: regexp.T full: regexp.T end)
+                end
+            end
+        end
+        let report(what: String have: String want: String): Ok =
+            begin
+                counts.failures := counts.failures + 1
+                print("FAIL line " <> conv.int(i + 1) <> " " <> what <> ": pattern " <> patternHex <> " subject "
+                    <> vector.get(:String fields 1) <> " have " <> have <> " want " <> want)
+            end
+        if maybe.isNone(:Tuple re: regexp.T full: regexp.T end compiled) then
+            report("compile" compileError "a regexp")
+        else
+            let c = maybe.unwrap(:Tuple re: regexp.T full: regexp.T end compiled)
+            let groups = regexp.groupCount(c.re)
+            let full = written(regexp.find(c.full subject) groups)
+            let partial = written(regexp.find(c.re subject) groups)
+            if not(stringOp.equal(full wantFull)) then report("full" full wantFull) end
+            if not(stringOp.equal(partial wantPartial)) then report("partial" partial wantPartial) end
+            (* the tests that make no match must agree with find *)
+            if regexp.matches(c.re subject) isnot not(stringOp.equal(wantFull "-")) then
+                report("matches" conv.bool(regexp.matches(c.re subject)) wantFull)
+            end
+            if regexp.contains(c.re subject) isnot not(stringOp.equal(wantPartial "-")) then
+                report("contains" conv.bool(regexp.contains(c.re subject)) wantPartial)
+            end
+        end
+    end
+end;
+print("cases " <> conv.int(counts.cases) <> " failures " <> conv.int(counts.failures))

@@ -1,0 +1,277 @@
+(* Standard Library: util/regexp's patterns compiled to instructions
+ * (docs/regexp-plan.md section 4.2), by Thompson's construction *)
+
+module regexpProgram : RegexpProgram
+import
+    syn = util/regexpSyntax : util/RegexpSyntax
+    collections/bitset : collections/Bitset
+    collections/vector : collections/Vector
+    collections/hashMap : collections/HashMap
+    sb = util/stringBuilder : util/StringBuilder
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+    ascii: Ascii
+    conv: Conv
+export
+    let opByte = 0
+    let opClass = 1
+    let opSplit = 2
+    let opJump = 3
+    let opSave = 4
+    let opAssert = 5
+    let opMatch = 6
+
+    Let Program = Tuple
+        op: Array(Int)
+        x: Array(Int)
+        y: Array(Int)
+        classes: Array(Bool)
+        groups: Int
+        names: Array(String)
+    end
+
+    let maxSize = 100000
+
+    let assertionCode(a: syn.Assertion): Int =
+        case a
+            when lineStart then 0
+            when lineEnd then 1
+            when textStart then 2
+            when textEnd then 3
+            when wordBoundary then 4
+            when notWordBoundary then 5
+        end
+
+    (* The program as it is emitted *)
+    Let Compiler = Tuple
+        op: vector.T(Int)
+        x: vector.T(Int)
+        y: vector.T(Int)
+        sets: vector.T(bitset.T)
+        names: vector.T(String)
+        (* Each capture node's group, numbered before emitting, since a
+         * counted repetition emits its body more than once *)
+        groups: hashMap.T(syn.Node Int)
+    end
+
+    let pc(c: Compiler): Int = vector.length(:Int c.op)
+
+    (* Emits an instruction; its address *)
+    let emit(c: Compiler op: Int x: Int y: Int): Int =
+        begin
+            let at = pc(c)
+            if at >= maxSize then
+                raise syn.syntax with tuple let message = "expression too large" let offset = 0 end end
+            end
+            vector.append(:Int c.op op)
+            vector.append(:Int c.x x)
+            vector.append(:Int c.y y)
+            at
+        end
+
+    let setX(c: Compiler at: Int v: Int): Ok = vector.set(:Int c.x at v)
+    let setY(c: Compiler at: Int v: Int): Ok = vector.set(:Int c.y at v)
+
+    (* The class holding s's bytes, the same class each time for equal sets *)
+    let classOf(c: Compiler s: bitset.T): Int =
+        begin
+            let var found = ~1
+            for k = 0 upto {vector.length(:bitset.T c.sets) - 1} do
+                if {found < 0} andif bitset.equal(vector.get(:bitset.T c.sets k) s) then found := k end
+            end
+            if found >= 0 then found
+            else
+                vector.append(:bitset.T c.sets s)
+                vector.length(:bitset.T c.sets) - 1
+            end
+        end
+
+    (* Whether n can match the empty string *)
+    let rec nullable(n: syn.Node): Bool =
+        case n
+            when bytes with x then stringOp.isEmpty(x.s)
+            when byteSet then false
+            when concat with x then
+                begin
+                    let var all = true
+                    for i = 0 upto {extent x.parts - 1} do if not(nullable(x.parts[i])) then all := false end end
+                    all
+                end
+            when alternate with x then
+                begin
+                    let var any = false
+                    for i = 0 upto {extent x.choices - 1} do if nullable(x.choices[i]) then any := true end end
+                    any
+                end
+            when repeat with x then {x.min is 0} orif nullable(x.body)
+            when capture with x then nullable(x.body)
+            when caseless with x then nullable(x.body)
+            else true
+        end
+
+    (* Numbers n's capture nodes in the order a left-to-right walk meets them *)
+    let rec number(c: Compiler n: syn.Node): Ok =
+        case n
+            when concat with x then for i = 0 upto {extent x.parts - 1} do number(c x.parts[i]) end
+            when alternate with x then for i = 0 upto {extent x.choices - 1} do number(c x.choices[i]) end
+            when repeat with x then number(c x.body)
+            when capture with x then
+                begin
+                    hashMap.insert(:syn.Node :Int c.groups n vector.length(:String c.names))
+                    vector.append(:String c.names x.name)
+                    number(c x.body)
+                end
+            else ok
+        end
+
+    let rec node(c: Compiler n: syn.Node): Ok =
+        case n
+            when empty then ok
+            when bytes with b then
+                for i = 0 upto {stringOp.length(b.s) - 1} do
+                    let at = emit(c opByte ascii.val(stringOp.getChar(b.s i)) 0)
+                end
+            when byteSet with b then begin let at = emit(c opClass classOf(c b.set) 0) ok end
+            when assertion with a then begin let at = emit(c opAssert assertionCode(a.a) 0) ok end
+            when concat with x then for i = 0 upto {extent x.parts - 1} do node(c x.parts[i]) end
+            when alternate with x then
+                begin
+                    (* split L1 next; L1: choice; jump end; next: split ... *)
+                    let jumps = vector.new(:Int)
+                    let last = extent x.choices - 1
+                    for i = 0 upto {last - 1} do
+                        let split = emit(c opSplit 0 0)
+                        setX(c split pc(c))
+                        node(c x.choices[i])
+                        vector.append(:Int jumps emit(c opJump 0 0))
+                        setY(c split pc(c))
+                    end
+                    node(c x.choices[last])
+                    for i = 0 upto {vector.length(:Int jumps) - 1} do setX(c vector.get(:Int jumps i) pc(c)) end
+                end
+            when repeat with x then
+                if x.max is 0 then
+                    (* nothing: its groups are numbered all the same *)
+                    ok
+                elsif x.max < 0 then
+                    (* x{n,} is n - 1 copies of x and then x+, x{0,} is x*, as
+                     * Go's regexp/syntax simplifies them *)
+                    begin
+                        for i = 1 upto {x.min - 1} do node(c x.body) end
+                        if x.min is 0 then star(c x.body x.greedy) else plus(c x.body x.greedy) end
+                    end
+                else
+                    (* x{n,m} is n copies of x and m - n of x?, each skipping to
+                     * the end *)
+                    begin
+                        for i = 1 upto x.min do node(c x.body) end
+                        let splits = vector.new(:Int)
+                        for i = 1 upto {x.max - x.min} do
+                            let split = emit(c opSplit 0 0)
+                            vector.append(:Int splits split)
+                            if x.greedy then setX(c split pc(c)) else setY(c split pc(c)) end
+                            node(c x.body)
+                        end
+                        for i = 0 upto {vector.length(:Int splits) - 1} do
+                            let split = vector.get(:Int splits i)
+                            if x.greedy then setY(c split pc(c)) else setX(c split pc(c)) end
+                        end
+                    end
+                end
+            when capture with x then
+                begin
+                    let index = maybe.unwrap(:Int hashMap.get(:syn.Node :Int c.groups n))
+                    let open = emit(c opSave 2 * index 0)
+                    node(c x.body)
+                    let close = emit(c opSave {2 * index} + 1 0)
+                    ok
+                end
+            when caseless with x then node(c syn.simplify(n))
+        end
+
+    (* x+: one copy of x, looping back *)
+    and plus(c: Compiler body: syn.Node greedy: Bool): Ok =
+        begin
+            let top = pc(c)
+            node(c body)
+            let split = emit(c opSplit 0 0)
+            if greedy then begin setX(c split top) setY(c split pc(c)) end
+            else begin setX(c split pc(c)) setY(c split top) end
+            end
+        end
+
+    (* x*: a loop, or (x+)? if x can match the empty string, so that the
+     * matches come in priority order (Go's regexp/syntax, golang.org/issue/
+     * 46123) *)
+    and star(c: Compiler body: syn.Node greedy: Bool): Ok =
+        if nullable(body) then
+            let split = emit(c opSplit 0 0)
+            if greedy then setX(c split pc(c)) else setY(c split pc(c)) end
+            plus(c body greedy)
+            if greedy then setY(c split pc(c)) else setX(c split pc(c)) end
+        else
+            let head = emit(c opSplit 0 0)
+            let top = pc(c)
+            node(c body)
+            let back = emit(c opJump head 0)
+            if greedy then begin setX(c head top) setY(c head pc(c)) end
+            else begin setX(c head pc(c)) setY(c head top) end
+            end
+        end
+
+    let compile(n: syn.Node): Program =
+        begin
+            let c = tuple
+                let op = vector.new(:Int)
+                let x = vector.new(:Int)
+                let y = vector.new(:Int)
+                let sets = vector.new(:bitset.T)
+                let names = vector.new(:String)
+                let groups = hashMap.newIdentityMap(:syn.Node :Int)
+            end
+            vector.append(:String c.names "")
+            let tree = syn.simplify(n)
+            number(c tree)
+            let start = emit(c opSave 0 0)
+            node(c tree)
+            let finish = emit(c opSave 1 0)
+            let done = emit(c opMatch 0 0)
+            let nsets = vector.length(:bitset.T c.sets)
+            let classes = array of({256 * nsets} false)
+            for k = 0 upto {nsets - 1} do
+                let s = vector.get(:bitset.T c.sets k)
+                for b = 0 upto 255 do if bitset.contains(s b) then classes[{256 * k} + b] := true end end
+            end
+            tuple
+                let op = vector.toArray(:Int c.op)
+                let x = vector.toArray(:Int c.x)
+                let y = vector.toArray(:Int c.y)
+                let classes = classes
+                let groups = vector.length(:String c.names) - 1
+                let names = vector.toArray(:String c.names)
+            end
+        end
+
+    let show(p: Program): String =
+        begin
+            let buf = sb.new()
+            let names = array of "byte" "class" "split" "jump" "save" "assert" "match" end
+            for i = 0 upto {extent p.op - 1} do
+                sb.str(buf conv.int(i))
+                sb.str(buf " ")
+                sb.str(buf names[p.op[i]])
+                if {p.op[i] is opByte} \/ {p.op[i] is opClass} \/ {p.op[i] is opJump} \/ {p.op[i] is opSave}
+                    \/ {p.op[i] is opAssert} then
+                    sb.str(buf " ")
+                    sb.str(buf conv.int(p.x[i]))
+                elsif p.op[i] is opSplit then
+                    sb.str(buf " ")
+                    sb.str(buf conv.int(p.x[i]))
+                    sb.str(buf " ")
+                    sb.str(buf conv.int(p.y[i]))
+                end
+                sb.char(buf '\n')
+            end
+            sb.toString(buf)
+        end
+end

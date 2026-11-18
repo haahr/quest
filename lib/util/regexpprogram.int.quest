@@ -1,0 +1,58 @@
+interface RegexpProgram
+import
+    syn = util/regexpSyntax : util/RegexpSyntax
+export
+    (* =========================================================================
+     * Regular Expression Programs (RegexpProgram)
+     *
+     * A pattern compiled to the instructions util/regexpMatch runs
+     * (docs/regexp-plan.md section 4.2); util/regexp's, not for programs to
+     * import. Instruction i is op[i] with operands x[i] and y[i]:
+     *
+     *     opByte b       consume one byte, if it is b
+     *     opClass k      consume one byte, if class k holds it
+     *     opSplit x y    go on at x and at y, x preferred
+     *     opJump x       go on at x
+     *     opSave k       record the offset in capture slot k
+     *     opAssert a     go on if assertion a holds (assertionCode)
+     *     opMatch        a match
+     *
+     * Instruction 0 is the start: it saves slot 0, and the instruction before
+     * the match saves slot 1, so group 0 is the whole match. Group i uses
+     * slots 2i and 2i + 1.
+     * ====================================================================== *)
+
+    opByte: Int
+    opClass: Int
+    opSplit: Int
+    opJump: Int
+    opSave: Int
+    opAssert: Int
+    opMatch: Int
+
+    Def Program = Tuple
+        op: Array(Int)
+        x: Array(Int)
+        y: Array(Int)
+        (* Whether class k holds byte b: classes[256 * k + b] *)
+        classes: Array(Bool)
+        (* The capturing groups, group 0 not counted *)
+        groups: Int
+        (* Group i's name, "" for an unnamed group (names[0] is "") *)
+        names: Array(String)
+    end
+
+    (* The most instructions a program may have *)
+    maxSize: Int
+
+    (* An assertion's operand to opAssert: lineStart 0, lineEnd 1, textStart
+     * 2, textEnd 3, wordBoundary 4, notWordBoundary 5 *)
+    assertionCode(a: syn.Assertion): Int
+
+    (* The program n is, simplified first; raises syn.syntax ("expression too
+     * large", at offset 0) for one of more than maxSize instructions *)
+    compile(n: syn.Node): Program
+
+    (* The program listed, an instruction a line, for tests *)
+    show(p: Program): String
+end

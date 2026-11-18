@@ -590,6 +590,26 @@ export
             buf
         end
 
+    let rec hasCapture(n: Node): Bool =
+        case n
+            when concat with x then
+                begin
+                    let var any = false
+                    for i = 0 upto {extent x.parts - 1} do if hasCapture(x.parts[i]) then any := true end end
+                    any
+                end
+            when alternate with x then
+                begin
+                    let var any = false
+                    for i = 0 upto {extent x.choices - 1} do if hasCapture(x.choices[i]) then any := true end end
+                    any
+                end
+            when repeat with x then hasCapture(x.body)
+            when capture then true
+            when caseless with x then hasCapture(x.body)
+            else false
+        end
+
     let rec simplify(n: Node): Node =
         case n
             when byteSet with x then
@@ -650,7 +670,11 @@ export
                 begin
                     let body = simplify(x.body)
                     if {x.min is 1} /\ {x.max is 1} then body
-                    elsif {x.max is 0} \/ body?empty then emptyNode()
+                    elsif body?empty then emptyNode()
+                    elsif x.max is 0 then
+                        (* x{0} matches only the empty string, but its groups
+                         * are numbered still, as in RE2 and Go *)
+                        if hasCapture(body) then repeatNode(body 0 0 x.greedy) else emptyNode() end
                     else repeatNode(body x.min x.max x.greedy)
                     end
                 end

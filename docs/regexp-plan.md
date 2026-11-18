@@ -1,8 +1,8 @@
 # Plan: A Regular Expression Library in Quest
 
 A library of regular expressions, `util/regexp : util/Regexp`, written in Quest with no externals, so that it runs
-alike on every target: the interpreters, C, arm64, the JIT, and WebAssembly, in a browser included. Step 1 is built
-(§6).
+alike on every target: the interpreters, C, arm64, the JIT, and WebAssembly, in a browser included. Steps 1 and 2
+are built (§6).
 
 ## 1. Decisions
 
@@ -25,7 +25,7 @@ alike on every target: the interpreters, C, arm64, the JIT, and WebAssembly, in 
    subject and the offsets; the text of a group is copied when asked for, so a subject changed after matching
    (strings are mutable) changes what a match then returns, as a `getSub` would see it.
 8. **Patterns are values too** (user, 2026-11-17), as in OCaml's `re` library: `regexp.RE`, built by functions
-   (`seq`, `alt`, `repeat`, `group`, `literal`, `set`, ...) and compiled by `compileRE`. A pattern built so needs no
+   (`seq`, `alt`, `repeat`, `capture`, `literal`, `set`, ...) and compiled by `compileRE`. A pattern built so needs no
    escaping, cannot have a syntax error, and composes: a tokenizer defines `ident` once and uses it in larger
    patterns. The string syntax is a front end that makes the same values: `compile(s)` is `compileRE(parse(s))`.
 
@@ -116,8 +116,8 @@ export
     opt(re: RE): RE
     (* A capturing group, numbered in the order compileRE meets them; a named
      * one *)
-    group(re: RE): RE
-    namedGroup(name: String re: RE): RE
+    capture(re: RE): RE
+    namedCapture(name: String re: RE): RE
     (* re with ASCII letters matching either case *)
     caseless(re: RE): RE
     (* The zero-width assertions: ^ and $ (a line's start and end), \A and \z
@@ -183,9 +183,9 @@ let date = regexp.compile("(?P<y>\\d{4})-(?P<m>\\d\\d)-(?P<d>\\d\\d)");
 (* the same, as a value *)
 let digits(n: Int): regexp.RE = regexp.repeat(regexp.digit n n true);
 let date2 = regexp.compileRE(regexp.seq(array of
-    regexp.namedGroup("y" digits(4)) regexp.literal("-")
-    regexp.namedGroup("m" digits(2)) regexp.literal("-")
-    regexp.namedGroup("d" digits(2)) end));
+    regexp.namedCapture("y" digits(4)) regexp.literal("-")
+    regexp.namedCapture("m" digits(2)) regexp.literal("-")
+    regexp.namedCapture("d" digits(2)) end));
 let found = regexp.find(date line);
 if maybe.isSome(:regexp.Match found) then print(regexp.named(maybe.unwrap(:regexp.Match found) "y")) end
 ```
@@ -202,8 +202,8 @@ Why this shape:
 - **Group text copied on request**, not up front, so that `find` allocates a match and its offsets and nothing per
   group.
 - **`RE` opaque, built by functions,** rather than an option type callers take apart: its representation is the
-  parser's tree (§4.1), which simplification is free to change. `namedGroup`, not `named`, because a match's
-  `named` reads a named group.
+  parser's tree (§4.1), which simplification is free to change. `capture` and `namedCapture`, not `group` and
+  `named`, because a match's `group` and `named` read a group's text.
 - **No flags argument** to compile: `(?i)` at the pattern's start does it, and `caseless` for a value. A
   `compileWith` taking a flags tuple can come later without changing `compile`.
 
@@ -284,10 +284,10 @@ range, to get the captures. It is the largest piece and the one most worth leavi
   modes. Two are this library's, a match of the whole subject and a search, both leftmost-first; the other two,
   leftmost-longest, are skipped. A Quest test program reads the file and checks every case, so it runs on every
   backend.
-- **The AT&T POSIX tests as Go edited them**, `basic.dat`, `nullsubexpr.dat`, and `repetition.dat` (Glenn Fowler's
-  `testregex`, about 450 lines): the edge cases of empty matches under repetition (`(a*)*`, `(a|)+`) and of counted
-  repetition, with the expected groups already changed from POSIX's longest rule to first-match (marked "RE2/Go").
-  The same program reads them.
+- **The AT&T POSIX tests' patterns and subjects**, from `basic.dat`, `nullsubexpr.dat`, and `repetition.dat` (Glenn
+  Fowler's `testregex`, as Go edited them): the edge cases of empty matches under repetition (`(a*)*`, `(a|)+`) and
+  of counted repetition. Their recorded answers are POSIX's leftmost-longest (Go runs them with `syntax.POSIX` and
+  its longest mode), not this library's, so the answers come from Go's `regexp`, as the random cases' do (below).
 - **RE2's exhaustive tests, `re2-exhaustive.txt.bz2`** (428 KB compressed, enormous uncompressed: every small pattern
   over a small alphabet against every short string), run by hand, not in every check: before the library is called
   done, and after any change to the matcher.
@@ -318,6 +318,15 @@ range, to get the captures. It is the largest piece and the one most worth leavi
    RE2's does; a `caseless` node, which only `regexp.caseless` makes, is folded by `simplify`.
 2. **Compiler and Pike VM** (§4.2, §4.3): `compile`, `matches`, `contains`, `find`, `findFrom`, `matchAt`, and the
    match's parts. The corpora, the comparison with Go, and the linear-time test land here.
+   *Built 2026-11-17:* `util/regexpProgram` and `util/regexpMatch`, and those operations in `util/regexp`. Repetition
+   is compiled as Go's `regexp/syntax` compiles it, which is what RE2's and Go's answers need: `x+` as one copy of `x`
+   that loops back, `x*` as `(x+)?` when `x` can match the empty string (golang.org/issue/46123), `x{n,}` as `n - 1`
+   copies and `x+`, and `x{0}` keeping its groups' numbers. Groups are numbered before compiling, so the copies a
+   counted repetition makes share slots. The pattern constructors are `capture` and `namedCapture`, since a match's
+   `group` and `named` read text. `tests/python/test_regexp.py` passes: RE2's search tests (1,660 cases), the AT&T
+   cases and 10,000 random ones against Go, and the linear-time patterns against 100,000 bytes; RE2's exhaustive
+   tests, by hand, pass all 4,935,736 cases (24 s compiled). `tests/source/stdlib/regexp_match.quest` covers the
+   operations in every phase and in the arm64, JIT, and wasm-node modes.
 3. **`findAll`, `replaceFirst`, `replaceAll`, `replaceWith`, `split`, `quote`, and named groups.**
 4. **Fast paths:** literal patterns, literal prefixes, anchors, and capture-free tests, each measured.
 5. **The benchmark**, and then the lazy DFA if it is wanted.

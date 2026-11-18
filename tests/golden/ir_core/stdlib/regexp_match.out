@@ -1,0 +1,360 @@
+import regexp = "util/regexp" : util/Regexp
+import maybe = "util/maybe" : util/Maybe
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @12:45
+      let %2: String = prim <>(s, "\n") @12:59
+      let %3: Ok = call writer.putString(%1, %2) @12:28
+      return %3
+    }
+  }
+  funs {
+    fun b(x: Bool): String {
+      join k1(r: String) {
+        return r
+      } in {
+        if x { @13:26
+          jump k1("t") @13:26
+        } else {
+          jump k1("f") @13:26
+        }
+      }
+    }
+  }
+  funs {
+    fun groups(r.1: regexp.T, m: maybe.T(regexp.Match)): String {
+      join k2(r.2: String) {
+        return r.2
+      } in {
+        let %4: Bool = call maybe.isNone [regexp.Match](m) @17:8
+        if %4 { @17:5
+          jump k2("none") @17:5
+        } else {
+          let x.1: regexp.Match = call maybe.unwrap [regexp.Match](m) @19:17
+          var text: String = "" @20:9
+          let %5: Int = call regexp.groupCount(r.1) @21:24
+          var i: Int = 0 @21:9
+          let %6: Bool = prim <=(i, %5) @21:9
+          if %6 { @21:9
+            loop L1 {
+              let i.1: Int = i @21:9
+              join k3(r.3: String) {
+                join k4(r.4: String) {
+                  let %7: String = prim <>(r.3, r.4) @22:29
+                  let %8: String = prim <>(text, %7) @22:21
+                  text := %8 @22:13
+                  let %9: Bool = prim is(i, %5) @21:9
+                  if %9 { @21:9
+                    break L1 @21:9
+                  }
+                  let %10: Int = prim +(i, 1) @21:9
+                  i := %10 @21:9
+                } in {
+                  let %11: Bool = call regexp.matched(x.1, i.1) @22:65
+                  if %11 { @22:62
+                    let %12: Int = call regexp.start(x.1, i.1) @23:26
+                    let %13: String = call conv.int(%12) @23:17
+                    let %14: Int = call regexp.start(x.1, i.1) @23:64
+                    let %15: Int = call regexp.size(x.1, i.1) @23:84
+                    let %16: Int = prim +(%14, %15) @23:64
+                    let %17: String = call conv.int(%16) @23:55
+                    let %18: String = call regexp.group(x.1, i.1) @24:24
+                    let %19: String = prim <>(%18, "\"") @24:24
+                    let %20: String = prim <>("\"", %19) @23:105
+                    let %21: String = prim <>(%17, %20) @23:55
+                    let %22: String = prim <>("-", %21) @23:48
+                    let %23: String = prim <>(%13, %22) @23:17
+                    jump k4(%23) @22:62
+                  } else {
+                    jump k4("-") @22:62
+                  }
+                }
+              } in {
+                let %24: Bool = prim >(i.1, 0) @22:32
+                if %24 { @22:29
+                  jump k3(" ") @22:29
+                } else {
+                  jump k3("") @22:29
+                }
+              }
+            }
+          }
+          jump k2(text) @17:5
+        }
+      }
+    }
+  }
+  funs {
+    fun find(pattern: String, s.1: String): Ok {
+      let r.5: regexp.T = call regexp.compile(pattern) @32:17
+      let %25: maybe.T(regexp.Match) = call regexp.find(r.5, s.1) @33:62
+      let %26: String = call groups(r.5, %25) @33:53
+      let %27: Bool = call regexp.matches(r.5, s.1) @33:101
+      let %28: String = call b(%27) @33:99
+      let %29: Bool = call regexp.contains(r.5, s.1) @34:34
+      let %30: String = call b(%29) @34:32
+      let %31: String = prim <>(" contains ", %30) @34:16
+      let %32: String = prim <>(%28, %31) @33:99
+      let %33: String = prim <>("  matches ", %32) @33:83
+      let %34: String = prim <>(%26, %33) @33:53
+      let %35: String = prim <>("\": ", %34) @33:43
+      let %36: String = prim <>(s.1, %35) @33:38
+      let %37: String = prim <>(" in \"", %36) @33:26
+      let %38: String = prim <>(pattern, %37) @33:15
+      let %39: Ok = call print(%38) @33:9
+      return %39
+    }
+  }
+  do call find("abc", "xxabcxx") @38:1
+  do call find("a|ab", "ab") @39:1
+  do call find("ab|a", "ab") @40:1
+  do call find("(a|ab)(c|bcd)(d*)", "abcd") @41:1
+  do call find("a+", "baaab") @42:1
+  do call find("a+?", "baaab") @43:1
+  do call find("(a+?)(a*)", "aaa") @44:1
+  do call find("a*", "baaa") @45:1
+  do call find("x*", "") @46:1
+  do call find("[0-9]+", "abc123def") @47:1
+  do call find("(?i)HeLLo", "say hello") @48:1
+  do call find("a{2,3}", "aaaa") @49:1
+  do call find("a{2,3}?", "aaaa") @50:1
+  do call find("(a)|b", "b") @51:1
+  do call find("a.c", "a\nc abc") @52:1
+  do call find("(?s)a.c", "a\nc") @53:1
+  do call find("q", "abc") @54:1
+  do call find("(a*)*", "b") @57:1
+  do call find("(a*)+", "b") @58:1
+  do call find("()*", "x") @59:1
+  do call find("(a|b)*", "abba") @60:1
+  do call find("(a){0}b", "ab") @61:1
+  do call find("^abc$", "abc") @64:1
+  do call find("^abc$", "abcd") @65:1
+  do call find("(?m)^b$", "a\nb\nc") @66:1
+  do call find("^b", "a\nb") @67:1
+  do call find("\\bfoo\\b", "a foo b") @68:1
+  do call find("\\bfoo\\b", "afoob") @69:1
+  do call find("\\Bo\\B", "foo") @70:1
+  do call find("\\Aa\\z", "a") @71:1
+  let r.6: regexp.T = call regexp.compile("\\b[a-z]+") @75:9
+  let s.2: String = "one two three" @76:9
+  let %40: maybe.T(regexp.Match) = call regexp.findFrom(r.6, s.2, 0) @77:34
+  let %41: String = call groups(r.6, %40) @77:25
+  let %42: String = prim <>("findFrom 0: ", %41) @77:7
+  do call print(%42) @77:1
+  let %43: maybe.T(regexp.Match) = call regexp.findFrom(r.6, s.2, 1) @78:34
+  let %44: String = call groups(r.6, %43) @78:25
+  let %45: String = prim <>("findFrom 1: ", %44) @78:7
+  do call print(%45) @78:1
+  let %46: maybe.T(regexp.Match) = call regexp.findFrom(r.6, s.2, 4) @79:34
+  let %47: String = call groups(r.6, %46) @79:25
+  let %48: String = prim <>("findFrom 4: ", %47) @79:7
+  do call print(%48) @79:1
+  let %49: maybe.T(regexp.Match) = call regexp.findFrom(r.6, s.2, 13) @80:35
+  let %50: String = call groups(r.6, %49) @80:26
+  let %51: String = prim <>("findFrom 13: ", %50) @80:7
+  do call print(%51) @80:1
+  let %52: maybe.T(regexp.Match) = call regexp.matchAt(r.6, s.2, 4) @81:33
+  let %53: String = call groups(r.6, %52) @81:24
+  let %54: String = prim <>("matchAt 4: ", %53) @81:7
+  do call print(%54) @81:1
+  let %55: maybe.T(regexp.Match) = call regexp.matchAt(r.6, s.2, 5) @82:33
+  let %56: String = call groups(r.6, %55) @82:24
+  let %57: String = prim <>("matchAt 5: ", %56) @82:7
+  do call print(%57) @82:1
+  let caret: regexp.T = call regexp.compile("^t") @83:13
+  let %58: maybe.T(regexp.Match) = call regexp.findFrom(caret, s.2, 4) @84:34
+  let %59: String = call groups(caret, %58) @84:21
+  let %60: String = prim <>("^ at 4: ", %59) @84:7
+  do call print(%60) @84:1
+  let date: regexp.T = call regexp.compile("(?P<y>\\d{4})-(?P<m>\\d\\d)-(?<d>\\d\\d)") @87:12
+  let %61: maybe.T(regexp.Match) = call regexp.find(date, "on 2026-11-17, a plan") @88:40
+  let found: regexp.Match = call maybe.unwrap [regexp.Match](%61) @88:13
+  let %62: Int = call regexp.groupCount(date) @89:29
+  let %63: String = call conv.int(%62) @89:20
+  let %64: Int = call regexp.groupIndex(date, "m") @89:85
+  let %65: String = call conv.int(%64) @89:76
+  let %66: Int = call regexp.groupIndex(date, "z") @90:30
+  let %67: String = call conv.int(%66) @90:21
+  let %68: String = prim <>(", z is ", %67) @90:8
+  let %69: String = prim <>(%65, %68) @89:76
+  let %70: String = prim <>(", m is group ", %69) @89:57
+  let %71: String = prim <>(%63, %70) @89:20
+  let %72: String = prim <>("groups ", %71) @89:7
+  do call print(%72) @89:1
+  let %73: String = call regexp.named(found, "y") @91:7
+  let %74: String = call regexp.named(found, "m") @91:41
+  let %75: String = call regexp.named(found, "d") @91:75
+  let %76: String = call regexp.subject(found) @92:20
+  let %77: String = prim <>(%76, "\"") @92:20
+  let %78: String = prim <>(" in \"", %77) @92:8
+  let %79: String = prim <>(%75, %78) @91:75
+  let %80: String = prim <>("/", %79) @91:68
+  let %81: String = prim <>(%74, %80) @91:41
+  let %82: String = prim <>("/", %81) @91:34
+  let %83: String = prim <>(%73, %82) @91:7
+  do call print(%83) @91:1
+  let %84: String = call regexp.pattern(date) @93:22
+  let %85: String = prim <>("pattern: ", %84) @93:7
+  do call print(%85) @93:1
+  funs {
+    fun digits(n: Int): regexp.RE {
+      let %86: regexp.RE = member regexp.digit @96:47
+      let %87: regexp.RE = call regexp.repeat(%86, n, n, true) @96:33
+      return %87
+    }
+  }
+  let %88: regexp.RE = call digits(4) @98:29
+  let %89: regexp.RE = call regexp.namedCapture("y", %88) @98:5
+  let %90: regexp.RE = call regexp.literal("-") @98:40
+  let %91: regexp.RE = call digits(2) @98:84
+  let %92: regexp.RE = call regexp.namedCapture("m", %91) @98:60
+  let %93: Array(regexp.RE) = array(%89, %90, %92) @97:41
+  let %94: regexp.RE = call regexp.seq(%93) @97:30
+  let built: regexp.T = call regexp.compileRE(%94) @97:13
+  let %95: String = call regexp.pattern(built) @99:20
+  let %96: maybe.T(regexp.Match) = call regexp.find(built, "x 2026-11 y") @99:66
+  let %97: String = call groups(built, %96) @99:53
+  let %98: String = prim <>(": ", %97) @99:45
+  let %99: String = prim <>(%95, %98) @99:20
+  let %100: String = prim <>("built: ", %99) @99:7
+  do call print(%100) @99:1
+  let %101: regexp.RE = member regexp.wordByte @100:24
+  let word: regexp.RE = call regexp.plus(%101) @100:12
+  let %102: regexp.RE = call regexp.capture(word) @101:49
+  let %103: regexp.RE = call regexp.literal("=") @101:70
+  let %104: regexp.RE = call regexp.capture(word) @101:90
+  let %105: Array(regexp.RE) = array(%102, %103, %104) @101:40
+  let %106: regexp.RE = call regexp.seq(%105) @101:29
+  let pair: regexp.T = call regexp.compileRE(%106) @101:12
+  let %107: maybe.T(regexp.Match) = call regexp.find(pair, "  key=value  ") @102:31
+  let %108: String = call groups(pair, %107) @102:19
+  let %109: String = prim <>("pair: ", %108) @102:7
+  do call print(%109) @102:1
+  let %110: regexp.RE = call regexp.literal("quest") @103:43
+  let %111: regexp.RE = call regexp.caseless(%110) @103:27
+  let ci: regexp.T = call regexp.compileRE(%111) @103:10
+  let %112: maybe.T(regexp.Match) = call regexp.find(ci, "the QuEsT language") @104:33
+  let %113: String = call groups(ci, %112) @104:23
+  let %114: String = prim <>("caseless: ", %113) @104:7
+  do call print(%114) @104:1
+  funs {
+    fun check(what: String, f: Fun(): String): Ok {
+      join k5(r.7: String) {
+        let %115: String = prim <>(": ", r.7) @108:19
+        let %116: String = prim <>(what, %115) @108:11
+        let %117: Ok = call print(%116) @108:5
+        return %117
+      } in {
+        let %118: Exception = member regexp.error @108:40
+        let %119: Exception(SyntaxError) = member regexp.syntax @109:14
+        try catching (%118, %119) {
+          let %120: String = call f() @108:31
+          jump k5(%120) @108:27
+        } handle (e: Exception) {
+          let %121: Bool = prim is(e, %118) @108:27
+          if %121 { @108:27
+            jump k5("regexp.error") @108:27
+          } else {
+            let %122: Bool = prim is(e, %119) @108:27
+            if %122 { @108:27
+              let e.1: SyntaxError = exception_payload(e) @108:27
+              let %123: Int = tuple_field(e.1, 1) @109:71
+              let %124: String = call conv.int(%123) @109:62
+              let %125: String = tuple_field(e.1, 0) @109:92
+              let %126: String = prim <>(": ", %125) @109:84
+              let %127: String = prim <>(%124, %126) @109:62
+              let %128: String = prim <>("syntax error at ", %127) @109:40
+              jump k5(%128) @108:27
+            } else {
+              reraise e @108:27
+            }
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun f.1(): String {
+      let %129: maybe.T(regexp.Match) = call regexp.findFrom(r.6, s.2, -1) @110:44
+      let %130: String = call groups(r.6, %129) @110:35
+      return %130
+    }
+  }
+  do call check("findFrom ~1", f.1) @110:1
+  funs {
+    fun f.2(): String {
+      let %131: maybe.T(regexp.Match) = call regexp.findFrom(r.6, s.2, 14) @111:44
+      let %132: String = call groups(r.6, %131) @111:35
+      return %132
+    }
+  }
+  do call check("findFrom 14", f.2) @111:1
+  funs {
+    fun f.3(): String {
+      let %133: maybe.T(regexp.Match) = call regexp.matchAt(r.6, s.2, 99) @112:43
+      let %134: String = call groups(r.6, %133) @112:34
+      return %134
+    }
+  }
+  do call check("matchAt 99", f.3) @112:1
+  funs {
+    fun f.4(): String {
+      let %135: maybe.T(regexp.Match) = call regexp.find(r.6, s.2) @113:76
+      let %136: regexp.Match = call maybe.unwrap [regexp.Match](%135) @113:49
+      let %137: String = call regexp.group(%136, 2) @113:36
+      return %137
+    }
+  }
+  do call check("group 2 of 1", f.4) @113:1
+  funs {
+    fun f.5(): String {
+      let %138: maybe.T(regexp.Match) = call regexp.find(r.6, s.2) @114:76
+      let %139: regexp.Match = call maybe.unwrap [regexp.Match](%138) @114:49
+      let %140: Bool = call regexp.matched(%139, -1) @114:34
+      let %141: String = call b(%140) @114:32
+      return %141
+    }
+  }
+  do call check("group ~1", f.5) @114:1
+  funs {
+    fun f.6(): String {
+      let %142: String = call regexp.named(found, "zz") @115:32
+      return %142
+    }
+  }
+  do call check("named zz", f.6) @115:1
+  funs {
+    fun f.7(): String {
+      let %143: regexp.T = call regexp.compile("(") @116:48
+      let %144: String = call regexp.pattern(%143) @116:33
+      return %144
+    }
+  }
+  do call check("compile (", f.7) @116:1
+  funs {
+    fun f.8(): String {
+      let %145: regexp.RE = member regexp.digit @118:29
+      let %146: regexp.RE = call regexp.namedCapture("x", %145) @118:5
+      let %147: regexp.RE = member regexp.digit @118:67
+      let %148: regexp.RE = call regexp.namedCapture("x", %147) @118:43
+      let %149: Array(regexp.RE) = array(%146, %148) @117:81
+      let %150: regexp.RE = call regexp.seq(%149) @117:70
+      let %151: regexp.T = call regexp.compileRE(%150) @117:53
+      let %152: String = call regexp.pattern(%151) @117:38
+      return %152
+    }
+  }
+  do call check("one name twice", f.8) @117:1
+  funs {
+    fun f.9(): String {
+      let %153: regexp.T = call regexp.compile("((a{1000}){1000}){1000}") @119:48
+      let %154: String = call regexp.pattern(%153) @119:33
+      return %154
+    }
+  }
+  do call check("too large", f.9) @119:1
+}
+

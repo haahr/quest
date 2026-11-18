@@ -4,6 +4,9 @@
 module regexp : Regexp
 import
     syn = util/regexpSyntax : util/RegexpSyntax
+    prog = util/regexpProgram : util/RegexpProgram
+    vm = util/regexpMatch : util/RegexpMatch
+    util/maybe : util/Maybe
     collections/bitset : collections/Bitset
     stringOp = string : StringOp
     ascii: Ascii
@@ -112,9 +115,9 @@ export
     let plus(re: RE): RE = repeat(re 1 ~1 true)
     let opt(re: RE): RE = repeat(re 0 1 true)
 
-    let group(re: RE): RE = option capture of syn.Node with let body = re let name = "" end
+    let capture(re: RE): RE = option capture of syn.Node with let body = re let name = "" end
 
-    let namedGroup(name: String re: RE): RE =
+    let namedCapture(name: String re: RE): RE =
         begin
             let n = stringOp.length(name)
             if n is 0 then raise error end end
@@ -130,4 +133,92 @@ export
     let caseless(re: RE): RE = option caseless of syn.Node with let body = re end
 
     let show(re: RE): String = syn.show(syn.simplify(re))
+
+    (* ======================================================================
+     * Compiling and matching
+     * ====================================================================== *)
+
+    Let T = Tuple pattern: String program: prog.Program end
+
+    let compiled(pattern: String re: RE): T =
+        begin
+            let program = prog.compile(re)
+            (* a name twice, which only patterns built as values can have *)
+            for i = 1 upto program.groups do
+                for j = 1 upto {i - 1} do
+                    if not(stringOp.isEmpty(program.names[i])) andif stringOp.equal(program.names[i] program.names[j])
+                    then
+                        raise error end
+                    end
+                end
+            end
+            tuple let pattern = pattern let program = program end
+        end
+
+    let compile(pattern: String): T = compiled(pattern syn.parse(pattern))
+    let compileRE(re: RE): T = compiled(show(re) re)
+    let pattern(r: T): String = r.pattern
+    let groupCount(r: T): Int = r.program.groups
+
+    let groupIndex(r: T name: String): Int =
+        begin
+            let var found = ~1
+            for i = 1 upto r.program.groups do
+                if {found < 0} andif stringOp.equal(r.program.names[i] name) then found := i end
+            end
+            found
+        end
+
+    let matches(r: T s: String): Bool = maybe.isSome(:Array(Int) vm.search(r.program s 0 true true false))
+    let contains(r: T s: String): Bool = maybe.isSome(:Array(Int) vm.search(r.program s 0 false false false))
+
+    Let Match = Tuple subject: String slots: Array(Int) re: T end
+
+    let made(r: T s: String found: maybe.T(Array(Int))): maybe.T(Match) =
+        if maybe.isNone(:Array(Int) found) then maybe.none(:Match)
+        else maybe.some(:Match tuple let subject = s let slots = maybe.unwrap(:Array(Int) found) let re = r end)
+        end
+
+    let checkStart(s: String start: Int): Ok =
+        if {start < 0} \/ {start > stringOp.length(s)} then raise error end end
+
+    let findFrom(r: T s: String start: Int): maybe.T(Match) =
+        begin
+            checkStart(s start)
+            made(r s vm.search(r.program s start false false true))
+        end
+
+    let find(r: T s: String): maybe.T(Match) = findFrom(r s 0)
+
+    let matchAt(r: T s: String start: Int): maybe.T(Match) =
+        begin
+            checkStart(s start)
+            made(r s vm.search(r.program s start true false true))
+        end
+
+    let subject(m: Match): String = m.subject
+
+    let checkGroup(m: Match i: Int): Ok = if {i < 0} \/ {i > m.re.program.groups} then raise error end end
+
+    let matched(m: Match i: Int): Bool = begin checkGroup(m i) m.slots[2 * i] >= 0 end
+    let start(m: Match i: Int): Int = begin checkGroup(m i) m.slots[2 * i] end
+
+    let size(m: Match i: Int): Int =
+        begin
+            checkGroup(m i)
+            if m.slots[2 * i] < 0 then ~1 else m.slots[{2 * i} + 1] - m.slots[2 * i] end
+        end
+
+    let group(m: Match i: Int): String =
+        begin
+            checkGroup(m i)
+            if m.slots[2 * i] < 0 then "" else stringOp.getSub(m.subject m.slots[2 * i] size(m i)) end
+        end
+
+    let named(m: Match name: String): String =
+        begin
+            let i = groupIndex(m.re name)
+            if i < 0 then raise error end end
+            group(m i)
+        end
 end

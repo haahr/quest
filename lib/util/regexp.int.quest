@@ -1,4 +1,6 @@
 interface Regexp
+import
+    util/maybe : util/Maybe
 export
     (* =========================================================================
      * Regular Expressions (Regexp)
@@ -7,8 +9,15 @@ export
      * bytes, leftmost-first (docs/regexp-plan.md). A pattern is a string,
      * parsed, or a value, built by the functions below; both are regexp.RE.
      *
-     * So far (the plan's step 1): patterns, parsing, and syntax errors.
-     * Compiling and matching come next.
+     *     let date = regexp.compile("(\\d{4})-(\\d\\d)")
+     *     let m = regexp.find(date line)
+     *     if maybe.isSome(:regexp.Match m) then
+     *         print(regexp.group(maybe.unwrap(:regexp.Match m) 1))
+     *     end
+     *
+     * So far (the plan's steps 1 and 2): patterns, compiling, testing, and
+     * finding one match. Finding every match, replacing, and splitting come
+     * next.
      * ====================================================================== *)
 
     (* What parse raises for a pattern that is not one: why, and where in the
@@ -16,9 +25,65 @@ export
     Def SyntaxError = Tuple message: String offset: Int end
     syntax: Exception(SyntaxError)
 
-    (* Raised for an argument out of range: a repeat's bounds, a group's name,
-     * or complement of a pattern that is not one byte *)
+    (* Raised for an argument out of range: a start outside the subject, a
+     * group the expression does not have, a repeat's bounds, a group's name
+     * (or one named twice in compileRE's pattern), or complement of a pattern
+     * that is not one byte *)
     error: Exception
+
+    (* ---- Compiling *)
+
+    (* A compiled regular expression: immutable, shared freely *)
+    T::TYPE
+    (* pattern, in RE2's syntax (docs/regexp-plan.md section 2), compiled;
+     * raises syntax *)
+    compile(pattern: String): T
+    (* The pattern r was compiled from; for one compileRE made, as show writes
+     * it *)
+    pattern(r: T): String
+    (* The number of capturing groups; group 0, the whole match, not counted *)
+    groupCount(r: T): Int
+    (* The number of the group named name, or ~1 if r has none *)
+    groupIndex(r: T name: String): Int
+
+    (* ---- Testing: no match is made, so these are the fastest *)
+
+    (* Whether r matches the whole of s *)
+    matches(r: T s: String): Bool
+    (* Whether r matches somewhere in s *)
+    contains(r: T s: String): Bool
+
+    (* ---- Finding *)
+
+    (* A match: its subject, and where each group matched in it *)
+    Match::TYPE
+    (* The leftmost match of r in s, if any: of the matches that begin
+     * leftmost, the one the pattern prefers (alternatives in order, greedy
+     * repetitions longest) *)
+    find(r: T s: String): maybe.T(Match)
+    (* The leftmost match of r in s that begins at start or later; ^ and \b
+     * still see the bytes before start. Raises error unless
+     * 0 <= start <= length(s) *)
+    findFrom(r: T s: String start: Int): maybe.T(Match)
+    (* The match of r that begins exactly at start, if any; raises error as
+     * findFrom does *)
+    matchAt(r: T s: String start: Int): maybe.T(Match)
+
+    (* ---- A match's parts; group 0 is the whole match *)
+
+    subject(m: Match): String
+    (* Whether group i took part in the match: in (a)|(b), only one does.
+     * This and the next four raise error unless 0 <= i <= groupCount *)
+    matched(m: Match i: Int): Bool
+    (* Where group i matched: its start and size in the subject, or ~1 for a
+     * group that took no part *)
+    start(m: Match i: Int): Int
+    size(m: Match i: Int): Int
+    (* The text group i matched, copied from the subject (as it is now); ""
+     * for a group that took no part *)
+    group(m: Match i: Int): String
+    (* The same for the group named name; raises error if there is none *)
+    named(m: Match name: String): String
 
     (* ---- Patterns as values. Each function makes a new pattern and changes
      * none of its arguments *)
@@ -27,6 +92,10 @@ export
     (* The pattern a string is, in RE2's syntax (docs/regexp-plan.md section
      * 2); raises syntax *)
     parse(pattern: String): RE
+    (* re compiled; raises error if two groups have one name, and syntax
+     * ("expression too large") for a pattern of more than 100,000
+     * instructions *)
+    compileRE(re: RE): T
 
     (* The bytes of s, in order *)
     literal(s: String): RE
@@ -64,8 +133,8 @@ export
     (* A capturing group, numbered in the order a left-to-right reading of
      * the whole pattern meets groups; and a named one, whose name is letters,
      * digits, and _, not starting with a digit (raises error otherwise) *)
-    group(re: RE): RE
-    namedGroup(name: String re: RE): RE
+    capture(re: RE): RE
+    namedCapture(name: String re: RE): RE
 
     (* re with ASCII letters matching either case *)
     caseless(re: RE): RE
