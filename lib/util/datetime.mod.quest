@@ -12,8 +12,9 @@ import
     ascii: Ascii
     conv: Conv
 export
+    (* Raised directly, not by a generic helper: a whole-program build loses
+     * the exception of such a helper inlined into a caller (docs/tasklist.md) *)
     let error: Exception = exception error: Ok end
-    let fail(A::TYPE): A = raise error end
 
     (* a divided by b > 0, rounded down, and its remainder, from 0 to b - 1 *)
     let floorDiv(a: Int b: Int): Int = begin let q = a / b if {a % b} < 0 then q - 1 else q end end
@@ -94,12 +95,12 @@ export
     let toNanoseconds(i: Instant): Int = i
 
     let add(i: Instant d: Duration): Instant =
-        if {{d > 0} andif {i > {intOp.maxInt - d}}} \/ {{d < 0} andif {i < {intOp.minInt - d}}} then fail(:Instant)
+        if {{d > 0} andif {i > {intOp.maxInt - d}}} \/ {{d < 0} andif {i < {intOp.minInt - d}}} then raise error end
         else i + d
         end
 
     let diff(a: Instant b: Instant): Duration =
-        if {{b < 0} andif {a > {intOp.maxInt + b}}} \/ {{b > 0} andif {a < {intOp.minInt + b}}} then fail(:Duration)
+        if {{b < 0} andif {a > {intOp.maxInt + b}}} \/ {{b > 0} andif {a < {intOp.minInt + b}}} then raise error end
         else a - b
         end
 
@@ -126,7 +127,7 @@ export
         {floorMod(year 4) is 0} andif {{floorMod(year 100) isnot 0} orif {floorMod(year 400) is 0}}
 
     let daysInMonth(year: Int month: Int): Int =
-        if {month < 1} \/ {month > 12} then fail(:Int)
+        if {month < 1} \/ {month > 12} then raise error end
         elsif month is 2 then if isLeapYear(year) then 29 else 28 end
         elsif {month is 4} \/ {month is 6} \/ {month is 9} \/ {month is 11} then 30
         else 31
@@ -161,7 +162,7 @@ export
 
     let atOffset(i: Instant offset: Int): Date =
         begin
-            if {offset >= 86400} \/ {offset <= ~86400} then fail(:Ok) end
+            if {offset >= 86400} \/ {offset <= ~86400} then raise error end end
             let secs = floorDiv(i second) + offset
             let nanos = floorMod(i second)
             let ofDay = floorMod(secs 86400)
@@ -197,13 +198,13 @@ export
 
     let instant(d: Date): Instant =
         begin
-            if not(valid(d)) then fail(:Ok) end
+            if not(valid(d)) then raise error end end
             let days = daysFromCivil(d.year d.month d.day)
             let ofDay = {{d.hour * 3600} + {d.minute * 60}} + d.second
             let secs = {{days * 86400} + ofDay} - d.offset
             if {secs < firstSecond} \/ {secs > lastSecond} \/ {{secs is firstSecond} /\ {d.nanosecond < firstNanosecond}}
                 \/ {{secs is lastSecond} /\ {d.nanosecond > lastNanosecond}} then
-                fail(:Ok)
+                raise error end
             end
             {secs * second} + d.nanosecond
         end
@@ -222,7 +223,7 @@ export
     let short(name: String): String = stringOp.getSub(name 0 3)
 
     let monthName(d: Date): String =
-        if {d.month < 1} \/ {d.month > 12} then fail(:String) else monthNames[d.month - 1] end
+        if {d.month < 1} \/ {d.month > 12} then raise error end else monthNames[d.month - 1] end
 
     let isDirective(c: Char): Bool =
         begin
@@ -241,7 +242,7 @@ export
             let var i = 0
             while i < n do
                 if stringOp.getChar(pattern i) is '%' then
-                    if {{i + 1} >= n} orif not(isDirective(stringOp.getChar(pattern i + 1))) then fail(:Ok) end
+                    if {{i + 1} >= n} orif not(isDirective(stringOp.getChar(pattern i + 1))) then raise error end end
                     i := i + 2
                 else
                     i := i + 1

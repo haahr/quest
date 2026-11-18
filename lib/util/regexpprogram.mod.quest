@@ -90,6 +90,40 @@ export
             end
         end
 
+    (* About how many instructions n compiles to, at least as many, and no
+     * more than maxSize + 1: so that a pattern too large to compile, such as
+     * ((a{1000}){1000}){1000}, is refused before any of it is emitted *)
+    let capped(v: Int): Int = if v > maxSize then maxSize + 1 else v end
+    let rec estimate(n: syn.Node): Int =
+        case n
+            when empty then 0
+            when bytes with x then capped(stringOp.length(x.s))
+            when concat with x then
+                begin
+                    let var total = 0
+                    for i = 0 upto {extent x.parts - 1} do total := capped(total + estimate(x.parts[i])) end
+                    total
+                end
+            when alternate with x then
+                begin
+                    let var total = 2 * extent x.choices
+                    for i = 0 upto {extent x.choices - 1} do total := capped(total + estimate(x.choices[i])) end
+                    total
+                end
+            when repeat with x then
+                begin
+                    let body = estimate(x.body)
+                    let copies = if x.max < 0 then x.min + 1 else x.max end
+                    (* body * copies, capped without overflowing *)
+                    if {body > 0} andif {copies > {{maxSize + 1} / body}} then maxSize + 1
+                    else capped({body * copies} + {2 * copies} + 2)
+                    end
+                end
+            when capture with x then capped(estimate(x.body) + 2)
+            when caseless with x then estimate(x.body)
+            else 1
+        end
+
     (* Whether n can match the empty string *)
     let rec nullable(n: syn.Node): Bool =
         case n
@@ -292,6 +326,9 @@ export
             end
             vector.append(:String c.names "")
             let tree = syn.simplify(n)
+            if {estimate(tree) + 3} > maxSize then
+                raise syn.syntax with tuple let message = "expression too large" let offset = 0 end end
+            end
             number(c tree)
             let start = emit(c opSave 0 0)
             node(c tree)

@@ -241,3 +241,26 @@ show, so nothing was planned for them:
 
 **Done when.** A program shows one and it is fixed with that program as its test, or a review of the code finds the
 fault gone.
+
+---
+
+## A whole-program build loses the exception of a generic helper inlined into a caller
+
+**Problem.** A module's generic function that raises the module's own exception, such as
+`let fail(A::TYPE): A = raise error end`, breaks a whole-program build (`--whole-program`, the arm64-whole mode) once
+a call to it is inlined into `main` with nothing else left around it: the IR verifier (`QUEST_CHECK_IR=1`, which the
+test runner sets) reports `main: variable 'error' is used outside its scope`, and without the verifier the build
+carries the bad IR on. A plain `raise error end` in the same place is fine, and so is the helper when the call is not
+reduced to the raise alone. Found 2026-11-18 by util/datetime's `add` and `diff`, which now raise directly.
+
+**Reproduce.** `m.int.quest`: `interface M export error: Exception f(i: Int d: Int): Int end`; `m.mod.quest`:
+`module m : M export let error: Exception = exception error: Ok end let fail(A::TYPE): A = raise error end let
+f(i: Int d: Int): Int = fail(:Int) end`; and a program `import m : M; ... conv.int(m.f(1 2)) ...`. `QUEST_CHECK_IR=1
+./quest --whole-program -o p p.quest` fails as above.
+
+**Where to start.** How the whole-program inliner (`questlang/ir/`) brings a specialized generic function's body into
+its caller: a reference to the defining module's top-level binding (here the exception) is not rewritten to the
+binding the whole program has for it.
+
+**Done when.** The reproduction builds and runs, a golden test of it runs in the arm64-whole mode, and util/datetime
+may use such a helper again.
