@@ -1,0 +1,68 @@
+interface RegexpSyntax
+import
+    collections/bitset : collections/Bitset
+export
+    (* =========================================================================
+     * Regular Expression Syntax (RegexpSyntax)
+     *
+     * The patterns of util/regexp as trees (docs/regexp-plan.md section 4.1):
+     * what parse makes of a pattern in the syntax of section 2, and what
+     * regexp's functions build. The tree is regexp.RE's representation; this
+     * module is util/regexp's, not for programs to import.
+     * ====================================================================== *)
+
+    (* A zero-width test: ^ and $ of the multiline flag (a line's start and
+     * end), \A and \z, or ^ and $ without it (the subject's), \b and \B *)
+    Def Assertion = Option
+        lineStart
+        lineEnd
+        textStart
+        textEnd
+        wordBoundary
+        notWordBoundary
+    end
+
+    (* A pattern. A byteSet's set is a bitset.T of size 256, never changed once
+     * the node is made, so nodes may share it. A repeat's max is ~1 for no
+     * limit. A capture's name is "" for an unnamed group; groups are numbered
+     * in the order a left-to-right walk meets them. A caseless node's body
+     * matches ASCII letters of either case; simplify folds it away *)
+    Def Rec Node = Option
+        empty
+        bytes with s: String end
+        byteSet with set: bitset.T end
+        assertion with a: Assertion end
+        concat with parts: Array(Node) end
+        alternate with choices: Array(Node) end
+        repeat with body: Node min: Int max: Int greedy: Bool end
+        capture with body: Node name: String end
+        caseless with body: Node end
+    end
+
+    (* What parse raises for a pattern that is not one: why, and where in the
+     * pattern (a byte offset) *)
+    Def SyntaxError = Tuple message: String offset: Int end
+    syntax: Exception(SyntaxError)
+
+    (* The most a counted repetition may count, x{n,m}'s n and m (RE2's
+     * limit) *)
+    maxRepeat: Int
+
+    (* The tree a pattern is; raises syntax *)
+    parse(pattern: String): Node
+
+    (* n with caseless nodes folded into byte sets, nested concatenations and
+     * alternations flattened, adjacent bytes merged, a set of one byte made
+     * a byte, and repetitions of {1,1} and {0,0} removed: the tree a program
+     * is compiled from (section 4.2). Counted repetitions stay counted *)
+    simplify(n: Node): Node
+
+    (* n written out as an s-expression, for tests: "ab", [a-z], (cat ...),
+     * (alt ...), (rep MIN MAX x) with MAX inf for no limit and a ? after rep
+     * for a lazy one, (cap x), (cap NAME x), (caseless x), the assertions by
+     * name, and empty *)
+    show(n: Node): String
+
+    (* A new set of 256 bytes, empty *)
+    newSet(): bitset.T
+end

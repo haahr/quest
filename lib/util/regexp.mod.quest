@@ -1,0 +1,133 @@
+(* Standard Library: regular expressions (docs/regexp-plan.md); patterns as
+ * values, on util/regexpSyntax's trees *)
+
+module regexp : Regexp
+import
+    syn = util/regexpSyntax : util/RegexpSyntax
+    collections/bitset : collections/Bitset
+    stringOp = string : StringOp
+    ascii: Ascii
+export
+    Let SyntaxError = Tuple message: String offset: Int end
+    let syntax: Exception(SyntaxError) = syn.syntax
+    let error: Exception = exception error: Ok end
+
+    Let RE = syn.Node
+
+    let parse(pattern: String): RE = syn.parse(pattern)
+
+    let setNode(s: bitset.T): RE = option byteSet of syn.Node with let set = s end
+
+    let literal(s: String): RE =
+        if stringOp.isEmpty(s) then option empty of syn.Node end
+        else option bytes of syn.Node with let s = s end
+        end
+
+    let set(s: String): RE =
+        begin
+            let bs = syn.newSet()
+            for i = 0 upto {stringOp.length(s) - 1} do
+                let added = bitset.insert(bs ascii.val(stringOp.getChar(s i)))
+            end
+            setNode(bs)
+        end
+
+    let range(lo: Char hi: Char): RE =
+        begin
+            if ascii.val(hi) < ascii.val(lo) then raise error end end
+            let bs = syn.newSet()
+            for b = ascii.val(lo) upto ascii.val(hi) do let added = bitset.insert(bs b) end
+            setNode(bs)
+        end
+
+    (* The bytes n matches, if it matches exactly one byte; n is simplified,
+     * so a caseless node has been folded *)
+    let rec oneByte(n: syn.Node into: bitset.T): Bool =
+        case n
+            when bytes with x then
+                {stringOp.length(x.s) is 1} andif begin
+                    let added = bitset.insert(into ascii.val(stringOp.getChar(x.s 0)))
+                    true
+                end
+            when byteSet with x then begin let changed = bitset.unionWith(into x.set) true end
+            when alternate with x then
+                begin
+                    let var all = true
+                    for i = 0 upto {extent x.choices - 1} do
+                        if not(oneByte(x.choices[i] into)) then all := false end
+                    end
+                    all
+                end
+            else false
+        end
+
+    let complement(re: RE): RE =
+        begin
+            let bs = syn.newSet()
+            if not(oneByte(syn.simplify(re) bs)) then raise error end end
+            let c = syn.newSet()
+            for b = 0 upto 255 do if not(bitset.contains(bs b)) then let added = bitset.insert(c b) end end
+            setNode(c)
+        end
+
+    (* The classes and assertions, as the syntax writes them *)
+    let anyByte = syn.parse("(?s:.)")
+    let notNewline = syn.parse(".")
+    let digit = syn.parse("\\d")
+    let wordByte = syn.parse("\\w")
+    let space = syn.parse("\\s")
+    let lineStart = syn.parse("(?m:^)")
+    let lineEnd = syn.parse("(?m:$)")
+    let textStart = syn.parse("\\A")
+    let textEnd = syn.parse("\\z")
+    let wordBoundary = syn.parse("\\b")
+    let notWordBoundary = syn.parse("\\B")
+
+    (* A copy of res, so that changing the array later changes no pattern *)
+    let copied(res: Array(RE)): Array(RE) =
+        begin
+            let c = array of(extent res option empty of syn.Node end)
+            for i = 0 upto {extent res - 1} do c[i] := res[i] end
+            c
+        end
+
+    let seq(res: Array(RE)): RE = option concat of syn.Node with let parts = copied(res) end
+
+    (* No alternative matches nothing: the empty set *)
+    let alt(res: Array(RE)): RE =
+        if extent res is 0 then setNode(syn.newSet())
+        else option alternate of syn.Node with let choices = copied(res) end
+        end
+
+    let repeat(re: RE min: Int max: Int greedy: Bool): RE =
+        begin
+            if {min < 0} \/ {min > syn.maxRepeat} \/ {max < ~1} \/ {max > syn.maxRepeat}
+                \/ {{max >= 0} /\ {max < min}} then
+                raise error end
+            end
+            option repeat of syn.Node with let body = re let min = min let max = max let greedy = greedy end
+        end
+
+    let star(re: RE): RE = repeat(re 0 ~1 true)
+    let plus(re: RE): RE = repeat(re 1 ~1 true)
+    let opt(re: RE): RE = repeat(re 0 1 true)
+
+    let group(re: RE): RE = option capture of syn.Node with let body = re let name = "" end
+
+    let namedGroup(name: String re: RE): RE =
+        begin
+            let n = stringOp.length(name)
+            if n is 0 then raise error end end
+            for i = 0 upto {n - 1} do
+                let b = ascii.val(stringOp.getChar(name i))
+                let isDigit = {b >= 48} /\ {b <= 57}
+                let isLetter = {{b >= 65} /\ {b <= 90}} \/ {{b >= 97} /\ {b <= 122}}
+                if not(isDigit \/ isLetter \/ {b is 95}) \/ {isDigit /\ {i is 0}} then raise error end end
+            end
+            option capture of syn.Node with let body = re let name = name end
+        end
+
+    let caseless(re: RE): RE = option caseless of syn.Node with let body = re end
+
+    let show(re: RE): String = syn.show(syn.simplify(re))
+end

@@ -1,7 +1,8 @@
 # Plan: A Regular Expression Library in Quest
 
 A library of regular expressions, `util/regexp : util/Regexp`, written in Quest with no externals, so that it runs
-alike on every target: the interpreters, C, arm64, the JIT, and WebAssembly, in a browser included. Not started.
+alike on every target: the interpreters, C, arm64, the JIT, and WebAssembly, in a browser included. Step 1 is built
+(§6).
 
 ## 1. Decisions
 
@@ -310,6 +311,11 @@ range, to get the captures. It is the largest piece and the one most worth leavi
 
 1. **The pattern tree, its functions, the parser, and syntax errors** (§3, §4.1), tested by printing the simplified
    tree, of parsed patterns and of patterns built as values.
+   *Built 2026-11-17:* `util/regexpSyntax` (the tree, the parser, `simplify`, and `show`) and the first part of
+   `util/regexp` (`RE`, its functions, `parse`, `show`, `syntax`, and `error`), tested by
+   `tests/source/stdlib/regexp_syntax.quest` in every phase of both compilers and in the arm64, JIT, and wasm-node
+   modes. The parser folds case itself, before a class is complemented, so `(?i)[^a]` excludes both `a` and `A`, as
+   RE2's does; a `caseless` node, which only `regexp.caseless` makes, is folded by `simplify`.
 2. **Compiler and Pike VM** (§4.2, §4.3): `compile`, `matches`, `contains`, `find`, `findFrom`, `matchAt`, and the
    match's parts. The corpora, the comparison with Go, and the linear-time test land here.
 3. **`findAll`, `replaceFirst`, `replaceAll`, `replaceWith`, `split`, `quote`, and named groups.**

@@ -1,0 +1,741 @@
+(* Standard Library: the syntax of util/regexp, its pattern trees and their
+ * parser (docs/regexp-plan.md sections 2 and 4.1) *)
+
+module regexpSyntax : RegexpSyntax
+import
+    collections/bitset : collections/Bitset
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    sb = util/stringBuilder : util/StringBuilder
+    stringOp = string : StringOp
+    ascii: Ascii
+    conv: Conv
+export
+    Let Assertion = Option
+        lineStart
+        lineEnd
+        textStart
+        textEnd
+        wordBoundary
+        notWordBoundary
+    end
+
+    Let Rec Node = Option
+        empty
+        bytes with s: String end
+        byteSet with set: bitset.T end
+        assertion with a: Assertion end
+        concat with parts: Array(Node) end
+        alternate with choices: Array(Node) end
+        repeat with body: Node min: Int max: Int greedy: Bool end
+        capture with body: Node name: String end
+        caseless with body: Node end
+    end
+
+    Let SyntaxError = Tuple message: String offset: Int end
+    let syntax: Exception(SyntaxError) = exception syntax: SyntaxError end
+    let maxRepeat = 1000
+
+    let fail(A::TYPE message: String offset: Int): A =
+        raise syntax with tuple let message = message let offset = offset end end
+
+    (* ======================================================================
+     * 1. Byte sets and nodes
+     * ====================================================================== *)
+
+    let newSet(): bitset.T = bitset.new(256)
+    let add(s: bitset.T b: Int): Ok = begin let added = bitset.insert(s b) ok end
+    let addRange(s: bitset.T lo: Int hi: Int): Ok = for b = lo upto hi do add(s b) end
+    let union(s: bitset.T t: bitset.T): Ok = begin let changed = bitset.unionWith(s t) ok end
+
+    (* The bytes s does not hold *)
+    let complementSet(s: bitset.T): bitset.T =
+        begin
+            let c = newSet()
+            for b = 0 upto 255 do if not(bitset.contains(s b)) then add(c b) end end
+            c
+        end
+
+    (* s with each ASCII letter's other case added *)
+    let foldSet(s: bitset.T): bitset.T =
+        begin
+            let f = bitset.copy(s)
+            for b = 65 upto 90 do
+                if bitset.contains(s b) orif bitset.contains(s b + 32) then
+                    add(f b)
+                    add(f b + 32)
+                end
+            end
+            f
+        end
+
+    let isLetter(b: Int): Bool = {{b >= 65} /\ {b <= 90}} \/ {{b >= 97} /\ {b <= 122}}
+
+    let bytesNode(s: String): Node = option bytes of Node with let s = s end
+    let setNode(set: bitset.T): Node = option byteSet of Node with let set = set end
+    let assertNode(a: Assertion): Node = option assertion of Node with let a = a end
+    let concatNode(parts: Array(Node)): Node = option concat of Node with let parts = parts end
+    let alternateNode(choices: Array(Node)): Node = option alternate of Node with let choices = choices end
+    let repeatNode(body: Node min: Int max: Int greedy: Bool): Node =
+        option repeat of Node with let body = body let min = min let max = max let greedy = greedy end
+    let captureNode(body: Node name: String): Node = option capture of Node with let body = body let name = name end
+    let emptyNode(): Node = option empty of Node end
+
+    (* The one byte b, as a string *)
+    let byteString(b: Int): String = stringOp.new(1 ascii.char(b))
+
+    (* The ASCII classes: \d, \w, \s (RE2's: tab, newline, form feed, carriage
+     * return, and space, not vertical tab), and the POSIX classes by name *)
+    let digitSet(): bitset.T = begin let s = newSet() addRange(s 48 57) s end
+    let wordSet(): bitset.T =
+        begin let s = newSet() addRange(s 48 57) addRange(s 65 90) addRange(s 97 122) add(s 95) s end
+    let spaceSet(): bitset.T = begin let s = newSet() add(s 9) add(s 10) add(s 12) add(s 13) add(s 32) s end
+
+    let posixSet(name: String): maybe.T(bitset.T) =
+        begin
+            let s = newSet()
+            let named(n: String): Bool = stringOp.equal(name n)
+            let found =
+                if named("alnum") then begin addRange(s 48 57) addRange(s 65 90) addRange(s 97 122) true end
+                elsif named("alpha") then begin addRange(s 65 90) addRange(s 97 122) true end
+                elsif named("ascii") then begin addRange(s 0 127) true end
+                elsif named("blank") then begin add(s 9) add(s 32) true end
+                elsif named("cntrl") then begin addRange(s 0 31) add(s 127) true end
+                elsif named("digit") then begin addRange(s 48 57) true end
+                elsif named("graph") then begin addRange(s 33 126) true end
+                elsif named("lower") then begin addRange(s 97 122) true end
+                elsif named("print") then begin addRange(s 32 126) true end
+                elsif named("punct") then
+                    begin addRange(s 33 47) addRange(s 58 64) addRange(s 91 96) addRange(s 123 126) true end
+                elsif named("space") then begin addRange(s 9 13) add(s 32) true end
+                elsif named("upper") then begin addRange(s 65 90) true end
+                elsif named("word") then begin union(s wordSet()) true end
+                elsif named("xdigit") then begin addRange(s 48 57) addRange(s 65 70) addRange(s 97 102) true end
+                else false
+                end
+            if found then maybe.some(:bitset.T s) else maybe.none(:bitset.T) end
+        end
+
+    (* ======================================================================
+     * 2. The parser
+     * ====================================================================== *)
+
+    Let Flags = Tuple caseless: Bool multiline: Bool dotAll: Bool ungreedy: Bool end
+
+    (* A group's flags, which (?flags) changes for the rest of the group *)
+    Let FlagCell = Tuple var f: Flags end
+
+    Let Parser = Tuple
+        p: String
+        n: Int
+        var pos: Int
+        (* The names of the named groups so far, for duplicates *)
+        names: vector.T(String)
+    end
+
+    let more(st: Parser): Bool = st.pos < st.n
+    let at(st: Parser i: Int): Int = ascii.val(stringOp.getChar(st.p i))
+    let peek(st: Parser): Int = at(st st.pos)
+    (* Whether the byte at offset i is b *)
+    let isAt(st: Parser i: Int b: Int): Bool = {i < st.n} andif {at(st i) is b}
+
+    let isDigitByte(b: Int): Bool = {b >= 48} /\ {b <= 57}
+    let hexValue(b: Int): Int =
+        if isDigitByte(b) then b - 48
+        elsif {b >= 65} /\ {b <= 70} then b - 55
+        elsif {b >= 97} /\ {b <= 102} then b - 87
+        else ~1
+        end
+    let isNameByte(b: Int): Bool = isDigitByte(b) \/ isLetter(b) \/ {b is 95}
+
+    (* A counted repetition at offset i, {n}, {n,}, or {n,m}: its bounds and
+     * the offset after it, or none if what is at i is not one (and so is a
+     * literal {). Raises syntax for a count over maxRepeat or a max below the
+     * min *)
+    Let Counted = Tuple min: Int max: Int after: Int end
+    let counted(st: Parser i: Int): maybe.T(Counted) =
+        begin
+            let number(j: Int): Tuple value: Int after: Int end =
+                begin
+                    let var k = j
+                    let var v = 0
+                    while {k < st.n} andif isDigitByte(at(st k)) do
+                        if v <= maxRepeat then v := {v * 10} + {at(st k) - 48} end
+                        k := k + 1
+                    end
+                    tuple let value = if k is j then ~1 else v end let after = k end
+                end
+            if not(isAt(st i 123)) then maybe.none(:Counted)
+            else
+                let lo = number(i + 1)
+                if lo.value < 0 then maybe.none(:Counted)
+                elsif isAt(st lo.after 125) then
+                    if lo.value > maxRepeat then fail(:maybe.T(Counted) "invalid repeat count" i) end
+                    maybe.some(:Counted tuple let min = lo.value let max = lo.value let after = lo.after + 1 end)
+                elsif isAt(st lo.after 44) then
+                    let hi = number(lo.after + 1)
+                    if not(isAt(st hi.after 125)) then maybe.none(:Counted)
+                    else
+                        if {lo.value > maxRepeat} \/ {hi.value > maxRepeat}
+                            \/ {{hi.value >= 0} /\ {hi.value < lo.value}} then
+                            fail(:maybe.T(Counted) "invalid repeat count" i)
+                        end
+                        maybe.some(:Counted tuple let min = lo.value let max = hi.value let after = hi.after + 1 end)
+                    end
+                else maybe.none(:Counted)
+                end
+            end
+        end
+
+    (* Whether a repetition operator starts at offset i *)
+    let isQuantifier(st: Parser i: Int): Bool =
+        {i < st.n} andif {{at(st i) is 42} \/ {at(st i) is 43} \/ {at(st i) is 63}
+                          \/ maybe.isSome(:Counted counted(st i))}
+
+    (* The one byte or the set an escape stands for *)
+    Let Escaped = Option
+        byte with b: Int end
+        set with s: bitset.T end
+        anchor with a: Assertion end
+    end
+    let escByte(b: Int): Escaped = option byte of Escaped with let b = b end
+    let escSet(s: bitset.T): Escaped = option set of Escaped with let s = s end
+
+    (* The escape at st.pos (a backslash), which it moves past. In a class,
+     * the assertions are not escapes *)
+    let escape(st: Parser inClass: Bool): Escaped =
+        begin
+            let start = st.pos
+            st.pos := st.pos + 1
+            if not(more(st)) then fail(:Escaped "trailing backslash at end of expression" start) end
+            let c = peek(st)
+            st.pos := st.pos + 1
+            let anchor(a: Assertion): Escaped =
+                if inClass then fail(:Escaped "invalid escape sequence" start)
+                else option anchor of Escaped with let a = a end
+                end
+            let octal(first: Int): Escaped =
+                begin
+                    (* up to two more octal digits after the first *)
+                    let var v = first - 48
+                    let var count = 0
+                    while {count < 2} andif more(st) andif {peek(st) >= 48} andif {peek(st) <= 55} do
+                        v := {v * 8} + {peek(st) - 48}
+                        st.pos := st.pos + 1
+                        count := count + 1
+                    end
+                    if v > 255 then fail(:Escaped "invalid escape sequence" start) end
+                    escByte(v)
+                end
+            if c is 100 then escSet(digitSet())
+            elsif c is 68 then escSet(complementSet(digitSet()))
+            elsif c is 119 then escSet(wordSet())
+            elsif c is 87 then escSet(complementSet(wordSet()))
+            elsif c is 115 then escSet(spaceSet())
+            elsif c is 83 then escSet(complementSet(spaceSet()))
+            elsif c is 65 then anchor(option textStart of Assertion end)
+            elsif c is 122 then anchor(option textEnd of Assertion end)
+            elsif c is 98 then anchor(option wordBoundary of Assertion end)
+            elsif c is 66 then anchor(option notWordBoundary of Assertion end)
+            elsif c is 116 then escByte(9)
+            elsif c is 110 then escByte(10)
+            elsif c is 114 then escByte(13)
+            elsif c is 102 then escByte(12)
+            elsif c is 118 then escByte(11)
+            elsif c is 97 then escByte(7)
+            elsif c is 48 then octal(c)
+            elsif {c >= 49} /\ {c <= 55} andif more(st) andif {peek(st) >= 48} andif {peek(st) <= 55} then octal(c)
+            elsif {c >= 49} /\ {c <= 57} then fail(:Escaped "backreferences are not supported" start)
+            elsif c is 120 then
+                if isAt(st st.pos 123) then
+                    let var v = 0
+                    let var k = st.pos + 1
+                    while {k < st.n} andif {hexValue(at(st k)) >= 0} do
+                        if v <= 255 then v := {v * 16} + hexValue(at(st k)) end
+                        k := k + 1
+                    end
+                    if {k is st.pos + 1} \/ not(isAt(st k 125)) \/ {v > 255} then
+                        fail(:Escaped "invalid escape sequence" start)
+                    end
+                    st.pos := k + 1
+                    escByte(v)
+                elsif {{st.pos + 1} < st.n} andif {hexValue(at(st st.pos)) >= 0}
+                    andif {hexValue(at(st st.pos + 1)) >= 0} then
+                    let v = {hexValue(at(st st.pos)) * 16} + hexValue(at(st st.pos + 1))
+                    st.pos := st.pos + 2
+                    escByte(v)
+                else
+                    fail(:Escaped "invalid escape sequence" start)
+                end
+            elsif {c is 112} \/ {c is 80} then fail(:Escaped "Unicode classes are not supported" start)
+            elsif {c < 128} andif not(isNameByte(c)) then escByte(c)
+            else fail(:Escaped "invalid escape sequence" start)
+            end
+        end
+
+    (* The class at st.pos (a [), which it moves past, folded if caseless *)
+    let charClass(st: Parser caseless: Bool): bitset.T =
+        begin
+            let start = st.pos
+            st.pos := st.pos + 1
+            let negated = isAt(st st.pos 94)
+            if negated then st.pos := st.pos + 1 end
+            let s = newSet()
+            let var first = true
+            let var closed = false
+            while not(closed) do
+                if not(more(st)) then fail(:Ok "missing closing ]" start) end
+                let itemStart = st.pos
+                let c = peek(st)
+                (* An item that is one byte, which may begin a range, or none
+                 * if it was a set *)
+                let var lo = ~1
+                if {c is 93} /\ not(first) then
+                    st.pos := st.pos + 1
+                    closed := true
+                elsif {c is 91} andif isAt(st st.pos + 1 58) then
+                    (* [:name:] or [:^name:], or a literal [ if not closed *)
+                    let var k = st.pos + 2
+                    while {{k + 1} < st.n} andif not({at(st k) is 58} andif {at(st k + 1) is 93}) do k := k + 1 end
+                    if {k + 1} >= st.n then
+                        lo := 91
+                        st.pos := st.pos + 1
+                    else
+                        let neg = isAt(st st.pos + 2 94)
+                        let from = if neg then st.pos + 3 else st.pos + 2 end
+                        let name = stringOp.getSub(st.p from k - from)
+                        let found = posixSet(name)
+                        if maybe.isNone(:bitset.T found) then fail(:Ok "invalid character class range" st.pos) end
+                        let set = maybe.unwrap(:bitset.T found)
+                        union(s if neg then complementSet(set) else set end)
+                        st.pos := k + 2
+                    end
+                elsif c is 92 then
+                    case escape(st true)
+                        when byte with e then lo := e.b
+                        when set with e then union(s e.s)
+                        when anchor then fail(:Ok "invalid escape sequence" itemStart)
+                    end
+                else
+                    lo := c
+                    st.pos := st.pos + 1
+                end
+                if lo >= 0 then
+                    (* a range lo-hi, unless the - is last *)
+                    if isAt(st st.pos 45) andif {{st.pos + 1} < st.n} andif not(isAt(st st.pos + 1 93)) then
+                        st.pos := st.pos + 1
+                        let hi =
+                            if isAt(st st.pos 92) then
+                                case escape(st true)
+                                    when byte with e then e.b
+                                    else fail(:Int "invalid character class range" itemStart)
+                                end
+                            else
+                                let h = peek(st)
+                                st.pos := st.pos + 1
+                                h
+                            end
+                        if hi < lo then fail(:Ok "invalid character class range" itemStart) end
+                        addRange(s lo hi)
+                    else
+                        add(s lo)
+                    end
+                end
+                first := false
+            end
+            let folded = if caseless then foldSet(s) else s end
+            if negated then complementSet(folded) else folded end
+        end
+
+    (* The byte b as a pattern: itself, or with its other case if caseless *)
+    let literal(b: Int caseless: Bool): Node =
+        if caseless andif isLetter(b) then
+            begin
+                let s = newSet()
+                add(s b)
+                setNode(foldSet(s))
+            end
+        else
+            bytesNode(byteString(b))
+        end
+
+    let dotSet(dotAll: Bool): bitset.T =
+        begin
+            let s = newSet()
+            addRange(s 0 255)
+            if not(dotAll) then
+                let removed = bitset.remove(s 10)
+            end
+            s
+        end
+
+    let rec alternation(st: Parser cell: FlagCell group: Int): Node =
+        begin
+            let choices = vector.new(:Node)
+            let var done = false
+            while not(done) do
+                vector.append(:Node choices sequence(st cell))
+                if not(more(st)) then
+                    if group >= 0 then fail(:Ok "missing closing )" group) end
+                    done := true
+                elsif peek(st) is 41 then
+                    if group < 0 then fail(:Ok "unexpected )" st.pos) end
+                    done := true
+                else
+                    (* a | *)
+                    st.pos := st.pos + 1
+                end
+            end
+            if vector.length(:Node choices) is 1 then vector.get(:Node choices 0)
+            else alternateNode(vector.toArray(:Node choices))
+            end
+        end
+
+    (* The items up to a |, a ), or the pattern's end *)
+    and sequence(st: Parser cell: FlagCell): Node =
+        begin
+            let parts = vector.new(:Node)
+            while more(st) andif {peek(st) isnot 124} andif {peek(st) isnot 41} do
+                let start = st.pos
+                let c = peek(st)
+                if {c is 42} \/ {c is 43} \/ {c is 63}
+                    \/ {{c is 123} andif maybe.isSome(:Counted counted(st st.pos))} then
+                    fail(:Ok "missing argument to repetition operator" start)
+                end
+                let item = if c is 40 then group(st cell) else maybe.some(:Node atom(st cell.f)) end
+                if maybe.isSome(:Node item) then
+                    vector.append(:Node parts quantified(st maybe.unwrap(:Node item) cell.f))
+                end
+            end
+            if vector.length(:Node parts) is 1 then vector.get(:Node parts 0)
+            elsif vector.length(:Node parts) is 0 then emptyNode()
+            else concatNode(vector.toArray(:Node parts))
+            end
+        end
+
+    (* item with the repetition operator after it, if there is one *)
+    and quantified(st: Parser item: Node flags: Flags): Node =
+        if not(isQuantifier(st st.pos)) then item
+        else
+            let c = peek(st)
+            let var min = 0
+            let var max = ~1
+            if c is 42 then st.pos := st.pos + 1
+            elsif c is 43 then begin min := 1 st.pos := st.pos + 1 end
+            elsif c is 63 then begin max := 1 st.pos := st.pos + 1 end
+            else
+                let r = maybe.unwrap(:Counted counted(st st.pos))
+                min := r.min
+                max := r.max
+                st.pos := r.after
+            end
+            let lazy = isAt(st st.pos 63)
+            if lazy then st.pos := st.pos + 1 end
+            if isQuantifier(st st.pos) then fail(:Ok "invalid nested repetition operator" st.pos) end
+            let greedy = if flags.ungreedy then lazy else not(lazy) end
+            repeatNode(item min max greedy)
+        end
+
+    (* The group at st.pos (a ( ), or none for (?flags), which changes cell's
+     * flags *)
+    and group(st: Parser cell: FlagCell): maybe.T(Node) =
+        begin
+            let start = st.pos
+            st.pos := st.pos + 1
+            let inner(flags: Flags): Node =
+                begin
+                    let body = alternation(st tuple let var f = flags end start)
+                    (* the ) *)
+                    st.pos := st.pos + 1
+                    body
+                end
+            if not(isAt(st st.pos 63)) then
+                maybe.some(:Node captureNode(inner(cell.f) ""))
+            else
+                st.pos := st.pos + 1
+                let c = if more(st) then peek(st) else ~1 end
+                let named(from: Int): maybe.T(Node) =
+                    begin
+                        let var k = from
+                        while {k < st.n} andif isNameByte(at(st k)) do k := k + 1 end
+                        if {k is from} \/ not(isAt(st k 62)) \/ isDigitByte(at(st from)) then
+                            fail(:Ok "invalid named capture" start)
+                        end
+                        let name = stringOp.getSub(st.p from k - from)
+                        for i = 0 upto {vector.length(:String st.names) - 1} do
+                            if stringOp.equal(vector.get(:String st.names i) name) then
+                                fail(:Ok "duplicate capture group name" start)
+                            end
+                        end
+                        vector.append(:String st.names name)
+                        st.pos := k + 1
+                        maybe.some(:Node captureNode(inner(cell.f) name))
+                    end
+                if c is 58 then
+                    st.pos := st.pos + 1
+                    maybe.some(:Node inner(cell.f))
+                elsif {c is 61} \/ {c is 33} \/ {{c is 60} andif {isAt(st st.pos + 1 61) \/ isAt(st st.pos + 1 33)}}
+                then
+                    fail(:maybe.T(Node) "lookaround is not supported" start)
+                elsif c is 60 then named(st.pos + 1)
+                elsif {c is 80} andif isAt(st st.pos + 1 60) then named(st.pos + 2)
+                elsif {c is 80} andif {isAt(st st.pos + 1 61) \/ isAt(st st.pos + 1 62)} then
+                    fail(:maybe.T(Node) "backreferences are not supported" start)
+                else
+                    (* flags: (?imsU-imsU) or (?imsU-imsU:x) *)
+                    let var f = cell.f
+                    let var negate = false
+                    let var any = false
+                    let var result = maybe.none(:maybe.T(Node))
+                    while maybe.isNone(:maybe.T(Node) result) do
+                        if not(more(st)) then fail(:Ok "missing closing )" start) end
+                        let b = peek(st)
+                        st.pos := st.pos + 1
+                        let on = not(negate)
+                        if b is 105 then begin f := tuple let caseless = on let multiline = f.multiline
+                                let dotAll = f.dotAll let ungreedy = f.ungreedy end any := true end
+                        elsif b is 109 then begin f := tuple let caseless = f.caseless let multiline = on
+                                let dotAll = f.dotAll let ungreedy = f.ungreedy end any := true end
+                        elsif b is 115 then begin f := tuple let caseless = f.caseless let multiline = f.multiline
+                                let dotAll = on let ungreedy = f.ungreedy end any := true end
+                        elsif b is 85 then begin f := tuple let caseless = f.caseless let multiline = f.multiline
+                                let dotAll = f.dotAll let ungreedy = on end any := true end
+                        elsif {b is 45} /\ not(negate) then
+                            negate := true
+                            any := false
+                        elsif {{b is 41} \/ {b is 58}} /\ any then
+                            if b is 41 then
+                                cell.f := f
+                                result := maybe.some(:maybe.T(Node) maybe.none(:Node))
+                            else
+                                result := maybe.some(:maybe.T(Node) maybe.some(:Node inner(f)))
+                            end
+                        else
+                            fail(:Ok "invalid or unsupported Perl syntax" start)
+                        end
+                    end
+                    maybe.unwrap(:maybe.T(Node) result)
+                end
+            end
+        end
+
+    (* The atom at st.pos: not a group, a repetition operator, |, or ) *)
+    and atom(st: Parser flags: Flags): Node =
+        begin
+            let c = peek(st)
+            if c is 46 then
+                st.pos := st.pos + 1
+                setNode(dotSet(flags.dotAll))
+            elsif c is 94 then
+                st.pos := st.pos + 1
+                assertNode(if flags.multiline then option lineStart of Assertion end
+                           else option textStart of Assertion end end)
+            elsif c is 36 then
+                st.pos := st.pos + 1
+                assertNode(if flags.multiline then option lineEnd of Assertion end
+                           else option textEnd of Assertion end end)
+            elsif c is 91 then
+                setNode(charClass(st flags.caseless))
+            elsif c is 92 then
+                case escape(st false)
+                    when byte with e then literal(e.b flags.caseless)
+                    when set with e then setNode(if flags.caseless then foldSet(e.s) else e.s end)
+                    when anchor with e then assertNode(e.a)
+                end
+            else
+                st.pos := st.pos + 1
+                literal(c flags.caseless)
+            end
+        end
+
+    let parse(pattern: String): Node =
+        begin
+            let st = tuple
+                let p = pattern
+                let n = stringOp.length(pattern)
+                let var pos = 0
+                let names = vector.new(:String)
+            end
+            let flags = tuple let caseless = false let multiline = false let dotAll = false let ungreedy = false end
+            alternation(st tuple let var f = flags end ~1)
+        end
+
+    (* ======================================================================
+     * 3. Simplifying
+     * ====================================================================== *)
+
+    (* n with its letters matching either case *)
+    let rec fold(n: Node): Node =
+        case n
+            when bytes with x then
+                begin
+                    let parts = array of(stringOp.length(x.s) emptyNode())
+                    for i = 0 upto {stringOp.length(x.s) - 1} do
+                        parts[i] := literal(ascii.val(stringOp.getChar(x.s i)) true)
+                    end
+                    concatNode(parts)
+                end
+            when byteSet with x then setNode(foldSet(x.set))
+            when concat with x then concatNode(foldAll(x.parts))
+            when alternate with x then alternateNode(foldAll(x.choices))
+            when repeat with x then repeatNode(fold(x.body) x.min x.max x.greedy)
+            when capture with x then captureNode(fold(x.body) x.name)
+            when caseless with x then fold(x.body)
+            else n
+        end
+    and foldAll(ns: Array(Node)): Array(Node) =
+        begin
+            let buf = array of(extent ns emptyNode())
+            for i = 0 upto {extent ns - 1} do buf[i] := fold(ns[i]) end
+            buf
+        end
+
+    let rec simplify(n: Node): Node =
+        case n
+            when byteSet with x then
+                if bitset.count(x.set) is 1 then bytesNode(byteString(bitset.next(x.set 0))) else n end
+            when caseless with x then simplify(fold(x.body))
+            when concat with x then
+                begin
+                    (* flattened, without empties, adjacent bytes merged *)
+                    let parts = vector.new(:Node)
+                    let push(p: Node): Ok =
+                        case p
+                            when empty then ok
+                            when bytes with b then
+                                begin
+                                    let last = vector.length(:Node parts) - 1
+                                    let merged =
+                                        if last >= 0 then
+                                            case vector.get(:Node parts last)
+                                                when bytes with a then
+                                                    begin
+                                                        vector.set(:Node parts last bytesNode(stringOp.cat(a.s b.s)))
+                                                        true
+                                                    end
+                                                else false
+                                            end
+                                        else false
+                                        end
+                                    if not(merged) then vector.append(:Node parts p) end
+                                end
+                            else vector.append(:Node parts p)
+                        end
+                    for i = 0 upto {extent x.parts - 1} do
+                        case simplify(x.parts[i])
+                            when concat with c then for j = 0 upto {extent c.parts - 1} do push(c.parts[j]) end
+                            else push(simplify(x.parts[i]))
+                        end
+                    end
+                    if vector.length(:Node parts) is 0 then emptyNode()
+                    elsif vector.length(:Node parts) is 1 then vector.get(:Node parts 0)
+                    else concatNode(vector.toArray(:Node parts))
+                    end
+                end
+            when alternate with x then
+                begin
+                    let choices = vector.new(:Node)
+                    for i = 0 upto {extent x.choices - 1} do
+                        case simplify(x.choices[i])
+                            when alternate with a then
+                                for j = 0 upto {extent a.choices - 1} do vector.append(:Node choices a.choices[j]) end
+                            else vector.append(:Node choices simplify(x.choices[i]))
+                        end
+                    end
+                    if vector.length(:Node choices) is 1 then vector.get(:Node choices 0)
+                    else alternateNode(vector.toArray(:Node choices))
+                    end
+                end
+            when repeat with x then
+                begin
+                    let body = simplify(x.body)
+                    if {x.min is 1} /\ {x.max is 1} then body
+                    elsif {x.max is 0} \/ body?empty then emptyNode()
+                    else repeatNode(body x.min x.max x.greedy)
+                    end
+                end
+            when capture with x then captureNode(simplify(x.body) x.name)
+            else n
+        end
+
+    (* ======================================================================
+     * 4. Showing
+     * ====================================================================== *)
+
+    let hexDigit(v: Int): String = stringOp.getSub("0123456789abcdef" v 1)
+    let hexByte(b: Int): String = "\\x" <> hexDigit(b / 16) <> hexDigit(b % 16)
+
+    (* b in a quoted string or a class: printable ASCII as itself, unless it
+     * is one of special (escaped with \), anything else as \xHH *)
+    let shown(b: Int special: String): String =
+        begin
+            let var isSpecial = false
+            for i = 0 upto {stringOp.length(special) - 1} do
+                if ascii.val(stringOp.getChar(special i)) is b then isSpecial := true end
+            end
+            if isSpecial then "\\" <> byteString(b)
+            elsif {b >= 33} /\ {b <= 126} then byteString(b)
+            else hexByte(b)
+            end
+        end
+
+    let showSet(s: bitset.T): String =
+        begin
+            let buf = sb.new()
+            sb.char(buf '[')
+            let var b = bitset.next(s 0)
+            while b >= 0 do
+                let var e = b
+                while {e < 255} andif bitset.contains(s e + 1) do e := e + 1 end
+                sb.str(buf shown(b "\\]-^["))
+                if e > b then
+                    if e > b + 1 then sb.char(buf '-') end
+                    sb.str(buf shown(e "\\]-^["))
+                end
+                b := if e < 255 then bitset.next(s e + 1) else ~1 end
+            end
+            sb.char(buf ']')
+            sb.toString(buf)
+        end
+
+    let assertionName(a: Assertion): String =
+        case a
+            when lineStart then "lineStart"
+            when lineEnd then "lineEnd"
+            when textStart then "textStart"
+            when textEnd then "textEnd"
+            when wordBoundary then "wordBoundary"
+            when notWordBoundary then "notWordBoundary"
+        end
+
+    let rec show(n: Node): String =
+        case n
+            when empty then "empty"
+            when bytes with x then
+                begin
+                    let buf = sb.new()
+                    sb.char(buf '"')
+                    for i = 0 upto {stringOp.length(x.s) - 1} do
+                        sb.str(buf shown(ascii.val(stringOp.getChar(x.s i)) "\"\\"))
+                    end
+                    sb.char(buf '"')
+                    sb.toString(buf)
+                end
+            when byteSet with x then showSet(x.set)
+            when assertion with x then assertionName(x.a)
+            when concat with x then "(cat" <> showAll(x.parts) <> ")"
+            when alternate with x then "(alt" <> showAll(x.choices) <> ")"
+            when repeat with x then
+                "(rep" <> if x.greedy then "" else "?" end <> " " <> conv.int(x.min) <> " "
+                    <> if x.max < 0 then "inf" else conv.int(x.max) end <> " " <> show(x.body) <> ")"
+            when capture with x then
+                "(cap " <> if stringOp.isEmpty(x.name) then "" else x.name <> " " end <> show(x.body) <> ")"
+            when caseless with x then "(caseless " <> show(x.body) <> ")"
+        end
+    and showAll(ns: Array(Node)): String =
+        begin
+            let var text = ""
+            for i = 0 upto {extent ns - 1} do text := text <> " " <> show(ns[i]) end
+            text
+        end
+end

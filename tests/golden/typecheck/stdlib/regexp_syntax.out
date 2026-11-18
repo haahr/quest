@@ -1,0 +1,1175 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('regexp') : 'Regexp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'p' :type Fun(pattern: String): Ok
+      :value (TypedFun :params (('pattern' : String)) :type Fun(pattern: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedInfix '<>' :type String
+              :left (TypedVar 'pattern' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedString '  =>  ' :type String)
+                :right (TypedTry :type String
+                  :body (TypedApp :type String
+                    :func (TypedSelect 'show' :type Fun(re: regexp.RE): String
+                      :target (TypedVar 'regexp' :type Module 'regexp'))
+                    :args (
+                      (TypedApp :type regexp.RE
+                        :func (TypedSelect 'parse' :type Fun(pattern: String): regexp.RE
+                          :target (TypedVar 'regexp' :type Module 'regexp'))
+                        :args (
+                          (TypedVar 'pattern' :type String)
+                        ))
+                    ))
+                  :branches (
+                    (TypedTryBranch
+                      :exc_pattern (TypedSelect 'syntax' :type Exception(SyntaxError)
+                        :target (TypedVar 'regexp' :type Module 'regexp'))
+                      :body (TypedInfix '<>' :type String
+                        :left (TypedString 'syntax error at ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedSelect 'int' :type Fun(n: Int): String
+                              :target (TypedVar 'conv' :type Module 'conv'))
+                            :args (
+                              (TypedSelect 'offset' :type Int
+                                :target (TypedVar 'e' :type SyntaxError))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ': ' :type String)
+                            :right (TypedSelect 'message' :type String
+                              :target (TypedVar 'e' :type SyntaxError))))))
+                  ))))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'abc' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a.b' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '\\.\\*\\+\\?\\(\\)\\[\\]\\{\\}\\|\\^\\$\\\\' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '\\t\\n\\r\\f\\v\\a' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '\\x41\\x{42}\\x{000043}\\0\\012\\101' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a{' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a{x}' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a{2' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[abc]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[a-z0-9_]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[^a-z]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[]a]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[a-]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[-a]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[\\d\\s]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[^\\D]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[[:alpha:][:digit:]]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[[:^space:]]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[\\x00-\\x1f]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[[:]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '\\d\\w\\s' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '\\D' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[a]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a*b+c?' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a*?b+?c??' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a{3}b{2,}c{1,4}d{0,0}e{1,1}' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a{2,5}?' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?U)a*b*?' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(ab)*' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '^*' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a|b|c' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a|' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '|' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(a)(?:b)(?P<word>c)(?<other>d)' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '((a)|b)+' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?i)Ab[x-z]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?i)[^a]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a(?i)b|c' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?i:a)b' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?i)a(?-i)b' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?s).(?-s).' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '^a$' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?m)^a$' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '\\A\\z\\b\\B' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?ims-U:x)' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a**' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a*+' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '*a' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '+' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '{2}' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(a' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a)' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '((a)' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[a' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[z-a]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[a-\\d]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[[:nope:]]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '\\' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '\\q' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '\\1' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '\\pL' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '\\x4' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '\\x{}' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '\\x{100}' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[\\b]' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a{1001}' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a{3,2}' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?=a)' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?!a)' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?<=a)' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?<!a)' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?P=name)' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?P<>a)' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?<1a>b)' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?P<x>a)(?P<x>b)' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?z)' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?)' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '(?i' :type String)
+        )))
+    (TypedLetValue 'show' :type Fun(re: regexp.RE): Ok
+      :value (TypedFun :params (('re' : regexp.RE)) :type Fun(re: regexp.RE): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedApp :type String
+              :func (TypedSelect 'show' :type Fun(re: regexp.RE): String
+                :target (TypedVar 'regexp' :type Module 'regexp'))
+              :args (
+                (TypedVar 're' :type regexp.RE)
+              ))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'literal' :type Fun(s: String): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedString 'ab' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'literal' :type Fun(s: String): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedString '' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'set' :type Fun(s: String): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedString 'ca' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'range' :type Fun(lo: Char hi: Char): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedChar 'a' :type Char)
+              (TypedChar 'f' :type Char)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'seq' :type Fun(res: Array(regexp.RE)): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedArray :type Array(regexp.RE)
+                :elements (
+                  (TypedApp :type regexp.RE
+                    :func (TypedSelect 'literal' :type Fun(s: String): regexp.RE
+                      :target (TypedVar 'regexp' :type Module 'regexp'))
+                    :args (
+                      (TypedString 'x' :type String)
+                    ))
+                  (TypedApp :type regexp.RE
+                    :func (TypedSelect 'literal' :type Fun(s: String): regexp.RE
+                      :target (TypedVar 'regexp' :type Module 'regexp'))
+                    :args (
+                      (TypedString 'y' :type String)
+                    ))
+                  (TypedSelect 'digit' :type regexp.RE
+                    :target (TypedVar 'regexp' :type Module 'regexp'))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'alt' :type Fun(res: Array(regexp.RE)): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedArray :type Array(regexp.RE)
+                :elements (
+                  (TypedApp :type regexp.RE
+                    :func (TypedSelect 'literal' :type Fun(s: String): regexp.RE
+                      :target (TypedVar 'regexp' :type Module 'regexp'))
+                    :args (
+                      (TypedString 'x' :type String)
+                    ))
+                  (TypedApp :type regexp.RE
+                    :func (TypedSelect 'alt' :type Fun(res: Array(regexp.RE)): regexp.RE
+                      :target (TypedVar 'regexp' :type Module 'regexp'))
+                    :args (
+                      (TypedArray :type Array(regexp.RE)
+                        :elements (
+                          (TypedApp :type regexp.RE
+                            :func (TypedSelect 'literal' :type Fun(s: String): regexp.RE
+                              :target (TypedVar 'regexp' :type Module 'regexp'))
+                            :args (
+                              (TypedString 'y' :type String)
+                            ))
+                          (TypedApp :type regexp.RE
+                            :func (TypedSelect 'literal' :type Fun(s: String): regexp.RE
+                              :target (TypedVar 'regexp' :type Module 'regexp'))
+                            :args (
+                              (TypedString 'z' :type String)
+                            ))
+                        ))
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'alt' :type Fun(res: Array(regexp.RE)): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedArray :type Array(regexp.RE)
+                :elements ())
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'star' :type Fun(re: regexp.RE): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedApp :type regexp.RE
+                :func (TypedSelect 'plus' :type Fun(re: regexp.RE): regexp.RE
+                  :target (TypedVar 'regexp' :type Module 'regexp'))
+                :args (
+                  (TypedApp :type regexp.RE
+                    :func (TypedSelect 'opt' :type Fun(re: regexp.RE): regexp.RE
+                      :target (TypedVar 'regexp' :type Module 'regexp'))
+                    :args (
+                      (TypedApp :type regexp.RE
+                        :func (TypedSelect 'literal' :type Fun(s: String): regexp.RE
+                          :target (TypedVar 'regexp' :type Module 'regexp'))
+                        :args (
+                          (TypedString 'a' :type String)
+                        ))
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'repeat' :type Fun(re: regexp.RE min: Int max: Int greedy: Bool): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedApp :type regexp.RE
+                :func (TypedSelect 'literal' :type Fun(s: String): regexp.RE
+                  :target (TypedVar 'regexp' :type Module 'regexp'))
+                :args (
+                  (TypedString 'a' :type String)
+                ))
+              (TypedInt 2 :type Int)
+              (TypedInt -1 :type Int)
+              (TypedBool false)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'group' :type Fun(re: regexp.RE): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedApp :type regexp.RE
+                :func (TypedSelect 'namedGroup' :type Fun(name: String re: regexp.RE): regexp.RE
+                  :target (TypedVar 'regexp' :type Module 'regexp'))
+                :args (
+                  (TypedString 'n' :type String)
+                  (TypedSelect 'wordByte' :type regexp.RE
+                    :target (TypedVar 'regexp' :type Module 'regexp'))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'caseless' :type Fun(re: regexp.RE): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedApp :type regexp.RE
+                :func (TypedSelect 'seq' :type Fun(res: Array(regexp.RE)): regexp.RE
+                  :target (TypedVar 'regexp' :type Module 'regexp'))
+                :args (
+                  (TypedArray :type Array(regexp.RE)
+                    :elements (
+                      (TypedApp :type regexp.RE
+                        :func (TypedSelect 'literal' :type Fun(s: String): regexp.RE
+                          :target (TypedVar 'regexp' :type Module 'regexp'))
+                        :args (
+                          (TypedString 'Hi' :type String)
+                        ))
+                      (TypedApp :type regexp.RE
+                        :func (TypedSelect 'range' :type Fun(lo: Char hi: Char): regexp.RE
+                          :target (TypedVar 'regexp' :type Module 'regexp'))
+                        :args (
+                          (TypedChar 'x' :type Char)
+                          (TypedChar 'z' :type Char)
+                        ))
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'complement' :type Fun(re: regexp.RE): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedApp :type regexp.RE
+                :func (TypedSelect 'alt' :type Fun(res: Array(regexp.RE)): regexp.RE
+                  :target (TypedVar 'regexp' :type Module 'regexp'))
+                :args (
+                  (TypedArray :type Array(regexp.RE)
+                    :elements (
+                      (TypedApp :type regexp.RE
+                        :func (TypedSelect 'range' :type Fun(lo: Char hi: Char): regexp.RE
+                          :target (TypedVar 'regexp' :type Module 'regexp'))
+                        :args (
+                          (TypedChar 'a' :type Char)
+                          (TypedChar 'c' :type Char)
+                        ))
+                      (TypedApp :type regexp.RE
+                        :func (TypedSelect 'literal' :type Fun(s: String): regexp.RE
+                          :target (TypedVar 'regexp' :type Module 'regexp'))
+                        :args (
+                          (TypedString 'z' :type String)
+                        ))
+                      (TypedSelect 'digit' :type regexp.RE
+                        :target (TypedVar 'regexp' :type Module 'regexp'))
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'complement' :type Fun(re: regexp.RE): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedApp :type regexp.RE
+                :func (TypedSelect 'parse' :type Fun(pattern: String): regexp.RE
+                  :target (TypedVar 'regexp' :type Module 'regexp'))
+                :args (
+                  (TypedString '[^\\n]' :type String)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'seq' :type Fun(res: Array(regexp.RE)): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedArray :type Array(regexp.RE)
+                :elements (
+                  (TypedSelect 'lineStart' :type regexp.RE
+                    :target (TypedVar 'regexp' :type Module 'regexp'))
+                  (TypedSelect 'lineEnd' :type regexp.RE
+                    :target (TypedVar 'regexp' :type Module 'regexp'))
+                  (TypedSelect 'textStart' :type regexp.RE
+                    :target (TypedVar 'regexp' :type Module 'regexp'))
+                  (TypedSelect 'textEnd' :type regexp.RE
+                    :target (TypedVar 'regexp' :type Module 'regexp'))
+                  (TypedSelect 'wordBoundary' :type regexp.RE
+                    :target (TypedVar 'regexp' :type Module 'regexp'))
+                  (TypedSelect 'notWordBoundary' :type regexp.RE
+                    :target (TypedVar 'regexp' :type Module 'regexp'))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'seq' :type Fun(res: Array(regexp.RE)): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedArray :type Array(regexp.RE)
+                :elements (
+                  (TypedSelect 'anyByte' :type regexp.RE
+                    :target (TypedVar 'regexp' :type Module 'regexp'))
+                  (TypedSelect 'notNewline' :type regexp.RE
+                    :target (TypedVar 'regexp' :type Module 'regexp'))
+                  (TypedSelect 'space' :type regexp.RE
+                    :target (TypedVar 'regexp' :type Module 'regexp'))
+                ))
+            ))
+        )))
+    (TypedLetValue 'digits' :type Fun(n: Int): regexp.RE
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): regexp.RE
+        :body (TypedApp :type regexp.RE
+          :func (TypedSelect 'repeat' :type Fun(re: regexp.RE min: Int max: Int greedy: Bool): regexp.RE
+            :target (TypedVar 'regexp' :type Module 'regexp'))
+          :args (
+            (TypedSelect 'digit' :type regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            (TypedVar 'n' :type Int)
+            (TypedVar 'n' :type Int)
+            (TypedBool true)
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'seq' :type Fun(res: Array(regexp.RE)): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedArray :type Array(regexp.RE)
+                :elements (
+                  (TypedApp :type regexp.RE
+                    :func (TypedSelect 'namedGroup' :type Fun(name: String re: regexp.RE): regexp.RE
+                      :target (TypedVar 'regexp' :type Module 'regexp'))
+                    :args (
+                      (TypedString 'y' :type String)
+                      (TypedApp :type regexp.RE
+                        :func (TypedVar 'digits' :type Fun(n: Int): regexp.RE)
+                        :args (
+                          (TypedInt 4 :type Int)
+                        ))
+                    ))
+                  (TypedApp :type regexp.RE
+                    :func (TypedSelect 'literal' :type Fun(s: String): regexp.RE
+                      :target (TypedVar 'regexp' :type Module 'regexp'))
+                    :args (
+                      (TypedString '-' :type String)
+                    ))
+                  (TypedApp :type regexp.RE
+                    :func (TypedSelect 'namedGroup' :type Fun(name: String re: regexp.RE): regexp.RE
+                      :target (TypedVar 'regexp' :type Module 'regexp'))
+                    :args (
+                      (TypedString 'm' :type String)
+                      (TypedApp :type regexp.RE
+                        :func (TypedVar 'digits' :type Fun(n: Int): regexp.RE)
+                        :args (
+                          (TypedInt 2 :type Int)
+                        ))
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'parse' :type Fun(pattern: String): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedString '(?P<y>\\d{4})-(?P<m>\\d{2})' :type String)
+            ))
+        )))
+    (TypedLetValue 'parts' :type Array(regexp.RE)
+      :value (TypedArray :type Array(regexp.RE)
+        :elements (
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'literal' :type Fun(s: String): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedString 'a' :type String)
+            ))
+          (TypedApp :type regexp.RE
+            :func (TypedSelect 'literal' :type Fun(s: String): regexp.RE
+              :target (TypedVar 'regexp' :type Module 'regexp'))
+            :args (
+              (TypedString 'b' :type String)
+            ))
+        )))
+    (TypedLetValue 'ab' :type regexp.RE
+      :value (TypedApp :type regexp.RE
+        :func (TypedSelect 'seq' :type Fun(res: Array(regexp.RE)): regexp.RE
+          :target (TypedVar 'regexp' :type Module 'regexp'))
+        :args (
+          (TypedVar 'parts' :type Array(regexp.RE))
+        )))
+    (TypedExprStmt
+      :expr (TypedIndexAssign
+        :target (TypedVar 'parts' :type Array(regexp.RE))
+        :index (TypedInt 1 :type Int)
+        :value (TypedApp :type regexp.RE
+          :func (TypedSelect 'literal' :type Fun(s: String): regexp.RE
+            :target (TypedVar 'regexp' :type Module 'regexp'))
+          :args (
+            (TypedString 'c' :type String)
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(re: regexp.RE): Ok)
+        :args (
+          (TypedVar 'ab' :type regexp.RE)
+        )))
+    (TypedLetValue 'check' :type Fun(what: String make: Fun(): regexp.RE): Ok
+      :value (TypedFun :params (('what' : String) ('make' : Fun(): regexp.RE)) :type Fun(what: String make: Fun(): regexp.RE): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedInfix '<>' :type String
+              :left (TypedVar 'what' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ': ' :type String)
+                :right (TypedTry :type String
+                  :body (TypedApp :type String
+                    :func (TypedSelect 'show' :type Fun(re: regexp.RE): String
+                      :target (TypedVar 'regexp' :type Module 'regexp'))
+                    :args (
+                      (TypedApp :type regexp.RE
+                        :func (TypedVar 'make' :type Fun(): regexp.RE)
+                        :args ())
+                    ))
+                  :branches (
+                    (TypedTryBranch
+                      :exc_pattern (TypedSelect 'error' :type Exception
+                        :target (TypedVar 'regexp' :type Module 'regexp'))
+                      :body (TypedString 'regexp.error' :type String))
+                  ))))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String make: Fun(): regexp.RE): Ok)
+        :args (
+          (TypedString 'range backwards' :type String)
+          (TypedFun :params () :type Fun(): regexp.RE
+            :body (TypedApp :type regexp.RE
+              :func (TypedSelect 'range' :type Fun(lo: Char hi: Char): regexp.RE
+                :target (TypedVar 'regexp' :type Module 'regexp'))
+              :args (
+                (TypedChar 'z' :type Char)
+                (TypedChar 'a' :type Char)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String make: Fun(): regexp.RE): Ok)
+        :args (
+          (TypedString 'repeat min ~1' :type String)
+          (TypedFun :params () :type Fun(): regexp.RE
+            :body (TypedApp :type regexp.RE
+              :func (TypedSelect 'repeat' :type Fun(re: regexp.RE min: Int max: Int greedy: Bool): regexp.RE
+                :target (TypedVar 'regexp' :type Module 'regexp'))
+              :args (
+                (TypedSelect 'digit' :type regexp.RE
+                  :target (TypedVar 'regexp' :type Module 'regexp'))
+                (TypedInt -1 :type Int)
+                (TypedInt 2 :type Int)
+                (TypedBool true)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String make: Fun(): regexp.RE): Ok)
+        :args (
+          (TypedString 'repeat max < min' :type String)
+          (TypedFun :params () :type Fun(): regexp.RE
+            :body (TypedApp :type regexp.RE
+              :func (TypedSelect 'repeat' :type Fun(re: regexp.RE min: Int max: Int greedy: Bool): regexp.RE
+                :target (TypedVar 'regexp' :type Module 'regexp'))
+              :args (
+                (TypedSelect 'digit' :type regexp.RE
+                  :target (TypedVar 'regexp' :type Module 'regexp'))
+                (TypedInt 3 :type Int)
+                (TypedInt 2 :type Int)
+                (TypedBool true)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String make: Fun(): regexp.RE): Ok)
+        :args (
+          (TypedString 'repeat max ~2' :type String)
+          (TypedFun :params () :type Fun(): regexp.RE
+            :body (TypedApp :type regexp.RE
+              :func (TypedSelect 'repeat' :type Fun(re: regexp.RE min: Int max: Int greedy: Bool): regexp.RE
+                :target (TypedVar 'regexp' :type Module 'regexp'))
+              :args (
+                (TypedSelect 'digit' :type regexp.RE
+                  :target (TypedVar 'regexp' :type Module 'regexp'))
+                (TypedInt 0 :type Int)
+                (TypedInt -2 :type Int)
+                (TypedBool true)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String make: Fun(): regexp.RE): Ok)
+        :args (
+          (TypedString 'repeat 1001' :type String)
+          (TypedFun :params () :type Fun(): regexp.RE
+            :body (TypedApp :type regexp.RE
+              :func (TypedSelect 'repeat' :type Fun(re: regexp.RE min: Int max: Int greedy: Bool): regexp.RE
+                :target (TypedVar 'regexp' :type Module 'regexp'))
+              :args (
+                (TypedSelect 'digit' :type regexp.RE
+                  :target (TypedVar 'regexp' :type Module 'regexp'))
+                (TypedInt 1001 :type Int)
+                (TypedInt -1 :type Int)
+                (TypedBool true)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String make: Fun(): regexp.RE): Ok)
+        :args (
+          (TypedString 'name empty' :type String)
+          (TypedFun :params () :type Fun(): regexp.RE
+            :body (TypedApp :type regexp.RE
+              :func (TypedSelect 'namedGroup' :type Fun(name: String re: regexp.RE): regexp.RE
+                :target (TypedVar 'regexp' :type Module 'regexp'))
+              :args (
+                (TypedString '' :type String)
+                (TypedSelect 'digit' :type regexp.RE
+                  :target (TypedVar 'regexp' :type Module 'regexp'))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String make: Fun(): regexp.RE): Ok)
+        :args (
+          (TypedString 'name 1x' :type String)
+          (TypedFun :params () :type Fun(): regexp.RE
+            :body (TypedApp :type regexp.RE
+              :func (TypedSelect 'namedGroup' :type Fun(name: String re: regexp.RE): regexp.RE
+                :target (TypedVar 'regexp' :type Module 'regexp'))
+              :args (
+                (TypedString '1x' :type String)
+                (TypedSelect 'digit' :type regexp.RE
+                  :target (TypedVar 'regexp' :type Module 'regexp'))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String make: Fun(): regexp.RE): Ok)
+        :args (
+          (TypedString 'name a-b' :type String)
+          (TypedFun :params () :type Fun(): regexp.RE
+            :body (TypedApp :type regexp.RE
+              :func (TypedSelect 'namedGroup' :type Fun(name: String re: regexp.RE): regexp.RE
+                :target (TypedVar 'regexp' :type Module 'regexp'))
+              :args (
+                (TypedString 'a-b' :type String)
+                (TypedSelect 'digit' :type regexp.RE
+                  :target (TypedVar 'regexp' :type Module 'regexp'))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String make: Fun(): regexp.RE): Ok)
+        :args (
+          (TypedString 'name _1' :type String)
+          (TypedFun :params () :type Fun(): regexp.RE
+            :body (TypedApp :type regexp.RE
+              :func (TypedSelect 'namedGroup' :type Fun(name: String re: regexp.RE): regexp.RE
+                :target (TypedVar 'regexp' :type Module 'regexp'))
+              :args (
+                (TypedString '_1' :type String)
+                (TypedSelect 'digit' :type regexp.RE
+                  :target (TypedVar 'regexp' :type Module 'regexp'))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String make: Fun(): regexp.RE): Ok)
+        :args (
+          (TypedString 'complement of ab' :type String)
+          (TypedFun :params () :type Fun(): regexp.RE
+            :body (TypedApp :type regexp.RE
+              :func (TypedSelect 'complement' :type Fun(re: regexp.RE): regexp.RE
+                :target (TypedVar 'regexp' :type Module 'regexp'))
+              :args (
+                (TypedApp :type regexp.RE
+                  :func (TypedSelect 'literal' :type Fun(s: String): regexp.RE
+                    :target (TypedVar 'regexp' :type Module 'regexp'))
+                  :args (
+                    (TypedString 'ab' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String make: Fun(): regexp.RE): Ok)
+        :args (
+          (TypedString 'complement of a*' :type String)
+          (TypedFun :params () :type Fun(): regexp.RE
+            :body (TypedApp :type regexp.RE
+              :func (TypedSelect 'complement' :type Fun(re: regexp.RE): regexp.RE
+                :target (TypedVar 'regexp' :type Module 'regexp'))
+              :args (
+                (TypedApp :type regexp.RE
+                  :func (TypedSelect 'star' :type Fun(re: regexp.RE): regexp.RE
+                    :target (TypedVar 'regexp' :type Module 'regexp'))
+                  :args (
+                    (TypedApp :type regexp.RE
+                      :func (TypedSelect 'literal' :type Fun(s: String): regexp.RE
+                        :target (TypedVar 'regexp' :type Module 'regexp'))
+                      :args (
+                        (TypedString 'a' :type String)
+                      ))
+                  ))
+              )))
+        )))
+  ))

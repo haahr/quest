@@ -1,0 +1,88 @@
+interface Regexp
+export
+    (* =========================================================================
+     * Regular Expressions (Regexp)
+     *
+     * Patterns in RE2's syntax, matched in time linear in the subject, on
+     * bytes, leftmost-first (docs/regexp-plan.md). A pattern is a string,
+     * parsed, or a value, built by the functions below; both are regexp.RE.
+     *
+     * So far (the plan's step 1): patterns, parsing, and syntax errors.
+     * Compiling and matching come next.
+     * ====================================================================== *)
+
+    (* What parse raises for a pattern that is not one: why, and where in the
+     * pattern (a byte offset) *)
+    Def SyntaxError = Tuple message: String offset: Int end
+    syntax: Exception(SyntaxError)
+
+    (* Raised for an argument out of range: a repeat's bounds, a group's name,
+     * or complement of a pattern that is not one byte *)
+    error: Exception
+
+    (* ---- Patterns as values. Each function makes a new pattern and changes
+     * none of its arguments *)
+    RE::TYPE
+
+    (* The pattern a string is, in RE2's syntax (docs/regexp-plan.md section
+     * 2); raises syntax *)
+    parse(pattern: String): RE
+
+    (* The bytes of s, in order *)
+    literal(s: String): RE
+    (* Any one byte of s *)
+    set(s: String): RE
+    (* Any one byte from lo to hi; raises error if hi is before lo *)
+    range(lo: Char hi: Char): RE
+    (* Any one byte that re does not match; raises error unless re matches
+     * exactly one byte (a set, a range, a class, a one-byte literal, or an
+     * alternation of them) *)
+    complement(re: RE): RE
+
+    (* Any byte; any byte but newline (the syntax's .); and the ASCII classes
+     * \d, \w (letters, digits, and _), and \s (tab, newline, form feed,
+     * carriage return, and space) *)
+    anyByte: RE
+    notNewline: RE
+    digit: RE
+    wordByte: RE
+    space: RE
+
+    (* The patterns one after another; any one of them, the first preferred *)
+    seq(res: Array(RE)): RE
+    alt(res: Array(RE)): RE
+
+    (* re at least min times and at most max (~1 for no limit), as many as can
+     * be if greedy and as few if not; raises error unless 0 <= min <= 1000
+     * and max is ~1 or min <= max <= 1000. star, plus, and opt are its
+     * commonest uses, greedy *)
+    repeat(re: RE min: Int max: Int greedy: Bool): RE
+    star(re: RE): RE
+    plus(re: RE): RE
+    opt(re: RE): RE
+
+    (* A capturing group, numbered in the order a left-to-right reading of
+     * the whole pattern meets groups; and a named one, whose name is letters,
+     * digits, and _, not starting with a digit (raises error otherwise) *)
+    group(re: RE): RE
+    namedGroup(name: String re: RE): RE
+
+    (* re with ASCII letters matching either case *)
+    caseless(re: RE): RE
+
+    (* The zero-width assertions: a line's start and end (^ and $ with the m
+     * flag), the subject's start and end (\A and \z), a word boundary (\b),
+     * and not one (\B) *)
+    lineStart: RE
+    lineEnd: RE
+    textStart: RE
+    textEnd: RE
+    wordBoundary: RE
+    notWordBoundary: RE
+
+    (* re simplified and written out, for tests and debugging: "ab" for
+     * bytes, [a-z] for a set, (cat ...), (alt ...), (rep MIN MAX x) (rep? for
+     * lazy, MAX inf for no limit), (cap x) and (cap NAME x) for groups, the
+     * assertions by name, and empty *)
+    show(re: RE): String
+end
