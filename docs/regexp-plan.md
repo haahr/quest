@@ -1,8 +1,8 @@
 # Plan: A Regular Expression Library in Quest
 
 A library of regular expressions, `util/regexp : util/Regexp`, written in Quest with no externals, so that it runs
-alike on every target: the interpreters, C, arm64, the JIT, and WebAssembly, in a browser included. Steps 1 and 2
-are built (§6).
+alike on every target: the interpreters, C, arm64, the JIT, and WebAssembly, in a browser included. Steps 1 to 3,
+the library, are built (§6).
 
 ## 1. Decisions
 
@@ -328,6 +328,12 @@ range, to get the captures. It is the largest piece and the one most worth leavi
    tests, by hand, pass all 4,935,736 cases (24 s compiled). `tests/source/stdlib/regexp_match.quest` covers the
    operations in every phase and in the arm64, JIT, and wasm-node modes.
 3. **`findAll`, `replaceFirst`, `replaceAll`, `replaceWith`, `split`, `quote`, and named groups.**
+   *Built 2026-11-17:* each as Go's `regexp` has it, which settles what §3 left open: `findAll` takes no empty match
+   where the previous match ended; a template's `$name` takes as many name bytes as there are (`$1x` is `${1x}`), and
+   a group that does not exist or took no part expands to nothing; `split` is Go's `Split(s, -1)`; `quote` escapes
+   Go's `QuoteMeta` set. `tests/python/test_regexp.py` compares `findAll`, `split`, and `replaceAll` with Go's on the
+   AT&T and random cases, and `tests/source/stdlib/regexp_replace.quest` covers them in every phase. libraries.md
+   §1.9 gives the interface.
 4. **Fast paths:** literal patterns, literal prefixes, anchors, and capture-free tests, each measured.
 5. **The benchmark**, and then the lazy DFA if it is wanted.
 6. **UTF-8 mode** (`(?u)`, and perhaps by default later): `.` and classes over code points, compiled to byte

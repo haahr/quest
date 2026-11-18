@@ -9,7 +9,8 @@ of a search, both leftmost-first. The cases come from:
 - the AT&T POSIX tests' patterns and subjects, answered by Go's regexp
   (tests/regexp/oracle.go), since the files record POSIX leftmost-longest
   answers;
-- random patterns and subjects, answered by Go's regexp;
+- random patterns and subjects, answered by Go's regexp, for the match of the
+  whole subject and of a search, and for findAll, split, and replaceAll;
 - patterns that would take a backtracking matcher exponential time, which must
   finish quickly.
 
@@ -199,11 +200,14 @@ class RegexpTest(unittest.TestCase):
         self.assertTrue(last.endswith(" failures 0"), done.stdout[-6000:])
         return last
 
-    def answered(self, pairs):
+    def answered(self, pairs, every: bool = False):
         """Go's answers for (pattern, subject) pairs, as cases, without those Go
-        does not compile or the library is not meant to agree on"""
+        does not compile or the library is not meant to agree on: the match of
+        the whole subject and of a search, or with every, findAll, split, and
+        replaceAll"""
         lines = "".join(f"{hexed(p)} {hexed(s)}\n" for p, s in pairs if not skipped(p, s))
-        done = subprocess.run([str(self.oracle)], input=lines, capture_output=True, text=True, check=True)
+        done = subprocess.run([str(self.oracle)] + (["-all"] if every else []), input=lines, capture_output=True,
+                              text=True, check=True)
         return [line for line in done.stdout.split("\n") if line and not line.endswith(" error")]
 
     def test_re2_search(self):
@@ -230,6 +234,13 @@ class RegexpTest(unittest.TestCase):
     def test_random_against_go(self):
         cases = self.answered(random_cases(2500))
         self.assertGreater(len(cases), 8000)
+        self.check(cases)
+
+    @unittest.skipUnless(GO, "Go is not installed")
+    def test_every_match_against_go(self):
+        """findAll, split, and replaceAll on the AT&T cases and random ones"""
+        cases = self.answered(list(att_cases()) + list(random_cases(1500)), every=True)
+        self.assertGreater(len(cases), 5000)
         self.check(cases)
 
     def test_linear_time(self):

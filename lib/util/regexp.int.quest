@@ -1,6 +1,7 @@
 interface Regexp
 import
     util/maybe : util/Maybe
+    collections/vector : collections/Vector
 export
     (* =========================================================================
      * Regular Expressions (Regexp)
@@ -15,9 +16,9 @@ export
      *         print(regexp.group(maybe.unwrap(:regexp.Match m) 1))
      *     end
      *
-     * So far (the plan's steps 1 and 2): patterns, compiling, testing, and
-     * finding one match. Finding every match, replacing, and splitting come
-     * next.
+     * The operations that find more than one match (findAll, the replacing
+     * functions, and split) take them as Go's regexp does: left to right, none
+     * overlapping, an empty match not taken where the previous match ended.
      * ====================================================================== *)
 
     (* What parse raises for a pattern that is not one: why, and where in the
@@ -84,6 +85,30 @@ export
     group(m: Match i: Int): String
     (* The same for the group named name; raises error if there is none *)
     named(m: Match name: String): String
+
+    (* ---- Every match, replacing, and splitting *)
+
+    (* Every match of r in s, left to right, none overlapping; an empty match
+     * where the previous match ended is not one *)
+    findAll(r: T s: String): vector.T(Match)
+    (* s with its first match, or every match, replaced by template expanded
+     * for the match: $n and ${n} are group n's text, $name and ${name} a
+     * named group's ($name taking as many letters, digits, and _ as there
+     * are, so that $1x is ${1x}), and $$ is a $. A group that does not exist
+     * or took no part expands to nothing, and a $ that begins none of these
+     * is itself, as Go's regexp.Expand has it *)
+    replaceFirst(r: T s: String template: String): String
+    replaceAll(r: T s: String template: String): String
+    (* s with every match replaced by what f makes of it *)
+    replaceWith(r: T s: String f: All(m: Match) String): String
+    (* The pieces of s between the matches of r, as Go's regexp.Split(s, -1)
+     * gives them: an empty match at s's start or end makes no empty piece, and
+     * an empty s is one empty piece (none, for the empty pattern) *)
+    split(r: T s: String): vector.T(String)
+    (* s with every byte that has a meaning in a pattern (\ . + * ? ( ) | [ ]
+     * { } ^ $) escaped with \, so that compile(quote(s)) matches s and
+     * nothing else *)
+    quote(s: String): String
 
     (* ---- Patterns as values. Each function makes a new pattern and changes
      * none of its arguments *)

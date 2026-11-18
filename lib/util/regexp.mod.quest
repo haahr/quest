@@ -7,6 +7,8 @@ import
     prog = util/regexpProgram : util/RegexpProgram
     vm = util/regexpMatch : util/RegexpMatch
     util/maybe : util/Maybe
+    collections/vector : collections/Vector
+    sb = util/stringBuilder : util/StringBuilder
     collections/bitset : collections/Bitset
     stringOp = string : StringOp
     ascii: Ascii
@@ -220,5 +222,172 @@ export
             let i = groupIndex(m.re name)
             if i < 0 then raise error end end
             group(m i)
+        end
+
+    (* ======================================================================
+     * Every match, replacing, and splitting, as Go's regexp does them
+     * ====================================================================== *)
+
+    let findAll(r: T s: String): vector.T(Match) =
+        begin
+            let all = vector.new(:Match)
+            let n = stringOp.length(s)
+            let var pos = 0
+            let var previousEnd = ~1
+            while pos <= n do
+                let found = vm.search(r.program s pos false false true)
+                if maybe.isNone(:Array(Int) found) then
+                    pos := n + 1
+                else
+                    let slots = maybe.unwrap(:Array(Int) found)
+                    let var accept = true
+                    if slots[1] is pos then
+                        (* an empty match: not one where the last match ended *)
+                        if slots[0] is previousEnd then accept := false end
+                        pos := pos + 1
+                    else
+                        pos := slots[1]
+                    end
+                    previousEnd := slots[1]
+                    if accept then
+                        vector.append(:Match all tuple let subject = s let slots = slots let re = r end)
+                    end
+                end
+            end
+            all
+        end
+
+    let isNameByte(b: Int): Bool =
+        {{b >= 48} /\ {b <= 57}} \/ {{b >= 65} /\ {b <= 90}} \/ {{b >= 97} /\ {b <= 122}} \/ {b is 95}
+
+    (* Appends template to buf, expanded for m (replaceAll's rules) *)
+    let expand(buf: sb.T template: String m: Match): Ok =
+        begin
+            let t = template
+            let n = stringOp.length(t)
+            let byteAt(i: Int): Int = ascii.val(stringOp.getChar(t i))
+            let var i = 0
+            while i < n do
+                let c = byteAt(i)
+                if {c isnot 36} \/ {{i + 1} >= n} then
+                    sb.char(buf stringOp.getChar(t i))
+                    i := i + 1
+                elsif byteAt(i + 1) is 36 then
+                    sb.char(buf '$')
+                    i := i + 2
+                else
+                    (* $name or ${name}; anything else is a $ by itself *)
+                    let brace = byteAt(i + 1) is 123
+                    let from = if brace then i + 2 else i + 1 end
+                    let var k = from
+                    while {k < n} andif isNameByte(byteAt(k)) do k := k + 1 end
+                    let closed = not(brace) orif {{k < n} andif {byteAt(k) is 125}}
+                    if {k is from} \/ not(closed) then
+                        sb.char(buf '$')
+                        i := i + 1
+                    else
+                        let name = stringOp.getSub(t from k - from)
+                        (* a number, without leading zeros, below 10^8, or else a
+                         * name *)
+                        let var number = 0
+                        for j = 0 upto {stringOp.length(name) - 1} do
+                            let d = ascii.val(stringOp.getChar(name j))
+                            if {number < 0} \/ {d < 48} \/ {d > 57} \/ {number >= 100000000} then number := ~1
+                            else number := {number * 10} + {d - 48}
+                            end
+                        end
+                        if {stringOp.length(name) > 1} andif {ascii.val(stringOp.getChar(name 0)) is 48} then
+                            number := ~1
+                        end
+                        let index = if number >= 0 then number else groupIndex(m.re name) end
+                        if {index >= 0} andif {index <= m.re.program.groups} andif {m.slots[2 * index] >= 0} then
+                            sb.str(buf group(m index))
+                        end
+                        i := if brace then k + 1 else k end
+                    end
+                end
+            end
+        end
+
+    (* s with its matches replaced by what replacement appends, every match
+     * or the first only (Go's regexp.replaceAll) *)
+    let replaced(r: T s: String every: Bool replacement: All(buf: sb.T m: Match) Ok): String =
+        begin
+            let buf = sb.new()
+            let n = stringOp.length(s)
+            let var lastEnd = 0
+            let var pos = 0
+            let var done = false
+            while {pos <= n} /\ not(done) do
+                let found = vm.search(r.program s pos false false true)
+                if maybe.isNone(:Array(Int) found) then
+                    done := true
+                else
+                    let slots = maybe.unwrap(:Array(Int) found)
+                    sb.str(buf stringOp.getSub(s lastEnd slots[0] - lastEnd))
+                    (* an empty match where the last one ended is not one,
+                     * unless it is at the start *)
+                    if {slots[1] > lastEnd} \/ {slots[0] is 0} then
+                        replacement(buf tuple let subject = s let slots = slots let re = r end)
+                        if not(every) then done := true end
+                    end
+                    lastEnd := slots[1]
+                    let width = if pos < n then 1 else 0 end
+                    if {pos + width} > slots[1] then pos := pos + width
+                    elsif {pos + 1} > slots[1] then pos := pos + 1
+                    else pos := slots[1]
+                    end
+                end
+            end
+            sb.str(buf stringOp.getSub(s lastEnd n - lastEnd))
+            sb.toString(buf)
+        end
+
+    let replaceFirst(r: T s: String template: String): String =
+        replaced(r s false fun(buf: sb.T m: Match): Ok expand(buf template m))
+    let replaceAll(r: T s: String template: String): String =
+        replaced(r s true fun(buf: sb.T m: Match): Ok expand(buf template m))
+    let replaceWith(r: T s: String f: All(m: Match) String): String =
+        replaced(r s true fun(buf: sb.T m: Match): Ok sb.str(buf f(m)))
+
+    let split(r: T s: String): vector.T(String) =
+        begin
+            let pieces = vector.new(:String)
+            let n = stringOp.length(s)
+            if {n is 0} andif not(stringOp.isEmpty(r.pattern)) then
+                vector.append(:String pieces "")
+            else
+                let all = findAll(r s)
+                let var pieceStart = 0
+                let var matchStart = 0
+                for i = 0 upto {vector.length(:Match all) - 1} do
+                    let m = vector.get(:Match all i)
+                    matchStart := m.slots[0]
+                    if m.slots[1] isnot 0 then
+                        vector.append(:String pieces stringOp.getSub(s pieceStart matchStart - pieceStart))
+                    end
+                    pieceStart := m.slots[1]
+                end
+                if matchStart isnot n then
+                    vector.append(:String pieces stringOp.getSub(s pieceStart n - pieceStart))
+                end
+            end
+            pieces
+        end
+
+    let quote(s: String): String =
+        begin
+            let buf = sb.new()
+            let special = "\\.+*?()|[]{}^$"
+            for i = 0 upto {stringOp.length(s) - 1} do
+                let c = stringOp.getChar(s i)
+                let var isSpecial = false
+                for j = 0 upto {stringOp.length(special) - 1} do
+                    if stringOp.getChar(special j) is c then isSpecial := true end
+                end
+                if isSpecial then sb.char(buf '\\') end
+                sb.char(buf c)
+            end
+            sb.toString(buf)
         end
 end

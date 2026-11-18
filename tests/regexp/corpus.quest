@@ -7,8 +7,13 @@
  * PATTERN and SUBJECT in hexadecimal (two digits a byte, - for none), and
  * FULL and PARTIAL the expected match of \A(?:PATTERN)\z and of PATTERN in
  * SUBJECT: - for none, or each group's start-end, comma-separated, - for a
- * group that took no part. It prints each case that differs, and then a line
- * "cases N failures M". *)
+ * group that took no part. A line of five fields is instead
+ *
+ *     PATTERN SUBJECT ALL SPLIT REPLACE
+ *
+ * with the expected spans of findAll, the pieces of split, and replaceAll by
+ * "<$0|$1>", as tests/regexp/oracle.go -all writes them. It prints each case
+ * that differs, and then a line "cases N failures M". *)
 
 import regexp = util/regexp : util/Regexp;
 import util/maybe : util/Maybe;
@@ -70,6 +75,45 @@ let written(m: maybe.T(regexp.Match) groups: Int): String =
         sb.toString(buf)
     end;
 
+let hex(s: String): String =
+    if stringOp.isEmpty(s) then "-"
+    else
+        let digits = "0123456789abcdef"
+        let buf = sb.new()
+        for i = 0 upto {stringOp.length(s) - 1} do
+            let b = ascii.val(stringOp.getChar(s i))
+            sb.char(buf stringOp.getChar(digits b / 16))
+            sb.char(buf stringOp.getChar(digits b % 16))
+        end
+        sb.toString(buf)
+    end;
+
+(* findAll's spans and split's pieces, as oracle.go -all writes them *)
+let spans(all: vector.T(regexp.Match)): String =
+    if vector.length(:regexp.Match all) is 0 then "-"
+    else
+        let buf = sb.new()
+        for i = 0 upto {vector.length(:regexp.Match all) - 1} do
+            let m = vector.get(:regexp.Match all i)
+            if i > 0 then sb.char(buf ';') end
+            sb.int(buf regexp.start(m 0))
+            sb.char(buf '-')
+            sb.int(buf regexp.start(m 0) + regexp.size(m 0))
+        end
+        sb.toString(buf)
+    end;
+let pieces(ps: vector.T(String)): String =
+    if vector.length(:String ps) is 0 then "-"
+    else
+        let buf = sb.new()
+        for i = 0 upto {vector.length(:String ps) - 1} do
+            if i > 0 then sb.char(buf ';') end
+            let p = vector.get(:String ps i)
+            sb.str(buf if stringOp.isEmpty(p) then "_" else hex(p) end)
+        end
+        sb.toString(buf)
+    end;
+
 let lines = strutil.splitlines(contents(system.args[1]));
 let counts = tuple let var cases = 0 let var failures = 0 end;
 let var lastPattern = "";
@@ -77,7 +121,8 @@ let var compiled = maybe.none(:Tuple re: regexp.T full: regexp.T end);
 let var compileError = "";
 for i = 0 upto {vector.length(:String lines) - 1} do
     let fields = strutil.split(vector.get(:String lines i) " ")
-    if vector.length(:String fields) is 4 then
+    let count = vector.length(:String fields)
+    if {count is 4} \/ {count is 5} then
         counts.cases := counts.cases + 1
         let patternHex = vector.get(:String fields 0)
         let subject = unhex(vector.get(:String fields 1))
@@ -108,6 +153,16 @@ for i = 0 upto {vector.length(:String lines) - 1} do
             end
         if maybe.isNone(:Tuple re: regexp.T full: regexp.T end compiled) then
             report("compile" compileError "a regexp")
+        elsif count is 5 then
+            (* ALL SPLIT REPLACE *)
+            let c = maybe.unwrap(:Tuple re: regexp.T full: regexp.T end compiled)
+            let all = spans(regexp.findAll(c.re subject))
+            let split = pieces(regexp.split(c.re subject))
+            let replaced = hex(regexp.replaceAll(c.re subject "<$0|$1>"))
+            if not(stringOp.equal(all wantFull)) then report("findAll" all wantFull) end
+            if not(stringOp.equal(split wantPartial)) then report("split" split wantPartial) end
+            let wantReplaced = vector.get(:String fields 4)
+            if not(stringOp.equal(replaced wantReplaced)) then report("replaceAll" replaced wantReplaced) end
         else
             let c = maybe.unwrap(:Tuple re: regexp.T full: regexp.T end compiled)
             let groups = regexp.groupCount(c.re)

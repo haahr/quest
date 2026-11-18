@@ -1,0 +1,155 @@
+import regexp = "util/regexp" : util/Regexp
+import vector = "collections/vector" : collections/Vector
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @12:45
+      let %2: String = prim <>(s, "\n") @12:59
+      let %3: Ok = call writer.putString(%1, %2) @12:28
+      return %3
+    }
+  }
+  funs {
+    fun all(pattern: String, s.1: String): Ok {
+      let r: regexp.T = call regexp.compile(pattern) @16:17
+      let found: vector.T(regexp.Match) = call regexp.findAll(r, s.1) @17:21
+      let %4: String = prim <>(s.1, "\":") @18:47
+      let %5: String = prim <>(" in \"", %4) @18:35
+      let %6: String = prim <>(pattern, %5) @18:24
+      var text: String = %6 @18:9
+      let %7: Int = call vector.length [regexp.Match](found) @19:25
+      let %8: Int = prim -(%7, 1) @19:25
+      var i: Int = 0 @19:9
+      let %9: Bool = prim <=(i, %8) @19:9
+      if %9 { @19:9
+        loop L1 {
+          let i.1: Int = i @19:9
+          let m: regexp.Match = call vector.get [regexp.Match](found, i.1) @20:21
+          let %10: Int = call regexp.start(m, 0) @21:45
+          let %11: String = call conv.int(%10) @21:36
+          let %12: Int = call regexp.start(m, 0) @21:83
+          let %13: Int = call regexp.size(m, 0) @21:103
+          let %14: Int = prim +(%12, %13) @21:83
+          let %15: String = call conv.int(%14) @21:74
+          let %16: String = prim <>("-", %15) @21:67
+          let %17: String = prim <>(%11, %16) @21:36
+          let %18: String = prim <>(" ", %17) @21:29
+          let %19: String = prim <>(text, %18) @21:21
+          text := %19 @21:13
+          let %20: Bool = prim is(i, %8) @19:9
+          if %20 { @19:9
+            break L1 @19:9
+          }
+          let %21: Int = prim +(i, 1) @19:9
+          i := %21 @19:9
+        }
+      }
+      let %22: Ok = call print(text) @23:9
+      return %22
+    }
+  }
+  funs {
+    fun replace(pattern.1: String, s.2: String, template: String): Ok {
+      let r.1: regexp.T = call regexp.compile(pattern.1) @28:17
+      let %23: String = call regexp.replaceFirst(r.1, s.2, template) @29:87
+      let %24: String = call regexp.replaceAll(r.1, s.2, template) @30:31
+      let %25: String = prim <>(%24, "\"") @30:31
+      let %26: String = prim <>("\" all \"", %25) @30:16
+      let %27: String = prim <>(%23, %26) @29:87
+      let %28: String = prim <>("\": first \"", %27) @29:69
+      let %29: String = prim <>(template, %28) @29:57
+      let %30: String = prim <>("\" by \"", %29) @29:43
+      let %31: String = prim <>(s.2, %30) @29:38
+      let %32: String = prim <>(" in \"", %31) @29:26
+      let %33: String = prim <>(pattern.1, %32) @29:15
+      let %34: Ok = call print(%33) @29:9
+      return %34
+    }
+  }
+  funs {
+    fun split(pattern.2: String, s.3: String): Ok {
+      let %35: regexp.T = call regexp.compile(pattern.2) @35:35
+      let pieces: vector.T(String) = call regexp.split(%35, s.3) @35:22
+      let %36: String = prim <>(s.3, "\":") @36:51
+      let %37: String = prim <>(" splits \"", %36) @36:35
+      let %38: String = prim <>(pattern.2, %37) @36:24
+      var text.1: String = %38 @36:9
+      let %39: Int = call vector.length [String](pieces) @37:25
+      let %40: Int = prim -(%39, 1) @37:25
+      var i.2: Int = 0 @37:9
+      let %41: Bool = prim <=(i.2, %40) @37:9
+      if %41 { @37:9
+        loop L2 {
+          let i.3: Int = i.2 @37:9
+          let %42: String = call vector.get [String](pieces, i.3) @38:37
+          let %43: String = prim <>(%42, "]") @38:37
+          let %44: String = prim <>(" [", %43) @38:29
+          let %45: String = prim <>(text.1, %44) @38:21
+          text.1 := %45 @38:13
+          let %46: Bool = prim is(i.2, %40) @37:9
+          if %46 { @37:9
+            break L2 @37:9
+          }
+          let %47: Int = prim +(i.2, 1) @37:9
+          i.2 := %47 @37:9
+        }
+      }
+      let %48: Ok = call print(text.1) @40:9
+      return %48
+    }
+  }
+  do call all("a", "banana") @44:1
+  do call all("an", "banana") @45:1
+  do call all("x*", "abc") @46:1
+  do call all("a*", "baaac") @47:1
+  do call all("a*?", "aa") @48:1
+  do call all("\\b", "hi there") @49:1
+  do call all("", "") @50:1
+  do call all("(a)|b", "abab") @51:1
+  do call all("q", "abc") @52:1
+  do call replace("a", "banana", "o") @55:1
+  do call replace("(\\w+)@(\\w+)", "me@here, you@there", "$2 at $1") @56:1
+  do call replace("(?P<k>\\w+)=(?P<v>\\w+)", "a=1 b=2", "${v}:${k}") @57:1
+  do call replace("(\\w)", "ab", "$1x|${1}x") @58:1
+  do call replace("(a)", "a", "[$$][$][$}][${][${a-}][$9][$01][$0]") @59:1
+  do call replace("(a)|(b)", "ab", "<$1$2>") @60:1
+  do call replace("x*", "abc", "-") @61:1
+  do call replace("a*", "baaac", "-") @62:1
+  do call replace("q", "abc", "-") @63:1
+  let upper: regexp.T = call regexp.compile("[a-z]+") @64:13
+  funs {
+    fun f(m.1: regexp.Match): String {
+      let %49: Int = call regexp.size(m.1, 0) @66:21
+      let %50: String = call conv.int(%49) @66:12
+      let %51: String = call regexp.group(m.1, 0) @66:49
+      let %52: String = prim <>(%51, ">") @66:49
+      let %53: String = prim <>(":", %52) @66:42
+      let %54: String = prim <>(%50, %53) @66:12
+      let %55: String = prim <>("<", %54) @66:5
+      return %55
+    }
+  }
+  let %56: String = call regexp.replaceWith(upper, "two words", f) @65:7
+  do call print(%56) @65:1
+  do call split(",", "a,b,,c,") @69:1
+  do call split(",", ",a") @70:1
+  do call split(",", "") @71:1
+  do call split("x*", "abc") @72:1
+  do call split("", "abc") @73:1
+  do call split("", "") @74:1
+  do call split("\\s+", "  two   words ") @75:1
+  do call split("q", "abc") @76:1
+  let quoted: String = call regexp.quote("1.5*[x]+(y)? {a|b} ^$ \\ end") @79:14
+  do call print(quoted) @80:1
+  let %57: regexp.T = call regexp.compile(quoted) @81:32
+  let %58: Bool = call regexp.matches(%57, "1.5*[x]+(y)? {a|b} ^$ \\ end") @81:17
+  let %59: String = call conv.bool(%58) @81:7
+  do call print(%59) @81:1
+  let %60: regexp.T = call regexp.compile(quoted) @82:32
+  let %61: Bool = call regexp.matches(%60, "1x5*[x]+(y)? {a|b} ^$ \\ end") @82:17
+  let %62: String = call conv.bool(%61) @82:7
+  do call print(%62) @82:1
+}
+

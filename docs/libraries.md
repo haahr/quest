@@ -431,6 +431,90 @@ end
 
 ---
 
+### 1.9. `util/regexp : util/Regexp`
+
+Regular expressions in RE2's syntax, matched in time linear in the subject: no pattern takes exponential time on any
+subject, since there are no backreferences or lookaround. Matching is on bytes, leftmost-first (as Perl, Python, RE2,
+and Go match), and offsets are a start and a size, as `stringOp.getSub` takes them. A pattern is a string, compiled,
+or a value, built by functions (as in OCaml's `re`) and compiled with `compileRE`; a pattern so built needs no
+escaping and cannot have a syntax error. Quest alone, so it runs alike on every target, a browser included. The
+syntax and the design are [regexp-plan.md](regexp-plan.md)'s (§2–§4); its implementation is three modules the
+interface does not name, `util/regexpSyntax` (the parser), `util/regexpProgram` (the compiler, as Go's
+`regexp/syntax` compiles), and `util/regexpMatch` (a Pike VM). `tests/source/stdlib/regexp_*.quest` test it, and
+`tests/python/test_regexp.py` checks it against RE2's corpora and Go's `regexp`.
+
+#### Interface Summary
+
+```quest
+interface Regexp
+import
+    util/maybe : util/Maybe
+    collections/vector : collections/Vector
+export
+    Def SyntaxError = Tuple message: String offset: Int end
+    syntax: Exception(SyntaxError)      (* a pattern that is not one: why, and where in it *)
+    error: Exception                    (* an argument out of range *)
+
+    T::TYPE                             (* a compiled expression, immutable *)
+    compile(pattern: String): T
+    pattern(r: T): String
+    groupCount(r: T): Int
+    groupIndex(r: T name: String): Int  (* ~1 for no such group *)
+
+    matches(r: T s: String): Bool       (* the whole of s *)
+    contains(r: T s: String): Bool      (* somewhere in s *)
+
+    Match::TYPE
+    find(r: T s: String): maybe.T(Match)
+    findFrom(r: T s: String start: Int): maybe.T(Match)   (* ^ and \b still see the bytes before start *)
+    matchAt(r: T s: String start: Int): maybe.T(Match)    (* a match beginning at start *)
+    subject(m: Match): String
+    matched(m: Match i: Int): Bool      (* group 0 is the whole match *)
+    start(m: Match i: Int): Int         (* ~1 for a group that took no part *)
+    size(m: Match i: Int): Int
+    group(m: Match i: Int): String      (* "" for a group that took no part *)
+    named(m: Match name: String): String
+
+    findAll(r: T s: String): vector.T(Match)              (* none overlapping, as Go's FindAll *)
+    replaceFirst(r: T s: String template: String): String (* $1, ${1}, $name, ${name}, $$, as Go's Expand *)
+    replaceAll(r: T s: String template: String): String
+    replaceWith(r: T s: String f: All(m: Match) String): String
+    split(r: T s: String): vector.T(String)              (* as Go's Split(s, -1) *)
+    quote(s: String): String            (* s escaped: compile(quote(s)) matches s only *)
+
+    RE::TYPE                            (* a pattern as a value *)
+    parse(pattern: String): RE
+    compileRE(re: RE): T
+    literal(s: String): RE
+    set(s: String): RE                  (* any one byte of s *)
+    range(lo: Char hi: Char): RE
+    complement(re: RE): RE              (* of a pattern that matches one byte *)
+    anyByte: RE
+    notNewline: RE                      (* the syntax's . *)
+    digit: RE
+    wordByte: RE
+    space: RE
+    seq(res: Array(RE)): RE
+    alt(res: Array(RE)): RE             (* the first preferred *)
+    repeat(re: RE min: Int max: Int greedy: Bool): RE     (* max ~1 for no limit *)
+    star(re: RE): RE
+    plus(re: RE): RE
+    opt(re: RE): RE
+    capture(re: RE): RE
+    namedCapture(name: String re: RE): RE
+    caseless(re: RE): RE                (* ASCII letters of either case *)
+    lineStart: RE
+    lineEnd: RE
+    textStart: RE
+    textEnd: RE
+    wordBoundary: RE
+    notWordBoundary: RE
+    show(re: RE): String                (* re simplified and written out, for tests *)
+end
+```
+
+---
+
 ## 2. Collections (`lib/collections/`)
 
 ### 2.1. `collections/vector : collections/Vector`
