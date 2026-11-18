@@ -1,8 +1,8 @@
 # Plan: A Regular Expression Library in Quest
 
 A library of regular expressions, `util/regexp : util/Regexp`, written in Quest with no externals, so that it runs
-alike on every target: the interpreters, C, arm64, the JIT, and WebAssembly, in a browser included. Steps 1 to 3,
-the library, are built (§6).
+alike on every target: the interpreters, C, arm64, the JIT, and WebAssembly, in a browser included. All five steps
+are built (§6).
 
 ## 1. Decisions
 
@@ -343,26 +343,33 @@ range, to get the captures. It is the largest piece and the one most worth leavi
    assertions as though they held) or to a multi-byte literal prefix's next occurrence; a pattern every match of
    which begins at `\A` tried at the start only; and a pattern that is bytes and nothing else searched for directly.
    The tests that make no match already ran without capture slots. The corpora and RE2's exhaustive tests pass.
-5. **The benchmark**, and then the lazy DFA if it is wanted.
-   *Benchmark built 2026-11-17:* `benchmarks/regexp/`, eight workloads in Quest, Go, and Python. After step 4, on
-   ten repetitions (seconds; Go's `regexp`, like this library, does not backtrack):
+5. **The benchmark**, and then the lazy DFA if it is wanted: instead, a bounded backtracker (below).
+   *Benchmark built 2026-11-17:* `benchmarks/regexp/`, eight workloads in Quest, Go, and Python. After step 4, the
+   workloads that record groups were 3 to 8 times Go's, where Go uses not its Pike VM but a bounded backtracker.
+   Reviewing them (2026-11-17), the user chose that backtracker over the lazy DFA, which finds whether and where a
+   match is but records no groups, where this library was already even with Go: so there is no DFA. The backtracker
+   (Go's `regexp/backtrack.go`) follows one path at a time in priority order, its first match the leftmost-first one,
+   and visits each (instruction, offset) at most once in all, so its time is linear too; it records groups for
+   programs of up to 500 instructions over subjects with up to 256K visits, and the Pike VM does the rest. Its visited
+   marks are generation numbers, so a search clears nothing. Ten repetitions, in seconds:
 
-   | Workload | util/regexp | Go | Python | /Go |
-   | :--- | ---: | ---: | ---: | ---: |
-   | literal | 0.12 | 0.06 | 0.14 | 2.1 |
-   | caseless | 0.65 | 1.09 | 0.45 | 0.60 |
-   | alternation | 0.62 | 1.45 | 0.66 | 0.42 |
-   | prefix (one group) | 0.50 | 0.15 | 0.20 | 3.3 |
-   | date (six groups) | 2.65 | 0.34 | 0.38 | 7.8 |
-   | anchored (one group) | 0.42 | 0.13 | 0.23 | 3.2 |
-   | tokens (`findAll`) | 1.41 | 1.20 | 0.64 | 1.2 |
-   | replace (`replaceAll`) | 0.62 | 0.63 | 0.41 | 0.99 |
+   | Workload | Pike VM | + step 4 | + backtracker | Go | Python | /Go |
+   | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+   | literal | (cold) | 0.12 | 0.12 | 0.06 | 0.14 | 2.1 |
+   | caseless | 1.66 | 0.65 | 0.67 | 1.15 | 0.58 | 0.58 |
+   | alternation | 3.10 | 0.62 | 0.69 | 1.51 | 0.67 | 0.45 |
+   | prefix (one group) | 2.53 | 0.50 | 0.33 | 0.16 | 0.21 | 2.1 |
+   | date (six groups) | 4.32 | 2.65 | 0.35 | 0.35 | 0.40 | 1.01 |
+   | anchored (one group) | 0.64 | 0.42 | 0.22 | 0.14 | 0.23 | 1.6 |
+   | tokens (`findAll`) | 2.45 | 1.41 | 1.42 | 1.24 | 0.67 | 1.15 |
+   | replace (`replaceAll`) | 1.00 | 0.62 | 0.61 | 0.64 | 0.43 | 0.95 |
 
-   The lazy DFA awaits the user's review of these (2026-11-17).
+   The corpora and RE2's exhaustive tests pass through the backtracker, and the linear-time test runs at 20,000
+   bytes, within its limits, as well as at 100,000.
 
-Steps 1 to 3 are the library; 4 and 5 make it faster without changing its interface. **Landing** (user,
-2026-11-17): steps 1 to 3 were built and committed one by one, each with its own tests run as it landed (its goldens
-in every phase, `run_tests.py -k`, with both compilers); then, rather than a full `tools/check`, since the library
-changes nothing that existed, a targeted set: its tests in the stress modes and in the ssac, arm64-program, and
-arm64-whole modes, the unit tests that read all of `lib/` (the ABI corpus, the externals tables, the standard
-library's modules), and the wasm page's check; then the user was asked before the push (cb7f2303).
+Steps 1 to 3 are the library; 4 and 5 made it faster without changing its interface. All five are built. **Landing**
+(user, 2026-11-17): steps 1 to 3 were built and committed one by one, each with its own tests run as it landed (its
+goldens in every phase, `run_tests.py -k`, with both compilers); then, rather than a full `tools/check`, since the
+library changes nothing that existed, a targeted set: its tests in the stress modes and in the ssac, arm64-program, and
+arm64-whole modes, the unit tests that read all of `lib/` (the ABI corpus, the externals tables, the standard library's
+modules), and the wasm page's check; then the user was asked before the push (cb7f2303).

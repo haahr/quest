@@ -63,6 +63,14 @@ export
         stack: Array(Int)
         unset: Array(Int)
         best: Array(Int)
+        (* The backtracker's: the slots of the path being followed; a mark
+         * for each (instruction, offset) visited, equal to generation if
+         * the current search visited it; and the jobs still to do, three
+         * entries each *)
+        slots: Array(Int)
+        var visited: Array(Int)
+        var generation: Int
+        var jobs: Array(Int)
     end
 
     (* The scratch the last search made, kept for the next search of its
@@ -93,6 +101,10 @@ export
                     let stack = array of({6 * size} + 4 0)
                     let unset = array of(nslots ~1)
                     let best = array of(nslots ~1)
+                    let slots = array of(nslots ~1)
+                    let var visited = array of :Int end
+                    let var generation = 0
+                    let var jobs = array of(96 0)
                 end
                 kept.last := maybe.some(:Scratch k)
                 k
@@ -124,6 +136,158 @@ export
             end
         end
 
+    (* ======================================================================
+     * The bounded backtracker (Go's regexp/backtrack.go)
+     * ====================================================================== *)
+
+    (* A search that records groups, of a small program over a short
+     * subject, follows one path at a time, in priority order, as a
+     * backtracking matcher does, so that the first match it meets is the
+     * leftmost-first one; but it visits each (instruction, offset) at most
+     * once in all, since a path from one that failed fails again, so its
+     * time is linear too: at most the program's size times the subject's.
+     * Go's limits: programs of up to 500 instructions, and 256K visits *)
+    let maxBacktrackProgram = 500
+    let maxBacktrackVisits = 262144
+
+    (* A job's kinds: follow the instruction (already visited); take a
+     * split's second branch; put a slot back as it was *)
+    let jobFollow = 0
+    let jobSecond = 1
+    let jobRestore = 2
+
+    let backtrack(p: prog.Program s: String start: Int anchored: Bool full: Bool nslots: Int): maybe.T(Array(Int)) =
+        begin
+            let n = stringOp.length(s)
+            let width = n + 1
+            let sc = obtain(p nslots)
+            let need = {extent p.op} * width
+            if extent sc.visited < need then sc.visited := array of(need 0) end
+            sc.generation := sc.generation + 1
+            let generation = sc.generation
+            let visited = sc.visited
+            let slots = sc.slots
+            (* the jobs' top, in a cell, since the closures change it *)
+            let st = tuple let var top = 0 end
+
+            (* Marks (pc, pos) visited; whether it was not before *)
+            let visit(pc: Int pos: Int): Bool =
+                begin
+                    let i = {pc * width} + pos
+                    {visited[i] isnot generation} andif begin visited[i] := generation true end
+                end
+            let push(pc: Int kind: Int pos: Int): Ok =
+                begin
+                    if {st.top + 3} > extent sc.jobs then
+                        let grown = array of({2 * extent sc.jobs} 0)
+                        for i = 0 upto {st.top - 1} do grown[i] := sc.jobs[i] end
+                        sc.jobs := grown
+                    end
+                    let jobs = sc.jobs
+                    jobs[st.top] := pc
+                    jobs[st.top + 1] := kind
+                    jobs[st.top + 2] := pos
+                    st.top := st.top + 3
+                end
+
+            (* Whether a match begins at pos0, its slots then in slots *)
+            let attempt(pos0: Int): Bool =
+                begin
+                    st.top := 0
+                    if visit(0 pos0) then push(0 jobFollow pos0) end
+                    let var found = false
+                    while {st.top > 0} /\ not(found) do
+                        st.top := st.top - 3
+                        let jobs = sc.jobs
+                        let var pc = jobs[st.top]
+                        let kind = jobs[st.top + 1]
+                        let var pos = jobs[st.top + 2]
+                        if kind is jobRestore then
+                            slots[p.x[pc]] := pos
+                        else
+                            (* the path from the job, until it fails or matches *)
+                            let var check = false
+                            if kind is jobSecond then
+                                pc := p.y[pc]
+                                check := true
+                            end
+                            let var going = true
+                            while going do
+                                if check andif not(visit(pc pos)) then
+                                    going := false
+                                else
+                                    check := true
+                                    let op = p.op[pc]
+                                    if op is prog.opByte then
+                                        if {pos < n} andif {byteAt(s pos) is p.x[pc]} then
+                                            pos := pos + 1
+                                            pc := pc + 1
+                                        else going := false
+                                        end
+                                    elsif op is prog.opClass then
+                                        if {pos < n} andif p.classes[{256 * p.x[pc]} + byteAt(s pos)] then
+                                            pos := pos + 1
+                                            pc := pc + 1
+                                        else going := false
+                                        end
+                                    elsif op is prog.opSplit then
+                                        push(pc jobSecond pos)
+                                        pc := p.x[pc]
+                                    elsif op is prog.opJump then
+                                        pc := p.x[pc]
+                                    elsif op is prog.opSave then
+                                        let slot = p.x[pc]
+                                        if slot < nslots then
+                                            push(pc jobRestore slots[slot])
+                                            slots[slot] := pos
+                                        end
+                                        pc := pc + 1
+                                    elsif op is prog.opAssert then
+                                        if holds(p.x[pc] s pos n) then pc := pc + 1 else going := false end
+                                    else
+                                        (* the match *)
+                                        if not(full) orif {pos is n} then found := true end
+                                        going := false
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    found
+                end
+
+            let skip = p.startSet
+            let canSkip = extent skip > 0
+            let once = anchored \/ p.anchored
+            for k = 0 upto {nslots - 1} do slots[k] := ~1 end
+            let var pos = start
+            let var found = false
+            let var done = false
+            while not(done) do
+                if canSkip andif not(once) then
+                    while {pos < n} andif not(skip[byteAt(s pos)]) do pos := pos + 1 end
+                end
+                if {pos > n} \/ {canSkip andif {pos >= n}} then
+                    done := true
+                elsif attempt(pos) then
+                    found := true
+                    done := true
+                elsif once \/ {pos >= n} then
+                    done := true
+                else
+                    pos := pos + 1
+                end
+            end
+            sc.busy := false
+            if found then
+                let result = array of(nslots ~1)
+                for k = 0 upto {nslots - 1} do result[k] := slots[k] end
+                maybe.some(:Array(Int) result)
+            else
+                maybe.none(:Array(Int))
+            end
+        end
+
     let search(p: prog.Program s: String start: Int anchored: Bool full: Bool captures: Bool): maybe.T(Array(Int)) =
         begin
             let n = stringOp.length(s)
@@ -131,6 +295,9 @@ export
             let nslots = if captures then 2 * {p.groups + 1} else 0 end
             if maybe.isSome(:String p.literal) then
                 literalSearch(p maybe.unwrap(:String p.literal) s start anchored full nslots)
+            elsif {nslots > 0} andif {{extent p.op} <= maxBacktrackProgram}
+                andif {{{extent p.op} * {stringOp.length(s) + 1}} <= maxBacktrackVisits} then
+                backtrack(p s start anchored full nslots)
             else
             let scratch = obtain(p nslots)
             let var cur = scratch.first

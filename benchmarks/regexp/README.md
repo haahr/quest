@@ -33,5 +33,6 @@ after a build pays for loading the program and its input. Wait for a quiet machi
 
 The baselines, in order: `0-pike-vm.txt`, the Pike VM alone; `1-scratch.txt`, with each search's scratch reused;
 `2-fast-paths.txt`, with the start set, anchoring, and literal patterns; `3-prefix.txt`, with a multi-byte prefix
-skipped to. The first three were taken before the untimed first run, so their first row, `literal`, includes the cold
-start (about 0.3 s more); the other rows are unaffected.
+skipped to; `4-backtracker.txt`, with the bounded backtracker recording groups. The first three were taken before
+the untimed first run, so their first row, `literal`, includes the cold start (about 0.3 s more); the other rows are
+unaffected.

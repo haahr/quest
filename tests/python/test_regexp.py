@@ -280,12 +280,16 @@ class RegexpTest(unittest.TestCase):
         self.check_wasm("node")
 
     def test_linear_time(self):
-        """What a backtracking matcher takes exponential time over, against
-        100,000 bytes"""
-        a = b"a" * 100_000
-        cases = [f"{hexed(p)} {hexed(s)} - -" for p, s in
-                 ((b"(a|aa)*b", a), (b"(a*)*b", a), (b"(?:a+)+b", a), (b"(a|a)*b", a))]
-        cases.append(f"{hexed(b'(a|aa)*')} {hexed(a)} 0-100000,99999-100000 0-100000,99999-100000")
+        """What a backtracking matcher takes exponential time over: against
+        100,000 bytes, which the Pike VM matches, and 20,000, short enough for
+        the bounded backtracker (util/regexpMatch), whose visits are bounded
+        instead"""
+        cases = []
+        for size in (100_000, 20_000):
+            a = b"a" * size
+            cases += [f"{hexed(p)} {hexed(s)} - -" for p, s in
+                      ((b"(a|aa)*b", a), (b"(a*)*b", a), (b"(?:a+)+b", a), (b"(a|a)*b", a))]
+            cases.append(f"{hexed(b'(a|aa)*')} {hexed(a)} 0-{size},{size - 1}-{size} 0-{size},{size - 1}-{size}")
         began = time.monotonic()
         self.check(cases, timeout=60)
         self.assertLess(time.monotonic() - began, 30)
