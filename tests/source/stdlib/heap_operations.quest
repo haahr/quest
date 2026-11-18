@@ -1,0 +1,108 @@
+(* Standard library: collections/heap (docs/collections-plan.md section 2.3):
+ * heapsort of random vectors by pushes and by fromVector, against
+ * util/sort; a greatest-first heap by sort.reverse; duplicates; pushPop;
+ * strings; and the errors of an empty heap *)
+
+import collections/heap : collections/Heap;
+import collections/vector : collections/Vector;
+import util/sort : util/Sort;
+import random = util/random : util/Random;
+import writer: Writer;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let check(what: String holds: Bool): Ok = print(what <> ": " <> conv.bool(holds));
+let r = random.new(1989);
+
+(* A vector of n random Ints below range *)
+let randoms(n: Int range: Int): vector.T(Int) =
+    begin
+        let v = vector.new(:Int)
+        for i = 1 upto n do vector.append(:Int v random.below(r range)) end
+        v
+    end;
+
+(* Whether popping h gives v's elements in sort's order by compare *)
+let drainsSorted(h: heap.T(Int) v: vector.T(Int) compare: All(a: Int b: Int) Int): Bool =
+    begin
+        let want = sort.sortedVector(:Int v compare)
+        let var same = heap.size(:Int h) is vector.length(:Int want)
+        for i = 0 upto {vector.length(:Int want) - 1} do
+            if heap.pop(:Int h) isnot vector.get(:Int want i) then same := false end
+        end
+        same /\ heap.empty(:Int h)
+    end;
+
+(* 1. Heapsort, by pushes and by fromVector, of several sizes *)
+let sizes = array of 0 1 2 3 7 8 31 100 end;
+let var pushed = true;
+let var built = true;
+for k = 0 upto {extent sizes - 1} do
+    let v = randoms(sizes[k] 50)
+    let h = heap.new(:Int sort.intCompare)
+    for i = 0 upto {vector.length(:Int v) - 1} do heap.push(:Int h vector.get(:Int v i)) end
+    if not(drainsSorted(h v sort.intCompare)) then pushed := false end
+    let before = vector.copy(:Int v)
+    let f = heap.fromVector(:Int v sort.intCompare)
+    if not(drainsSorted(f v sort.intCompare)) then built := false end
+    for i = 0 upto {vector.length(:Int v) - 1} do
+        if vector.get(:Int v i) isnot vector.get(:Int before i) then built := false end
+    end
+end;
+check("pushes then pops sort" pushed);
+check("fromVector then pops sort, the vector unchanged" built);
+
+(* 2. Greatest first, by sort.reverse *)
+let greatest = sort.reverse(:Int sort.intCompare);
+let gv = randoms(100 1000000);
+check("greatest first" drainsSorted(heap.fromVector(:Int gv greatest) gv greatest));
+
+(* 3. Interleaved pushes and pops, against a sorted model *)
+let h = heap.new(:Int sort.intCompare);
+let model = vector.new(:Int);
+let var agrees = true;
+for step = 1 upto 400 do
+    if {random.below(r 3) > 0} \/ vector.empty(:Int model) then
+        let x = random.below(r 100)
+        heap.push(:Int h x)
+        (* the model kept sorted, x after its equals *)
+        let at = sort.bisectRightVector(:Int model x sort.intCompare)
+        vector.append(:Int model x)
+        for j = {vector.length(:Int model) - 1} downto {at + 1} do
+            vector.set(:Int model j vector.get(:Int model j - 1))
+        end
+        vector.set(:Int model at x)
+    else
+        let least = vector.get(:Int model 0)
+        vector.delete(:Int model 0)
+        if heap.peek(:Int h) isnot least then agrees := false end
+        if heap.pop(:Int h) isnot least then agrees := false end
+    end
+    if heap.size(:Int h) isnot vector.length(:Int model) then agrees := false end
+end;
+check("pushes and pops agree with a model" agrees);
+check("elements are the heap's" vector.length(:Int heap.elements(:Int h)) is heap.size(:Int h));
+
+(* 4. pushPop *)
+let p = heap.fromVector(:Int vector.fromArray(:Int array of 5 3 8 end) sort.intCompare);
+print("pushPop 1: " <> conv.int(heap.pushPop(:Int p 1)) <> ", pushPop 4: " <> conv.int(heap.pushPop(:Int p 4))
+    <> ", then " <> conv.int(heap.pop(:Int p)) <> " " <> conv.int(heap.pop(:Int p)) <> " "
+        <> conv.int(heap.pop(:Int p)));
+let e = heap.new(:Int sort.intCompare);
+print("pushPop on empty: " <> conv.int(heap.pushPop(:Int e 9)) <> ", size " <> conv.int(heap.size(:Int e)));
+
+(* 5. Strings, and clear *)
+let words = heap.new(:String sort.stringCompare);
+let ws = array of "pear" "fig" "banana" "kiwi" "apple" "fig" end;
+for i = 0 upto {extent ws - 1} do heap.push(:String words ws[i]) end;
+let var order = "";
+while not(heap.empty(:String words)) do order := order <> " " <> heap.pop(:String words) end;
+print("words:" <> order);
+heap.push(:String words "x");
+heap.clear(:String words);
+check("cleared" heap.empty(:String words));
+
+(* 6. The errors *)
+let err(what: String f: All() Int): Ok = print(what <> ": " <> try conv.int(f()) when heap.error then "heap.error" end);
+err("pop of empty" fun(): Int heap.pop(:Int e));
+err("peek of empty" fun(): Int heap.peek(:Int e))

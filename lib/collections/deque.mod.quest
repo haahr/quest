@@ -1,0 +1,151 @@
+(* Standard Library: a double-ended queue, a ring buffer in an array
+ * (docs/collections-plan.md section 2.4) *)
+
+module deque : Deque
+import
+    collections/vector : collections/Vector
+export
+    let error: Exception = exception error: Ok end
+
+    (* The elements are data[(head + i) % extent data] for i from 0 to count -
+     * 1. As vector does, a new array is filled with an element at hand, a
+     * vacated slot is filled with one still held (so that the deque keeps no
+     * element alive that it has let go), and an emptied deque drops its array.
+     * changes counts the changes, so that forEach notices one made while it
+     * walks *)
+    Let T = Fun(A::TYPE) Tuple
+        var data: Array(A)
+        var head: Int
+        var count: Int
+        var capacity: Int
+        var changes: Int
+    end
+
+    let floorSize = 8
+
+    let new(A::TYPE): T(A) =
+        tuple var data = array of :A end var head = 0 var count = 0 var capacity = 0 var changes = 0 end
+
+    let newWithCapacity(A::TYPE)(capacity: Int): T(A) =
+        begin
+            if capacity < 0 then raise error end end
+            tuple var data = array of :A end var head = 0 var count = 0 var capacity = capacity var changes = 0 end
+        end
+
+    let length(A::TYPE)(d: T(A)): Int = d.count
+    let empty(A::TYPE)(d: T(A)): Bool = d.count is 0
+
+    let slot(A::TYPE)(d: T(A) i: Int): Int = {d.head + i} % extent d.data
+
+    (* Room for one more, filler filling the new array *)
+    let room(A::TYPE)(d: T(A) filler: A): Ok =
+        if d.count is extent d.data then
+            let size = if extent d.data is 0 then if d.capacity > floorSize then d.capacity else floorSize end
+                else 2 * extent d.data end
+            let grown = array of(size filler)
+            for i = 0 upto {d.count - 1} do grown[i] := d.data[slot(:A d i)] end
+            d.data := grown
+            d.head := 0
+        end
+
+    let pushBack(A::TYPE)(d: T(A) elem: A): Ok =
+        begin
+            room(:A d elem)
+            d.data[slot(:A d d.count)] := elem
+            d.count := d.count + 1
+            d.changes := d.changes + 1
+        end
+
+    let pushFront(A::TYPE)(d: T(A) elem: A): Ok =
+        begin
+            room(:A d elem)
+            d.head := {{d.head - 1} + extent d.data} % extent d.data
+            d.data[d.head] := elem
+            d.count := d.count + 1
+            d.changes := d.changes + 1
+        end
+
+    (* Lets slot k go, filling it with element keep, unless the deque is
+     * emptied *)
+    let release(A::TYPE)(d: T(A) k: Int keep: Int): Ok =
+        begin
+            d.count := d.count - 1
+            d.changes := d.changes + 1
+            if d.count is 0 then
+                d.data := array of :A end
+                d.head := 0
+            else
+                d.data[k] := d.data[keep]
+            end
+        end
+
+    let popFront(A::TYPE)(d: T(A)): A =
+        begin
+            if d.count is 0 then raise error end end
+            let k = d.head
+            let x = d.data[k]
+            let next = slot(:A d 1)
+            d.head := next
+            release(:A d k next)
+            x
+        end
+
+    let popBack(A::TYPE)(d: T(A)): A =
+        begin
+            if d.count is 0 then raise error end end
+            let k = slot(:A d d.count - 1)
+            let x = d.data[k]
+            release(:A d k d.head)
+            x
+        end
+
+    let front(A::TYPE)(d: T(A)): A = begin if d.count is 0 then raise error end end d.data[d.head] end
+    let back(A::TYPE)(d: T(A)): A = begin if d.count is 0 then raise error end end d.data[slot(:A d d.count - 1)] end
+
+    let get(A::TYPE)(d: T(A) index: Int): A =
+        begin
+            if {index < 0} \/ {index >= d.count} then raise error end end
+            d.data[slot(:A d index)]
+        end
+
+    let set(A::TYPE)(d: T(A) index: Int value: A): Ok =
+        begin
+            if {index < 0} \/ {index >= d.count} then raise error end end
+            d.data[slot(:A d index)] := value
+            d.changes := d.changes + 1
+        end
+
+    let clear(A::TYPE)(d: T(A)): Ok =
+        begin
+            d.data := array of :A end
+            d.head := 0
+            d.count := 0
+            d.changes := d.changes + 1
+        end
+
+    let toVector(A::TYPE)(d: T(A)): vector.T(A) =
+        begin
+            let v = vector.newWithCapacity(:A d.count)
+            for i = 0 upto {d.count - 1} do vector.append(:A v d.data[slot(:A d i)]) end
+            v
+        end
+
+    let fromVector(A::TYPE)(v: vector.T(A)): T(A) =
+        begin
+            let d = new(:A)
+            for i = 0 upto {vector.length(:A v) - 1} do pushBack(:A d vector.get(:A v i)) end
+            d
+        end
+
+    let copy(A::TYPE)(d: T(A)): T(A) = fromVector(:A toVector(:A d))
+
+    let forEach(A::TYPE)(d: T(A) action: All(elem: A) Ok): Ok =
+        begin
+            let changes = d.changes
+            for i = 0 upto {d.count - 1} do
+                if d.changes isnot changes then raise error end end
+                action(d.data[slot(:A d i)])
+                if d.changes isnot changes then raise error end end
+            end
+        end
+end

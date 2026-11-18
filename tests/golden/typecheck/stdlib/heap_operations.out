@@ -1,0 +1,946 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('heap') : 'Heap')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('vector') : 'Vector')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('sort') : 'Sort')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('random') : 'Random')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'check' :type Fun(what: String holds: Bool): Ok
+      :value (TypedFun :params (('what' : String) ('holds' : Bool)) :type Fun(what: String holds: Bool): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedInfix '<>' :type String
+              :left (TypedVar 'what' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ': ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedVar 'holds' :type Bool)
+                  ))))
+          ))))
+    (TypedLetValue 'r' :type random.T
+      :value (TypedApp :type random.T
+        :func (TypedSelect 'new' :type Fun(seed: Int): random.T
+          :target (TypedVar 'random' :type Module 'random'))
+        :args (
+          (TypedInt 1989 :type Int)
+        )))
+    (TypedLetValue 'randoms' :type Fun(n: Int range: Int): vector.T(Int)
+      :value (TypedFun :params (('n' : Int) ('range' : Int)) :type Fun(n: Int range: Int): vector.T(Int)
+        :body (TypedBlock :type vector.T(Int)
+          :bindings (
+            (TypedLetValue 'v' :type vector.T(Int)
+              :value (TypedTypeApp [Int] :type vector.T(Int)
+                :func (TypedSelect 'new' :type All(A :: TYPE) vector.T(A)
+                  :target (TypedVar 'vector' :type Module 'vector'))))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 1 :type Int)
+                :stop (TypedVar 'n' :type Int)
+                :body (TypedApp :type Ok
+                  :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) value: Int): Ok
+                    :func (TypedSelect 'append' :type All(A :: TYPE) Fun(v: vector.T(A) value: A): Ok
+                      :target (TypedVar 'vector' :type Module 'vector')))
+                  :args (
+                    (TypedVar 'v' :type vector.T(Int))
+                    (TypedApp :type Int
+                      :func (TypedSelect 'below' :type Fun(r: random.T n: Int): Int
+                        :target (TypedVar 'random' :type Module 'random'))
+                      :args (
+                        (TypedVar 'r' :type random.T)
+                        (TypedVar 'range' :type Int)
+                      ))
+                  ))))
+          )
+          :result (TypedVar 'v' :type vector.T(Int)))))
+    (TypedLetValue 'drainsSorted' :type Fun(h: heap.T(Int) v: vector.T(Int) compare: Fun(a: Int b: Int): Int): Bool
+      :value (TypedFun :params (('h' : heap.T(Int)) ('v' : vector.T(Int)) ('compare' : Fun(a: Int b: Int): Int)) :type Fun(h: heap.T(Int) v: vector.T(Int) compare: Fun(a: Int b: Int): Int): Bool
+        :body (TypedBlock :type Bool
+          :bindings (
+            (TypedLetValue 'want' :type vector.T(Int)
+              :value (TypedApp :type vector.T(Int)
+                :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) cmp: Fun(a: Int b: Int): Int): vector.T(Int)
+                  :func (TypedSelect 'sortedVector' :type All(A :: TYPE) Fun(v: vector.T(A) cmp: Fun(a: A b: A): Int): vector.T(A)
+                    :target (TypedVar 'sort' :type Module 'sort')))
+                :args (
+                  (TypedVar 'v' :type vector.T(Int))
+                  (TypedVar 'compare' :type Fun(a: Int b: Int): Int)
+                )))
+            (TypedLetValue 'same' :type Bool
+              :value (TypedInfix 'is' :type Bool
+                :left (TypedApp :type Int
+                  :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int)): Int
+                    :func (TypedSelect 'size' :type All(A :: TYPE) Fun(h: heap.T(A)): Int
+                      :target (TypedVar 'heap' :type Module 'heap')))
+                  :args (
+                    (TypedVar 'h' :type heap.T(Int))
+                  ))
+                :right (TypedApp :type Int
+                  :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int)): Int
+                    :func (TypedSelect 'length' :type All(A :: TYPE) Fun(v: vector.T(A)): Int
+                      :target (TypedVar 'vector' :type Module 'vector')))
+                  :args (
+                    (TypedVar 'want' :type vector.T(Int))
+                  ))))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int)): Int
+                      :func (TypedSelect 'length' :type All(A :: TYPE) Fun(v: vector.T(A)): Int
+                        :target (TypedVar 'vector' :type Module 'vector')))
+                    :args (
+                      (TypedVar 'want' :type vector.T(Int))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedIf :type Ok
+                  :cond (TypedInfix 'isnot' :type Bool
+                    :left (TypedApp :type Int
+                      :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int)): Int
+                        :func (TypedSelect 'pop' :type All(A :: TYPE) Fun(h: heap.T(A)): A
+                          :target (TypedVar 'heap' :type Module 'heap')))
+                      :args (
+                        (TypedVar 'h' :type heap.T(Int))
+                      ))
+                    :right (TypedApp :type Int
+                      :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) index: Int): Int
+                        :func (TypedSelect 'get' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int): A
+                          :target (TypedVar 'vector' :type Module 'vector')))
+                      :args (
+                        (TypedVar 'want' :type vector.T(Int))
+                        (TypedVar 'i' :type Int)
+                      )))
+                  :then (TypedBlock :type Ok
+                    :bindings (
+                      (TypedExprStmt
+                        :expr (TypedAssign
+                          :target (TypedVar 'same' :type Var(Bool))
+                          :value (TypedBool false)))
+                    )
+                    :result (TypedOk))
+                  :else (TypedOk))))
+          )
+          :result (TypedInfix '/\\' :type Bool
+            :left (TypedDerefCell :type Bool
+              :target (TypedVar 'same' :type Var(Bool)))
+            :right (TypedApp :type Bool
+              :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int)): Bool
+                :func (TypedSelect 'empty' :type All(A :: TYPE) Fun(h: heap.T(A)): Bool
+                  :target (TypedVar 'heap' :type Module 'heap')))
+              :args (
+                (TypedVar 'h' :type heap.T(Int))
+              ))))))
+    (TypedLetValue 'sizes' :type Array(Int)
+      :value (TypedArray :type Array(Int)
+        :elements (
+          (TypedInt 0 :type Int)
+          (TypedInt 1 :type Int)
+          (TypedInt 2 :type Int)
+          (TypedInt 3 :type Int)
+          (TypedInt 7 :type Int)
+          (TypedInt 8 :type Int)
+          (TypedInt 31 :type Int)
+          (TypedInt 100 :type Int)
+        )))
+    (TypedLetValue 'pushed' :type Bool
+      :value (TypedBool true))
+    (TypedLetValue 'built' :type Bool
+      :value (TypedBool true))
+    (TypedExprStmt
+      :expr (TypedFor 'k' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'sizes' :type Array(Int))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'v' :type vector.T(Int)
+              :value (TypedApp :type vector.T(Int)
+                :func (TypedVar 'randoms' :type Fun(n: Int range: Int): vector.T(Int))
+                :args (
+                  (TypedIndex :type Int
+                    :target (TypedVar 'sizes' :type Array(Int))
+                    :index (TypedVar 'k' :type Int))
+                  (TypedInt 50 :type Int)
+                )))
+            (TypedLetValue 'h' :type heap.T(Int)
+              :value (TypedApp :type heap.T(Int)
+                :func (TypedTypeApp [Int] :type Fun(compare: Fun(a: Int b: Int): Int): heap.T(Int)
+                  :func (TypedSelect 'new' :type All(A :: TYPE) Fun(compare: Fun(a: A b: A): Int): heap.T(A)
+                    :target (TypedVar 'heap' :type Module 'heap')))
+                :args (
+                  (TypedSelect 'intCompare' :type Fun(a: Int b: Int): Int
+                    :target (TypedVar 'sort' :type Module 'sort'))
+                )))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int)): Int
+                      :func (TypedSelect 'length' :type All(A :: TYPE) Fun(v: vector.T(A)): Int
+                        :target (TypedVar 'vector' :type Module 'vector')))
+                    :args (
+                      (TypedVar 'v' :type vector.T(Int))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedApp :type Ok
+                  :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int) elem: Int): Ok
+                    :func (TypedSelect 'push' :type All(A :: TYPE) Fun(h: heap.T(A) elem: A): Ok
+                      :target (TypedVar 'heap' :type Module 'heap')))
+                  :args (
+                    (TypedVar 'h' :type heap.T(Int))
+                    (TypedApp :type Int
+                      :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) index: Int): Int
+                        :func (TypedSelect 'get' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int): A
+                          :target (TypedVar 'vector' :type Module 'vector')))
+                      :args (
+                        (TypedVar 'v' :type vector.T(Int))
+                        (TypedVar 'i' :type Int)
+                      ))
+                  ))))
+            (TypedExprStmt
+              :expr (TypedIf :type Ok
+                :cond (TypedApp :type Bool
+                  :func (TypedVar 'not' :type Fun(b: Bool): Bool)
+                  :args (
+                    (TypedApp :type Bool
+                      :func (TypedVar 'drainsSorted' :type Fun(h: heap.T(Int) v: vector.T(Int) compare: Fun(a: Int b: Int): Int): Bool)
+                      :args (
+                        (TypedVar 'h' :type heap.T(Int))
+                        (TypedVar 'v' :type vector.T(Int))
+                        (TypedSelect 'intCompare' :type Fun(a: Int b: Int): Int
+                          :target (TypedVar 'sort' :type Module 'sort'))
+                      ))
+                  ))
+                :then (TypedBlock :type Ok
+                  :bindings (
+                    (TypedExprStmt
+                      :expr (TypedAssign
+                        :target (TypedVar 'pushed' :type Var(Bool))
+                        :value (TypedBool false)))
+                  )
+                  :result (TypedOk))
+                :else (TypedOk)))
+            (TypedLetValue 'before' :type vector.T(Int)
+              :value (TypedApp :type vector.T(Int)
+                :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int)): vector.T(Int)
+                  :func (TypedSelect 'copy' :type All(A :: TYPE) Fun(v: vector.T(A)): vector.T(A)
+                    :target (TypedVar 'vector' :type Module 'vector')))
+                :args (
+                  (TypedVar 'v' :type vector.T(Int))
+                )))
+            (TypedLetValue 'f' :type heap.T(Int)
+              :value (TypedApp :type heap.T(Int)
+                :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) compare: Fun(a: Int b: Int): Int): heap.T(Int)
+                  :func (TypedSelect 'fromVector' :type All(A :: TYPE) Fun(v: vector.T(A) compare: Fun(a: A b: A): Int): heap.T(A)
+                    :target (TypedVar 'heap' :type Module 'heap')))
+                :args (
+                  (TypedVar 'v' :type vector.T(Int))
+                  (TypedSelect 'intCompare' :type Fun(a: Int b: Int): Int
+                    :target (TypedVar 'sort' :type Module 'sort'))
+                )))
+            (TypedExprStmt
+              :expr (TypedIf :type Ok
+                :cond (TypedApp :type Bool
+                  :func (TypedVar 'not' :type Fun(b: Bool): Bool)
+                  :args (
+                    (TypedApp :type Bool
+                      :func (TypedVar 'drainsSorted' :type Fun(h: heap.T(Int) v: vector.T(Int) compare: Fun(a: Int b: Int): Int): Bool)
+                      :args (
+                        (TypedVar 'f' :type heap.T(Int))
+                        (TypedVar 'v' :type vector.T(Int))
+                        (TypedSelect 'intCompare' :type Fun(a: Int b: Int): Int
+                          :target (TypedVar 'sort' :type Module 'sort'))
+                      ))
+                  ))
+                :then (TypedBlock :type Ok
+                  :bindings (
+                    (TypedExprStmt
+                      :expr (TypedAssign
+                        :target (TypedVar 'built' :type Var(Bool))
+                        :value (TypedBool false)))
+                  )
+                  :result (TypedOk))
+                :else (TypedOk)))
+          )
+          :result (TypedFor 'i' :upto
+            :start (TypedInt 0 :type Int)
+            :stop (TypedInfix '-' :type Int
+              :left (TypedApp :type Int
+                :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int)): Int
+                  :func (TypedSelect 'length' :type All(A :: TYPE) Fun(v: vector.T(A)): Int
+                    :target (TypedVar 'vector' :type Module 'vector')))
+                :args (
+                  (TypedVar 'v' :type vector.T(Int))
+                ))
+              :right (TypedInt 1 :type Int))
+            :body (TypedIf :type Ok
+              :cond (TypedInfix 'isnot' :type Bool
+                :left (TypedApp :type Int
+                  :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) index: Int): Int
+                    :func (TypedSelect 'get' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int): A
+                      :target (TypedVar 'vector' :type Module 'vector')))
+                  :args (
+                    (TypedVar 'v' :type vector.T(Int))
+                    (TypedVar 'i' :type Int)
+                  ))
+                :right (TypedApp :type Int
+                  :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) index: Int): Int
+                    :func (TypedSelect 'get' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int): A
+                      :target (TypedVar 'vector' :type Module 'vector')))
+                  :args (
+                    (TypedVar 'before' :type vector.T(Int))
+                    (TypedVar 'i' :type Int)
+                  )))
+              :then (TypedBlock :type Ok
+                :bindings (
+                  (TypedExprStmt
+                    :expr (TypedAssign
+                      :target (TypedVar 'built' :type Var(Bool))
+                      :value (TypedBool false)))
+                )
+                :result (TypedOk))
+              :else (TypedOk))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'pushes then pops sort' :type String)
+          (TypedDerefCell :type Bool
+            :target (TypedVar 'pushed' :type Var(Bool)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'fromVector then pops sort, the vector unchanged' :type String)
+          (TypedDerefCell :type Bool
+            :target (TypedVar 'built' :type Var(Bool)))
+        )))
+    (TypedLetValue 'greatest' :type Fun(a: Int b: Int): Int
+      :value (TypedApp :type Fun(a: Int b: Int): Int
+        :func (TypedTypeApp [Int] :type Fun(cmp: Fun(a: Int b: Int): Int): Fun(a: Int b: Int): Int
+          :func (TypedSelect 'reverse' :type All(A :: TYPE) Fun(cmp: Fun(a: A b: A): Int): Fun(a: A b: A): Int
+            :target (TypedVar 'sort' :type Module 'sort')))
+        :args (
+          (TypedSelect 'intCompare' :type Fun(a: Int b: Int): Int
+            :target (TypedVar 'sort' :type Module 'sort'))
+        )))
+    (TypedLetValue 'gv' :type vector.T(Int)
+      :value (TypedApp :type vector.T(Int)
+        :func (TypedVar 'randoms' :type Fun(n: Int range: Int): vector.T(Int))
+        :args (
+          (TypedInt 100 :type Int)
+          (TypedInt 1000000 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'greatest first' :type String)
+          (TypedApp :type Bool
+            :func (TypedVar 'drainsSorted' :type Fun(h: heap.T(Int) v: vector.T(Int) compare: Fun(a: Int b: Int): Int): Bool)
+            :args (
+              (TypedApp :type heap.T(Int)
+                :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) compare: Fun(a: Int b: Int): Int): heap.T(Int)
+                  :func (TypedSelect 'fromVector' :type All(A :: TYPE) Fun(v: vector.T(A) compare: Fun(a: A b: A): Int): heap.T(A)
+                    :target (TypedVar 'heap' :type Module 'heap')))
+                :args (
+                  (TypedVar 'gv' :type vector.T(Int))
+                  (TypedVar 'greatest' :type Fun(a: Int b: Int): Int)
+                ))
+              (TypedVar 'gv' :type vector.T(Int))
+              (TypedVar 'greatest' :type Fun(a: Int b: Int): Int)
+            ))
+        )))
+    (TypedLetValue 'h' :type heap.T(Int)
+      :value (TypedApp :type heap.T(Int)
+        :func (TypedTypeApp [Int] :type Fun(compare: Fun(a: Int b: Int): Int): heap.T(Int)
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(compare: Fun(a: A b: A): Int): heap.T(A)
+            :target (TypedVar 'heap' :type Module 'heap')))
+        :args (
+          (TypedSelect 'intCompare' :type Fun(a: Int b: Int): Int
+            :target (TypedVar 'sort' :type Module 'sort'))
+        )))
+    (TypedLetValue 'model' :type vector.T(Int)
+      :value (TypedTypeApp [Int] :type vector.T(Int)
+        :func (TypedSelect 'new' :type All(A :: TYPE) vector.T(A)
+          :target (TypedVar 'vector' :type Module 'vector'))))
+    (TypedLetValue 'agrees' :type Bool
+      :value (TypedBool true))
+    (TypedExprStmt
+      :expr (TypedFor 'step' :upto
+        :start (TypedInt 1 :type Int)
+        :stop (TypedInt 400 :type Int)
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedIf :type Ok
+                :cond (TypedInfix '\\/' :type Bool
+                  :left (TypedInfix '>' :type Bool
+                    :left (TypedApp :type Int
+                      :func (TypedSelect 'below' :type Fun(r: random.T n: Int): Int
+                        :target (TypedVar 'random' :type Module 'random'))
+                      :args (
+                        (TypedVar 'r' :type random.T)
+                        (TypedInt 3 :type Int)
+                      ))
+                    :right (TypedInt 0 :type Int))
+                  :right (TypedApp :type Bool
+                    :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int)): Bool
+                      :func (TypedSelect 'empty' :type All(A :: TYPE) Fun(v: vector.T(A)): Bool
+                        :target (TypedVar 'vector' :type Module 'vector')))
+                    :args (
+                      (TypedVar 'model' :type vector.T(Int))
+                    )))
+                :then (TypedBlock :type Ok
+                  :bindings (
+                    (TypedLetValue 'x' :type Int
+                      :value (TypedApp :type Int
+                        :func (TypedSelect 'below' :type Fun(r: random.T n: Int): Int
+                          :target (TypedVar 'random' :type Module 'random'))
+                        :args (
+                          (TypedVar 'r' :type random.T)
+                          (TypedInt 100 :type Int)
+                        )))
+                    (TypedExprStmt
+                      :expr (TypedApp :type Ok
+                        :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int) elem: Int): Ok
+                          :func (TypedSelect 'push' :type All(A :: TYPE) Fun(h: heap.T(A) elem: A): Ok
+                            :target (TypedVar 'heap' :type Module 'heap')))
+                        :args (
+                          (TypedVar 'h' :type heap.T(Int))
+                          (TypedVar 'x' :type Int)
+                        )))
+                    (TypedLetValue 'at' :type Int
+                      :value (TypedApp :type Int
+                        :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) key: Int cmp: Fun(a: Int b: Int): Int): Int
+                          :func (TypedSelect 'bisectRightVector' :type All(A :: TYPE) Fun(v: vector.T(A) key: A cmp: Fun(a: A b: A): Int): Int
+                            :target (TypedVar 'sort' :type Module 'sort')))
+                        :args (
+                          (TypedVar 'model' :type vector.T(Int))
+                          (TypedVar 'x' :type Int)
+                          (TypedSelect 'intCompare' :type Fun(a: Int b: Int): Int
+                            :target (TypedVar 'sort' :type Module 'sort'))
+                        )))
+                    (TypedExprStmt
+                      :expr (TypedApp :type Ok
+                        :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) value: Int): Ok
+                          :func (TypedSelect 'append' :type All(A :: TYPE) Fun(v: vector.T(A) value: A): Ok
+                            :target (TypedVar 'vector' :type Module 'vector')))
+                        :args (
+                          (TypedVar 'model' :type vector.T(Int))
+                          (TypedVar 'x' :type Int)
+                        )))
+                    (TypedExprStmt
+                      :expr (TypedFor 'j' :downto
+                        :start (TypedInfix '-' :type Int
+                          :left (TypedApp :type Int
+                            :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int)): Int
+                              :func (TypedSelect 'length' :type All(A :: TYPE) Fun(v: vector.T(A)): Int
+                                :target (TypedVar 'vector' :type Module 'vector')))
+                            :args (
+                              (TypedVar 'model' :type vector.T(Int))
+                            ))
+                          :right (TypedInt 1 :type Int))
+                        :stop (TypedInfix '+' :type Int
+                          :left (TypedVar 'at' :type Int)
+                          :right (TypedInt 1 :type Int))
+                        :body (TypedApp :type Ok
+                          :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) index: Int value: Int): Ok
+                            :func (TypedSelect 'set' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int value: A): Ok
+                              :target (TypedVar 'vector' :type Module 'vector')))
+                          :args (
+                            (TypedVar 'model' :type vector.T(Int))
+                            (TypedVar 'j' :type Int)
+                            (TypedApp :type Int
+                              :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) index: Int): Int
+                                :func (TypedSelect 'get' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int): A
+                                  :target (TypedVar 'vector' :type Module 'vector')))
+                              :args (
+                                (TypedVar 'model' :type vector.T(Int))
+                                (TypedInfix '-' :type Int
+                                  :left (TypedVar 'j' :type Int)
+                                  :right (TypedInt 1 :type Int))
+                              ))
+                          ))))
+                  )
+                  :result (TypedApp :type Ok
+                    :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) index: Int value: Int): Ok
+                      :func (TypedSelect 'set' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int value: A): Ok
+                        :target (TypedVar 'vector' :type Module 'vector')))
+                    :args (
+                      (TypedVar 'model' :type vector.T(Int))
+                      (TypedVar 'at' :type Int)
+                      (TypedVar 'x' :type Int)
+                    )))
+                :else (TypedBlock :type Ok
+                  :bindings (
+                    (TypedLetValue 'least' :type Int
+                      :value (TypedApp :type Int
+                        :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) index: Int): Int
+                          :func (TypedSelect 'get' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int): A
+                            :target (TypedVar 'vector' :type Module 'vector')))
+                        :args (
+                          (TypedVar 'model' :type vector.T(Int))
+                          (TypedInt 0 :type Int)
+                        )))
+                    (TypedExprStmt
+                      :expr (TypedApp :type Ok
+                        :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) index: Int): Ok
+                          :func (TypedSelect 'delete' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int): Ok
+                            :target (TypedVar 'vector' :type Module 'vector')))
+                        :args (
+                          (TypedVar 'model' :type vector.T(Int))
+                          (TypedInt 0 :type Int)
+                        )))
+                    (TypedExprStmt
+                      :expr (TypedIf :type Ok
+                        :cond (TypedInfix 'isnot' :type Bool
+                          :left (TypedApp :type Int
+                            :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int)): Int
+                              :func (TypedSelect 'peek' :type All(A :: TYPE) Fun(h: heap.T(A)): A
+                                :target (TypedVar 'heap' :type Module 'heap')))
+                            :args (
+                              (TypedVar 'h' :type heap.T(Int))
+                            ))
+                          :right (TypedVar 'least' :type Int))
+                        :then (TypedBlock :type Ok
+                          :bindings (
+                            (TypedExprStmt
+                              :expr (TypedAssign
+                                :target (TypedVar 'agrees' :type Var(Bool))
+                                :value (TypedBool false)))
+                          )
+                          :result (TypedOk))
+                        :else (TypedOk)))
+                  )
+                  :result (TypedIf :type Ok
+                    :cond (TypedInfix 'isnot' :type Bool
+                      :left (TypedApp :type Int
+                        :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int)): Int
+                          :func (TypedSelect 'pop' :type All(A :: TYPE) Fun(h: heap.T(A)): A
+                            :target (TypedVar 'heap' :type Module 'heap')))
+                        :args (
+                          (TypedVar 'h' :type heap.T(Int))
+                        ))
+                      :right (TypedVar 'least' :type Int))
+                    :then (TypedBlock :type Ok
+                      :bindings (
+                        (TypedExprStmt
+                          :expr (TypedAssign
+                            :target (TypedVar 'agrees' :type Var(Bool))
+                            :value (TypedBool false)))
+                      )
+                      :result (TypedOk))
+                    :else (TypedOk)))))
+          )
+          :result (TypedIf :type Ok
+            :cond (TypedInfix 'isnot' :type Bool
+              :left (TypedApp :type Int
+                :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int)): Int
+                  :func (TypedSelect 'size' :type All(A :: TYPE) Fun(h: heap.T(A)): Int
+                    :target (TypedVar 'heap' :type Module 'heap')))
+                :args (
+                  (TypedVar 'h' :type heap.T(Int))
+                ))
+              :right (TypedApp :type Int
+                :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int)): Int
+                  :func (TypedSelect 'length' :type All(A :: TYPE) Fun(v: vector.T(A)): Int
+                    :target (TypedVar 'vector' :type Module 'vector')))
+                :args (
+                  (TypedVar 'model' :type vector.T(Int))
+                )))
+            :then (TypedBlock :type Ok
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedAssign
+                    :target (TypedVar 'agrees' :type Var(Bool))
+                    :value (TypedBool false)))
+              )
+              :result (TypedOk))
+            :else (TypedOk)))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'pushes and pops agree with a model' :type String)
+          (TypedDerefCell :type Bool
+            :target (TypedVar 'agrees' :type Var(Bool)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString "elements are the heap's" :type String)
+          (TypedInfix 'is' :type Bool
+            :left (TypedApp :type Int
+              :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int)): Int
+                :func (TypedSelect 'length' :type All(A :: TYPE) Fun(v: vector.T(A)): Int
+                  :target (TypedVar 'vector' :type Module 'vector')))
+              :args (
+                (TypedApp :type vector.T(Int)
+                  :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int)): vector.T(Int)
+                    :func (TypedSelect 'elements' :type All(A :: TYPE) Fun(h: heap.T(A)): vector.T(A)
+                      :target (TypedVar 'heap' :type Module 'heap')))
+                  :args (
+                    (TypedVar 'h' :type heap.T(Int))
+                  ))
+              ))
+            :right (TypedApp :type Int
+              :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int)): Int
+                :func (TypedSelect 'size' :type All(A :: TYPE) Fun(h: heap.T(A)): Int
+                  :target (TypedVar 'heap' :type Module 'heap')))
+              :args (
+                (TypedVar 'h' :type heap.T(Int))
+              )))
+        )))
+    (TypedLetValue 'p' :type heap.T(Int)
+      :value (TypedApp :type heap.T(Int)
+        :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) compare: Fun(a: Int b: Int): Int): heap.T(Int)
+          :func (TypedSelect 'fromVector' :type All(A :: TYPE) Fun(v: vector.T(A) compare: Fun(a: A b: A): Int): heap.T(A)
+            :target (TypedVar 'heap' :type Module 'heap')))
+        :args (
+          (TypedApp :type vector.T(Int)
+            :func (TypedTypeApp [Int] :type Fun(arr: Array(Int)): vector.T(Int)
+              :func (TypedSelect 'fromArray' :type All(A :: TYPE) Fun(arr: Array(A)): vector.T(A)
+                :target (TypedVar 'vector' :type Module 'vector')))
+            :args (
+              (TypedArray :type Array(Int)
+                :elements (
+                  (TypedInt 5 :type Int)
+                  (TypedInt 3 :type Int)
+                  (TypedInt 8 :type Int)
+                ))
+            ))
+          (TypedSelect 'intCompare' :type Fun(a: Int b: Int): Int
+            :target (TypedVar 'sort' :type Module 'sort'))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'pushPop 1: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int) elem: Int): Int
+                      :func (TypedSelect 'pushPop' :type All(A :: TYPE) Fun(h: heap.T(A) elem: A): A
+                        :target (TypedVar 'heap' :type Module 'heap')))
+                    :args (
+                      (TypedVar 'p' :type heap.T(Int))
+                      (TypedInt 1 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', pushPop 4: ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Int
+                        :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int) elem: Int): Int
+                          :func (TypedSelect 'pushPop' :type All(A :: TYPE) Fun(h: heap.T(A) elem: A): A
+                            :target (TypedVar 'heap' :type Module 'heap')))
+                        :args (
+                          (TypedVar 'p' :type heap.T(Int))
+                          (TypedInt 4 :type Int)
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', then ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedSelect 'int' :type Fun(n: Int): String
+                          :target (TypedVar 'conv' :type Module 'conv'))
+                        :args (
+                          (TypedApp :type Int
+                            :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int)): Int
+                              :func (TypedSelect 'pop' :type All(A :: TYPE) Fun(h: heap.T(A)): A
+                                :target (TypedVar 'heap' :type Module 'heap')))
+                            :args (
+                              (TypedVar 'p' :type heap.T(Int))
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedSelect 'int' :type Fun(n: Int): String
+                              :target (TypedVar 'conv' :type Module 'conv'))
+                            :args (
+                              (TypedApp :type Int
+                                :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int)): Int
+                                  :func (TypedSelect 'pop' :type All(A :: TYPE) Fun(h: heap.T(A)): A
+                                    :target (TypedVar 'heap' :type Module 'heap')))
+                                :args (
+                                  (TypedVar 'p' :type heap.T(Int))
+                                ))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ' ' :type String)
+                            :right (TypedApp :type String
+                              :func (TypedSelect 'int' :type Fun(n: Int): String
+                                :target (TypedVar 'conv' :type Module 'conv'))
+                              :args (
+                                (TypedApp :type Int
+                                  :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int)): Int
+                                    :func (TypedSelect 'pop' :type All(A :: TYPE) Fun(h: heap.T(A)): A
+                                      :target (TypedVar 'heap' :type Module 'heap')))
+                                  :args (
+                                    (TypedVar 'p' :type heap.T(Int))
+                                  ))
+                              )))))))))))
+        )))
+    (TypedLetValue 'e' :type heap.T(Int)
+      :value (TypedApp :type heap.T(Int)
+        :func (TypedTypeApp [Int] :type Fun(compare: Fun(a: Int b: Int): Int): heap.T(Int)
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(compare: Fun(a: A b: A): Int): heap.T(A)
+            :target (TypedVar 'heap' :type Module 'heap')))
+        :args (
+          (TypedSelect 'intCompare' :type Fun(a: Int b: Int): Int
+            :target (TypedVar 'sort' :type Module 'sort'))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'pushPop on empty: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int) elem: Int): Int
+                      :func (TypedSelect 'pushPop' :type All(A :: TYPE) Fun(h: heap.T(A) elem: A): A
+                        :target (TypedVar 'heap' :type Module 'heap')))
+                    :args (
+                      (TypedVar 'e' :type heap.T(Int))
+                      (TypedInt 9 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', size ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedApp :type Int
+                      :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int)): Int
+                        :func (TypedSelect 'size' :type All(A :: TYPE) Fun(h: heap.T(A)): Int
+                          :target (TypedVar 'heap' :type Module 'heap')))
+                      :args (
+                        (TypedVar 'e' :type heap.T(Int))
+                      ))
+                  )))))
+        )))
+    (TypedLetValue 'words' :type heap.T(String)
+      :value (TypedApp :type heap.T(String)
+        :func (TypedTypeApp [String] :type Fun(compare: Fun(a: String b: String): Int): heap.T(String)
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(compare: Fun(a: A b: A): Int): heap.T(A)
+            :target (TypedVar 'heap' :type Module 'heap')))
+        :args (
+          (TypedSelect 'stringCompare' :type Fun(a: String b: String): Int
+            :target (TypedVar 'sort' :type Module 'sort'))
+        )))
+    (TypedLetValue 'ws' :type Array(String)
+      :value (TypedArray :type Array(String)
+        :elements (
+          (TypedString 'pear' :type String)
+          (TypedString 'fig' :type String)
+          (TypedString 'banana' :type String)
+          (TypedString 'kiwi' :type String)
+          (TypedString 'apple' :type String)
+          (TypedString 'fig' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [String] :type Fun(a: Array(String)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'ws' :type Array(String))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedApp :type Ok
+          :func (TypedTypeApp [String] :type Fun(h: heap.T(String) elem: String): Ok
+            :func (TypedSelect 'push' :type All(A :: TYPE) Fun(h: heap.T(A) elem: A): Ok
+              :target (TypedVar 'heap' :type Module 'heap')))
+          :args (
+            (TypedVar 'words' :type heap.T(String))
+            (TypedIndex :type String
+              :target (TypedVar 'ws' :type Array(String))
+              :index (TypedVar 'i' :type Int))
+          ))))
+    (TypedLetValue 'order' :type String
+      :value (TypedString '' :type String))
+    (TypedExprStmt
+      :expr (TypedWhile
+        :cond (TypedApp :type Bool
+          :func (TypedVar 'not' :type Fun(b: Bool): Bool)
+          :args (
+            (TypedApp :type Bool
+              :func (TypedTypeApp [String] :type Fun(h: heap.T(String)): Bool
+                :func (TypedSelect 'empty' :type All(A :: TYPE) Fun(h: heap.T(A)): Bool
+                  :target (TypedVar 'heap' :type Module 'heap')))
+              :args (
+                (TypedVar 'words' :type heap.T(String))
+              ))
+          ))
+        :body (TypedAssign
+          :target (TypedVar 'order' :type Var(String))
+          :value (TypedInfix '<>' :type String
+            :left (TypedDerefCell :type String
+              :target (TypedVar 'order' :type Var(String)))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' ' :type String)
+              :right (TypedApp :type String
+                :func (TypedTypeApp [String] :type Fun(h: heap.T(String)): String
+                  :func (TypedSelect 'pop' :type All(A :: TYPE) Fun(h: heap.T(A)): A
+                    :target (TypedVar 'heap' :type Module 'heap')))
+                :args (
+                  (TypedVar 'words' :type heap.T(String))
+                )))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'words:' :type String)
+            :right (TypedDerefCell :type String
+              :target (TypedVar 'order' :type Var(String))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedTypeApp [String] :type Fun(h: heap.T(String) elem: String): Ok
+          :func (TypedSelect 'push' :type All(A :: TYPE) Fun(h: heap.T(A) elem: A): Ok
+            :target (TypedVar 'heap' :type Module 'heap')))
+        :args (
+          (TypedVar 'words' :type heap.T(String))
+          (TypedString 'x' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedTypeApp [String] :type Fun(h: heap.T(String)): Ok
+          :func (TypedSelect 'clear' :type All(A :: TYPE) Fun(h: heap.T(A)): Ok
+            :target (TypedVar 'heap' :type Module 'heap')))
+        :args (
+          (TypedVar 'words' :type heap.T(String))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'cleared' :type String)
+          (TypedApp :type Bool
+            :func (TypedTypeApp [String] :type Fun(h: heap.T(String)): Bool
+              :func (TypedSelect 'empty' :type All(A :: TYPE) Fun(h: heap.T(A)): Bool
+                :target (TypedVar 'heap' :type Module 'heap')))
+            :args (
+              (TypedVar 'words' :type heap.T(String))
+            ))
+        )))
+    (TypedLetValue 'err' :type Fun(what: String f: Fun(): Int): Ok
+      :value (TypedFun :params (('what' : String) ('f' : Fun(): Int)) :type Fun(what: String f: Fun(): Int): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedInfix '<>' :type String
+              :left (TypedVar 'what' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ': ' :type String)
+                :right (TypedTry :type String
+                  :body (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Int
+                        :func (TypedVar 'f' :type Fun(): Int)
+                        :args ())
+                    ))
+                  :branches (
+                    (TypedTryBranch
+                      :exc_pattern (TypedSelect 'error' :type Exception
+                        :target (TypedVar 'heap' :type Module 'heap'))
+                      :body (TypedString 'heap.error' :type String))
+                  ))))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'err' :type Fun(what: String f: Fun(): Int): Ok)
+        :args (
+          (TypedString 'pop of empty' :type String)
+          (TypedFun :params () :type Fun(): Int
+            :body (TypedApp :type Int
+              :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int)): Int
+                :func (TypedSelect 'pop' :type All(A :: TYPE) Fun(h: heap.T(A)): A
+                  :target (TypedVar 'heap' :type Module 'heap')))
+              :args (
+                (TypedVar 'e' :type heap.T(Int))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'err' :type Fun(what: String f: Fun(): Int): Ok)
+        :args (
+          (TypedString 'peek of empty' :type String)
+          (TypedFun :params () :type Fun(): Int
+            :body (TypedApp :type Int
+              :func (TypedTypeApp [Int] :type Fun(h: heap.T(Int)): Int
+                :func (TypedSelect 'peek' :type All(A :: TYPE) Fun(h: heap.T(A)): A
+                  :target (TypedVar 'heap' :type Module 'heap')))
+              :args (
+                (TypedVar 'e' :type heap.T(Int))
+              )))
+        )))
+  ))

@@ -1,0 +1,98 @@
+(* Standard library: collections/deque (docs/collections-plan.md section
+ * 2.4): random pushes and pops at both ends against a vector model, through
+ * the ring buffer's wrapping and growth; indexing; conversions; a change
+ * during forEach; and the errors *)
+
+import collections/deque : collections/Deque;
+import collections/vector : collections/Vector;
+import random = util/random : util/Random;
+import writer: Writer;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let check(what: String holds: Bool): Ok = print(what <> ": " <> conv.bool(holds));
+let shown(d: deque.T(Int)): String =
+    begin
+        let var text = "["
+        deque.forEach(:Int d fun(x: Int): Ok text := text <> " " <> conv.int(x))
+        text <> " ]"
+    end;
+
+(* 1. Both ends, and indexing *)
+let d = deque.new(:Int);
+deque.pushBack(:Int d 1);
+deque.pushBack(:Int d 2);
+deque.pushFront(:Int d 0);
+deque.pushFront(:Int d ~1);
+print(shown(d) <> " length " <> conv.int(deque.length(:Int d)) <> " front " <> conv.int(deque.front(:Int d)) <> " back "
+    <> conv.int(deque.back(:Int d)) <> " [2] " <> conv.int(deque.get(:Int d 2)));
+deque.set(:Int d 1 10);
+print("popFront " <> conv.int(deque.popFront(:Int d)) <> " popBack " <> conv.int(deque.popBack(:Int d)) <> " "
+    <> shown(d));
+
+(* 2. Random operations against a vector model *)
+let r = random.new(1989);
+let m = deque.newWithCapacity(:Int 3);
+let model = vector.new(:Int);
+let var agrees = true;
+for step = 1 upto 1500 do
+    let op = random.below(r 5)
+    if {op is 0} then
+        let x = random.below(r 1000)
+        deque.pushBack(:Int m x)
+        vector.append(:Int model x)
+    elsif op is 1 then
+        let x = random.below(r 1000)
+        deque.pushFront(:Int m x)
+        vector.append(:Int model 0)
+        for j = {vector.length(:Int model) - 1} downto 1 do vector.set(:Int model j vector.get(:Int model j - 1)) end
+        vector.set(:Int model 0 x)
+    elsif {op is 2} andif not(vector.empty(:Int model)) then
+        if deque.popBack(:Int m) isnot vector.pop(:Int model) then agrees := false end
+    elsif {op is 3} andif not(vector.empty(:Int model)) then
+        let first = vector.get(:Int model 0)
+        vector.delete(:Int model 0)
+        if deque.popFront(:Int m) isnot first then agrees := false end
+    elsif not(vector.empty(:Int model)) then
+        let i = random.below(r vector.length(:Int model))
+        if deque.get(:Int m i) isnot vector.get(:Int model i) then agrees := false end
+    end
+    if deque.length(:Int m) isnot vector.length(:Int model) then agrees := false end
+end;
+let tv = deque.toVector(:Int m);
+for i = 0 upto {vector.length(:Int model) - 1} do
+    if vector.get(:Int tv i) isnot vector.get(:Int model i) then agrees := false end
+end;
+check("random operations agree with a model" agrees);
+print("length after them " <> conv.int(deque.length(:Int m)));
+
+(* 3. Draining to empty and growing again *)
+let g = deque.new(:Int);
+for i = 1 upto 100 do deque.pushFront(:Int g i) end;
+let var drained = true;
+for i = 1 upto 100 do if deque.popBack(:Int g) isnot i then drained := false end end;
+check("pushFront then popBack is first in, first out" drained /\ deque.empty(:Int g));
+deque.pushBack(:Int g 7);
+check("grows again after emptying" {deque.front(:Int g) is 7} /\ {deque.length(:Int g) is 1});
+
+(* 4. Conversions and copy *)
+let v = vector.fromArray(:Int array of 3 1 4 1 5 end);
+let fv = deque.fromVector(:Int v);
+let c = deque.copy(:Int fv);
+deque.pushBack(:Int c 9);
+print("fromVector " <> shown(fv) <> " copy " <> shown(c));
+deque.clear(:Int c);
+check("cleared" deque.empty(:Int c));
+
+(* 5. A change during forEach, and the errors *)
+let err(what: String f: All() Int): Ok = print(what <> ": "
+    <> try conv.int(f()) when deque.error then "deque.error" end);
+err("change during forEach" fun(): Int begin deque.forEach(:Int fv fun(x: Int): Ok deque.pushBack(:Int fv x)) 0 end);
+let e = deque.new(:Int);
+err("popFront of empty" fun(): Int deque.popFront(:Int e));
+err("popBack of empty" fun(): Int deque.popBack(:Int e));
+err("front of empty" fun(): Int deque.front(:Int e));
+err("back of empty" fun(): Int deque.back(:Int e));
+err("get 99 of 5" fun(): Int deque.get(:Int fv 99));
+err("get ~1" fun(): Int deque.get(:Int fv ~1));
+err("newWithCapacity ~1" fun(): Int deque.length(:Int deque.newWithCapacity(:Int ~1)))

@@ -1,0 +1,111 @@
+(* Standard Library: a priority queue, a binary heap in a vector
+ * (docs/collections-plan.md section 2.3): element k's children are at 2k + 1
+ * and 2k + 2, and none is less than its parent by the heap's comparison *)
+
+module heap : Heap
+import
+    collections/vector : collections/Vector
+export
+    let error: Exception = exception error: Ok end
+
+    Let T = Fun(A::TYPE) Tuple items: vector.T(A) compare: All(a: A b: A) Int end
+
+    let new(A::TYPE)(compare: All(a: A b: A) Int): T(A) =
+        tuple let items = vector.new(:A) let compare = compare end
+
+    let size(A::TYPE)(h: T(A)): Int = vector.length(:A h.items)
+    let empty(A::TYPE)(h: T(A)): Bool = vector.length(:A h.items) is 0
+
+    (* Moves element k up while it is less than its parent *)
+    let siftUp(A::TYPE)(h: T(A) k0: Int): Ok =
+        begin
+            let items = h.items
+            let x = vector.get(:A items k0)
+            let var k = k0
+            let var moving = true
+            while moving /\ {k > 0} do
+                let parent = {k - 1} / 2
+                let p = vector.get(:A items parent)
+                if h.compare(x p) < 0 then
+                    vector.set(:A items k p)
+                    k := parent
+                else
+                    moving := false
+                end
+            end
+            vector.set(:A items k x)
+        end
+
+    (* Moves element k down while a child is less than it *)
+    let siftDown(A::TYPE)(h: T(A) k0: Int): Ok =
+        begin
+            let items = h.items
+            let n = vector.length(:A items)
+            let x = vector.get(:A items k0)
+            let var k = k0
+            let var moving = true
+            while moving do
+                let left = {2 * k} + 1
+                if left >= n then
+                    moving := false
+                else
+                    let right = left + 1
+                    let rightLess = {right < n}
+                        andif {h.compare(vector.get(:A items right) vector.get(:A items left)) < 0}
+                    let child = if rightLess then right else left end
+                    let c = vector.get(:A items child)
+                    if h.compare(c x) < 0 then
+                        vector.set(:A items k c)
+                        k := child
+                    else
+                        moving := false
+                    end
+                end
+            end
+            vector.set(:A items k x)
+        end
+
+    let fromVector(A::TYPE)(v: vector.T(A) compare: All(a: A b: A) Int): T(A) =
+        begin
+            let h = tuple let items = vector.copy(:A v) let compare = compare end
+            (* Floyd's method: the parents, last first *)
+            for k = {vector.length(:A v) / 2} - 1 downto 0 do siftDown(:A h k) end
+            h
+        end
+
+    let push(A::TYPE)(h: T(A) elem: A): Ok =
+        begin
+            vector.append(:A h.items elem)
+            siftUp(:A h vector.length(:A h.items) - 1)
+        end
+
+    let peek(A::TYPE)(h: T(A)): A =
+        begin
+            if vector.length(:A h.items) is 0 then raise error end end
+            vector.get(:A h.items 0)
+        end
+
+    let pop(A::TYPE)(h: T(A)): A =
+        begin
+            if vector.length(:A h.items) is 0 then raise error end end
+            let top = vector.get(:A h.items 0)
+            let last = vector.pop(:A h.items)
+            if vector.length(:A h.items) > 0 then
+                vector.set(:A h.items 0 last)
+                siftDown(:A h 0)
+            end
+            top
+        end
+
+    let pushPop(A::TYPE)(h: T(A) elem: A): A =
+        if {vector.length(:A h.items) is 0} orif {h.compare(elem vector.get(:A h.items 0)) <= 0} then elem
+        else
+            let top = vector.get(:A h.items 0)
+            vector.set(:A h.items 0 elem)
+            siftDown(:A h 0)
+            top
+        end
+
+    let clear(A::TYPE)(h: T(A)): Ok = vector.clear(:A h.items)
+    let elements(A::TYPE)(h: T(A)): vector.T(A) = vector.copy(:A h.items)
+end
