@@ -15,7 +15,9 @@ of a search, both leftmost-first. The cases come from:
   finish quickly.
 
 The cases that need Go are skipped where it is not installed. RE2's exhaustive
-tests run only with QUEST_REGEXP_EXHAUSTIVE=1.
+tests run only with QUEST_REGEXP_EXHAUSTIVE=1. The harness is also compiled
+with the wasm backend and run in wasmtime and in node, on RE2's search tests
+and the comparisons with Go, each skipped where its engine is not installed.
 """
 
 import bz2
@@ -34,6 +36,7 @@ CORPUS = ROOT_DIR / "tests" / "regexp" / "corpus.quest"
 ORACLE = ROOT_DIR / "tests" / "regexp" / "oracle.go"
 
 GO = shutil.which("go")
+WASM_ENGINES = {"wasmtime": [], "node": ["--wasm-engine", "node"]}
 
 
 def go_unquote(text: str) -> bytes:
@@ -172,10 +175,12 @@ class RegexpTest(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         tmp = Path(cls.tmp.name)
         cls.harness = tmp / "corpus"
-        built = subprocess.run([str(ROOT_DIR / "quest"), "--build-dir", str(tmp / "build"), "-o", str(cls.harness),
-                                str(CORPUS)], capture_output=True, text=True)
-        if built.returncode != 0:
-            raise RuntimeError(f"corpus.quest did not compile:\n{built.stdout}{built.stderr}")
+        cls.harness = [str(cls.compiled(tmp))]
+        # The wasm builds are run by the driver, which compiles corpus.quest
+        # once into its build directory and runs it in the engine
+        cls.wasm = {engine: [str(ROOT_DIR / "quest"), "--backend", "wasm", *options, "--build-dir",
+                             str(tmp / f"build-{engine}"), str(CORPUS)]
+                    for engine, options in WASM_ENGINES.items() if shutil.which(engine)}
         cls.oracle = None
         if GO:
             cls.oracle = tmp / "oracle"
@@ -186,18 +191,30 @@ class RegexpTest(unittest.TestCase):
                 raise RuntimeError(f"oracle.go did not build:\n{done.stdout}{done.stderr}")
 
     @classmethod
+    def compiled(cls, tmp: Path) -> Path:
+        """corpus.quest compiled by ./quest, as an executable"""
+        target = tmp / "corpus"
+        built = subprocess.run([str(ROOT_DIR / "quest"), "--build-dir", str(tmp / "build"), "-o", str(target),
+                                str(CORPUS)], capture_output=True, text=True)
+        if built.returncode != 0:
+            raise RuntimeError(f"corpus.quest did not compile:\n{built.stdout}{built.stderr}")
+        return target
+
+    @classmethod
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def check(self, cases, timeout: float = 600) -> str:
-        """Runs the harness on cases, lines of PATTERN SUBJECT FULL PARTIAL,
-        and fails with its report unless every case passed; its last line"""
+    def check(self, cases, timeout: float = 600, harness: list[str] | None = None) -> str:
+        """Runs the harness (the arm64 one unless given) on cases, lines of
+        PATTERN SUBJECT FULL PARTIAL, and fails with its report unless it
+        checked every case and every case passed; its last line"""
         path = Path(self.tmp.name) / "cases.txt"
         path.write_text("".join(c + "\n" for c in cases))
-        done = subprocess.run([str(self.harness), str(path)], capture_output=True, text=True, timeout=timeout)
+        done = subprocess.run([*(harness or self.harness), str(path)], capture_output=True, text=True,
+                              timeout=timeout)
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         last = done.stdout.strip().split("\n")[-1]
-        self.assertTrue(last.endswith(" failures 0"), done.stdout[-6000:])
+        self.assertEqual(last, f"cases {len(cases)} failures 0", done.stdout[-6000:])
         return last
 
     def answered(self, pairs, every: bool = False):
@@ -242,6 +259,25 @@ class RegexpTest(unittest.TestCase):
         cases = self.answered(list(att_cases()) + list(random_cases(1500)), every=True)
         self.assertGreater(len(cases), 5000)
         self.check(cases)
+
+    def check_wasm(self, engine: str) -> None:
+        """RE2's search tests, and the comparisons with Go, by the harness
+        compiled to wasm and run in engine"""
+        if engine not in self.wasm:
+            self.skipTest(f"{engine} is not installed")
+        harness = self.wasm[engine]
+        self.check([f"{hexed(p)} {hexed(s)} {full} {partial}"
+                    for p, s, full, partial in re2_cases((DATA / "re2-search.txt").read_text().split("\n"))
+                    if not skipped(p, s)], harness=harness)
+        if GO:
+            self.check(self.answered(list(att_cases()) + list(random_cases(1000))), harness=harness)
+            self.check(self.answered(list(att_cases()) + list(random_cases(500)), every=True), harness=harness)
+
+    def test_wasm_wasmtime(self):
+        self.check_wasm("wasmtime")
+
+    def test_wasm_node(self):
+        self.check_wasm("node")
 
     def test_linear_time(self):
         """What a backtracking matcher takes exponential time over, against

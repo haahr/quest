@@ -333,7 +333,9 @@ range, to get the captures. It is the largest piece and the one most worth leavi
    a group that does not exist or took no part expands to nothing; `split` is Go's `Split(s, -1)`; `quote` escapes
    Go's `QuoteMeta` set. `tests/python/test_regexp.py` compares `findAll`, `split`, and `replaceAll` with Go's on the
    AT&T and random cases, and `tests/source/stdlib/regexp_replace.quest` covers them in every phase. libraries.md
-   §1.9 gives the interface.
+   §1.9 gives the interface. The harness of `test_regexp.py` also runs compiled with the wasm backend, in wasmtime
+   and in node, on RE2's search tests and the comparisons with Go, and the three golden tests pass in the wasm,
+   wasm-node, and wasm-jit modes.
 4. **Fast paths:** literal patterns, literal prefixes, anchors, and capture-free tests, each measured.
 5. **The benchmark**, and then the lazy DFA if it is wanted.
 6. **UTF-8 mode** (`(?u)`, and perhaps by default later): `.` and classes over code points, compiled to byte
