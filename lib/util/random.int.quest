@@ -1,0 +1,63 @@
+interface Random
+import
+    collections/vector : collections/Vector
+    word : Word
+export
+    (* =========================================================================
+     * Pseudo-Random Numbers (Random)
+     *
+     * A generator, xoshiro256** seeded by SplitMix64: the same numbers from
+     * the same seed on every target. Not for cryptography.
+     *
+     *     let r = random.new(1989)
+     *     let die = random.below(r 6) + 1
+     *     random.shuffle(:String r names)
+     * ====================================================================== *)
+
+    (* A generator, changed by each number it gives *)
+    T::TYPE
+
+    (* Raised for a bound of 0 or less, a range whose hi is below its lo, and a
+     * choice from an empty array *)
+    error: Exception
+
+    (* A generator from seed: the same seed, the same numbers *)
+    new(seed: Int): T
+    (* A generator seeded from os/time's clocks: different numbers each run *)
+    fromClock(): T
+    (* A generator that will give the numbers r will give from now; r is
+     * unchanged *)
+    copy(r: T): T
+    (* A new generator, seeded from r's next numbers, independent of r from
+     * then on: for a part of a program that needs its own *)
+    split(r: T): T
+
+    (* ---- Numbers *)
+
+    (* 64 random bits *)
+    bits(r: T): word.T
+    (* Any Int, each equally likely *)
+    anyInt(r: T): Int
+    (* An Int from 0 to n - 1, each equally likely (without bias, by Lemire's
+     * method); raises error for n <= 0 *)
+    below(r: T n: Int): Int
+    (* An Int from lo to hi, both included; raises error for hi < lo *)
+    between(r: T lo: Int hi: Int): Int
+    (* A Real from 0.0, included, to 1.0, excluded, with 53 random bits *)
+    fraction(r: T): Real
+    bool(r: T): Bool
+    (* A Real from the normal distribution of mean 0 and standard deviation 1
+     * (the Box-Muller method) *)
+    normal(r: T): Real
+
+    (* ---- Arrays and vectors *)
+
+    (* a's elements in a random order, in place (Fisher-Yates) *)
+    shuffle: All(A::TYPE) All(r: T a: Array(A)) Ok
+    shuffleVector: All(A::TYPE) All(r: T v: vector.T(A)) Ok
+    (* One of a's elements, each equally likely; raises error if a is empty *)
+    choice: All(A::TYPE) All(r: T a: Array(A)) A
+    (* k of a's elements, none twice, in a random order; raises error unless
+     * 0 <= k <= extent a *)
+    sample: All(A::TYPE) All(r: T a: Array(A) k: Int) vector.T(A)
+end

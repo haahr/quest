@@ -1,0 +1,158 @@
+(* Standard Library: pseudo-random numbers (docs/collections-plan.md section
+ * 2.5): xoshiro256** (Blackman and Vigna), seeded by SplitMix64 *)
+
+module random : Random
+import
+    collections/vector : collections/Vector
+    time = os/time : os/Time
+    word : Word
+    real : RealOp
+export
+    let error: Exception = exception error: Ok end
+
+    (* xoshiro256**'s state, four words, never all zero *)
+    Let T = Tuple var s0: word.T var s1: word.T var s2: word.T var s3: word.T end
+
+    (* SplitMix64 (Steele, Lea, and Flood): a step of its counter, and its
+     * output for the counter's new value *)
+    let golden = word.fromInt(~7046029254386353131)
+    let mix1 = word.fromInt(~4658895280553007687)
+    let mix2 = word.fromInt(~7723592293110705685)
+    let splitMix(x: word.T): word.T =
+        begin
+            let z0 = word.add(x golden)
+            let z1 = word.mul(word.xorBits(z0 word.shift(z0 ~30)) mix1)
+            let z2 = word.mul(word.xorBits(z1 word.shift(z1 ~27)) mix2)
+            word.xorBits(z2 word.shift(z2 ~31))
+        end
+
+    (* The state from seed: SplitMix64's next four outputs from it, which are
+     * never all zero *)
+    let fromSeed(seed: word.T): T =
+        begin
+            let c1 = word.add(seed golden)
+            let c2 = word.add(c1 golden)
+            let c3 = word.add(c2 golden)
+            tuple
+                let var s0 = splitMix(seed)
+                let var s1 = splitMix(c1)
+                let var s2 = splitMix(c2)
+                let var s3 = splitMix(c3)
+            end
+        end
+
+    let new(seed: Int): T = fromSeed(word.fromInt(seed))
+
+    (* The clocks, and a count of the calls, since two calls can read the
+     * same clocks *)
+    let clockCalls = tuple let var n = 0 end
+    let fromClock(): T =
+        begin
+            clockCalls.n := clockCalls.n + 1
+            let clocks = word.xorBits(word.fromInt(time.nowInNanoseconds()) word.rotate(word.fromInt(time.ticks()) 32))
+            fromSeed(word.xorBits(clocks splitMix(word.fromInt(clockCalls.n))))
+        end
+
+    let copy(r: T): T = tuple let var s0 = r.s0 let var s1 = r.s1 let var s2 = r.s2 let var s3 = r.s3 end
+
+    (* xoshiro256**'s next output *)
+    let bits(r: T): word.T =
+        begin
+            let result = word.mul(word.rotate(word.mul(r.s1 word.fromInt(5)) 7) word.fromInt(9))
+            let t = word.shift(r.s1 17)
+            r.s2 := word.xorBits(r.s2 r.s0)
+            r.s3 := word.xorBits(r.s3 r.s1)
+            r.s1 := word.xorBits(r.s1 r.s2)
+            r.s0 := word.xorBits(r.s0 r.s3)
+            r.s2 := word.xorBits(r.s2 t)
+            r.s3 := word.rotate(r.s3 45)
+            result
+        end
+
+    let split(r: T): T = fromSeed(bits(r))
+    let anyInt(r: T): Int = word.toInt(bits(r))
+
+    (* A word from 0 to n - 1 for a word n > 0, without bias (Lemire, "Fast
+     * Random Integer Generation in an Interval"): the high word of a random
+     * word times n, rejecting the low words below 2^64 mod n *)
+    let belowWord(r: T n: word.T): word.T =
+        begin
+            let var x = bits(r)
+            let var low = word.mul(x n)
+            if word.lt(low n) then
+                let threshold = word.mod(word.sub(word.fromInt(0) n) n)
+                while word.lt(low threshold) do
+                    x := bits(r)
+                    low := word.mul(x n)
+                end
+            end
+            word.mulHi(x n)
+        end
+
+    let below(r: T n: Int): Int =
+        begin
+            if n <= 0 then raise error end end
+            word.toInt(belowWord(r word.fromInt(n)))
+        end
+
+    let between(r: T lo: Int hi: Int): Int =
+        begin
+            if hi < lo then raise error end end
+            (* hi - lo + 1, as a word: 0 for the whole range of Ints *)
+            let span = word.add(word.sub(word.fromInt(hi) word.fromInt(lo)) word.fromInt(1))
+            if word.toInt(span) is 0 then anyInt(r)
+            else word.toInt(word.add(word.fromInt(lo) belowWord(r span)))
+            end
+        end
+
+    (* The top 53 bits, times 2^-53 *)
+    let fraction(r: T): Real = real.div(real.int(word.toInt(word.shift(bits(r) ~11))) 9007199254740992.0)
+    let bool(r: T): Bool = word.toInt(word.shift(bits(r) ~63)) is 1
+
+    (* Box and Muller's method, from two fractions: the first made above 0, so
+     * that its logarithm is finite *)
+    let normal(r: T): Real =
+        begin
+            let u1 = real.diff(1.0 fraction(r))
+            let u2 = fraction(r)
+            real.mul(real.sqrt(real.mul(~2.0 real.log(u1))) real.cos(real.mul(real.mul(2.0 real.pi) u2)))
+        end
+
+    let shuffle(A::TYPE)(r: T a: Array(A)): Ok =
+        for i = {extent a - 1} downto 1 do
+            let j = below(r i + 1)
+            let x = a[i]
+            a[i] := a[j]
+            a[j] := x
+        end
+
+    let shuffleVector(A::TYPE)(r: T v: vector.T(A)): Ok =
+        for i = vector.length(:A v) - 1 downto 1 do
+            let j = below(r i + 1)
+            let x = vector.get(:A v i)
+            vector.set(:A v i vector.get(:A v j))
+            vector.set(:A v j x)
+        end
+
+    let choice(A::TYPE)(r: T a: Array(A)): A =
+        begin
+            if extent a is 0 then raise error end end
+            a[below(r extent a)]
+        end
+
+    (* The first k steps of Fisher and Yates's shuffle, on a copy *)
+    let sample(A::TYPE)(r: T a: Array(A) k: Int): vector.T(A) =
+        begin
+            if {k < 0} \/ {k > extent a} then raise error end end
+            let c = vector.fromArray(:A a)
+            let picked = vector.newWithCapacity(:A k)
+            for i = 0 upto {k - 1} do
+                let j = i + below(r vector.length(:A c) - i)
+                let x = vector.get(:A c j)
+                vector.set(:A c j vector.get(:A c i))
+                vector.set(:A c i x)
+                vector.append(:A picked x)
+            end
+            picked
+        end
+end
