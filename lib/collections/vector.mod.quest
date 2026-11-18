@@ -1,9 +1,13 @@
 (* Growable vector implementation backed by contiguous Quest arrays.
  *
  * Resizing & Memory Strategy:
- * - Growth: When appending exceeds the backing array capacity, capacity grows
- *   by a factor of 1.5x (cap + cap / 2), with an initial floor capacity of
- *   floorSize (6).
+ * - Growth: When appending exceeds the backing array capacity, capacity
+ *   doubles, from an initial floor capacity of floorSize (4), or from the
+ *   capacity hint when it is larger. Most vectors stay short: of the 68 million
+ *   a build of the compiler fills, 49% hold one element and 72% at most two
+ *   (docs/benchmarks.md section 28), and doubling from 4 allocates 20% fewer
+ *   bytes than growing by half from 6, which passes through more arrays.
+ * - Copies (copy, concat, fromArray) are exactly as long as their elements.
  * - Shrinking: When vector utilization drops to 25% or below (length * 4 <=
  *   capacity) and capacity exceeds floorSize, the backing array shrinks by half
  *   (50%), with a lower bound of floorSize.
@@ -18,7 +22,7 @@ import
     util/maybe : util/Maybe
 export
     (* Capacity floor for non-empty backing storage *)
-    let floorSize: Int = 6
+    let floorSize: Int = 4
 
     (* Tuple representation of a growable array *)
     Let T = Fun(A::TYPE) Tuple
@@ -93,7 +97,7 @@ export
             if v.length is cap then
                 let var newCap: Int = floorSize
                 if cap > 0 then
-                    newCap := cap + {cap / 2}
+                    newCap := 2 * cap
                 elsif v.capacityHint > 0 then
                     newCap := if v.capacityHint > floorSize then v.capacityHint else floorSize end
                 end
@@ -178,10 +182,7 @@ export
             if n is 0 then
                 new(:A)
             else
-                let var cap: Int = n
-                if cap < floorSize then
-                    cap := floorSize
-                end
+                let cap: Int = n
                 let newData: Array(A) = array of(cap v.data[0])
                 for i = 0 upto {n - 1} do
                     newData[i] := v.data[i]
@@ -203,10 +204,7 @@ export
             if total is 0 then
                 new(:A)
             else
-                let var cap: Int = total
-                if cap < floorSize then
-                    cap := floorSize
-                end
+                let cap: Int = total
                 let initElem: A =
                     if n1 > 0 then
                         v1.data[0]
@@ -239,10 +237,7 @@ export
             if n is 0 then
                 new(:A)
             else
-                let var cap: Int = n
-                if cap < floorSize then
-                    cap := floorSize
-                end
+                let cap: Int = n
                 let newData: Array(A) = array of(cap arr[0])
                 for i = 0 upto {n - 1} do
                     newData[i] := arr[i]

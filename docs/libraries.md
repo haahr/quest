@@ -595,11 +595,14 @@ end
 
 #### Memory and Growth Strategy
 
-- **Initial Floor**: When appending to an empty vector, initial capacity is allocated to 6 elements.
-- **Growth Factor**: When capacity is exceeded, storage grows by $1.5\times$ (`cap + cap / 2`),
-  ensuring $O(1)$ amortized append time.
+- **Initial Floor**: When appending to an empty vector, initial capacity is allocated to 4 elements (or the
+  capacity hint, when it is larger).
+- **Growth Factor**: When capacity is exceeded, storage doubles, ensuring $O(1)$ amortized append time. Most vectors
+  stay short (half of those a build of the compiler fills hold one element), and doubling from 4 allocates a fifth
+  fewer bytes than growing by half from 6 ([benchmarks.md](benchmarks.md) §28).
+- **Copies**: `copy`, `concat`, and `fromArray` allocate exactly as many elements as they hold.
 - **Shrinking**: When utilization drops to 25% or below (`length * 4 <= capacity`), the backing array shrinks by 50%
-  (bounded below by the floor of 6).
+  (bounded below by the floor of 4).
 - **GC Safety**: Vacated slots on `pop` and `delete` are overwritten to prevent reference leaks. Emptying a vector
   via `clear` resets the backing array to zero elements.
 
@@ -608,7 +611,7 @@ end
 ### 2.2. `collections/hashMap : collections/HashMap`
 
 Compact, insertion-order preserving polymorphic hash table parameterized over key type `K` and value type `V`.
-Uses the Python 3.6+ / PyPy architecture (sparse power-of-two index array with dense parallel vectors)
+Uses the Python 3.6+ / PyPy architecture (sparse power-of-two index array with dense parallel arrays)
 with secondary perturbation probing and periodic tombstone compaction.
 
 #### Interface Summary
@@ -707,6 +710,18 @@ export
         T(K W)
 end
 ```
+
+#### Memory and Growth Strategy
+
+- **Empty maps allocate nothing more**: a map makes its arrays on its first insert, so an empty map is its own tuple
+  alone. Most maps stay empty: 89% of the 23 million a build of the compiler makes ([benchmarks.md](benchmarks.md)
+  §28).
+- **First table**: 8 index slots and 6 dense entries, or, from `newWithCapacity(n ...)`, the smallest power of two of
+  index slots that holds `n` entries without growing.
+- **Dense arrays**: keys, values, and hashes, each as long as the 2/3 of the index slots they fill before the table
+  grows; the deleted flags are allocated on the first `delete`.
+- **Growth**: when the dense arrays are full, the table doubles, or is compacted at the same size when more than a
+  third of its entries are deleted.
 
 ---
 
