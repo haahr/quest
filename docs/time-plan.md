@@ -2,7 +2,7 @@
 
 Clocks, durations, sleeping, and calendar dates for Quest, the first of [future-libraries.md](future-libraries.md)'s
 "clearly missing" libraries. Quest has no clock today: util/regexp's benchmark times whole processes from Python
-for lack of one. Not started; this is the interfaces' design, for review.
+for lack of one. Built 2026-11-18 (§6).
 
 ## 1. Decisions
 
@@ -213,7 +213,11 @@ Why this shape:
 | `quest_time_ticks_ns` | `clock_gettime(CLOCK_MONOTONIC)` | `performance.now()` | `time.monotonic_ns()` |
 | `quest_time_cpu_ns` | `clock_gettime(CLOCK_PROCESS_CPUTIME_ID)` | `process.cpuUsage()` in node; the wall clock's ticks in a page, which has none | `time.process_time_ns()` |
 | `quest_time_sleep_ns` | `nanosleep`, resumed after a signal | `Atomics.wait` on a buffer of its own, in node and in a page's worker | `time.sleep` |
-| `quest_time_local_offset` | `localtime_r`'s `tm_gmtoff` at the instant | `new Date(ms).getTimezoneOffset()`, negated | `time.localtime(s).tm_gmtoff` |
+| `quest_time_local_offset` | `localtime_r`'s `tm_gmtoff` at the instant | 0: WASI has no time zone, and a host function would not link in wasmtime | `time.localtime(s).tm_gmtoff` |
+
+Under wasm the clocks are WASI's own (`clock_time_get`, and `poll_oneoff` for sleeping), which wasmtime has and
+`runtime/wasm/host.mjs` gives node and the page. A page's sleep waits on the clock in its worker where it has no
+`SharedArrayBuffer`, which a page has only when cross-origin isolated, as GitHub Pages' is not.
 
 The self-hosted interpreter's builtins call the library, as for `os/fileStats`; the JIT uses the C runtime. New
 externals change the compiler's externals table (`tools/externals`), so the change bumps the ABI version. A page's
@@ -244,3 +248,12 @@ directives. It imports `os/time` for `now`, `elapsedSince`, `sleep`, and `local`
 2. **`util/datetime`'s durations and instants,** and its calendar dates: `utc`, `atOffset`, `instant`, weekdays,
    leap years, and `local`.
 3. **`util/datetime`'s text:** `format`, `parse`, RFC 3339, and the comparison with Python.
+
+*Built 2026-11-18,* the three steps in one change, at ABI 85: `lib/os/time.*` and `lib/util/datetime.*`, the five
+externals in the C runtime, both interpreters' builtins, and the wasm runtime (with WASI's `clock_time_get` and
+`poll_oneoff` added to its imports, and to `runtime/wasm/host.mjs` for node and the page), the externals table, the
+ABI corpora with `os/time`'s interface snapshotted, and libraries.md §1.10 and §4.5. `tests/source/stdlib/os_time.quest`
+and `datetime_operations.quest` pass in every phase of both compilers and in the arm64, ssac, JIT, wasm, wasm-node,
+and wasm-jit modes, and `tests/python/test_datetime.py` agrees with Python's `datetime` on 20,058 instants. Since
+the self-hosted interpreter's builtins import `os/time`, `questlang/` builds only from the bootstrap
+(`QUEST_SEED=bootstrap`) until a release has it (docs/release-compiler.md §2).

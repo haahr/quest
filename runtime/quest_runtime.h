@@ -425,6 +425,19 @@ bool     quest_system_is_terminal(int64_t fd);
  * path names nothing (ENOENT or ENOTDIR); other failures raise system.error */
 void    *quest_filestats_stat(const QString *path, bool follow);
 
+/* os/time module primitives (docs/time-plan.md section 2): the wall clock's
+ * nanoseconds since the epoch (CLOCK_REALTIME), the monotonic clock's
+ * nanoseconds (CLOCK_MONOTONIC), the process's CPU time in nanoseconds
+ * (CLOCK_PROCESS_CPUTIME_ID), a sleep of at least ns nanoseconds (none for ns
+ * <= 0, resumed after a signal), and the local zone's offset from UTC in
+ * seconds east at the instant seconds after the epoch (localtime_r's
+ * tm_gmtoff, 0 if it cannot say) */
+QInt     quest_time_now_ns(void);
+QInt     quest_time_ticks_ns(void);
+QInt     quest_time_cpu_ns(void);
+void     quest_time_sleep_ns(QInt ns);
+QInt     quest_time_local_offset(QInt seconds);
+
 /* os/process module primitives: children started without waiting for them, with
  * their standard output and error collected in temp files; quest_process_wait
  * gives a Tuple code: Int stdout: String stderr: String end, as

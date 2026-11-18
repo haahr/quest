@@ -1,0 +1,108 @@
+import time = "os/time" : os/Time
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import intOp = "int" : IntOp
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @12:45
+      let %2: String = prim <>(s, "\n") @12:59
+      let %3: Ok = call writer.putString(%1, %2) @12:28
+      return %3
+    }
+  }
+  funs {
+    fun check(what: String, holds: Bool): Ok {
+      let %4: String = call conv.bool(holds) @13:65
+      let %5: String = prim <>(": ", %4) @13:57
+      let %6: String = prim <>(what, %5) @13:49
+      let %7: Ok = call print(%6) @13:43
+      return %7
+    }
+  }
+  let %8: Int = call time.ticks() @16:16
+  var last: Int = %8 @16:1
+  var back: Bool = false @17:1
+  var i: Int = 1 @18:1
+  let %9: Bool = prim <=(i, 1000) @18:1
+  if %9 { @18:1
+    loop L1 {
+      let i.1: Int = i @18:1
+      let t: Int = call time.ticks() @19:13
+      let %10: Bool = prim <(t, last) @20:8
+      if %10 { @20:5
+        back := true @20:22
+      }
+      last := t @21:5
+      let %11: Bool = prim is(i, 1000) @18:1
+      if %11 { @18:1
+        break L1 @18:1
+      }
+      let %12: Int = prim +(i, 1) @18:1
+      i := %12 @18:1
+    }
+  }
+  let %13: Bool = prim not(back) @23:29
+  do call check("ticks never go back", %13) @23:1
+  let wallBefore: Int = call time.nowInNanoseconds() @26:18
+  let ticksBefore: Int = call time.ticks() @27:19
+  do call time.sleepNanoseconds(50000000) @28:1
+  let %14: Int = call time.ticks() @29:13
+  let slept: Int = prim -(%14, ticksBefore) @29:13
+  let %15: Int = call time.nowInNanoseconds() @30:17
+  let wallSlept: Int = prim -(%15, wallBefore) @30:17
+  let %16: Bool = prim >=(slept, 50000000) @31:36
+  do call check("sleep lasts at least 50 ms", %16) @31:1
+  let %17: Bool = prim <(slept, 5000000000) @32:31
+  do call check("sleep lasts under 5 s", %17) @32:1
+  let %18: Int = prim -(wallSlept, slept) @33:45
+  let %19: Int = call intOp.abs(%18) @33:35
+  let %20: Bool = prim <(%19, 1000000000) @33:35
+  do call check("the wall clock keeps pace", %20) @33:1
+  let shortStart: Int = call time.ticks() @34:18
+  do call time.sleepNanoseconds(0) @35:1
+  do call time.sleepNanoseconds(-1000000000) @36:1
+  let %21: Int = call time.ticks() @37:33
+  let %22: Int = prim -(%21, shortStart) @37:33
+  let %23: Bool = prim <(%22, 1000000000) @37:33
+  do call check("no sleep for 0 or less", %23) @37:1
+  let cpuBefore: Int = call time.cpuTimeInNanoseconds() @40:17
+  var sum: Int = 0 @41:1
+  var i.2: Int = 1 @42:1
+  let %24: Bool = prim <=(i.2, 100000) @42:1
+  if %24 { @42:1
+    loop L2 {
+      let i.3: Int = i.2 @42:1
+      let %25: Int = prim %(i.3, 7) @42:40
+      let %26: Int = prim +(sum, %25) @42:33
+      sum := %26 @42:26
+      let %27: Bool = prim is(i.2, 100000) @42:1
+      if %27 { @42:1
+        break L2 @42:1
+      }
+      let %28: Int = prim +(i.2, 1) @42:1
+      i.2 := %28 @42:1
+    }
+  }
+  let %29: Int = call time.cpuTimeInNanoseconds() @43:36
+  let %30: Bool = prim >=(%29, cpuBefore) @43:36
+  let %31: Bool = prim >(sum, 0) @43:82
+  let %32: Bool = prim /\(%30, %31) @43:36
+  do call check("CPU time grows under work", %32) @43:1
+  let wall: Int = call time.nowInNanoseconds() @46:12
+  let %33: Bool = prim >(wall, 1735689600000000000) @47:41
+  let %34: Bool = prim <(wall, 4102444800000000000) @47:73
+  let %35: Bool = prim /\(%33, %34) @47:41
+  do call check("the wall clock is this century", %35) @47:1
+  let %36: Int = prim /(wall, 1000000000) @51:42
+  let %37: Int = call time.localOffsetInSeconds(%36) @51:16
+  let %38: Int = call intOp.abs(%37) @51:6
+  let %39: Bool = prim <(%38, 86400) @51:6
+  let %40: Int = prim -(0, 1577836800) @52:49
+  let %41: Int = call time.localOffsetInSeconds(%40) @52:23
+  let %42: Int = call intOp.abs(%41) @52:13
+  let %43: Bool = prim <(%42, 86400) @52:13
+  let %44: Bool = prim /\(%39, %43) @51:6
+  do call check("the local offset is less than a day", %44) @50:1
+}
+

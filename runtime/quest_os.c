@@ -25,6 +25,7 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <time.h>
 
 /* System module primitives */
 QArray *quest_system_args = NULL;
@@ -377,6 +378,29 @@ void *quest_system_run(const QArray *args) {
     free(out.data);
     free(err.data);
     return result;
+}
+
+/* os/time (see quest_runtime.h) */
+static QInt quest_clock_ns(clockid_t clock) {
+    struct timespec ts;
+    if (clock_gettime(clock, &ts) != 0) quest_raise_system_error();
+    return (QInt)ts.tv_sec * 1000000000 + (QInt)ts.tv_nsec;
+}
+
+QInt quest_time_now_ns(void) { return quest_clock_ns(CLOCK_REALTIME); }
+QInt quest_time_ticks_ns(void) { return quest_clock_ns(CLOCK_MONOTONIC); }
+QInt quest_time_cpu_ns(void) { return quest_clock_ns(CLOCK_PROCESS_CPUTIME_ID); }
+
+void quest_time_sleep_ns(QInt ns) {
+    if (ns <= 0) return;
+    struct timespec want = { (time_t)(ns / 1000000000), (long)(ns % 1000000000) }, left;
+    while (nanosleep(&want, &left) != 0 && errno == EINTR) want = left;
+}
+
+QInt quest_time_local_offset(QInt seconds) {
+    time_t t = (time_t)seconds;
+    struct tm tm;
+    return localtime_r(&t, &tm) != NULL ? (QInt)tm.tm_gmtoff : 0;
 }
 
 /* os/fileStats (see quest_runtime.h) */

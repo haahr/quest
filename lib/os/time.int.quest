@@ -1,0 +1,37 @@
+interface Time
+export
+    (* =========================================================================
+     * The System's Clocks (Time)
+     *
+     * The readings and waits that need the operating system, as Ints in the
+     * units their names give; util/datetime builds durations, instants, and
+     * dates on them (docs/time-plan.md). The wall clock can jump when the
+     * system's time is set, so a program that measures how long something
+     * takes subtracts two ticks() instead:
+     *
+     *     let started = time.ticks()
+     *     work()
+     *     let took = time.ticks() - started   (* nanoseconds *)
+     * ====================================================================== *)
+
+    (* The wall clock: nanoseconds since the Unix epoch, 1970-01-01T00:00:00Z
+     * (POSIX time, without leap seconds) *)
+    nowInNanoseconds(): Int
+
+    (* The monotonic clock: nanoseconds from an unspecified start, never
+     * going back, meaningful only against another reading in the same run *)
+    ticks(): Int
+
+    (* The CPU time this process has used, user and system, in nanoseconds;
+     * the monotonic clock's ticks where there is no such clock (a browser) *)
+    cpuTimeInNanoseconds(): Int
+
+    (* Waits at least nanoseconds; returns at once for nanoseconds <= 0 *)
+    sleepNanoseconds(nanoseconds: Int): Ok
+
+    (* The local time zone's offset from UTC, in seconds east, at the instant
+     * secondsSinceEpoch seconds after the epoch: what it was, or will be,
+     * then, daylight saving included; 0 where there is no local zone (under
+     * WebAssembly, whose WASI has none) *)
+    localOffsetInSeconds(secondsSinceEpoch: Int): Int
+end

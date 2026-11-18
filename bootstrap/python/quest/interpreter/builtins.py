@@ -18,6 +18,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 if TYPE_CHECKING:
@@ -620,6 +621,29 @@ def _system_run(args_val: QArray) -> QTuple:
 
 _FILESTATS_LABELS = ("kind", "size", "mode", "accessTime", "modifiedTime", "changeTime",
                      "accessNs", "modifiedNs", "changeNs")
+
+# os/time (runtime/quest_os.c's quest_time_*): the clocks as nanoseconds, a
+# sleep, and the local zone's offset at an instant
+def _time_now_ns() -> QInt:
+    return QInt(time.time_ns())
+
+def _time_ticks_ns() -> QInt:
+    return QInt(time.monotonic_ns())
+
+def _time_cpu_ns() -> QInt:
+    return QInt(time.process_time_ns())
+
+def _time_sleep_ns(ns: QInt) -> QOk:
+    if ns.value > 0:
+        time.sleep(ns.value / 1e9)
+    return OK_VALUE
+
+def _time_local_offset(seconds: QInt) -> QInt:
+    try:
+        return QInt(time.localtime(seconds.value).tm_gmtoff)
+    except (OverflowError, OSError, ValueError):
+        return QInt(0)
+
 
 def _filestats_stat(path_val: QString, follow: QBool) -> QTuple:
     """stat or lstat, as quest_filestats_stat gives it: the kind as a number,
@@ -1255,6 +1279,11 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     "quest_system_run": _system_run,
     "quest_system_is_terminal": _system_is_terminal,
     "quest_filestats_stat": _filestats_stat,
+    "quest_time_now_ns": _time_now_ns,
+    "quest_time_ticks_ns": _time_ticks_ns,
+    "quest_time_cpu_ns": _time_cpu_ns,
+    "quest_time_sleep_ns": _time_sleep_ns,
+    "quest_time_local_offset": _time_local_offset,
     "quest_process_spawn": _process_spawn,
     "quest_process_spawn_in": _process_spawn_in,
     "quest_process_pid": _process_pid,

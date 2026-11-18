@@ -1785,6 +1785,8 @@ export
     let pathRemoveDirectory(fd: Int a: Int n: Int): Int = external "wasm.base.wasi:path_remove_directory"
     let pathRename(fd: Int a: Int n: Int fd2: Int b: Int m: Int): Int = external "wasm.base.wasi:path_rename"
     let fdReaddir(fd: Int a: Int n: Int cookie: Int into: Int): Int = external "wasm.base.wasi:fd_readdir"
+    let clockTimeGet(id: Int precision: Int into: Int): Int = external "wasm.base.wasi:clock_time_get"
+    let pollOneoff(subscriptions: Int events: Int count: Int into: Int): Int = external "wasm.base.wasi:poll_oneoff"
     let intAny(n: Int): Any = external "wasm.toAny"
     let anyInt(x: Any): Int = external "wasm.fromAny"
 
@@ -2038,6 +2040,35 @@ export
             toMemory(b.path pathAt + n)
             if pathRename(a.fd pathAt n b.fd {pathAt + n} m) isnot 0 then systemError() end
         end
+
+    (* ======================================================================
+     * os/time
+     * ====================================================================== *)
+
+    (* WASI's clock id's reading, in nanoseconds, from clock_time_get *)
+    let clockNs(id: Int): Int =
+        begin
+            if clockTimeGet(id 1 results) isnot 0 then systemError() end
+            load64(results)
+        end
+    let timeNow(): Int = clockNs(0)
+    let timeTicks(): Int = clockNs(1)
+    let timeCpu(): Int = if clockTimeGet(2 1 results) is 0 then load64(results) else clockNs(1) end
+
+    (* A subscription to the monotonic clock, ns from now, at results (48
+     * bytes: userdata, the tag 0 for a clock at 8, the clock's id at 16, the
+     * timeout at 24, its precision at 32, and flags 0, relative, at 40), its
+     * event after it (32 bytes), and the count of events after that *)
+    let timeSleep(ns: Int): Ok =
+        if ns > 0 then
+            for i = 0 upto 5 do store64(results + {8 * i} 0) end
+            store32(results + 16 1)
+            store64(results + 24 ns)
+            let errno = pollOneoff(results results + 48 1 results + 80)
+            if errno isnot 0 then systemError() end
+        end
+
+    let timeLocalOffset(seconds: Int): Int = 0
 
     let currentDirectory(): String =
         begin

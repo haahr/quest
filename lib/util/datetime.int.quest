@@ -1,0 +1,115 @@
+interface DateTime
+import
+    util/maybe : util/Maybe
+export
+    (* =========================================================================
+     * Dates and Times (DateTime)
+     *
+     * Durations, instants, calendar dates, and their text, in Quest, on
+     * os/time's clocks (docs/time-plan.md section 3): the proleptic Gregorian
+     * calendar, POSIX time (no leap seconds), and time zones by their offset
+     * from UTC alone. A duration is nanoseconds, used with Int's operators:
+     *
+     *     let started = time.ticks()
+     *     work()
+     *     let took = datetime.elapsedSince(started)
+     *     print("took " <> datetime.durationString(took))
+     *     let today = datetime.local(datetime.now())
+     *     print(datetime.format(today "%Y-%m-%d %H:%M"))
+     *     datetime.sleep(250 * datetime.millisecond)
+     * ====================================================================== *)
+
+    (* Raised for an argument out of range: a date that does not exist (the
+     * 30th of February), an offset of more than a day, an instant outside
+     * what nanoseconds since 1970 can hold, or a pattern with an unknown
+     * directive *)
+    error: Exception
+
+    (* ---- Durations: nanoseconds, used with Int's operators *)
+
+    Def Duration = Int
+    nanosecond: Duration
+    microsecond: Duration
+    millisecond: Duration
+    second: Duration
+    minute: Duration
+    hour: Duration
+    (* d in seconds, and seconds as the nearest duration *)
+    seconds(d: Duration): Real
+    fromSeconds(s: Real): Duration
+    (* d written as Go writes durations: "1h2m3.5s", "250ms", "1.5us", "0s",
+     * "-2s" (with us for microseconds, where Go writes the micro sign) *)
+    durationString(d: Duration): String
+    (* How long since a reading of os/time's ticks() *)
+    elapsedSince(ticks: Int): Duration
+    (* Waits at least d *)
+    sleep(d: Duration): Ok
+
+    (* ---- Instants: the wall clock's readings *)
+
+    (* An instant: nanoseconds since the Unix epoch, from 1677 to 2262 *)
+    Instant::TYPE
+    now(): Instant
+    epoch: Instant
+    (* From and to nanoseconds since the epoch (os/time's nowInNanoseconds,
+     * os/fileStats's modifiedNs) *)
+    fromNanoseconds(ns: Int): Instant
+    toNanoseconds(i: Instant): Int
+    (* An instant d after i (before, for a negative d); raises error outside
+     * the range *)
+    add(i: Instant d: Duration): Instant
+    (* How long after b a is (negative if before) *)
+    diff(a: Instant b: Instant): Duration
+    compare(a: Instant b: Instant): Int
+    before(a: Instant b: Instant): Bool
+
+    (* ---- Calendar dates *)
+
+    (* A date and time of day, at offset seconds east of UTC: month 1 to 12,
+     * day 1 to 31, hour 0 to 23, minute and second 0 to 59, nanosecond 0 to
+     * 999,999,999 *)
+    Def Date = Tuple
+        year: Int
+        month: Int
+        day: Int
+        hour: Int
+        minute: Int
+        second: Int
+        nanosecond: Int
+        offset: Int
+    end
+    (* i's date in UTC, in the local zone (its offset at i), and at offset *)
+    utc(i: Instant): Date
+    local(i: Instant): Date
+    atOffset(i: Instant offset: Int): Date
+    (* The instant d names, d's fields checked; raises error for a date that
+     * does not exist *)
+    instant(d: Date): Instant
+    (* 0 for Sunday to 6 for Saturday; 1 to 366 *)
+    weekday(d: Date): Int
+    yearDay(d: Date): Int
+    isLeapYear(year: Int): Bool
+    daysInMonth(year: Int month: Int): Int
+
+    (* ---- Text *)
+
+    (* d written by pattern's directives: %Y year, %m %d %H %M %S two
+     * digits, %f nanoseconds (nine digits), %j day of year, %y two-digit
+     * year, %I %p 12-hour clock, %a %A %b %B English names, %z offset
+     * (+hhmm), %e day padded with a space, %u %w weekday numbers, %% a %;
+     * raises error for any other *)
+    format(d: Date pattern: String): String
+    (* The date s is in pattern, if it is one: the directives as format
+     * writes them, but numbers with fewer digits (one or two for %m %d %H %M
+     * %S %I %y, %e's space optional, %f one to nine), names and %p in either
+     * case, and %z as +hhmm, +hh:mm, or Z. Fields it does not give are
+     * 1970-01-01 00:00:00 at offset 0 (%j gives the month and day, and %y
+     * years 1969 to 2068, as POSIX's strptime); %a %A %u %w are read and not
+     * checked. Raises error for an unknown directive *)
+    parse(s: String pattern: String): maybe.T(Date)
+    (* i as RFC 3339 in UTC: 2026-11-17T21:37:41Z, with a fraction when i has
+     * one (2026-11-17T21:37:41.250Z); and such text read back, with Z or an
+     * offset (+08:00), if it is one *)
+    iso8601(i: Instant): String
+    parseIso8601(s: String): maybe.T(Instant)
+end

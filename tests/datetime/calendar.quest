@@ -1,0 +1,62 @@
+(* Writes util/datetime's dates for tests/python/test_datetime.py to check
+ * against Python's (docs/time-plan.md section 5). Its argument is a file of
+ * cases, "NANOSECONDS OFFSET" a line: an instant and an offset in seconds. For
+ * each it prints
+ *
+ *     FORMATTED|NANOSECOND|ISO|PARSED|ISOPARSED
+ *
+ * the date at the offset by format's directives that strftime has too (the
+ * pattern below), its nanosecond, iso8601 of the instant, whether parse reads
+ * the formatted date back as the date, and whether parseIso8601 reads the ISO
+ * text back as the instant. *)
+
+import datetime = util/datetime : util/DateTime;
+import util/maybe : util/Maybe;
+import util/strutil : util/Strutil;
+import sb = util/stringBuilder : util/StringBuilder;
+import collections/vector : collections/Vector;
+import reader: Reader;
+import writer: Writer;
+import system: System;
+import conv: Conv;
+
+let pattern = "%Y-%m-%d %H:%M:%S %j %y %I %p %a %A %b %B %z %e %u %w %%";
+let readBack = "%Y-%m-%d %H:%M:%S.%f %z";
+
+let contents(path: String): String =
+    begin
+        let r = reader.file(path)
+        let buf = sb.new()
+        while reader.more(r) do sb.str(buf reader.getString(r 65536)) end
+        reader.close(r)
+        sb.toString(buf)
+    end;
+
+let same(a: datetime.Date b: datetime.Date): Bool =
+    {a.year is b.year} /\ {a.month is b.month} /\ {a.day is b.day} /\ {a.hour is b.hour} /\ {a.minute is b.minute}
+        /\ {a.second is b.second} /\ {a.nanosecond is b.nanosecond} /\ {a.offset is b.offset};
+
+let lines = strutil.splitlines(contents(system.args[1]));
+let buf = sb.new();
+for k = 0 upto {vector.length(:String lines) - 1} do
+    let fields = strutil.split(vector.get(:String lines k) " ")
+    if vector.length(:String fields) is 2 then
+        let i = datetime.fromNanoseconds(strutil.toInt(vector.get(:String fields 0)))
+        let d = datetime.atOffset(i strutil.toInt(vector.get(:String fields 1)))
+        let iso = datetime.iso8601(i)
+        let parsed = datetime.parse(datetime.format(d readBack) readBack)
+        let isoParsed = datetime.parseIso8601(iso)
+        sb.str(buf datetime.format(d pattern))
+        sb.char(buf '|')
+        sb.int(buf d.nanosecond)
+        sb.char(buf '|')
+        sb.str(buf iso)
+        sb.char(buf '|')
+        sb.str(buf conv.bool(maybe.isSome(:datetime.Date parsed) andif same(maybe.unwrap(:datetime.Date parsed) d)))
+        sb.char(buf '|')
+        sb.str(buf conv.bool(maybe.isSome(:datetime.Instant isoParsed)
+            andif {datetime.toNanoseconds(maybe.unwrap(:datetime.Instant isoParsed)) is datetime.toNanoseconds(i)}))
+        sb.char(buf '\n')
+    end
+end;
+writer.putString(writer.output sb.toString(buf))

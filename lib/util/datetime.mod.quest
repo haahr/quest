@@ -1,0 +1,560 @@
+(* Standard Library: dates and times on os/time's clocks (docs/time-plan.md
+ * section 3), in Quest *)
+
+module datetime : DateTime
+import
+    util/maybe : util/Maybe
+    sb = util/stringBuilder : util/StringBuilder
+    stringOp = string : StringOp
+    intOp = int : IntOp
+    time = os/time : os/Time
+    real: RealOp
+    ascii: Ascii
+    conv: Conv
+export
+    let error: Exception = exception error: Ok end
+    let fail(A::TYPE): A = raise error end
+
+    (* a divided by b > 0, rounded down, and its remainder, from 0 to b - 1 *)
+    let floorDiv(a: Int b: Int): Int = begin let q = a / b if {a % b} < 0 then q - 1 else q end end
+    let floorMod(a: Int b: Int): Int = begin let r = a % b if r < 0 then r + b else r end end
+
+    (* v in decimal, with zeros before it to width digits *)
+    let padded(v: Int width: Int): String =
+        begin
+            let t = conv.int(v)
+            let n = stringOp.length(t)
+            if n >= width then t else stringOp.cat(stringOp.new(width - n '0') t) end
+        end
+
+    (* ======================================================================
+     * Durations
+     * ====================================================================== *)
+
+    Let Duration = Int
+    let nanosecond = 1
+    let microsecond = 1000
+    let millisecond = 1000000
+    let second = 1000000000
+    let minute = 60 * second
+    let hour = 60 * minute
+
+    let seconds(d: Duration): Real = real.div(real.int(d) 1000000000.0)
+    let fromSeconds(s: Real): Duration = real.round(real.mul(s 1000000000.0))
+
+    (* v / 10^precision in decimal: its whole part, and its fraction, if any,
+     * without trailing zeros *)
+    let fraction(v: Int precision: Int): String =
+        begin
+            let var scale = 1
+            for i = 1 upto precision do scale := scale * 10 end
+            let var rest = v % scale
+            let var digits = precision
+            while {digits > 0} andif {{rest % 10} is 0} do
+                rest := rest / 10
+                digits := digits - 1
+            end
+            let whole = conv.int(v / scale)
+            if digits is 0 then whole else whole <> "." <> padded(rest digits) end
+        end
+
+    let durationString(d: Duration): String =
+        if d is 0 then "0s"
+        elsif d is intOp.minInt then "-2562047h47m16.854775808s"
+        else
+            let u = intOp.abs(d)
+            let text =
+                if u < microsecond then conv.int(u) <> "ns"
+                elsif u < millisecond then fraction(u 3) <> "us"
+                elsif u < second then fraction(u 6) <> "ms"
+                else
+                    let whole = u / second
+                    let h = whole / 3600
+                    let m = {whole / 60} % 60
+                    let s = fraction(u % minute 9) <> "s"
+                    if h > 0 then conv.int(h) <> "h" <> conv.int(m) <> "m" <> s
+                    elsif m > 0 then conv.int(m) <> "m" <> s
+                    else s
+                    end
+                end
+            if d < 0 then "-" <> text else text end
+        end
+
+    let elapsedSince(ticks: Int): Duration = time.ticks() - ticks
+    let sleep(d: Duration): Ok = time.sleepNanoseconds(d)
+
+    (* ======================================================================
+     * Instants: nanoseconds since the epoch
+     * ====================================================================== *)
+
+    Let Instant = Int
+    let now(): Instant = time.nowInNanoseconds()
+    let epoch: Instant = 0
+    let fromNanoseconds(ns: Int): Instant = ns
+    let toNanoseconds(i: Instant): Int = i
+
+    let add(i: Instant d: Duration): Instant =
+        if {{d > 0} andif {i > {intOp.maxInt - d}}} \/ {{d < 0} andif {i < {intOp.minInt - d}}} then fail(:Instant)
+        else i + d
+        end
+
+    let diff(a: Instant b: Instant): Duration =
+        if {{b < 0} andif {a > {intOp.maxInt + b}}} \/ {{b > 0} andif {a < {intOp.minInt + b}}} then fail(:Duration)
+        else a - b
+        end
+
+    let compare(a: Instant b: Instant): Int = if a < b then ~1 elsif a > b then 1 else 0 end
+    let before(a: Instant b: Instant): Bool = a < b
+
+    (* ======================================================================
+     * Calendar dates (Howard Hinnant's algorithms, "chrono-Compatible
+     * Low-Level Date Algorithms")
+     * ====================================================================== *)
+
+    Let Date = Tuple
+        year: Int
+        month: Int
+        day: Int
+        hour: Int
+        minute: Int
+        second: Int
+        nanosecond: Int
+        offset: Int
+    end
+
+    let isLeapYear(year: Int): Bool =
+        {floorMod(year 4) is 0} andif {{floorMod(year 100) isnot 0} orif {floorMod(year 400) is 0}}
+
+    let daysInMonth(year: Int month: Int): Int =
+        if {month < 1} \/ {month > 12} then fail(:Int)
+        elsif month is 2 then if isLeapYear(year) then 29 else 28 end
+        elsif {month is 4} \/ {month is 6} \/ {month is 9} \/ {month is 11} then 30
+        else 31
+        end
+
+    (* The days from 1970-01-01 to year-month-day *)
+    let daysFromCivil(year: Int month: Int day: Int): Int =
+        begin
+            let y = if month <= 2 then year - 1 else year end
+            let era = floorDiv(y 400)
+            let yoe = y - {era * 400}
+            let mp = if month > 2 then month - 3 else month + 9 end
+            let doy = {{{153 * mp} + 2} / 5} + {day - 1}
+            let doe = {{yoe * 365} + {yoe / 4}} - {{yoe / 100} - doy}
+            {{era * 146097} + doe} - 719468
+        end
+
+    (* The date days after 1970-01-01 *)
+    let civilFromDays(days: Int): Tuple year: Int month: Int day: Int end =
+        begin
+            let z = days + 719468
+            let era = floorDiv(z 146097)
+            let doe = z - {era * 146097}
+            let yoe = {{doe - {doe / 1460}} + {{doe / 36524} - {doe / 146096}}} / 365
+            let doy = doe - {{{365 * yoe} + {yoe / 4}} - {yoe / 100}}
+            let mp = {{5 * doy} + 2} / 153
+            let d = {doy - {{{153 * mp} + 2} / 5}} + 1
+            let m = if mp < 10 then mp + 3 else mp - 9 end
+            let y = {yoe + {era * 400}} + if m <= 2 then 1 else 0 end
+            tuple let year = y let month = m let day = d end
+        end
+
+    let atOffset(i: Instant offset: Int): Date =
+        begin
+            if {offset >= 86400} \/ {offset <= ~86400} then fail(:Ok) end
+            let secs = floorDiv(i second) + offset
+            let nanos = floorMod(i second)
+            let ofDay = floorMod(secs 86400)
+            let c = civilFromDays(floorDiv(secs 86400))
+            tuple
+                let year = c.year
+                let month = c.month
+                let day = c.day
+                let hour = ofDay / 3600
+                let minute = {ofDay / 60} % 60
+                let second = ofDay % 60
+                let nanosecond = nanos
+                let offset = offset
+            end
+        end
+
+    let utc(i: Instant): Date = atOffset(i 0)
+    let local(i: Instant): Date = atOffset(i time.localOffsetInSeconds(floorDiv(i second)))
+
+    let valid(d: Date): Bool =
+        {intOp.abs(d.year) <= 1000000} andif {d.month >= 1} andif {d.month <= 12} andif {d.day >= 1}
+            andif {d.day <= daysInMonth(d.year d.month)} andif {d.hour >= 0} andif {d.hour <= 23}
+            andif {d.minute >= 0} andif {d.minute <= 59} andif {d.second >= 0} andif {d.second <= 59}
+            andif {d.nanosecond >= 0} andif {d.nanosecond <= 999999999} andif {d.offset > ~86400}
+            andif {d.offset < 86400}
+
+    (* The seconds from the epoch, and the nanoseconds after them, of the
+     * smallest and largest instants *)
+    let firstSecond = ~9223372037
+    let firstNanosecond = 145224192
+    let lastSecond = 9223372036
+    let lastNanosecond = 854775807
+
+    let instant(d: Date): Instant =
+        begin
+            if not(valid(d)) then fail(:Ok) end
+            let days = daysFromCivil(d.year d.month d.day)
+            let ofDay = {{d.hour * 3600} + {d.minute * 60}} + d.second
+            let secs = {{days * 86400} + ofDay} - d.offset
+            if {secs < firstSecond} \/ {secs > lastSecond} \/ {{secs is firstSecond} /\ {d.nanosecond < firstNanosecond}}
+                \/ {{secs is lastSecond} /\ {d.nanosecond > lastNanosecond}} then
+                fail(:Ok)
+            end
+            {secs * second} + d.nanosecond
+        end
+
+    let weekday(d: Date): Int = floorMod(daysFromCivil(d.year d.month d.day) + 4 7)
+    let yearDay(d: Date): Int = {daysFromCivil(d.year d.month d.day) - daysFromCivil(d.year 1 1)} + 1
+
+    (* ======================================================================
+     * Text
+     * ====================================================================== *)
+
+    let weekdayNames = array of "Sunday" "Monday" "Tuesday" "Wednesday" "Thursday" "Friday" "Saturday" end
+    let monthNames = array of
+        "January" "February" "March" "April" "May" "June" "July" "August" "September" "October" "November" "December"
+    end
+    let short(name: String): String = stringOp.getSub(name 0 3)
+
+    let monthName(d: Date): String =
+        if {d.month < 1} \/ {d.month > 12} then fail(:String) else monthNames[d.month - 1] end
+
+    let isDirective(c: Char): Bool =
+        begin
+            let directives = "YmdHMSfjyIpaAbBzeuw%"
+            let var found = false
+            for i = 0 upto {stringOp.length(directives) - 1} do
+                if stringOp.getChar(directives i) is c then found := true end
+            end
+            found
+        end
+
+    (* Raises error unless every % of pattern begins a directive *)
+    let checkPattern(pattern: String): Ok =
+        begin
+            let n = stringOp.length(pattern)
+            let var i = 0
+            while i < n do
+                if stringOp.getChar(pattern i) is '%' then
+                    if {{i + 1} >= n} orif not(isDirective(stringOp.getChar(pattern i + 1))) then fail(:Ok) end
+                    i := i + 2
+                else
+                    i := i + 1
+                end
+            end
+        end
+
+    let format(d: Date pattern: String): String =
+        begin
+            checkPattern(pattern)
+            let buf = sb.new()
+            let n = stringOp.length(pattern)
+            let var i = 0
+            while i < n do
+                let c = stringOp.getChar(pattern i)
+                if c isnot '%' then
+                    sb.char(buf c)
+                    i := i + 1
+                else
+                    let k = stringOp.getChar(pattern i + 1)
+                    i := i + 2
+                    let twelve = if {d.hour % 12} is 0 then 12 else d.hour % 12 end
+                    let offset = intOp.abs(d.offset)
+                    sb.str(buf
+                        if k is 'Y' then if d.year < 0 then "-" <> padded(0 - d.year 4) else padded(d.year 4) end
+                        elsif k is 'm' then padded(d.month 2)
+                        elsif k is 'd' then padded(d.day 2)
+                        elsif k is 'H' then padded(d.hour 2)
+                        elsif k is 'M' then padded(d.minute 2)
+                        elsif k is 'S' then padded(d.second 2)
+                        elsif k is 'f' then padded(d.nanosecond 9)
+                        elsif k is 'j' then padded(yearDay(d) 3)
+                        elsif k is 'y' then padded(floorMod(d.year 100) 2)
+                        elsif k is 'I' then padded(twelve 2)
+                        elsif k is 'p' then if d.hour < 12 then "AM" else "PM" end
+                        elsif k is 'a' then short(weekdayNames[weekday(d)])
+                        elsif k is 'A' then weekdayNames[weekday(d)]
+                        elsif k is 'b' then short(monthName(d))
+                        elsif k is 'B' then monthName(d)
+                        elsif k is 'z' then
+                            if d.offset < 0 then "-" else "+" end <> padded(offset / 3600 2)
+                                <> padded({offset / 60} % 60 2)
+                        elsif k is 'e' then if d.day < 10 then " " <> conv.int(d.day) else conv.int(d.day) end
+                        elsif k is 'u' then conv.int(if weekday(d) is 0 then 7 else weekday(d) end)
+                        elsif k is 'w' then conv.int(weekday(d))
+                        else "%"
+                        end)
+                end
+            end
+            sb.toString(buf)
+        end
+
+    (* What parse raises inside itself when s does not fit the pattern *)
+    let mismatch: Exception = exception mismatch: Ok end
+
+    (* The fields parse has read so far *)
+    Let Reading = Tuple
+        s: String
+        var pos: Int
+        var year: Int
+        var month: Int
+        var day: Int
+        var hour: Int
+        var minute: Int
+        var second: Int
+        var nanosecond: Int
+        var offset: Int
+        var yearDayRead: Int
+        var twoDigitYear: Bool
+        var twelveHour: Bool
+        var afternoon: Bool
+    end
+
+    let lower(c: Char): Char =
+        begin
+            let b = ascii.val(c)
+            if {b >= 65} /\ {b <= 90} then ascii.char(b + 32) else c end
+        end
+
+    let more(r: Reading): Bool = r.pos < stringOp.length(r.s)
+    let here(r: Reading): Char = stringOp.getChar(r.s r.pos)
+    let isDigit(c: Char): Bool = {ascii.val(c) >= 48} /\ {ascii.val(c) <= 57}
+
+    (* Reads least to most digits; their value, or raises mismatch *)
+    let digits(r: Reading least: Int most: Int): Int =
+        begin
+            let var v = 0
+            let var count = 0
+            while {count < most} andif more(r) andif isDigit(here(r)) do
+                v := {v * 10} + {ascii.val(here(r)) - 48}
+                r.pos := r.pos + 1
+                count := count + 1
+            end
+            if count < least then raise mismatch end end
+            v
+        end
+
+    (* Reads c, or raises mismatch *)
+    let expect(r: Reading c: Char): Ok =
+        if more(r) andif {here(r) is c} then r.pos := r.pos + 1 else raise mismatch end end
+
+    (* Whether name is next, in either case, which it then reads *)
+    let readsName(r: Reading name: String): Bool =
+        begin
+            let n = stringOp.length(name)
+            let fits = {{r.pos + n} <= stringOp.length(r.s)} andif begin
+                let var same = true
+                for i = 0 upto {n - 1} do
+                    if lower(stringOp.getChar(r.s r.pos + i)) isnot lower(stringOp.getChar(name i)) then same := false end
+                end
+                same
+            end
+            if fits then r.pos := r.pos + n end
+            fits
+        end
+
+    (* Reads one of names, whole or its first three letters; its index *)
+    let oneOf(r: Reading names: Array(String)): Int =
+        begin
+            let var found = ~1
+            for i = 0 upto {extent names - 1} do
+                if {found < 0} andif readsName(r names[i]) then found := i end
+            end
+            for i = 0 upto {extent names - 1} do
+                if {found < 0} andif readsName(r short(names[i])) then found := i end
+            end
+            if found < 0 then raise mismatch end end
+            found
+        end
+
+    (* Reads an offset: Z, or a sign, two digits, an optional :, two digits *)
+    let readOffset(r: Reading): Int =
+        if more(r) andif {lower(here(r)) is 'z'} then begin r.pos := r.pos + 1 0 end
+        else
+            let negative = more(r) andif {here(r) is '-'}
+            if not(negative) then expect(r '+') else r.pos := r.pos + 1 end
+            let h = digits(r 2 2)
+            if more(r) andif {here(r) is ':'} then r.pos := r.pos + 1 end
+            let m = digits(r 2 2)
+            let v = {h * 3600} + {m * 60}
+            if negative then 0 - v else v end
+        end
+
+    let read(r: Reading k: Char): Ok =
+        if k is 'Y' then
+            let negative = more(r) andif {here(r) is '-'}
+            if negative then r.pos := r.pos + 1 end
+            let v = digits(r 4 4)
+            r.year := if negative then 0 - v else v end
+        elsif k is 'm' then r.month := digits(r 1 2)
+        elsif k is 'd' then r.day := digits(r 1 2)
+        elsif k is 'e' then
+            if more(r) andif {here(r) is ' '} then r.pos := r.pos + 1 end
+            r.day := digits(r 1 2)
+        elsif k is 'H' then r.hour := digits(r 1 2)
+        elsif k is 'I' then
+            r.hour := digits(r 1 2)
+            r.twelveHour := true
+        elsif k is 'M' then r.minute := digits(r 1 2)
+        elsif k is 'S' then r.second := digits(r 1 2)
+        elsif k is 'f' then
+            let start = r.pos
+            let v = digits(r 1 9)
+            let var scaled = v
+            for i = {r.pos - start} + 1 upto 9 do scaled := scaled * 10 end
+            r.nanosecond := scaled
+        elsif k is 'j' then r.yearDayRead := digits(r 1 3)
+        elsif k is 'y' then
+            r.year := digits(r 1 2)
+            r.twoDigitYear := true
+        elsif k is 'p' then
+            if readsName(r "AM") then r.afternoon := false
+            elsif readsName(r "PM") then r.afternoon := true
+            else raise mismatch end
+            end
+        elsif {k is 'a'} \/ {k is 'A'} then begin let ignored = oneOf(r weekdayNames) ok end
+        elsif {k is 'b'} \/ {k is 'B'} then r.month := oneOf(r monthNames) + 1
+        elsif k is 'z' then r.offset := readOffset(r)
+        elsif {k is 'u'} \/ {k is 'w'} then begin let ignored = digits(r 1 1) ok end
+        else expect(r '%')
+        end
+
+    let parse(s: String pattern: String): maybe.T(Date) =
+        begin
+            checkPattern(pattern)
+            let r = tuple
+                let s = s
+                let var pos = 0
+                let var year = 1970
+                let var month = 1
+                let var day = 1
+                let var hour = 0
+                let var minute = 0
+                let var second = 0
+                let var nanosecond = 0
+                let var offset = 0
+                let var yearDayRead = ~1
+                let var twoDigitYear = false
+                let var twelveHour = false
+                let var afternoon = false
+            end
+            let n = stringOp.length(pattern)
+            try
+                begin
+                    let var i = 0
+                    while i < n do
+                        let c = stringOp.getChar(pattern i)
+                        if c is '%' then
+                            read(r stringOp.getChar(pattern i + 1))
+                            i := i + 2
+                        else
+                            expect(r c)
+                            i := i + 1
+                        end
+                    end
+                    if more(r) then raise mismatch end end
+                    if r.twoDigitYear then r.year := if r.year >= 69 then 1900 + r.year else 2000 + r.year end end
+                    if r.twelveHour then
+                        if {r.hour < 1} \/ {r.hour > 12} then raise mismatch end end
+                        r.hour := {r.hour % 12} + if r.afternoon then 12 else 0 end
+                    end
+                    if r.yearDayRead >= 0 then
+                        let length = if isLeapYear(r.year) then 366 else 365 end
+                        if {r.yearDayRead < 1} \/ {r.yearDayRead > length} then raise mismatch end end
+                        let c = civilFromDays({daysFromCivil(r.year 1 1) + r.yearDayRead} - 1)
+                        r.month := c.month
+                        r.day := c.day
+                    end
+                    let d = tuple
+                        let year = r.year
+                        let month = r.month
+                        let day = r.day
+                        let hour = r.hour
+                        let minute = r.minute
+                        let second = r.second
+                        let nanosecond = r.nanosecond
+                        let offset = r.offset
+                    end
+                    if {{r.month >= 1} /\ {r.month <= 12}} andif valid(d) then maybe.some(:Date d)
+                    else maybe.none(:Date)
+                    end
+                end
+            when mismatch then maybe.none(:Date)
+            end
+        end
+
+    let iso8601(i: Instant): String =
+        begin
+            let d = utc(i)
+            let whole = format(d "%Y-%m-%dT%H:%M:%S")
+            if d.nanosecond is 0 then whole <> "Z"
+            else
+                let text = fraction(d.nanosecond 9)
+                (* fraction gives 0.25 for 250000000 *)
+                whole <> stringOp.getSub(text 1 stringOp.length(text) - 1) <> "Z"
+            end
+        end
+
+    let parseIso8601(s: String): maybe.T(Instant) =
+        begin
+            let r = tuple
+                let s = s
+                let var pos = 0
+                let var year = 0
+                let var month = 0
+                let var day = 0
+                let var hour = 0
+                let var minute = 0
+                let var second = 0
+                let var nanosecond = 0
+                let var offset = 0
+                let var yearDayRead = ~1
+                let var twoDigitYear = false
+                let var twelveHour = false
+                let var afternoon = false
+            end
+            try
+                begin
+                    r.year := digits(r 4 4)
+                    expect(r '-')
+                    r.month := digits(r 2 2)
+                    expect(r '-')
+                    r.day := digits(r 2 2)
+                    if more(r) andif {{lower(here(r)) is 't'} \/ {here(r) is ' '}} then r.pos := r.pos + 1
+                    else raise mismatch end
+                    end
+                    r.hour := digits(r 2 2)
+                    expect(r ':')
+                    r.minute := digits(r 2 2)
+                    expect(r ':')
+                    r.second := digits(r 2 2)
+                    if more(r) andif {here(r) is '.'} then
+                        r.pos := r.pos + 1
+                        read(r 'f')
+                    end
+                    r.offset := readOffset(r)
+                    if more(r) then raise mismatch end end
+                    let d = tuple
+                        let year = r.year
+                        let month = r.month
+                        let day = r.day
+                        let hour = r.hour
+                        let minute = r.minute
+                        let second = r.second
+                        let nanosecond = r.nanosecond
+                        let offset = r.offset
+                    end
+                    if {{r.month >= 1} /\ {r.month <= 12}} andif valid(d) then
+                        try maybe.some(:Instant instant(d)) when error then maybe.none(:Instant) end
+                    else maybe.none(:Instant)
+                    end
+                end
+            when mismatch then maybe.none(:Instant)
+            end
+        end
+end

@@ -1,0 +1,470 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('time') 'Time' ('os/time') 'os/Time')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('intOp') 'IntOp' ('int'))
+      )
+    )
+    (LetValueBinding
+      :name 'print'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprId 's')
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'check'
+      :value (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprId 'what')
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprString ': ' '": "')
+              :op '<>'
+              :right (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'conv')
+                  :field 'bool'
+                )
+                :args (
+                  (ExprId 'holds')
+                )
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'what'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'holds'
+          :type_annot (TypePath ('Bool'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'last'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'time')
+          :field 'ticks'
+        )
+      )
+      :is_var True
+    )
+    (LetValueBinding
+      :name 'back'
+      :value (ExprBool False)
+      :is_var True
+    )
+    (ExprStmt
+      :expr (ExprFor
+        :var_name 'i'
+        :start (ExprInt 1 '1')
+        :stop (ExprInt 1000 '1000')
+        :body (ExprBlock
+          :bindings (
+            (LetValueBinding
+              :name 't'
+              :value (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'time')
+                  :field 'ticks'
+                )
+              )
+            )
+            (ExprStmt
+              :expr (ExprIf
+                :cond (ExprInfix
+                  :left (ExprId 't')
+                  :op '<'
+                  :right (ExprId 'last')
+                )
+                :then_branch (ExprInfix
+                  :left (ExprId 'back')
+                  :op ':='
+                  :right (ExprBool True)
+                )
+              )
+            )
+            (ExprStmt
+              :expr (ExprInfix
+                :left (ExprId 'last')
+                :op ':='
+                :right (ExprId 't')
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'check')
+        :args (
+          (ExprString 'ticks never go back' '"ticks never go back"')
+          (ExprApp
+            :func (ExprId 'not')
+            :args (
+              (ExprId 'back')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'wallBefore'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'time')
+          :field 'nowInNanoseconds'
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'ticksBefore'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'time')
+          :field 'ticks'
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'time')
+          :field 'sleepNanoseconds'
+        )
+        :args (
+          (ExprInt 50000000 '50000000')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'slept'
+      :value (ExprInfix
+        :left (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'time')
+            :field 'ticks'
+          )
+        )
+        :op '-'
+        :right (ExprId 'ticksBefore')
+      )
+    )
+    (LetValueBinding
+      :name 'wallSlept'
+      :value (ExprInfix
+        :left (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'time')
+            :field 'nowInNanoseconds'
+          )
+        )
+        :op '-'
+        :right (ExprId 'wallBefore')
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'check')
+        :args (
+          (ExprString 'sleep lasts at least 50 ms' '"sleep lasts at least 50 ms"')
+          (ExprInfix
+            :left (ExprId 'slept')
+            :op '>='
+            :right (ExprInt 50000000 '50000000')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'check')
+        :args (
+          (ExprString 'sleep lasts under 5 s' '"sleep lasts under 5 s"')
+          (ExprInfix
+            :left (ExprId 'slept')
+            :op '<'
+            :right (ExprInt 5000000000 '5000000000')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'check')
+        :args (
+          (ExprString 'the wall clock keeps pace' '"the wall clock keeps pace"')
+          (ExprInfix
+            :left (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'intOp')
+                :field 'abs'
+              )
+              :args (
+                (ExprInfix
+                  :left (ExprId 'wallSlept')
+                  :op '-'
+                  :right (ExprId 'slept')
+                )
+              )
+            )
+            :op '<'
+            :right (ExprInt 1000000000 '1000000000')
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'shortStart'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'time')
+          :field 'ticks'
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'time')
+          :field 'sleepNanoseconds'
+        )
+        :args (
+          (ExprInt 0 '0')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'time')
+          :field 'sleepNanoseconds'
+        )
+        :args (
+          (ExprInt -1000000000 '~1000000000')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'check')
+        :args (
+          (ExprString 'no sleep for 0 or less' '"no sleep for 0 or less"')
+          (ExprInfix
+            :left (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'time')
+                  :field 'ticks'
+                )
+              )
+              :op '-'
+              :right (ExprId 'shortStart')
+            )
+            :op '<'
+            :right (ExprInt 1000000000 '1000000000')
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'cpuBefore'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'time')
+          :field 'cpuTimeInNanoseconds'
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'sum'
+      :value (ExprInt 0 '0')
+      :is_var True
+    )
+    (ExprStmt
+      :expr (ExprFor
+        :var_name 'i'
+        :start (ExprInt 1 '1')
+        :stop (ExprInt 100000 '100000')
+        :body (ExprInfix
+          :left (ExprId 'sum')
+          :op ':='
+          :right (ExprInfix
+            :left (ExprId 'sum')
+            :op '+'
+            :right (ExprInfix
+              :left (ExprId 'i')
+              :op '%'
+              :right (ExprInt 7 '7')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'check')
+        :args (
+          (ExprString 'CPU time grows under work' '"CPU time grows under work"')
+          (ExprInfix
+            :left (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'time')
+                  :field 'cpuTimeInNanoseconds'
+                )
+              )
+              :op '>='
+              :right (ExprId 'cpuBefore')
+            )
+            :op '/\\'
+            :right (ExprInfix
+              :left (ExprId 'sum')
+              :op '>'
+              :right (ExprInt 0 '0')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'wall'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'time')
+          :field 'nowInNanoseconds'
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'check')
+        :args (
+          (ExprString 'the wall clock is this century' '"the wall clock is this century"')
+          (ExprInfix
+            :left (ExprInfix
+              :left (ExprId 'wall')
+              :op '>'
+              :right (ExprInt 1735689600000000000 '1735689600000000000')
+            )
+            :op '/\\'
+            :right (ExprInfix
+              :left (ExprId 'wall')
+              :op '<'
+              :right (ExprInt 4102444800000000000 '4102444800000000000')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'check')
+        :args (
+          (ExprString 'the local offset is less than a day' '"the local offset is less than a day"')
+          (ExprInfix
+            :left (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'intOp')
+                  :field 'abs'
+                )
+                :args (
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'time')
+                      :field 'localOffsetInSeconds'
+                    )
+                    :args (
+                      (ExprInfix
+                        :left (ExprId 'wall')
+                        :op '/'
+                        :right (ExprInt 1000000000 '1000000000')
+                      )
+                    )
+                  )
+                )
+              )
+              :op '<'
+              :right (ExprInt 86400 '86400')
+            )
+            :op '/\\'
+            :right (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'intOp')
+                  :field 'abs'
+                )
+                :args (
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'time')
+                      :field 'localOffsetInSeconds'
+                    )
+                    :args (
+                      (ExprInfix
+                        :left (ExprInt 0 '0')
+                        :op '-'
+                        :right (ExprInt 1577836800 '1577836800')
+                      )
+                    )
+                  )
+                )
+              )
+              :op '<'
+              :right (ExprInt 86400 '86400')
+            )
+          )
+        )
+      )
+    )
+  )
+)

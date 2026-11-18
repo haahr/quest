@@ -464,6 +464,46 @@ export class Host {
         }
         v.setUint32(into, used, true);
       }),
+      // os/time's clocks (docs/time-plan.md section 4): 0 the wall clock, 1
+      // the monotonic one, 2 the process's CPU time, which only node has
+      // (ENOSYS elsewhere, for which the runtime reads the monotonic clock);
+      // each as nanoseconds, a u64 at into
+      clock_time_get: call((id, precision, into) => {
+        let ns;
+        if (id === 0) {
+          ns = BigInt(Math.round(performance.timeOrigin * 1000)) * 1000n + BigInt(Math.round(performance.now() * 1e6));
+        } else if (id === 1) {
+          ns = BigInt(Math.round(performance.now() * 1e6));
+        } else if ((id === 2 || id === 3) && typeof process !== "undefined" && process.cpuUsage) {
+          const u = process.cpuUsage();
+          ns = BigInt(u.user + u.system) * 1000n;
+        } else {
+          throw new Errno(E.NOSYS);
+        }
+        this.view().setBigUint64(into, ns, true);
+      }),
+      // os/time's sleep: one subscription, to a clock, relative, its timeout
+      // at 24; it waits, and writes the one event (its userdata, errno 0, type
+      // 0) and the count. Atomics.wait needs a SharedArrayBuffer, which a page
+      // has only when cross-origin isolated, so without one it waits on the
+      // clock, in the page's worker
+      poll_oneoff: call((subscriptions, events, count, into) => {
+        const v = this.view();
+        if (count !== 1 || v.getUint8(subscriptions + 8) !== 0) throw new Errno(E.INVAL);
+        const ms = Number(v.getBigUint64(subscriptions + 24, true)) / 1e6;
+        if (ms > 0) {
+          if (typeof SharedArrayBuffer !== "undefined") {
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+          } else {
+            const until = performance.now() + ms;
+            while (performance.now() < until) { /* waits */ }
+          }
+        }
+        v.setBigUint64(events, v.getBigUint64(subscriptions, true), true);
+        v.setUint16(events + 8, 0, true);
+        v.setUint8(events + 10, 0);
+        v.setUint32(into, 1, true);
+      }),
       // A filestat of 64 bytes: the device and inode at 0 and 8, left 0; the
       // file's type at 16 (3 a directory, 4 a regular file); the link count
       // at 24; the size at 32; and the times of access, modification, and

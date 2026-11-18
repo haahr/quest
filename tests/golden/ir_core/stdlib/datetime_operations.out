@@ -1,0 +1,497 @@
+import datetime = "util/datetime" : util/DateTime
+import maybe = "util/maybe" : util/Maybe
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @13:45
+      let %2: String = prim <>(s, "\n") @13:59
+      let %3: Ok = call writer.putString(%1, %2) @13:28
+      return %3
+    }
+  }
+  funs {
+    fun b(x: Bool): String {
+      join k1(r: String) {
+        return r
+      } in {
+        if x { @14:26
+          jump k1("true") @14:26
+        } else {
+          jump k1("false") @14:26
+        }
+      }
+    }
+  }
+  funs {
+    fun shown(d: datetime.Date): String {
+      let %4: String = call datetime.format(d, "%Y-%m-%d %H:%M:%S.%f %z") @16:5
+      let %5: Int = call datetime.weekday(d) @16:77
+      let %6: String = call conv.int(%5) @16:68
+      let %7: Int = call datetime.yearDay(d) @17:21
+      let %8: String = call conv.int(%7) @17:12
+      let %9: String = prim <>(" day ", %8) @16:101
+      let %10: String = prim <>(%6, %9) @16:68
+      let %11: String = prim <>(" weekday ", %10) @16:53
+      let %12: String = prim <>(%4, %11) @16:5
+      return %12
+    }
+  }
+  funs {
+    fun at(ns: Int): datetime.Instant {
+      let %13: datetime.Instant = call datetime.fromNanoseconds(ns) @18:37
+      return %13
+    }
+  }
+  let %14: Duration = member datetime.hour @21:16
+  let %15: String = call conv.int(%14) @21:7
+  let %16: Duration = member datetime.minute @21:50
+  let %17: String = call conv.int(%16) @21:41
+  let %18: Duration = member datetime.second @21:86
+  let %19: String = call conv.int(%18) @21:77
+  let %20: Duration = member datetime.millisecond @22:17
+  let %21: String = call conv.int(%20) @22:8
+  let %22: Duration = member datetime.microsecond @22:58
+  let %23: String = call conv.int(%22) @22:49
+  let %24: Duration = member datetime.nanosecond @22:99
+  let %25: String = call conv.int(%24) @22:90
+  let %26: String = prim <>(" ", %25) @22:83
+  let %27: String = prim <>(%23, %26) @22:49
+  let %28: String = prim <>(" ", %27) @22:42
+  let %29: String = prim <>(%21, %28) @22:8
+  let %30: String = prim <>(" ", %29) @21:106
+  let %31: String = prim <>(%19, %30) @21:77
+  let %32: String = prim <>(" ", %31) @21:70
+  let %33: String = prim <>(%17, %32) @21:41
+  let %34: String = prim <>(" ", %33) @21:34
+  let %35: String = prim <>(%15, %34) @21:7
+  do call print(%35) @21:1
+  let durations: Array(Int) = array(0, 1, 999, 1000, 1500, 999999, 1000000, 1250000, 999999999, 1000000000, 1500000000, 60000000000, 3723500000000, 3600000000000, -2000000000, -1, 9223372036854775807) @23:17
+  let %36: Int = prim extent(durations) @25:17
+  let %37: Int = prim -(%36, 1) @25:17
+  var i: Int = 0 @25:1
+  let %38: Bool = prim <=(i, %37) @25:1
+  if %38 { @25:1
+    loop L1 {
+      let i.1: Int = i @25:1
+      let %39: Int = index(durations, i.1) @26:20
+      let %40: String = call conv.int(%39) @26:11
+      let %41: Int = index(durations, i.1) @26:72
+      let %42: String = call datetime.durationString(%41) @26:48
+      let %43: String = prim <>(" ns: ", %42) @26:37
+      let %44: String = prim <>(%40, %43) @26:11
+      do call print(%44) @26:5
+      let %45: Bool = prim is(i, %37) @25:1
+      if %45 { @25:1
+        break L1 @25:1
+      }
+      let %46: Int = prim +(i, 1) @25:1
+      i := %46 @25:1
+    }
+  }
+  let %47: Int = prim -(-9223372036854775807, 1) @28:31
+  let %48: String = call datetime.durationString(%47) @28:7
+  do call print(%48) @28:1
+  let %49: Real = call datetime.seconds(1500000000) @29:17
+  let %50: String = call conv.real(%49) @29:7
+  let %51: Duration = call datetime.fromSeconds(0.25) @29:66
+  let %52: String = call conv.int(%51) @29:57
+  let %53: Duration = call datetime.fromSeconds(-1.5) @30:24
+  let %54: String = call conv.int(%53) @30:15
+  let %55: String = prim <>(" ", %54) @30:8
+  let %56: String = prim <>(%52, %55) @29:57
+  let %57: String = prim <>(" ", %56) @29:50
+  let %58: String = prim <>(%50, %57) @29:7
+  do call print(%58) @29:1
+  let i.2: datetime.Instant = call at(1763444261123456789) @33:9
+  let %59: datetime.Instant = member datetime.epoch @34:24
+  let %60: String = call datetime.iso8601(%59) @34:7
+  let %61: String = call datetime.iso8601(i.2) @34:50
+  let %62: String = prim <>(" ", %61) @34:43
+  let %63: String = prim <>(%60, %62) @34:7
+  do call print(%63) @34:1
+  let %64: Duration = member datetime.hour @35:54
+  let %65: datetime.Instant = call datetime.add(i.2, %64) @35:39
+  let %66: Int = call datetime.toNanoseconds(%65) @35:16
+  let %67: String = call conv.int(%66) @35:7
+  let %68: datetime.Instant = member datetime.epoch @36:31
+  let %69: Duration = call datetime.diff(%68, i.2) @36:17
+  let %70: String = call conv.int(%69) @36:8
+  let %71: datetime.Instant = member datetime.epoch @36:88
+  let %72: Int = call datetime.compare(i.2, %71) @36:69
+  let %73: String = call conv.int(%72) @36:60
+  let %74: Int = call datetime.compare(i.2, i.2) @37:17
+  let %75: String = call conv.int(%74) @37:8
+  let %76: datetime.Instant = member datetime.epoch @37:68
+  let %77: Bool = call datetime.before(%76, i.2) @37:52
+  let %78: String = call b(%77) @37:50
+  let %79: String = prim <>(" ", %78) @37:43
+  let %80: String = prim <>(%75, %79) @37:8
+  let %81: String = prim <>(" ", %80) @36:108
+  let %82: String = prim <>(%73, %81) @36:60
+  let %83: String = prim <>(" ", %82) @36:53
+  let %84: String = prim <>(%70, %83) @36:8
+  let %85: String = prim <>(" ", %84) @35:74
+  let %86: String = prim <>(%67, %85) @35:7
+  do call print(%86) @35:1
+  let %87: Int = prim -(-9223372036854775807, 1) @41:5
+  let instants: Array(Int) = array(0, -1, 86399999999999, 951782400000000000, 951868800000000000, 1763444261123456789, %87, 9223372036854775807, -2208988800000000000, 4102444800000000000) @40:16
+  let %88: Int = prim extent(instants) @42:17
+  let %89: Int = prim -(%88, 1) @42:17
+  var k: Int = 0 @42:1
+  let %90: Bool = prim <=(k, %89) @42:1
+  if %90 { @42:1
+    loop L2 {
+      let k.1: Int = k @42:1
+      let %91: Int = index(instants, k.1) @43:29
+      let %92: datetime.Instant = call at(%91) @43:26
+      let d.1: Date = call datetime.utc(%92) @43:13
+      let %93: Int = index(instants, k.1) @44:20
+      let %94: String = call conv.int(%93) @44:11
+      let %95: String = call shown(d.1) @44:44
+      let %96: datetime.Instant = call datetime.instant(d.1) @44:93
+      let %97: Int = call datetime.toNanoseconds(%96) @44:70
+      let %98: Int = index(instants, k.1) @45:12
+      let %99: Bool = prim is(%97, %98) @44:70
+      let %100: String = call b(%99) @44:68
+      let %101: String = prim <>(" back ", %100) @44:56
+      let %102: String = prim <>(%95, %101) @44:44
+      let %103: String = prim <>(": ", %102) @44:36
+      let %104: String = prim <>(%94, %103) @44:11
+      do call print(%104) @44:5
+      let %105: Bool = prim is(k, %89) @42:1
+      if %105 { @42:1
+        break L2 @42:1
+      }
+      let %106: Int = prim +(k, 1) @42:1
+      k := %106 @42:1
+    }
+  }
+  let offsets: Array(Int) = array(0, 3600, -28800, 19800, 50400, -43200, 86399, -86399) @47:15
+  let %107: Int = prim extent(offsets) @48:17
+  let %108: Int = prim -(%107, 1) @48:17
+  var k.2: Int = 0 @48:1
+  let %109: Bool = prim <=(k.2, %108) @48:1
+  if %109 { @48:1
+    loop L3 {
+      let k.3: Int = k.2 @48:1
+      let %110: Int = index(offsets, k.3) @49:33
+      let d.2: Date = call datetime.atOffset(i.2, %110) @49:13
+      let %111: Int = index(offsets, k.3) @50:20
+      let %112: String = call conv.int(%111) @50:11
+      let %113: String = call shown(d.2) @50:43
+      let %114: datetime.Instant = call datetime.instant(d.2) @50:92
+      let %115: Int = call datetime.toNanoseconds(%114) @50:69
+      let %116: Bool = prim is(%115, 1763444261123456789) @50:69
+      let %117: String = call b(%116) @50:67
+      let %118: String = prim <>(" back ", %117) @50:55
+      let %119: String = prim <>(%113, %118) @50:43
+      let %120: String = prim <>(": ", %119) @50:35
+      let %121: String = prim <>(%112, %120) @50:11
+      do call print(%121) @50:5
+      let %122: Bool = prim is(k.2, %108) @48:1
+      if %122 { @48:1
+        break L3 @48:1
+      }
+      let %123: Int = prim +(k.2, 1) @48:1
+      k.2 := %123 @48:1
+    }
+  }
+  let here: Date = call datetime.local(i.2) @53:12
+  let %124: datetime.Instant = call datetime.instant(here) @54:49
+  let %125: Int = call datetime.toNanoseconds(%124) @54:26
+  let %126: Bool = prim is(%125, 1763444261123456789) @54:26
+  let %127: String = call b(%126) @54:24
+  let %128: String = prim <>("local back ", %127) @54:7
+  do call print(%128) @54:1
+  let years: Array(Int) = array(1600, 1700, 1900, 2000, 2023, 2024, 2100, 2400, -4, 0) @57:13
+  var leaps: String = "" @58:1
+  let %129: Int = prim extent(years) @59:17
+  let %130: Int = prim -(%129, 1) @59:17
+  var k.4: Int = 0 @59:1
+  let %131: Bool = prim <=(k.4, %130) @59:1
+  if %131 { @59:1
+    loop L4 {
+      let k.5: Int = k.4 @59:1
+      let %132: Int = index(years, k.5) @59:72
+      let %133: String = call conv.int(%132) @59:63
+      let %134: Int = index(years, k.5) @59:114
+      let %135: Bool = call datetime.isLeapYear(%134) @59:94
+      let %136: String = call b(%135) @59:92
+      let %137: String = prim <>(":", %136) @59:85
+      let %138: String = prim <>(%133, %137) @59:63
+      let %139: String = prim <>(" ", %138) @59:56
+      let %140: String = prim <>(leaps, %139) @59:47
+      leaps := %140 @59:38
+      let %141: Bool = prim is(k.4, %130) @59:1
+      if %141 { @59:1
+        break L4 @59:1
+      }
+      let %142: Int = prim +(k.4, 1) @59:1
+      k.4 := %142 @59:1
+    }
+  }
+  let %143: String = prim <>("leap", leaps) @60:7
+  do call print(%143) @60:1
+  var lengths: String = "" @61:1
+  var m: Int = 1 @62:1
+  let %144: Bool = prim <=(m, 12) @62:1
+  if %144 { @62:1
+    loop L5 {
+      let m.1: Int = m @62:1
+      let %145: Int = call datetime.daysInMonth(2024, m.1) @62:60
+      let %146: String = call conv.int(%145) @62:51
+      let %147: String = prim <>(" ", %146) @62:44
+      let %148: String = prim <>(lengths, %147) @62:33
+      lengths := %148 @62:22
+      let %149: Bool = prim is(m, 12) @62:1
+      if %149 { @62:1
+        break L5 @62:1
+      }
+      let %150: Int = prim +(m, 1) @62:1
+      m := %150 @62:1
+    }
+  }
+  let %151: Int = call datetime.daysInMonth(2023, 2) @63:66
+  let %152: String = call conv.int(%151) @63:57
+  let %153: String = prim <>(", February 2023 ", %152) @63:35
+  let %154: String = prim <>(lengths, %153) @63:24
+  let %155: String = prim <>("2024 months", %154) @63:7
+  do call print(%155) @63:1
+  let %156: datetime.Instant = call at(1763444261123456789) @66:33
+  let morning: Date = call datetime.atOffset(%156, -28800) @66:15
+  let %157: datetime.Instant = call at(1763444261123456789) @67:33
+  let evening: Date = call datetime.atOffset(%157, 50400) @67:15
+  let %158: String = call datetime.format(morning, "%Y|%m|%d|%H|%M|%S|%f|%j|%y|%I|%p|%a|%A|%b|%B|%z|%e|%u|%w|%%|text") @68:7
+  do call print(%158) @68:1
+  let %159: String = call datetime.format(evening, "%Y|%m|%d|%H|%M|%S|%f|%j|%y|%I|%p|%a|%A|%b|%B|%z|%e|%u|%w|%%|text") @69:7
+  do call print(%159) @69:1
+  let %160: Int = prim -(-9223372036854775807, 1) @70:31
+  let %161: datetime.Instant = call at(%160) @70:28
+  let ancient: Date = call datetime.utc(%161) @70:15
+  let %162: String = call datetime.format(ancient, "%Y-%m-%d %a %e %I%p") @71:7
+  do call print(%162) @71:1
+  funs {
+    fun parsed(s.1: String, pattern: String): Ok {
+      let d.3: maybe.T(Date) = call datetime.parse(s.1, pattern) @76:17
+      join k2(r.1: String) {
+        let %163: String = prim <>("\": ", r.1) @77:59
+        let %164: String = prim <>(pattern, %163) @77:48
+        let %165: String = prim <>("\" by \"", %164) @77:34
+        let %166: String = prim <>(s.1, %165) @77:29
+        let %167: String = prim <>("parse \"", %166) @77:15
+        let %168: Ok = call print(%167) @77:9
+        return %168
+      } in {
+        let %169: Bool = call maybe.isSome [datetime.Date](d.3) @78:19
+        if %169 { @78:16
+          let %170: datetime.Date = call maybe.unwrap [datetime.Date](d.3) @78:61
+          let %171: String = call shown(%170) @78:55
+          jump k2(%171) @78:16
+        } else {
+          jump k2("none") @78:16
+        }
+      }
+    }
+  }
+  do call parsed("2025-11-18 05:37:41", "%Y-%m-%d %H:%M:%S") @80:1
+  do call parsed("2025-11-17 21:37:41.123456789 -0800", "%Y-%m-%d %H:%M:%S.%f %z") @81:1
+  do call parsed("2025-11-17T21:37:41.25-08:00", "%Y-%m-%dT%H:%M:%S.%f%z") @82:1
+  do call parsed("tuesday, NOV 18 2025 5:37 pm Z", "%A, %b %e %Y %I:%M %p %z") @83:1
+  do call parsed("Tue Nov  8 25", "%a %b %e %y") @84:1
+  do call parsed("Tue Nov  8 70", "%a %b %e %y") @85:1
+  do call parsed("2024 060", "%Y %j") @86:1
+  do call parsed("2023 365", "%Y %j") @87:1
+  do call parsed("10%", "%d%%") @88:1
+  do call parsed("7 1", "%u %w") @89:1
+  do call parsed("2025-02-29", "%Y-%m-%d") @90:1
+  do call parsed("2025-13-01", "%Y-%m-%d") @91:1
+  do call parsed("2025-11-18 24:00:00", "%Y-%m-%d %H:%M:%S") @92:1
+  do call parsed("2025-11-18 13:00 PM", "%Y-%m-%d %I:%M %p") @93:1
+  do call parsed("2023 366", "%Y %j") @94:1
+  do call parsed("2025-11-18x", "%Y-%m-%d") @95:1
+  do call parsed("2025-11", "%Y-%m-%d") @96:1
+  do call parsed("Smarch", "%B") @97:1
+  funs {
+    fun read(s.2: String): Ok {
+      let r.2: maybe.T(datetime.Instant) = call datetime.parseIso8601(s.2) @102:17
+      join k3(r.3: String) {
+        let %172: String = prim <>("\": ", r.3) @103:36
+        let %173: String = prim <>(s.2, %172) @103:31
+        let %174: String = prim <>("rfc3339 \"", %173) @103:15
+        let %175: Ok = call print(%174) @103:9
+        return %175
+      } in {
+        let %176: Bool = call maybe.isSome [datetime.Instant](r.2) @104:19
+        if %176 { @104:16
+          let %177: datetime.Instant = call maybe.unwrap [datetime.Instant](r.2) @104:75
+          let %178: String = call datetime.iso8601(%177) @104:58
+          jump k3(%178) @104:16
+        } else {
+          jump k3("none") @104:16
+        }
+      }
+    }
+  }
+  do call read("2025-11-18T05:37:41Z") @106:1
+  do call read("2025-11-17t21:37:41.123456789-08:00") @107:1
+  do call read("2025-11-18 05:37:41.5+00:00") @108:1
+  do call read("1970-01-01T00:00:00z") @109:1
+  do call read("2262-04-11T23:47:16.854775807Z") @110:1
+  do call read("2262-04-11T23:47:16.854775808Z") @111:1
+  do call read("1677-09-21T00:12:43.145224192Z") @112:1
+  do call read("2025-11-18T05:37:41") @113:1
+  do call read("2025-11-18T05:37Z") @114:1
+  do call read("2025-02-30T00:00:00Z") @115:1
+  do call read("2025-11-18T05:37:41+0800") @116:1
+  funs {
+    fun check(what: String, f: Fun(): String): Ok {
+      join k4(r.4: String) {
+        let %179: String = prim <>(": ", r.4) @120:19
+        let %180: String = prim <>(what, %179) @120:11
+        let %181: Ok = call print(%180) @120:5
+        return %181
+      } in {
+        let %182: Exception = member datetime.error @120:40
+        try catching (%182) {
+          let %183: String = call f() @120:31
+          jump k4(%183) @120:27
+        } handle (e: Exception) {
+          let %184: Bool = prim is(e, %182) @120:27
+          if %184 { @120:27
+            jump k4("datetime.error") @120:27
+          } else {
+            reraise e @120:27
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun f.1(): String {
+      let %185: datetime.Instant = call at(9223372036854775807) @121:70
+      let %186: datetime.Instant = call datetime.add(%185, 1) @121:57
+      let %187: String = call datetime.iso8601(%186) @121:40
+      return %187
+    }
+  }
+  do call check("add past the end", f.1) @121:1
+  funs {
+    fun f.2(): String {
+      let %188: datetime.Instant = call at(-9223372036854775807) @122:74
+      let %189: datetime.Instant = call datetime.add(%188, -2) @122:61
+      let %190: String = call datetime.iso8601(%189) @122:44
+      return %190
+    }
+  }
+  do call check("add before the start", f.2) @122:1
+  funs {
+    fun f.3(): String {
+      let %191: datetime.Instant = call at(9223372036854775807) @123:64
+      let %192: datetime.Instant = call at(-1) @123:88
+      let %193: Duration = call datetime.diff(%191, %192) @123:50
+      let %194: String = call conv.int(%193) @123:41
+      return %194
+    }
+  }
+  do call check("diff out of range", f.3) @123:1
+  funs {
+    fun f.4(): String {
+      let %195: Date = call datetime.atOffset(i.2, 86400) @124:45
+      let %196: String = call shown(%195) @124:39
+      return %196
+    }
+  }
+  do call check("offset of a day", f.4) @124:1
+  funs {
+    fun f.5(): String {
+      let year: Int = 2025 @126:16
+      let month: Int = 2 @126:33
+      let day: Int = 30 @126:45
+      let hour: Int = 0 @126:59
+      let minute: Int = 0 @126:74
+      let second: Int = 0 @126:89
+      let nanosecond: Int = 0 @126:108
+      let offset: Int = 0 @127:18
+      let %197: Tuple year: Int month: Int day: Int hour: Int minute: Int second: Int nanosecond: Int offset: Int end = tuple(year, month, day, hour, minute, second, nanosecond, offset) @125:71
+      let %198: datetime.Instant = call datetime.instant(%197) @125:54
+      let %199: String = call datetime.iso8601(%198) @125:37
+      return %199
+    }
+  }
+  do call check("February 30th", f.5) @125:1
+  funs {
+    fun f.6(): String {
+      let %200: Int = call datetime.daysInMonth(2025, 0) @128:40
+      let %201: String = call conv.int(%200) @128:31
+      return %201
+    }
+  }
+  do call check("month 0", f.6) @128:1
+  funs {
+    fun f.7(): String {
+      let year.1: Int = 2025 @130:16
+      let month.1: Int = 2 @130:33
+      let day.1: Int = 1 @130:45
+      let hour.1: Int = 24 @130:58
+      let minute.1: Int = 0 @130:74
+      let second.1: Int = 0 @130:89
+      let nanosecond.1: Int = 0 @130:108
+      let offset.1: Int = 0 @131:18
+      let %202: Tuple year: Int month: Int day: Int hour: Int minute: Int second: Int nanosecond: Int offset: Int end = tuple(year.1, month.1, day.1, hour.1, minute.1, second.1, nanosecond.1, offset.1) @129:65
+      let %203: datetime.Instant = call datetime.instant(%202) @129:48
+      let %204: String = call datetime.iso8601(%203) @129:31
+      return %204
+    }
+  }
+  do call check("hour 24", f.7) @129:1
+  funs {
+    fun f.8(): String {
+      let year.2: Int = 2263 @133:16
+      let month.2: Int = 1 @133:33
+      let day.2: Int = 1 @133:45
+      let hour.2: Int = 0 @133:58
+      let minute.2: Int = 0 @133:73
+      let second.2: Int = 0 @133:88
+      let nanosecond.2: Int = 0 @133:107
+      let offset.2: Int = 0 @134:18
+      let %205: Tuple year: Int month: Int day: Int hour: Int minute: Int second: Int nanosecond: Int offset: Int end = tuple(year.2, month.2, day.2, hour.2, minute.2, second.2, nanosecond.2, offset.2) @132:67
+      let %206: datetime.Instant = call datetime.instant(%205) @132:50
+      let %207: String = call datetime.iso8601(%206) @132:33
+      return %207
+    }
+  }
+  do call check("past 2262", f.8) @132:1
+  funs {
+    fun f.9(): String {
+      let %208: String = call datetime.format(morning, "%Q") @135:41
+      return %208
+    }
+  }
+  do call check("unknown directive", f.9) @135:1
+  funs {
+    fun f.10(): String {
+      let %209: String = call datetime.format(morning, "100%") @136:36
+      return %209
+    }
+  }
+  do call check("% at the end", f.10) @136:1
+  funs {
+    fun f.11(): String {
+      join k5(r.5: String) {
+        return r.5
+      } in {
+        let %210: maybe.T(Date) = call datetime.parse("x", "%Q") @137:80
+        let %211: Bool = call maybe.isSome [datetime.Date](%210) @137:52
+        if %211 { @137:49
+          jump k5("some") @137:49
+        } else {
+          jump k5("none") @137:49
+        }
+      }
+    }
+  }
+  do call check("parse's unknown directive", f.11) @137:1
+}
+

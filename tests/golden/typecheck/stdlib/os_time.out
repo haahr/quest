@@ -1,0 +1,285 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('time') : 'Time')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('intOp') : 'IntOp')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'check' :type Fun(what: String holds: Bool): Ok
+      :value (TypedFun :params (('what' : String) ('holds' : Bool)) :type Fun(what: String holds: Bool): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedInfix '<>' :type String
+              :left (TypedVar 'what' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ': ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedVar 'holds' :type Bool)
+                  ))))
+          ))))
+    (TypedLetValue 'last' :type Int
+      :value (TypedApp :type Int
+        :func (TypedSelect 'ticks' :type Fun(): Int
+          :target (TypedVar 'time' :type Module 'time'))
+        :args ()))
+    (TypedLetValue 'back' :type Bool
+      :value (TypedBool false))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 1 :type Int)
+        :stop (TypedInt 1000 :type Int)
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 't' :type Int
+              :value (TypedApp :type Int
+                :func (TypedSelect 'ticks' :type Fun(): Int
+                  :target (TypedVar 'time' :type Module 'time'))
+                :args ()))
+            (TypedExprStmt
+              :expr (TypedIf :type Ok
+                :cond (TypedInfix '<' :type Bool
+                  :left (TypedVar 't' :type Int)
+                  :right (TypedDerefCell :type Int
+                    :target (TypedVar 'last' :type Var(Int))))
+                :then (TypedBlock :type Ok
+                  :bindings (
+                    (TypedExprStmt
+                      :expr (TypedAssign
+                        :target (TypedVar 'back' :type Var(Bool))
+                        :value (TypedBool true)))
+                  )
+                  :result (TypedOk))
+                :else (TypedOk)))
+          )
+          :result (TypedAssign
+            :target (TypedVar 'last' :type Var(Int))
+            :value (TypedVar 't' :type Int)))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'ticks never go back' :type String)
+          (TypedApp :type Bool
+            :func (TypedVar 'not' :type Fun(b: Bool): Bool)
+            :args (
+              (TypedDerefCell :type Bool
+                :target (TypedVar 'back' :type Var(Bool)))
+            ))
+        )))
+    (TypedLetValue 'wallBefore' :type Int
+      :value (TypedApp :type Int
+        :func (TypedSelect 'nowInNanoseconds' :type Fun(): Int
+          :target (TypedVar 'time' :type Module 'time'))
+        :args ()))
+    (TypedLetValue 'ticksBefore' :type Int
+      :value (TypedApp :type Int
+        :func (TypedSelect 'ticks' :type Fun(): Int
+          :target (TypedVar 'time' :type Module 'time'))
+        :args ()))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'sleepNanoseconds' :type Fun(nanoseconds: Int): Ok
+          :target (TypedVar 'time' :type Module 'time'))
+        :args (
+          (TypedInt 50000000 :type Int)
+        )))
+    (TypedLetValue 'slept' :type Int
+      :value (TypedInfix '-' :type Int
+        :left (TypedApp :type Int
+          :func (TypedSelect 'ticks' :type Fun(): Int
+            :target (TypedVar 'time' :type Module 'time'))
+          :args ())
+        :right (TypedVar 'ticksBefore' :type Int)))
+    (TypedLetValue 'wallSlept' :type Int
+      :value (TypedInfix '-' :type Int
+        :left (TypedApp :type Int
+          :func (TypedSelect 'nowInNanoseconds' :type Fun(): Int
+            :target (TypedVar 'time' :type Module 'time'))
+          :args ())
+        :right (TypedVar 'wallBefore' :type Int)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'sleep lasts at least 50 ms' :type String)
+          (TypedInfix '>=' :type Bool
+            :left (TypedVar 'slept' :type Int)
+            :right (TypedInt 50000000 :type Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'sleep lasts under 5 s' :type String)
+          (TypedInfix '<' :type Bool
+            :left (TypedVar 'slept' :type Int)
+            :right (TypedInt 5000000000 :type Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'the wall clock keeps pace' :type String)
+          (TypedInfix '<' :type Bool
+            :left (TypedApp :type Int
+              :func (TypedSelect 'abs' :type Fun(n: Int): Int
+                :target (TypedVar 'intOp' :type Module 'intOp'))
+              :args (
+                (TypedInfix '-' :type Int
+                  :left (TypedVar 'wallSlept' :type Int)
+                  :right (TypedVar 'slept' :type Int))
+              ))
+            :right (TypedInt 1000000000 :type Int))
+        )))
+    (TypedLetValue 'shortStart' :type Int
+      :value (TypedApp :type Int
+        :func (TypedSelect 'ticks' :type Fun(): Int
+          :target (TypedVar 'time' :type Module 'time'))
+        :args ()))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'sleepNanoseconds' :type Fun(nanoseconds: Int): Ok
+          :target (TypedVar 'time' :type Module 'time'))
+        :args (
+          (TypedInt 0 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'sleepNanoseconds' :type Fun(nanoseconds: Int): Ok
+          :target (TypedVar 'time' :type Module 'time'))
+        :args (
+          (TypedInt -1000000000 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'no sleep for 0 or less' :type String)
+          (TypedInfix '<' :type Bool
+            :left (TypedInfix '-' :type Int
+              :left (TypedApp :type Int
+                :func (TypedSelect 'ticks' :type Fun(): Int
+                  :target (TypedVar 'time' :type Module 'time'))
+                :args ())
+              :right (TypedVar 'shortStart' :type Int))
+            :right (TypedInt 1000000000 :type Int))
+        )))
+    (TypedLetValue 'cpuBefore' :type Int
+      :value (TypedApp :type Int
+        :func (TypedSelect 'cpuTimeInNanoseconds' :type Fun(): Int
+          :target (TypedVar 'time' :type Module 'time'))
+        :args ()))
+    (TypedLetValue 'sum' :type Int
+      :value (TypedInt 0 :type Int))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 1 :type Int)
+        :stop (TypedInt 100000 :type Int)
+        :body (TypedAssign
+          :target (TypedVar 'sum' :type Var(Int))
+          :value (TypedInfix '+' :type Int
+            :left (TypedDerefCell :type Int
+              :target (TypedVar 'sum' :type Var(Int)))
+            :right (TypedInfix '%' :type Int
+              :left (TypedVar 'i' :type Int)
+              :right (TypedInt 7 :type Int))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'CPU time grows under work' :type String)
+          (TypedInfix '/\\' :type Bool
+            :left (TypedInfix '>=' :type Bool
+              :left (TypedApp :type Int
+                :func (TypedSelect 'cpuTimeInNanoseconds' :type Fun(): Int
+                  :target (TypedVar 'time' :type Module 'time'))
+                :args ())
+              :right (TypedVar 'cpuBefore' :type Int))
+            :right (TypedInfix '>' :type Bool
+              :left (TypedDerefCell :type Int
+                :target (TypedVar 'sum' :type Var(Int)))
+              :right (TypedInt 0 :type Int)))
+        )))
+    (TypedLetValue 'wall' :type Int
+      :value (TypedApp :type Int
+        :func (TypedSelect 'nowInNanoseconds' :type Fun(): Int
+          :target (TypedVar 'time' :type Module 'time'))
+        :args ()))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'the wall clock is this century' :type String)
+          (TypedInfix '/\\' :type Bool
+            :left (TypedInfix '>' :type Bool
+              :left (TypedVar 'wall' :type Int)
+              :right (TypedInt 1735689600000000000 :type Int))
+            :right (TypedInfix '<' :type Bool
+              :left (TypedVar 'wall' :type Int)
+              :right (TypedInt 4102444800000000000 :type Int)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'the local offset is less than a day' :type String)
+          (TypedInfix '/\\' :type Bool
+            :left (TypedInfix '<' :type Bool
+              :left (TypedApp :type Int
+                :func (TypedSelect 'abs' :type Fun(n: Int): Int
+                  :target (TypedVar 'intOp' :type Module 'intOp'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedSelect 'localOffsetInSeconds' :type Fun(secondsSinceEpoch: Int): Int
+                      :target (TypedVar 'time' :type Module 'time'))
+                    :args (
+                      (TypedInfix '/' :type Int
+                        :left (TypedVar 'wall' :type Int)
+                        :right (TypedInt 1000000000 :type Int))
+                    ))
+                ))
+              :right (TypedInt 86400 :type Int))
+            :right (TypedInfix '<' :type Bool
+              :left (TypedApp :type Int
+                :func (TypedSelect 'abs' :type Fun(n: Int): Int
+                  :target (TypedVar 'intOp' :type Module 'intOp'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedSelect 'localOffsetInSeconds' :type Fun(secondsSinceEpoch: Int): Int
+                      :target (TypedVar 'time' :type Module 'time'))
+                    :args (
+                      (TypedInfix '-' :type Int
+                        :left (TypedInt 0 :type Int)
+                        :right (TypedInt 1577836800 :type Int))
+                    ))
+                ))
+              :right (TypedInt 86400 :type Int)))
+        )))
+  ))

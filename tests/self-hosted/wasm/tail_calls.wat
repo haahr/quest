@@ -135,6 +135,8 @@
   (import "quest.runtime" "wasi:path_remove_directory" (func $wasi:path_remove_directory (type 44)))
   (import "quest.runtime" "wasi:path_rename" (func $wasi:path_rename (type 48)))
   (import "quest.runtime" "wasi:fd_readdir" (func $wasi:fd_readdir (type 47)))
+  (import "quest.runtime" "wasi:clock_time_get" (func $wasi:clock_time_get (type 44)))
+  (import "quest.runtime" "wasi:poll_oneoff" (func $wasi:poll_oneoff (type 46)))
   (import "quest.runtime" "error" (tag $error (type 49)))
   (import "writer" "init" (func $writer.init (type 50)))
   (import "conv" "init" (func $conv.init (type 50)))

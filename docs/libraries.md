@@ -515,6 +515,66 @@ end
 
 ---
 
+### 1.10. `util/datetime : util/DateTime`
+
+Durations, instants, calendar dates, and their text, in Quest, on `os/time`'s clocks (§4.5,
+[time-plan.md](time-plan.md)): the proleptic Gregorian calendar, POSIX time (no leap seconds), and time zones by
+their offset from UTC alone, with no zone database. A duration is `Int` nanoseconds, used with `Int`'s operators; an
+instant is opaque, nanoseconds since the epoch (1677 to 2262), so that it is not mistaken for a duration or a
+`ticks()` reading. `tests/source/stdlib/datetime_operations.quest` tests it, and `tests/python/test_datetime.py`
+checks its dates and text against Python's `datetime` on 20,000 random instants.
+
+#### Interface Summary
+
+```quest
+interface DateTime
+import
+    util/maybe : util/Maybe
+export
+    error: Exception                    (* a date that does not exist, an instant out of range, a bad pattern *)
+
+    Def Duration = Int                  (* nanoseconds *)
+    nanosecond: Duration
+    microsecond: Duration
+    millisecond: Duration
+    second: Duration
+    minute: Duration
+    hour: Duration
+    seconds(d: Duration): Real
+    fromSeconds(s: Real): Duration
+    durationString(d: Duration): String (* as Go writes them: 1h2m3.5s, 250ms, 1.5us *)
+    elapsedSince(ticks: Int): Duration  (* since a reading of os/time's ticks() *)
+    sleep(d: Duration): Ok
+
+    Instant::TYPE
+    now(): Instant
+    epoch: Instant
+    fromNanoseconds(ns: Int): Instant
+    toNanoseconds(i: Instant): Int
+    add(i: Instant d: Duration): Instant
+    diff(a: Instant b: Instant): Duration
+    compare(a: Instant b: Instant): Int
+    before(a: Instant b: Instant): Bool
+
+    Def Date = Tuple year: Int month: Int day: Int hour: Int minute: Int second: Int nanosecond: Int offset: Int end
+    utc(i: Instant): Date
+    local(i: Instant): Date             (* at the local zone's offset at i *)
+    atOffset(i: Instant offset: Int): Date
+    instant(d: Date): Instant
+    weekday(d: Date): Int               (* 0 for Sunday *)
+    yearDay(d: Date): Int
+    isLeapYear(year: Int): Bool
+    daysInMonth(year: Int month: Int): Int
+
+    format(d: Date pattern: String): String           (* strftime's directives, in the C locale *)
+    parse(s: String pattern: String): maybe.T(Date)
+    iso8601(i: Instant): String                       (* RFC 3339, in UTC *)
+    parseIso8601(s: String): maybe.T(Instant)
+end
+```
+
+---
+
 ## 2. Collections (`lib/collections/`)
 
 ### 2.1. `collections/vector : collections/Vector`
@@ -1194,3 +1254,25 @@ descriptor in `x0`, and expects only `x0`, `x16`, and `x17` to change, so `threa
 assembly (`ldr x0, [x0, #8]; ret`). `call` sets a handler record whose resume address is null, so a raise from code
 built by either backend jumps to it with `longjmp`. `addFunction` registers code no image describes, which the frame
 walk ([exceptions.md](exceptions.md) §5.3) consults before `dladdr`.
+
+---
+
+### 4.5. `os/time : os/Time`
+
+The system's clocks, as `Int`s with their units in their names ([time-plan.md](time-plan.md) §2): the wall clock,
+the monotonic clock (`ticks`, for measuring, since the wall clock can jump), the process's CPU time, sleeping, and
+the local time zone's offset from UTC at an instant. Each is one runtime function: `clock_gettime`, `nanosleep`, and
+`localtime_r` in C; WASI's `clock_time_get` and `poll_oneoff` under wasm, where the local offset is 0 (WASI has no
+time zone) and a page, which has no CPU clock, reports the monotonic one. `util/datetime` (§1.10) builds on it, and
+`tests/source/stdlib/os_time.quest` tests the clocks by their properties.
+
+```quest
+interface Time
+export
+    nowInNanoseconds(): Int                          (* since 1970-01-01T00:00:00Z *)
+    ticks(): Int                                     (* nanoseconds, never going back *)
+    cpuTimeInNanoseconds(): Int
+    sleepNanoseconds(nanoseconds: Int): Ok
+    localOffsetInSeconds(secondsSinceEpoch: Int): Int (* seconds east of UTC *)
+end
+```
