@@ -1,0 +1,42 @@
+interface BTree
+import
+    util/maybe : util/Maybe
+export
+    (* =========================================================================
+     * B-Trees (BTree)
+     *
+     * The ordered map that collections/sortedMap and collections/sortedSet are
+     * (docs/collections-plan.md section 3); theirs, not for programs to import.
+     * A B-tree of minimum degree 16: nodes of 15 to 31 keys (the root fewer),
+     * each knowing how many keys are below it, for rank.
+     * ====================================================================== *)
+
+    T::ALL(K::TYPE) ALL(V::TYPE) TYPE
+    Def Entry = Fun(K::TYPE V::TYPE) Record key: K value: V end
+
+    (* Raised by a walk of a tree a key was added to or removed from while it
+     * walked *)
+    error: Exception
+
+    new: All(K::TYPE V::TYPE) All(compare: All(a: K b: K) Int) T(K V)
+    compareOf: All(K::TYPE V::TYPE) All(t: T(K V)) All(a: K b: K) Int
+    size: All(K::TYPE V::TYPE) All(t: T(K V)) Int
+    get: All(K::TYPE V::TYPE) All(t: T(K V) key: K) maybe.T(V)
+    (* Sets key's value; whether key is new *)
+    insert: All(K::TYPE V::TYPE) All(t: T(K V) key: K value: V) Bool
+    delete: All(K::TYPE V::TYPE) All(t: T(K V) key: K) maybe.T(V)
+    clear: All(K::TYPE V::TYPE) All(t: T(K V)) Ok
+
+    least: All(K::TYPE V::TYPE) All(t: T(K V)) maybe.T(Entry(K V))
+    greatest: All(K::TYPE V::TYPE) All(t: T(K V)) maybe.T(Entry(K V))
+    (* The entry with the greatest key below key (at most key, if orEqual),
+     * and with the least above it (at least key, if orEqual) *)
+    before: All(K::TYPE V::TYPE) All(t: T(K V) key: K orEqual: Bool) maybe.T(Entry(K V))
+    after: All(K::TYPE V::TYPE) All(t: T(K V) key: K orEqual: Bool) maybe.T(Entry(K V))
+    (* The number of keys less than key *)
+    rank: All(K::TYPE V::TYPE) All(t: T(K V) key: K) Int
+
+    (* Each entry with a key from lo (if given), included, to hi (if given),
+     * excluded, in order; raises error if a key is added or removed meanwhile *)
+    walk: All(K::TYPE V::TYPE) All(t: T(K V) lo: maybe.T(K) hi: maybe.T(K) action: All(k: K v: V) Ok) Ok
+end

@@ -1,0 +1,106 @@
+(* Standard Library: a map in key order (docs/collections-plan.md section
+ * 2.1), on collections/btree *)
+
+module sortedMap : SortedMap
+import
+    util/maybe : util/Maybe
+    collections/vector : collections/Vector
+    collections/bTree : collections/BTree
+export
+    Let T = Fun(K::TYPE V::TYPE) bTree.T(K V)
+    Let Entry = Fun(K::TYPE V::TYPE) Record key: K value: V end
+    let error = bTree.error
+
+    let new(K::TYPE V::TYPE)(compare: All(a: K b: K) Int): T(K V) = bTree.new(:K :V compare)
+    let size(K::TYPE V::TYPE)(m: T(K V)): Int = bTree.size(:K :V m)
+    let empty(K::TYPE V::TYPE)(m: T(K V)): Bool = bTree.size(:K :V m) is 0
+    let get(K::TYPE V::TYPE)(m: T(K V) key: K): maybe.T(V) = bTree.get(:K :V m key)
+    let contains(K::TYPE V::TYPE)(m: T(K V) key: K): Bool = maybe.isSome(:V bTree.get(:K :V m key))
+
+    let find(K::TYPE V::TYPE)(m: T(K V) key: K): V =
+        begin
+            let v = bTree.get(:K :V m key)
+            if maybe.isNone(:V v) then raise error end end
+            maybe.unwrap(:V v)
+        end
+
+    let insert(K::TYPE V::TYPE)(m: T(K V) key: K value: V): Bool = bTree.insert(:K :V m key value)
+    let delete(K::TYPE V::TYPE)(m: T(K V) key: K): maybe.T(V) = bTree.delete(:K :V m key)
+    let clear(K::TYPE V::TYPE)(m: T(K V)): Ok = bTree.clear(:K :V m)
+
+    let forEach(K::TYPE V::TYPE)(m: T(K V) action: All(k: K v: V) Ok): Ok =
+        bTree.walk(:K :V m maybe.none(:K) maybe.none(:K) action)
+
+    let forEachInRange(K::TYPE V::TYPE)(m: T(K V) lo: K hi: K action: All(k: K v: V) Ok): Ok =
+        bTree.walk(:K :V m maybe.some(:K lo) maybe.some(:K hi) action)
+
+    let copy(K::TYPE V::TYPE)(m: T(K V)): T(K V) =
+        begin
+            let c = bTree.new(:K :V bTree.compareOf(:K :V m))
+            forEach(:K :V m fun(k: K v: V): Ok begin let added = bTree.insert(:K :V c k v) ok end)
+            c
+        end
+
+    let least(K::TYPE V::TYPE)(m: T(K V)): maybe.T(Entry(K V)) = bTree.least(:K :V m)
+    let greatest(K::TYPE V::TYPE)(m: T(K V)): maybe.T(Entry(K V)) = bTree.greatest(:K :V m)
+    let floor(K::TYPE V::TYPE)(m: T(K V) key: K): maybe.T(Entry(K V)) = bTree.before(:K :V m key true)
+    let ceiling(K::TYPE V::TYPE)(m: T(K V) key: K): maybe.T(Entry(K V)) = bTree.after(:K :V m key true)
+    let below(K::TYPE V::TYPE)(m: T(K V) key: K): maybe.T(Entry(K V)) = bTree.before(:K :V m key false)
+    let above(K::TYPE V::TYPE)(m: T(K V) key: K): maybe.T(Entry(K V)) = bTree.after(:K :V m key false)
+
+    (* Takes the entry e names out, and gives it *)
+    let removed(K::TYPE V::TYPE)(m: T(K V) e: maybe.T(Entry(K V))): maybe.T(Entry(K V)) =
+        begin
+            if maybe.isSome(:Entry(K V) e) then
+                let gone = bTree.delete(:K :V m maybe.unwrap(:Entry(K V) e).key)
+            end
+            e
+        end
+    let removeLeast(K::TYPE V::TYPE)(m: T(K V)): maybe.T(Entry(K V)) = removed(:K :V m bTree.least(:K :V m))
+    let removeGreatest(K::TYPE V::TYPE)(m: T(K V)): maybe.T(Entry(K V)) = removed(:K :V m bTree.greatest(:K :V m))
+
+    let keys(K::TYPE V::TYPE)(m: T(K V)): vector.T(K) =
+        begin
+            let v = vector.newWithCapacity(:K bTree.size(:K :V m))
+            forEach(:K :V m fun(k: K x: V): Ok vector.append(:K v k))
+            v
+        end
+
+    let values(K::TYPE V::TYPE)(m: T(K V)): vector.T(V) =
+        begin
+            let v = vector.newWithCapacity(:V bTree.size(:K :V m))
+            forEach(:K :V m fun(k: K x: V): Ok vector.append(:V v x))
+            v
+        end
+
+    let entries(K::TYPE V::TYPE)(m: T(K V)): vector.T(Entry(K V)) =
+        begin
+            let v = vector.newWithCapacity(:Entry(K V) bTree.size(:K :V m))
+            forEach(:K :V m fun(k: K x: V): Ok vector.append(:Entry(K V) v record key = k value = x end))
+            v
+        end
+
+    let entriesInRange(K::TYPE V::TYPE)(m: T(K V) lo: K hi: K): vector.T(Entry(K V)) =
+        begin
+            let v = vector.new(:Entry(K V))
+            forEachInRange(:K :V m lo hi fun(k: K x: V): Ok
+                vector.append(:Entry(K V) v record key = k value = x end))
+            v
+        end
+
+    let rank(K::TYPE V::TYPE)(m: T(K V) key: K): Int = bTree.rank(:K :V m key)
+
+    let map(K::TYPE V::TYPE W::TYPE)(m: T(K V) f: All(k: K v: V) W): T(K W) =
+        begin
+            let c = bTree.new(:K :W bTree.compareOf(:K :V m))
+            forEach(:K :V m fun(k: K v: V): Ok begin let added = bTree.insert(:K :W c k f(k v)) ok end)
+            c
+        end
+
+    let filter(K::TYPE V::TYPE)(m: T(K V) pred: All(k: K v: V) Bool): T(K V) =
+        begin
+            let c = bTree.new(:K :V bTree.compareOf(:K :V m))
+            forEach(:K :V m fun(k: K v: V): Ok if pred(k v) then let added = bTree.insert(:K :V c k v) end)
+            c
+        end
+end

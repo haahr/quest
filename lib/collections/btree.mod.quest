@@ -1,0 +1,477 @@
+(* Standard Library: B-trees, for collections/sortedMap and
+ * collections/sortedSet (docs/collections-plan.md section 3), after Cormen,
+ * Leiserson, Rivest, and Stein's Introduction to Algorithms, chapter 18:
+ * insertion splits a full node on the way down, and deletion fills a node of
+ * the fewest keys on the way down, so that neither goes back up. Each node
+ * counts the keys below it (size), which rank reads and every change keeps. *)
+
+module bTree : BTree
+import
+    util/maybe : util/Maybe
+export
+    let error: Exception = exception error: Ok end
+    Let Entry = Fun(K::TYPE V::TYPE) Record key: K value: V end
+
+    (* The minimum degree: a node but the root holds 15 to 31 keys *)
+    let degree = 16
+    let maxKeys = 31
+    let minKeys = 15
+
+    (* A node: its n keys and their values, in order, in arrays of maxKeys
+     * (their unused slots holding a key and value of the node's, so that the
+     * node keeps none alive that it has let go); its n + 1 children, or none
+     * for a leaf; and the number of keys in it and below it *)
+    Let Node = Fun(K::TYPE V::TYPE) Rec(N::TYPE) Tuple
+        var n: Int
+        var keys: Array(K)
+        var values: Array(V)
+        var children: Array(N)
+        var size: Int
+    end
+
+    (* changes counts the keys added and removed, so that walk notices one
+     * made while it walks *)
+    Let T = Fun(K::TYPE V::TYPE) Tuple
+        compare: All(a: K b: K) Int
+        var root: maybe.T(Node(K V))
+        var changes: Int
+    end
+
+    let new(K::TYPE V::TYPE)(compare: All(a: K b: K) Int): T(K V) =
+        tuple let compare = compare var root = maybe.none(:Node(K V)) var changes = 0 end
+
+    let compareOf(K::TYPE V::TYPE)(t: T(K V)): All(a: K b: K) Int = t.compare
+
+    let size(K::TYPE V::TYPE)(t: T(K V)): Int =
+        if maybe.isNone(:Node(K V) t.root) then 0 else maybe.unwrap(:Node(K V) t.root).size end
+
+    let isLeaf(K::TYPE V::TYPE)(x: Node(K V)): Bool = extent x.children is 0
+    let entry(K::TYPE V::TYPE)(x: Node(K V) i: Int): Entry(K V) = record key = x.keys[i] value = x.values[i] end
+
+    (* The first of x's keys at least key, or x.n *)
+    let lowerBound(K::TYPE V::TYPE)(t: T(K V) x: Node(K V) key: K): Int =
+        begin
+            let var lo = 0
+            let var hi = x.n
+            while lo < hi do
+                let mid = {lo + hi} / 2
+                if t.compare(x.keys[mid] key) < 0 then lo := mid + 1 else hi := mid end
+            end
+            lo
+        end
+
+    let isAt(K::TYPE V::TYPE)(t: T(K V) x: Node(K V) i: Int key: K): Bool =
+        {i < x.n} andif {t.compare(x.keys[i] key) is 0}
+
+    (* The node and index of key, if it is a key *)
+    let locate(K::TYPE V::TYPE)(t: T(K V) key: K): maybe.T(Tuple node: Node(K V) index: Int end) =
+        begin
+            let var result = maybe.none(:Tuple node: Node(K V) index: Int end)
+            let var at = t.root
+            while maybe.isSome(:Node(K V) at) do
+                let x = maybe.unwrap(:Node(K V) at)
+                let i = lowerBound(:K :V t x key)
+                if isAt(:K :V t x i key) then
+                    result := maybe.some(:Tuple node: Node(K V) index: Int end tuple let node = x let index = i end)
+                    at := maybe.none(:Node(K V))
+                elsif isLeaf(:K :V x) then at := maybe.none(:Node(K V))
+                else at := maybe.some(:Node(K V) x.children[i])
+                end
+            end
+            result
+        end
+
+    let get(K::TYPE V::TYPE)(t: T(K V) key: K): maybe.T(V) =
+        begin
+            let found = locate(:K :V t key)
+            if maybe.isNone(:Tuple node: Node(K V) index: Int end found) then maybe.none(:V)
+            else
+                let f = maybe.unwrap(:Tuple node: Node(K V) index: Int end found)
+                maybe.some(:V f.node.values[f.index])
+            end
+        end
+
+    (* ======================================================================
+     * Insertion
+     * ====================================================================== *)
+
+    (* Splits x's full child i in two about its median, which moves up into x *)
+    let splitChild(K::TYPE V::TYPE)(x: Node(K V) i: Int): Ok =
+        begin
+            let y = x.children[i]
+            let leaf = isLeaf(:K :V y)
+            let z = tuple
+                var n = minKeys
+                var keys = array of(maxKeys y.keys[degree])
+                var values = array of(maxKeys y.values[degree])
+                var children = if leaf then array of :Node(K V) end else array of({maxKeys + 1} y.children[degree]) end
+                var size = minKeys
+            end
+            for j = 0 upto {minKeys - 1} do
+                z.keys[j] := y.keys[j + degree]
+                z.values[j] := y.values[j + degree]
+            end
+            if not(leaf) then
+                for j = 0 upto {degree - 1} do
+                    z.children[j] := y.children[j + degree]
+                    z.size := z.size + z.children[j].size
+                end
+            end
+            let medianKey = y.keys[minKeys]
+            let medianValue = y.values[minKeys]
+            y.n := minKeys
+            y.size := {y.size - z.size} - 1
+            for j = minKeys upto {maxKeys - 1} do
+                y.keys[j] := y.keys[0]
+                y.values[j] := y.values[0]
+            end
+            if not(leaf) then for j = degree upto maxKeys do y.children[j] := y.children[0] end end
+            for j = x.n downto {i + 1} do x.children[j + 1] := x.children[j] end
+            x.children[i + 1] := z
+            for j = {x.n - 1} downto i do
+                x.keys[j + 1] := x.keys[j]
+                x.values[j + 1] := x.values[j]
+            end
+            x.keys[i] := medianKey
+            x.values[i] := medianValue
+            x.n := x.n + 1
+        end
+
+    let insert(K::TYPE V::TYPE)(t: T(K V) key: K value: V): Bool =
+        begin
+            let found = locate(:K :V t key)
+            if maybe.isSome(:Tuple node: Node(K V) index: Int end found) then
+                let f = maybe.unwrap(:Tuple node: Node(K V) index: Int end found)
+                f.node.values[f.index] := value
+                false
+            else
+                t.changes := t.changes + 1
+                if maybe.isNone(:Node(K V) t.root) then
+                    t.root := maybe.some(:Node(K V) tuple
+                        var n = 1
+                        var keys = array of(maxKeys key)
+                        var values = array of(maxKeys value)
+                        var children = array of :Node(K V) end
+                        var size = 1
+                    end)
+                else
+                    let r = maybe.unwrap(:Node(K V) t.root)
+                    if r.n is maxKeys then
+                        let s = tuple
+                            var n = 0
+                            var keys = array of(maxKeys r.keys[0])
+                            var values = array of(maxKeys r.values[0])
+                            var children = array of({maxKeys + 1} r)
+                            var size = r.size
+                        end
+                        splitChild(:K :V s 0)
+                        t.root := maybe.some(:Node(K V) s)
+                    end
+                    (* down to the leaf it belongs in, splitting full nodes on
+                     * the way, so that a split never overfills a parent *)
+                    let var x = maybe.unwrap(:Node(K V) t.root)
+                    let var placed = false
+                    while not(placed) do
+                        x.size := x.size + 1
+                        let var i = lowerBound(:K :V t x key)
+                        if isLeaf(:K :V x) then
+                            for j = {x.n - 1} downto i do
+                                x.keys[j + 1] := x.keys[j]
+                                x.values[j + 1] := x.values[j]
+                            end
+                            x.keys[i] := key
+                            x.values[i] := value
+                            x.n := x.n + 1
+                            placed := true
+                        else
+                            if x.children[i].n is maxKeys then
+                                splitChild(:K :V x i)
+                                if t.compare(key x.keys[i]) > 0 then i := i + 1 end
+                            end
+                            x := x.children[i]
+                        end
+                    end
+                end
+                true
+            end
+        end
+
+    (* ======================================================================
+     * Deletion
+     * ====================================================================== *)
+
+    (* Takes x's key i (and child i + 1) out of x, which is a leaf, or whose
+     * child i + 1 has been merged away *)
+    let removeAt(K::TYPE V::TYPE)(x: Node(K V) i: Int): Ok =
+        begin
+            for j = i upto {x.n - 2} do
+                x.keys[j] := x.keys[j + 1]
+                x.values[j] := x.values[j + 1]
+            end
+            if not(isLeaf(:K :V x)) then
+                for j = i + 1 upto {x.n - 1} do x.children[j] := x.children[j + 1] end
+                x.children[x.n] := x.children[0]
+            end
+            x.n := x.n - 1
+            x.keys[x.n] := x.keys[0]
+            x.values[x.n] := x.values[0]
+        end
+
+    (* Merges x's child i + 1, and x's key i between them, into child i *)
+    let merge(K::TYPE V::TYPE)(x: Node(K V) i: Int): Ok =
+        begin
+            let y = x.children[i]
+            let z = x.children[i + 1]
+            y.keys[y.n] := x.keys[i]
+            y.values[y.n] := x.values[i]
+            for j = 0 upto {z.n - 1} do
+                y.keys[{y.n + 1} + j] := z.keys[j]
+                y.values[{y.n + 1} + j] := z.values[j]
+            end
+            if not(isLeaf(:K :V y)) then for j = 0 upto z.n do y.children[{y.n + 1} + j] := z.children[j] end end
+            y.n := {y.n + 1} + z.n
+            y.size := {y.size + 1} + z.size
+            removeAt(:K :V x i)
+        end
+
+    (* Moves a key from child c - 1 up into x, and x's key c - 1 down into
+     * child c, with child c - 1's last child *)
+    let borrowLeft(K::TYPE V::TYPE)(x: Node(K V) c: Int): Ok =
+        begin
+            let child = x.children[c]
+            let left = x.children[c - 1]
+            let leaf = isLeaf(:K :V child)
+            for j = {child.n - 1} downto 0 do
+                child.keys[j + 1] := child.keys[j]
+                child.values[j + 1] := child.values[j]
+            end
+            if not(leaf) then for j = child.n downto 0 do child.children[j + 1] := child.children[j] end end
+            child.keys[0] := x.keys[c - 1]
+            child.values[0] := x.values[c - 1]
+            let moved = if leaf then 0 else left.children[left.n].size end
+            if not(leaf) then
+                child.children[0] := left.children[left.n]
+                left.children[left.n] := left.children[0]
+            end
+            x.keys[c - 1] := left.keys[left.n - 1]
+            x.values[c - 1] := left.values[left.n - 1]
+            left.n := left.n - 1
+            left.keys[left.n] := left.keys[0]
+            left.values[left.n] := left.values[0]
+            child.n := child.n + 1
+            child.size := {child.size + 1} + moved
+            left.size := {left.size - 1} - moved
+        end
+
+    (* Moves a key from child c + 1 up into x, and x's key c down into child
+     * c, with child c + 1's first child *)
+    let borrowRight(K::TYPE V::TYPE)(x: Node(K V) c: Int): Ok =
+        begin
+            let child = x.children[c]
+            let right = x.children[c + 1]
+            let leaf = isLeaf(:K :V child)
+            child.keys[child.n] := x.keys[c]
+            child.values[child.n] := x.values[c]
+            let moved = if leaf then 0 else right.children[0].size end
+            if not(leaf) then child.children[child.n + 1] := right.children[0] end
+            x.keys[c] := right.keys[0]
+            x.values[c] := right.values[0]
+            for j = 0 upto {right.n - 2} do
+                right.keys[j] := right.keys[j + 1]
+                right.values[j] := right.values[j + 1]
+            end
+            if not(leaf) then
+                for j = 0 upto {right.n - 1} do right.children[j] := right.children[j + 1] end
+                right.children[right.n] := right.children[0]
+            end
+            right.n := right.n - 1
+            right.keys[right.n] := right.keys[0]
+            right.values[right.n] := right.values[0]
+            child.n := child.n + 1
+            child.size := {child.size + 1} + moved
+            right.size := {right.size - 1} - moved
+        end
+
+    (* The least and greatest entries below x *)
+    let first(K::TYPE V::TYPE)(x0: Node(K V)): Entry(K V) =
+        begin
+            let var x = x0
+            while not(isLeaf(:K :V x)) do x := x.children[0] end
+            entry(:K :V x 0)
+        end
+    let last(K::TYPE V::TYPE)(x0: Node(K V)): Entry(K V) =
+        begin
+            let var x = x0
+            while not(isLeaf(:K :V x)) do x := x.children[x.n] end
+            entry(:K :V x x.n - 1)
+        end
+
+    (* Takes key, which is below x, out of it; its value. x is the root, or
+     * holds more than minKeys keys, so that it can give one up *)
+    let rec deleteBelow(K::TYPE V::TYPE)(t: T(K V) x: Node(K V) key: K): V =
+        begin
+            x.size := x.size - 1
+            let i = lowerBound(:K :V t x key)
+            if isAt(:K :V t x i key) then
+                let value = x.values[i]
+                if isLeaf(:K :V x) then
+                    removeAt(:K :V x i)
+                    value
+                else
+                    let y = x.children[i]
+                    let z = x.children[i + 1]
+                    if y.n > minKeys then
+                        (* its predecessor in its place *)
+                        let e = last(:K :V y)
+                        x.keys[i] := e.key
+                        x.values[i] := e.value
+                        let taken = deleteBelow(:K :V t y e.key)
+                        value
+                    elsif z.n > minKeys then
+                        let e = first(:K :V z)
+                        x.keys[i] := e.key
+                        x.values[i] := e.value
+                        let taken = deleteBelow(:K :V t z e.key)
+                        value
+                    else
+                        (* key moves down into y, with z *)
+                        merge(:K :V x i)
+                        deleteBelow(:K :V t y key)
+                    end
+                end
+            else
+                (* in child i, which must have a key to spare first *)
+                let var c = i
+                if x.children[c].n is minKeys then
+                    if {c > 0} andif {x.children[c - 1].n > minKeys} then borrowLeft(:K :V x c)
+                    elsif {c < x.n} andif {x.children[c + 1].n > minKeys} then borrowRight(:K :V x c)
+                    elsif c < x.n then merge(:K :V x c)
+                    else
+                        merge(:K :V x c - 1)
+                        c := c - 1
+                    end
+                end
+                deleteBelow(:K :V t x.children[c] key)
+            end
+        end
+
+    let delete(K::TYPE V::TYPE)(t: T(K V) key: K): maybe.T(V) =
+        if maybe.isNone(:Tuple node: Node(K V) index: Int end locate(:K :V t key)) then maybe.none(:V)
+        else
+            t.changes := t.changes + 1
+            let r = maybe.unwrap(:Node(K V) t.root)
+            let value = deleteBelow(:K :V t r key)
+            if r.n is 0 then
+                t.root := if isLeaf(:K :V r) then maybe.none(:Node(K V)) else maybe.some(:Node(K V) r.children[0]) end
+            end
+            maybe.some(:V value)
+        end
+
+    let clear(K::TYPE V::TYPE)(t: T(K V)): Ok =
+        begin
+            t.root := maybe.none(:Node(K V))
+            t.changes := t.changes + 1
+        end
+
+    (* ======================================================================
+     * Order
+     * ====================================================================== *)
+
+    let least(K::TYPE V::TYPE)(t: T(K V)): maybe.T(Entry(K V)) =
+        if maybe.isNone(:Node(K V) t.root) then maybe.none(:Entry(K V))
+        else maybe.some(:Entry(K V) first(:K :V maybe.unwrap(:Node(K V) t.root)))
+        end
+
+    let greatest(K::TYPE V::TYPE)(t: T(K V)): maybe.T(Entry(K V)) =
+        if maybe.isNone(:Node(K V) t.root) then maybe.none(:Entry(K V))
+        else maybe.some(:Entry(K V) last(:K :V maybe.unwrap(:Node(K V) t.root)))
+        end
+
+    let before(K::TYPE V::TYPE)(t: T(K V) key: K orEqual: Bool): maybe.T(Entry(K V)) =
+        begin
+            let var best = maybe.none(:Entry(K V))
+            let var at = t.root
+            while maybe.isSome(:Node(K V) at) do
+                let x = maybe.unwrap(:Node(K V) at)
+                let i = lowerBound(:K :V t x key)
+                if orEqual andif isAt(:K :V t x i key) then
+                    best := maybe.some(:Entry(K V) entry(:K :V x i))
+                    at := maybe.none(:Node(K V))
+                else
+                    if i > 0 then best := maybe.some(:Entry(K V) entry(:K :V x i - 1)) end
+                    at := if isLeaf(:K :V x) then maybe.none(:Node(K V)) else maybe.some(:Node(K V) x.children[i]) end
+                end
+            end
+            best
+        end
+
+    let after(K::TYPE V::TYPE)(t: T(K V) key: K orEqual: Bool): maybe.T(Entry(K V)) =
+        begin
+            let var best = maybe.none(:Entry(K V))
+            let var at = t.root
+            while maybe.isSome(:Node(K V) at) do
+                let x = maybe.unwrap(:Node(K V) at)
+                let i = lowerBound(:K :V t x key)
+                if orEqual andif isAt(:K :V t x i key) then
+                    best := maybe.some(:Entry(K V) entry(:K :V x i))
+                    at := maybe.none(:Node(K V))
+                else
+                    (* the first key above key *)
+                    let j = if isAt(:K :V t x i key) then i + 1 else i end
+                    if j < x.n then best := maybe.some(:Entry(K V) entry(:K :V x j)) end
+                    at := if isLeaf(:K :V x) then maybe.none(:Node(K V)) else maybe.some(:Node(K V) x.children[j]) end
+                end
+            end
+            best
+        end
+
+    let rank(K::TYPE V::TYPE)(t: T(K V) key: K): Int =
+        begin
+            let var r = 0
+            let var at = t.root
+            while maybe.isSome(:Node(K V) at) do
+                let x = maybe.unwrap(:Node(K V) at)
+                let i = lowerBound(:K :V t x key)
+                let leaf = isLeaf(:K :V x)
+                r := r + i
+                if not(leaf) then for j = 0 upto {i - 1} do r := r + x.children[j].size end end
+                if isAt(:K :V t x i key) then
+                    if not(leaf) then r := r + x.children[i].size end
+                    at := maybe.none(:Node(K V))
+                else
+                    at := if leaf then maybe.none(:Node(K V)) else maybe.some(:Node(K V) x.children[i]) end
+                end
+            end
+            r
+        end
+
+    (* ======================================================================
+     * Walking
+     * ====================================================================== *)
+
+    let walk(K::TYPE V::TYPE)(t: T(K V) lo: maybe.T(K) hi: maybe.T(K) action: All(k: K v: V) Ok): Ok =
+        begin
+            let changes = t.changes
+            let state = tuple let var going = true end
+            let below(key: K): Bool = maybe.isNone(:K hi) orif {t.compare(key maybe.unwrap(:K hi)) < 0}
+            let rec visit(x: Node(K V)): Ok =
+                begin
+                    let leaf = isLeaf(:K :V x)
+                    let start = if maybe.isNone(:K lo) then 0 else lowerBound(:K :V t x maybe.unwrap(:K lo)) end
+                    let var i = start
+                    while state.going /\ {i <= x.n} do
+                        if not(leaf) then visit(x.children[i]) end
+                        if state.going /\ {i < x.n} then
+                            if below(x.keys[i]) then
+                                action(x.keys[i] x.values[i])
+                                if t.changes isnot changes then raise error end end
+                            else
+                                state.going := false
+                            end
+                        end
+                        i := i + 1
+                    end
+                end
+            if maybe.isSome(:Node(K V) t.root) then visit(maybe.unwrap(:Node(K V) t.root)) end
+        end
+end

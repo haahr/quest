@@ -1,0 +1,996 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('sortedSet') : 'SortedSet')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('vector') : 'Vector')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('sort') : 'Sort')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('maybe') : 'Maybe')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('random') : 'Random')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'check' :type Fun(what: String holds: Bool): Ok
+      :value (TypedFun :params (('what' : String) ('holds' : Bool)) :type Fun(what: String holds: Bool): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedInfix '<>' :type String
+              :left (TypedVar 'what' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ': ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedVar 'holds' :type Bool)
+                  ))))
+          ))))
+    (TypedLetValue 'shown' :type Fun(s: sortedSet.T(Int)): String
+      :value (TypedFun :params (('s' : sortedSet.T(Int))) :type Fun(s: sortedSet.T(Int)): String
+        :body (TypedBlock :type String
+          :bindings (
+            (TypedLetValue 'text' :type Tuple var t: String end
+              :value (TypedTuple :type Tuple var t: String end
+                :elements (
+                  (TypedString '{' :type String)
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) action: Fun(elem: Int): Ok): Ok
+                  :func (TypedSelect 'forEach' :type All(A :: TYPE) Fun(s: sortedSet.T(A) action: Fun(elem: A): Ok): Ok
+                    :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                :args (
+                  (TypedVar 's' :type sortedSet.T(Int))
+                  (TypedFun :params (('x' : Int)) :type Fun(x: Int): Ok
+                    :body (TypedAssign
+                      :target (TypedSelect 't' :type String
+                        :target (TypedVar 'text' :type Tuple var t: String end))
+                      :value (TypedInfix '<>' :type String
+                        :left (TypedSelect 't' :type String
+                          :target (TypedVar 'text' :type Tuple var t: String end))
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedString ' ' :type String)
+                          :right (TypedApp :type String
+                            :func (TypedSelect 'int' :type Fun(n: Int): String
+                              :target (TypedVar 'conv' :type Module 'conv'))
+                            :args (
+                              (TypedVar 'x' :type Int)
+                            ))))))
+                )))
+          )
+          :result (TypedInfix '<>' :type String
+            :left (TypedSelect 't' :type String
+              :target (TypedVar 'text' :type Tuple var t: String end))
+            :right (TypedString ' }' :type String)))))
+    (TypedLetValue 'at' :type Fun(e: maybe.T(Int)): String
+      :value (TypedFun :params (('e' : maybe.T(Int))) :type Fun(e: maybe.T(Int)): String
+        :body (TypedIf :type String
+          :cond (TypedApp :type Bool
+            :func (TypedTypeApp [Int] :type Fun(o: maybe.T(Int)): Bool
+              :func (TypedSelect 'isNone' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                :target (TypedVar 'maybe' :type Module 'maybe')))
+            :args (
+              (TypedVar 'e' :type maybe.T(Int))
+            ))
+          :then (TypedString 'none' :type String)
+          :else (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedTypeApp [Int] :type Fun(o: maybe.T(Int)): Int
+                  :func (TypedSelect 'unwrap' :type All(A :: TYPE) Fun(o: maybe.T(A)): A
+                    :target (TypedVar 'maybe' :type Module 'maybe')))
+                :args (
+                  (TypedVar 'e' :type maybe.T(Int))
+                ))
+            )))))
+    (TypedLetValue 'domain' :type Int
+      :value (TypedInt 300 :type Int))
+    (TypedLetValue 'r' :type random.T
+      :value (TypedApp :type random.T
+        :func (TypedSelect 'new' :type Fun(seed: Int): random.T
+          :target (TypedVar 'random' :type Module 'random'))
+        :args (
+          (TypedInt 7 :type Int)
+        )))
+    (TypedLetValue 's' :type sortedSet.T(Int)
+      :value (TypedApp :type sortedSet.T(Int)
+        :func (TypedTypeApp [Int] :type Fun(compare: Fun(a: Int b: Int): Int): sortedSet.T(Int)
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(compare: Fun(a: A b: A): Int): sortedSet.T(A)
+            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+        :args (
+          (TypedSelect 'intCompare' :type Fun(a: Int b: Int): Int
+            :target (TypedVar 'sort' :type Module 'sort'))
+        )))
+    (TypedLetValue 'present' :type Array(Bool)
+      :value (TypedArrayRep :type Array(Bool)
+        :count (TypedVar 'domain' :type Int)
+        :init (TypedBool false)))
+    (TypedLetValue 'agrees' :type Bool
+      :value (TypedBool true))
+    (TypedExprStmt
+      :expr (TypedFor 'step' :upto
+        :start (TypedInt 1 :type Int)
+        :stop (TypedInt 900 :type Int)
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'k' :type Int
+              :value (TypedApp :type Int
+                :func (TypedSelect 'below' :type Fun(r: random.T n: Int): Int
+                  :target (TypedVar 'random' :type Module 'random'))
+                :args (
+                  (TypedVar 'r' :type random.T)
+                  (TypedVar 'domain' :type Int)
+                )))
+          )
+          :result (TypedIf :type Ok
+            :cond (TypedInfix '>' :type Bool
+              :left (TypedApp :type Int
+                :func (TypedSelect 'below' :type Fun(r: random.T n: Int): Int
+                  :target (TypedVar 'random' :type Module 'random'))
+                :args (
+                  (TypedVar 'r' :type random.T)
+                  (TypedInt 3 :type Int)
+                ))
+              :right (TypedInt 0 :type Int))
+            :then (TypedBlock :type Ok
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedIf :type Ok
+                    :cond (TypedInfix 'is' :type Bool
+                      :left (TypedApp :type Bool
+                        :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) elem: Int): Bool
+                          :func (TypedSelect 'insert' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): Bool
+                            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                        :args (
+                          (TypedVar 's' :type sortedSet.T(Int))
+                          (TypedVar 'k' :type Int)
+                        ))
+                      :right (TypedIndex :type Bool
+                        :target (TypedVar 'present' :type Array(Bool))
+                        :index (TypedVar 'k' :type Int)))
+                    :then (TypedBlock :type Ok
+                      :bindings (
+                        (TypedExprStmt
+                          :expr (TypedAssign
+                            :target (TypedVar 'agrees' :type Var(Bool))
+                            :value (TypedBool false)))
+                      )
+                      :result (TypedOk))
+                    :else (TypedOk)))
+              )
+              :result (TypedIndexAssign
+                :target (TypedVar 'present' :type Array(Bool))
+                :index (TypedVar 'k' :type Int)
+                :value (TypedBool true)))
+            :else (TypedBlock :type Ok
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedIf :type Ok
+                    :cond (TypedInfix 'isnot' :type Bool
+                      :left (TypedApp :type Bool
+                        :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) elem: Int): Bool
+                          :func (TypedSelect 'delete' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): Bool
+                            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                        :args (
+                          (TypedVar 's' :type sortedSet.T(Int))
+                          (TypedVar 'k' :type Int)
+                        ))
+                      :right (TypedIndex :type Bool
+                        :target (TypedVar 'present' :type Array(Bool))
+                        :index (TypedVar 'k' :type Int)))
+                    :then (TypedBlock :type Ok
+                      :bindings (
+                        (TypedExprStmt
+                          :expr (TypedAssign
+                            :target (TypedVar 'agrees' :type Var(Bool))
+                            :value (TypedBool false)))
+                      )
+                      :result (TypedOk))
+                    :else (TypedOk)))
+              )
+              :result (TypedIndexAssign
+                :target (TypedVar 'present' :type Array(Bool))
+                :index (TypedVar 'k' :type Int)
+                :value (TypedBool false)))))))
+    (TypedLetValue 'elems' :type vector.T(Int)
+      :value (TypedApp :type vector.T(Int)
+        :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int)): vector.T(Int)
+          :func (TypedSelect 'elements' :type All(A :: TYPE) Fun(s: sortedSet.T(A)): vector.T(A)
+            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+        :args (
+          (TypedVar 's' :type sortedSet.T(Int))
+        )))
+    (TypedLetValue 'j' :type Int
+      :value (TypedInt 0 :type Int))
+    (TypedExprStmt
+      :expr (TypedFor 'k' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedVar 'domain' :type Int)
+          :right (TypedInt 1 :type Int))
+        :body (TypedIf :type Ok
+          :cond (TypedIndex :type Bool
+            :target (TypedVar 'present' :type Array(Bool))
+            :index (TypedVar 'k' :type Int))
+          :then (TypedBlock :type Ok
+            :bindings (
+              (TypedExprStmt
+                :expr (TypedBlock :type Ok
+                  :bindings (
+                    (TypedExprStmt
+                      :expr (TypedIf :type Ok
+                        :cond (TypedIf :type Bool
+                          :cond (TypedInfix '>=' :type Bool
+                            :left (TypedDerefCell :type Int
+                              :target (TypedVar 'j' :type Var(Int)))
+                            :right (TypedApp :type Int
+                              :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int)): Int
+                                :func (TypedSelect 'length' :type All(A :: TYPE) Fun(v: vector.T(A)): Int
+                                  :target (TypedVar 'vector' :type Module 'vector')))
+                              :args (
+                                (TypedVar 'elems' :type vector.T(Int))
+                              )))
+                          :then (TypedBool true)
+                          :else (TypedInfix 'isnot' :type Bool
+                            :left (TypedApp :type Int
+                              :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) index: Int): Int
+                                :func (TypedSelect 'get' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int): A
+                                  :target (TypedVar 'vector' :type Module 'vector')))
+                              :args (
+                                (TypedVar 'elems' :type vector.T(Int))
+                                (TypedDerefCell :type Int
+                                  :target (TypedVar 'j' :type Var(Int)))
+                              ))
+                            :right (TypedVar 'k' :type Int)))
+                        :then (TypedBlock :type Ok
+                          :bindings (
+                            (TypedExprStmt
+                              :expr (TypedAssign
+                                :target (TypedVar 'agrees' :type Var(Bool))
+                                :value (TypedBool false)))
+                          )
+                          :result (TypedOk))
+                        :else (TypedOk)))
+                  )
+                  :result (TypedAssign
+                    :target (TypedVar 'j' :type Var(Int))
+                    :value (TypedInfix '+' :type Int
+                      :left (TypedDerefCell :type Int
+                        :target (TypedVar 'j' :type Var(Int)))
+                      :right (TypedInt 1 :type Int)))))
+            )
+            :result (TypedOk))
+          :else (TypedOk))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'random inserts and deletes agree with a model' :type String)
+          (TypedInfix '/\\' :type Bool
+            :left (TypedDerefCell :type Bool
+              :target (TypedVar 'agrees' :type Var(Bool)))
+            :right (TypedInfix 'is' :type Bool
+              :left (TypedDerefCell :type Int
+                :target (TypedVar 'j' :type Var(Int)))
+              :right (TypedApp :type Int
+                :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int)): Int
+                  :func (TypedSelect 'size' :type All(A :: TYPE) Fun(s: sortedSet.T(A)): Int
+                    :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                :args (
+                  (TypedVar 's' :type sortedSet.T(Int))
+                ))))
+        )))
+    (TypedLetValue 'small' :type sortedSet.T(Int)
+      :value (TypedApp :type sortedSet.T(Int)
+        :func (TypedTypeApp [Int] :type Fun(compare: Fun(a: Int b: Int): Int): sortedSet.T(Int)
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(compare: Fun(a: A b: A): Int): sortedSet.T(A)
+            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+        :args (
+          (TypedSelect 'intCompare' :type Fun(a: Int b: Int): Int
+            :target (TypedVar 'sort' :type Module 'sort'))
+        )))
+    (TypedLetValue 'ns' :type Array(Int)
+      :value (TypedArray :type Array(Int)
+        :elements (
+          (TypedInt 50 :type Int)
+          (TypedInt 10 :type Int)
+          (TypedInt 40 :type Int)
+          (TypedInt 20 :type Int)
+          (TypedInt 30 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'ns' :type Array(Int))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'added' :type Bool
+              :value (TypedApp :type Bool
+                :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) elem: Int): Bool
+                  :func (TypedSelect 'insert' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): Bool
+                    :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                :args (
+                  (TypedVar 'small' :type sortedSet.T(Int))
+                  (TypedIndex :type Int
+                    :target (TypedVar 'ns' :type Array(Int))
+                    :index (TypedVar 'i' :type Int))
+                )))
+          )
+          :result (TypedOk))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedVar 'shown' :type Fun(s: sortedSet.T(Int)): String)
+              :args (
+                (TypedVar 'small' :type sortedSet.T(Int))
+              ))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' least ' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(e: maybe.T(Int)): String)
+                  :args (
+                    (TypedApp :type maybe.T(Int)
+                      :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int)): maybe.T(Int)
+                        :func (TypedSelect 'least' :type All(A :: TYPE) Fun(s: sortedSet.T(A)): maybe.T(A)
+                          :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                      :args (
+                        (TypedVar 'small' :type sortedSet.T(Int))
+                      ))
+                  ))
+                :right (TypedInfix '<>' :type String
+                  :left (TypedString ' greatest ' :type String)
+                  :right (TypedApp :type String
+                    :func (TypedVar 'at' :type Fun(e: maybe.T(Int)): String)
+                    :args (
+                      (TypedApp :type maybe.T(Int)
+                        :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int)): maybe.T(Int)
+                          :func (TypedSelect 'greatest' :type All(A :: TYPE) Fun(s: sortedSet.T(A)): maybe.T(A)
+                            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                        :args (
+                          (TypedVar 'small' :type sortedSet.T(Int))
+                        ))
+                    ))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'floor 25 ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'at' :type Fun(e: maybe.T(Int)): String)
+                :args (
+                  (TypedApp :type maybe.T(Int)
+                    :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) elem: Int): maybe.T(Int)
+                      :func (TypedSelect 'floor' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): maybe.T(A)
+                        :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                    :args (
+                      (TypedVar 'small' :type sortedSet.T(Int))
+                      (TypedInt 25 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', floor 30 ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'at' :type Fun(e: maybe.T(Int)): String)
+                    :args (
+                      (TypedApp :type maybe.T(Int)
+                        :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) elem: Int): maybe.T(Int)
+                          :func (TypedSelect 'floor' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): maybe.T(A)
+                            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                        :args (
+                          (TypedVar 'small' :type sortedSet.T(Int))
+                          (TypedInt 30 :type Int)
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', below 30 ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedVar 'at' :type Fun(e: maybe.T(Int)): String)
+                        :args (
+                          (TypedApp :type maybe.T(Int)
+                            :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) elem: Int): maybe.T(Int)
+                              :func (TypedSelect 'below' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): maybe.T(A)
+                                :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                            :args (
+                              (TypedVar 'small' :type sortedSet.T(Int))
+                              (TypedInt 30 :type Int)
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ', ceiling 25 ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedVar 'at' :type Fun(e: maybe.T(Int)): String)
+                            :args (
+                              (TypedApp :type maybe.T(Int)
+                                :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) elem: Int): maybe.T(Int)
+                                  :func (TypedSelect 'ceiling' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): maybe.T(A)
+                                    :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                                :args (
+                                  (TypedVar 'small' :type sortedSet.T(Int))
+                                  (TypedInt 25 :type Int)
+                                ))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ', above 30 ' :type String)
+                            :right (TypedInfix '<>' :type String
+                              :left (TypedApp :type String
+                                :func (TypedVar 'at' :type Fun(e: maybe.T(Int)): String)
+                                :args (
+                                  (TypedApp :type maybe.T(Int)
+                                    :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) elem: Int): maybe.T(Int)
+                                      :func (TypedSelect 'above' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): maybe.T(A)
+                                        :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                                    :args (
+                                      (TypedVar 'small' :type sortedSet.T(Int))
+                                      (TypedInt 30 :type Int)
+                                    ))
+                                ))
+                              :right (TypedInfix '<>' :type String
+                                :left (TypedString ', above 50 ' :type String)
+                                :right (TypedInfix '<>' :type String
+                                  :left (TypedApp :type String
+                                    :func (TypedVar 'at' :type Fun(e: maybe.T(Int)): String)
+                                    :args (
+                                      (TypedApp :type maybe.T(Int)
+                                        :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) elem: Int): maybe.T(Int)
+                                          :func (TypedSelect 'above' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): maybe.T(A)
+                                            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                                        :args (
+                                          (TypedVar 'small' :type sortedSet.T(Int))
+                                          (TypedInt 50 :type Int)
+                                        ))
+                                    ))
+                                  :right (TypedInfix '<>' :type String
+                                    :left (TypedString ', floor 5 ' :type String)
+                                    :right (TypedApp :type String
+                                      :func (TypedVar 'at' :type Fun(e: maybe.T(Int)): String)
+                                      :args (
+                                        (TypedApp :type maybe.T(Int)
+                                          :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) elem: Int): maybe.T(Int)
+                                            :func (TypedSelect 'floor' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): maybe.T(A)
+                                              :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                                          :args (
+                                            (TypedVar 'small' :type sortedSet.T(Int))
+                                            (TypedInt 5 :type Int)
+                                          ))
+                                      )))))))))))))))
+        )))
+    (TypedLetValue 'ranged' :type vector.T(Int)
+      :value (TypedApp :type vector.T(Int)
+        :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) lo: Int hi: Int): vector.T(Int)
+          :func (TypedSelect 'elementsInRange' :type All(A :: TYPE) Fun(s: sortedSet.T(A) lo: A hi: A): vector.T(A)
+            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+        :args (
+          (TypedVar 'small' :type sortedSet.T(Int))
+          (TypedInt 15 :type Int)
+          (TypedInt 45 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'from 15 to 45: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int)): Int
+                      :func (TypedSelect 'length' :type All(A :: TYPE) Fun(v: vector.T(A)): Int
+                        :target (TypedVar 'vector' :type Module 'vector')))
+                    :args (
+                      (TypedVar 'ranged' :type vector.T(Int))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' elements; rank 30 ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Int
+                        :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) elem: Int): Int
+                          :func (TypedSelect 'rank' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): Int
+                            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                        :args (
+                          (TypedVar 'small' :type sortedSet.T(Int))
+                          (TypedInt 30 :type Int)
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', rank 35 ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedSelect 'int' :type Fun(n: Int): String
+                          :target (TypedVar 'conv' :type Module 'conv'))
+                        :args (
+                          (TypedApp :type Int
+                            :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) elem: Int): Int
+                              :func (TypedSelect 'rank' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): Int
+                                :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                            :args (
+                              (TypedVar 'small' :type sortedSet.T(Int))
+                              (TypedInt 35 :type Int)
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ', rank 99 ' :type String)
+                        :right (TypedApp :type String
+                          :func (TypedSelect 'int' :type Fun(n: Int): String
+                            :target (TypedVar 'conv' :type Module 'conv'))
+                          :args (
+                            (TypedApp :type Int
+                              :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) elem: Int): Int
+                                :func (TypedSelect 'rank' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): Int
+                                  :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                              :args (
+                                (TypedVar 'small' :type sortedSet.T(Int))
+                                (TypedInt 99 :type Int)
+                              ))
+                          )))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'removeLeast ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'at' :type Fun(e: maybe.T(Int)): String)
+                :args (
+                  (TypedApp :type maybe.T(Int)
+                    :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int)): maybe.T(Int)
+                      :func (TypedSelect 'removeLeast' :type All(A :: TYPE) Fun(s: sortedSet.T(A)): maybe.T(A)
+                        :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                    :args (
+                      (TypedVar 'small' :type sortedSet.T(Int))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', removeGreatest ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'at' :type Fun(e: maybe.T(Int)): String)
+                    :args (
+                      (TypedApp :type maybe.T(Int)
+                        :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int)): maybe.T(Int)
+                          :func (TypedSelect 'removeGreatest' :type All(A :: TYPE) Fun(s: sortedSet.T(A)): maybe.T(A)
+                            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                        :args (
+                          (TypedVar 'small' :type sortedSet.T(Int))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ': ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedVar 'shown' :type Fun(s: sortedSet.T(Int)): String)
+                      :args (
+                        (TypedVar 'small' :type sortedSet.T(Int))
+                      )))))))
+        )))
+    (TypedLetValue 'a' :type sortedSet.T(Int)
+      :value (TypedApp :type sortedSet.T(Int)
+        :func (TypedTypeApp [Int] :type Fun(compare: Fun(a: Int b: Int): Int): sortedSet.T(Int)
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(compare: Fun(a: A b: A): Int): sortedSet.T(A)
+            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+        :args (
+          (TypedSelect 'intCompare' :type Fun(a: Int b: Int): Int
+            :target (TypedVar 'sort' :type Module 'sort'))
+        )))
+    (TypedLetValue 'b' :type sortedSet.T(Int)
+      :value (TypedApp :type sortedSet.T(Int)
+        :func (TypedTypeApp [Int] :type Fun(compare: Fun(a: Int b: Int): Int): sortedSet.T(Int)
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(compare: Fun(a: A b: A): Int): sortedSet.T(A)
+            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+        :args (
+          (TypedSelect 'intCompare' :type Fun(a: Int b: Int): Int
+            :target (TypedVar 'sort' :type Module 'sort'))
+        )))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 1 :type Int)
+        :stop (TypedInt 6 :type Int)
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'added' :type Bool
+              :value (TypedApp :type Bool
+                :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) elem: Int): Bool
+                  :func (TypedSelect 'insert' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): Bool
+                    :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                :args (
+                  (TypedVar 'a' :type sortedSet.T(Int))
+                  (TypedVar 'i' :type Int)
+                )))
+          )
+          :result (TypedOk))))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 4 :type Int)
+        :stop (TypedInt 9 :type Int)
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'added' :type Bool
+              :value (TypedApp :type Bool
+                :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) elem: Int): Bool
+                  :func (TypedSelect 'insert' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): Bool
+                    :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                :args (
+                  (TypedVar 'b' :type sortedSet.T(Int))
+                  (TypedVar 'i' :type Int)
+                )))
+          )
+          :result (TypedOk))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'union ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'shown' :type Fun(s: sortedSet.T(Int)): String)
+                :args (
+                  (TypedApp :type sortedSet.T(Int)
+                    :func (TypedTypeApp [Int] :type Fun(s1: sortedSet.T(Int) s2: sortedSet.T(Int)): sortedSet.T(Int)
+                      :func (TypedSelect 'union' :type All(A :: TYPE) Fun(s1: sortedSet.T(A) s2: sortedSet.T(A)): sortedSet.T(A)
+                        :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                    :args (
+                      (TypedVar 'a' :type sortedSet.T(Int))
+                      (TypedVar 'b' :type sortedSet.T(Int))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' intersection ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'shown' :type Fun(s: sortedSet.T(Int)): String)
+                    :args (
+                      (TypedApp :type sortedSet.T(Int)
+                        :func (TypedTypeApp [Int] :type Fun(s1: sortedSet.T(Int) s2: sortedSet.T(Int)): sortedSet.T(Int)
+                          :func (TypedSelect 'intersection' :type All(A :: TYPE) Fun(s1: sortedSet.T(A) s2: sortedSet.T(A)): sortedSet.T(A)
+                            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                        :args (
+                          (TypedVar 'a' :type sortedSet.T(Int))
+                          (TypedVar 'b' :type sortedSet.T(Int))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' difference ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedVar 'shown' :type Fun(s: sortedSet.T(Int)): String)
+                      :args (
+                        (TypedApp :type sortedSet.T(Int)
+                          :func (TypedTypeApp [Int] :type Fun(s1: sortedSet.T(Int) s2: sortedSet.T(Int)): sortedSet.T(Int)
+                            :func (TypedSelect 'difference' :type All(A :: TYPE) Fun(s1: sortedSet.T(A) s2: sortedSet.T(A)): sortedSet.T(A)
+                              :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                          :args (
+                            (TypedVar 'a' :type sortedSet.T(Int))
+                            (TypedVar 'b' :type sortedSet.T(Int))
+                          ))
+                      )))))))
+        )))
+    (TypedLetValue 'evens' :type sortedSet.T(Int)
+      :value (TypedApp :type sortedSet.T(Int)
+        :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) pred: Fun(elem: Int): Bool): sortedSet.T(Int)
+          :func (TypedSelect 'filter' :type All(A :: TYPE) Fun(s: sortedSet.T(A) pred: Fun(elem: A): Bool): sortedSet.T(A)
+            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+        :args (
+          (TypedVar 'a' :type sortedSet.T(Int))
+          (TypedFun :params (('x' : Int)) :type Fun(x: Int): Bool
+            :body (TypedInfix 'is' :type Bool
+              :left (TypedInfix '%' :type Int
+                :left (TypedVar 'x' :type Int)
+                :right (TypedInt 2 :type Int))
+              :right (TypedInt 0 :type Int)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'evens ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'shown' :type Fun(s: sortedSet.T(Int)): String)
+                :args (
+                  (TypedVar 'evens' :type sortedSet.T(Int))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' subset ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Bool
+                        :func (TypedTypeApp [Int] :type Fun(s1: sortedSet.T(Int) s2: sortedSet.T(Int)): Bool
+                          :func (TypedSelect 'isSubset' :type All(A :: TYPE) Fun(s1: sortedSet.T(A) s2: sortedSet.T(A)): Bool
+                            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                        :args (
+                          (TypedVar 'evens' :type sortedSet.T(Int))
+                          (TypedVar 'a' :type sortedSet.T(Int))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                          :target (TypedVar 'conv' :type Module 'conv'))
+                        :args (
+                          (TypedApp :type Bool
+                            :func (TypedTypeApp [Int] :type Fun(s1: sortedSet.T(Int) s2: sortedSet.T(Int)): Bool
+                              :func (TypedSelect 'isSubset' :type All(A :: TYPE) Fun(s1: sortedSet.T(A) s2: sortedSet.T(A)): Bool
+                                :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                            :args (
+                              (TypedVar 'a' :type sortedSet.T(Int))
+                              (TypedVar 'evens' :type sortedSet.T(Int))
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' equal ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                              :target (TypedVar 'conv' :type Module 'conv'))
+                            :args (
+                              (TypedApp :type Bool
+                                :func (TypedTypeApp [Int] :type Fun(s1: sortedSet.T(Int) s2: sortedSet.T(Int)): Bool
+                                  :func (TypedSelect 'equal' :type All(A :: TYPE) Fun(s1: sortedSet.T(A) s2: sortedSet.T(A)): Bool
+                                    :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                                :args (
+                                  (TypedVar 'a' :type sortedSet.T(Int))
+                                  (TypedApp :type sortedSet.T(Int)
+                                    :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int)): sortedSet.T(Int)
+                                      :func (TypedSelect 'copy' :type All(A :: TYPE) Fun(s: sortedSet.T(A)): sortedSet.T(A)
+                                        :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                                    :args (
+                                      (TypedVar 'a' :type sortedSet.T(Int))
+                                    ))
+                                ))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ' ' :type String)
+                            :right (TypedInfix '<>' :type String
+                              :left (TypedApp :type String
+                                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                                  :target (TypedVar 'conv' :type Module 'conv'))
+                                :args (
+                                  (TypedApp :type Bool
+                                    :func (TypedTypeApp [Int] :type Fun(s1: sortedSet.T(Int) s2: sortedSet.T(Int)): Bool
+                                      :func (TypedSelect 'equal' :type All(A :: TYPE) Fun(s1: sortedSet.T(A) s2: sortedSet.T(A)): Bool
+                                        :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                                    :args (
+                                      (TypedVar 'a' :type sortedSet.T(Int))
+                                      (TypedVar 'b' :type sortedSet.T(Int))
+                                    ))
+                                ))
+                              :right (TypedInfix '<>' :type String
+                                :left (TypedString ' contains 3 ' :type String)
+                                :right (TypedApp :type String
+                                  :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                                    :target (TypedVar 'conv' :type Module 'conv'))
+                                  :args (
+                                    (TypedApp :type Bool
+                                      :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) elem: Int): Bool
+                                        :func (TypedSelect 'contains' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): Bool
+                                          :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                                      :args (
+                                        (TypedVar 'a' :type sortedSet.T(Int))
+                                        (TypedInt 3 :type Int)
+                                      ))
+                                  )))))))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int)): Ok
+          :func (TypedSelect 'clear' :type All(A :: TYPE) Fun(s: sortedSet.T(A)): Ok
+            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+        :args (
+          (TypedVar 'b' :type sortedSet.T(Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'cleared' :type String)
+          (TypedInfix '/\\' :type Bool
+            :left (TypedApp :type Bool
+              :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int)): Bool
+                :func (TypedSelect 'empty' :type All(A :: TYPE) Fun(s: sortedSet.T(A)): Bool
+                  :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+              :args (
+                (TypedVar 'b' :type sortedSet.T(Int))
+              ))
+            :right (TypedApp :type Bool
+              :func (TypedTypeApp [Int] :type Fun(o: maybe.T(Int)): Bool
+                :func (TypedSelect 'isNone' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                  :target (TypedVar 'maybe' :type Module 'maybe')))
+              :args (
+                (TypedApp :type maybe.T(Int)
+                  :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int)): maybe.T(Int)
+                    :func (TypedSelect 'least' :type All(A :: TYPE) Fun(s: sortedSet.T(A)): maybe.T(A)
+                      :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                  :args (
+                    (TypedVar 'b' :type sortedSet.T(Int))
+                  ))
+              )))
+        )))
+    (TypedLetValue 'words' :type sortedSet.T(String)
+      :value (TypedApp :type sortedSet.T(String)
+        :func (TypedTypeApp [String] :type Fun(compare: Fun(a: String b: String): Int): sortedSet.T(String)
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(compare: Fun(a: A b: A): Int): sortedSet.T(A)
+            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+        :args (
+          (TypedApp :type Fun(a: String b: String): Int
+            :func (TypedTypeApp [String] :type Fun(cmp: Fun(a: String b: String): Int): Fun(a: String b: String): Int
+              :func (TypedSelect 'reverse' :type All(A :: TYPE) Fun(cmp: Fun(a: A b: A): Int): Fun(a: A b: A): Int
+                :target (TypedVar 'sort' :type Module 'sort')))
+            :args (
+              (TypedSelect 'stringCompare' :type Fun(a: String b: String): Int
+                :target (TypedVar 'sort' :type Module 'sort'))
+            ))
+        )))
+    (TypedLetValue 'ws' :type Array(String)
+      :value (TypedArray :type Array(String)
+        :elements (
+          (TypedString 'pear' :type String)
+          (TypedString 'fig' :type String)
+          (TypedString 'banana' :type String)
+          (TypedString 'fig' :type String)
+          (TypedString 'apple' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [String] :type Fun(a: Array(String)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'ws' :type Array(String))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'added' :type Bool
+              :value (TypedApp :type Bool
+                :func (TypedTypeApp [String] :type Fun(s: sortedSet.T(String) elem: String): Bool
+                  :func (TypedSelect 'insert' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): Bool
+                    :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                :args (
+                  (TypedVar 'words' :type sortedSet.T(String))
+                  (TypedIndex :type String
+                    :target (TypedVar 'ws' :type Array(String))
+                    :index (TypedVar 'i' :type Int))
+                )))
+          )
+          :result (TypedOk))))
+    (TypedLetValue 'wtext' :type Tuple var t: String end
+      :value (TypedTuple :type Tuple var t: String end
+        :elements (
+          (TypedString '' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedTypeApp [String] :type Fun(s: sortedSet.T(String) action: Fun(elem: String): Ok): Ok
+          :func (TypedSelect 'forEach' :type All(A :: TYPE) Fun(s: sortedSet.T(A) action: Fun(elem: A): Ok): Ok
+            :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+        :args (
+          (TypedVar 'words' :type sortedSet.T(String))
+          (TypedFun :params (('w' : String)) :type Fun(w: String): Ok
+            :body (TypedAssign
+              :target (TypedSelect 't' :type String
+                :target (TypedVar 'wtext' :type Tuple var t: String end))
+              :value (TypedInfix '<>' :type String
+                :left (TypedSelect 't' :type String
+                  :target (TypedVar 'wtext' :type Tuple var t: String end))
+                :right (TypedInfix '<>' :type String
+                  :left (TypedString ' ' :type String)
+                  :right (TypedVar 'w' :type String)))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'reversed:' :type String)
+            :right (TypedSelect 't' :type String
+              :target (TypedVar 'wtext' :type Tuple var t: String end)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'an element added during forEach: ' :type String)
+            :right (TypedTry :type String
+              :body (TypedBlock :type String
+                :bindings (
+                  (TypedExprStmt
+                    :expr (TypedApp :type Ok
+                      :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) action: Fun(elem: Int): Ok): Ok
+                        :func (TypedSelect 'forEach' :type All(A :: TYPE) Fun(s: sortedSet.T(A) action: Fun(elem: A): Ok): Ok
+                          :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                      :args (
+                        (TypedVar 'a' :type sortedSet.T(Int))
+                        (TypedFun :params (('x' : Int)) :type Fun(x: Int): Ok
+                          :body (TypedBlock :type Ok
+                            :bindings (
+                              (TypedLetValue 'added' :type Bool
+                                :value (TypedApp :type Bool
+                                  :func (TypedTypeApp [Int] :type Fun(s: sortedSet.T(Int) elem: Int): Bool
+                                    :func (TypedSelect 'insert' :type All(A :: TYPE) Fun(s: sortedSet.T(A) elem: A): Bool
+                                      :target (TypedVar 'sortedSet' :type Module 'sortedSet')))
+                                  :args (
+                                    (TypedVar 'a' :type sortedSet.T(Int))
+                                    (TypedInfix '+' :type Int
+                                      :left (TypedVar 'x' :type Int)
+                                      :right (TypedInt 100 :type Int))
+                                  )))
+                            )
+                            :result (TypedOk)))
+                      )))
+                )
+                :result (TypedString 'none' :type String))
+              :branches (
+                (TypedTryBranch
+                  :exc_pattern (TypedSelect 'error' :type Exception
+                    :target (TypedVar 'sortedSet' :type Module 'sortedSet'))
+                  :body (TypedString 'sortedSet.error' :type String))
+              )))
+        )))
+  ))

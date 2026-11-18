@@ -1,0 +1,89 @@
+(* Standard Library: a set in element order (docs/collections-plan.md section
+ * 2.2), on collections/btree, its values Ok *)
+
+module sortedSet : SortedSet
+import
+    util/maybe : util/Maybe
+    collections/vector : collections/Vector
+    collections/bTree : collections/BTree
+export
+    Let T = Fun(A::TYPE) bTree.T(A Ok)
+    let error = bTree.error
+
+    let new(A::TYPE)(compare: All(a: A b: A) Int): T(A) = bTree.new(:A :Ok compare)
+    let size(A::TYPE)(s: T(A)): Int = bTree.size(:A :Ok s)
+    let empty(A::TYPE)(s: T(A)): Bool = bTree.size(:A :Ok s) is 0
+    let contains(A::TYPE)(s: T(A) elem: A): Bool = maybe.isSome(:Ok bTree.get(:A :Ok s elem))
+    let insert(A::TYPE)(s: T(A) elem: A): Bool = bTree.insert(:A :Ok s elem ok)
+    let delete(A::TYPE)(s: T(A) elem: A): Bool = maybe.isSome(:Ok bTree.delete(:A :Ok s elem))
+    let clear(A::TYPE)(s: T(A)): Ok = bTree.clear(:A :Ok s)
+
+    let forEach(A::TYPE)(s: T(A) action: All(elem: A) Ok): Ok =
+        bTree.walk(:A :Ok s maybe.none(:A) maybe.none(:A) fun(k: A v: Ok): Ok action(k))
+    let forEachInRange(A::TYPE)(s: T(A) lo: A hi: A action: All(elem: A) Ok): Ok =
+        bTree.walk(:A :Ok s maybe.some(:A lo) maybe.some(:A hi) fun(k: A v: Ok): Ok action(k))
+
+    (* A new set with s's comparison, of the elements of s that keep holds *)
+    let kept(A::TYPE)(s: T(A) keep: All(elem: A) Bool): T(A) =
+        begin
+            let c = bTree.new(:A :Ok bTree.compareOf(:A :Ok s))
+            forEach(:A s fun(e: A): Ok if keep(e) then let added = bTree.insert(:A :Ok c e ok) end)
+            c
+        end
+
+    let copy(A::TYPE)(s: T(A)): T(A) = kept(:A s fun(e: A): Bool true)
+
+    let key(A::TYPE)(e: maybe.T(bTree.Entry(A Ok))): maybe.T(A) =
+        if maybe.isNone(:bTree.Entry(A Ok) e) then maybe.none(:A)
+        else maybe.some(:A maybe.unwrap(:bTree.Entry(A Ok) e).key)
+        end
+
+    let least(A::TYPE)(s: T(A)): maybe.T(A) = key(:A bTree.least(:A :Ok s))
+    let greatest(A::TYPE)(s: T(A)): maybe.T(A) = key(:A bTree.greatest(:A :Ok s))
+    let floor(A::TYPE)(s: T(A) elem: A): maybe.T(A) = key(:A bTree.before(:A :Ok s elem true))
+    let ceiling(A::TYPE)(s: T(A) elem: A): maybe.T(A) = key(:A bTree.after(:A :Ok s elem true))
+    let below(A::TYPE)(s: T(A) elem: A): maybe.T(A) = key(:A bTree.before(:A :Ok s elem false))
+    let above(A::TYPE)(s: T(A) elem: A): maybe.T(A) = key(:A bTree.after(:A :Ok s elem false))
+
+    let removed(A::TYPE)(s: T(A) e: maybe.T(A)): maybe.T(A) =
+        begin
+            if maybe.isSome(:A e) then let gone = bTree.delete(:A :Ok s maybe.unwrap(:A e)) end
+            e
+        end
+    let removeLeast(A::TYPE)(s: T(A)): maybe.T(A) = removed(:A s least(:A s))
+    let removeGreatest(A::TYPE)(s: T(A)): maybe.T(A) = removed(:A s greatest(:A s))
+
+    let elements(A::TYPE)(s: T(A)): vector.T(A) =
+        begin
+            let v = vector.newWithCapacity(:A bTree.size(:A :Ok s))
+            forEach(:A s fun(e: A): Ok vector.append(:A v e))
+            v
+        end
+
+    let elementsInRange(A::TYPE)(s: T(A) lo: A hi: A): vector.T(A) =
+        begin
+            let v = vector.new(:A)
+            forEachInRange(:A s lo hi fun(e: A): Ok vector.append(:A v e))
+            v
+        end
+
+    let rank(A::TYPE)(s: T(A) elem: A): Int = bTree.rank(:A :Ok s elem)
+
+    let union(A::TYPE)(s1: T(A) s2: T(A)): T(A) =
+        begin
+            let c = copy(:A s1)
+            forEach(:A s2 fun(e: A): Ok begin let added = bTree.insert(:A :Ok c e ok) ok end)
+            c
+        end
+    let intersection(A::TYPE)(s1: T(A) s2: T(A)): T(A) = kept(:A s1 fun(e: A): Bool contains(:A s2 e))
+    let difference(A::TYPE)(s1: T(A) s2: T(A)): T(A) = kept(:A s1 fun(e: A): Bool not(contains(:A s2 e)))
+
+    let isSubset(A::TYPE)(s1: T(A) s2: T(A)): Bool =
+        begin
+            let state = tuple let var all = true end
+            forEach(:A s1 fun(e: A): Ok if not(contains(:A s2 e)) then state.all := false end)
+            state.all
+        end
+    let equal(A::TYPE)(s1: T(A) s2: T(A)): Bool = {size(:A s1) is size(:A s2)} andif isSubset(:A s1 s2)
+    let filter(A::TYPE)(s: T(A) pred: All(elem: A) Bool): T(A) = kept(:A s pred)
+end

@@ -1,0 +1,180 @@
+(* Standard library: collections/sortedMap (docs/collections-plan.md section
+ * 2.1), on collections/btree: 1,200 keys inserted in a random order, then
+ * random inserts, deletes, and lookups, then every key deleted in a random
+ * order, so that the tree splits, borrows, and merges at every level;
+ * checked throughout against a model (an array of the keys 0 to 1,199,
+ * each present or not, with its value), with the order queries, ranges,
+ * and rank; then the smaller operations, and the errors *)
+
+import collections/sortedMap : collections/SortedMap;
+import collections/vector : collections/Vector;
+import util/sort : util/Sort;
+import util/maybe : util/Maybe;
+import random = util/random : util/Random;
+import writer: Writer;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let check(what: String holds: Bool): Ok = print(what <> ": " <> conv.bool(holds));
+
+let domain = 1200;
+let r = random.new(1989);
+let m = sortedMap.new(:Int :Int sort.intCompare);
+let present = array of(domain false);
+let valueOf = array of(domain 0);
+let state = tuple let var count = 0 let var agrees = true end;
+let fail(what: String): Ok =
+    begin
+        if state.agrees then print("first disagreement: " <> what) end
+        state.agrees := false
+    end;
+
+let modelInsert(k: Int v: Int): Ok =
+    begin
+        let fresh = sortedMap.insert(:Int :Int m k v)
+        if fresh is present[k] then fail("insert " <> conv.int(k)) end
+        if not(present[k]) then state.count := state.count + 1 end
+        present[k] := true
+        valueOf[k] := v
+    end;
+
+let modelDelete(k: Int): Ok =
+    begin
+        let gone = sortedMap.delete(:Int :Int m k)
+        if maybe.isSome(:Int gone) isnot present[k] then fail("delete " <> conv.int(k))
+        elsif present[k] andif {maybe.unwrap(:Int gone) isnot valueOf[k]} then fail("delete's value " <> conv.int(k))
+        end
+        if present[k] then state.count := state.count - 1 end
+        present[k] := false
+    end;
+
+(* The model's nearest key to k: at most k (or below it), or at least k (or
+ * above it); ~1 for none *)
+let nearestDown(k: Int strictly: Bool): Int =
+    begin
+        let var j = if strictly then k - 1 else k end
+        if j >= domain then j := domain - 1 end
+        while {j >= 0} andif not(present[j]) do j := j - 1 end
+        j
+    end;
+let nearestUp(k: Int strictly: Bool): Int =
+    begin
+        let var j = if strictly then k + 1 else k end
+        if j < 0 then j := 0 end
+        while {j < domain} andif not(present[j]) do j := j + 1 end
+        if j >= domain then ~1 else j end
+    end;
+let keyOf(e: maybe.T(sortedMap.Entry(Int Int))): Int =
+    if maybe.isNone(:sortedMap.Entry(Int Int) e) then ~1 else maybe.unwrap(:sortedMap.Entry(Int Int) e).key end;
+
+(* The whole map against the model: its size and walk, and the order queries
+ * and rank at some random keys *)
+let checkAll(stage: String): Ok =
+    begin
+        if sortedMap.size(:Int :Int m) isnot state.count then fail(stage <> ": size") end
+        let ks = sortedMap.keys(:Int :Int m)
+        let var j = 0
+        for k = 0 upto {domain - 1} do
+            if present[k] then
+                if {j >= vector.length(:Int ks)} orif {vector.get(:Int ks j) isnot k} then fail(stage <> ": keys") end
+                j := j + 1
+            end
+        end
+        for q = 1 upto 12 do
+            let k = random.below(r domain + 2) - 1
+            if keyOf(sortedMap.floor(:Int :Int m k)) isnot nearestDown(k false) then fail(stage <> ": floor") end
+            if keyOf(sortedMap.below(:Int :Int m k)) isnot nearestDown(k true) then fail(stage <> ": below") end
+            if keyOf(sortedMap.ceiling(:Int :Int m k)) isnot nearestUp(k false) then fail(stage <> ": ceiling") end
+            if keyOf(sortedMap.above(:Int :Int m k)) isnot nearestUp(k true) then fail(stage <> ": above") end
+            let var less = 0
+            for x = 0 upto {k - 1} do if {x < domain} andif present[x] then less := less + 1 end end
+            if sortedMap.rank(:Int :Int m k) isnot less then fail(stage <> ": rank") end
+            if {k >= 0} andif {k < domain} then
+                let g = sortedMap.get(:Int :Int m k)
+                if maybe.isSome(:Int g) isnot present[k] then fail(stage <> ": get")
+                elsif present[k] andif {maybe.unwrap(:Int g) isnot valueOf[k]} then fail(stage <> ": get's value")
+                end
+            end
+        end
+    end;
+
+(* 1. Every key, in a random order *)
+let order = array of(domain 0);
+for k = 0 upto {domain - 1} do order[k] := k end;
+random.shuffle(:Int r order);
+for i = 0 upto {domain - 1} do modelInsert(order[i] order[i] * 10) end;
+checkAll("after inserting");
+
+(* 2. Random inserts (some replacing), deletes, and lookups *)
+for step = 1 upto 600 do
+    let k = random.below(r domain)
+    let op = random.below(r 3)
+    if op is 0 then modelInsert(k step) elsif op is 1 then modelDelete(k) end
+    if {step % 300} is 0 then checkAll("after " <> conv.int(step) <> " steps") end
+end;
+
+(* 3. A range, least and greatest, and removing them *)
+let ranged = sortedMap.entriesInRange(:Int :Int m 100 140);
+let var inRange = 0;
+for k = 100 upto 139 do if present[k] then inRange := inRange + 1 end end;
+if vector.length(:sortedMap.Entry(Int Int) ranged) isnot inRange then fail("entriesInRange") end;
+let lo = sortedMap.removeLeast(:Int :Int m);
+if keyOf(lo) isnot nearestUp(0 false) then fail("removeLeast") end;
+if maybe.isSome(:sortedMap.Entry(Int Int) lo) then
+    present[keyOf(lo)] := false
+    state.count := state.count - 1
+end;
+let hi = sortedMap.removeGreatest(:Int :Int m);
+if keyOf(hi) isnot nearestDown(domain - 1 false) then fail("removeGreatest") end;
+if maybe.isSome(:sortedMap.Entry(Int Int) hi) then
+    present[keyOf(hi)] := false
+    state.count := state.count - 1
+end;
+checkAll("after removing the ends");
+
+(* 4. Every key deleted, in a random order *)
+random.shuffle(:Int r order);
+for i = 0 upto {domain - 1} do
+    modelDelete(order[i])
+    if {i % 600} is 599 then checkAll("deleting") end
+end;
+check("the tree agrees with the model throughout" state.agrees);
+check("empty at the end"
+    sortedMap.empty(:Int :Int m) /\ maybe.isNone(:sortedMap.Entry(Int Int) sortedMap.least(:Int :Int m)));
+
+(* 5. The smaller operations, on strings *)
+let w = sortedMap.new(:String :Int sort.stringCompare);
+let words = array of "pear" "fig" "banana" "kiwi" "apple" "cherry" end;
+for i = 0 upto {extent words - 1} do let added = sortedMap.insert(:String :Int w words[i] i) end;
+let walked = tuple let var s = "" end;
+sortedMap.forEach(:String :Int w fun(k: String v: Int): Ok walked.s := walked.s <> " " <> k <> "=" <> conv.int(v));
+print("walked:" <> walked.s);
+let ranged2 = tuple let var s = "" end;
+sortedMap.forEachInRange(:String :Int w "b" "g" fun(k: String v: Int): Ok ranged2.s := ranged2.s <> " " <> k);
+print("from b to g:" <> ranged2.s);
+let lengths = sortedMap.map(:String :Int :Int w fun(k: String v: Int): Int v * 100);
+let short = sortedMap.filter(:String :Int w fun(k: String v: Int): Bool v < 3);
+let copied = sortedMap.copy(:String :Int w);
+let gone = sortedMap.delete(:String :Int copied "pear");
+print("map fig " <> conv.int(sortedMap.find(:String :Int lengths "fig")) <> ", filter size "
+    <> conv.int(sortedMap.size(:String :Int short)) <> ", copy size " <> conv.int(sortedMap.size(:String :Int copied))
+    <> " (the original " <> conv.int(sortedMap.size(:String :Int w)) <> "), contains kiwi "
+    <> conv.bool(sortedMap.contains(:String :Int w "kiwi")) <> ", values "
+    <> conv.int(vector.length(:Int sortedMap.values(:String :Int w))) <> ", entries "
+    <> conv.int(vector.length(:sortedMap.Entry(String Int) sortedMap.entries(:String :Int w))));
+sortedMap.clear(:String :Int copied);
+check("cleared" sortedMap.empty(:String :Int copied));
+
+(* 6. The errors *)
+let err(what: String f: All() Int): Ok = print(what <> ": "
+    <> try conv.int(f()) when sortedMap.error then "sortedMap.error" end);
+err("find of a missing key" fun(): Int sortedMap.find(:String :Int w "zebra"));
+err("a key added during forEach" fun(): Int begin
+    sortedMap.forEach(:String :Int w fun(k: String v: Int): Ok
+        begin let added = sortedMap.insert(:String :Int w k <> "!" v) ok end)
+    0 end);
+let unchanged = sortedMap.insert(:String :Int w "fig" 99);
+err("a value changed during forEach" fun(): Int begin
+    sortedMap.forEach(:String :Int w fun(k: String v: Int): Ok
+        begin let added = sortedMap.insert(:String :Int w k v + 1) ok end)
+    sortedMap.find(:String :Int w "fig") end)

@@ -1,0 +1,61 @@
+interface SortedMap
+import
+    util/maybe : util/Maybe
+    collections/vector : collections/Vector
+export
+    (* A map whose keys are in the order its comparison gives *)
+    T::ALL(K::TYPE) ALL(V::TYPE) TYPE
+    Def Entry = Fun(K::TYPE V::TYPE) Record key: K value: V end
+
+    (* Raised by find of a missing key, and by a walk of a map changed while
+     * it is walked *)
+    error: Exception
+
+    (* A new empty map, its keys ordered by compare (~1, 0, or 1, as
+     * sort.intCompare); keys compare 0 are one key *)
+    new: All(K::TYPE V::TYPE) All(compare: All(a: K b: K) Int) T(K V)
+
+    size: All(K::TYPE V::TYPE) All(m: T(K V)) Int
+    empty: All(K::TYPE V::TYPE) All(m: T(K V)) Bool
+    get: All(K::TYPE V::TYPE) All(m: T(K V) key: K) maybe.T(V)
+    contains: All(K::TYPE V::TYPE) All(m: T(K V) key: K) Bool
+    find: All(K::TYPE V::TYPE) All(m: T(K V) key: K) V
+    (* Sets key's value; whether key is new *)
+    insert: All(K::TYPE V::TYPE) All(m: T(K V) key: K value: V) Bool
+    (* Takes key out; its value, if it was there *)
+    delete: All(K::TYPE V::TYPE) All(m: T(K V) key: K) maybe.T(V)
+    clear: All(K::TYPE V::TYPE) All(m: T(K V)) Ok
+    copy: All(K::TYPE V::TYPE) All(m: T(K V)) T(K V)
+
+    (* ---- By order *)
+
+    (* The entries with the least and the greatest keys *)
+    least: All(K::TYPE V::TYPE) All(m: T(K V)) maybe.T(Entry(K V))
+    greatest: All(K::TYPE V::TYPE) All(m: T(K V)) maybe.T(Entry(K V))
+    (* The entry with the greatest key at most key, the least at least key,
+     * the greatest below key, and the least above it *)
+    floor: All(K::TYPE V::TYPE) All(m: T(K V) key: K) maybe.T(Entry(K V))
+    ceiling: All(K::TYPE V::TYPE) All(m: T(K V) key: K) maybe.T(Entry(K V))
+    below: All(K::TYPE V::TYPE) All(m: T(K V) key: K) maybe.T(Entry(K V))
+    above: All(K::TYPE V::TYPE) All(m: T(K V) key: K) maybe.T(Entry(K V))
+    (* Takes the least or the greatest entry out, and gives it *)
+    removeLeast: All(K::TYPE V::TYPE) All(m: T(K V)) maybe.T(Entry(K V))
+    removeGreatest: All(K::TYPE V::TYPE) All(m: T(K V)) maybe.T(Entry(K V))
+
+    (* ---- Walking, in key order *)
+
+    keys: All(K::TYPE V::TYPE) All(m: T(K V)) vector.T(K)
+    values: All(K::TYPE V::TYPE) All(m: T(K V)) vector.T(V)
+    entries: All(K::TYPE V::TYPE) All(m: T(K V)) vector.T(Entry(K V))
+    forEach: All(K::TYPE V::TYPE) All(m: T(K V) action: All(k: K v: V) Ok) Ok
+    (* The entries with keys from lo, included, to hi, excluded *)
+    forEachInRange: All(K::TYPE V::TYPE) All(m: T(K V) lo: K hi: K action: All(k: K v: V) Ok) Ok
+    entriesInRange: All(K::TYPE V::TYPE) All(m: T(K V) lo: K hi: K) vector.T(Entry(K V))
+    (* The number of keys less than key: its position, if it is a key *)
+    rank: All(K::TYPE V::TYPE) All(m: T(K V) key: K) Int
+
+    (* A new map with m's comparison, from each key k to f(k v); m is
+     * unchanged *)
+    map: All(K::TYPE V::TYPE W::TYPE) All(m: T(K V) f: All(k: K v: V) W) T(K W)
+    filter: All(K::TYPE V::TYPE) All(m: T(K V) pred: All(k: K v: V) Bool) T(K V)
+end
