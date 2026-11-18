@@ -12,6 +12,7 @@ import
     questlang/codegen/machine/machine : questlang/codegen/machine/Machine
     collections/vector : collections/Vector
     collections/bitset : collections/Bitset
+    collections/heap : collections/Heap
     util/sort : util/Sort
 export
     Def Move = Tuple at: Int value: Int from: Int to: Int end
@@ -155,10 +156,9 @@ export
     (* =========================================================================
      * The unhandled intervals: a heap, earliest start first
      *
-     * A binary heap in a vector, the children of element k at 2k + 1 and
-     * 2k + 2. Splitting adds intervals that start no earlier than the
-     * current one, so the intervals waiting to be allocated are a priority
-     * queue rather than a list sorted once.
+     * A collections/heap of intervals. Splitting adds intervals that start no
+     * earlier than the current one, so the intervals waiting to be allocated
+     * are a priority queue rather than a list sorted once.
      * ====================================================================== *)
 
     (* Whether a comes out of the heap before b: the earlier start first, and
@@ -167,51 +167,8 @@ export
     let before(a: Interval b: Interval): Bool =
         {firstPos(a) < firstPos(b)} orif {{firstPos(a) is firstPos(b)} andif {a.value < b.value}}
 
-    let swap(h: vector.T(Interval) i: Int j: Int): Ok =
-        begin
-            let t = vector.get(h i)
-            vector.set(h i vector.get(h j))
-            vector.set(h j t)
-        end
-
-    (* Adds it at the end, then moves it up past each parent it comes before *)
-    let push(h: vector.T(Interval) it: Interval): Ok =
-        begin
-            vector.append(h it)
-            let var k = vector.length(h) - 1
-            while {k > 0} andif before(vector.get(h k) vector.get(h {k - 1} / 2)) do
-                swap(h k {k - 1} / 2)
-                k := {k - 1} / 2
-            end
-        end
-
-    (* Removes and returns the first interval: the last element takes its
-     * place, and moves down, swapped with its earlier child, while either
-     * child comes before it *)
-    let pop(h: vector.T(Interval)): Interval =
-        begin
-            let top = vector.get(h 0)
-            let last = vector.pop(h)
-            let n = vector.length(h)
-            if n > 0 then
-                vector.set(h 0 last)
-                let var k = 0
-                let var going = true
-                while going do
-                    let l = {2 * k} + 1
-                    let r = l + 1
-                    let var m = k
-                    if {l < n} andif before(vector.get(h l) vector.get(h m)) then m := l end
-                    if {r < n} andif before(vector.get(h r) vector.get(h m)) then m := r end
-                    if m is k then going := false
-                    else
-                        swap(h k m)
-                        k := m
-                    end
-                end
-            end
-            top
-        end
+    (* before as the heap's comparison *)
+    let startOrder(a: Interval b: Interval): Int = if before(a b) then ~1 elsif before(b a) then 1 else 0 end
 
     (* =========================================================================
      * The scan
@@ -229,7 +186,7 @@ export
         classes: Array(Int)
         (* Every interval and piece, for the allocation's pieces *)
         intervals: vector.T(Interval)
-        heap: vector.T(Interval)
+        unhandled: heap.T(Interval)
         (* The intervals in registers that cover the current position, and
          * those in a hole there *)
         var active: vector.T(Interval)
@@ -312,13 +269,13 @@ export
             let child = split(it p)
             made(sc child)
             let u = nextUse(child p)
-            if u is firstPos(child) then push(sc.heap child)
+            if u is firstPos(child) then heap.push(sc.unhandled child)
             else
                 child.reg := ~1
                 if u isnot never then
                     let rest = split(child u)
                     made(sc rest)
-                    push(sc.heap rest)
+                    heap.push(sc.unhandled rest)
                 end
             end
         end
@@ -334,7 +291,7 @@ export
             if u isnot never then
                 let rest = split(cur u)
                 made(sc rest)
-                push(sc.heap rest)
+                heap.push(sc.unhandled rest)
             end
         end
 
@@ -720,7 +677,7 @@ export
                 end
             end
             let sc = tuple
-                let classes = classes let intervals = vector.new(:Interval) let heap = vector.new(:Interval)
+                let classes = classes let intervals = vector.new(:Interval) let unhandled = heap.new(:Interval startOrder)
                 let var active = vector.new(:Interval) let var inactive = vector.new(:Interval)
                 let pools = pools let firstCallee = firstCallee let calls = callAt let handlers = handlerAt
                 let fixed = fixed let firstVirtual = f.firstVirtual let hints = hints
@@ -740,14 +697,14 @@ export
                     first[v] := firstPos(it)
                     last[v] := lastPos(it)
                     made(sc it)
-                    push(sc.heap it)
+                    heap.push(sc.unhandled it)
                 end
             end
             (* The scan itself. For each interval, from the earliest start:
              * drop the intervals that ended before its start, sort the rest
              * into active and inactive at its start, and allocate it. *)
-            while vector.length(sc.heap) > 0 do
-                let cur = pop(sc.heap)
+            while not(heap.empty(sc.unhandled)) do
+                let cur = heap.pop(sc.unhandled)
                 let s = firstPos(cur)
                 let stillActive = vector.new(:Interval)
                 let stillInactive = vector.new(:Interval)

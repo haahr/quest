@@ -2,7 +2,7 @@
 
 `collections/sortedMap`, `collections/sortedSet`, `collections/heap`, `collections/deque`, and `util/random`: the
 second and third of [future-libraries.md](future-libraries.md)'s "clearly missing" libraries. All are Quest alone,
-so they run alike on every target, the browser included. Steps 1 to 3 are built (§5).
+so they run alike on every target, the browser included. All four steps are built (§5).
 
 ## 1. Decisions
 
@@ -323,3 +323,9 @@ empties it in a random order, checked against a model at every step; a change of
 an added or removed key raises `error`. libraries.md has §1.11 and §2.5 to §2.8.
 4. **libraries.md's sections** for all five, and `regalloc`'s heap moved to `collections/heap` if it measures no
    slower, after a release has the library (docs/release-compiler.md §2).
+
+   *Built 2026-11-18,* after the release of 3959fd60 had the library: `questlang/codegen/machine/regalloc.mod.quest`'s
+   unhandled intervals are a `collections/heap` ordered as its own heap was, and it allocates the same: a program's
+   42 objects compiled identically by the compiler before and after. Building the compiler
+   (`questlang/driver/main.quest`, `-j 4`, three runs each, alternating) took 31.7, 31.7, and 31.9 s before and 31.6,
+   32.0, and 31.9 s after: no slower.
