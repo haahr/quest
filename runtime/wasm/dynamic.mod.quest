@@ -178,8 +178,9 @@ export
     let hexDigits = "0123456789abcdef"
     let hexDigit(n: Int): String = stringOp.getSub(hexDigits n 1)
 
-    (* A JSON string of s's bytes: ASCII, with a \u escape for each byte above
-     * 127 and each control character, as the interpreter writes it *)
+    (* A JSON string of s's bytes: printable ASCII, with a \u escape for each
+     * other byte (a control character, DEL, or a byte above 127), as Python's
+     * json.dumps writes it and the interpreters do *)
     let jsonString(o: Text s: String): Ok =
         begin
             put(o "\"")
@@ -194,7 +195,7 @@ export
                     elsif c is 10 then "\\n"
                     elsif c is 13 then "\\r"
                     elsif c is 9 then "\\t"
-                    elsif {c < 32} orif {c > 127} then "\\u00" <> {hexDigit(c / 16) <> hexDigit(c % 16)}
+                    elsif {c < 32} orif {c > 126} then "\\u00" <> {hexDigit(c / 16) <> hexDigit(c % 16)}
                     else ""
                     end
                 if not(stringOp.isEmpty(escape)) then

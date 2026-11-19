@@ -195,9 +195,10 @@ static void quest_write_json_string(QWriter *wr, const char *s, size_t len) {
             case '\r': quest_write_raw(wr, "\\r"); break;
             case '\t': quest_write_raw(wr, "\\t"); break;
             default:
-                /* ASCII, with a \u escape for each byte above 127, as the
-                 * interpreter writes it */
-                if (c < 0x20 || c > 0x7F) {
+                /* Printable ASCII, with a \u escape for each other byte (a
+                 * control character, DEL, or a byte above 127), as Python's
+                 * json.dumps writes it and the interpreters do */
+                if (c < 0x20 || c > 0x7E) {
                     char hex[8];
                     snprintf(hex, sizeof(hex), "\\u%04x", c);
                     quest_write_raw(wr, hex);
