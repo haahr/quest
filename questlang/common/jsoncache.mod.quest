@@ -1,0 +1,25 @@
+(* Quest Self-Hosted Compiler: Parsed JSON Documents, Shared *)
+
+module jsonCache : JsonCache
+import
+    util/json : util/Json
+    collections/hashMap : collections/HashMap
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+export
+    (* The documents parseShared has parsed, by their text *)
+    let parsed = hashMap.new(:String :json.Value stringOp.equal hash.string)
+
+    let parseShared(text: String): json.Value =
+        begin
+            let known = hashMap.get(parsed text)
+            if maybe.isSome(known) then
+                maybe.unwrap(known)
+            else
+                let v = json.parse(text)
+                hashMap.insert(parsed text v)
+                v
+            end
+        end
+end

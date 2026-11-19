@@ -4,7 +4,8 @@ module manifest : Manifest
 import
     questlang/common/files : questlang/common/Files
     questlang/config/abi : questlang/config/Abi
-    questlang/common/json : questlang/common/Json
+    util/json : util/Json
+    questlang/common/jsonCache : questlang/common/JsonCache
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -78,13 +79,12 @@ export
             let dir = files.normalize(file <> "/..")
             system.makeDirectory(dir)
             let w = writer.file(file)
-            writer.putString(w json.dumpIndented(json.object(top) 2) <> "\n")
+            writer.putString(w json.dumpWith(json.object(top) json.indented(2)) <> "\n")
             writer.close(w)
         end
 
     (* A member, if the value is an object that has it *)
-    let member(v: json.Value name: String): maybe.T(json.Value) =
-        case v when jObject with x then json.get(x.o name) else maybe.none() end
+    let member(v: json.Value name: String): maybe.T(json.Value) = json.optional(v name)
     let stringMember(v: json.Value name: String default: String): String =
         begin
             let m = member(v name)
@@ -103,7 +103,7 @@ export
                 maybe.none()
             else
                 try
-                    let data = json.parseShared(maybe.unwrap(text))
+                    let data = jsonCache.parseShared(maybe.unwrap(text))
                     let stringValue(v: maybe.T(json.Value)): maybe.T(String) =
                         if maybe.isNone(v) then maybe.none()
                         else case maybe.unwrap(v) when jString with y then

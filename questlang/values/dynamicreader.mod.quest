@@ -7,7 +7,7 @@ import
     questlang/types/subtyping : questlang/types/Subtyping
     questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     questlang/values/model : questlang/values/Model
-    questlang/common/json : questlang/common/Json
+    util/json : util/Json
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
@@ -73,7 +73,7 @@ export
                 if not(x.isInteger) then fail(:Ok) end
                 let n = strutil.tryToInt(x.text)
                 (* past an Int's range, saturated, as C's strtoll reads it
-                 * (its syntax json.parseNumber has checked) *)
+                 * (its syntax json.parse has checked) *)
                 if maybe.isSome(n) then maybe.unwrap(n)
                 elsif strutil.startsWith(x.text "-") then {0 - 9223372036854775807} - 1
                 else 9223372036854775807
@@ -764,10 +764,8 @@ export
                 end
             end
         end
-    let decode(text0: String): Value =
+    let decodeDocument(document: json.Value): Value =
         begin
-            (* A repeated key is an error, as in every reader *)
-            let document = try json.parseUnique(text0) when json.error then fail(:json.Value) end
             let o = members(document)
             if {memberCount(o) isnot 4} orif not(hasMember(o "quest")) orif not(hasMember(o "types"))
                 orif not(hasMember(o "type")) orif not(hasMember(o "value")) then
@@ -777,4 +775,8 @@ export
             let rd = newReader(member(o "types"))
             dynamic(rd checkRef(rd member(o "type")) member(o "value"))
         end
+
+    (* A repeated key is an error, as in every reader *)
+    let decode(text: String): Value =
+        decodeDocument(try json.parseWith(text json.parsingDynamic) when json.error then fail(:json.Value) end)
 end

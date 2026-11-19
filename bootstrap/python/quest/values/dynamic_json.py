@@ -17,7 +17,7 @@ and objects reached more than once are written once, with @id, and then as
 {"@ref": n}.
 
 The self-hosted counterpart is questlang/values/dynamicjson, with the JSON text
-itself in questlang/common/json.
+itself in util/json (docs/libraries.md section 1.12).
 """
 
 from __future__ import annotations

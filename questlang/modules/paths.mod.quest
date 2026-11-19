@@ -4,7 +4,8 @@ module paths : Paths
 import
     questlang/common/location : questlang/common/Location
     questlang/config/abi : questlang/config/Abi
-    questlang/common/json : questlang/common/Json
+    util/json : util/Json
+    questlang/common/jsonCache : questlang/common/JsonCache
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/diagbag : questlang/common/DiagBag
     questlang/syntax/tokens : questlang/syntax/Tokens
@@ -193,15 +194,14 @@ export
             if maybe.isNone(text) then
                 none
             else
-                let member(v: json.Value name: String): maybe.T(json.Value) =
-                    case v when jObject with x then json.get(x.o name) else maybe.none() end
+                let member(v: json.Value name: String): maybe.T(json.Value) = json.optional(v name)
                 let str(v: maybe.T(json.Value)): maybe.T(String) =
                     if maybe.isNone(v) then maybe.none()
                     else case maybe.unwrap(v) when jString with x then maybe.some(x.s)
                         else maybe.none() end
                     end
                 try
-                    let value = member(json.parseShared(maybe.unwrap(text)) "value")
+                    let value = member(jsonCache.parseShared(maybe.unwrap(text)) "value")
                     let deps = if maybe.isSome(value) then member(maybe.unwrap(value) "deps")
                         else maybe.none(:json.Value)
                     end

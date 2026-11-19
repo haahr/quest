@@ -15,6 +15,7 @@ import
     util/maybe : util/Maybe
     util/strutil : util/Strutil
     util/stringBuilder : util/StringBuilder
+    util/json : util/Json
     arrayOp : ArrayOp
     stringOp = string : StringOp
     intOp = int : IntOp
@@ -264,82 +265,19 @@ export
             unit
         end
 
-    (* Reads the text of one JSON value from r, as dynamic.extern writes it,
-     * for dynamicIntern.
-     *
-     * A reader may hold several documents in a row, or a document followed by
-     * other text, so this reads one JSON value, a character at a time, and no
-     * further. It skips whitespace, and then reads:
-     *
-     * - an object or array, {...} or [...], to the bracket closing it,
-     *   counting the brackets it nests and ignoring those in strings (in which
-     *   \" does not end the string);
-     * - a string, to its closing quote;
-     * - anything else (a number, true, ...), to whitespace, a comma, or a
-     *   closing bracket. That delimiter is read too, since a native reader
-     *   cannot put a character back.
-     *
-     * A document is an object, so the last two only reach the decoder to be
-     * rejected. dynamic.error is raised for input that ends inside the value
-     * (dynamicFailure). *)
-    let readDocument(r: reader.T): String =
-        begin
-            let b = stringBuilder.new()
-            let next(): Char = if reader.more(r) then reader.getChar(r) else dynamicFailure() end
-            let var c = next()
-            while {c is ' '} orif {c is '\t'} orif {c is '\r'} orif {c is '\n'} do c := next() end
-            stringBuilder.char(b c)
-            if {c is '{'} orif {c is '['} then
-                let var depth = 1
-                let var inString = false
-                let var escaped = false
-                while depth > 0 do
-                    let d = next()
-                    stringBuilder.char(b d)
-                    if inString then
-                        if escaped then escaped := false
-                        elsif d is '\\' then escaped := true
-                        elsif d is '"' then inString := false
-                        end
-                    elsif d is '"' then inString := true
-                    elsif {d is '{'} orif {d is '['} then depth := depth + 1
-                    elsif {d is '}'} orif {d is ']'} then depth := depth - 1
-                    end
-                end
-            elsif c is '"' then
-                let var escaped = false
-                let var done = false
-                while not(done) do
-                    let d = next()
-                    stringBuilder.char(b d)
-                    if escaped then escaped := false
-                    elsif d is '\\' then escaped := true
-                    elsif d is '"' then done := true
-                    end
-                end
-            else
-                let var done = false
-                while not(done) andif reader.more(r) do
-                    let d = reader.getChar(r)
-                    if {d is ' '} orif {d is '\t'} orif {d is '\r'} orif {d is '\n'} orif {d is ','} orif {d is ']'}
-                        orif {d is '}'} then
-                        done := true
-                    else
-                        stringBuilder.char(b d)
-                        ok
-                    end
-                end
-            end
-            stringBuilder.toString(b)
-        end
-
     (* dynamic.intern(rd): reads one dynamic value from rd, as dynamic.extern
-     * writes it (readDocument), and decodes it (dynamicReader.decode: JSOG,
-     * JSON with @id and @ref for objects reached more than once). dynamic.error
-     * is raised for a closed reader, input that ends inside the value, a failed
-     * read, and a document that does not decode. *)
+     * writes it, and no further (json.read: a reader may hold several
+     * documents in a row), and decodes it (dynamicReader.decodeDocument: JSOG,
+     * JSON with @id and @ref for objects reached more than once).
+     * dynamic.error is raised for a closed reader, input that ends inside the
+     * value or is not JSON, a failed read, and a document that does not
+     * decode. *)
     let dynamicIntern(r: reader.T): Value =
-        dynamicReader.decode(try readDocument(r) when reader.error then dynamicFailure() end)
+        dynamicReader.decodeDocument(
+            try json.read(r json.parsingDynamic)
+            when reader.error then dynamicFailure()
+            when json.error then dynamicFailure()
+            end)
 
     (* Fills table, when this module initializes, with the externals the
      * interpreter provides, keyed by C symbol: all but quest_system_args,
