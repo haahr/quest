@@ -260,6 +260,11 @@ tuple, a vector, and a hash map per object, even for a type node with one member
 allocation and time, taken as [benchmarks.md](benchmarks.md) §28.3 took them, since the build reads every `.qi`
 and `.qm` file.
 
+Measured (benchmarks.md §29): no saving. A build's allocation is unchanged at 51 GB, of which JSON is too small a
+part to show. As first written, each object's fresh empty arrays and table left 3.1M more objects live and a heap 10%
+larger. With objects starting from shared empty arrays and index, at capacity 2, that is 0.4M and 3%. User time is 2
+to 3% higher, near noise.
+
 ### 3.3. The Compiler
 
 - Every import of `questlang/common/json` becomes an import of `util/json`.

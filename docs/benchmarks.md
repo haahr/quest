@@ -19,8 +19,8 @@ arbitrary-precision integers (§15), measures the collector's steps (§16 to §1
 MLton (§20), compares the C and arm64 backends again and records the switch of the default to arm64 (§21), records the
 arm64-built compiler's gap to the C-built one narrowed (§22), times the reuse of a case binder's box (§23), keeps
 the arm64 performance review (§24), measures the compiler compiled to WebAssembly, and the MLton suite on it
-(§25), measures the strings work (§26), times every backend, WebAssembly included, at one commit (§27), and
-measures the collections tuned on the compiler (§28).
+(§25), measures the strings work (§26), times every backend, WebAssembly included, at one commit (§27),
+measures the collections tuned on the compiler (§28), and the compiler on `util/json` (§29).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -2980,3 +2980,32 @@ build's collector statistics; times best of three, the compilers alternating, on
 | vector alone | 62.4 GB | 4.45 GB | | | | |
 | hashMap alone | 53.1 GB | 3.93 GB | | | | |
 | both | 50.8 GB (−21%) | 4.61 GB | 67.01 (−15%) | 61.56 (−15%) | 24.16 (−13%) | 90.87 (−14%) |
+
+## 29. The compiler on `util/json` (2026-11-18)
+
+The compiler's own JSON module (`questlang/common/json`) replaced by `util/json` ([libraries.md](libraries.md) §1.12,
+[json-plan.md](json-plan.md)), measured as §28.3 measured, on a driver build, which parses every `.qi` and `.qm` file
+it reads. Each compiler was built by the release compiler (`cbf6167a`) from its own tree, both trees otherwise at
+`b324e54d`: before, with `questlang/common/json`; after, with `util/json` as first written, and with its objects
+starting from shared empty arrays and index, at capacity 2 (`7044bed7`). Allocation and live objects are from one
+`-j 1` build's collector statistics.
+
+| | allocated | heap max | live max | objects live |
+|---|---:|---:|---:|---:|
+| before | 50.98 GB | 3.58 GB | 1.86 GB | 36.35M |
+| `util/json`, first | 51.13 GB | 3.93 GB (+10%) | 1.94 GB | 39.48M |
+| `util/json`, shared empties | 51.13 GB | 3.68 GB (+3%) | 1.93 GB | 36.71M |
+
+Times best of three, the two compilers alternating, after the load average had been under 5 for three minutes. It
+was 1.8 at the start but 29.7 at the end, so the real times, spread from 73 to 153 s at `-j 1` and from 27 to 53 s
+at `-j 8`, say nothing; the user times are steadier:
+
+| | `-j 1` real | `-j 1` user | `-j 8` real | `-j 8` user |
+|---|---:|---:|---:|---:|
+| before | 73.40 | 66.67 | 26.64 | 92.25 |
+| after | 90.00 | 68.80 (+3%) | 28.12 | 94.31 (+2%) |
+
+The change is for one implementation of JSON, not for speed: the plan expected objects without a tuple, a vector, and
+a hash map each to save allocation, but JSON is too small a part of a build's 51 GB for the saving to show, and the
+first version's fresh empty arrays and table per object cost more live memory than they saved. The user times'
+2 to 3% is near this machine's noise and was not pursued.
