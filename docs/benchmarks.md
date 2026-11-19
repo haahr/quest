@@ -2983,7 +2983,7 @@ build's collector statistics; times best of three, the compilers alternating, on
 
 ## 29. The compiler on `util/json` (2026-11-18)
 
-The compiler's own JSON module (`questlang/common/json`) replaced by `util/json` ([libraries.md](libraries.md) §1.12,
+The compiler's own JSON module (`questlang/common/json`) replaced by `util/json` ([libraries.md](libraries.md) §1.13,
 [json-plan.md](json-plan.md)), measured as §28.3 measured, on a driver build, which parses every `.qi` and `.qm` file
 it reads. Each compiler was built by the release compiler (`cbf6167a`) from its own tree, both trees otherwise at
 `b324e54d`: before, with `questlang/common/json`; after, with `util/json` as first written, and with its objects

@@ -9,7 +9,8 @@ The three this list first called clearly missing have been built and are in [lib
 `collections/sortedMap`, `collections/sortedSet`, `collections/heap`, and `collections/deque` (§2.5–§2.8); and random
 numbers, as `util/random` (§1.11) ([collections-plan.md](collections-plan.md)). The two written inside the
 compiler are libraries the compiler is built on: digests, as `util/digest` (§1.12), and JSON, as `util/json` (§1.13)
-([json-plan.md](json-plan.md)). File-system operations are `os/files` (§4.6), with `glob` ([files-plan.md](files-plan.md)).
+([json-plan.md](json-plan.md)). File-system operations are `os/files` (§4.6), with `glob`
+([files-plan.md](files-plan.md)).
 
 ## Worth having, with more design
 
