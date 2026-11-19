@@ -54,7 +54,8 @@ reproduce what the bootstrap gets from Python's standard library:
 - [`pyrepr.int.quest`](pyrepr.int.quest) writes strings, lists, and tuples as Python's `repr` does, for dumps and
   messages that show them.
 - [`sha256.int.quest`](sha256.int.quest) gives the hexadecimal SHA-256 of a text, as `hashlib` does, for layout
-  tags, type digests, and interface fingerprints.
+  tags, type digests, and interface fingerprints. It is `util/digest` after the bootstrap's UTF-8 step
+  ([libraries.md](../../docs/libraries.md) §1.12).
 
 ## Files
 

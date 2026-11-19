@@ -7,26 +7,26 @@ one that needs the runtime needs C and a wasm counterpart (marked "runtime" belo
 The three this list first called clearly missing have been built and are in [libraries.md](libraries.md): time, as
 `os/time` (§4.5) and `util/datetime` (§1.10) ([time-plan.md](time-plan.md)); ordered collections, as
 `collections/sortedMap`, `collections/sortedSet`, `collections/heap`, and `collections/deque` (§2.5–§2.8); and random
-numbers, as `util/random` (§1.11) ([collections-plan.md](collections-plan.md)).
+numbers, as `util/random` (§1.11) ([collections-plan.md](collections-plan.md)). Digests, the second written
+inside the compiler, are `util/digest` (§1.12), and the compiler's SHA-256 is built on it.
 
 ## Written already, inside the compiler
 
 1. **JSON, `util/json`.** `questlang/common/json` parses and prints JSON for the compiler, and `dynamic` has JSON only
    for its own values. A general library is mostly its interface reshaped, and tests.
-2. **Digests, `util/digest`.** `questlang/common/sha256` exists: SHA-256, and CRC-32 or FNV, as a library.
 
 ## Worth having, with more design
 
-3. **Unit tests, `util/test`.** The tree tests by goldens. Assertions, named tests, and a report of failures would let
+2. **Unit tests, `util/test`.** The tree tests by goldens. Assertions, named tests, and a report of failures would let
    Quest programs test themselves.
-4. **File-system operations, `os/fs`** (runtime). Copying, renaming, removing a tree, walking a directory, and
+3. **File-system operations, `os/fs`** (runtime). Copying, renaming, removing a tree, walking a directory, and
    temporary files and directories; `tests/source/stdlib/os_process.quest` calls `mktemp` through a shell for lack
    of them. Under wasm, what WASI gives.
-5. **Parsing, `util/peg`.** The compiler's parser runs on a PEG engine of its own (`questlang/`); a general one would
+4. **Parsing, `util/peg`.** The compiler's parser runs on a PEG engine of its own (`questlang/`); a general one would
    pair with util/regexp, which matches strings where a grammar parses them.
-6. **Lazy sequences, `util/iter`.** Streams (ranges, map, filter, take) that walk collections and
+5. **Lazy sequences, `util/iter`.** Streams (ranges, map, filter, take) that walk collections and
    `regexp.findAll`'s matches without making vectors: closures, and no change to the language.
-7. **Persistent collections, `collections/persistent`.** Immutable maps and vectors (hash array mapped tries), which
+6. **Persistent collections, `collections/persistent`.** Immutable maps and vectors (hash array mapped tries), which
    suit Quest's functional side and may be shared freely.
 
 ## Probably not now
@@ -37,5 +37,4 @@ numbers, as `util/random` (§1.11) ([collections-plan.md](collections-plan.md)).
 
 ## Where to start
 
-JSON and digests: the code exists inside the compiler, so each is mostly an interface and tests, and both are Quest
-alone.
+JSON: the code exists inside the compiler, so it is mostly an interface and tests, and it is Quest alone.
