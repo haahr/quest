@@ -21,7 +21,7 @@ inside the compiler, are `util/digest` (§1.12), and the compiler's SHA-256 is b
    Quest programs test themselves.
 3. **File-system operations, `os/fs`** (runtime). Copying, renaming, removing a tree, walking a directory, and
    temporary files and directories; `tests/source/stdlib/os_process.quest` calls `mktemp` through a shell for lack
-   of them. Under wasm, what WASI gives.
+   of them. Under wasm, what WASI gives. Designed as `os/files` in [files-plan.md](files-plan.md).
 4. **Parsing, `util/peg`.** The compiler's parser runs on a PEG engine of its own (`questlang/`); a general one would
    pair with util/regexp, which matches strings where a grammar parses them.
 5. **Lazy sequences, `util/iter`.** Streams (ranges, map, filter, take) that walk collections and
