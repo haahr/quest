@@ -155,8 +155,13 @@ compilers still agree.
 
 ## 6. Steps
 
-1. `lib/util/digest.int.quest` and `.mod.quest`, the test, and libraries.md §1.12. SHA-256 on 32-bit values kept in
-   Ints, as `questlang/common/sha256` does now, buffered by block.
-2. `questlang/common/sha256` over `util/digest`, as §4 shows; the compiler's goldens and tools/check must pass
-   unchanged. Measure a driver build before and after: SHA-256 is on the type-digest path.
-3. Remove Digests from future-libraries.md.
+1. **Done** (e6fde3cb). `lib/util/digest.int.quest` and `.mod.quest`, the test, and libraries.md §1.12: SHA-256 on
+   32-bit values kept in `word.T`s, buffered by block, whole blocks compressed straight from the text. The test is
+   smaller than §5 first said (1,000 bytes at most, and 14 piece sizes), since the bootstrap's interpreters must run
+   it within 30 s.
+2. **A release** with util/digest in its `lib/`. Stage 1 is the release compiling `questlang/` against its own
+   `lib/`, so `questlang/` cannot import a library the release lacks ([release-compiler.md](release-compiler.md)
+   §2); step 1 is pushed and released first.
+3. `questlang/common/sha256` over `util/digest`, as §4 shows; the compiler's goldens and tools/check must pass
+   unchanged. Measure a driver build before and after: SHA-256 is on the type-digest path. Remove Digests from
+   future-libraries.md.
