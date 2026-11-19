@@ -454,7 +454,7 @@ further:
   (`rec`, `out`, `record`, `inspect`).
 - **Paths** are `util/path`'s, normalized lexically without following symbolic links. The project directory, which
   the bootstrap knows as its own source tree, is `QUEST_HOME`, which the runners set, or else the current directory.
-- **JSON.** `common/json` keeps a number's text, so that a word's integer (up to
+- **JSON.** `util/json` ([libraries.md](libraries.md) §1.13) keeps a number's text, so that a word's integer (up to
   2^64 - 1) is read exactly; an integer read as an `Int` must fit one, where Python's are unbounded. A `\u` escape
   above `\u00ff` fails as the text is parsed, since a character is a byte. `dynamic.intern` reads from a native reader,
   which cannot put a character back, so after a value that is not an object, array, or string it reads the delimiter

@@ -618,8 +618,6 @@ export
 end
 ```
 
----
-
 ### 1.12. `util/digest : util/Digest`
 
 SHA-256 (FIPS 180-4) and CRC-32 (IEEE 802.3, as zlib, gzip, zip, and PNG compute it), in Quest alone, so alike on
@@ -663,6 +661,119 @@ export
     sha256Hex(text: String): String
     crc32(text: String): Int
     crc32Add(crc: Int text: String): Int
+end
+```
+
+---
+
+### 1.13. `util/json : util/Json`
+
+JSON (RFC 8259) in Quest ([json-plan.md](json-plan.md)), for programs, for the compiler (`.qm` manifests, `.qi`
+files, the build workers' messages, the Jupyter kernel), and for the interpreters' `dynamic.intern`. A parsed text
+is a `Value` tree; `dump`, `dumpWith`, and `write` print one, and an `Emitter` writes a value to a writer as its
+parts are given, with no tree, exactly as `write` would print it.
+
+- **Strings are bytes,** each the code point of the same number (Latin-1), as Quest has no UTF-8: a byte that is not
+  printable ASCII is written as `\u00XX`, and an escape above `ÿ` is an error. Every string round-trips exactly.
+- **Output is Python's,** for the same value read as Latin-1: compact (`separators=(",", ":")`) or indented
+  (`indent=n`), members in the order first put, a real as `repr` writes it.
+- **A number keeps its text,** so an integer of any size reads exactly; `toInt`, `toWord`, and `toReal` convert,
+  raising `error` when it does not fit.
+- **Parsing is strict:** no comments, trailing commas, `NaN`, infinities, or leading zeros. A repeated member name
+  keeps its last value in its first place, as Python's does, unless `parsingDynamic` (`unique`) refuses it.
+- **`read` takes one value from a reader** and no further, but that a number at the top level is read to the
+  character after it, so a reader may hold several documents in a row.
+- **`error` carries a `Failure`:** a message, and a byte offset in the text (or `~1` for a value of the wrong kind,
+  a number that does not fit, or an emitter's parts out of order).
+- **`Object` is manifest** only because an interface's manifest type cannot name its own abstract type
+  ([json-plan.md](json-plan.md) decision 6): use its operations, not its fields. It is two arrays in insertion order,
+  indexed by a hash map past 8 members.
+
+`tests/source/stdlib/json_values.quest` tests the operations, `tests/python/test_json.py` checks the text against
+Python's `json` (`tests/json/corpus.quest`), and `tests/source/stdlib/json_dynamic.quest` holds `dynamic.extern`'s
+documents, in every implementation of the format, to the same text.
+
+#### Interface Summary
+
+```quest
+interface Json
+import
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    wordLib = word : Word
+    reader : Reader
+    writer : Writer
+export
+    Def Rec Value = Option
+        jNull
+        jBool with b: Bool end
+        jNumber with text: String isInteger: Bool end
+        jString with s: String end
+        jArray with items: vector.T(Value) end
+        jObject with o: Object end
+    end
+    and Object = Tuple ... end
+
+    null: Value
+    bool(b: Bool): Value
+    int(n: Int): Value
+    word(w: wordLib.T): Value
+    real(r: Real): Value
+    number(text: String): Value
+    string(s: String): Value
+    arrayValue(items: vector.T(Value)): Value
+    object(o: Object): Value
+    newObject(): Object
+    put(o: Object name: String v: Value): Ok
+    get(o: Object name: String): maybe.T(Value)
+    remove(o: Object name: String): maybe.T(Value)
+    names(o: Object): Array(String)
+    size(o: Object): Int
+    forEach(o: Object action: All(name: String v: Value) Ok): Ok
+    equal(a: Value b: Value): Bool
+
+    Def ParseOptions = Record unique: Bool end
+    parsing: ParseOptions
+    parsingDynamic: ParseOptions
+    Def PrintOptions = Record indent: Int end
+    compact: PrintOptions
+    indented(n: Int): PrintOptions
+
+    Def Failure = Tuple message: String offset: Int end
+    error: Exception(Failure)
+    parse(text: String): Value
+    parseWith(text: String options: ParseOptions): Value
+    read(rd: reader.T options: ParseOptions): Value
+    dump(v: Value): String
+    dumpWith(v: Value options: PrintOptions): String
+    write(wr: writer.T v: Value options: PrintOptions): Ok
+
+    toBool(v: Value): Bool
+    toInt(v: Value): Int
+    toWord(v: Value): wordLib.T
+    toReal(v: Value): Real
+    toString(v: Value): String
+    toArray(v: Value): vector.T(Value)
+    toObject(v: Value): Object
+    member(v: Value name: String): Value
+    optional(v: Value name: String): maybe.T(Value)
+
+    Emitter::TYPE
+    emitter(wr: writer.T options: PrintOptions): Emitter
+    beginObject(e: Emitter): Ok
+    name(e: Emitter n: String): Ok
+    endObject(e: Emitter): Ok
+    beginArray(e: Emitter): Ok
+    endArray(e: Emitter): Ok
+    value(e: Emitter v: Value): Ok
+    nullValue(e: Emitter): Ok
+    boolValue(e: Emitter b: Bool): Ok
+    intValue(e: Emitter n: Int): Ok
+    wordValue(e: Emitter w: wordLib.T): Ok
+    realValue(e: Emitter r: Real): Ok
+    stringValue(e: Emitter s: String): Ok
+    finish(e: Emitter): Ok
 end
 ```
 

@@ -9,7 +9,8 @@ One JSON library, `util/json : util/Json`, written in Quest with no externals, f
 - **`dynamic.extern` and `dynamic.intern`:** the text layer of the dynamic format, in the interpreters that run
   Quest code. Compiled code's runtime keeps its own C (§1, decision 8), held to the same text by tests.
 
-Not started. The interface in §2 is the design; §3 says how it is built, and §5 lists the steps.
+Built, 2026-11-18 (§5). §2 is the interface as designed (`lib/util/json.int.quest` has it as built), §3 how it is
+built, and §5 the steps and where they departed from the design. §6 is a possibility for later, not part of the plan.
 
 ## 1. Decisions
 
@@ -43,9 +44,14 @@ Not started. The interface in §2 is the design; §3 says how it is built, and �
    - An escape such as `\u00e9` is read as the one byte E9, not the bytes C3 A9, and `\u4e2d` is an error.
    - Bytes above 127 are written as escapes, so a reader that isn't Quest sees each byte of a UTF-8 sequence as a
      character of its own.
-6. **`Object` is abstract.** Its operations are `newObject`, `put`, `get`, `remove`, `names`, `size`, and
-   `forEach`, so its representation can change without touching callers. That matters for speed: a `.qi` file is
-   thousands of small objects, and §3.2 makes a small object two short arrays instead of a vector and a hash map.
+6. **`Object` was to be abstract, and is manifest.** Its operations are `newObject`, `put`, `get`, `remove`,
+   `names`, `size`, and `forEach`, and callers are to use them alone. But an interface's manifest type cannot name
+   an abstract type of the same interface: a module is checked against its interface by comparing each manifest
+   type's two definitions as they are, the module's `Object` against the interface's opaque one (`elaboration.py`'s
+   conformance check, and the self-hosted compiler's), so the recursive `Value`, whose `jObject` holds an `Object`,
+   cannot be manifest while `Object` is abstract. Lifting that would change both compilers' module checking and how a
+   value is held across the abstraction. So `Object` is a manifest tuple, its fields documented as the
+   implementation's (§3.2).
 7. **Errors carry a message and an offset.** `error: Exception(Failure)`, where a failure gives the byte offset in
    the text (or `~1` for an error that isn't about text, such as a wrong kind or a number that doesn't fit). The
    compiler's three handlers (`when json.error then`) keep working unchanged, since they don't bind the payload.
@@ -237,8 +243,9 @@ sees the first element or the end.
 
 ### 3.1. From `questlang/common/json`
 
-The parser, the printer, and Python's `repr` for reals (`questlang/common/pyRepr`, which moves to the library as a
-private module, `util/pyRepr`) are reused. New work:
+The parser and the printer are reused. Python's `repr` for reals needed no module of its own: `conv.real` already
+writes a real as `repr` does but for its `~` minus and its `inf`, so `real` replaces the one and refuses the other.
+New work:
 - the options;
 - `read`;
 - the accessors and the emitter;
@@ -264,9 +271,11 @@ byte-identical, with no `corpus.py --update`.
 
 ### 3.4. Dynamic
 
-- **The self-hosted interpreter.** `dynamicWriter` and `dynamicReader` change in two ways. They write through an
-  emitter instead of building a tree and dumping it, which takes the extern of a large value from three copies of
-  it (value, tree, text) to one. And they read with `read(rd parsingDynamic)`.
+- **The self-hosted interpreter.** `dynamic.intern` reads with `read(rd parsingDynamic)`, in place of the
+  interpreter's own scan of one document's text (`readDocument`, gone), and `dynamicReader.decodeDocument` takes the
+  parsed document. `dynamicWriter` still builds a tree and prints it, rather than writing through an emitter as the
+  design had it: a `.qi` file is written atomically from its whole text (`files.writeAtomically`), and extern makes
+  the whole text before it writes any, so that a value it cannot extern leaves nothing half-written in the writer.
 - **The bootstrap** keeps Python's `json`, which is the reference that §1, decision 3, matches.
 - **Compiled code** keeps its C (decision 8).
 - **WebAssembly** has its own serializer, in Quest: `runtime/wasm/dynamic`, a port of `quest_serialization.c` with
@@ -297,11 +306,16 @@ Alternatives not chosen:
 
 ## 5. Steps
 
-1. **The library and its tests:** `lib/util/json.{int,mod}.quest`, `util/pyRepr`, and §4's tests, with no user
-   yet. Additive library code, so the targeted checks suffice.
+1. **The library and its tests:** `lib/util/json.{int,mod}.quest` and §4's tests, with no user yet. Additive library
+   code, so the targeted checks sufficed; pushed and released (`cbf6167a`), since stage 1 is the release compiling
+   the compiler against the release's own `lib/` ([release-compiler.md](release-compiler.md)), which must hold
+   `util/json` before the compiler can import it.
 2. **The compiler on the library:** delete `questlang/common/json`, add `jsonCache`, rewrite the accessors. Check
    that artifacts come out byte-identical (the fixed point and the ABI corpus), and measure the build (§3.2).
-3. **Dynamic on the library,** in the self-hosted interpreter (emitter and `read`), with the conformance test.
+3. **Dynamic on the library,** in the self-hosted interpreter (`read`; §3.4), with the conformance test,
+   `tests/source/stdlib/json_dynamic.quest`. It found the one place where the implementations disagreed: the C
+   runtime and WebAssembly's serializer wrote DEL (byte 127) as itself, and Python, so the interpreters, as `\u007f`.
+   Both runtimes now escape it.
 4. **Docs:** a `util/json` section in [libraries.md](libraries.md), [dynamic.md](dynamic.md) §3 pointing at it, and
    JSON removed from [future-libraries.md](future-libraries.md).
 

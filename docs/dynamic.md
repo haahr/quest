@@ -262,6 +262,12 @@ the interpreter and compiled code.
 
 ## 3. Implementation Architecture
 
+The JSON text itself is `util/json`'s ([libraries.md](libraries.md) §1.13) in the self-hosted interpreter, Python's
+`json` in the bootstrap's, and the runtimes' own in compiled code (`runtime/quest_serialization.c`, and
+`runtime/wasm/dynamic` on WebAssembly). All write the same bytes for the same document, which
+`tests/source/stdlib/json_dynamic.quest` checks; moving compiled code onto `util/json` is
+[json-plan.md](json-plan.md) §6.
+
 ### 3.1. Writing
 
 Writing takes two passes over the value: the first finds objects reached more than once, and collects the types
