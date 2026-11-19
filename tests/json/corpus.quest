@@ -1,0 +1,98 @@
+(* Checks util/json against Python's json module (tests/python/test_json.py,
+ * docs/json-plan.md section 4). Its argument is a file of cases, one a line:
+ *
+ *     parse TEXT UNIQUE COMPACT INDENTED
+ *     real TEXT EXPECTED
+ *     int TEXT EXPECTED
+ *
+ * each field but UNIQUE (0 or 1) in hexadecimal, two digits a byte, - for
+ * empty. parse parses TEXT, with unique as UNIQUE says, and prints it compact
+ * and indented by 2: COMPACT and INDENTED are those texts, or "error" (in
+ * plain text) when TEXT is to be rejected. real reads the number TEXT with
+ * toReal and writes it back with real, EXPECTED being Python's repr of
+ * float(TEXT), or "error" for one past a real's range; int is the same with
+ * toInt and int, "error" for one past an Int's. It prints each case that
+ * differs, and then a line "cases N failures M". *)
+
+import util/json : util/Json;
+import sb = util/stringBuilder : util/StringBuilder;
+import util/strutil : util/Strutil;
+import collections/vector : collections/Vector;
+import stringOp = string : StringOp;
+import reader: Reader;
+import writer: Writer;
+import system: System;
+import ascii: Ascii;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+let contents(path: String): String =
+    begin
+        let r = reader.file(path)
+        let buf = sb.new()
+        while reader.more(r) do sb.str(buf reader.getString(r 65536)) end
+        reader.close(r)
+        sb.toString(buf)
+    end;
+
+let hexDigit(c: Char): Int =
+    begin
+        let b = ascii.val(c)
+        if b <= 57 then b - 48 elsif b <= 70 then b - 55 else b - 87 end
+    end;
+
+let unhex(h: String): String =
+    if stringOp.equal(h "-") then ""
+    else
+        let n = stringOp.length(h) / 2
+        let s = stringOp.new(n ' ')
+        for i = 0 upto {n - 1} do
+            stringOp.setChar(s i ascii.char({hexDigit(stringOp.getChar(h 2 * i)) * 16}
+                + hexDigit(stringOp.getChar(h {2 * i} + 1))))
+        end
+        s
+    end;
+
+(* What a case's result field holds: the text, or "error" *)
+let field(h: String): String = if stringOp.equal(h "error") then "error" else unhex(h) end;
+
+let attempt(f: All() String): String = try f() when json.error then "error" end;
+
+let cases = strutil.splitlines(contents(system.args[1]));
+let var failures = 0;
+let var count = 0;
+for i = 0 upto {vector.length(cases) - 1} do
+    let line = vector.get(cases i)
+    if stringOp.length(line) > 0 then
+        let fields = strutil.split(line " ")
+        let mode = vector.get(fields 0)
+        let text = unhex(vector.get(fields 1))
+        count := count + 1
+        if stringOp.equal(mode "parse") then
+            let options = if stringOp.equal(vector.get(fields 2) "1") then json.parsingDynamic else json.parsing end
+            let compact = attempt(fun(): String json.dump(json.parseWith(text options)))
+            let indented = attempt(fun(): String json.dumpWith(json.parseWith(text options) json.indented(2)))
+            let wantCompact = field(vector.get(fields 3))
+            let wantIndented = if stringOp.equal(wantCompact "error") then "error" else field(vector.get(fields 4)) end
+            if not(stringOp.equal(compact wantCompact)) orif not(stringOp.equal(indented wantIndented)) then
+                failures := failures + 1
+                print("differs: " <> line)
+                print("  compact: " <> compact)
+                print("  indented: " <> indented)
+            end
+        else
+            let got = if stringOp.equal(mode "real") then
+                attempt(fun(): String json.dump(json.real(json.toReal(json.number(text)))))
+            else
+                attempt(fun(): String json.dump(json.int(json.toInt(json.number(text)))))
+            end
+            let want = field(vector.get(fields 2))
+            if not(stringOp.equal(got want)) then
+                failures := failures + 1
+                print("differs: " <> line <> " got " <> got)
+            end
+        end
+    end
+end;
+print("cases " <> conv.int(count) <> " failures " <> conv.int(failures));

@@ -1,0 +1,2131 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('json') 'Json' ('util/json') 'util/Json')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('maybe') 'Maybe' ('util/maybe') 'util/Maybe')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('vector') 'Vector' ('collections/vector') 'collections/Vector')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('word') 'Word')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('reader') 'Reader')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (LetValueBinding
+      :name 'print'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprId 's')
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'failure'
+      :value (ExprTry
+        :body (ExprApp
+          :func (ExprId 'f')
+        )
+        :branches (
+          (TryBranch
+            :exc_pattern (ExprSelect
+              :target (ExprId 'json')
+              :field 'error'
+            )
+            :binder 'e'
+            :body (ExprInfix
+              :left (ExprString 'error at ' '"error at "')
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'conv')
+                    :field 'int'
+                  )
+                  :args (
+                    (ExprSelect
+                      :target (ExprId 'e')
+                      :field 'offset'
+                    )
+                  )
+                )
+                :op '<>'
+                :right (ExprInfix
+                  :left (ExprString ': ' '": "')
+                  :op '<>'
+                  :right (ExprSelect
+                    :target (ExprId 'e')
+                    :field 'message'
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'f'
+          :type_annot (TypeAll
+            :result_type (TypePath ('String'))
+          )
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('String'))
+    )
+    (LetValueBinding
+      :name 'items'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'new'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('json' 'Value'))
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'append'
+        )
+        :args (
+          (ExprId 'items')
+          (ExprSelect
+            :target (ExprId 'json')
+            :field 'null'
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'append'
+        )
+        :args (
+          (ExprId 'items')
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'json')
+              :field 'bool'
+            )
+            :args (
+              (ExprBool True)
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'append'
+        )
+        :args (
+          (ExprId 'items')
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'json')
+              :field 'int'
+            )
+            :args (
+              (ExprInt -42 '~42')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'append'
+        )
+        :args (
+          (ExprId 'items')
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'json')
+              :field 'word'
+            )
+            :args (
+              (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'word')
+                  :field 'notBits'
+                )
+                :args (
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'word')
+                      :field 'fromInt'
+                    )
+                    :args (
+                      (ExprInt 0 '0')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'append'
+        )
+        :args (
+          (ExprId 'items')
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'json')
+              :field 'real'
+            )
+            :args (
+              (ExprReal 0.1 '0.1')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'append'
+        )
+        :args (
+          (ExprId 'items')
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'json')
+              :field 'real'
+            )
+            :args (
+              (ExprReal 1e+22 '1.0e22')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'append'
+        )
+        :args (
+          (ExprId 'items')
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'json')
+              :field 'number'
+            )
+            :args (
+              (ExprString '-1.5E+3' '"-1.5E+3"')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'append'
+        )
+        :args (
+          (ExprId 'items')
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'json')
+              :field 'string'
+            )
+            :args (
+              (ExprString 'tab\there "quoted" é' '"tab\\there \\"quoted\\" \\xe9"')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'json')
+              :field 'dump'
+            )
+            :args (
+              (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'json')
+                  :field 'arrayValue'
+                )
+                :args (
+                  (ExprId 'items')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprId 'failure')
+            :args (
+              (ExprFun
+                :return_type (TypePath ('String'))
+                :body (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'json')
+                    :field 'dump'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'json')
+                        :field 'number'
+                      )
+                      :args (
+                        (ExprString '1.' '"1."')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprId 'failure')
+            :args (
+              (ExprFun
+                :return_type (TypePath ('String'))
+                :body (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'json')
+                    :field 'dump'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'json')
+                        :field 'number'
+                      )
+                      :args (
+                        (ExprString 'x' '"x"')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'o'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'json')
+          :field 'newObject'
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprFor
+        :var_name 'i'
+        :start (ExprInt 0 '0')
+        :stop (ExprInt 11 '11')
+        :body (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'json')
+            :field 'put'
+          )
+          :args (
+            (ExprId 'o')
+            (ExprInfix
+              :left (ExprString 'k' '"k"')
+              :op '<>'
+              :right (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'conv')
+                  :field 'int'
+                )
+                :args (
+                  (ExprId 'i')
+                )
+              )
+            )
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'int'
+              )
+              :args (
+                (ExprId 'i')
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'json')
+          :field 'put'
+        )
+        :args (
+          (ExprId 'o')
+          (ExprString 'k3' '"k3"')
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'json')
+              :field 'string'
+            )
+            :args (
+              (ExprString 'three' '"three"')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'json')
+              :field 'dump'
+            )
+            :args (
+              (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'json')
+                  :field 'object'
+                )
+                :args (
+                  (ExprId 'o')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'json')
+                    :field 'size'
+                  )
+                  :args (
+                    (ExprId 'o')
+                  )
+                )
+              )
+            )
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprString ' ' '" "')
+              :op '<>'
+              :right (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'json')
+                  :field 'toString'
+                )
+                :args (
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'maybe')
+                      :field 'unwrap'
+                    )
+                    :args (
+                      (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'json')
+                          :field 'get'
+                        )
+                        :args (
+                          (ExprId 'o')
+                          (ExprString 'k3' '"k3"')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'dump'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'maybe')
+                    :field 'unwrap'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'json')
+                        :field 'remove'
+                      )
+                      :args (
+                        (ExprId 'o')
+                        (ExprString 'k0' '"k0"')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprString ' ' '" "')
+              :op '<>'
+              :right (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'conv')
+                  :field 'int'
+                )
+                :args (
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'json')
+                      :field 'size'
+                    )
+                    :args (
+                      (ExprId 'o')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprFor
+        :var_name 'i'
+        :start (ExprInt 1 '1')
+        :stop (ExprInt 6 '6')
+        :body (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'json')
+            :field 'remove'
+          )
+          :args (
+            (ExprId 'o')
+            (ExprInfix
+              :left (ExprString 'k' '"k"')
+              :op '<>'
+              :right (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'conv')
+                  :field 'int'
+                )
+                :args (
+                  (ExprId 'i')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'json')
+              :field 'dump'
+            )
+            :args (
+              (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'json')
+                  :field 'object'
+                )
+                :args (
+                  (ExprId 'o')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'json')
+                    :field 'toInt'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'maybe')
+                        :field 'unwrap'
+                      )
+                      :args (
+                        (ExprApp
+                          :func (ExprSelect
+                            :target (ExprId 'json')
+                            :field 'get'
+                          )
+                          :args (
+                            (ExprId 'o')
+                            (ExprString 'k11' '"k11"')
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprString ' ' '" "')
+              :op '<>'
+              :right (ExprIf
+                :cond (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'maybe')
+                    :field 'isNone'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'json')
+                        :field 'get'
+                      )
+                      :args (
+                        (ExprId 'o')
+                        (ExprString 'k1' '"k1"')
+                      )
+                    )
+                  )
+                )
+                :then_branch (ExprString 'k1 gone' '"k1 gone"')
+                :else_branch (ExprString 'k1 still there' '"k1 still there"')
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'json')
+          :field 'forEach'
+        )
+        :args (
+          (ExprId 'o')
+          (ExprFun
+            :params (
+              (FormalParam
+                :name 'n'
+                :type_annot (TypePath ('String'))
+                :mode VALUE
+              )
+              (FormalParam
+                :name 'v'
+                :type_annot (TypePath ('json' 'Value'))
+                :mode VALUE
+              )
+            )
+            :return_type (TypePath ('Ok'))
+            :body (ExprApp
+              :func (ExprId 'print')
+              :args (
+                (ExprInfix
+                  :left (ExprString '  ' '"  "')
+                  :op '<>'
+                  :right (ExprInfix
+                    :left (ExprId 'n')
+                    :op '<>'
+                    :right (ExprInfix
+                      :left (ExprString ' = ' '" = "')
+                      :op '<>'
+                      :right (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'json')
+                          :field 'dump'
+                        )
+                        :args (
+                          (ExprId 'v')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'doc'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'json')
+          :field 'parse'
+        )
+        :args (
+          (ExprString '{"n": 18446744073709551615, "r": 2.5, "s": "x", "a": [true]}' '"{\\"n\\": 18446744073709551615, \\"r\\": 2.5, \\"s\\": \\"x\\", \\"a\\": [true]}"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'conv')
+              :field 'int'
+            )
+            :args (
+              (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'word')
+                  :field 'toInt'
+                )
+                :args (
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'word')
+                      :field 'shift'
+                    )
+                    :args (
+                      (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'json')
+                          :field 'toWord'
+                        )
+                        :args (
+                          (ExprApp
+                            :func (ExprSelect
+                              :target (ExprId 'json')
+                              :field 'member'
+                            )
+                            :args (
+                              (ExprId 'doc')
+                              (ExprString 'n' '"n"')
+                            )
+                          )
+                        )
+                      )
+                      (ExprInt -60 '~60')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'conv')
+              :field 'real'
+            )
+            :args (
+              (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'json')
+                  :field 'toReal'
+                )
+                :args (
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'json')
+                      :field 'member'
+                    )
+                    :args (
+                      (ExprId 'doc')
+                      (ExprString 'r' '"r"')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'json')
+              :field 'toString'
+            )
+            :args (
+              (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'json')
+                  :field 'member'
+                )
+                :args (
+                  (ExprId 'doc')
+                  (ExprString 's' '"s"')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprIf
+            :cond (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'toBool'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'vector')
+                    :field 'get'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'json')
+                        :field 'toArray'
+                      )
+                      :args (
+                        (ExprApp
+                          :func (ExprSelect
+                            :target (ExprId 'json')
+                            :field 'member'
+                          )
+                          :args (
+                            (ExprId 'doc')
+                            (ExprString 'a' '"a"')
+                          )
+                        )
+                      )
+                    )
+                    (ExprInt 0 '0')
+                  )
+                )
+              )
+            )
+            :then_branch (ExprString 'true' '"true"')
+            :else_branch (ExprString 'false' '"false"')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprIf
+            :cond (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'maybe')
+                :field 'isNone'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'json')
+                    :field 'optional'
+                  )
+                  :args (
+                    (ExprId 'doc')
+                    (ExprString 'z' '"z"')
+                  )
+                )
+              )
+            )
+            :then_branch (ExprString 'no z' '"no z"')
+            :else_branch (ExprString 'z' '"z"')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprId 'failure')
+            :args (
+              (ExprFun
+                :return_type (TypePath ('String'))
+                :body (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'json')
+                    :field 'toString'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'json')
+                        :field 'member'
+                      )
+                      :args (
+                        (ExprId 'doc')
+                        (ExprString 'z' '"z"')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprId 'failure')
+            :args (
+              (ExprFun
+                :return_type (TypePath ('String'))
+                :body (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'conv')
+                    :field 'int'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'json')
+                        :field 'toInt'
+                      )
+                      :args (
+                        (ExprApp
+                          :func (ExprSelect
+                            :target (ExprId 'json')
+                            :field 'member'
+                          )
+                          :args (
+                            (ExprId 'doc')
+                            (ExprString 'n' '"n"')
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprId 'failure')
+            :args (
+              (ExprFun
+                :return_type (TypePath ('String'))
+                :body (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'conv')
+                    :field 'int'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'json')
+                        :field 'toInt'
+                      )
+                      :args (
+                        (ExprApp
+                          :func (ExprSelect
+                            :target (ExprId 'json')
+                            :field 'member'
+                          )
+                          :args (
+                            (ExprId 'doc')
+                            (ExprString 'r' '"r"')
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprId 'failure')
+            :args (
+              (ExprFun
+                :return_type (TypePath ('String'))
+                :body (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'json')
+                    :field 'toString'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'json')
+                        :field 'member'
+                      )
+                      :args (
+                        (ExprId 'doc')
+                        (ExprString 'r' '"r"')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'same'
+      :value (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprId 'a')
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprString ' ~ ' '" ~ "')
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprId 'b')
+                :op '<>'
+                :right (ExprInfix
+                  :left (ExprString ': ' '": "')
+                  :op '<>'
+                  :right (ExprIf
+                    :cond (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'json')
+                        :field 'equal'
+                      )
+                      :args (
+                        (ExprApp
+                          :func (ExprSelect
+                            :target (ExprId 'json')
+                            :field 'parse'
+                          )
+                          :args (
+                            (ExprId 'a')
+                          )
+                        )
+                        (ExprApp
+                          :func (ExprSelect
+                            :target (ExprId 'json')
+                            :field 'parse'
+                          )
+                          :args (
+                            (ExprId 'b')
+                          )
+                        )
+                      )
+                    )
+                    :then_branch (ExprString 'equal' '"equal"')
+                    :else_branch (ExprString 'different' '"different"')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'a'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'b'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'same')
+        :args (
+          (ExprString '1' '"1"')
+          (ExprString '1.0' '"1.0"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'same')
+        :args (
+          (ExprString '[1, {"a": 2, "b": 3}]' '"[1, {\\"a\\": 2, \\"b\\": 3}]"')
+          (ExprString '[1e0, {"b": 3, "a": 2}]' '"[1e0, {\\"b\\": 3, \\"a\\": 2}]"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'same')
+        :args (
+          (ExprString '{"a": 1}' '"{\\"a\\": 1}"')
+          (ExprString '{"a": 1, "b": 2}' '"{\\"a\\": 1, \\"b\\": 2}"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'same')
+        :args (
+          (ExprString '[1, 2]' '"[1, 2]"')
+          (ExprString '[2, 1]' '"[2, 1]"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'same')
+        :args (
+          (ExprString '"a"' '"\\"a\\""')
+          (ExprString '"b"' '"\\"b\\""')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'emitTo'
+      :value (ExprBlock
+        :bindings (
+          (LetValueBinding
+            :name 'e'
+            :value (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'emitter'
+              )
+              :args (
+                (ExprId 'w')
+                (ExprIf
+                  :cond (ExprInfix
+                    :left (ExprId 'indent')
+                    :op '>'
+                    :right (ExprInt 0 '0')
+                  )
+                  :then_branch (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'json')
+                      :field 'indented'
+                    )
+                    :args (
+                      (ExprId 'indent')
+                    )
+                  )
+                  :else_branch (ExprSelect
+                    :target (ExprId 'json')
+                    :field 'compact'
+                  )
+                )
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'beginObject'
+              )
+              :args (
+                (ExprId 'e')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'name'
+              )
+              :args (
+                (ExprId 'e')
+                (ExprString 'empty' '"empty"')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'beginArray'
+              )
+              :args (
+                (ExprId 'e')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'endArray'
+              )
+              :args (
+                (ExprId 'e')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'name'
+              )
+              :args (
+                (ExprId 'e')
+                (ExprString 'list' '"list"')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'beginArray'
+              )
+              :args (
+                (ExprId 'e')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'intValue'
+              )
+              :args (
+                (ExprId 'e')
+                (ExprInt 1 '1')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'realValue'
+              )
+              :args (
+                (ExprId 'e')
+                (ExprReal 0.5 '0.5')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'boolValue'
+              )
+              :args (
+                (ExprId 'e')
+                (ExprBool False)
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'nullValue'
+              )
+              :args (
+                (ExprId 'e')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'stringValue'
+              )
+              :args (
+                (ExprId 'e')
+                (ExprString 's' '"s"')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'wordValue'
+              )
+              :args (
+                (ExprId 'e')
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'word')
+                    :field 'fromInt'
+                  )
+                  :args (
+                    (ExprInt 7 '7')
+                  )
+                )
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'value'
+              )
+              :args (
+                (ExprId 'e')
+                (ExprId 'doc')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'endArray'
+              )
+              :args (
+                (ExprId 'e')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'name'
+              )
+              :args (
+                (ExprId 'e')
+                (ExprString 'none' '"none"')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'beginObject'
+              )
+              :args (
+                (ExprId 'e')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'endObject'
+              )
+              :args (
+                (ExprId 'e')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'endObject'
+              )
+              :args (
+                (ExprId 'e')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'finish'
+              )
+              :args (
+                (ExprId 'e')
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'w'
+          :type_annot (TypePath ('writer' 'T'))
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'indent'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'emitTo')
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInt 0 '0')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprString '' '""')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'emitTo')
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInt 2 '2')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprString '' '""')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'misuse'
+      :value (ExprApp
+        :func (ExprId 'failure')
+        :args (
+          (ExprFun
+            :return_type (TypePath ('String'))
+            :body (ExprBlock
+              :bindings (
+                (ExprStmt
+                  :expr (ExprApp
+                    :func (ExprId 'f')
+                    :args (
+                      (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'json')
+                          :field 'emitter'
+                        )
+                        :args (
+                          (ExprSelect
+                            :target (ExprId 'writer')
+                            :field 'output'
+                          )
+                          (ExprSelect
+                            :target (ExprId 'json')
+                            :field 'compact'
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+                (ExprStmt
+                  :expr (ExprString 'fine' '"fine"')
+                )
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'f'
+          :type_annot (TypeAll
+            :quantifiers (
+              (Quantifier
+                :name 'e'
+                :bound (KindPower
+                  :bound (TypePath ('json' 'Emitter'))
+                )
+                :mode VALUE
+              )
+            )
+            :result_type (TypePath ('Ok'))
+          )
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('String'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprId 'misuse')
+            :args (
+              (ExprFun
+                :params (
+                  (FormalParam
+                    :name 'e'
+                    :type_annot (TypePath ('json' 'Emitter'))
+                    :mode VALUE
+                  )
+                )
+                :return_type (TypePath ('Ok'))
+                :body (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'json')
+                    :field 'name'
+                  )
+                  :args (
+                    (ExprId 'e')
+                    (ExprString 'a' '"a"')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprId 'misuse')
+            :args (
+              (ExprFun
+                :params (
+                  (FormalParam
+                    :name 'e'
+                    :type_annot (TypePath ('json' 'Emitter'))
+                    :mode VALUE
+                  )
+                )
+                :return_type (TypePath ('Ok'))
+                :body (ExprBlock
+                  :bindings (
+                    (ExprStmt
+                      :expr (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'json')
+                          :field 'beginObject'
+                        )
+                        :args (
+                          (ExprId 'e')
+                        )
+                      )
+                    )
+                    (ExprStmt
+                      :expr (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'json')
+                          :field 'intValue'
+                        )
+                        :args (
+                          (ExprId 'e')
+                          (ExprInt 1 '1')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprId 'misuse')
+            :args (
+              (ExprFun
+                :params (
+                  (FormalParam
+                    :name 'e'
+                    :type_annot (TypePath ('json' 'Emitter'))
+                    :mode VALUE
+                  )
+                )
+                :return_type (TypePath ('Ok'))
+                :body (ExprBlock
+                  :bindings (
+                    (ExprStmt
+                      :expr (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'json')
+                          :field 'beginArray'
+                        )
+                        :args (
+                          (ExprId 'e')
+                        )
+                      )
+                    )
+                    (ExprStmt
+                      :expr (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'json')
+                          :field 'endObject'
+                        )
+                        :args (
+                          (ExprId 'e')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprId 'misuse')
+            :args (
+              (ExprFun
+                :params (
+                  (FormalParam
+                    :name 'e'
+                    :type_annot (TypePath ('json' 'Emitter'))
+                    :mode VALUE
+                  )
+                )
+                :return_type (TypePath ('Ok'))
+                :body (ExprBlock
+                  :bindings (
+                    (ExprStmt
+                      :expr (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'json')
+                          :field 'intValue'
+                        )
+                        :args (
+                          (ExprId 'e')
+                          (ExprInt 1 '1')
+                        )
+                      )
+                    )
+                    (ExprStmt
+                      :expr (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'json')
+                          :field 'intValue'
+                        )
+                        :args (
+                          (ExprId 'e')
+                          (ExprInt 2 '2')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprId 'misuse')
+            :args (
+              (ExprFun
+                :params (
+                  (FormalParam
+                    :name 'e'
+                    :type_annot (TypePath ('json' 'Emitter'))
+                    :mode VALUE
+                  )
+                )
+                :return_type (TypePath ('Ok'))
+                :body (ExprBlock
+                  :bindings (
+                    (ExprStmt
+                      :expr (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'json')
+                          :field 'beginArray'
+                        )
+                        :args (
+                          (ExprId 'e')
+                        )
+                      )
+                    )
+                    (ExprStmt
+                      :expr (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'json')
+                          :field 'finish'
+                        )
+                        :args (
+                          (ExprId 'e')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'w'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'file'
+        )
+        :args (
+          (ExprString 'values.json' '"values.json"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprId 'w')
+          (ExprString ' {"a": [1, "]"]}[2,3]"s\\"" 42 true\n' '" {\\"a\\": [1, \\"]\\"]}[2,3]\\"s\\\\\\"\\" 42 true\\n"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'close'
+        )
+        :args (
+          (ExprId 'w')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'r'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'reader')
+          :field 'file'
+        )
+        :args (
+          (ExprString 'values.json' '"values.json"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprFor
+        :var_name 'i'
+        :start (ExprInt 1 '1')
+        :stop (ExprInt 5 '5')
+        :body (ExprApp
+          :func (ExprId 'print')
+          :args (
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'json')
+                :field 'dump'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'json')
+                    :field 'read'
+                  )
+                  :args (
+                    (ExprId 'r')
+                    (ExprSelect
+                      :target (ExprId 'json')
+                      :field 'parsing'
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprId 'failure')
+            :args (
+              (ExprFun
+                :return_type (TypePath ('String'))
+                :body (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'json')
+                    :field 'dump'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'json')
+                        :field 'read'
+                      )
+                      :args (
+                        (ExprId 'r')
+                        (ExprSelect
+                          :target (ExprId 'json')
+                          :field 'parsing'
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'reader')
+          :field 'close'
+        )
+        :args (
+          (ExprId 'r')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'parsed'
+      :value (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprId 'failure')
+            :args (
+              (ExprFun
+                :return_type (TypePath ('String'))
+                :body (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'json')
+                    :field 'dump'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'json')
+                        :field 'parse'
+                      )
+                      :args (
+                        (ExprId 'text')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'text'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'parsed')
+        :args (
+          (ExprString '[1, 2,]' '"[1, 2,]"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'parsed')
+        :args (
+          (ExprString '{"a" 1}' '"{\\"a\\" 1}"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'parsed')
+        :args (
+          (ExprString '"abc' '"\\"abc"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'parsed')
+        :args (
+          (ExprString '"\\u0100"' '"\\"\\\\u0100\\""')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'parsed')
+        :args (
+          (ExprString 'tru' '"tru"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'parsed')
+        :args (
+          (ExprString '[1] 2' '"[1] 2"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'parsed')
+        :args (
+          (ExprString '01' '"01"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprId 'failure')
+            :args (
+              (ExprFun
+                :return_type (TypePath ('String'))
+                :body (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'json')
+                    :field 'dump'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'json')
+                        :field 'parseWith'
+                      )
+                      :args (
+                        (ExprString '{"a": 1, "a": 2}' '"{\\"a\\": 1, \\"a\\": 2}"')
+                        (ExprSelect
+                          :target (ExprId 'json')
+                          :field 'parsingDynamic'
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprId 'failure')
+            :args (
+              (ExprFun
+                :return_type (TypePath ('String'))
+                :body (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'json')
+                    :field 'dump'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'json')
+                        :field 'parseWith'
+                      )
+                      :args (
+                        (ExprString '{"a": 1, "a": 2}' '"{\\"a\\": 1, \\"a\\": 2}"')
+                        (ExprSelect
+                          :target (ExprId 'json')
+                          :field 'parsing'
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

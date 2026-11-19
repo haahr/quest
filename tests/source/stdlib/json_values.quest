@@ -1,0 +1,122 @@
+(* Standard library: util/json's values and operations, other than the text
+ * Python's json checks (tests/python/test_json.py): constructors and
+ * accessors, objects past the size where they index their names, equal,
+ * the emitter against write, read from a reader holding several values, and
+ * what error says and where. *)
+
+import util/json : util/Json;
+import util/maybe : util/Maybe;
+import collections/vector : collections/Vector;
+import word: Word;
+import writer: Writer;
+import reader: Reader;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let failure(f: All() String): String =
+    try f() when json.error with e then "error at " <> conv.int(e.offset) <> ": " <> e.message end;
+
+(* Constructors *)
+let items = vector.new(:json.Value);
+vector.append(items json.null);
+vector.append(items json.bool(true));
+vector.append(items json.int(~42));
+vector.append(items json.word(word.notBits(word.fromInt(0))));
+vector.append(items json.real(0.1));
+vector.append(items json.real(1.0e22));
+vector.append(items json.number("-1.5E+3"));
+vector.append(items json.string("tab\there \"quoted\" \xe9"));
+print(json.dump(json.arrayValue(items)));
+print(failure(fun(): String json.dump(json.number("1."))));
+print(failure(fun(): String json.dump(json.number("x"))));
+
+(* Objects, small and indexed *)
+let o = json.newObject();
+for i = 0 upto 11 do json.put(o "k" <> conv.int(i) json.int(i)) end;
+json.put(o "k3" json.string("three"));
+print(json.dump(json.object(o)));
+print(conv.int(json.size(o)) <> " " <> json.toString(maybe.unwrap(json.get(o "k3"))));
+print(json.dump(maybe.unwrap(json.remove(o "k0"))) <> " " <> conv.int(json.size(o)));
+for i = 1 upto 6 do json.remove(o "k" <> conv.int(i)) end;
+print(json.dump(json.object(o)));
+print(conv.int(json.toInt(maybe.unwrap(json.get(o "k11")))) <> " "
+    <> if maybe.isNone(json.get(o "k1")) then "k1 gone" else "k1 still there" end);
+json.forEach(o fun(n: String v: json.Value): Ok print("  " <> n <> " = " <> json.dump(v)));
+
+(* Accessors *)
+let doc = json.parse("{\"n\": 18446744073709551615, \"r\": 2.5, \"s\": \"x\", \"a\": [true]}");
+print(conv.int(word.toInt(word.shift(json.toWord(json.member(doc "n")) ~60))));
+print(conv.real(json.toReal(json.member(doc "r"))));
+print(json.toString(json.member(doc "s")));
+print(if json.toBool(vector.get(json.toArray(json.member(doc "a")) 0)) then "true" else "false" end);
+print(if maybe.isNone(json.optional(doc "z")) then "no z" else "z" end);
+print(failure(fun(): String json.toString(json.member(doc "z"))));
+print(failure(fun(): String conv.int(json.toInt(json.member(doc "n")))));
+print(failure(fun(): String conv.int(json.toInt(json.member(doc "r")))));
+print(failure(fun(): String json.toString(json.member(doc "r"))));
+
+(* equal *)
+let same(a: String b: String): Ok =
+    print(a <> " ~ " <> b <> ": " <> if json.equal(json.parse(a) json.parse(b)) then "equal" else "different" end);
+same("1" "1.0");
+same("[1, {\"a\": 2, \"b\": 3}]" "[1e0, {\"b\": 3, \"a\": 2}]");
+same("{\"a\": 1}" "{\"a\": 1, \"b\": 2}");
+same("[1, 2]" "[2, 1]");
+same("\"a\"" "\"b\"");
+
+(* The emitter writes what write writes *)
+let emitTo(w: writer.T indent: Int): Ok =
+    begin
+        let e = json.emitter(w if indent > 0 then json.indented(indent) else json.compact end)
+        json.beginObject(e)
+        json.name(e "empty")
+        json.beginArray(e)
+        json.endArray(e)
+        json.name(e "list")
+        json.beginArray(e)
+        json.intValue(e 1)
+        json.realValue(e 0.5)
+        json.boolValue(e false)
+        json.nullValue(e)
+        json.stringValue(e "s")
+        json.wordValue(e word.fromInt(7))
+        json.value(e doc)
+        json.endArray(e)
+        json.name(e "none")
+        json.beginObject(e)
+        json.endObject(e)
+        json.endObject(e)
+        json.finish(e)
+    end;
+emitTo(writer.output 0);
+print("");
+emitTo(writer.output 2);
+print("");
+let misuse(f: All(e: json.Emitter) Ok): String =
+    failure(fun(): String begin f(json.emitter(writer.output json.compact)) "fine" end);
+print(misuse(fun(e: json.Emitter): Ok json.name(e "a")));
+print(misuse(fun(e: json.Emitter): Ok begin json.beginObject(e) json.intValue(e 1) end));
+print(misuse(fun(e: json.Emitter): Ok begin json.beginArray(e) json.endObject(e) end));
+print(misuse(fun(e: json.Emitter): Ok begin json.intValue(e 1) json.intValue(e 2) end));
+print(misuse(fun(e: json.Emitter): Ok begin json.beginArray(e) json.finish(e) end));
+
+(* read takes one value at a time from a reader *)
+let w = writer.file("values.json");
+writer.putString(w " {\"a\": [1, \"]\"]}[2,3]\"s\\\"\" 42 true\n");
+writer.close(w);
+let r = reader.file("values.json");
+for i = 1 upto 5 do print(json.dump(json.read(r json.parsing))) end;
+print(failure(fun(): String json.dump(json.read(r json.parsing))));
+reader.close(r);
+
+(* Where parsing fails, and why *)
+let parsed(text: String): Ok = print(failure(fun(): String json.dump(json.parse(text))));
+parsed("[1, 2,]");
+parsed("{\"a\" 1}");
+parsed("\"abc");
+parsed("\"\\u0100\"");
+parsed("tru");
+parsed("[1] 2");
+parsed("01");
+print(failure(fun(): String json.dump(json.parseWith("{\"a\": 1, \"a\": 2}" json.parsingDynamic))));
+print(failure(fun(): String json.dump(json.parseWith("{\"a\": 1, \"a\": 2}" json.parsing))));

@@ -1,0 +1,173 @@
+(* Standard Library: JSON (RFC 8259)
+ *
+ * JSON text parsed into Value trees and printed from them, or written straight
+ * to a writer by an Emitter (docs/json-plan.md). A string is bytes, each the
+ * code point of the same number (Latin-1): a byte above 127 or a control
+ * character is written as \u00XX, and an escape above ÿ is an error.
+ * Output is deterministic and is what Python's json.dumps writes for the same
+ * value, read as Latin-1: compact (separators "," and ":") or indented
+ * (indent=n), an object's members in the order first put, a real as Python's
+ * repr writes it. Parsing is strict: no comments, trailing commas, NaN,
+ * infinities, or leading zeros. *)
+
+interface Json
+import
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    wordLib = word : Word
+    reader : Reader
+    writer : Writer
+export
+    (* =========================================================================
+     * Values
+     * ====================================================================== *)
+
+    Def Rec Value = Option
+        jNull
+        jBool with b: Bool end
+        (* A number as written, so that every integer reads exactly: an
+         * integer if it has neither a fraction nor an exponent *)
+        jNumber with text: String isInteger: Bool end
+        jString with s: String end
+        jArray with items: vector.T(Value) end
+        jObject with o: Object end
+    end
+    (* An object: members in the order first put, at most one per name. Its
+     * representation is visible only because a manifest type cannot name an
+     * abstract type of its own interface (docs/json-plan.md decision 6): use
+     * the operations below, not the fields. The first count of names and
+     * values are the members; past 8 members, index finds a name's
+     * position *)
+    and Object = Tuple
+        var names: Array(String)
+        var values: Array(Value)
+        var count: Int
+        index: hashMap.T(String Int)
+    end
+
+    null: Value
+    bool(b: Bool): Value
+    int(n: Int): Value
+    (* The unsigned integer w *)
+    word(w: wordLib.T): Value
+    (* r as Python's repr writes it; raises error for an infinity *)
+    real(r: Real): Value
+    (* A number given as its text; raises error unless it is a JSON number *)
+    number(text: String): Value
+    string(s: String): Value
+    arrayValue(items: vector.T(Value)): Value
+    object(o: Object): Value
+
+    newObject(): Object
+    (* Sets a member: a new name at the end, an existing one in place *)
+    put(o: Object name: String v: Value): Ok
+    get(o: Object name: String): maybe.T(Value)
+    (* Removes a member, giving its value if it had one *)
+    remove(o: Object name: String): maybe.T(Value)
+    (* The members' names, in order *)
+    names(o: Object): Array(String)
+    size(o: Object): Int
+    forEach(o: Object action: All(name: String v: Value) Ok): Ok
+
+    (* Structural equality: numbers by value (1.0 is 1), objects by their
+     * members whatever their order *)
+    equal(a: Value b: Value): Bool
+
+    (* =========================================================================
+     * Options
+     * ====================================================================== *)
+
+    Def ParseOptions = Record
+        (* Whether a repeated member name is an error, rather than its last
+         * value winning *)
+        unique: Bool
+    end
+    (* Not unique, as Python's json.loads *)
+    parsing: ParseOptions
+    (* Unique: the dynamic format's (docs/dynamic.md section 2.1) *)
+    parsingDynamic: ParseOptions
+
+    Def PrintOptions = Record
+        (* 0 for compact text (separators "," and ":"); else spaces a level,
+         * each element and member on a line of its own, as Python's
+         * json.dumps(indent=n) writes them *)
+        indent: Int
+    end
+    compact: PrintOptions
+    indented(n: Int): PrintOptions
+
+    (* =========================================================================
+     * Parsing and Printing
+     * ====================================================================== *)
+
+    (* Why, and where: a byte offset in the text, or ~1 for a failure that is
+     * not about text (a value of the wrong kind, a number that does not
+     * fit, an emitter's parts out of order) *)
+    Def Failure = Tuple message: String offset: Int end
+    (* Raised on text that is not JSON, and by the accessors and the
+     * emitter *)
+    error: Exception(Failure)
+
+    (* The text's one value, with nothing but whitespace around it *)
+    parse(text: String): Value
+    parseWith(text: String options: ParseOptions): Value
+    (* One value from rd, read to its end and no further, except that a
+     * number at the top level is read to the character after it (a reader
+     * cannot put one back); raises error at end of stream *)
+    read(rd: reader.T options: ParseOptions): Value
+
+    (* compact *)
+    dump(v: Value): String
+    dumpWith(v: Value options: PrintOptions): String
+    write(wr: writer.T v: Value options: PrintOptions): Ok
+
+    (* =========================================================================
+     * Reading a Tree
+     *
+     * Each raises error when the value is not of the kind asked for.
+     * ====================================================================== *)
+
+    toBool(v: Value): Bool
+    (* An integer that fits an Int *)
+    toInt(v: Value): Int
+    (* A non-negative integer below 2^64 *)
+    toWord(v: Value): wordLib.T
+    (* Any number, rounded to the nearest real *)
+    toReal(v: Value): Real
+    toString(v: Value): String
+    toArray(v: Value): vector.T(Value)
+    toObject(v: Value): Object
+    (* v's member name; raises error if v is not an object or has none *)
+    member(v: Value name: String): Value
+    (* v's member name if v is an object that has one *)
+    optional(v: Value name: String): maybe.T(Value)
+
+    (* =========================================================================
+     * Writing a Stream
+     * ====================================================================== *)
+
+    (* Writes one value to a writer as its parts are given, exactly as write
+     * would write it as a tree; raises error on parts out of order (a name
+     * outside an object, a value where a name belongs, an end without its
+     * beginning, a second value, or finish before the value is whole) *)
+    Emitter::TYPE
+    emitter(wr: writer.T options: PrintOptions): Emitter
+    beginObject(e: Emitter): Ok
+    (* The next member's name, in an object *)
+    name(e: Emitter n: String): Ok
+    endObject(e: Emitter): Ok
+    beginArray(e: Emitter): Ok
+    endArray(e: Emitter): Ok
+    (* A whole value, as an element or a member's value *)
+    value(e: Emitter v: Value): Ok
+    nullValue(e: Emitter): Ok
+    boolValue(e: Emitter b: Bool): Ok
+    intValue(e: Emitter n: Int): Ok
+    wordValue(e: Emitter w: wordLib.T): Ok
+    realValue(e: Emitter r: Real): Ok
+    stringValue(e: Emitter s: String): Ok
+    (* Writes what is left of the text; raises error unless one whole value
+     * has been given *)
+    finish(e: Emitter): Ok
+end
