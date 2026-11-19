@@ -464,11 +464,13 @@ export
                     maybe.none()
                 else
                     let found = hashMap.get(l.moduleRefs x.symbol.symbolId)
-                    (* A module an earlier input declared, whose record that
-                     * input exported (lowerPhrases) *)
+                    (* A module an earlier input declared or imported, whose
+                     * record is its value: its entry has no field (the
+                     * session's remember). An earlier input's value binding
+                     * is a field of that input's record, and not a module *)
                     let declared = earlierBinding(l x.symbol.symbolId)
                     if maybe.isNone(found)
-                        andif maybe.isSome(declared) then
+                        andif maybe.isSome(declared) andif eq(maybe.unwrap(declared).binding.field "") then
                         let d = maybe.unwrap(declared)
                         maybe.some(d.ref)
                     elsif maybe.isNone(found) andif model.bindsModule(x.name e.type) then

@@ -310,8 +310,8 @@ layer is in, and then step 3. Where it differs from the sections above:
    builds from the bootstrap (`QUEST_SEED=bootstrap`) until a release has the runtime's new functions.
 5. **The browser page** starts its files with a `/tmp` (`tools/wasm-page/page.mjs`), so that the temporaries work
    there, and `tests/repl/temporary_files.quest` makes and removes one in the REPL, natively, in node, and in the
-   page. That transcript keeps its values within single inputs: the JIT's `-i` session misreads a global tuple's
-   fields in later inputs, a fault the release had before os/files, now in [tasklist.md](tasklist.md).
+   page. That transcript keeps its values within single inputs: the JIT then misread a field of an earlier input's
+   tuple as a member of a module (fixed since; `tests/repl/earlier_tuple_fields.quest`).
 6. **Under node**, `setTimes` goes through `fs.utimesSync`, which takes seconds as a Number, so it is exact to the
    microsecond; `os_files.quest` sets whole seconds.
 
