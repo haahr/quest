@@ -1,11 +1,12 @@
 # Plan: File-System Operations, `os/files`
 
-Copying, removing and walking trees, temporary files and directories, symlinks, and permissions, item 4 of
+Copying, removing and walking trees, finding files by pattern, temporary files and directories, symlinks, and
+permissions, item 4 of
 [future-libraries.md](future-libraries.md). Today the file system is split among `system` (paths as Strings:
 `makeDirectory`, `removeFile`, `listDirectory`, ...), `os/fileStats` (what `stat(2)` says), and `os/path` (paths as
-values, over both). None of them copies a file, removes a tree, walks one, or makes a temporary name:
-`tests/source/stdlib/os_process.quest` runs `mktemp -d` through a shell for lack of one, and `system.error` says
-nothing of what failed or why. Not started; its questions were settled with the user
+values, over both). None of them copies a file, removes a tree, walks one, finds files by a pattern, or makes a
+temporary name: `tests/source/stdlib/os_process.quest` runs `mktemp -d` through a shell for lack of one, and
+`system.error` says nothing of what failed or why. Not started; its questions were settled with the user
 2026-11-19.
 
 ## 1. Decisions
@@ -21,7 +22,7 @@ nothing of what failed or why. Not started; its questions were settled with the 
    not need two imports to copy a file. The primitives stay private to it.
 3. **Paths are Strings,** as in `system` and `os/fileStats`, so that `files` sits beside them under `os/path`.
    `os/path` gains `path.T` wrappers for the operations a program reaches for (copy, copyTree, removeTree, walk,
-   the temporaries), in step 3 (user, 2026-11-19).
+   glob, the temporaries), in step 3 (user, 2026-11-19).
 4. **Failures say what and why** (user, 2026-11-19). `files.error` carries a `Failure`: the operation, the path, a
    `Code` from a short list of the errors a program acts on (`notFound`, `exists`, `notEmpty`, ...), and a message. So
    `removeTree` of a missing directory can be caught and told apart from one it may not enter, which `system.error`
@@ -45,6 +46,12 @@ nothing of what failed or why. Not started; its questions were settled with the 
 9. **`system`'s file functions stay** for the programs that use them. `files` has its own versions of the few it needs
    (`remove`, `removeDirectory`, `rename`, `makeDirectory`, `list`) so that they raise `files.error`. libraries.md
    says to prefer `files` for new code.
+10. **`glob` finds files by a shell pattern** (user, 2026-11-19), as Python's `glob.glob(recursive=True)` and
+    `Path.glob` do: `*`, `?`, `[abc]`, `[!a-z]`, and `**` as a whole component for zero or more directories. It is
+    written in Quest over `list` and `os/fileStats`, so it needs no primitive of its own and runs alike on every
+    target. Matching one name against one component is `util/path`'s `matches`, a string operation that touches no
+    file. The matcher is written directly, about 60 lines, not by translating to util/regexp. There is no brace
+    expansion (`{a,b}`); two calls do the same.
 
 ## 2. The Interface
 
@@ -143,6 +150,20 @@ export
     (* The regular files under root, by walk, in its order *)
     allFiles(root: String): vector.T(String)
 
+    (* The paths that pattern matches, sorted (as strings, so a directory's
+     * entries follow it): pattern's components are matched one at a time,
+     * each as util/path's matches, and ** matches zero or more directories.
+     * A relative pattern is relative to the current directory, and its
+     * results are relative too; an empty vector if nothing matches.
+     * Examples:
+     *   glob("lib/os/*.int.quest")  => lib/os/code.int.quest, ...
+     *   glob("tests/**/*.quest")    => every .quest file under tests
+     *)
+    glob(pattern: String): vector.T(String)
+    (* glob of root joined with pattern, its results relative to root; pattern
+     * must be relative *)
+    globIn(root: String pattern: String): vector.T(String)
+
     (* ----- Temporary files and directories ----- *)
 
     (* The directory for temporaries: TMPDIR if set and not empty, else /tmp *)
@@ -157,6 +178,20 @@ export
      * with everything in it afterward, whether action returns or raises *)
     withTempDirectory(A::TYPE prefix: String action: All(dir: String) A): A
 end
+```
+
+`util/path` gains the matcher `glob` is built on:
+
+```quest
+    (* Whether name, one component (no /), matches pattern: * any run of
+     * characters, ? any one, [abc] or [a-z] one of them, [!...] one not of
+     * them; neither * nor ? nor a class matches a leading . of name
+     * Examples:
+     *   matches("*.quest" "a.int.quest") => true
+     *   matches("*" ".git")              => false
+     *   matches(".*" ".git")             => true
+     *)
+    matches(pattern: String name: String): Bool
 ```
 
 `list` returns a vector and `allFiles` returns one, following the vector convention for results
@@ -176,6 +211,16 @@ more memory than its depth.
   directory's contents. An entry removed between `list` and `lstat` is skipped, not raised.
 - **`move`** is `rename` when it succeeds. On `crossDevice` it copies, then removes the source, so a failure leaves
   the source whole.
+- **`glob`** splits the pattern into components and walks only the directories they can reach. A component with no
+  `*`, `?`, or `[` is a name, looked up with `lfind` rather than listed. Any other component is matched against
+  `list` of the directory so far, and `**` takes the directory itself and every directory under it. The details
+  follow Python's `glob` (`include_hidden=False`), so `test_files.py` can compare them:
+  - `*`, `?`, `[...]`, and `**` do not match a name that starts with `.`, so `*` skips `.git`; a component written
+    with a leading `.` (`.*`) matches such names.
+  - `**` does not enter a symlink to a directory (§1.5), though a pattern may name one explicitly.
+  - A pattern ending in `/` matches directories only.
+  - An unclosed `[` is a literal character, as in `fnmatch`, so no pattern is an error. A directory that cannot be
+    listed is skipped, as Python skips it.
 - **Temporary names** are the prefix and 10 letters from `[a-z0-9]`, drawn from a `util/random.fromClock()`
   generator the module keeps. That is 51 bits, so `exists` comes up again only after another program takes the same
   name, and the module tries 100 names before raising `exists`.
@@ -211,12 +256,17 @@ never constructs a Quest exception with a payload, and the messages are one tabl
   - `copy` of an empty file, a 200 KB file of every byte value (more than three pieces), and onto itself;
   - a tree with nested directories, an empty one, and a symlink, through `copyTree`, `walk` (the order, a skipped
     directory, the symlink not entered), `allFiles`, and `removeTree`;
+  - `glob` and `globIn` on that tree: `*`, `?`, classes, `**` at the start, middle, and end, a hidden file and a
+    hidden directory, a trailing `/`, a symlinked directory under `**`, and a pattern that matches nothing;
   - temporary names: two calls differ, and `withTempDirectory` removes its directory after a raise.
 
   It prints paths relative to the temporary directory, so the golden is the same on every run. Under wasm, the
   symlink and mode lines are skipped: the test asks `setMode` once, and prints the same lines either way.
 - **`tests/python/test_files.py`** compares `walk` and `copyTree` on a generated tree of a few hundred entries with
-  Python's `os.walk` and `shutil.copytree(symlinks=True)`.
+  Python's `os.walk` and `shutil.copytree(symlinks=True)`, and `glob` on a few dozen patterns with Python's
+  `glob.glob(recursive=True)`, sorted.
+- **`tests/source/stdlib/path_operations.quest`** gains `matches`: each construct, a leading `.`, `/` never matched,
+  and an unclosed `[`.
 - **`os_process.quest`** uses `makeTempDirectory` and `removeTree` instead of `mktemp` through a shell.
 - Every backend mode runs `os_files` (including wasm and wasm-node); the browser page's check (`tools/wasm-page/check`)
   makes and removes a temporary directory.
@@ -225,8 +275,9 @@ never constructs a Quest exception with a payload, and the messages are one tabl
 
 1. **The primitives and `Failure`**, in C, wasm, and both interpreters, with the ABI bump, and the primitive half of
    `os_files.quest`.
-2. **The Quest layer:** `makeDirectories`, `copy`, `removeTree`, `copyTree`, `move`, `walk`, `allFiles`, and the
-   temporaries; the rest of `os_files.quest`, and `test_files.py`.
+2. **The Quest layer:** `makeDirectories`, `copy`, `removeTree`, `copyTree`, `move`, `walk`, `allFiles`, `glob`,
+   `globIn`, and the temporaries, with `util/path`'s `matches`; the rest of `os_files.quest`,
+   `path_operations.quest`'s lines, and `test_files.py`.
 3. **Uses and docs:** `os_process.quest` on the temporaries; libraries.md §4.6; future-libraries.md's item marked
    built; and `os/path`'s wrappers (§1.3).
 
