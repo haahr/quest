@@ -41,10 +41,19 @@ export
         var names: Array(String)
         var values: Array(Value)
         var count: Int
-        index: hashMap.T(String Int)
+        var index: hashMap.T(String Int)
     end
 
     let smallSize: Int = 8
+
+    (* Where every object starts, never written: an object's arrays are
+     * replaced by its first put, and its index by the reindex that its
+     * growing past smallSize makes. A parsed .qi or .qm file is mostly
+     * objects of one or two members, which would otherwise each carry two
+     * empty arrays and an empty table *)
+    let noNames = array of :String end
+    let noValues = array of :Value end
+    let noIndex = hashMap.new(:String :Int stringOp.equal hash.string)
 
     Let Failure = Tuple message: String offset: Int end
     let error: Exception(Failure) = exception error: Failure end
@@ -86,10 +95,10 @@ export
 
     let newObject(): Object =
         tuple
-            var names = array of :String end
-            var values = array of :Value end
+            var names = noNames
+            var values = noValues
             var count = 0
-            let index = hashMap.new(:String :Int stringOp.equal hash.string)
+            var index = noIndex
         end
 
     (* The position of name among o's members, or ~1 *)
@@ -109,9 +118,11 @@ export
     (* Indexes every member, once o has grown past smallSize *)
     let reindex(o: Object): Ok =
         begin
-            hashMap.clear(o.index)
             if o.count > smallSize then
+                o.index := hashMap.newWithCapacity(:String :Int 2 * o.count stringOp.equal hash.string)
                 for i = 0 upto {o.count - 1} do hashMap.insert(o.index o.names[i] i) end
+            else
+                o.index := noIndex
             end
             ok
         end
@@ -123,7 +134,7 @@ export
                 o.values[i] := v
             else
                 if o.count is extent o.names then
-                    let capacity = if o.count is 0 then 4 else 2 * o.count end
+                    let capacity = if o.count is 0 then 2 else 2 * o.count end
                     let names = array of(capacity name)
                     let values = array of(capacity v)
                     for j = 0 upto {o.count - 1} do
