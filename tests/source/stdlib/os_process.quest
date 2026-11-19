@@ -1,8 +1,10 @@
 (* os/process starts programs without waiting for them: their results, which
    wait gives the same each time; waitAny with a slow child and a quick one;
    spawnIn's directory; kill; and the errors for a program that cannot start.
-   It writes only under /tmp, so it leaves nothing behind wherever it runs. *)
+   It writes only in a temporary directory, which it removes, so it leaves
+   nothing behind wherever it runs. *)
 import os/process : os/Process;
+import os/files : os/Files;
 import system: System;
 import writer: Writer;
 import conv: Conv;
@@ -37,15 +39,14 @@ let var total = 0;
 for i = 0 upto 3 do total := total + process.wait(many[i]).code end;
 print("total: " <> conv.int(total));
 
-(* The child's current directory: a directory of the test's own under /tmp,
- * which mktemp names so that runs at once do not share it, removed after *)
-let made = process.wait(sh("mktemp -d /tmp/quest-os-process.XXXXXX"));
-let dir = stringOp.getSub(made.stdout 0 stringOp.length(made.stdout) - 1);
-let w = writer.file(dir <> "/inside.txt");
-writer.close(w);
-show("spawnIn" process.wait(process.spawnIn(array of "ls" end dir)));
-system.removeFile(dir <> "/inside.txt");
-system.removeDirectory(dir);
+(* The child's current directory: a temporary directory of the test's own, so
+ * that runs at once do not share it, removed after *)
+show("spawnIn" files.withTempDirectory(:process.Result "quest-os-process." fun(dir: String): process.Result
+    begin
+        let w = writer.file(dir <> "/inside.txt")
+        writer.close(w)
+        process.wait(process.spawnIn(array of "ls" end dir))
+    end));
 
 (* A signal, and a signal to a child that has finished *)
 let sleeper = sh("sleep 10");

@@ -241,3 +241,25 @@ show, so nothing was planned for them:
 
 **Done when.** A program shows one and it is fixed with that program as its test, or a review of the code finds the
 fault gone.
+
+---
+
+## The JIT's `-i` session loses a global tuple's fields read in a later input
+
+**Problem.** With input on standard input and `-i` (as `tests/repl`'s transcripts run), a tuple bound by one input
+and read by a later one goes wrong under the JIT: reading a field (`kept.dir`) crashes the compiler with
+`arrayOp.error` in `questlang/ssa/build/values.toWord`, and passing the field to a call (`fileStats.lfind(held.dir)`)
+gives it a string that is not the field's (`stat` fails with something other than `ENOENT`, which raises
+`system.error`). It happens with an immutable field too. The same inputs without `-i`, and interpreted
+(`--no-jit`), are right, and so is a String bound by one input and read by another. Found 2026-11-19 by
+`tests/repl/temporary_files.quest`, which now keeps its values in one input; the release (f5dac8a8) has it too.
+
+**Reproduce.** In an empty directory, give `QUEST_SEED=bootstrap ./quest -i` the input `let kept = tuple let var dir
+= "" end`, `let f = fun(d: String): Ok kept.dir := d`, `f("abc")`, `kept.dir`, one to a line.
+
+**Where to start.** How the JIT's session (`questlang/jit/session`) gives a later input the globals of earlier ones
+when the session starts with `-i` and no file, against when it starts without: the tuple's representation, or its
+slot, differs between the two.
+
+**Done when.** The reproduction prints `"abc" : String` under the JIT, and a transcript in `tests/repl` reads a global
+tuple's field in a later input.

@@ -5,6 +5,9 @@ import
     os/path : os/Path
     util/maybe : util/Maybe
     os/fileStats : os/FileStats
+    os/files : os/Files
+    collections/vector : collections/Vector
+    util/strutil : util/Strutil
     system: System
     writer: Writer
     conv: Conv
@@ -45,4 +48,40 @@ path.unlink(path.child(root "b.txt"));
 show(path.iterDir(root));
 tryOk("unlink missing" fun(): Ok path.unlink(path.child(root "b.txt")));
 print("find missing: " <> conv.bool(maybe.isNone(:fileStats.T path.find(path.child(root "b.txt")))));
-print("exists missing: " <> conv.bool(path.exists(at("work/missing"))))
+print("exists missing: " <> conv.bool(path.exists(at("work/missing"))));
+
+(* os/files' operations over path.T *)
+let names(v: vector.T(path.T)): String =
+    begin
+        let var line = ""
+        for i = 0 upto {vector.length(:path.T v) - 1} do
+            line := line <> " " <> path.toString(vector.get(:path.T v i))
+        end
+        line
+    end;
+path.copy(path.child(root "a.txt") path.child(root "x/y/c.txt"));
+print("copy: [" <> path.readText(path.child(root "x/y/c.txt")) <> "]");
+print("glob **/*.txt:" <> names(path.glob(root "**/*.txt")));
+path.copyTree(at("work/x") at("work/z"));
+path.move(at("work/z/y/c.txt") at("work/z/d.txt"));
+path.walk(root fun(q: path.T stats: fileStats.T depth: Int): Bool
+    begin
+        print("walk " <> conv.int(depth) <> " " <> path.toString(q))
+        true
+    end);
+path.removeTree(at("work/z"));
+print("removeTree: " <> conv.bool(not(path.exists(at("work/z")))));
+print("removeTree missing: " <> try begin path.removeTree(at("work/z")) "ok" end
+    when files.error with f then f.message end);
+let kept = tuple let var dir = path.fromString(".") end;
+let made = path.withTempDirectory(:Bool "quest-path." fun(dir: path.T): Bool
+    begin
+        kept.dir := dir
+        path.writeText(path.child(dir "t") "t")
+        path.isAbsolute(dir) /\ strutil.startsWith(path.name(dir) "quest-path.")
+    end);
+print("withTempDirectory: " <> conv.bool(made) <> ", gone " <> conv.bool(not(path.exists(kept.dir))));
+let t = path.makeTempFile("quest-path." ".txt");
+print("makeTempFile: " <> conv.bool(path.isFile(t) /\ strutil.endsWith(path.toString(t) ".txt")));
+path.unlink(t)
+

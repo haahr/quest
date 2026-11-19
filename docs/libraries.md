@@ -236,8 +236,15 @@ export
     normalize(path: String): String
     relativeTo(path: String base: String): String
     resolve(path: String): String
+
+    (* Patterns: one name against a shell pattern *)
+    matches(pattern: String name: String): Bool
 end
 ```
+
+`matches` takes `*`, `?`, `[abc]`, `[a-z]`, and `[!...]`, as Python's `fnmatch` does, with two differences that
+make it `glob`'s rule for one component (§4.6): nothing but a `.` written in the pattern matches a name's leading `.`,
+so `*` passes over `.git`; and a `[` with no `]` is itself. It touches no file.
 
 ---
 
@@ -1295,10 +1302,13 @@ end
 
 ## 4. The Operating System (`lib/os/`)
 
-The file system is in three places: `system`, over paths as Strings (`fileExists`, `isFile`, `isDirectory`,
+The file system is in four places: `system`, over paths as Strings (`fileExists`, `isFile`, `isDirectory`,
 `listDirectory`, `makeDirectory`, `removeFile`, `removeDirectory`, `renameFile`, `currentDirectory`,
-`changeDirectory`); `os/fileStats` (§4.2), what `stat(2)` says about a path; and `os/path` (§4.1), paths as values
-with all of these over them, and reading and writing a file's text. `util/path` (§1.4) has the string operations on
+`changeDirectory`); `os/fileStats` (§4.2), what `stat(2)` says about a path; `os/files` (§4.6), copying, moving, and
+removing trees, walking them, `glob`, temporaries, symlinks, and permissions, over Strings, with failures that say
+what and why; and `os/path` (§4.1), paths as values with all of these over them, and reading and writing a file's
+text. New code should prefer `os/files` to `system`'s file functions, whose `system.error` says nothing of the
+failure. `util/path` (§1.4) has the string operations on
 paths, which touch no file.
 
 ### 4.1. `os/path : os/Path`
@@ -1347,6 +1357,17 @@ export
     rename(p: T q: T): Ok
     readText(p: T): String
     writeText(p: T text: String): Ok
+
+    (* os/files (§4.6), over T *)
+    copy(p: T q: T): Ok
+    copyTree(p: T q: T): Ok
+    removeTree(p: T): Ok
+    move(p: T q: T): Ok
+    walk(p: T visit: All(q: T stats: fileStats.T depth: Int) Bool): Ok
+    glob(p: T pattern: String): vector.T(T)
+    makeTempDirectory(prefix: String): T
+    makeTempFile(prefix: String suffix: String): T
+    withTempDirectory(A::TYPE prefix: String action: All(dir: T) A): A
 end
 ```
 
@@ -1526,3 +1547,70 @@ export
     localOffsetInSeconds(secondsSinceEpoch: Int): Int (* seconds east of UTC *)
 end
 ```
+
+### 4.6. `os/files : os/Files`
+
+File-system operations over Strings ([files-plan.md](files-plan.md)): copying, moving, and removing files and trees;
+walking a tree and finding files by a shell pattern; temporary files and directories; symlinks, permissions, and
+times. A failure raises `files.error` with a `Failure`: the operation, the path that failed, a `Code` from the short
+list of errors a program acts on, and a message, the same text on every target. Symlinks are never followed when
+changing anything: `removeTree` removes a symlink, `walk` shows one without entering it, and `copyTree` makes one
+anew with the same target.
+
+```quest
+interface Files
+import
+    collections/vector : collections/Vector
+    os/fileStats : os/FileStats
+export
+    Def Code = Option
+        notFound exists notDirectory isDirectory notEmpty permission crossDevice unsupported other
+    end
+    Def Failure = Tuple operation: String path: String code: Code message: String end
+    error: Exception(Failure)
+
+    (* One system call each *)
+    remove(path: String): Ok                          (* unlink *)
+    removeDirectory(path: String): Ok                 (* rmdir *)
+    rename(from: String to: String): Ok
+    makeDirectory(path: String mode: Int): Ok
+    createNew(path: String mode: Int): Ok             (* O_CREAT | O_EXCL *)
+    list(path: String): vector.T(String)              (* sorted, without . and .. *)
+    symlink(target: String path: String): Ok
+    readLink(path: String): String
+    setMode(path: String mode: Int): Ok               (* chmod; unsupported under wasm *)
+    setTimes(path: String accessNs: Int modifiedNs: Int): Ok
+
+    (* Built on them, in Quest *)
+    realPath(path: String): String
+    makeDirectories(path: String): Ok                 (* mkdir -p *)
+    copy(from: String to: String): Ok                 (* content and permission bits *)
+    copyTree(from: String to: String): Ok
+    removeTree(path: String): Ok
+    move(from: String to: String): Ok                 (* rename, or copy and remove across devices *)
+    Def Entry = Tuple path: String stats: fileStats.T depth: Int end
+    walk(root: String visit: All(e: Entry) Bool): Ok  (* pre-order, names sorted *)
+    allFiles(root: String): vector.T(String)
+    glob(pattern: String): vector.T(String)
+    globIn(root: String pattern: String): vector.T(String)
+
+    (* Temporaries *)
+    tempDirectory(): String                           (* TMPDIR, or /tmp *)
+    makeTempDirectory(prefix: String): String         (* mode 0o700 *)
+    makeTempFile(prefix: String suffix: String): String (* mode 0o600 *)
+    withTempDirectory(A::TYPE prefix: String action: All(dir: String) A): A
+end
+```
+
+The primitives are ten runtime functions, each giving 0 or a negative status that the module turns into `error`: in
+C, `unlink`, `rmdir`, `rename`, `mkdir`, `open`, `opendir`, `symlink`, `readlink`, `chmod`, and `utimensat`; under
+wasm, WASI's `path_*` calls, where there are no permission bits, so `setMode` is `unsupported` and `copy` keeps no
+mode. Everything else is Quest. `copy` reads and writes 64 KB at a time, so a file of any size copies in bounded
+memory. `glob` follows Python's `glob.glob(recursive=True)`: `**` as a whole component is zero or more directories,
+wildcards pass over names that start with `.`, a pattern ending in `/` matches directories only, and results are
+sorted; unlike Python's, `**` never goes through a symlink, as `pathlib`'s does not. Temporary names are the prefix
+and ten random letters and digits, made with `mkdir` or an exclusive create, and tried again if taken.
+`withTempDirectory` removes its directory whether its action returns or raises. `tests/source/stdlib/os_files.quest`
+runs alike in every mode, wasmtime and node included, and `tests/python/test_files.py` checks `walk` and `glob`
+against Python's on random trees.
+

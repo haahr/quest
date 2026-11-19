@@ -6,6 +6,10 @@
       ))
     (TypedImport
       :items (
+        (TypedImportItem ('files') : 'Files')
+      ))
+    (TypedImport
+      :items (
         (TypedImportItem ('system') : 'System')
       ))
     (TypedImport
@@ -320,87 +324,53 @@
                   :target (TypedVar 'total' :type Var(Int)))
               )))
         )))
-    (TypedLetValue 'made' :type Result
-      :value (TypedApp :type Result
-        :func (TypedSelect 'wait' :type Fun(p: process.T): Result
-          :target (TypedVar 'process' :type Module 'process'))
-        :args (
-          (TypedApp :type process.T
-            :func (TypedVar 'sh' :type Fun(command: String): process.T)
-            :args (
-              (TypedString 'mktemp -d /tmp/quest-os-process.XXXXXX' :type String)
-            ))
-        )))
-    (TypedLetValue 'dir' :type String
-      :value (TypedApp :type String
-        :func (TypedSelect 'getSub' :type Fun(source: String start: Int size: Int): String
-          :target (TypedVar 'stringOp' :type Module 'stringOp'))
-        :args (
-          (TypedSelect 'stdout' :type String
-            :target (TypedVar 'made' :type Result))
-          (TypedInt 0 :type Int)
-          (TypedInfix '-' :type Int
-            :left (TypedApp :type Int
-              :func (TypedSelect 'length' :type Fun(string: String): Int
-                :target (TypedVar 'stringOp' :type Module 'stringOp'))
-              :args (
-                (TypedSelect 'stdout' :type String
-                  :target (TypedVar 'made' :type Result))
-              ))
-            :right (TypedInt 1 :type Int))
-        )))
-    (TypedLetValue 'w' :type writer.T
-      :value (TypedApp :type writer.T
-        :func (TypedSelect 'file' :type Fun(name: String): writer.T
-          :target (TypedVar 'writer' :type Module 'writer'))
-        :args (
-          (TypedInfix '<>' :type String
-            :left (TypedVar 'dir' :type String)
-            :right (TypedString '/inside.txt' :type String))
-        )))
-    (TypedExprStmt
-      :expr (TypedApp :type Ok
-        :func (TypedSelect 'close' :type Fun(writer: writer.T): Ok
-          :target (TypedVar 'writer' :type Module 'writer'))
-        :args (
-          (TypedVar 'w' :type writer.T)
-        )))
     (TypedExprStmt
       :expr (TypedApp :type Ok
         :func (TypedVar 'show' :type Fun(what: String r: process.Result): Ok)
         :args (
           (TypedString 'spawnIn' :type String)
-          (TypedApp :type Result
-            :func (TypedSelect 'wait' :type Fun(p: process.T): Result
-              :target (TypedVar 'process' :type Module 'process'))
+          (TypedApp :type process.Result
+            :func (TypedTypeApp [process.Result] :type Fun(prefix: String action: Fun(dir: String): process.Result): process.Result
+              :func (TypedSelect 'withTempDirectory' :type All(A :: TYPE) Fun(prefix: String action: Fun(dir: String): A): A
+                :target (TypedVar 'files' :type Module 'files')))
             :args (
-              (TypedApp :type process.T
-                :func (TypedSelect 'spawnIn' :type Fun(args: Array(String) dir: String): process.T
-                  :target (TypedVar 'process' :type Module 'process'))
-                :args (
-                  (TypedArray :type Array(String)
-                    :elements (
-                      (TypedString 'ls' :type String)
-                    ))
-                  (TypedVar 'dir' :type String)
-                ))
+              (TypedString 'quest-os-process.' :type String)
+              (TypedFun :params (('dir' : String)) :type Fun(dir: String): process.Result
+                :body (TypedBlock :type process.Result
+                  :bindings (
+                    (TypedLetValue 'w' :type writer.T
+                      :value (TypedApp :type writer.T
+                        :func (TypedSelect 'file' :type Fun(name: String): writer.T
+                          :target (TypedVar 'writer' :type Module 'writer'))
+                        :args (
+                          (TypedInfix '<>' :type String
+                            :left (TypedVar 'dir' :type String)
+                            :right (TypedString '/inside.txt' :type String))
+                        )))
+                    (TypedExprStmt
+                      :expr (TypedApp :type Ok
+                        :func (TypedSelect 'close' :type Fun(writer: writer.T): Ok
+                          :target (TypedVar 'writer' :type Module 'writer'))
+                        :args (
+                          (TypedVar 'w' :type writer.T)
+                        )))
+                  )
+                  :result (TypedApp :type Result
+                    :func (TypedSelect 'wait' :type Fun(p: process.T): Result
+                      :target (TypedVar 'process' :type Module 'process'))
+                    :args (
+                      (TypedApp :type process.T
+                        :func (TypedSelect 'spawnIn' :type Fun(args: Array(String) dir: String): process.T
+                          :target (TypedVar 'process' :type Module 'process'))
+                        :args (
+                          (TypedArray :type Array(String)
+                            :elements (
+                              (TypedString 'ls' :type String)
+                            ))
+                          (TypedVar 'dir' :type String)
+                        ))
+                    ))))
             ))
-        )))
-    (TypedExprStmt
-      :expr (TypedApp :type Ok
-        :func (TypedSelect 'removeFile' :type Fun(path: String): Ok
-          :target (TypedVar 'system' :type Module 'system'))
-        :args (
-          (TypedInfix '<>' :type String
-            :left (TypedVar 'dir' :type String)
-            :right (TypedString '/inside.txt' :type String))
-        )))
-    (TypedExprStmt
-      :expr (TypedApp :type Ok
-        :func (TypedSelect 'removeDirectory' :type Fun(path: String): Ok
-          :target (TypedVar 'system' :type Module 'system'))
-        :args (
-          (TypedVar 'dir' :type String)
         )))
     (TypedLetValue 'sleeper' :type process.T
       :value (TypedApp :type process.T

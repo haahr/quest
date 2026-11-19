@@ -8,6 +8,7 @@ import
     sb = util/stringBuilder : util/StringBuilder
     hashLib = util/hash : util/Hash
     os/fileStats : os/FileStats
+    os/files : os/Files
     stringOp = string : StringOp
     word : Word
     reader : Reader
@@ -107,4 +108,20 @@ export
             writer.putString(w text)
             writer.close(w)
         end
+
+    let copy(p: T q: T): Ok = files.copy(p q)
+    let copyTree(p: T q: T): Ok = files.copyTree(p q)
+    let removeTree(p: T): Ok = files.removeTree(p)
+    let move(p: T q: T): Ok = files.move(p q)
+
+    let walk(p: T visit: All(q: T stats: fileStats.T depth: Int) Bool): Ok =
+        files.walk(p fun(e: files.Entry): Bool visit(fromString(e.path) e.stats e.depth))
+
+    let glob(p: T pattern: String): vector.T(T) =
+        vector.map(:String :T files.globIn(p pattern) fun(s: String): T child(p s))
+
+    let makeTempDirectory(prefix: String): T = fromString(files.makeTempDirectory(prefix))
+    let makeTempFile(prefix: String suffix: String): T = fromString(files.makeTempFile(prefix suffix))
+    let withTempDirectory(A::TYPE prefix: String action: All(dir: T) A): A =
+        files.withTempDirectory(:A prefix fun(dir: String): A action(fromString(dir)))
 end

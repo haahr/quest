@@ -1,162 +1,282 @@
 import path = "os/path" : os/Path
 import maybe = "util/maybe" : util/Maybe
 import fileStats = "os/fileStats" : os/FileStats
+import files = "os/files" : os/Files
+import vector = "collections/vector" : collections/Vector
+import strutil = "util/strutil" : util/Strutil
 import system = "system" : System
 import writer = "writer" : Writer
 import conv = "conv" : Conv
 main {
   funs {
     fun print(s: String): Ok {
-      let %1: writer.T = member writer.output @13:45
-      let %2: String = prim <>(s, "\n") @13:59
-      let %3: Ok = call writer.putString(%1, %2) @13:28
+      let %1: writer.T = member writer.output @16:45
+      let %2: String = prim <>(s, "\n") @16:59
+      let %3: Ok = call writer.putString(%1, %2) @16:28
       return %3
     }
   }
   funs {
     fun at(s.1: String): path.T {
-      let %4: path.T = call path.fromString(s.1) @14:29
+      let %4: path.T = call path.fromString(s.1) @17:29
       return %4
     }
   }
   funs {
     fun tryOk(what: String, f: Fun(): Ok): Ok {
       join k1(r: String) {
-        let %5: String = prim <>(": ", r) @16:19
-        let %6: String = prim <>(what, %5) @16:11
-        let %7: Ok = call print(%6) @16:5
+        let %5: String = prim <>(": ", r) @19:19
+        let %6: String = prim <>(what, %5) @19:11
+        let %7: Ok = call print(%6) @19:5
         return %7
       } in {
-        let %8: Exception = member system.error @16:55
+        let %8: Exception = member system.error @19:55
         try catching (%8) {
-          do call f() @16:37
-          jump k1("ok") @16:27
+          do call f() @19:37
+          jump k1("ok") @19:27
         } handle (e: Exception) {
-          let %9: Bool = prim is(e, %8) @16:27
-          if %9 { @16:27
-            jump k1("system.error") @16:27
+          let %9: Bool = prim is(e, %8) @19:27
+          if %9 { @19:27
+            jump k1("system.error") @19:27
           } else {
-            reraise e @16:27
+            reraise e @19:27
           }
         }
       }
     }
   }
-  let root: path.T = call at("work") @18:12
-  do call path.mkdir(root, false) @19:1
-  let %10: Bool = call path.isDir(root) @20:30
-  let %11: String = call conv.bool(%10) @20:20
-  let %12: Bool = call path.isFile(root) @20:77
-  let %13: String = call conv.bool(%12) @20:67
-  let %14: String = prim <>(", isFile: ", %13) @20:51
-  let %15: String = prim <>(%11, %14) @20:20
-  let %16: String = prim <>("isDir: ", %15) @20:7
-  do call print(%16) @20:1
+  let root: path.T = call at("work") @21:12
+  do call path.mkdir(root, false) @22:1
+  let %10: Bool = call path.isDir(root) @23:30
+  let %11: String = call conv.bool(%10) @23:20
+  let %12: Bool = call path.isFile(root) @23:77
+  let %13: String = call conv.bool(%12) @23:67
+  let %14: String = prim <>(", isFile: ", %13) @23:51
+  let %15: String = prim <>(%11, %14) @23:20
+  let %16: String = prim <>("isDir: ", %15) @23:7
+  do call print(%16) @23:1
   funs {
     fun f.1(): Ok {
-      let %17: Ok = call path.mkdir(root, false) @21:31
+      let %17: Ok = call path.mkdir(root, false) @24:31
       return %17
     }
   }
-  do call tryOk("mkdir again", f.1) @21:1
+  do call tryOk("mkdir again", f.1) @24:1
   funs {
     fun f.2(): Ok {
-      let %18: path.T = call at("work/x/y") @22:52
-      let %19: Ok = call path.mkdir(%18, false) @22:41
+      let %18: path.T = call at("work/x/y") @25:52
+      let %19: Ok = call path.mkdir(%18, false) @25:41
       return %19
     }
   }
-  do call tryOk("mkdir without parents", f.2) @22:1
+  do call tryOk("mkdir without parents", f.2) @25:1
   funs {
     fun f.3(): Ok {
-      let %20: path.T = call at("work/x/y") @23:49
-      let %21: Ok = call path.mkdir(%20, true) @23:38
+      let %20: path.T = call at("work/x/y") @26:49
+      let %21: Ok = call path.mkdir(%20, true) @26:38
       return %21
     }
   }
-  do call tryOk("mkdir with parents", f.3) @23:1
-  let notes: path.T = call path.child(root, "notes.txt") @25:13
-  do call path.writeText(notes, "first line\nsecond line\n") @26:1
-  let %22: Bool = call path.exists(notes) @27:31
-  let %23: String = call conv.bool(%22) @27:21
-  let %24: Bool = call path.isFile(notes) @27:80
-  let %25: String = call conv.bool(%24) @27:70
-  let %26: String = prim <>(", isFile: ", %25) @27:54
-  let %27: String = prim <>(%23, %26) @27:21
-  let %28: String = prim <>("exists: ", %27) @27:7
-  do call print(%28) @27:1
-  let %29: String = call path.readText(notes) @28:24
-  let %30: String = prim <>(%29, "]") @28:24
-  let %31: String = prim <>("readText: [", %30) @28:7
-  do call print(%31) @28:1
-  let %32: fileStats.T = call path.stat(notes) @29:28
-  let %33: Int = tuple_field(%32, 0) @29:28
-  let %34: String = call conv.int(%33) @29:19
-  let %35: String = prim <>("size: ", %34) @29:7
-  do call print(%35) @29:1
-  do call path.writeText(notes, "replaced") @30:1
-  let %36: String = call path.readText(notes) @31:30
-  let %37: String = prim <>(%36, "]") @31:30
-  let %38: String = prim <>("readText again: [", %37) @31:7
-  do call print(%38) @31:1
-  let %39: path.T = call path.child(root, "b.txt") @32:16
-  do call path.writeText(%39, "") @32:1
+  do call tryOk("mkdir with parents", f.3) @26:1
+  let notes: path.T = call path.child(root, "notes.txt") @28:13
+  do call path.writeText(notes, "first line\nsecond line\n") @29:1
+  let %22: Bool = call path.exists(notes) @30:31
+  let %23: String = call conv.bool(%22) @30:21
+  let %24: Bool = call path.isFile(notes) @30:80
+  let %25: String = call conv.bool(%24) @30:70
+  let %26: String = prim <>(", isFile: ", %25) @30:54
+  let %27: String = prim <>(%23, %26) @30:21
+  let %28: String = prim <>("exists: ", %27) @30:7
+  do call print(%28) @30:1
+  let %29: String = call path.readText(notes) @31:24
+  let %30: String = prim <>(%29, "]") @31:24
+  let %31: String = prim <>("readText: [", %30) @31:7
+  do call print(%31) @31:1
+  let %32: fileStats.T = call path.stat(notes) @32:28
+  let %33: Int = tuple_field(%32, 0) @32:28
+  let %34: String = call conv.int(%33) @32:19
+  let %35: String = prim <>("size: ", %34) @32:7
+  do call print(%35) @32:1
+  do call path.writeText(notes, "replaced") @33:1
+  let %36: String = call path.readText(notes) @34:30
+  let %37: String = prim <>(%36, "]") @34:30
+  let %38: String = prim <>("readText again: [", %37) @34:7
+  do call print(%38) @34:1
+  let %39: path.T = call path.child(root, "b.txt") @35:16
+  do call path.writeText(%39, "") @35:1
   funs {
     fun show(entries: Array(path.T)): Ok {
-      var line: String = "" @36:9
-      let %40: Int = prim extent(entries) @37:25
-      let %41: Int = prim -(%40, 1) @37:25
-      var i: Int = 0 @37:9
-      let %42: Bool = prim <=(i, %41) @37:9
-      if %42 { @37:9
+      var line: String = "" @39:9
+      let %40: Int = prim extent(entries) @40:25
+      let %41: Int = prim -(%40, 1) @40:25
+      var i: Int = 0 @40:9
+      let %42: Bool = prim <=(i, %41) @40:9
+      if %42 { @40:9
         loop L1 {
-          let i.1: Int = i @37:9
-          let %43: path.T = index(entries, i.1) @37:85
-          let %44: String = call path.toString(%43) @37:71
-          let %45: String = prim <>(" ", %44) @37:64
-          let %46: String = prim <>(line, %45) @37:56
-          line := %46 @37:48
-          let %47: Bool = prim is(i, %41) @37:9
-          if %47 { @37:9
-            break L1 @37:9
+          let i.1: Int = i @40:9
+          let %43: path.T = index(entries, i.1) @40:85
+          let %44: String = call path.toString(%43) @40:71
+          let %45: String = prim <>(" ", %44) @40:64
+          let %46: String = prim <>(line, %45) @40:56
+          line := %46 @40:48
+          let %47: Bool = prim is(i, %41) @40:9
+          if %47 { @40:9
+            break L1 @40:9
           }
-          let %48: Int = prim +(i, 1) @37:9
-          i := %48 @37:9
+          let %48: Int = prim +(i, 1) @40:9
+          i := %48 @40:9
         }
       }
-      let %49: String = prim <>("iterDir:", line) @38:15
-      let %50: Ok = call print(%49) @38:9
+      let %49: String = prim <>("iterDir:", line) @41:15
+      let %50: Ok = call print(%49) @41:9
       return %50
     }
   }
-  let %51: Array(path.T) = call path.iterDir(root) @40:6
-  do call show(%51) @40:1
-  let %52: path.T = call path.child(root, "a.txt") @42:19
-  do call path.rename(notes, %52) @42:1
-  let %53: Array(path.T) = call path.iterDir(root) @43:6
-  do call show(%53) @43:1
-  let %54: path.T = call path.child(root, "b.txt") @44:13
-  do call path.unlink(%54) @44:1
-  let %55: Array(path.T) = call path.iterDir(root) @45:6
-  do call show(%55) @45:1
+  let %51: Array(path.T) = call path.iterDir(root) @43:6
+  do call show(%51) @43:1
+  let %52: path.T = call path.child(root, "a.txt") @45:19
+  do call path.rename(notes, %52) @45:1
+  let %53: Array(path.T) = call path.iterDir(root) @46:6
+  do call show(%53) @46:1
+  let %54: path.T = call path.child(root, "b.txt") @47:13
+  do call path.unlink(%54) @47:1
+  let %55: Array(path.T) = call path.iterDir(root) @48:6
+  do call show(%55) @48:1
   funs {
     fun f.4(): Ok {
-      let %56: path.T = call path.child(root, "b.txt") @46:46
-      let %57: Ok = call path.unlink(%56) @46:34
+      let %56: path.T = call path.child(root, "b.txt") @49:46
+      let %57: Ok = call path.unlink(%56) @49:34
       return %57
     }
   }
-  do call tryOk("unlink missing", f.4) @46:1
-  let %58: path.T = call path.child(root, "b.txt") @47:73
-  let %59: maybe.T(fileStats.T) = call path.find(%58) @47:63
-  let %60: Bool = call maybe.isNone [fileStats.T](%59) @47:37
-  let %61: String = call conv.bool(%60) @47:27
-  let %62: String = prim <>("find missing: ", %61) @47:7
-  do call print(%62) @47:1
-  let %63: path.T = call at("work/missing") @48:51
-  let %64: Bool = call path.exists(%63) @48:39
-  let %65: String = call conv.bool(%64) @48:29
-  let %66: String = prim <>("exists missing: ", %65) @48:7
-  do call print(%66) @48:1
+  do call tryOk("unlink missing", f.4) @49:1
+  let %58: path.T = call path.child(root, "b.txt") @50:73
+  let %59: maybe.T(fileStats.T) = call path.find(%58) @50:63
+  let %60: Bool = call maybe.isNone [fileStats.T](%59) @50:37
+  let %61: String = call conv.bool(%60) @50:27
+  let %62: String = prim <>("find missing: ", %61) @50:7
+  do call print(%62) @50:1
+  let %63: path.T = call at("work/missing") @51:51
+  let %64: Bool = call path.exists(%63) @51:39
+  let %65: String = call conv.bool(%64) @51:29
+  let %66: String = prim <>("exists missing: ", %65) @51:7
+  do call print(%66) @51:1
+  funs {
+    fun names(v: vector.T(path.T)): String {
+      var line.1: String = "" @56:9
+      let %67: Int = call vector.length [path.T](v) @57:25
+      let %68: Int = prim -(%67, 1) @57:25
+      var i.2: Int = 0 @57:9
+      let %69: Bool = prim <=(i.2, %68) @57:9
+      if %69 { @57:9
+        loop L2 {
+          let i.3: Int = i.2 @57:9
+          let %70: path.T = call vector.get [path.T](v, i.3) @58:50
+          let %71: String = call path.toString(%70) @58:36
+          let %72: String = prim <>(" ", %71) @58:29
+          let %73: String = prim <>(line.1, %72) @58:21
+          line.1 := %73 @58:13
+          let %74: Bool = prim is(i.2, %68) @57:9
+          if %74 { @57:9
+            break L2 @57:9
+          }
+          let %75: Int = prim +(i.2, 1) @57:9
+          i.2 := %75 @57:9
+        }
+      }
+      return line.1
+    }
+  }
+  let %76: path.T = call path.child(root, "a.txt") @62:11
+  let %77: path.T = call path.child(root, "x/y/c.txt") @62:36
+  do call path.copy(%76, %77) @62:1
+  let %78: path.T = call path.child(root, "x/y/c.txt") @63:34
+  let %79: String = call path.readText(%78) @63:20
+  let %80: String = prim <>(%79, "]") @63:20
+  let %81: String = prim <>("copy: [", %80) @63:7
+  do call print(%81) @63:1
+  let %82: vector.T(path.T) = call path.glob(root, "**/*.txt") @64:33
+  let %83: String = call names(%82) @64:27
+  let %84: String = prim <>("glob **/*.txt:", %83) @64:7
+  do call print(%84) @64:1
+  let %85: path.T = call at("work/x") @65:15
+  let %86: path.T = call at("work/z") @65:28
+  do call path.copyTree(%85, %86) @65:1
+  let %87: path.T = call at("work/z/y/c.txt") @66:11
+  let %88: path.T = call at("work/z/d.txt") @66:32
+  do call path.move(%87, %88) @66:1
+  funs {
+    fun f.5(q: path.T, stats: fileStats.T, depth: Int): Bool {
+      let %89: String = call conv.int(depth) @69:26
+      let %90: String = call path.toString(q) @69:52
+      let %91: String = prim <>(" ", %90) @69:45
+      let %92: String = prim <>(%89, %91) @69:26
+      let %93: String = prim <>("walk ", %92) @69:15
+      do call print(%93) @69:9
+      return true
+    }
+  }
+  do call path.walk(root, f.5) @67:1
+  let %94: path.T = call at("work/z") @72:17
+  do call path.removeTree(%94) @72:1
+  let %95: path.T = call at("work/z") @73:51
+  let %96: Bool = call path.exists(%95) @73:39
+  let %97: Bool = prim not(%96) @73:35
+  let %98: String = call conv.bool(%97) @73:25
+  let %99: String = prim <>("removeTree: ", %98) @73:7
+  do call print(%99) @73:1
+  join k2(r.1: String) {
+    let %100: String = prim <>("removeTree missing: ", r.1) @74:7
+    do call print(%100) @74:1
+    let dir: path.T = call path.fromString(".") @76:32
+    let kept: Tuple var dir: path.T end = tuple(dir) @76:12
+    funs {
+      fun f.6(dir.1: path.T): Bool {
+        store kept.#0 := dir.1 @79:9
+        let %101: path.T = call path.child(dir.1, "t") @80:24
+        do call path.writeText(%101, "t") @80:9
+        let %102: Bool = call path.isAbsolute(dir.1) @81:9
+        let %103: String = call path.name(dir.1) @81:52
+        let %104: Bool = call strutil.startsWith(%103, "quest-path.") @81:33
+        let %105: Bool = prim /\(%102, %104) @81:9
+        return %105
+      }
+    }
+    let made: Bool = call path.withTempDirectory [Bool]("quest-path.", f.6) @77:12
+    let %106: String = call conv.bool(made) @83:32
+    let %107: path.T = tuple_field(kept, 0) @83:90
+    let %108: Bool = call path.exists(%107) @83:78
+    let %109: Bool = prim not(%108) @83:74
+    let %110: String = call conv.bool(%109) @83:64
+    let %111: String = prim <>(", gone ", %110) @83:51
+    let %112: String = prim <>(%106, %111) @83:32
+    let %113: String = prim <>("withTempDirectory: ", %112) @83:7
+    do call print(%113) @83:1
+    let t: path.T = call path.makeTempFile("quest-path.", ".txt") @84:9
+    let %114: Bool = call path.isFile(t) @85:37
+    let %115: String = call path.toString(t) @85:72
+    let %116: Bool = call strutil.endsWith(%115, ".txt") @85:55
+    let %117: Bool = prim /\(%114, %116) @85:37
+    let %118: String = call conv.bool(%117) @85:27
+    let %119: String = prim <>("makeTempFile: ", %118) @85:7
+    do call print(%119) @85:1
+    do call path.unlink(t) @86:1
+  } in {
+    let %120: Exception(Failure) = member files.error @75:10
+    try catching (%120) {
+      let %121: path.T = call at("work/z") @74:59
+      do call path.removeTree(%121) @74:43
+      jump k2("ok") @74:33
+    } handle (e.1: Exception) {
+      let %122: Bool = prim is(e.1, %120) @74:33
+      if %122 { @74:33
+        let f.7: Failure = exception_payload(e.1) @74:33
+        let %123: String = tuple_field(f.7, 3) @75:34
+        jump k2(%123) @74:33
+      } else {
+        reraise e.1 @74:33
+      }
+    }
+  }
 }
 

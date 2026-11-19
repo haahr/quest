@@ -1,3 +1,79 @@
+function qf_f(%0: ptr, %1: val, %2: ptr, %3: int): int result narrow {
+b0(%0: ptr, %1: val, %2: ptr, %3: int):
+  @69:26
+  %4: ptr = call quest_conv_int(%3)
+  @69:52
+  %5: ptr = call qv_os__path_toString(%1)
+  @69:45
+  %6: ptr = symbol qso_1 + 8
+  @69:15
+  %9: ptr = symbol qso_2 + 8
+  @16:45
+  %11: ptr = symbol qm_writer
+  %12: ptr = load8 %11 + 0
+  %13: ptr = load8 %11 + 8
+  %14: int = load8 %13 + 40
+  %15: ptr = ptrAdd %12, %14
+  %16: ptr = load8 %15 + 0
+  @16:59
+  %17: ptr = symbol qso_3 + 8
+  %20: int = const 5
+  %21: ptr = null
+  %18: ptr = call quest_string_concat_n(%20, %9, %4, %6, %5, %17, %21, %21)
+  @16:28
+  call quest_writer_put_string(%16, %18)
+  %19: int = const 1
+  return %19
+}
+
+function qf_f_2(%0: ptr, %1: val): int result narrow {
+b0(%0: ptr, %1: val):
+  @79:9
+  %2: ptr = symbol g_kept
+  %3: ptr = load8 %2 + 0
+  %4: int = ptrToInt %3
+  %5: int = const 1
+  %6: int = and %4, %5
+  branch %6, b1(), b2()
+b1():
+  @79:9
+  %7: int = const 0
+  call quest_proxy_store(%3, %7, %1)
+  jump b3()
+b2():
+  @79:9
+  store8 %3 + 0, %1
+  call quest_barrier(%3)
+  jump b3()
+b3():
+  @80:24
+  %8: ptr = symbol qso_4 + 8
+  %9: val = call qv_os__path_child(%1, %8)
+  @80:9
+  call qv_os__path_writeText(%9, %8)
+  @81:9
+  %11: int = call qv_os__path_isAbsolute(%1) result narrow
+  %12: int = zext8 %11
+  @81:52
+  %13: ptr = call qv_os__path_name(%1)
+  @81:33
+  %14: ptr = symbol qso_5 + 8
+  %15: int = call qv_util__strutil_startsWith(%13, %14) result narrow
+  %16: int = zext8 %15
+  @81:9
+  %17: int = and %12, %16
+  return %17
+}
+
+function qf_qa_adapt(%0: ptr, %1: val): val {
+b0(%0: ptr, %1: val):
+  %3: ptr = null
+  %4: int = call qf_f_2(%3, %1) result narrow
+  %5: int = zext8 %4
+  %6: val = toVal %5
+  return %6
+}
+
 function qr_register_dicts() {
 b0():
   %0: ptr = symbol qr_roots
@@ -5,11 +81,11 @@ b0():
   %1: ptr = symbol qr_frames
   call quest_register_frames(%1)
   %2: ptr = symbol qr_funcs
-  %3: int = const 1
+  %3: int = const 3
   tail call quest_register_funcs(%2, %3)
 }
 
-function main exported(%0: int, %1: ptr) int32 [0]: int result int32 slots [240:16 8:8 48:8 240:16 8:8 48:8 240:16 8:8 48:8 8:8 8:8 8:8 8:8 8:8 8:8 240:16 8:8 48:8] {
+function main exported(%0: int, %1: ptr) int32 [0]: int result int32 slots [240:16 8:8 48:8 240:16 8:8 48:8 240:16 8:8 48:8 8:8 8:8 8:8 8:8 8:8 8:8 240:16 8:8 48:8 8:8 8:8 240:16 8:8 48:8] {
 b0(%0: int, %1: ptr):
   call quest_gc_init()
   call quest_builtins_init(%0, %1) int32 [0]
@@ -17,47 +93,50 @@ b0(%0: int, %1: ptr):
   call qv_mod_os__path_init()
   call qv_mod_util__maybe_init()
   call qv_mod_os__filestats_init()
+  call qv_mod_os__files_init()
+  call qv_mod_collections__vector_init()
+  call qv_mod_util__strutil_init()
   call qv_mod_system_init()
   call qv_mod_writer_init()
   call qv_mod_conv_init()
-  @18:12
-  %2: ptr = symbol qso_17 + 8
-  @14:29
+  @21:12
+  %2: ptr = symbol qso_24 + 8
+  @17:29
   %3: val = call qv_os__path_fromString(%2)
-  @19:1
+  @22:1
   %4: int = const 0
   call qv_os__path_mkdir(%3, %4) narrow [1]
-  @20:30
+  @23:30
   %5: int = call qv_os__path_isDir(%3) result narrow
   %6: int = zext8 %5
-  @20:20
+  @23:20
   %7: ptr = call qv_conv_bool(%6) narrow [0]
-  @20:77
+  @23:77
   %8: int = call qv_os__path_isFile(%3) result narrow
   %9: int = zext8 %8
-  @20:67
+  @23:67
   %10: ptr = call qv_conv_bool(%9) narrow [0]
-  @20:51
-  %11: ptr = symbol qso_18 + 8
-  @20:7
-  %14: ptr = symbol qso_19 + 8
-  @13:45
+  @23:51
+  %11: ptr = symbol qso_25 + 8
+  @23:7
+  %14: ptr = symbol qso_26 + 8
+  @16:45
   %16: ptr = symbol qm_writer
   %17: ptr = load8 %16 + 0
   %18: ptr = load8 %16 + 8
   %19: int = load8 %18 + 40
   %20: ptr = ptrAdd %17, %19
   %21: ptr = load8 %20 + 0
-  @13:59
-  %22: ptr = symbol qso_20 + 8
-  %462: int = const 5
-  %463: ptr = null
-  %23: ptr = call quest_string_concat_n(%462, %14, %7, %11, %10, %22, %463, %463)
-  @13:28
+  @16:59
+  %22: ptr = symbol qso_3 + 8
+  %657: int = const 5
+  %658: ptr = null
+  %23: ptr = call quest_string_concat_n(%657, %14, %7, %11, %10, %22, %658, %658)
+  @16:28
   call quest_writer_put_string(%21, %23)
-  @21:1
-  %24: ptr = symbol qso_21 + 8
-  @16:55
+  @24:1
+  %24: ptr = symbol qso_27 + 8
+  @19:55
   %26: ptr = symbol qm_system
   %27: ptr = load8 %26 + 0
   %28: ptr = load8 %26 + 8
@@ -68,7 +147,7 @@ b0(%0: int, %1: ptr):
   %33: ptr = threadLocal quest_current_exception_handler
   %34: ptr = load8 %33 + 0
   store8 %32 + 0, %34
-  store8 %32 + 24, %463
+  store8 %32 + 24, %658
   %36: ptr = slot 1
   store8 %36 + 0, %31
   store8 %32 + 8, %36
@@ -77,9 +156,9 @@ b0(%0: int, %1: ptr):
   store8 %33 + 0, %32
   try slot 0, b4(), handler b5
 b1():
-  @22:1
-  %66: ptr = symbol qso_25 + 8
-  @16:55
+  @25:1
+  %66: ptr = symbol qso_31 + 8
+  @19:55
   %68: ptr = symbol qm_system
   %69: ptr = load8 %68 + 0
   %70: ptr = load8 %68 + 8
@@ -99,38 +178,38 @@ b1():
   store8 %33 + 0, %74
   try slot 3, b11(), handler b12
 b2():
-  @13:28
-  %461: int = const 0
-  return %461
+  @86:1
+  %656: int = const 0
+  return %656
 b3(%25: ptr):
-  @16:19
-  %55: ptr = symbol qso_24 + 8
-  @13:45
+  @19:19
+  %55: ptr = symbol qso_30 + 8
+  @16:45
   %58: ptr = symbol qm_writer
   %59: ptr = load8 %58 + 0
   %60: ptr = load8 %58 + 8
   %61: int = load8 %60 + 40
   %62: ptr = ptrAdd %59, %61
   %63: ptr = load8 %62 + 0
-  @13:59
-  %64: ptr = symbol qso_20 + 8
-  %465: int = const 4
-  %466: ptr = null
-  %65: ptr = call quest_string_concat_n(%465, %24, %55, %25, %64, %466, %466, %466)
-  @13:28
+  @16:59
+  %64: ptr = symbol qso_3 + 8
+  %660: int = const 4
+  %661: ptr = null
+  %65: ptr = call quest_string_concat_n(%660, %24, %55, %25, %64, %661, %661, %661)
+  @16:28
   call quest_writer_put_string(%63, %65)
   jump b1()
 b4():
-  @21:31
+  @24:31
   %38: int = const 0
   call qv_os__path_mkdir(%3, %38) narrow [1]
-  @16:27
-  %39: ptr = symbol qso_22 + 8
+  @19:27
+  %39: ptr = symbol qso_28 + 8
   %41: ptr = load8 %32 + 0
   store8 %33 + 0, %41
   jump b3(%39)
 b5():
-  @16:27
+  @19:27
   %43: ptr = load8 %32 + 0
   store8 %33 + 0, %43
   %44: ptr = slot 2
@@ -151,17 +230,17 @@ b5():
   %53: int = peq %52, %31
   branch %53, b6(), b7()
 b6():
-  @16:27
-  %54: ptr = symbol qso_23 + 8
+  @19:27
+  %54: ptr = symbol qso_29 + 8
   jump b3(%54)
 b7():
-  @16:27
+  @19:27
   call quest_reraise(%44) memory [0:48]
   unreachable
 b8():
-  @23:1
-  %110: ptr = symbol qso_27 + 8
-  @16:55
+  @26:1
+  %110: ptr = symbol qso_33 + 8
+  @19:55
   %112: ptr = symbol qm_system
   %113: ptr = load8 %112 + 0
   %114: ptr = load8 %112 + 8
@@ -181,41 +260,41 @@ b8():
   store8 %33 + 0, %118
   try slot 6, b18(), handler b19
 b9():
-  @13:28
+  @86:1
   jump b2()
 b10(%67: ptr):
-  @16:19
-  %99: ptr = symbol qso_24 + 8
-  @13:45
+  @19:19
+  %99: ptr = symbol qso_30 + 8
+  @16:45
   %102: ptr = symbol qm_writer
   %103: ptr = load8 %102 + 0
   %104: ptr = load8 %102 + 8
   %105: int = load8 %104 + 40
   %106: ptr = ptrAdd %103, %105
   %107: ptr = load8 %106 + 0
-  @13:59
-  %108: ptr = symbol qso_20 + 8
-  %469: int = const 4
-  %470: ptr = null
-  %109: ptr = call quest_string_concat_n(%469, %66, %99, %67, %108, %470, %470, %470)
-  @13:28
+  @16:59
+  %108: ptr = symbol qso_3 + 8
+  %664: int = const 4
+  %665: ptr = null
+  %109: ptr = call quest_string_concat_n(%664, %66, %99, %67, %108, %665, %665, %665)
+  @16:28
   call quest_writer_put_string(%107, %109)
   jump b8()
 b11():
-  @22:52
-  %80: ptr = symbol qso_26 + 8
-  @14:29
+  @25:52
+  %80: ptr = symbol qso_32 + 8
+  @17:29
   %81: val = call qv_os__path_fromString(%80)
-  @22:41
+  @25:41
   %82: int = const 0
   call qv_os__path_mkdir(%81, %82) narrow [1]
-  @16:27
-  %83: ptr = symbol qso_22 + 8
+  @19:27
+  %83: ptr = symbol qso_28 + 8
   %85: ptr = load8 %74 + 0
   store8 %33 + 0, %85
   jump b10(%83)
 b12():
-  @16:27
+  @19:27
   %87: ptr = load8 %74 + 0
   store8 %33 + 0, %87
   %88: ptr = slot 5
@@ -236,157 +315,157 @@ b12():
   %97: int = peq %96, %73
   branch %97, b13(), b14()
 b13():
-  @16:27
-  %98: ptr = symbol qso_23 + 8
+  @19:27
+  %98: ptr = symbol qso_29 + 8
   jump b10(%98)
 b14():
-  @16:27
+  @19:27
   call quest_reraise(%88) memory [0:48]
   unreachable
 b15():
-  @25:13
-  %154: ptr = symbol qso_28 + 8
+  @28:13
+  %154: ptr = symbol qso_34 + 8
   %155: val = call qv_os__path_child(%3, %154)
-  @26:1
-  %156: ptr = symbol qso_29 + 8
+  @29:1
+  %156: ptr = symbol qso_35 + 8
   call qv_os__path_writeText(%155, %156)
-  @27:31
+  @30:31
   %157: int = call qv_os__path_exists(%155) result narrow
   %158: int = zext8 %157
-  @27:21
+  @30:21
   %159: ptr = call qv_conv_bool(%158) narrow [0]
-  @27:80
+  @30:80
   %160: int = call qv_os__path_isFile(%155) result narrow
   %161: int = zext8 %160
-  @27:70
+  @30:70
   %162: ptr = call qv_conv_bool(%161) narrow [0]
-  @27:54
-  %163: ptr = symbol qso_18 + 8
-  @27:7
-  %166: ptr = symbol qso_30 + 8
-  @13:45
+  @30:54
+  %163: ptr = symbol qso_25 + 8
+  @30:7
+  %166: ptr = symbol qso_36 + 8
+  @16:45
   %168: ptr = symbol qm_writer
   %169: ptr = load8 %168 + 0
   %170: ptr = load8 %168 + 8
   %171: int = load8 %170 + 40
   %172: ptr = ptrAdd %169, %171
   %173: ptr = load8 %172 + 0
-  @13:59
-  %174: ptr = symbol qso_20 + 8
-  %473: int = const 5
-  %474: ptr = null
-  %175: ptr = call quest_string_concat_n(%473, %166, %159, %163, %162, %174, %474, %474)
-  @13:28
+  @16:59
+  %174: ptr = symbol qso_3 + 8
+  %668: int = const 5
+  %669: ptr = null
+  %175: ptr = call quest_string_concat_n(%668, %166, %159, %163, %162, %174, %669, %669)
+  @16:28
   call quest_writer_put_string(%173, %175)
-  @28:24
+  @31:24
   %176: ptr = call qv_os__path_readText(%155)
-  %177: ptr = symbol qso_31 + 8
-  @28:7
-  %179: ptr = symbol qso_32 + 8
-  @13:45
+  %177: ptr = symbol qso_37 + 8
+  @31:7
+  %179: ptr = symbol qso_38 + 8
+  @16:45
   %182: ptr = load8 %168 + 0
   %183: ptr = load8 %168 + 8
   %184: int = load8 %183 + 40
   %185: ptr = ptrAdd %182, %184
   %186: ptr = load8 %185 + 0
-  @13:59
-  %476: int = const 4
-  %188: ptr = call quest_string_concat_n(%476, %179, %176, %177, %174, %474, %474, %474)
-  @13:28
+  @16:59
+  %671: int = const 4
+  %188: ptr = call quest_string_concat_n(%671, %179, %176, %177, %174, %669, %669, %669)
+  @16:28
   call quest_writer_put_string(%186, %188)
-  @29:28
+  @32:28
   %189: ptr = call qv_os__path_stat(%155)
   %190: ptr = unproxy %189
   %191: int = load8 %190 + 0
-  @29:19
+  @32:19
   %192: ptr = call quest_conv_int(%191)
-  @29:7
-  %193: ptr = symbol qso_33 + 8
-  @13:45
+  @32:7
+  %193: ptr = symbol qso_39 + 8
+  @16:45
   %196: ptr = load8 %168 + 0
   %197: ptr = load8 %168 + 8
   %198: int = load8 %197 + 40
   %199: ptr = ptrAdd %196, %198
   %200: ptr = load8 %199 + 0
-  @13:59
-  %480: int = const 3
-  %202: ptr = call quest_string_concat_n(%480, %193, %192, %174, %474, %474, %474, %474)
-  @13:28
+  @16:59
+  %675: int = const 3
+  %202: ptr = call quest_string_concat_n(%675, %193, %192, %174, %669, %669, %669, %669)
+  @16:28
   call quest_writer_put_string(%200, %202)
-  @30:1
-  %203: ptr = symbol qso_34 + 8
+  @33:1
+  %203: ptr = symbol qso_40 + 8
   call qv_os__path_writeText(%155, %203)
-  @31:30
+  @34:30
   %204: ptr = call qv_os__path_readText(%155)
-  @31:7
-  %207: ptr = symbol qso_35 + 8
-  @13:45
+  @34:7
+  %207: ptr = symbol qso_41 + 8
+  @16:45
   %210: ptr = load8 %168 + 0
   %211: ptr = load8 %168 + 8
   %212: int = load8 %211 + 40
   %213: ptr = ptrAdd %210, %212
   %214: ptr = load8 %213 + 0
-  @13:59
-  %216: ptr = call quest_string_concat_n(%476, %207, %204, %177, %174, %474, %474, %474)
-  @13:28
+  @16:59
+  %216: ptr = call quest_string_concat_n(%671, %207, %204, %177, %174, %669, %669, %669)
+  @16:28
   call quest_writer_put_string(%214, %216)
-  @32:16
-  %217: ptr = symbol qso_36 + 8
+  @35:16
+  %217: ptr = symbol qso_42 + 8
   %218: val = call qv_os__path_child(%3, %217)
-  @32:1
-  %219: ptr = symbol qso_37 + 8
+  @35:1
+  %219: ptr = symbol qso_43 + 8
   call qv_os__path_writeText(%218, %219)
-  @40:6
+  @43:6
   %220: ptr = call qv_os__path_iterDir(%3)
-  @36:9
+  @39:9
   %221: ptr = slot 9
   store8 %221 + 0, %219
-  @37:25
+  @40:25
   %224: int = load8 %220 + 0 invariant
   %225: int = const 1
   %226: int = sub %224, %225
-  @37:9
+  @40:9
   %227: ptr = slot 10
   %228: int = const 0
   store8 %227 + 0, %228
   %232: int = le %228, %226
   branch %232, b22(), b23()
 b16():
-  @13:28
+  @86:1
   jump b9()
 b17(%111: ptr):
-  @16:19
-  %143: ptr = symbol qso_24 + 8
-  @13:45
+  @19:19
+  %143: ptr = symbol qso_30 + 8
+  @16:45
   %146: ptr = symbol qm_writer
   %147: ptr = load8 %146 + 0
   %148: ptr = load8 %146 + 8
   %149: int = load8 %148 + 40
   %150: ptr = ptrAdd %147, %149
   %151: ptr = load8 %150 + 0
-  @13:59
-  %152: ptr = symbol qso_20 + 8
-  %489: int = const 4
-  %490: ptr = null
-  %153: ptr = call quest_string_concat_n(%489, %110, %143, %111, %152, %490, %490, %490)
-  @13:28
+  @16:59
+  %152: ptr = symbol qso_3 + 8
+  %684: int = const 4
+  %685: ptr = null
+  %153: ptr = call quest_string_concat_n(%684, %110, %143, %111, %152, %685, %685, %685)
+  @16:28
   call quest_writer_put_string(%151, %153)
   jump b15()
 b18():
-  @23:49
-  %124: ptr = symbol qso_26 + 8
-  @14:29
+  @26:49
+  %124: ptr = symbol qso_32 + 8
+  @17:29
   %125: val = call qv_os__path_fromString(%124)
-  @23:38
+  @26:38
   %126: int = const 1
   call qv_os__path_mkdir(%125, %126) narrow [1]
-  @16:27
-  %127: ptr = symbol qso_22 + 8
+  @19:27
+  %127: ptr = symbol qso_28 + 8
   %129: ptr = load8 %118 + 0
   store8 %33 + 0, %129
   jump b17(%127)
 b19():
-  @16:27
+  @19:27
   %131: ptr = load8 %118 + 0
   store8 %33 + 0, %131
   %132: ptr = slot 8
@@ -407,246 +486,246 @@ b19():
   %141: int = peq %140, %117
   branch %141, b20(), b21()
 b20():
-  @16:27
-  %142: ptr = symbol qso_23 + 8
+  @19:27
+  %142: ptr = symbol qso_29 + 8
   jump b17(%142)
 b21():
-  @16:27
+  @19:27
   call quest_reraise(%132) memory [0:48]
   unreachable
 b22():
-  @37:9
+  @40:9
   jump b25()
 b23():
-  @37:9
+  @40:9
   jump b24()
 b24():
-  @38:15
-  %262: ptr = symbol qso_40 + 8
+  @41:15
+  %262: ptr = symbol qso_45 + 8
   %264: ptr = load8 %221 + 0
-  @13:45
+  @16:45
   %266: ptr = symbol qm_writer
   %267: ptr = load8 %266 + 0
   %268: ptr = load8 %266 + 8
   %269: int = load8 %268 + 40
   %270: ptr = ptrAdd %267, %269
   %271: ptr = load8 %270 + 0
-  @13:59
-  %272: ptr = symbol qso_20 + 8
-  %493: int = const 3
-  %494: ptr = null
-  %273: ptr = call quest_string_concat_n(%493, %262, %264, %272, %494, %494, %494, %494)
-  @13:28
+  @16:59
+  %272: ptr = symbol qso_3 + 8
+  %688: int = const 3
+  %689: ptr = null
+  %273: ptr = call quest_string_concat_n(%688, %262, %264, %272, %689, %689, %689, %689)
+  @16:28
   call quest_writer_put_string(%271, %273)
-  @42:19
-  %274: ptr = symbol qso_41 + 8
+  @45:19
+  %274: ptr = symbol qso_46 + 8
   %275: val = call qv_os__path_child(%3, %274)
-  @42:1
+  @45:1
   call qv_os__path_rename(%155, %275)
-  @43:6
+  @46:6
   %276: ptr = call qv_os__path_iterDir(%3)
-  @36:9
+  @39:9
   %277: ptr = slot 11
-  %278: ptr = symbol qso_37 + 8
+  %278: ptr = symbol qso_43 + 8
   store8 %277 + 0, %278
-  @37:25
+  @40:25
   %280: int = load8 %276 + 0 invariant
   %281: int = const 1
   %282: int = sub %280, %281
-  @37:9
+  @40:9
   %283: ptr = slot 12
   %284: int = const 0
   store8 %283 + 0, %284
   %288: int = le %284, %282
   branch %288, b34(), b35()
 b25():
-  @37:9
+  @40:9
   %234: int = load8 %227 + 0
-  @37:85
+  @40:85
   %235: ptr = null
   %236: int = peq %220, %235
   branch %236, b28(), b27()
 b26():
-  @37:9
+  @40:9
   jump b24()
 b27():
-  @37:85
+  @40:85
   %239: int = ult %234, %224
   branch %239, b29(), b30()
 b28():
-  @37:85
-  %237: ptr = symbol qs_38
+  @40:85
+  %237: ptr = symbol qs_44
   call quest_raise_array_error_at(%237)
   unreachable
 b29():
-  @37:85
+  @40:85
   %241: int = const 8
   %242: int = mul %234, %241
   %244: ptr = ptrAdd %220, %241
   %245: ptr = ptrAdd %244, %242
   %246: val = load8 %245 + 0
-  @37:71
+  @40:71
   %247: ptr = call qv_os__path_toString(%246)
-  @37:64
-  %248: ptr = symbol qso_39 + 8
-  @37:56
+  @40:64
+  %248: ptr = symbol qso_1 + 8
+  @40:56
   %251: ptr = load8 %221 + 0
-  %498: int = const 3
-  %499: ptr = null
-  %252: ptr = call quest_string_concat_n(%498, %251, %248, %247, %499, %499, %499, %499)
-  @37:48
+  %693: int = const 3
+  %694: ptr = null
+  %252: ptr = call quest_string_concat_n(%693, %251, %248, %247, %694, %694, %694, %694)
+  @40:48
   store8 %221 + 0, %252
-  @37:9
+  @40:9
   %255: int = load8 %227 + 0
   %256: int = eq %255, %226
   branch %256, b31(), b32()
 b30():
-  @37:85
-  %240: ptr = symbol qs_38
+  @40:85
+  %240: ptr = symbol qs_44
   call quest_raise_array_error_at(%240)
   unreachable
 b31():
-  @37:9
+  @40:9
   jump b26()
 b32():
-  @37:9
+  @40:9
   jump b33()
 b33():
-  @37:9
+  @40:9
   %259: int = const 1
   %260: int = add %255, %259
   store8 %227 + 0, %260
   jump b25()
 b34():
-  @37:9
+  @40:9
   jump b37()
 b35():
-  @37:9
+  @40:9
   jump b36()
 b36():
-  @38:15
-  %318: ptr = symbol qso_40 + 8
+  @41:15
+  %318: ptr = symbol qso_45 + 8
   %320: ptr = load8 %277 + 0
-  @13:45
+  @16:45
   %322: ptr = symbol qm_writer
   %323: ptr = load8 %322 + 0
   %324: ptr = load8 %322 + 8
   %325: int = load8 %324 + 40
   %326: ptr = ptrAdd %323, %325
   %327: ptr = load8 %326 + 0
-  @13:59
-  %328: ptr = symbol qso_20 + 8
-  %503: int = const 3
-  %504: ptr = null
-  %329: ptr = call quest_string_concat_n(%503, %318, %320, %328, %504, %504, %504, %504)
-  @13:28
+  @16:59
+  %328: ptr = symbol qso_3 + 8
+  %698: int = const 3
+  %699: ptr = null
+  %329: ptr = call quest_string_concat_n(%698, %318, %320, %328, %699, %699, %699, %699)
+  @16:28
   call quest_writer_put_string(%327, %329)
-  @44:13
-  %330: ptr = symbol qso_36 + 8
+  @47:13
+  %330: ptr = symbol qso_42 + 8
   %331: val = call qv_os__path_child(%3, %330)
-  @44:1
+  @47:1
   call qv_os__path_unlink(%331)
-  @45:6
+  @48:6
   %332: ptr = call qv_os__path_iterDir(%3)
-  @36:9
+  @39:9
   %333: ptr = slot 13
-  %334: ptr = symbol qso_37 + 8
+  %334: ptr = symbol qso_43 + 8
   store8 %333 + 0, %334
-  @37:25
+  @40:25
   %336: int = load8 %332 + 0 invariant
   %337: int = const 1
   %338: int = sub %336, %337
-  @37:9
+  @40:9
   %339: ptr = slot 14
   %340: int = const 0
   store8 %339 + 0, %340
   %344: int = le %340, %338
   branch %344, b46(), b47()
 b37():
-  @37:9
+  @40:9
   %290: int = load8 %283 + 0
-  @37:85
+  @40:85
   %291: ptr = null
   %292: int = peq %276, %291
   branch %292, b40(), b39()
 b38():
-  @37:9
+  @40:9
   jump b36()
 b39():
-  @37:85
+  @40:85
   %295: int = ult %290, %280
   branch %295, b41(), b42()
 b40():
-  @37:85
-  %293: ptr = symbol qs_38
+  @40:85
+  %293: ptr = symbol qs_44
   call quest_raise_array_error_at(%293)
   unreachable
 b41():
-  @37:85
+  @40:85
   %297: int = const 8
   %298: int = mul %290, %297
   %300: ptr = ptrAdd %276, %297
   %301: ptr = ptrAdd %300, %298
   %302: val = load8 %301 + 0
-  @37:71
+  @40:71
   %303: ptr = call qv_os__path_toString(%302)
-  @37:64
-  %304: ptr = symbol qso_39 + 8
-  @37:56
+  @40:64
+  %304: ptr = symbol qso_1 + 8
+  @40:56
   %307: ptr = load8 %277 + 0
-  %508: int = const 3
-  %509: ptr = null
-  %308: ptr = call quest_string_concat_n(%508, %307, %304, %303, %509, %509, %509, %509)
-  @37:48
+  %703: int = const 3
+  %704: ptr = null
+  %308: ptr = call quest_string_concat_n(%703, %307, %304, %303, %704, %704, %704, %704)
+  @40:48
   store8 %277 + 0, %308
-  @37:9
+  @40:9
   %311: int = load8 %283 + 0
   %312: int = eq %311, %282
   branch %312, b43(), b44()
 b42():
-  @37:85
-  %296: ptr = symbol qs_38
+  @40:85
+  %296: ptr = symbol qs_44
   call quest_raise_array_error_at(%296)
   unreachable
 b43():
-  @37:9
+  @40:9
   jump b38()
 b44():
-  @37:9
+  @40:9
   jump b45()
 b45():
-  @37:9
+  @40:9
   %315: int = const 1
   %316: int = add %311, %315
   store8 %283 + 0, %316
   jump b37()
 b46():
-  @37:9
+  @40:9
   jump b49()
 b47():
-  @37:9
+  @40:9
   jump b48()
 b48():
-  @38:15
-  %374: ptr = symbol qso_40 + 8
+  @41:15
+  %374: ptr = symbol qso_45 + 8
   %376: ptr = load8 %333 + 0
-  @13:45
+  @16:45
   %378: ptr = symbol qm_writer
   %379: ptr = load8 %378 + 0
   %380: ptr = load8 %378 + 8
   %381: int = load8 %380 + 40
   %382: ptr = ptrAdd %379, %381
   %383: ptr = load8 %382 + 0
-  @13:59
-  %384: ptr = symbol qso_20 + 8
-  %513: int = const 3
-  %514: ptr = null
-  %385: ptr = call quest_string_concat_n(%513, %374, %376, %384, %514, %514, %514, %514)
-  @13:28
+  @16:59
+  %384: ptr = symbol qso_3 + 8
+  %708: int = const 3
+  %709: ptr = null
+  %385: ptr = call quest_string_concat_n(%708, %374, %376, %384, %709, %709, %709, %709)
+  @16:28
   call quest_writer_put_string(%383, %385)
-  @46:1
-  %386: ptr = symbol qso_42 + 8
-  @16:55
+  @49:1
+  %386: ptr = symbol qso_47 + 8
+  @19:55
   %388: ptr = symbol qm_system
   %389: ptr = load8 %388 + 0
   %390: ptr = load8 %388 + 8
@@ -656,7 +735,7 @@ b48():
   %394: ptr = slot 15
   %396: ptr = load8 %33 + 0
   store8 %394 + 0, %396
-  store8 %394 + 24, %514
+  store8 %394 + 24, %709
   %398: ptr = slot 16
   store8 %398 + 0, %393
   store8 %394 + 8, %398
@@ -665,147 +744,190 @@ b48():
   store8 %33 + 0, %394
   try slot 15, b61(), handler b62
 b49():
-  @37:9
+  @40:9
   %346: int = load8 %339 + 0
-  @37:85
+  @40:85
   %347: ptr = null
   %348: int = peq %332, %347
   branch %348, b52(), b51()
 b50():
-  @37:9
+  @40:9
   jump b48()
 b51():
-  @37:85
+  @40:85
   %351: int = ult %346, %336
   branch %351, b53(), b54()
 b52():
-  @37:85
-  %349: ptr = symbol qs_38
+  @40:85
+  %349: ptr = symbol qs_44
   call quest_raise_array_error_at(%349)
   unreachable
 b53():
-  @37:85
+  @40:85
   %353: int = const 8
   %354: int = mul %346, %353
   %356: ptr = ptrAdd %332, %353
   %357: ptr = ptrAdd %356, %354
   %358: val = load8 %357 + 0
-  @37:71
+  @40:71
   %359: ptr = call qv_os__path_toString(%358)
-  @37:64
-  %360: ptr = symbol qso_39 + 8
-  @37:56
+  @40:64
+  %360: ptr = symbol qso_1 + 8
+  @40:56
   %363: ptr = load8 %333 + 0
-  %518: int = const 3
-  %519: ptr = null
-  %364: ptr = call quest_string_concat_n(%518, %363, %360, %359, %519, %519, %519, %519)
-  @37:48
+  %713: int = const 3
+  %714: ptr = null
+  %364: ptr = call quest_string_concat_n(%713, %363, %360, %359, %714, %714, %714, %714)
+  @40:48
   store8 %333 + 0, %364
-  @37:9
+  @40:9
   %367: int = load8 %339 + 0
   %368: int = eq %367, %338
   branch %368, b55(), b56()
 b54():
-  @37:85
-  %352: ptr = symbol qs_38
+  @40:85
+  %352: ptr = symbol qs_44
   call quest_raise_array_error_at(%352)
   unreachable
 b55():
-  @37:9
+  @40:9
   jump b50()
 b56():
-  @37:9
+  @40:9
   jump b57()
 b57():
-  @37:9
+  @40:9
   %371: int = const 1
   %372: int = add %367, %371
   store8 %339 + 0, %372
   jump b49()
 b58():
-  @47:73
-  %429: ptr = symbol qso_36 + 8
+  @50:73
+  %429: ptr = symbol qso_42 + 8
   %430: val = call qv_os__path_child(%3, %429)
-  @47:63
+  @50:63
   %431: val = call qv_os__path_find(%430)
-  @47:37
+  @50:37
   %432: ptr = symbol quest_type_QTuple_Int_Int_QOption_d_dd7288ab83960a95_ab90b0e722f362ed
   %433: int = call qv_util__maybe_isNone(%432, %431) result narrow
   %434: int = zext8 %433
-  @47:27
+  @50:27
   %435: ptr = call qv_conv_bool(%434) narrow [0]
-  @47:7
-  %436: ptr = symbol qso_43 + 8
-  @13:45
+  @50:7
+  %436: ptr = symbol qso_48 + 8
+  @16:45
   %438: ptr = symbol qm_writer
   %439: ptr = load8 %438 + 0
   %440: ptr = load8 %438 + 8
   %441: int = load8 %440 + 40
   %442: ptr = ptrAdd %439, %441
   %443: ptr = load8 %442 + 0
-  @13:59
-  %444: ptr = symbol qso_20 + 8
-  %523: int = const 3
-  %524: ptr = null
-  %445: ptr = call quest_string_concat_n(%523, %436, %435, %444, %524, %524, %524, %524)
-  @13:28
+  @16:59
+  %444: ptr = symbol qso_3 + 8
+  %718: int = const 3
+  %719: ptr = null
+  %445: ptr = call quest_string_concat_n(%718, %436, %435, %444, %719, %719, %719, %719)
+  @16:28
   call quest_writer_put_string(%443, %445)
-  @48:51
-  %446: ptr = symbol qso_44 + 8
-  @14:29
+  @51:51
+  %446: ptr = symbol qso_49 + 8
+  @17:29
   %447: val = call qv_os__path_fromString(%446)
-  @48:39
+  @51:39
   %448: int = call qv_os__path_exists(%447) result narrow
   %449: int = zext8 %448
-  @48:29
+  @51:29
   %450: ptr = call qv_conv_bool(%449) narrow [0]
-  @48:7
-  %451: ptr = symbol qso_45 + 8
-  @13:45
+  @51:7
+  %451: ptr = symbol qso_50 + 8
+  @16:45
   %454: ptr = load8 %438 + 0
   %455: ptr = load8 %438 + 8
   %456: int = load8 %455 + 40
   %457: ptr = ptrAdd %454, %456
   %458: ptr = load8 %457 + 0
-  @13:59
-  %460: ptr = call quest_string_concat_n(%523, %451, %450, %444, %524, %524, %524, %524)
-  @13:28
+  @16:59
+  %460: ptr = call quest_string_concat_n(%718, %451, %450, %444, %719, %719, %719, %719)
+  @16:28
   call quest_writer_put_string(%458, %460)
-  jump b59()
+  @62:11
+  %461: ptr = symbol qso_46 + 8
+  %462: val = call qv_os__path_child(%3, %461)
+  @62:36
+  %463: ptr = symbol qso_51 + 8
+  %464: val = call qv_os__path_child(%3, %463)
+  @62:1
+  call qv_os__path_copy(%462, %464)
+  @63:34
+  %466: val = call qv_os__path_child(%3, %463)
+  @63:20
+  %467: ptr = call qv_os__path_readText(%466)
+  %468: ptr = symbol qso_37 + 8
+  @63:7
+  %470: ptr = symbol qso_52 + 8
+  @16:45
+  %473: ptr = load8 %438 + 0
+  %474: ptr = load8 %438 + 8
+  %475: int = load8 %474 + 40
+  %476: ptr = ptrAdd %473, %475
+  %477: ptr = load8 %476 + 0
+  @16:59
+  %728: int = const 4
+  %479: ptr = call quest_string_concat_n(%728, %470, %467, %468, %444, %719, %719, %719)
+  @16:28
+  call quest_writer_put_string(%477, %479)
+  @64:33
+  %480: ptr = symbol qso_53 + 8
+  %481: val = call qv_os__path_glob(%3, %480)
+  @56:9
+  %482: ptr = slot 18
+  %483: ptr = symbol qso_43 + 8
+  store8 %482 + 0, %483
+  @57:25
+  %485: ptr = symbol quest_type_opaque_14989e5cd53b47f9
+  %486: int = call qv_collections__vector_length(%485, %481)
+  %487: int = const 1
+  %488: int = sub %486, %487
+  @57:9
+  %489: ptr = slot 19
+  %490: int = const 0
+  store8 %489 + 0, %490
+  %494: int = le %490, %488
+  branch %494, b65(), b66()
 b59():
-  @13:28
+  @86:1
   jump b16()
 b60(%387: ptr):
-  @16:19
-  %418: ptr = symbol qso_24 + 8
-  @13:45
+  @19:19
+  %418: ptr = symbol qso_30 + 8
+  @16:45
   %421: ptr = symbol qm_writer
   %422: ptr = load8 %421 + 0
   %423: ptr = load8 %421 + 8
   %424: int = load8 %423 + 40
   %425: ptr = ptrAdd %422, %424
   %426: ptr = load8 %425 + 0
-  @13:59
-  %427: ptr = symbol qso_20 + 8
-  %533: int = const 4
-  %534: ptr = null
-  %428: ptr = call quest_string_concat_n(%533, %386, %418, %387, %427, %534, %534, %534)
-  @13:28
+  @16:59
+  %427: ptr = symbol qso_3 + 8
+  %732: int = const 4
+  %733: ptr = null
+  %428: ptr = call quest_string_concat_n(%732, %386, %418, %387, %427, %733, %733, %733)
+  @16:28
   call quest_writer_put_string(%426, %428)
   jump b58()
 b61():
-  @46:46
-  %400: ptr = symbol qso_36 + 8
+  @49:46
+  %400: ptr = symbol qso_42 + 8
   %401: val = call qv_os__path_child(%3, %400)
-  @46:34
+  @49:34
   call qv_os__path_unlink(%401)
-  @16:27
-  %402: ptr = symbol qso_22 + 8
+  @19:27
+  %402: ptr = symbol qso_28 + 8
   %404: ptr = load8 %394 + 0
   store8 %33 + 0, %404
   jump b60(%402)
 b62():
-  @16:27
+  @19:27
   %406: ptr = load8 %394 + 0
   store8 %33 + 0, %406
   %407: ptr = slot 17
@@ -826,93 +948,409 @@ b62():
   %416: int = peq %415, %393
   branch %416, b63(), b64()
 b63():
-  @16:27
-  %417: ptr = symbol qso_23 + 8
+  @19:27
+  %417: ptr = symbol qso_29 + 8
   jump b60(%417)
 b64():
-  @16:27
+  @19:27
   call quest_reraise(%407) memory [0:48]
+  unreachable
+b65():
+  @57:9
+  jump b68()
+b66():
+  @57:9
+  jump b67()
+b67():
+  @64:27
+  %515: ptr = load8 %482 + 0
+  @64:7
+  %516: ptr = symbol qso_54 + 8
+  @16:45
+  %518: ptr = symbol qm_writer
+  %519: ptr = load8 %518 + 0
+  %520: ptr = load8 %518 + 8
+  %521: int = load8 %520 + 40
+  %522: ptr = ptrAdd %519, %521
+  %523: ptr = load8 %522 + 0
+  @16:59
+  %524: ptr = symbol qso_3 + 8
+  %736: int = const 3
+  %737: ptr = null
+  %525: ptr = call quest_string_concat_n(%736, %516, %515, %524, %737, %737, %737, %737)
+  @16:28
+  call quest_writer_put_string(%523, %525)
+  @65:15
+  %526: ptr = symbol qso_55 + 8
+  @17:29
+  %527: val = call qv_os__path_fromString(%526)
+  @65:28
+  %528: ptr = symbol qso_56 + 8
+  @17:29
+  %529: val = call qv_os__path_fromString(%528)
+  @65:1
+  call qv_os__path_copyTree(%527, %529)
+  @66:11
+  %530: ptr = symbol qso_57 + 8
+  @17:29
+  %531: val = call qv_os__path_fromString(%530)
+  @66:32
+  %532: ptr = symbol qso_58 + 8
+  @17:29
+  %533: val = call qv_os__path_fromString(%532)
+  @66:1
+  call qv_os__path_move(%531, %533)
+  %534: ptr = symbol qf_f_closure
+  @67:1
+  call qv_os__path_walk(%3, %534)
+  @17:29
+  %536: val = call qv_os__path_fromString(%528)
+  @72:1
+  call qv_os__path_removeTree(%536)
+  @17:29
+  %538: val = call qv_os__path_fromString(%528)
+  @73:39
+  %539: int = call qv_os__path_exists(%538) result narrow
+  %540: int = zext8 %539
+  @73:35
+  %541: int = const 1
+  %542: int = xor %540, %541
+  @73:25
+  %543: ptr = call qv_conv_bool(%542) narrow [0]
+  @73:7
+  %544: ptr = symbol qso_59 + 8
+  @16:45
+  %547: ptr = load8 %518 + 0
+  %548: ptr = load8 %518 + 8
+  %549: int = load8 %548 + 40
+  %550: ptr = ptrAdd %547, %549
+  %551: ptr = load8 %550 + 0
+  @16:59
+  %553: ptr = call quest_string_concat_n(%736, %544, %543, %524, %737, %737, %737, %737)
+  @16:28
+  call quest_writer_put_string(%551, %553)
+  @75:10
+  %555: ptr = symbol qm_os__files
+  %556: ptr = load8 %555 + 0
+  %557: ptr = load8 %555 + 8
+  %558: int = load8 %557 + 32
+  %559: ptr = ptrAdd %556, %558
+  %560: ptr = load8 %559 + 0
+  %561: ptr = slot 20
+  %563: ptr = load8 %33 + 0
+  store8 %561 + 0, %563
+  store8 %561 + 24, %737
+  %565: ptr = slot 21
+  store8 %565 + 0, %560
+  store8 %561 + 8, %565
+  store8 %561 + 16, %541
+  store8 %33 + 0, %561
+  try slot 20, b75(), handler b76
+b68():
+  @57:9
+  %496: int = load8 %489 + 0
+  @58:50
+  %497: ptr = symbol quest_type_opaque_14989e5cd53b47f9
+  %498: val = call qv_collections__vector_get(%497, %481, %496)
+  @58:36
+  %499: ptr = call qv_os__path_toString(%498)
+  @58:29
+  %500: ptr = symbol qso_1 + 8
+  @58:21
+  %503: ptr = load8 %482 + 0
+  %746: int = const 3
+  %747: ptr = null
+  %504: ptr = call quest_string_concat_n(%746, %503, %500, %499, %747, %747, %747, %747)
+  @58:13
+  store8 %482 + 0, %504
+  @57:9
+  %507: int = load8 %489 + 0
+  %508: int = eq %507, %488
+  branch %508, b70(), b71()
+b69():
+  @57:9
+  jump b67()
+b70():
+  @57:9
+  jump b69()
+b71():
+  @57:9
+  jump b72()
+b72():
+  @57:9
+  %511: int = const 1
+  %512: int = add %507, %511
+  store8 %489 + 0, %512
+  jump b68()
+b73(%554: ptr):
+  @74:7
+  %590: ptr = symbol qso_60 + 8
+  @16:45
+  %592: ptr = symbol qm_writer
+  %593: ptr = load8 %592 + 0
+  %594: ptr = load8 %592 + 8
+  %595: int = load8 %594 + 40
+  %596: ptr = ptrAdd %593, %595
+  %597: ptr = load8 %596 + 0
+  @16:59
+  %598: ptr = symbol qso_3 + 8
+  %751: int = const 3
+  %752: ptr = null
+  %599: ptr = call quest_string_concat_n(%751, %590, %554, %598, %752, %752, %752, %752)
+  @16:28
+  call quest_writer_put_string(%597, %599)
+  @76:32
+  %600: ptr = symbol qso_61 + 8
+  %601: val = call qv_os__path_fromString(%600)
+  @76:12
+  %602: int = const 8
+  %603: ptr = symbol quest_layout_QTuple_QVal
+  %604: ptr = call quest_alloc(%602, %603)
+  store8 %604 + 0, %601
+  %605: ptr = symbol g_kept
+  store8 %605 + 0, %604
+  %607: ptr = symbol qf_qa_adapt_closure
+  @77:12
+  %608: ptr = symbol quest_type_Bool
+  %609: ptr = symbol qso_5 + 8
+  %610: val = call qv_os__path_withTempDirectory(%608, %609, %607)
+  %611: int = fromVal %610
+  %612: int = zext8 %611
+  @83:32
+  %613: ptr = call qv_conv_bool(%612) narrow [0]
+  @83:90
+  %615: ptr = load8 %605 + 0
+  %616: val = load8 %615 + 0
+  @83:78
+  %617: int = call qv_os__path_exists(%616) result narrow
+  %618: int = zext8 %617
+  @83:74
+  %619: int = const 1
+  %620: int = xor %618, %619
+  @83:64
+  %621: ptr = call qv_conv_bool(%620) narrow [0]
+  @83:51
+  %622: ptr = symbol qso_62 + 8
+  @83:7
+  %625: ptr = symbol qso_63 + 8
+  @16:45
+  %628: ptr = load8 %592 + 0
+  %629: ptr = load8 %592 + 8
+  %630: int = load8 %629 + 40
+  %631: ptr = ptrAdd %628, %630
+  %632: ptr = load8 %631 + 0
+  @16:59
+  %756: int = const 5
+  %634: ptr = call quest_string_concat_n(%756, %625, %613, %622, %621, %598, %752, %752)
+  @16:28
+  call quest_writer_put_string(%632, %634)
+  @84:9
+  %636: ptr = symbol qso_64 + 8
+  %637: val = call qv_os__path_makeTempFile(%609, %636)
+  @85:37
+  %638: int = call qv_os__path_isFile(%637) result narrow
+  %639: int = zext8 %638
+  @85:72
+  %640: ptr = call qv_os__path_toString(%637)
+  @85:55
+  %642: int = call qv_util__strutil_endsWith(%640, %636) result narrow
+  %643: int = zext8 %642
+  @85:37
+  %644: int = and %639, %643
+  @85:27
+  %645: ptr = call qv_conv_bool(%644) narrow [0]
+  @85:7
+  %646: ptr = symbol qso_65 + 8
+  @16:45
+  %649: ptr = load8 %592 + 0
+  %650: ptr = load8 %592 + 8
+  %651: int = load8 %650 + 40
+  %652: ptr = ptrAdd %649, %651
+  %653: ptr = load8 %652 + 0
+  @16:59
+  %655: ptr = call quest_string_concat_n(%751, %646, %645, %598, %752, %752, %752, %752)
+  @16:28
+  call quest_writer_put_string(%653, %655)
+  @86:1
+  call qv_os__path_unlink(%637)
+  jump b74()
+b74():
+  @86:1
+  jump b59()
+b75():
+  @74:59
+  %567: ptr = symbol qso_56 + 8
+  @17:29
+  %568: val = call qv_os__path_fromString(%567)
+  @74:43
+  call qv_os__path_removeTree(%568)
+  @74:33
+  %569: ptr = symbol qso_28 + 8
+  %571: ptr = load8 %561 + 0
+  store8 %33 + 0, %571
+  jump b73(%569)
+b76():
+  @74:33
+  %573: ptr = load8 %561 + 0
+  store8 %33 + 0, %573
+  %574: ptr = slot 22
+  %575: ptr = threadLocal quest_current_exception
+  %576: int = load8 %575 + 0
+  store8 %574 + 0, %576
+  %577: int = load8 %575 + 8
+  store8 %574 + 8, %577
+  %578: int = load8 %575 + 16
+  store8 %574 + 16, %578
+  %579: int = load8 %575 + 24
+  store8 %574 + 24, %579
+  %580: int = load8 %575 + 32
+  store8 %574 + 32, %580
+  %581: int = load8 %575 + 40
+  store8 %574 + 40, %581
+  %582: ptr = load8 %574 + 0
+  %583: int = peq %582, %560
+  branch %583, b77(), b78()
+b77():
+  @74:33
+  %584: val = load8 %574 + 8
+  %585: ptr = fromVal %584
+  @75:34
+  %586: ptr = unproxy %585
+  %587: int = const 24
+  %588: ptr = ptrAdd %586, %587
+  %589: ptr = load8 %588 + 0
+  @74:33
+  jump b73(%589)
+b78():
+  @74:33
+  call quest_reraise(%574) memory [0:48]
   unreachable
 }
 
-data qs_1 text "size"
-data qs_2 text "mode"
-data qs_3 text "kind"
-data qs_4 text "accessTime"
-data qs_5 text "modifiedTime"
-data qs_6 text "changeTime"
-data qs_7 text "accessNs"
-data qs_8 text "modifiedNs"
-data qs_9 text "changeNs"
-data qs_10 text "Tuple size: Int mode: Int kind: Option file directory symlink other end accessTi..."
-data qtup_desc_QTuple_Int_Int_QOption_d_dd7288ab83960a95_ab90b0e722f362ed words [0, 0, 9, qs_1, quest_type_Int, 0, 0, qs_2, quest_type_Int, 8, 0, qs_3, quest_type_QOption_directory_file_other_symlink_c633e9816000c121, 16, 0, qs_4, quest_type_Real, 24, 0, qs_5, quest_type_Real, 32, 0, qs_6, quest_type_Real, 40, 0, qs_7, quest_type_Int, 48, 0, qs_8, quest_type_Int, 56, 0, qs_9, quest_type_Int, 64, 0]
-data quest_type_QTuple_Int_Int_QOption_d_dd7288ab83960a95_ab90b0e722f362ed words [6, qs_10, 72, 8, quest_is_subtype, qtup_desc_QTuple_Int_Int_QOption_d_dd7288ab83960a95_ab90b0e722f362ed]
-data qs_11 text "directory"
-data qs_12 text "file"
-data qs_13 text "other"
-data qs_14 text "symlink"
-data qs_15 text "Option directory file other symlink end"
-data qvar_desc_QOption_directory_file_other_symlink_c633e9816000c121 words [4, qs_11, 0, 0, 0, qs_12, 0, 1, 0, qs_13, 0, 2, 0, qs_14, 0, 3, 0]
-data quest_type_QOption_directory_file_other_symlink_c633e9816000c121 words [9, qs_15, 8, 8, quest_is_subtype, qvar_desc_QOption_directory_file_other_symlink_c633e9816000c121]
-data qs_16 text "<main>"
+data qs_1 text " "
+data qso_1 words [quest_layout_string + ~9223372036854775808, 1, qs_1]
+data qs_2 text "walk "
+data qso_2 words [quest_layout_string + ~9223372036854775808, 5, qs_2]
+data qs_3 text "\n"
+data qso_3 words [quest_layout_string + ~9223372036854775808, 1, qs_3]
+data g_kept writable zero 8
+data qs_4 text "t"
+data qso_4 words [quest_layout_string + ~9223372036854775808, 1, qs_4]
+data qs_5 text "quest-path."
+data qso_5 words [quest_layout_string + ~9223372036854775808, 11, qs_5]
+data qf_f_closure words [qf_f, 0]
+data qf_f_2_closure words [qf_f_2, 0]
+data qf_qa_adapt_closure words [qf_qa_adapt, 0]
+data qs_6 text "os/path.T"
+data quest_type_opaque_14989e5cd53b47f9 words [14, qs_6, 8, 8, quest_is_subtype, 0]
+data qs_7 text "size"
+data qs_8 text "mode"
+data qs_9 text "kind"
+data qs_10 text "accessTime"
+data qs_11 text "modifiedTime"
+data qs_12 text "changeTime"
+data qs_13 text "accessNs"
+data qs_14 text "modifiedNs"
+data qs_15 text "changeNs"
+data qs_16 text "Tuple size: Int mode: Int kind: Option file directory symlink other end accessTi..."
+data qtup_desc_QTuple_Int_Int_QOption_d_dd7288ab83960a95_ab90b0e722f362ed words [0, 0, 9, qs_7, quest_type_Int, 0, 0, qs_8, quest_type_Int, 8, 0, qs_9, quest_type_QOption_directory_file_other_symlink_c633e9816000c121, 16, 0, qs_10, quest_type_Real, 24, 0, qs_11, quest_type_Real, 32, 0, qs_12, quest_type_Real, 40, 0, qs_13, quest_type_Int, 48, 0, qs_14, quest_type_Int, 56, 0, qs_15, quest_type_Int, 64, 0]
+data quest_type_QTuple_Int_Int_QOption_d_dd7288ab83960a95_ab90b0e722f362ed words [6, qs_16, 72, 8, quest_is_subtype, qtup_desc_QTuple_Int_Int_QOption_d_dd7288ab83960a95_ab90b0e722f362ed]
+data qs_17 text "directory"
+data qs_18 text "file"
+data qs_19 text "other"
+data qs_20 text "symlink"
+data qs_21 text "Option directory file other symlink end"
+data qvar_desc_QOption_directory_file_other_symlink_c633e9816000c121 words [4, qs_17, 0, 0, 0, qs_18, 0, 1, 0, qs_19, 0, 2, 0, qs_20, 0, 3, 0]
+data quest_type_QOption_directory_file_other_symlink_c633e9816000c121 words [9, qs_21, 8, 8, quest_is_subtype, qvar_desc_QOption_directory_file_other_symlink_c633e9816000c121]
+data qs_22 text "<anon>"
+data qs_23 text "<main>"
 data qr_frames words [0]
-data qr_funcs words [main, qs_16]
-data qs_17 text "work"
-data qso_17 words [quest_layout_string + ~9223372036854775808, 4, qs_17]
-data qs_18 text ", isFile: "
-data qso_18 words [quest_layout_string + ~9223372036854775808, 10, qs_18]
-data qs_19 text "isDir: "
-data qso_19 words [quest_layout_string + ~9223372036854775808, 7, qs_19]
-data qs_20 text "\n"
-data qso_20 words [quest_layout_string + ~9223372036854775808, 1, qs_20]
-data qs_21 text "mkdir again"
-data qso_21 words [quest_layout_string + ~9223372036854775808, 11, qs_21]
-data qs_22 text "ok"
-data qso_22 words [quest_layout_string + ~9223372036854775808, 2, qs_22]
-data qs_23 text "system.error"
-data qso_23 words [quest_layout_string + ~9223372036854775808, 12, qs_23]
-data qs_24 text ": "
-data qso_24 words [quest_layout_string + ~9223372036854775808, 2, qs_24]
-data qs_25 text "mkdir without parents"
-data qso_25 words [quest_layout_string + ~9223372036854775808, 21, qs_25]
-data qs_26 text "work/x/y"
-data qso_26 words [quest_layout_string + ~9223372036854775808, 8, qs_26]
-data qs_27 text "mkdir with parents"
-data qso_27 words [quest_layout_string + ~9223372036854775808, 18, qs_27]
-data qs_28 text "notes.txt"
-data qso_28 words [quest_layout_string + ~9223372036854775808, 9, qs_28]
-data qs_29 text "first line\nsecond line\n"
-data qso_29 words [quest_layout_string + ~9223372036854775808, 23, qs_29]
-data qs_30 text "exists: "
-data qso_30 words [quest_layout_string + ~9223372036854775808, 8, qs_30]
-data qs_31 text "]"
-data qso_31 words [quest_layout_string + ~9223372036854775808, 1, qs_31]
-data qs_32 text "readText: ["
-data qso_32 words [quest_layout_string + ~9223372036854775808, 11, qs_32]
-data qs_33 text "size: "
-data qso_33 words [quest_layout_string + ~9223372036854775808, 6, qs_33]
-data qs_34 text "replaced"
-data qso_34 words [quest_layout_string + ~9223372036854775808, 8, qs_34]
-data qs_35 text "readText again: ["
-data qso_35 words [quest_layout_string + ~9223372036854775808, 17, qs_35]
-data qs_36 text "b.txt"
-data qso_36 words [quest_layout_string + ~9223372036854775808, 5, qs_36]
-data qs_37 text ""
-data qso_37 words [quest_layout_string + ~9223372036854775808, 0, qs_37]
-data qs_38 text "tests/source/stdlib/path_filesystem.quest:37:85"
-data qs_39 text " "
-data qso_39 words [quest_layout_string + ~9223372036854775808, 1, qs_39]
-data qs_40 text "iterDir:"
+data qr_funcs words [qf_f, qs_22, qf_f_2, qs_22, main, qs_23]
+data qs_24 text "work"
+data qso_24 words [quest_layout_string + ~9223372036854775808, 4, qs_24]
+data qs_25 text ", isFile: "
+data qso_25 words [quest_layout_string + ~9223372036854775808, 10, qs_25]
+data qs_26 text "isDir: "
+data qso_26 words [quest_layout_string + ~9223372036854775808, 7, qs_26]
+data qs_27 text "mkdir again"
+data qso_27 words [quest_layout_string + ~9223372036854775808, 11, qs_27]
+data qs_28 text "ok"
+data qso_28 words [quest_layout_string + ~9223372036854775808, 2, qs_28]
+data qs_29 text "system.error"
+data qso_29 words [quest_layout_string + ~9223372036854775808, 12, qs_29]
+data qs_30 text ": "
+data qso_30 words [quest_layout_string + ~9223372036854775808, 2, qs_30]
+data qs_31 text "mkdir without parents"
+data qso_31 words [quest_layout_string + ~9223372036854775808, 21, qs_31]
+data qs_32 text "work/x/y"
+data qso_32 words [quest_layout_string + ~9223372036854775808, 8, qs_32]
+data qs_33 text "mkdir with parents"
+data qso_33 words [quest_layout_string + ~9223372036854775808, 18, qs_33]
+data qs_34 text "notes.txt"
+data qso_34 words [quest_layout_string + ~9223372036854775808, 9, qs_34]
+data qs_35 text "first line\nsecond line\n"
+data qso_35 words [quest_layout_string + ~9223372036854775808, 23, qs_35]
+data qs_36 text "exists: "
+data qso_36 words [quest_layout_string + ~9223372036854775808, 8, qs_36]
+data qs_37 text "]"
+data qso_37 words [quest_layout_string + ~9223372036854775808, 1, qs_37]
+data qs_38 text "readText: ["
+data qso_38 words [quest_layout_string + ~9223372036854775808, 11, qs_38]
+data qs_39 text "size: "
+data qso_39 words [quest_layout_string + ~9223372036854775808, 6, qs_39]
+data qs_40 text "replaced"
 data qso_40 words [quest_layout_string + ~9223372036854775808, 8, qs_40]
-data qs_41 text "a.txt"
-data qso_41 words [quest_layout_string + ~9223372036854775808, 5, qs_41]
-data qs_42 text "unlink missing"
-data qso_42 words [quest_layout_string + ~9223372036854775808, 14, qs_42]
-data qs_43 text "find missing: "
-data qso_43 words [quest_layout_string + ~9223372036854775808, 14, qs_43]
-data qs_44 text "work/missing"
-data qso_44 words [quest_layout_string + ~9223372036854775808, 12, qs_44]
-data qs_45 text "exists missing: "
-data qso_45 words [quest_layout_string + ~9223372036854775808, 16, qs_45]
-data qr_roots words [0, 0]
+data qs_41 text "readText again: ["
+data qso_41 words [quest_layout_string + ~9223372036854775808, 17, qs_41]
+data qs_42 text "b.txt"
+data qso_42 words [quest_layout_string + ~9223372036854775808, 5, qs_42]
+data qs_43 text ""
+data qso_43 words [quest_layout_string + ~9223372036854775808, 0, qs_43]
+data qs_44 text "tests/source/stdlib/path_filesystem.quest:40:85"
+data qs_45 text "iterDir:"
+data qso_45 words [quest_layout_string + ~9223372036854775808, 8, qs_45]
+data qs_46 text "a.txt"
+data qso_46 words [quest_layout_string + ~9223372036854775808, 5, qs_46]
+data qs_47 text "unlink missing"
+data qso_47 words [quest_layout_string + ~9223372036854775808, 14, qs_47]
+data qs_48 text "find missing: "
+data qso_48 words [quest_layout_string + ~9223372036854775808, 14, qs_48]
+data qs_49 text "work/missing"
+data qso_49 words [quest_layout_string + ~9223372036854775808, 12, qs_49]
+data qs_50 text "exists missing: "
+data qso_50 words [quest_layout_string + ~9223372036854775808, 16, qs_50]
+data qs_51 text "x/y/c.txt"
+data qso_51 words [quest_layout_string + ~9223372036854775808, 9, qs_51]
+data qs_52 text "copy: ["
+data qso_52 words [quest_layout_string + ~9223372036854775808, 7, qs_52]
+data qs_53 text "**/*.txt"
+data qso_53 words [quest_layout_string + ~9223372036854775808, 8, qs_53]
+data qs_54 text "glob **/*.txt:"
+data qso_54 words [quest_layout_string + ~9223372036854775808, 14, qs_54]
+data qs_55 text "work/x"
+data qso_55 words [quest_layout_string + ~9223372036854775808, 6, qs_55]
+data qs_56 text "work/z"
+data qso_56 words [quest_layout_string + ~9223372036854775808, 6, qs_56]
+data qs_57 text "work/z/y/c.txt"
+data qso_57 words [quest_layout_string + ~9223372036854775808, 14, qs_57]
+data qs_58 text "work/z/d.txt"
+data qso_58 words [quest_layout_string + ~9223372036854775808, 12, qs_58]
+data qs_59 text "removeTree: "
+data qso_59 words [quest_layout_string + ~9223372036854775808, 12, qs_59]
+data qs_60 text "removeTree missing: "
+data qso_60 words [quest_layout_string + ~9223372036854775808, 20, qs_60]
+data qs_61 text "."
+data qso_61 words [quest_layout_string + ~9223372036854775808, 1, qs_61]
+data qs_62 text ", gone "
+data qso_62 words [quest_layout_string + ~9223372036854775808, 7, qs_62]
+data qs_63 text "withTempDirectory: "
+data qso_63 words [quest_layout_string + ~9223372036854775808, 19, qs_63]
+data qs_64 text ".txt"
+data qso_64 words [quest_layout_string + ~9223372036854775808, 4, qs_64]
+data qs_65 text "makeTempFile: "
+data qso_65 words [quest_layout_string + ~9223372036854775808, 14, qs_65]
+data qs_66 text "QTuple_QVal"
+data qlk_QTuple_QVal words [2]
+data quest_layout_QTuple_QVal words [qs_66, 0, 8, 4294967296, qlk_QTuple_QVal]
+data qr_roots words [g_kept, 1, 0, 0]
 

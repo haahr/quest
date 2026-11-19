@@ -14,6 +14,7 @@ import
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     os/fileStats : os/FileStats
+    os/files : os/Files
     word : Word
 export
     (* ======================================================================
@@ -122,4 +123,28 @@ export
     (* Write text to the file p, replacing what it held; raises what
      * writer.file and writer.putString raise if it cannot be written *)
     writeText(p: T text: String): Ok
+
+    (* ======================================================================
+     * os/files, over T: each as the function of its name there, raising
+     * files.error
+     * ====================================================================== *)
+
+    copy(p: T q: T): Ok
+    copyTree(p: T q: T): Ok
+    removeTree(p: T): Ok
+    move(p: T q: T): Ok
+
+    (* files.walk of p: each path under it, its stats (not following a
+     * symlink), and its depth; visit's result says whether to enter a
+     * directory *)
+    walk(p: T visit: All(q: T stats: fileStats.T depth: Int) Bool): Ok
+
+    (* files.globIn of p: the paths under p that pattern, relative, matches,
+     * as children of p, sorted *)
+    glob(p: T pattern: String): vector.T(T)
+
+    (* files.makeTempDirectory and makeTempFile, and withTempDirectory *)
+    makeTempDirectory(prefix: String): T
+    makeTempFile(prefix: String suffix: String): T
+    withTempDirectory(A::TYPE prefix: String action: All(dir: T) A): A
 end

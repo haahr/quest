@@ -7,6 +7,11 @@
     )
     (ImportPhrase
       :items (
+        (ImportItem ('files') 'Files' ('os/files') 'os/Files')
+      )
+    )
+    (ImportPhrase
+      :items (
         (ImportItem ('system') 'System')
       )
     )
@@ -521,82 +526,6 @@
         )
       )
     )
-    (LetValueBinding
-      :name 'made'
-      :value (ExprApp
-        :func (ExprSelect
-          :target (ExprId 'process')
-          :field 'wait'
-        )
-        :args (
-          (ExprApp
-            :func (ExprId 'sh')
-            :args (
-              (ExprString 'mktemp -d /tmp/quest-os-process.XXXXXX' '"mktemp -d /tmp/quest-os-process.XXXXXX"')
-            )
-          )
-        )
-      )
-    )
-    (LetValueBinding
-      :name 'dir'
-      :value (ExprApp
-        :func (ExprSelect
-          :target (ExprId 'stringOp')
-          :field 'getSub'
-        )
-        :args (
-          (ExprSelect
-            :target (ExprId 'made')
-            :field 'stdout'
-          )
-          (ExprInt 0 '0')
-          (ExprInfix
-            :left (ExprApp
-              :func (ExprSelect
-                :target (ExprId 'stringOp')
-                :field 'length'
-              )
-              :args (
-                (ExprSelect
-                  :target (ExprId 'made')
-                  :field 'stdout'
-                )
-              )
-            )
-            :op '-'
-            :right (ExprInt 1 '1')
-          )
-        )
-      )
-    )
-    (LetValueBinding
-      :name 'w'
-      :value (ExprApp
-        :func (ExprSelect
-          :target (ExprId 'writer')
-          :field 'file'
-        )
-        :args (
-          (ExprInfix
-            :left (ExprId 'dir')
-            :op '<>'
-            :right (ExprString '/inside.txt' '"/inside.txt"')
-          )
-        )
-      )
-    )
-    (ExprStmt
-      :expr (ExprApp
-        :func (ExprSelect
-          :target (ExprId 'writer')
-          :field 'close'
-        )
-        :args (
-          (ExprId 'w')
-        )
-      )
-    )
     (ExprStmt
       :expr (ExprApp
         :func (ExprId 'show')
@@ -604,52 +533,81 @@
           (ExprString 'spawnIn' '"spawnIn"')
           (ExprApp
             :func (ExprSelect
-              :target (ExprId 'process')
-              :field 'wait'
+              :target (ExprId 'files')
+              :field 'withTempDirectory'
             )
             :args (
-              (ExprApp
-                :func (ExprSelect
-                  :target (ExprId 'process')
-                  :field 'spawnIn'
+              (TypeArgument
+                :type_val (TypePath ('process' 'Result'))
+              )
+              (ExprString 'quest-os-process.' '"quest-os-process."')
+              (ExprFun
+                :params (
+                  (FormalParam
+                    :name 'dir'
+                    :type_annot (TypePath ('String'))
+                    :mode VALUE
+                  )
                 )
-                :args (
-                  (ExprArray
-                    :elements (
-                      (ExprString 'ls' '"ls"')
+                :return_type (TypePath ('process' 'Result'))
+                :body (ExprBlock
+                  :bindings (
+                    (LetValueBinding
+                      :name 'w'
+                      :value (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'writer')
+                          :field 'file'
+                        )
+                        :args (
+                          (ExprInfix
+                            :left (ExprId 'dir')
+                            :op '<>'
+                            :right (ExprString '/inside.txt' '"/inside.txt"')
+                          )
+                        )
+                      )
+                    )
+                    (ExprStmt
+                      :expr (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'writer')
+                          :field 'close'
+                        )
+                        :args (
+                          (ExprId 'w')
+                        )
+                      )
+                    )
+                    (ExprStmt
+                      :expr (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'process')
+                          :field 'wait'
+                        )
+                        :args (
+                          (ExprApp
+                            :func (ExprSelect
+                              :target (ExprId 'process')
+                              :field 'spawnIn'
+                            )
+                            :args (
+                              (ExprArray
+                                :elements (
+                                  (ExprString 'ls' '"ls"')
+                                )
+                              )
+                              (ExprId 'dir')
+                            )
+                          )
+                        )
+                      )
                     )
                   )
-                  (ExprId 'dir')
                 )
               )
             )
           )
-        )
-      )
-    )
-    (ExprStmt
-      :expr (ExprApp
-        :func (ExprSelect
-          :target (ExprId 'system')
-          :field 'removeFile'
-        )
-        :args (
-          (ExprInfix
-            :left (ExprId 'dir')
-            :op '<>'
-            :right (ExprString '/inside.txt' '"/inside.txt"')
-          )
-        )
-      )
-    )
-    (ExprStmt
-      :expr (ExprApp
-        :func (ExprSelect
-          :target (ExprId 'system')
-          :field 'removeDirectory'
-        )
-        :args (
-          (ExprId 'dir')
         )
       )
     )

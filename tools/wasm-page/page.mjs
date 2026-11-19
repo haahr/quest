@@ -66,7 +66,9 @@ export async function load(base = new URL(".", import.meta.url)) {
 //   env        more of the driver's environment
 //   prefixes   URL prefixes, mounted at /remote/0, /remote/1, ... and named in
 //              QUEST_PATH
-//   files      the session's own files to start with (a MemoryMount's)
+//   files      the session's own files to start with (a MemoryMount's); by
+//              default the directories /work, the current one, and /tmp,
+//              os/files' for temporaries
 //   stdout, stderr   called with the text the driver writes to each
 //   display    called with a display's bundle, {MIMETYPE: DATA}
 //   exited     called with the driver's status when it exits
@@ -79,7 +81,7 @@ export class PageSession {
     // while a worker that replaces an interrupted one replays: what its
     // interrupt waits for
     this.restarting = null;
-    this.files = new MemoryMount(options.files || {work: null});
+    this.files = new MemoryMount(options.files || {work: null, tmp: null});
     this.worker = null;
     this.running = null;
     this.queue = [];

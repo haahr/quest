@@ -1,0 +1,10 @@
+(* os/files in the REPL, as natively, under node, and in the browser page: a
+   temporary directory made, a file written in it and found by glob, and the
+   directory removed with everything in it, which the last input checks *)
+import os/files : os/Files
+import os/fileStats : os/FileStats
+import util/maybe : util/Maybe
+import collections/vector : collections/Vector
+import writer: Writer
+let found = files.withTempDirectory(:Array(String) "quest-repl." fun(dir: String): Array(String) begin let w = writer.file(dir <> "/a.txt") writer.putString(w "a") writer.close(w) files.makeDirectories(dir <> "/b/c") vector.toArray(:String files.globIn(dir "**")) end)
+maybe.isNone(:fileStats.T fileStats.lfind(files.withTempDirectory(:String "quest-repl." fun(dir: String): String begin files.makeDirectories(dir <> "/x") dir end)))

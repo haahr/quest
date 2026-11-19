@@ -6,8 +6,8 @@ permissions, item 4 of
 `makeDirectory`, `removeFile`, `listDirectory`, ...), `os/fileStats` (what `stat(2)` says), and `os/path` (paths as
 values, over both). None of them copies a file, removes a tree, walks one, finds files by a pattern, or makes a
 temporary name: `tests/source/stdlib/os_process.quest` runs `mktemp -d` through a shell for lack of one, and
-`system.error` says nothing of what failed or why. Not started; its questions were settled with the user
-2026-11-19.
+`system.error` says nothing of what failed or why. Its questions were settled with the user 2026-11-19, and it was
+built the same day (§8); libraries.md §4.6 documents it.
 
 ## 1. Decisions
 
@@ -229,9 +229,10 @@ more memory than its depth.
 
 **The primitives are externals returning an `Int`**: 0 for success, or a negative code for a failure (−1 for
 `notFound`, −2 `exists`, and so on in `Code`'s order; `other` is −(1000 + errno), so its message can name the errno).
-`readLink` and `realPath` return their text through a result tuple, and `list` returns an array, as
-`system.listDirectory` does. The Quest wrapper checks the status and raises `error` with a `Failure` it builds. So C
-never constructs a Quest exception with a payload, and the messages are one table in Quest, alike on every target.
+`readLink` returns its text and `list` an array, as `system.listDirectory` does, keeping their status for a
+`lastStatus` primitive to give (§8). The Quest wrapper checks the status and raises `error` with a `Failure` it
+builds. So C never constructs a Quest exception with a payload, and the messages are one table in Quest, alike on
+every target.
 
 - **C** (`runtime/quest_os.c`, beside `fileStats`): `unlink`, `rmdir`, `rename`, `mkdir`, `open(O_CREAT|O_EXCL)`
   then `close`, `opendir`/`readdir`, `symlink`, `readlink`, `chmod`, `utimensat`, `realpath`; each maps `errno` as
@@ -288,3 +289,29 @@ The user had no preference on these (2026-11-19), so they wait for a program tha
 1. **`appendText`**, a writer that appends to a file, which `writer.file` cannot make, since it truncates.
 2. **Hard links** (`link`).
 3. **A native `copy`** (`copyfile`, `copy_file_range`) in place of §1.7's Quest loop, if large copies prove slow.
+
+## 8. As Built
+
+Built 2026-11-19, in two commits: steps 1 and 2 together, since the primitives are private to the module the Quest
+layer is in, and then step 3. Where it differs from the sections above:
+
+1. **`realPath` is Quest, on every target,** not a primitive: each component resolved in turn with `lfind`, a
+   symlink's target put in its place, at most 40 of them. So there are ten primitives, not eleven, and wasm needs no
+   `realpath` of its own.
+2. **Value-returning primitives keep their status.** `list` and `readLink` return their value (empty on failure),
+   and an eleventh external, `quest_files_last_status`, gives the status, so that no primitive returns a tuple, which
+   C would need a layout for.
+3. **`**` steps only into directories that are not symlinks** when more components follow it, and matches a symlink
+   only as the last component, so nothing is reached through a symlink, as `pathlib`'s glob behaves; Python's
+   `glob` would go through one. `**` also starts only from a directory, as Python's does (`x/**` matches nothing for
+   a file `x`). `test_files.py` compares the two on trees without symlinks.
+4. **The self-hosted interpreter calls the primitives directly,** through `questlang/interpreter/fileCalls`, a module
+   of the same externals, rather than through `os/files`, which keeps them private. As with os/time, questlang/
+   builds from the bootstrap (`QUEST_SEED=bootstrap`) until a release has the runtime's new functions.
+5. **The browser page** starts its files with a `/tmp` (`tools/wasm-page/page.mjs`), so that the temporaries work
+   there, and `tests/repl/temporary_files.quest` makes and removes one in the REPL, natively, in node, and in the
+   page. That transcript keeps its values within single inputs: the JIT's `-i` session misreads a global tuple's
+   fields in later inputs, a fault the release had before os/files, now in [tasklist.md](tasklist.md).
+6. **Under node**, `setTimes` goes through `fs.utimesSync`, which takes seconds as a Number, so it is exact to the
+   microsecond; `os_files.quest` sets whole seconds.
+
