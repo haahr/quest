@@ -1,0 +1,267 @@
+(* Standard Library: digests (docs/libraries.md section 1.12): SHA-256
+ * (FIPS 180-4) and CRC-32 *)
+
+module digest : Digest
+import
+    util/stringBuilder : util/StringBuilder
+    stringOp = string : StringOp
+    ascii : Ascii
+    word : Word
+export
+    (* SHA-256 works on 32-bit words. Each is held in a word.T below 2^32,
+     * masked after every operation that can carry above it *)
+    let mask32 = word.fromInt(4294967295)
+    let w(n: Int): word.T = word.fromInt(n)
+
+    let roundConstantInts = array of
+        1116352408 1899447441 3049323471 3921009573 961987163 1508970993 2453635748 2870763221
+        3624381080 310598401 607225278 1426881987 1925078388 2162078206 2614888103 3248222580
+        3835390401 4022224774 264347078 604807628 770255983 1249150122 1555081692 1996064986
+        2554220882 2821834349 2952996808 3210313671 3336571891 3584528711 113926993 338241895
+        666307205 773529912 1294757372 1396182291 1695183700 1986661051 2177026350 2456956037
+        2730485921 2820302411 3259730800 3345764771 3516065817 3600352804 4094571909 275423344
+        430227734 506948616 659060556 883997877 958139571 1322822218 1537002063 1747873779
+        1955562222 2024104815 2227730452 2361852424 2428436474 2756734187 3204031479 3329325298
+    end
+    let roundConstants = begin
+        let k = array of(64 w(0))
+        for i = 0 upto 63 do k[i] := w(roundConstantInts[i]) end
+        k
+    end
+
+    let initialHash = array of
+        1779033703 3144134277 1013904242 2773480762 1359893119 2600822924 528734635 1541459225
+    end
+
+    let add32(a: word.T b: word.T): word.T = word.andBits(word.add(a b) mask32)
+    let rotr(x: word.T count: Int): word.T =
+        word.andBits(word.orBits(word.shift(x {~1 * count}) word.shift(x {32 - count})) mask32)
+
+    (* A state: the running hash, eight words; the current block, 64 bytes of
+     * which the first filled have been added; the number of bytes added in
+     * all; and room for compress's message schedule *)
+    Let T = Tuple
+        hash: Array(word.T)
+        block: String
+        var filled: Int
+        var total: Int
+        schedule: Array(word.T)
+    end
+
+    let reset(d: T): Ok =
+        begin
+            for i = 0 upto 7 do d.hash[i] := w(initialHash[i]) end
+            d.filled := 0
+            d.total := 0
+        end
+
+    let sha256(): T =
+        begin
+            let d = tuple
+                let hash = array of(8 w(0))
+                let block = stringOp.new(64 ascii.char(0))
+                let var filled = 0
+                let var total = 0
+                let schedule = array of(64 w(0))
+            end
+            reset(d)
+            d
+        end
+
+    let size(d: T): Int = 32
+
+    let byte(s: String i: Int): word.T = w(ascii.val(stringOp.getChar(s i)))
+
+    (* The hash updated by the 64 bytes of source from at (section 6.2.2): the
+     * message schedule of 64 words, the first 16 the bytes' own, big-endian;
+     * then 64 rounds on the working variables a to hh; then those added into
+     * the hash *)
+    let compress(d: T source: String at: Int): Ok =
+        begin
+            let m = d.schedule
+            for t = 0 upto 15 do
+                let k = at + {t * 4}
+                m[t] := word.orBits(word.orBits(word.shift(byte(source k) 24) word.shift(byte(source k + 1) 16))
+                    word.orBits(word.shift(byte(source k + 2) 8) byte(source k + 3)))
+            end
+            for t = 16 upto 63 do
+                let x = m[t - 15]
+                let y = m[t - 2]
+                let s0 = word.xorBits(word.xorBits(rotr(x 7) rotr(x 18)) word.shift(x ~3))
+                let s1 = word.xorBits(word.xorBits(rotr(y 17) rotr(y 19)) word.shift(y ~10))
+                m[t] := add32(add32(m[t - 16] s0) add32(m[t - 7] s1))
+            end
+            let h = d.hash
+            let var a = h[0]
+            let var b = h[1]
+            let var c = h[2]
+            let var dd = h[3]
+            let var e = h[4]
+            let var f = h[5]
+            let var g = h[6]
+            let var hh = h[7]
+            for t = 0 upto 63 do
+                let sum1 = word.xorBits(word.xorBits(rotr(e 6) rotr(e 11)) rotr(e 25))
+                let choice = word.xorBits(word.andBits(e f) word.andBits(word.xorBits(e mask32) g))
+                let temp1 = add32(add32(hh sum1) add32(add32(choice roundConstants[t]) m[t]))
+                let sum0 = word.xorBits(word.xorBits(rotr(a 2) rotr(a 13)) rotr(a 22))
+                let majority = word.xorBits(word.xorBits(word.andBits(a b) word.andBits(a c)) word.andBits(b c))
+                let temp2 = add32(sum0 majority)
+                hh := g
+                g := f
+                f := e
+                e := add32(dd temp1)
+                dd := c
+                c := b
+                b := a
+                a := add32(temp1 temp2)
+            end
+            h[0] := add32(h[0] a)
+            h[1] := add32(h[1] b)
+            h[2] := add32(h[2] c)
+            h[3] := add32(h[3] dd)
+            h[4] := add32(h[4] e)
+            h[5] := add32(h[5] f)
+            h[6] := add32(h[6] g)
+            h[7] := add32(h[7] hh)
+        end
+
+    (* The count bytes of text from start added. Whole blocks are compressed
+     * straight from text; only the bytes before and after them pass through
+     * d.block *)
+    let addRange(d: T text: String start: Int count: Int): Ok =
+        begin
+            d.total := d.total + count
+            let var i = start
+            let stop = start + count
+            if d.filled > 0 then
+                let n = if {64 - d.filled} < count then 64 - d.filled else count end
+                stringOp.setSub(d.block d.filled text i n)
+                d.filled := d.filled + n
+                i := i + n
+                if d.filled is 64 then
+                    compress(d d.block 0)
+                    d.filled := 0
+                end
+            end
+            while {stop - i} >= 64 do
+                compress(d text i)
+                i := i + 64
+            end
+            if i < stop then
+                stringOp.setSub(d.block 0 text i stop - i)
+                d.filled := stop - i
+            end
+        end
+
+    let add(d: T text: String): Ok = addRange(d text 0 stringOp.length(text))
+
+    let addSub(d: T text: String start: Int size: Int): Ok =
+        begin
+            if {size < 0} \/ {{start < 0} \/ {start > {stringOp.length(text) - size}}} then
+                raise stringOp.error
+            end end
+            addRange(d text start size)
+        end
+
+    let addChar(d: T c: Char): Ok =
+        begin
+            stringOp.setChar(d.block d.filled c)
+            d.filled := d.filled + 1
+            d.total := d.total + 1
+            if d.filled is 64 then
+                compress(d d.block 0)
+                d.filled := 0
+            end
+        end
+
+    (* Set d.block's bytes from d.filled up to stop to 0 *)
+    let zeroTo(d: T stop: Int): Ok =
+        while d.filled < stop do
+            stringOp.setChar(d.block d.filled ascii.char(0))
+            d.filled := d.filled + 1
+        end
+
+    let finish(d: T): String =
+        begin
+            (* Padding (section 5.1.1): a 1 bit, zeros to 8 bytes short of a
+             * block's end, and the message's length in bits as 8 bytes, most
+             * significant first *)
+            let bitLength = w(d.total * 8)
+            stringOp.setChar(d.block d.filled ascii.char(128))
+            d.filled := d.filled + 1
+            if d.filled > 56 then
+                zeroTo(d 64)
+                compress(d d.block 0)
+                d.filled := 0
+            end
+            zeroTo(d 56)
+            for i = 0 upto 7 do
+                let b = word.andBits(word.shift(bitLength {~8 * {7 - i}}) w(255))
+                stringOp.setChar(d.block {56 + i} ascii.char(word.toInt(b)))
+            end
+            compress(d d.block 0)
+            let result = stringOp.new(32 ascii.char(0))
+            for i = 0 upto 7 do
+                for k = 0 upto 3 do
+                    let b = word.andBits(word.shift(d.hash[i] {~8 * {3 - k}}) w(255))
+                    stringOp.setChar(result {{i * 4} + k} ascii.char(word.toInt(b)))
+                end
+            end
+            reset(d)
+            result
+        end
+
+    let hexDigits = "0123456789abcdef"
+
+    let hex(bytes: String): String =
+        begin
+            let b = stringBuilder.new()
+            for i = 0 upto {stringOp.length(bytes) - 1} do
+                let c = ascii.val(stringOp.getChar(bytes i))
+                stringBuilder.char(b stringOp.getChar(hexDigits {c / 16}))
+                stringBuilder.char(b stringOp.getChar(hexDigits {c % 16}))
+            end
+            stringBuilder.toString(b)
+        end
+
+    let sha256Of(text: String): String =
+        begin
+            let d = sha256()
+            add(d text)
+            finish(d)
+        end
+
+    let sha256Hex(text: String): String = hex(sha256Of(text))
+
+    (* CRC-32, reflected, with the polynomial 0xEDB88320: each byte's
+     * remainder, by table, with the remainder kept inverted between calls *)
+    let crcPolynomial = w(3988292384)
+    let crcTable = begin
+        let table = array of(256 w(0))
+        for n = 0 upto 255 do
+            let var c = w(n)
+            for k = 0 upto 7 do
+                c := if word.toInt(word.andBits(c w(1))) is 1 then
+                    word.xorBits(crcPolynomial word.shift(c ~1))
+                else
+                    word.shift(c ~1)
+                end
+            end
+            table[n] := c
+        end
+        table
+    end
+
+    let crc32Add(crc: Int text: String): Int =
+        begin
+            let var c = word.xorBits(word.andBits(w(crc) mask32) mask32)
+            for i = 0 upto {stringOp.length(text) - 1} do
+                let index = word.toInt(word.andBits(word.xorBits(c byte(text i)) w(255)))
+                c := word.xorBits(crcTable[index] word.shift(c ~8))
+            end
+            word.toInt(word.xorBits(c mask32))
+        end
+
+    let crc32(text: String): Int = crc32Add(0 text)
+end

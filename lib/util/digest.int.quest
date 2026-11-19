@@ -1,0 +1,60 @@
+interface Digest
+export
+    (* =========================================================================
+     * Digests (Digest)
+     *
+     * Cryptographic and checksum digests of byte strings. A String's
+     * characters are its bytes, 0 to 255, each hashed as one byte: no text
+     * encoding is applied. A digest state takes bytes in pieces and gives
+     * the same result as one call on their concatenation:
+     *
+     *     let d = digest.sha256()
+     *     digest.add(d "abc")
+     *     digest.add(d "def")
+     *     digest.hex(digest.finish(d))      (* = digest.sha256Hex("abcdef") *)
+     *
+     * finish leaves the state empty, as new, so it can be reused.
+     * ====================================================================== *)
+
+    (* A digest state: an algorithm and the bytes added since it was made or
+     * last finished *)
+    T::TYPE
+
+    (* A new SHA-256 state (FIPS 180-4) *)
+    sha256(): T
+
+    (* The number of bytes finish returns: 32 for SHA-256 *)
+    size(d: T): Int
+
+    (* Add the bytes of text *)
+    add(d: T text: String): Ok
+
+    (* Add the substring of text of the given size at start; raises
+     * string.error, as string.getSub does, if size < 0 or the range is not
+     * within text *)
+    addSub(d: T text: String start: Int size: Int): Ok
+
+    (* Add one byte, the character c *)
+    addChar(d: T c: Char): Ok
+
+    (* The digest of the bytes added, as a String of size(d) bytes, after
+     * which d is empty *)
+    finish(d: T): String
+
+    (* bytes in lowercase hexadecimal, two digits a byte, most significant
+     * first *)
+    hex(bytes: String): String
+
+    (* The SHA-256 of text, as 32 bytes and as 64 hexadecimal digits *)
+    sha256Of(text: String): String
+    sha256Hex(text: String): String
+
+    (* The CRC-32 of text (IEEE 802.3, as zlib, gzip, zip, and PNG compute
+     * it), from 0 to 2^32 - 1 *)
+    crc32(text: String): Int
+
+    (* The CRC-32 continued with text from crc, the CRC-32 of the bytes so
+     * far: crc32Add(0 text) = crc32(text), and
+     * crc32Add(crc32(a) b) = crc32(a <> b) *)
+    crc32Add(crc: Int text: String): Int
+end

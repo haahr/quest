@@ -1,0 +1,87 @@
+(* Standard library: util/digest (docs/libraries.md section 1.12): SHA-256 of FIPS
+ * 180-4's examples, of messages whose padding ends on each side of a block's
+ * end, and of every byte value; the same messages added in pieces; finish
+ * leaving the state empty; CRC-32's check value and continuation; and the
+ * errors. tests/python/test_digest.py recomputes each digest line with
+ * hashlib and zlib *)
+
+import util/digest : util/Digest;
+import stringOp = string : StringOp;
+import ascii: Ascii;
+import writer: Writer;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let check(what: String holds: Bool): Ok = print(what <> ": " <> conv.bool(holds));
+
+(* letters(n), n copies of the letter a; allBytes, the bytes 0 to 255,
+ * twice *)
+let letters(n: Int): String = stringOp.new(n 'a');
+let allBytes = begin
+    let s = stringOp.new(512 ascii.char(0))
+    for i = 0 upto 511 do stringOp.setChar(s i ascii.char(i % 256)) end
+    s
+end;
+
+(* 1. SHA-256 of whole messages *)
+print("sha256 empty: " <> digest.sha256Hex(""));
+print("sha256 abc: " <> digest.sha256Hex("abc"));
+print("sha256 fips56: " <> digest.sha256Hex("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"));
+let lengths = array of 1 55 56 57 63 64 65 119 120 127 128 1000 end;
+for k = 0 upto {extent lengths - 1} do
+    print("sha256 a*" <> conv.int(lengths[k]) <> ": " <> digest.sha256Hex(letters(lengths[k])))
+end;
+print("sha256 bytes: " <> digest.sha256Hex(allBytes));
+
+(* 2. The same digest of 300 bytes from pieces of sizes that cross a
+ * block's end in each way, through add, addSub, and addChar in turn *)
+let part = stringOp.getSub(allBytes 0 300);
+let whole = digest.sha256Of(part);
+let var pieces = true;
+let d = digest.sha256();
+let sizes = array of 1 2 3 5 7 13 31 55 56 63 64 65 70 129 end;
+for k = 0 upto {extent sizes - 1} do
+    let size = sizes[k]
+    let var i = 0
+    while i < 300 do
+        let n = if {300 - i} < size then 300 - i else size end
+        if {size % 3} is 0 then
+            digest.add(d stringOp.getSub(part i n))
+        elsif {size % 3} is 1 then
+            digest.addSub(d part i n)
+        else
+            for j = i upto {{i + n} - 1} do digest.addChar(d stringOp.getChar(part j)) end
+        end
+        i := i + n
+    end
+    if not(stringOp.equal(digest.finish(d) whole)) then pieces := false end
+end;
+check("pieces agree" pieces);
+digest.add(d "");
+digest.addSub(d "xyz" 3 0);
+check("empty pieces leave the digest of nothing" stringOp.equal(digest.hex(digest.finish(d)) digest.sha256Hex("")));
+
+(* 3. finish empties the state; sizes; hex *)
+let e = digest.sha256();
+digest.add(e "abc");
+let first = digest.finish(e);
+check("finish gives the digest" stringOp.equal(digest.hex(first) digest.sha256Hex("abc")));
+check("a second finish gives the empty message's" stringOp.equal(digest.hex(digest.finish(e)) digest.sha256Hex("")));
+print("size: " <> conv.int(digest.size(e)) <> " " <> conv.int(stringOp.length(first)));
+print("hex: " <> digest.hex(stringOp.getSub(allBytes 250 10)) <> " (" <> digest.hex("") <> ")");
+
+(* 4. CRC-32 *)
+print("crc32 empty: " <> conv.int(digest.crc32("")));
+print("crc32 check: " <> conv.int(digest.crc32("123456789")));
+print("crc32 bytes: " <> conv.int(digest.crc32(allBytes)));
+print("crc32 a*1000: " <> conv.int(digest.crc32(letters(1000))));
+check("crc32Add from 0" digest.crc32Add(0 "123456789") is digest.crc32("123456789"));
+check("crc32Add across a split" digest.crc32Add(digest.crc32("1234") "56789") is digest.crc32("123456789"));
+
+(* 5. The errors *)
+let err(what: String f: All() Ok): Ok = print(what <> ": "
+    <> try begin f() "no error" end when stringOp.error then "string.error" end);
+err("addSub of size ~1" fun(): Ok digest.addSub(d "abc" 0 ~1));
+err("addSub from ~1" fun(): Ok digest.addSub(d "abc" ~1 1));
+err("addSub past the end" fun(): Ok digest.addSub(d "abc" 2 2));
+err("addSub to the end" fun(): Ok digest.addSub(d "abc" 3 0))

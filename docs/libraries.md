@@ -613,6 +613,54 @@ end
 
 ---
 
+### 1.12. `util/digest : util/Digest`
+
+SHA-256 (FIPS 180-4) and CRC-32 (IEEE 802.3, as zlib, gzip, zip, and PNG compute it), in Quest alone, so alike on
+every target.
+
+- **Bytes, not text.** A String's characters are its bytes, and each is hashed as one byte with no encoding applied.
+  `sha256Hex` of a file's text, read by `os/path.readText`, is what `sha256sum` prints for the file.
+- **One state type.** A `digest.T` is made by an algorithm's constructor, for now only `sha256()`, and takes bytes
+  in pieces (`add`, `addSub`, `addChar`). A later algorithm adds a constructor and nothing else. The state holds one
+  64-byte block and the running hash, never the whole message. `finish` returns the raw digest and leaves the state
+  empty, as `stringBuilder.toString` leaves a builder.
+- **Raw digests and hex.** `finish` and `sha256Of` return bytes, and `hex` writes any bytes as lowercase digits;
+  `sha256Hex` does both in one call.
+- **CRC-32 as an Int,** from 0 to 2^32 − 1, continued by passing the value, as zlib's `crc32(crc, buf)` does:
+  `crc32Add(crc32(a) b)` is `crc32(a <> b)`.
+- **Not here:** FNV, since `util/hash.string` (§1.6) is 64-bit FNV-1a already. HMAC, SHA-1, and MD5 wait until
+  something needs them.
+
+The compiler hashes through `questlang/common/sha256`, whose `hexDigest` first turns each byte above 127 into two, as
+UTF-8 encodes that character. That matches the bootstrap, which hashes `text.encode("utf-8")` of text read one
+character per byte, so the compiler's digests match the bootstrap's. For ASCII text, `hexDigest(t)` is
+`digest.sha256Hex(t)`.
+
+`tests/source/stdlib/digest_operations.quest` tests it, and `tests/python/test_digest.py` recomputes its digests
+with `hashlib` and `zlib`.
+
+#### Interface Summary
+
+```quest
+interface Digest
+export
+    T::TYPE
+    sha256(): T
+    size(d: T): Int
+    add(d: T text: String): Ok
+    addSub(d: T text: String start: Int size: Int): Ok
+    addChar(d: T c: Char): Ok
+    finish(d: T): String
+    hex(bytes: String): String
+    sha256Of(text: String): String
+    sha256Hex(text: String): String
+    crc32(text: String): Int
+    crc32Add(crc: Int text: String): Int
+end
+```
+
+---
+
 ## 2. Collections (`lib/collections/`)
 
 ### 2.1. `collections/vector : collections/Vector`
