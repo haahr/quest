@@ -170,5 +170,39 @@ main {
   let %74: String = call path.normalize(resolved) @114:26
   let %75: Bool = call stringOp.equal(%74, resolved) @114:11
   do call printBool(%75) @114:1
+  funs {
+    fun matched(pattern: String, name: String): Ok {
+      let %76: Bool = call path.matches(pattern, name) @118:72
+      let %77: String = call conv.bool(%76) @118:62
+      let %78: String = prim <>(": ", %77) @118:54
+      let %79: String = prim <>(name, %78) @118:46
+      let %80: String = prim <>(" ", %79) @118:39
+      let %81: String = prim <>(pattern, %80) @118:28
+      let %82: String = prim <>("matches ", %81) @118:14
+      let %83: Ok = call printStr(%82) @118:5
+      return %83
+    }
+  }
+  do call matched("*.quest", "a.int.quest") @119:1
+  do call matched("*.quest", "a.quest.txt") @120:1
+  do call matched("*", "") @121:1
+  do call matched("*", ".git") @122:1
+  do call matched(".*", ".git") @123:1
+  do call matched("?", "a") @124:1
+  do call matched("?", "ab") @125:1
+  do call matched("a*b*c", "aXbYbZc") @126:1
+  do call matched("a*b*c", "aXbYbZ") @127:1
+  do call matched("[abc]x", "bx") @128:1
+  do call matched("[a-c]x", "dx") @129:1
+  do call matched("[!a-c]?", "dx") @130:1
+  do call matched("[!a-c]?", "ax") @131:1
+  do call matched("[]]", "]") @132:1
+  do call matched("[!]]", "a") @133:1
+  do call matched("[a-]", "-") @134:1
+  do call matched("[unclosed", "[unclosed") @135:1
+  do call matched("[unclosed", "u") @136:1
+  do call matched("*[0-9]", "file7") @137:1
+  do call matched("**", "anything") @138:1
+  do call matched("", "") @139:1
 }
 

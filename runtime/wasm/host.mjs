@@ -37,7 +37,7 @@ export class Errno extends Error {
 
 // WASI's numbers for the errors the host gives
 export const E = {BADF: 8, EXIST: 20, INVAL: 28, IO: 29, ISDIR: 31, NOENT: 44, NOSYS: 52, NOTDIR: 54,
-                  NOTEMPTY: 55, ROFS: 69, ACCES: 2};
+                  NOTEMPTY: 55, NOTSUP: 58, PERM: 63, ROFS: 69, ACCES: 2, XDEV: 75};
 
 // Ends a run: proc_exit throws it, and whoever called into the instance
 // catches it
@@ -160,6 +160,11 @@ export class MemoryMount {
     }
     this.made("rename", rel, toRel);
   }
+  // No symlinks, so none to read (INVAL, as for a file that is not one), and
+  // one time for every entry
+  symlink() { this.changing(); throw new Errno(E.NOTSUP); }
+  readlink(rel) { throw new Errno(this.entries.has(rel) ? E.INVAL : E.NOENT); }
+  utimes() { this.changing(); throw new Errno(E.NOTSUP); }
 }
 
 // A mount over a URL prefix, read only (docs/wasm.md section 5.2): a
@@ -199,6 +204,9 @@ export class UrlMount {
   unlink() { throw new Errno(E.ROFS); }
   rmdir() { throw new Errno(E.ROFS); }
   rename() { throw new Errno(E.ROFS); }
+  symlink() { throw new Errno(E.ROFS); }
+  readlink(rel) { throw new Errno(this.fetch(rel) === null ? E.NOENT : E.INVAL); }
+  utimes() { throw new Errno(E.ROFS); }
 }
 
 // A mount over node's files under root, given node's fs module (so that this
@@ -215,22 +223,24 @@ export class NodeMount {
     } catch (e) {
       if (isStackOverflow(e)) throw e;
       const codes = {ENOENT: E.NOENT, ENOTDIR: E.NOTDIR, EEXIST: E.EXIST, EISDIR: E.ISDIR, ENOTEMPTY: E.NOTEMPTY,
-                     EACCES: E.ACCES, EPERM: E.ACCES, EINVAL: E.INVAL};
+                     EACCES: E.ACCES, EPERM: E.PERM, EINVAL: E.INVAL, EXDEV: E.XDEV, ENOTSUP: E.NOTSUP};
       if (e.code in codes) throw new Errno(codes[e.code]);
       throw new Errno(E.IO, String(e));
     }
   }
-  // null, not an error, for a file missing, as a mount's stat gives
-  stat(rel) {
+  // null, not an error, for a file missing, as a mount's stat gives; a
+  // symlink's own, not what it names, when follow is false
+  stat(rel, follow = true) {
     let s;
     try {
-      s = this.fs.statSync(this.real(rel), {bigint: true});
+      s = (follow ? this.fs.statSync : this.fs.lstatSync)(this.real(rel), {bigint: true});
     } catch (e) {
       if (isStackOverflow(e)) throw e;
       if (e.code === "ENOENT" || e.code === "ENOTDIR") return null;
       throw new Errno(E.IO, String(e));
     }
-    return {type: s.isDirectory() ? "directory" : "file", size: Number(s.size), mtimeNs: s.mtimeNs,
+    return {type: s.isDirectory() ? "directory" : s.isSymbolicLink() ? "symlink" : "file", size: Number(s.size),
+            mtimeNs: s.mtimeNs,
             atimeNs: s.atimeNs, ctimeNs: s.ctimeNs};
   }
   read(rel) { return this.call(() => new Uint8Array(this.fs.readFileSync(this.real(rel)))); }
@@ -240,6 +250,13 @@ export class NodeMount {
   unlink(rel) { this.call(() => this.fs.unlinkSync(this.real(rel))); }
   rmdir(rel) { this.call(() => this.fs.rmdirSync(this.real(rel))); }
   rename(rel, toRel) { this.call(() => this.fs.renameSync(this.real(rel), this.real(toRel))); }
+  symlink(target, rel) { this.call(() => this.fs.symlinkSync(target, this.real(rel))); }
+  readlink(rel) { return this.call(() => this.fs.readlinkSync(this.real(rel), {encoding: "buffer"})); }
+  // node takes seconds, as Numbers, which hold whole microseconds since the
+  // epoch exactly
+  utimes(rel, atimeNs, mtimeNs) {
+    this.call(() => this.fs.utimesSync(this.real(rel), Number(atimeNs) / 1e9, Number(mtimeNs) / 1e9));
+  }
 }
 
 // The host. options:
@@ -290,8 +307,9 @@ export class Host {
     }
     throw new Errno(E.NOENT);
   }
-  // What is at path, as a mount's stat gives it, or null for nothing
-  stat(path) {
+  // What is at path, as a mount's stat gives it, or null for nothing; a
+  // symlink's own when follow is false
+  stat(path, follow = true) {
     // A mount's own path is a directory, though no mount above holds it
     for (const {path: at} of this.mounts) {
       if (at !== path && at.startsWith(path === "/" ? "/" : path + "/")) {
@@ -301,7 +319,7 @@ export class Host {
       }
     }
     const {mount, rel} = this.mountOf(path);
-    return mount.stat(rel);
+    return mount.stat(rel, follow);
   }
   // The names in the directory path: its mount's, if it has the directory,
   // and the first name of each mount below it, so that /quest lists lib where
@@ -509,11 +527,11 @@ export class Host {
       // at 24; the size at 32; and the times of access, modification, and
       // status change at 40, 48, and 56, in nanoseconds
       path_filestat_get: call((fd, flags, at, n, into) => {
-        const s = this.stat(this.path(fd, at, n));
+        const s = this.stat(this.path(fd, at, n), (flags & 1) !== 0);
         if (!s) throw new Errno(E.NOENT);
         const v = this.view();
         for (let i = 0; i < 64; i += 8) v.setBigUint64(into + i, 0n, true);
-        v.setUint8(into + 16, s.type === "directory" ? 3 : 4);
+        v.setUint8(into + 16, s.type === "directory" ? 3 : s.type === "symlink" ? 7 : 4);
         v.setBigUint64(into + 24, 1n, true);
         v.setBigUint64(into + 32, BigInt(s.size), true);
         v.setBigUint64(into + 40, BigInt(s.atimeNs ?? s.mtimeNs), true);
@@ -546,12 +564,34 @@ export class Host {
         }
         from.mount.rename(from.rel, to.rel);
       }),
+      // A symlink at (at2, n2) in fd2 whose target is the text at (at, n)
+      path_symlink: call((at, n, fd, at2, n2) => {
+        const {mount, rel} = this.mountOf(this.path(fd, at2, n2));
+        mount.symlink(this.string(at, n), rel);
+      }),
+      // The symlink's target, up to size bytes of it at buffer, and how many
+      // at into
+      path_readlink: call((fd, at, n, buffer, size, into) => {
+        const {mount, rel} = this.mountOf(this.path(fd, at, n));
+        const target = mount.readlink(rel);
+        const k = Math.min(target.length, size);
+        this.bytes(buffer, k).set(target.subarray(0, k));
+        this.view().setUint32(into, k, true);
+      }),
+      // Both times set (fst_flags 1 and 4), nanoseconds since the epoch
+      path_filestat_set_times: call((fd, flags, at, n, atim, mtim, which) => {
+        if ((which & 5) !== 5) throw new Errno(E.NOTSUP);
+        const {mount, rel} = this.mountOf(this.path(fd, at, n));
+        if (!this.stat(this.path(fd, at, n), (flags & 1) !== 0)) throw new Errno(E.NOENT);
+        mount.utimes(rel, BigInt(atim), BigInt(mtim));
+      }),
       proc_exit: code => { throw new Exit(code); },
     };
   }
 
   // The descriptor path_open makes for path, given WASI's oflags (1 create,
-  // 2 directory, 4 exclusive, 8 truncate; exclusive is not checked): a
+  // 2 directory, 4 exclusive, 8 truncate; exclusive refuses anything at
+  // path, a symlink included): a
   // stream, a directory with its names listed now, a file opened to read,
   // read whole now, or a file opened to create or truncate, written whole
   // after each write (below). A file opened with neither has no write, and a
@@ -565,6 +605,7 @@ export class Host {
       this.serving = true;
       return {kind: "output", write: b => this.onRecord(b)};
     }
+    if ((oflags & 4) !== 0 && create && this.stat(path, false)) throw new Errno(E.EXIST);
     const s = this.stat(path);
     if (directory) {
       if (!s) throw new Errno(E.NOENT);

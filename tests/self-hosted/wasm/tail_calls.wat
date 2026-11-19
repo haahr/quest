@@ -50,6 +50,7 @@
   (type (func (param i64 i64 i64 i64) (result i64)))
   (type (func (param i64 i64 i64 i64 i64) (result i64)))
   (type (func (param i64 i64 i64 i64 i64 i64) (result i64)))
+  (type (func (param i64 i64 i64 i64 i64 i64 i64) (result i64)))
   (type (func (param eqref)))
   (type (func))
   (type (func (param (ref $clos) eqref eqref) (result eqref)))
@@ -60,14 +61,14 @@
   (type (func (param (ref $clos)) (result eqref)))
   (type (func (param (ref $clos) i64 i64) (result i64)))
   (type (func (param (ref $clos) i64) (result i32)))
-  (type $closU2 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 51)))))
-  (type (sub $closU2 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 57)))))
-  (type $sum.closure (sub final 60 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 57)))))
-  (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 52)))))
-  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 58)))))
-  (type $isEven.closure (sub final 63 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 58)))))
-  (type $isOdd.closure (sub final 63 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 58)))))
-  (type $count.closure (sub final 60 (struct (field $hash (mut i32)) (field $uniform (ref 51)) (field $native (ref 57)))))
+  (type $closU2 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 52)))))
+  (type (sub $closU2 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 58)))))
+  (type $sum.closure (sub final 61 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 58)))))
+  (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 53)))))
+  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 53)) (field $native (ref 59)))))
+  (type $isEven.closure (sub final 64 (struct (field $hash (mut i32)) (field $uniform (ref 53)) (field $native (ref 59)))))
+  (type $isOdd.closure (sub final 64 (struct (field $hash (mut i32)) (field $uniform (ref 53)) (field $native (ref 59)))))
+  (type $count.closure (sub final 61 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 58)))))
   (import "quest.runtime" "exception:int.error" (global $int.error (ref $exception)))
   (import "quest.runtime" "exception:real.error" (global $real.error (ref $exception)))
   (import "quest.runtime" "exception:word.error" (global $word.error (ref $exception)))
@@ -137,20 +138,23 @@
   (import "quest.runtime" "wasi:fd_readdir" (func $wasi:fd_readdir (type 47)))
   (import "quest.runtime" "wasi:clock_time_get" (func $wasi:clock_time_get (type 44)))
   (import "quest.runtime" "wasi:poll_oneoff" (func $wasi:poll_oneoff (type 46)))
-  (import "quest.runtime" "error" (tag $error (type 49)))
-  (import "writer" "init" (func $writer.init (type 50)))
-  (import "conv" "init" (func $conv.init (type 50)))
-  (import "wasm/print" "init" (func $wasm/print.init (type 50)))
-  (import "wasm/print" "show" (func $wasm/print.show (type 51)))
-  (import "wasm/core" "unproxy" (func $wasm/core.unproxy (type 52)))
-  (import "wasm/core" "proxyTag" (func $wasm/core.proxyTag (type 53)))
-  (import "wasm/core" "proxyElement" (func $wasm/core.proxyElement (type 54)))
-  (import "wasm/core" "proxyOptionElement" (func $wasm/core.proxyOptionElement (type 54)))
-  (import "wasm/core" "proxyOptionPayload" (func $wasm/core.proxyOptionPayload (type 52)))
-  (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 51)))
-  (import "conv" "bool" (func $conv.bool (type 55)))
-  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 56)))
-  (import "wasm/core" "init" (func $wasm/core.init (type 50)))
+  (import "quest.runtime" "wasi:path_symlink" (func $wasi:path_symlink (type 47)))
+  (import "quest.runtime" "wasi:path_readlink" (func $wasi:path_readlink (type 48)))
+  (import "quest.runtime" "wasi:path_filestat_set_times" (func $wasi:path_filestat_set_times (type 49)))
+  (import "quest.runtime" "error" (tag $error (type 50)))
+  (import "writer" "init" (func $writer.init (type 51)))
+  (import "conv" "init" (func $conv.init (type 51)))
+  (import "wasm/print" "init" (func $wasm/print.init (type 51)))
+  (import "wasm/print" "show" (func $wasm/print.show (type 52)))
+  (import "wasm/core" "unproxy" (func $wasm/core.unproxy (type 53)))
+  (import "wasm/core" "proxyTag" (func $wasm/core.proxyTag (type 54)))
+  (import "wasm/core" "proxyElement" (func $wasm/core.proxyElement (type 55)))
+  (import "wasm/core" "proxyOptionElement" (func $wasm/core.proxyOptionElement (type 55)))
+  (import "wasm/core" "proxyOptionPayload" (func $wasm/core.proxyOptionPayload (type 53)))
+  (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 52)))
+  (import "conv" "bool" (func $conv.bool (type 56)))
+  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 57)))
+  (import "wasm/core" "init" (func $wasm/core.init (type 51)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $sum.static (ref $sum.closure) i32.const 0 ref.func $sum.uniform ref.func $sum struct.new $sum.closure)
   (global $sum.1 (mut eqref) ref.null none)
@@ -163,7 +167,7 @@
   (global $literal (mut eqref) ref.null none)
   (export "_start" (func $_start))
   (elem declare func $sum.uniform $sum $isEven.uniform $isEven $isOdd.uniform $isOdd $count.uniform $count)
-  (func $sum (type 57) (param $closure (ref $clos)) (param $n i64) (param $acc i64) (result i64)
+  (func $sum (type 58) (param $closure (ref $clos)) (param $n i64) (param $acc i64) (result i64)
     (local $v i32)
     (local $v.1 i64)
     (local $v.2 i64)
@@ -196,7 +200,7 @@
     end
     unreachable
   )
-  (func $isEven (type 58) (param $closure (ref $clos)) (param $n i64) (result i32)
+  (func $isEven (type 59) (param $closure (ref $clos)) (param $n i64) (result i32)
     (local $v i32)
     (local $v.1 i64)
     local.get $n
@@ -218,7 +222,7 @@
     end
     unreachable
   )
-  (func $isOdd (type 58) (param $closure (ref $clos)) (param $n i64) (result i32)
+  (func $isOdd (type 59) (param $closure (ref $clos)) (param $n i64) (result i32)
     (local $v i32)
     (local $v.1 i64)
     local.get $n
@@ -240,7 +244,7 @@
     end
     unreachable
   )
-  (func $count (type 57) (param $closure (ref $clos)) (param $n i64) (param $acc i64) (result i64)
+  (func $count (type 58) (param $closure (ref $clos)) (param $n i64) (param $acc i64) (result i64)
     (local $v i64)
     (local $v.1 i32)
     (local $v.4 i64)
@@ -324,7 +328,7 @@
     end
     unreachable
   )
-  (func $main (type 50)
+  (func $main (type 51)
     (local $v i64)
     (local $v.1 eqref)
     (local $v.2 eqref)
@@ -581,7 +585,7 @@
     end
     local.set $v.1
   )
-  (func $_start (type 50)
+  (func $_start (type 51)
     (local $t (ref null $raised))
     block $uncaught (result eqref)
       try_table (catch $error $uncaught)
@@ -639,7 +643,7 @@
       struct.new $boxInt
     end
   )
-  (func $sum.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (param $a1 eqref) (result eqref)
+  (func $sum.uniform (type 52) (param $closure (ref $clos)) (param $a0 eqref) (param $a1 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt.1
@@ -648,21 +652,21 @@
     call $sum
     call $boxInt.1
   )
-  (func $isEven.uniform (type 52) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+  (func $isEven.uniform (type 53) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt.1
     call $isEven
     ref.i31
   )
-  (func $isOdd.uniform (type 52) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
+  (func $isOdd.uniform (type 53) (param $closure (ref $clos)) (param $a0 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt.1
     call $isOdd
     ref.i31
   )
-  (func $count.uniform (type 51) (param $closure (ref $clos)) (param $a0 eqref) (param $a1 eqref) (result eqref)
+  (func $count.uniform (type 52) (param $closure (ref $clos)) (param $a0 eqref) (param $a1 eqref) (result eqref)
     local.get $closure
     local.get $a0
     call $unboxInt.1

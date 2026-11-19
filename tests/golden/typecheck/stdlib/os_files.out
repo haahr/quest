@@ -1,0 +1,2104 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('files') : 'Files')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('fileStats') : 'FileStats')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('vector') : 'Vector')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('maybe') : 'Maybe')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('strutil') : 'Strutil')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('stringOp') : 'StringOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('reader') : 'Reader')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('ascii') : 'Ascii')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'check' :type Fun(what: String holds: Bool): Ok
+      :value (TypedFun :params (('what' : String) ('holds' : Bool)) :type Fun(what: String holds: Bool): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedInfix '<>' :type String
+              :left (TypedVar 'what' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ': ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedVar 'holds' :type Bool)
+                  ))))
+          ))))
+    (TypedLetValue 'root' :type String
+      :value (TypedApp :type String
+        :func (TypedSelect 'makeTempDirectory' :type Fun(prefix: String): String
+          :target (TypedVar 'files' :type Module 'files'))
+        :args (
+          (TypedString 'quest-os-files.' :type String)
+        )))
+    (TypedLetValue 'at' :type Fun(rel: String): String
+      :value (TypedFun :params (('rel' : String)) :type Fun(rel: String): String
+        :body (TypedInfix '<>' :type String
+          :left (TypedVar 'root' :type String)
+          :right (TypedInfix '<>' :type String
+            :left (TypedString '/' :type String)
+            :right (TypedVar 'rel' :type String)))))
+    (TypedLetValue 'shown' :type Fun(p: String): String
+      :value (TypedFun :params (('p' : String)) :type Fun(p: String): String
+        :body (TypedIf :type String
+          :cond (TypedApp :type Bool
+            :func (TypedSelect 'startsWith' :type Fun(s: String prefix: String): Bool
+              :target (TypedVar 'strutil' :type Module 'strutil'))
+            :args (
+              (TypedVar 'p' :type String)
+              (TypedVar 'root' :type String)
+            ))
+          :then (TypedInfix '<>' :type String
+            :left (TypedString 'T' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'getSub' :type Fun(source: String start: Int size: Int): String
+                :target (TypedVar 'stringOp' :type Module 'stringOp'))
+              :args (
+                (TypedVar 'p' :type String)
+                (TypedApp :type Int
+                  :func (TypedSelect 'length' :type Fun(string: String): Int
+                    :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                  :args (
+                    (TypedVar 'root' :type String)
+                  ))
+                (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedSelect 'length' :type Fun(string: String): Int
+                      :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                    :args (
+                      (TypedVar 'p' :type String)
+                    ))
+                  :right (TypedApp :type Int
+                    :func (TypedSelect 'length' :type Fun(string: String): Int
+                      :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                    :args (
+                      (TypedVar 'root' :type String)
+                    )))
+              )))
+          :else (TypedVar 'p' :type String))))
+    (TypedLetValue 'codeName' :type Fun(c: files.Code): String
+      :value (TypedFun :params (('c' : files.Code)) :type Fun(c: files.Code): String
+        :body (TypedCase :type String
+          :target (TypedVar 'c' :type files.Code)
+          :branches (
+            (TypedCaseBranch tags=(notFound)
+              :body (TypedString 'notFound (' :type String))
+            (TypedCaseBranch tags=(exists)
+              :body (TypedString 'exists (' :type String))
+            (TypedCaseBranch tags=(notDirectory)
+              :body (TypedString 'notDirectory (' :type String))
+            (TypedCaseBranch tags=(isDirectory)
+              :body (TypedString 'isDirectory (' :type String))
+            (TypedCaseBranch tags=(notEmpty)
+              :body (TypedString 'notEmpty (' :type String))
+            (TypedCaseBranch tags=(permission)
+              :body (TypedString 'permission (' :type String))
+            (TypedCaseBranch tags=(crossDevice)
+              :body (TypedString 'crossDevice (' :type String))
+            (TypedCaseBranch tags=(unsupported)
+              :body (TypedString 'unsupported (' :type String))
+            (TypedCaseBranch tags=(other)
+              :body (TypedString 'other (' :type String))
+          ))))
+    (TypedLetValue 'attempt' :type Fun(what: String action: Fun(): Ok): Ok
+      :value (TypedFun :params (('what' : String) ('action' : Fun(): Ok)) :type Fun(what: String action: Fun(): Ok): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedInfix '<>' :type String
+              :left (TypedVar 'what' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ': ' :type String)
+                :right (TypedTry :type String
+                  :body (TypedBlock :type String
+                    :bindings (
+                      (TypedExprStmt
+                        :expr (TypedApp :type Ok
+                          :func (TypedVar 'action' :type Fun(): Ok)
+                          :args ()))
+                    )
+                    :result (TypedString 'ok' :type String))
+                  :branches (
+                    (TypedTryBranch
+                      :exc_pattern (TypedSelect 'error' :type Exception(Failure)
+                        :target (TypedVar 'files' :type Module 'files'))
+                      :body (TypedInfix '<>' :type String
+                        :left (TypedSelect 'operation' :type String
+                          :target (TypedVar 'f' :type Failure))
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedString ' ' :type String)
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedApp :type String
+                              :func (TypedVar 'shown' :type Fun(p: String): String)
+                              :args (
+                                (TypedSelect 'path' :type String
+                                  :target (TypedVar 'f' :type Failure))
+                              ))
+                            :right (TypedInfix '<>' :type String
+                              :left (TypedString ': ' :type String)
+                              :right (TypedInfix '<>' :type String
+                                :left (TypedApp :type String
+                                  :func (TypedVar 'codeName' :type Fun(c: files.Code): String)
+                                  :args (
+                                    (TypedSelect 'code' :type Code
+                                      :target (TypedVar 'f' :type Failure))
+                                  ))
+                                :right (TypedIf :type String
+                                  :cond (TypedVariantCheck 'other' :type Bool
+                                    :target (TypedSelect 'code' :type Code
+                                      :target (TypedVar 'f' :type Failure)))
+                                  :then (TypedString '...)' :type String)
+                                  :else (TypedInfix '<>' :type String
+                                    :left (TypedSelect 'message' :type String
+                                      :target (TypedVar 'f' :type Failure))
+                                    :right (TypedString ')' :type String)))))))))
+                  ))))
+          ))))
+    (TypedLetValue 'joined' :type Fun(v: vector.T(String)): String
+      :value (TypedFun :params (('v' : vector.T(String))) :type Fun(v: vector.T(String)): String
+        :body (TypedBlock :type String
+          :bindings (
+            (TypedLetValue 's' :type String
+              :value (TypedString '' :type String))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [String] :type Fun(v: vector.T(String)): Int
+                      :func (TypedSelect 'length' :type All(A :: TYPE) Fun(v: vector.T(A)): Int
+                        :target (TypedVar 'vector' :type Module 'vector')))
+                    :args (
+                      (TypedVar 'v' :type vector.T(String))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedAssign
+                  :target (TypedVar 's' :type Var(String))
+                  :value (TypedInfix '<>' :type String
+                    :left (TypedDerefCell :type String
+                      :target (TypedVar 's' :type Var(String)))
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedIf :type String
+                        :cond (TypedInfix '>' :type Bool
+                          :left (TypedVar 'i' :type Int)
+                          :right (TypedInt 0 :type Int))
+                        :then (TypedString ' ' :type String)
+                        :else (TypedString '' :type String))
+                      :right (TypedApp :type String
+                        :func (TypedTypeApp [String] :type Fun(v: vector.T(String) index: Int): String
+                          :func (TypedSelect 'get' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int): A
+                            :target (TypedVar 'vector' :type Module 'vector')))
+                        :args (
+                          (TypedVar 'v' :type vector.T(String))
+                          (TypedVar 'i' :type Int)
+                        )))))))
+          )
+          :result (TypedDerefCell :type String
+            :target (TypedVar 's' :type Var(String))))))
+    (TypedLetValue 'write' :type Fun(path: String text: String): Ok
+      :value (TypedFun :params (('path' : String) ('text' : String)) :type Fun(path: String text: String): Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'w' :type writer.T
+              :value (TypedApp :type writer.T
+                :func (TypedSelect 'file' :type Fun(name: String): writer.T
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedVar 'path' :type String)
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedVar 'w' :type writer.T)
+                  (TypedVar 'text' :type String)
+                )))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedSelect 'close' :type Fun(writer: writer.T): Ok
+              :target (TypedVar 'writer' :type Module 'writer'))
+            :args (
+              (TypedVar 'w' :type writer.T)
+            )))))
+    (TypedLetValue 'read' :type Fun(path: String): String
+      :value (TypedFun :params (('path' : String)) :type Fun(path: String): String
+        :body (TypedBlock :type String
+          :bindings (
+            (TypedLetValue 'r' :type reader.T
+              :value (TypedApp :type reader.T
+                :func (TypedSelect 'file' :type Fun(name: String): reader.T
+                  :target (TypedVar 'reader' :type Module 'reader'))
+                :args (
+                  (TypedVar 'path' :type String)
+                )))
+            (TypedLetValue 'text' :type String
+              :value (TypedApp :type String
+                :func (TypedSelect 'getString' :type Fun(reader: reader.T size: Int): String
+                  :target (TypedVar 'reader' :type Module 'reader'))
+                :args (
+                  (TypedVar 'r' :type reader.T)
+                  (TypedInt 1000000 :type Int)
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'close' :type Fun(reader: reader.T): Ok
+                  :target (TypedVar 'reader' :type Module 'reader'))
+                :args (
+                  (TypedVar 'r' :type reader.T)
+                )))
+          )
+          :result (TypedVar 'text' :type String))))
+    (TypedLetValue 'modes' :type Bool
+      :value (TypedTry :type Bool
+        :body (TypedBlock :type Bool
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'setMode' :type Fun(path: String mode: Int): Ok
+                  :target (TypedVar 'files' :type Module 'files'))
+                :args (
+                  (TypedVar 'root' :type String)
+                  (TypedInt 448 :type Int)
+                )))
+          )
+          :result (TypedBool true))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedSelect 'error' :type Exception(Failure)
+              :target (TypedVar 'files' :type Module 'files'))
+            :body (TypedApp :type Bool
+              :func (TypedVar 'not' :type Fun(b: Bool): Bool)
+              :args (
+                (TypedVariantCheck 'unsupported' :type Bool
+                  :target (TypedSelect 'code' :type Code
+                    :target (TypedVar 'f' :type Failure)))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'makeDirectory d' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'makeDirectory' :type Fun(path: String mode: Int): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'd' :type String)
+                  ))
+                (TypedInt 511 :type Int)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'makeDirectory d again' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'makeDirectory' :type Fun(path: String mode: Int): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'd' :type String)
+                  ))
+                (TypedInt 511 :type Int)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'createNew d/f' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'createNew' :type Fun(path: String mode: Int): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'd/f' :type String)
+                  ))
+                (TypedInt 420 :type Int)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'createNew d/f again' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'createNew' :type Fun(path: String mode: Int): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'd/f' :type String)
+                  ))
+                (TypedInt 420 :type Int)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'list d: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'joined' :type Fun(v: vector.T(String)): String)
+              :args (
+                (TypedApp :type vector.T(String)
+                  :func (TypedSelect 'list' :type Fun(path: String): vector.T(String)
+                    :target (TypedVar 'files' :type Module 'files'))
+                  :args (
+                    (TypedApp :type String
+                      :func (TypedVar 'at' :type Fun(rel: String): String)
+                      :args (
+                        (TypedString 'd' :type String)
+                      ))
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'list d/f' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedBlock :type Ok
+              :bindings (
+                (TypedLetValue 'names' :type vector.T(String)
+                  :value (TypedApp :type vector.T(String)
+                    :func (TypedSelect 'list' :type Fun(path: String): vector.T(String)
+                      :target (TypedVar 'files' :type Module 'files'))
+                    :args (
+                      (TypedApp :type String
+                        :func (TypedVar 'at' :type Fun(rel: String): String)
+                        :args (
+                          (TypedString 'd/f' :type String)
+                        ))
+                    )))
+              )
+              :result (TypedOk)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'list missing' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedBlock :type Ok
+              :bindings (
+                (TypedLetValue 'names' :type vector.T(String)
+                  :value (TypedApp :type vector.T(String)
+                    :func (TypedSelect 'list' :type Fun(path: String): vector.T(String)
+                      :target (TypedVar 'files' :type Module 'files'))
+                    :args (
+                      (TypedApp :type String
+                        :func (TypedVar 'at' :type Fun(rel: String): String)
+                        :args (
+                          (TypedString 'missing' :type String)
+                        ))
+                    )))
+              )
+              :result (TypedOk)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'removeDirectory d' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'removeDirectory' :type Fun(path: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'd' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'remove missing' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'remove' :type Fun(path: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'missing' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'rename d/f to d/g' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'rename' :type Fun(from: String to: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'd/f' :type String)
+                  ))
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'd/g' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'rename missing' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'rename' :type Fun(from: String to: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'missing' :type String)
+                  ))
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'd/h' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'rename into missing' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'rename' :type Fun(from: String to: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'd/g' :type String)
+                  ))
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'missing/h' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'symlink l to d/g' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'symlink' :type Fun(target: String path: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedString 'd/g' :type String)
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'l' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'symlink l again' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'symlink' :type Fun(target: String path: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedString 'd/g' :type String)
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'l' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'readLink l: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'readLink' :type Fun(path: String): String
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'l' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'readLink d/g' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedBlock :type Ok
+              :bindings (
+                (TypedLetValue 'target' :type String
+                  :value (TypedApp :type String
+                    :func (TypedSelect 'readLink' :type Fun(path: String): String
+                      :target (TypedVar 'files' :type Module 'files'))
+                    :args (
+                      (TypedApp :type String
+                        :func (TypedVar 'at' :type Fun(rel: String): String)
+                        :args (
+                          (TypedString 'd/g' :type String)
+                        ))
+                    )))
+              )
+              :result (TypedOk)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'realPath l is realPath d/g' :type String)
+          (TypedApp :type Bool
+            :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+              :target (TypedVar 'stringOp' :type Module 'stringOp'))
+            :args (
+              (TypedApp :type String
+                :func (TypedSelect 'realPath' :type Fun(path: String): String
+                  :target (TypedVar 'files' :type Module 'files'))
+                :args (
+                  (TypedApp :type String
+                    :func (TypedVar 'at' :type Fun(rel: String): String)
+                    :args (
+                      (TypedString 'l' :type String)
+                    ))
+                ))
+              (TypedApp :type String
+                :func (TypedSelect 'realPath' :type Fun(path: String): String
+                  :target (TypedVar 'files' :type Module 'files'))
+                :args (
+                  (TypedApp :type String
+                    :func (TypedVar 'at' :type Fun(rel: String): String)
+                    :args (
+                      (TypedString 'd/g' :type String)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'realPath is absolute' :type String)
+          (TypedApp :type Bool
+            :func (TypedSelect 'startsWith' :type Fun(s: String prefix: String): Bool
+              :target (TypedVar 'strutil' :type Module 'strutil'))
+            :args (
+              (TypedApp :type String
+                :func (TypedSelect 'realPath' :type Fun(path: String): String
+                  :target (TypedVar 'files' :type Module 'files'))
+                :args (
+                  (TypedApp :type String
+                    :func (TypedVar 'at' :type Fun(rel: String): String)
+                    :args (
+                      (TypedString 'd/../d/g' :type String)
+                    ))
+                ))
+              (TypedString '/' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'realPath missing' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedBlock :type Ok
+              :bindings (
+                (TypedLetValue 'p' :type String
+                  :value (TypedApp :type String
+                    :func (TypedSelect 'realPath' :type Fun(path: String): String
+                      :target (TypedVar 'files' :type Module 'files'))
+                    :args (
+                      (TypedApp :type String
+                        :func (TypedVar 'at' :type Fun(rel: String): String)
+                        :args (
+                          (TypedString 'd/missing' :type String)
+                        ))
+                    )))
+              )
+              :result (TypedOk)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'setTimes d/g' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'setTimes' :type Fun(path: String accessNs: Int modifiedNs: Int): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'd/g' :type String)
+                  ))
+                (TypedInt 1600000000000000000 :type Int)
+                (TypedInt 1700000000000000000 :type Int)
+              )))
+        )))
+    (TypedLetValue 'gs' :type T
+      :value (TypedApp :type T
+        :func (TypedSelect 'stat' :type Fun(path: String): T
+          :target (TypedVar 'fileStats' :type Module 'fileStats'))
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'at' :type Fun(rel: String): String)
+            :args (
+              (TypedString 'd/g' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'setTimes took' :type String)
+          (TypedInfix '/\\' :type Bool
+            :left (TypedInfix 'is' :type Bool
+              :left (TypedSelect 'accessNs' :type Int
+                :target (TypedVar 'gs' :type T))
+              :right (TypedInt 1600000000000000000 :type Int))
+            :right (TypedInfix 'is' :type Bool
+              :left (TypedSelect 'modifiedNs' :type Int
+                :target (TypedVar 'gs' :type T))
+              :right (TypedInt 1700000000000000000 :type Int)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'setTimes missing' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'setTimes' :type Fun(path: String accessNs: Int modifiedNs: Int): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'missing' :type String)
+                  ))
+                (TypedInt 0 :type Int)
+                (TypedInt 0 :type Int)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedIf :type Ok
+        :cond (TypedVar 'modes' :type Bool)
+        :then (TypedBlock :type Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'setMode' :type Fun(path: String mode: Int): Ok
+                  :target (TypedVar 'files' :type Module 'files'))
+                :args (
+                  (TypedApp :type String
+                    :func (TypedVar 'at' :type Fun(rel: String): String)
+                    :args (
+                      (TypedString 'd/g' :type String)
+                    ))
+                  (TypedInt 384 :type Int)
+                )))
+          )
+          :result (TypedOk))
+        :else (TypedOk)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'setMode took' :type String)
+          (TypedIf :type Bool
+            :cond (TypedApp :type Bool
+              :func (TypedVar 'not' :type Fun(b: Bool): Bool)
+              :args (
+                (TypedVar 'modes' :type Bool)
+              ))
+            :then (TypedBool true)
+            :else (TypedInfix 'is' :type Bool
+              :left (TypedSelect 'mode' :type Int
+                :target (TypedApp :type T
+                  :func (TypedSelect 'stat' :type Fun(path: String): T
+                    :target (TypedVar 'fileStats' :type Module 'fileStats'))
+                  :args (
+                    (TypedApp :type String
+                      :func (TypedVar 'at' :type Fun(rel: String): String)
+                      :args (
+                        (TypedString 'd/g' :type String)
+                      ))
+                  )))
+              :right (TypedInt 384 :type Int)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'remove l' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'remove' :type Fun(path: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'l' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'd/g stays' :type String)
+          (TypedApp :type Bool
+            :func (TypedTypeApp [fileStats.T] :type Fun(o: maybe.T(fileStats.T)): Bool
+              :func (TypedSelect 'isSome' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                :target (TypedVar 'maybe' :type Module 'maybe')))
+            :args (
+              (TypedApp :type maybe.T(T)
+                :func (TypedSelect 'find' :type Fun(path: String): maybe.T(T)
+                  :target (TypedVar 'fileStats' :type Module 'fileStats'))
+                :args (
+                  (TypedApp :type String
+                    :func (TypedVar 'at' :type Fun(rel: String): String)
+                    :args (
+                      (TypedString 'd/g' :type String)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'makeDirectories m/n/o' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'makeDirectories' :type Fun(path: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'm/n/o' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'makeDirectories m/n/o again' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'makeDirectories' :type Fun(path: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'm/n/o' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'makeDirectories d/g/x' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'makeDirectories' :type Fun(path: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'd/g/x' :type String)
+                  ))
+              )))
+        )))
+    (TypedLetValue 'big' :type String
+      :value (TypedApp :type String
+        :func (TypedSelect 'new' :type Fun(size: Int init: Char): String
+          :target (TypedVar 'stringOp' :type Module 'stringOp'))
+        :args (
+          (TypedInt 200000 :type Int)
+          (TypedChar 'a' :type Char)
+        )))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedSelect 'length' :type Fun(string: String): Int
+              :target (TypedVar 'stringOp' :type Module 'stringOp'))
+            :args (
+              (TypedVar 'big' :type String)
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'setChar' :type Fun(string: String index: Int char: Char): Ok
+            :target (TypedVar 'stringOp' :type Module 'stringOp'))
+          :args (
+            (TypedVar 'big' :type String)
+            (TypedVar 'i' :type Int)
+            (TypedApp :type Char
+              :func (TypedSelect 'char' :type Fun(n: Int): Char
+                :target (TypedVar 'ascii' :type Module 'ascii'))
+              :args (
+                (TypedInfix '%' :type Int
+                  :left (TypedVar 'i' :type Int)
+                  :right (TypedInt 256 :type Int))
+              ))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'write' :type Fun(path: String text: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'at' :type Fun(rel: String): String)
+            :args (
+              (TypedString 'big' :type String)
+            ))
+          (TypedVar 'big' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedIf :type Ok
+        :cond (TypedVar 'modes' :type Bool)
+        :then (TypedBlock :type Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'setMode' :type Fun(path: String mode: Int): Ok
+                  :target (TypedVar 'files' :type Module 'files'))
+                :args (
+                  (TypedApp :type String
+                    :func (TypedVar 'at' :type Fun(rel: String): String)
+                    :args (
+                      (TypedString 'big' :type String)
+                    ))
+                  (TypedInt 416 :type Int)
+                )))
+          )
+          :result (TypedOk))
+        :else (TypedOk)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'copy big' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'copy' :type Fun(from: String to: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'big' :type String)
+                  ))
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'big2' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString "copy's content, " :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedSelect 'length' :type Fun(string: String): Int
+                      :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                    :args (
+                      (TypedVar 'big' :type String)
+                    ))
+                ))
+              :right (TypedString ' bytes of every value' :type String)))
+          (TypedApp :type Bool
+            :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+              :target (TypedVar 'stringOp' :type Module 'stringOp'))
+            :args (
+              (TypedApp :type String
+                :func (TypedVar 'read' :type Fun(path: String): String)
+                :args (
+                  (TypedApp :type String
+                    :func (TypedVar 'at' :type Fun(rel: String): String)
+                    :args (
+                      (TypedString 'big2' :type String)
+                    ))
+                ))
+              (TypedVar 'big' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString "copy's mode" :type String)
+          (TypedIf :type Bool
+            :cond (TypedApp :type Bool
+              :func (TypedVar 'not' :type Fun(b: Bool): Bool)
+              :args (
+                (TypedVar 'modes' :type Bool)
+              ))
+            :then (TypedBool true)
+            :else (TypedInfix 'is' :type Bool
+              :left (TypedSelect 'mode' :type Int
+                :target (TypedApp :type T
+                  :func (TypedSelect 'stat' :type Fun(path: String): T
+                    :target (TypedVar 'fileStats' :type Module 'fileStats'))
+                  :args (
+                    (TypedApp :type String
+                      :func (TypedVar 'at' :type Fun(rel: String): String)
+                      :args (
+                        (TypedString 'big2' :type String)
+                      ))
+                  )))
+              :right (TypedInt 416 :type Int)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'write' :type Fun(path: String text: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'at' :type Fun(rel: String): String)
+            :args (
+              (TypedString 'empty' :type String)
+            ))
+          (TypedString '' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'copy empty onto big2' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'copy' :type Fun(from: String to: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'empty' :type String)
+                  ))
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'big2' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'big2 is empty' :type String)
+          (TypedApp :type Bool
+            :func (TypedSelect 'isEmpty' :type Fun(string: String): Bool
+              :target (TypedVar 'stringOp' :type Module 'stringOp'))
+            :args (
+              (TypedApp :type String
+                :func (TypedVar 'read' :type Fun(path: String): String)
+                :args (
+                  (TypedApp :type String
+                    :func (TypedVar 'at' :type Fun(rel: String): String)
+                    :args (
+                      (TypedString 'big2' :type String)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'copy big onto itself' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'copy' :type Fun(from: String to: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'big' :type String)
+                  ))
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'big' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'copy a directory' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'copy' :type Fun(from: String to: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'd' :type String)
+                  ))
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'd2' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'copy missing' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'copy' :type Fun(from: String to: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'missing' :type String)
+                  ))
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'd2' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'makeDirectories' :type Fun(path: String): Ok
+          :target (TypedVar 'files' :type Module 'files'))
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'at' :type Fun(rel: String): String)
+            :args (
+              (TypedString 'tree/a/b' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'makeDirectory' :type Fun(path: String mode: Int): Ok
+          :target (TypedVar 'files' :type Module 'files'))
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'at' :type Fun(rel: String): String)
+            :args (
+              (TypedString 'tree/empty' :type String)
+            ))
+          (TypedInt 511 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'makeDirectory' :type Fun(path: String mode: Int): Ok
+          :target (TypedVar 'files' :type Module 'files'))
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'at' :type Fun(rel: String): String)
+            :args (
+              (TypedString 'tree/.hidden' :type String)
+            ))
+          (TypedInt 511 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'write' :type Fun(path: String text: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'at' :type Fun(rel: String): String)
+            :args (
+              (TypedString 'tree/a/b/c.txt' :type String)
+            ))
+          (TypedString 'c' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'write' :type Fun(path: String text: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'at' :type Fun(rel: String): String)
+            :args (
+              (TypedString 'tree/a/d.quest' :type String)
+            ))
+          (TypedString 'd' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'write' :type Fun(path: String text: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'at' :type Fun(rel: String): String)
+            :args (
+              (TypedString 'tree/e.quest' :type String)
+            ))
+          (TypedString 'e' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'write' :type Fun(path: String text: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'at' :type Fun(rel: String): String)
+            :args (
+              (TypedString 'tree/.dot.quest' :type String)
+            ))
+          (TypedString 'dot' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'write' :type Fun(path: String text: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'at' :type Fun(rel: String): String)
+            :args (
+              (TypedString 'tree/.hidden/h.quest' :type String)
+            ))
+          (TypedString 'h' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'symlink' :type Fun(target: String path: String): Ok
+          :target (TypedVar 'files' :type Module 'files'))
+        :args (
+          (TypedString 'a' :type String)
+          (TypedApp :type String
+            :func (TypedVar 'at' :type Fun(rel: String): String)
+            :args (
+              (TypedString 'tree/link' :type String)
+            ))
+        )))
+    (TypedLetValue 'kindName' :type Fun(k: fileStats.Kind): String
+      :value (TypedFun :params (('k' : fileStats.Kind)) :type Fun(k: fileStats.Kind): String
+        :body (TypedCase :type String
+          :target (TypedVar 'k' :type fileStats.Kind)
+          :branches (
+            (TypedCaseBranch tags=(file)
+              :body (TypedString 'file' :type String))
+            (TypedCaseBranch tags=(directory)
+              :body (TypedString 'directory' :type String))
+            (TypedCaseBranch tags=(symlink)
+              :body (TypedString 'symlink' :type String))
+            (TypedCaseBranch tags=(other)
+              :body (TypedString 'other' :type String))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'walk' :type Fun(root: String visit: Fun(e: Entry): Bool): Ok
+          :target (TypedVar 'files' :type Module 'files'))
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'at' :type Fun(rel: String): String)
+            :args (
+              (TypedString 'tree' :type String)
+            ))
+          (TypedFun :params (('e' : files.Entry)) :type Fun(e: files.Entry): Bool
+            :body (TypedBlock :type Bool
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedApp :type Ok
+                    :func (TypedVar 'print' :type Fun(s: String): Ok)
+                    :args (
+                      (TypedInfix '<>' :type String
+                        :left (TypedString 'walk ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedSelect 'int' :type Fun(n: Int): String
+                              :target (TypedVar 'conv' :type Module 'conv'))
+                            :args (
+                              (TypedSelect 'depth' :type Int
+                                :target (TypedVar 'e' :type files.Entry))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ' ' :type String)
+                            :right (TypedInfix '<>' :type String
+                              :left (TypedApp :type String
+                                :func (TypedVar 'shown' :type Fun(p: String): String)
+                                :args (
+                                  (TypedSelect 'path' :type String
+                                    :target (TypedVar 'e' :type files.Entry))
+                                ))
+                              :right (TypedInfix '<>' :type String
+                                :left (TypedString ' ' :type String)
+                                :right (TypedApp :type String
+                                  :func (TypedVar 'kindName' :type Fun(k: fileStats.Kind): String)
+                                  :args (
+                                    (TypedSelect 'kind' :type Kind
+                                      :target (TypedSelect 'stats' :type fileStats.T
+                                        :target (TypedVar 'e' :type files.Entry)))
+                                  )))))))
+                    )))
+              )
+              :result (TypedApp :type Bool
+                :func (TypedVar 'not' :type Fun(b: Bool): Bool)
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedSelect 'endsWith' :type Fun(s: String suffix: String): Bool
+                      :target (TypedVar 'strutil' :type Module 'strutil'))
+                    :args (
+                      (TypedSelect 'path' :type String
+                        :target (TypedVar 'e' :type files.Entry))
+                      (TypedString '/.hidden' :type String)
+                    ))
+                ))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'allFiles: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'joined' :type Fun(v: vector.T(String)): String)
+              :args (
+                (TypedApp :type vector.T(String)
+                  :func (TypedTypeApp [String String] :type Fun(v: vector.T(String) f: Fun(elem: String): String): vector.T(String)
+                    :func (TypedSelect 'map' :type All(A :: TYPE B :: TYPE) Fun(v: vector.T(A) f: Fun(elem: A): B): vector.T(B)
+                      :target (TypedVar 'vector' :type Module 'vector')))
+                  :args (
+                    (TypedApp :type vector.T(String)
+                      :func (TypedSelect 'allFiles' :type Fun(root: String): vector.T(String)
+                        :target (TypedVar 'files' :type Module 'files'))
+                      :args (
+                        (TypedApp :type String
+                          :func (TypedVar 'at' :type Fun(rel: String): String)
+                          :args (
+                            (TypedString 'tree' :type String)
+                          ))
+                      ))
+                    (TypedVar 'shown' :type Fun(p: String): String)
+                  ))
+              )))
+        )))
+    (TypedLetValue 'globbed' :type Fun(pattern: String): Ok
+      :value (TypedFun :params (('pattern' : String)) :type Fun(pattern: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedInfix '<>' :type String
+              :left (TypedString 'globIn ' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedVar 'pattern' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedString ': ' :type String)
+                  :right (TypedApp :type String
+                    :func (TypedVar 'joined' :type Fun(v: vector.T(String)): String)
+                    :args (
+                      (TypedApp :type vector.T(String)
+                        :func (TypedSelect 'globIn' :type Fun(root: String pattern: String): vector.T(String)
+                          :target (TypedVar 'files' :type Module 'files'))
+                        :args (
+                          (TypedApp :type String
+                            :func (TypedVar 'at' :type Fun(rel: String): String)
+                            :args (
+                              (TypedString 'tree' :type String)
+                            ))
+                          (TypedVar 'pattern' :type String)
+                        ))
+                    )))))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'globbed' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '*' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'globbed' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '*.quest' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'globbed' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '.*' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'globbed' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '**/*.quest' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'globbed' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '**' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'globbed' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a/**' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'globbed' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '**/' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'globbed' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '*/' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'globbed' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '?.quest' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'globbed' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[a-d]*' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'globbed' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[!a-d]*' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'globbed' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'link/*' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'globbed' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '**/b/*' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'globbed' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a/b/c.txt' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'globbed' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'a/b/missing.txt' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'globbed' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString 'nothing*' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'globbed' :type Fun(pattern: String): Ok)
+        :args (
+          (TypedString '[unclosed' :type String)
+        )))
+    (TypedLetValue 'absolute' :type vector.T(String)
+      :value (TypedApp :type vector.T(String)
+        :func (TypedSelect 'glob' :type Fun(pattern: String): vector.T(String)
+          :target (TypedVar 'files' :type Module 'files'))
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedVar 'at' :type Fun(rel: String): String)
+              :args (
+                (TypedString 'tree' :type String)
+              ))
+            :right (TypedString '/*.quest' :type String))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'glob absolute: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'joined' :type Fun(v: vector.T(String)): String)
+              :args (
+                (TypedApp :type vector.T(String)
+                  :func (TypedTypeApp [String String] :type Fun(v: vector.T(String) f: Fun(elem: String): String): vector.T(String)
+                    :func (TypedSelect 'map' :type All(A :: TYPE B :: TYPE) Fun(v: vector.T(A) f: Fun(elem: A): B): vector.T(B)
+                      :target (TypedVar 'vector' :type Module 'vector')))
+                  :args (
+                    (TypedVar 'absolute' :type vector.T(String))
+                    (TypedVar 'shown' :type Fun(p: String): String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'globIn absolute' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedBlock :type Ok
+              :bindings (
+                (TypedLetValue 'found' :type vector.T(String)
+                  :value (TypedApp :type vector.T(String)
+                    :func (TypedSelect 'globIn' :type Fun(root: String pattern: String): vector.T(String)
+                      :target (TypedVar 'files' :type Module 'files'))
+                    :args (
+                      (TypedApp :type String
+                        :func (TypedVar 'at' :type Fun(rel: String): String)
+                        :args (
+                          (TypedString 'tree' :type String)
+                        ))
+                      (TypedString '/x' :type String)
+                    )))
+              )
+              :result (TypedOk)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'copyTree tree to tree2' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'copyTree' :type Fun(from: String to: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'tree' :type String)
+                  ))
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'tree2' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString "tree2's files are tree's" :type String)
+          (TypedApp :type Bool
+            :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+              :target (TypedVar 'stringOp' :type Module 'stringOp'))
+            :args (
+              (TypedApp :type String
+                :func (TypedVar 'joined' :type Fun(v: vector.T(String)): String)
+                :args (
+                  (TypedApp :type vector.T(String)
+                    :func (TypedSelect 'globIn' :type Fun(root: String pattern: String): vector.T(String)
+                      :target (TypedVar 'files' :type Module 'files'))
+                    :args (
+                      (TypedApp :type String
+                        :func (TypedVar 'at' :type Fun(rel: String): String)
+                        :args (
+                          (TypedString 'tree2' :type String)
+                        ))
+                      (TypedString '**/*' :type String)
+                    ))
+                ))
+              (TypedApp :type String
+                :func (TypedVar 'joined' :type Fun(v: vector.T(String)): String)
+                :args (
+                  (TypedApp :type vector.T(String)
+                    :func (TypedSelect 'globIn' :type Fun(root: String pattern: String): vector.T(String)
+                      :target (TypedVar 'files' :type Module 'files'))
+                    :args (
+                      (TypedApp :type String
+                        :func (TypedVar 'at' :type Fun(rel: String): String)
+                        :args (
+                          (TypedString 'tree' :type String)
+                        ))
+                      (TypedString '**/*' :type String)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'tree2/link: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'readLink' :type Fun(path: String): String
+                  :target (TypedVar 'files' :type Module 'files'))
+                :args (
+                  (TypedApp :type String
+                    :func (TypedVar 'at' :type Fun(rel: String): String)
+                    :args (
+                      (TypedString 'tree2/link' :type String)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', a symlink: ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedVariantCheck 'symlink' :type Bool
+                      :target (TypedSelect 'kind' :type Kind
+                        :target (TypedApp :type T
+                          :func (TypedSelect 'lstat' :type Fun(path: String): T
+                            :target (TypedVar 'fileStats' :type Module 'fileStats'))
+                          :args (
+                            (TypedApp :type String
+                              :func (TypedVar 'at' :type Fun(rel: String): String)
+                              :args (
+                                (TypedString 'tree2/link' :type String)
+                              ))
+                          ))))
+                  )))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'copyTree onto tree2' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'copyTree' :type Fun(from: String to: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'tree' :type String)
+                  ))
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'tree2' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'move tree2/e.quest to moved.quest' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'move' :type Fun(from: String to: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'tree2/e.quest' :type String)
+                  ))
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'moved.quest' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'moved.quest: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'read' :type Fun(path: String): String)
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'moved.quest' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'removeTree tree2' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'removeTree' :type Fun(path: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'tree2' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'tree2 is gone' :type String)
+          (TypedApp :type Bool
+            :func (TypedTypeApp [fileStats.T] :type Fun(o: maybe.T(fileStats.T)): Bool
+              :func (TypedSelect 'isNone' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                :target (TypedVar 'maybe' :type Module 'maybe')))
+            :args (
+              (TypedApp :type maybe.T(T)
+                :func (TypedSelect 'lfind' :type Fun(path: String): maybe.T(T)
+                  :target (TypedVar 'fileStats' :type Module 'fileStats'))
+                :args (
+                  (TypedApp :type String
+                    :func (TypedVar 'at' :type Fun(rel: String): String)
+                    :args (
+                      (TypedString 'tree2' :type String)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'tree/a is not, through tree2/link' :type String)
+          (TypedApp :type Bool
+            :func (TypedTypeApp [fileStats.T] :type Fun(o: maybe.T(fileStats.T)): Bool
+              :func (TypedSelect 'isSome' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                :target (TypedVar 'maybe' :type Module 'maybe')))
+            :args (
+              (TypedApp :type maybe.T(T)
+                :func (TypedSelect 'find' :type Fun(path: String): maybe.T(T)
+                  :target (TypedVar 'fileStats' :type Module 'fileStats'))
+                :args (
+                  (TypedApp :type String
+                    :func (TypedVar 'at' :type Fun(rel: String): String)
+                    :args (
+                      (TypedString 'tree/a/d.quest' :type String)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'removeTree tree2 again' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'removeTree' :type Fun(path: String): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'tree2' :type String)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'attempt' :type Fun(what: String action: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'walk missing' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedApp :type Ok
+              :func (TypedSelect 'walk' :type Fun(root: String visit: Fun(e: Entry): Bool): Ok
+                :target (TypedVar 'files' :type Module 'files'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedVar 'at' :type Fun(rel: String): String)
+                  :args (
+                    (TypedString 'missing' :type String)
+                  ))
+                (TypedFun :params (('e' : files.Entry)) :type Fun(e: files.Entry): Bool
+                  :body (TypedBool true))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'tempDirectory is not empty' :type String)
+          (TypedApp :type Bool
+            :func (TypedVar 'not' :type Fun(b: Bool): Bool)
+            :args (
+              (TypedApp :type Bool
+                :func (TypedSelect 'isEmpty' :type Fun(string: String): Bool
+                  :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                :args (
+                  (TypedApp :type String
+                    :func (TypedSelect 'tempDirectory' :type Fun(): String
+                      :target (TypedVar 'files' :type Module 'files'))
+                    :args ())
+                ))
+            ))
+        )))
+    (TypedLetValue 't1' :type String
+      :value (TypedApp :type String
+        :func (TypedSelect 'makeTempFile' :type Fun(prefix: String suffix: String): String
+          :target (TypedVar 'files' :type Module 'files'))
+        :args (
+          (TypedString 'quest-os-files.' :type String)
+          (TypedString '.txt' :type String)
+        )))
+    (TypedLetValue 't2' :type String
+      :value (TypedApp :type String
+        :func (TypedSelect 'makeTempFile' :type Fun(prefix: String suffix: String): String
+          :target (TypedVar 'files' :type Module 'files'))
+        :args (
+          (TypedString 'quest-os-files.' :type String)
+          (TypedString '.txt' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'two temporary files differ, and exist' :type String)
+          (TypedInfix '/\\' :type Bool
+            :left (TypedApp :type Bool
+              :func (TypedVar 'not' :type Fun(b: Bool): Bool)
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+                    :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                  :args (
+                    (TypedVar 't1' :type String)
+                    (TypedVar 't2' :type String)
+                  ))
+              ))
+            :right (TypedInfix '/\\' :type Bool
+              :left (TypedApp :type Bool
+                :func (TypedTypeApp [fileStats.T] :type Fun(o: maybe.T(fileStats.T)): Bool
+                  :func (TypedSelect 'isSome' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                    :target (TypedVar 'maybe' :type Module 'maybe')))
+                :args (
+                  (TypedApp :type maybe.T(T)
+                    :func (TypedSelect 'find' :type Fun(path: String): maybe.T(T)
+                      :target (TypedVar 'fileStats' :type Module 'fileStats'))
+                    :args (
+                      (TypedVar 't1' :type String)
+                    ))
+                ))
+              :right (TypedApp :type Bool
+                :func (TypedTypeApp [fileStats.T] :type Fun(o: maybe.T(fileStats.T)): Bool
+                  :func (TypedSelect 'isSome' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                    :target (TypedVar 'maybe' :type Module 'maybe')))
+                :args (
+                  (TypedApp :type maybe.T(T)
+                    :func (TypedSelect 'find' :type Fun(path: String): maybe.T(T)
+                      :target (TypedVar 'fileStats' :type Module 'fileStats'))
+                    :args (
+                      (TypedVar 't2' :type String)
+                    ))
+                ))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString "a temporary file's name" :type String)
+          (TypedIf :type Bool
+            :cond (TypedApp :type Bool
+              :func (TypedSelect 'endsWith' :type Fun(s: String suffix: String): Bool
+                :target (TypedVar 'strutil' :type Module 'strutil'))
+              :args (
+                (TypedVar 't1' :type String)
+                (TypedString '.txt' :type String)
+              ))
+            :then (TypedInfix '>' :type Bool
+              :left (TypedApp :type Int
+                :func (TypedSelect 'length' :type Fun(string: String): Int
+                  :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                :args (
+                  (TypedVar 't1' :type String)
+                ))
+              :right (TypedInt 25 :type Int))
+            :else (TypedBool false))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString "a temporary file's mode" :type String)
+          (TypedIf :type Bool
+            :cond (TypedApp :type Bool
+              :func (TypedVar 'not' :type Fun(b: Bool): Bool)
+              :args (
+                (TypedVar 'modes' :type Bool)
+              ))
+            :then (TypedBool true)
+            :else (TypedInfix 'is' :type Bool
+              :left (TypedSelect 'mode' :type Int
+                :target (TypedApp :type T
+                  :func (TypedSelect 'stat' :type Fun(path: String): T
+                    :target (TypedVar 'fileStats' :type Module 'fileStats'))
+                  :args (
+                    (TypedVar 't1' :type String)
+                  )))
+              :right (TypedInt 384 :type Int)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'remove' :type Fun(path: String): Ok
+          :target (TypedVar 'files' :type Module 'files'))
+        :args (
+          (TypedVar 't1' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'remove' :type Fun(path: String): Ok
+          :target (TypedVar 'files' :type Module 'files'))
+        :args (
+          (TypedVar 't2' :type String)
+        )))
+    (TypedLetValue 'kept' :type Tuple var dir: String end
+      :value (TypedTuple :type Tuple var dir: String end
+        :elements (
+          (TypedString '' :type String)
+        )))
+    (TypedLetValue 'n' :type Int
+      :value (TypedApp :type Int
+        :func (TypedTypeApp [Int] :type Fun(prefix: String action: Fun(dir: String): Int): Int
+          :func (TypedSelect 'withTempDirectory' :type All(A :: TYPE) Fun(prefix: String action: Fun(dir: String): A): A
+            :target (TypedVar 'files' :type Module 'files')))
+        :args (
+          (TypedString 'quest-os-files.' :type String)
+          (TypedFun :params (('dir' : String)) :type Fun(dir: String): Int
+            :body (TypedBlock :type Int
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedAssign
+                    :target (TypedSelect 'dir' :type String
+                      :target (TypedVar 'kept' :type Tuple var dir: String end))
+                    :value (TypedVar 'dir' :type String)))
+                (TypedExprStmt
+                  :expr (TypedApp :type Ok
+                    :func (TypedVar 'write' :type Fun(path: String text: String): Ok)
+                    :args (
+                      (TypedInfix '<>' :type String
+                        :left (TypedVar 'dir' :type String)
+                        :right (TypedString '/x' :type String))
+                      (TypedString 'x' :type String)
+                    )))
+              )
+              :result (TypedInt 42 :type Int)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString "withTempDirectory's result, and its directory gone" :type String)
+          (TypedInfix '/\\' :type Bool
+            :left (TypedInfix 'is' :type Bool
+              :left (TypedVar 'n' :type Int)
+              :right (TypedInt 42 :type Int))
+            :right (TypedApp :type Bool
+              :func (TypedTypeApp [fileStats.T] :type Fun(o: maybe.T(fileStats.T)): Bool
+                :func (TypedSelect 'isNone' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                  :target (TypedVar 'maybe' :type Module 'maybe')))
+              :args (
+                (TypedApp :type maybe.T(T)
+                  :func (TypedSelect 'lfind' :type Fun(path: String): maybe.T(T)
+                    :target (TypedVar 'fileStats' :type Module 'fileStats'))
+                  :args (
+                    (TypedSelect 'dir' :type String
+                      :target (TypedVar 'kept' :type Tuple var dir: String end))
+                  ))
+              )))
+        )))
+    (TypedLetValue 'raisedOut' :type Int
+      :value (TypedTry :type Int
+        :body (TypedApp :type Int
+          :func (TypedTypeApp [Int] :type Fun(prefix: String action: Fun(dir: String): Int): Int
+            :func (TypedSelect 'withTempDirectory' :type All(A :: TYPE) Fun(prefix: String action: Fun(dir: String): A): A
+              :target (TypedVar 'files' :type Module 'files')))
+          :args (
+            (TypedString 'quest-os-files.' :type String)
+            (TypedFun :params (('dir' : String)) :type Fun(dir: String): Int
+              :body (TypedBlock :type Int
+                :bindings (
+                  (TypedExprStmt
+                    :expr (TypedAssign
+                      :target (TypedSelect 'dir' :type String
+                        :target (TypedVar 'kept' :type Tuple var dir: String end))
+                      :value (TypedVar 'dir' :type String)))
+                  (TypedExprStmt
+                    :expr (TypedApp :type Ok
+                      :func (TypedSelect 'makeDirectories' :type Fun(path: String): Ok
+                        :target (TypedVar 'files' :type Module 'files'))
+                      :args (
+                        (TypedInfix '<>' :type String
+                          :left (TypedVar 'dir' :type String)
+                          :right (TypedString '/y/z' :type String))
+                      )))
+                  (TypedExprStmt
+                    :expr (TypedApp :type Ok
+                      :func (TypedSelect 'remove' :type Fun(path: String): Ok
+                        :target (TypedVar 'files' :type Module 'files'))
+                      :args (
+                        (TypedInfix '<>' :type String
+                          :left (TypedVar 'dir' :type String)
+                          :right (TypedString '/missing' :type String))
+                      )))
+                )
+                :result (TypedInt 0 :type Int)))
+          ))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedSelect 'error' :type Exception(Failure)
+              :target (TypedVar 'files' :type Module 'files'))
+            :body (TypedInt -1 :type Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString 'withTempDirectory raised, and its directory gone' :type String)
+          (TypedInfix '/\\' :type Bool
+            :left (TypedInfix 'is' :type Bool
+              :left (TypedVar 'raisedOut' :type Int)
+              :right (TypedInt -1 :type Int))
+            :right (TypedApp :type Bool
+              :func (TypedTypeApp [fileStats.T] :type Fun(o: maybe.T(fileStats.T)): Bool
+                :func (TypedSelect 'isNone' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                  :target (TypedVar 'maybe' :type Module 'maybe')))
+              :args (
+                (TypedApp :type maybe.T(T)
+                  :func (TypedSelect 'lfind' :type Fun(path: String): maybe.T(T)
+                    :target (TypedVar 'fileStats' :type Module 'fileStats'))
+                  :args (
+                    (TypedSelect 'dir' :type String
+                      :target (TypedVar 'kept' :type Tuple var dir: String end))
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'removeTree' :type Fun(path: String): Ok
+          :target (TypedVar 'files' :type Module 'files'))
+        :args (
+          (TypedVar 'root' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'check' :type Fun(what: String holds: Bool): Ok)
+        :args (
+          (TypedString "the test's directory is gone" :type String)
+          (TypedApp :type Bool
+            :func (TypedTypeApp [fileStats.T] :type Fun(o: maybe.T(fileStats.T)): Bool
+              :func (TypedSelect 'isNone' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                :target (TypedVar 'maybe' :type Module 'maybe')))
+            :args (
+              (TypedApp :type maybe.T(T)
+                :func (TypedSelect 'lfind' :type Fun(path: String): maybe.T(T)
+                  :target (TypedVar 'fileStats' :type Module 'fileStats'))
+                :args (
+                  (TypedVar 'root' :type String)
+                ))
+            ))
+        )))
+  ))

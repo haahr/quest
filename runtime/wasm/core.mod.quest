@@ -1787,6 +1787,11 @@ export
     let fdReaddir(fd: Int a: Int n: Int cookie: Int into: Int): Int = external "wasm.base.wasi:fd_readdir"
     let clockTimeGet(id: Int precision: Int into: Int): Int = external "wasm.base.wasi:clock_time_get"
     let pollOneoff(subscriptions: Int events: Int count: Int into: Int): Int = external "wasm.base.wasi:poll_oneoff"
+    let pathSymlink(a: Int n: Int fd: Int b: Int m: Int): Int = external "wasm.base.wasi:path_symlink"
+    let pathReadlink(fd: Int a: Int n: Int buffer: Int size: Int into: Int): Int =
+        external "wasm.base.wasi:path_readlink"
+    let pathFilestatSetTimes(fd: Int flags: Int a: Int n: Int atim: Int mtim: Int which: Int): Int =
+        external "wasm.base.wasi:path_filestat_set_times"
     let intAny(n: Int): Any = external "wasm.toAny"
     let anyInt(x: Any): Int = external "wasm.fromAny"
 
@@ -2170,6 +2175,116 @@ export
             fdClose(fd)
             sort(names)
             names
+        end
+
+    (* ======================================================================
+     * os/files
+     * ====================================================================== *)
+
+    (* The status of WASI's errno: -1 to -8 for ENOENT (44), EEXIST (20),
+     * ENOTDIR (54), EISDIR (31), ENOTEMPTY (55), EACCES (2) or EPERM (63),
+     * EXDEV (75), and ENOTSUP (58), and -(1000 + errno) for others *)
+    let filesCode(errno: Int): Int =
+        if errno is 0 then 0
+        elsif errno is 44 then ~1
+        elsif errno is 20 then ~2
+        elsif errno is 54 then ~3
+        elsif errno is 31 then ~4
+        elsif errno is 55 then ~5
+        elsif {errno is 2} orif {errno is 63} then ~6
+        elsif errno is 75 then ~7
+        elsif errno is 58 then ~8
+        else ~1000 - errno
+        end
+    let filesLast = tuple let var status = 0 end
+    let filesLastStatus(): Int = filesLast.status
+
+    (* op's status on path, notFound for a path no opened directory holds *)
+    let filesOn(path: String op: All(fd: Int n: Int) Int): Int =
+        begin
+            let r = resolve(path)
+            if r.fd < 0 then ~1 else filesCode(op(r.fd pathArg(r.path))) end
+        end
+
+    let filesRemove(path: String): Int = filesOn(path fun(fd: Int n: Int): Int pathUnlinkFile(fd pathAt n))
+    let filesRemoveDirectory(path: String): Int =
+        filesOn(path fun(fd: Int n: Int): Int pathRemoveDirectory(fd pathAt n))
+    let filesMakeDirectory(path: String mode: Int): Int =
+        filesOn(path fun(fd: Int n: Int): Int pathCreateDirectory(fd pathAt n))
+    let filesSetMode(path: String mode: Int): Int = ~8
+    (* Times set, following a symlink (lookup flag 1), with both given
+     * (fst_flags ATIM 1 and MTIM 4) *)
+    let filesSetTimes(path: String accessNs: Int modifiedNs: Int): Int =
+        filesOn(path fun(fd: Int n: Int): Int pathFilestatSetTimes(fd 1 pathAt n accessNs modifiedNs 5))
+
+    (* Opened to write with O_CREAT | O_EXCL (oflags 1 and 4), not following
+     * a symlink, and closed *)
+    let filesCreateNew(path: String mode: Int): Int =
+        filesOn(path fun(fd: Int n: Int): Int
+            begin
+                let errno = pathOpen(fd 0 pathAt n 5 2113638 0 0 results)
+                if errno is 0 then fdClose(load32(results)) end
+                errno
+            end)
+
+    let filesRename(from: String to: String): Int =
+        begin
+            let a = resolve(from)
+            let b = resolve(to)
+            if {a.fd < 0} orif {b.fd < 0} then ~1
+            else
+                let n = stringOp.length(a.path)
+                let m = stringOp.length(b.path)
+                ensure({pathAt + n} + m)
+                toMemory(a.path pathAt)
+                toMemory(b.path pathAt + n)
+                filesCode(pathRename(a.fd pathAt n b.fd {pathAt + n} m))
+            end
+        end
+
+    (* A symlink at path to target: target's text at pathAt, path's after it *)
+    let filesSymlink(target: String path: String): Int =
+        begin
+            let r = resolve(path)
+            if r.fd < 0 then ~1
+            else
+                let n = stringOp.length(target)
+                let m = stringOp.length(r.path)
+                ensure({pathAt + n} + m)
+                toMemory(target pathAt)
+                toMemory(r.path pathAt + n)
+                filesCode(pathSymlink(pathAt n r.fd {pathAt + n} m))
+            end
+        end
+
+    let filesReadLink(path: String): String =
+        begin
+            let r = resolve(path)
+            let errno = if r.fd < 0 then 44
+                else
+                    let n = pathArg(r.path)
+                    ensure(bufferAt + bufferSize)
+                    pathReadlink(r.fd pathAt n bufferAt bufferSize results)
+                end
+            filesLast.status := filesCode(errno)
+            if errno isnot 0 then "" else memString(bufferAt load32(results)) end
+        end
+
+    let filesList(path: String): Array(String) =
+        begin
+            let r = resolve(path)
+            let errno = if r.fd < 0 then 44
+                else
+                    let n = pathArg(r.path)
+                    pathOpen(r.fd 1 pathAt n 2 2113536 0 0 results)
+                end
+            filesLast.status := filesCode(errno)
+            if errno isnot 0 then array of :String end
+            else
+                let fd = load32(results)
+                fdClose(fd)
+                listDirectory(path)
+            end
         end
 
     let writerError(): Ok = raise writer.error end

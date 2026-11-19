@@ -1,0 +1,206 @@
+(* Standard library: os/files (docs/files-plan.md): its primitives and their
+ * failures' codes; makeDirectories, copy, copyTree, move, and removeTree;
+ * walk, allFiles, glob, and globIn on a tree with a hidden file and directory,
+ * an empty directory, and a symlink; and the temporaries. It works in a
+ * directory of its own from makeTempDirectory, removed at its end, and prints
+ * paths relative to it, so its output is the same on every run and target:
+ * under wasm, which has no permission bits, the lines about modes hold
+ * without setting any. *)
+
+import os/files : os/Files;
+import os/fileStats : os/FileStats;
+import collections/vector : collections/Vector;
+import util/maybe : util/Maybe;
+import util/strutil : util/Strutil;
+import stringOp = string : StringOp;
+import reader : Reader;
+import writer : Writer;
+import ascii : Ascii;
+import conv : Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let check(what: String holds: Bool): Ok = print(what <> ": " <> conv.bool(holds));
+
+let root = files.makeTempDirectory("quest-os-files.");
+let at(rel: String): String = root <> "/" <> rel;
+(* A path, root's own part shown as T *)
+let shown(p: String): String =
+    if strutil.startsWith(p root) then
+        "T" <> stringOp.getSub(p stringOp.length(root) stringOp.length(p) - stringOp.length(root))
+    else p
+    end;
+
+let codeName(c: files.Code): String =
+    case c
+        when notFound then "notFound (" when exists then "exists (" when notDirectory then "notDirectory ("
+        when isDirectory then "isDirectory (" when notEmpty then "notEmpty (" when permission then "permission ("
+        when crossDevice then "crossDevice (" when unsupported then "unsupported (" when other then "other ("
+    end;
+(* What an action did: ok, or its failure; an other's message, which names
+ * the target's errno, left out *)
+let attempt(what: String action: All() Ok): Ok =
+    print(what <> ": " <> try begin action() "ok" end when files.error with f then
+        f.operation <> " " <> shown(f.path) <> ": " <> codeName(f.code)
+            <> if f.code?other then "...)" else f.message <> ")" end
+    end);
+let joined(v: vector.T(String)): String =
+    begin
+        let var s = ""
+        for i = 0 upto {vector.length(:String v) - 1} do
+            s := s <> if i > 0 then " " else "" end <> vector.get(:String v i)
+        end
+        s
+    end;
+let write(path: String text: String): Ok =
+    begin
+        let w = writer.file(path)
+        writer.putString(w text)
+        writer.close(w)
+    end;
+let read(path: String): String =
+    begin
+        let r = reader.file(path)
+        let text = reader.getString(r 1000000)
+        reader.close(r)
+        text
+    end;
+
+(* Whether the target has permission bits *)
+let modes = try begin files.setMode(root 448) true end when files.error with f then not(f.code?unsupported) end;
+
+(* 1. The primitives *)
+attempt("makeDirectory d" fun(): Ok files.makeDirectory(at("d") 511));
+attempt("makeDirectory d again" fun(): Ok files.makeDirectory(at("d") 511));
+attempt("createNew d/f" fun(): Ok files.createNew(at("d/f") 420));
+attempt("createNew d/f again" fun(): Ok files.createNew(at("d/f") 420));
+print("list d: " <> joined(files.list(at("d"))));
+attempt("list d/f" fun(): Ok begin let names = files.list(at("d/f")) ok end);
+attempt("list missing" fun(): Ok begin let names = files.list(at("missing")) ok end);
+attempt("removeDirectory d" fun(): Ok files.removeDirectory(at("d")));
+attempt("remove missing" fun(): Ok files.remove(at("missing")));
+attempt("rename d/f to d/g" fun(): Ok files.rename(at("d/f") at("d/g")));
+attempt("rename missing" fun(): Ok files.rename(at("missing") at("d/h")));
+attempt("rename into missing" fun(): Ok files.rename(at("d/g") at("missing/h")));
+attempt("symlink l to d/g" fun(): Ok files.symlink("d/g" at("l")));
+attempt("symlink l again" fun(): Ok files.symlink("d/g" at("l")));
+print("readLink l: " <> files.readLink(at("l")));
+attempt("readLink d/g" fun(): Ok begin let target = files.readLink(at("d/g")) ok end);
+check("realPath l is realPath d/g" stringOp.equal(files.realPath(at("l")) files.realPath(at("d/g"))));
+check("realPath is absolute" strutil.startsWith(files.realPath(at("d/../d/g")) "/"));
+attempt("realPath missing" fun(): Ok begin let p = files.realPath(at("d/missing")) ok end);
+attempt("setTimes d/g" fun(): Ok files.setTimes(at("d/g") 1600000000000000000 1700000000000000000));
+let gs = fileStats.stat(at("d/g"));
+check("setTimes took" {gs.accessNs is 1600000000000000000} /\ {gs.modifiedNs is 1700000000000000000});
+attempt("setTimes missing" fun(): Ok files.setTimes(at("missing") 0 0));
+if modes then files.setMode(at("d/g") 384) end;
+check("setMode took" not(modes) orif {fileStats.stat(at("d/g")).mode is 384});
+attempt("remove l" fun(): Ok files.remove(at("l")));
+check("d/g stays" maybe.isSome(:fileStats.T fileStats.find(at("d/g"))));
+
+(* 2. makeDirectories and copy *)
+attempt("makeDirectories m/n/o" fun(): Ok files.makeDirectories(at("m/n/o")));
+attempt("makeDirectories m/n/o again" fun(): Ok files.makeDirectories(at("m/n/o")));
+attempt("makeDirectories d/g/x" fun(): Ok files.makeDirectories(at("d/g/x")));
+let big = stringOp.new(200000 'a');
+for i = 0 upto {stringOp.length(big) - 1} do stringOp.setChar(big i ascii.char(i % 256)) end;
+write(at("big") big);
+if modes then files.setMode(at("big") 416) end;
+attempt("copy big" fun(): Ok files.copy(at("big") at("big2")));
+check("copy's content, " <> conv.int(stringOp.length(big)) <> " bytes of every value"
+    stringOp.equal(read(at("big2")) big));
+check("copy's mode" not(modes) orif {fileStats.stat(at("big2")).mode is 416});
+write(at("empty") "");
+attempt("copy empty onto big2" fun(): Ok files.copy(at("empty") at("big2")));
+check("big2 is empty" stringOp.isEmpty(read(at("big2"))));
+attempt("copy big onto itself" fun(): Ok files.copy(at("big") at("big")));
+attempt("copy a directory" fun(): Ok files.copy(at("d") at("d2")));
+attempt("copy missing" fun(): Ok files.copy(at("missing") at("d2")));
+
+(* 3. A tree *)
+files.makeDirectories(at("tree/a/b"));
+files.makeDirectory(at("tree/empty") 511);
+files.makeDirectory(at("tree/.hidden") 511);
+write(at("tree/a/b/c.txt") "c");
+write(at("tree/a/d.quest") "d");
+write(at("tree/e.quest") "e");
+write(at("tree/.dot.quest") "dot");
+write(at("tree/.hidden/h.quest") "h");
+files.symlink("a" at("tree/link"));
+let kindName(k: fileStats.Kind): String =
+    case k
+        when file then "file" when directory then "directory" when symlink then "symlink" when other then "other"
+    end;
+files.walk(at("tree") fun(e: files.Entry): Bool
+    begin
+        print("walk " <> conv.int(e.depth) <> " " <> shown(e.path) <> " " <> kindName(e.stats.kind))
+        not(strutil.endsWith(e.path "/.hidden"))
+    end);
+print("allFiles: " <> joined(vector.map(:String :String files.allFiles(at("tree")) shown)));
+let globbed(pattern: String): Ok = print("globIn " <> pattern <> ": " <> joined(files.globIn(at("tree") pattern)));
+globbed("*");
+globbed("*.quest");
+globbed(".*");
+globbed("**/*.quest");
+globbed("**");
+globbed("a/**");
+globbed("**/");
+globbed("*/");
+globbed("?.quest");
+globbed("[a-d]*");
+globbed("[!a-d]*");
+globbed("link/*");
+globbed("**/b/*");
+globbed("a/b/c.txt");
+globbed("a/b/missing.txt");
+globbed("nothing*");
+globbed("[unclosed");
+let absolute = files.glob(at("tree") <> "/*.quest");
+print("glob absolute: " <> joined(vector.map(:String :String absolute shown)));
+attempt("globIn absolute" fun(): Ok begin let found = files.globIn(at("tree") "/x") ok end);
+
+attempt("copyTree tree to tree2" fun(): Ok files.copyTree(at("tree") at("tree2")));
+check("tree2's files are tree's"
+    stringOp.equal(joined(files.globIn(at("tree2") "**/*")) joined(files.globIn(at("tree") "**/*"))));
+print("tree2/link: " <> files.readLink(at("tree2/link")) <> ", a symlink: "
+    <> conv.bool(fileStats.lstat(at("tree2/link")).kind?symlink));
+attempt("copyTree onto tree2" fun(): Ok files.copyTree(at("tree") at("tree2")));
+attempt("move tree2/e.quest to moved.quest" fun(): Ok files.move(at("tree2/e.quest") at("moved.quest")));
+print("moved.quest: " <> read(at("moved.quest")));
+attempt("removeTree tree2" fun(): Ok files.removeTree(at("tree2")));
+check("tree2 is gone" maybe.isNone(:fileStats.T fileStats.lfind(at("tree2"))));
+check("tree/a is not, through tree2/link" maybe.isSome(:fileStats.T fileStats.find(at("tree/a/d.quest"))));
+attempt("removeTree tree2 again" fun(): Ok files.removeTree(at("tree2")));
+attempt("walk missing" fun(): Ok files.walk(at("missing") fun(e: files.Entry): Bool true));
+
+(* 4. The temporaries *)
+check("tempDirectory is not empty" not(stringOp.isEmpty(files.tempDirectory())));
+let t1 = files.makeTempFile("quest-os-files." ".txt");
+let t2 = files.makeTempFile("quest-os-files." ".txt");
+check("two temporary files differ, and exist" not(stringOp.equal(t1 t2))
+    /\ maybe.isSome(:fileStats.T fileStats.find(t1)) /\ maybe.isSome(:fileStats.T fileStats.find(t2)));
+check("a temporary file's name" strutil.endsWith(t1 ".txt") andif {stringOp.length(t1) > 25});
+check("a temporary file's mode" not(modes) orif {fileStats.stat(t1).mode is 384});
+files.remove(t1);
+files.remove(t2);
+let kept = tuple let var dir = "" end;
+let n = files.withTempDirectory(:Int "quest-os-files." fun(dir: String): Int
+    begin
+        kept.dir := dir
+        write(dir <> "/x" "x")
+        42
+    end);
+check("withTempDirectory's result, and its directory gone"
+    {n is 42} /\ maybe.isNone(:fileStats.T fileStats.lfind(kept.dir)));
+let raisedOut = try files.withTempDirectory(:Int "quest-os-files." fun(dir: String): Int
+        begin
+            kept.dir := dir
+            files.makeDirectories(dir <> "/y/z")
+            files.remove(dir <> "/missing")
+            0
+        end)
+    when files.error with f then ~1 end;
+check("withTempDirectory raised, and its directory gone"
+    {raisedOut is ~1} /\ maybe.isNone(:fileStats.T fileStats.lfind(kept.dir)));
+
+files.removeTree(root);
+check("the test's directory is gone" maybe.isNone(:fileStats.T fileStats.lfind(root)))

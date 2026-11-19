@@ -202,13 +202,13 @@ static int quest_strcmp_qsort(const void *a, const void *b) {
     return strcmp(s1->data, s2->data);
 }
 
-QArray *quest_system_list_directory(const QString *path) {
-    if (path == NULL || path->data == NULL) {
-        quest_raise_system_error();
-    }
-    DIR *dir = opendir(path->data);
+/* The names in the directory path, but . and .., sorted as strcmp orders
+ * them; NULL, with errno set, if it cannot be opened. A failure to allocate
+ * raises system.error. */
+static QArray *quest_list_names(const char *path) {
+    DIR *dir = opendir(path);
     if (dir == NULL) {
-        quest_raise_system_error();
+        return NULL;
     }
 
     size_t count = 0;
@@ -253,6 +253,121 @@ QArray *quest_system_list_directory(const QString *path) {
     quest_gc_release();
     return res;
 }
+
+QArray *quest_system_list_directory(const QString *path) {
+    if (path == NULL || path->data == NULL) {
+        quest_raise_system_error();
+    }
+    QArray *names = quest_list_names(path->data);
+    if (names == NULL) {
+        quest_raise_system_error();
+    }
+    return names;
+}
+
+/* os/files (see quest_runtime.h): each primitive's status, 0 or a negative
+ * code in the order of files.Code, kept for those that return a value */
+static QInt quest_files_last = 0;
+
+static QInt quest_files_code(int err) {
+    switch (err) {
+    case ENOENT: return -1;
+    case EEXIST: return -2;
+    case ENOTDIR: return -3;
+    case EISDIR: return -4;
+    case ENOTEMPTY: return -5;
+    case EACCES: case EPERM: return -6;
+    case EXDEV: return -7;
+#if defined(EOPNOTSUPP) && EOPNOTSUPP != ENOTSUP
+    case EOPNOTSUPP:
+#endif
+    case ENOTSUP: return -8;
+    default: return -(1000 + (QInt)err);
+    }
+}
+
+/* 0 if the call succeeded (gave 0), else errno's code */
+static QInt quest_files_status(int result) { return result == 0 ? 0 : quest_files_code(errno); }
+
+static const char *quest_files_path(const QString *path) {
+    if (path == NULL || path->data == NULL) quest_raise_system_error();
+    return path->data;
+}
+
+QInt quest_files_remove(const QString *path) { return quest_files_status(unlink(quest_files_path(path))); }
+
+QInt quest_files_remove_directory(const QString *path) {
+    return quest_files_status(rmdir(quest_files_path(path)));
+}
+
+QInt quest_files_rename(const QString *from, const QString *to) {
+    return quest_files_status(rename(quest_files_path(from), quest_files_path(to)));
+}
+
+QInt quest_files_make_directory(const QString *path, QInt mode) {
+    return quest_files_status(mkdir(quest_files_path(path), (mode_t)mode));
+}
+
+QInt quest_files_create_new(const QString *path, QInt mode) {
+    int fd = open(quest_files_path(path), O_WRONLY | O_CREAT | O_EXCL, (mode_t)mode);
+    if (fd < 0) return quest_files_code(errno);
+    close(fd);
+    return 0;
+}
+
+QArray *quest_files_list(const QString *path) {
+    QArray *names = quest_list_names(quest_files_path(path));
+    if (names == NULL) {
+        quest_files_last = quest_files_code(errno);
+        return quest_array_new(0, (QVal){ .p = NULL }, &quest_layout_array_pointer);
+    }
+    quest_files_last = 0;
+    return names;
+}
+
+QInt quest_files_symlink(const QString *target, const QString *path) {
+    return quest_files_status(symlink(quest_files_path(target), quest_files_path(path)));
+}
+
+QString *quest_files_read_link(const QString *path) {
+    const char *p = quest_files_path(path);
+    size_t cap = 256;
+    for (;;) {
+        char *buf = (char *)malloc(cap);
+        if (buf == NULL) quest_raise_system_error();
+        ssize_t n = readlink(p, buf, cap);
+        if (n < 0) {
+            quest_files_last = quest_files_code(errno);
+            free(buf);
+            return quest_string_new("", 0);
+        }
+        if ((size_t)n < cap) {
+            QString *s = quest_string_new(buf, (int64_t)n);
+            free(buf);
+            quest_files_last = 0;
+            return s;
+        }
+        free(buf);
+        cap *= 2;
+    }
+}
+
+QInt quest_files_set_mode(const QString *path, QInt mode) {
+    return quest_files_status(chmod(quest_files_path(path), (mode_t)mode));
+}
+
+QInt quest_files_set_times(const QString *path, QInt access_ns, QInt modified_ns) {
+    struct timespec ts[2] = {
+        { (time_t)(access_ns / 1000000000), (long)(access_ns % 1000000000) },
+        { (time_t)(modified_ns / 1000000000), (long)(modified_ns % 1000000000) },
+    };
+    for (int i = 0; i < 2; i++) {
+        if (ts[i].tv_nsec < 0) { ts[i].tv_nsec += 1000000000; ts[i].tv_sec -= 1; }
+    }
+    return quest_files_status(utimensat(AT_FDCWD, quest_files_path(path), ts, 0));
+}
+
+QInt quest_files_last_status(void) { return quest_files_last; }
 
 /* A growing byte buffer for a child's output */
 typedef struct QRunBuffer {

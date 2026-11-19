@@ -1,0 +1,174 @@
+interface Files
+import
+    collections/vector : collections/Vector
+    os/fileStats : os/FileStats
+export
+    (* =========================================================================
+     * File-System Operations (Files)
+     *
+     * Copying, moving, and removing files and trees; walking a tree and
+     * finding files by a pattern; temporary files and directories; symlinks,
+     * permissions, and times (docs/files-plan.md). Paths are Strings, as in
+     * system and os/fileStats; os/path has paths as values. A failure raises
+     * error with what failed and why:
+     *
+     *     try files.removeTree(dir) when files.error with f then
+     *         if f.code?notFound then ok else raise files.error with f end end
+     *     end
+     *
+     * Symlinks are never followed when changing anything: removeTree removes
+     * a symlink, walk does not enter one, and copyTree makes one anew.
+     * ====================================================================== *)
+
+    (* The errors a program tells apart; other is any other, whose message
+     * names it *)
+    Def Code = Option
+        (* ENOENT: nothing is at the path, or a directory on it is missing *)
+        notFound
+        (* EEXIST: something is at the path already *)
+        exists
+        (* ENOTDIR: a component of the path is not a directory *)
+        notDirectory
+        (* EISDIR: the path is a directory, and the operation needs another kind *)
+        isDirectory
+        (* ENOTEMPTY: the directory is not empty *)
+        notEmpty
+        (* EACCES, EPERM: the operation is not permitted *)
+        permission
+        (* EXDEV: a rename from one file system to another *)
+        crossDevice
+        (* ENOTSUP, or what the target cannot do (setMode under wasm) *)
+        unsupported
+        other
+    end
+
+    (* The operation ("remove", "copy", ...), the path it failed on (for one of
+     * two paths, the one that failed), the code, and a message, such as "No
+     * such file or directory", the same on every target *)
+    Def Failure = Tuple operation: String path: String code: Code message: String end
+
+    error: Exception(Failure)
+
+    (* ======================================================================
+     * Files and directories, one system call each
+     * ====================================================================== *)
+
+    (* Remove the file or symlink path (unlink) *)
+    remove(path: String): Ok
+
+    (* Remove the empty directory path (rmdir) *)
+    removeDirectory(path: String): Ok
+
+    (* Rename from to to, replacing a file to if there is one (rename) *)
+    rename(from: String to: String): Ok
+
+    (* Make the directory path, with permission bits mode less the umask
+     * (mkdir); 511 is 0o777 *)
+    makeDirectory(path: String mode: Int): Ok
+
+    (* Make the empty file path, with permission bits mode less the umask;
+     * raises exists if anything is at path, a symlink included (open with
+     * O_CREAT | O_EXCL); 420 is 0o644 *)
+    createNew(path: String mode: Int): Ok
+
+    (* The names in the directory path, without . and .., sorted *)
+    list(path: String): vector.T(String)
+
+    (* Make a symlink at path whose target is target, which need not exist
+     * (symlink) *)
+    symlink(target: String path: String): Ok
+
+    (* The target of the symlink path, as it was made (readlink) *)
+    readLink(path: String): String
+
+    (* Set path's permission bits (chmod), following a symlink; unsupported
+     * under wasm, which has none *)
+    setMode(path: String mode: Int): Ok
+
+    (* Set path's access and modification times, in nanoseconds since the
+     * epoch, following a symlink (utimensat) *)
+    setTimes(path: String accessNs: Int modifiedNs: Int): Ok
+
+    (* ======================================================================
+     * Built on them
+     * ====================================================================== *)
+
+    (* The absolute path that names what path names, with no symlink, . or
+     * .. in it (realpath), each component's symlinks followed; raises
+     * notFound if a component names nothing *)
+    realPath(path: String): String
+
+    (* Make the directory path and any missing parents (mkdir -p), mode 0o777
+     * less the umask; nothing if path is a directory already, and exists if
+     * it is something else *)
+    makeDirectories(path: String): Ok
+
+    (* Copy the file from to to, its content and permission bits (not its
+     * times), replacing a file to; from is followed if a symlink, and must
+     * not be a directory, nor the same file as to *)
+    copy(from: String to: String): Ok
+
+    (* Copy the tree at from to to, which must not exist: its directories
+     * made, its files copied, and its symlinks made anew with the same
+     * targets; from itself is followed if a symlink *)
+    copyTree(from: String to: String): Ok
+
+    (* Remove path and, if it is a directory, everything in it; a symlink is
+     * removed, not followed *)
+    removeTree(path: String): Ok
+
+    (* rename, or, from one file system to another (crossDevice), copyTree or
+     * copy then removeTree, so that a failure leaves from whole *)
+    move(from: String to: String): Ok
+
+    (* What walk shows of each path: the path (root, and the names down to it
+     * joined by /), its stats, not following a symlink, and its depth, 0 for
+     * root *)
+    Def Entry = Tuple path: String stats: fileStats.T depth: Int end
+
+    (* Visit root and everything under it, each directory before its contents
+     * and these in name order (pre-order); visit's result says whether to
+     * enter a directory. A symlink is shown and not entered; root, if one, is
+     * followed. An entry removed while walk runs is passed over. *)
+    walk(root: String visit: All(e: Entry) Bool): Ok
+
+    (* The regular files under root, in walk's order *)
+    allFiles(root: String): vector.T(String)
+
+    (* The paths that pattern matches, sorted as strings: pattern's components
+     * are matched one at a time, each as util/path's matches, and a component
+     * ** matches zero or more directories, none of them a symlink, so that
+     * nothing is reached through one (as pathlib's glob). A pattern
+     * ending in / matches directories only. A relative pattern is relative to
+     * the current directory, and so are its results; none, an empty vector,
+     * if nothing matches.
+     * Examples:
+     *   glob("lib/os/*.int.quest")  => lib/os/code.int.quest, ...
+     *   glob("tests/**/x.quest")    => tests/x.quest, tests/a/x.quest, ...
+     *)
+    glob(pattern: String): vector.T(String)
+
+    (* glob of root's pattern, which must be relative, its results relative
+     * to root *)
+    globIn(root: String pattern: String): vector.T(String)
+
+    (* ======================================================================
+     * Temporary files and directories
+     * ====================================================================== *)
+
+    (* The directory for temporaries: TMPDIR if set and not empty, else /tmp *)
+    tempDirectory(): String
+
+    (* A new directory in tempDirectory(), named prefix and 10 random letters
+     * and digits, with mode 0o700; its path *)
+    makeTempDirectory(prefix: String): String
+
+    (* A new empty file there, named prefix, 10 random letters and digits,
+     * and suffix, with mode 0o600; its path *)
+    makeTempFile(prefix: String suffix: String): String
+
+    (* The result of action on a new temporary directory (makeTempDirectory's
+     * of prefix), which is removed with everything in it afterward, whether
+     * action returns or raises *)
+    withTempDirectory(A::TYPE prefix: String action: All(dir: String) A): A
+end

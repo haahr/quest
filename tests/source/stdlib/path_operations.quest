@@ -112,3 +112,29 @@ end;
 let resolved = path.resolve("foo/bar");
 printBool(path.isAbsolute(resolved));
 printBool(stringOp.equal(path.normalize(resolved) resolved));
+
+(* 8. Patterns: each construct, a leading ., and a [ without its ] *)
+let matched(pattern: String name: String): Ok =
+    printStr("matches " <> pattern <> " " <> name <> ": " <> conv.bool(path.matches(pattern name)));
+matched("*.quest" "a.int.quest");
+matched("*.quest" "a.quest.txt");
+matched("*" "");
+matched("*" ".git");
+matched(".*" ".git");
+matched("?" "a");
+matched("?" "ab");
+matched("a*b*c" "aXbYbZc");
+matched("a*b*c" "aXbYbZ");
+matched("[abc]x" "bx");
+matched("[a-c]x" "dx");
+matched("[!a-c]?" "dx");
+matched("[!a-c]?" "ax");
+matched("[]]" "]");
+matched("[!]]" "a");
+matched("[a-]" "-");
+matched("[unclosed" "[unclosed");
+matched("[unclosed" "u");
+matched("*[0-9]" "file7");
+matched("**" "anything");
+matched("" "")
+

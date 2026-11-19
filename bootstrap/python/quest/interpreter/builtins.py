@@ -10,6 +10,7 @@ The self-hosted counterpart is questlang/interpreter/builtins."""
 
 from __future__ import annotations
 
+import errno
 import io
 import math
 import os
@@ -643,6 +644,46 @@ def _time_local_offset(seconds: QInt) -> QInt:
         return QInt(time.localtime(seconds.value).tm_gmtoff)
     except (OverflowError, OSError, ValueError):
         return QInt(0)
+
+
+# os/files (runtime/quest_os.c's quest_files_*): each a system call, giving 0
+# or a negative status (-1 to -8 for the errors files.Code names, -(1000 +
+# errno) for others); list and readLink keep theirs for quest_files_last_status
+_FILES_CODES = {errno.ENOENT: -1, errno.EEXIST: -2, errno.ENOTDIR: -3, errno.EISDIR: -4, errno.ENOTEMPTY: -5,
+                errno.EACCES: -6, errno.EPERM: -6, errno.EXDEV: -7, errno.ENOTSUP: -8,
+                getattr(errno, "EOPNOTSUPP", errno.ENOTSUP): -8}
+_files_last = [0]
+
+def _files_code(e: OSError) -> int:
+    return _FILES_CODES.get(e.errno, -(1000 + (e.errno or 0)))
+
+def _files_status(f: Callable[[], Any]) -> QInt:
+    try:
+        f()
+        return QInt(0)
+    except OSError as e:
+        return QInt(_files_code(e))
+
+def _files_create_new(path: str, mode: int) -> None:
+    os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode))
+
+def _files_list(path_val: QString) -> QArray:
+    try:
+        names = sorted(os.listdir(_os_path(path_val)))
+    except OSError as e:
+        _files_last[0] = _files_code(e)
+        return QArray(())
+    _files_last[0] = 0
+    return QArray(tuple(QString(n.decode(BYTE_ENCODING)) for n in names))
+
+def _files_read_link(path_val: QString) -> QString:
+    try:
+        target = os.readlink(_os_path(path_val))
+    except OSError as e:
+        _files_last[0] = _files_code(e)
+        return QString("")
+    _files_last[0] = 0
+    return QString(target.decode(BYTE_ENCODING))
 
 
 def _filestats_stat(path_val: QString, follow: QBool) -> QTuple:
@@ -1279,6 +1320,17 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     "quest_system_run": _system_run,
     "quest_system_is_terminal": _system_is_terminal,
     "quest_filestats_stat": _filestats_stat,
+    "quest_files_remove": lambda p: _files_status(lambda: os.unlink(_os_path(p))),
+    "quest_files_remove_directory": lambda p: _files_status(lambda: os.rmdir(_os_path(p))),
+    "quest_files_rename": lambda a, b: _files_status(lambda: os.rename(_os_path(a), _os_path(b))),
+    "quest_files_make_directory": lambda p, m: _files_status(lambda: os.mkdir(_os_path(p), m.value)),
+    "quest_files_create_new": lambda p, m: _files_status(lambda: _files_create_new(_os_path(p), m.value)),
+    "quest_files_list": _files_list,
+    "quest_files_symlink": lambda t, p: _files_status(lambda: os.symlink(_os_path(t), _os_path(p))),
+    "quest_files_read_link": _files_read_link,
+    "quest_files_set_mode": lambda p, m: _files_status(lambda: os.chmod(_os_path(p), m.value)),
+    "quest_files_set_times": lambda p, a, m: _files_status(lambda: os.utime(_os_path(p), ns=(a.value, m.value))),
+    "quest_files_last_status": lambda: QInt(_files_last[0]),
     "quest_time_now_ns": _time_now_ns,
     "quest_time_ticks_ns": _time_ticks_ns,
     "quest_time_cpu_ns": _time_cpu_ns,

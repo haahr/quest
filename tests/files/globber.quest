@@ -1,0 +1,41 @@
+(* tests/python/test_files.py's harness: for the directory system.args[1],
+ * each path walk visits, a line "walk DEPTH KIND PATH" with PATH relative to
+ * the directory, then for each line of the file system.args[2], a pattern,
+ * the line "glob PATTERN" and a line "= PATH" for each path globIn gives *)
+
+import os/files : os/Files;
+import os/fileStats : os/FileStats;
+import collections/vector : collections/Vector;
+import stringOp = string : StringOp;
+import reader : Reader;
+import writer : Writer;
+import system : System;
+import conv : Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let root = system.args[1];
+let relative(p: String): String =
+    if stringOp.length(p) > stringOp.length(root) then
+        stringOp.getSub(p stringOp.length(root) + 1 {stringOp.length(p) - stringOp.length(root)} - 1)
+    else "." end;
+files.walk(root fun(e: files.Entry): Bool
+    begin
+        let kind = case e.stats.kind
+            when file then "file" when directory then "directory" when symlink then "symlink"
+            when other then "other" end
+        print("walk " <> conv.int(e.depth) <> " " <> kind <> " " <> relative(e.path))
+        true
+    end);
+let r = reader.file(system.args[2]);
+let text = reader.getString(r 10000000);
+reader.close(r);
+let var start = 0;
+for i = 0 upto {stringOp.length(text) - 1} do
+    if stringOp.getChar(text i) is '\n' then
+        let pattern = stringOp.getSub(text start i - start)
+        print("glob " <> pattern)
+        let found = files.globIn(root pattern)
+        for k = 0 upto {vector.length(:String found) - 1} do print("= " <> vector.get(:String found k)) end
+        start := i + 1
+    end
+end

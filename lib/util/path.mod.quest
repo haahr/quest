@@ -7,6 +7,7 @@ import
     collections/vector : collections/Vector
     stringOp = string : StringOp
     system: System
+    ascii: Ascii
 export
     (* Exception raised on invalid path operations *)
     let error: Exception = exception error: Ok end
@@ -303,4 +304,87 @@ export
             let cwd = system.currentDirectory()
             normalize(join(cwd path))
         end
+    (* ======================================================================
+     * Patterns
+     * ====================================================================== *)
+
+    (* Where pattern's element at pi (a ?, a class, or a character) goes on to
+     * if it matches c, ~1 if it does not. A class runs to the first ] after
+     * its first character (so []] and [!]] hold a ]); one with no ] is a
+     * literal [. *)
+    let privateStep(pattern: String pi: Int c: Char): Int =
+        begin
+            let n = stringOp.length(pattern)
+            let p = stringOp.getChar(pattern pi)
+            if p is '?' then pi + 1
+            elsif p is '[' then
+                let var j = pi + 1
+                let negate = {j < n} andif {stringOp.getChar(pattern j) is '!'}
+                if negate then j := j + 1 end
+                let first = j
+                let var hit = false
+                let var closed = false
+                while {j < n} andif not(closed) do
+                    let a = stringOp.getChar(pattern j)
+                    if {a is ']'} andif {j > first} then closed := true
+                    elsif {{j + 2} < n} andif {stringOp.getChar(pattern j + 1) is '-'}
+                        andif {stringOp.getChar(pattern j + 2) isnot ']'} then
+                        let b = stringOp.getChar(pattern j + 2)
+                        if {ascii.val(a) <= ascii.val(c)} andif {ascii.val(c) <= ascii.val(b)} then hit := true end
+                        j := j + 3
+                    else
+                        if a is c then hit := true end
+                        j := j + 1
+                    end
+                end
+                if not(closed) then
+                    if c is '[' then pi + 1 else ~1 end
+                elsif hit isnot negate then j + 1
+                else ~1
+                end
+            elsif p is c then pi + 1
+            else ~1
+            end
+        end
+
+    (* By the usual greedy match with backtracking to the last *: each * first
+     * takes nothing, and takes one more character of name each time what
+     * follows it fails *)
+    let matches(pattern: String name: String): Bool =
+        begin
+            let pn = stringOp.length(pattern)
+            let nn = stringOp.length(name)
+            let hidden = {nn > 0} andif {stringOp.getChar(name 0) is '.'}
+            if hidden andif not({pn > 0} andif {stringOp.getChar(pattern 0) is '.'}) then
+                false
+            else
+                let var pi = 0
+                let var ni = 0
+                let var starAt = ~1
+                let var starName = 0
+                let var failed = false
+                while {ni < nn} andif not(failed) do
+                    if {pi < pn} andif {stringOp.getChar(pattern pi) is '*'} then
+                        starAt := pi
+                        starName := ni
+                        pi := pi + 1
+                    else
+                        let next = if pi < pn then privateStep(pattern pi stringOp.getChar(name ni)) else ~1 end
+                        if next >= 0 then
+                            pi := next
+                            ni := ni + 1
+                        elsif starAt >= 0 then
+                            pi := starAt + 1
+                            starName := starName + 1
+                            ni := starName
+                        else
+                            failed := true
+                        end
+                    end
+                end
+                while {pi < pn} andif {stringOp.getChar(pattern pi) is '*'} do pi := pi + 1 end
+                not(failed) andif {pi is pn}
+            end
+        end
+
 end

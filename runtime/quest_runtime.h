@@ -425,6 +425,24 @@ bool     quest_system_is_terminal(int64_t fd);
  * path names nothing (ENOENT or ENOTDIR); other failures raise system.error */
 void    *quest_filestats_stat(const QString *path, bool follow);
 
+/* os/files module primitives (docs/files-plan.md section 4): each a system
+ * call, giving 0 for success or a negative code for its errno, -1 to -8 for
+ * ENOENT, EEXIST, ENOTDIR, EISDIR, ENOTEMPTY, EACCES or EPERM, EXDEV, and
+ * ENOTSUP, and -(1000 + errno) for any other. quest_files_list and
+ * quest_files_read_link give their value (an empty one on failure) and keep
+ * the status, which quest_files_last_status gives. */
+QInt     quest_files_remove(const QString *path);
+QInt     quest_files_remove_directory(const QString *path);
+QInt     quest_files_rename(const QString *from, const QString *to);
+QInt     quest_files_make_directory(const QString *path, QInt mode);
+QInt     quest_files_create_new(const QString *path, QInt mode);
+QArray  *quest_files_list(const QString *path);
+QInt     quest_files_symlink(const QString *target, const QString *path);
+QString *quest_files_read_link(const QString *path);
+QInt     quest_files_set_mode(const QString *path, QInt mode);
+QInt     quest_files_set_times(const QString *path, QInt access_ns, QInt modified_ns);
+QInt     quest_files_last_status(void);
+
 /* os/time module primitives (docs/time-plan.md section 2): the wall clock's
  * nanoseconds since the epoch (CLOCK_REALTIME), the monotonic clock's
  * nanoseconds (CLOCK_MONOTONIC), the process's CPU time in nanoseconds

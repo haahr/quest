@@ -1,0 +1,823 @@
+import files = "os/files" : os/Files
+import fileStats = "os/fileStats" : os/FileStats
+import vector = "collections/vector" : collections/Vector
+import maybe = "util/maybe" : util/Maybe
+import strutil = "util/strutil" : util/Strutil
+import stringOp = "string" : StringOp
+import reader = "reader" : Reader
+import writer = "writer" : Writer
+import ascii = "ascii" : Ascii
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @21:45
+      let %2: String = prim <>(s, "\n") @21:59
+      let %3: Ok = call writer.putString(%1, %2) @21:28
+      return %3
+    }
+  }
+  funs {
+    fun check(what: String, holds: Bool): Ok {
+      let %4: String = call conv.bool(holds) @22:65
+      let %5: String = prim <>(": ", %4) @22:57
+      let %6: String = prim <>(what, %5) @22:49
+      let %7: Ok = call print(%6) @22:43
+      return %7
+    }
+  }
+  let root: String = call files.makeTempDirectory("quest-os-files.") @24:12
+  funs {
+    fun at(rel: String): String {
+      let %8: String = prim <>("/", rel) @25:39
+      let %9: String = prim <>(root, %8) @25:31
+      return %9
+    }
+  }
+  funs {
+    fun shown(p: String): String {
+      join k1(r: String) {
+        return r
+      } in {
+        let %10: Bool = call strutil.startsWith(p, root) @28:8
+        if %10 { @28:5
+          let %11: Int = call stringOp.length(root) @29:34
+          let %12: Int = call stringOp.length(p) @29:56
+          let %13: Int = call stringOp.length(root) @29:77
+          let %14: Int = prim -(%12, %13) @29:56
+          let %15: String = call stringOp.getSub(p, %11, %14) @29:16
+          let %16: String = prim <>("T", %15) @29:9
+          jump k1(%16) @28:5
+        } else {
+          jump k1(p) @28:5
+        }
+      }
+    }
+  }
+  funs {
+    fun codeName(c: files.Code): String {
+      join k2(r.1: String) {
+        return r.1
+      } in {
+        switch tag(c) { @34:5
+          case notFound: {
+            jump k2("notFound (") @34:5
+          }
+          case exists: {
+            jump k2("exists (") @34:5
+          }
+          case notDirectory: {
+            jump k2("notDirectory (") @34:5
+          }
+          case isDirectory: {
+            jump k2("isDirectory (") @34:5
+          }
+          case notEmpty: {
+            jump k2("notEmpty (") @34:5
+          }
+          case permission: {
+            jump k2("permission (") @34:5
+          }
+          case crossDevice: {
+            jump k2("crossDevice (") @34:5
+          }
+          case unsupported: {
+            jump k2("unsupported (") @34:5
+          }
+          case other: {
+            jump k2("other (") @34:5
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun attempt(what.1: String, action: Fun(): Ok): Ok {
+      join k3(r.2: String) {
+        let %17: String = prim <>(": ", r.2) @42:19
+        let %18: String = prim <>(what.1, %17) @42:11
+        let %19: Ok = call print(%18) @42:5
+        return %19
+      } in {
+        let %20: Exception(Failure) = member files.error @42:60
+        try catching (%20) {
+          do call action() @42:37
+          jump k3("ok") @42:27
+        } handle (e: Exception) {
+          let %21: Bool = prim is(e, %20) @42:27
+          if %21 { @42:27
+            let f: Failure = exception_payload(e) @42:27
+            let %22: String = tuple_field(f, 0) @43:9
+            let %23: String = tuple_field(f, 1) @43:37
+            let %24: String = call shown(%23) @43:31
+            let %25: Code = tuple_field(f, 2) @43:65
+            let %26: String = call codeName(%25) @43:56
+            join k4(r.3: String) {
+              let %27: String = prim <>(%26, r.3) @43:56
+              let %28: String = prim <>(": ", %27) @43:48
+              let %29: String = prim <>(%24, %28) @43:31
+              let %30: String = prim <>(" ", %29) @43:24
+              let %31: String = prim <>(%22, %30) @43:9
+              jump k3(%31) @42:27
+            } in {
+              let %32: Code = tuple_field(f, 2) @44:19
+              let %33: Bool = is_tag(%32, other) @44:19
+              if %33 { @44:16
+                jump k4("...)") @44:16
+              } else {
+                let %34: String = tuple_field(f, 3) @44:49
+                let %35: String = prim <>(%34, ")") @44:49
+                jump k4(%35) @44:16
+              }
+            }
+          } else {
+            reraise e @42:27
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun joined(v: vector.T(String)): String {
+      var s.1: String = "" @48:9
+      let %36: Int = call vector.length [String](v) @49:25
+      let %37: Int = prim -(%36, 1) @49:25
+      var i: Int = 0 @49:9
+      let %38: Bool = prim <=(i, %37) @49:9
+      if %38 { @49:9
+        loop L1 {
+          let i.1: Int = i @49:9
+          join k5(r.4: String) {
+            let %39: String = call vector.get [String](v, i.1) @50:56
+            let %40: String = prim <>(r.4, %39) @50:23
+            let %41: String = prim <>(s.1, %40) @50:18
+            s.1 := %41 @50:13
+            let %42: Bool = prim is(i, %37) @49:9
+            if %42 { @49:9
+              break L1 @49:9
+            }
+            let %43: Int = prim +(i, 1) @49:9
+            i := %43 @49:9
+          } in {
+            let %44: Bool = prim >(i.1, 0) @50:26
+            if %44 { @50:23
+              jump k5(" ") @50:23
+            } else {
+              jump k5("") @50:23
+            }
+          }
+        }
+      }
+      return s.1
+    }
+  }
+  funs {
+    fun write(path: String, text: String): Ok {
+      let w: writer.T = call writer.file(path) @56:17
+      do call writer.putString(w, text) @57:9
+      let %45: Ok = call writer.close(w) @58:9
+      return %45
+    }
+  }
+  funs {
+    fun read(path.1: String): String {
+      let r.5: reader.T = call reader.file(path.1) @62:17
+      let text.1: String = call reader.getString(r.5, 1000000) @63:20
+      do call reader.close(r.5) @64:9
+      return text.1
+    }
+  }
+  join k6(modes: Bool) {
+    funs {
+      fun f.1(): Ok {
+        let %46: String = call at("d") @72:57
+        let %47: Ok = call files.makeDirectory(%46, 511) @72:37
+        return %47
+      }
+    }
+    do call attempt("makeDirectory d", f.1) @72:1
+    funs {
+      fun f.2(): Ok {
+        let %48: String = call at("d") @73:63
+        let %49: Ok = call files.makeDirectory(%48, 511) @73:43
+        return %49
+      }
+    }
+    do call attempt("makeDirectory d again", f.2) @73:1
+    funs {
+      fun f.3(): Ok {
+        let %50: String = call at("d/f") @74:51
+        let %51: Ok = call files.createNew(%50, 420) @74:35
+        return %51
+      }
+    }
+    do call attempt("createNew d/f", f.3) @74:1
+    funs {
+      fun f.4(): Ok {
+        let %52: String = call at("d/f") @75:57
+        let %53: Ok = call files.createNew(%52, 420) @75:41
+        return %53
+      }
+    }
+    do call attempt("createNew d/f again", f.4) @75:1
+    let %54: String = call at("d") @76:39
+    let %55: vector.T(String) = call files.list(%54) @76:28
+    let %56: String = call joined(%55) @76:21
+    let %57: String = prim <>("list d: ", %56) @76:7
+    do call print(%57) @76:1
+    funs {
+      fun f.5(): Ok {
+        let %58: String = call at("d/f") @77:59
+        let names: vector.T(String) = call files.list(%58) @77:48
+        return ok
+      }
+    }
+    do call attempt("list d/f", f.5) @77:1
+    funs {
+      fun f.6(): Ok {
+        let %59: String = call at("missing") @78:63
+        let names.1: vector.T(String) = call files.list(%59) @78:52
+        return ok
+      }
+    }
+    do call attempt("list missing", f.6) @78:1
+    funs {
+      fun f.7(): Ok {
+        let %60: String = call at("d") @79:61
+        let %61: Ok = call files.removeDirectory(%60) @79:39
+        return %61
+      }
+    }
+    do call attempt("removeDirectory d", f.7) @79:1
+    funs {
+      fun f.8(): Ok {
+        let %62: String = call at("missing") @80:49
+        let %63: Ok = call files.remove(%62) @80:36
+        return %63
+      }
+    }
+    do call attempt("remove missing", f.8) @80:1
+    funs {
+      fun f.9(): Ok {
+        let %64: String = call at("d/f") @81:52
+        let %65: String = call at("d/g") @81:62
+        let %66: Ok = call files.rename(%64, %65) @81:39
+        return %66
+      }
+    }
+    do call attempt("rename d/f to d/g", f.9) @81:1
+    funs {
+      fun f.10(): Ok {
+        let %67: String = call at("missing") @82:49
+        let %68: String = call at("d/h") @82:63
+        let %69: Ok = call files.rename(%67, %68) @82:36
+        return %69
+      }
+    }
+    do call attempt("rename missing", f.10) @82:1
+    funs {
+      fun f.11(): Ok {
+        let %70: String = call at("d/g") @83:54
+        let %71: String = call at("missing/h") @83:64
+        let %72: Ok = call files.rename(%70, %71) @83:41
+        return %72
+      }
+    }
+    do call attempt("rename into missing", f.11) @83:1
+    funs {
+      fun f.12(): Ok {
+        let %73: String = call at("l") @84:58
+        let %74: Ok = call files.symlink("d/g", %73) @84:38
+        return %74
+      }
+    }
+    do call attempt("symlink l to d/g", f.12) @84:1
+    funs {
+      fun f.13(): Ok {
+        let %75: String = call at("l") @85:57
+        let %76: Ok = call files.symlink("d/g", %75) @85:37
+        return %76
+      }
+    }
+    do call attempt("symlink l again", f.13) @85:1
+    let %77: String = call at("l") @86:40
+    let %78: String = call files.readLink(%77) @86:25
+    let %79: String = prim <>("readLink l: ", %78) @86:7
+    do call print(%79) @86:1
+    funs {
+      fun f.14(): Ok {
+        let %80: String = call at("d/g") @87:68
+        let target: String = call files.readLink(%80) @87:53
+        return ok
+      }
+    }
+    do call attempt("readLink d/g", f.14) @87:1
+    let %81: String = call at("l") @88:66
+    let %82: String = call files.realPath(%81) @88:51
+    let %83: String = call at("d/g") @88:90
+    let %84: String = call files.realPath(%83) @88:75
+    let %85: Bool = call stringOp.equal(%82, %84) @88:36
+    do call check("realPath l is realPath d/g", %85) @88:1
+    let %86: String = call at("d/../d/g") @89:64
+    let %87: String = call files.realPath(%86) @89:49
+    let %88: Bool = call strutil.startsWith(%87, "/") @89:30
+    do call check("realPath is absolute", %88) @89:1
+    funs {
+      fun f.15(): Ok {
+        let %89: String = call at("d/missing") @90:67
+        let p.1: String = call files.realPath(%89) @90:52
+        return ok
+      }
+    }
+    do call attempt("realPath missing", f.15) @90:1
+    funs {
+      fun f.16(): Ok {
+        let %90: String = call at("d/g") @91:49
+        let %91: Ok = call files.setTimes(%90, 1600000000000000000, 1700000000000000000) @91:34
+        return %91
+      }
+    }
+    do call attempt("setTimes d/g", f.16) @91:1
+    let %92: String = call at("d/g") @92:25
+    let gs: T = call fileStats.stat(%92) @92:10
+    let %93: Int = tuple_field(gs, 6) @93:24
+    let %94: Bool = prim is(%93, 1600000000000000000) @93:24
+    let %95: Int = tuple_field(gs, 7) @93:64
+    let %96: Bool = prim is(%95, 1700000000000000000) @93:64
+    let %97: Bool = prim /\(%94, %96) @93:24
+    do call check("setTimes took", %97) @93:1
+    funs {
+      fun f.17(): Ok {
+        let %98: String = call at("missing") @94:53
+        let %99: Ok = call files.setTimes(%98, 0, 0) @94:38
+        return %99
+      }
+    }
+    do call attempt("setTimes missing", f.17) @94:1
+    if modes { @95:1
+      let %100: String = call at("d/g") @95:29
+      do call files.setMode(%100, 384) @95:15
+    }
+    join k7(r.6: Bool) {
+      do call check("setMode took", r.6) @96:1
+      funs {
+        fun f.18(): Ok {
+          let %101: String = call at("l") @97:43
+          let %102: Ok = call files.remove(%101) @97:30
+          return %102
+        }
+      }
+      do call attempt("remove l", f.18) @97:1
+      let %103: String = call at("d/g") @98:60
+      let %104: maybe.T(T) = call fileStats.find(%103) @98:45
+      let %105: Bool = call maybe.isSome [fileStats.T](%104) @98:19
+      do call check("d/g stays", %105) @98:1
+      funs {
+        fun f.19(): Ok {
+          let %106: String = call at("m/n/o") @101:65
+          let %107: Ok = call files.makeDirectories(%106) @101:43
+          return %107
+        }
+      }
+      do call attempt("makeDirectories m/n/o", f.19) @101:1
+      funs {
+        fun f.20(): Ok {
+          let %108: String = call at("m/n/o") @102:71
+          let %109: Ok = call files.makeDirectories(%108) @102:49
+          return %109
+        }
+      }
+      do call attempt("makeDirectories m/n/o again", f.20) @102:1
+      funs {
+        fun f.21(): Ok {
+          let %110: String = call at("d/g/x") @103:65
+          let %111: Ok = call files.makeDirectories(%110) @103:43
+          return %111
+        }
+      }
+      do call attempt("makeDirectories d/g/x", f.21) @103:1
+      let big: String = call stringOp.new(200000, 'a') @104:11
+      let %112: Int = call stringOp.length(big) @105:17
+      let %113: Int = prim -(%112, 1) @105:17
+      var i.2: Int = 0 @105:1
+      let %114: Bool = prim <=(i.2, %113) @105:1
+      if %114 { @105:1
+        loop L2 {
+          let i.3: Int = i.2 @105:1
+          let %115: Int = prim %(i.3, 256) @105:80
+          let %116: Char = call ascii.char(%115) @105:69
+          do call stringOp.setChar(big, i.3, %116) @105:46
+          let %117: Bool = prim is(i.2, %113) @105:1
+          if %117 { @105:1
+            break L2 @105:1
+          }
+          let %118: Int = prim +(i.2, 1) @105:1
+          i.2 := %118 @105:1
+        }
+      }
+      let %119: String = call at("big") @106:7
+      do call write(%119, big) @106:1
+      if modes { @107:1
+        let %120: String = call at("big") @107:29
+        do call files.setMode(%120, 416) @107:15
+      }
+      funs {
+        fun f.22(): Ok {
+          let %121: String = call at("big") @108:41
+          let %122: String = call at("big2") @108:51
+          let %123: Ok = call files.copy(%121, %122) @108:30
+          return %123
+        }
+      }
+      do call attempt("copy big", f.22) @108:1
+      let %124: Int = call stringOp.length(big) @109:38
+      let %125: String = call conv.int(%124) @109:29
+      let %126: String = prim <>(%125, " bytes of every value") @109:29
+      let %127: String = prim <>("copy's content, ", %126) @109:7
+      let %128: String = call at("big2") @110:25
+      let %129: String = call read(%128) @110:20
+      let %130: Bool = call stringOp.equal(%129, big) @110:5
+      do call check(%127, %130) @109:1
+      join k8(r.7: Bool) {
+        do call check("copy's mode", r.7) @111:1
+        let %131: String = call at("empty") @112:7
+        do call write(%131, "") @112:1
+        funs {
+          fun f.23(): Ok {
+            let %132: String = call at("empty") @113:53
+            let %133: String = call at("big2") @113:65
+            let %134: Ok = call files.copy(%132, %133) @113:42
+            return %134
+          }
+        }
+        do call attempt("copy empty onto big2", f.23) @113:1
+        let %135: String = call at("big2") @114:45
+        let %136: String = call read(%135) @114:40
+        let %137: Bool = call stringOp.isEmpty(%136) @114:23
+        do call check("big2 is empty", %137) @114:1
+        funs {
+          fun f.24(): Ok {
+            let %138: String = call at("big") @115:53
+            let %139: String = call at("big") @115:63
+            let %140: Ok = call files.copy(%138, %139) @115:42
+            return %140
+          }
+        }
+        do call attempt("copy big onto itself", f.24) @115:1
+        funs {
+          fun f.25(): Ok {
+            let %141: String = call at("d") @116:49
+            let %142: String = call at("d2") @116:57
+            let %143: Ok = call files.copy(%141, %142) @116:38
+            return %143
+          }
+        }
+        do call attempt("copy a directory", f.25) @116:1
+        funs {
+          fun f.26(): Ok {
+            let %144: String = call at("missing") @117:45
+            let %145: String = call at("d2") @117:59
+            let %146: Ok = call files.copy(%144, %145) @117:34
+            return %146
+          }
+        }
+        do call attempt("copy missing", f.26) @117:1
+        let %147: String = call at("tree/a/b") @120:23
+        do call files.makeDirectories(%147) @120:1
+        let %148: String = call at("tree/empty") @121:21
+        do call files.makeDirectory(%148, 511) @121:1
+        let %149: String = call at("tree/.hidden") @122:21
+        do call files.makeDirectory(%149, 511) @122:1
+        let %150: String = call at("tree/a/b/c.txt") @123:7
+        do call write(%150, "c") @123:1
+        let %151: String = call at("tree/a/d.quest") @124:7
+        do call write(%151, "d") @124:1
+        let %152: String = call at("tree/e.quest") @125:7
+        do call write(%152, "e") @125:1
+        let %153: String = call at("tree/.dot.quest") @126:7
+        do call write(%153, "dot") @126:1
+        let %154: String = call at("tree/.hidden/h.quest") @127:7
+        do call write(%154, "h") @127:1
+        let %155: String = call at("tree/link") @128:19
+        do call files.symlink("a", %155) @128:1
+        funs {
+          fun kindName(k: fileStats.Kind): String {
+            join k9(r.8: String) {
+              return r.8
+            } in {
+              switch tag(k) { @130:5
+                case file: {
+                  jump k9("file") @130:5
+                }
+                case directory: {
+                  jump k9("directory") @130:5
+                }
+                case symlink: {
+                  jump k9("symlink") @130:5
+                }
+                case other: {
+                  jump k9("other") @130:5
+                }
+              }
+            }
+          }
+        }
+        let %156: String = call at("tree") @133:12
+        funs {
+          fun f.27(e.1: files.Entry): Bool {
+            let %157: Int = tuple_field(e.1, 2) @135:35
+            let %158: String = call conv.int(%157) @135:26
+            let %159: String = tuple_field(e.1, 0) @135:60
+            let %160: String = call shown(%159) @135:54
+            let %161: fileStats.T = tuple_field(e.1, 1) @135:87
+            let %162: Kind = tuple_field(%161, 2) @135:87
+            let %163: String = call kindName(%162) @135:78
+            let %164: String = prim <>(" ", %163) @135:71
+            let %165: String = prim <>(%160, %164) @135:54
+            let %166: String = prim <>(" ", %165) @135:47
+            let %167: String = prim <>(%158, %166) @135:26
+            let %168: String = prim <>("walk ", %167) @135:15
+            do call print(%168) @135:9
+            let %169: String = tuple_field(e.1, 0) @136:30
+            let %170: Bool = call strutil.endsWith(%169, "/.hidden") @136:13
+            let %171: Bool = prim not(%170) @136:9
+            return %171
+          }
+        }
+        do call files.walk(%156, f.27) @133:1
+        let %172: String = call at("tree") @138:72
+        let %173: vector.T(String) = call files.allFiles(%172) @138:57
+        let %174: vector.T(String) = call vector.map [String String](%173, shown) @138:30
+        let %175: String = call joined(%174) @138:23
+        let %176: String = prim <>("allFiles: ", %175) @138:7
+        do call print(%176) @138:1
+        funs {
+          fun globbed(pattern: String): Ok {
+            let %177: String = call at("tree") @139:94
+            let %178: vector.T(String) = call files.globIn(%177, pattern) @139:81
+            let %179: String = call joined(%178) @139:74
+            let %180: String = prim <>(": ", %179) @139:66
+            let %181: String = prim <>(pattern, %180) @139:55
+            let %182: String = prim <>("globIn ", %181) @139:42
+            let %183: Ok = call print(%182) @139:36
+            return %183
+          }
+        }
+        do call globbed("*") @140:1
+        do call globbed("*.quest") @141:1
+        do call globbed(".*") @142:1
+        do call globbed("**/*.quest") @143:1
+        do call globbed("**") @144:1
+        do call globbed("a/**") @145:1
+        do call globbed("**/") @146:1
+        do call globbed("*/") @147:1
+        do call globbed("?.quest") @148:1
+        do call globbed("[a-d]*") @149:1
+        do call globbed("[!a-d]*") @150:1
+        do call globbed("link/*") @151:1
+        do call globbed("**/b/*") @152:1
+        do call globbed("a/b/c.txt") @153:1
+        do call globbed("a/b/missing.txt") @154:1
+        do call globbed("nothing*") @155:1
+        do call globbed("[unclosed") @156:1
+        let %184: String = call at("tree") @157:27
+        let %185: String = prim <>(%184, "/*.quest") @157:27
+        let absolute: vector.T(String) = call files.glob(%185) @157:16
+        let %186: vector.T(String) = call vector.map [String String](absolute, shown) @158:35
+        let %187: String = call joined(%186) @158:28
+        let %188: String = prim <>("glob absolute: ", %187) @158:7
+        do call print(%188) @158:1
+        funs {
+          fun f.28(): Ok {
+            let %189: String = call at("tree") @159:68
+            let found: vector.T(String) = call files.globIn(%189, "/x") @159:55
+            return ok
+          }
+        }
+        do call attempt("globIn absolute", f.28) @159:1
+        funs {
+          fun f.29(): Ok {
+            let %190: String = call at("tree") @161:59
+            let %191: String = call at("tree2") @161:70
+            let %192: Ok = call files.copyTree(%190, %191) @161:44
+            return %192
+          }
+        }
+        do call attempt("copyTree tree to tree2", f.29) @161:1
+        let %193: String = call at("tree2") @163:40
+        let %194: vector.T(String) = call files.globIn(%193, "**/*") @163:27
+        let %195: String = call joined(%194) @163:20
+        let %196: String = call at("tree") @163:81
+        let %197: vector.T(String) = call files.globIn(%196, "**/*") @163:68
+        let %198: String = call joined(%197) @163:61
+        let %199: Bool = call stringOp.equal(%195, %198) @163:5
+        do call check("tree2's files are tree's", %199) @162:1
+        let %200: String = call at("tree2/link") @164:40
+        let %201: String = call files.readLink(%200) @164:25
+        let %202: String = call at("tree2/link") @165:34
+        let %203: T = call fileStats.lstat(%202) @165:18
+        let %204: Kind = tuple_field(%203, 2) @165:18
+        let %205: Bool = is_tag(%204, symlink) @165:18
+        let %206: String = call conv.bool(%205) @165:8
+        let %207: String = prim <>(", a symlink: ", %206) @164:61
+        let %208: String = prim <>(%201, %207) @164:25
+        let %209: String = prim <>("tree2/link: ", %208) @164:7
+        do call print(%209) @164:1
+        funs {
+          fun f.30(): Ok {
+            let %210: String = call at("tree") @166:56
+            let %211: String = call at("tree2") @166:67
+            let %212: Ok = call files.copyTree(%210, %211) @166:41
+            return %212
+          }
+        }
+        do call attempt("copyTree onto tree2", f.30) @166:1
+        funs {
+          fun f.31(): Ok {
+            let %213: String = call at("tree2/e.quest") @167:66
+            let %214: String = call at("moved.quest") @167:86
+            let %215: Ok = call files.move(%213, %214) @167:55
+            return %215
+          }
+        }
+        do call attempt("move tree2/e.quest to moved.quest", f.31) @167:1
+        let %216: String = call at("moved.quest") @168:31
+        let %217: String = call read(%216) @168:26
+        let %218: String = prim <>("moved.quest: ", %217) @168:7
+        do call print(%218) @168:1
+        funs {
+          fun f.32(): Ok {
+            let %219: String = call at("tree2") @169:55
+            let %220: Ok = call files.removeTree(%219) @169:38
+            return %220
+          }
+        }
+        do call attempt("removeTree tree2", f.32) @169:1
+        let %221: String = call at("tree2") @170:65
+        let %222: maybe.T(T) = call fileStats.lfind(%221) @170:49
+        let %223: Bool = call maybe.isNone [fileStats.T](%222) @170:23
+        do call check("tree2 is gone", %223) @170:1
+        let %224: String = call at("tree/a/d.quest") @171:84
+        let %225: maybe.T(T) = call fileStats.find(%224) @171:69
+        let %226: Bool = call maybe.isSome [fileStats.T](%225) @171:43
+        do call check("tree/a is not, through tree2/link", %226) @171:1
+        funs {
+          fun f.33(): Ok {
+            let %227: String = call at("tree2") @172:61
+            let %228: Ok = call files.removeTree(%227) @172:44
+            return %228
+          }
+        }
+        do call attempt("removeTree tree2 again", f.33) @172:1
+        funs {
+          fun f.34(): Ok {
+            let %229: String = call at("missing") @173:45
+            funs {
+              fun f.35(e.2: files.Entry): Bool {
+                return true
+              }
+            }
+            let %230: Ok = call files.walk(%229, f.35) @173:34
+            return %230
+          }
+        }
+        do call attempt("walk missing", f.34) @173:1
+        let %231: String = call files.tempDirectory() @176:57
+        let %232: Bool = call stringOp.isEmpty(%231) @176:40
+        let %233: Bool = prim not(%232) @176:36
+        do call check("tempDirectory is not empty", %233) @176:1
+        let t1: String = call files.makeTempFile("quest-os-files.", ".txt") @177:10
+        let t2: String = call files.makeTempFile("quest-os-files.", ".txt") @178:10
+        let %234: Bool = call stringOp.equal(t1, t2) @179:51
+        let %235: Bool = prim not(%234) @179:47
+        let %236: maybe.T(T) = call fileStats.find(t1) @180:34
+        let %237: Bool = call maybe.isSome [fileStats.T](%236) @180:8
+        let %238: maybe.T(T) = call fileStats.find(t2) @180:83
+        let %239: Bool = call maybe.isSome [fileStats.T](%238) @180:57
+        let %240: Bool = prim /\(%237, %239) @180:8
+        let %241: Bool = prim /\(%235, %240) @179:47
+        do call check("two temporary files differ, and exist", %241) @179:1
+        join k10(r.9: Bool) {
+          do call check("a temporary file's name", r.9) @181:1
+          join k11(r.10: Bool) {
+            do call check("a temporary file's mode", r.10) @182:1
+            do call files.remove(t1) @183:1
+            do call files.remove(t2) @184:1
+            let dir: String = "" @185:32
+            let kept: Tuple var dir: String end = tuple(dir) @185:12
+            funs {
+              fun f.36(dir.1: String): Int {
+                store kept.#0 := dir.1 @188:9
+                let %242: String = prim <>(dir.1, "/x") @189:15
+                do call write(%242, "x") @189:9
+                return 42
+              }
+            }
+            let n: Int = call files.withTempDirectory [Int]("quest-os-files.", f.36) @186:9
+            let %243: Bool = prim is(n, 42) @193:6
+            let %244: String = tuple_field(kept, 0) @193:60
+            let %245: maybe.T(T) = call fileStats.lfind(%244) @193:44
+            let %246: Bool = call maybe.isNone [fileStats.T](%245) @193:18
+            let %247: Bool = prim /\(%243, %246) @193:6
+            do call check("withTempDirectory's result, and its directory gone", %247) @192:1
+            join k12(raisedOut: Int) {
+              let %248: Bool = prim is(raisedOut, -1) @203:6
+              let %249: String = tuple_field(kept, 0) @203:68
+              let %250: maybe.T(T) = call fileStats.lfind(%249) @203:52
+              let %251: Bool = call maybe.isNone [fileStats.T](%250) @203:26
+              let %252: Bool = prim /\(%248, %251) @203:6
+              do call check("withTempDirectory raised, and its directory gone", %252) @202:1
+              do call files.removeTree(root) @205:1
+              let %253: maybe.T(T) = call fileStats.lfind(root) @206:64
+              let %254: Bool = call maybe.isNone [fileStats.T](%253) @206:38
+              do call check("the test's directory is gone", %254) @206:1
+            } in {
+              let %255: Exception(Failure) = member files.error @201:10
+              try catching (%255) {
+                funs {
+                  fun f.37(dir.2: String): Int {
+                    store kept.#0 := dir.2 @196:13
+                    let %256: String = prim <>(dir.2, "/y/z") @197:35
+                    do call files.makeDirectories(%256) @197:13
+                    let %257: String = prim <>(dir.2, "/missing") @198:26
+                    do call files.remove(%257) @198:13
+                    return 0
+                  }
+                }
+                let %258: Int = call files.withTempDirectory [Int]("quest-os-files.", f.37) @194:21
+                jump k12(%258) @194:17
+              } handle (e.3: Exception) {
+                let %259: Bool = prim is(e.3, %255) @194:17
+                if %259 { @194:17
+                  let f.38: Failure = exception_payload(e.3) @194:17
+                  jump k12(-1) @194:17
+                } else {
+                  reraise e.3 @194:17
+                }
+              }
+            }
+          } in {
+            let %260: Bool = prim not(modes) @182:33
+            if %260 { @182:33
+              jump k11(true) @182:33
+            } else {
+              let %261: T = call fileStats.stat(t1) @182:50
+              let %262: Int = tuple_field(%261, 1) @182:50
+              let %263: Bool = prim is(%262, 384) @182:50
+              jump k11(%263) @182:33
+            }
+          }
+        } in {
+          let %264: Bool = call strutil.endsWith(t1, ".txt") @181:33
+          if %264 { @181:33
+            let %265: Int = call stringOp.length(t1) @181:68
+            let %266: Bool = prim >(%265, 25) @181:68
+            jump k10(%266) @181:33
+          } else {
+            jump k10(false) @181:33
+          }
+        }
+      } in {
+        let %267: Bool = prim not(modes) @111:21
+        if %267 { @111:21
+          jump k8(true) @111:21
+        } else {
+          let %268: String = call at("big2") @111:53
+          let %269: T = call fileStats.stat(%268) @111:38
+          let %270: Int = tuple_field(%269, 1) @111:38
+          let %271: Bool = prim is(%270, 416) @111:38
+          jump k8(%271) @111:21
+        }
+      }
+    } in {
+      let %272: Bool = prim not(modes) @96:22
+      if %272 { @96:22
+        jump k7(true) @96:22
+      } else {
+        let %273: String = call at("d/g") @96:54
+        let %274: T = call fileStats.stat(%273) @96:39
+        let %275: Int = tuple_field(%274, 1) @96:39
+        let %276: Bool = prim is(%275, 384) @96:39
+        jump k7(%276) @96:22
+      }
+    }
+  } in {
+    let %277: Exception(Failure) = member files.error @69:61
+    try catching (%277) {
+      do call files.setMode(root, 448) @69:23
+      jump k6(true) @69:13
+    } handle (e.4: Exception) {
+      let %278: Bool = prim is(e.4, %277) @69:13
+      if %278 { @69:13
+        let f.39: Failure = exception_payload(e.4) @69:13
+        let %279: Code = tuple_field(f.39, 2) @69:89
+        let %280: Bool = is_tag(%279, unsupported) @69:89
+        let %281: Bool = prim not(%280) @69:85
+        jump k6(%281) @69:13
+      } else {
+        reraise e.4 @69:13
+      }
+    }
+  }
+}
+

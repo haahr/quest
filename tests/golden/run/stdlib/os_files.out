@@ -1,0 +1,84 @@
+makeDirectory d: ok
+makeDirectory d again: makeDirectory T/d: exists (File exists)
+createNew d/f: ok
+createNew d/f again: createNew T/d/f: exists (File exists)
+list d: f
+list d/f: list T/d/f: notDirectory (Not a directory)
+list missing: list T/missing: notFound (No such file or directory)
+removeDirectory d: removeDirectory T/d: notEmpty (Directory not empty)
+remove missing: remove T/missing: notFound (No such file or directory)
+rename d/f to d/g: ok
+rename missing: rename T/missing: notFound (No such file or directory)
+rename into missing: rename T/missing/h: notFound (No such file or directory)
+symlink l to d/g: ok
+symlink l again: symlink T/l: exists (File exists)
+readLink l: d/g
+readLink d/g: readLink T/d/g: other (...)
+realPath l is realPath d/g: true
+realPath is absolute: true
+realPath missing: realPath T/d/missing: notFound (No such file or directory)
+setTimes d/g: ok
+setTimes took: true
+setTimes missing: setTimes T/missing: notFound (No such file or directory)
+setMode took: true
+remove l: ok
+d/g stays: true
+makeDirectories m/n/o: ok
+makeDirectories m/n/o again: ok
+makeDirectories d/g/x: makeDirectories T/d/g: exists (File exists)
+copy big: ok
+copy's content, 200000 bytes of every value: true
+copy's mode: true
+copy empty onto big2: ok
+big2 is empty: true
+copy big onto itself: copy T/big: exists (Is the same file)
+copy a directory: copy T/d: isDirectory (Is a directory)
+copy missing: copy T/missing: notFound (No such file or directory)
+walk 0 T/tree directory
+walk 1 T/tree/.dot.quest file
+walk 1 T/tree/.hidden directory
+walk 1 T/tree/a directory
+walk 2 T/tree/a/b directory
+walk 3 T/tree/a/b/c.txt file
+walk 2 T/tree/a/d.quest file
+walk 1 T/tree/e.quest file
+walk 1 T/tree/empty directory
+walk 1 T/tree/link symlink
+allFiles: T/tree/.dot.quest T/tree/.hidden/h.quest T/tree/a/b/c.txt T/tree/a/d.quest T/tree/e.quest
+globIn *: a e.quest empty link
+globIn *.quest: e.quest
+globIn .*: .dot.quest .hidden
+globIn **/*.quest: a/d.quest e.quest
+globIn **: a a/b a/b/c.txt a/d.quest e.quest empty link
+globIn a/**: a a/b a/b/c.txt a/d.quest
+globIn **/: a/ a/b/ empty/ link/
+globIn */: a/ empty/ link/
+globIn ?.quest: e.quest
+globIn [a-d]*: a
+globIn [!a-d]*: e.quest empty link
+globIn link/*: link/b link/d.quest
+globIn **/b/*: a/b/c.txt
+globIn a/b/c.txt: a/b/c.txt
+globIn a/b/missing.txt: 
+globIn nothing*: 
+globIn [unclosed: 
+glob absolute: T/tree/e.quest
+globIn absolute: globIn /x: other (...)
+copyTree tree to tree2: ok
+tree2's files are tree's: true
+tree2/link: a, a symlink: true
+copyTree onto tree2: copyTree T/tree2: exists (File exists)
+move tree2/e.quest to moved.quest: ok
+moved.quest: e
+removeTree tree2: ok
+tree2 is gone: true
+tree/a is not, through tree2/link: true
+removeTree tree2 again: removeTree T/tree2: notFound (No such file or directory)
+walk missing: walk T/missing: notFound (No such file or directory)
+tempDirectory is not empty: true
+two temporary files differ, and exist: true
+a temporary file's name: true
+a temporary file's mode: true
+withTempDirectory's result, and its directory gone: true
+withTempDirectory raised, and its directory gone: true
+the test's directory is gone: true

@@ -1,0 +1,541 @@
+(* Standard Library: File-System Operations (docs/files-plan.md): the
+ * primitives, each a runtime function giving a status, and in Quest over them
+ * and os/fileStats, copying, trees, walking, glob, and temporaries *)
+
+unsound module files : Files
+import
+    collections/vector : collections/Vector
+    os/fileStats : os/FileStats
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    strings = util/path : util/Path
+    random = util/random : util/Random
+    raised : Raised
+    stringOp = string : StringOp
+    reader : Reader
+    writer : Writer
+    system : System
+    conv : Conv
+export
+    Let Code = Option
+        notFound
+        exists
+        notDirectory
+        isDirectory
+        notEmpty
+        permission
+        crossDevice
+        unsupported
+        other
+    end
+
+    Let Failure = Tuple operation: String path: String code: Code message: String end
+
+    let error: Exception(Failure) = exception error: Failure end
+
+    (* ======================================================================
+     * The primitives: each gives 0, or a negative status, -1 to -8 for
+     * notFound to unsupported and -(1000 + errno) for other; list and
+     * readLink give their value and keep the status, which lastStatus gives
+     * ====================================================================== *)
+
+    let rawRemove(path: String): Int = external "quest_files_remove"
+    let rawRemoveDirectory(path: String): Int = external "quest_files_remove_directory"
+    let rawRename(from: String to: String): Int = external "quest_files_rename"
+    let rawMakeDirectory(path: String mode: Int): Int = external "quest_files_make_directory"
+    let rawCreateNew(path: String mode: Int): Int = external "quest_files_create_new"
+    let rawList(path: String): Array(String) = external "quest_files_list"
+    let rawSymlink(target: String path: String): Int = external "quest_files_symlink"
+    let rawReadLink(path: String): String = external "quest_files_read_link"
+    let rawSetMode(path: String mode: Int): Int = external "quest_files_set_mode"
+    let rawSetTimes(path: String accessNs: Int modifiedNs: Int): Int = external "quest_files_set_times"
+    let lastStatus(): Int = external "quest_files_last_status"
+
+    let codeOf(status: Int): Code =
+        if status is ~1 then option notFound of Code end
+        elsif status is ~2 then option exists of Code end
+        elsif status is ~3 then option notDirectory of Code end
+        elsif status is ~4 then option isDirectory of Code end
+        elsif status is ~5 then option notEmpty of Code end
+        elsif status is ~6 then option permission of Code end
+        elsif status is ~7 then option crossDevice of Code end
+        elsif status is ~8 then option unsupported of Code end
+        else option other of Code end
+        end
+
+    (* The message for a status, as strerror's on macOS and Linux, but other's,
+     * which names the errno *)
+    let messageOf(status: Int): String =
+        if status is ~1 then "No such file or directory"
+        elsif status is ~2 then "File exists"
+        elsif status is ~3 then "Not a directory"
+        elsif status is ~4 then "Is a directory"
+        elsif status is ~5 then "Directory not empty"
+        elsif status is ~6 then "Permission denied"
+        elsif status is ~7 then "Cross-device link"
+        elsif status is ~8 then "Operation not supported"
+        elsif status <= ~1000 then "Error " <> conv.int(~1000 - status)
+        else "Error"
+        end
+
+    (* Raises error for operation on path, with a status's code and message *)
+    let failStatus(A::TYPE operation: String path: String status: Int): A =
+        raise error with tuple
+            let operation = operation let path = path let code = codeOf(status) let message = messageOf(status)
+        end end
+
+    (* Raises error with a code and message of its own *)
+    let fail(A::TYPE operation: String path: String code: Code message: String): A =
+        raise error with tuple let operation = operation let path = path let code = code let message = message end end
+
+    let notFoundStatus = ~1
+    let existsStatus = ~2
+    let isDirectoryStatus = ~4
+
+    (* Nothing for a status of 0; else raises error *)
+    let check(operation: String path: String status: Int): Ok =
+        if status isnot 0 then failStatus(:Ok operation path status) end
+
+    (* ======================================================================
+     * Files and directories, one system call each
+     * ====================================================================== *)
+
+    let remove(path: String): Ok = check("remove" path rawRemove(path))
+    let removeDirectory(path: String): Ok = check("removeDirectory" path rawRemoveDirectory(path))
+    let makeDirectory(path: String mode: Int): Ok = check("makeDirectory" path rawMakeDirectory(path mode))
+    let createNew(path: String mode: Int): Ok = check("createNew" path rawCreateNew(path mode))
+    let symlink(target: String path: String): Ok = check("symlink" path rawSymlink(target path))
+    let setMode(path: String mode: Int): Ok = check("setMode" path rawSetMode(path mode))
+    let setTimes(path: String accessNs: Int modifiedNs: Int): Ok =
+        check("setTimes" path rawSetTimes(path accessNs modifiedNs))
+
+    (* rename names the source when it is missing, and the target otherwise *)
+    let rename(from: String to: String): Ok =
+        begin
+            let status = rawRename(from to)
+            if status isnot 0 then
+                let missing = {status is notFoundStatus} andif maybe.isNone(:fileStats.T fileStats.lfind(from))
+                failStatus(:Ok "rename" if missing then from else to end status)
+            end
+        end
+
+    let list(path: String): vector.T(String) =
+        begin
+            let names = rawList(path)
+            check("list" path lastStatus())
+            vector.fromArray(:String names)
+        end
+
+    let readLink(path: String): String =
+        begin
+            let target = rawReadLink(path)
+            check("readLink" path lastStatus())
+            target
+        end
+
+    (* ======================================================================
+     * Paths
+     * ====================================================================== *)
+
+    let isAbsolute(path: String): Bool = {stringOp.length(path) > 0} andif {stringOp.getChar(path 0) is '/'}
+
+    (* path's components, without empty ones and "." *)
+    let componentsOf(path: String): vector.T(String) =
+        begin
+            let parts = vector.new(:String)
+            let n = stringOp.length(path)
+            let var start = 0
+            for i = 0 upto n do
+                if {i is n} orif {stringOp.getChar(path i) is '/'} then
+                    let size = i - start
+                    if {size > 0} andif not({size is 1} andif {stringOp.getChar(path start) is '.'}) then
+                        vector.append(:String parts stringOp.getSub(path start size))
+                    end
+                    start := i + 1
+                end
+            end
+            parts
+        end
+
+    (* name in the directory dir: dir's path, a /, and name *)
+    let child(dir: String name: String): String =
+        if stringOp.isEmpty(dir) then name
+        elsif stringOp.getChar(dir stringOp.length(dir) - 1) is '/' then dir <> name
+        else dir <> "/" <> name
+        end
+
+    let isDirectoryStats(s: maybe.T(fileStats.T)): Bool =
+        maybe.isSome(:fileStats.T s) andif {maybe.unwrap(:fileStats.T s).kind?directory}
+
+    (* ======================================================================
+     * Built on them
+     * ====================================================================== *)
+
+    (* Each component resolved in turn, from / or the current directory: a
+     * symlink's target put in its place (from / again for an absolute one),
+     * .. taking off the last component, at most 40 symlinks, as ELOOP *)
+    let realPath(path: String): String =
+        begin
+            let start = if isAbsolute(path) then path else system.currentDirectory() <> "/" <> path end
+            let resolved = vector.new(:String)
+            (* the components still to resolve, the next one last *)
+            let pending = vector.new(:String)
+            let push = fun(p: String): Ok
+                begin
+                    let parts = componentsOf(p)
+                    for i = {vector.length(:String parts) - 1} downto 0 do
+                        vector.append(:String pending vector.get(:String parts i))
+                    end
+                end
+            push(start)
+            let var hops = 0
+            let here = fun(): String
+                begin
+                    let var s = ""
+                    for i = 0 upto {vector.length(:String resolved) - 1} do
+                        s := s <> "/" <> vector.get(:String resolved i)
+                    end
+                    if stringOp.isEmpty(s) then "/" else s end
+                end
+            while not(vector.empty(:String pending)) do
+                let name = vector.pop(:String pending)
+                if stringOp.equal(name "..") then
+                    if not(vector.empty(:String resolved)) then let gone = vector.pop(:String resolved) end
+                else
+                    let candidate = child(here() name)
+                    let s = fileStats.lfind(candidate)
+                    if maybe.isNone(:fileStats.T s) then
+                        failStatus(:Ok "realPath" path notFoundStatus)
+                    elsif maybe.unwrap(:fileStats.T s).kind?symlink then
+                        hops := hops + 1
+                        if hops > 40 then fail(:Ok "realPath" path option other of Code end
+                            "Too many levels of symbolic links") end
+                        let target = readLink(candidate)
+                        if isAbsolute(target) then vector.clear(:String resolved) end
+                        push(target)
+                    else
+                        vector.append(:String resolved name)
+                    end
+                end
+            end
+            here()
+        end
+
+    let makeDirectories(path: String): Ok =
+        begin
+            let parts = componentsOf(path)
+            let var at = if isAbsolute(path) then "/" else "" end
+            for i = 0 upto {vector.length(:String parts) - 1} do
+                at := child(at vector.get(:String parts i))
+                let status = rawMakeDirectory(at 511)
+                if {status is existsStatus} then
+                    if not(isDirectoryStats(fileStats.find(at))) then failStatus(:Ok "makeDirectories" at status) end
+                elsif status isnot 0 then
+                    failStatus(:Ok "makeDirectories" at status)
+                end
+            end
+        end
+
+    (* The stats of path, following a symlink, or error with notFound *)
+    let statOf(operation: String path: String): fileStats.T =
+        begin
+            let s = fileStats.find(path)
+            if maybe.isNone(:fileStats.T s) then failStatus(:Ok operation path notFoundStatus) end
+            maybe.unwrap(:fileStats.T s)
+        end
+
+    let pieceSize = 65536
+
+    let copy(from: String to: String): Ok =
+        begin
+            let s = statOf("copy" from)
+            if s.kind?directory then failStatus(:Ok "copy" from isDirectoryStatus) end
+            if maybe.isSome(:fileStats.T fileStats.find(to)) andif stringOp.equal(realPath(from) realPath(to)) then
+                fail(:Ok "copy" to option exists of Code end "Is the same file")
+            end
+            let r = try reader.file(from) when reader.error then
+                fail(:reader.T "copy" from option other of Code end "Cannot be read") end
+            let w = try writer.file(to) when writer.error then
+                begin
+                    reader.close(r)
+                    fail(:writer.T "copy" to option other of Code end "Cannot be written")
+                end
+            end
+            let var piece = reader.getString(r pieceSize)
+            while not(stringOp.isEmpty(piece)) do
+                writer.putString(w piece)
+                piece := reader.getString(r pieceSize)
+            end
+            reader.close(r)
+            writer.close(w)
+            let status = rawSetMode(to s.mode)
+            (* wasm has no permission bits to set *)
+            if {status isnot 0} andif not(codeOf(status)?unsupported) then failStatus(:Ok "copy" to status) end
+        end
+
+    (* from, which lstat says s is, copied to to *)
+    let rec copyEntry(from: String to: String s: fileStats.T): Ok =
+        if s.kind?directory then
+            makeDirectory(to 511)
+            let names = list(from)
+            for i = 0 upto {vector.length(:String names) - 1} do
+                let name = vector.get(:String names i)
+                let e = fileStats.lfind(child(from name))
+                if maybe.isSome(:fileStats.T e) then
+                    copyEntry(child(from name) child(to name) maybe.unwrap(:fileStats.T e))
+                end
+            end
+            let status = rawSetMode(to s.mode)
+            if {status isnot 0} andif not(codeOf(status)?unsupported) then failStatus(:Ok "copyTree" to status) end
+        elsif s.kind?symlink then
+            symlink(readLink(from) to)
+        else
+            copy(from to)
+        end
+
+    let copyTree(from: String to: String): Ok =
+        begin
+            let s = statOf("copyTree" from)
+            if maybe.isSome(:fileStats.T fileStats.lfind(to)) then failStatus(:Ok "copyTree" to existsStatus) end
+            copyEntry(from to s)
+        end
+
+    let rec removeTree(path: String): Ok =
+        begin
+            let s = fileStats.lfind(path)
+            if maybe.isNone(:fileStats.T s) then failStatus(:Ok "removeTree" path notFoundStatus) end
+            if maybe.unwrap(:fileStats.T s).kind?directory then
+                let names = list(path)
+                for i = 0 upto {vector.length(:String names) - 1} do
+                    removeTree(child(path vector.get(:String names i)))
+                end
+                removeDirectory(path)
+            else
+                remove(path)
+            end
+        end
+
+    let move(from: String to: String): Ok =
+        begin
+            let status = rawRename(from to)
+            if status is 0 then ok
+            elsif codeOf(status)?crossDevice then
+                let s = fileStats.lfind(from)
+                if maybe.isSome(:fileStats.T s) andif {maybe.unwrap(:fileStats.T s).kind?directory} then
+                    copyTree(from to)
+                elsif maybe.isSome(:fileStats.T s) andif {maybe.unwrap(:fileStats.T s).kind?symlink} then
+                    symlink(readLink(from) to)
+                else
+                    copy(from to)
+                end
+                removeTree(from)
+            else
+                rename(from to)
+            end
+        end
+
+    Let Entry = Tuple path: String stats: fileStats.T depth: Int end
+
+    let rec enter(path: String stats: fileStats.T depth: Int visit: All(e: Entry) Bool): Ok =
+        if visit(tuple let path = path let stats = stats let depth = depth end) andif {stats.kind?directory} then
+            let names = list(path)
+            for i = 0 upto {vector.length(:String names) - 1} do
+                let p = child(path vector.get(:String names i))
+                let s = fileStats.lfind(p)
+                if maybe.isSome(:fileStats.T s) then enter(p maybe.unwrap(:fileStats.T s) depth + 1 visit) end
+            end
+        end
+
+    let walk(root: String visit: All(e: Entry) Bool): Ok = enter(root statOf("walk" root) 0 visit)
+
+    let allFiles(root: String): vector.T(String) =
+        begin
+            let found = vector.new(:String)
+            walk(root fun(e: Entry): Bool
+                begin
+                    if e.stats.kind?file then vector.append(:String found e.path) end
+                    true
+                end)
+            found
+        end
+
+    (* ======================================================================
+     * glob
+     * ====================================================================== *)
+
+    let hasWildcard(s: String): Bool =
+        begin
+            let var any = false
+            for i = 0 upto {stringOp.length(s) - 1} do
+                let c = stringOp.getChar(s i)
+                if {c is '*'} \/ {c is '?'} \/ {c is '['} then any := true end
+            end
+            any
+        end
+
+    let isHidden(name: String): Bool = {stringOp.length(name) > 0} andif {stringOp.getChar(name 0) is '.'}
+
+    (* The paths, relative to root ("" for root itself), that components from
+     * i on match below rel, appended to found. actual is a relative path's
+     * path from where the program runs. *)
+    let expand(root: String components: vector.T(String) found: vector.T(String)): Ok =
+        begin
+            let actual = fun(rel: String): String
+                if stringOp.isEmpty(root) then if stringOp.isEmpty(rel) then "." else rel end
+                elsif stringOp.isEmpty(rel) then root
+                else child(root rel)
+                end
+            (* The names in rel's directory, none if it cannot be listed *)
+            let namesIn = fun(rel: String): vector.T(String)
+                try list(actual(rel)) when error then vector.new(:String) end
+            let n = vector.length(:String components)
+            let rec descend(rel: String i: Int): Ok =
+                if i is n then
+                    if not(stringOp.isEmpty(rel)) then vector.append(:String found rel) end
+                else
+                    let c = vector.get(:String components i)
+                    if stringOp.equal(c "**") then
+                        if stringOp.isEmpty(rel) orif isDirectoryStats(fileStats.find(actual(rel))) then
+                            (* rel itself, a directory, then the entries under it but
+                             * hidden ones: every one if ** is last, else the
+                             * directories, a symlink never among them, so that
+                             * nothing is reached through one *)
+                            descend(rel i + 1)
+                            let last = {i + 1} is n
+                            let rec below(dir: String): Ok =
+                                begin
+                                    let names = namesIn(dir)
+                                    for k = 0 upto {vector.length(:String names) - 1} do
+                                        let name = vector.get(:String names k)
+                                        if not(isHidden(name)) then
+                                            let p = child(dir name)
+                                            let s = fileStats.lfind(actual(p))
+                                            let isDir = maybe.isSome(:fileStats.T s)
+                                                andif {maybe.unwrap(:fileStats.T s).kind?directory}
+                                            if last orif isDir then descend(p i + 1) end
+                                            if isDir then below(p) end
+                                        end
+                                    end
+                                end
+                            below(rel)
+                        end
+                    elsif not(hasWildcard(c)) then
+                        let p = child(rel c)
+                        if maybe.isSome(:fileStats.T fileStats.lfind(actual(p))) then descend(p i + 1) end
+                    else
+                        let names = namesIn(rel)
+                        for k = 0 upto {vector.length(:String names) - 1} do
+                            let name = vector.get(:String names k)
+                            if strings.matches(c name) then descend(child(rel name) i + 1) end
+                        end
+                    end
+                end
+            descend("" 0)
+        end
+
+    (* found sorted, each path once, and, for a pattern ending in /, the
+     * directories alone, each with a / *)
+    let finish(root: String found: vector.T(String) directories: Bool): vector.T(String) =
+        begin
+            let sorted = sort.sortedVector(:String found sort.stringCompare)
+            let result = vector.new(:String)
+            for i = 0 upto {vector.length(:String sorted) - 1} do
+                let p = vector.get(:String sorted i)
+                if {i is 0} orif not(stringOp.equal(p vector.get(:String sorted i - 1))) then
+                    if not(directories) then vector.append(:String result p)
+                    else
+                        let full = if stringOp.isEmpty(root) then p else child(root p) end
+                        if isDirectoryStats(fileStats.find(full)) then vector.append(:String result p <> "/") end
+                    end
+                end
+            end
+            result
+        end
+
+    let endsWithSlash(s: String): Bool =
+        {stringOp.length(s) > 0} andif {stringOp.getChar(s stringOp.length(s) - 1) is '/'}
+
+    let globIn(root: String pattern: String): vector.T(String) =
+        begin
+            if isAbsolute(pattern) then fail(:Ok "globIn" pattern option other of Code end "Pattern is absolute") end
+            let found = vector.new(:String)
+            expand(root componentsOf(pattern) found)
+            finish(root found endsWithSlash(pattern))
+        end
+
+    let glob(pattern: String): vector.T(String) =
+        if isAbsolute(pattern) then
+            let found = vector.new(:String)
+            expand("/" componentsOf(pattern) found)
+            let all = finish("/" found endsWithSlash(pattern))
+            let result = vector.new(:String)
+            for i = 0 upto {vector.length(:String all) - 1} do
+                vector.append(:String result "/" <> vector.get(:String all i))
+            end
+            result
+        else
+            globIn("" pattern)
+        end
+
+    (* ======================================================================
+     * Temporary files and directories
+     * ====================================================================== *)
+
+    let tempDirectory(): String =
+        begin
+            let dir = system.getEnv("TMPDIR")
+            if stringOp.isEmpty(dir) then "/tmp" else dir end
+        end
+
+    let letters = "abcdefghijklmnopqrstuvwxyz0123456789"
+    let generator = random.fromClock()
+
+    let randomName(): String =
+        begin
+            let s = stringOp.new(10 'a')
+            for i = 0 upto 9 do
+                stringOp.setChar(s i stringOp.getChar(letters random.below(generator stringOp.length(letters))))
+            end
+            s
+        end
+
+    (* A new name in tempDirectory(), made by make (with mode), tried again
+     * while one is taken, 100 times *)
+    let makeTemp(operation: String prefix: String suffix: String make: All(path: String) Int): String =
+        begin
+            let dir = tempDirectory()
+            let var made = maybe.none(:String)
+            let var tries = 0
+            let var last = 0
+            while maybe.isNone(:String made) andif {tries < 100} do
+                let p = child(dir prefix <> randomName() <> suffix)
+                let status = make(p)
+                if status is 0 then made := maybe.some(:String p)
+                elsif status isnot existsStatus then failStatus(:Ok operation p status)
+                end
+                last := status
+                tries := tries + 1
+            end
+            if maybe.isNone(:String made) then failStatus(:Ok operation dir last) end
+            maybe.unwrap(:String made)
+        end
+
+    let makeTempDirectory(prefix: String): String =
+        makeTemp("makeTempDirectory" prefix "" fun(p: String): Int rawMakeDirectory(p 448))
+
+    let makeTempFile(prefix: String suffix: String): String =
+        makeTemp("makeTempFile" prefix suffix fun(p: String): Int rawCreateNew(p 384))
+
+    let withTempDirectory(A::TYPE prefix: String action: All(dir: String) A): A =
+        begin
+            let dir = makeTempDirectory(prefix)
+            let result = try action(dir) else with e then
+                begin
+                    removeTree(dir)
+                    raised.reraise(:A e)
+                end
+            end
+            removeTree(dir)
+            result
+        end
+end
