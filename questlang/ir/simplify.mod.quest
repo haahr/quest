@@ -631,13 +631,17 @@ export
                 orif {shapes.transparentAbstractTypes()
                     andif eq(genericLayout.signatureRepresentation(maybe.unwrap(x.calleeType))
                         genericLayout.signatureRepresentation(f.v.type))}
-            let reads = if hashMap.find(s.analysis.closed f.v.id) then
-                maybe.some(array of :inline.Read end)
+            (* f's free variables as its body is now, not at the round's
+             * start: a call inlined into f earlier in the round (fail's, in
+             * f(): Int = fail(:Int)) may have brought in variables of its
+             * module's (error's) that the analysis does not list *)
+            if not(sameShape) then
+                maybe.none()
             else
-                memberReads(hashMap.find(s.analysis.free f.v.id)
-                    maybe.unwrap(x.moduleRef))
+                let free = inline.freeVariables(f)
+                if extent free is 0 then maybe.some(array of :inline.Read end)
+                else memberReads(free maybe.unwrap(x.moduleRef)) end
             end
-            if sameShape then reads else maybe.none() end
         end
 
     (* Whether f may be inlined (or specialized) at the call, made in a

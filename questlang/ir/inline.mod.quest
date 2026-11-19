@@ -30,8 +30,6 @@ export
         functions: hashMap.T(Int nodes.Function)
         components: hashMap.T(Int Int)
         recursive: hashMap.T(Int Bool)
-        closed: hashMap.T(Int Bool)
-        free: hashMap.T(Int Array(Variable))
         callsExternalAtTypes: hashMap.T(Int Bool)
         static: hashMap.T(Int Array(Bool))
         sizes: hashMap.T(Int Int)
@@ -310,14 +308,6 @@ export
                 for k = 0 upto {extent targets - 1} do if targets[k] is f.v.id then self := true end end
                 hashMap.insert(recursive f.v.id self)
             end
-            let closed = hashMap.new(:Int :Bool intEqual hash.int)
-            let free = hashMap.new(:Int :Array(Variable) intEqual hash.int)
-            for i = 0 upto {vector.length(order) - 1} do
-                let f = vector.get(order i)
-                let named = freeVariables(f)
-                hashMap.insert(free f.v.id named)
-                hashMap.insert(closed f.v.id extent named is 0)
-            end
             (* A function recursive through itself alone may have static
              * parameters *)
             let static = hashMap.new(:Int :Array(Bool) intEqual hash.int)
@@ -340,8 +330,6 @@ export
                 let functions = functions
                 let components = numbers
                 let recursive = recursive
-                let closed = closed
-                let free = free
                 let callsExternalAtTypes = externals
                 let static = static
                 let sizes = sizes

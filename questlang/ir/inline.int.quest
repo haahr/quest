@@ -22,13 +22,6 @@ export
         components: hashMap.T(Int Int)
         (* Whether each function names itself, directly or not *)
         recursive: hashMap.T(Int Bool)
-        (* Whether each function names no variable it does not bind itself
-         * (none of its module's, for one), so that it can be copied anywhere *)
-        closed: hashMap.T(Int Bool)
-        (* The variables each function names and does not bind, in the order
-         * first named: those of its module's, for one, or of the functions
-         * that enclose it *)
-        free: hashMap.T(Int Array(nodes.Variable))
         (* Whether each function calls an external function at type arguments
          * (passing and returning their values as QVal words, which a call at
          * other type arguments would not box) *)
@@ -57,6 +50,12 @@ export
      * place (a module's member, for one of its module's variables named from
      * outside the module) *)
     Def Read = Tuple v: nodes.Variable op: nodes.Op end
+
+    (* The variables f names and does not bind, in the order first named (those
+     * of its module's, for one, or of the functions that enclose it), from
+     * its body as it is now, not as the round's analysis found it: calls in
+     * f may have been inlined since *)
+    freeVariables(f: nodes.Function): Array(nodes.Variable)
 
     (* The statements that do what a call of f does and then what rest does:
      * the call's result bound to into (or to a fresh variable), f's body

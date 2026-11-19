@@ -692,7 +692,9 @@ rest of the caller's body, its returns jumps to it. In a whole program, a call o
 as the function's own (`genericLayout.signatureRepresentation`), and the simplifier visits the modules' initializations
 before the main body. The variables of its module's that the function names are out of the caller's scope: each must be
 an immutable member that is not a function (whose calls would stop being known), and the copy reads it as the member
-(`let error.2 = member util/maybe.error`) at the call, as `maybe.unwrap`'s copy reads the exception it raises. Outside a
+(`let error.2 = member util/maybe.error`) at the call, as `maybe.unwrap`'s copy reads the exception it raises. They are
+found in the function's body as it is at the call, not as the round began: a call inlined into the function earlier in
+the round (a generic helper's, `fail(:Int)`, whose body is `raise error`) may have brought some in. Outside a
 whole program, where abstract types are opaque, the member must be of an exception's type, which is laid out alike
 inside and outside its module.
 

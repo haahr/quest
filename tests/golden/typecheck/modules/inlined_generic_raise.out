@@ -1,0 +1,105 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('raiser') : 'Raiser')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'shown' :type Fun(f: Fun(): Int): String
+      :value (TypedFun :params (('f' : Fun(): Int)) :type Fun(f: Fun(): Int): String
+        :body (TypedTry :type String
+          :body (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedVar 'f' :type Fun(): Int)
+                :args ())
+            ))
+          :branches (
+            (TypedTryBranch
+              :exc_pattern (TypedSelect 'error' :type Exception
+                :target (TypedVar 'raiser' :type Module 'raiser'))
+              :body (TypedString 'raiser.error' :type String))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'never: ' :type String)
+            :right (TypedTry :type String
+              :body (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedSelect 'never' :type Fun(): Int
+                      :target (TypedVar 'raiser' :type Module 'raiser'))
+                    :args ())
+                ))
+              :branches (
+                (TypedTryBranch
+                  :exc_pattern (TypedSelect 'error' :type Exception
+                    :target (TypedVar 'raiser' :type Module 'raiser'))
+                  :body (TypedString 'raiser.error' :type String))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'quotient 7 2: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'shown' :type Fun(f: Fun(): Int): String)
+              :args (
+                (TypedFun :params () :type Fun(): Int
+                  :body (TypedApp :type Int
+                    :func (TypedSelect 'quotient' :type Fun(i: Int d: Int): Int
+                      :target (TypedVar 'raiser' :type Module 'raiser'))
+                    :args (
+                      (TypedInt 7 :type Int)
+                      (TypedInt 2 :type Int)
+                    )))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'quotient 7 0: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'shown' :type Fun(f: Fun(): Int): String)
+              :args (
+                (TypedFun :params () :type Fun(): Int
+                  :body (TypedApp :type Int
+                    :func (TypedSelect 'quotient' :type Fun(i: Int d: Int): Int
+                      :target (TypedVar 'raiser' :type Module 'raiser'))
+                    :args (
+                      (TypedInt 7 :type Int)
+                      (TypedInt 0 :type Int)
+                    )))
+              )))
+        )))
+  ))

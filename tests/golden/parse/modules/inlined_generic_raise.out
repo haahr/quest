@@ -1,0 +1,176 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('raiser') 'Raiser')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (LetValueBinding
+      :name 'print'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprId 's')
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'shown'
+      :value (ExprTry
+        :body (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'conv')
+            :field 'int'
+          )
+          :args (
+            (ExprApp
+              :func (ExprId 'f')
+            )
+          )
+        )
+        :branches (
+          (TryBranch
+            :exc_pattern (ExprSelect
+              :target (ExprId 'raiser')
+              :field 'error'
+            )
+            :body (ExprString 'raiser.error' '"raiser.error"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'f'
+          :type_annot (TypeAll
+            :result_type (TypePath ('Int'))
+          )
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('String'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'never: ' '"never: "')
+            :op '<>'
+            :right (ExprTry
+              :body (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'conv')
+                  :field 'int'
+                )
+                :args (
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'raiser')
+                      :field 'never'
+                    )
+                  )
+                )
+              )
+              :branches (
+                (TryBranch
+                  :exc_pattern (ExprSelect
+                    :target (ExprId 'raiser')
+                    :field 'error'
+                  )
+                  :body (ExprString 'raiser.error' '"raiser.error"')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'quotient 7 2: ' '"quotient 7 2: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprId 'shown')
+              :args (
+                (ExprFun
+                  :return_type (TypePath ('Int'))
+                  :body (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'raiser')
+                      :field 'quotient'
+                    )
+                    :args (
+                      (ExprInt 7 '7')
+                      (ExprInt 2 '2')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'quotient 7 0: ' '"quotient 7 0: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprId 'shown')
+              :args (
+                (ExprFun
+                  :return_type (TypePath ('Int'))
+                  :body (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'raiser')
+                      :field 'quotient'
+                    )
+                    :args (
+                      (ExprInt 7 '7')
+                      (ExprInt 0 '0')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

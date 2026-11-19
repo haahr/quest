@@ -1,0 +1,71 @@
+import raiser = "raiser" : Raiser
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @10:45
+      let %2: String = prim <>(s, "\n") @10:59
+      let %3: Ok = call writer.putString(%1, %2) @10:28
+      return %3
+    }
+  }
+  funs {
+    fun shown(f: Fun(): Int): String {
+      join k1(r: String) {
+        return r
+      } in {
+        let %4: Exception = member raiser.error @11:58
+        try catching (%4) {
+          let %5: Int = call f() @11:48
+          let %6: String = call conv.int(%5) @11:39
+          jump k1(%6) @11:35
+        } handle (e: Exception) {
+          let %7: Bool = prim is(e, %4) @11:35
+          if %7 { @11:35
+            jump k1("raiser.error") @11:35
+          } else {
+            reraise e @11:35
+          }
+        }
+      }
+    }
+  }
+  join k2(r.1: String) {
+    let %8: String = prim <>("never: ", r.1) @12:7
+    do call print(%8) @12:1
+    funs {
+      fun f.1(): Int {
+        let %9: Int = call raiser.quotient(7, 2) @13:44
+        return %9
+      }
+    }
+    let %10: String = call shown(f.1) @13:27
+    let %11: String = prim <>("quotient 7 2: ", %10) @13:7
+    do call print(%11) @13:1
+    funs {
+      fun f.2(): Int {
+        let %12: Int = call raiser.quotient(7, 0) @14:44
+        return %12
+      }
+    }
+    let %13: String = call shown(f.2) @14:27
+    let %14: String = prim <>("quotient 7 0: ", %13) @14:7
+    do call print(%14) @14:1
+  } in {
+    let %15: Exception = member raiser.error @12:54
+    try catching (%15) {
+      let %16: Int = call raiser.never() @12:33
+      let %17: String = call conv.int(%16) @12:24
+      jump k2(%17) @12:20
+    } handle (e.1: Exception) {
+      let %18: Bool = prim is(e.1, %15) @12:20
+      if %18 { @12:20
+        jump k2("raiser.error") @12:20
+      } else {
+        reraise e.1 @12:20
+      }
+    }
+  }
+}
+
