@@ -1,0 +1,648 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('json') : 'Json')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('dynamic') : 'Dynamic')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('sb') : 'StringBuilder')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('stringOp') : 'StringOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('word') : 'Word')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('reader') : 'Reader')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'contents' :type Fun(path: String): String
+      :value (TypedFun :params (('path' : String)) :type Fun(path: String): String
+        :body (TypedBlock :type String
+          :bindings (
+            (TypedLetValue 'r' :type reader.T
+              :value (TypedApp :type reader.T
+                :func (TypedSelect 'file' :type Fun(name: String): reader.T
+                  :target (TypedVar 'reader' :type Module 'reader'))
+                :args (
+                  (TypedVar 'path' :type String)
+                )))
+            (TypedLetValue 'buf' :type stringBuilder.T
+              :value (TypedApp :type stringBuilder.T
+                :func (TypedSelect 'new' :type Fun(): stringBuilder.T
+                  :target (TypedVar 'sb' :type Module 'sb'))
+                :args ()))
+            (TypedExprStmt
+              :expr (TypedWhile
+                :cond (TypedApp :type Bool
+                  :func (TypedSelect 'more' :type Fun(reader: reader.T): Bool
+                    :target (TypedVar 'reader' :type Module 'reader'))
+                  :args (
+                    (TypedVar 'r' :type reader.T)
+                  ))
+                :body (TypedApp :type Ok
+                  :func (TypedSelect 'str' :type Fun(b: stringBuilder.T s: String): Ok
+                    :target (TypedVar 'sb' :type Module 'sb'))
+                  :args (
+                    (TypedVar 'buf' :type stringBuilder.T)
+                    (TypedApp :type String
+                      :func (TypedSelect 'getString' :type Fun(reader: reader.T size: Int): String
+                        :target (TypedVar 'reader' :type Module 'reader'))
+                      :args (
+                        (TypedVar 'r' :type reader.T)
+                        (TypedInt 65536 :type Int)
+                      ))
+                  ))))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'close' :type Fun(reader: reader.T): Ok
+                  :target (TypedVar 'reader' :type Module 'reader'))
+                :args (
+                  (TypedVar 'r' :type reader.T)
+                )))
+          )
+          :result (TypedApp :type String
+            :func (TypedSelect 'toString' :type Fun(b: stringBuilder.T): String
+              :target (TypedVar 'sb' :type Module 'sb'))
+            :args (
+              (TypedVar 'buf' :type stringBuilder.T)
+            )))))
+    (TypedLetType 'Point' :kind TYPE)
+    (TypedLetType 'Tree' :kind TYPE)
+    (TypedLetType 'Shape' :kind TYPE)
+    (TypedLetTypeGroup 'Cell' 'Link'
+      :members (
+        (TypedLetType 'Cell' :kind TYPE)
+        (TypedLetType 'Link' :kind TYPE)
+      ))
+    (TypedLetValue 'tree' :type Tree
+      :value (TypedOption 'node' :type Tree
+        :payload (TypedTuple :type Tuple left: Tree key: Int right: Tree end
+          :elements (
+            (TypedOption 'node' :type Tree
+              :payload (TypedTuple :type Tuple left: Tree key: Int right: Tree end
+                :elements (
+                  (TypedOption 'leaf' :type Tree)
+                  (TypedInt 1 :type Int)
+                  (TypedOption 'leaf' :type Tree)
+                )))
+            (TypedInt 2 :type Int)
+            (TypedOption 'leaf' :type Tree)
+          ))))
+    (TypedLetValue 'point' :type Point
+      :value (TypedRecord :type Record x: Real y: Real label: String end
+        :fields (
+          (TypedRecordField 'x'
+            :value (TypedReal 0.1 :type Real))
+          (TypedRecordField 'y'
+            :value (TypedReal 1e+22 :type Real))
+          (TypedRecordField 'label'
+            :value (TypedString 'café "tab"\t' :type String))
+        )))
+    (TypedLetValue 'shared' :type Array(Point)
+      :value (TypedArray :type Array(Point)
+        :elements (
+          (TypedVar 'point' :type Point)
+          (TypedVar 'point' :type Point)
+        )))
+    (TypedLetValue 'cell' :type Cell
+      :value (TypedTuple :type Tuple var next: Link value: Int end
+        :elements (
+          (TypedOption 'stop' :type Link)
+          (TypedInt 1 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedAssign
+        :target (TypedSelect 'next' :type Link
+          :target (TypedVar 'cell' :type Cell))
+        :value (TypedOption 'more' :type Link
+          :payload (TypedTuple :type Tuple cell: Cell end
+            :elements (
+              (TypedVar 'cell' :type Cell)
+            )))))
+    (TypedLetValue 'values' :type Array(T)
+      :value (TypedArray :type Array(T)
+        :elements (
+          (TypedApp :type T
+            :func (TypedTypeApp [Int] :type Fun(a: Int): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedInt -9223372036854775807 :type Int)
+            ))
+          (TypedApp :type T
+            :func (TypedTypeApp [word.T] :type Fun(a: word.T): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedApp :type word.T
+                :func (TypedSelect 'notBits' :type Fun(w: word.T): word.T
+                  :target (TypedVar 'word' :type Module 'word'))
+                :args (
+                  (TypedApp :type word.T
+                    :func (TypedSelect 'fromInt' :type Fun(n: Int): word.T
+                      :target (TypedVar 'word' :type Module 'word'))
+                    :args (
+                      (TypedInt 0 :type Int)
+                    ))
+                ))
+            ))
+          (TypedApp :type T
+            :func (TypedTypeApp [String] :type Fun(a: String): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedString '\x00\x1f\x7fÿ' :type String)
+            ))
+          (TypedApp :type T
+            :func (TypedTypeApp [Point] :type Fun(a: Point): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedVar 'point' :type Point)
+            ))
+          (TypedApp :type T
+            :func (TypedTypeApp [Tree] :type Fun(a: Tree): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedVar 'tree' :type Tree)
+            ))
+          (TypedApp :type T
+            :func (TypedTypeApp [Array(Shape)] :type Fun(a: Array(Shape)): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedArray :type Array(Shape)
+                :elements (
+                  (TypedVariant 'circle' :type Shape
+                    :payload (TypedReal 2.5 :type Real))
+                  (TypedVariant 'square' :type Shape
+                    :payload (TypedVar 'point' :type Point))
+                  (TypedVariant 'none' :type Shape
+                    :payload (TypedOk))
+                ))
+            ))
+          (TypedApp :type T
+            :func (TypedTypeApp [Array(Point)] :type Fun(a: Array(Point)): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedVar 'shared' :type Array(Point))
+            ))
+          (TypedApp :type T
+            :func (TypedTypeApp [Cell] :type Fun(a: Cell): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedVar 'cell' :type Cell)
+            ))
+          (TypedApp :type T
+            :func (TypedTypeApp [Dynamic] :type Fun(a: Dynamic): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedApp :type T
+                :func (TypedTypeApp [Bool] :type Fun(a: Bool): T
+                  :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedBool true)
+                ))
+            ))
+        )))
+    (TypedLetValue 'all' :type writer.T
+      :value (TypedApp :type writer.T
+        :func (TypedSelect 'file' :type Fun(name: String): writer.T
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedString 'all.json' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [Auto A :: TYPE with a: A end] :type Fun(a: Array(Auto A :: TYPE with a: A end)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'values' :type Array(T))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'w' :type writer.T
+              :value (TypedApp :type writer.T
+                :func (TypedSelect 'file' :type Fun(name: String): writer.T
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedString 'one.json' :type String)
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'extern' :type Fun(wr: writer.T d: T): Ok
+                  :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                :args (
+                  (TypedVar 'w' :type writer.T)
+                  (TypedIndex :type T
+                    :target (TypedVar 'values' :type Array(T))
+                    :index (TypedVar 'i' :type Int))
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'close' :type Fun(writer: writer.T): Ok
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedVar 'w' :type writer.T)
+                )))
+            (TypedLetValue 'text' :type String
+              :value (TypedApp :type String
+                :func (TypedVar 'contents' :type Fun(path: String): String)
+                :args (
+                  (TypedString 'one.json' :type String)
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'print' :type Fun(s: String): Ok)
+                :args (
+                  (TypedVar 'text' :type String)
+                )))
+            (TypedLetValue 'again' :type String
+              :value (TypedApp :type String
+                :func (TypedSelect 'dump' :type Fun(v: Value): String
+                  :target (TypedVar 'json' :type Module 'json'))
+                :args (
+                  (TypedApp :type Value
+                    :func (TypedSelect 'parseWith' :type Fun(text: String options: ParseOptions): Value
+                      :target (TypedVar 'json' :type Module 'json'))
+                    :args (
+                      (TypedVar 'text' :type String)
+                      (TypedSelect 'parsingDynamic' :type ParseOptions
+                        :target (TypedVar 'json' :type Module 'json'))
+                    ))
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'print' :type Fun(s: String): Ok)
+                :args (
+                  (TypedIf :type String
+                    :cond (TypedApp :type Bool
+                      :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+                        :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                      :args (
+                        (TypedVar 'again' :type String)
+                        (TypedVar 'text' :type String)
+                      ))
+                    :then (TypedString '  util/json prints it the same' :type String)
+                    :else (TypedInfix '<>' :type String
+                      :left (TypedString '  util/json prints ' :type String)
+                      :right (TypedVar 'again' :type String)))
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'extern' :type Fun(wr: writer.T d: T): Ok
+                  :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                :args (
+                  (TypedVar 'all' :type writer.T)
+                  (TypedIndex :type T
+                    :target (TypedVar 'values' :type Array(T))
+                    :index (TypedVar 'i' :type Int))
+                )))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+              :target (TypedVar 'writer' :type Module 'writer'))
+            :args (
+              (TypedVar 'all' :type writer.T)
+              (TypedIf :type String
+                :cond (TypedInfix 'is' :type Bool
+                  :left (TypedInfix '%' :type Int
+                    :left (TypedVar 'i' :type Int)
+                    :right (TypedInt 2 :type Int))
+                  :right (TypedInt 0 :type Int))
+                :then (TypedString '\n' :type String)
+                :else (TypedString '' :type String))
+            )))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'close' :type Fun(writer: writer.T): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedVar 'all' :type writer.T)
+        )))
+    (TypedLetValue 'r' :type reader.T
+      :value (TypedApp :type reader.T
+        :func (TypedSelect 'file' :type Fun(name: String): reader.T
+          :target (TypedVar 'reader' :type Module 'reader'))
+        :args (
+          (TypedString 'all.json' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedTypeApp [Int] :type Fun(d: T): Int
+                  :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                    :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                :args (
+                  (TypedApp :type T
+                    :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+                      :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                    :args (
+                      (TypedVar 'r' :type reader.T)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedSelect 'toInt' :type Fun(w: word.T): Int
+                  :target (TypedVar 'word' :type Module 'word'))
+                :args (
+                  (TypedApp :type word.T
+                    :func (TypedSelect 'shift' :type Fun(w: word.T count: Int): word.T
+                      :target (TypedVar 'word' :type Module 'word'))
+                    :args (
+                      (TypedApp :type word.T
+                        :func (TypedTypeApp [word.T] :type Fun(d: T): word.T
+                          :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                        :args (
+                          (TypedApp :type T
+                            :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+                              :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                            :args (
+                              (TypedVar 'r' :type reader.T)
+                            ))
+                        ))
+                      (TypedInt -60 :type Int)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedSelect 'length' :type Fun(string: String): Int
+                  :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                :args (
+                  (TypedApp :type String
+                    :func (TypedTypeApp [String] :type Fun(d: T): String
+                      :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedApp :type T
+                        :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+                          :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                        :args (
+                          (TypedVar 'r' :type reader.T)
+                        ))
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedSelect 'label' :type String
+            :target (TypedApp :type Point
+              :func (TypedTypeApp [Point] :type Fun(d: T): Point
+                :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                  :target (TypedVar 'dynamic' :type Module 'dynamic')))
+              :args (
+                (TypedApp :type T
+                  :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+                    :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                  :args (
+                    (TypedVar 'r' :type reader.T)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedCase :type String
+            :target (TypedApp :type Tree
+              :func (TypedTypeApp [Tree] :type Fun(d: T): Tree
+                :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                  :target (TypedVar 'dynamic' :type Module 'dynamic')))
+              :args (
+                (TypedApp :type T
+                  :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+                    :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                  :args (
+                    (TypedVar 'r' :type reader.T)
+                  ))
+              ))
+            :branches (
+              (TypedCaseBranch tags=(node) :binder 'n'
+                :body (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedSelect 'key' :type Int
+                      :target (TypedVar 'n' :type Tuple left: Tree key: Int right: Tree end))
+                  )))
+            )
+            :else (TypedString 'leaf' :type String))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedTypeApp [Variant circle: Real square: Point none end] :type Fun(a: Array(Variant circle: Real square: Point none end)): Int
+                  :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                :args (
+                  (TypedApp :type Array(Shape)
+                    :func (TypedTypeApp [Array(Shape)] :type Fun(d: T): Array(Shape)
+                      :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedApp :type T
+                        :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+                          :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                        :args (
+                          (TypedVar 'r' :type reader.T)
+                        ))
+                    ))
+                ))
+            ))
+        )))
+    (TypedLetValue 'points' :type Array(Point)
+      :value (TypedApp :type Array(Point)
+        :func (TypedTypeApp [Array(Point)] :type Fun(d: T): Array(Point)
+          :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedApp :type T
+            :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+              :target (TypedVar 'dynamic' :type Module 'dynamic'))
+            :args (
+              (TypedVar 'r' :type reader.T)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedIf :type String
+            :cond (TypedInfix 'is' :type Bool
+              :left (TypedIndex :type Point
+                :target (TypedVar 'points' :type Array(Point))
+                :index (TypedInt 0 :type Int))
+              :right (TypedIndex :type Point
+                :target (TypedVar 'points' :type Array(Point))
+                :index (TypedInt 1 :type Int)))
+            :then (TypedString 'shared' :type String)
+            :else (TypedString 'not shared' :type String))
+        )))
+    (TypedLetValue 'c' :type Cell
+      :value (TypedApp :type Cell
+        :func (TypedTypeApp [Cell] :type Fun(d: T): Cell
+          :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedApp :type T
+            :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+              :target (TypedVar 'dynamic' :type Module 'dynamic'))
+            :args (
+              (TypedVar 'r' :type reader.T)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedCase :type String
+            :target (TypedSelect 'next' :type Link
+              :target (TypedVar 'c' :type Cell))
+            :branches (
+              (TypedCaseBranch tags=(more) :binder 'm'
+                :body (TypedIf :type String
+                  :cond (TypedInfix 'is' :type Bool
+                    :left (TypedSelect 'cell' :type Cell
+                      :target (TypedVar 'm' :type Tuple cell: Cell end))
+                    :right (TypedVar 'c' :type Cell))
+                  :then (TypedString 'cyclic' :type String)
+                  :else (TypedString 'not cyclic' :type String)))
+            )
+            :else (TypedString 'stopped' :type String))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedIf :type String
+            :cond (TypedApp :type Bool
+              :func (TypedTypeApp [Bool] :type Fun(d: T): Bool
+                :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                  :target (TypedVar 'dynamic' :type Module 'dynamic')))
+              :args (
+                (TypedApp :type Dynamic
+                  :func (TypedTypeApp [Dynamic] :type Fun(d: T): Dynamic
+                    :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                      :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                  :args (
+                    (TypedApp :type T
+                      :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+                        :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                      :args (
+                        (TypedVar 'r' :type reader.T)
+                      ))
+                  ))
+              ))
+            :then (TypedString 'true' :type String)
+            :else (TypedString 'false' :type String))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedInfix '<>' :type String
+              :left (TypedString 'more' :type String)
+              :right (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(d: T): Int
+                      :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedApp :type T
+                        :func (TypedSelect 'intern' :type Fun(rd: reader.T): T
+                          :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                        :args (
+                          (TypedVar 'r' :type reader.T)
+                        ))
+                    ))
+                )))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'error' :type Exception
+                  :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                :body (TypedString 'end: dynamic.error' :type String))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'close' :type Fun(reader: reader.T): Ok
+          :target (TypedVar 'reader' :type Module 'reader'))
+        :args (
+          (TypedVar 'r' :type reader.T)
+        )))
+  ))

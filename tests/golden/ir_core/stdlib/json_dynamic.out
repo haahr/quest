@@ -1,0 +1,234 @@
+import json = "util/json" : util/Json
+import dynamic = "dynamic" : Dynamic
+import sb = "util/stringBuilder" : util/StringBuilder
+import stringOp = "string" : StringOp
+import word = "word" : Word
+import reader = "reader" : Reader
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @18:45
+      let %2: String = prim <>(s, "\n") @18:59
+      let %3: Ok = call writer.putString(%1, %2) @18:28
+      return %3
+    }
+  }
+  funs {
+    fun contents(path: String): String {
+      let r: reader.T = call reader.file(path) @22:17
+      let buf: stringBuilder.T = call sb.new() @23:19
+      loop L1 {
+        let %4: Bool = call reader.more(r) @24:15
+        if %4 { @24:9
+          let %5: String = call reader.getString(r, 65536) @24:44
+          do call sb.str(buf, %5) @24:33
+        } else {
+          break L1 @24:9
+        }
+      }
+      do call reader.close(r) @25:9
+      let %6: String = call sb.toString(buf) @26:9
+      return %6
+    }
+  }
+  let left: Tree = option(leaf) @36:52
+  let key: Int = 1 @36:86
+  let right: Tree = option(leaf) @36:100
+  let %7: Tuple left: Tree key: Int right: Tree end = tuple(left, key, right) @36:16
+  let left.1: Tree = option(node, %7) @36:16
+  let key.1: Int = 2 @37:15
+  let right.1: Tree = option(leaf) @38:17
+  let %8: Tuple left: Tree key: Int right: Tree end = tuple(left.1, key.1, right.1) @35:12
+  let tree: Tree = option(node, %8) @35:12
+  let point: Point = record(x = 0.1, y = 1e+22, label = "caf\u00e9 \"tab\"\t") @40:20
+  let shared: Array(Point) = array(point, point) @41:14
+  let next: Link = option(stop) @42:39
+  let value: Int = 1 @42:75
+  let cell: Cell = tuple(next, value) @42:18
+  let cell.1: Cell = cell @43:50
+  let %9: Tuple cell: Cell end = tuple(cell.1) @43:14
+  let %10: Link = option(more, %9) @43:14
+  store cell.#0 := %10 @43:1
+  let %11: T = call dynamic.new [Int](-9223372036854775807) @46:5
+  let %12: word.T = call word.fromInt(0) @47:38
+  let %13: word.T = call word.notBits(%12) @47:25
+  let %14: T = call dynamic.new [word.T](%13) @47:5
+  let %15: T = call dynamic.new [String]("\u0000\u001f\u007f\u00ff") @48:5
+  let %16: T = call dynamic.new [Point](point) @49:5
+  let %17: T = call dynamic.new [Tree](tree) @50:5
+  let %18: Shape = variant(circle, 2.5) @51:40
+  let %19: Shape = variant(square, point) @51:77
+  let %20: Shape = variant(none, ok) @52:9
+  let %21: Array(Shape) = array(%18, %19, %20) @51:31
+  let %22: T = call dynamic.new [Array(Shape)](%21) @51:5
+  let %23: T = call dynamic.new [Array(Point)](shared) @53:5
+  let %24: T = call dynamic.new [Cell](cell) @54:5
+  let %25: T = call dynamic.new [Bool](true) @55:26
+  let %26: T = call dynamic.new [Dynamic](%25) @55:5
+  let values: Array(T) = array(%11, %14, %15, %16, %17, %22, %23, %24, %26) @45:14
+  let all: writer.T = call writer.file("all.json") @58:11
+  let %27: Int = prim extent(values) @59:17
+  let %28: Int = prim -(%27, 1) @59:17
+  var i: Int = 0 @59:1
+  let %29: Bool = prim <=(i, %28) @59:1
+  if %29 { @59:1
+    loop L2 {
+      let i.1: Int = i @59:1
+      let w: writer.T = call writer.file("one.json") @60:13
+      let %30: T = index(values, i.1) @61:22
+      do call dynamic.extern(w, %30) @61:5
+      do call writer.close(w) @62:5
+      let text: String = call contents("one.json") @63:16
+      do call print(text) @64:5
+      let %31: ParseOptions = member json.parsingDynamic @65:47
+      let %32: Value = call json.parseWith(text, %31) @65:27
+      let again: String = call json.dump(%32) @65:17
+      join k1(r.1: String) {
+        do call print(r.1) @66:5
+        let %33: T = index(values, i.1) @67:24
+        do call dynamic.extern(all, %33) @67:5
+        join k2(r.2: String) {
+          do call writer.putString(all, r.2) @68:5
+          let %34: Bool = prim is(i, %28) @59:1
+          if %34 { @59:1
+            break L2 @59:1
+          }
+          let %35: Int = prim +(i, 1) @59:1
+          i := %35 @59:1
+        } in {
+          let %36: Int = prim %(i.1, 2) @68:30
+          let %37: Bool = prim is(%36, 0) @68:30
+          if %37 { @68:26
+            jump k2("\n") @68:26
+          } else {
+            jump k2("") @68:26
+          }
+        }
+      } in {
+        let %38: Bool = call stringOp.equal(again, text) @66:14
+        if %38 { @66:11
+          jump k1("  util/json prints it the same") @66:11
+        } else {
+          let %39: String = prim <>("  util/json prints ", again) @66:84
+          jump k1(%39) @66:11
+        }
+      }
+    }
+  }
+  do call writer.close(all) @70:1
+  let r.3: reader.T = call reader.file("all.json") @72:9
+  let %40: T = call dynamic.intern(r.3) @73:32
+  let %41: Int = call dynamic.be [Int](%40) @73:16
+  let %42: String = call conv.int(%41) @73:7
+  do call print(%42) @73:1
+  let %43: T = call dynamic.intern(r.3) @74:57
+  let %44: word.T = call dynamic.be [word.T](%43) @74:38
+  let %45: word.T = call word.shift(%44, -60) @74:27
+  let %46: Int = call word.toInt(%45) @74:16
+  let %47: String = call conv.int(%46) @74:7
+  do call print(%47) @74:1
+  let %48: T = call dynamic.intern(r.3) @75:51
+  let %49: String = call dynamic.be [String](%48) @75:32
+  let %50: Int = call stringOp.length(%49) @75:16
+  let %51: String = call conv.int(%50) @75:7
+  do call print(%51) @75:1
+  let %52: T = call dynamic.intern(r.3) @76:25
+  let %53: Point = call dynamic.be [Point](%52) @76:7
+  let %54: String = record_field(%53, label) @76:7
+  do call print(%54) @76:1
+  join k3(r.4: String) {
+    do call print(r.4) @77:1
+    let %55: T = call dynamic.intern(r.3) @78:48
+    let %56: Array(Shape) = call dynamic.be [Array(Shape)](%55) @78:23
+    let %57: Int = prim extent(%56) @78:16
+    let %58: String = call conv.int(%57) @78:7
+    do call print(%58) @78:1
+    let %59: T = call dynamic.intern(r.3) @79:39
+    let points: Array(Point) = call dynamic.be [Array(Point)](%59) @79:14
+    join k4(r.5: String) {
+      do call print(r.5) @80:1
+      let %60: T = call dynamic.intern(r.3) @81:26
+      let c: Cell = call dynamic.be [Cell](%60) @81:9
+      join k5(r.6: String) {
+        do call print(r.6) @82:1
+        join k7(r.7: String) {
+          do call print(r.7) @83:1
+          join k8(r.8: String) {
+            do call print(r.8) @84:1
+            do call reader.close(r.3) @85:1
+          } in {
+            let %61: Exception = member dynamic.error @84:71
+            try catching (%61) {
+              let %62: T = call dynamic.intern(r.3) @84:46
+              let %63: Int = call dynamic.be [Int](%62) @84:30
+              let %64: String = call conv.int(%63) @84:21
+              let %65: String = prim <>("more", %64) @84:11
+              jump k8(%65) @84:7
+            } handle (e: Exception) {
+              let %66: Bool = prim is(e, %61) @84:7
+              if %66 { @84:7
+                jump k8("end: dynamic.error") @84:7
+              } else {
+                reraise e @84:7
+              }
+            }
+          }
+        } in {
+          let %67: T = call dynamic.intern(r.3) @83:47
+          let %68: Dynamic = call dynamic.be [Dynamic](%67) @83:27
+          let %69: Bool = call dynamic.be [Bool](%68) @83:10
+          if %69 { @83:7
+            jump k7("true") @83:7
+          } else {
+            jump k7("false") @83:7
+          }
+        }
+      } in {
+        let %70: Link = tuple_field(c, 0) @82:12
+        switch tag(%70) { @82:7
+          case more (m: Tuple cell: Cell end): {
+            join k6(r.9: String) {
+              jump k5(r.9) @82:7
+            } in {
+              let %71: Cell = tuple_field(m, 0) @82:44
+              let %72: Bool = prim is(%71, c) @82:44
+              if %72 { @82:41
+                jump k6("cyclic") @82:41
+              } else {
+                jump k6("not cyclic") @82:41
+              }
+            }
+          }
+          else: {
+            jump k5("stopped") @82:7
+          }
+        }
+      }
+    } in {
+      let %73: Point = index(points, 0) @80:10
+      let %74: Point = index(points, 1) @80:23
+      let %75: Bool = prim is(%73, %74) @80:10
+      if %75 { @80:7
+        jump k4("shared") @80:7
+      } else {
+        jump k4("not shared") @80:7
+      }
+    }
+  } in {
+    let %76: T = call dynamic.intern(r.3) @77:29
+    let %77: Tree = call dynamic.be [Tree](%76) @77:12
+    switch tag(%77) { @77:7
+      case node (n: Tuple left: Tree key: Int right: Tree end): {
+        let %78: Int = tuple_field(n, 1) @77:79
+        let %79: String = call conv.int(%78) @77:70
+        jump k3(%79) @77:7
+      }
+      else: {
+        jump k3("leaf") @77:7
+      }
+    }
+  }
+}
+

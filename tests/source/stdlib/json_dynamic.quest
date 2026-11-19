@@ -1,0 +1,85 @@
+(* Standard library: dynamic.extern's documents are util/json's text
+ * (docs/json-plan.md decision 8). Each value is externed to a file: its
+ * document is printed, so that the shared golden holds every implementation
+ * of the format to the same bytes (the C runtime's, WebAssembly's, and the
+ * interpreters'), and parsed and printed again by util/json, which must give
+ * the same text. Then the documents, written one after another to one file,
+ * are interned one at a time, as a reader holding several in a row is read. *)
+
+import util/json : util/Json;
+import dynamic: Dynamic;
+import sb = util/stringBuilder : util/StringBuilder;
+import stringOp = string : StringOp;
+import word: Word;
+import reader: Reader;
+import writer: Writer;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+let contents(path: String): String =
+    begin
+        let r = reader.file(path)
+        let buf = sb.new()
+        while reader.more(r) do sb.str(buf reader.getString(r 65536)) end
+        reader.close(r)
+        sb.toString(buf)
+    end;
+
+Let Point = Record x: Real y: Real label: String end;
+Let Rec Tree = Option leaf node with left: Tree key: Int right: Tree end end;
+Let Shape = Variant circle: Real square: Point none: Ok end;
+Let Rec Cell = Tuple var next: Link value: Int end
+and Link = Option stop more with cell: Cell end end;
+
+let tree = option node of Tree with
+    let left = option node of Tree with let left = option leaf of Tree end let key = 1 let right = option leaf of Tree end end
+    let key = 2
+    let right = option leaf of Tree end
+end;
+let point: Point = record x = 0.1 y = 1.0e22 label = "caf\xe9 \"tab\"\t" end;
+let shared = array of point point end;
+let cell: Cell = tuple let var next = option stop of Link end let value = 1 end;
+cell.next := option more of Link with let cell = cell end;
+
+let values = array of
+    dynamic.new(:Int ~9223372036854775807)
+    dynamic.new(:word.T word.notBits(word.fromInt(0)))
+    dynamic.new(:String "\x00\x1f\x7f\xff")
+    dynamic.new(:Point point)
+    dynamic.new(:Tree tree)
+    dynamic.new(:Array(Shape) array of variant circle of Shape with 2.5 end variant square of Shape with point end
+        variant none of Shape with ok end end)
+    dynamic.new(:Array(Point) shared)
+    dynamic.new(:Cell cell)
+    dynamic.new(:Dynamic dynamic.new(:Bool true))
+end;
+
+let all = writer.file("all.json");
+for i = 0 upto {extent values - 1} do
+    let w = writer.file("one.json")
+    dynamic.extern(w values[i])
+    writer.close(w)
+    let text = contents("one.json")
+    print(text)
+    let again = json.dump(json.parseWith(text json.parsingDynamic))
+    print(if stringOp.equal(again text) then "  util/json prints it the same" else "  util/json prints " <> again end)
+    dynamic.extern(all values[i])
+    writer.putString(all if {i % 2} is 0 then "\n" else "" end)
+end;
+writer.close(all);
+
+let r = reader.file("all.json");
+print(conv.int(dynamic.be(:Int dynamic.intern(r))));
+print(conv.int(word.toInt(word.shift(dynamic.be(:word.T dynamic.intern(r)) ~60))));
+print(conv.int(stringOp.length(dynamic.be(:String dynamic.intern(r)))));
+print(dynamic.be(:Point dynamic.intern(r)).label);
+print(case dynamic.be(:Tree dynamic.intern(r)) when node with n then conv.int(n.key) else "leaf" end);
+print(conv.int(extent dynamic.be(:Array(Shape) dynamic.intern(r))));
+let points = dynamic.be(:Array(Point) dynamic.intern(r));
+print(if points[0] is points[1] then "shared" else "not shared" end);
+let c = dynamic.be(:Cell dynamic.intern(r));
+print(case c.next when more with m then if m.cell is c then "cyclic" else "not cyclic" end else "stopped" end);
+print(if dynamic.be(:Bool dynamic.be(:Dynamic dynamic.intern(r))) then "true" else "false" end);
+print(try "more" <> conv.int(dynamic.be(:Int dynamic.intern(r))) when dynamic.error then "end: dynamic.error" end);
+reader.close(r);
