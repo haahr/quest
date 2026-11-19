@@ -973,33 +973,46 @@ export
     (* Whether a tuple or option of type from can be used at to as it is, as
      * far as proxies go: no component, at any depth through tuples and
      * options, of a type whose values may be proxies is used at a type whose
-     * values never are (quest_proxies_agree) *)
-    let rec proxiesAgreeIn(from0: Desc to0: Desc depth: Int): Bool =
+     * values never are (quest_proxies_agree). The pairs on the path from the
+     * root, froms and tos to depth, are the trail: a pair met again on its
+     * own path holds, as for a recursive type, whose descriptors are cyclic.
+     * Without it the walk would go on to the depth limit down every branch,
+     * 2^32 calls for a binary tree's type *)
+    let rec proxiesAgreeIn(from0: Desc to0: Desc depth: Int froms: Array(Desc) tos: Array(Desc)): Bool =
         begin
             let from = storedRep(from0)
             let to = storedRep(to0)
-            if {from is to} orif {depth >= 64} then true
+            let var onTrail = false
+            for i = 0 upto {if depth < 64 then depth else 64 end} - 1 do
+                if {froms[i] is from} andif {tos[i] is to} then onTrail := true end
+            end
+            if {from is to} orif {depth >= 64} orif onTrail then true
             elsif {to.kind isnot kindTuple} andif {to.kind isnot kindOption} then true
             elsif from.kind isnot to.kind then true
             elsif {depth > 0} andif not(mayBeProxied(to)) andif mayBeProxied(from) then false
             elsif to.kind is kindTuple then
+                froms[depth] := from
+                tos[depth] := to
                 let var agree = true
                 for i = 0 upto extent to.parts - 1 do
-                    if agree andif {i < extent from.parts} andif not(proxiesAgreeIn(from.parts[i] to.parts[i] depth + 1))
-                    then agree := false end
+                    if agree andif {i < extent from.parts}
+                        andif not(proxiesAgreeIn(from.parts[i] to.parts[i] depth + 1 froms tos)) then agree := false end
                 end
                 agree
             else
+                froms[depth] := from
+                tos[depth] := to
                 let var agree = true
                 for i = 0 upto extent from.parts - 1 do
                     let j = partNamed(to from.labels[i])
-                    if agree andif {j >= 0} andif {from.parts[i].kind isnot kindNone} andif {to.parts[j].kind isnot kindNone}
-                        andif not(proxiesAgreeIn(from.parts[i] to.parts[j] depth + 1)) then agree := false end
+                    if agree andif {j >= 0} andif {from.parts[i].kind isnot kindNone}
+                        andif {to.parts[j].kind isnot kindNone}
+                        andif not(proxiesAgreeIn(from.parts[i] to.parts[j] depth + 1 froms tos)) then agree := false end
                 end
                 agree
             end
         end
-    let proxiesAgree(from: Desc to: Desc): Bool = proxiesAgreeIn(from to 0)
+    let proxiesAgree(from: Desc to: Desc): Bool = proxiesAgreeIn(from to 0 array of(64 from) array of(64 to))
 
     (* The tuple or option v, of type from, seen at to as a proxy, or as its
      * original where nothing changes view *)
