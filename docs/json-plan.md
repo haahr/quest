@@ -49,13 +49,15 @@ Not started. The interface in §2 is the design; §3 says how it is built, and �
 7. **Errors carry a message and an offset.** `error: Exception(Failure)`, where a failure gives the byte offset in
    the text (or `~1` for an error that isn't about text, such as a wrong kind or a number that doesn't fit). The
    compiler's three handlers (`when json.error then`) keep working unchanged, since they don't bind the payload.
-8. **Compiled code's `dynamic.extern` and `dynamic.intern` stay in C** (`runtime/quest_serialization.c`). They walk
-   type descriptors, which Quest code cannot see, so the C's own JSON writer and parser stay. Instead:
-   - The C follows §1's rules, with `unique`.
+8. **Compiled code's `dynamic.extern` and `dynamic.intern` stay in their runtimes** (`runtime/quest_serialization.c`,
+   and `runtime/wasm/dynamic` on WebAssembly; user, 2026-11-18). The C walks type descriptors, which Quest code
+   cannot see, and both keep their own JSON writers and parsers. Instead:
+   - Both follow §1's rules, with `unique`.
    - A conformance test (§4) makes compiled code's extern text byte-identical to `util/json`'s compact dump of the
      same document, and makes intern accept and reject the same texts.
 
-   Moving extern and intern into Quest, over a reflection interface to descriptors, is in §4's alternatives.
+   Moving them into Quest later, over a reflection interface that WebAssembly's serializer already nearly has, is
+   §6. Nothing in this plan stands in its way.
 9. **Caching parsed documents stays in the compiler.** `parseShared` reuses one tree for every parse of the same
    text, for the build's artifacts. A tree is mutable, so a library that shared trees between callers would let one
    caller's change reach another's. The cache moves to `questlang/common/jsonCache`.
@@ -267,8 +269,9 @@ byte-identical, with no `corpus.py --update`.
   it (value, tree, text) to one. And they read with `read(rd parsingDynamic)`.
 - **The bootstrap** keeps Python's `json`, which is the reference that §1, decision 3, matches.
 - **Compiled code** keeps its C (decision 8).
-- **WebAssembly** has no `dynamic` ([wasm.md](wasm.md)), so nothing changes there. The library itself runs on
-  WebAssembly like any Quest code.
+- **WebAssembly** has its own serializer, in Quest: `runtime/wasm/dynamic`, a port of `quest_serialization.c` with
+  its own JSON writer and parser ([wasm.md](wasm.md)). It keeps them, as the C runtime keeps its own (user,
+  2026-11-18), and the conformance test covers it too. Moving either runtime onto `util/json` belongs to §6.
 
 ## 4. Tests and Alternatives
 
@@ -287,8 +290,8 @@ Alternatives not chosen:
   added behind §2.3 without changing the tree.
 - **Mapping JSON straight to Quest values by type,** as serde does. That is what `dynamic` does for its own format.
   For arbitrary JSON, the accessors cover reading and the emitter covers writing.
-- **Compiled `dynamic` in Quest.** This needs a Quest interface to type descriptors, which the runtime has no
-  reason to expose otherwise. The C is written and tested, and a conformance test keeps it honest.
+- **Compiled `dynamic` in Quest, now.** It needs §6's reflection interface, which is a plan of its own. The C is
+  written and tested, and a conformance test keeps it honest until then.
 - **Immutable trees,** which would let the library cache parses safely. But programs build trees by `put`, and the
   compiler's cache is the one cache anything needs.
 
@@ -301,3 +304,81 @@ Alternatives not chosen:
 3. **Dynamic on the library,** in the self-hosted interpreter (emitter and `read`), with the conformance test.
 4. **Docs:** a `util/json` section in [libraries.md](libraries.md), [dynamic.md](dynamic.md) §3 pointing at it, and
    JSON removed from [future-libraries.md](future-libraries.md).
+
+## 6. Later: Compiled `dynamic` in Quest
+
+Not part of this plan's steps. This section says what moving `quest_serialization.c` into Quest would need, so
+that the option stays open.
+
+### 6.1. It Has Been Done Once
+
+WebAssembly's `runtime/wasm/dynamic` (1,691 lines) is `quest_serialization.c` in Quest, function for function:
+- it builds the type graph and makes it canonical;
+- it finds shared objects in a first pass;
+- it writes the document;
+- it reads a document back, making descriptors and then values.
+
+It needs two things from below it, and native code would need the same two:
+- **Descriptors as Quest can read and make them.** On WebAssembly they are Quest data: `wasm/core`'s
+  `Desc`, a tuple of kind, name, parts, labels, and flags, with `newDesc`, `setPart`, `instantiate`,
+  `isSubtype`, and the registry of abstract types.
+- **Values as one slot of unknown kind.** This is an `Any`, read and made by 38 intrinsics (externals named
+  `wasm.NAME`), among them `arraySlot`, `recordSlot`, `variantTag`, `autoPayload`, `newRecordPayload`, `newTuple`,
+  `newOption`, and `same`.
+
+So the work is not writing a serializer in Quest. It is giving native code the interface that WebAssembly's
+serializer stands on, and then running that one serializer on both.
+
+### 6.2. The Interface: `runtime/reflect`
+
+An unsound interface (only unsound modules may import it, as with `os/value`), implemented twice:
+- **On WebAssembly,** by `wasm/core` and its intrinsics, mostly by renaming.
+- **On native targets** (C, ssac, arm64, the JIT), by C externals over helpers the runtime already has.
+
+| Group | Operations | Native implementation |
+|---|---|---|
+| **Types: reading** | `Desc` abstract, with `kind`, `name`, `partCount`, `part(d i)`, `label(d i)`, `flags(d i)`, `boundIndex`, `autoBound`, `storedType`, `storage`; `sameDesc` and `descHash`, for the type graph's tables | Reads of `QTypeDescriptor` and its `extra` structs. A record's fields are read by index in name order, never by offset |
+| **Types: making** | `newDesc(kind name n)`, `setPart`, `setFlags`, `instantiate(template args)`, `isSubtype`, the bound variables | As `quest_read_type_table` makes run-time descriptors now: allocate, then fill, so a recursive type's descriptor can be cyclic |
+| **Abstract types** | `abstractRep(d)`, `lookupAbstract(name arity)`, `registerUnlinked(name rep)`, `isWord(d)` | `quest_abstract_type_rep` and the registry of `quest_register_abstract_type` |
+| **Values: reading** | `Any` abstract; `toInt`, `toReal`, `toBool`, `toChar`, `toString`, `toWord`; `field(x d i)`, `element(x d i)`, `arrayCount`, `arraySlot`, `caseOf(x d)`, `casePayload(x d)`, `autoWitness`, `autoComponent(x i)`, `convert(x from to)` | `quest_tuple_element`, `quest_variant_case`, `quest_record_field_offset`, `quest_convert`, `quest_dynamic_component`: the layout stays the runtime's business |
+| **Values: making** | `fromInt` … `fromString`; `newRecord(d)`, `newTuple(d)`, and `newArray(d n)`, each with its slots unset, then `setSlot(x d i v)`; `newVariant(d tag payload)`, `newOption(d tag slots)`, `newAuto(d witness slots)` | Allocation by the object's layout, and stores through the write barrier |
+| **Identity** | `same(a b)` and `identityHash(a)`, for the writer's table of objects reached twice | Address comparison and `quest_identity_hash` |
+
+An object is made before its parts, then filled, for the same reason WebAssembly's reader does it: a value with
+`@id` must exist before the `@ref`s inside it are read. That is why `setSlot` exists, and why it has to go
+through the barrier.
+
+### 6.3. What Native Code Must Allow
+
+- **The collector must scan an `Any` ambiguously.** On native targets an `Any` is a `QVal`, which is a pointer or
+  an untagged integer the collector can't tell apart. The collector already treats some words ambiguously: those
+  in frames without a stack map, `val` words, and the JIT's data ([collector.md](collector.md)). An `Any` in a
+  frame or an array would be one more such word. That's sound only while the heap doesn't move, so collector
+  step 7 (evacuation) would have to pin what an ambiguous word reaches. The collector already has to do that for
+  its other ambiguous words.
+- **Barriers on `setSlot`.** Filling an object after it was allocated is a store into an existing object, which
+  sticky-mark-bit generations need a barrier for ([collector.md](collector.md), barrier-after-store).
+- **Descriptors made at run time are heap objects** traced like any other, as the C reader's are now.
+- **A Quest `Desc` stays an opaque handle on native targets,** not a copy as a Quest tuple. A copy would double
+  every descriptor and need converting back for `dynamic.be`.
+- **Speed.** Each slot read becomes an external call that the C did inline. `extern` and `intern` are on no hot
+  path of the compiler, which uses its own value model, but a benchmark should time externing and interning a
+  large value under both implementations before the C is deleted.
+
+### 6.4. What It Would Buy
+
+- **One serializer for every compiled target,** in place of `quest_serialization.c` (2,166 lines) and
+  `runtime/wasm/dynamic` (1,691). Both of their hand-written JSON layers would be replaced by `util/json`.
+- **Optionally, one for the self-hosted interpreter too,** if `runtime/reflect` were also implemented over
+  `questlang/values/model`, retiring `questlang/values/dynamic{json,writer,reader}`. The bootstrap keeps Python,
+  which is the reference.
+
+### 6.5. Steps, When Wanted
+
+1. **`runtime/reflect` on WebAssembly,** with `runtime/wasm/dynamic` rewritten over it and over `util/json`. The
+   bytes it writes must not change.
+2. **`runtime/reflect` on native targets:** the C externals, ambiguous scanning of `Any`, and the barrier on
+   `setSlot`. Unit-test them against `quest_serialization.c` on the dynamic goldens.
+3. **Native `dynamic` on the shared serializer.** Run the dynamic goldens on every backend, plus stress mode,
+   which interns under frequent collections. Time it against the C (§6.3), then delete the C's serialization.
+4. **Optionally, the self-hosted interpreter** on the same serializer.
