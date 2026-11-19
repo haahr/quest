@@ -279,8 +279,8 @@ every target.
 2. **The Quest layer:** `makeDirectories`, `copy`, `removeTree`, `copyTree`, `move`, `walk`, `allFiles`, `glob`,
    `globIn`, and the temporaries, with `util/path`'s `matches`; the rest of `os_files.quest`,
    `path_operations.quest`'s lines, and `test_files.py`.
-3. **Uses and docs:** `os_process.quest` on the temporaries; libraries.md §4.6; future-libraries.md's item marked
-   built; and `os/path`'s wrappers (§1.3).
+3. **Uses and docs:** `os_process.quest` on the temporaries; libraries.md §4.6; future-libraries.md's item removed, and
+   named in its introduction; and `os/path`'s wrappers (§1.3).
 
 ## 7. Left Out
 
