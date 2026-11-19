@@ -125,10 +125,15 @@ export
             for b = 0 upto {vector.length(f.blocks) - 1} do
                 let blk = ssa.block(f b)
                 let n = vector.length(blk.insts)
+                (* An extension of a byte, or a pointer retyped as a QVal word
+                 * or back, which change nothing in the register returned *)
+                let isPtr(v: Int): Bool = case ssa.typeOf(f v) when typePtr then true else false end
                 let isExtension(i: ssa.Inst): Bool = ssa.isOp(i ssa.opZext8) orif ssa.isOp(i ssa.opSext8)
+                    orif {ssa.isOp(i ssa.opToVal) andif isPtr(i.args[0])}
+                    orif {ssa.isOp(i ssa.opFromVal) andif isPtr(i.results[0])}
                 (* The call, and what it returns: its results, or the extension
                  * of its byte, which this function's caller makes again
-                 * (docs/ssa.md section 2.2) *)
+                 * (docs/ssa.md section 2.2), or its result retyped *)
                 let var call = maybe.none(:ssa.Inst)
                 let var returned = array of(0 0)
                 let var pops = 0

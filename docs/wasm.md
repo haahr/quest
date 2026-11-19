@@ -409,8 +409,8 @@ pass already wraps such a function in an adapter of the generic signature, its `
 the result needs a `box` or `unbox` (the compiler has 813 such conversions). The adapter's closure signature is the
 generic caller's, so the caller's test succeeds and nothing is boxed but the key, an `i31ref`. Adapters C needs and
 this target does not (for `hash.string` and `stringOp.equal`, where a pointer is boxed to a word natively) are left
-out: the backend sets `shapes.referencesAlike` for its units, and the pass makes none where both sides are
-references.
+out: the backend sets `shapes.referencesAlike` for its units (`choice.referencesAlike`, which arm64 shares), and the
+pass makes none where both sides are references.
 
 **Function adapters for a view's change** (a closure seen at another function type, `quest_convert`'s): the backend
 builds `$adaptN` and a maker for each uniform arity up to 8 when it compiles the core. A unit that calls a closure

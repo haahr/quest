@@ -292,8 +292,16 @@ export
                 line(p "}")
             when termReturn with x then line(p returnText(p x.values))
             when termTailCall with x then
+                (* The call may return a pointer where this function returns
+                 * a QVal word, or the reverse (docs/ssa.md section 2.2),
+                 * which C converts only with a cast *)
                 let e = callExpr(p x.call)
-                line(p if extent x.call.results is 0 then e <> "; return;" else "return " <> e <> ";" end)
+                let rs = vector.toArray(p.f.resultTypes)
+                let cast = if {extent x.call.results is 1} andif {extent rs is 1}
+                        andif not(eq(cType(typeOf(p.f x.call.results[0])) cType(rs[0]))) then
+                    "(" <> cType(rs[0]) <> ")"
+                else "" end
+                line(p if extent x.call.results is 0 then e <> "; return;" else "return " <> cast <> e <> ";" end)
             (* The try's handler record is in its stack slot. _setjmp saves
              * the registers in it and returns 0, and the body runs; a raise
              * jumps back to it with longjmp, it returns again, nonzero, and

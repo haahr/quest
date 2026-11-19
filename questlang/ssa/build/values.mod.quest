@@ -413,6 +413,48 @@ export
     let toVal(fn: Fn v: Int): Int = emit(fn ssa.opToVal array of v end tVal)
     let fromVal(fn: Fn v: Int t: ssa.Type): Int = emit(fn ssa.opFromVal array of v end t)
 
+    let isVal(t: ssa.Type): Bool = case t when typeVal then true else false end
+    let isReal(t: ssa.Type): Bool = case t when typeReal then true else false end
+    let retyped(fn: Fn vs: Array(Int) ts: Array(ssa.Type)): Array(Int) =
+        if extent vs isnot extent ts then
+            vs
+        else
+            let r = array of(extent vs 0)
+            for i = 0 upto {extent vs - 1} do
+                let from = ssa.typeOf(fn.f vs[i])
+                r[i] := if isVal(ts[i]) andif not(isVal(from)) andif not(isReal(from)) then toVal(fn vs[i])
+                    elsif isVal(from) andif not(isVal(ts[i])) andif not(isReal(ts[i])) then fromVal(fn vs[i] ts[i])
+                    else vs[i] end
+            end
+            r
+        end
+
+    let codeParamTypes(f: ir.Function): Array(ssa.Type) =
+        begin
+            let var s = shapes.shape(f.v.type)
+            let var own = 0
+            while shapes.kindIs(s shapes.shapeAll) do
+                own := own + extent s.typeParams
+                s := shapes.body(s)
+            end
+            let types = vector.new(:ssa.Type)
+            for i = 0 upto own do vector.append(types tPtr) end
+            for i = 0 upto {extent f.params - 1} do
+                let entry = f.params[i]
+                if not(eq(entry.mode "value")) then
+                    vector.append(types tPtr)
+                else
+                    let ps = varParts(entry.v)
+                    if extent ps is 0 then vector.append(types tVal) end
+                    for k = 0 upto {extent ps - 1} do vector.append(types ps[k].type) end
+                end
+            end
+            vector.toArray(types)
+        end
+
+    let codeResultParts(f: ir.Function): Array(Part) =
+        if f.unboxedResult then unboxedParts(f.resultType) else parts(f.resultType) end
+
     (* A pointer n bytes past p *)
     let offsetPtr(fn: Fn p: Int n: Int): Int = if n is 0 then p else ssa.ptrAdd(fn.f fn.cur p constant(fn n)) end
 

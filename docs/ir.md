@@ -469,7 +469,7 @@ component's values at their own type (inspect reads them by the stored descripto
 | `slot_box`, `slot_unbox` | a record or variant put in a new box to be stored into a slot, and read from its box (a boxed variable) |
 | `copy` | a new tuple, each component converted by its own plan and read as the plan's access says (an auto value's payload, stored in its witness-independent layout) |
 | `runtime` | `quest_convert` between the native layout's descriptor and the generic layout's (a template instantiated with the type arguments): layouts that disagree at a polymorphic call (closures among the components whose C signatures differ) |
-| `adapt` | a closure wrapped in a thunk of the target's signature converting its arguments (from the target's parameter types to the closure's) and its result |
+| `adapt` | a closure wrapped in a thunk of the target's signature converting its arguments (from the target's parameter types to the closure's) and its result; none where every part is only boxed or unboxed between a pointer and a `QVal` and the backend holds both in one register or reference (`choice.referencesAlike`: arm64 and wasm, not C, whose types differ), which in the self-hosted compiler calls the closure's code directly at its own types |
 | rejected | a conversion that would copy mutable data laid out differently: a compile-time error of the program's (`RejectedConversion`), which the pass reports at the statement whose conversion it is, in that statement's file (every compiled target, the JIT included) |
 
 Function types are compared with the target's type parameters renamed to the source's, and recursive ones
@@ -540,6 +540,13 @@ a closed type, which writes its type components with their alias names); and the
 plans, nested ones included (a copy's view fields, an adapter's fields). A thunk is a C function of its own, passed
 only its own type parameters' descriptors: a type there that mentions a type parameter of the enclosing function is
 rejected (`UnsupportedDescriptor`; no program does).
+
+In the self-hosted compiler, a lifted function whose body never uses the descriptors of the enclosing functions' type
+parameters (§8.2) loses them once the functions are described (`unusedEnclosing`): those type parameters and
+descriptor variables are dropped, its closures pass no type arguments for them, and a closure left capturing nothing
+is static, `closure f {}`, rather than allocated each time its enclosing function runs. Dropping one closure's
+descriptors can leave another's unused (an enclosing function that only passed them on), so the pass runs to a fixed
+point.
 
 A function whose body reads values of a type parameter bounded by a record, variant, option, or tuple type through the
 bound (a field, a component, a tag, a payload) gets a view map for it (`ir.ViewMapParam` in `Function.view_maps`,

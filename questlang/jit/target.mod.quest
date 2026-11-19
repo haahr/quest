@@ -14,6 +14,7 @@ import
     questlang/types/symbols : questlang/types/Symbols
     questlang/modules/elaboration : questlang/modules/Elaboration
     mangling = questlang/repr/symbols : questlang/repr/Symbols
+    questlang/repr/shapes : questlang/repr/Shapes
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/closure : questlang/ir/Closure
     questlang/ir/represent : questlang/ir/Represent
@@ -311,6 +312,9 @@ export
     let load(t: T unit: nodes.Unit): Ok =
         begin
             let encoded = try
+                (* The passes hold a pointer and a QVal word alike, as
+                 * arm64 does (choice.referencesAlike) *)
+                shapes.setReferencesAlike(true)
                 let built = ssaPipeline.build(passes.runPasses(unit))
                 ssaPipeline.lower(built)
                 arm64.encodeUnit(built)

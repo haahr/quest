@@ -107,8 +107,12 @@ export
                     andif {extent maybe.unwrap(:ir.OpMakeClosure known).typeArgs is 0}
                     andif {extent maybe.unwrap(:ir.OpMakeClosure known).captures is 0}
                 let results = if direct then
-                    vals.callQuest(fn vals.codeName(u maybe.unwrap(known).code)
-                        vals.concat(array of vals.null(fn) end args) shifted(s.pairs 1) shifted(s.narrow 1) ps)
+                    (* At the code's own types (vals.retyped) *)
+                    let code = maybe.unwrap(known).code
+                    let all = vals.retyped(fn vals.concat(array of vals.null(fn) end args) vals.codeParamTypes(code))
+                    let vs = vals.callQuest(fn vals.codeName(u code) all shifted(s.pairs 1) shifted(s.narrow 1)
+                        vals.codeResultParts(code))
+                    vals.retyped(fn vs vals.typesOf(ps))
                 else
                     let clos = vals.read(fn v)[0]
                     let fnPtr = vals.invariantWord(fn clos runtimeLayout.offset("QClosure" "fn") vals.tPtr)

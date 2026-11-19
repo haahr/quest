@@ -13,6 +13,7 @@ import
     questlang/repr/symbols : questlang/repr/Symbols
     questlang/repr/shapes : questlang/repr/Shapes
     questlang/codegen/native : questlang/codegen/Native
+    questlang/codegen/choice : questlang/codegen/Choice
     wasm = questlang/wasm/codegen : questlang/wasm/Codegen
     questlang/wasm/encode : questlang/wasm/Encode
     wasmPrinter = questlang/wasm/printer : questlang/wasm/Printer
@@ -125,7 +126,7 @@ export
         begin
             let lowered = lower.lowerProgram(program e sourceMap echo printResult)
             if verify.irChecksEnabled() then verify.checkUnit(lowered) end
-            shapes.setReferencesAlike(stringOp.equal(backend "wasm"))
+            shapes.setReferencesAlike(choice.referencesAlike(backend))
             let unit = passes.runPasses(lowered)
             tuple let c = unitToC(unit maybe.none() backend) let unit = unit end
         end
@@ -143,7 +144,7 @@ export
                     symbol := symbols.fingerprintIdent(symbols.mangleModuleName(md.name))
                 end
             end
-            shapes.setReferencesAlike(stringOp.equal(backend "wasm"))
+            shapes.setReferencesAlike(choice.referencesAlike(backend))
             unitWithDatum(passes.runPasses(unit) interfaceHeader backend
                 maybe.some(tuple let symbol = symbol let text = fingerprint end))
         end

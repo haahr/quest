@@ -338,7 +338,20 @@ export
                                 problem("an indirect call has no function")
                             end
                             callIsValid(x.call "a tail " <> what)
-                            resultsAre(x.call vector.toArray(f.resultTypes) "a tail " <> what)
+                            (* A pointer may be returned as a QVal word, and
+                             * back (the tail calls pass looks through the
+                             * retyping, which changes no register) *)
+                            if extent x.call.results isnot vector.length(f.resultTypes) then
+                                resultsAre(x.call vector.toArray(f.resultTypes) "a tail " <> what)
+                            else
+                                for k = 0 upto {extent x.call.results - 1} do
+                                    let want = vector.get(f.resultTypes k)
+                                    let have = nodes.typeOf(f x.call.results[k])
+                                    let words = {sameType(want tVal) orif sameType(want tPtr)}
+                                        andif {sameType(have tVal) orif sameType(have tPtr)}
+                                    if not(words) then typeIs(x.call.results[k] want "a tail " <> what <> "'s result") end
+                                end
+                            end
                         else
                             problem("block " <> conv.int(b) <> "'s tail call is a " <> what)
                         end
