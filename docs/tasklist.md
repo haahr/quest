@@ -217,15 +217,15 @@ Then simplify: with no single case, `OptionIdentity` is the set of cases without
 pointer comparison after unproxying, or a tag comparison for a case without components; and the hash is the
 address's, or the case's.
 
-**Decide first: variants.** Variants compare by their case and value (extensions.md, "Variants as Values",
-`quest_variant_is`), justified as options' single-word rule, which that section says they follow. Their own reason
-stands without it: a compiled variant is two words with no location, so identity cannot be compared at all. Either
-keep the variants' rule, rewording extensions.md to give it that reason alone, or withdraw it too and give compiled
-variants a box (or refuse `is` on them).
+**Variants keep their rule** (decided 2026-11-19). Variants compare by their case and value (extensions.md,
+"Variants as Values", `quest_variant_is`). That section justifies this by options' single-word rule, which it says
+they follow and would go with. Their own reason stands without it: a compiled variant is two words with no location,
+so identity cannot be compared at all. Reword that section to give that reason alone, and leave
+`quest_variant_is`, its hash, and their counterparts in the interpreters and wasm as they are.
 
 **Done when.** Both compilers, both interpreters, and both runtimes compare a single-word option's `some`s by
-identity, the code above is simplified, the variants' question is settled, option-values.md is deleted, and
-`tools/check --all` passes (an ABI change if the runtime's declarations change).
+identity, the code above is simplified, extensions.md's variants section gives their own reason, option-values.md
+is deleted, and `tools/check --all` passes (an ABI change if the runtime's declarations change).
 
 ---
 
