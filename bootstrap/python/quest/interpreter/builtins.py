@@ -952,10 +952,8 @@ def _quest_identity_hash(v: QValue, t: Optional[QType] = None) -> QWord:
 
     Scalars hash by value, a Real by its bits with ~0.0 as 0.0. Options and
     variants follow qvalue_is (docs/extensions.md, Options as Values, Variants
-    as Values): an option of a case without components by its case's name, and
-    one of a single-word option type's case by its component too, at the
-    component's type; a variant by its case's name and its value at the case's
-    type. Any other option or variant, or one whose type is not known, hashes
+    as Values): an option of a case without components by its case's name; a
+    variant by its case's name and its value at the case's type. Any other option or variant, or one whose type is not known, hashes
     by its object's identity, never by a component that could change after it
     is stored (a var one); so does anything else. The result is mixed by
     splitmix64, as the runtime's is, but the hashes are not the runtime's: tags
@@ -975,12 +973,10 @@ def _quest_identity_hash(v: QValue, t: Optional[QType] = None) -> QWord:
             raw = struct.unpack(">Q", struct.pack(">d", val + 0.0))[0]
         case QOk():
             raw = 0
-        case QOption(tag=tag, payload=payload):
+        case QOption(tag=tag):
             rule = option_identity(t) if t is not None else None
             if rule is not None and tag in rule.empty:
                 raw = _string_hash(tag)
-            elif rule is not None and tag == rule.single and isinstance(payload, QTuple) and payload.elements:
-                raw = _string_hash(tag) ^ _quest_identity_hash(payload.elements[0], rule.component).value
             else:
                 raw = id(v) & 0xFFFF_FFFF_FFFF_FFFF
         case QVariant(tag=tag, payload=None):

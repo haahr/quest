@@ -1,8 +1,7 @@
 (* Options as values (docs/extensions.md): is compares options of a
- * case without components by their case, and those of a single-word option
- * type (one case with one component that is not var, the others without) by
- * their component, at the type is is applied at; other options are the same
- * only if they are one object. hash.identityHash agrees, so that an identity
+ * case without components by their case, at the type is is applied at; other
+ * options are the same only if they are one object, those of a type with one
+ * case with one component (maybe.T) included. hash.identityHash agrees, so that an identity
  * map's keys do, a record component's included: a record is the same through
  * each of its views. *)
 
@@ -46,17 +45,17 @@ print("circle is circle, apart: " <> yes(c1 is c2));
 print("circle is itself: " <> yes(c1 is c1));
 print("dot is dot: " <> yes({option dot of Shape end} is option dot of Shape end));
 
-(* 5. Single-word types compare by their component *)
+(* 5. A type with one case with one component keeps the same-object rule *)
 let s = "word";
-let t = "wo" <> "rd";
-print("some(s) is some(s): " <> yes(maybe.some(:String)(s) is maybe.some(:String)(s)));
-print("some(s) is some(t), t made apart: " <> yes(maybe.some(:String)(s) is maybe.some(:String)(t)));
-print("some(3) is some(3): " <> yes(maybe.some(:Int)(3) is maybe.some(:Int)(3)));
-print("some(3) is some(4): " <> yes(maybe.some(:Int)(3) is maybe.some(:Int)(4)));
+let ss = maybe.some(:String)(s);
+print("some(s) is some(s), made apart: " <> yes(maybe.some(:String)(s) is maybe.some(:String)(s)));
+print("some(s) is itself: " <> yes(ss is ss));
+print("some(3) is some(3), made apart: " <> yes(maybe.some(:Int)(3) is maybe.some(:Int)(3)));
 print("none is none: " <> yes(maybe.none(:String) is maybe.none(:String)));
-print("same(some(s) some(s)): " <> yes(same(:maybe.T(String))(maybe.some(:String)(s) maybe.some(:String)(s))));
+print("same(some(s) some(s)), apart: " <> yes(same(:maybe.T(String))(maybe.some(:String)(s) maybe.some(:String)(s))));
+print("same(some(s) itself): " <> yes(same(:maybe.T(String))(ss ss)));
 
-(* 6. At a supertype that is not single-word, the same-object rule again *)
+(* 6. The same through an upcast *)
 Let Opt = Option none some with val: String end end;
 Let Wider = Option none other with x: Int end some with val: String end end;
 let o1: Wider = option some of Opt with s end;
@@ -79,8 +78,9 @@ print("red found: " <> yes(maybe.isSome(:Int hashMap.get(:Color :Int m red2))));
 print("blue found: " <> yes(maybe.isSome(:Int hashMap.get(:Color :Int m option blue of Color end))));
 print("red hashes alike: " <> yes(hash.identityHash(:Color red1) is hash.identityHash(:Color red2)));
 let ms = hashMap.newIdentityMap(:maybe.T(String) :Int);
-hashMap.insert(:maybe.T(String) :Int ms maybe.some(:String)(s) 2);
-print("some(s) found: " <> yes(maybe.isSome(:Int hashMap.get(:maybe.T(String) :Int ms maybe.some(:String)(s)))));;
+hashMap.insert(:maybe.T(String) :Int ms ss 2);
+print("some(s) found: " <> yes(maybe.isSome(:Int hashMap.get(:maybe.T(String) :Int ms ss))));
+print("some(s) made apart found: " <> yes(maybe.isSome(:Int hashMap.get(:maybe.T(String) :Int ms maybe.some(:String)(s)))));;
 
 (* 9. A record component is its record through each view: an option viewed
  * twice at a narrower type, and a record and its view *)
@@ -104,8 +104,8 @@ hashMap.insert(:Small :Int mr small 4);
 print("record found through its view: " <> yes(maybe.isSome(:Int hashMap.get(:Small :Int mr big))))
 ;
 
-(* 10. A key whose var component changes is found again: an option that is not
- * single-word hashes by its object, not by its components, and so does a
+(* 10. A key whose var component changes is found again: an option with
+ * components hashes by its object, not by its components, and so does a
  * variant holding one *)
 let mf = hashMap.newIdentityMap(:Cell :Int);
 hashMap.insert(:Cell :Int mf f1 5);

@@ -374,8 +374,6 @@ C runtime), which link to the rest.
   measurements behind them.
 - [docs/collector.md](docs/collector.md): the garbage collector: its heap, generations, incremental marking, write
   barriers, roots, and the checking modes that test them.
-- [docs/option-values.md](docs/option-values.md): single-word options held as pointers, a representation designed
-  and deferred.
 - [docs/exceptions.md](docs/exceptions.md): how an uncaught exception is reported, with where it was raised and the
   functions active then, in the interpreters and in compiled code.
 

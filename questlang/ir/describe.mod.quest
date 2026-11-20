@@ -38,14 +38,12 @@ export
     let typeOf(a: Atom): Type = nodes.atomType(a)
 
     (* Whether is compares options of t other than as one object: t is an
-     * option type with a case without components, or single-word
-     * (docs/extensions.md, Options as Values) *)
+     * option type with a case without components (docs/extensions.md,
+     * Options as Values) *)
     let comparesAsOption(t: Type): Bool =
         shapes.shape(t).kind?shapeOption andif begin
             let rule = reduce.optionIdentity(t)
-            maybe.isSome(rule)
-                andif {{extent maybe.unwrap(:reduce.OptionIdentity rule).empty > 0}
-                    orif maybe.isSome(maybe.unwrap(rule).single)}
+            maybe.isSome(rule) andif {extent maybe.unwrap(:reduce.OptionIdentity rule).empty > 0}
         end
 
     (* The structure of layout.heldShape(t kind), raising unsupportedDescriptor
@@ -469,10 +467,9 @@ export
      *   type, their type's: for QVal words, whose bits are compared except
      *   for a Real's 0.0 and ~0.0, and a tuple's or option's proxies
      *   (quest_val_is); and for options that is compares by case, with no
-     *   components or a single-word option's one component (quest_option_is,
-     *   docs/extensions.md, Options as Values). Not for a handler's exception
-     *   variable, which holds the exception with its payload and is compared
-     *   by the exception's address;
+     *   components (quest_option_is, docs/extensions.md, Options as Values).
+     *   Not for a handler's exception variable, which holds the exception
+     *   with its payload and is compared by the exception's address;
      * - calls, external calls, closures, and type applications their type
      *   arguments'; a type application of a function also its thunk's
      *   descriptor variables, which its plans use;

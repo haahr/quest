@@ -190,52 +190,6 @@ test under `tests/errors` shows it.
 
 ---
 
-## Undo the single-word rule for options, and simplify what it left
-
-**Problem.** The language compares single-word options by component ([extensions.md](extensions.md), "Options as
-Values"): `maybe.some(:String)(s) is maybe.some(:String)(s)` is true. The rule was adopted so that such options could be
-held as nullable pointers ([option-values.md](option-values.md)), and that representation will not be built (decided
-2026-11-19). Measured 2026-11-19 by counting the allocations of a build of the compiler (`QUEST_GC_CHECK=allocations`,
-`-j 1`): `maybe.some` makes 84.7M of the separate build's 1,114M allocations, and none would go, since in a separate
-build every `maybe.some` is a call into another unit, which keeps the boxed layout. In a whole-program build 72.6M of
-972M remain, about 85% of them holding pointers; only there would the representation pay. Without it the rule costs:
-`is` on such an option compares tags and then components (`quest_option_is`, through the descriptor's cases), the
-identity hash hashes the component, and the result depends on the static type `is` is applied at, which every
-compiler, interpreter, and runtime must get right.
-
-The rule for cases without components (a shared constant compared by its case) stays: it is what removed most of the
-options' allocations ([benchmarks.md](benchmarks.md) §8).
-
-**Where to start.** `OptionIdentity`'s `single` and `component` (`questlang/types/reduce`, the bootstrap's
-`types/reduce.py`) and their readers:
-
-- the interpreters' `is` and identity hash: `questlang/interpreter/builtins` and `primitives`, the bootstrap's
-  `interpreter/builtins.py` and `values/model.py`;
-- describe's choice of the runtime's comparison: `questlang/ir/describe`, the bootstrap's `ir/describe.py`;
-- the runtimes: `quest_single_word_case` and its uses in `quest_option_is` and `quest_option_identity_hash`
-  (`runtime/quest_views.c`, `quest_runtime.h`), and `singleWordCase` in `runtime/wasm/core`;
-- the wasm backend's inline comparison (`questlang/wasm/codegen`, the `singleWord` case of options' `is`);
-- the tests: `language/option_identity` (sections 5 and 6), `language/dynamic_runtime_ports`, and the goldens they
-  change in every mode;
-- the documents: extensions.md's bullet and closing paragraph, c-representation.md §5.3's `quest_option_is`,
-  runtime-design.md's identity bullets, wasm.md's hashing line, README.md's link, and option-values.md, deleted.
-
-Then simplify: with no single case, `OptionIdentity` is the set of cases without components; `quest_option_is` is a
-pointer comparison after unproxying, or a tag comparison for a case without components; and the hash is the
-address's, or the case's.
-
-**Variants keep their rule** (decided 2026-11-19). Variants compare by their case and value (extensions.md,
-"Variants as Values", `quest_variant_is`). That section justifies this by options' single-word rule, which it says
-they follow and would go with. Their own reason stands without it: a compiled variant is two words with no location,
-so identity cannot be compared at all. Reword that section to give that reason alone, and leave
-`quest_variant_is`, its hash, and their counterparts in the interpreters and wasm as they are.
-
-**Done when.** Both compilers, both interpreters, and both runtimes compare a single-word option's `some`s by
-identity, the code above is simplified, extensions.md's variants section gives their own reason, option-values.md
-is deleted, and `tools/check --all` passes (an ABI change if the runtime's declarations change).
-
----
-
 ## The collector never moves objects
 
 **Problem.** Minor collections leave small survivors scattered over nearly every block they filled, and their sticky

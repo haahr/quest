@@ -11,7 +11,7 @@ The self-hosted counterpart is questlang/types/reduce.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Optional
 
 from quest.types import (
     QAbstractType,
@@ -28,7 +28,6 @@ from quest.types import (
     QRecGroupType,
     QRecordType,
     QRecType,
-    QTupleField,
     QTupleType,
     QType,
     QTypeApp,
@@ -173,12 +172,9 @@ def option_case_names(t: QType) -> tuple[str, ...]:
 @dataclass(frozen=True)
 class OptionIdentity:
     """How `is` compares options of an option type (docs/extensions.md,
-    Options as Values): its cases without components compare by case; and
-    if the type is single-word, its one case with components (`single`)
-    compares by its one component, of type `component`."""
+    Options as Values): its cases without components (`empty`) compare by
+    case, and its other options by identity."""
     empty: frozenset[str]
-    single: Optional[str] = None
-    component: Optional[QType] = None
 
 
 def _exposed_type(t: QType, wanted: type) -> Optional[QType]:
@@ -211,18 +207,10 @@ def option_identity(t: QType) -> Optional[OptionIdentity]:
     if curr is None:
         return None
     empty: set[str] = set()
-    with_components: list[tuple[str, tuple[Any, ...]]] = []
     for o in curr.options:
         payload = normalize_type(o.payload_type) if o.payload_type is not None else None
-        fields = payload.fields if isinstance(payload, QTupleType) else ()
-        if not fields:
+        if not (payload.fields if isinstance(payload, QTupleType) else ()):
             empty.add(o.name)
-        else:
-            with_components.append((o.name, fields))
-    if len(with_components) == 1:
-        name, fields = with_components[0]
-        if len(fields) == 1 and isinstance(fields[0], QTupleField) and not fields[0].is_var:
-            return OptionIdentity(frozenset(empty), name, fields[0].type_val)
     return OptionIdentity(frozenset(empty))
 
 

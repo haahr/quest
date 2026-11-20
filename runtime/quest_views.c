@@ -513,10 +513,8 @@ QVal quest_option_element(const void *opt, const QTypeDescriptor *t, size_t i) {
  * Options as values (docs/extensions.md, Options as Values), and conversion
  * between layouts (quest_convert)
  *
- * is compares options of a case without components by their case, and those of
- * a single-word option type's case with a component (an option type with one
- * case with components, which has one, not var) by their component; an
- * abstract type's values as its representation's.
+ * is compares options of a case without components by their case, and other
+ * options by identity; an abstract type's values as its representation's.
  *
  * Then quest_convert, which converts a value from the view and layout of one
  * descriptor to another's (its comment in the header has the cases), with
@@ -542,20 +540,6 @@ static size_t quest_case_component_count(const QVariantCaseDescriptor *c) {
     return c->payload_type == NULL ? 0 : ((const QTupleTypeDescriptor *)c->payload_type->extra)->element_count;
 }
 
-/* The tag of option type t's single-word case, or -1 if t is not single-word */
-static int64_t quest_single_word_case(const QTypeDescriptor *t) {
-    const QVariantTypeDescriptor *v = (const QVariantTypeDescriptor *)t->extra;
-    int64_t found = -1;
-    for (size_t i = 0; i < v->case_count; ++i) {
-        size_t n = quest_case_component_count(&v->cases[i]);
-        if (n == 0) continue;
-        if (found >= 0 || n != 1) return -1;
-        if (((const QTupleTypeDescriptor *)v->cases[i].payload_type->extra)->elements[0].is_var) return -1;
-        found = (int64_t)i;
-    }
-    return found;
-}
-
 bool quest_option_is(const QTypeDescriptor *t, const void *a, const void *b) {
     if (quest_unproxy(a) == quest_unproxy(b)) return true;
     t = quest_identity_type(t);
@@ -563,10 +547,7 @@ bool quest_option_is(const QTypeDescriptor *t, const void *a, const void *b) {
     int64_t tag = quest_option_tag(a);
     if (tag != quest_option_tag(b)) return false;
     const QVariantCaseDescriptor *c = &((const QVariantTypeDescriptor *)t->extra)->cases[tag];
-    if (quest_case_component_count(c) == 0) return true;
-    if (quest_single_word_case(t) != tag) return false;
-    const QTypeDescriptor *component = ((const QTupleTypeDescriptor *)c->payload_type->extra)->elements[0].type;
-    return quest_val_is(component, quest_option_element(a, t, 0), quest_option_element(b, t, 0));
+    return quest_case_component_count(c) == 0;
 }
 
 bool quest_variant_is(const QTypeDescriptor *t, QVariantVal a, QVariantVal b) {
@@ -595,10 +576,6 @@ uint64_t quest_option_identity_hash(const QTypeDescriptor *t, const void *p) {
     int64_t tag = quest_option_tag(p);
     const QVariantCaseDescriptor *c = &((const QVariantTypeDescriptor *)t->extra)->cases[tag];
     if (quest_case_component_count(c) == 0) return quest_hash_mix64(0x9E3779B97F4A7C15ULL ^ (uint64_t)tag);
-    if (quest_single_word_case(t) == tag) {
-        const QTypeDescriptor *component = ((const QTupleTypeDescriptor *)c->payload_type->extra)->elements[0].type;
-        return quest_hash_mix64((uint64_t)tag ^ quest_identity_hash(component, quest_option_element(p, t, 0)));
-    }
     return quest_hash_mix64((uint64_t)(uintptr_t)quest_unproxy(p));
 }
 

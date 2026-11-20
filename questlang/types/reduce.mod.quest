@@ -216,7 +216,7 @@ export
                 else array of :String end
             end
         end
-    Def OptionIdentity = Tuple empty: Array(String) single: maybe.T(String) component: maybe.T(Type) end
+    Def OptionIdentity = Tuple empty: Array(String) end
     (* t looked through until wanted holds of it or nothing changes: each
      * round looks through one layer, the module abstract types free in it
      * replaced by their representations, or else its bound. A representation
@@ -245,49 +245,23 @@ export
         end
 
     let optionIdentity(t: Type): maybe.T(OptionIdentity) =
-        begin
-            let curr = exposedType(t fun(u: Type): Bool u.form?typeOption)
-            case curr.form
-                when typeOption with x then
-                    let empty = vector.new(:String)
-                    let var withComponents = 0
-                    let var single = maybe.none(:String)
-                    let var component = maybe.none(:Type)
-                    for i = 0 upto {extent x.options - 1} do
-                        let o = x.options[i]
-                        let fields = if maybe.isSome(o.payload) then
-                            case normalizeType(maybe.unwrap(o.payload)).form
-                                when typeTuple with y then y.fields
-                                else array of :model.TupleComponent end
-                            end
-                        else
-                            array of :model.TupleComponent end
+        case exposedType(t fun(u: Type): Bool u.form?typeOption).form
+            when typeOption with x then
+                let empty = vector.new(:String)
+                for i = 0 upto {extent x.options - 1} do
+                    let o = x.options[i]
+                    let components = if maybe.isSome(o.payload) then
+                        case normalizeType(maybe.unwrap(o.payload)).form
+                            when typeTuple with y then extent y.fields
+                            else 0
                         end
-                        if extent fields is 0 then
-                            vector.append(empty o.name)
-                        else
-                            withComponents := withComponents + 1
-                            if extent fields is 1 then
-                                case fields[0]
-                                    when tupleField with f then
-                                        if not(f.isVar) then
-                                            single := maybe.some(o.name)
-                                            component := maybe.some(f.type)
-                                        end
-                                    else ok
-                                end
-                            end
-                        end
+                    else
+                        0
                     end
-                    if withComponents isnot 1 then
-                        single := maybe.none()
-                        component := maybe.none()
-                    end
-                    maybe.some(tuple
-                        let empty = vector.toArray(empty) let single = single let component = component
-                    end)
-                else maybe.none()
-            end
+                    if components is 0 then vector.append(empty o.name) end
+                end
+                maybe.some(tuple let empty = vector.toArray(empty) end)
+            else maybe.none()
         end
 
     let variantCases(t: Type): maybe.T(Array(model.VariantField)) =

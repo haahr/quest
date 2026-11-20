@@ -297,15 +297,11 @@ use no semicolons at all; the tests use both forms, so that both stay accepted.
   same case and the case has no components at the type `is` is applied at. A case is its name, so `option thu of
   WeekDay end`, viewed as a `Day`, is `option thu of Day end`. `{option red of Color end} is {option red of Color
   end}` is true.
-- **A single-word option is its component.** An option type is single-word if exactly one of its cases has
-  components, exactly one, not `var`, and every other case has none, as `maybe.T(A)` is. Two of its options are `is`
-  each other if they are of the same case and, for the case with a component, their components are `is` each other.
-  `maybe.some(:String)(s) is maybe.some(:String)(s)` is true, as `s is s` is. A `var` component is excluded, since
-  its identity is its location.
-- **The static type decides.** `is` applies the rules of the type it is applied at. Two `some`s of one string are
-  `is` each other as `maybe.T(String)`s, and not after an upcast to `Option none some with val: String end other
-  with x: Int end end`, which is not single-word and at which each is a distinct object. An abstract type's values
-  compare as its representation's do.
+- **A case with components is an object.** Two options of a case with components are `is` each other only if they
+  are the same object, as the paper says. `maybe.some(:String)(s) is maybe.some(:String)(s)` is false: each `some` is
+  made anew.
+- **The static type decides.** `is` applies the rule of the type it is applied at, so whether a case has components
+  is decided there. An abstract type's values compare as its representation's do.
 
 `hash.identityHash` agrees with `is`, so that identity maps keep working with such keys.
 
@@ -314,15 +310,13 @@ values (`nil`, `none`, `some`), and making a new object for each, only so that `
 the allocation in the MLton benchmarks ([benchmarks.md](benchmarks.md) §3.6 and §8). A case without components is
 a constant shared by every use ([c-representation.md](c-representation.md) §5.3).
 
-The single-word rule anticipates representing such options by their component
-([option-values.md](option-values.md)), a design deferred on 2026-11-01. Whether to adopt it is open; if it is
-dropped, the rule is withdrawn, leaving only the rule for cases without components.
+A rule comparing options like `maybe.T(A)`'s by their one component, made for representing such options as their
+component, was withdrawn with that representation on 2026-11-19.
 
 ## Variants as Values
 
 *Typeful Programming* §6.3 makes variants like options, each case carrying exactly one value (`Ok` where it carries
-none), so every variant type is what a single-word option type is, and `is` compares variants by the options' rule
-(decided 2026-11-15):
+none). This implementation compares variants by value (decided 2026-11-15, and kept on 2026-11-19):
 
 - **A variant is its case and its value.** Two variants are `is` each other if they are of the same case and their
   values are `is` each other at that case's type. A case of type `Ok` is its case. `{variant p of V with 1 end} is
@@ -333,8 +327,7 @@ none), so every variant type is what a single-word option type is, and `is` comp
 `hash.identityHash` agrees. The reason is that a compiled variant is two words, its tag and its value
 ([c-representation.md](c-representation.md) §5.3), with no location of its own to compare: the interpreters, which
 made every variant an object, said two variants made apart were not `is` each other, and compiled code could not say
-so at all. If the single-word rule for options is withdrawn, this one goes with it, and compiled variants would need
-a location (a box) or `is` on them refused.
+so at all. Comparing by identity would need a location (a box) for every compiled variant, or `is` on them refused.
 
 ---
 

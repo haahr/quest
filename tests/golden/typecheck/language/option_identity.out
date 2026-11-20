@@ -232,16 +232,20 @@
         )))
     (TypedLetValue 's' :type String
       :value (TypedString 'word' :type String))
-    (TypedLetValue 't' :type String
-      :value (TypedInfix '<>' :type String
-        :left (TypedString 'wo' :type String)
-        :right (TypedString 'rd' :type String)))
+    (TypedLetValue 'ss' :type maybe.T(String)
+      :value (TypedApp :type maybe.T(String)
+        :func (TypedTypeApp [String] :type Fun(val: String): maybe.T(String)
+          :func (TypedSelect 'some' :type All(A :: TYPE) Fun(val: A): maybe.T(A)
+            :target (TypedVar 'maybe' :type Module 'maybe')))
+        :args (
+          (TypedVar 's' :type String)
+        )))
     (TypedExprStmt
       :expr (TypedApp :type Ok
         :func (TypedVar 'print' :type Fun(s: String): Ok)
         :args (
           (TypedInfix '<>' :type String
-            :left (TypedString 'some(s) is some(s): ' :type String)
+            :left (TypedString 'some(s) is some(s), made apart: ' :type String)
             :right (TypedApp :type String
               :func (TypedVar 'yes' :type Fun(b: Bool): String)
               :args (
@@ -267,25 +271,13 @@
         :func (TypedVar 'print' :type Fun(s: String): Ok)
         :args (
           (TypedInfix '<>' :type String
-            :left (TypedString 'some(s) is some(t), t made apart: ' :type String)
+            :left (TypedString 'some(s) is itself: ' :type String)
             :right (TypedApp :type String
               :func (TypedVar 'yes' :type Fun(b: Bool): String)
               :args (
                 (TypedInfix 'is' :type Bool
-                  :left (TypedApp :type maybe.T(String)
-                    :func (TypedTypeApp [String] :type Fun(val: String): maybe.T(String)
-                      :func (TypedSelect 'some' :type All(A :: TYPE) Fun(val: A): maybe.T(A)
-                        :target (TypedVar 'maybe' :type Module 'maybe')))
-                    :args (
-                      (TypedVar 's' :type String)
-                    ))
-                  :right (TypedApp :type maybe.T(String)
-                    :func (TypedTypeApp [String] :type Fun(val: String): maybe.T(String)
-                      :func (TypedSelect 'some' :type All(A :: TYPE) Fun(val: A): maybe.T(A)
-                        :target (TypedVar 'maybe' :type Module 'maybe')))
-                    :args (
-                      (TypedVar 't' :type String)
-                    )))
+                  :left (TypedVar 'ss' :type maybe.T(String))
+                  :right (TypedVar 'ss' :type maybe.T(String)))
               )))
         )))
     (TypedExprStmt
@@ -293,7 +285,7 @@
         :func (TypedVar 'print' :type Fun(s: String): Ok)
         :args (
           (TypedInfix '<>' :type String
-            :left (TypedString 'some(3) is some(3): ' :type String)
+            :left (TypedString 'some(3) is some(3), made apart: ' :type String)
             :right (TypedApp :type String
               :func (TypedVar 'yes' :type Fun(b: Bool): String)
               :args (
@@ -311,32 +303,6 @@
                         :target (TypedVar 'maybe' :type Module 'maybe')))
                     :args (
                       (TypedInt 3 :type Int)
-                    )))
-              )))
-        )))
-    (TypedExprStmt
-      :expr (TypedApp :type Ok
-        :func (TypedVar 'print' :type Fun(s: String): Ok)
-        :args (
-          (TypedInfix '<>' :type String
-            :left (TypedString 'some(3) is some(4): ' :type String)
-            :right (TypedApp :type String
-              :func (TypedVar 'yes' :type Fun(b: Bool): String)
-              :args (
-                (TypedInfix 'is' :type Bool
-                  :left (TypedApp :type maybe.T(Int)
-                    :func (TypedTypeApp [Int] :type Fun(val: Int): maybe.T(Int)
-                      :func (TypedSelect 'some' :type All(A :: TYPE) Fun(val: A): maybe.T(A)
-                        :target (TypedVar 'maybe' :type Module 'maybe')))
-                    :args (
-                      (TypedInt 3 :type Int)
-                    ))
-                  :right (TypedApp :type maybe.T(Int)
-                    :func (TypedTypeApp [Int] :type Fun(val: Int): maybe.T(Int)
-                      :func (TypedSelect 'some' :type All(A :: TYPE) Fun(val: A): maybe.T(A)
-                        :target (TypedVar 'maybe' :type Module 'maybe')))
-                    :args (
-                      (TypedInt 4 :type Int)
                     )))
               )))
         )))
@@ -363,7 +329,7 @@
         :func (TypedVar 'print' :type Fun(s: String): Ok)
         :args (
           (TypedInfix '<>' :type String
-            :left (TypedString 'same(some(s) some(s)): ' :type String)
+            :left (TypedString 'same(some(s) some(s)), apart: ' :type String)
             :right (TypedApp :type String
               :func (TypedVar 'yes' :type Fun(b: Bool): String)
               :args (
@@ -385,6 +351,24 @@
                       :args (
                         (TypedVar 's' :type String)
                       ))
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'same(some(s) itself): ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'yes' :type Fun(b: Bool): String)
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedTypeApp [maybe.T(String)] :type Fun(a: maybe.T(String) b: maybe.T(String)): Bool
+                    :func (TypedVar 'same' :type All(A :: TYPE) Fun(a: A b: A): Bool))
+                  :args (
+                    (TypedVar 'ss' :type maybe.T(String))
+                    (TypedVar 'ss' :type maybe.T(String))
                   ))
               )))
         )))
@@ -570,13 +554,7 @@
             :target (TypedVar 'hashMap' :type Module 'hashMap')))
         :args (
           (TypedVar 'ms' :type hashMap.T(maybe.T(String) Int))
-          (TypedApp :type maybe.T(String)
-            :func (TypedTypeApp [String] :type Fun(val: String): maybe.T(String)
-              :func (TypedSelect 'some' :type All(A :: TYPE) Fun(val: A): maybe.T(A)
-                :target (TypedVar 'maybe' :type Module 'maybe')))
-            :args (
-              (TypedVar 's' :type String)
-            ))
+          (TypedVar 'ss' :type maybe.T(String))
           (TypedInt 2 :type Int)
         )))
     (TypedExprStmt
@@ -585,6 +563,31 @@
         :args (
           (TypedInfix '<>' :type String
             :left (TypedString 'some(s) found: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'yes' :type Fun(b: Bool): String)
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedTypeApp [Int] :type Fun(o: maybe.T(Int)): Bool
+                    :func (TypedSelect 'isSome' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                      :target (TypedVar 'maybe' :type Module 'maybe')))
+                  :args (
+                    (TypedApp :type maybe.T(Int)
+                      :func (TypedTypeApp [maybe.T(String) Int] :type Fun(m: hashMap.T(maybe.T(String) Int) key: maybe.T(String)): maybe.T(Int)
+                        :func (TypedSelect 'get' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K): maybe.T(V)
+                          :target (TypedVar 'hashMap' :type Module 'hashMap')))
+                      :args (
+                        (TypedVar 'ms' :type hashMap.T(maybe.T(String) Int))
+                        (TypedVar 'ss' :type maybe.T(String))
+                      ))
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'some(s) made apart found: ' :type String)
             :right (TypedApp :type String
               :func (TypedVar 'yes' :type Fun(b: Bool): String)
               :args (

@@ -242,7 +242,7 @@ closures (`$clos`), exceptions, and auto values. The boxes are not:
 
 - a scalar hashes by its value, a boxed `Real` by its bits, with the two zeros alike (`wasm.realBits`);
 - a boxed record is its payload;
-- an option hashes by its case when the case is a single word, else by identity, as natively;
+- an option hashes by its case when the case has no components, else by identity, as natively;
 - an abstract type's values compare and hash as its representation's (§4.2's registry).
 
 **The read-only bit.** The counter stays below 2³⁰, so the field's bit 30 is free, and marks a read-only string, as

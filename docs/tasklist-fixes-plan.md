@@ -7,7 +7,7 @@ of its own:
    changes the option, so it stays. Step 2 replaces the refusal.
 2. Assigning through `opt!tag` changes the option: `o!made.x := v` and `@o!made.x` reach the option's own component.
    **Done.**
-3. Undo the single-word rule for options, and simplify what it left.
+3. Undo the single-word rule for options, and simplify what it left. **Done.**
 4. A dynamic reader cannot read on after a document it refused.
 5. A missing interface in an imported module's import is located at the module's first line.
 6. Character I/O locks the stream for every character. **Done:** the unlocked calls, measured in
@@ -145,7 +145,7 @@ their payload.
 
 **Now.** Two options of a single-word type are `is` each other when their components are ([extensions.md](
 extensions.md), "Options as Values"). The nullable-pointer representation that the rule was meant for was dropped on
-2026-11-19 ([option-values.md](option-values.md)).
+2026-11-19 (option-values.md, deleted in this step).
 
 **Keep.** A case without components is compared by its case, and its options are shared constants. Variants keep
 comparing by case and value, as decided on 2026-11-19 ("Variants as Values"). Abstract types compare as their

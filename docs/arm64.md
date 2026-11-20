@@ -758,8 +758,8 @@ no register, and not made:
 - **The small recursions** clang transforms further than the SSA's passes do: even-odd through arm64 takes 3.9 times
   C's time after `ssa/passes/tailJumps` (2026-11-03, benchmarks.md §14.2); tak and tailfib are folded by clang, which
   sees that their calls return the same value each time.
-- **Options like `maybe.T` as a pointer or a constant, with nothing allocated:** [option-values.md](option-values.md)
-  (deferred).
+- **Options like `maybe.T` as a pointer or a constant, with nothing allocated:** designed, then dropped on 2026-11-19
+  ([extensions.md](extensions.md), "Options as Values").
 - **A calling convention of Quest's own for calls between native functions.** The SSA's calls follow C's: values in
   the order of the C function's parameters, 16-byte composites' starts and `memory` arguments recorded, narrow results
   extended after the call (ssa.md §2.2). Making the convention an attribute of each function and call, C's only where

@@ -554,8 +554,8 @@ typedef struct QT_T {
   table is the unit's own, since `is` compares such options by case, not address. The simplifier folds `ordinal` of a
   known option, and `is` between known options of different cases, or of one case made without components.
 - **Identity:** `is` at an option type is the same object or, as extensions.md defines it, the same case with no
-  components or a single-word type's same component (`quest_option_is`, which `quest_val_is` calls for an option
-  descriptor, and `quest_identity_hash` agrees). The bootstrap implements the same `is` without the constants.
+  components (`quest_option_is`, which `quest_val_is` calls for an option descriptor, and `quest_identity_hash`
+  agrees). The bootstrap implements the same `is` without the constants.
 - **Payloads Not Made** (the C printer): a tuple made only to be the payload of the option the next statement makes
   is not made, the option storing its components (when each is a slot value of the case's component shape); and
   `opt!tag.field`, a payload only the next statement reads a component of, reads the component from the option

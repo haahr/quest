@@ -833,10 +833,9 @@ def qvalue_is(v1: QValue, v2: QValue, t: Optional[QType] = None) -> bool:
     object identity (same memory location) for all other types (String, Array,
     Record, Tuple, Variant, Option, Closure, Ref, Dynamic, Exception); except
     that options of a case without components at t are the same if of the same
-    case, and those of a single-word option type's case with a component if
-    their components are (docs/extensions.md, Options as Values), and variants
-    of the same case if their values are, at the case's type (a case of type Ok
-    is its case: docs/extensions.md, Variants as Values).
+    case (docs/extensions.md, Options as Values), and variants of the same case
+    if their values are, at the case's type (a case of type Ok is its case:
+    docs/extensions.md, Variants as Values).
     """
     if type(v1) is not type(v2):
         return False
@@ -857,11 +856,8 @@ def qvalue_is(v1: QValue, v2: QValue, t: Optional[QType] = None) -> bool:
     if isinstance(v1, QOption) and v1 is not v2 and t is not None and v1.tag == v2.tag:
         from quest.types.reduce import option_identity
         rule = option_identity(t)
-        if rule is not None:
-            if v1.tag in rule.empty:
-                return True
-            if v1.tag == rule.single and isinstance(v1.payload, QTuple) and isinstance(v2.payload, QTuple):
-                return qvalue_is(v1.payload.elements[0], v2.payload.elements[0], rule.component)
+        if rule is not None and v1.tag in rule.empty:
+            return True
 
     match v1:
         case QOk():

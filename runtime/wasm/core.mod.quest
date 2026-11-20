@@ -1466,29 +1466,9 @@ export
             d
         end
 
-    (* An option's one case with one component that is not var, the others
-     * without components: its tag, or ~1 (quest_single_word_case) *)
-    let singleWordCase(d: Desc): Int =
-        begin
-            let var found = ~1
-            let var single = true
-            for i = 0 upto extent d.parts - 1 do
-                let p = d.parts[i]
-                let n = if p.kind is kindNone then 0
-                    elsif storedType(p).kind is kindTuple then extent storedType(p).parts
-                    else 1
-                    end
-                if n > 0 then
-                    let varComponent = {storedType(p).kind is kindTuple} andif {n is 1} andif isVar(storedType(p) 0)
-                    if {found >= 0} orif {n isnot 1} orif varComponent then single := false else found := i end
-                end
-            end
-            if single then found else ~1 end
-        end
-
     (* is on values of the type d describes, as slots hold them
-     * (quest_val_is): the same reference or bits; an option by its case, or
-     * a single-word option's component; a tuple as its original; a Real by
+     * (quest_val_is): the same reference or bits; an option of a case
+     * without components by its case; a tuple as its original; a Real by
      * value *)
     let boxedIntOf(x: Any): Int = external "wasm.boxedInt"
     let isBoxedInt0(x: Any): Bool = external "wasm.isBoxedInt"
@@ -1509,12 +1489,7 @@ export
                 else
                     let tag = tagAt(a)
                     if {tag isnot tagAt(b)} orif {tag < 0} orif {tag >= extent d.parts} then false
-                    elsif d.parts[tag].kind is kindNone then true
-                    elsif singleWordCase(d) isnot tag then false
-                    else
-                        let p = storedType(d.parts[tag])
-                        let component = if p.kind is kindTuple then p.parts[0] else p end
-                        valIs(component optionElementAt(a 0) optionElementAt(b 0))
+                    else d.parts[tag].kind is kindNone
                     end
                 end
             elsif d.kind is kindTuple then same0(unproxy(a) unproxy(b))
@@ -1673,12 +1648,9 @@ export
             let p = if {tag >= 0} andif {tag < extent d.parts} then d.parts[tag] else bases[kindNone] end
             if {p.kind is kindNone} orif {p.kind is kindOk} orif {{p.kind is kindTuple} andif {extent p.parts is 0}} then
                 mix(xor(~7046029254386353131 tag))
-            elsif singleWordCase(d) isnot tag then
-                (* by identity, as is compares it (quest_option_identity_hash):
-                 * a component that var makes changeable is not hashed *)
+            else
+                (* by identity, as is compares it (quest_option_identity_hash) *)
                 mix(objectHash(unproxy(x)))
-            elsif p.kind isnot kindTuple then mix(xor(tag identityHash(p optionElementAt(x 0))))
-            else mix(xor(tag identityHash(p.parts[0] optionElementAt(x 0))))
             end
         elsif isSmall(x) then mix(smallValue(x))
         elsif isBoxedInt(x) then mix(boxedInt(x))

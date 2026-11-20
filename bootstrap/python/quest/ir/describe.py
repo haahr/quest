@@ -148,13 +148,13 @@ def _type_of(a: ir.Atom) -> QType:
 
 def _compares_as_option(t: QType) -> bool:
     """Whether is compares options of t other than as one object: t is an
-    option type with a case without components, or single-word
-    (docs/extensions.md, Options as Values)."""
+    option type with a case without components (docs/extensions.md, Options as
+    Values)."""
     if shape(t).kind != "option":
         return False
     from quest.types.reduce import option_identity
     rule = option_identity(t)
-    return rule is not None and (bool(rule.empty) or rule.single is not None)
+    return rule is not None and bool(rule.empty)
 
 
 class _Describer:

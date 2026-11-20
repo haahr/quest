@@ -941,10 +941,10 @@ Q_INLINE double quest_real_mul(double a, double b) { return quest_real_mul_at(a,
 Q_INLINE double quest_real_divide(double a, double b) { return quest_real_divide_at(a, b, NULL); }
 
 /* The type is compares values of descriptor t at: a stored type's type, and a module abstract type's
-   representation, which is compares its values as (docs/option-values.md section 2) */
+   representation, which is compares its values as (docs/extensions.md, Options as Values) */
 const QTypeDescriptor *quest_identity_type(const QTypeDescriptor *t);
 /* is on options of type t (or of an abstract type that is one): the same object, or the same case, which has no
-   components or is a single-word option type's case with a component and the same component */
+   components */
 bool quest_option_is(const QTypeDescriptor *t, const void *a, const void *b);
 /* is on variants of type t (or of an abstract type that is one), each in t's tag numbering: the same case, and their
    values the same at the case's type, or for a var case the same location (docs/extensions.md, Variants as Values) */

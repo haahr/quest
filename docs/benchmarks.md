@@ -423,7 +423,7 @@ and model-elimination raise and catch constantly. Options:
 `option none of T end` allocates an object holding only its tag every time (`maybe.none` in peek and zebra, `nil` in
 every list). A case with no payload could be one shared constant per option type, if nothing observes the identity of
 an option value. *Done* in part (2026-11-01, [extensions.md](extensions.md), "Options as Values", §8): such cases are
-constants compared by case; `maybe.some`'s box ([option-values.md](option-values.md)) remains.
+constants compared by case; `maybe.some`'s box remains (holding it as a pointer was dropped on 2026-11-19).
 
 ### 3.7. Arbitrary-precision integers are slow in the suite's library
 
@@ -814,7 +814,7 @@ fixes (§8).
   against 1.38), since the pass also removes the payload tuples of `cons` and `append`, which the fixes' patterns do
   not match ([c-representation.md](c-representation.md) §5.3).
 - **What remains** in peek and zebra is mostly `maybe.some`'s box (9.6 billion and 672 million), which escapes by
-  being returned, and which [option-values.md](option-values.md) (deferred) would remove; in ratio-regions,
+  being returned, and which holding it as a pointer (dropped on 2026-11-19) would have removed; in ratio-regions,
   90 percent is `preflowPush`'s 706 million, which the pass does not touch.
 
 ## 10. The JIT (2026-11-01)

@@ -1785,30 +1785,12 @@ export
         end
 
     (* is at an option type (docs/extensions.md, Options as Values): the same
-     * object, or the same case, which has no components; or, for a
-     * single-word option, the same case, whose components are is each other *)
-    let rec optionIs(f: F s: shapes.Shape a: Int b: Int depth: Int): Ok =
+     * object, or the same case, which has no components *)
+    let optionIs(f: F s: shapes.Shape a: Int b: Int): Ok =
         begin
-            if depth > 3 then fail("is on options nested more than three deep") end
             let empties = array of(extent s.cases 0)
-            let var withComponents = ~1
-            let var others = 0
             for k = 0 upto extent s.cases - 1 do
-                let form = caseForm(s maybe.unwrapOr(s.cases[k].name ""))
-                if form.count is 0 then empties[k] := 1
-                else
-                    others := others + 1
-                    withComponents := k
-                end
-            end
-            let var singleWord = false
-            if others is 1 then
-                let form = caseForm(s maybe.unwrapOr(s.cases[withComponents].name ""))
-                let c = s.cases[withComponents]
-                let one = if form.isTuple then
-                        {form.count is 1} andif not(maybe.unwrap(c.shape).components[0].isVar)
-                    else true end
-                singleWord := one
+                if caseForm(s maybe.unwrapOr(s.cases[k].name "")).count is 0 then empties[k] := 1 end
             end
             let ta = scratch(f model.i32)
             emit(f i1(ops.localGet a))
@@ -1828,73 +1810,10 @@ export
             emit(f model.ifInst(option blockValue of model.BlockType with let type = model.i32 end ""))
             emit(f i1(ops.localGet ta))
             mapI32(f empties)
-            if singleWord then
-                (* the case with the component: its components compared *)
-                let c = s.cases[withComponents]
-                let cs = maybe.unwrap(c.shape)
-                let componentT = if shapes.kindIs(cs shapes.shapeTuple) then componentType(cs 0) else cs.type end
-                emit(f i1(ops.localGet ta))
-                emit(f model.i32Const(withComponents))
-                emit(f i(ops.i32Eq))
-                emit(f model.ifInst(option blockValue of model.BlockType with let type = model.i32 end ""))
-                let first = fun(local: Int): Ok
-                    begin
-                        emit(f i1(ops.localGet local))
-                        castTo(f tOption)
-                        emit(f i2(ops.structGet tOption fSlots))
-                        emit(f model.i32Const(0))
-                        emit(f i1(ops.arrayGet tSlots))
-                    end
-                first(a)
-                first(b)
-                componentIs(f componentT depth)
-                emit(f model.elseInst)
-                emit(f model.i32Const(0))
-                emit(f model.endInst)
-                emit(f i(ops.i32Or))
-            end
             emit(f model.elseInst)
             emit(f model.i32Const(0))
             emit(f model.endInst)
             emit(f model.endInst)
-        end
-
-    (* is between the two slot values of type t on the stack *)
-    and componentIs(f: F t: ir.Type depth: Int): Ok =
-        begin
-            let x = scratch(f model.eqref)
-            let y = scratch(f model.eqref)
-            emit(f i1(ops.localSet y))
-            emit(f i1(ops.localSet x))
-            let s = shapeOf(t)
-            (* a variant or a record in a slot is its box, compared as the C
-             * runtime compares its boxed word (quest_val_is) *)
-            if isVariant(t) orif isRecord(t) then
-                emit(f i1(ops.localGet x))
-                emit(f i1(ops.localGet y))
-                emit(f i(ops.refEq))
-            else
-            case valType(t)
-                when valI64 then
-                    emit(f i1(ops.localGet x))
-                    runtimeCall(f "unboxInt")
-                    emit(f i1(ops.localGet y))
-                    runtimeCall(f "unboxInt")
-                    emit(f i(ops.i64Eq))
-                when valRef then
-                    if shapes.kindIs(s shapes.shapeOption) then optionIs(f s x y depth + 1)
-                    else
-                        emit(f i1(ops.localGet x))
-                        emit(f i1(ops.localGet y))
-                        emit(f i(ops.refEq))
-                    end
-                else
-                    (* Bools and Chars, i31s *)
-                    emit(f i1(ops.localGet x))
-                    emit(f i1(ops.localGet y))
-                    emit(f i(ops.refEq))
-            end
-            end
         end
 
     (* --- Arrays --- *)
@@ -2068,7 +1987,7 @@ export
                         atom(f x.args[1])
                         if proxied then accessAs(f tOption ir.original) end
                         emit(f i1(ops.localSet b))
-                        optionIs(f shapeOf(ir.atomType(x.args[0])) a b 0)
+                        optionIs(f shapeOf(ir.atomType(x.args[0])) a b)
                     end
                     if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
                 elsif isVariant(ir.atomType(x.args[0])) then
