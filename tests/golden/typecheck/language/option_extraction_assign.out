@@ -1,0 +1,432 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetType 'Made' :kind TYPE)
+    (TypedLetValue 'o' :type Made
+      :value (TypedOption 'made' :type Made
+        :payload (TypedTuple :type Tuple var x: Int inner: Tuple var y: Int end end
+          :elements (
+            (TypedInt 1 :type Int)
+            (TypedTuple :type Tuple var y: Int end
+              :elements (
+                (TypedInt 10 :type Int)
+              ))
+          ))))
+    (TypedLetValue 'shown' :type Fun(): String
+      :value (TypedFun :params () :type Fun(): String
+        :body (TypedInfix '<>' :type String
+          :left (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'x' :type Int
+                :target (TypedVariantAssert 'made' :type Tuple Int var x: Int inner: Tuple var y: Int end end
+                  :target (TypedVar 'o' :type Made)))
+            ))
+          :right (TypedInfix '<>' :type String
+            :left (TypedString ' ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedSelect 'y' :type Int
+                  :target (TypedSelect 'inner' :type Tuple var y: Int end
+                    :target (TypedVariantAssert 'made' :type Tuple Int var x: Int inner: Tuple var y: Int end end
+                      :target (TypedVar 'o' :type Made))))
+              ))))))
+    (TypedExprStmt
+      :expr (TypedAssign
+        :target (TypedSelect 'x' :type Int
+          :target (TypedVariantAssert 'made' :type Tuple Int var x: Int inner: Tuple var y: Int end end
+            :target (TypedVar 'o' :type Made)))
+        :value (TypedInt 2 :type Int)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'direct ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'shown' :type Fun(): String)
+                :args ())
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', case ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedCase :type Int
+                      :target (TypedVar 'o' :type Made)
+                      :branches (
+                        (TypedCaseBranch tags=(made) :binder 'c'
+                          :body (TypedSelect 'x' :type Int
+                            :target (TypedVar 'c' :type Tuple var x: Int inner: Tuple var y: Int end end)))
+                      )
+                      :else (TypedInt 0 :type Int))
+                  )))))
+        )))
+    (TypedLetValue 'setTo' :type Fun(out d: Int n: Int): Ok
+      :value (TypedFun :params (('d' : Int) ('n' : Int)) :type Fun(out d: Int n: Int): Ok
+        :body (TypedAssign
+          :target (TypedVar 'd' :type Var(Int))
+          :value (TypedVar 'n' :type Int))))
+    (TypedLetValue 'bump' :type Fun(var d: Int): Ok
+      :value (TypedFun :params (('d' : Int)) :type Fun(var d: Int): Ok
+        :body (TypedAssign
+          :target (TypedVar 'd' :type Var(Int))
+          :value (TypedInfix '+' :type Int
+            :left (TypedDerefCell :type Int
+              :target (TypedVar 'd' :type Var(Int)))
+            :right (TypedInt 1 :type Int)))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'setTo' :type Fun(out d: Int n: Int): Ok)
+        :args (
+          (TypedTupleSelectRef .x (ref) :type Var(Int)
+            :target (TypedVariantAssert 'made' :type Tuple Int var x: Int inner: Tuple var y: Int end end
+              :target (TypedVar 'o' :type Made)))
+          (TypedInt 3 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'bump' :type Fun(var d: Int): Ok)
+        :args (
+          (TypedTupleSelectRef .x (ref) :type Var(Int)
+            :target (TypedVariantAssert 'made' :type Tuple Int var x: Int inner: Tuple var y: Int end end
+              :target (TypedVar 'o' :type Made)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'out and var ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'shown' :type Fun(): String)
+              :args ()))
+        )))
+    (TypedLetValue 'n' :type Made
+      :value (TypedOption 'none' :type Made))
+    (TypedLetValue 'value' :type Fun(): Int
+      :value (TypedFun :params () :type Fun(): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'print' :type Fun(s: String): Ok)
+                :args (
+                  (TypedString 'value evaluated' :type String)
+                )))
+          )
+          :result (TypedInt 7 :type Int))))
+    (TypedLetValue 'raised' :type Bool
+      :value (TypedTry :type Bool
+        :body (TypedBlock :type Bool
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedAssign
+                :target (TypedSelect 'x' :type Int
+                  :target (TypedVariantAssert 'made' :type Tuple Int var x: Int inner: Tuple var y: Int end end
+                    :target (TypedVar 'n' :type Made)))
+                :value (TypedApp :type Int
+                  :func (TypedVar 'value' :type Fun(): Int)
+                  :args ())))
+          )
+          :result (TypedBool false))
+        :branches ()
+        :else (TypedBool true)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'other case raises ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedVar 'raised' :type Bool)
+              )))
+        )))
+    (TypedLetValue 'raisedOut' :type Bool
+      :value (TypedTry :type Bool
+        :body (TypedBlock :type Bool
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'setTo' :type Fun(out d: Int n: Int): Ok)
+                :args (
+                  (TypedTupleSelectRef .x (ref) :type Var(Int)
+                    :target (TypedVariantAssert 'made' :type Tuple Int var x: Int inner: Tuple var y: Int end end
+                      :target (TypedVar 'n' :type Made)))
+                  (TypedInt 7 :type Int)
+                )))
+          )
+          :result (TypedBool false))
+        :branches ()
+        :else (TypedBool true)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'other case @ raises ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedVar 'raisedOut' :type Bool)
+              )))
+        )))
+    (TypedLetValue 'count' :type Tuple var n: Int end
+      :value (TypedTuple :type Tuple var n: Int end
+        :elements (
+          (TypedInt 0 :type Int)
+        )))
+    (TypedLetValue 'get' :type Fun(): Made
+      :value (TypedFun :params () :type Fun(): Made
+        :body (TypedBlock :type Made
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedAssign
+                :target (TypedSelect 'n' :type Int
+                  :target (TypedVar 'count' :type Tuple var n: Int end))
+                :value (TypedInfix '+' :type Int
+                  :left (TypedSelect 'n' :type Int
+                    :target (TypedVar 'count' :type Tuple var n: Int end))
+                  :right (TypedInt 1 :type Int))))
+          )
+          :result (TypedVar 'o' :type Made))))
+    (TypedExprStmt
+      :expr (TypedAssign
+        :target (TypedSelect 'x' :type Int
+          :target (TypedVariantAssert 'made' :type Tuple Int var x: Int inner: Tuple var y: Int end end
+            :target (TypedApp :type Made
+              :func (TypedVar 'get' :type Fun(): Made)
+              :args ())))
+        :value (TypedInt 5 :type Int)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'once ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedSelect 'n' :type Int
+                    :target (TypedVar 'count' :type Tuple var n: Int end))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedVar 'shown' :type Fun(): String)
+                  :args ()))))
+        )))
+    (TypedLetType 'Wider' :kind TYPE)
+    (TypedLetValue 'w' :type Wider
+      :value (TypedVar 'o' :type Made))
+    (TypedExprStmt
+      :expr (TypedAssign
+        :target (TypedSelect 'x' :type Int
+          :target (TypedVariantAssert 'made' :type Tuple Int var x: Int inner: Tuple var y: Int end end
+            :target (TypedVar 'w' :type Wider)))
+        :value (TypedInt 6 :type Int)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'upcast ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'shown' :type Fun(): String)
+              :args ()))
+        )))
+    (TypedLetValue 'set0' :type All(A <: Wider) Fun(v: A): Ok
+      :value (TypedFun :params (('v' : A)) :type All(A <: Wider) Fun(v: A): Ok
+        :body (TypedAssign
+          :target (TypedSelect 'x' :type Int
+            :target (TypedVariantAssert 'made' :type Tuple Int var x: Int inner: Tuple var y: Int end end
+              :target (TypedVar 'v' :type A)))
+          :value (TypedInt 7 :type Int))))
+    (TypedLetValue 'set' :type All(A <: Wider) Fun(v: A): Ok
+      :value (TypedVar 'set0' :type All(A <: Wider) Fun(v: A): Ok))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedTypeApp [Made] :type Fun(v: Made): Ok
+          :func (TypedVar 'set' :type All(A <: Wider) Fun(v: A): Ok))
+        :args (
+          (TypedVar 'o' :type Made)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'bound ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'shown' :type Fun(): String)
+              :args ()))
+        )))
+    (TypedLetType 'Named' :kind TYPE)
+    (TypedLetValue 'k' :type Named
+      :value (TypedOption 'named' :type Named
+        :payload (TypedTuple :type Tuple var s: String end
+          :elements (
+            (TypedString '' :type String)
+          ))))
+    (TypedExprStmt
+      :expr (TypedAssign
+        :target (TypedSelect 's' :type String
+          :target (TypedVariantAssert 'named' :type Tuple Int var s: String end
+            :target (TypedVar 'k' :type Named)))
+        :value (TypedInfix '<>' :type String
+          :left (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedInt 12345 :type Int)
+            ))
+          :right (TypedString '!' :type String))))
+    (TypedLetValue 'junk' :type String
+      :value (TypedString '' :type String))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 1 :type Int)
+        :stop (TypedInt 20000 :type Int)
+        :body (TypedAssign
+          :target (TypedVar 'junk' :type Var(String))
+          :value (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedVar 'i' :type Int)
+            )))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'stored ' :type String)
+            :right (TypedSelect 's' :type String
+              :target (TypedVariantAssert 'named' :type Tuple Int var s: String end
+                :target (TypedVar 'k' :type Named))))
+        )))
+    (TypedLetValue 't' :type Tuple Int var x: Int inner: Tuple var y: Int end end
+      :value (TypedVariantAssert 'made' :type Tuple Int var x: Int inner: Tuple var y: Int end end
+        :target (TypedVar 'o' :type Made)))
+    (TypedExprStmt
+      :expr (TypedAssign
+        :target (TypedSelect 'x' :type Int
+          :target (TypedVar 't' :type Tuple Int var x: Int inner: Tuple var y: Int end end))
+        :value (TypedInt 8 :type Int)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'copy ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedSelect 'x' :type Int
+                    :target (TypedVar 't' :type Tuple Int var x: Int inner: Tuple var y: Int end end))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', option ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedVar 'shown' :type Fun(): String)
+                  :args ()))))
+        )))
+    (TypedExprStmt
+      :expr (TypedAssign
+        :target (TypedSelect 'y' :type Int
+          :target (TypedSelect 'inner' :type Tuple var y: Int end
+            :target (TypedVariantAssert 'made' :type Tuple Int var x: Int inner: Tuple var y: Int end end
+              :target (TypedVar 'o' :type Made))))
+        :value (TypedInt 20 :type Int)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'inner ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'shown' :type Fun(): String)
+              :args ()))
+        )))
+    (TypedExprStmt
+      :expr (TypedCase :type Ok
+        :target (TypedVar 'o' :type Made)
+        :branches (
+          (TypedCaseBranch tags=(made) :binder 'c'
+            :body (TypedAssign
+              :target (TypedSelect 'x' :type Int
+                :target (TypedVar 'c' :type Tuple var x: Int inner: Tuple var y: Int end end))
+              :value (TypedInt 9 :type Int)))
+          (TypedCaseBranch tags=(none)
+            :body (TypedOk))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'binder ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'shown' :type Fun(): String)
+              :args ()))
+        )))
+    (TypedLetType 'V' :kind TYPE)
+    (TypedLetValue 'v' :type V
+      :value (TypedVariant 'p' :type V
+        :payload (TypedTuple :type Tuple var z: Int end
+          :elements (
+            (TypedInt 1 :type Int)
+          ))))
+    (TypedExprStmt
+      :expr (TypedAssign
+        :target (TypedSelect 'z' :type Int
+          :target (TypedVariantAssert 'p' :type Tuple var z: Int end
+            :target (TypedVar 'v' :type V)))
+        :value (TypedInt 5 :type Int)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'variant ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedSelect 'z' :type Int
+                  :target (TypedVariantAssert 'p' :type Tuple var z: Int end
+                    :target (TypedVar 'v' :type V)))
+              )))
+        )))
+  ))

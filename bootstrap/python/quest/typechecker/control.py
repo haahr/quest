@@ -48,44 +48,12 @@ from quest.typechecker.typed_ast import (
     TypedOk,
     TypedSelect,
     TypedVar,
-    TypedVariantAssert,
 )
 from quest.typechecker.checks import join_types, not_desugared
 from quest.typechecker.escape import check_no_escaping_path_types
 
 # Internal convenience alias for typechecking error raises
 TypeError = QuestTypeError
-
-
-def _refuse_extraction_target(
-    target: ast.Expr, typed: TypedExpr, field: str, offset: int, env: Environment
-) -> None:
-    """Refuses an assignment to a component of an option's extraction,
-    o!made.x := v: o!made is a new tuple (docs/type-system.md section 6.8),
-    so the assignment would change only a copy that is then discarded. A case
-    binder is the payload itself, and the way to change it. Only the direct
-    form is refused: a variable bound to the extraction may be assigned
-    through, and so may a tuple component of the copy (o!made.inner.y := v),
-    which the copy shares with the payload. A variant's extraction is its
-    payload, not a copy, so it is not refused. target is the selection's base
-    as written, typed its typed form."""
-    if not isinstance(typed, TypedVariantAssert):
-        return
-    t = typed.target.type_val.evaluate_lazily(env)
-    if not isinstance(t, (QOptionType, QVariantType)):
-        t = resolve_sum_bound(t, env)
-    if not isinstance(t, QOptionType):
-        return
-    if isinstance(target, ast.ExprVariantAssert):
-        name = target.target.name if isinstance(target.target, ast.ExprId) else "..."
-        shown = f"{name}!{target.tag}"
-    else:
-        shown = f"!{typed.tag}"
-    raise TypeError(
-        f"Cannot assign to a component of '{shown}', which is a copy: use"
-        f" a case binder (when {typed.tag} with c then c.{field} := ...)",
-        offset=offset,
-    )
 
 
 class ControlMixin(Checker):
@@ -411,7 +379,6 @@ class ControlMixin(Checker):
                             f"Cannot assign to immutable tuple field '{field}'",
                             offset=sel_off,
                         )
-                    _refuse_extraction_target(target, target_typed, field, sel_off, env)
                     rhs_typed = self.check_expr(expr.right, tup_f.type_val, env, loop_depth)
                     target_select = TypedSelect(
                         target=target_typed,

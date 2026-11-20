@@ -203,7 +203,7 @@ The operations, by group (the stage column says where they may appear; `C` is Co
 | Closures | `closure f {a...} [τ...]` (a closure of the unit's function `f`, capturing the atoms, and supplying the enclosing functions' type parameters it takes first), `env_field(env, i)` | after closure conversion |
 | Tuples | `tuple(a...)` (value components; type components kept for printing; `box a` for a record or variant boxed in the tuple's allocation, after §8.3), `tuple_field(t, i)` | C+ |
 | Records | `record(name = a, var name = a...)`, `record_field(r, name)` | C+ |
-| Variants and options | `variant(tag, a)`, `option(tag, a...)` or `option(#n in (cases), a...)`, `is_tag(v, tag)`, `payload(v, tag)` (for an option, `payload(v, tag) #n`, its tuple starting with the case's ordinal `n`), `ordinal(v) in (cases)` (ordinals count in `cases`, the names of the cases of the option's static type as written) | C+ |
+| Variants and options | `variant(tag, a)`, `option(tag, a...)` or `option(#n in (cases), a...)`, `is_tag(v, tag)`, `payload(v, tag)` (for an option, `payload(v, tag) #n`, its tuple starting with the case's ordinal `n`); a selection through an option's `v!tag` used as a location lowers instead to a one-case `switch` whose binder is the option's own payload, its else `payload(v, tag)`, which raises there, `ordinal(v) in (cases)` (ordinals count in `cases`, the names of the cases of the option's static type as written) | C+ |
 | Arrays | `array(a...)`, `array_rep(n, a)`, `index(a, i)` | C+ |
 | Auto values | `auto[τ](a)` | C+ |
 | Exceptions | `exception Name` (generative), `exception_payload(e)`, `caught_exception(e)` | C+ |

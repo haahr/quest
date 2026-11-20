@@ -639,12 +639,13 @@ Option types provide ordered sum types with ordinal reflection and extraction (C
   `Tuple :Int <fields> end`, where `:Int` is the anonymous ordinal component followed by the components of the
   branch's payload signature (e.g. `bOption!b` produces `Tuple :Int x:Bool end`). In contrast, variant extraction
   (`v!tag`) synthesizes the bare payload type directly.
-- **Assigning Through an Extraction:** `opt!tag` is a new tuple, so `o!made.x := v` would change only a copy that is
-  then discarded, and both typecheckers refuse it, pointing to a case binder (`when made with c then c.x := v`),
-  which is the payload itself. A variable bound to the extraction is that copy, and assigning through it changes the
-  copy alone. A tuple component of the copy is the payload's own, so `o!made.inner.y := v` changes the option. A
-  variant's extraction is its payload, so `v!p.z := v` is accepted and changes the variant
-  (`language/option_extraction_copies`).
+- **Assigning Through an Extraction:** a selection through `opt!tag` used as a location, the target of `:=` or an
+  `@` argument, is the option's own component, as a case binder's is: `o!made.x := v` means `case o when made with c
+  then c.x := v end`, except that another case raises as `o!made` does, at its location. `o` is evaluated first, then
+  its case checked, then `v`. `opt!tag` as a value is still a new tuple, whose first component is the ordinal, so a
+  variable bound to it is a copy, and assigning through that variable changes the copy alone. A tuple component of
+  the copy is the payload's own, so `o!made.inner.y := v` changes the option too. A variant's extraction is its
+  payload, so `v!p.z := v` changes the variant (`language/option_extraction_assign`).
 - **Case Order:** option (and variant) types are compared by their cases' names, unordered, so `Option a b end`
   and `Option b a end` are equal. An ordinal therefore counts in the type where it occurs: `ordinal e` in the static
   type of `e`, the ordinal component of `opt!tag` in the static type of `opt`, and construction by ordinal in
@@ -657,7 +658,8 @@ Option types provide ordered sum types with ordinal reflection and extraction (C
 - **Payload Sharing:** an option is a tag and a binding (the paper, §5.4), and a case's binder (`when tag with p`)
   is that binding itself: assigning a `var` component through `p` changes the option, seen by every later case and
   binding, however the option is reached (through an aggregate, an upcast, or a bounded type parameter). `opt!tag`
-  is a new tuple, since its ordinal depends on the static type: assigning its `var` components changes only it
+  is a new tuple, since its ordinal depends on the static type: assigning the `var` components of a variable bound to
+  it changes only that copy, while a selection through it used as a location is the option's own, like a binder's
   (`language/option_payload_sharing`).
 - **Option Construction by Ordinal:** `option ordinal(e) of OptionType [with Binding] end`:
   - Checks $e \Leftarrow \text{Int}$.

@@ -600,13 +600,17 @@ export
                 let i = value(l x.index none)
                 letOp(l option opAddrElement of Op with let var base = a let var index = i let offset = offsetOf(l e) end e.type into)
             when exprTupleSelectRef with x then
-                let t = value(l x.target none)
-                letOp(l option opAddrComponent of Op with
-                    let var base = t
-                    let index = tupleIndex(x.target.type x.index x.field)
-                    let var access = nodes.direct
-                    let var viewMap = maybe.none()
-                end e.type into)
+                if maybe.isSome(payloadBase(x.target)) then
+                    payloadAddress(l e x.target tupleIndex(x.target.type x.index x.field) into)
+                else
+                    let t = value(l x.target none)
+                    letOp(l option opAddrComponent of Op with
+                        let var base = t
+                        let index = tupleIndex(x.target.type x.index x.field)
+                        let var access = nodes.direct
+                        let var viewMap = maybe.none()
+                    end e.type into)
+                end
             when exprVariant with x then
                 let p = if maybe.isSome(x.payload) then maybe.some(value(l maybe.unwrap(x.payload) none))
                     else maybe.none(:Atom) end
@@ -622,17 +626,7 @@ export
                 let cases = if maybe.isSome(ordinalAtom) then reduce.optionCaseNames(e.type) else array of :String end end
                 letOp(l nodes.makeOption(x.tag p ordinalAtom offsetOf(l e) cases) e.type into)
             when exprVariantCheck with x then letOp(l nodes.isTag(value(l x.target none) x.tag) e.type into)
-            when exprVariantAssert with x then
-                let cases = optionCases(x.target.type)
-                let var ordinalIndex = maybe.none(:Int)
-                if maybe.isSome(cases) then
-                    let names = maybe.unwrap(cases)
-                    for i = {extent names - 1} downto 0 do
-                        if eq(names[i] x.tag) then ordinalIndex := maybe.some(i) end
-                    end
-                    if maybe.isNone(ordinalIndex) then fail(:Ok "no case '" <> x.tag <> "'") end
-                end
-                letOp(l nodes.payload(value(l x.target none) x.tag offsetOf(l e) ordinalIndex) e.type into)
+            when exprVariantAssert then letOp(l payloadOp(l e value(l extractedOf(e) none)) e.type into)
             when exprAuto with x then
                 letOp(l option opMakeAuto of Op with
                     let witness = x.witnessType
@@ -1194,6 +1188,109 @@ export
             else begin value(l e none) ok end
         end
 
+    (* The target of e, an extraction o!tag *)
+    and extractedOf(e: Expr): Expr =
+        case e.form when exprVariantAssert with x then x.target else fail("not an extraction") end
+
+    (* The payload of e, an extraction o!tag, from o's value: a variant's
+     * payload, or a new tuple of an option's ordinal (its case's index in o's
+     * type as written) and components, raising if o is of another case *)
+    and payloadOp(l: Lowerer e: Expr o: Atom): Op =
+        case e.form
+            when exprVariantAssert with x then
+                let cases = optionCases(x.target.type)
+                let var ordinalIndex = maybe.none(:Int)
+                if maybe.isSome(cases) then
+                    let names = maybe.unwrap(cases)
+                    for i = {extent names - 1} downto 0 do
+                        if eq(names[i] x.tag) then ordinalIndex := maybe.some(i) end
+                    end
+                    if maybe.isNone(ordinalIndex) then fail(:Ok "no case '" <> x.tag <> "'") end
+                end
+                nodes.payload(o x.tag offsetOf(l e) ordinalIndex)
+            else fail("not an extraction")
+        end
+
+    (* base, if it is an option's extraction o!tag. A selection o!tag.f used as
+     * a location (an assignment's target or an @ argument) is the option's own
+     * component f, which its case's binder shares (type-system.md section
+     * 6.8), not the component of o!tag's copy. A variant's extraction is its
+     * payload already *)
+    and payloadBase(base: Expr): maybe.T(Expr) =
+        case base.form
+            when exprVariantAssert with x then
+                if maybe.isSome(optionCases(x.target.type)) then maybe.some(base) else maybe.none() end
+            else maybe.none()
+        end
+
+    (* Lowers inCase, given the binder of a switch on o, the option of
+     * extraction (o!tag), in its one case, tag: the option's own payload, a
+     * tuple of the case's components. The switch's else is o!tag itself,
+     * which raises there as the extraction does, at its location; otherwise
+     * is lowered after it, given that copy, for a value the else must jump
+     * with (it never runs). So o is evaluated, then its case checked, then
+     * inCase's own operands, as case o when tag with c then ... end would *)
+    and inPayload(l: Lowerer extraction: Expr inCase: All(c: Variable) Ok otherwise: All(copy: Atom) Ok): Ok =
+        begin
+            let o = value(l extractedOf(extraction) none)
+            let fields = case extraction.type.form
+                when typeTuple with t then t.fields
+                else fail(:Array(model.TupleComponent) "an option's extraction of type " <> model.show(extraction.type))
+            end
+            let payloadFields = array of(extent fields - 1 fields[0])
+            for i = 1 upto {extent fields - 1} do payloadFields[i - 1] := fields[i] end
+            let c = fresh("p" model.tupleType(payloadFields) false)
+            let theCase = nodes.newCase(array of extractedTag(extraction) end nodes.newBody() some(c))
+            inBody(l theCase.body fun(): Ok inCase(c))
+            let elseBody = nodes.newBody()
+            inBody(l elseBody fun(): Ok otherwise(letOp(l payloadOp(l extraction o) extraction.type none)))
+            emit(l nodes.switchStmt(o array of theCase end maybe.some(elseBody)))
+        end
+
+    (* Lowers o!tag.f := v, f at index in o!tag's type: a store into the
+     * option's own component f, through its case's binder, whose index is one
+     * less (it has no ordinal) *)
+    and payloadStore(l: Lowerer extraction: Expr index: Int v: Expr): Ok =
+        inPayload(l extraction
+            fun(c: Variable): Ok begin
+                let a = value(l v none)
+                emit(l option sStoreComponent of Stmt with
+                    let var pos = ~1 let var value = a let var base = va(c) let index = index - 1
+                    let var access = nodes.direct let var viewMap = maybe.none()
+                end)
+            end
+            fun(copy: Atom): Ok ok)
+
+    (* @o!tag.f, of e, f at index in o!tag's type: the address of the
+     * option's own component f, from its case's binder, joined out of the
+     * switch *)
+    and payloadAddress(l: Lowerer e: Expr extraction: Expr index: Int into: maybe.T(Variable)): Atom =
+        begin
+            let result = if maybe.isSome(into) then maybe.unwrap(into) else fresh("r" e.type false) end
+            let lbl = label(l "k")
+            let joinBody = nodes.newBody()
+            let continuation = nodes.newBody()
+            emit(l option sJoin of Stmt with
+                let label = lbl let var params = array of result end let var continuation = continuation
+                let var body = joinBody
+            end)
+            let address(base: Atom at: Int): Ok =
+                begin
+                    let a = letOp(l option opAddrComponent of Op with
+                        let var base = base let index = at let var access = nodes.direct let var viewMap = maybe.none()
+                    end e.type none)
+                    terminate(l option sJump of Stmt with let var pos = ~1 let label = lbl let var args = array of a end end)
+                end
+            inBody(l joinBody fun(): Ok inPayload(l extraction
+                fun(c: Variable): Ok address(va(c) index - 1) fun(copy: Atom): Ok address(copy index)))
+            l.body := continuation
+            va(result)
+        end
+
+    (* The tag of e, an extraction o!tag *)
+    and extractedTag(e: Expr): String =
+        case e.form when exprVariantAssert with x then x.tag else fail("not an extraction") end
+
     (* Lowers target := v, by what target is:
      * - a variable held in a box (a var variable a closure captures, or a
      *   phrase unit's slot): a store to the box's one component;
@@ -1234,30 +1331,35 @@ export
             else
                 case target.form
                     when exprSelect with x then
-                        let base = value(l x.target none)
-                        let a = value(l v none)
-                        let s = layout.resolvedShape(shapes.shape(x.target.type))
-                        case s.kind
-                            when shapeTuple then
-                                emit(l option sStoreComponent of Stmt with
-                                    let var pos = ~1
-                                    let var value = a
-                                    let var base = base
-                                    let index = tupleIndex(x.target.type ~1 maybe.some(x.field))
-                                    let var access = nodes.direct
-                                    let var viewMap = maybe.none()
-                                end)
-                            when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord,
-                                shapeBottom, shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell, shapeOut,
-                                shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract,
-                                shapeExternal, shapeOperator, shapePending then
-                                emit(l option sStoreField of Stmt with
-                                    let var pos = ~1
-                                    let var value = a
-                                    let var base = base
-                                    let name = x.field
-                                    let var viewMap = maybe.none()
-                                end)
+                        if maybe.isSome(payloadBase(x.target)) then
+                            payloadStore(l maybe.unwrap(payloadBase(x.target))
+                                tupleIndex(x.target.type ~1 maybe.some(x.field)) v)
+                        else
+                            let base = value(l x.target none)
+                            let a = value(l v none)
+                            let s = layout.resolvedShape(shapes.shape(x.target.type))
+                            case s.kind
+                                when shapeTuple then
+                                    emit(l option sStoreComponent of Stmt with
+                                        let var pos = ~1
+                                        let var value = a
+                                        let var base = base
+                                        let index = tupleIndex(x.target.type ~1 maybe.some(x.field))
+                                        let var access = nodes.direct
+                                        let var viewMap = maybe.none()
+                                    end)
+                                when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord,
+                                    shapeBottom, shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell, shapeOut,
+                                    shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract,
+                                    shapeExternal, shapeOperator, shapePending then
+                                    emit(l option sStoreField of Stmt with
+                                        let var pos = ~1
+                                        let var value = a
+                                        let var base = base
+                                        let name = x.field
+                                        let var viewMap = maybe.none()
+                                    end)
+                            end
                         end
                     else
                         let address = value(l target none)

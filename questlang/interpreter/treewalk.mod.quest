@@ -434,6 +434,41 @@ export
             found
         end
 
+    (* e, if it is an option's extraction o!tag, which a selection used as a
+     * location looks through to the option's own payload (docs/type-system.md
+     * section 6.8). A variant's extraction is its payload already *)
+    let optionExtraction(e: Expr): maybe.T(Expr) =
+        case e.form
+            when exprVariantAssert with x then
+                try begin reduce.optionCaseNames(x.target.type) maybe.some(e) end
+                when reduce.notAnOption then maybe.none() end
+            else maybe.none()
+        end
+
+    (* The payload of o, an option, for the extraction e (o!tag): the tuple a
+     * case's binder is bound to, rather than o!tag's copy. Raises as o!tag
+     * does if o is of another case *)
+    let ownPayload(o: Value e: Expr): model.TupleValue =
+        case e.form
+            when exprVariantAssert with x then
+                case o
+                    when vOption with v then
+                        if not(stringOp.equal(v.v.tag x.tag)) then
+                            model.raiseException(:Ok primitives.variantError at(e.offset))
+                        end
+                        case maybe.unwrapOr(v.v.payload model.okValue)
+                            when vTuple with t then t.t
+                            else model.internalError("An option's payload with components must be a tuple" at(e.offset))
+                        end
+                    else model.internalError("Variant assert target must be Option, got " <> model.typeName(o) at(e.offset))
+                end
+            else model.internalError("not an extraction" at(e.offset))
+        end
+
+    (* The target of e, an extraction o!tag *)
+    let extracted(e: Expr): Expr =
+        case e.form when exprVariantAssert with x then x.target else e end
+
     (* What opt!tag gives for an option: a new tuple of the case's ordinal
      * followed by the payload's components (its var components copies of the
      * payload's, which a case's binder shares) *)
@@ -587,10 +622,19 @@ export
                         else model.internalError("Index target must be Array, got " <> model.typeName(target) offset)
                     end
                 when exprTupleSelectRef with x then
-                    let target = unwrapRefs(evalExpr(x.target f))
+                    (* @o!tag.f is the option's own component f, which has no
+                     * ordinal before it *)
+                    let through = optionExtraction(x.target)
+                    let target = if maybe.isSome(through) then
+                        option vTuple of Value with
+                            let t = ownPayload(unwrapRefs(evalExpr(extracted(x.target) f)) x.target)
+                        end
+                    else
+                        unwrapRefs(evalExpr(x.target f))
+                    end
                     case target
                         when vTuple with t then
-                            let var idx = x.index
+                            let var idx = if maybe.isSome(through) andif {x.index >= 0} then x.index - 1 else x.index end
                             if {idx < 0} andif maybe.isSome(x.field) then
                                 idx := maybe.unwrapOr(hashMap.get(t.t.nameToIndex maybe.unwrap(x.field)) ~1)
                             end
@@ -607,24 +651,41 @@ export
                         else model.internalError("Tuple select target must be Tuple, got " <> model.typeName(target) offset)
                     end
                 when exprAssign with x then
-                    let rhs = evalExpr(x.value f)
-                    case x.target.form
-                        when exprVar with v then
-                            case lookup(f v.name offset)
-                                when vRef with r then model.assign(r.r rhs)
-                                else assignName(f v.name rhs offset)
-                            end
-                        when exprSelect with s then
-                            case unwrapRefs(evalExpr(s.target f))
-                                when vRecord with r then
-                                    case hashMap.find(r.r.fields s.field)
-                                        when vRef with cell then model.assign(cell.r rhs)
-                                        else begin hashMap.insert(r.r.fields s.field rhs) ok end
-                                    end
-                                when vTuple with t then model.tupleSetByName(t.t s.field rhs)
-                                else model.internalError(:Ok "Field assignment target must be Record or Tuple" offset)
-                            end
-                        else model.internalError(:Ok "Unsupported assignment target in interpreter" offset)
+                    let through = case x.target.form
+                        when exprSelect with s then optionExtraction(s.target)
+                        else maybe.none(:Expr)
+                    end
+                    if maybe.isSome(through) then
+                        (* o!tag.f := v: the option's own component f, as a
+                         * case's binder has it. o is evaluated and its case
+                         * checked before v *)
+                        let ex = maybe.unwrap(through)
+                        let payload = ownPayload(unwrapRefs(evalExpr(extracted(ex) f)) ex)
+                        let rhs = evalExpr(x.value f)
+                        case x.target.form
+                            when exprSelect with s then model.tupleSetByName(payload s.field rhs)
+                            else ok
+                        end
+                    else
+                        let rhs = evalExpr(x.value f)
+                        case x.target.form
+                            when exprVar with v then
+                                case lookup(f v.name offset)
+                                    when vRef with r then model.assign(r.r rhs)
+                                    else assignName(f v.name rhs offset)
+                                end
+                            when exprSelect with s then
+                                case unwrapRefs(evalExpr(s.target f))
+                                    when vRecord with r then
+                                        case hashMap.find(r.r.fields s.field)
+                                            when vRef with cell then model.assign(cell.r rhs)
+                                            else begin hashMap.insert(r.r.fields s.field rhs) ok end
+                                        end
+                                    when vTuple with t then model.tupleSetByName(t.t s.field rhs)
+                                    else model.internalError(:Ok "Field assignment target must be Record or Tuple" offset)
+                                end
+                            else model.internalError(:Ok "Unsupported assignment target in interpreter" offset)
+                        end
                     end
                     model.okValue
 

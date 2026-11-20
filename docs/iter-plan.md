@@ -74,8 +74,8 @@ what the user settled.
    ```
 
    It overwrites the element through a `case` binder, which is the option's payload itself (`when made with c then
-   c.x := x`); `s.slot!made.x := x` is refused, since `!` makes a copy and the assignment would change nothing
-   ([type-system.md](type-system.md) §6.8). `?made` and `!made.x` are inline tests and reads, and nothing is
+   c.x := x`); `s.slot!made.x := x` does the same, since a selection through `!` used as a location is the option's
+   own component ([type-system.md](type-system.md) §6.8). `?made` and `!made.x` are inline tests and reads, and nothing is
    allocated after the first element (§2: 130 instructions per element, 1.8 MB). The stages share one private
    helper for this in `util/iter`.
 5. **Closures inside, not an existential package.** `Tuple S::TYPE state: S more(s: S): Bool ... end` was measured

@@ -488,7 +488,13 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             return QArrayElementRef(arr_val, i)
 
         case TypedTupleSelectRef(target=tgt, index=idx, field=fld, offset=offset):
-            tup_val = eval_expr(tgt, env)
+            if _is_option_extraction(tgt):
+                # @o!tag.f: the option's own component f, which has no ordinal
+                # before it
+                tup_val = _own_payload(tgt, env)
+                idx = idx - 1 if idx >= 0 else idx
+            else:
+                tup_val = eval_expr(tgt, env)
             while isinstance(tup_val, QRef):
                 tup_val = tup_val.deref()
             if not isinstance(tup_val, QTuple):
@@ -502,6 +508,13 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             if isinstance(elem, QRef):
                 return elem
             return QTupleElementRef(tup_val, val_idx)
+
+        case TypedAssign(target=TypedSelect(target=base, field=field), value=val) if _is_option_extraction(base):
+            # o!tag.f := v: the option's own component f, as a case's binder
+            # has it. o is evaluated and its case checked before v
+            payload = _own_payload(base, env)
+            payload.set_by_name(field, eval_expr(val, env))
+            return OK_VALUE
 
         case TypedAssign(target=tgt, value=val, offset=offset):
             rhs_val = eval_expr(val, env)
@@ -1019,6 +1032,33 @@ def bind_let(binding: TypedLetValue, val: QValue, env: RuntimeEnvironment) -> No
         env.assign(binding.name, val)
     else:
         env.define(binding.name, QRef(val) if binding.symbol.is_var else val)
+
+
+def _is_option_extraction(e: TypedExpr) -> bool:
+    """Whether e is an option's extraction o!tag, which a selection used as a
+    location looks through to the option's own payload (docs/type-system.md
+    section 6.8). A variant's extraction is its payload already."""
+    if not isinstance(e, TypedVariantAssert):
+        return False
+    try:
+        option_case_names(e.target.type_val)
+    except ValueError:
+        return False
+    return True
+
+
+def _own_payload(e: TypedVariantAssert, env: RuntimeEnvironment) -> QTuple:
+    """The payload of the option of e, an extraction o!tag, itself rather than
+    o!tag's copy: the tuple a case's binder is bound to. Raises as o!tag does
+    if o is of another case."""
+    target_val = eval_expr(e.target, env)
+    if not isinstance(target_val, QOption):
+        raise QuestRuntimeError(f"Variant assert target must be Option, got {target_val.type_name}", offset=e.offset)
+    if target_val.tag != e.tag:
+        raise QuestException(VARIANT_ERROR_EXC, offset=e.offset)
+    if not isinstance(target_val.payload, QTuple):
+        raise QuestRuntimeError("An option's payload with components must be a tuple", offset=e.offset)
+    return target_val.payload
 
 
 def make_closure(fun: TypedFun, env: RuntimeEnvironment, binder: Optional[str] = None,

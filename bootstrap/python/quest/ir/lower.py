@@ -125,6 +125,15 @@ def _expected_params(var_t: QType, fun_t: QType, count: int) -> Optional[list[QT
     return [param.type_val.substitute(subst) if subst else param.type_val for param in inner.params]
 
 
+def _payload_base(base: TypedExpr) -> bool:
+    """Whether base is an option's extraction o!tag. A selection o!tag.f used
+    as a location (an assignment's target or an @ argument) is the option's
+    own component f, which its case's binder shares (docs/type-system.md
+    section 6.8), not the component of o!tag's copy. A variant's extraction is
+    its payload already."""
+    return isinstance(base, TypedVariantAssert) and _option_cases(base.target.type_val) is not None
+
+
 def _option_cases(t: QType) -> Optional[tuple[str, ...]]:
     """The names of the cases of t as written, if it is an option type (or a
     type parameter bounded by one)."""
@@ -367,6 +376,8 @@ class _Lowerer:
                 a = self.value(target)
                 i = self.value(index)
                 return self.let(ir.AddrElement(a, i, e.offset), e.type_val, into)
+            case TypedTupleSelectRef(target=target, index=index, field=fld) if _payload_base(target):
+                return self.payload_address(e, target, self.tuple_index(target.type_val, index, fld), into)
             case TypedTupleSelectRef(target=target, index=index, field=fld):
                 t = self.value(target)
                 return self.let(ir.AddrComponent(t, self.tuple_index(target.type_val, index, fld)), e.type_val, into)
@@ -380,10 +391,8 @@ class _Lowerer:
                 return self.let(ir.MakeOption(tag, p, ordinal, e.offset, cases), e.type_val, into)
             case TypedVariantCheck(target=target, tag=tag):
                 return self.let(ir.IsTag(self.value(target), tag), e.type_val, into)
-            case TypedVariantAssert(target=target, tag=tag):
-                cases = _option_cases(target.type_val)
-                ordinal = cases.index(tag) if cases is not None else None
-                return self.let(ir.Payload(self.value(target), tag, e.offset, ordinal=ordinal), e.type_val, into)
+            case TypedVariantAssert(target=target):
+                return self.let(self.payload_op(e, self.value(target)), e.type_val, into)
             case TypedAuto(witness_type=witness, auto_type=auto_type, payload=payload):
                 return self.let(ir.MakeAuto(witness, auto_type, self.value(payload)), e.type_val, into)
             case TypedException(name=name, payload_type=payload_type, symbol=symbol):
@@ -725,6 +734,62 @@ class _Lowerer:
             case _:
                 self.value(e)
 
+    def payload_op(self, e: TypedVariantAssert, o: ir.Atom) -> ir.Payload:
+        """The payload of e, an extraction o!tag, from o's value: a variant's
+        payload, or a new tuple of an option's ordinal (its case's index in o's
+        type as written) and components, raising if o is of another case."""
+        cases = _option_cases(e.target.type_val)
+        ordinal = cases.index(e.tag) if cases is not None else None
+        return ir.Payload(o, e.tag, e.offset, ordinal=ordinal)
+
+    def in_payload(self, extraction: TypedVariantAssert, in_case, otherwise) -> None:
+        """Lowers in_case, given the binder of a switch on o, the option of
+        extraction (o!tag), in its one case, tag: the option's own payload, a
+        tuple of the case's components. The switch's else is o!tag itself,
+        which raises there as the extraction does, at its location; otherwise
+        is lowered after it, given that copy, for a value the else must jump
+        with (it never runs). So o is evaluated, then its case checked, then
+        in_case's own operands, as case o when tag with c then ... end would.
+        The self-hosted compiler's inPayload (questlang/ir/lower.mod.quest) is
+        the same."""
+        o = self.value(extraction.target)
+        t = extraction.type_val
+        if not isinstance(t, QTupleType):
+            raise LoweringError(f"an option's extraction of type {t}")
+        binder = self.fresh("p", QTupleType(tuple(t.fields[1:])))
+        case = ir.Case((extraction.tag,), ir.Body(), binder)
+        with self.in_body(case.body):
+            in_case(binder)
+        else_body = ir.Body()
+        with self.in_body(else_body):
+            otherwise(self.let(self.payload_op(extraction, o), t))
+        self.emit(ir.Switch(o, (case,), else_body))
+
+    def payload_store(self, extraction: TypedVariantAssert, index: int, value: TypedExpr) -> None:
+        """Lowers o!tag.f := v, f at index in o!tag's type: a store into the
+        option's own component f, through its case's binder, whose index is one
+        less (it has no ordinal)."""
+        def store(binder: ir.Var) -> None:
+            self.emit(ir.StoreComponent(self.value(value), binder, index - 1))
+        self.in_payload(extraction, store, lambda copy: None)
+
+    def payload_address(self, e: TypedExpr, extraction: TypedVariantAssert, index: int,
+                        into: Optional[ir.Var]) -> ir.Atom:
+        """@o!tag.f, of e, f at index in o!tag's type: the address of the
+        option's own component f, from its case's binder, joined out of the
+        switch."""
+        result = into if into is not None else self.fresh("r", e.type_val)
+        label = self.label("k")
+        join = ir.Join(label, (result,), ir.Body(), ir.Body())
+        self.emit(join)
+
+        def address(base: ir.Atom, at: int) -> None:
+            self.terminate(ir.Jump(label, (self.let(ir.AddrComponent(base, at), e.type_val),)))
+        with self.in_body(join.body):
+            self.in_payload(extraction, lambda binder: address(binder, index - 1), lambda copy: address(copy, index))
+        self.body = join.continuation
+        return result
+
     def assign(self, target: TypedExpr, value: TypedExpr) -> None:
         match target:
             case TypedVar() if (box := self.boxes.get(target.symbol.symbol_id)) is not None:
@@ -732,6 +797,8 @@ class _Lowerer:
             case TypedVar() if (var := self.vars.get(target.symbol.symbol_id)) is not None and var.mutable:
                 v = self.value(value)
                 self.emit(ir.Assign(var, v))
+            case TypedSelect(target=base_e, field=fld) if _payload_base(base_e):
+                self.payload_store(base_e, self.tuple_index(base_e.type_val, -1, fld), value)
             case TypedSelect(target=base_e, field=fld):
                 base = self.value(base_e)
                 v = self.value(value)

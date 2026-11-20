@@ -542,6 +542,8 @@ typedef struct QT_T {
   the original's payload, viewed at the proxy's payload type for the case (`quest_proxy_option_payload`: the payload
   itself where no component changes view, else a proxy of it); through a bounded type parameter's view map, at the
   bound's (`quest_view_option_payload`). `opt!tag` is a new tuple: its ordinal, then copies of the components.
+  A selection through `opt!tag` used as a location (`o!made.x := v`, `@o!made.x`) is lowered as a one-case switch
+  whose binder is stored into, so it is the option's own component (type-system.md §6.8).
   A store into a binder's component is a store into the option, whose header is two words before the payload, not
   one: the write barrier (§9) reads the word before the tuple, and when it is under 65536, an option's tag where a
   header holds a layout's address, takes the word before that, and logs the option.

@@ -1,0 +1,281 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @12:45
+      let %2: String = prim <>(s, "\n") @12:59
+      let %3: Ok = call writer.putString(%1, %2) @12:28
+      return %3
+    }
+  }
+  let x: Int = 1 @15:46
+  let y: Int = 10 @15:78
+  let inner: Tuple var y: Int end = tuple(y) @15:60
+  let %4: Tuple var x: Int inner: Tuple var y: Int end end = tuple(x, inner) @15:9
+  let o: Made = option(made, %4) @15:9
+  funs {
+    fun shown(): String {
+      let %5: Tuple Int var x: Int inner: Tuple var y: Int end end = payload(o, made) #1 @16:32
+      let %6: Int = tuple_field(%5, 1) @16:32
+      let %7: String = call conv.int(%6) @16:23
+      let %8: Tuple Int var x: Int inner: Tuple var y: Int end end = payload(o, made) #1 @16:61
+      let %9: Tuple var y: Int end = tuple_field(%8, 2) @16:61
+      let %10: Int = tuple_field(%9, 0) @16:61
+      let %11: String = call conv.int(%10) @16:52
+      let %12: String = prim <>(" ", %11) @16:45
+      let %13: String = prim <>(%7, %12) @16:23
+      return %13
+    }
+  }
+  switch tag(o) { @19:1
+    case made (p: Tuple var x: Int inner: Tuple var y: Int end end): {
+      store p.#0 := 2 @19:1
+    }
+    else: {
+      let %14: Tuple Int var x: Int inner: Tuple var y: Int end end = payload(o, made) #1 @19:1
+    }
+  }
+  let %15: String = call shown() @20:20
+  join k1(r: Int) {
+    let %16: String = call conv.int(r) @20:44
+    let %17: String = prim <>(", case ", %16) @20:31
+    let %18: String = prim <>(%15, %17) @20:20
+    let %19: String = prim <>("direct ", %18) @20:7
+    do call print(%19) @20:1
+    funs {
+      fun setTo(out d: Int, n: Int): Ok {
+        d := n @23:36
+        return ok
+      }
+    }
+    funs {
+      fun bump(var d.1: Int): Ok {
+        let %20: Int = prim +(d.1, 1) @24:33
+        d.1 := %20 @24:28
+        return ok
+      }
+    }
+    join k2(r.1: Var(Int)) {
+      do call setTo(r.1, 3) @25:1
+      join k3(r.2: Var(Int)) {
+        do call bump(r.2) @26:1
+        let %21: String = call shown() @27:25
+        let %22: String = prim <>("out and var ", %21) @27:7
+        do call print(%22) @27:1
+        let n.1: Made = option(none) @30:9
+        funs {
+          fun value(): Int {
+            do call print("value evaluated") @31:26
+            return 7
+          }
+        }
+        join k4(raised: Bool) {
+          let %23: String = call conv.bool(raised) @33:31
+          let %24: String = prim <>("other case raises ", %23) @33:7
+          do call print(%24) @33:1
+          join k5(raisedOut: Bool) {
+            let %25: String = call conv.bool(raisedOut) @35:33
+            let %26: String = prim <>("other case @ raises ", %25) @35:7
+            do call print(%26) @35:1
+            let n.2: Int = 0 @38:31
+            let count: Tuple var n: Int end = tuple(n.2) @38:13
+            funs {
+              fun get(): Made {
+                let %27: Int = tuple_field(count, 0) @39:36
+                let %28: Int = prim +(%27, 1) @39:36
+                store count.#0 := %28 @39:25
+                return o
+              }
+            }
+            let %29: Made = call get() @40:1
+            switch tag(%29) { @40:1
+              case made (p.1: Tuple var x: Int inner: Tuple var y: Int end end): {
+                store p.1.#0 := 5 @40:1
+              }
+              else: {
+                let %30: Tuple Int var x: Int inner: Tuple var y: Int end end = payload(%29, made) #1 @40:1
+              }
+            }
+            let %31: Int = tuple_field(count, 0) @41:27
+            let %32: String = call conv.int(%31) @41:18
+            let %33: String = call shown() @41:46
+            let %34: String = prim <>(" ", %33) @41:39
+            let %35: String = prim <>(%32, %34) @41:18
+            let %36: String = prim <>("once ", %35) @41:7
+            do call print(%36) @41:1
+            let w: Wider = o @45:16
+            switch tag(w) { @46:1
+              case made (p.2: Tuple var x: Int inner: Tuple var y: Int end end): {
+                store p.2.#0 := 6 @46:1
+              }
+              else: {
+                let %37: Tuple Int var x: Int inner: Tuple var y: Int end end = payload(w, made) #0 @46:1
+              }
+            }
+            let %38: String = call shown() @47:20
+            let %39: String = prim <>("upcast ", %38) @47:7
+            do call print(%39) @47:1
+            funs {
+              fun set0 [A::<: Wider](v: A): Ok {
+                switch tag(v) { @50:33
+                  case made (p.3: Tuple var x: Int inner: Tuple var y: Int end end): {
+                    store p.3.#0 := 7 @50:33
+                  }
+                  else: {
+                    let %40: Tuple Int var x: Int inner: Tuple var y: Int end end = payload(v, made) #0 @50:33
+                  }
+                }
+                return ok
+              }
+            }
+            let set: All(A <: Wider) Fun(v: A): Ok = set0 @51:36
+            do call set [Made](o) @52:1
+            let %41: String = call shown() @53:19
+            let %42: String = prim <>("bound ", %41) @53:7
+            do call print(%42) @53:1
+            let s.1: String = "" @57:48
+            let %43: Tuple var s: String end = tuple(s.1) @57:9
+            let k: Named = option(named, %43) @57:9
+            switch tag(k) { @58:1
+              case named (p.4: Tuple var s: String end): {
+                let %44: String = call conv.int(12345) @58:14
+                let %45: String = prim <>(%44, "!") @58:14
+                store p.4.#0 := %45 @58:1
+              }
+              else: {
+                let %46: Tuple Int var s: String end = payload(k, named) #1 @58:1
+              }
+            }
+            var junk: String = "" @59:1
+            var i: Int = 1 @60:1
+            let %47: Bool = prim <=(i, 20000) @60:1
+            if %47 { @60:1
+              loop L1 {
+                let i.1: Int = i @60:1
+                let %48: String = call conv.int(i.1) @60:33
+                junk := %48 @60:25
+                let %49: Bool = prim is(i, 20000) @60:1
+                if %49 { @60:1
+                  break L1 @60:1
+                }
+                let %50: Int = prim +(i, 1) @60:1
+                i := %50 @60:1
+              }
+            }
+            let %51: Tuple Int var s: String end = payload(k, named) #1 @61:20
+            let %52: String = tuple_field(%51, 1) @61:20
+            let %53: String = prim <>("stored ", %52) @61:7
+            do call print(%53) @61:1
+            let t: Tuple Int var x: Int inner: Tuple var y: Int end end = payload(o, made) #1 @64:9
+            store t.#1 := 8 @65:1
+            let %54: Int = tuple_field(t, 1) @66:27
+            let %55: String = call conv.int(%54) @66:18
+            let %56: String = call shown() @66:50
+            let %57: String = prim <>(", option ", %56) @66:35
+            let %58: String = prim <>(%55, %57) @66:18
+            let %59: String = prim <>("copy ", %58) @66:7
+            do call print(%59) @66:1
+            let %60: Tuple Int var x: Int inner: Tuple var y: Int end end = payload(o, made) #1 @69:1
+            let %61: Tuple var y: Int end = tuple_field(%60, 2) @69:1
+            store %61.#0 := 20 @69:1
+            let %62: String = call shown() @70:19
+            let %63: String = prim <>("inner ", %62) @70:7
+            do call print(%63) @70:1
+            switch tag(o) { @73:1
+              case made (c: Tuple var x: Int inner: Tuple var y: Int end end): {
+                store c.#0 := 9 @73:30
+              }
+              case none: {
+              }
+            }
+            let %64: String = call shown() @74:20
+            let %65: String = prim <>("binder ", %64) @74:7
+            do call print(%65) @74:1
+            let z: Int = 1 @78:47
+            let %66: Tuple var z: Int end = tuple(z) @78:29
+            let v.1: V = variant(p, %66) @78:9
+            let %67: Tuple var z: Int end = payload(v.1, p) @79:1
+            store %67.#0 := 5 @79:1
+            let %68: Tuple var z: Int end = payload(v.1, p) @80:30
+            let %69: Int = tuple_field(%68, 0) @80:30
+            let %70: String = call conv.int(%69) @80:21
+            let %71: String = prim <>("variant ", %70) @80:7
+            do call print(%71) @80:1
+          } in {
+            try catching all {
+              join k6(r.3: Var(Int)) {
+                do call setTo(r.3, 7) @34:27
+                jump k5(false) @34:17
+              } in {
+                switch tag(n.1) { @34:33
+                  case made (p.5: Tuple var x: Int inner: Tuple var y: Int end end): {
+                    let %72: Var(Int) = addr p.5.#0 @34:33
+                    jump k6(%72) @34:33
+                  }
+                  else: {
+                    let %73: Tuple Int var x: Int inner: Tuple var y: Int end end = payload(n.1, made) #1 @34:33
+                    let %74: Var(Int) = addr %73.#1 @34:33
+                    jump k6(%74) @34:33
+                  }
+                }
+              }
+            } handle (e: Exception) {
+              jump k5(true) @34:17
+            }
+          }
+        } in {
+          try catching all {
+            switch tag(n.1) { @32:24
+              case made (p.6: Tuple var x: Int inner: Tuple var y: Int end end): {
+                let %75: Int = call value() @32:36
+                store p.6.#0 := %75 @32:24
+              }
+              else: {
+                let %76: Tuple Int var x: Int inner: Tuple var y: Int end end = payload(n.1, made) #1 @32:24
+              }
+            }
+            jump k4(false) @32:14
+          } handle (e.1: Exception) {
+            jump k4(true) @32:14
+          }
+        }
+      } in {
+        switch tag(o) { @26:6
+          case made (p.7: Tuple var x: Int inner: Tuple var y: Int end end): {
+            let %77: Var(Int) = addr p.7.#0 @26:6
+            jump k3(%77) @26:6
+          }
+          else: {
+            let %78: Tuple Int var x: Int inner: Tuple var y: Int end end = payload(o, made) #1 @26:6
+            let %79: Var(Int) = addr %78.#1 @26:6
+            jump k3(%79) @26:6
+          }
+        }
+      }
+    } in {
+      switch tag(o) { @25:7
+        case made (p.8: Tuple var x: Int inner: Tuple var y: Int end end): {
+          let %80: Var(Int) = addr p.8.#0 @25:7
+          jump k2(%80) @25:7
+        }
+        else: {
+          let %81: Tuple Int var x: Int inner: Tuple var y: Int end end = payload(o, made) #1 @25:7
+          let %82: Var(Int) = addr %81.#1 @25:7
+          jump k2(%82) @25:7
+        }
+      }
+    }
+  } in {
+    switch tag(o) { @20:53
+      case made (c.1: Tuple var x: Int inner: Tuple var y: Int end end): {
+        let %83: Int = tuple_field(c.1, 0) @20:82
+        jump k1(%83) @20:53
+      }
+      else: {
+        jump k1(0) @20:53
+      }
+    }
+  }
+}
+
