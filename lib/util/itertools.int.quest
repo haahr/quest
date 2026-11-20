@@ -1,0 +1,159 @@
+(* More iterators, after Python's itertools (docs/itertools-plan.md): sources
+ * without end, stages that group, window, or interleave, the combinatoric
+ * ones, and a few consumers, all built on util/iter's more, next, and make.
+ * util/iter has the common stages (map, filter, take, zip, concat, and the
+ * rest); this module has the ones a program reaches for less often.
+ *
+ * As in util/iter, a stage pulls from what it is given only as it is pulled,
+ * and an iterator is one-shot: a function that walks its source more than once
+ * takes an All() iter.T(A) (cycleFrom). The stages that hand out arrays (batched,
+ * windows, groupBy, and the combinatoric ones) make a fresh one for each
+ * element, which the caller may keep or change. The sources without end
+ * (count, repeat, cycle, cycleFrom, iterate) need a take, a takeWhile, or a consumer that
+ * stops, such as iter.find. *)
+
+interface IterTools
+import
+    util/iter : util/Iter
+    util/maybe : util/Maybe
+    word: Word
+export
+    (* A run of consecutive elements with equal keys, as groupBy returns *)
+    Def Group = Fun(K::TYPE A::TYPE) Record key: K values: Array(A) end
+
+    (* Raised for a size, count, or step out of range, as each operation
+     * says *)
+    error: Exception
+
+    (* Sources *)
+
+    (* start, start + step, start + 2 * step, ..., without end *)
+    count: All(start: Int step: Int) iter.T(Int)
+
+    (* a, without end; a, n times (none if n <= 0) *)
+    repeat: All(A::TYPE) All(a: A) iter.T(A)
+    repeatN: All(A::TYPE) All(a: A n: Int) iter.T(A)
+
+    (* The elements of it, then the same elements again, and so on, without
+     * end; none if it has none. The elements are kept as they are first
+     * pulled, so that they can be handed out again. *)
+    cycle: All(A::TYPE) All(it: iter.T(A)) iter.T(A)
+
+    (* The elements of source(), then of another source(), and so on, without
+     * end; none if an iterator source returns has none. Nothing is kept, so
+     * this is cycle without its copy where a source can be walked again. *)
+    cycleFrom: All(A::TYPE) All(source: All() iter.T(A)) iter.T(A)
+
+    (* a, f(a), f(f(a)), ..., without end; f is called as each element is
+     * pulled *)
+    iterate: All(A::TYPE) All(a: A f: All(a: A) A) iter.T(A)
+
+    (* Stages *)
+
+    (* The running results of f: the first element, then f of that and the
+     * second, and so on *)
+    accumulate: All(A::TYPE) All(it: iter.T(A) f: All(acc: A a: A) A) iter.T(A)
+
+    (* init, then f(init e1), then f of that and e2, and so on: one more element
+     * than it has *)
+    scan: All(A::TYPE Acc::TYPE) All(it: iter.T(A) init: Acc f: All(acc: Acc a: A) Acc) iter.T(Acc)
+
+    (* The elements of each iterator of its, in turn *)
+    flatten: All(A::TYPE) All(its: iter.T(iter.T(A))) iter.T(A)
+
+    (* The elements of it for which p fails *)
+    reject: All(A::TYPE) All(it: iter.T(A) p: All(a: A) Bool) iter.T(A)
+
+    (* The elements of it whose element of selectors is true, until either
+     * ends *)
+    compress: All(A::TYPE) All(it: iter.T(A) selectors: iter.T(Bool)) iter.T(A)
+
+    (* The first element of it and every step-th after it; raises error if
+     * step < 1 *)
+    stepBy: All(A::TYPE) All(it: iter.T(A) step: Int) iter.T(A)
+
+    (* The elements of it at positions lo, lo + step, ..., below hi, as
+     * Python's islice; raises error if lo < 0 or step < 1 *)
+    slice: All(A::TYPE) All(it: iter.T(A) lo: Int hi: Int step: Int) iter.T(A)
+
+    (* Each element of it with the one after it: n - 1 pairs of n elements *)
+    pairwise: All(A::TYPE) All(it: iter.T(A)) iter.T(iter.Pair(A A))
+
+    (* Every n consecutive elements of it, overlapping: n - size + 1 windows of
+     * n elements; raises error if size < 1 *)
+    windows: All(A::TYPE) All(it: iter.T(A) size: Int) iter.T(Array(A))
+
+    (* The elements of it in arrays of size, the last one shorter if they do
+     * not divide evenly; raises error if size < 1 *)
+    batched: All(A::TYPE) All(it: iter.T(A) size: Int) iter.T(Array(A))
+
+    (* The runs of consecutive elements of it whose keys are equal by eq,
+     * each with its key, as Python's groupby; key is called once for each
+     * element. Elements with equal keys that are not consecutive are in
+     * separate groups. *)
+    groupBy: All(K::TYPE A::TYPE)
+        All(it: iter.T(A) key: All(a: A) K eq: All(x: K y: K) Bool) iter.T(Group(K A))
+
+    (* The first element of each run of elements of it equal by eq *)
+    uniqueRuns: All(A::TYPE) All(it: iter.T(A) eq: All(x: A y: A) Bool) iter.T(A)
+
+    (* The elements of it not equal to one before them, kept in a hash set
+     * by equal and hash *)
+    unique: All(A::TYPE) All(it: iter.T(A) equal: All(x: A y: A) Bool hash: All(a: A) word.T) iter.T(A)
+
+    (* The elements of it with sep between each two *)
+    intersperse: All(A::TYPE) All(it: iter.T(A) sep: A) iter.T(A)
+
+    (* An element of each iterator of its in turn, skipping those that have
+     * ended, until all have, as Python's roundrobin recipe *)
+    interleave: All(A::TYPE) All(its: Array(iter.T(A))) iter.T(A)
+
+    (* The elements of a and b in pairs until both end, the one that ends
+     * first filled out with its fill *)
+    zipLongest: All(A::TYPE B::TYPE) All(a: iter.T(A) b: iter.T(B) fillA: A fillB: B) iter.T(iter.Pair(A B))
+
+    (* n iterators of the elements of it, each walking them all on its own;
+     * the elements one has pulled from it and another has not yet reached
+     * are kept until it does. it must not be pulled otherwise from then on.
+     * Raises error if n < 0. *)
+    tee: All(A::TYPE) All(it: iter.T(A) n: Int) Array(iter.T(A))
+
+    (* Combinatoric iterators, over arrays, each element a fresh array of
+     * elements, in Python's order: by the positions chosen, earlier ones
+     * changing slowest. Each raises error if r < 0. *)
+
+    (* Every pair of an element of a and one of b *)
+    product: All(A::TYPE B::TYPE) All(a: Array(A) b: Array(B)) iter.T(iter.Pair(A B))
+
+    (* Every array of one element from each of pools, in order; one empty
+     * array if pools is empty *)
+    productOf: All(A::TYPE) All(pools: Array(Array(A))) iter.T(Array(A))
+
+    (* Every array of r elements of a, repeats allowed: productOf of r a's *)
+    power: All(A::TYPE) All(a: Array(A) r: Int) iter.T(Array(A))
+
+    (* Every ordering of r of the elements of a, at different positions *)
+    permutations: All(A::TYPE) All(a: Array(A) r: Int) iter.T(Array(A))
+
+    (* Every choice of r of the elements of a, at different positions, in the
+     * order of their positions *)
+    combinations: All(A::TYPE) All(a: Array(A) r: Int) iter.T(Array(A))
+
+    (* Every choice of r of the elements of a, a position chosen any number of
+     * times, in the order of their positions *)
+    combinationsWithReplacement: All(A::TYPE) All(a: Array(A) r: Int) iter.T(Array(A))
+
+    (* Consumers *)
+
+    (* The element of it at position n, pulling those before it; raises error
+     * if n < 0 *)
+    nth: All(A::TYPE) All(it: iter.T(A) n: Int) maybe.T(A)
+
+    (* Whether every element of it is equal by eq to the first; true if it has
+     * none *)
+    allEqual: All(A::TYPE) All(it: iter.T(A) eq: All(x: A y: A) Bool) Bool
+
+    (* The elements of it for which p holds (first) and those for which it
+     * fails (second), in order *)
+    partition: All(A::TYPE) All(it: iter.T(A) p: All(a: A) Bool) iter.Pair(Array(A) Array(A))
+end

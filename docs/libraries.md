@@ -866,6 +866,82 @@ export
 end
 ```
 
+### 1.15. `util/iterTools : util/IterTools`
+
+More iterators, after Python's `itertools` ([itertools-plan.md](itertools-plan.md)): sources without end, stages
+that group, window, or interleave, the combinatoric iterators, and a few consumers. `util/iter` has the common stages;
+this module has the ones reached for less often, and depends on `collections/vector`, `deque` and `hashSet`, which
+`util/iter` cannot.
+
+- **Built on `iter.make`, `more` and `next` alone,** since `iter.T` is abstract outside `util/iter`, so a stage
+  costs what a `util/iter` stage does: a closure call per stage per element.
+- **One-shot, as in `util/iter`.** `cycle(it)` keeps the elements of its first pass and replays them; `cycleFrom`
+  takes an `All() iter.T(A)` it calls for each pass instead, keeping nothing. `tee(it n)` gives `n` branches that
+  each walk every element, queueing what one has pulled and another has not reached; `it` must not be pulled
+  otherwise from then on.
+- **Fresh arrays.** `batched`, `windows`, `groupBy`'s `values`, and the combinatoric iterators make a new array for
+  each element, which the caller may keep or change.
+- **`groupBy` hands out whole runs,** a `Group(K A)` record of the key and an array of the run's elements, rather
+  than Python's sub-iterators sharing the source; `key` is called once per element.
+- **The combinatoric iterators take arrays** and give Python's order: by the positions chosen, earlier ones changing
+  slowest. `product` of two gives `iter.Pair`s; `productOf` of any number and `power(a r)` (`r` copies of `a`) give
+  arrays.
+- **Errors raise `iterTools.error`,** when the stage is made: a `step` or `size` below 1, a `lo` below 0 (`slice`),
+  an `r` below 0, an `n` below 0 (`tee`, `nth`). An `r` past the array's length gives no elements.
+- **Names** follow Python's where they fit Quest's conventions; otherwise `islice` is `slice`, `filterfalse` is
+  `reject`, `zip_longest` is `zipLongest`, `chain.from_iterable` is `flatten`, and the recipes `roundrobin`,
+  `unique_justseen`, `unique_everseen`, `all_equal` and `sliding_window` are `interleave`, `uniqueRuns`, `unique`,
+  `allEqual` and `windows`. `scan` is `accumulate` with an initial value; `chain` is `iter.concat`.
+
+`tests/source/stdlib/itertools_operations.quest` tests each operation against Python's results, the edge cases,
+`more` called repeatedly, `next` past the end, and the errors.
+
+#### Interface Summary
+
+```quest
+interface IterTools
+import
+    util/iter : util/Iter
+    util/maybe : util/Maybe
+    word: Word
+export
+    Def Group = Fun(K::TYPE A::TYPE) Record key: K values: Array(A) end
+    error: Exception
+    count: All(start: Int step: Int) iter.T(Int)
+    repeat: All(A::TYPE) All(a: A) iter.T(A)
+    repeatN: All(A::TYPE) All(a: A n: Int) iter.T(A)
+    cycle: All(A::TYPE) All(it: iter.T(A)) iter.T(A)
+    cycleFrom: All(A::TYPE) All(source: All() iter.T(A)) iter.T(A)
+    iterate: All(A::TYPE) All(a: A f: All(a: A) A) iter.T(A)
+    accumulate: All(A::TYPE) All(it: iter.T(A) f: All(acc: A a: A) A) iter.T(A)
+    scan: All(A::TYPE Acc::TYPE) All(it: iter.T(A) init: Acc f: All(acc: Acc a: A) Acc) iter.T(Acc)
+    flatten: All(A::TYPE) All(its: iter.T(iter.T(A))) iter.T(A)
+    reject: All(A::TYPE) All(it: iter.T(A) p: All(a: A) Bool) iter.T(A)
+    compress: All(A::TYPE) All(it: iter.T(A) selectors: iter.T(Bool)) iter.T(A)
+    stepBy: All(A::TYPE) All(it: iter.T(A) step: Int) iter.T(A)
+    slice: All(A::TYPE) All(it: iter.T(A) lo: Int hi: Int step: Int) iter.T(A)
+    pairwise: All(A::TYPE) All(it: iter.T(A)) iter.T(iter.Pair(A A))
+    windows: All(A::TYPE) All(it: iter.T(A) size: Int) iter.T(Array(A))
+    batched: All(A::TYPE) All(it: iter.T(A) size: Int) iter.T(Array(A))
+    groupBy: All(K::TYPE A::TYPE) All(it: iter.T(A) key: All(a: A) K eq: All(x: K y: K) Bool) iter.T(Group(K A))
+    uniqueRuns: All(A::TYPE) All(it: iter.T(A) eq: All(x: A y: A) Bool) iter.T(A)
+    unique: All(A::TYPE) All(it: iter.T(A) equal: All(x: A y: A) Bool hash: All(a: A) word.T) iter.T(A)
+    intersperse: All(A::TYPE) All(it: iter.T(A) sep: A) iter.T(A)
+    interleave: All(A::TYPE) All(its: Array(iter.T(A))) iter.T(A)
+    zipLongest: All(A::TYPE B::TYPE) All(a: iter.T(A) b: iter.T(B) fillA: A fillB: B) iter.T(iter.Pair(A B))
+    tee: All(A::TYPE) All(it: iter.T(A) n: Int) Array(iter.T(A))
+    product: All(A::TYPE B::TYPE) All(a: Array(A) b: Array(B)) iter.T(iter.Pair(A B))
+    productOf: All(A::TYPE) All(pools: Array(Array(A))) iter.T(Array(A))
+    power: All(A::TYPE) All(a: Array(A) r: Int) iter.T(Array(A))
+    permutations: All(A::TYPE) All(a: Array(A) r: Int) iter.T(Array(A))
+    combinations: All(A::TYPE) All(a: Array(A) r: Int) iter.T(Array(A))
+    combinationsWithReplacement: All(A::TYPE) All(a: Array(A) r: Int) iter.T(Array(A))
+    nth: All(A::TYPE) All(it: iter.T(A) n: Int) maybe.T(A)
+    allEqual: All(A::TYPE) All(it: iter.T(A) eq: All(x: A y: A) Bool) Bool
+    partition: All(A::TYPE) All(it: iter.T(A) p: All(a: A) Bool) iter.Pair(Array(A) Array(A))
+end
+```
+
 ---
 
 ## 2. Collections (`lib/collections/`)

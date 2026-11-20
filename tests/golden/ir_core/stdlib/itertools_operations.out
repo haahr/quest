@@ -1,0 +1,795 @@
+import iter = "util/iter" : util/Iter
+import iterTools = "util/iterTools" : util/IterTools
+import maybe = "util/maybe" : util/Maybe
+import hash = "util/hash" : util/Hash
+import stringOp = "string" : StringOp
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @15:45
+      let %2: String = prim <>(s, "\n") @15:59
+      let %3: Ok = call writer.putString(%1, %2) @15:28
+      return %3
+    }
+  }
+  funs {
+    fun check(what: String, holds: Bool): Ok {
+      let %4: String = call conv.bool(holds) @16:65
+      let %5: String = prim <>(": ", %4) @16:57
+      let %6: String = prim <>(what, %5) @16:49
+      let %7: Ok = call print(%6) @16:43
+      return %7
+    }
+  }
+  funs {
+    fun ints(it: iter.T(Int)): String {
+      var text: String = "[" @19:9
+      loop L1 {
+        let %8: Bool = call iter.more [Int](it) @20:15
+        if %8 { @20:9
+          let %9: Int = call iter.next [Int](it) @20:64
+          let %10: String = call conv.int(%9) @20:55
+          let %11: String = prim <>(" ", %10) @20:48
+          let %12: String = prim <>(text, %11) @20:40
+          text := %12 @20:32
+        } else {
+          break L1 @20:9
+        }
+      }
+      let %13: String = prim <>(text, " ]") @21:9
+      return %13
+    }
+  }
+  funs {
+    fun row(a: Array(Int)): String {
+      var text.1: String = "(" @25:9
+      let %14: Int = prim extent(a) @26:25
+      let %15: Int = prim -(%14, 1) @26:25
+      var i: Int = 0 @26:9
+      let %16: Bool = prim <=(i, %15) @26:9
+      if %16 { @26:9
+        loop L2 {
+          let i.1: Int = i @26:9
+          let %17: Int = index(a, i.1) @26:67
+          let %18: String = call conv.int(%17) @26:58
+          let %19: String = prim <>(text.1, %18) @26:50
+          text.1 := %19 @26:42
+          let %20: Bool = prim is(i, %15) @26:9
+          if %20 { @26:9
+            break L2 @26:9
+          }
+          let %21: Int = prim +(i, 1) @26:9
+          i := %21 @26:9
+        }
+      }
+      let %22: String = prim <>(text.1, ")") @27:9
+      return %22
+    }
+  }
+  funs {
+    fun rows(it.1: iter.T(Array(Int))): String {
+      var text.2: String = "" @31:9
+      loop L3 {
+        let %23: Bool = call iter.more [Array(Int)](it.1) @32:15
+        if %23 { @32:9
+          let %24: Array(Int) = call iter.next [Array(Int)](it.1) @32:59
+          let %25: String = call row(%24) @32:55
+          let %26: String = prim <>(" ", %25) @32:48
+          let %27: String = prim <>(text.2, %26) @32:40
+          text.2 := %27 @32:32
+        } else {
+          break L3 @32:9
+        }
+      }
+      return text.2
+    }
+  }
+  funs {
+    fun strings(it.2: iter.T(String)): String {
+      var text.3: String = "[" @37:9
+      loop L4 {
+        let %28: Bool = call iter.more [String](it.2) @38:15
+        if %28 { @38:9
+          let %29: String = call iter.next [String](it.2) @38:55
+          let %30: String = prim <>(" ", %29) @38:48
+          let %31: String = prim <>(text.3, %30) @38:40
+          text.3 := %31 @38:32
+        } else {
+          break L4 @38:9
+        }
+      }
+      let %32: String = prim <>(text.3, " ]") @39:9
+      return %32
+    }
+  }
+  funs {
+    fun pairs(it.3: iter.T(iter.Pair(Int Int))): String {
+      var text.4: String = "" @43:9
+      loop L5 {
+        let %33: Bool = call iter.more [Record first: Int second: Int end](it.3) @44:15
+        if %33 { @44:9
+          let p: Record first: Int second: Int end = call iter.next [Record first: Int second: Int end](it.3) @45:21
+          let %34: Int = record_field(p, first) @46:45
+          let %35: String = call conv.int(%34) @46:36
+          let %36: Int = record_field(p, second) @46:73
+          let %37: String = call conv.int(%36) @46:64
+          let %38: String = prim <>(":", %37) @46:57
+          let %39: String = prim <>(%35, %38) @46:36
+          let %40: String = prim <>(" ", %39) @46:29
+          let %41: String = prim <>(text.4, %40) @46:21
+          text.4 := %41 @46:13
+        } else {
+          break L5 @44:9
+        }
+      }
+      return text.4
+    }
+  }
+  funs {
+    fun same(x: Int, y: Int): Bool {
+      let %42: Bool = prim is(x, y) @50:33
+      return %42
+    }
+  }
+  funs {
+    fun plus(x.1: Int, y.1: Int): Int {
+      let %43: Int = prim +(x.1, y.1) @51:32
+      return %43
+    }
+  }
+  funs {
+    fun raised(f: Fun(): Ok): Bool {
+      join k1(r: Bool) {
+        return r
+      } in {
+        let %44: Exception = member iterTools.error @52:62
+        try catching (%44) {
+          do call f() @52:43
+          jump k1(false) @52:33
+        } handle (e: Exception) {
+          let %45: Bool = prim is(e, %44) @52:33
+          if %45 { @52:33
+            jump k1(true) @52:33
+          } else {
+            reraise e @52:33
+          }
+        }
+      }
+    }
+  }
+  let abc: Array(Int) = array(1, 2, 3) @53:11
+  let none: Array(Int) = array() @54:12
+  let %46: iter.T(Int) = call iterTools.count(10, -3) @57:34
+  let %47: iter.T(Int) = call iter.take [Int](%46, 5) @57:24
+  let %48: String = call ints(%47) @57:19
+  let %49: String = prim <>("count ", %48) @57:7
+  do call print(%49) @57:1
+  let %50: iter.T(Int) = call iterTools.repeat [Int](7) @58:35
+  let %51: iter.T(Int) = call iter.take [Int](%50, 3) @58:25
+  let %52: String = call ints(%51) @58:20
+  let %53: iter.T(Int) = call iterTools.repeatN [Int](7, 2) @58:82
+  let %54: String = call ints(%53) @58:77
+  let %55: iter.T(Int) = call iterTools.repeatN [Int](7, 0) @59:13
+  let %56: String = call ints(%55) @59:8
+  let %57: String = prim <>(%54, %56) @58:77
+  let %58: String = prim <>(" repeatN ", %57) @58:62
+  let %59: String = prim <>(%52, %58) @58:20
+  let %60: String = prim <>("repeat ", %59) @58:7
+  do call print(%60) @58:1
+  let %61: iter.T(Int) = call iter.range(1, 4) @60:50
+  let %62: iter.T(Int) = call iterTools.cycle [Int](%61) @60:34
+  let %63: iter.T(Int) = call iter.take [Int](%62, 7) @60:24
+  let %64: String = call ints(%63) @60:19
+  let %65: iter.T(Int) = type_app iter.empty [Int] @61:29
+  let %66: iter.T(Int) = call iterTools.cycle [Int](%65) @61:13
+  let %67: String = call ints(%66) @61:8
+  let %68: String = prim <>(" of empty ", %67) @60:74
+  let %69: String = prim <>(%64, %68) @60:19
+  let %70: String = prim <>("cycle ", %69) @60:7
+  do call print(%70) @60:1
+  let n: Int = 0 @62:32
+  let pulled: Tuple var n: Int end = tuple(n) @62:14
+  let %71: iter.T(Int) = call iter.range(0, 2) @63:40
+  funs {
+    fun f.1(x.2: Int): Int {
+      let %72: Int = tuple_field(pulled, 0) @63:91
+      let %73: Int = prim +(%72, 1) @63:91
+      store pulled.#0 := %73 @63:79
+      return x.2
+    }
+  }
+  let %74: iter.T(Int) = call iter.map [Int Int](%71, f.1) @63:31
+  let counted: iter.T(Int) = call iterTools.cycle [Int](%74) @63:15
+  let %75: iter.T(Int) = call iter.take [Int](counted, 5) @64:24
+  let %76: String = call ints(%75) @64:19
+  let %77: Int = tuple_field(pulled, 0) @64:80
+  let %78: String = call conv.int(%77) @64:71
+  let %79: String = prim <>(%78, " times") @64:71
+  let %80: String = prim <>(", source pulled ", %79) @64:49
+  let %81: String = prim <>(%76, %80) @64:19
+  let %82: String = prim <>("cycle ", %81) @64:7
+  do call print(%82) @64:1
+  funs {
+    fun f.2(): iter.T(Int) {
+      let %83: iter.T(Int) = call iter.ofArray [Int](abc) @65:77
+      return %83
+    }
+  }
+  let %84: iter.T(Int) = call iterTools.cycleFrom [Int](f.2) @65:38
+  let %85: iter.T(Int) = call iter.take [Int](%84, 7) @65:28
+  let %86: String = call ints(%85) @65:23
+  let %87: String = prim <>("cycleFrom ", %86) @65:7
+  do call print(%87) @65:1
+  funs {
+    fun f.3(): iter.T(Int) {
+      let %88: iter.T(Int) = type_app iter.empty [Int] @66:76
+      return %88
+    }
+  }
+  let %89: iter.T(Int) = call iterTools.cycleFrom [Int](f.3) @66:37
+  let %90: String = call ints(%89) @66:32
+  let %91: String = prim <>("cycleFrom of empty ", %90) @66:7
+  do call print(%91) @66:1
+  let n.1: Int = 0 @67:30
+  let made: Tuple var n: Int end = tuple(n.1) @67:12
+  funs {
+    fun f.4(x.3: Int): Int {
+      let %92: Int = tuple_field(made, 0) @68:68
+      let %93: Int = prim +(%92, 1) @68:68
+      store made.#0 := %93 @68:58
+      let %94: Int = prim *(2, x.3) @68:79
+      return %94
+    }
+  }
+  let doubled: iter.T(Int) = call iterTools.iterate [Int](1, f.4) @68:15
+  let %95: iter.T(Int) = call iter.take [Int](doubled, 6) @69:26
+  let %96: String = call ints(%95) @69:21
+  let %97: Int = tuple_field(made, 0) @69:77
+  let %98: String = call conv.int(%97) @69:68
+  let %99: String = prim <>(%98, " times") @69:68
+  let %100: String = prim <>(", f called ", %99) @69:51
+  let %101: String = prim <>(%96, %100) @69:21
+  let %102: String = prim <>("iterate ", %101) @69:7
+  do call print(%102) @69:1
+  let %103: iter.T(Int) = call iter.range(1, 6) @72:50
+  let %104: iter.T(Int) = call iterTools.accumulate [Int](%103, plus) @72:29
+  let %105: String = call ints(%104) @72:24
+  let %106: iter.T(Int) = type_app iter.empty [Int] @72:102
+  let %107: iter.T(Int) = call iterTools.accumulate [Int](%106, plus) @72:81
+  let %108: String = call ints(%107) @72:76
+  let %109: String = prim <>(%105, %108) @72:24
+  let %110: String = prim <>("accumulate ", %109) @72:7
+  do call print(%110) @72:1
+  let %111: iter.T(Int) = call iter.range(1, 4) @73:38
+  let %112: iter.T(Int) = call iterTools.scan [Int Int](%111, 100, plus) @73:23
+  let %113: String = call ints(%112) @73:18
+  let %114: iter.T(Int) = type_app iter.empty [Int] @73:88
+  let %115: iter.T(Int) = call iterTools.scan [Int Int](%114, 0, plus) @73:73
+  let %116: String = call ints(%115) @73:68
+  let %117: String = prim <>(%113, %116) @73:18
+  let %118: String = prim <>("scan ", %117) @73:7
+  do call print(%118) @73:1
+  let %119: iter.T(Int) = call iter.range(0, 4) @74:53
+  funs {
+    fun f.5(n.2: Int): iter.T(Int) {
+      let %120: iter.T(Int) = call iter.range(0, n.2) @74:94
+      return %120
+    }
+  }
+  let %121: iter.T(iter.T(Int)) = call iter.map [Int iter.T(Int)](%119, f.5) @74:44
+  let %122: iter.T(Int) = call iterTools.flatten [Int](%121) @74:26
+  let %123: String = call ints(%122) @74:21
+  let %124: String = prim <>("flatten ", %123) @74:7
+  do call print(%124) @74:1
+  let %125: iter.T(Int) = call iter.range(0, 10) @75:42
+  funs {
+    fun f.6(x.4: Int): Bool {
+      let %126: Int = prim %(x.4, 3) @75:78
+      let %127: Bool = prim is(%126, 0) @75:78
+      return %127
+    }
+  }
+  let %128: iter.T(Int) = call iterTools.reject [Int](%125, f.6) @75:25
+  let %129: String = call ints(%128) @75:20
+  let %130: String = prim <>("reject ", %129) @75:7
+  do call print(%130) @75:1
+  let %131: iter.T(Int) = call iter.range(0, 6) @76:46
+  let %132: Array(Bool) = array(true, false, true, true) @76:75
+  let %133: iter.T(Bool) = call iter.ofArray [Bool](%132) @76:62
+  let %134: iter.T(Int) = call iterTools.compress [Int](%131, %133) @76:27
+  let %135: String = call ints(%134) @76:22
+  let %136: String = prim <>("compress ", %135) @76:7
+  do call print(%136) @76:1
+  let %137: iter.T(Int) = call iter.range(0, 10) @77:42
+  let %138: iter.T(Int) = call iterTools.stepBy [Int](%137, 3) @77:25
+  let %139: String = call ints(%138) @77:20
+  let %140: iter.T(Int) = call iter.range(0, 20) @77:100
+  let %141: iter.T(Int) = call iterTools.slice [Int](%140, 2, 11, 4) @77:84
+  let %142: String = call ints(%141) @77:79
+  let %143: iter.T(Int) = call iter.range(0, 5) @78:29
+  let %144: iter.T(Int) = call iterTools.slice [Int](%143, 3, 2, 1) @78:13
+  let %145: String = call ints(%144) @78:8
+  let %146: String = prim <>(%142, %145) @77:79
+  let %147: String = prim <>(" slice ", %146) @77:66
+  let %148: String = prim <>(%139, %147) @77:20
+  let %149: String = prim <>("stepBy ", %148) @77:7
+  do call print(%149) @77:1
+  let %150: iter.T(Int) = call iter.range(0, 4) @79:46
+  let %151: iter.T(iter.Pair(Int Int)) = call iterTools.pairwise [Int](%150) @79:27
+  let %152: String = call pairs(%151) @79:21
+  let %153: iter.T(Int) = call iter.once [Int](1) @79:104
+  let %154: iter.T(iter.Pair(Int Int)) = call iterTools.pairwise [Int](%153) @79:85
+  let %155: String = call pairs(%154) @79:79
+  let %156: String = prim <>(" short", %155) @79:67
+  let %157: String = prim <>(%152, %156) @79:21
+  let %158: String = prim <>("pairwise", %157) @79:7
+  do call print(%158) @79:1
+  let %159: iter.T(Int) = call iter.range(0, 5) @80:43
+  let %160: iter.T(Array(Int)) = call iterTools.windows [Int](%159, 3) @80:25
+  let %161: String = call rows(%160) @80:20
+  let %162: iter.T(Int) = call iter.range(0, 2) @80:101
+  let %163: iter.T(Array(Int)) = call iterTools.windows [Int](%162, 3) @80:83
+  let %164: String = call rows(%163) @80:78
+  let %165: String = prim <>(" short", %164) @80:66
+  let %166: String = prim <>(%161, %165) @80:20
+  let %167: String = prim <>("windows", %166) @80:7
+  do call print(%167) @80:1
+  let %168: iter.T(Int) = call iter.range(0, 7) @81:43
+  let %169: iter.T(Array(Int)) = call iterTools.batched [Int](%168, 3) @81:25
+  let %170: String = call rows(%169) @81:20
+  let %171: iter.T(Int) = call iter.range(0, 4) @81:101
+  let %172: iter.T(Array(Int)) = call iterTools.batched [Int](%171, 2) @81:83
+  let %173: String = call rows(%172) @81:78
+  let %174: String = prim <>(" exact", %173) @81:66
+  let %175: String = prim <>(%170, %174) @81:20
+  let %176: String = prim <>("batched", %175) @81:7
+  do call print(%176) @81:1
+  let words: Array(String) = array("apple", "avocado", "banana", "blueberry", "cherry", "apricot") @82:13
+  let %177: iter.T(String) = call iter.ofArray [String](words) @83:32
+  funs {
+    fun f.7(w: String): Char {
+      let %178: Char = call stringOp.getChar(w, 0) @83:73
+      return %178
+    }
+  }
+  funs {
+    fun f.8(x.5: Char, y.2: Char): Bool {
+      let %179: Bool = prim is(x.5, y.2) @84:32
+      return %179
+    }
+  }
+  let groups: iter.T(Group(Char String)) = call iterTools.groupBy [Char String](%177, f.7, f.8) @83:14
+  loop L6 {
+    let %180: Bool = call iter.more [Record key: Char values: Array(String) end](groups) @85:7
+    if %180 { @85:1
+      let g: Record key: Char values: Array(String) end = call iter.next [Record key: Char values: Array(String) end](groups) @86:13
+      let %181: Char = record_field(g, key) @87:33
+      let %182: String = call conv.char(%181) @87:23
+      let %183: Array(String) = record_field(g, values) @87:71
+      let %184: iter.T(String) = call iter.ofArray [String](%183) @87:58
+      let %185: String = call strings(%184) @87:50
+      let %186: String = prim <>(" ", %185) @87:43
+      let %187: String = prim <>(%182, %186) @87:23
+      let %188: String = prim <>("group ", %187) @87:11
+      do call print(%188) @87:5
+    } else {
+      break L6 @85:1
+    }
+  }
+  let n.3: Int = 0 @89:30
+  let keys: Tuple var n: Int end = tuple(n.3) @89:12
+  let %189: iter.T(Int) = call iter.range(0, 10) @90:31
+  funs {
+    fun f.9(x.6: Int): Int {
+      let %190: Int = tuple_field(keys, 0) @90:81
+      let %191: Int = prim +(%190, 1) @90:81
+      store keys.#0 := %191 @90:71
+      let %192: Int = prim /(x.6, 4) @90:92
+      return %192
+    }
+  }
+  let keyed: iter.T(Group(Int Int)) = call iterTools.groupBy [Int Int](%189, f.9, same) @90:13
+  funs {
+    fun f.10(g.1: iterTools.Group(Int Int)): Array(Int) {
+      let %193: Array(Int) = record_field(g.1, values) @91:84
+      return %193
+    }
+  }
+  let %194: iter.T(Array(Int)) = call iter.map [Record key: Int values: Array(Int) end Array(Int)](keyed, f.10) @91:24
+  let %195: String = call rows(%194) @91:19
+  let %196: Int = tuple_field(keys, 0) @92:17
+  let %197: String = call conv.int(%196) @92:8
+  let %198: String = prim <>(%197, " times") @92:8
+  let %199: String = prim <>(", key called ", %198) @91:98
+  let %200: String = prim <>(%195, %199) @91:19
+  let %201: String = prim <>("groups", %200) @91:7
+  do call print(%201) @91:1
+  let %202: Array(Int) = array(1, 1, 2, 3, 3, 3, 1, 2, 2) @93:63
+  let %203: iter.T(Int) = call iter.ofArray [Int](%202) @93:50
+  let %204: iter.T(Int) = call iterTools.uniqueRuns [Int](%203, same) @93:29
+  let %205: String = call ints(%204) @93:24
+  let %206: String = prim <>("uniqueRuns ", %205) @93:7
+  do call print(%206) @93:1
+  let %207: Array(Int) = array(3, 1, 3, 2, 1, 4) @94:55
+  let %208: iter.T(Int) = call iter.ofArray [Int](%207) @94:42
+  let %209: Fun(n: Int): word.T = member hash.int @94:86
+  let %210: iter.T(Int) = call iterTools.unique [Int](%208, same, %209) @94:25
+  let %211: String = call ints(%210) @94:20
+  let %212: String = prim <>("unique ", %211) @94:7
+  do call print(%212) @94:1
+  let %213: Array(String) = array("a", "b", "c") @95:68
+  let %214: iter.T(String) = call iter.ofArray [String](%213) @95:55
+  let %215: iter.T(String) = call iterTools.intersperse [String](%214, ",") @95:33
+  let %216: String = call strings(%215) @95:25
+  let %217: iter.T(String) = call iter.once [String]("a") @96:38
+  let %218: iter.T(String) = call iterTools.intersperse [String](%217, ",") @96:16
+  let %219: String = call strings(%218) @96:8
+  let %220: iter.T(String) = type_app iter.empty [String] @96:92
+  let %221: iter.T(String) = call iterTools.intersperse [String](%220, ",") @96:70
+  let %222: String = call strings(%221) @96:62
+  let %223: String = prim <>(%219, %222) @96:8
+  let %224: String = prim <>(%216, %223) @95:25
+  let %225: String = prim <>("intersperse ", %224) @95:7
+  do call print(%225) @95:1
+  let %226: iter.T(Int) = call iter.range(0, 3) @97:59
+  let %227: iter.T(Int) = call iter.range(10, 11) @97:75
+  let %228: iter.T(Int) = type_app iter.empty [Int] @97:93
+  let %229: iter.T(Int) = call iter.range(20, 24) @97:106
+  let %230: Array(iter.T(Int)) = array(%226, %227, %228, %229) @97:50
+  let %231: iter.T(Int) = call iterTools.interleave [Int](%230) @97:29
+  let %232: String = call ints(%231) @97:24
+  let %233: Array(iter.T(Int)) = array() @98:34
+  let %234: iter.T(Int) = call iterTools.interleave [Int](%233) @98:13
+  let %235: String = call ints(%234) @98:8
+  let %236: String = prim <>(%232, %235) @97:24
+  let %237: String = prim <>("interleave ", %236) @97:7
+  do call print(%237) @97:1
+  let %238: iter.T(Int) = call iter.range(0, 2) @99:50
+  let %239: iter.T(Int) = call iter.range(10, 14) @99:66
+  let %240: iter.T(iter.Pair(Int Int)) = call iterTools.zipLongest [Int Int](%238, %239, -1, -2) @99:29
+  let %241: String = call pairs(%240) @99:23
+  let %242: String = prim <>("zipLongest", %241) @99:7
+  do call print(%242) @99:1
+  let %243: iter.T(Int) = call iter.range(0, 4) @100:24
+  let ts: Array(iter.T(Int)) = call iterTools.tee [Int](%243, 3) @100:10
+  let %244: iter.T(Int) = index(ts, 0) @101:32
+  let %245: iter.T(Int) = call iter.take [Int](%244, 2) @101:22
+  let %246: String = call ints(%245) @101:17
+  let %247: iter.T(Int) = index(ts, 1) @101:50
+  let %248: String = call ints(%247) @101:45
+  let %249: iter.T(Int) = index(ts, 0) @101:65
+  let %250: String = call ints(%249) @101:60
+  let %251: iter.T(Int) = index(ts, 2) @101:80
+  let %252: String = call ints(%251) @101:75
+  let %253: iter.T(Int) = call iter.range(0, 4) @102:38
+  let %254: Array(iter.T(Int)) = call iterTools.tee [Int](%253, 0) @102:24
+  let %255: Int = prim extent(%254) @102:17
+  let %256: String = call conv.int(%255) @102:8
+  let %257: String = prim <>(" none ", %256) @101:90
+  let %258: String = prim <>(%252, %257) @101:75
+  let %259: String = prim <>(%250, %258) @101:60
+  let %260: String = prim <>(%248, %259) @101:45
+  let %261: String = prim <>(%246, %260) @101:17
+  let %262: String = prim <>("tee ", %261) @101:7
+  do call print(%262) @101:1
+  let %263: Array(Int) = array(7, 8) @105:48
+  let %264: iter.T(iter.Pair(Int Int)) = call iterTools.product [Int Int](abc, %263) @105:26
+  let %265: String = call pairs(%264) @105:20
+  let %266: iter.T(iter.Pair(Int Int)) = call iterTools.product [Int Int](abc, none) @105:88
+  let %267: String = call pairs(%266) @105:82
+  let %268: String = prim <>(" empty", %267) @105:70
+  let %269: String = prim <>(%265, %268) @105:20
+  let %270: String = prim <>("product", %269) @105:7
+  do call print(%270) @105:1
+  let %271: Array(Int) = array(1, 2) @106:56
+  let %272: Array(Int) = array(3) @106:73
+  let %273: Array(Int) = array(4, 5) @106:88
+  let %274: Array(Array(Int)) = array(%271, %272, %273) @106:47
+  let %275: iter.T(Array(Int)) = call iterTools.productOf [Int](%274) @106:27
+  let %276: String = call rows(%275) @106:22
+  let %277: Array(Array(Int)) = array() @107:47
+  let %278: iter.T(Array(Int)) = call iterTools.productOf [Int](%277) @107:27
+  let %279: String = call rows(%278) @107:22
+  let %280: String = prim <>(" of none", %279) @107:8
+  let %281: String = prim <>(%276, %280) @106:22
+  let %282: String = prim <>("productOf", %281) @106:7
+  do call print(%282) @106:1
+  let %283: Array(Int) = array(0, 1) @108:39
+  let %284: iter.T(Array(Int)) = call iterTools.power [Int](%283, 3) @108:23
+  let %285: String = call rows(%284) @108:18
+  let %286: iter.T(Array(Int)) = call iterTools.power [Int](abc, 0) @108:78
+  let %287: String = call rows(%286) @108:73
+  let %288: String = prim <>(" r 0", %287) @108:63
+  let %289: String = prim <>(%285, %288) @108:18
+  let %290: String = prim <>("power", %289) @108:7
+  do call print(%290) @108:1
+  let %291: iter.T(Array(Int)) = call iterTools.permutations [Int](abc, 3) @109:30
+  let %292: String = call rows(%291) @109:25
+  let %293: iter.T(Array(Int)) = call iterTools.permutations [Int](abc, 2) @109:79
+  let %294: String = call rows(%293) @109:74
+  let %295: String = prim <>(" r 2", %294) @109:64
+  let %296: String = prim <>(%292, %295) @109:25
+  let %297: String = prim <>("permutations", %296) @109:7
+  do call print(%297) @109:1
+  let %298: iter.T(Array(Int)) = call iterTools.permutations [Int](abc, 0) @110:34
+  let %299: String = call rows(%298) @110:29
+  let %300: iter.T(Array(Int)) = call iterTools.permutations [Int](abc, 4) @110:83
+  let %301: String = call rows(%300) @110:78
+  let %302: String = prim <>(" r 4", %301) @110:68
+  let %303: String = prim <>(%299, %302) @110:29
+  let %304: String = prim <>("permutations r 0", %303) @110:7
+  do call print(%304) @110:1
+  let %305: Array(Int) = array(1, 2, 3, 4) @111:53
+  let %306: iter.T(Array(Int)) = call iterTools.combinations [Int](%305, 2) @111:30
+  let %307: String = call rows(%306) @111:25
+  let %308: iter.T(Array(Int)) = call iterTools.combinations [Int](abc, 0) @112:13
+  let %309: String = call rows(%308) @112:8
+  let %310: iter.T(Array(Int)) = call iterTools.combinations [Int](abc, 4) @112:62
+  let %311: String = call rows(%310) @112:57
+  let %312: String = prim <>(" r 4", %311) @112:47
+  let %313: String = prim <>(%309, %312) @112:8
+  let %314: String = prim <>(" r 0", %313) @111:81
+  let %315: String = prim <>(%307, %314) @111:25
+  let %316: String = prim <>("combinations", %315) @111:7
+  do call print(%316) @111:1
+  let %317: iter.T(Array(Int)) = call iterTools.combinationsWithReplacement [Int](abc, 2) @113:34
+  let %318: String = call rows(%317) @113:29
+  let %319: iter.T(Array(Int)) = call iterTools.combinationsWithReplacement [Int](none, 2) @114:13
+  let %320: String = call rows(%319) @114:8
+  let %321: iter.T(Array(Int)) = call iterTools.combinationsWithReplacement [Int](none, 0) @114:68
+  let %322: String = call rows(%321) @114:63
+  let %323: String = prim <>(%320, %322) @114:8
+  let %324: String = prim <>(" of none", %323) @113:83
+  let %325: String = prim <>(%318, %324) @113:29
+  let %326: String = prim <>("with replacement", %325) @113:7
+  do call print(%326) @113:1
+  let five: Array(Int) = array(1, 2, 3, 4, 5) @115:12
+  join k2(r.1: Bool) {
+    do call check("counts 5^3 5!/2! C(5,3) C(7,3)", r.1) @116:1
+    let fresh: iter.T(Array(Int)) = call iterTools.combinations [Int](abc, 2) @119:13
+    let first: Array(Int) = call iter.next [Array(Int)](fresh) @120:13
+    store first[0] := 99 @121:1
+    let %327: String = call row(first) @122:25
+    let %328: String = call rows(fresh) @122:39
+    let %329: String = prim <>(%327, %328) @122:25
+    let %330: String = prim <>("fresh arrays", %329) @122:7
+    do call print(%330) @122:1
+    let %331: iter.T(Int) = call iter.range(10, 20) @125:53
+    let %332: maybe.T(Int) = call iterTools.nth [Int](%331, 3) @125:39
+    let %333: Int = call maybe.unwrap [Int](%332) @125:26
+    let %334: String = call conv.int(%333) @125:17
+    let %335: iter.T(Int) = call iter.range(0, 3) @126:45
+    let %336: maybe.T(Int) = call iterTools.nth [Int](%335, 3) @126:31
+    let %337: Bool = call maybe.isNone [Int](%336) @126:18
+    let %338: String = call conv.bool(%337) @126:8
+    let %339: String = prim <>(" past the end ", %338) @125:79
+    let %340: String = prim <>(%334, %339) @125:17
+    let %341: String = prim <>("nth ", %340) @125:7
+    do call print(%341) @125:1
+    join k5(r.2: Bool) {
+      do call check("allEqual", r.2) @127:1
+      let %342: iter.T(Int) = call iter.range(0, 10) @129:33
+      funs {
+        fun f.11(x.7: Int): Bool {
+          let %343: Int = prim %(x.7, 3) @129:69
+          let %344: Bool = prim is(%343, 0) @129:69
+          return %344
+        }
+      }
+      let parts: iter.Pair(Array(Int) Array(Int)) = call iterTools.partition [Int](%342, f.11) @129:13
+      let %345: Array(Int) = record_field(parts, first) @130:41
+      let %346: iter.T(Int) = call iter.ofArray [Int](%345) @130:28
+      let %347: String = call ints(%346) @130:23
+      let %348: Array(Int) = record_field(parts, second) @130:76
+      let %349: iter.T(Int) = call iter.ofArray [Int](%348) @130:63
+      let %350: String = call ints(%349) @130:58
+      let %351: String = prim <>(%347, %350) @130:23
+      let %352: String = prim <>("partition ", %351) @130:7
+      do call print(%352) @130:1
+      let %353: iter.T(Int) = call iter.range(0, 3) @133:27
+      let w.1: iter.T(Array(Int)) = call iterTools.windows [Int](%353, 2) @133:9
+      let %354: iter.T(Int) = call iter.range(0, 3) @134:51
+      funs {
+        fun f.12(i.2: Int): Int {
+          join k7(r.3: Int) {
+            return r.3
+          } in {
+            let %355: Bool = call iter.more [Array(Int)](w.1) @134:87
+            if %355 { @134:84
+              jump k7(1) @134:84
+            } else {
+              jump k7(0) @134:84
+            }
+          }
+        }
+      }
+      let %356: iter.T(Int) = call iter.map [Int Int](%354, f.12) @134:42
+      let %357: Bool = call iterTools.allEqual [Int](%356, same) @134:23
+      do call check("more repeated", %357) @134:1
+      let %358: String = call rows(w.1) @135:17
+      join k8(r.4: String) {
+        let %359: String = prim <>(" next past the end: ", r.4) @135:28
+        let %360: String = prim <>(%358, %359) @135:17
+        let %361: String = prim <>("then", %360) @135:7
+        do call print(%361) @135:1
+        join k9(r.5: Bool) {
+          do call check("errors", r.5) @136:1
+        } in {
+          funs {
+            fun f.13(): Ok {
+              let %362: iter.T(Int) = call iter.range(0, 3) @136:64
+              let x.8: iter.T(Int) = call iterTools.stepBy [Int](%362, 0) @136:47
+              return ok
+            }
+          }
+          let %363: Bool = call raised(f.13) @136:16
+          if %363 { @136:16
+            join k10(r.6: Bool) {
+              jump k9(r.6) @136:16
+            } in {
+              funs {
+                fun f.14(): Ok {
+                  let %364: iter.T(Int) = call iter.range(0, 3) @137:60
+                  let x.9: iter.T(Array(Int)) = call iterTools.batched [Int](%364, 0) @137:42
+                  return ok
+                }
+              }
+              let %365: Bool = call raised(f.14) @137:11
+              if %365 { @137:11
+                join k11(r.7: Bool) {
+                  jump k10(r.7) @137:11
+                } in {
+                  funs {
+                    fun f.15(): Ok {
+                      let %366: iter.T(Int) = call iter.range(0, 3) @138:60
+                      let x.10: iter.T(Array(Int)) = call iterTools.windows [Int](%366, 0) @138:42
+                      return ok
+                    }
+                  }
+                  let %367: Bool = call raised(f.15) @138:11
+                  if %367 { @138:11
+                    join k12(r.8: Bool) {
+                      jump k11(r.8) @138:11
+                    } in {
+                      funs {
+                        fun f.16(): Ok {
+                          let %368: iter.T(Int) = call iter.range(0, 3) @139:58
+                          let x.11: iter.T(Int) = call iterTools.slice [Int](%368, -1, 2, 1) @139:42
+                          return ok
+                        }
+                      }
+                      let %369: Bool = call raised(f.16) @139:11
+                      if %369 { @139:11
+                        join k13(r.9: Bool) {
+                          jump k12(r.9) @139:11
+                        } in {
+                          funs {
+                            fun f.17(): Ok {
+                              let x.12: iter.T(Array(Int)) = call iterTools.combinations [Int](abc, -1) @140:42
+                              return ok
+                            }
+                          }
+                          let %370: Bool = call raised(f.17) @140:11
+                          if %370 { @140:11
+                            join k14(r.10: Bool) {
+                              jump k13(r.10) @140:11
+                            } in {
+                              funs {
+                                fun f.18(): Ok {
+                                  let %371: iter.T(Int) = call iter.range(0, 3) @141:56
+                                  let x.13: Array(iter.T(Int)) = call iterTools.tee [Int](%371, -1) @141:42
+                                  return ok
+                                }
+                              }
+                              let %372: Bool = call raised(f.18) @141:11
+                              if %372 { @141:11
+                                funs {
+                                  fun f.19(): Ok {
+                                    let %373: iter.T(Int) = call iter.range(0, 3) @142:56
+                                    let x.14: maybe.T(Int) = call iterTools.nth [Int](%373, -1) @142:42
+                                    return ok
+                                  }
+                                }
+                                let %374: Bool = call raised(f.19) @142:11
+                                jump k14(%374) @141:11
+                              } else {
+                                jump k14(false) @141:11
+                              }
+                            }
+                          } else {
+                            jump k13(false) @140:11
+                          }
+                        }
+                      } else {
+                        jump k12(false) @139:11
+                      }
+                    }
+                  } else {
+                    jump k11(false) @138:11
+                  }
+                }
+              } else {
+                jump k10(false) @137:11
+              }
+            }
+          } else {
+            jump k9(false) @136:16
+          }
+        }
+      } in {
+        let %375: Exception = member iter.exhausted @135:81
+        try catching (%375) {
+          let %376: Array(Int) = call iter.next [Array(Int)](w.1) @135:62
+          let %377: String = call row(%376) @135:58
+          jump k8(%377) @135:54
+        } handle (e.1: Exception) {
+          let %378: Bool = prim is(e.1, %375) @135:54
+          if %378 { @135:54
+            jump k8("iter.exhausted") @135:54
+          } else {
+            reraise e.1 @135:54
+          }
+        }
+      }
+    } in {
+      let %379: iter.T(Int) = call iterTools.repeatN [Int](4, 3) @127:37
+      let %380: Bool = call iterTools.allEqual [Int](%379, same) @127:18
+      if %380 { @127:18
+        join k6(r.11: Bool) {
+          jump k5(r.11) @127:18
+        } in {
+          let %381: iter.T(Int) = type_app iter.empty [Int] @127:91
+          let %382: Bool = call iterTools.allEqual [Int](%381, same) @127:72
+          if %382 { @127:72
+            let %383: Array(Int) = array(1, 1, 2) @128:47
+            let %384: iter.T(Int) = call iter.ofArray [Int](%383) @128:34
+            let %385: Bool = call iterTools.allEqual [Int](%384, same) @128:15
+            let %386: Bool = prim not(%385) @128:11
+            jump k6(%386) @127:72
+          } else {
+            jump k6(false) @127:72
+          }
+        }
+      } else {
+        jump k5(false) @127:18
+      }
+    }
+  } in {
+    let %387: iter.T(Array(Int)) = call iterTools.power [Int](five, 3) @116:52
+    let %388: Int = call iter.count [Array(Int)](%387) @116:41
+    let %389: Bool = prim is(%388, 125) @116:41
+    if %389 { @116:41
+      join k3(r.12: Bool) {
+        jump k2(r.12) @116:41
+      } in {
+        let %390: iter.T(Array(Int)) = call iterTools.permutations [Int](five, 3) @117:23
+        let %391: Int = call iter.count [Array(Int)](%390) @117:12
+        let %392: Bool = prim is(%391, 60) @117:12
+        if %392 { @117:12
+          join k4(r.13: Bool) {
+            jump k3(r.13) @117:12
+          } in {
+            let %393: iter.T(Array(Int)) = call iterTools.combinations [Int](five, 3) @117:80
+            let %394: Int = call iter.count [Array(Int)](%393) @117:69
+            let %395: Bool = prim is(%394, 10) @117:69
+            if %395 { @117:69
+              let %396: iter.T(Array(Int)) = call iterTools.combinationsWithReplacement [Int](five, 3) @118:23
+              let %397: Int = call iter.count [Array(Int)](%396) @118:12
+              let %398: Bool = prim is(%397, 35) @118:12
+              jump k4(%398) @117:69
+            } else {
+              jump k4(false) @117:69
+            }
+          }
+        } else {
+          jump k3(false) @117:12
+        }
+      }
+    } else {
+      jump k2(false) @116:41
+    }
+  }
+}
+

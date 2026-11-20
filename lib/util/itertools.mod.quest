@@ -1,0 +1,591 @@
+(* More iterators (docs/itertools-plan.md), built on util/iter's more, next,
+ * and make, since iter.T is abstract outside util/iter. Each stage's state is
+ * a tuple of vars its two functions share, ready (more) and pull (next); pull
+ * calls ready first, and relies on iter.next raising iter.exhausted when the
+ * iterator it reads has ended. Where a stage needs the element after the one
+ * it hands out, it reads it through iter.peekable rather than holding one of
+ * its own. *)
+
+module iterTools : IterTools
+import
+    util/iter : util/Iter
+    util/maybe : util/Maybe
+    collections/vector : collections/Vector
+    collections/deque : collections/Deque
+    collections/hashSet : collections/HashSet
+    word: Word
+export
+    Let Group = Fun(K::TYPE A::TYPE) Record key: K values: Array(A) end
+
+    let error: Exception = exception error: Ok end
+
+    (* What accumulate and pairwise hold: the element before, once there is
+     * one. The option is made with the first, and its payload's var
+     * overwritten after that through a case binder, which is the payload
+     * itself, so that nothing is allocated per element (as util/iter's Slot,
+     * docs/iter-plan.md decision 4). *)
+    Let Held = Fun(A::TYPE) Option none made with var x: A end end
+
+    (* Sources *)
+
+    let count(start: Int step: Int): iter.T(Int) =
+        begin
+            let c = tuple let var i = start end
+            let ready(): Bool = true
+            let pull(): Int =
+                begin
+                    let x = c.i
+                    c.i := x + step
+                    x
+                end
+            iter.make(ready pull)
+        end
+
+    let repeat(A::TYPE)(a: A): iter.T(A) =
+        begin
+            let ready(): Bool = true
+            let pull(): A = a
+            iter.make(ready pull)
+        end
+
+    let repeatN(A::TYPE)(a: A n: Int): iter.T(A) =
+        begin
+            let c = tuple let var left = n end
+            let ready(): Bool = c.left > 0
+            let pull(): A =
+                if ready() then
+                    c.left := c.left - 1
+                    a
+                else
+                    raise iter.exhausted end
+                end
+            iter.make(ready pull)
+        end
+
+    (* On the first pass each element of it is kept in saved as it is handed
+     * out; after it ends, i walks saved round and round *)
+    let cycle(A::TYPE)(it: iter.T(A)): iter.T(A) =
+        begin
+            let saved = vector.new(:A)
+            let c = tuple let var first = true let var i = 0 end
+            let ready(): Bool = {c.first andif iter.more(it)} orif {vector.length(saved) > 0}
+            let pull(): A =
+                if c.first andif iter.more(it) then
+                    let x = iter.next(it)
+                    vector.append(saved x)
+                    x
+                else
+                    c.first := false
+                    let n = vector.length(saved)
+                    if n is 0 then raise iter.exhausted end end
+                    let x = vector.get(saved c.i)
+                    c.i := {c.i + 1} % n
+                    x
+                end
+            iter.make(ready pull)
+        end
+
+    (* seen says whether the current pass has handed out an element, so that
+     * a source whose iterators are empty ends the cycle instead of being
+     * asked for another forever *)
+    let cycleFrom(A::TYPE)(source: All() iter.T(A)): iter.T(A) =
+        begin
+            let c = tuple let var it = source() let var seen = false end
+            let ready(): Bool =
+                if iter.more(c.it) then
+                    true
+                elsif c.seen then
+                    c.it := source()
+                    c.seen := false
+                    iter.more(c.it)
+                else
+                    false
+                end
+            let pull(): A =
+                if ready() then
+                    c.seen := true
+                    iter.next(c.it)
+                else
+                    raise iter.exhausted end
+                end
+            iter.make(ready pull)
+        end
+
+    let iterate(A::TYPE)(a: A f: All(a: A) A): iter.T(A) =
+        begin
+            let c = tuple let var x = a let var started = false end
+            let ready(): Bool = true
+            let pull(): A =
+                begin
+                    if c.started then c.x := f(c.x) else c.started := true end
+                    c.x
+                end
+            iter.make(ready pull)
+        end
+
+    (* Stages *)
+
+    let accumulate(A::TYPE)(it: iter.T(A) f: All(acc: A a: A) A): iter.T(A) =
+        begin
+            let c = tuple let var acc = option none of Held(A) end end
+            let ready(): Bool = iter.more(it)
+            let pull(): A =
+                begin
+                    let e = iter.next(it)
+                    case c.acc
+                        when made with h then
+                            h.x := f(h.x e)
+                            h.x
+                        when none then
+                            c.acc := option made of Held(A) with let var x = e end
+                            e
+                    end
+                end
+            iter.make(ready pull)
+        end
+
+    let scan(A::TYPE Acc::TYPE)(it: iter.T(A) init: Acc f: All(acc: Acc a: A) Acc): iter.T(Acc) =
+        begin
+            let c = tuple let var acc = init let var started = false end
+            let ready(): Bool = not(c.started) orif iter.more(it)
+            let pull(): Acc =
+                begin
+                    if c.started then c.acc := f(c.acc iter.next(it)) else c.started := true end
+                    c.acc
+                end
+            iter.make(ready pull)
+        end
+
+    let flatten(A::TYPE)(its: iter.T(iter.T(A))): iter.T(A) = iter.flatMap(its fun(x: iter.T(A)): iter.T(A) x)
+
+    let reject(A::TYPE)(it: iter.T(A) p: All(a: A) Bool): iter.T(A) = iter.filter(it fun(a: A): Bool not(p(a)))
+
+    let compress(A::TYPE)(it: iter.T(A) selectors: iter.T(Bool)): iter.T(A) =
+        iter.filterMap(iter.zip(it selectors) fun(e: iter.Pair(A Bool)): maybe.T(A)
+            if e.second then maybe.some(e.first) else maybe.none() end)
+
+    (* skip is how many elements to pass over before the next one handed out,
+     * passed over when it is asked for *)
+    let stepBy(A::TYPE)(it: iter.T(A) step: Int): iter.T(A) =
+        begin
+            if step < 1 then raise error end end
+            let c = tuple let var skip = 0 end
+            let ready(): Bool =
+                begin
+                    while {c.skip > 0} andif iter.more(it) do
+                        let passed = iter.next(it)
+                        c.skip := c.skip - 1
+                    end
+                    iter.more(it)
+                end
+            let pull(): A =
+                if ready() then
+                    c.skip := step - 1
+                    iter.next(it)
+                else
+                    raise iter.exhausted end
+                end
+            iter.make(ready pull)
+        end
+
+    let slice(A::TYPE)(it: iter.T(A) lo: Int hi: Int step: Int): iter.T(A) =
+        begin
+            if {lo < 0} orif {step < 1} then raise error end end
+            stepBy(iter.take(iter.drop(it lo) hi - lo) step)
+        end
+
+    let pairwise(A::TYPE)(it: iter.T(A)): iter.T(iter.Pair(A A)) =
+        begin
+            let c = tuple let var prev = option none of Held(A) end end
+            let ready(): Bool =
+                case c.prev
+                    when made then iter.more(it)
+                    when none then
+                        if iter.more(it) then
+                            c.prev := option made of Held(A) with let var x = iter.next(it) end
+                            iter.more(it)
+                        else
+                            false
+                        end
+                end
+            let pull(): iter.Pair(A A) =
+                if ready() then
+                    case c.prev
+                        when made with h then
+                            let y = iter.next(it)
+                            let e = record first = h.x second = y end
+                            h.x := y
+                            e
+                        when none then raise iter.exhausted end
+                    end
+                else
+                    raise iter.exhausted end
+                end
+            iter.make(ready pull)
+        end
+
+    (* The window so far is w, the size - 1 elements before the next one,
+     * filled up as more is asked *)
+    let windows(A::TYPE)(it: iter.T(A) size: Int): iter.T(Array(A)) =
+        begin
+            if size < 1 then raise error end end
+            let w = deque.new(:A)
+            let ready(): Bool =
+                begin
+                    while {deque.length(w) < size - 1} andif iter.more(it) do deque.pushBack(w iter.next(it)) end
+                    {deque.length(w) is size - 1} andif iter.more(it)
+                end
+            let pull(): Array(A) =
+                if ready() then
+                    deque.pushBack(w iter.next(it))
+                    let result = array of(size deque.front(w))
+                    for i = 1 upto {size - 1} do result[i] := deque.get(w i) end
+                    let gone = deque.popFront(w)
+                    result
+                else
+                    raise iter.exhausted end
+                end
+            iter.make(ready pull)
+        end
+
+    let batched(A::TYPE)(it: iter.T(A) size: Int): iter.T(Array(A)) =
+        begin
+            if size < 1 then raise error end end
+            let ready(): Bool = iter.more(it)
+            let pull(): Array(A) =
+                begin
+                    let v = vector.newWithCapacity(:A size)
+                    vector.append(v iter.next(it))
+                    while {vector.length(v) < size} andif iter.more(it) do vector.append(v iter.next(it)) end
+                    vector.toArray(v)
+                end
+            iter.make(ready pull)
+        end
+
+    (* The elements are paired with their keys first, so that key is called
+     * once for each, and the pairs read through a peekable iterator, which
+     * holds the first of the next group when a group ends *)
+    let groupBy(K::TYPE A::TYPE)(it: iter.T(A) key: All(a: A) K eq: All(x: K y: K) Bool): iter.T(Group(K A)) =
+        begin
+            let p = iter.peekable(iter.map(it fun(a: A): iter.Pair(K A) record first = key(a) second = a end))
+            let q = iter.asIter(p)
+            let ready(): Bool = iter.more(q)
+            let pull(): Group(K A) =
+                begin
+                    let e = iter.next(q)
+                    let v = vector.new(:A)
+                    vector.append(v e.second)
+                    while iter.more(q) andif eq(iter.peek(p).first e.first) do vector.append(v iter.next(q).second) end
+                    record key = e.first values = vector.toArray(v) end
+                end
+            iter.make(ready pull)
+        end
+
+    let uniqueRuns(A::TYPE)(it: iter.T(A) eq: All(x: A y: A) Bool): iter.T(A) =
+        begin
+            let p = iter.peekable(it)
+            let q = iter.asIter(p)
+            let ready(): Bool = iter.more(q)
+            let pull(): A =
+                begin
+                    let x = iter.next(q)
+                    while iter.more(q) andif eq(iter.peek(p) x) do let passed = iter.next(q) end
+                    x
+                end
+            iter.make(ready pull)
+        end
+
+    let unique(A::TYPE)(it: iter.T(A) equal: All(x: A y: A) Bool hash: All(a: A) word.T): iter.T(A) =
+        begin
+            let seen = hashSet.new(equal hash)
+            iter.filter(it fun(a: A): Bool hashSet.insert(seen a))
+        end
+
+    (* sepNext says whether a separator is owed before the next element, which
+     * is handed out only if there is one *)
+    let intersperse(A::TYPE)(it: iter.T(A) sep: A): iter.T(A) =
+        begin
+            let c = tuple let var sepNext = false end
+            let ready(): Bool = iter.more(it)
+            let pull(): A =
+                if not(iter.more(it)) then
+                    raise iter.exhausted end
+                elsif c.sepNext then
+                    c.sepNext := false
+                    sep
+                else
+                    c.sepNext := true
+                    iter.next(it)
+                end
+            iter.make(ready pull)
+        end
+
+    (* i is the iterator to pull from next; ready moves it past those that
+     * have ended *)
+    let interleave(A::TYPE)(its: Array(iter.T(A))): iter.T(A) =
+        begin
+            let n = extent its
+            let c = tuple let var i = 0 end
+            let ready(): Bool =
+                begin
+                    let var k = 0
+                    while {k < n} andif not(iter.more(its[{c.i + k} % n])) do k := k + 1 end
+                    if k < n then
+                        c.i := {c.i + k} % n
+                        true
+                    else
+                        false
+                    end
+                end
+            let pull(): A =
+                if ready() then
+                    let x = iter.next(its[c.i])
+                    c.i := {c.i + 1} % n
+                    x
+                else
+                    raise iter.exhausted end
+                end
+            iter.make(ready pull)
+        end
+
+    let zipLongest(A::TYPE B::TYPE)(a: iter.T(A) b: iter.T(B) fillA: A fillB: B): iter.T(iter.Pair(A B)) =
+        begin
+            let ready(): Bool = iter.more(a) orif iter.more(b)
+            let pull(): iter.Pair(A B) =
+                if ready() then
+                    let x = if iter.more(a) then iter.next(a) else fillA end
+                    let y = if iter.more(b) then iter.next(b) else fillB end
+                    record first = x second = y end
+                else
+                    raise iter.exhausted end
+                end
+            iter.make(ready pull)
+        end
+
+    (* Each branch has a queue of the elements another branch pulled from it
+     * that this one has not reached; a branch with an empty queue pulls from
+     * it and adds the element to every other branch's queue *)
+    let tee(A::TYPE)(it: iter.T(A) n: Int): Array(iter.T(A)) =
+        begin
+            if n < 0 then raise error end end
+            if n is 0 then
+                array of :iter.T(A) end
+            else
+                let queues = array of(n deque.new(:A))
+                for j = 1 upto {n - 1} do queues[j] := deque.new(:A) end
+                let branch(j: Int): iter.T(A) =
+                    begin
+                        let ready(): Bool = not(deque.empty(queues[j])) orif iter.more(it)
+                        let pull(): A =
+                            if not(deque.empty(queues[j])) then
+                                deque.popFront(queues[j])
+                            else
+                                let x = iter.next(it)
+                                for k = 0 upto {n - 1} do
+                                    if k isnot j then deque.pushBack(queues[k] x) end
+                                end
+                                x
+                            end
+                        iter.make(ready pull)
+                    end
+                let result = array of(n branch(0))
+                for j = 1 upto {n - 1} do result[j] := branch(j) end
+                result
+            end
+        end
+
+    (* Combinatoric iterators. Each keeps the positions of its next element in
+     * idx, and done once there is none; pick makes the element. *)
+
+    (* The elements of a at the first r positions of idx, in a fresh array *)
+    let pick(A::TYPE)(a: Array(A) idx: Array(Int) r: Int): Array(A) =
+        if r is 0 then
+            array of :A end
+        else
+            let result = array of(r a[idx[0]])
+            for i = 1 upto {r - 1} do result[i] := a[idx[i]] end
+            result
+        end
+
+    let product(A::TYPE B::TYPE)(a: Array(A) b: Array(B)): iter.T(iter.Pair(A B)) =
+        begin
+            let c = tuple let var i = 0 let var j = 0 end
+            let ready(): Bool = {c.i < extent a} andif {extent b > 0}
+            let pull(): iter.Pair(A B) =
+                if ready() then
+                    let e = record first = a[c.i] second = b[c.j] end
+                    c.j := c.j + 1
+                    if c.j is extent b then
+                        c.j := 0
+                        c.i := c.i + 1
+                    end
+                    e
+                else
+                    raise iter.exhausted end
+                end
+            iter.make(ready pull)
+        end
+
+    (* An odometer: idx[k] is the position in pools[k], the last one turning
+     * fastest *)
+    let productOf(A::TYPE)(pools: Array(Array(A))): iter.T(Array(A)) =
+        begin
+            let n = extent pools
+            let idx = array of(n 0)
+            let var anyEmpty = false
+            for k = 0 upto {n - 1} do if extent pools[k] is 0 then anyEmpty := true end end
+            let c = tuple let var done = anyEmpty end
+            let ready(): Bool = not(c.done)
+            let pull(): Array(A) =
+                if ready() then
+                    let result =
+                        if n is 0 then
+                            array of :A end
+                        else
+                            let r = array of(n pools[0][idx[0]])
+                            for k = 1 upto {n - 1} do r[k] := pools[k][idx[k]] end
+                            r
+                        end
+                    let var k = n - 1
+                    while {k >= 0} andif {idx[k] is extent pools[k] - 1} do
+                        idx[k] := 0
+                        k := k - 1
+                    end
+                    if k < 0 then c.done := true else idx[k] := idx[k] + 1 end
+                    result
+                else
+                    raise iter.exhausted end
+                end
+            iter.make(ready pull)
+        end
+
+    let power(A::TYPE)(a: Array(A) r: Int): iter.T(Array(A)) =
+        begin
+            if r < 0 then raise error end end
+            if r is 0 then productOf(array of :Array(A) end) else productOf(array of(r a)) end
+        end
+
+    (* Python's algorithm: idx is a permutation of the positions, its first r
+     * the element; cycles[i] counts the turns left for position i before it
+     * rotates back *)
+    let permutations(A::TYPE)(a: Array(A) r: Int): iter.T(Array(A)) =
+        begin
+            if r < 0 then raise error end end
+            let n = extent a
+            let idx = array of(n 0)
+            for i = 0 upto {n - 1} do idx[i] := i end
+            let cycles = array of(r 0)
+            for i = 0 upto {r - 1} do cycles[i] := n - i end
+            let c = tuple let var done = r > n end
+            let ready(): Bool = not(c.done)
+            let pull(): Array(A) =
+                if ready() then
+                    let result = pick(a idx r)
+                    let var i = r - 1
+                    let var found = false
+                    while not(found) andif {i >= 0} do
+                        cycles[i] := cycles[i] - 1
+                        if cycles[i] is 0 then
+                            let first = idx[i]
+                            for j = i upto {n - 2} do idx[j] := idx[j + 1] end
+                            idx[n - 1] := first
+                            cycles[i] := n - i
+                            i := i - 1
+                        else
+                            let j = n - cycles[i]
+                            let t = idx[i]
+                            idx[i] := idx[j]
+                            idx[j] := t
+                            found := true
+                        end
+                    end
+                    if not(found) then c.done := true end
+                    result
+                else
+                    raise iter.exhausted end
+                end
+            iter.make(ready pull)
+        end
+
+    (* idx is increasing; the rightmost position not yet at its last value
+     * moves up one, and those after it follow it *)
+    let combinations(A::TYPE)(a: Array(A) r: Int): iter.T(Array(A)) =
+        begin
+            if r < 0 then raise error end end
+            let n = extent a
+            let idx = array of(r 0)
+            for i = 0 upto {r - 1} do idx[i] := i end
+            let c = tuple let var done = r > n end
+            let ready(): Bool = not(c.done)
+            let pull(): Array(A) =
+                if ready() then
+                    let result = pick(a idx r)
+                    let var i = r - 1
+                    while {i >= 0} andif {idx[i] is {i + n} - r} do i := i - 1 end
+                    if i < 0 then
+                        c.done := true
+                    else
+                        idx[i] := idx[i] + 1
+                        for j = i + 1 upto {r - 1} do idx[j] := idx[j - 1] + 1 end
+                    end
+                    result
+                else
+                    raise iter.exhausted end
+                end
+            iter.make(ready pull)
+        end
+
+    (* idx is nondecreasing; the rightmost position not at the last moves up
+     * one, and those after it take its value *)
+    let combinationsWithReplacement(A::TYPE)(a: Array(A) r: Int): iter.T(Array(A)) =
+        begin
+            if r < 0 then raise error end end
+            let n = extent a
+            let idx = array of(r 0)
+            let c = tuple let var done = {n is 0} andif {r > 0} end
+            let ready(): Bool = not(c.done)
+            let pull(): Array(A) =
+                if ready() then
+                    let result = pick(a idx r)
+                    let var i = r - 1
+                    while {i >= 0} andif {idx[i] is n - 1} do i := i - 1 end
+                    if i < 0 then
+                        c.done := true
+                    else
+                        let v = idx[i] + 1
+                        for j = i upto {r - 1} do idx[j] := v end
+                    end
+                    result
+                else
+                    raise iter.exhausted end
+                end
+            iter.make(ready pull)
+        end
+
+    (* Consumers *)
+
+    let nth(A::TYPE)(it: iter.T(A) n: Int): maybe.T(A) =
+        begin
+            if n < 0 then raise error end end
+            iter.first(iter.drop(it n))
+        end
+
+    let allEqual(A::TYPE)(it: iter.T(A) eq: All(x: A y: A) Bool): Bool =
+        if iter.more(it) then
+            let x = iter.next(it)
+            iter.all(it fun(y: A): Bool eq(y x))
+        else
+            true
+        end
+
+    let partition(A::TYPE)(it: iter.T(A) p: All(a: A) Bool): iter.Pair(Array(A) Array(A)) =
+        begin
+            let yes = vector.new(:A)
+            let no = vector.new(:A)
+            while iter.more(it) do
+                let x = iter.next(it)
+                if p(x) then vector.append(yes x) else vector.append(no x) end
+            end
+            record first = vector.toArray(yes) second = vector.toArray(no) end
+        end
+end
