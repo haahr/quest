@@ -25,6 +25,7 @@ import
     questlang/codegen/c/declarations : questlang/codegen/c/Declarations
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
+    util/iter : util/Iter
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
@@ -3192,10 +3193,10 @@ export
              * a let's, a copy's, and an environment's read of one
              * (walk.knownClosures) *)
             let known = walk.knownClosures(unit)
-            let ids = hashMap.keys(known)
-            for i = 0 upto {vector.length(ids) - 1} do
-                let id = vector.get(ids i)
-                put(p.closures id hashMap.find(known id))
+            let entries = hashMap.entryIter(known)
+            while iter.more(entries) do
+                let e = iter.next(entries)
+                put(p.closures e.key e.value)
             end
 
             let functions = vector.new(:String)

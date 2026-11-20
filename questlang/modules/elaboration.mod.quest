@@ -24,6 +24,7 @@ import
     questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
+    util/iter : util/Iter
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -62,11 +63,11 @@ export
     Let Pair(V::TYPE) = Tuple key: String value: V end
     let pairs(V::TYPE m: hashMap.T(String V)): Array(Pair(V)) =
         begin
-            let keys = hashMap.keys(m)
-            let values = hashMap.values(m)
+            let entries = hashMap.entryIter(m)
             let result = vector.new(:Pair(V))
-            for i = 0 upto {vector.length(keys) - 1} do
-                vector.append(result tuple let key = vector.get(keys i) let value = vector.get(values i) end)
+            while iter.more(entries) do
+                let e = iter.next(entries)
+                vector.append(result tuple let key = e.key let value = e.value end)
             end
             vector.toArray(result)
         end
@@ -99,14 +100,10 @@ export
     (* Declares every type and kind of a scope in another *)
     let declareTypesAndKinds(from: Scope into: Scope): Ok =
         begin
-            let types = hashMap.values(from.types)
-            for i = 0 upto {vector.length(types) - 1} do
-                symbols.declareType(into vector.get(types i))
-            end
-            let kinds = hashMap.values(from.kinds)
-            for i = 0 upto {vector.length(kinds) - 1} do
-                symbols.declareKind(into vector.get(kinds i))
-            end
+            let types = hashMap.valueIter(from.types)
+            while iter.more(types) do symbols.declareType(into iter.next(types)) end
+            let kinds = hashMap.valueIter(from.kinds)
+            while iter.more(kinds) do symbols.declareKind(into iter.next(kinds)) end
         end
 
     (* body with the current scope s, in an unsound module or not (where

@@ -17,6 +17,7 @@ import
     questlang/typechecker/bindings : questlang/typechecker/Bindings
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
+    util/iter : util/Iter
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
@@ -593,10 +594,8 @@ export
                             maybe.unwrap(expected)
                         else
                             let ids = newIds()
-                            let values = hashMap.values(blockScope.values)
-                            for i = 0 upto {vector.length(values) - 1} do
-                                hashMap.insert(ids vector.get(values i).symbolId true)
-                            end
+                            let values = hashMap.valueIter(blockScope.values)
+                            while iter.more(values) do hashMap.insert(ids iter.next(values).symbolId true) end
                             escape.checkNoEscapingPathTypes(resultExpr.type ids "its scope" resultExpr.offset)
                             resultExpr.type
                         end

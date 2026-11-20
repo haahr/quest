@@ -292,11 +292,13 @@ known, so it needs no option); `next` hands it out and resumes the search after 
    `tests/source/stdlib/regexp_iterators.quest`. They were to be `matches` and `matchStrings`, but `matches` was
    taken (whether the whole string matches), which neither typechecker noticed ([tasklist.md](tasklist.md)).
 4. The compiler's own loops where an iterator would replace a vector it builds only to walk it, measured on the
-   driver build as usual. Not started: the compiler is built first by the release, against the release's own `lib/`,
-   which has no `util/iter` until a release is cut after steps 1 to 3 are pushed (as for `util/digest`). The first
-   candidates are the walks of `hashMap.keys` and `values` in the typechecker (`bindings.valueIds`,
-   `scoping.copyIds`, and a block's scope in `control`), `modules/elaboration` and `modules/graph`, and the known
-   closures in `ssa/build/unit` and the C printer, where `entryIter` also saves a `find` per key.
+   driver build as usual. Built 2026-11-20, after release `1945cfef` brought `util/iter` into the release's `lib/`
+   (the compiler is built first by the release, against its own `lib/`, as for `util/digest`): the walks of
+   `hashMap.keys` and `values` in the typechecker (`bindings.valueIds`, `scoping.copyIds`, and a block's scope in
+   `control`), `modules/elaboration` and `modules/graph`, and the known closures in `ssa/build/unit` and the C
+   printer, where `entryIter` also saves a `find` per key. Stage 2 building the driver from scratch, three runs each:
+   511.3 billion instructions retired against 512.5 (one baseline run at 520.5), about 0.2% fewer, and 67–70 s
+   against 69–71 s.
 
 ## 7. Settled with the user
 

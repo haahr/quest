@@ -16,6 +16,7 @@ import
     questlang/repr/objectLayout : questlang/repr/ObjectLayout
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
+    util/iter : util/Iter
     util/hash : util/Hash
     util/maybe : util/Maybe
     vals = questlang/ssa/build/values : questlang/ssa/build/Values
@@ -335,10 +336,10 @@ export
              * a let's, a copy's, and an environment's read of one
              * (walk.knownClosures) *)
             let known = walk.knownClosures(unit)
-            let ids = hashMap.keys(known)
-            for i = 0 upto {vector.length(ids) - 1} do
-                let id = vector.get(ids i)
-                vals.put(u.closureVars id hashMap.find(known id))
+            let entries = hashMap.entryIter(known)
+            while iter.more(entries) do
+                let e = iter.next(entries)
+                vals.put(u.closureVars e.key e.value)
             end
             for i = 0 upto {vector.length(unit.functions) - 1} do
                 vector.append(u.built.functions function(u vector.get(unit.functions i)))

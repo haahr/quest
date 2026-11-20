@@ -12,6 +12,7 @@ import
     questlang/syntax/ast : questlang/syntax/Ast
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
+    util/iter : util/Iter
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -312,9 +313,9 @@ export
     let interfaceScopes(g: UnitGraph): Array(NamedScope) =
         begin
             let result = vector.new(:NamedScope)
-            let all = hashMap.values(g.units)
-            for i = 0 upto {vector.length(all) - 1} do
-                let u = vector.get(all i)
+            let all = hashMap.valueIter(g.units)
+            while iter.more(all) do
+                let u = iter.next(all)
                 if isInterface(u.kind) andif maybe.isSome(u.scope) then
                     vector.append(result tuple
                         let name = u.canonicalName let scope = maybe.unwrap(u.scope)
@@ -327,9 +328,9 @@ export
     let exportScopes(g: UnitGraph): Array(NamedScope) =
         begin
             let result = vector.new(:NamedScope)
-            let all = hashMap.values(g.units)
-            for i = 0 upto {vector.length(all) - 1} do
-                let u = vector.get(all i)
+            let all = hashMap.valueIter(g.units)
+            while iter.more(all) do
+                let u = iter.next(all)
                 let isModule = case u.kind when moduleUnit then true else false end
                 if isModule andif maybe.isSome(u.exportScope) then
                     vector.append(result tuple
