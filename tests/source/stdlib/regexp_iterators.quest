@@ -1,0 +1,58 @@
+(* Standard library: util/regexp's findIter and findStringIter
+ * (docs/iter-plan.md step 3): the same matches as findAll, empty ones
+ * included; a walk that stops early; more repeated; next past the end; and a
+ * pipeline over the matches *)
+
+import regexp = util/regexp : util/Regexp;
+import util/iter : util/Iter;
+import collections/vector : collections/Vector;
+import stringOp = string : StringOp;
+import writer: Writer;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let check(what: String holds: Bool): Ok = print(what <> ": " <> conv.bool(holds));
+let strings(it: iter.T(String)): String =
+    begin
+        let var text = "["
+        while iter.more(it) do text := text <> " <" <> iter.next(it) <> ">" end
+        text <> " ]"
+    end;
+let spans(it: iter.T(regexp.Match)): String =
+    begin
+        let var text = ""
+        while iter.more(it) do
+            let m = iter.next(it)
+            text := text <> " " <> conv.int(regexp.start(m 0)) <> "+" <> conv.int(regexp.size(m 0))
+        end
+        text
+    end;
+let sameMatches(r: regexp.T s: String): Bool =
+    iter.equal(iter.map(regexp.findIter(r s) fun(m: regexp.Match): Int regexp.start(m 0))
+        iter.map(vector.iter(regexp.findAll(r s)) fun(m: regexp.Match): Int regexp.start(m 0))
+        fun(x: Int y: Int): Bool x is y);
+
+let words = regexp.compile("\\w+");
+let text = "the quick, brown fox; jumps over the lazy dog";
+print("findStringIter " <> strings(regexp.findStringIter(words text)));
+print("findIter" <> spans(regexp.findIter(words text)));
+print("empty matches" <> spans(regexp.findIter(regexp.compile("a*") "baaab")));
+print("none " <> strings(regexp.findStringIter(words ";;; ,")) <> " empty subject "
+    <> strings(regexp.findStringIter(regexp.compile("x*") "")));
+let cases = array of "\\w+" "a*" "" "(a|ab)(c|bcd)(d*)" "\\b" "[aeiou]" end;
+let subjects = array of "" "abcd" "baaab" "the quick, brown fox" "aaa" end;
+let var agree = true;
+for i = 0 upto {extent cases - 1} do
+    for j = 0 upto {extent subjects - 1} do
+        if not(sameMatches(regexp.compile(cases[i]) subjects[j])) then agree := false end
+    end
+end;
+check("findIter agrees with findAll" agree);
+print("first two " <> strings(iter.take(regexp.findStringIter(words text) 2)));
+print("long words " <> strings(iter.filter(regexp.findStringIter(words text) fun(w: String): Bool
+    stringOp.length(w) > 4)));
+let ms = regexp.findIter(words "one two");
+check("more repeated" iter.more(ms) andif iter.more(ms));
+print("then " <> regexp.group(iter.next(ms) 0) <> " " <> regexp.group(iter.next(ms) 0) <> " more "
+    <> conv.bool(iter.more(ms)));
+print("next past the end: " <> try regexp.group(iter.next(ms) 0) when iter.exhausted then "iter.exhausted" end);

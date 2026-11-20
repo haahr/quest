@@ -8,6 +8,7 @@ import
     vm = util/regexpMatch : util/RegexpMatch
     util/maybe : util/Maybe
     collections/vector : collections/Vector
+    util/iter : util/Iter
     sb = util/stringBuilder : util/StringBuilder
     collections/bitset : collections/Bitset
     stringOp = string : StringOp
@@ -228,34 +229,56 @@ export
      * Every match, replacing, and splitting, as Go's regexp does them
      * ====================================================================== *)
 
-    let findAll(r: T s: String): vector.T(Match) =
+    (* The matches are found as they are pulled: more searches from pos for
+     * the next one that is taken (not an empty match where the previous one
+     * ended) and holds it, in current, until next hands it out. A Match is
+     * not generic, so the slot needs no option: an empty one starts it *)
+    let findIter(r: T s: String): iter.T(Match) =
         begin
-            let all = vector.new(:Match)
             let n = stringOp.length(s)
-            let var pos = 0
-            let var previousEnd = ~1
-            while pos <= n do
-                let found = vm.search(r.program s pos false false true)
-                if maybe.isNone(:Array(Int) found) then
-                    pos := n + 1
-                else
-                    let slots = maybe.unwrap(:Array(Int) found)
-                    let var accept = true
-                    if slots[1] is pos then
-                        (* an empty match: not one where the last match ended *)
-                        if slots[0] is previousEnd then accept := false end
-                        pos := pos + 1
-                    else
-                        pos := slots[1]
-                    end
-                    previousEnd := slots[1]
-                    if accept then
-                        vector.append(:Match all tuple let subject = s let slots = slots let re = r end)
-                    end
-                end
+            let c = tuple
+                let var pos = 0
+                let var previousEnd = ~1
+                let var current = tuple let subject = s let slots = array of :Int end let re = r end
+                let var full = false
             end
-            all
+            let ready(): Bool =
+                begin
+                    while not(c.full) andif {c.pos <= n} do
+                        let found = vm.search(r.program s c.pos false false true)
+                        if maybe.isNone(:Array(Int) found) then
+                            c.pos := n + 1
+                        else
+                            let slots = maybe.unwrap(:Array(Int) found)
+                            let var accept = true
+                            if slots[1] is c.pos then
+                                (* an empty match: not one where the last match ended *)
+                                if slots[0] is c.previousEnd then accept := false end
+                                c.pos := c.pos + 1
+                            else
+                                c.pos := slots[1]
+                            end
+                            c.previousEnd := slots[1]
+                            if accept then
+                                c.current := tuple let subject = s let slots = slots let re = r end
+                                c.full := true
+                            end
+                        end
+                    end
+                    c.full
+                end
+            iter.make(ready fun(): Match
+                if ready() then
+                    c.full := false
+                    c.current
+                else
+                    raise iter.exhausted end
+                end)
         end
+
+    let findStringIter(r: T s: String): iter.T(String) = iter.map(findIter(r s) fun(m: Match): String group(m 0))
+
+    let findAll(r: T s: String): vector.T(Match) = vector.fromIter(findIter(r s))
 
     let isNameByte(b: Int): Bool =
         {{b >= 48} /\ {b <= 57}} \/ {{b >= 65} /\ {b <= 90}} \/ {{b >= 97} /\ {b <= 122}} \/ {b is 95}
