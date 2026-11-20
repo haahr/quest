@@ -134,6 +134,55 @@ measurement.
 
 ---
 
+## `maybe.T` is abstract, so every test of one in another module is a call
+
+**Problem.** `util/maybe` exports `T` abstract, though it is only `Option none some with val: A end end` and has no
+invariant to protect. Separate compilation inlines nothing across modules ([ir.md](ir.md) §8.6), so outside
+`util/maybe` every `isSome`, `isNone`, `unwrap`, and `some` is a call, where a visible type would let code write
+`o?some` and `o!some.val`, inline. Measured in [iter-plan.md](iter-plan.md) §2: a `filter` reaching its held element
+through `util/maybe` took 305 instructions per element, and the same stage with an option type of its own, 143.
+
+**Where to start.** Make `T` manifest in `lib/util/maybe.int.quest` (choosing the field's name for good, perhaps
+`value`, since it becomes public). Then:
+
+- see what the dynamic format's change touches: a type mentioning `maybe.T` is encoded today as an abstract node
+  ([dynamic.md](dynamic.md) §2.3) and would become an option type, so values externed before would not intern;
+- update the goldens that print the type;
+- rewrite the compiler's hottest call sites to the inline forms, and measure the driver build's instructions retired
+  (`/usr/bin/time -l`).
+
+Every importer rebuilds once, since the interface's fingerprint changes. Calls of `isSome` and the rest stay calls, so
+only code that uses `?some` and `!some` gains.
+
+**Done when.** `maybe.T` is public and the compiler's hot paths use the inline forms, with the measurement in
+benchmarks.md, or the idea is dropped with its measurement.
+
+---
+
+## Assigning through `opt!tag` compiles and changes nothing
+
+**Problem.** `opt!tag` is a new tuple, so assigning one of its `var` components changes only the copy
+([type-system.md](type-system.md) §6.8). When the assignment's target is the extraction itself, `s.slot!made.x := x`,
+the copy is discarded once the assignment is done, so the statement can have no effect. Both compilers accept it
+without a word. The way to change the option is a `case` binder, which is the payload itself
+(`when made with c then c.x := x`). Writing [iter-plan.md](iter-plan.md) decision 4, the extraction form compiled
+and ran, and the program printed `0` where it should have printed the sum.
+
+**Reproduce.** `let o = option made of Option none made with var x: Int end end with let var x = 1 end;`, then
+`o!made.x := 2;` and print `o!made.x`: it prints `1`.
+
+**Where to start.** The typecheckers' checks of an assignment's target, where they reject immutable tuple and record
+fields: `questlang/typechecker/control.mod.quest` ("Cannot assign to immutable tuple field") and
+`bootstrap/python/quest/typechecker/control.py`. Reject a target whose selection's base is an option extraction
+(directly, not through a variable bound to it, since `let t = o!made` then `t.x := 2` changes `t` as it should). The
+error should point to the `case` binder.
+
+**Done when.** Both compilers reject it with the same message, and an error test under `tests/errors` shows it, or
+the language is changed so that the assignment changes the option (§6.8 and every evaluator), and a golden shows
+that.
+
+---
+
 ## Single-word options as pointers: adopt the design or undo its rule
 
 **Problem.** The language compares single-word options by component ([extensions.md](extensions.md), "Options as
