@@ -1,0 +1,117 @@
+import writer = "writer" : Writer
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @8:45
+      let %2: String = prim <>(s, "\n") @8:59
+      let %3: Ok = call writer.putString(%1, %2) @8:28
+      return %3
+    }
+  }
+  let s.1: String = "" @10:29
+  let log: Tuple var s: String end = tuple(s.1) @10:11
+  funs {
+    fun note(w: String): Ok {
+      let %4: String = tuple_field(log, 0) @11:36
+      let %5: String = prim <>(%4, w) @11:36
+      store log.#0 := %5 @11:27
+      return ok
+    }
+  }
+  funs {
+    fun reset(): Ok {
+      store log.#0 := "" @12:19
+      return ok
+    }
+  }
+  let x: Int = 0 @14:27
+  let y: Int = 0 @14:59
+  let inner: Tuple var y: Int end = tuple(y) @14:41
+  let t: Tuple var x: Int inner: Tuple var y: Int end end = tuple(x, inner) @14:9
+  let r: Record var x: Int end = record(var x = 0) @15:9
+  let a: Array(Int) = array_rep(3, 0) @16:9
+  funs {
+    fun theTuple(): Tuple var x: Int inner: Tuple var y: Int end end {
+      do call note("t") @17:74
+      return t
+    }
+  }
+  funs {
+    fun theRecord(): Record var x: Int end {
+      do call note("r") @18:48
+      return r
+    }
+  }
+  funs {
+    fun theArray(): Array(Int) {
+      do call note("a") @19:36
+      return a
+    }
+  }
+  funs {
+    fun index(): Int {
+      do call note("i") @20:26
+      return 1
+    }
+  }
+  funs {
+    fun value(): Int {
+      do call note("v") @21:26
+      return 5
+    }
+  }
+  let %6: Tuple var x: Int inner: Tuple var y: Int end end = call theTuple() @23:1
+  let %7: Int = call value() @23:17
+  store %6.#0 := %7 @23:1
+  let %8: String = tuple_field(log, 0) @24:25
+  let %9: String = prim <>("tuple field ", %8) @24:7
+  do call print(%9) @24:1
+  do call reset() @25:1
+  let %10: Record var x: Int end = call theRecord() @26:1
+  let %11: Int = call value() @26:18
+  store %10.x := %11 @26:1
+  let %12: String = tuple_field(log, 0) @27:26
+  let %13: String = prim <>("record field ", %12) @27:7
+  do call print(%13) @27:1
+  do call reset() @28:1
+  let %14: Tuple var x: Int inner: Tuple var y: Int end end = call theTuple() @29:1
+  let %15: Tuple var y: Int end = tuple_field(%14, 1) @29:1
+  let %16: Int = call value() @29:23
+  store %15.#0 := %16 @29:1
+  let %17: String = tuple_field(log, 0) @30:26
+  let %18: String = prim <>("nested field ", %17) @30:7
+  do call print(%18) @30:1
+  do call reset() @31:1
+  let %19: Array(Int) = call theArray() @32:1
+  let %20: Int = call index() @32:12
+  let %21: Int = call value() @32:24
+  store %19[%20] := %21 @32:1
+  let %22: String = tuple_field(log, 0) @33:27
+  let %23: String = prim <>("array element ", %22) @33:7
+  do call print(%23) @33:1
+  do call reset() @36:1
+  funs {
+    fun boom(): Int {
+      do call note("v") @37:25
+      let %24: Exception = member writer.error @37:41
+      raise %24 @37:35
+    }
+  }
+  let %25: Exception = member writer.error @38:33
+  try catching (%25) {
+    let %26: Tuple var x: Int inner: Tuple var y: Int end end = call theTuple() @38:5
+    let %27: Int = call boom() @38:21
+    store %26.#0 := %27 @38:5
+  } handle (e: Exception) {
+    let %28: Bool = prim is(e, %25) @38:1
+    if %28 { @38:1
+      do call note("!") @38:51
+    } else {
+      reraise e @38:1
+    }
+  }
+  let %29: String = tuple_field(log, 0) @39:27
+  let %30: String = prim <>("raising value ", %29) @39:7
+  do call print(%30) @39:1
+}
+

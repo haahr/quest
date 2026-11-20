@@ -517,9 +517,10 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             return OK_VALUE
 
         case TypedAssign(target=tgt, value=val, offset=offset):
-            rhs_val = eval_expr(val, env)
+            # The target is evaluated before the value, as compiled code does
             match tgt:
                 case TypedVar(name=name):
+                    rhs_val = eval_expr(val, env)
                     cell = env.lookup(name, offset=offset)
                     if isinstance(cell, QRef):
                         cell.assign(rhs_val)
@@ -530,6 +531,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                     rec_val = eval_expr(rec_expr, env)
                     while isinstance(rec_val, QRef):
                         rec_val = rec_val.deref()
+                    rhs_val = eval_expr(val, env)
                     if isinstance(rec_val, QRecord):
                         field_cell = rec_val.get(field)
                         if isinstance(field_cell, QRef):

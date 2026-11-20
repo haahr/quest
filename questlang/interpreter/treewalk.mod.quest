@@ -667,15 +667,19 @@ export
                             else ok
                         end
                     else
-                        let rhs = evalExpr(x.value f)
+                        (* The target is evaluated before the value, as
+                         * compiled code does *)
                         case x.target.form
                             when exprVar with v then
+                                let rhs = evalExpr(x.value f)
                                 case lookup(f v.name offset)
                                     when vRef with r then model.assign(r.r rhs)
                                     else assignName(f v.name rhs offset)
                                 end
                             when exprSelect with s then
-                                case unwrapRefs(evalExpr(s.target f))
+                                let target = unwrapRefs(evalExpr(s.target f))
+                                let rhs = evalExpr(x.value f)
+                                case target
                                     when vRecord with r then
                                         case hashMap.find(r.r.fields s.field)
                                             when vRef with cell then model.assign(cell.r rhs)
