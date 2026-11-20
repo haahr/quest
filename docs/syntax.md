@@ -129,7 +129,7 @@ To enforce explicit order of operations, sub-expressions are grouped with braces
 value are an application, not a grouping.
 
 Quest does not overload operators across types; distinct operators exist for different types (Cardelli §4.2):
-- **Integer arithmetic:** `+`, `-`, `*`, `/`, `%` / `mod`
+- **Integer arithmetic:** `+`, `-`, `*`, `/`, `%` (also the predefined function `mod(a b)`, which is not infix)
 - **Integer relations:** `<`, `<=`, `>`, `>=`
 - **Real arithmetic:** `++`, `--`, `**`, `//`, `^^`
 - **Real relations:** `<<`, `<<=`, `>>`, `>>=`

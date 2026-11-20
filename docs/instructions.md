@@ -141,6 +141,10 @@ has traps that cost time:
 
 - **Infix operators share one precedence and associate to the right:** `a * 10 + b` is `a * (10 + b)`, and
   `i % 3 is 0` is `i % (3 is 0)`. Group with **braces**: `{a * 10} + b`. Parentheses are only for calls.
+- **The infix remainder is `%`.** `mod` is a word, and a word is never infix: it names a predefined function,
+  `mod(a b)`. In a block, `u mod 256` is three expressions in a row, `u`, the function `mod`, and `256`, so it
+  compiles, and its value is `256`. Only a bad value later shows it (27f75a29 fixed one in the wasm runtime that raised
+  `ascii.error` on every `\u` escape).
 - **Equality is `is` and `isnot`;** `=` appears only in bindings (`let x = ...`, `record a = 1 end`). `is` on
   tuples, records, and arrays is identity.
 - **Identifiers are letters and digits only** (no underscores), and so are the directory and file names of
