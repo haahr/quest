@@ -10,6 +10,7 @@ import
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
+    iterLib = util/iter : util/Iter
     word: Word
 export
     Let T = Fun(A::TYPE) Tuple
@@ -157,5 +158,14 @@ export
             isSubset(s1 s2)
         else
             false
+        end
+
+    let iter(A::TYPE)(s: T(A)): iterLib.T(A) = hashMap.keyIter(s.map)
+
+    let fromIter(A::TYPE)(it: iterLib.T(A) equal: All(a1: A a2: A) Bool hash: All(a: A) word.T): T(A) =
+        begin
+            let s = new(:A equal hash)
+            while iterLib.more(it) do insert(s iterLib.next(it)) end
+            s
         end
 end

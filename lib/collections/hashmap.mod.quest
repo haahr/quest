@@ -35,6 +35,7 @@ import
     util/hash : util/Hash
     util/maybe : util/Maybe
     collections/vector : collections/Vector
+    iterLib = util/iter : util/Iter
     word: Word
 export
     let emptySlot: Int = ~1
@@ -441,4 +442,52 @@ export
                     end
                     acc
                 end)
+
+    (* An iterator of read(t i) for each live entry i of m's table, in order.
+     * Its position is the dense index c.i; more moves it past deleted
+     * entries to a live one, if there is one, so that more stays idempotent
+     * and next only reads and steps. It reads the table through a case
+     * binder, the payload itself, where !full would copy it *)
+    let walker(K::TYPE V::TYPE R::TYPE)(m: T(K V) read: All(t: Table(K V) i: Int) R): iterLib.T(R) =
+        begin
+            let c = tuple let var i = 0 end
+            let ready(): Bool =
+                case m.state
+                    when full with x then
+                        let t = x.table
+                        while {c.i < t.used} andif not(live(:K :V t c.i)) do c.i := c.i + 1 end
+                        c.i < t.used
+                    when empty then false
+                end
+            iterLib.make(ready fun(): R
+                if ready() then
+                    case m.state
+                        when full with x then
+                            let r = read(x.table c.i)
+                            c.i := c.i + 1
+                            r
+                        when empty then raise iterLib.exhausted end
+                    end
+                else
+                    raise iterLib.exhausted end
+                end)
+        end
+
+    let entryIter(K::TYPE V::TYPE)(m: T(K V)): iterLib.T(Entry(K V)) =
+        walker(m fun(t: Table(K V) i: Int): Entry(K V) tuple let key = t.keys[i] let value = t.values[i] end)
+
+    let keyIter(K::TYPE V::TYPE)(m: T(K V)): iterLib.T(K) = walker(m fun(t: Table(K V) i: Int): K t.keys[i])
+
+    let valueIter(K::TYPE V::TYPE)(m: T(K V)): iterLib.T(V) = walker(m fun(t: Table(K V) i: Int): V t.values[i])
+
+    let fromEntries(K::TYPE V::TYPE)(it: iterLib.T(Entry(K V)) equal: All(k1: K k2: K) Bool hash: All(k: K) word.T)
+        : T(K V) =
+        begin
+            let m = new(:K :V equal hash)
+            while iterLib.more(it) do
+                let e = iterLib.next(it)
+                insert(m e.key e.value)
+            end
+            m
+        end
 end

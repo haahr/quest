@@ -1,0 +1,150 @@
+(* Standard library: the collections' iterators and builders (docs/iter-plan.md
+ * step 2): each collection's iterators against its forEach, through stages;
+ * the B-tree's cursors over a tree of several levels, from and in ranges,
+ * against forEachInRange; a hash map's iterators past deleted entries; a
+ * sorted collection changed while an iterator is in use; and the builders *)
+
+(* @timeout: 120.0 *)
+
+import util/iter : util/Iter;
+import collections/vector : collections/Vector;
+import collections/deque : collections/Deque;
+import collections/hashMap : collections/HashMap;
+import collections/hashSet : collections/HashSet;
+import collections/sortedMap : collections/SortedMap;
+import collections/sortedSet : collections/SortedSet;
+import collections/heap : collections/Heap;
+import collections/bitset : collections/Bitset;
+import util/hash : util/Hash;
+import util/maybe : util/Maybe;
+import stringOp = string : StringOp;
+import writer: Writer;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let check(what: String holds: Bool): Ok = print(what <> ": " <> conv.bool(holds));
+let ints(it: iter.T(Int)): String =
+    begin
+        let var text = "["
+        while iter.more(it) do text := text <> " " <> conv.int(iter.next(it)) end
+        text <> " ]"
+    end;
+let strings(it: iter.T(String)): String =
+    begin
+        let var text = "["
+        while iter.more(it) do text := text <> " " <> iter.next(it) end
+        text <> " ]"
+    end;
+let compareInt(x: Int y: Int): Int = if x < y then ~1 elsif x > y then 1 else 0 end;
+let intEqual(x: Int y: Int): Bool = x is y;
+let stringEqual(x: String y: String): Bool = stringOp.equal(x y);
+let err(what: String f: All() String): Ok = print(what <> ": "
+    <> try f() when iter.exhausted then "iter.exhausted" when sortedMap.error then "sortedMap.error" end);
+
+(* 1. Vectors and deques *)
+let v = vector.fromArray(array of 3 1 4 1 5 9 2 6 end);
+print("vector " <> ints(vector.iter(v)) <> " reversed " <> ints(vector.iterReversed(v)));
+print("vector empty " <> ints(vector.iter(vector.new(:Int))) <> " " <> ints(vector.iterReversed(vector.new(:Int))));
+let w = vector.fromIter(iter.map(vector.iter(v) fun(x: Int): Int 10 * x));
+vector.appendIter(w iter.range(0 3));
+print("fromIter, appendIter " <> ints(vector.iter(w)) <> " length " <> conv.int(vector.length(w)));
+let d = deque.new(:Int);
+for i = 1 upto 5 do deque.pushBack(d i) deque.pushFront(d {0 - i}) end;
+deque.popFront(d);
+print("deque " <> ints(deque.iter(d)));
+print("deque fromIter " <> ints(deque.iter(deque.fromIter(iter.rangeBy(0 20 5)))));
+err("vector next past the end" fun(): String begin
+    let it = vector.iter(vector.fromArray(array of 1 end))
+    iter.next(it)
+    conv.int(iter.next(it))
+end);
+
+(* 2. Hash maps and sets, in insertion order, past deleted entries *)
+let m = hashMap.new(:String :Int stringEqual hash.string);
+let names = array of "one" "two" "three" "four" "five" "six" "seven" "eight" "nine" "ten" end;
+for i = 0 upto {extent names - 1} do hashMap.insert(m names[i] {i + 1}) end;
+hashMap.delete(m "one");
+hashMap.delete(m "four");
+hashMap.delete(m "ten");
+print("keyIter " <> strings(hashMap.keyIter(m)));
+print("valueIter " <> ints(hashMap.valueIter(m)));
+let shownEntries(it: iter.T(hashMap.Entry(String Int))): String =
+    begin
+        let var text = ""
+        while iter.more(it) do
+            let e = iter.next(it)
+            text := text <> " " <> e.key <> "=" <> conv.int(e.value)
+        end
+        text
+    end;
+print("entryIter" <> shownEntries(hashMap.entryIter(m)));
+let keys = hashMap.keyIter(m);
+check("more repeated past deleted entries" iter.more(keys) andif iter.more(keys) andif stringOp.equal(iter.next(keys) "two"));
+print("empty map " <> strings(hashMap.keyIter(hashMap.new(:String :Int stringEqual hash.string))));
+let rebuilt = hashMap.fromEntries(iter.filter(hashMap.entryIter(m) fun(e: hashMap.Entry(String Int)): Bool
+    {e.value % 2} is 0) stringEqual hash.string);
+print("fromEntries" <> shownEntries(hashMap.entryIter(rebuilt)));
+let s = hashSet.fromIter(iter.map(iter.range(0 12) fun(x: Int): Int x % 5) intEqual hash.int);
+print("hashSet " <> ints(hashSet.iter(s)) <> " size " <> conv.int(hashSet.size(s)));
+
+(* 3. Sorted maps and sets: a tree of three levels (nodes hold 15 to 31
+ * keys), walked whole, from a key, and in ranges, against forEachInRange *)
+let sm = sortedMap.new(:Int :Int compareInt);
+for i = 0 upto 1099 do sortedMap.insert(sm {{i * 7} % 1100} i) end;
+for i = 0 upto 99 do sortedMap.delete(sm {3 * i}) end;
+let walked(lo: Int hi: Int): iter.T(Int) =
+    begin
+        let found = vector.new(:Int)
+        sortedMap.forEachInRange(sm lo hi fun(k: Int x: Int): Ok vector.append(found k))
+        vector.iter(found)
+    end;
+let keysOf(it: iter.T(sortedMap.Entry(Int Int))): iter.T(Int) = iter.map(it fun(e: sortedMap.Entry(Int Int)): Int e.key);
+check("keyIter in order" iter.equal(sortedMap.keyIter(sm) walked(~1 1100) intEqual));
+check("entryIter" iter.equal(keysOf(sortedMap.entryIter(sm)) walked(~1 1100) intEqual));
+check("valueIter" iter.equal(sortedMap.valueIter(sm) iter.map(sortedMap.keyIter(sm) fun(k: Int): Int
+    maybe.unwrap(sortedMap.get(sm k))) intEqual));
+let var rangesAgree = true;
+for lo = ~5 upto 1104 do
+    if {lo % 157} is 0 then
+        for width = 0 upto 6 do
+            if not(iter.equal(keysOf(sortedMap.entryIterInRange(sm lo {lo + {width * 61}})) walked(lo {lo + {width * 61}})
+                intEqual)) then rangesAgree := false end
+        end
+        if not(iter.equal(keysOf(sortedMap.entryIterFrom(sm lo)) walked(lo 2000) intEqual)) then
+            rangesAgree := false
+        end
+    end
+end;
+check("entryIterInRange and entryIterFrom agree with forEachInRange" rangesAgree);
+print("count " <> conv.int(iter.count(sortedMap.keyIter(sm))) <> " size " <> conv.int(sortedMap.size(sm)));
+print("in range 10 to 40 " <> ints(keysOf(sortedMap.entryIterInRange(sm 10 40))));
+print("from 1090 " <> ints(keysOf(sortedMap.entryIterFrom(sm 1090))));
+print("empty range " <> ints(keysOf(sortedMap.entryIterInRange(sm 40 10))));
+print("empty map " <> ints(sortedMap.keyIter(sortedMap.new(:Int :Int compareInt))));
+let copied = sortedMap.fromEntries(sortedMap.entryIterInRange(sm 100 200) compareInt);
+check("fromEntries" iter.equal(sortedMap.keyIter(copied) walked(100 200) intEqual));
+err("changed during a walk" fun(): String begin
+    let it = sortedMap.keyIter(sm)
+    iter.next(it)
+    sortedMap.insert(sm 5000 0)
+    conv.int(iter.next(it))
+end);
+let ss = sortedSet.fromIter(iter.ofArray(array of 5 3 9 1 7 3 end) compareInt);
+print("sortedSet " <> ints(sortedSet.iter(ss)) <> " from 4 " <> ints(sortedSet.iterFrom(ss 4)) <> " in 3 to 9 "
+    <> ints(sortedSet.iterInRange(ss 3 9)));
+
+(* 4. Heaps and bitsets *)
+let h = heap.fromIter(iter.ofArray(array of 5 3 9 1 7 end) compareInt);
+print("heap iter count " <> conv.int(iter.count(heap.iter(h))) <> " sum " <> conv.int(iter.sumInt(heap.iter(h))));
+print("heap drain " <> ints(heap.drain(h)) <> " then empty " <> conv.bool(heap.empty(h)));
+let b = bitset.fromIter(200 iter.rangeBy(3 200 17));
+print("bitset " <> ints(bitset.iter(b)));
+print("bitset empty " <> ints(bitset.iter(bitset.new(70))));
+let bits = bitset.iter(b);
+check("bitset more repeated" iter.more(bits) andif iter.more(bits) andif {iter.next(bits) is 3});
+
+(* 5. One walk over any of them *)
+let total(it: iter.T(Int)): Int = iter.sumInt(it);
+print("totals " <> conv.int(total(vector.iter(v))) <> " " <> conv.int(total(deque.iter(d))) <> " "
+    <> conv.int(total(hashSet.iter(s))) <> " " <> conv.int(total(sortedSet.iter(ss))) <> " "
+    <> conv.int(total(iter.take(sortedMap.keyIter(sm) 10))) <> " " <> conv.int(total(bitset.iter(b))));

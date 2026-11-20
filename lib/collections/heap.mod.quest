@@ -5,6 +5,7 @@
 module heap : Heap
 import
     collections/vector : collections/Vector
+    iterLib = util/iter : util/Iter
 export
     let error: Exception = exception error: Ok end
 
@@ -108,4 +109,12 @@ export
 
     let clear(A::TYPE)(h: T(A)): Ok = vector.clear(:A h.items)
     let elements(A::TYPE)(h: T(A)): vector.T(A) = vector.copy(:A h.items)
+
+    let iter(A::TYPE)(h: T(A)): iterLib.T(A) = vector.iter(h.items)
+
+    let drain(A::TYPE)(h: T(A)): iterLib.T(A) =
+        iterLib.make(fun(): Bool not(empty(h)) fun(): A if empty(h) then raise iterLib.exhausted end else pop(h) end)
+
+    let fromIter(A::TYPE)(it: iterLib.T(A) compare: All(a: A b: A) Int): T(A) =
+        fromVector(vector.fromIter(it) compare)
 end

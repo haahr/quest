@@ -4,6 +4,7 @@
 module deque : Deque
 import
     collections/vector : collections/Vector
+    iterLib = util/iter : util/Iter
 export
     let error: Exception = exception error: Ok end
 
@@ -147,5 +148,25 @@ export
                 action(d.data[slot(:A d i)])
                 if d.changes isnot changes then raise error end end
             end
+        end
+
+    let iter(A::TYPE)(d: T(A)): iterLib.T(A) =
+        begin
+            let c = tuple let var i = 0 end
+            iterLib.make(fun(): Bool {c.i < d.count} fun(): A
+                if c.i < d.count then
+                    let x = d.data[slot(:A d c.i)]
+                    c.i := c.i + 1
+                    x
+                else
+                    raise iterLib.exhausted end
+                end)
+        end
+
+    let fromIter(A::TYPE)(it: iterLib.T(A)): T(A) =
+        begin
+            let d = new(:A)
+            while iterLib.more(it) do pushBack(d iterLib.next(it)) end
+            d
         end
 end

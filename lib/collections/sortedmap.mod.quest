@@ -6,6 +6,7 @@ import
     util/maybe : util/Maybe
     collections/vector : collections/Vector
     collections/bTree : collections/BTree
+    iterLib = util/iter : util/Iter
 export
     Let T = Fun(K::TYPE V::TYPE) bTree.T(K V)
     Let Entry = Fun(K::TYPE V::TYPE) Tuple key: K value: V end
@@ -102,5 +103,32 @@ export
             let c = bTree.new(:K :V bTree.compareOf(:K :V m))
             forEach(:K :V m fun(k: K v: V): Ok if pred(k v) then let added = bTree.insert(:K :V c k v) end)
             c
+        end
+
+    let entry(K::TYPE V::TYPE)(k: K v: V): Entry(K V) = tuple let key = k let value = v end
+
+    let entryIter(K::TYPE V::TYPE)(m: T(K V)): iterLib.T(Entry(K V)) =
+        bTree.cursor(m maybe.none(:K) maybe.none(:K) entry(:K :V))
+
+    let entryIterFrom(K::TYPE V::TYPE)(m: T(K V) lo: K): iterLib.T(Entry(K V)) =
+        bTree.cursor(m maybe.some(lo) maybe.none(:K) entry(:K :V))
+
+    let entryIterInRange(K::TYPE V::TYPE)(m: T(K V) lo: K hi: K): iterLib.T(Entry(K V)) =
+        bTree.cursor(m maybe.some(lo) maybe.some(hi) entry(:K :V))
+
+    let keyIter(K::TYPE V::TYPE)(m: T(K V)): iterLib.T(K) =
+        bTree.cursor(m maybe.none(:K) maybe.none(:K) fun(k: K v: V): K k)
+
+    let valueIter(K::TYPE V::TYPE)(m: T(K V)): iterLib.T(V) =
+        bTree.cursor(m maybe.none(:K) maybe.none(:K) fun(k: K v: V): V v)
+
+    let fromEntries(K::TYPE V::TYPE)(it: iterLib.T(Entry(K V)) compare: All(a: K b: K) Int): T(K V) =
+        begin
+            let m = bTree.new(:K :V compare)
+            while iterLib.more(it) do
+                let e = iterLib.next(it)
+                bTree.insert(m e.key e.value)
+            end
+            m
         end
 end

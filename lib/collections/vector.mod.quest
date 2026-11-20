@@ -20,6 +20,7 @@
 module vector : Vector
 import
     util/maybe : util/Maybe
+    iterLib = util/iter : util/Iter
 export
     (* Capacity floor for non-empty backing storage *)
     let floorSize: Int = 4
@@ -318,4 +319,42 @@ export
                 end
                 res
             end)
+    (* Iterators, which read v's length and data at each step *)
+
+    let iter(A::TYPE)(v: T(A)): iterLib.T(A) =
+        begin
+            let c = tuple let var i = 0 end
+            iterLib.make(fun(): Bool {c.i < v.length} fun(): A
+                if c.i < v.length then
+                    let x = v.data[c.i]
+                    c.i := c.i + 1
+                    x
+                else
+                    raise iterLib.exhausted end
+                end)
+        end
+
+    let iterReversed(A::TYPE)(v: T(A)): iterLib.T(A) =
+        begin
+            let c = tuple let var i = v.length - 1 end
+            let ready(): Bool = {c.i >= 0} andif {c.i < v.length}
+            iterLib.make(ready fun(): A
+                if ready() then
+                    let x = v.data[c.i]
+                    c.i := c.i - 1
+                    x
+                else
+                    raise iterLib.exhausted end
+                end)
+        end
+
+    let appendIter(A::TYPE)(v: T(A) it: iterLib.T(A)): Ok =
+        while iterLib.more(it) do append(v iterLib.next(it)) end
+
+    let fromIter(A::TYPE)(it: iterLib.T(A)): T(A) =
+        begin
+            let v = new(:A)
+            appendIter(v it)
+            v
+        end
 end

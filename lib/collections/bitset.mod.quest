@@ -5,6 +5,7 @@
 module bitset : Bitset
 import
     word: Word
+    iterLib = util/iter : util/Iter
 export
     Let T = Tuple size: Int words: Array(word.T) end
 
@@ -146,5 +147,25 @@ export
                 i := next(s i + 1)
             end
             result
+        end
+
+    (* The least integer of s at least c.from is the next one, if any *)
+    let iter(s: T): iterLib.T(Int) =
+        begin
+            let c = tuple let var from = 0 end
+            iterLib.make(fun(): Bool {next(s c.from) >= 0} fun(): Int
+                begin
+                    let i = next(s c.from)
+                    if i < 0 then raise iterLib.exhausted end end
+                    c.from := i + 1
+                    i
+                end)
+        end
+
+    let fromIter(size: Int it: iterLib.T(Int)): T =
+        begin
+            let s = new(size)
+            while iterLib.more(it) do insert(s iterLib.next(it)) end
+            s
         end
 end

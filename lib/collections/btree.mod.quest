@@ -8,6 +8,8 @@
 module bTree : BTree
 import
     util/maybe : util/Maybe
+    collections/vector : collections/Vector
+    iterLib = util/iter : util/Iter
 export
     let error: Exception = exception error: Ok end
     Let Entry = Fun(K::TYPE V::TYPE) Tuple key: K value: V end
@@ -473,5 +475,64 @@ export
                     end
                 end
             if maybe.isSome(:Node(K V) t.root) then visit(maybe.unwrap(:Node(K V) t.root)) end
+        end
+
+    (* ======================================================================
+     * Cursors
+     * ====================================================================== *)
+
+    (* A node on a cursor's path from the root, and the index of its next key
+     * to give: in a leaf, that key; in an inner node, the key after the
+     * subtree of children[i], which is given first *)
+    Let Frame = Fun(K::TYPE V::TYPE) Tuple x: Node(K V) var i: Int end
+
+    (* Pushes x and the leftmost path below it, each node's first key at
+     * least lo (if given) next *)
+    let descend(K::TYPE V::TYPE)(t: T(K V) path: vector.T(Frame(K V)) x: Node(K V) lo: maybe.T(K)): Ok =
+        begin
+            let var at = x
+            let var going = true
+            while going do
+                let i = if maybe.isNone(lo) then 0 else lowerBound(t at maybe.unwrap(lo)) end
+                vector.append(path tuple let x = at let var i = i end)
+                if isLeaf(at) then going := false else at := at.children[i] end
+            end
+        end
+
+    (* Pops the frames whose keys are all given, so that the top's i is the
+     * next key, if there is one *)
+    let settle(K::TYPE V::TYPE)(path: vector.T(Frame(K V))): Ok =
+        while not(vector.empty(path)) andif {vector.last(path).i >= vector.last(path).x.n} do vector.pop(path) end
+
+    (* The walk's order, kept as a path of frames from the root (at most the
+     * tree's height) where walk recurses *)
+    let cursor(K::TYPE V::TYPE R::TYPE)(t: T(K V) lo: maybe.T(K) hi: maybe.T(K) read: All(k: K v: V) R)
+        : iterLib.T(R) =
+        begin
+            let changes = t.changes
+            let path = vector.new(:Frame(K V))
+            if maybe.isSome(t.root) then
+                descend(t path maybe.unwrap(t.root) lo)
+                settle(path)
+            end
+            let ready(): Bool =
+                begin
+                    if t.changes isnot changes then raise error end end
+                    not(vector.empty(path)) andif begin
+                        let f = vector.last(path)
+                        maybe.isNone(hi) orif {t.compare(f.x.keys[f.i] maybe.unwrap(hi)) < 0}
+                    end
+                end
+            iterLib.make(ready fun(): R
+                if ready() then
+                    let f = vector.last(path)
+                    let r = read(f.x.keys[f.i] f.x.values[f.i])
+                    f.i := f.i + 1
+                    if not(isLeaf(f.x)) then descend(t path f.x.children[f.i] maybe.none(:K)) end
+                    settle(path)
+                    r
+                else
+                    raise iterLib.exhausted end
+                end)
         end
 end

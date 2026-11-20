@@ -4,6 +4,7 @@ interface HashMap
 import
     util/maybe : util/Maybe
     collections/vector : collections/Vector
+    iterLib = util/iter : util/Iter
     word: Word
 export
     (* The polymorphic hash map type constructor *)
@@ -98,4 +99,17 @@ export
     filterMap: All(K::TYPE V::TYPE W::TYPE)
         All(m: T(K V) f: All(k: K v: V) maybe.T(W))
         T(K W)
+
+    (* Iterators of the entries (a record each), keys, and values, in
+     * insertion order; each reads m as it is at each step (docs/libraries.md,
+     * util/iter) *)
+    entryIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(Entry(K V))
+    keyIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(K)
+    valueIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(V)
+
+    (* A new map, with equality and hash, of the entries of it, in its order; a
+     * key repeated keeps its last value *)
+    fromEntries: All(K::TYPE V::TYPE)
+        All(it: iterLib.T(Entry(K V)) equal: All(k1: K k2: K) Bool hash: All(k: K) word.T)
+        T(K V)
 end

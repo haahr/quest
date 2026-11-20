@@ -2,6 +2,7 @@ interface SortedMap
 import
     util/maybe : util/Maybe
     collections/vector : collections/Vector
+    iterLib = util/iter : util/Iter
 export
     (* A map whose keys are in the order its comparison gives *)
     T::ALL(K::TYPE) ALL(V::TYPE) TYPE
@@ -58,4 +59,19 @@ export
      * unchanged *)
     map: All(K::TYPE V::TYPE W::TYPE) All(m: T(K V) f: All(k: K v: V) W) T(K W)
     filter: All(K::TYPE V::TYPE) All(m: T(K V) pred: All(k: K v: V) Bool) T(K V)
+
+    (* ---- Iterators, in key order, raising error if a key is added or
+     * removed while one is in use (docs/libraries.md, util/iter) *)
+
+    (* The entries (a record each), all, from key lo, included, and from lo,
+     * included, to hi, excluded *)
+    entryIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(Entry(K V))
+    entryIterFrom: All(K::TYPE V::TYPE) All(m: T(K V) lo: K) iterLib.T(Entry(K V))
+    entryIterInRange: All(K::TYPE V::TYPE) All(m: T(K V) lo: K hi: K) iterLib.T(Entry(K V))
+    keyIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(K)
+    valueIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(V)
+
+    (* A new map, ordered by compare, of the entries of it; a key repeated
+     * keeps its last value *)
+    fromEntries: All(K::TYPE V::TYPE) All(it: iterLib.T(Entry(K V)) compare: All(a: K b: K) Int) T(K V)
 end

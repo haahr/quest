@@ -6,6 +6,7 @@ import
     util/maybe : util/Maybe
     collections/vector : collections/Vector
     collections/bTree : collections/BTree
+    iterLib = util/iter : util/Iter
 export
     Let T = Fun(A::TYPE) bTree.T(A Ok)
     let error = bTree.error
@@ -86,4 +87,17 @@ export
         end
     let equal(A::TYPE)(s1: T(A) s2: T(A)): Bool = {size(:A s1) is size(:A s2)} andif isSubset(:A s1 s2)
     let filter(A::TYPE)(s: T(A) pred: All(elem: A) Bool): T(A) = kept(:A s pred)
+
+    let key(A::TYPE)(a: A u: Ok): A = a
+
+    let iter(A::TYPE)(s: T(A)): iterLib.T(A) = bTree.cursor(s maybe.none(:A) maybe.none(:A) key(:A))
+    let iterFrom(A::TYPE)(s: T(A) lo: A): iterLib.T(A) = bTree.cursor(s maybe.some(lo) maybe.none(:A) key(:A))
+    let iterInRange(A::TYPE)(s: T(A) lo: A hi: A): iterLib.T(A) = bTree.cursor(s maybe.some(lo) maybe.some(hi) key(:A))
+
+    let fromIter(A::TYPE)(it: iterLib.T(A) compare: All(a: A b: A) Int): T(A) =
+        begin
+            let s = bTree.new(:A :Ok compare)
+            while iterLib.more(it) do bTree.insert(s iterLib.next(it) ok) end
+            s
+        end
 end
