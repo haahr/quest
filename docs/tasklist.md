@@ -183,19 +183,79 @@ that.
 
 ---
 
-## Single-word options as pointers: adopt the design or undo its rule
+## Undo the single-word rule for options, and simplify what it left
 
 **Problem.** The language compares single-word options by component ([extensions.md](extensions.md), "Options as
-Values") so that they could be held as nullable pointers, but that representation was deferred (2026-11-01): what
-still allocates in the suite is options of `Int`, which it would leave boxed. Until it is adopted, the rule costs a
-comparison of components and buys nothing.
+Values"): `maybe.some(:String)(s) is maybe.some(:String)(s)` is true. The rule was adopted so that such options could be
+held as nullable pointers ([option-values.md](option-values.md)), and that representation will not be built (decided
+2026-11-19). Measured 2026-11-19 by counting the allocations of a build of the compiler (`QUEST_GC_CHECK=allocations`,
+`-j 1`): `maybe.some` makes 84.7M of the separate build's 1,114M allocations, and none would go, since in a separate
+build every `maybe.some` is a call into another unit, which keeps the boxed layout. In a whole-program build 72.6M of
+972M remain, about 85% of them holding pointers; only there would the representation pay. Without it the rule costs:
+`is` on such an option compares tags and then components (`quest_option_is`, through the descriptor's cases), the
+identity hash hashes the component, and the result depends on the static type `is` is applied at, which every
+compiler, interpreter, and runtime must get right.
 
-**Where to start.** [option-values.md](option-values.md): its design, and what adopting or dropping it takes.
+The rule for cases without components (a shared constant compared by its case) stays: it is what removed most of the
+options' allocations ([benchmarks.md](benchmarks.md) §8).
 
-**Done when.** The representation is built, or the single-word `is` rule is undone in both compilers, the runtime,
-the interpreters, the tests, and extensions.md, and option-values.md is deleted. Variants follow options' rule
-(extensions.md, "Variants as Values", `quest_variant_is`): if the rule is undone, so is theirs, and compiled variants,
-two words with no location, need a box or `is` on them is refused.
+**Where to start.** `OptionIdentity`'s `single` and `component` (`questlang/types/reduce`, the bootstrap's
+`types/reduce.py`) and their readers:
+
+- the interpreters' `is` and identity hash: `questlang/interpreter/builtins` and `primitives`, the bootstrap's
+  `interpreter/builtins.py` and `values/model.py`;
+- describe's choice of the runtime's comparison: `questlang/ir/describe`, the bootstrap's `ir/describe.py`;
+- the runtimes: `quest_single_word_case` and its uses in `quest_option_is` and `quest_option_identity_hash`
+  (`runtime/quest_views.c`, `quest_runtime.h`), and `singleWordCase` in `runtime/wasm/core`;
+- the wasm backend's inline comparison (`questlang/wasm/codegen`, the `singleWord` case of options' `is`);
+- the tests: `language/option_identity` (sections 5 and 6), `language/dynamic_runtime_ports`, and the goldens they
+  change in every mode;
+- the documents: extensions.md's bullet and closing paragraph, c-representation.md §5.3's `quest_option_is`,
+  runtime-design.md's identity bullets, wasm.md's hashing line, README.md's link, and option-values.md, deleted.
+
+Then simplify: with no single case, `OptionIdentity` is the set of cases without components; `quest_option_is` is a
+pointer comparison after unproxying, or a tag comparison for a case without components; and the hash is the
+address's, or the case's.
+
+**Decide first: variants.** Variants compare by their case and value (extensions.md, "Variants as Values",
+`quest_variant_is`), justified as options' single-word rule, which that section says they follow. Their own reason
+stands without it: a compiled variant is two words with no location, so identity cannot be compared at all. Either
+keep the variants' rule, rewording extensions.md to give it that reason alone, or withdraw it too and give compiled
+variants a box (or refuse `is` on them).
+
+**Done when.** Both compilers, both interpreters, and both runtimes compare a single-word option's `some`s by
+identity, the code above is simplified, the variants' question is settled, option-values.md is deleted, and
+`tools/check --all` passes (an ABI change if the runtime's declarations change).
+
+---
+
+## Escape analysis gives up on an allocation merged with a constant
+
+**Problem.** `ssa/passes/escape` ([ssa.md](ssa.md) §4.2) treats a block parameter bound to an allocation on some
+edges and to anything else on others as an escape. That is `maybe`'s commonest form: `hashMap.get` returns
+`some(v)` on one path and the shared `none` constant on the other, and the caller tests and unwraps the result.
+Once inlining brings producer and consumer into one function, the box still survives. Measured 2026-11-19 in a
+whole-program build of the compiler building itself (`QUEST_GC_CHECK=allocations`, `-j 1`, the frame above the
+allocation recorded): inlining took `maybe.some`'s boxes only from 84.7M to 72.6M (7.5% of 972M allocations). Some
+of those are returned or passed to a call, and they stay. How many are merged with `none` and then only read is not
+yet counted: the likely ones are `hashMap.get`'s results tested where they are made, as in `keys.intern`,
+`shapeIn`, and `synthKind`. Options of `Int` among them would go too, which a nullable-pointer representation would
+have left boxed.
+
+**Where to start.** `questlang/ssa/passes/escape` and `proxyFold`. Accept as one of an allocation's pointers a
+parameter whose every taken edge binds it to one of the allocation's pointers or to a constant object's address (a
+case without components, which is a symbol). Restrict that parameter's uses to loads at constant offsets within both
+objects' sizes and proxy tests, which fold for both, since neither is a proxy: no stores, no barriers, nothing kept.
+The transformation is then the same: the allocation becomes a stack slot. A load through the parameter reads either
+the slot or the constant, and both are valid objects with the tag at the same offset. Scalar replacement
+(ssa.md §4.3) can stay out of it. A unit test on SSA written as text (ssa.md §6) covers each verdict.
+
+Making `maybe.T` manifest (the entry above) would put more of these tests inline in separate builds as well.
+
+**Done when.** A merge with a constant no longer escapes, the SSA goldens and `ssa_escape` show it, and the
+compiler's whole-program allocation count (the measurement above) and the MLton suite's allocation counts
+(`benchmarks/mlton/allocations.py`, peek and zebra in particular) are recorded before and after in benchmarks.md,
+or the idea is dropped with that measurement.
 
 ---
 

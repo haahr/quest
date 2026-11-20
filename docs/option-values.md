@@ -5,6 +5,9 @@ component, or as a constant for its cases without components, rather than as a b
 rule ([extensions.md](extensions.md), "Options as Values") and constants for cases without components
 ([c-representation.md](c-representation.md) §5.3), is measured in [benchmarks.md](benchmarks.md) §8.
 
+**Dropped (2026-11-19).** It will not be built, and the single-word rule is to be undone
+([tasklist.md](tasklist.md), "Undo the single-word rule for options"); this document goes with that work.
+
 **Deferred (2026-11-01).** Escape analysis ([ssa.md](ssa.md) §4.2) removed most payload tuples; what still escapes in
 peek and zebra is mostly `maybe.some`'s box ([benchmarks.md](benchmarks.md) §9). This representation would not remove
 it: those are options of `Int`, which §2 leaves boxed, since an `Int` has no spare value to stand for `none`. peek's
