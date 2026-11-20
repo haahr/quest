@@ -1,0 +1,877 @@
+import iter = "util/iter" : util/Iter
+import maybe = "util/maybe" : util/Maybe
+import stringOp = "string" : StringOp
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @12:45
+      let %2: String = prim <>(s, "\n") @12:59
+      let %3: Ok = call writer.putString(%1, %2) @12:28
+      return %3
+    }
+  }
+  funs {
+    fun check(what: String, holds: Bool): Ok {
+      let %4: String = call conv.bool(holds) @13:65
+      let %5: String = prim <>(": ", %4) @13:57
+      let %6: String = prim <>(what, %5) @13:49
+      let %7: Ok = call print(%6) @13:43
+      return %7
+    }
+  }
+  funs {
+    fun ints(it: iter.T(Int)): String {
+      var text: String = "[" @16:9
+      loop L1 {
+        let %8: Bool = call iter.more [Int](it) @17:15
+        if %8 { @17:9
+          let %9: Int = call iter.next [Int](it) @17:64
+          let %10: String = call conv.int(%9) @17:55
+          let %11: String = prim <>(" ", %10) @17:48
+          let %12: String = prim <>(text, %11) @17:40
+          text := %12 @17:32
+        } else {
+          break L1 @17:9
+        }
+      }
+      let %13: String = prim <>(text, " ]") @18:9
+      return %13
+    }
+  }
+  funs {
+    fun strings(it.1: iter.T(String)): String {
+      var text.1: String = "[" @22:9
+      loop L2 {
+        let %14: Bool = call iter.more [String](it.1) @23:15
+        if %14 { @23:9
+          let %15: String = call iter.next [String](it.1) @23:55
+          let %16: String = prim <>(" ", %15) @23:48
+          let %17: String = prim <>(text.1, %16) @23:40
+          text.1 := %17 @23:32
+        } else {
+          break L2 @23:9
+        }
+      }
+      let %18: String = prim <>(text.1, " ]") @24:9
+      return %18
+    }
+  }
+  funs {
+    fun shownMaybe(m: maybe.T(Int)): String {
+      join k1(r: String) {
+        return r
+      } in {
+        let %19: Bool = call maybe.isSome [Int](m) @26:46
+        if %19 { @26:43
+          let %20: Int = call maybe.unwrap [Int](m) @26:76
+          let %21: String = call conv.int(%20) @26:67
+          jump k1(%21) @26:43
+        } else {
+          jump k1("none") @26:43
+        }
+      }
+    }
+  }
+  funs {
+    fun compareInt(x: Int, y: Int): Int {
+      join k2(r.1: Int) {
+        return r.1
+      } in {
+        let %22: Bool = prim <(x, y) @27:41
+        if %22 { @27:38
+          jump k2(-1) @27:38
+        } else {
+          join k3(r.2: Int) {
+            jump k2(r.2) @27:38
+          } in {
+            let %23: Bool = prim >(x, y) @27:61
+            if %23 { @27:61
+              jump k3(1) @27:61
+            } else {
+              jump k3(0) @27:61
+            }
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun compareLength(x.1: String, y.1: String): Int {
+      let %24: Int = call stringOp.length(x.1) @28:58
+      let %25: Int = call stringOp.length(y.1) @28:77
+      let %26: Int = call compareInt(%24, %25) @28:47
+      return %26
+    }
+  }
+  funs {
+    fun words(): iter.T(String) {
+      let %27: Array(String) = array("the", "quick", "brown", "fox", "jumps", "over", "a", "lazy", "dog") @29:44
+      let %28: iter.T(String) = call iter.ofArray [String](%27) @29:31
+      return %28
+    }
+  }
+  funs {
+    fun err(what.1: String, f: Fun(): String): Ok {
+      join k4(r.3: String) {
+        let %29: String = prim <>(": ", r.3) @30:59
+        let %30: String = prim <>(what.1, %29) @30:51
+        let %31: Ok = call print(%30) @30:45
+        return %31
+      } in {
+        let %32: Exception = member iter.exhausted @31:21
+        let %33: Exception = member iter.error @31:63
+        try catching (%32, %33) {
+          let %34: String = call f() @31:12
+          jump k4(%34) @31:8
+        } handle (e: Exception) {
+          let %35: Bool = prim is(e, %32) @31:8
+          if %35 { @31:8
+            jump k4("iter.exhausted") @31:8
+          } else {
+            let %36: Bool = prim is(e, %33) @31:8
+            if %36 { @31:8
+              jump k4("iter.error") @31:8
+            } else {
+              reraise e @31:8
+            }
+          }
+        }
+      }
+    }
+  }
+  let %37: iter.T(Int) = type_app iter.empty [Int] @34:24
+  let %38: String = call ints(%37) @34:19
+  let %39: String = prim <>("empty ", %38) @34:7
+  do call print(%39) @34:1
+  let %40: iter.T(Int) = call iter.once [Int](7) @35:23
+  let %41: String = call ints(%40) @35:18
+  let %42: String = prim <>("once ", %41) @35:7
+  do call print(%42) @35:1
+  let %43: iter.T(Int) = call iter.range(3, 8) @36:24
+  let %44: String = call ints(%43) @36:19
+  let %45: iter.T(Int) = call iter.range(5, 5) @36:56
+  let %46: String = call ints(%45) @36:51
+  let %47: iter.T(Int) = call iter.range(5, 2) @36:88
+  let %48: String = call ints(%47) @36:83
+  let %49: String = prim <>(" ", %48) @36:76
+  let %50: String = prim <>(%46, %49) @36:51
+  let %51: String = prim <>(" ", %50) @36:44
+  let %52: String = prim <>(%44, %51) @36:19
+  let %53: String = prim <>("range ", %52) @36:7
+  do call print(%53) @36:1
+  let %54: iter.T(Int) = call iter.rangeBy(0, 10, 3) @37:26
+  let %55: String = call ints(%54) @37:21
+  let %56: iter.T(Int) = call iter.rangeBy(10, 0, -4) @37:63
+  let %57: String = call ints(%56) @37:58
+  let %58: iter.T(Int) = call iter.rangeBy(0, 0, 1) @38:13
+  let %59: String = call ints(%58) @38:8
+  let %60: String = prim <>(" ", %59) @37:89
+  let %61: String = prim <>(%57, %60) @37:58
+  let %62: String = prim <>(" ", %61) @37:51
+  let %63: String = prim <>(%55, %62) @37:21
+  let %64: String = prim <>("rangeBy ", %63) @37:7
+  do call print(%64) @37:1
+  let %65: iter.T(String) = call words() @39:29
+  let %66: String = call strings(%65) @39:21
+  let %67: String = prim <>("ofArray ", %66) @39:7
+  do call print(%67) @39:1
+  let %68: iter.T(Char) = call iter.chars("Quest") @40:29
+  funs {
+    fun f.1(acc: String, c: Char): String {
+      let %69: String = call conv.char(c) @40:99
+      let %70: String = prim <>(%69, ">") @40:99
+      let %71: String = prim <>("<", %70) @40:92
+      let %72: String = prim <>(acc, %71) @40:85
+      return %72
+    }
+  }
+  let %73: String = call iter.fold [Char String](%68, "", f.1) @40:19
+  let %74: String = prim <>("chars ", %73) @40:7
+  do call print(%74) @40:1
+  funs {
+    fun collatz(n: Int): maybe.T(iter.Step(Int Int)) {
+      join k5(r.4: maybe.T(iter.Step(Int Int))) {
+        return r.4
+      } in {
+        let %75: Bool = prim is(n, 0) @42:8
+        if %75 { @42:5
+          let %76: maybe.T(iter.Step(Int Int)) = type_app maybe.none [iter.Step(Int Int)] @42:20
+          jump k5(%76) @42:5
+        } else {
+          join k6(r.5: Int) {
+            let %77: Record value: Int seed: Int end = record(value = n, seed = r.5) @43:21
+            let %78: maybe.T(Record value: Int seed: Int end) = call maybe.some [Record value: Int seed: Int end](%77) @43:10
+            jump k5(%78) @42:5
+          } in {
+            let %79: Bool = prim is(n, 1) @43:48
+            if %79 { @43:45
+              jump k6(0) @43:45
+            } else {
+              join k7(r.6: Int) {
+                jump k6(r.6) @43:45
+              } in {
+                let %80: Int = prim %(n, 2) @43:69
+                let %81: Bool = prim is(%80, 0) @43:69
+                if %81 { @43:69
+                  let %82: Int = prim /(n, 2) @43:86
+                  jump k7(%82) @43:69
+                } else {
+                  let %83: Int = prim *(3, n) @43:98
+                  let %84: Int = prim +(%83, 1) @43:98
+                  jump k7(%84) @43:69
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  let %85: iter.T(Int) = call iter.unfold [Int Int](6, collatz) @44:25
+  let %86: String = call ints(%85) @44:20
+  let %87: String = prim <>("unfold ", %86) @44:7
+  do call print(%87) @44:1
+  let i: Int = 0 @47:35
+  let c.1: Tuple var i: Int end = tuple(i) @47:17
+  funs {
+    fun f.2(): Bool {
+      let %88: Int = tuple_field(c.1, 0) @48:32
+      let %89: Bool = prim <(%88, 3) @48:32
+      return %89
+    }
+  }
+  funs {
+    fun f.3(): Int {
+      let %90: Int = tuple_field(c.1, 0) @49:16
+      let %91: Bool = prim >=(%90, 3) @49:16
+      if %91 { @49:13
+        let %92: Exception = member iter.exhausted @49:36
+        raise %92 @49:30
+      }
+      let %93: Int = tuple_field(c.1, 0) @50:20
+      let %94: Int = prim +(%93, 1) @50:20
+      store c.1.#0 := %94 @50:13
+      let %95: Int = tuple_field(c.1, 0) @51:13
+      let %96: Int = prim *(%95, 100) @51:13
+      return %96
+    }
+  }
+  let made: iter.T(Int) = call iter.make [Int](f.2, f.3) @48:9
+  let %97: String = call ints(made) @54:18
+  let %98: String = prim <>("make ", %97) @54:7
+  do call print(%98) @54:1
+  funs {
+    fun triple(x.2: Int): Int {
+      let %99: Int = prim *(3, x.2) @57:27
+      return %99
+    }
+  }
+  funs {
+    fun even(x.3: Int): Bool {
+      let %100: Int = prim %(x.3, 2) @58:27
+      let %101: Bool = prim is(%100, 0) @58:27
+      return %101
+    }
+  }
+  let %102: iter.T(Int) = call iter.range(0, 5) @59:31
+  let %103: iter.T(Int) = call iter.map [Int Int](%102, triple) @59:22
+  let %104: String = call ints(%103) @59:17
+  let %105: String = prim <>("map ", %104) @59:7
+  do call print(%105) @59:1
+  let %106: iter.T(Int) = call iter.range(0, 10) @60:37
+  let %107: iter.T(Int) = call iter.filter [Int](%106, even) @60:25
+  let %108: String = call ints(%107) @60:20
+  let %109: String = prim <>("filter ", %108) @60:7
+  do call print(%109) @60:1
+  let %110: iter.T(String) = call words() @61:48
+  funs {
+    fun f.4(w: String): Bool {
+      let %111: Int = call stringOp.length(w) @61:77
+      let %112: Bool = prim >(%111, 3) @61:77
+      return %112
+    }
+  }
+  let %113: iter.T(String) = call iter.filter [String](%110, f.4) @61:36
+  let %114: String = call strings(%113) @61:28
+  let %115: String = prim <>("filter strings ", %114) @61:7
+  do call print(%115) @61:1
+  let %116: iter.T(String) = call words() @62:46
+  funs {
+    fun f.5(w.1: String): maybe.T(String) {
+      join k8(r.7: maybe.T(String)) {
+        return r.7
+      } in {
+        let %117: Int = call stringOp.length(w.1) @63:8
+        let %118: Bool = prim is(%117, 3) @63:8
+        if %118 { @63:5
+          let %119: String = prim <>(w.1, "!") @63:48
+          let %120: maybe.T(String) = call maybe.some [String](%119) @63:37
+          jump k8(%120) @63:5
+        } else {
+          let %121: maybe.T(String) = type_app maybe.none [String] @63:63
+          jump k8(%121) @63:5
+        }
+      }
+    }
+  }
+  let %122: iter.T(String) = call iter.filterMap [String String](%116, f.5) @62:31
+  let %123: String = call strings(%122) @62:23
+  let %124: String = prim <>("filterMap ", %123) @62:7
+  do call print(%124) @62:1
+  let %125: iter.T(Int) = call iter.range(0, 100) @64:33
+  let %126: iter.T(Int) = call iter.take [Int](%125, 4) @64:23
+  let %127: String = call ints(%126) @64:18
+  let %128: iter.T(Int) = call iter.range(0, 2) @64:80
+  let %129: iter.T(Int) = call iter.take [Int](%128, 4) @64:70
+  let %130: String = call ints(%129) @64:65
+  let %131: iter.T(Int) = call iter.range(0, 2) @65:23
+  let %132: iter.T(Int) = call iter.take [Int](%131, -1) @65:13
+  let %133: String = call ints(%132) @65:8
+  let %134: String = prim <>(" ", %133) @64:103
+  let %135: String = prim <>(%130, %134) @64:65
+  let %136: String = prim <>(" ", %135) @64:58
+  let %137: String = prim <>(%127, %136) @64:18
+  let %138: String = prim <>("take ", %137) @64:7
+  do call print(%138) @64:1
+  let %139: iter.T(Int) = call iter.range(0, 6) @66:33
+  let %140: iter.T(Int) = call iter.drop [Int](%139, 4) @66:23
+  let %141: String = call ints(%140) @66:18
+  let %142: iter.T(Int) = call iter.range(0, 2) @66:78
+  let %143: iter.T(Int) = call iter.drop [Int](%142, 4) @66:68
+  let %144: String = call ints(%143) @66:63
+  let %145: String = prim <>(" ", %144) @66:56
+  let %146: String = prim <>(%141, %145) @66:18
+  let %147: String = prim <>("drop ", %146) @66:7
+  do call print(%147) @66:1
+  let %148: iter.T(String) = call words() @67:46
+  funs {
+    fun f.6(w.2: String): Bool {
+      let %149: Int = call stringOp.length(w.2) @67:75
+      let %150: Bool = prim <(%149, 6) @67:75
+      return %150
+    }
+  }
+  let %151: iter.T(String) = call iter.takeWhile [String](%148, f.6) @67:31
+  let %152: String = call strings(%151) @67:23
+  let %153: iter.T(String) = call words() @68:31
+  funs {
+    fun f.7(w.3: String): Bool {
+      let %154: Int = call stringOp.length(w.3) @68:60
+      let %155: Bool = prim <(%154, 5) @68:60
+      return %155
+    }
+  }
+  let %156: iter.T(String) = call iter.takeWhile [String](%153, f.7) @68:16
+  let %157: String = call strings(%156) @68:8
+  let %158: String = prim <>(" ", %157) @67:103
+  let %159: String = prim <>(%152, %158) @67:23
+  let %160: String = prim <>("takeWhile ", %159) @67:7
+  do call print(%160) @67:1
+  let %161: iter.T(String) = call words() @69:46
+  funs {
+    fun f.8(w.4: String): Bool {
+      let %162: Int = call stringOp.length(w.4) @69:75
+      let %163: Bool = prim <(%162, 5) @69:75
+      return %163
+    }
+  }
+  let %164: iter.T(String) = call iter.dropWhile [String](%161, f.8) @69:31
+  let %165: String = call strings(%164) @69:23
+  let %166: iter.T(Int) = call iter.range(0, 3) @70:28
+  funs {
+    fun f.9(x.4: Int): Bool {
+      return true
+    }
+  }
+  let %167: iter.T(Int) = call iter.dropWhile [Int](%166, f.9) @70:13
+  let %168: String = call ints(%167) @70:8
+  let %169: String = prim <>(" ", %168) @69:103
+  let %170: String = prim <>(%165, %169) @69:23
+  let %171: String = prim <>("dropWhile ", %170) @69:7
+  do call print(%171) @69:1
+  let %172: iter.T(Int) = call iter.range(0, 3) @71:37
+  let %173: iter.T(Int) = type_app iter.empty [Int] @71:65
+  let %174: iter.T(Int) = call iter.range(10, 12) @71:82
+  let %175: iter.T(Int) = call iter.concat [Int](%173, %174) @71:53
+  let %176: iter.T(Int) = call iter.concat [Int](%172, %175) @71:25
+  let %177: String = call ints(%176) @71:20
+  let %178: String = prim <>("concat ", %177) @71:7
+  do call print(%178) @71:1
+  let %179: iter.T(Int) = call iter.range(0, 5) @72:39
+  funs {
+    fun f.10(n.1: Int): iter.T(Int) {
+      let %180: iter.T(Int) = call iter.range(0, n.1) @72:80
+      return %180
+    }
+  }
+  let %181: iter.T(Int) = call iter.flatMap [Int Int](%179, f.10) @72:26
+  let %182: String = call ints(%181) @72:21
+  let %183: String = prim <>("flatMap ", %182) @72:7
+  do call print(%183) @72:1
+  let %184: iter.T(String) = call words() @73:40
+  let %185: iter.T(String) = call iter.take [String](%184, 3) @73:30
+  let indexed: iter.T(Indexed(String)) = call iter.enumerate [String](%185) @73:15
+  var shownIndexed: String = "" @74:1
+  loop L3 {
+    let %186: Bool = call iter.more [Record index: Int value: String end](indexed) @75:7
+    if %186 { @75:1
+      let e.1: Record index: Int value: String end = call iter.next [Record index: Int value: String end](indexed) @76:13
+      let %187: Int = record_field(e.1, index) @77:53
+      let %188: String = call conv.int(%187) @77:44
+      let %189: String = record_field(e.1, value) @77:72
+      let %190: String = prim <>(":", %189) @77:65
+      let %191: String = prim <>(%188, %190) @77:44
+      let %192: String = prim <>(" ", %191) @77:37
+      let %193: String = prim <>(shownIndexed, %192) @77:21
+      shownIndexed := %193 @77:5
+    } else {
+      break L3 @75:1
+    }
+  }
+  let %194: String = prim <>("enumerate", shownIndexed) @79:7
+  do call print(%194) @79:1
+  let %195: iter.T(Int) = call iter.range(1, 100) @80:23
+  let %196: iter.T(String) = call words() @80:41
+  let zipped: iter.T(Pair(Int String)) = call iter.zip [Int String](%195, %196) @80:14
+  var shownZipped: String = "" @81:1
+  loop L4 {
+    let %197: Bool = call iter.more [Record first: Int second: String end](zipped) @82:7
+    if %197 { @82:1
+      let p: Record first: Int second: String end = call iter.next [Record first: Int second: String end](zipped) @83:13
+      let %198: Int = record_field(p, first) @84:51
+      let %199: String = call conv.int(%198) @84:42
+      let %200: String = record_field(p, second) @84:63
+      let %201: String = prim <>(%199, %200) @84:42
+      let %202: String = prim <>(" ", %201) @84:35
+      let %203: String = prim <>(shownZipped, %202) @84:20
+      shownZipped := %203 @84:5
+    } else {
+      break L4 @82:1
+    }
+  }
+  let %204: String = prim <>("zip", shownZipped) @86:7
+  do call print(%204) @86:1
+  let %205: Array(Int) = array(1, 4, 4, 9) @87:48
+  let %206: iter.T(Int) = call iter.ofArray [Int](%205) @87:35
+  let %207: Array(Int) = array(2, 4, 10, 11) @87:83
+  let %208: iter.T(Int) = call iter.ofArray [Int](%207) @87:70
+  let %209: iter.T(Int) = call iter.merge [Int](%206, %208, compareInt) @87:24
+  let %210: String = call ints(%209) @87:19
+  let %211: iter.T(Int) = type_app iter.empty [Int] @88:31
+  let %212: iter.T(Int) = call iter.range(0, 3) @88:48
+  let %213: iter.T(Int) = call iter.merge [Int](%211, %212, compareInt) @88:20
+  let %214: String = call ints(%213) @88:15
+  let %215: String = prim <>(" ", %214) @88:8
+  let %216: String = prim <>(%210, %215) @87:19
+  let %217: String = prim <>("merge ", %216) @87:7
+  do call print(%217) @87:1
+  let %218: Array(String) = array("aa", "ccc") @89:58
+  let %219: iter.T(String) = call iter.ofArray [String](%218) @89:45
+  let %220: Array(String) = array("bb", "ddd") @89:96
+  let %221: iter.T(String) = call iter.ofArray [String](%220) @89:83
+  let %222: iter.T(String) = call iter.merge [String](%219, %221, compareLength) @89:34
+  let %223: String = call strings(%222) @89:26
+  let %224: String = prim <>("merge stable ", %223) @89:7
+  do call print(%224) @89:1
+  let %225: iter.T(String) = call words() @93:23
+  let p.1: iter.Peekable(String) = call iter.peekable [String](%225) @93:9
+  let pit: iter.T(String) = call iter.asIter [String](p.1) @94:11
+  let %226: String = call iter.peek [String](p.1) @95:18
+  let %227: String = call iter.peek [String](p.1) @95:41
+  let %228: String = call iter.next [String](pit) @95:69
+  let %229: String = call iter.peek [String](p.1) @95:99
+  let %230: String = prim <>(" peek ", %229) @95:87
+  let %231: String = prim <>(%228, %230) @95:69
+  let %232: String = prim <>(" next ", %231) @95:57
+  let %233: String = prim <>(%227, %232) @95:41
+  let %234: String = prim <>(" ", %233) @95:34
+  let %235: String = prim <>(%226, %234) @95:18
+  let %236: String = prim <>("peek ", %235) @95:7
+  do call print(%236) @95:1
+  let %237: Array(String) = array("a", "b", "cc", "dd", "ee", "f", "ggg") @97:43
+  let %238: iter.T(String) = call iter.ofArray [String](%237) @97:30
+  let byLength: iter.Peekable(String) = call iter.peekable [String](%238) @97:16
+  let bit: iter.T(String) = call iter.asIter [String](byLength) @98:11
+  var groups: String = "" @99:1
+  loop L5 {
+    let %239: Bool = call iter.more [String](bit) @100:7
+    if %239 { @100:1
+      let %240: String = call iter.peek [String](byLength) @101:29
+      let n.2: Int = call stringOp.length(%240) @101:13
+      let %241: String = call conv.int(n.2) @102:32
+      let %242: String = prim <>(%241, ":") @102:32
+      let %243: String = prim <>(" ", %242) @102:25
+      let %244: String = prim <>(groups, %243) @102:15
+      groups := %244 @102:5
+      loop L6 {
+        join k9(r.8: Bool) {
+          if r.8 { @103:5
+            let %245: String = call iter.next [String](bit) @103:99
+            let %246: String = prim <>(groups, %245) @103:89
+            groups := %246 @103:79
+          } else {
+            break L6 @103:5
+          }
+        } in {
+          let %247: Bool = call iter.more [String](bit) @103:11
+          if %247 { @103:11
+            let %248: String = call iter.peek [String](byLength) @103:49
+            let %249: Int = call stringOp.length(%248) @103:33
+            let %250: Bool = prim is(%249, n.2) @103:33
+            jump k9(%250) @103:11
+          } else {
+            jump k9(false) @103:11
+          }
+        }
+      }
+    } else {
+      break L5 @100:1
+    }
+  }
+  let %251: String = prim <>("groups", groups) @105:7
+  do call print(%251) @105:1
+  let sum: Int = 0 @108:35
+  let visited: Tuple var sum: Int end = tuple(sum) @108:15
+  let %252: iter.T(Int) = call iter.range(0, 5) @109:14
+  funs {
+    fun f.11(x.5: Int): Ok {
+      let %253: Int = tuple_field(visited, 0) @109:61
+      let %254: Int = prim +(%253, x.5) @109:61
+      store visited.#0 := %254 @109:46
+      return ok
+    }
+  }
+  do call iter.forEach [Int](%252, f.11) @109:1
+  let %255: Int = tuple_field(visited, 0) @110:30
+  let %256: String = call conv.int(%255) @110:21
+  let %257: String = prim <>("forEach ", %256) @110:7
+  do call print(%257) @110:1
+  let %258: iter.T(String) = call words() @111:28
+  funs {
+    fun f.12(acc.1: String, w.5: String): String {
+      let %259: String = call stringOp.getSub(w.5, 0, 1) @111:81
+      let %260: String = prim <>(acc.1, %259) @111:74
+      return %260
+    }
+  }
+  let %261: String = call iter.fold [String String](%258, "", f.12) @111:18
+  let %262: String = prim <>("fold ", %261) @111:7
+  do call print(%262) @111:1
+  let %263: iter.T(String) = call words() @112:39
+  let %264: Int = call iter.count [String](%263) @112:28
+  let %265: String = call conv.int(%264) @112:19
+  let %266: iter.T(Int) = type_app iter.empty [Int] @112:79
+  let %267: Int = call iter.count [Int](%266) @112:68
+  let %268: String = call conv.int(%267) @112:59
+  let %269: String = prim <>(" ", %268) @112:52
+  let %270: String = prim <>(%265, %269) @112:19
+  let %271: String = prim <>("count ", %270) @112:7
+  do call print(%271) @112:1
+  let n.3: Int = 0 @113:32
+  let pulled: Tuple var n: Int end = tuple(n.3) @113:14
+  funs {
+    fun counted(it.2: iter.T(Int)): iter.T(Int) {
+      funs {
+        fun f.13(x.6: Int): Int {
+          let %272: Int = tuple_field(pulled, 0) @114:92
+          let %273: Int = prim +(%272, 1) @114:92
+          store pulled.#0 := %273 @114:80
+          return x.6
+        }
+      }
+      let %274: iter.T(Int) = call iter.map [Int Int](it.2, f.13) @114:45
+      return %274
+    }
+  }
+  let %275: iter.T(Int) = call iter.range(0, 100) @115:30
+  let %276: iter.T(Int) = call counted(%275) @115:22
+  funs {
+    fun f.14(x.7: Int): Bool {
+      let %277: Bool = prim >(x.7, 5) @115:67
+      return %277
+    }
+  }
+  let %278: Bool = call iter.any [Int](%276, f.14) @115:13
+  do call check("any", %278) @115:1
+  let %279: Int = tuple_field(pulled, 0) @116:33
+  let %280: String = call conv.int(%279) @116:24
+  let %281: String = prim <>("any pulled ", %280) @116:7
+  do call print(%281) @116:1
+  let %282: iter.T(Int) = type_app iter.empty [Int] @117:30
+  let %283: Bool = call iter.any [Int](%282, even) @117:21
+  do call check("any of none", %283) @117:1
+  let %284: iter.T(Int) = call iter.rangeBy(0, 10, 2) @118:22
+  let %285: Bool = call iter.all [Int](%284, even) @118:13
+  do call check("all", %285) @118:1
+  let %286: iter.T(Int) = call iter.range(0, 10) @119:26
+  let %287: Bool = call iter.all [Int](%286, even) @119:17
+  do call check("not all", %287) @119:1
+  let %288: iter.T(Int) = call iter.range(1, 100) @120:39
+  funs {
+    fun f.15(x.8: Int): Bool {
+      let %289: Int = prim %(x.8, 7) @120:76
+      let %290: Bool = prim is(%289, 0) @120:76
+      return %290
+    }
+  }
+  let %291: maybe.T(Int) = call iter.find [Int](%288, f.15) @120:29
+  let %292: String = call shownMaybe(%291) @120:18
+  let %293: iter.T(Int) = call iter.range(1, 5) @121:29
+  funs {
+    fun f.16(x.9: Int): Bool {
+      let %294: Bool = prim >(x.9, 10) @121:63
+      return %294
+    }
+  }
+  let %295: maybe.T(Int) = call iter.find [Int](%293, f.16) @121:19
+  let %296: String = call shownMaybe(%295) @121:8
+  let %297: String = prim <>(" ", %296) @120:93
+  let %298: String = prim <>(%292, %297) @120:18
+  let %299: String = prim <>("find ", %298) @120:7
+  do call print(%299) @120:1
+  let %300: iter.T(Int) = call iter.range(4, 9) @122:41
+  let %301: maybe.T(Int) = call iter.first [Int](%300) @122:30
+  let %302: String = call shownMaybe(%301) @122:19
+  let %303: iter.T(Int) = type_app iter.empty [Int] @122:91
+  let %304: maybe.T(Int) = call iter.first [Int](%303) @122:80
+  let %305: String = call shownMaybe(%304) @122:69
+  let %306: String = prim <>(" ", %305) @122:62
+  let %307: String = prim <>(%302, %306) @122:19
+  let %308: String = prim <>("first ", %307) @122:7
+  do call print(%308) @122:1
+  let %309: iter.T(Int) = call iter.range(4, 9) @123:39
+  let %310: maybe.T(Int) = call iter.last [Int](%309) @123:29
+  let %311: String = call shownMaybe(%310) @123:18
+  let %312: iter.T(Int) = type_app iter.empty [Int] @123:88
+  let %313: maybe.T(Int) = call iter.last [Int](%312) @123:78
+  let %314: String = call shownMaybe(%313) @123:67
+  let %315: String = prim <>(" ", %314) @123:60
+  let %316: String = prim <>(%311, %315) @123:18
+  let %317: String = prim <>("last ", %316) @123:7
+  do call print(%317) @123:1
+  let %318: Array(Int) = array(5, 3, 8, 3, 1, 9) @124:50
+  let %319: iter.T(Int) = call iter.ofArray [Int](%318) @124:37
+  let %320: maybe.T(Int) = call iter.min [Int](%319, compareInt) @124:28
+  let %321: String = call shownMaybe(%320) @124:17
+  let %322: Array(Int) = array(5, 3, 8, 3, 1, 9) @125:41
+  let %323: iter.T(Int) = call iter.ofArray [Int](%322) @125:28
+  let %324: maybe.T(Int) = call iter.max [Int](%323, compareInt) @125:19
+  let %325: String = call shownMaybe(%324) @125:8
+  let %326: iter.T(Int) = type_app iter.empty [Int] @126:28
+  let %327: maybe.T(Int) = call iter.min [Int](%326, compareInt) @126:19
+  let %328: String = call shownMaybe(%327) @126:8
+  let %329: String = prim <>(" ", %328) @125:83
+  let %330: String = prim <>(%325, %329) @125:8
+  let %331: String = prim <>(" max ", %330) @124:92
+  let %332: String = prim <>(%321, %331) @124:17
+  let %333: String = prim <>("min ", %332) @124:7
+  do call print(%333) @124:1
+  let %334: iter.T(String) = call words() @127:54
+  let %335: maybe.T(String) = call iter.min [String](%334, compareLength) @127:45
+  let %336: String = call maybe.unwrap [String](%335) @127:32
+  let %337: iter.T(String) = call words() @128:30
+  let %338: maybe.T(String) = call iter.max [String](%337, compareLength) @128:21
+  let %339: String = call maybe.unwrap [String](%338) @128:8
+  let %340: String = prim <>(" max first of equal ", %339) @127:81
+  let %341: String = prim <>(%336, %340) @127:32
+  let %342: String = prim <>("min first of equal ", %341) @127:7
+  do call print(%342) @127:1
+  let %343: iter.T(Int) = call iter.range(0, 20) @129:31
+  let %344: iter.T(Int) = call iter.map [Int Int](%343, triple) @129:22
+  let a: Array(Int) = call iter.toArray [Int](%344) @129:9
+  let %345: Int = prim extent(a) @130:30
+  let %346: String = call conv.int(%345) @130:21
+  let %347: Int = index(a, 0) @130:59
+  let %348: String = call conv.int(%347) @130:50
+  let %349: Int = index(a, 19) @130:84
+  let %350: String = call conv.int(%349) @130:75
+  let %351: iter.T(Int) = type_app iter.empty [Int] @131:37
+  let %352: Array(Int) = call iter.toArray [Int](%351) @131:24
+  let %353: Int = prim extent(%352) @131:17
+  let %354: String = call conv.int(%353) @131:8
+  let %355: String = prim <>(" ", %354) @130:94
+  let %356: String = prim <>(%350, %355) @130:75
+  let %357: String = prim <>(" ", %356) @130:68
+  let %358: String = prim <>(%348, %357) @130:50
+  let %359: String = prim <>(" ", %358) @130:43
+  let %360: String = prim <>(%346, %359) @130:21
+  let %361: String = prim <>("toArray ", %360) @130:7
+  do call print(%361) @130:1
+  let %362: iter.T(Int) = call iter.range(1, 101) @132:41
+  let %363: Int = call iter.sumInt(%362) @132:29
+  let %364: String = call conv.int(%363) @132:20
+  let %365: String = prim <>("sumInt ", %364) @132:7
+  do call print(%365) @132:1
+  funs {
+    fun intEqual(x.10: Int, y.2: Int): Bool {
+      let %366: Bool = prim is(x.10, y.2) @133:37
+      return %366
+    }
+  }
+  let %367: iter.T(Int) = call iter.range(0, 4) @134:26
+  let %368: Array(Int) = array(0, 1, 2, 3) @134:55
+  let %369: iter.T(Int) = call iter.ofArray [Int](%368) @134:42
+  let %370: Bool = call iter.equal [Int](%367, %369, intEqual) @134:15
+  do call check("equal", %370) @134:1
+  let %371: iter.T(Int) = call iter.range(0, 3) @135:35
+  let %372: iter.T(Int) = call iter.range(0, 4) @135:51
+  let %373: Bool = call iter.equal [Int](%371, %372, intEqual) @135:24
+  do call check("equal, shorter", %373) @135:1
+  let %374: iter.T(Int) = call iter.range(0, 4) @136:34
+  let %375: iter.T(Int) = call iter.range(0, 3) @136:50
+  let %376: Bool = call iter.equal [Int](%374, %375, intEqual) @136:23
+  do call check("equal, longer", %376) @136:1
+  let %377: iter.T(Int) = call iter.range(0, 4) @137:37
+  let %378: Array(Int) = array(0, 1, 5, 3) @137:66
+  let %379: iter.T(Int) = call iter.ofArray [Int](%378) @137:53
+  let %380: Bool = call iter.equal [Int](%377, %379, intEqual) @137:26
+  do call check("equal, differing", %380) @137:1
+  let %381: iter.T(Int) = call iter.range(0, 10) @140:21
+  let f.17: iter.T(Int) = call iter.filter [Int](%381, even) @140:9
+  join k10(r.9: Bool) {
+    do call check("more more", r.9) @141:1
+    let %382: String = call ints(f.17) @142:29
+    let %383: String = prim <>("after more more ", %382) @142:7
+    do call print(%383) @142:1
+    join k12(r.10: Bool) {
+      do call check("more at the end", r.10) @143:1
+      funs {
+        fun f.18(): String {
+          let %384: iter.T(Int) = type_app iter.empty [Int] @144:54
+          let %385: Int = call iter.next [Int](%384) @144:44
+          let %386: String = call conv.int(%385) @144:35
+          return %386
+        }
+      }
+      do call err("next of empty", f.18) @144:1
+      funs {
+        fun f.19(): String {
+          let r.11: iter.T(Int) = call iter.range(0, 1) @146:13
+          let %387: Int = call iter.next [Int](r.11) @147:5
+          let %388: Int = call iter.next [Int](r.11) @148:14
+          let %389: String = call conv.int(%388) @148:5
+          return %389
+        }
+      }
+      do call err("next past range", f.19) @145:1
+      funs {
+        fun f.20(): String {
+          let %390: iter.T(Int) = call iter.range(0, 3) @150:69
+          funs {
+            fun f.21(x.11: Int): Bool {
+              let %391: Bool = prim >(x.11, 5) @150:103
+              return %391
+            }
+          }
+          let %392: iter.T(Int) = call iter.filter [Int](%390, f.21) @150:57
+          let %393: Int = call iter.next [Int](%392) @150:47
+          let %394: String = call conv.int(%393) @150:38
+          return %394
+        }
+      }
+      do call err("next past filter", f.20) @150:1
+      funs {
+        fun f.22(): String {
+          let %395: iter.T(String) = call words() @152:28
+          funs {
+            fun f.23(w.6: String): Bool {
+              let %396: Bool = prim isnot(w.6, "quick") @152:57
+              return %396
+            }
+          }
+          let t: iter.T(String) = call iter.takeWhile [String](%395, f.23) @152:13
+          let %397: String = call iter.next [String](t) @153:5
+          let %398: String = call iter.next [String](t) @154:5
+          return %398
+        }
+      }
+      do call err("next past takeWhile", f.22) @151:1
+      funs {
+        fun f.24(): String {
+          let %399: iter.T(Int) = call iter.range(0, 1) @157:22
+          let %400: iter.T(String) = call words() @157:38
+          let z: iter.T(Pair(Int String)) = call iter.zip [Int String](%399, %400) @157:13
+          let %401: Record first: Int second: String end = call iter.next [Record first: Int second: String end](z) @158:5
+          let %402: Record first: Int second: String end = call iter.next [Record first: Int second: String end](z) @159:5
+          let %403: String = record_field(%402, second) @159:5
+          return %403
+        }
+      }
+      do call err("next past zip", f.24) @156:1
+      funs {
+        fun f.25(): String {
+          let %404: iter.T(String) = type_app iter.empty [String] @161:59
+          let %405: iter.Peekable(String) = call iter.peekable [String](%404) @161:45
+          let %406: String = call iter.peek [String](%405) @161:35
+          return %406
+        }
+      }
+      do call err("peek of empty", f.25) @161:1
+      funs {
+        fun f.26(): String {
+          let %407: iter.T(Int) = call iter.rangeBy(0, 10, 0) @162:41
+          let %408: String = call ints(%407) @162:36
+          return %408
+        }
+      }
+      do call err("rangeBy step 0", f.26) @162:1
+      var expected: Int = 0 @165:1
+      var i.1: Int = 0 @166:1
+      let %409: Bool = prim <=(i.1, 9999) @166:1
+      if %409 { @166:1
+        loop L7 {
+          let i.2: Int = i.1 @166:1
+          let y.3: Int = prim *(i.2, 3) @166:32
+          let %410: Int = prim %(y.3, 2) @166:42
+          let %411: Bool = prim is(%410, 0) @166:42
+          if %411 { @166:38
+            let %412: Int = prim +(expected, y.3) @166:71
+            expected := %412 @166:59
+          }
+          let %413: Bool = prim is(i.1, 9999) @166:1
+          if %413 { @166:1
+            break L7 @166:1
+          }
+          let %414: Int = prim +(i.1, 1) @166:1
+          i.1 := %414 @166:1
+        }
+      }
+      let %415: iter.T(Int) = call iter.range(0, 10000) @167:51
+      let %416: iter.T(Int) = call iter.map [Int Int](%415, triple) @167:42
+      let %417: iter.T(Int) = call iter.filter [Int](%416, even) @167:30
+      let %418: Int = call iter.sumInt(%417) @167:18
+      let %419: Bool = prim is(%418, expected) @167:18
+      do call check("pipeline", %419) @167:1
+    } in {
+      let %420: Bool = call iter.more [Int](f.17) @143:29
+      let %421: Bool = prim not(%420) @143:25
+      if %421 { @143:25
+        let %422: Bool = call iter.more [Int](f.17) @143:53
+        let %423: Bool = prim not(%422) @143:49
+        jump k12(%423) @143:25
+      } else {
+        jump k12(false) @143:25
+      }
+    }
+  } in {
+    let %424: Bool = call iter.more [Int](f.17) @141:19
+    if %424 { @141:19
+      join k11(r.12: Bool) {
+        jump k10(r.12) @141:19
+      } in {
+        let %425: Bool = call iter.more [Int](f.17) @141:38
+        if %425 { @141:38
+          let %426: Bool = call iter.more [Int](f.17) @141:57
+          jump k11(%426) @141:38
+        } else {
+          jump k11(false) @141:38
+        }
+      }
+    } else {
+      jump k10(false) @141:19
+    }
+  }
+}
+

@@ -1,0 +1,169 @@
+(* Iterators (docs/iter-plan.md): one way to walk a vector, a hash set, a
+ * sorted map's range, a string's characters, or a regular expression's
+ * matches, and to chain stages over any of them without building vectors in
+ * between. An iterator is pulled: iter.more(it) says whether there is another
+ * element, and iter.next(it) returns it and moves past it.
+ *
+ *     while iter.more(it) do let x = iter.next(it) ... end
+ *
+ * more changes nothing a caller can see, so calling it twice is calling it
+ * once; next raises exhausted when more would say false. An iterator is
+ * one-shot: walking a source again means asking it for another (a function
+ * that walks its argument more than once takes an All() iter.T(A)). An iterator
+ * over a collection sees it live; if the collection gains or loses elements
+ * while an iterator is in use, other than through it, what the iterator
+ * returns from then on is unspecified. The collections make theirs with make
+ * (vector.iter and the like) and build from one (vector.fromIter). *)
+
+interface Iter
+import
+    util/maybe : util/Maybe
+export
+    (* An iterator of A's *)
+    T::ALL(A::TYPE) TYPE
+
+    (* An iterator whose next element can be looked at without consuming it:
+     * peek reads it, and asIter walks the same elements *)
+    Peekable::ALL(A::TYPE) TYPE
+
+    (* The elements of enumerate, zip, and unfold's steps *)
+    Def Indexed = Fun(A::TYPE) Record index: Int value: A end
+    Def Pair = Fun(A::TYPE B::TYPE) Record first: A second: B end
+    Def Step = Fun(A::TYPE S::TYPE) Record value: A seed: S end
+
+    (* Raised by next, and by peek, when there is no next element *)
+    exhausted: Exception
+
+    (* Raised by rangeBy for a step of 0 *)
+    error: Exception
+
+    (* Iterating *)
+
+    (* Whether it has another element; changes nothing a caller can see *)
+    more: All(A::TYPE) All(it: T(A)) Bool
+
+    (* The next element, which it then moves past; raises exhausted if there
+     * is none *)
+    next: All(A::TYPE) All(it: T(A)) A
+
+    (* An iterator of the two functions, which must behave as more and next
+     * do: more changing nothing a caller can see, and next raising exhausted
+     * when more would return false *)
+    make: All(A::TYPE) All(more: All() Bool next: All() A) T(A)
+
+    (* Sources *)
+
+    (* No elements *)
+    empty: All(A::TYPE) T(A)
+
+    (* The one element a *)
+    once: All(A::TYPE) All(a: A) T(A)
+
+    (* The integers from lo up to hi - 1 *)
+    range: All(lo: Int hi: Int) T(Int)
+
+    (* lo, lo + step, ..., while below hi (above it, for a negative step);
+     * raises error for a step of 0 *)
+    rangeBy: All(lo: Int hi: Int step: Int) T(Int)
+
+    (* The elements of a, in order; a is read as it is when each is reached *)
+    ofArray: All(A::TYPE) All(a: Array(A)) T(A)
+
+    (* The characters of s, in order *)
+    chars: All(s: String) T(Char)
+
+    (* The values of the steps from seed: step(seed) returns none at the end,
+     * or the first element and the seed of the rest *)
+    unfold: All(A::TYPE S::TYPE) All(seed: S step: All(s: S) maybe.T(Step(A S))) T(A)
+
+    (* Stages, each an iterator that pulls from the ones it is given as it is
+     * pulled *)
+
+    (* f of each element of it *)
+    map: All(A::TYPE B::TYPE) All(it: T(A) f: All(a: A) B) T(B)
+
+    (* The elements of it for which p holds *)
+    filter: All(A::TYPE) All(it: T(A) p: All(a: A) Bool) T(A)
+
+    (* The values of the elements for which f returns some *)
+    filterMap: All(A::TYPE B::TYPE) All(it: T(A) f: All(a: A) maybe.T(B)) T(B)
+
+    (* The first n elements of it (none if n <= 0) *)
+    take: All(A::TYPE) All(it: T(A) n: Int) T(A)
+
+    (* The elements of it after its first n *)
+    drop: All(A::TYPE) All(it: T(A) n: Int) T(A)
+
+    (* The elements of it before the first for which p fails *)
+    takeWhile: All(A::TYPE) All(it: T(A) p: All(a: A) Bool) T(A)
+
+    (* The elements of it from the first for which p fails *)
+    dropWhile: All(A::TYPE) All(it: T(A) p: All(a: A) Bool) T(A)
+
+    (* The elements of a, then those of b *)
+    concat: All(A::TYPE) All(a: T(A) b: T(A)) T(A)
+
+    (* The elements of f of each element of it, in turn *)
+    flatMap: All(A::TYPE B::TYPE) All(it: T(A) f: All(a: A) T(B)) T(B)
+
+    (* Each element of it with its index, from 0 *)
+    enumerate: All(A::TYPE) All(it: T(A)) T(Indexed(A))
+
+    (* The elements of a and b in pairs, until either ends *)
+    zip: All(A::TYPE B::TYPE) All(a: T(A) b: T(B)) T(Pair(A B))
+
+    (* The elements of a and b, each in order by compare (negative, zero, or
+     * positive as x is before, with, or after y), merged in that order, a's
+     * first of equal ones *)
+    merge: All(A::TYPE) All(a: T(A) b: T(A) compare: All(x: A y: A) Int) T(A)
+
+    (* Peeking *)
+
+    (* A peekable iterator of the elements of it, which is pulled through it
+     * from then on *)
+    peekable: All(A::TYPE) All(it: T(A)) Peekable(A)
+
+    (* The next element of p, not consumed; raises exhausted if there is
+     * none *)
+    peek: All(A::TYPE) All(p: Peekable(A)) A
+
+    (* An iterator of p's elements, the one peek reads first *)
+    asIter: All(A::TYPE) All(p: Peekable(A)) T(A)
+
+    (* Consumers, each of which pulls from it until it has its answer *)
+
+    (* Calls f with each element *)
+    forEach: All(A::TYPE) All(it: T(A) f: All(a: A) Ok) Ok
+
+    (* f(... f(f(init e1) e2) ... en) *)
+    fold: All(A::TYPE Acc::TYPE) All(it: T(A) init: Acc f: All(acc: Acc a: A) Acc) Acc
+
+    (* The number of elements *)
+    count: All(A::TYPE) All(it: T(A)) Int
+
+    (* Whether p holds for some element, stopping at the first; for all
+     * elements, stopping at the first for which it fails *)
+    any: All(A::TYPE) All(it: T(A) p: All(a: A) Bool) Bool
+    all: All(A::TYPE) All(it: T(A) p: All(a: A) Bool) Bool
+
+    (* The first element for which p holds, stopping there *)
+    find: All(A::TYPE) All(it: T(A) p: All(a: A) Bool) maybe.T(A)
+
+    (* The first element, pulling only it; the last *)
+    first: All(A::TYPE) All(it: T(A)) maybe.T(A)
+    last: All(A::TYPE) All(it: T(A)) maybe.T(A)
+
+    (* The least and greatest elements by compare, the first of equal ones *)
+    min: All(A::TYPE) All(it: T(A) compare: All(x: A y: A) Int) maybe.T(A)
+    max: All(A::TYPE) All(it: T(A) compare: All(x: A y: A) Int) maybe.T(A)
+
+    (* The elements, in an array of their number *)
+    toArray: All(A::TYPE) All(it: T(A)) Array(A)
+
+    (* The sum of the elements *)
+    sumInt(it: T(Int)): Int
+
+    (* Whether a and b have the same number of elements and eq holds of each
+     * pair, stopping at the first for which it fails *)
+    equal: All(A::TYPE) All(a: T(A) b: T(A) eq: All(x: A y: A) Bool) Bool
+end

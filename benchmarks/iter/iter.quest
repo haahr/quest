@@ -1,0 +1,48 @@
+(* util/iter's benchmark (docs/iter-plan.md section 2; benchmarks/iter/
+ * README.md): one workload, named by the first argument, over the integers
+ * below the second. Each sums 3 * i, the even ones but in map, and prints the
+ * sum. *)
+
+import util/iter : util/Iter;
+import util/strutil : util/Strutil;
+import stringOp = string : StringOp;
+import writer: Writer;
+import system: System;
+import conv: Conv;
+
+let workload = system.args[1];
+let n = strutil.toInt(system.args[2]);
+let named(name: String): Bool = stringOp.equal(workload name);
+
+let triple(x: Int): Int = 3 * x;
+let even(x: Int): Bool = {x % 2} is 0;
+
+(* The consumer's loop, through iter.more and iter.next *)
+let total(it: iter.T(Int)): Int =
+    begin
+        let var t = 0
+        while iter.more(it) do t := t + iter.next(it) end
+        t
+    end;
+
+let result =
+    if named("loop") then
+        let var t = 0
+        for i = 0 upto {n - 1} do
+            let y = triple(i)
+            if even(y) then t := t + y end
+        end
+        t
+    elsif named("map") then
+        total(iter.map(iter.range(0 n) triple))
+    elsif named("filter") then
+        total(iter.filter(iter.map(iter.range(0 n) triple) even))
+    elsif named("sumInt") then
+        (* The consumer inside util/iter, which reads the closures in place *)
+        iter.sumInt(iter.filter(iter.map(iter.range(0 n) triple) even))
+    else
+        writer.putString(writer.err "iter: unknown workload " <> workload <> "\n")
+        ~1
+    end;
+
+writer.putString(writer.output conv.int(result) <> "\n");

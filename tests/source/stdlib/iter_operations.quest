@@ -1,0 +1,167 @@
+(* Standard library: util/iter (docs/iter-plan.md): each source, stage, and
+ * consumer; more called repeatedly, next past the end, and peeking; stages
+ * that look ahead holding elements of a type with no empty value (strings);
+ * and pipelines checked against loops written out *)
+
+import util/iter : util/Iter;
+import util/maybe : util/Maybe;
+import stringOp = string : StringOp;
+import writer: Writer;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let check(what: String holds: Bool): Ok = print(what <> ": " <> conv.bool(holds));
+let ints(it: iter.T(Int)): String =
+    begin
+        let var text = "["
+        while iter.more(it) do text := text <> " " <> conv.int(iter.next(it)) end
+        text <> " ]"
+    end;
+let strings(it: iter.T(String)): String =
+    begin
+        let var text = "["
+        while iter.more(it) do text := text <> " " <> iter.next(it) end
+        text <> " ]"
+    end;
+let shownMaybe(m: maybe.T(Int)): String = if maybe.isSome(m) then conv.int(maybe.unwrap(m)) else "none" end;
+let compareInt(x: Int y: Int): Int = if x < y then ~1 elsif x > y then 1 else 0 end;
+let compareLength(x: String y: String): Int = compareInt(stringOp.length(x) stringOp.length(y));
+let words(): iter.T(String) = iter.ofArray(array of "the" "quick" "brown" "fox" "jumps" "over" "a" "lazy" "dog" end);
+let err(what: String f: All() String): Ok = print(what <> ": "
+    <> try f() when iter.exhausted then "iter.exhausted" when iter.error then "iter.error" end);
+
+(* 1. Sources *)
+print("empty " <> ints(iter.empty(:Int)));
+print("once " <> ints(iter.once(7)));
+print("range " <> ints(iter.range(3 8)) <> " " <> ints(iter.range(5 5)) <> " " <> ints(iter.range(5 2)));
+print("rangeBy " <> ints(iter.rangeBy(0 10 3)) <> " " <> ints(iter.rangeBy(10 0 ~4)) <> " "
+    <> ints(iter.rangeBy(0 0 1)));
+print("ofArray " <> strings(words()));
+print("chars " <> iter.fold(iter.chars("Quest") "" fun(acc: String c: Char): String acc <> "<" <> conv.char(c) <> ">"));
+let collatz(n: Int): maybe.T(iter.Step(Int Int)) =
+    if n is 0 then maybe.none(:iter.Step(Int Int))
+    else maybe.some(record value = n seed = if n is 1 then 0 elsif {n % 2} is 0 then n / 2 else {3 * n} + 1 end end) end;
+print("unfold " <> ints(iter.unfold(6 collatz)));
+let made =
+    begin
+        let c = tuple let var i = 0 end
+        iter.make(fun(): Bool {c.i < 3} fun(): Int begin
+            if c.i >= 3 then raise iter.exhausted end end
+            c.i := c.i + 1
+            c.i * 100
+        end)
+    end;
+print("make " <> ints(made));
+
+(* 2. Stages *)
+let triple(x: Int): Int = 3 * x;
+let even(x: Int): Bool = {x % 2} is 0;
+print("map " <> ints(iter.map(iter.range(0 5) triple)));
+print("filter " <> ints(iter.filter(iter.range(0 10) even)));
+print("filter strings " <> strings(iter.filter(words() fun(w: String): Bool stringOp.length(w) > 3)));
+print("filterMap " <> strings(iter.filterMap(words() fun(w: String): maybe.T(String)
+    if stringOp.length(w) is 3 then maybe.some(w <> "!") else maybe.none(:String) end)));
+print("take " <> ints(iter.take(iter.range(0 100) 4)) <> " " <> ints(iter.take(iter.range(0 2) 4)) <> " "
+    <> ints(iter.take(iter.range(0 2) ~1)));
+print("drop " <> ints(iter.drop(iter.range(0 6) 4)) <> " " <> ints(iter.drop(iter.range(0 2) 4)));
+print("takeWhile " <> strings(iter.takeWhile(words() fun(w: String): Bool stringOp.length(w) < 6)) <> " "
+    <> strings(iter.takeWhile(words() fun(w: String): Bool stringOp.length(w) < 5)));
+print("dropWhile " <> strings(iter.dropWhile(words() fun(w: String): Bool stringOp.length(w) < 5)) <> " "
+    <> ints(iter.dropWhile(iter.range(0 3) fun(x: Int): Bool true)));
+print("concat " <> ints(iter.concat(iter.range(0 3) iter.concat(iter.empty(:Int) iter.range(10 12)))));
+print("flatMap " <> ints(iter.flatMap(iter.range(0 5) fun(n: Int): iter.T(Int) iter.range(0 n))));
+let indexed = iter.enumerate(iter.take(words() 3));
+let var shownIndexed = "";
+while iter.more(indexed) do
+    let e = iter.next(indexed)
+    shownIndexed := shownIndexed <> " " <> conv.int(e.index) <> ":" <> e.value
+end;
+print("enumerate" <> shownIndexed);
+let zipped = iter.zip(iter.range(1 100) words());
+let var shownZipped = "";
+while iter.more(zipped) do
+    let p = iter.next(zipped)
+    shownZipped := shownZipped <> " " <> conv.int(p.first) <> p.second
+end;
+print("zip" <> shownZipped);
+print("merge " <> ints(iter.merge(iter.ofArray(array of 1 4 4 9 end) iter.ofArray(array of 2 4 10 11 end) compareInt))
+    <> " " <> ints(iter.merge(iter.empty(:Int) iter.range(0 3) compareInt)));
+print("merge stable " <> strings(iter.merge(iter.ofArray(array of "aa" "ccc" end) iter.ofArray(array of "bb" "ddd" end)
+    compareLength)));
+
+(* 3. Peeking *)
+let p = iter.peekable(words());
+let pit = iter.asIter(p);
+print("peek " <> iter.peek(p) <> " " <> iter.peek(p) <> " next " <> iter.next(pit) <> " peek " <> iter.peek(p));
+(* Groups the words by length, while the next word's length is the group's *)
+let byLength = iter.peekable(iter.ofArray(array of "a" "b" "cc" "dd" "ee" "f" "ggg" end));
+let bit = iter.asIter(byLength);
+let var groups = "";
+while iter.more(bit) do
+    let n = stringOp.length(iter.peek(byLength))
+    groups := groups <> " " <> conv.int(n) <> ":"
+    while iter.more(bit) andif {stringOp.length(iter.peek(byLength)) is n} do groups := groups <> iter.next(bit) end
+end;
+print("groups" <> groups);
+
+(* 4. Consumers *)
+let visited = tuple let var sum = 0 end;
+iter.forEach(iter.range(0 5) fun(x: Int): Ok visited.sum := visited.sum + x);
+print("forEach " <> conv.int(visited.sum));
+print("fold " <> iter.fold(words() "" fun(acc: String w: String): String acc <> stringOp.getSub(w 0 1)));
+print("count " <> conv.int(iter.count(words())) <> " " <> conv.int(iter.count(iter.empty(:Int))));
+let pulled = tuple let var n = 0 end;
+let counted(it: iter.T(Int)): iter.T(Int) = iter.map(it fun(x: Int): Int begin pulled.n := pulled.n + 1 x end);
+check("any" iter.any(counted(iter.range(0 100)) fun(x: Int): Bool x > 5));
+print("any pulled " <> conv.int(pulled.n));
+check("any of none" iter.any(iter.empty(:Int) even));
+check("all" iter.all(iter.rangeBy(0 10 2) even));
+check("not all" iter.all(iter.range(0 10) even));
+print("find " <> shownMaybe(iter.find(iter.range(1 100) fun(x: Int): Bool {x % 7} is 0)) <> " "
+    <> shownMaybe(iter.find(iter.range(1 5) fun(x: Int): Bool x > 10)));
+print("first " <> shownMaybe(iter.first(iter.range(4 9))) <> " " <> shownMaybe(iter.first(iter.empty(:Int))));
+print("last " <> shownMaybe(iter.last(iter.range(4 9))) <> " " <> shownMaybe(iter.last(iter.empty(:Int))));
+print("min " <> shownMaybe(iter.min(iter.ofArray(array of 5 3 8 3 1 9 end) compareInt)) <> " max "
+    <> shownMaybe(iter.max(iter.ofArray(array of 5 3 8 3 1 9 end) compareInt)) <> " "
+    <> shownMaybe(iter.min(iter.empty(:Int) compareInt)));
+print("min first of equal " <> maybe.unwrap(iter.min(words() compareLength)) <> " max first of equal "
+    <> maybe.unwrap(iter.max(words() compareLength)));
+let a = iter.toArray(iter.map(iter.range(0 20) triple));
+print("toArray " <> conv.int(extent a) <> " " <> conv.int(a[0]) <> " " <> conv.int(a[19]) <> " "
+    <> conv.int(extent iter.toArray(iter.empty(:Int))));
+print("sumInt " <> conv.int(iter.sumInt(iter.range(1 101))));
+let intEqual(x: Int y: Int): Bool = x is y;
+check("equal" iter.equal(iter.range(0 4) iter.ofArray(array of 0 1 2 3 end) intEqual));
+check("equal, shorter" iter.equal(iter.range(0 3) iter.range(0 4) intEqual));
+check("equal, longer" iter.equal(iter.range(0 4) iter.range(0 3) intEqual));
+check("equal, differing" iter.equal(iter.range(0 4) iter.ofArray(array of 0 1 5 3 end) intEqual));
+
+(* 5. more is idempotent, and next past the end *)
+let f = iter.filter(iter.range(0 10) even);
+check("more more" iter.more(f) andif iter.more(f) andif iter.more(f));
+print("after more more " <> ints(f));
+check("more at the end" not(iter.more(f)) andif not(iter.more(f)));
+err("next of empty" fun(): String conv.int(iter.next(iter.empty(:Int))));
+err("next past range" fun(): String begin
+    let r = iter.range(0 1)
+    iter.next(r)
+    conv.int(iter.next(r))
+end);
+err("next past filter" fun(): String conv.int(iter.next(iter.filter(iter.range(0 3) fun(x: Int): Bool x > 5))));
+err("next past takeWhile" fun(): String begin
+    let t = iter.takeWhile(words() fun(w: String): Bool w isnot "quick")
+    iter.next(t)
+    iter.next(t)
+end);
+err("next past zip" fun(): String begin
+    let z = iter.zip(iter.range(0 1) words())
+    iter.next(z)
+    iter.next(z).second
+end);
+err("peek of empty" fun(): String iter.peek(iter.peekable(iter.empty(:String))));
+err("rangeBy step 0" fun(): String ints(iter.rangeBy(0 10 0)));
+
+(* 6. A pipeline against a loop written out *)
+let var expected = 0;
+for i = 0 upto 9999 do let y = i * 3 if {y % 2} is 0 then expected := expected + y end end;
+check("pipeline" iter.sumInt(iter.filter(iter.map(iter.range(0 10000) triple) even)) is expected);

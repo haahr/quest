@@ -1,0 +1,491 @@
+(* Iterators (docs/iter-plan.md). An iterator is a pair of closures, its
+ * state their environment; the stages and consumers here read the closures in
+ * place, and other modules call more and next. *)
+
+module iter : Iter
+import
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+export
+    Let T = Fun(A::TYPE) Tuple more: All() Bool next: All() A end
+
+    let exhausted: Exception = exception exhausted: Ok end
+    let error: Exception = exception error: Ok end
+
+    Let Indexed = Fun(A::TYPE) Record index: Int value: A end
+    Let Pair = Fun(A::TYPE B::TYPE) Record first: A second: B end
+    Let Step = Fun(A::TYPE S::TYPE) Record value: A seed: S end
+
+    let more(A::TYPE)(it: T(A)): Bool = it.more()
+    let next(A::TYPE)(it: T(A)): A = it.next()
+
+    let make(A::TYPE)(more: All() Bool next: All() A): T(A) =
+        begin
+            let m = more
+            let n = next
+            tuple let more = m let next = n end
+        end
+
+    (* What a stage that looks ahead holds (docs/iter-plan.md decision 4): the
+     * element it pulled to answer more and has not yet handed out, if full.
+     * The option is made with the first element held, and its payload's var
+     * overwritten after that, through a case binder, which is the payload
+     * itself (opt!tag would be a copy), so that nothing is allocated per
+     * element. A generic A has no empty value to start the var with. *)
+    Let Slot = Fun(A::TYPE) Option none made with var x: A end end
+    Let Look = Fun(A::TYPE) Tuple var slot: Slot(A) var full: Bool end
+
+    let look(A::TYPE): Look(A) = tuple let var slot = option none of Slot(A) end let var full = false end
+
+    let hold(A::TYPE)(l: Look(A) x: A): Ok =
+        begin
+            case l.slot
+                when made with c then c.x := x
+                when none then l.slot := option made of Slot(A) with let var x = x end
+            end
+            l.full := true
+        end
+
+    (* The element held, which l then no longer holds; l must be full *)
+    let release(A::TYPE)(l: Look(A)): A =
+        begin
+            l.full := false
+            l.slot!made.x
+        end
+
+    (* Sources *)
+
+    let empty(A::TYPE): T(A) =
+        tuple
+            let more(): Bool = false
+            let next(): A = raise exhausted end
+        end
+
+    let once(A::TYPE)(a: A): T(A) =
+        begin
+            let c = tuple let var done = false end
+            tuple
+                let more(): Bool = not(c.done)
+                let next(): A =
+                    if c.done then raise exhausted end
+                    else
+                        c.done := true
+                        a
+                    end
+            end
+        end
+
+    let rangeBy(lo: Int hi: Int step: Int): T(Int) =
+        begin
+            if step is 0 then raise error end end
+            let c = tuple let var i = lo end
+            let ready(): Bool = if step > 0 then c.i < hi else c.i > hi end
+            tuple
+                let more(): Bool = ready()
+                let next(): Int =
+                    if ready() then
+                        let x = c.i
+                        c.i := x + step
+                        x
+                    else
+                        raise exhausted end
+                    end
+            end
+        end
+
+    let range(lo: Int hi: Int): T(Int) =
+        begin
+            let c = tuple let var i = lo end
+            tuple
+                let more(): Bool = c.i < hi
+                let next(): Int =
+                    if c.i < hi then
+                        let x = c.i
+                        c.i := x + 1
+                        x
+                    else
+                        raise exhausted end
+                    end
+            end
+        end
+
+    let ofArray(A::TYPE)(a: Array(A)): T(A) =
+        begin
+            let c = tuple let var i = 0 end
+            tuple
+                let more(): Bool = c.i < extent a
+                let next(): A =
+                    if c.i < extent a then
+                        let x = a[c.i]
+                        c.i := c.i + 1
+                        x
+                    else
+                        raise exhausted end
+                    end
+            end
+        end
+
+    let chars(s: String): T(Char) =
+        begin
+            let n = stringOp.length(s)
+            let c = tuple let var i = 0 end
+            tuple
+                let more(): Bool = c.i < n
+                let next(): Char =
+                    if c.i < n then
+                        let x = stringOp.getChar(s c.i)
+                        c.i := c.i + 1
+                        x
+                    else
+                        raise exhausted end
+                    end
+            end
+        end
+
+    (* The step's result for the current seed, once more has called it: none
+     * at the end, after which the step is not called again *)
+    let unfold(A::TYPE S::TYPE)(seed: S step: All(s: S) maybe.T(Step(A S))): T(A) =
+        begin
+            let c = tuple let var seed = seed let var looked = false let var pending = maybe.none(:Step(A S)) end
+            let ready(): Bool =
+                begin
+                    if not(c.looked) then
+                        c.pending := step(c.seed)
+                        c.looked := true
+                    end
+                    maybe.isSome(c.pending)
+                end
+            tuple
+                let more(): Bool = ready()
+                let next(): A =
+                    if ready() then
+                        let s = maybe.unwrap(c.pending)
+                        c.seed := s.seed
+                        c.looked := false
+                        s.value
+                    else
+                        raise exhausted end
+                    end
+            end
+        end
+
+    (* Stages *)
+
+    let map(A::TYPE B::TYPE)(it: T(A) f: All(a: A) B): T(B) =
+        tuple
+            let more(): Bool = it.more()
+            let next(): B = f(it.next())
+        end
+
+    let filter(A::TYPE)(it: T(A) p: All(a: A) Bool): T(A) =
+        begin
+            let l = look(:A)
+            let fill(): Bool =
+                begin
+                    while not(l.full) andif it.more() do
+                        let x = it.next()
+                        if p(x) then hold(l x) end
+                    end
+                    l.full
+                end
+            tuple
+                let more(): Bool = fill()
+                let next(): A = if fill() then release(l) else raise exhausted end end
+            end
+        end
+
+    let filterMap(A::TYPE B::TYPE)(it: T(A) f: All(a: A) maybe.T(B)): T(B) =
+        begin
+            let l = look(:B)
+            let fill(): Bool =
+                begin
+                    while not(l.full) andif it.more() do
+                        let y = f(it.next())
+                        if maybe.isSome(y) then hold(l maybe.unwrap(y)) end
+                    end
+                    l.full
+                end
+            tuple
+                let more(): Bool = fill()
+                let next(): B = if fill() then release(l) else raise exhausted end end
+            end
+        end
+
+    let take(A::TYPE)(it: T(A) n: Int): T(A) =
+        begin
+            let c = tuple let var taken = 0 end
+            tuple
+                let more(): Bool = {c.taken < n} andif it.more()
+                let next(): A =
+                    if c.taken < n then
+                        let x = it.next()
+                        c.taken := c.taken + 1
+                        x
+                    else
+                        raise exhausted end
+                    end
+            end
+        end
+
+    let drop(A::TYPE)(it: T(A) n: Int): T(A) =
+        begin
+            let c = tuple let var dropped = false end
+            let skip(): Ok =
+                if not(c.dropped) then
+                    c.dropped := true
+                    let var k = 0
+                    while {k < n} andif it.more() do
+                        it.next()
+                        k := k + 1
+                    end
+                end
+            tuple
+                let more(): Bool = begin skip() it.more() end
+                let next(): A = begin skip() it.next() end
+            end
+        end
+
+    let takeWhile(A::TYPE)(it: T(A) p: All(a: A) Bool): T(A) =
+        begin
+            let l = look(:A)
+            let c = tuple let var done = false end
+            let fill(): Bool =
+                begin
+                    if not(l.full) andif not(c.done) andif it.more() then
+                        let x = it.next()
+                        if p(x) then hold(l x) else c.done := true end
+                    end
+                    l.full
+                end
+            tuple
+                let more(): Bool = fill()
+                let next(): A = if fill() then release(l) else raise exhausted end end
+            end
+        end
+
+    let dropWhile(A::TYPE)(it: T(A) p: All(a: A) Bool): T(A) =
+        begin
+            let l = look(:A)
+            let c = tuple let var dropping = true end
+            let skip(): Ok =
+                if c.dropping then
+                    c.dropping := false
+                    let var searching = true
+                    while searching andif it.more() do
+                        let x = it.next()
+                        if not(p(x)) then
+                            hold(l x)
+                            searching := false
+                        end
+                    end
+                end
+            tuple
+                let more(): Bool = begin skip() l.full orif it.more() end
+                let next(): A = begin skip() if l.full then release(l) else it.next() end end
+            end
+        end
+
+    let concat(A::TYPE)(a: T(A) b: T(A)): T(A) =
+        tuple
+            let more(): Bool = a.more() orif b.more()
+            let next(): A = if a.more() then a.next() else b.next() end
+        end
+
+    let flatMap(A::TYPE B::TYPE)(it: T(A) f: All(a: A) T(B)): T(B) =
+        begin
+            let c = tuple let var inner = empty(:B) end
+            let fill(): Bool =
+                begin
+                    while not(c.inner.more()) andif it.more() do c.inner := f(it.next()) end
+                    c.inner.more()
+                end
+            tuple
+                let more(): Bool = fill()
+                let next(): B = if fill() then c.inner.next() else raise exhausted end end
+            end
+        end
+
+    let enumerate(A::TYPE)(it: T(A)): T(Indexed(A)) =
+        begin
+            let c = tuple let var i = 0 end
+            tuple
+                let more(): Bool = it.more()
+                let next(): Indexed(A) =
+                    begin
+                        let x = it.next()
+                        let r = record index = c.i value = x end
+                        c.i := c.i + 1
+                        r
+                    end
+            end
+        end
+
+    let zip(A::TYPE B::TYPE)(a: T(A) b: T(B)): T(Pair(A B)) =
+        begin
+            let ready(): Bool = a.more() andif b.more()
+            tuple
+                let more(): Bool = ready()
+                let next(): Pair(A B) =
+                    if ready() then
+                        let x = a.next()
+                        let y = b.next()
+                        record first = x second = y end
+                    else
+                        raise exhausted end
+                    end
+            end
+        end
+
+    (* Peeking *)
+
+    Let Peekable = Fun(A::TYPE) Tuple it: T(A) look: Look(A) end
+
+    let peekable(A::TYPE)(it: T(A)): Peekable(A) = tuple let it = it let look = look(:A) end
+
+    (* Whether p has a next element, which p then holds *)
+    let fillPeek(A::TYPE)(p: Peekable(A)): Bool =
+        begin
+            let l = p.look
+            if not(l.full) andif p.it.more() then hold(l p.it.next()) end
+            l.full
+        end
+
+    let peek(A::TYPE)(p: Peekable(A)): A = if fillPeek(p) then p.look.slot!made.x else raise exhausted end end
+
+    let asIter(A::TYPE)(p: Peekable(A)): T(A) =
+        tuple
+            let more(): Bool = fillPeek(p)
+            let next(): A = if fillPeek(p) then release(p.look) else raise exhausted end end
+        end
+
+    let merge(A::TYPE)(a: T(A) b: T(A) compare: All(x: A y: A) Int): T(A) =
+        begin
+            let pa = peekable(a)
+            let pb = peekable(b)
+            tuple
+                let more(): Bool = fillPeek(pa) orif fillPeek(pb)
+                let next(): A =
+                    if fillPeek(pa) then
+                        if fillPeek(pb) andif {compare(pb.look.slot!made.x pa.look.slot!made.x) < 0} then
+                            release(pb.look)
+                        else
+                            release(pa.look)
+                        end
+                    elsif fillPeek(pb) then
+                        release(pb.look)
+                    else
+                        raise exhausted end
+                    end
+            end
+        end
+
+    (* Consumers *)
+
+    let forEach(A::TYPE)(it: T(A) f: All(a: A) Ok): Ok = while it.more() do f(it.next()) end
+
+    let fold(A::TYPE Acc::TYPE)(it: T(A) init: Acc f: All(acc: Acc a: A) Acc): Acc =
+        begin
+            let var acc = init
+            while it.more() do acc := f(acc it.next()) end
+            acc
+        end
+
+    let count(A::TYPE)(it: T(A)): Int =
+        begin
+            let var n = 0
+            while it.more() do
+                it.next()
+                n := n + 1
+            end
+            n
+        end
+
+    let any(A::TYPE)(it: T(A) p: All(a: A) Bool): Bool =
+        begin
+            let var found = false
+            while not(found) andif it.more() do found := p(it.next()) end
+            found
+        end
+
+    let all(A::TYPE)(it: T(A) p: All(a: A) Bool): Bool =
+        begin
+            let var holds = true
+            while holds andif it.more() do holds := p(it.next()) end
+            holds
+        end
+
+    let find(A::TYPE)(it: T(A) p: All(a: A) Bool): maybe.T(A) =
+        begin
+            let var found = maybe.none(:A)
+            while maybe.isNone(found) andif it.more() do
+                let x = it.next()
+                if p(x) then found := maybe.some(x) end
+            end
+            found
+        end
+
+    let first(A::TYPE)(it: T(A)): maybe.T(A) = if it.more() then maybe.some(it.next()) else maybe.none(:A) end
+
+    let last(A::TYPE)(it: T(A)): maybe.T(A) =
+        begin
+            let l = look(:A)
+            while it.more() do hold(l it.next()) end
+            if l.full then maybe.some(release(l)) else maybe.none(:A) end
+        end
+
+    (* The first element e for which better(compare(e best)) holds of none
+     * after it *)
+    let extreme(A::TYPE)(it: T(A) compare: All(x: A y: A) Int better: All(c: Int) Bool): maybe.T(A) =
+        begin
+            let l = look(:A)
+            while it.more() do
+                let x = it.next()
+                if not(l.full) orif better(compare(x l.slot!made.x)) then hold(l x) end
+            end
+            if l.full then maybe.some(release(l)) else maybe.none(:A) end
+        end
+
+    let min(A::TYPE)(it: T(A) compare: All(x: A y: A) Int): maybe.T(A) =
+        extreme(it compare fun(c: Int): Bool c < 0)
+
+    let max(A::TYPE)(it: T(A) compare: All(x: A y: A) Int): maybe.T(A) =
+        extreme(it compare fun(c: Int): Bool c > 0)
+
+    (* Grows an array by doubling, filling its unused slots with the first
+     * element, and copies the used ones into one of their number at the end *)
+    let toArray(A::TYPE)(it: T(A)): Array(A) =
+        if it.more() then
+            let x0 = it.next()
+            let var a = array of(8 x0)
+            let var n = 1
+            while it.more() do
+                let x = it.next()
+                if n is extent a then
+                    let b = array of(2 * n x0)
+                    for i = 0 upto {n - 1} do b[i] := a[i] end
+                    a := b
+                end
+                a[n] := x
+                n := n + 1
+            end
+            let result = array of(n x0)
+            for i = 0 upto {n - 1} do result[i] := a[i] end
+            result
+        else
+            array of :A end
+        end
+
+    let sumInt(it: T(Int)): Int =
+        begin
+            let var t = 0
+            while it.more() do t := t + it.next() end
+            t
+        end
+
+    let equal(A::TYPE)(a: T(A) b: T(A) eq: All(x: A y: A) Bool): Bool =
+        begin
+            let var same = true
+            while same andif a.more() andif b.more() do same := eq(a.next() b.next()) end
+            same andif not(a.more()) andif not(b.more())
+        end
+end
