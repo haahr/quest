@@ -38,7 +38,7 @@ import
 export
     (* A map whose keys are in the order its comparison gives *)
     T::ALL(K::TYPE) ALL(V::TYPE) TYPE
-    Def Entry = Fun(K::TYPE V::TYPE) Record key: K value: V end
+    Def Entry = Fun(K::TYPE V::TYPE) Tuple key: K value: V end
 
     (* Raised by find of a missing key, and by a walk of a map changed while
      * it is walked *)

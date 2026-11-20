@@ -891,7 +891,7 @@ export
     T::ALL(K::TYPE) ALL(V::TYPE) TYPE
 
     (* Key-value pair entry *)
-    Def Entry = Fun(K::TYPE V::TYPE) Record key: K value: V end
+    Def Entry = Fun(K::TYPE V::TYPE) Tuple key: K value: V end
 
     (* Exception raised on lookup failure when using unwrap-style access *)
     error: Exception
@@ -945,7 +945,7 @@ export
     (* Return all values as a vector in insertion order *)
     values: All(K::TYPE V::TYPE) All(m: T(K V)) vector.T(V)
 
-    (* Return all entries as a vector of (key, value) records in insertion order *)
+    (* Return all entries as a vector of (key, value) tuples in insertion order *)
     entries: All(K::TYPE V::TYPE) All(m: T(K V)) vector.T(Entry(K V))
 
     (* Iterate over all key-value pairs in insertion order *)
@@ -1157,7 +1157,7 @@ import
     collections/vector : collections/Vector
 export
     T::ALL(K::TYPE) ALL(V::TYPE) TYPE
-    Def Entry = Fun(K::TYPE V::TYPE) Record key: K value: V end
+    Def Entry = Fun(K::TYPE V::TYPE) Tuple key: K value: V end
     error: Exception
     new: All(K::TYPE V::TYPE) All(compare: All(a: K b: K) Int) T(K V)
     size: All(K::TYPE V::TYPE) All(m: T(K V)) Int
