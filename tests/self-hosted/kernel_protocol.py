@@ -123,7 +123,7 @@ def check_cells(driver: str, options: list[str], label: str, scratch: Path, sess
         c.expect("completing a binding", s.complete("alp", 3), (["alpha", "alphabet"], 0, 3))
         c.expect("completing a keyword", s.complete("wh", 2)[0], ["when", "while"])
         c.expect("completing after text", s.complete('"é" <> alph', 11), (["alpha", "alphabet"], 7, 11))
-        c.expect("completing a member", s.complete("1 + vector.ap", 13), (["append"], 11, 13))
+        c.expect("completing a member", s.complete("1 + vector.ap", 13), (["append", "appendIter"], 11, 13))
         c.expect("completing nothing", s.complete("zzz", 3)[0], [])
 
         # Inspection: a binding, a module's member, a module, nothing
