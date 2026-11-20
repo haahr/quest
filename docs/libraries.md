@@ -457,6 +457,7 @@ interface Regexp
 import
     util/maybe : util/Maybe
     collections/vector : collections/Vector
+    util/iter : util/Iter
 export
     Def SyntaxError = Tuple message: String offset: Int end
     syntax: Exception(SyntaxError)      (* a pattern that is not one: why, and where in it *)
@@ -483,6 +484,8 @@ export
     named(m: Match name: String): String
 
     findAll(r: T s: String): vector.T(Match)              (* none overlapping, as Go's FindAll *)
+    findIter(r: T s: String): iter.T(Match)               (* findAll's, found as they are pulled *)
+    findStringIter(r: T s: String): iter.T(String)        (* the text of each *)
     replaceFirst(r: T s: String template: String): String (* $1, ${1}, $name, ${name}, $$, as Go's Expand *)
     replaceAll(r: T s: String template: String): String
     replaceWith(r: T s: String f: All(m: Match) String): String
@@ -777,6 +780,92 @@ export
 end
 ```
 
+### 1.14. `util/iter : util/Iter`
+
+Iterators ([iter-plan.md](iter-plan.md)): one way to walk a vector, a hash set, a sorted map's range, a string's
+characters, or a regular expression's matches, and to chain stages over any of them without building vectors in
+between. An iterator is pulled, an ordinary loop:
+
+```quest
+while iter.more(it) do let x = iter.next(it) ... end
+```
+
+- **`more` changes nothing a caller can see** (calling it twice is calling it once); **`next` raises `exhausted`**
+  when there is no next element.
+- **An iterator is one-shot.** Walking a source again means asking it for another; a function that walks its
+  argument more than once takes an `All() iter.T(A)` (an interface's manifest type cannot name its own abstract type,
+  so there is no name for it).
+- **An iterator over a collection sees it live:** if the collection gains or loses elements while an iterator is in
+  use, other than through it, what the iterator returns from then on is unspecified.
+- **Stages pull as they are pulled,** and allocate their closures once, when the pipeline is built. Those that look
+  ahead (`filter`, `filterMap`, `takeWhile`, `dropWhile`, `merge`, a peekable iterator) hold the element in an option
+  they reuse, so nothing is allocated per element. `map`'s function runs once per element.
+- **Pairs are records:** `enumerate`'s `Indexed(A)`, `zip`'s `Pair(A B)`, and `unfold`'s `Step(A S)`, the element
+  and the next seed, which its step returns in a `maybe.T`.
+- **A producer** makes an iterator with `make(more next)` from closures over its own state, keeping `more`'s and
+  `next`'s contract.
+- **Cost:** a call into `util/iter` for each `more` and `next` the program makes, under separate compilation, and a
+  closure call per stage per element (`benchmarks/iter/`: 82 instructions per element through a `map`, against 17
+  for a loop written out). The consumers here (`forEach`, `fold`, `sumInt`, ...) read the closures in place.
+
+`tests/source/stdlib/iter_operations.quest` tests each operation, `more` called repeatedly, `next` past the end, and
+peeking.
+
+#### Interface Summary
+
+```quest
+interface Iter
+import
+    util/maybe : util/Maybe
+export
+    T::ALL(A::TYPE) TYPE
+    Peekable::ALL(A::TYPE) TYPE
+    Def Indexed = Fun(A::TYPE) Record index: Int value: A end
+    Def Pair = Fun(A::TYPE B::TYPE) Record first: A second: B end
+    Def Step = Fun(A::TYPE S::TYPE) Record value: A seed: S end
+    exhausted: Exception
+    error: Exception
+    more: All(A::TYPE) All(it: T(A)) Bool
+    next: All(A::TYPE) All(it: T(A)) A
+    make: All(A::TYPE) All(more: All() Bool next: All() A) T(A)
+    empty: All(A::TYPE) T(A)
+    once: All(A::TYPE) All(a: A) T(A)
+    range: All(lo: Int hi: Int) T(Int)
+    rangeBy: All(lo: Int hi: Int step: Int) T(Int)
+    ofArray: All(A::TYPE) All(a: Array(A)) T(A)
+    chars: All(s: String) T(Char)
+    unfold: All(A::TYPE S::TYPE) All(seed: S step: All(s: S) maybe.T(Step(A S))) T(A)
+    map: All(A::TYPE B::TYPE) All(it: T(A) f: All(a: A) B) T(B)
+    filter: All(A::TYPE) All(it: T(A) p: All(a: A) Bool) T(A)
+    filterMap: All(A::TYPE B::TYPE) All(it: T(A) f: All(a: A) maybe.T(B)) T(B)
+    take: All(A::TYPE) All(it: T(A) n: Int) T(A)
+    drop: All(A::TYPE) All(it: T(A) n: Int) T(A)
+    takeWhile: All(A::TYPE) All(it: T(A) p: All(a: A) Bool) T(A)
+    dropWhile: All(A::TYPE) All(it: T(A) p: All(a: A) Bool) T(A)
+    concat: All(A::TYPE) All(a: T(A) b: T(A)) T(A)
+    flatMap: All(A::TYPE B::TYPE) All(it: T(A) f: All(a: A) T(B)) T(B)
+    enumerate: All(A::TYPE) All(it: T(A)) T(Indexed(A))
+    zip: All(A::TYPE B::TYPE) All(a: T(A) b: T(B)) T(Pair(A B))
+    merge: All(A::TYPE) All(a: T(A) b: T(A) compare: All(x: A y: A) Int) T(A)
+    peekable: All(A::TYPE) All(it: T(A)) Peekable(A)
+    peek: All(A::TYPE) All(p: Peekable(A)) A
+    asIter: All(A::TYPE) All(p: Peekable(A)) T(A)
+    forEach: All(A::TYPE) All(it: T(A) f: All(a: A) Ok) Ok
+    fold: All(A::TYPE Acc::TYPE) All(it: T(A) init: Acc f: All(acc: Acc a: A) Acc) Acc
+    count: All(A::TYPE) All(it: T(A)) Int
+    any: All(A::TYPE) All(it: T(A) p: All(a: A) Bool) Bool
+    all: All(A::TYPE) All(it: T(A) p: All(a: A) Bool) Bool
+    find: All(A::TYPE) All(it: T(A) p: All(a: A) Bool) maybe.T(A)
+    first: All(A::TYPE) All(it: T(A)) maybe.T(A)
+    last: All(A::TYPE) All(it: T(A)) maybe.T(A)
+    min: All(A::TYPE) All(it: T(A) compare: All(x: A y: A) Int) maybe.T(A)
+    max: All(A::TYPE) All(it: T(A) compare: All(x: A y: A) Int) maybe.T(A)
+    toArray: All(A::TYPE) All(it: T(A)) Array(A)
+    sumInt(it: T(Int)): Int
+    equal: All(A::TYPE) All(a: T(A) b: T(A) eq: All(x: A y: A) Bool) Bool
+end
+```
+
 ---
 
 ## 2. Collections (`lib/collections/`)
@@ -791,6 +880,7 @@ Growable, dynamically-resizing array collection parameterized over element type 
 interface Vector
 import
     util/maybe : util/Maybe
+    iterLib = util/iter : util/Iter
 export
     (* The polymorphic growable vector type constructor *)
     T::ALL(A::TYPE) TYPE
@@ -854,6 +944,12 @@ export
     filter: All(A::TYPE) All(v: T(A) pred: All(elem: A) Bool) T(A)
     fold: All(A::TYPE Acc::TYPE) All(v: T(A) init: Acc f: All(acc: Acc elem: A) Acc) Acc
     filterMap: All(A::TYPE B::TYPE) All(v: T(A) f: All(elem: A) maybe.T(B)) T(B)
+
+    (* Iterators (§1.14), and building from one *)
+    iter: All(A::TYPE) All(v: T(A)) iterLib.T(A)
+    iterReversed: All(A::TYPE) All(v: T(A)) iterLib.T(A)
+    fromIter: All(A::TYPE) All(it: iterLib.T(A)) T(A)
+    appendIter: All(A::TYPE) All(v: T(A) it: iterLib.T(A)) Ok
 end
 ```
 
@@ -886,6 +982,7 @@ import
     util/maybe : util/Maybe
     collections/vector : collections/Vector
     word: Word
+    iterLib = util/iter : util/Iter
 export
     (* The polymorphic hash map type constructor *)
     T::ALL(K::TYPE) ALL(V::TYPE) TYPE
@@ -972,6 +1069,14 @@ export
     filterMap: All(K::TYPE V::TYPE W::TYPE)
         All(m: T(K V) f: All(k: K v: V) maybe.T(W))
         T(K W)
+
+    (* Iterators (§1.14), in insertion order, and building from one *)
+    entryIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(Entry(K V))
+    keyIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(K)
+    valueIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(V)
+    fromEntries: All(K::TYPE V::TYPE)
+        All(it: iterLib.T(Entry(K V)) equal: All(k1: K k2: K) Bool hash: All(k: K) word.T)
+        T(K V)
 end
 ```
 
@@ -1002,6 +1107,7 @@ import
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     word: Word
+    iterLib = util/iter : util/Iter
 export
     (* The polymorphic hash set type constructor *)
     T::ALL(A::TYPE) TYPE
@@ -1094,6 +1200,10 @@ export
             hash: All(b: B) word.T
             f: All(elem: A) maybe.T(B))
         T(B)
+
+    (* An iterator (§1.14), in insertion order, and building from one *)
+    iter: All(A::TYPE) All(s: T(A)) iterLib.T(A)
+    fromIter: All(A::TYPE) All(it: iterLib.T(A) equal: All(a1: A a2: A) Bool hash: All(a: A) word.T) T(A)
 end
 ```
 
@@ -1112,6 +1222,7 @@ operation on sets of different sizes raise `bitset.error`.
 interface Bitset
 import
     word: Word
+    iterLib = util/iter : util/Iter
 export
     T::TYPE
     error: Exception
@@ -1132,6 +1243,10 @@ export
     isSubset(s: T t: T): Bool
     next(s: T from: Int): Int           (* the least integer of s at least from, or ~1 *)
     elements(s: T): Array(Int)
+
+    (* An iterator (§1.14), in increasing order, and building from one *)
+    iter(s: T): iterLib.T(Int)
+    fromIter(size: Int it: iterLib.T(Int)): T
 end
 ```
 
@@ -1155,6 +1270,7 @@ interface SortedMap
 import
     util/maybe : util/Maybe
     collections/vector : collections/Vector
+    iterLib = util/iter : util/Iter
 export
     T::ALL(K::TYPE) ALL(V::TYPE) TYPE
     Def Entry = Fun(K::TYPE V::TYPE) Tuple key: K value: V end
@@ -1186,6 +1302,15 @@ export
     rank: All(K::TYPE V::TYPE) All(m: T(K V) key: K) Int
     map: All(K::TYPE V::TYPE W::TYPE) All(m: T(K V) f: All(k: K v: V) W) T(K W)
     filter: All(K::TYPE V::TYPE) All(m: T(K V) pred: All(k: K v: V) Bool) T(K V)
+
+    (* Iterators (§1.14), in key order, raising error if the map changes
+     * while one is in use, and building from one *)
+    entryIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(Entry(K V))
+    entryIterFrom: All(K::TYPE V::TYPE) All(m: T(K V) lo: K) iterLib.T(Entry(K V))
+    entryIterInRange: All(K::TYPE V::TYPE) All(m: T(K V) lo: K hi: K) iterLib.T(Entry(K V))
+    keyIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(K)
+    valueIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(V)
+    fromEntries: All(K::TYPE V::TYPE) All(it: iterLib.T(Entry(K V)) compare: All(a: K b: K) Int) T(K V)
 end
 ```
 
@@ -1203,6 +1328,7 @@ interface SortedSet
 import
     util/maybe : util/Maybe
     collections/vector : collections/Vector
+    iterLib = util/iter : util/Iter
 export
     T::ALL(A::TYPE) TYPE
     error: Exception
@@ -1233,6 +1359,13 @@ export
     isSubset: All(A::TYPE) All(s1: T(A) s2: T(A)) Bool
     equal: All(A::TYPE) All(s1: T(A) s2: T(A)) Bool
     filter: All(A::TYPE) All(s: T(A) pred: All(elem: A) Bool) T(A)
+
+    (* Iterators (§1.14), in order, raising error if the set changes while
+     * one is in use, and building from one *)
+    iter: All(A::TYPE) All(s: T(A)) iterLib.T(A)
+    iterFrom: All(A::TYPE) All(s: T(A) lo: A) iterLib.T(A)
+    iterInRange: All(A::TYPE) All(s: T(A) lo: A hi: A) iterLib.T(A)
+    fromIter: All(A::TYPE) All(it: iterLib.T(A) compare: All(a: A b: A) Int) T(A)
 end
 ```
 
@@ -1250,6 +1383,7 @@ handles, so no decrease-key.
 interface Heap
 import
     collections/vector : collections/Vector
+    iterLib = util/iter : util/Iter
 export
     T::ALL(A::TYPE) TYPE
     error: Exception
@@ -1263,6 +1397,12 @@ export
     pushPop: All(A::TYPE) All(h: T(A) elem: A) A
     clear: All(A::TYPE) All(h: T(A)) Ok
     elements: All(A::TYPE) All(h: T(A)) vector.T(A)
+
+    (* Iterators (§1.14): the elements in heap order, and popped, least
+     * first; and building from one *)
+    iter: All(A::TYPE) All(h: T(A)) iterLib.T(A)
+    drain: All(A::TYPE) All(h: T(A)) iterLib.T(A)
+    fromIter: All(A::TYPE) All(it: iterLib.T(A) compare: All(a: A b: A) Int) T(A)
 end
 ```
 
@@ -1279,6 +1419,7 @@ with pushes and pops at both ends in constant time and its elements indexed from
 interface Deque
 import
     collections/vector : collections/Vector
+    iterLib = util/iter : util/Iter
 export
     T::ALL(A::TYPE) TYPE
     error: Exception
@@ -1299,6 +1440,10 @@ export
     forEach: All(A::TYPE) All(d: T(A) action: All(elem: A) Ok) Ok
     toVector: All(A::TYPE) All(d: T(A)) vector.T(A)
     fromVector: All(A::TYPE) All(v: vector.T(A)) T(A)
+
+    (* An iterator (§1.14), front to back, and building from one *)
+    iter: All(A::TYPE) All(d: T(A)) iterLib.T(A)
+    fromIter: All(A::TYPE) All(it: iterLib.T(A)) T(A)
 end
 ```
 

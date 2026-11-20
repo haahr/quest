@@ -159,6 +159,51 @@ benchmarks.md, or the idea is dropped with its measurement.
 
 ---
 
+## A whole program does not inline through a module's abstract type
+
+**Problem.** Under `--whole-program`, a value that a module hands out as its abstract type is bound by a `let` that
+changes its type (`let %19: iter.T(Int) = %18`, the tuple at the abstract type), and the simplifier does not see
+through that copy when it folds `tuple_field` of a known tuple. So an iterator's closures stay closures called
+through the tuple: `benchmarks/iter/`'s `map` takes 56 instructions per element in a whole program, where the same
+library with `T` visible takes 11, its pipeline folded into the loop ([iter-plan.md](iter-plan.md) decision 2). Any
+module whose abstract type is a tuple of closures, or of known values, pays the same.
+
+**Reproduce.** `benchmarks/iter/run.py --only map`; then the same with `T` made a `Def` in a copy of
+`lib/util/iter.int.quest` (each in a directory of its own: a program's directory is searched before `-I`), and
+compare `--stop-after ir_simplified --whole-program`'s `main`.
+
+**Where to start.** `simpler` in `questlang/ir/simplify.mod.quest`: its `opTupleField` case reads only the tuple's
+own definition, where `madeOf` (for options) follows copies through `opAtom` of another type. The same
+look-through for `opMakeTuple`, checking the component is not a `var` in the made tuple's type as well, should fold
+it.
+
+**Done when.** `benchmarks/iter/`'s whole-program `map` is about the visible type's 11 instructions per element,
+and the self-hosted IR goldens' changes are reviewed and updated.
+
+---
+
+## An interface may declare a member twice
+
+**Problem.** Both typecheckers accept an interface that declares the same member twice, with different types, and a
+module that defines it twice to match. The self-hosted compiler builds and runs the program; the bootstrap's C fails
+to compile, with `redefinition of typedef 'quest_sig_util__Regexp_matches'`. It was found by adding an iterator
+`matches(r: T s: String): iter.T(Match)` to `util/regexp`, which already had `matches(r: T s: String): Bool`
+([iter-plan.md](iter-plan.md) step 3, where the iterator became `findIter`).
+
+**Reproduce.** Add `matches(r: T s: String): iter.T(String)` to `lib/util/regexp.int.quest` beside the existing
+`matches`, and a `let matches` to match after the existing one in the module: `./quest --stop-after typecheck` and
+`./questboot --stop-after typecheck` accept the module, and `run_tests.py -k stdlib/regexp_operations --phase
+run_c_compiled` fails in the bootstrap's C. (A smaller case, not yet tried: an interface declaring `f` twice.)
+
+**Where to start.** The checks of an interface's declarations in `questlang/typechecker/` (where a duplicate type
+or exception name would be caught, if one is) and `bootstrap/python/quest/typechecker/`, and a module's lets
+against its interface.
+
+**Done when.** Both compilers reject a repeated member name in an interface, with the same message, and an error
+test under `tests/errors` shows it.
+
+---
+
 ## Undo the single-word rule for options, and simplify what it left
 
 **Problem.** The language compares single-word options by component ([extensions.md](extensions.md), "Options as

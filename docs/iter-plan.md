@@ -5,8 +5,9 @@ string's characters, or a regular expression's matches with the same code, and c
 any of them without building vectors in between ([future-libraries.md](future-libraries.md), "Lazy sequences"). It
 needs no change to the language: an iterator is a pair of closures, behind an abstract type.
 
-A design, 2026-11-19; nothing is built. §1 is the decisions, §2 the measurements behind them, §3 the interface,
-§4 what each collection adds, §5 what is left out, §6 the steps, and §7 what the user settled.
+A design, 2026-11-19. Steps 1 to 3 are built, 2026-11-20 (§6). §1 is the decisions, §2 the
+measurements behind them, §3 the interface, §4 what each collection adds, §5 what is left out, §6 the steps, and §7
+what the user settled.
 
 ## 1. Decisions
 
@@ -42,9 +43,13 @@ A design, 2026-11-19; nothing is built. §1 is the decisions, §2 the measuremen
    a caller, and the importers' interfaces do not record it. The price is a call into `util/iter` for each `more`
    and `next` at the consumer, since separate compilation inlines nothing across modules: about 23 instructions per
    element the consumer takes (53 to 76 per element through a `map`, 130 to 142 through a `map` and a `filter`).
-   Under `--whole-program`, which inlines across modules, the price is gone: both forms compile to the same code,
-   11 instructions per element through a `map` (§2). Stages inside `util/iter` read the closures directly and do
-   not pay it.
+   Stages inside `util/iter` read the closures directly and do not pay it. Under `--whole-program`, which inlines
+   across modules, a visible tuple's pipeline folds into the loop (11 instructions per element through a `map`),
+   but the abstract type's does not, yet: the simplifier does not see through the `let` that gives the tuple its
+   abstract type, so the stages stay closures called through the iterator (56 per element, §2), a task in
+   [tasklist.md](tasklist.md). (When this decision was made, the whole-program measurement had been taken with the
+   visible type in both rows, by mistake: each program's own directory held a module of the same name, which was
+   compiled instead of the one given with `-I`.)
 3. **`more` and `next`, for familiarity.** `more` says whether there is another element and changes nothing a caller
    can see: calling it twice is calling it once. `next` returns the element and moves past it; called when `more`
    would say `false`, it raises `iter.exhausted`. This is Java's `Iterator` (`hasNext`, `next`), which most
@@ -81,7 +86,8 @@ A design, 2026-11-19; nothing is built. §1 is the decisions, §2 the measuremen
    arises. Since `iter.T` is abstract, this is the module's choice alone and can be revisited.
 6. **An iterator is one-shot; a source makes new ones.** Walking a collection again means asking it for another
    iterator, `vector.iter(v)`. A function that needs to walk its argument more than once takes a maker,
-   `All() iter.T(A)`, which `util/iter` names `Iterable(A)`; most take an `iter.T(A)`.
+   `All() iter.T(A)`; most take an `iter.T(A)`. (The plan named it `Iterable(A)`, which an interface cannot define,
+   §6.)
 7. **Pairs are records.** A map's entries are its `Entry(K V)`, the record `hashMap` and `sortedMap` already export;
    `enumerate`'s are `iter.Indexed(A)`, `Record index: Int value: A end`; and `zip`'s are `iter.Pair(A B)`,
    `Record first: A second: B end`. Each costs a record per element, which a type of iterator of pairs with its own
@@ -133,18 +139,21 @@ from `/usr/bin/time -l`:
 | Pull, `advance`/`current` closures, read in place | 53 | 114 | | | 1.8 MB |
 | Pull, `more`/`next` closures, read in place, own option whose `var` is overwritten | 53 | 130 | 11 | 46 | 1.8 MB |
 | Pull, `more`/`next` closures, read in place, own option around a reused cell | 53 | 143 | 11 | 47 | 1.8 MB |
-| **The `var`'s row through `iter.more(it)` and `iter.next(it)` (the plan)** | 76 | 142 | 11 | 46 | 1.8 MB |
+| The `var`'s row through `iter.more(it)` and `iter.next(it)`, the tuple visible | 76 | 142 | 11 | 46 | 1.8 MB |
+| **`util/iter` as built: abstract `iter.T`, checking `next` (`benchmarks/iter/`)** | 82 | 151 | 56 | 116 | |
 | Pull, `more`/`next` closures, own option per held element | 53 | 161 | | | 72 MB |
 | Pull, `more`/`next` closures, `maybe.some` per held element | 53 | 230 | | | 72 MB |
 | Pull, `more`/`next` closures, `util/maybe` around a reused cell | 53 | 305 | | | 1.8 MB |
 | Pull, `more`/`next` existential package, `maybe.some` per element | 109 | 273 | | | 72 MB |
 
 Blank cells were not measured. The 72 MB is an option made per held element; the rows show that the allocation
-costs less than reaching the held element through another module's abstract type does. The plan's row differs from
-the one above it only in the consumer's calls of `iter.more` and `iter.next`, which `--whole-program` inlines away;
-so does the whole pipeline, to about a loop written out through a `map`, and to 2.5 times one through a `filter`
-(its held element, and `more` and `next` both checking it). A pipeline allocates its stages' closures when it is built: two
-per stage, and the state of the stages that have any; in a whole program, those it inlines are not allocated.
+costs less than reaching the held element through another module's abstract type does. With the tuple visible,
+`--whole-program` inlines the consumer's calls of `iter.more` and `iter.next` away, and the whole pipeline too, to
+about a loop written out through a `map`, and to 2.5 times one through a `filter` (its held element, and `more` and
+`next` both checking it). The library as built is the last row: its `next` checks for the end (decision 12), about 6
+instructions per element through a `map` under separate compilation, and its abstract type keeps the whole program
+from inlining the stages (decision 2). A pipeline allocates its stages' closures when it is built: two per stage, and
+the state of the stages that have any; in a whole program, those it inlines are not allocated.
 
 ## 3. The interface
 
@@ -161,7 +170,6 @@ export
     T::ALL(A::TYPE) TYPE
     (* An iterator whose next element can be looked at without consuming it *)
     Peekable::ALL(A::TYPE) TYPE
-    Def Iterable = Fun(A::TYPE) All() T(A)
     Def Indexed = Fun(A::TYPE) Record index: Int value: A end
     Def Pair = Fun(A::TYPE B::TYPE) Record first: A second: B end
     Def Step = Fun(A::TYPE S::TYPE) Record value: A seed: S end
@@ -220,8 +228,8 @@ iter.equal(sortedSet.iter(a) sortedSet.iter(b) intEqual)
 let evens(n: Int): iter.T(Int) =
     begin
         let c = tuple let var i = 0 end
-        iter.make(fun(): Bool c.i < n fun(): Int begin
-            if c.i >= n then raise iter.exhausted end
+        iter.make(fun(): Bool {c.i < n} fun(): Int begin
+            if c.i >= n then raise iter.exhausted end end
             let x = c.i c.i := x + 2 x
         end)
     end
@@ -241,14 +249,14 @@ Each takes its element types as the module's other operations do, and walks in t
 | `collections/sortedSet` | `iter`, `iterFrom`, `iterInRange` | `fromIter` |
 | `collections/heap` | `iter` (in heap order, not sorted), `drain` (in order, removing) | `fromIter` |
 | `collections/bitset` | `iter` (members in order) | `fromIter` |
-| `util/regexp` | `matches`, `matchStrings` (lazy `findAll`) | — |
+| `util/regexp` | `findIter`, `findStringIter` (lazy `findAll`; `matches` was taken) | — |
 
 `keys` and `values` stay the names of the vector-returning operations they are now, so the iterators are `keyIter`
 and `valueIter`; `entryIter` makes a record per element, the others none. Each makes its iterator with
 `iter.make`, from closures over its own state. The sorted
 collections' iterators keep a stack of the nodes above the current key, at most the tree's height (decision 10). The
 hash collections' walk their insertion-ordered table by index; `more` skips deleted slots and stops on a live one,
-which `next` returns. A regular expression's `matches` finds the next match in `more` and holds it (its type is
+which `next` returns. A regular expression's `findIter` finds the next match in `more` and holds it (its type is
 known, so it needs no option); `next` hands it out and resumes the search after it.
 
 ## 5. Left out
@@ -268,15 +276,27 @@ known, so it needs no option); `next` hands it out and resumes the search after 
 
 ## 6. Steps
 
-1. `util/iter` with `T`, `Iterable`, the record types, `make`, the sources, stages, and consumers, and decision 4's helper for
+1. `util/iter` with `T`, the record types, `make`, the sources, stages, and consumers, and decision 4's helper for
    the lookahead stages; a golden program for each, including `more` called repeatedly and `next` past the end; the
    cost table of §2 as a benchmark in `benchmarks/`, separate and whole-program, so the numbers are kept; and
-   libraries.md's section.
+   libraries.md's section. Built 2026-11-20: `lib/util/iter.*`, `tests/source/stdlib/iter_operations.quest`,
+   `benchmarks/iter/`, libraries.md §1.14. `Iterable` was left out, since an interface's manifest type cannot name
+   its own abstract type ([json.md](json.md) rule 6); a function that walks its argument twice takes an
+   `All() iter.T(A)`.
 2. The collections' iterators and builders (§4), with goldens through every backend: vector, the hash collections,
-   deque, bitset, heap, and the sorted collections last (the stack).
-3. `regexp.matches` and `matchStrings`, and `findAll` defined over them.
+   deque, bitset, heap, and the sorted collections last (the stack). Built 2026-11-20, as §4 has them, tested by
+   `tests/source/stdlib/collection_iterators.quest`. The collections import the library as `iterLib`, since an
+   operation named `iter` would hide an import named `iter`. The B-tree's `cursor` (`collections/bTree`) serves the
+   sorted collections; it raises `error` on a change, as `walk` does.
+3. `regexp.findIter` and `findStringIter`, and `findAll` defined over them. Built 2026-11-20, tested by
+   `tests/source/stdlib/regexp_iterators.quest`. They were to be `matches` and `matchStrings`, but `matches` was
+   taken (whether the whole string matches), which neither typechecker noticed ([tasklist.md](tasklist.md)).
 4. The compiler's own loops where an iterator would replace a vector it builds only to walk it, measured on the
-   driver build as usual.
+   driver build as usual. Not started: the compiler is built first by the release, against the release's own `lib/`,
+   which has no `util/iter` until a release is cut after steps 1 to 3 are pushed (as for `util/digest`). The first
+   candidates are the walks of `hashMap.keys` and `values` in the typechecker (`bindings.valueIds`,
+   `scoping.copyIds`, and a block's scope in `control`), `modules/elaboration` and `modules/graph`, and the known
+   closures in `ssa/build/unit` and the C printer, where `entryIter` also saves a `find` per key.
 
 ## 7. Settled with the user
 

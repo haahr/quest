@@ -23,7 +23,7 @@ for 3 minutes).
 | `filter` | `range`, `map`, `filter`, and the program's loop |
 | `sumInt` | `range`, `map`, `filter`, and `iter.sumInt`, a consumer inside `util/iter`, which reads the closures in place |
 
-With the library's first version, on `3c39ad16` (2026-11-20, arm64), instructions retired per element:
+At `7e9b5f89`, the library's first version (2026-11-20, arm64), instructions retired per element:
 
 | Workload | Separate | Whole program |
 |---|---:|---:|
