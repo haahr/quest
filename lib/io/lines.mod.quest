@@ -1,0 +1,35 @@
+(* Lines of a reader, read a character at a time through reader.getChar, so
+ * that nothing is read past a line's newline and the reader's other
+ * operations see the stream where the line left it *)
+
+module lines : Lines
+import
+    reader : Reader
+    iterLib = util/iter : util/Iter
+    sb = util/stringBuilder : util/StringBuilder
+export
+    let getLine(rd: reader.T): String =
+        begin
+            let b = sb.new()
+            (* The first character raises reader.error at end of stream; after
+             * it, the end of the stream ends the line *)
+            let var c = reader.getChar(rd)
+            let var going = c isnot '\n'
+            while going do
+                sb.char(b c)
+                if reader.more(rd) then
+                    c := reader.getChar(rd)
+                    going := c isnot '\n'
+                else
+                    going := false
+                end
+            end
+            sb.toString(b)
+        end
+
+    (* reader.more is idempotent, as more must be, so the iterator holds
+     * nothing of its own: the reader's position is its state *)
+    let iter(rd: reader.T): iterLib.T(String) =
+        iterLib.make(fun(): Bool reader.more(rd) fun(): String
+            if reader.more(rd) then getLine(rd) else raise iterLib.exhausted end end)
+end

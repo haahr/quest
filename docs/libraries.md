@@ -1554,6 +1554,40 @@ end
 
 `tests/source/stdlib/io_display.quest` tests the text; `tests/self-hosted/kernel_protocol.py` the records.
 
+### 3.3. `io/lines : io/Lines`
+
+A reader's lines, one at a time or as an iterator (§1.14). It is Quest alone, over `reader.getChar` and
+`util/stringBuilder`, so it runs on every backend unchanged, and it reads nothing past a line's newline: the reader
+holds the position, and `getLine` and the iterator mix freely with `reader.getChar`, `getString`, and `more` on one
+reader. `Reader` itself is left as it is.
+
+#### Interface Summary
+
+```quest
+interface Lines
+import
+    reader : Reader
+    iterLib = util/iter : util/Iter
+export
+    (* The next line, without its newline; reader.error at end of stream *)
+    getLine(rd: reader.T): String
+    (* The rest of rd's lines; next raises iterLib.exhausted at the end *)
+    iter(rd: reader.T): iterLib.T(String)
+end
+```
+
+- **A line** ends at `'\n'`, which is not part of it, or at the end of the stream: `"a\nb"` is two lines, `"a\n"`
+  one, and `""` none. Only `'\n'` ends a line, so a `'\r'` before it is kept, as `reader` keeps it.
+- **Reading them all:** `while reader.more(rd) do ... lines.getLine(rd) ... end`, or
+  `vector.fromIter(lines.iter(rd))`; `iterLib.enumerate` numbers them.
+- **The iterator holds no line of its own.** Its `more` is `reader.more`, which is idempotent, and its `next` is
+  `getLine`. So it is a view of the stream, not of a collection: two iterators over one reader share its position,
+  each line going to whichever takes it first, and calling `lines.iter` again walks the rest, not the start. It does
+  not close the reader.
+- **Speed:** one call of `reader.getChar` per character, with the stream unlocked (benchmarks.md §31).
+
+`tests/source/stdlib/io_lines.quest` tests it, standard input included.
+
 ---
 
 ## 4. The Operating System (`lib/os/`)

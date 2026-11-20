@@ -1,0 +1,28 @@
+(* Lines of a reader: the next one, or an iterator over the rest.
+ *
+ *     while reader.more(rd) do process(lines.getLine(rd)) end
+ *     let all = vector.fromIter(lines.iter(rd))
+ *
+ * A line ends at '\n', which is not part of it, or at the end of the stream:
+ * "a\nb" is two lines, "a\n" one, and "" none. Only '\n' ends a line, so a
+ * '\r' before it is kept, as any other byte is. A line is read a character at
+ * a time through the reader, which holds the position, so these mix freely
+ * with reader.getChar, getString, and more on one reader. *)
+
+interface Lines
+import
+    reader : Reader
+    iterLib = util/iter : util/Iter
+export
+    (* The next line of rd, without its newline; raises reader.error at end of
+     * stream (reader.more(rd) says whether there is another) or if rd is
+     * closed *)
+    getLine(rd: reader.T): String
+
+    (* The rest of rd's lines, as getLine reads them. Since the reader holds the
+     * position, two iterators over one reader share it, and reading rd between
+     * nexts moves it. The iterator does not close rd. next raises
+     * iterLib.exhausted at end of stream; more and next raise reader.error if
+     * rd is closed *)
+    iter(rd: reader.T): iterLib.T(String)
+end

@@ -1,0 +1,280 @@
+import lines = "io/lines" : io/Lines
+import iter = "util/iter" : util/Iter
+import vector = "collections/vector" : collections/Vector
+import stringOp = "string" : StringOp
+import writer = "writer" : Writer
+import reader = "reader" : Reader
+import conv = "conv" : Conv
+main {
+  funs {
+    fun say(s: String): Ok {
+      let %1: writer.T = member writer.output @19:43
+      let %2: String = prim <>(s, "\n") @19:57
+      let %3: Ok = call writer.putString(%1, %2) @19:26
+      return %3
+    }
+  }
+  funs {
+    fun shown(s.1: String): String {
+      var t: String = "[" @24:9
+      let %4: Int = call stringOp.length(s.1) @25:25
+      let %5: Int = prim -(%4, 1) @25:25
+      var i: Int = 0 @25:9
+      let %6: Bool = prim <=(i, %5) @25:9
+      if %6 { @25:9
+        loop L1 {
+          let i.1: Int = i @25:9
+          let c: Char = call stringOp.getChar(s.1, i.1) @26:21
+          join k1(r: String) {
+            let %7: String = prim <>(t, r) @27:18
+            t := %7 @27:13
+            let %8: Bool = prim is(i, %5) @25:9
+            if %8 { @25:9
+              break L1 @25:9
+            }
+            let %9: Int = prim +(i, 1) @25:9
+            i := %9 @25:9
+          } in {
+            let %10: Bool = prim is(c, '\r') @27:26
+            if %10 { @27:23
+              jump k1("\\r") @27:23
+            } else {
+              let %11: String = call stringOp.new(1, c) @27:52
+              jump k1(%11) @27:23
+            }
+          }
+        }
+      }
+      let %12: String = prim <>(t, "]") @29:9
+      return %12
+    }
+  }
+  funs {
+    fun fileOf(text: String): reader.T {
+      let w: writer.T = call writer.file("io_lines.txt") @34:17
+      do call writer.putString(w, text) @35:9
+      do call writer.close(w) @36:9
+      let %13: reader.T = call reader.file("io_lines.txt") @37:9
+      return %13
+    }
+  }
+  funs {
+    fun both(name: String, text.1: String): Ok {
+      let r.1: reader.T = call fileOf(text.1) @43:17
+      var byGet: String = "" @44:9
+      loop L2 {
+        let %14: Bool = call reader.more(r.1) @45:15
+        if %14 { @45:9
+          let %15: String = call lines.getLine(r.1) @45:57
+          let %16: String = call shown(%15) @45:51
+          let %17: String = prim <>(byGet, %16) @45:42
+          byGet := %17 @45:33
+        } else {
+          break L2 @45:9
+        }
+      }
+      do call reader.close(r.1) @46:9
+      let r2: reader.T = call fileOf(text.1) @47:18
+      let %18: iter.T(String) = call lines.iter(r2) @48:35
+      let all: vector.T(String) = call vector.fromIter [String](%18) @48:19
+      do call reader.close(r2) @49:9
+      var byIter: String = "" @50:9
+      let %19: Int = call vector.length [String](all) @51:25
+      let %20: Int = prim -(%19, 1) @51:25
+      var i.2: Int = 0 @51:9
+      let %21: Bool = prim <=(i.2, %20) @51:9
+      if %21 { @51:9
+        loop L3 {
+          let i.3: Int = i.2 @51:9
+          let %22: String = call vector.get [String](all, i.3) @51:78
+          let %23: String = call shown(%22) @51:72
+          let %24: String = prim <>(byIter, %23) @51:62
+          byIter := %24 @51:52
+          let %25: Bool = prim is(i.2, %20) @51:9
+          if %25 { @51:9
+            break L3 @51:9
+          }
+          let %26: Int = prim +(i.2, 1) @51:9
+          i.2 := %26 @51:9
+        }
+      }
+      let %27: Int = call vector.length [String](all) @52:38
+      let %28: String = call conv.int(%27) @52:29
+      let %29: String = prim <>(" ", byIter) @52:77
+      let %30: String = prim <>(byGet, %29) @52:68
+      let %31: String = prim <>(" ", %30) @52:61
+      let %32: String = prim <>(%28, %31) @52:29
+      let %33: String = prim <>(": ", %32) @52:21
+      let %34: String = prim <>(name, %33) @52:13
+      let %35: Ok = call say(%34) @52:9
+      return %35
+    }
+  }
+  do call both("empty", "") @55:1
+  do call both("no newline", "a\nb") @56:1
+  do call both("newline", "a\n") @57:1
+  do call both("empty lines", "\n\nx\n\n") @58:1
+  do call both("only newlines", "\n\n") @59:1
+  do call both("carriage returns", "a\r\nb\r\n\rc") @60:1
+  let r.2: reader.T = call fileOf("x") @63:9
+  let %36: String = call lines.getLine(r.2) @64:5
+  do call say(%36) @64:1
+  join k2(r.3: String) {
+    do call say(r.3) @65:1
+    do call reader.close(r.2) @66:1
+    let long: String = call stringOp.new(1000, 'q') @69:12
+    let %37: String = prim <>(long, "\nshort\n") @70:16
+    let r.4: reader.T = call fileOf(%37) @70:9
+    let l: String = call lines.getLine(r.4) @71:9
+    let %38: Int = call stringOp.length(l) @72:26
+    let %39: String = call conv.int(%38) @72:17
+    let %40: Bool = call stringOp.equal(l, long) @72:66
+    let %41: String = call conv.bool(%40) @72:56
+    let %42: String = prim <>(" ", %41) @72:49
+    let %43: String = prim <>(%39, %42) @72:17
+    let %44: String = prim <>("long: ", %43) @72:5
+    do call say(%44) @72:1
+    let %45: String = call lines.getLine(r.4) @73:17
+    let %46: String = prim <>("then: ", %45) @73:5
+    do call say(%46) @73:1
+    do call reader.close(r.4) @74:1
+    let r.5: reader.T = call fileOf("ab\ncd\nef\ngh") @77:9
+    let %47: Char = call reader.getChar(r.5) @78:30
+    let %48: String = call conv.char(%47) @78:20
+    let %49: String = prim <>("getChar: ", %48) @78:5
+    do call say(%49) @78:1
+    let %50: String = call lines.getLine(r.5) @79:20
+    let %51: String = prim <>("getLine: ", %50) @79:5
+    do call say(%51) @79:1
+    let it: iter.T(String) = call lines.iter(r.5) @80:10
+    let %52: Bool = call iter.more [String](it) @81:27
+    let %53: String = call conv.bool(%52) @81:17
+    let %54: Bool = call iter.more [String](it) @81:62
+    let %55: String = call conv.bool(%54) @81:52
+    let %56: String = prim <>(" ", %55) @81:45
+    let %57: String = prim <>(%53, %56) @81:17
+    let %58: String = prim <>("more: ", %57) @81:5
+    do call say(%58) @81:1
+    let %59: String = call iter.next [String](it) @82:17
+    let %60: String = prim <>("next: ", %59) @82:5
+    do call say(%60) @82:1
+    let %61: Char = call reader.getChar(r.5) @83:30
+    let %62: String = call conv.char(%61) @83:20
+    let %63: String = prim <>("getChar: ", %62) @83:5
+    do call say(%63) @83:1
+    let %64: String = call iter.next [String](it) @84:17
+    let %65: String = prim <>("next: ", %64) @84:5
+    do call say(%65) @84:1
+    let %66: String = call reader.getString(r.5, 5) @85:22
+    let %67: String = prim <>("getString: ", %66) @85:5
+    do call say(%67) @85:1
+    let %68: Bool = call iter.more [String](it) @86:27
+    let %69: String = call conv.bool(%68) @86:17
+    let %70: String = prim <>("more: ", %69) @86:5
+    do call say(%70) @86:1
+    join k3(r.6: String) {
+      do call say(r.6) @87:1
+      do call reader.close(r.5) @88:1
+      let r.7: reader.T = call fileOf("1\n2\n3\n4\n") @91:9
+      let one: iter.T(String) = call lines.iter(r.7) @92:11
+      let two: iter.T(String) = call lines.iter(r.7) @93:11
+      let %71: String = call iter.next [String](one) @94:5
+      let %72: String = call iter.next [String](two) @94:23
+      let %73: String = call iter.next [String](one) @94:41
+      let %74: String = call iter.next [String](two) @94:59
+      let %75: String = prim <>(%73, %74) @94:41
+      let %76: String = prim <>(%72, %75) @94:23
+      let %77: String = prim <>(%71, %76) @94:5
+      do call say(%77) @94:1
+      let %78: Bool = call iter.more [String](one) @95:15
+      let %79: String = call conv.bool(%78) @95:5
+      let %80: Bool = call iter.more [String](two) @95:51
+      let %81: String = call conv.bool(%80) @95:41
+      let %82: String = prim <>(" ", %81) @95:34
+      let %83: String = prim <>(%79, %82) @95:5
+      do call say(%83) @95:1
+      do call reader.close(r.7) @96:1
+      let r.8: reader.T = call fileOf("x\n") @99:9
+      let it.1: iter.T(String) = call lines.iter(r.8) @100:10
+      do call reader.close(r.8) @101:1
+      join k4(r.9: String) {
+        do call say(r.9) @102:1
+        join k5(r.10: String) {
+          do call say(r.10) @103:1
+          let %84: reader.T = member reader.input @106:42
+          let %85: iter.T(String) = call lines.iter(%84) @106:31
+          let numbered: iter.T(Indexed(String)) = call iter.enumerate [String](%85) @106:16
+          loop L4 {
+            let %86: Bool = call iter.more [Record index: Int value: String end](numbered) @107:7
+            if %86 { @107:1
+              let e: Record index: Int value: String end = call iter.next [Record index: Int value: String end](numbered) @108:13
+              let %87: Int = record_field(e, index) @109:18
+              let %88: Int = prim +(%87, 1) @109:18
+              let %89: String = call conv.int(%88) @109:9
+              let %90: String = record_field(e, value) @109:42
+              let %91: String = prim <>(": ", %90) @109:34
+              let %92: String = prim <>(%89, %91) @109:9
+              do call say(%92) @109:5
+            } else {
+              break L4 @107:1
+            }
+          }
+        } in {
+          let %93: Exception = member reader.error @103:39
+          try catching (%93) {
+            let %94: Bool = call iter.more [String](it.1) @103:19
+            let %95: String = call conv.bool(%94) @103:9
+            jump k5(%95) @103:5
+          } handle (e.1: Exception) {
+            let %96: Bool = prim is(e.1, %93) @103:5
+            if %96 { @103:5
+              jump k5("more: reader.error") @103:5
+            } else {
+              reraise e.1 @103:5
+            }
+          }
+        }
+      } in {
+        let %97: Exception = member reader.error @102:31
+        try catching (%97) {
+          let %98: String = call lines.getLine(r.8) @102:9
+          jump k4(%98) @102:5
+        } handle (e.2: Exception) {
+          let %99: Bool = prim is(e.2, %97) @102:5
+          if %99 { @102:5
+            jump k4("getLine: reader.error") @102:5
+          } else {
+            reraise e.2 @102:5
+          }
+        }
+      }
+    } in {
+      let %100: Exception = member iter.exhausted @87:28
+      try catching (%100) {
+        let %101: String = call iter.next [String](it) @87:9
+        jump k3(%101) @87:5
+      } handle (e.3: Exception) {
+        let %102: Bool = prim is(e.3, %100) @87:5
+        if %102 { @87:5
+          jump k3("exhausted") @87:5
+        } else {
+          reraise e.3 @87:5
+        }
+      }
+    }
+  } in {
+    let %103: Exception = member reader.error @65:31
+    try catching (%103) {
+      let %104: String = call lines.getLine(r.2) @65:9
+      jump k2(%104) @65:5
+    } handle (e.4: Exception) {
+      let %105: Bool = prim is(e.4, %103) @65:5
+      if %105 { @65:5
+        jump k2("reader.error at end") @65:5
+      } else {
+        reraise e.4 @65:5
+      }
+    }
+  }
+}
+

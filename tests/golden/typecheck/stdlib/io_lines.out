@@ -1,0 +1,808 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('lines') : 'Lines')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('iter') : 'Iter')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('vector') : 'Vector')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('stringOp') : 'StringOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('reader') : 'Reader')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'say' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'shown' :type Fun(s: String): String
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): String
+        :body (TypedBlock :type String
+          :bindings (
+            (TypedLetValue 't' :type String
+              :value (TypedString '[' :type String))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedSelect 'length' :type Fun(string: String): Int
+                      :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                    :args (
+                      (TypedVar 's' :type String)
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedBlock :type Ok
+                  :bindings (
+                    (TypedLetValue 'c' :type Char
+                      :value (TypedApp :type Char
+                        :func (TypedSelect 'getChar' :type Fun(string: String index: Int): Char
+                          :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                        :args (
+                          (TypedVar 's' :type String)
+                          (TypedVar 'i' :type Int)
+                        )))
+                  )
+                  :result (TypedAssign
+                    :target (TypedVar 't' :type Var(String))
+                    :value (TypedInfix '<>' :type String
+                      :left (TypedDerefCell :type String
+                        :target (TypedVar 't' :type Var(String)))
+                      :right (TypedIf :type String
+                        :cond (TypedInfix 'is' :type Bool
+                          :left (TypedVar 'c' :type Char)
+                          :right (TypedChar '\r' :type Char))
+                        :then (TypedString '\\r' :type String)
+                        :else (TypedApp :type String
+                          :func (TypedSelect 'new' :type Fun(size: Int init: Char): String
+                            :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                          :args (
+                            (TypedInt 1 :type Int)
+                            (TypedVar 'c' :type Char)
+                          ))))))))
+          )
+          :result (TypedInfix '<>' :type String
+            :left (TypedDerefCell :type String
+              :target (TypedVar 't' :type Var(String)))
+            :right (TypedString ']' :type String)))))
+    (TypedLetValue 'fileOf' :type Fun(text: String): reader.T
+      :value (TypedFun :params (('text' : String)) :type Fun(text: String): reader.T
+        :body (TypedBlock :type reader.T
+          :bindings (
+            (TypedLetValue 'w' :type writer.T
+              :value (TypedApp :type writer.T
+                :func (TypedSelect 'file' :type Fun(name: String): writer.T
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedString 'io_lines.txt' :type String)
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedVar 'w' :type writer.T)
+                  (TypedVar 'text' :type String)
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'close' :type Fun(writer: writer.T): Ok
+                  :target (TypedVar 'writer' :type Module 'writer'))
+                :args (
+                  (TypedVar 'w' :type writer.T)
+                )))
+          )
+          :result (TypedApp :type reader.T
+            :func (TypedSelect 'file' :type Fun(name: String): reader.T
+              :target (TypedVar 'reader' :type Module 'reader'))
+            :args (
+              (TypedString 'io_lines.txt' :type String)
+            )))))
+    (TypedLetValue 'both' :type Fun(name: String text: String): Ok
+      :value (TypedFun :params (('name' : String) ('text' : String)) :type Fun(name: String text: String): Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'r' :type reader.T
+              :value (TypedApp :type reader.T
+                :func (TypedVar 'fileOf' :type Fun(text: String): reader.T)
+                :args (
+                  (TypedVar 'text' :type String)
+                )))
+            (TypedLetValue 'byGet' :type String
+              :value (TypedString '' :type String))
+            (TypedExprStmt
+              :expr (TypedWhile
+                :cond (TypedApp :type Bool
+                  :func (TypedSelect 'more' :type Fun(reader: reader.T): Bool
+                    :target (TypedVar 'reader' :type Module 'reader'))
+                  :args (
+                    (TypedVar 'r' :type reader.T)
+                  ))
+                :body (TypedAssign
+                  :target (TypedVar 'byGet' :type Var(String))
+                  :value (TypedInfix '<>' :type String
+                    :left (TypedDerefCell :type String
+                      :target (TypedVar 'byGet' :type Var(String)))
+                    :right (TypedApp :type String
+                      :func (TypedVar 'shown' :type Fun(s: String): String)
+                      :args (
+                        (TypedApp :type String
+                          :func (TypedSelect 'getLine' :type Fun(rd: reader.T): String
+                            :target (TypedVar 'lines' :type Module 'lines'))
+                          :args (
+                            (TypedVar 'r' :type reader.T)
+                          ))
+                      ))))))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'close' :type Fun(reader: reader.T): Ok
+                  :target (TypedVar 'reader' :type Module 'reader'))
+                :args (
+                  (TypedVar 'r' :type reader.T)
+                )))
+            (TypedLetValue 'r2' :type reader.T
+              :value (TypedApp :type reader.T
+                :func (TypedVar 'fileOf' :type Fun(text: String): reader.T)
+                :args (
+                  (TypedVar 'text' :type String)
+                )))
+            (TypedLetValue 'all' :type vector.T(String)
+              :value (TypedApp :type vector.T(String)
+                :func (TypedTypeApp [String] :type Fun(it: iter.T(String)): vector.T(String)
+                  :func (TypedSelect 'fromIter' :type All(A :: TYPE) Fun(it: iter.T(A)): vector.T(A)
+                    :target (TypedVar 'vector' :type Module 'vector')))
+                :args (
+                  (TypedApp :type iter.T(String)
+                    :func (TypedSelect 'iter' :type Fun(rd: reader.T): iter.T(String)
+                      :target (TypedVar 'lines' :type Module 'lines'))
+                    :args (
+                      (TypedVar 'r2' :type reader.T)
+                    ))
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedSelect 'close' :type Fun(reader: reader.T): Ok
+                  :target (TypedVar 'reader' :type Module 'reader'))
+                :args (
+                  (TypedVar 'r2' :type reader.T)
+                )))
+            (TypedLetValue 'byIter' :type String
+              :value (TypedString '' :type String))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [String] :type Fun(v: vector.T(String)): Int
+                      :func (TypedSelect 'length' :type All(A :: TYPE) Fun(v: vector.T(A)): Int
+                        :target (TypedVar 'vector' :type Module 'vector')))
+                    :args (
+                      (TypedVar 'all' :type vector.T(String))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedAssign
+                  :target (TypedVar 'byIter' :type Var(String))
+                  :value (TypedInfix '<>' :type String
+                    :left (TypedDerefCell :type String
+                      :target (TypedVar 'byIter' :type Var(String)))
+                    :right (TypedApp :type String
+                      :func (TypedVar 'shown' :type Fun(s: String): String)
+                      :args (
+                        (TypedApp :type String
+                          :func (TypedTypeApp [String] :type Fun(v: vector.T(String) index: Int): String
+                            :func (TypedSelect 'get' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int): A
+                              :target (TypedVar 'vector' :type Module 'vector')))
+                          :args (
+                            (TypedVar 'all' :type vector.T(String))
+                            (TypedVar 'i' :type Int)
+                          ))
+                      ))))))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedVar 'say' :type Fun(s: String): Ok)
+            :args (
+              (TypedInfix '<>' :type String
+                :left (TypedVar 'name' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedString ': ' :type String)
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedApp :type String
+                      :func (TypedSelect 'int' :type Fun(n: Int): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedApp :type Int
+                          :func (TypedTypeApp [String] :type Fun(v: vector.T(String)): Int
+                            :func (TypedSelect 'length' :type All(A :: TYPE) Fun(v: vector.T(A)): Int
+                              :target (TypedVar 'vector' :type Module 'vector')))
+                          :args (
+                            (TypedVar 'all' :type vector.T(String))
+                          ))
+                      ))
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedString ' ' :type String)
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedDerefCell :type String
+                          :target (TypedVar 'byGet' :type Var(String)))
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedString ' ' :type String)
+                          :right (TypedDerefCell :type String
+                            :target (TypedVar 'byIter' :type Var(String)))))))))
+            )))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'both' :type Fun(name: String text: String): Ok)
+        :args (
+          (TypedString 'empty' :type String)
+          (TypedString '' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'both' :type Fun(name: String text: String): Ok)
+        :args (
+          (TypedString 'no newline' :type String)
+          (TypedString 'a\nb' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'both' :type Fun(name: String text: String): Ok)
+        :args (
+          (TypedString 'newline' :type String)
+          (TypedString 'a\n' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'both' :type Fun(name: String text: String): Ok)
+        :args (
+          (TypedString 'empty lines' :type String)
+          (TypedString '\n\nx\n\n' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'both' :type Fun(name: String text: String): Ok)
+        :args (
+          (TypedString 'only newlines' :type String)
+          (TypedString '\n\n' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'both' :type Fun(name: String text: String): Ok)
+        :args (
+          (TypedString 'carriage returns' :type String)
+          (TypedString 'a\r\nb\r\n\rc' :type String)
+        )))
+    (TypedLetValue 'r' :type reader.T
+      :value (TypedApp :type reader.T
+        :func (TypedVar 'fileOf' :type Fun(text: String): reader.T)
+        :args (
+          (TypedString 'x' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'getLine' :type Fun(rd: reader.T): String
+              :target (TypedVar 'lines' :type Module 'lines'))
+            :args (
+              (TypedVar 'r' :type reader.T)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedSelect 'getLine' :type Fun(rd: reader.T): String
+                :target (TypedVar 'lines' :type Module 'lines'))
+              :args (
+                (TypedVar 'r' :type reader.T)
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'error' :type Exception
+                  :target (TypedVar 'reader' :type Module 'reader'))
+                :body (TypedString 'reader.error at end' :type String))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'close' :type Fun(reader: reader.T): Ok
+          :target (TypedVar 'reader' :type Module 'reader'))
+        :args (
+          (TypedVar 'r' :type reader.T)
+        )))
+    (TypedLetValue 'long' :type String
+      :value (TypedApp :type String
+        :func (TypedSelect 'new' :type Fun(size: Int init: Char): String
+          :target (TypedVar 'stringOp' :type Module 'stringOp'))
+        :args (
+          (TypedInt 1000 :type Int)
+          (TypedChar 'q' :type Char)
+        )))
+    (TypedLetValue 'r' :type reader.T
+      :value (TypedApp :type reader.T
+        :func (TypedVar 'fileOf' :type Fun(text: String): reader.T)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedVar 'long' :type String)
+            :right (TypedString '\nshort\n' :type String))
+        )))
+    (TypedLetValue 'l' :type String
+      :value (TypedApp :type String
+        :func (TypedSelect 'getLine' :type Fun(rd: reader.T): String
+          :target (TypedVar 'lines' :type Module 'lines'))
+        :args (
+          (TypedVar 'r' :type reader.T)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'long: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedSelect 'length' :type Fun(string: String): Int
+                      :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                    :args (
+                      (TypedVar 'l' :type String)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedApp :type Bool
+                      :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+                        :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                      :args (
+                        (TypedVar 'l' :type String)
+                        (TypedVar 'long' :type String)
+                      ))
+                  )))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'then: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'getLine' :type Fun(rd: reader.T): String
+                :target (TypedVar 'lines' :type Module 'lines'))
+              :args (
+                (TypedVar 'r' :type reader.T)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'close' :type Fun(reader: reader.T): Ok
+          :target (TypedVar 'reader' :type Module 'reader'))
+        :args (
+          (TypedVar 'r' :type reader.T)
+        )))
+    (TypedLetValue 'r' :type reader.T
+      :value (TypedApp :type reader.T
+        :func (TypedVar 'fileOf' :type Fun(text: String): reader.T)
+        :args (
+          (TypedString 'ab\ncd\nef\ngh' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'getChar: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'char' :type Fun(c: Char): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Char
+                  :func (TypedSelect 'getChar' :type Fun(reader: reader.T): Char
+                    :target (TypedVar 'reader' :type Module 'reader'))
+                  :args (
+                    (TypedVar 'r' :type reader.T)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'getLine: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'getLine' :type Fun(rd: reader.T): String
+                :target (TypedVar 'lines' :type Module 'lines'))
+              :args (
+                (TypedVar 'r' :type reader.T)
+              )))
+        )))
+    (TypedLetValue 'it' :type iter.T(String)
+      :value (TypedApp :type iter.T(String)
+        :func (TypedSelect 'iter' :type Fun(rd: reader.T): iter.T(String)
+          :target (TypedVar 'lines' :type Module 'lines'))
+        :args (
+          (TypedVar 'r' :type reader.T)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'more: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedTypeApp [String] :type Fun(it: iter.T(String)): Bool
+                      :func (TypedSelect 'more' :type All(A :: TYPE) Fun(it: iter.T(A)): Bool
+                        :target (TypedVar 'iter' :type Module 'iter')))
+                    :args (
+                      (TypedVar 'it' :type iter.T(String))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedApp :type Bool
+                      :func (TypedTypeApp [String] :type Fun(it: iter.T(String)): Bool
+                        :func (TypedSelect 'more' :type All(A :: TYPE) Fun(it: iter.T(A)): Bool
+                          :target (TypedVar 'iter' :type Module 'iter')))
+                      :args (
+                        (TypedVar 'it' :type iter.T(String))
+                      ))
+                  )))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'next: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedTypeApp [String] :type Fun(it: iter.T(String)): String
+                :func (TypedSelect 'next' :type All(A :: TYPE) Fun(it: iter.T(A)): A
+                  :target (TypedVar 'iter' :type Module 'iter')))
+              :args (
+                (TypedVar 'it' :type iter.T(String))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'getChar: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'char' :type Fun(c: Char): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Char
+                  :func (TypedSelect 'getChar' :type Fun(reader: reader.T): Char
+                    :target (TypedVar 'reader' :type Module 'reader'))
+                  :args (
+                    (TypedVar 'r' :type reader.T)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'next: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedTypeApp [String] :type Fun(it: iter.T(String)): String
+                :func (TypedSelect 'next' :type All(A :: TYPE) Fun(it: iter.T(A)): A
+                  :target (TypedVar 'iter' :type Module 'iter')))
+              :args (
+                (TypedVar 'it' :type iter.T(String))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'getString: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'getString' :type Fun(reader: reader.T size: Int): String
+                :target (TypedVar 'reader' :type Module 'reader'))
+              :args (
+                (TypedVar 'r' :type reader.T)
+                (TypedInt 5 :type Int)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'more: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedTypeApp [String] :type Fun(it: iter.T(String)): Bool
+                    :func (TypedSelect 'more' :type All(A :: TYPE) Fun(it: iter.T(A)): Bool
+                      :target (TypedVar 'iter' :type Module 'iter')))
+                  :args (
+                    (TypedVar 'it' :type iter.T(String))
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedTypeApp [String] :type Fun(it: iter.T(String)): String
+                :func (TypedSelect 'next' :type All(A :: TYPE) Fun(it: iter.T(A)): A
+                  :target (TypedVar 'iter' :type Module 'iter')))
+              :args (
+                (TypedVar 'it' :type iter.T(String))
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'exhausted' :type Exception
+                  :target (TypedVar 'iter' :type Module 'iter'))
+                :body (TypedString 'exhausted' :type String))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'close' :type Fun(reader: reader.T): Ok
+          :target (TypedVar 'reader' :type Module 'reader'))
+        :args (
+          (TypedVar 'r' :type reader.T)
+        )))
+    (TypedLetValue 'r' :type reader.T
+      :value (TypedApp :type reader.T
+        :func (TypedVar 'fileOf' :type Fun(text: String): reader.T)
+        :args (
+          (TypedString '1\n2\n3\n4\n' :type String)
+        )))
+    (TypedLetValue 'one' :type iter.T(String)
+      :value (TypedApp :type iter.T(String)
+        :func (TypedSelect 'iter' :type Fun(rd: reader.T): iter.T(String)
+          :target (TypedVar 'lines' :type Module 'lines'))
+        :args (
+          (TypedVar 'r' :type reader.T)
+        )))
+    (TypedLetValue 'two' :type iter.T(String)
+      :value (TypedApp :type iter.T(String)
+        :func (TypedSelect 'iter' :type Fun(rd: reader.T): iter.T(String)
+          :target (TypedVar 'lines' :type Module 'lines'))
+        :args (
+          (TypedVar 'r' :type reader.T)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedTypeApp [String] :type Fun(it: iter.T(String)): String
+                :func (TypedSelect 'next' :type All(A :: TYPE) Fun(it: iter.T(A)): A
+                  :target (TypedVar 'iter' :type Module 'iter')))
+              :args (
+                (TypedVar 'one' :type iter.T(String))
+              ))
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedTypeApp [String] :type Fun(it: iter.T(String)): String
+                  :func (TypedSelect 'next' :type All(A :: TYPE) Fun(it: iter.T(A)): A
+                    :target (TypedVar 'iter' :type Module 'iter')))
+                :args (
+                  (TypedVar 'two' :type iter.T(String))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedApp :type String
+                  :func (TypedTypeApp [String] :type Fun(it: iter.T(String)): String
+                    :func (TypedSelect 'next' :type All(A :: TYPE) Fun(it: iter.T(A)): A
+                      :target (TypedVar 'iter' :type Module 'iter')))
+                  :args (
+                    (TypedVar 'one' :type iter.T(String))
+                  ))
+                :right (TypedApp :type String
+                  :func (TypedTypeApp [String] :type Fun(it: iter.T(String)): String
+                    :func (TypedSelect 'next' :type All(A :: TYPE) Fun(it: iter.T(A)): A
+                      :target (TypedVar 'iter' :type Module 'iter')))
+                  :args (
+                    (TypedVar 'two' :type iter.T(String))
+                  )))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedTypeApp [String] :type Fun(it: iter.T(String)): Bool
+                    :func (TypedSelect 'more' :type All(A :: TYPE) Fun(it: iter.T(A)): Bool
+                      :target (TypedVar 'iter' :type Module 'iter')))
+                  :args (
+                    (TypedVar 'one' :type iter.T(String))
+                  ))
+              ))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' ' :type String)
+              :right (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedTypeApp [String] :type Fun(it: iter.T(String)): Bool
+                      :func (TypedSelect 'more' :type All(A :: TYPE) Fun(it: iter.T(A)): Bool
+                        :target (TypedVar 'iter' :type Module 'iter')))
+                    :args (
+                      (TypedVar 'two' :type iter.T(String))
+                    ))
+                ))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'close' :type Fun(reader: reader.T): Ok
+          :target (TypedVar 'reader' :type Module 'reader'))
+        :args (
+          (TypedVar 'r' :type reader.T)
+        )))
+    (TypedLetValue 'r' :type reader.T
+      :value (TypedApp :type reader.T
+        :func (TypedVar 'fileOf' :type Fun(text: String): reader.T)
+        :args (
+          (TypedString 'x\n' :type String)
+        )))
+    (TypedLetValue 'it' :type iter.T(String)
+      :value (TypedApp :type iter.T(String)
+        :func (TypedSelect 'iter' :type Fun(rd: reader.T): iter.T(String)
+          :target (TypedVar 'lines' :type Module 'lines'))
+        :args (
+          (TypedVar 'r' :type reader.T)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'close' :type Fun(reader: reader.T): Ok
+          :target (TypedVar 'reader' :type Module 'reader'))
+        :args (
+          (TypedVar 'r' :type reader.T)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedSelect 'getLine' :type Fun(rd: reader.T): String
+                :target (TypedVar 'lines' :type Module 'lines'))
+              :args (
+                (TypedVar 'r' :type reader.T)
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'error' :type Exception
+                  :target (TypedVar 'reader' :type Module 'reader'))
+                :body (TypedString 'getLine: reader.error' :type String))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedTypeApp [String] :type Fun(it: iter.T(String)): Bool
+                    :func (TypedSelect 'more' :type All(A :: TYPE) Fun(it: iter.T(A)): Bool
+                      :target (TypedVar 'iter' :type Module 'iter')))
+                  :args (
+                    (TypedVar 'it' :type iter.T(String))
+                  ))
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'error' :type Exception
+                  :target (TypedVar 'reader' :type Module 'reader'))
+                :body (TypedString 'more: reader.error' :type String))
+            ))
+        )))
+    (TypedLetValue 'numbered' :type iter.T(Indexed(String))
+      :value (TypedApp :type iter.T(Indexed(String))
+        :func (TypedTypeApp [String] :type Fun(it: iter.T(String)): iter.T(Indexed(String))
+          :func (TypedSelect 'enumerate' :type All(A :: TYPE) Fun(it: iter.T(A)): iter.T(Indexed(A))
+            :target (TypedVar 'iter' :type Module 'iter')))
+        :args (
+          (TypedApp :type iter.T(String)
+            :func (TypedSelect 'iter' :type Fun(rd: reader.T): iter.T(String)
+              :target (TypedVar 'lines' :type Module 'lines'))
+            :args (
+              (TypedSelect 'input' :type reader.T
+                :target (TypedVar 'reader' :type Module 'reader'))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedWhile
+        :cond (TypedApp :type Bool
+          :func (TypedTypeApp [Record index: Int value: String end] :type Fun(it: iter.T(Record index: Int value: String end)): Bool
+            :func (TypedSelect 'more' :type All(A :: TYPE) Fun(it: iter.T(A)): Bool
+              :target (TypedVar 'iter' :type Module 'iter')))
+          :args (
+            (TypedVar 'numbered' :type iter.T(Indexed(String)))
+          ))
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'e' :type Record index: Int value: String end
+              :value (TypedApp :type Record index: Int value: String end
+                :func (TypedTypeApp [Record index: Int value: String end] :type Fun(it: iter.T(Record index: Int value: String end)): Record index: Int value: String end
+                  :func (TypedSelect 'next' :type All(A :: TYPE) Fun(it: iter.T(A)): A
+                    :target (TypedVar 'iter' :type Module 'iter')))
+                :args (
+                  (TypedVar 'numbered' :type iter.T(Indexed(String)))
+                )))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedVar 'say' :type Fun(s: String): Ok)
+            :args (
+              (TypedInfix '<>' :type String
+                :left (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedInfix '+' :type Int
+                      :left (TypedSelect 'index' :type Int
+                        :target (TypedVar 'e' :type Record index: Int value: String end))
+                      :right (TypedInt 1 :type Int))
+                  ))
+                :right (TypedInfix '<>' :type String
+                  :left (TypedString ': ' :type String)
+                  :right (TypedSelect 'value' :type String
+                    :target (TypedVar 'e' :type Record index: Int value: String end))))
+            )))))
+  ))
