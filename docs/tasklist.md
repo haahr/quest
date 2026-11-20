@@ -129,17 +129,8 @@ through the tuple: `benchmarks/iter/`'s `map` takes 56 instructions per element 
 library with `T` visible takes 11, its pipeline folded into the loop ([iter-plan.md](iter-plan.md) decision 2). Any
 module whose abstract type is a tuple of closures, or of known values, pays the same.
 
-**Reproduce.** `benchmarks/iter/run.py --only map`; then the same with `T` made a `Def` in a copy of
-`lib/util/iter.int.quest` (each in a directory of its own: a program's directory is searched before `-I`), and
-compare `--stop-after ir_simplified --whole-program`'s `main`.
-
-**Where to start.** `simpler` in `questlang/ir/simplify.mod.quest`: its `opTupleField` case reads only the tuple's
-own definition, where `madeOf` (for options) follows copies through `opAtom` of another type. The same
-look-through for `opMakeTuple`, checking the component is not a `var` in the made tuple's type as well, should fold
-it.
-
-**Done when.** `benchmarks/iter/`'s whole-program `map` is about the visible type's 11 instructions per element,
-and the self-hosted IR goldens' changes are reviewed and updated.
+**Plan.** [abstract-inlining-plan.md](abstract-inlining-plan.md): the fold, measured with a prototype (56 → 11),
+what else it reaches, and its steps.
 
 ---
 
