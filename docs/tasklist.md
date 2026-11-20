@@ -205,36 +205,6 @@ is deleted, and `tools/check --all` passes (an ABI change if the runtime's decla
 
 ---
 
-## Escape analysis gives up on an allocation merged with a constant
-
-**Problem.** `ssa/passes/escape` ([ssa.md](ssa.md) §4.2) treats a block parameter bound to an allocation on some
-edges and to anything else on others as an escape. That is `maybe`'s commonest form: `hashMap.get` returns
-`some(v)` on one path and the shared `none` constant on the other, and the caller tests and unwraps the result.
-Once inlining brings producer and consumer into one function, the box still survives. Measured 2026-11-19 in a
-whole-program build of the compiler building itself (`QUEST_GC_CHECK=allocations`, `-j 1`, the frame above the
-allocation recorded): inlining took `maybe.some`'s boxes only from 84.7M to 72.6M (7.5% of 972M allocations). Some
-of those are returned or passed to a call, and they stay. How many are merged with `none` and then only read is not
-yet counted: the likely ones are `hashMap.get`'s results tested where they are made, as in `keys.intern`,
-`shapeIn`, and `synthKind`. Options of `Int` among them would go too, which a nullable-pointer representation would
-have left boxed.
-
-**Where to start.** `questlang/ssa/passes/escape` and `proxyFold`. Accept as one of an allocation's pointers a
-parameter whose every taken edge binds it to one of the allocation's pointers or to a constant object's address (a
-case without components, which is a symbol). Restrict that parameter's uses to loads at constant offsets within both
-objects' sizes and proxy tests, which fold for both, since neither is a proxy: no stores, no barriers, nothing kept.
-The transformation is then the same: the allocation becomes a stack slot. A load through the parameter reads either
-the slot or the constant, and both are valid objects with the tag at the same offset. Scalar replacement
-(ssa.md §4.3) can stay out of it. A unit test on SSA written as text (ssa.md §6) covers each verdict.
-
-Making `maybe.T` manifest (the entry above) would put more of these tests inline in separate builds as well.
-
-**Done when.** A merge with a constant no longer escapes, the SSA goldens and `ssa_escape` show it, and the
-compiler's whole-program allocation count (the measurement above) and the MLton suite's allocation counts
-(`benchmarks/mlton/allocations.py`, peek and zebra in particular) are recorded before and after in benchmarks.md,
-or the idea is dropped with that measurement.
-
----
-
 ## The collector never moves objects
 
 **Problem.** Minor collections leave small survivors scattered over nearly every block they filled, and their sticky

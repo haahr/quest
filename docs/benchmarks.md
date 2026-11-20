@@ -20,7 +20,8 @@ MLton (§20), compares the C and arm64 backends again and records the switch of 
 arm64-built compiler's gap to the C-built one narrowed (§22), times the reuse of a case binder's box (§23), keeps
 the arm64 performance review (§24), measures the compiler compiled to WebAssembly, and the MLton suite on it
 (§25), measures the strings work (§26), times every backend, WebAssembly included, at one commit (§27),
-measures the collections tuned on the compiler (§28), and the compiler on `util/json` (§29).
+measures the collections tuned on the compiler (§28), the compiler on `util/json` (§29), and scalar replacement
+through a loop's parameters (§30).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -3009,3 +3010,32 @@ The change is for one implementation of JSON, not for speed: the plan expected o
 a hash map each to save allocation, but JSON is too small a part of a build's 51 GB for the saving to show, and the
 first version's fresh empty arrays and table per object cost more live memory than they saved. The user times'
 2 to 3% is near this machine's noise and was not pursued.
+
+## 30. Scalar replacement through a loop's parameters (2026-11-20)
+
+The tasklist's entry "Escape analysis gives up on an allocation merged with a constant" asked for escape analysis
+(§9) to take an option merged with the shared `none`, as `hashMap.get`'s result is. Scalar replacement
+([ssa.md](ssa.md) §4.3) already takes that merge where it is a join of two paths: a probe whose `hashMap.get` is
+inlined and tested where it is made keeps no box. What it did not take is the merge carried round a loop, as a search
+carries `none` until it finds a match: the loop header's parameter and the body's join are bound to each other, and
+each waited for the other to be found a pointer first. `ssa/scalars` now assumes every parameter is one until an
+edge binds it to something else, and computes each block's taken edges once a round, which its own allocation needed.
+
+Measured by allocation counts, which need no idle machine, before (`358d34f4`) and after, each tree's compiler
+built by its own `./quest`:
+
+- **The compiler,** built whole (`--whole-program`), building the driver separately at `-j 1` under
+  `QUEST_GC_CHECK=allocations`: 982,986,788 allocations before, 980,325,065 after (0.27% fewer). Of the 2.66M, the
+  change itself removes the boxes `qf_isProxyTest` made (1.21M) and a few smaller ones; the rest is the pass's own
+  allocation, its taken edges computed once a round rather than at each use (`qf_targets_2` and `qf_pointers_2`,
+  6.76M to 5.40M). A first version that recomputed the edges at each use counted 975,608,713, 9.08M of the
+  difference `qf_home`'s: that build happened to inline `sort.bisectRight` into `regalloc.home`, whose comparison
+  closure was then only read. The whole-program inliner's choices move with the program's size, so counts of a whole
+  build differ by such amounts between compilers that differ elsewhere.
+- **The MLton suite** (`allocations.py`, every program, separate builds, `--scale 0.25`): mlyacc 538,823,377 to
+  538,641,361 (0.03% fewer); the other 45 unchanged. peek and zebra built whole: unchanged, 17,280,001,355 and
+  757,183,343.
+
+The change is kept, being 50 lines in one function of one pass with a unit test (`ssa_scalars`), but it is not the
+lever the entry hoped for. The `maybe.some` boxes that remain are not merges a pass inside one function can remove;
+how many are returned and how many passed to calls was not counted.

@@ -430,8 +430,11 @@ through phis.
 **Origins and groups.** An *origin* makes an object: a `quest_alloc` of a constant size and a layout, or the address of
 a datum that is never written (`symbol`, plus a constant offset into a table of constants). A value points into an
 origin's object when it is the origin's, a `ptrAdd` of a constant to such a value, a word's load whose objects store
-pointers there, or a block parameter that every edge taken binds to such values, at one offset. Origins whose pointers
-meet are in one *group* (a union-find forest), whose objects have one layout: each word holds values of one type, or
+pointers there, or a block parameter that every edge taken binds to such values, at one offset. Parameters may be bound
+to one another: a search carries `maybe.none` round a loop that may replace it with a `some`, so the loop header's
+parameter and the body's join are each bound to the other. Every parameter is assumed to be one until an edge binds it
+to a value that is neither a pointer nor such a parameter, so that a cycle of them is found whole; a parameter one of
+whose bindings found no group leaves its group. Origins whose pointers meet are in one *group* (a union-find forest), whose objects have one layout: each word holds values of one type, or
 pointers into another group's objects, which it stands for in turn (an option holding a tuple is replaced by the
 option's tag and the tuple's words). A word some objects do not store, or a constant does not reach, is a zero there.
 

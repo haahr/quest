@@ -4,7 +4,8 @@
  * as text and read by questlang/ssa/parser, each function printed before and
  * after the pass, and verified: a loop that carries a tuple; a join of an
  * allocated option and a constant one of the unit's static data, behind the
- * proxy tests that reading them makes; an option holding a tuple, both
+ * proxy tests that reading them makes; such a join carried round a loop, by
+ * parameters bound to one another as well; an option holding a tuple, both
  * replaced; a tuple carried round an outer loop by a parameter nothing uses,
  * which is dropped; a carried tuple holding a pointer, whose write barriers
  * go with it; and what is left: objects passed to a call, stored to once
@@ -154,6 +155,56 @@ show("a join of an option and a constant" array of
     "b8():"
     "  %14: int = const 0"
     "  return %14"
+    "}"
+    "data qc_none words [0, 1]"
+end);
+
+(* A search: none, a constant, carried round a loop that replaces it with
+ * some(i) where it finds a match, so that the parameters carrying it are bound
+ * to one another as well as to the option and the constant *)
+show("a loop carrying an option or a constant" array of
+    "function search(%0: int, %1: int): int {"
+    "b0(%0: int, %1: int):"
+    "  %2: ptr = symbol qc_none"
+    "  %3: int = const 0"
+    "  jump b1(%3, %2)"
+    "b1(%4: int, %5: ptr):"
+    "  %6: int = lt %4, %0"
+    "  branch %6, b2(), b5()"
+    "b2():"
+    "  %7: int = eq %4, %1"
+    "  branch %7, b3(), b4(%5)"
+    "b3():"
+    "  %8: int = const 16"
+    "  %100: ptr = symbol quest_layout_t"
+    "  %9: ptr = call quest_alloc(%8, %100)"
+    "  %10: int = const 1"
+    "  store8 %9 + 0, %10"
+    "  store8 %9 + 8, %4"
+    "  jump b4(%9)"
+    "b4(%11: ptr):"
+    "  %12: int = const 1"
+    "  %13: int = add %4, %12"
+    "  jump b1(%13, %11)"
+    "b5():"
+    "  %14: int = ptrToInt %5"
+    "  %15: int = const 1"
+    "  %16: int = and %14, %15"
+    "  branch %16, b6(), b7()"
+    "b6():"
+    "  %17: int = call quest_proxy_tag(%5)"
+    "  jump b8(%17)"
+    "b7():"
+    "  %18: int = load8 %5 + 0 invariant"
+    "  jump b8(%18)"
+    "b8(%19: int):"
+    "  switch %19 [1: b9()] default b10()"
+    "b9():"
+    "  %20: int = load8 %5 + 8"
+    "  return %20"
+    "b10():"
+    "  %21: int = const ~1"
+    "  return %21"
     "}"
     "data qc_none words [0, 1]"
 end);

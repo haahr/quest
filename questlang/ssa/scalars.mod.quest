@@ -301,7 +301,48 @@ export
             let var changed = true
             while changed do
                 changed := false
-                let bound = array of(extent s.ptr ~1)
+                (* The parameters that may be pointers: those every taken edge
+                 * binds to a pointer or to another such parameter. Assumed
+                 * of every parameter and dropped where it fails, so that the
+                 * parameters a loop carries its object in, bound to one
+                 * another and each also to an object, are found together *)
+                let candidate = array of(extent s.ptr false)
+                (* Each block's edges taken, as the round starts: one that a
+                 * pointer found later in it folds away is dropped a round
+                 * later *)
+                let taken = array of(nBlocks array of :ssa.Target end)
+                for b = 0 upto {nBlocks - 1} do
+                    if s.reach[b] then taken[b] := takenTargets(s ssa.block(f b).term) end
+                end
+                for b = 0 upto {nBlocks - 1} do
+                    if s.reach[b] then
+                        let ts = taken[b]
+                        for k = 0 upto {extent ts - 1} do
+                            let params = ssa.block(f ts[k].block).params
+                            for j = 0 upto {vector.length(params) - 1} do candidate[vector.get(params j)] := true end
+                        end
+                    end
+                end
+                let var dropped = true
+                while dropped do
+                    dropped := false
+                    for b = 0 upto {nBlocks - 1} do
+                        if s.reach[b] then
+                            let ts = taken[b]
+                            for k = 0 upto {extent ts - 1} do
+                                let t = ts[k]
+                                let params = ssa.block(f t.block).params
+                                for j = 0 upto {extent t.args - 1} do
+                                    let p = vector.get(params j)
+                                    let v = t.args[j]
+                                    if candidate[p] andif not(live(s v)) andif not(candidate[v]) then
+                                        begin candidate[p] := false dropped := true end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
                 for b = 0 upto {nBlocks - 1} do
                     if s.reach[b] then
                         let blk = ssa.block(f b)
@@ -338,32 +379,21 @@ export
                                 end
                             end
                         end
-                        let ts = takenTargets(s blk.term)
-                        for k = 0 upto {extent ts - 1} do
-                            let t = ts[k]
-                            let params = ssa.block(f t.block).params
-                            for j = 0 upto {extent t.args - 1} do
-                                let p = vector.get(params j)
-                                if bound[p] is ~1 then
-                                    bound[p] := if live(s t.args[j]) then t.args[j] else ~2 end
-                                elsif {bound[p] >= 0} andif not(live(s t.args[j])) then bound[p] := ~2
-                                end
-                            end
-                        end
                     end
                 end
-                (* A parameter that every taken edge binds to a pointer joins
-                 * their groups *)
+                (* A parameter that may be a pointer joins the groups of the
+                 * pointers it is bound to; one bound only to others like it
+                 * gets its group from them, a round later if need be *)
                 for b = 0 upto {nBlocks - 1} do
                     if s.reach[b] then
-                        let ts = takenTargets(s ssa.block(f b).term)
+                        let ts = taken[b]
                         for k = 0 upto {extent ts - 1} do
                             let t = ts[k]
                             let params = ssa.block(f t.block).params
                             for j = 0 upto {extent t.args - 1} do
                                 let p = vector.get(params j)
                                 let v = t.args[j]
-                                if {bound[p] >= 0} andif live(s v) then
+                                if candidate[p] andif live(s v) then
                                     if setPointer(s p s.ptr[v] s.off[v]) then changed := true end
                                 end
                             end
@@ -452,12 +482,19 @@ export
                         let params = ssa.block(f t.block).params
                         for j = 0 upto {extent t.args - 1} do
                             let v = t.args[j]
+                            let p = vector.get(params j)
                             if live(s v) then
-                                let p = vector.get(params j)
                                 if not(live(s p)) orif {find(s s.ptr[p]) isnot find(s s.ptr[v])}
                                     orif {s.off[p] isnot s.off[v]} then
                                     killGroup(s s.ptr[v] "passed to a parameter bound to other values")
                                 end
+                            elsif live(s p) then
+                                (* Bound to another parameter that found no
+                                 * group: one of a cycle of them bound to
+                                 * nothing else, which every path from the
+                                 * entry rules out; kept so that pointers'
+                                 * optimism cannot be unsound *)
+                                killGroup(s s.ptr[p] "a parameter bound to other values")
                             end
                         end
                     end
