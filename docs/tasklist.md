@@ -106,20 +106,6 @@ worse.
 
 ---
 
-## Character I/O locks the stream for every character
-
-**Problem.** `reader.getChar` and `reader.more` call `fgetc`, and `writer.putChar` calls `fputc`
-(`runtime/quest_stdlib.c`), each locking and unlocking the stream; that is most of wc-input1's and output1's time.
-`getc_unlocked` in the reader, tried, made wc-input1 five times faster ([benchmarks.md](benchmarks.md) §3.4).
-
-**Where to start.** The reader's and writer's character functions in `runtime/quest_stdlib.c`, with the stream's
-locking taken once per call into the library rather than per character, or dropped where a stream has one thread.
-
-**Done when.** The reader and writer use the unlocked calls (or an equivalent buffer of their own), and wc-input1 and
-output1 are measured again.
-
----
-
 ## A closure and its environment are two allocations
 
 **Problem.** A closure that escapes is a `QClosure` and a separate environment object, so making one allocates

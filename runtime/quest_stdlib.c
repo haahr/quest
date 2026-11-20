@@ -13,7 +13,17 @@
 
 #include "quest_runtime_internal.h"
 
-/* Writer module primitives */
+/* Writer module primitives.
+ *
+ * putChar and the reader's character reads use the unlocked stdio calls
+ * (putc_unlocked, getc_unlocked): locking the stream for each character was
+ * most of the time of a program that reads or writes a character at a time
+ * (docs/benchmarks.md §3.4). That is safe only because Quest code runs on one
+ * thread: nothing in runtime/ or questlang/ starts a thread, and the JIT and
+ * the Jupyter kernel run in the driver's own. A runtime that ran Quest on
+ * several threads would have to lock these streams again, as fread and fwrite,
+ * which lock once per call, still do. Locked and unlocked calls on one stream
+ * may be mixed on a single thread */
 QWriter quest_writer_output_val = { NULL, false, false };
 QWriter quest_writer_err_val    = { NULL, false, false };
 
@@ -67,7 +77,7 @@ void quest_writer_put_char(QWriter *w, QChar ch) {
     if (w == NULL || w->is_closed || w->file == NULL) {
         quest_raise_writer_error();
     }
-    if (fputc((int)ch, w->file) == EOF) {
+    if (putc_unlocked((int)ch, w->file) == EOF) {
         quest_raise_writer_error();
     }
 }
@@ -148,7 +158,7 @@ bool quest_reader_more(QReader *r) {
     if (r->peek_char != -1) {
         return true;
     }
-    int ch = fgetc(r->file);
+    int ch = getc_unlocked(r->file);
     if (ch == EOF) {
         return false;
     }
@@ -174,7 +184,7 @@ QChar quest_reader_get_char(QReader *r) {
         ch = r->peek_char;
         r->peek_char = -1;
     } else {
-        ch = fgetc(r->file);
+        ch = getc_unlocked(r->file);
     }
     if (ch == EOF) {
         quest_raise_reader_error();

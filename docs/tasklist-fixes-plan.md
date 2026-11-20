@@ -9,7 +9,8 @@ of its own:
 3. Undo the single-word rule for options, and simplify what it left.
 4. A dynamic reader cannot read on after a document it refused.
 5. A missing interface in an imported module's import is located at the module's first line.
-6. Character I/O locks the stream for every character.
+6. Character I/O locks the stream for every character. **Done:** the unlocked calls, measured in
+   [benchmarks.md](benchmarks.md) §31.
 
 Each step ends the same way (§7): its tests, then `tools/check` on a quiet machine, then a commit, a rebase onto
 `origin/main`, and a push. Its entry leaves tasklist.md in the same commit.

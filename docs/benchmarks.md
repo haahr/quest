@@ -20,8 +20,8 @@ MLton (§20), compares the C and arm64 backends again and records the switch of 
 arm64-built compiler's gap to the C-built one narrowed (§22), times the reuse of a case binder's box (§23), keeps
 the arm64 performance review (§24), measures the compiler compiled to WebAssembly, and the MLton suite on it
 (§25), measures the strings work (§26), times every backend, WebAssembly included, at one commit (§27),
-measures the collections tuned on the compiler (§28), the compiler on `util/json` (§29), and scalar replacement
-through a loop's parameters (§30).
+measures the collections tuned on the compiler (§28), the compiler on `util/json` (§29), scalar replacement
+through a loop's parameters (§30), and character I/O without a lock per character (§31).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -397,6 +397,8 @@ and inlines across modules in whole programs ([ir.md](ir.md) §8.6).
 the stream (and reads `errno`): two thirds of wc-input1's and output1's samples. Using `getc_unlocked` in the reader
 (tried) took wc-input1 at count 2048 from 42.5 to 8.5 seconds, about twice MLton's time. `putc_unlocked` in the
 writer should do the same for output1.
+
+Done in §31: wc-input1 13 and output1 8 times as fast.
 
 ### 3.5. Each try costs a `_setjmp`
 
@@ -3039,3 +3041,27 @@ built by its own `./quest`:
 The change is kept, being 50 lines in one function of one pass with a unit test (`ssa_scalars`), but it is not the
 lever the entry hoped for. The `maybe.some` boxes that remain are not merges a pass inside one function can remove;
 how many are returned and how many passed to calls was not counted.
+
+## 31. Character I/O without a lock per character (2026-11-20)
+
+`reader.more`, `reader.getChar`, and `writer.putChar` now call `getc_unlocked` and `putc_unlocked` rather than
+`fgetc` and `fputc` (§3.4, `runtime/quest_stdlib.c`), which is safe while Quest code runs on one thread, as the
+runtime's comment there says. The calls that move several characters (`fread`, `fwrite`) lock once per call and are
+unchanged; wasm's readers and writers have no lock and are unchanged.
+
+Times on arm64 (the default), the programs built separately, `run.py time --clean --scale 0.25`, one run each, before
+(`17989999`) and after, once the load average had been under 5 for three minutes (2.2 at the start), with MLton's
+times at the same counts from §25's table:
+
+| Program | n | before | after | before / after | MLton | after / MLton |
+|---|--:|--:|--:|--:|--:|--:|
+| wc-input1 | 4096 | 166.38 | 12.92 | 12.9 | 9.26 | 1.40 |
+| output1 | 3 | 64.35 | 7.80 | 8.25 | 6.78 | 1.15 |
+
+The driver build (`-j 8`, from an empty build directory, each tree's compiler building its own tree, best of three,
+the two alternating) did not change: 28.44 s real and 86.3 to 87.4 s user before, 27.96 s and 87.5 to 89.5 s after,
+the load rising to 19 by the end. The compiler reads its sources with `getString`, which was never per character,
+and writes its output with `putString`.
+
+`io/lines` (libraries.md §3.3), which reads a line a character at a time through `reader.getChar`, gets the same
+gain.
