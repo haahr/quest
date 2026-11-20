@@ -2,8 +2,26 @@
  * every reader (docs/dynamic.md section 2.1): a value's record that gives a
  * field twice, a type's record that names one twice, and both at once, which
  * readers once read differently, the runtime taking the first value and the
- * interpreters the last. Each document is read from a file of its own, so
- * that no refusal leaves the next to be read from where it stopped. *)
+ * interpreters the last. The documents are read one after another from
+ * standard input: a read takes its whole document before refusing it, so the
+ * next read starts at the next document, after a repeated key nested in an
+ * array, a string holding brackets, an escape above ÿ, and a document of
+ * another version too. *)
+(* @stdin:
+{"quest":1,"types":[{"record":{"a":"Int"}}],"type":0,"value":{"a":1}}
+{"quest":1,"types":[{"record":{"a":"Int"}}],"type":0,"value":{"a":1,"a":2}}
+{"quest":1,"types":[{"record":{"a":"Int"}}],"type":0,"value":{"a":2}}
+{"quest":1,"types":[{"record":{"a":"Int","a":"Int"}}],"type":0,"value":{"a":1}}
+{"quest":1,"types":[{"record":{"a":"Int"}}],"type":0,"value":{"a":3}}
+{"quest":1,"types":[{"record":{"a":"Int","a":"Int"}}],"type":0,"value":{"a":1,"a":2}}
+{"quest":1,"types":[{"record":{"a":"Int"}}],"type":0,"value":{"a":4}}
+{"quest":1,"types":[{"record":{"a":"Int"}}],"type":0,"value":{"a":[{"b":"}]\"{","b":1}]}}
+{"quest":1,"types":[{"record":{"a":"Int"}}],"type":0,"value":{"a":5}}
+{"quest":1,"types":[{"record":{"a":"String"}}],"type":0,"value":{"a":"Ā"}}
+{"quest":1,"types":[{"record":{"a":"Int"}}],"type":0,"value":{"a":6}}
+{"quest":99,"types":[{"record":{"a":"Int"}}],"type":0,"value":{"a":0}}
+{"quest":1,"types":[{"record":{"a":"Int"}}],"type":0,"value":{"a":7}}
+*)
 
 import writer: Writer;
 import reader: Reader;
@@ -11,21 +29,12 @@ import dynamic: Dynamic;
 import conv: Conv;
 let print(s: String): Ok = writer.putString(writer.output s <> "\n");
 Let R = Record a: Int end;
-let read(name: String document: String): Ok =
-    begin
-        let w = writer.file("document.json")
-        writer.putString(w document)
-        writer.close(w)
-        let r = reader.file("document.json")
-        print(name <> ": " <> try "a = " <> conv.int(dynamic.be(:R dynamic.intern(r)).a)
-            when dynamic.error then "dynamic.error" end)
-        reader.close(r)
-    end;
-read("the value repeats a field"
-    "{\"quest\":1,\"types\":[{\"record\":{\"a\":\"Int\"}}],\"type\":0,\"value\":{\"a\":1,\"a\":2}}");
-read("the type repeats a field"
-    "{\"quest\":1,\"types\":[{\"record\":{\"a\":\"Int\",\"a\":\"Int\"}}],\"type\":0,\"value\":{\"a\":1}}");
-read("both repeat it"
-    "{\"quest\":1,\"types\":[{\"record\":{\"a\":\"Int\",\"a\":\"Int\"}}],\"type\":0,\"value\":{\"a\":1,\"a\":2}}");
-read("well-formed"
-    "{\"quest\":1,\"types\":[{\"record\":{\"a\":\"Int\"}}],\"type\":0,\"value\":{\"a\":3}}")
+let names = array of
+    "well-formed" "the value repeats a field" "well-formed" "the type repeats a field" "well-formed" "both repeat it"
+    "well-formed" "a repeated key in an array, after a string of brackets" "well-formed" "an escape above \\u00ff"
+    "well-formed" "another version" "well-formed"
+end;
+for i = 0 upto extent names - 1 do
+    print(names[i] <> ": " <> try "a = " <> conv.int(dynamic.be(:R dynamic.intern(reader.input)).a)
+        when dynamic.error then "dynamic.error" end)
+end

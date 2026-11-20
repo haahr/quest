@@ -5,47 +5,51 @@ import conv = "conv" : Conv
 main {
   funs {
     fun print(s: String): Ok {
-      let %1: writer.T = member writer.output @12:45
-      let %2: String = prim <>(s, "\n") @12:59
-      let %3: Ok = call writer.putString(%1, %2) @12:28
+      let %1: writer.T = member writer.output @30:45
+      let %2: String = prim <>(s, "\n") @30:59
+      let %3: Ok = call writer.putString(%1, %2) @30:28
       return %3
     }
   }
-  funs {
-    fun read(name: String, document: String): Ok {
-      let w: writer.T = call writer.file("document.json") @16:17
-      do call writer.putString(w, document) @17:9
-      do call writer.close(w) @18:9
-      let r: reader.T = call reader.file("document.json") @19:17
-      join k1(r.1: String) {
-        let %4: String = prim <>(": ", r.1) @20:23
-        let %5: String = prim <>(name, %4) @20:15
-        do call print(%5) @20:9
-        let %6: Ok = call reader.close(r) @22:9
-        return %6
+  let names: Array(String) = array("well-formed", "the value repeats a field", "well-formed", "the type repeats a field", "well-formed", "both repeat it", "well-formed", "a repeated key in an array, after a string of brackets", "well-formed", "an escape above \\u00ff", "well-formed", "another version", "well-formed") @32:13
+  let %4: Int = prim extent(names) @37:16
+  let %5: Int = prim -(%4, 1) @37:16
+  var i: Int = 0 @37:1
+  let %6: Bool = prim <=(i, %5) @37:1
+  if %6 { @37:1
+    loop L1 {
+      let i.1: Int = i @37:1
+      let %7: String = index(names, i.1) @38:11
+      join k1(r: String) {
+        let %8: String = prim <>(": ", r) @38:23
+        let %9: String = prim <>(%7, %8) @38:11
+        do call print(%9) @38:5
+        let %10: Bool = prim is(i, %5) @37:1
+        if %10 { @37:1
+          break L1 @37:1
+        }
+        let %11: Int = prim +(i, 1) @37:1
+        i := %11 @37:1
       } in {
-        let %7: Exception = member dynamic.error @21:18
-        try catching (%7) {
-          let %8: T = call dynamic.intern(r) @20:68
-          let %9: R = call dynamic.be [R](%8) @20:54
-          let %10: Int = record_field(%9, a) @20:54
-          let %11: String = call conv.int(%10) @20:45
-          let %12: String = prim <>("a = ", %11) @20:35
-          jump k1(%12) @20:31
+        let %12: Exception = member dynamic.error @39:14
+        try catching (%12) {
+          let %13: reader.T = member reader.input @38:83
+          let %14: T = call dynamic.intern(%13) @38:68
+          let %15: R = call dynamic.be [R](%14) @38:54
+          let %16: Int = record_field(%15, a) @38:54
+          let %17: String = call conv.int(%16) @38:45
+          let %18: String = prim <>("a = ", %17) @38:35
+          jump k1(%18) @38:31
         } handle (e: Exception) {
-          let %13: Bool = prim is(e, %7) @20:31
-          if %13 { @20:31
-            jump k1("dynamic.error") @20:31
+          let %19: Bool = prim is(e, %12) @38:31
+          if %19 { @38:31
+            jump k1("dynamic.error") @38:31
           } else {
-            reraise e @20:31
+            reraise e @38:31
           }
         }
       }
     }
   }
-  do call read("the value repeats a field", "{\"quest\":1,\"types\":[{\"record\":{\"a\":\"Int\"}}],\"type\":0,\"value\":{\"a\":1,\"a\":2}}") @24:1
-  do call read("the type repeats a field", "{\"quest\":1,\"types\":[{\"record\":{\"a\":\"Int\",\"a\":\"Int\"}}],\"type\":0,\"value\":{\"a\":1}}") @26:1
-  do call read("both repeat it", "{\"quest\":1,\"types\":[{\"record\":{\"a\":\"Int\",\"a\":\"Int\"}}],\"type\":0,\"value\":{\"a\":1,\"a\":2}}") @28:1
-  do call read("well-formed", "{\"quest\":1,\"types\":[{\"record\":{\"a\":\"Int\"}}],\"type\":0,\"value\":{\"a\":3}}") @30:1
 }
 

@@ -1193,9 +1193,16 @@ struct QJsonValue {
     } u;
 };
 
+/* refused notes a refusal of well-formed JSON (a repeated key, an escape that
+ * gives no character, a number too long to read) found mid-parse: the parse
+ * goes on to the value's end, so that a refused document is consumed whole
+ * and the next read starts at the next document (docs/dynamic.md section
+ * 2.1), and the read raises only then. Text that is not JSON raises where the
+ * scan stops */
 typedef struct QJsonReader {
     QReader *rd;
     int      peek;
+    bool     refused;
 } QJsonReader;
 
 static int quest_json_peek(QJsonReader *jr) {
@@ -1258,7 +1265,7 @@ static QJsonValue *quest_parse_json_string(QJsonReader *jr) {
                     }
                     /* A character is a byte, so an escape above \u00ff gives
                      * none */
-                    if (hex > 0xFF) quest_raise_dynamic_error();
+                    if (hex > 0xFF) jr->refused = true;
                     ch = (int)hex;
                     break;
                 }
@@ -1291,13 +1298,11 @@ static QJsonValue *quest_parse_json_number(QJsonReader *jr) {
         buf[len++] = (char)quest_json_next(jr);
     }
     while ((ch = quest_json_peek(jr)) != -1) {
-        if ((ch >= '0' && ch <= '9') || ch == '+' || ch == '-') {
-            if (len + 1 < sizeof(buf)) buf[len++] = (char)quest_json_next(jr);
-            else quest_raise_dynamic_error();
-        } else if (ch == '.' || ch == 'e' || ch == 'E') {
-            is_real = true;
-            if (len + 1 < sizeof(buf)) buf[len++] = (char)quest_json_next(jr);
-            else quest_raise_dynamic_error();
+        if ((ch >= '0' && ch <= '9') || ch == '+' || ch == '-' || ch == '.' || ch == 'e' || ch == 'E') {
+            if (ch == '.' || ch == 'e' || ch == 'E') is_real = true;
+            quest_json_next(jr);
+            if (len + 1 < sizeof(buf)) buf[len++] = (char)ch;
+            else jr->refused = true;
         } else {
             break;
         }
@@ -1343,7 +1348,7 @@ static QJsonValue *quest_parse_json_object(QJsonReader *jr) {
         /* A repeated key is an error, as in every reader (docs/dynamic.md
          * section 2.1): which of its values a reader took would differ */
         for (size_t i = 0; i < count; ++i) {
-            if (strcmp(entries[i].key, key_node->u.s.str) == 0) quest_raise_dynamic_error();
+            if (strcmp(entries[i].key, key_node->u.s.str) == 0) jr->refused = true;
         }
         quest_json_skip_ws(jr);
         if (quest_json_next(jr) != ':') quest_raise_dynamic_error();
@@ -2147,11 +2152,13 @@ static QAuto *quest_dynamic_intern_held(QReader *rd) {
     QJsonReader jr;
     jr.rd = rd;
     jr.peek = -1;
+    jr.refused = false;
 
     QJsonValue *root = quest_parse_json_value(&jr);
     if (jr.peek != -1) {
         rd->peek_char = jr.peek;
     }
+    if (jr.refused) quest_raise_dynamic_error();
 
     if (root == NULL || root->kind != QJSON_OBJECT || root->u.o.count != 4) quest_raise_dynamic_error();
     QJsonValue *version = quest_json_obj_get(root, "quest");

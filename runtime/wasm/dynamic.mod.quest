@@ -976,8 +976,12 @@ export
     end
 
     (* The characters of rd, with one character of lookahead put back on the
-     * reader *)
-    Def Source = Tuple rd: reader.T end
+     * reader. refused notes a refusal of well-formed JSON (a repeated key, an
+     * escape that gives no character) found mid-parse: the parse goes on to
+     * the value's end, so that a refused document is consumed whole and the
+     * next read starts at the next one (QJsonReader's refused, docs/dynamic.md
+     * section 2.1), and intern raises only then *)
+    Def Source = Tuple rd: reader.T var refused: Bool end
     (* Whether the reader has more; a closed one has none, as C's reader takes
      * it, so that intern of one raises dynamic.error *)
     let more(src: Source): Bool = try reader.more(src.rd) when reader.error then false end
@@ -1011,8 +1015,9 @@ export
         end
 
     (* A JSON string's bytes (quest_parse_json_string): a \u escape of one
-     * below 256 is that byte. dynamic.error for an unterminated string, an
-     * unknown escape, or a \u escape above 255, since a character is a byte *)
+     * below 256 is that byte. dynamic.error for an unterminated string or an
+     * unknown escape; a \u escape above 255, which gives no character since a
+     * character is a byte, refuses the document *)
     let readString(src: Source): String =
         begin
             expect(src 34)
@@ -1029,8 +1034,8 @@ export
                         elsif e is 117 then
                             let var u = 0
                             for i = 0 upto 3 do u := {u * 16} + hexValue(next(src)) end
-                            if u > 255 then fail() end
-                            u
+                            if u > 255 then src.refused := true end
+                            u mod 256
                         else
                             fail()
                             0
@@ -1135,7 +1140,9 @@ export
                         let key = readString(src)
                         (* a key given twice is refused, as every reader
                          * refuses it (docs/dynamic.md) *)
-                        for i = 0 upto count - 1 do if stringOp.equal(keys.pieces[i] key) then fail() end end
+                        for i = 0 upto count - 1 do
+                            if stringOp.equal(keys.pieces[i] key) then src.refused := true end
+                        end
                         put(keys key)
                         skipSpace(src)
                         expect(src 58)
@@ -1676,8 +1683,9 @@ export
      * made a dynamic value *)
     let intern(rd: reader.T): Any =
         begin
-            let root = readJson(tuple let rd = rd end)
-            if size(root) isnot 4 then fail() end
+            let src = tuple let rd = rd let var refused = false end
+            let root = readJson(src)
+            if src.refused orif {size(root) isnot 4} then fail() end
             let version = must(get(root "quest"))
             case version
                 when jInt with x then if x.n isnot 1 then fail() end

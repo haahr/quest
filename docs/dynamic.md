@@ -79,6 +79,11 @@ index. Values are decoded by following their type, so the value encoding stays c
 - **No object repeats a key,** anywhere in the document (a record's field, a type node's tag, the document's own
   members): a reader refuses one (`dynamic.error`), since which of its values a reader took would differ. Every
   reader does: the runtime's, and both interpreters' (decided 2026-11-15).
+- **A read takes the whole document,** the JSON value that starts at the first character after whitespace and ends
+  where its brackets balance, and only then refuses or decodes it. A refused document, for a repeated key or any
+  other reason, leaves the reader just after it, so the next read from the same reader starts at the next document.
+  Text that is not JSON at all leaves the reader wherever the scan stopped: at the end of the input, or after the
+  character that broke it.
 - **`type`**: the type of the dynamic value.
 - **`value`**: the value, encoded as §2.4 describes for that type.
 
@@ -286,6 +291,12 @@ allocated and registered before its components are read, so `@ref`s inside it an
 - **C runtime** (`runtime/quest_serialization.c`): builds `QTypeDescriptor`s directly, since descriptors are
   already graphs: allocate one descriptor per node, then fill in their references. `dynamic.be` keeps comparing
   descriptors structurally (`quest_is_subtype`).
+
+The readers that parse as they read (the C runtime's `quest_parse_json_value`, the wasm runtime's `readJson`) note a
+refusal of well-formed JSON found mid-parse (a repeated key, a `\u` escape above `\u00ff`, a number too long to
+read) and keep parsing, raising `dynamic.error` only once the value's end has been read (§2.1). The interpreters
+read the whole value before they decode it, the bootstrap by the same bracket count and the self-hosted one with
+`util/json`'s `json.read`, so their refusals come after the document is consumed.
 
 ### 3.3. Descriptors in Generated C
 

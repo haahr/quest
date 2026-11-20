@@ -249,26 +249,6 @@ overlay.
 
 ---
 
-## A dynamic reader cannot read on after a document it refused
-
-**Problem.** `dynamic.intern` reading documents one after another from one reader: once it refuses a document (one
-that repeats a key, docs/dynamic.md §2.1, or any that does not decode), every later read from that reader raises
-`dynamic.error` too, though the next document is well formed. Found 2026-11-15 writing
-`tests/source/stdlib/dynamic_repeated_keys.quest`, which therefore reads each document from a file of its own.
-
-**Reproduce.** A program that calls `dynamic.intern(reader.input)` three times, catching `dynamic.error` each time,
-given on standard input three documents, one per line, the second repeating a key: the third read fails. Check every
-target: compiled, the JIT, and both interpreters.
-
-**Where to start.** How a read consumes its document before decoding it: `readDocument` and `dynamicIntern` in
-`questlang/interpreter/builtins.mod.quest`, the bootstrap's `dynamic_reader.py`, and the runtime's reading in
-`runtime/quest_serialization.c`. A refused document should be consumed whole, so the reader stands at the next one.
-
-**Done when.** A read after a refused document reads the next one on every target, and `dynamic_repeated_keys` (or
-a new test) reads its documents from standard input.
-
----
-
 ## Faults the wasm review reported that no probe reproduced
 
 **Problem.** A review of the wasm backend (2026-11-15) reported three faults that probes written the same day did not
