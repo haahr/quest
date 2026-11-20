@@ -10,7 +10,7 @@ of its own:
 3. Undo the single-word rule for options, and simplify what it left. **Done.**
 4. A dynamic reader cannot read on after a document it refused. **Done:** the C and wasm runtimes failed; the
    interpreters already read on.
-5. A missing interface in an imported module's import is located at the module's first line.
+5. A missing interface in an imported module's import is located at the module's first line. **Done.**
 6. Character I/O locks the stream for every character. **Done:** the unlocked calls, measured in
    [benchmarks.md](benchmarks.md) §31.
 

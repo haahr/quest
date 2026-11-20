@@ -160,12 +160,18 @@ export
             for i = 0 upto {vector.length(decl.imports) - 1} do
                 let imp = vector.get(decl.imports i)
                 let ifacePath = ast.effectiveInterfacePath(imp)
-                if maybe.isNone(env.lookupInterface(e ifacePath))
-                    andif maybe.isNone(env.lookupInterface(e imp.interfaceName)) then
-                    elaboration.loadInterface(ifacePath e)
-                    ok
-                end
-                let imported = env.resolveInterface(e ifacePath)
+                (* At the import, so that an interface it names that cannot
+                 * be found or loaded is reported there, as elaboration
+                 * reports it, not at the module's first line *)
+                let imported = env.atImport(e imp.offset 1 fun(): graph.Resolved
+                    begin
+                        if maybe.isNone(env.lookupInterface(e ifacePath))
+                            andif maybe.isNone(env.lookupInterface(e imp.interfaceName)) then
+                            elaboration.loadInterface(ifacePath e)
+                            ok
+                        end
+                        env.resolveInterface(e ifacePath)
+                    end)
                 let ref = interfaceRef(imported ifacePath)
                 vector.append(interfaces ref)
                 let modulePaths = ast.effectiveModulePaths(imp)

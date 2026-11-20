@@ -28,7 +28,7 @@ from quest.codegen.backend import module_file_to_c
 from quest.build.compiler_runner import compile_c_to_object
 from quest.build.headers import ensure_imported_interface_header
 from quest.config import CompilerOptions
-from quest.common.diagnostics import in_unit
+from quest.common.diagnostics import at_import, in_unit
 from quest.modules.artifacts.manifest import (
     ImportedInterfaceRef,
     ImportedModuleRef,
@@ -163,10 +163,13 @@ def compile_module(
     # 2. Load any imported interfaces or modules
     for imp in module_decl.imports:
         iface_path = imp.effective_interface_path
-        if env.lookup_interface(iface_path) is None and env.lookup_interface(imp.interface_name) is None:
-            load_interface(iface_path, env)
-
-        imported = resolve_interface(iface_path, env)
+        # At the import, so that an interface it names that cannot be found or
+        # loaded is reported there, as elaboration reports it, not at the
+        # module's first line
+        with at_import(imp.offset, source_map if source_map is not None else env.source_map):
+            if env.lookup_interface(iface_path) is None and env.lookup_interface(imp.interface_name) is None:
+                load_interface(iface_path, env)
+            imported = resolve_interface(iface_path, env)
         imp_src = imported.source
         canon_imp_iface = imported.interface_name
         imp_mtime = imp_src.stat().st_mtime if imp_src and imp_src.is_file() else 0.0
