@@ -1,4 +1,4 @@
-"""util/json against Python's json module (docs/json-plan.md section 4).
+"""util/json against Python's json module (docs/json.md section 5).
 
 tests/json/corpus.quest, compiled once with ./quest, checks a file of cases
 that this test makes and answers with Python's json, reading and writing text

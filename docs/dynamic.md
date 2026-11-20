@@ -265,8 +265,8 @@ the interpreter and compiled code.
 The JSON text itself is `util/json`'s ([libraries.md](libraries.md) §1.13) in the self-hosted interpreter, Python's
 `json` in the bootstrap's, and the runtimes' own in compiled code (`runtime/quest_serialization.c`, and
 `runtime/wasm/dynamic` on WebAssembly). All write the same bytes for the same document, which
-`tests/source/stdlib/json_dynamic.quest` checks; moving compiled code onto `util/json` is
-[json-plan.md](json-plan.md) §6.
+`tests/source/stdlib/json_dynamic.quest` checks; moving compiled code onto `util/json` is a possibility for later,
+[dynamic-in-quest.md](dynamic-in-quest.md).
 
 ### 3.1. Writing
 

@@ -668,7 +668,7 @@ end
 
 ### 1.13. `util/json : util/Json`
 
-JSON (RFC 8259) in Quest ([json-plan.md](json-plan.md)), for programs, for the compiler (`.qm` manifests, `.qi`
+JSON (RFC 8259) in Quest ([json.md](json.md)), for programs, for the compiler (`.qm` manifests, `.qi`
 files, the build workers' messages, the Jupyter kernel), and for the interpreters' `dynamic.intern`. A parsed text
 is a `Value` tree; `dump`, `dumpWith`, and `write` print one, and an `Emitter` writes a value to a writer as its
 parts are given, with no tree, exactly as `write` would print it.
@@ -686,7 +686,7 @@ parts are given, with no tree, exactly as `write` would print it.
 - **`error` carries a `Failure`:** a message, and a byte offset in the text (or `~1` for a value of the wrong kind,
   a number that does not fit, or an emitter's parts out of order).
 - **`Object` is manifest** only because an interface's manifest type cannot name its own abstract type
-  ([json-plan.md](json-plan.md) decision 6): use its operations, not its fields. It is two arrays in insertion order,
+  ([json.md](json.md) rule 6): use its operations, not its fields. It is two arrays in insertion order,
   indexed by a hash map past 8 members.
 
 `tests/source/stdlib/json_values.quest` tests the operations, `tests/python/test_json.py` checks the text against
