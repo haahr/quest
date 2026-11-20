@@ -1,0 +1,35 @@
+(* What an assignment through an option's extraction changes (docs/type-system.md
+ * section 6.8). o!made is a new tuple, so o!made.x := v is refused
+ * (tests/errors/typecheck/aggregates/option_extraction_assign). A variable bound
+ * to the extraction is that copy, and assigning through it changes the copy
+ * alone. A tuple component of the copy is the payload's own, so assigning
+ * through it changes the option. A case binder is the payload itself. A
+ * variant's extraction is its payload, not a copy. *)
+
+import writer : Writer;
+import conv : Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+Let Made = Option none made with var x: Int inner: Tuple var y: Int end end end;
+let o = option made of Made with let var x = 1 let inner = tuple let var y = 10 end end;
+let shown(): String = conv.int(o!made.x) <> " " <> conv.int(o!made.inner.y);
+
+(* 1. Through a variable bound to the extraction: the copy changes *)
+let t = o!made;
+t.x := 2;
+print("copy " <> conv.int(t.x) <> ", option " <> shown());
+
+(* 2. Through a tuple component of the copy: the payload's own *)
+o!made.inner.y := 20;
+print("inner " <> shown());
+
+(* 3. Through a case binder: the payload itself *)
+case o when made with c then c.x := 3 when none then ok end;
+print("binder " <> shown());
+
+(* 4. A variant's extraction is its payload *)
+Let V = Variant p: Tuple var z: Int end q: Ok end;
+let v = variant p of V with tuple let var z = 1 end end;
+v!p.z := 5;
+print("variant " <> conv.int(v!p.z))

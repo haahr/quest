@@ -1,0 +1,67 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @12:45
+      let %2: String = prim <>(s, "\n") @12:59
+      let %3: Ok = call writer.putString(%1, %2) @12:28
+      return %3
+    }
+  }
+  let x: Int = 1 @15:46
+  let y: Int = 10 @15:78
+  let inner: Tuple var y: Int end = tuple(y) @15:60
+  let %4: Tuple var x: Int inner: Tuple var y: Int end end = tuple(x, inner) @15:9
+  let o: Made = option(made, %4) @15:9
+  funs {
+    fun shown(): String {
+      let %5: Tuple Int var x: Int inner: Tuple var y: Int end end = payload(o, made) #1 @16:32
+      let %6: Int = tuple_field(%5, 1) @16:32
+      let %7: String = call conv.int(%6) @16:23
+      let %8: Tuple Int var x: Int inner: Tuple var y: Int end end = payload(o, made) #1 @16:61
+      let %9: Tuple var y: Int end = tuple_field(%8, 2) @16:61
+      let %10: Int = tuple_field(%9, 0) @16:61
+      let %11: String = call conv.int(%10) @16:52
+      let %12: String = prim <>(" ", %11) @16:45
+      let %13: String = prim <>(%7, %12) @16:23
+      return %13
+    }
+  }
+  let t: Tuple Int var x: Int inner: Tuple var y: Int end end = payload(o, made) #1 @19:9
+  store t.#1 := 2 @20:1
+  let %14: Int = tuple_field(t, 1) @21:27
+  let %15: String = call conv.int(%14) @21:18
+  let %16: String = call shown() @21:50
+  let %17: String = prim <>(", option ", %16) @21:35
+  let %18: String = prim <>(%15, %17) @21:18
+  let %19: String = prim <>("copy ", %18) @21:7
+  do call print(%19) @21:1
+  let %20: Tuple Int var x: Int inner: Tuple var y: Int end end = payload(o, made) #1 @24:1
+  let %21: Tuple var y: Int end = tuple_field(%20, 2) @24:1
+  store %21.#0 := 20 @24:1
+  let %22: String = call shown() @25:19
+  let %23: String = prim <>("inner ", %22) @25:7
+  do call print(%23) @25:1
+  switch tag(o) { @28:1
+    case made (c: Tuple var x: Int inner: Tuple var y: Int end end): {
+      store c.#0 := 3 @28:30
+    }
+    case none: {
+    }
+  }
+  let %24: String = call shown() @29:20
+  let %25: String = prim <>("binder ", %24) @29:7
+  do call print(%25) @29:1
+  let z: Int = 1 @33:47
+  let %26: Tuple var z: Int end = tuple(z) @33:29
+  let v: V = variant(p, %26) @33:9
+  let %27: Tuple var z: Int end = payload(v, p) @34:1
+  store %27.#0 := 5 @34:1
+  let %28: Tuple var z: Int end = payload(v, p) @35:30
+  let %29: Int = tuple_field(%28, 0) @35:30
+  let %30: String = call conv.int(%29) @35:21
+  let %31: String = prim <>("variant ", %30) @35:7
+  do call print(%31) @35:1
+}
+

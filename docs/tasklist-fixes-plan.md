@@ -2,7 +2,8 @@
 
 A plan for five entries of [tasklist.md](tasklist.md), taken in this order, each a step of its own:
 
-1. Assigning through `opt!tag` compiles and changes nothing.
+1. Assigning through `opt!tag` compiles and changes nothing. **Done:** the direct form is refused; the nested form
+   changes the option, so it stays.
 2. Undo the single-word rule for options, and simplify what it left.
 3. A dynamic reader cannot read on after a document it refused.
 4. A missing interface in an imported module's import is located at the module's first line.

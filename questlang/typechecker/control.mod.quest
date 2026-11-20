@@ -249,6 +249,41 @@ export
     let assignForm(target: typedAst.Expr value: typedAst.Expr): typedAst.ExprForm =
         option exprAssign of typedAst.ExprForm with let target = target let value = value end
 
+    (* Refuses an assignment to a component of an option's extraction,
+     * o!made.x := v: o!made is a new tuple (docs/type-system.md section 6.8),
+     * so the assignment would change only a copy that is then discarded. A
+     * case binder is the payload itself, and the way to change it. Only the
+     * direct form is refused: a variable bound to the extraction may be
+     * assigned through, and so may a tuple component of the copy
+     * (o!made.inner.y := v), which the copy shares with the payload. A
+     * variant's extraction is its payload, not a copy, so it is not refused.
+     * target is the selection's base as written, typed its typed form *)
+    let refuseExtractionTarget(target: ast.Expr typed: typedAst.Expr field: String offset: Int e: env.T): Ok =
+        case typed.form
+            when exprVariantAssert with x then
+                begin
+                    let t = evaluate(x.target.type)
+                    let isOption = case t.form
+                        when typeOption then true
+                        when typeVariant then false
+                        else
+                            let bound = kinds.resolveSumBound(t some(e))
+                            maybe.isSome(bound) andif case maybe.unwrap(bound).form
+                                when typeOption then true else false end
+                    end
+                    if isOption then
+                        let shown = case target.form
+                            when exprVariantAssert with a then
+                                case a.target.form when exprId with id then id.name else "..." end <> "!" <> a.tag
+                            else "!" <> x.tag
+                        end
+                        diagnostics.fail(:Ok "Cannot assign to a component of '" <> shown <> "', which is a copy: use"
+                            <> " a case binder (when " <> x.tag <> " with c then c." <> field <> " := ...)" offset)
+                    end
+                end
+            else ok
+        end
+
     (* Synthesizes an assignment, target := value, whose type is Ok.
      *
      * Only a mutable location can be assigned, and there are two kinds of
@@ -341,6 +376,7 @@ export
                                     if not(f.isVar) then
                                         diagnostics.fail(:Ok "Cannot assign to immutable tuple field '" <> field <> "'" selOff)
                                     end
+                                    refuseExtractionTarget(sel.target targetTyped field selOff e)
                                     let rhsTyped = checker.checkExpr(c right f.type e loopDepth)
                                     let targetSelect = expr(selOff f.type option exprSelect of typedAst.ExprForm with
                                         let target = targetTyped let field = field

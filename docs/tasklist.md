@@ -159,30 +159,6 @@ benchmarks.md, or the idea is dropped with its measurement.
 
 ---
 
-## Assigning through `opt!tag` compiles and changes nothing
-
-**Problem.** `opt!tag` is a new tuple, so assigning one of its `var` components changes only the copy
-([type-system.md](type-system.md) §6.8). When the assignment's target is the extraction itself, `s.slot!made.x := x`,
-the copy is discarded once the assignment is done, so the statement can have no effect. Both compilers accept it
-without a word. The way to change the option is a `case` binder, which is the payload itself
-(`when made with c then c.x := x`). Writing [iter-plan.md](iter-plan.md) decision 4, the extraction form compiled
-and ran, and the program printed `0` where it should have printed the sum.
-
-**Reproduce.** `let o = option made of Option none made with var x: Int end end with let var x = 1 end;`, then
-`o!made.x := 2;` and print `o!made.x`: it prints `1`.
-
-**Where to start.** The typecheckers' checks of an assignment's target, where they reject immutable tuple and record
-fields: `questlang/typechecker/control.mod.quest` ("Cannot assign to immutable tuple field") and
-`bootstrap/python/quest/typechecker/control.py`. Reject a target whose selection's base is an option extraction
-(directly, not through a variable bound to it, since `let t = o!made` then `t.x := 2` changes `t` as it should). The
-error should point to the `case` binder.
-
-**Done when.** Both compilers reject it with the same message, and an error test under `tests/errors` shows it, or
-the language is changed so that the assignment changes the option (§6.8 and every evaluator), and a golden shows
-that.
-
----
-
 ## Undo the single-word rule for options, and simplify what it left
 
 **Problem.** The language compares single-word options by component ([extensions.md](extensions.md), "Options as
