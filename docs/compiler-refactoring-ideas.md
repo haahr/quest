@@ -58,6 +58,90 @@ turns the predicates into field reads. Precedents: LLVM's `MCInstrDesc` and `Ins
    typed `Array(ValType)` signatures, as Go's `ssagen` intrinsics map and Cranelift's libcalls do. With §6.1, the
    same entry says what to import and how to call it. Medium.
 
+### 2.5. A Sketch, for the SSA Opcodes
+
+One record per opcode, made by one exhaustive `case` in `ssa/nodes`, and an array of them indexed by `opcodeIndex`:
+
+```quest
+(* What every pass needs to know about an opcode, decided in one place:
+ * info's case lists every opcode with no else, so a new opcode cannot be
+ * added without deciding each fact *)
+Def Effect = Option pure reads writes calls end
+Def Traps = Option never divides end                 (* opDiv, opRem *)
+Def OpInfo = Tuple
+    name: String
+    arity: Int                                        (* ~1: variable (calls, select) *)
+    effect: Effect
+    traps: Traps
+    commutative: Bool
+    local: Bool          (* fused by arm64 selection, or cheap to keep near: VN keeps it in its block *)
+    provenance: Array(Int)                            (* arguments a pointer result derives from *)
+    identity: maybe.T(Int)                            (* accumulate: 0 for add, 1 for mul *)
+end
+
+let info(op: Opcode): OpInfo =
+    case op
+        when opAdd then commutative(identity(fact("add" 2 pure never) 0))
+        when opSub then fact("sub" 2 pure never)
+        when opMul then commutative(local(identity(fact("mul" 2 pure never) 1)))
+        when opDiv then fact("div" 2 pure divides)
+        when opEq then commutative(local(fact("eq" 2 pure never)))
+        when opPtrAdd then local(provenance(fact("ptrAdd" 2 pure never) 0))
+        when opLoad then fact("load" 1 reads never)
+        when opStore then fact("store" 2 writes never)
+        when opCall, opCallIndirect then fact(... ~1 calls never)
+        ...                                           (* the rest, no else *)
+    end
+
+(* Built once: the passes read fields, not cases *)
+let infos: Array(OpInfo) = (* info(opcodes[i]) for each i *)
+let infoOf(op: Opcode): OpInfo = infos[opcodeIndex(op)]
+```
+
+`fact` fills in the defaults (not commutative, not local, no provenance, no identity), and `commutative`, `local`,
+`identity`, and `provenance` each return the record with one fact changed; Quest has no record update. Only tuples and
+functions are needed. The predicates then read the table:
+
+```quest
+(* valuenumbers *)
+let numbered(i: ssa.Inst): Bool =
+    case ssa.infoOf(i.op).effect when pure, reads then true when writes, calls then false end
+let local(op: ssa.Opcode): Bool = ssa.infoOf(op).local
+let commutative(op: ssa.Opcode): Bool = ssa.infoOf(op).commutative
+
+(* selects: speculable is "pure and cannot trap", plus its one rule that looks at an argument *)
+let speculable(defs: Array(maybe.T(ssa.Inst)) i: ssa.Inst): Bool =
+    let n = ssa.infoOf(i.op)
+    case n.effect
+        when pure then n.traps?never andif not(ssa.isOp(i ssa.opSlot))
+        when reads then loadOfStatic(defs i)
+        when writes, calls then false
+    end
+
+(* nodes *)
+let opcodeName(op: Opcode): String = infoOf(op).name
+```
+
+`verify`'s arity check reads `arity`, `accumulate` reads `identity`, and escape and scalars read `provenance` rather
+than listing `opPtrAdd` and `opUnproxy`.
+
+The table holds facts, not behavior. Each backend's emission for each opcode (`arm64/select`, ssac's printer) stays an
+exhaustive `case` with no `else`, so no backend can skip an opcode, and so do `resultType` for the opcodes whose result
+depends on their arguments (`select`, `load`) and `verify`'s checks of calls and of load and store widths.
+
+The other opcode sets follow the same pattern:
+- `minst.Op`: an `MInfo` of defs (replacing "the first n registers are defs"), pure, mayLoad, mayStore, isBranch,
+  isCall, isTerminator, isDirective, and a `labelOf`/`withLabel` pair; `isBrk`'s 54-case list becomes a field read.
+- `nodes.Prim`: a `PrimInfo` of spelling, operand and result kinds, may raise, and folder, in place of
+  `primName`/`primNamed`, `simplify.pure` and `foldInt`, and treewalk's string lists.
+- The wasm externals: a `hashMap` from symbol to an `ExternalImpl` option (`implCore(fn params results)`,
+  `implRealmath(fn arity)`, `implInline(emitter)`, ...), with typed signatures.
+
+The cost is one table per opcode set and mechanical rewrites of the predicates, each checked by the goldens, whose
+SSA, IR, and C output should not change; reading a field of `infos[i]` costs about what the `case` did. One decision is
+the user's: whether `local` belongs in the table or stays value numbering's own policy, a tuning choice (ssa.md
+section 4.1) rather than a fact about the opcode.
+
 ## 3. One Generic Traversal per Tree
 
 1. **Types** (*checked*). `types/model` spells out the ~25-case chain over `TypeForm` about ten times (`formFree`,
