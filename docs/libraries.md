@@ -992,6 +992,111 @@ export
 end
 ```
 
+### 1.16. `util/lazy : util/Lazy`
+
+A value computed the first time it is asked for, and kept, as OCaml's `Lazy` and Rust's `LazyCell`
+([lazy-memo-plan.md](lazy-memo-plan.md)):
+
+```quest
+let table = lazy.make(fun(): Array(Int) buildTable());
+... lazy.force(table)[i] ...
+```
+
+- **The function runs at most once if it returns.** `force` calls it the first time, keeps its result, and drops the
+  function, so what it captured can be collected. `fromValue(a)` makes one already computed, for an argument some
+  callers have at hand and others compute.
+- **A raise keeps nothing.** If the function raises, the value goes back to pending, the exception reaches `force`'s
+  caller with its own raise site (`raised.reraise`), and the next `force` calls the function again, as Python's
+  `functools.cache` does not keep an exception either. OCaml instead raises the same exception on every later force.
+- **Forcing a value inside its own computation raises `cycle`,** as OCaml's raises `Lazy.Undefined`, instead of
+  recursing until the stack overflows; the value is pending again after it.
+- **`map` is lazy too,** forcing its source only when it is forced; `once(f)` is Go's `sync.OnceValue`, `f` called the
+  first time the function it returns is. `isForced` and `peek` look without forcing.
+- **Cost:** `make` allocates the value and its pending state, and the first `force` its forced state; a forced value
+  costs a call, a tag test, and a load.
+
+`tests/source/stdlib/lazy_operations.quest` tests that the function runs once and on the first force, each operation,
+a raise and the retry after it, and `cycle`.
+
+#### Interface Summary
+
+```quest
+interface Lazy
+import
+    util/maybe : util/Maybe
+export
+    T::ALL(A::TYPE) TYPE
+    cycle: Exception
+    make: All(A::TYPE) All(f: All() A) T(A)
+    fromValue: All(A::TYPE) All(a: A) T(A)
+    force: All(A::TYPE) All(l: T(A)) A
+    isForced: All(A::TYPE) All(l: T(A)) Bool
+    peek: All(A::TYPE) All(l: T(A)) maybe.T(A)
+    map: All(A::TYPE B::TYPE) All(l: T(A) f: All(a: A) B) T(B)
+    once: All(A::TYPE) All(f: All() A) All() A
+end
+```
+
+### 1.17. `util/memo : util/Memo`
+
+A function of one argument wrapped with a table of the results it has returned, as Python's `functools.cache` and
+`lru_cache` ([lazy-memo-plan.md](lazy-memo-plan.md)), keyed by an `equal` and a `hash` as `collections/hashMap` is:
+
+```quest
+let area = memo.memoize(fun(s: String): Int slowArea(s) stringOp.equal hash.string);
+let fib = memo.asFunction(memo.makeRecursive(fun(self: All(n: Int) Int n: Int): Int
+    if n < 2 then n else self(n - 1) + self(n - 2) end
+    fun(a: Int b: Int): Bool a is b hash.int));
+```
+
+- **Four constructors:** `make` keeps every result; `makeBounded` keeps the `capacity` most recently used, dropping the
+  least recently used to make room; `makeRecursive` and `makeBoundedRecursive` pass the memoized function to the
+  function as `self`, so that its own calls are memoized too. (A Quest function's own name always means itself, so a
+  wrapper cannot take its place as Python's decorator does.) `memoize` is `asFunction` of `make`, for the common case.
+- **One argument.** A function of several takes them as a tuple or a record, with an `equal` and a `hash` for it
+  (`hash.combine`); `hash.identityEqual` and `hash.identityHash` key by identity.
+- **A result is kept only when the function returns;** one that raises keeps nothing, and is called again the next
+  time. A recursive call for a key whose result is being computed computes it again, as Python's does.
+- **`contains` is not a use;** `forget` drops one result, `clear` all of them. `hits` and `misses` count the applies
+  that found their result kept and those that computed it, as Python's `cache_info`; `clear` keeps them.
+- **The bounded caches are a `collections/linkedHashMap` (§2.9) in the order of use:** a hit moves its key to the end,
+  a miss at capacity pops the first.
+- **Cost:** a hit is a closure call, the key's hash, and a hash map lookup; bounded, a second lookup and a relinking.
+
+`tests/source/stdlib/memo_operations.quest` tests each constructor, `fib` of 80 in 81 calls, a raise, the least
+recently used order through hits, `forget`, and `clear`, a key of two values, and the error for a capacity below 1.
+
+#### Interface Summary
+
+```quest
+interface Memo
+import
+    word: Word
+export
+    T::ALL(K::TYPE) ALL(V::TYPE) TYPE
+    error: Exception
+    make: All(K::TYPE V::TYPE)
+        All(f: All(k: K) V equal: All(k1: K k2: K) Bool hash: All(k: K) word.T) T(K V)
+    makeBounded: All(K::TYPE V::TYPE)
+        All(f: All(k: K) V capacity: Int equal: All(k1: K k2: K) Bool hash: All(k: K) word.T) T(K V)
+    makeRecursive: All(K::TYPE V::TYPE)
+        All(f: All(self: All(k: K) V k: K) V equal: All(k1: K k2: K) Bool hash: All(k: K) word.T) T(K V)
+    makeBoundedRecursive: All(K::TYPE V::TYPE)
+        All(f: All(self: All(k: K) V k: K) V capacity: Int equal: All(k1: K k2: K) Bool hash: All(k: K) word.T)
+        T(K V)
+    apply: All(K::TYPE V::TYPE) All(c: T(K V) k: K) V
+    asFunction: All(K::TYPE V::TYPE) All(c: T(K V)) All(k: K) V
+    memoize: All(K::TYPE V::TYPE)
+        All(f: All(k: K) V equal: All(k1: K k2: K) Bool hash: All(k: K) word.T) All(k: K) V
+    contains: All(K::TYPE V::TYPE) All(c: T(K V) k: K) Bool
+    size: All(K::TYPE V::TYPE) All(c: T(K V)) Int
+    forget: All(K::TYPE V::TYPE) All(c: T(K V) k: K) Bool
+    clear: All(K::TYPE V::TYPE) All(c: T(K V)) Ok
+    hits: All(K::TYPE V::TYPE) All(c: T(K V)) Int
+    misses: All(K::TYPE V::TYPE) All(c: T(K V)) Int
+end
+```
+
 ---
 
 ## 2. Collections (`lib/collections/`)
@@ -1597,6 +1702,66 @@ export
     (* An iterator (§1.14), front to back, and building from one *)
     iter: All(A::TYPE) All(d: T(A)) iterLib.T(A)
     fromIter: All(A::TYPE) All(it: iterLib.T(A)) T(A)
+end
+```
+
+### 2.9. `collections/linkedHashMap : collections/LinkedHashMap`
+
+A hash map with an order of its own, as Python's `OrderedDict` and Java's `LinkedHashMap`
+([lazy-memo-plan.md](lazy-memo-plan.md)): keys are kept in the order they were inserted, and any key can be moved to
+either end, and the first or last taken off, in constant time. `hashMap` keeps insertion order too, but cannot reorder
+a key or take the first off cheaply; this is the map for a least recently used cache (`util/memo`'s bounded caches),
+a queue keyed by value, or anything else whose order changes after insertion.
+
+- **Only the operations that say so change the order.** `get`, `find`, and `contains` do not, and inserting a key
+  already present changes its value and leaves it in place, as in Python's `OrderedDict`; Java's access order, which
+  moves a key on every read, is left to the caller's `moveToEnd`.
+- **Representation:** the entries in the first `count` slots of four arrays (keys, values, and the previous and next
+  slot in the order), doubled when full (from at least 8), with a `hashMap` from keys to slots. Moving an entry
+  relinks it, and nothing is allocated except when the arrays grow. A delete moves the last slot into the deleted
+  one's place, so the slots stay dense, and fills the slot left over with an entry still held, so the map keeps
+  nothing alive that it has let go; an emptied map drops its arrays. The arrays do not shrink otherwise.
+- **The iterators** (§1.14) read the map as it is at each step; what one returns after the map changes other than
+  through it is unspecified. `forEach`'s action must not change the map.
+- **`first`, `last`, and the pops** give an `Entry`, the same shape as `hashMap.Entry`, or none for an empty map;
+  `find` raises `error` for a key not present. `hashMap`'s `map`, `filter`, `fold`, and conversions are left out
+  until something wants them.
+
+`tests/source/stdlib/linkedhashmap_operations.quest` tests the order through insertion, reinsertion, both moves, the
+pops, and deletes at the front, the back, and in the middle, growth, the iterators, and `find`'s error, and checks a
+thousand random operations against a list kept by hand.
+
+#### Interface Summary
+
+```quest
+interface LinkedHashMap
+import
+    util/maybe : util/Maybe
+    iterLib = util/iter : util/Iter
+    word: Word
+export
+    T::ALL(K::TYPE) ALL(V::TYPE) TYPE
+    Def Entry = Fun(K::TYPE V::TYPE) Tuple key: K value: V end
+    error: Exception
+    new: All(K::TYPE V::TYPE) All(equal: All(k1: K k2: K) Bool hash: All(k: K) word.T) T(K V)
+    size: All(K::TYPE V::TYPE) All(m: T(K V)) Int
+    empty: All(K::TYPE V::TYPE) All(m: T(K V)) Bool
+    get: All(K::TYPE V::TYPE) All(m: T(K V) key: K) maybe.T(V)
+    contains: All(K::TYPE V::TYPE) All(m: T(K V) key: K) Bool
+    find: All(K::TYPE V::TYPE) All(m: T(K V) key: K) V
+    insert: All(K::TYPE V::TYPE) All(m: T(K V) key: K value: V) Bool
+    delete: All(K::TYPE V::TYPE) All(m: T(K V) key: K) maybe.T(V)
+    clear: All(K::TYPE V::TYPE) All(m: T(K V)) Ok
+    moveToEnd: All(K::TYPE V::TYPE) All(m: T(K V) key: K) Bool
+    moveToFront: All(K::TYPE V::TYPE) All(m: T(K V) key: K) Bool
+    first: All(K::TYPE V::TYPE) All(m: T(K V)) maybe.T(Entry(K V))
+    last: All(K::TYPE V::TYPE) All(m: T(K V)) maybe.T(Entry(K V))
+    popFirst: All(K::TYPE V::TYPE) All(m: T(K V)) maybe.T(Entry(K V))
+    popLast: All(K::TYPE V::TYPE) All(m: T(K V)) maybe.T(Entry(K V))
+    forEach: All(K::TYPE V::TYPE) All(m: T(K V) action: All(k: K v: V) Ok) Ok
+    entryIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(Entry(K V))
+    keyIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(K)
+    valueIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(V)
 end
 ```
 

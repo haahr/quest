@@ -16,7 +16,7 @@ bootstrap and the self-hosted compiler, separately and as a whole program:
 | `tests/source/stdlib/lazy_operations.quest` | forcing once, `fromValue`, `peek`, `map`, `once`, raises, `cycle` |
 | `tests/source/stdlib/memo_operations.quest` | unbounded, recursive (`fib 80` in 81 calls), raises, LRU order, `forget`, `clear`, a two-value key, the error |
 
-Nothing is committed; §8 has the steps.
+Pushed as 9f7b058a (2026-11-20); §8 has the steps left.
 
 ## 1. Decisions
 
@@ -211,7 +211,7 @@ second lookup for `moveToEnd` and two or three relinking stores. A miss adds the
    the stress tier on `arm64` and `c-whole`). Then push, and cut a release, since a new `lib/` module goes push,
    release, then any compiler use; the compiler uses none of them today.
 2. **Document:** libraries.md sections for `util/lazy`, `util/memo`, and `collections/linkedHashMap` (§1.16, §1.17,
-   and §2.9), with their interface summaries; take all three out of future-libraries.md; retire this plan into those
-   sections.
+   and §2.9), with their interface summaries, and all three out of future-libraries.md: done. Left: retire this plan
+   into those sections once step 1's release is cut and step 3 is done or moved to tasklist.md.
 3. **The bootstrap crash** (§7): an error test of its own, with the self-hosted compiler's message as the expected
    one, and the bootstrap's `elaborate_type` fixed to report it.

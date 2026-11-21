@@ -45,16 +45,6 @@ and a wasm counterpart (marked "runtime" below).
 
 - **Persistent collections, `collections/persistent`.** Immutable maps and vectors (hash array mapped tries), which
   suit Quest's functional side and may be shared freely. Needs more design.
-- **An ordered hash map, `collections/linkedHashMap`** (Java's `LinkedHashMap`, Python's dict order). Iterates in
-  insertion order, which also makes an LRU cache easy.
-
-## Functions and values
-
-- **Lazy values, `util/lazy`** (OCaml's `Lazy`, Rust's `OnceCell`). A value computed on first use and kept.
-- **Memoization, `util/memo`** (Python's `functools.cache` and `lru_cache`). A function wrapped with a hash map of
-  the results it has returned, keyed by `equal` and `hash` as `collections/hashMap` is, and optionally bounded, least
-  recently used first (with `collections/linkedHashMap`). A recursive function's own calls are memoized only if it
-  is written to call the memoized version it is given (open recursion).
 
 ## Testing and diagnostics
 
