@@ -1,5 +1,5 @@
-"""util/datetime's calendar against Python's datetime (docs/time-plan.md
-section 5), as tests/python/test_regexp.py checks util/regexp against Go.
+"""util/datetime's calendar against Python's datetime (docs/libraries.md
+section 1.10), as tests/python/test_regexp.py checks util/regexp against Go.
 
 tests/datetime/calendar.quest, compiled once with ./quest, writes for random
 instants over the whole range (1677 to 2262) at random offsets the date by

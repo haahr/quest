@@ -394,9 +394,9 @@ imports, even for interfaces the typechecker resolves without loading them (such
 The intended model is that compiled artifacts are used whenever they are fresh: `.qi` and `<stem>.int.h` instead of
 re-elaborating an `.int.quest`, and `.qm`, `.c` (`.mod.c` for a module), and `.o` instead of recompiling a `.mod.quest`
 or main routine.
-Freshness is currently judged by timestamps alone (Rules 1–3), which cannot tell whether an artifact was produced
-under the same artifact contract as the running compiler. The stopgap in §3.1 (source always wins outside the build
-directory) avoids trusting such artifacts, at the cost of re-elaborating every imported source on every run.
+Timestamps alone (Rules 1–3) cannot tell whether an artifact was produced under the same artifact contract as the
+running compiler. A stopgap once made source always win outside the build directory, at the cost of re-elaborating
+every imported source on every run; the ABI version recorded in each artifact (below) replaced it.
 
 Two distinct concerns are involved:
 1. **Reusing artifacts.** An artifact can be reused by another compiler, or another version of the same compiler, as
@@ -989,7 +989,7 @@ The tests hash a file too, though no build does: the ABI corpus records a digest
 The C backend's other digests are of text it makes, not of files: the names of generated C types (a type's printed
 form, in `layout.type_digest` and `layout.text_digest`, `questlang/repr/layout` in the self-hosted compiler), and
 the tags of long shapes. The self-hosted compiler computes these with SHA-256 written in Quest
-(`questlang/common/sha256`), which is a measurable part of its time ([tasklist.md](tasklist.md)).
+(`questlang/common/sha256`), whose word operations compile inline since `24e31f94` (ABI 50).
 
 ---
 

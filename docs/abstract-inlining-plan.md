@@ -61,8 +61,8 @@ case binder, and a `full` flag), not the tuple; §5 has it.
 
 Any whole program with a module whose abstract type is a tuple of closures or of known values: the collections'
 iterators (`vector.iter`, `hashMap.entryIter`, the B-tree's cursor), `regexp.findIter`, and `util/iterTools`
-([itertools-plan.md](itertools-plan.md)), whose stages are all `iter.make` of two closures. The compiler itself is
-built separately, so its own build does not change.
+([iter.md](iter.md) §4), whose stages are all `iter.make` of two closures. The compiler itself is built separately,
+so its own build does not change.
 
 It also reaches copies that change the type by subtyping, not only by abstraction: a `BigTuple` passed as a
 `SmallTuple`, or a tuple whose component is seen through a record view. Tuple subtyping is by prefix, so the
@@ -95,9 +95,9 @@ not ([testing.md](testing.md)).
 ## 5. Left for later
 
 - **`filter`'s 45.** A lookahead stage pays for its slot: the option's tag test, the case binder's store, and the
-  `full` flag. `docs/tasklist-fixes-plan.md` step 2 (assigning through `opt!tag` changing the option) may let the
-  slot be written more simply; whether it gets cheaper is to be measured after that lands.
+  `full` flag. Assigning through `opt!tag` now changes the option (`107b5186`), which may let the slot be written
+  more simply; whether it gets cheaper is not yet measured.
 - **Records.** The simplifier folds no record field reads, through copies or not. No library's abstract type is a
   record of closures today, so nothing is measured to gain.
-- **Separate compilation** still pays about 23 instructions per element the consumer pulls (iter-plan.md §2); only
-  cross-module inlining would remove that, which separate compilation does not do by design.
+- **Separate compilation** still pays about 23 instructions per element the consumer pulls ([iter.md](iter.md) §2);
+  only cross-module inlining would remove that, which separate compilation does not do by design.

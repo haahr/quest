@@ -394,5 +394,3 @@ C runtime), which link to the rest.
 - [docs/release-compiler.md](docs/release-compiler.md): releases of the self-hosted compiler (`tools/release`), from
   which `./quest` is built.
 - [docs/tasklist.md](docs/tasklist.md): open bugs and planned tasks.
-- [docs/type-arguments-plan.md](docs/type-arguments-plan.md): a plan in progress, for omitting the type arguments
-  that inference finds.

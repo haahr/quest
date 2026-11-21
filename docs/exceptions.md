@@ -31,8 +31,8 @@ self-hosted counterparts in `questlang/` (whose arm64 backend passes raise sites
 An uncaught exception is a diagnostic located at its raise site, followed by its frames:
 
 ```text
-tests/source/errors/run/divide_by_zero.quest:4:13: error: Exception: int.error
-    let inner(n: Int): Int = n div 0;
+example.quest:4:26: error: Exception: int.error
+    let inner(n: Int): Int = n / 0;
                              ^
   in inner
   in outer

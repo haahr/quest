@@ -445,10 +445,11 @@ subject, since there are no backreferences or lookaround. Matching is on bytes, 
 and Go match), and offsets are a start and a size, as `stringOp.getSub` takes them. A pattern is a string, compiled,
 or a value, built by functions (as in OCaml's `re`) and compiled with `compileRE`; a pattern so built needs no
 escaping and cannot have a syntax error. Quest alone, so it runs alike on every target, a browser included. The
-syntax and the design are [regexp-plan.md](regexp-plan.md)'s (§2–§4); its implementation is three modules the
-interface does not name, `util/regexpSyntax` (the parser), `util/regexpProgram` (the compiler, as Go's
-`regexp/syntax` compiles), and `util/regexpMatch` (a Pike VM). `tests/source/stdlib/regexp_*.quest` test it, and
-`tests/python/test_regexp.py` checks it against RE2's corpora and Go's `regexp`.
+syntax, the design, and the implementation are in [regexp.md](regexp.md) (§2–§3): three modules the interface does
+not name, `util/regexpSyntax` (the parser), `util/regexpProgram` (the compiler, as Go's `regexp/syntax` compiles),
+and `util/regexpMatch` (the matchers: a literal search, a bounded backtracker, and a Pike VM).
+`tests/source/stdlib/regexp_*.quest` test it, and `tests/python/test_regexp.py` checks it against RE2's corpora and
+Go's `regexp`.
 
 #### Interface Summary
 
@@ -527,12 +528,45 @@ end
 
 ### 1.10. `util/datetime : util/DateTime`
 
-Durations, instants, calendar dates, and their text, in Quest, on `os/time`'s clocks (§4.5,
-[time-plan.md](time-plan.md)): the proleptic Gregorian calendar, POSIX time (no leap seconds), and time zones by
-their offset from UTC alone, with no zone database. A duration is `Int` nanoseconds, used with `Int`'s operators; an
-instant is opaque, nanoseconds since the epoch (1677 to 2262), so that it is not mistaken for a duration or a
-`ticks()` reading. `tests/source/stdlib/datetime_operations.quest` tests it, and `tests/python/test_datetime.py`
-checks its dates and text against Python's `datetime` on 20,000 random instants.
+Durations, instants, calendar dates, and their text, in Quest, on `os/time`'s clocks (§4.5), so alike on every
+target. It follows SML's Basis (`Time`, `Date`) where that fits, and Go's `time` in keeping wall-clock and monotonic
+readings apart.
+
+- **Durations are `Int` nanoseconds** (`Def Duration = Int`), so that they add, subtract, and compare with `Int`'s
+  own operators (`2 * datetime.second`), which an opaque type could not; 64 bits of nanoseconds span 292 years
+  either way. A difference of two `ticks()` readings is a duration as it is. `fromSeconds` rounds to the nearest
+  nanosecond, and `durationString` writes as Go does: `0s`, `250ms`, `1.5us`, `1h2m3.5s`, with no trailing zeros.
+- **Instants are opaque:** nanoseconds since the Unix epoch, from 1677-09-21 to 2262-04-11, taken from the wall clock
+  only, so that one cannot be mistaken for a duration or a `ticks()` reading. Their arithmetic is a few functions,
+  used far less than durations'; `add` and `diff` raise `error` for a result outside the range.
+- **POSIX time:** a day is 86,400 seconds and leap seconds do not exist, as for `clock_gettime`, Python, and Go.
+- **The calendar is computed in Quest:** the proleptic Gregorian calendar by Howard Hinnant's `days_from_civil` and
+  `civil_from_days` ("chrono-Compatible Low-Level Date Algorithms").
+- **`Date` is a plain tuple,** not opaque, since programs build dates and read their fields, as they do
+  `fileStats.T`'s. Weekday and day of the year are functions, not fields, so that a built date cannot carry an
+  inconsistent one. `instant` checks every field (month 1 to 12, a day the month has, hour 0 to 23, minute and second
+  0 to 59, nanosecond below 10^9, an offset of less than a day) and raises `error` for a date that does not exist.
+- **Time zones are offsets alone:** a date is in UTC, at an offset in seconds east, or in the local zone, whose
+  offset `local` asks `os/time` for at that instant, daylight saving included. `instant` uses the date's own `offset`,
+  so a local date converts back exactly. There is no zone database: named zones (`America/Los_Angeles`) and their
+  rules need data that changes every year, and would be a library of their own.
+- **Text is `strftime`'s directives,** a fixed subset (`%Y %m %d %H %M %S %f %j %y %I %p %a %A %b %B %z %e %u %w %%`),
+  written and read in Quest in the C locale (English names) rather than by calling `strftime`, so that every target
+  writes the same text. `%f` is nine digits of nanoseconds and `%z` is `+hhmm`. A pattern with any other directive
+  raises `error`, in `parse` as in `format`; text that does not fit the pattern is `none`. `parse` reads names in
+  either case, whole or by their first three letters, a `%y` year as 1969 to 2068, and a `%j` day of the year as its
+  month and day; fields the pattern lacks are those of 1970-01-01T00:00:00Z.
+- **RFC 3339:** `iso8601` writes UTC with `Z`, and a fraction, without trailing zeros, only when the instant has one
+  (`2026-11-17T21:37:41.250Z`). `parseIso8601` takes `T`, `t`, or a space between date and time, and `Z`, `z`, or an
+  offset (`+08:00` or `+0800`).
+
+`elapsedSince` and `sleep` are `os/time`'s `ticks()` and `sleepNanoseconds` as durations, so that a program that only
+measures needs `os/time` for no more than `ticks()`. `tests/source/stdlib/datetime_operations.quest` tests the fixed
+behavior: known instants in UTC and at offsets, round trips, leap years and month lengths, every directive of
+`format` and `parse`, RFC 3339 both ways, durations' text, and every error; the local zone only by its round trip,
+since it differs by machine. `tests/python/test_datetime.py` runs `tests/datetime/calendar.quest` on 20,000 random
+instants over the whole range at random offsets, plus the range's ends, and checks its dates, `format` for the
+directives `strftime` shares, RFC 3339, and both parsers' round trips against Python's `datetime`.
 
 #### Interface Summary
 
@@ -587,11 +621,27 @@ end
 
 ### 1.11. `util/random : util/Random`
 
-Pseudo-random numbers in Quest ([collections-plan.md](collections-plan.md) §2.5): xoshiro256**, seeded by SplitMix64,
-so the same seed gives the same numbers on every target. `new(seed)` is deterministic, for tests and benchmarks;
-`fromClock()` seeds from `os/time` (§4.5) for different numbers each run; there is no hidden shared generator.
-Bounded integers are unbiased, by Lemire's method. Not for cryptography. `tests/source/stdlib/random_operations.quest`
-tests it, and `tests/python/test_random.py` recomputes its known answers with a reference implementation.
+Pseudo-random numbers in Quest: xoshiro256** (Blackman and Vigna), seeded by SplitMix64, so the same seed gives the
+same numbers on every target and every run. The generator is fast, small, and good for simulation and testing; it is
+not for cryptography.
+
+- **Seeded explicitly.** `new(seed)` is deterministic, for tests and benchmarks; `fromClock()` seeds from `os/time`
+  (§4.5) for different numbers each run. There is no hidden shared generator. `fromClock` mixes `nowInNanoseconds()`,
+  `ticks()`, and a count of its own calls, since two calls can read the same clocks.
+- **The state** is four `word.T`s, never all zero, stepped with `word`'s rotations, shifts, exclusive ors, and
+  multiplications. SplitMix64's first four outputs from the seed fill it, so that nearby seeds give unrelated
+  streams. `copy` repeats a generator's future numbers; `split` seeds a new generator from the next output, for a part
+  of a program that needs its own.
+- **Bounded integers are unbiased,** by Lemire's multiply-and-reject on `word.mulHi`; `between` covers any range,
+  the whole of `Int` included. `fraction` is the top 53 bits times 2^-53, `normal` is Box and Muller's method,
+  `shuffle` is Fisher and Yates's, and `sample` is the first `k` steps of that shuffle on a copy.
+- **Names** are not those of the modules a program uses beside it: `bits`, `anyInt`, and `fraction`, not `word`,
+  `int`, and `real`.
+
+`tests/source/stdlib/random_operations.quest` tests the first numbers from known seeds, `below` and `between` at
+their edges and without bias, fractions in range, `shuffle` and `sample` as permutations, `copy` and `split`,
+`normal`'s mean and spread, and the errors. `tests/python/test_random.py` recomputes the golden's known answers with
+reference implementations of xoshiro256** and SplitMix64, so the golden cannot drift from the algorithms.
 
 #### Interface Summary
 
@@ -782,7 +832,7 @@ end
 
 ### 1.14. `util/iter : util/Iter`
 
-Iterators ([iter-plan.md](iter-plan.md)): one way to walk a vector, a hash set, a sorted map's range, a string's
+Iterators ([iter.md](iter.md)): one way to walk a vector, a hash set, a sorted map's range, a string's
 characters, or a regular expression's matches, and to chain stages over any of them without building vectors in
 between. An iterator is pulled, an ordinary loop:
 
@@ -868,7 +918,7 @@ end
 
 ### 1.15. `util/iterTools : util/IterTools`
 
-More iterators, after Python's `itertools` ([itertools-plan.md](itertools-plan.md)): sources without end, stages
+More iterators, after Python's `itertools` ([iter.md](iter.md) §4): sources without end, stages
 that group, window, or interleave, the combinatoric iterators, and a few consumers. `util/iter` has the common stages;
 this module has the ones reached for less often, and depends on `collections/vector`, `deque` and `hashSet`, which
 `util/iter` cannot.
@@ -1333,11 +1383,25 @@ changes a set, with errors, and in a dataflow fixpoint.
 
 ### 2.5. `collections/sortedMap : collections/SortedMap`
 
-A map in the order of a comparison given when it is made ([collections-plan.md](collections-plan.md) §2.1): `hashMap`'s
-operations, plus the least and greatest entries, the nearest on either side of a key, ranges from `lo` (included) to
-`hi` (excluded), and a key's rank. It is a B-tree of minimum degree 16, `collections/btree`, which counts the keys
-below each node. Adding or removing a key while `forEach` walks the map raises `error`; changing a value does not.
-`tests/source/stdlib/sortedmap_operations.quest` grows a map to three levels and empties it against a model.
+A map in the order of a comparison given when it is made (~1, 0, or 1, as `sort.intCompare`; keys that compare 0 are
+one key): `hashMap`'s operations, plus the least and greatest entries, the nearest on either side of a key, ranges
+from `lo` (included) to `hi` (excluded), and a key's rank. Like `hashMap`, it is changed in place, and results that
+are many come as a `vector.T`.
+
+It is a B-tree of minimum degree 16 in `collections/btree`, an interface `sortedMap` and `sortedSet` share and
+programs do not import, after Cormen, Leiserson, Rivest, and Stein (chapter 18). A node other than the root holds
+15 to 31 keys, with their values beside them, in arrays; insertion splits a full node on the way down and deletion
+fills a minimal one on the way down, so neither goes back up. Each node counts the keys at and below it, for `rank`.
+A B-tree makes logarithmic operations with few allocations and a shallow tree, where a red-black tree would make a
+node for every key. Unused slots in a node's arrays hold one of the node's own keys and values, so the tree keeps
+nothing alive that it has let go.
+
+The tree counts the keys added and removed. Adding or removing a key while `forEach` (or an iterator) walks the map
+raises `error` at the walk's next step, rather than giving an order that depends on the implementation; changing a
+value does not. `tests/source/stdlib/sortedmap_operations.quest` inserts 1,200 keys in a random order (three
+levels), makes random inserts, deletes, and lookups, then deletes every key in a random order, so that the tree
+splits, borrows, and merges at every level, checking each step against a model with the order queries, ranges, and
+rank; then the smaller operations, a change during `forEach`, and the errors.
 
 #### Interface Summary
 
@@ -1394,8 +1458,11 @@ end
 
 ### 2.6. `collections/sortedSet : collections/SortedSet`
 
-A set in the order of a comparison ([collections-plan.md](collections-plan.md) §2.2), on the same B-tree as
-`sortedMap`: `hashSet`'s operations, with the order queries, ranges, and rank of §2.5.
+A set in the order of a comparison, on the same B-tree as `sortedMap`, its values `Ok`: `hashSet`'s operations, with
+the order queries, ranges, rank, and change detection of §2.5. `union`, `intersection`, `difference`, and `filter`
+each make a new set with the first set's comparison. `tests/source/stdlib/sortedset_operations.quest` tests random
+inserts and deletes against a model, the order queries, ranges, and rank, the set operations, and the errors; the
+tree itself is tested at depth through `sortedMap`.
 
 #### Interface Summary
 
@@ -1449,9 +1516,14 @@ end
 
 ### 2.7. `collections/heap : collections/Heap`
 
-A priority queue ([collections-plan.md](collections-plan.md) §2.3): a binary heap in a vector, the least element by its
-comparison first (`sort.reverse` of one, for the greatest), built from a vector in linear time. Push and pop only: no
-handles, so no decrease-key.
+A priority queue: a binary heap in a vector, the least element by its comparison first (`sort.reverse` of one, for
+the greatest). Element k's children are at 2k + 1 and 2k + 2, and none is less than its parent. `fromVector` (and
+`fromIter`) heapify by sifting down from the middle, Floyd's method, in linear time. `pushPop` pushes and pops in one
+sift, giving `elem` itself if it is least. Push and pop only: no handles, so no decrease-key. `pop` and `peek` of an
+empty heap raise `error`. The register allocator keeps its unhandled intervals in one
+(`questlang/codegen/machine/regalloc.mod.quest`). `tests/source/stdlib/heap_operations.quest` heapsorts random vectors,
+by pushes and by `fromVector`, against `util/sort`, and tests a greatest-first heap, duplicates, `pushPop`, strings,
+and the errors.
 
 #### Interface Summary
 
@@ -1486,8 +1558,13 @@ end
 
 ### 2.8. `collections/deque : collections/Deque`
 
-A double-ended queue ([collections-plan.md](collections-plan.md) §2.4): a ring buffer, its capacity doubled when full,
-with pushes and pops at both ends in constant time and its elements indexed from the front.
+A double-ended queue: a ring buffer in an array, with a head index and a count, its capacity doubled when full (from
+at least 8), with pushes and pops at both ends in constant time and its elements indexed from the front. As in
+`vector`, a vacated slot is filled with an element still held, so the deque keeps nothing alive that it has let go,
+and an emptied deque drops its array. Any change while `forEach` walks the deque, `set` included, raises `error`; a
+pop, `front`, or `back` of an empty deque and an index outside 0 to `length - 1` do too.
+`tests/source/stdlib/deque_operations.quest` makes random pushes and pops at both ends against a vector model,
+through the buffer's wrapping and growth, and tests indexing, conversions, a change during `forEach`, and the errors.
 
 #### Interface Summary
 
@@ -1896,12 +1973,37 @@ walk ([exceptions.md](exceptions.md) §5.3) consults before `dladdr`.
 
 ### 4.5. `os/time : os/Time`
 
-The system's clocks, as `Int`s with their units in their names ([time-plan.md](time-plan.md) §2): the wall clock,
-the monotonic clock (`ticks`, for measuring, since the wall clock can jump), the process's CPU time, sleeping, and
-the local time zone's offset from UTC at an instant. Each is one runtime function: `clock_gettime`, `nanosleep`, and
-`localtime_r` in C; WASI's `clock_time_get` and `poll_oneoff` under wasm, where the local offset is 0 (WASI has no
-time zone) and a page, which has no CPU clock, reports the monotonic one. `util/datetime` (§1.10) builds on it, and
-`tests/source/stdlib/os_time.quest` tests the clocks by their properties.
+The system's clocks, as `Int`s with their units in their names, since an `Int` carries none: the wall clock, the
+monotonic clock (`ticks`, in nanoseconds from an unspecified start), the process's CPU time, sleeping, and the local
+time zone's offset from UTC at an instant. The module is only the native calls; a type that keeps the clocks apart
+belongs where their readings are used, in `util/datetime` (§1.10), whose epoch is the only one.
+
+- **Two clocks.** The wall clock (what time it is) can jump when the system's time is set; the monotonic clock (how
+  long something took) never goes back, and a reading means something only against another in the same run. A
+  program that measures subtracts two `ticks()`; one that records or shows a time reads `nowInNanoseconds()`.
+- **The local offset at an instant,** not one offset, since it changes twice a year where daylight saving is kept:
+  dates on either side of a change each get their own.
+
+Each function is one runtime function:
+
+| External | C | wasm (`runtime/wasm/host.mjs` in node and a page) | Bootstrap |
+| :--- | :--- | :--- | :--- |
+| `quest_time_now_ns` | `clock_gettime(CLOCK_REALTIME)` | `performance.timeOrigin + performance.now()` | `time.time_ns()` |
+| `quest_time_ticks_ns` | `clock_gettime(CLOCK_MONOTONIC)` | `performance.now()` | `time.monotonic_ns()` |
+| `quest_time_cpu_ns` | `clock_gettime(CLOCK_PROCESS_CPUTIME_ID)` | `process.cpuUsage()` in node; the monotonic clock in a page | `time.process_time_ns()` |
+| `quest_time_sleep_ns` | `nanosleep`, resumed after a signal | `Atomics.wait`, or a wait on the clock in the page's worker | `time.sleep` |
+| `quest_time_local_offset` | `localtime_r`'s `tm_gmtoff` at the instant | 0 | `time.localtime(s).tm_gmtoff` |
+
+Under wasm the clocks are WASI's `clock_time_get` and `poll_oneoff`, which wasmtime has and the host gives node and
+the page. WASI has no time zone, so the local offset is 0 (a host function of its own would not link in wasmtime); a
+page has no CPU clock per process, so it reports the monotonic one; and `Atomics.wait` needs a `SharedArrayBuffer`,
+which a page has only when cross-origin isolated (GitHub Pages' is not), so there a sleep waits on the clock. A page's
+clock has a resolution of a few microseconds, or coarser where the browser reduces it. A sleep of 0 or less returns
+at once. The self-hosted interpreter's builtins call the library, as for `os/fileStats`; the JIT uses the C runtime.
+
+The readings cannot be goldens, so `tests/source/stdlib/os_time.quest` tests their properties: `ticks()` never goes
+back, a 50 ms sleep lasts at least 50 ms, CPU time grows under work, the wall clock is a time of this century that
+keeps pace with the monotonic one, and the local offset is less than a day.
 
 ```quest
 interface Time
@@ -1916,7 +2018,7 @@ end
 
 ### 4.6. `os/files : os/Files`
 
-File-system operations over Strings ([files-plan.md](files-plan.md)): copying, moving, and removing files and trees;
+File-system operations over Strings, as in `system` and `os/fileStats`: copying, moving, and removing files and trees;
 walking a tree and finding files by a shell pattern; temporary files and directories; symlinks, permissions, and
 times. A failure raises `files.error` with a `Failure`: the operation, the path that failed, a `Code` from the short
 list of errors a program acts on, and a message, the same text on every target. Symlinks are never followed when
@@ -1968,15 +2070,89 @@ export
 end
 ```
 
-The primitives are ten runtime functions, each giving 0 or a negative status that the module turns into `error`: in
-C, `unlink`, `rmdir`, `rename`, `mkdir`, `open`, `opendir`, `symlink`, `readlink`, `chmod`, and `utimensat`; under
-wasm, WASI's `path_*` calls, where there are no permission bits, so `setMode` is `unsupported` and `copy` keeps no
-mode. Everything else is Quest. `copy` reads and writes 64 KB at a time, so a file of any size copies in bounded
-memory. `glob` follows Python's `glob.glob(recursive=True)`: `**` as a whole component is zero or more directories,
-wildcards pass over names that start with `.`, a pattern ending in `/` matches directories only, and results are
-sorted; unlike Python's, `**` never goes through a symlink, as `pathlib`'s does not. Temporary names are the prefix
-and ten random letters and digits, made with `mkdir` or an exclusive create, and tried again if taken.
-`withTempDirectory` removes its directory whether its action returns or raises. `tests/source/stdlib/os_files.quest`
-runs alike in every mode, wasmtime and node included, and `tests/python/test_files.py` checks `walk` and `glob`
-against Python's on random trees.
+**Primitives and failures.** The module has two layers, as os/time and util/datetime do, but in one module, because the
+Quest layer is small and copying a file should take one import. The primitives are ten private runtime functions, one
+system call each, for the operations listed as such; everything else, `realPath` included, is Quest over them and
+`os/fileStats`, so only the primitives need each target's runtime and the rest behaves alike everywhere. A primitive
+returns 0 for success or a negative status: −1 to −8 for `notFound` through `unsupported`, in `Code`'s order, and
+−(1000 + errno) for `other`. `list` and `readLink` return their value (empty on failure) and keep the status for an
+eleventh function, `quest_files_last_status`, so that no primitive returns a tuple, which C would need a layout for.
+The module turns a status into `error` with a `Failure` it builds, so C never constructs an exception with a payload,
+and the messages are one table in Quest: `strerror`'s text for the eight named codes, and "Error *n*" naming the errno
+for `other`. The codes are the errors a program acts on, so that `removeTree` of a missing directory can be told apart
+from one it may not enter; `system.error` has no payload. `files` has its own `remove`, `removeDirectory`, `rename`,
+`makeDirectory`, and `list` so that they raise `files.error`; `system`'s stay for the programs that use them. A failed
+`rename` names `from` if it is missing, else `to`.
+
+**Targets.** In C (`runtime/quest_os.c`) the primitives are `unlink`, `rmdir`, `rename`, `mkdir`,
+`open(O_CREAT | O_EXCL)` then `close`, `opendir`/`readdir`, `symlink`, `readlink`, `chmod`, and `utimensat`, each
+mapping `errno` as above. Under wasm they are WASI's `path_*` calls (`runtime/wasm/core.mod.quest`, with `path_symlink`,
+`path_readlink`, and `path_filestat_set_times` in `questlang/wasm/runtime.mod.quest`'s imports and
+`runtime/wasm/host.mjs`), whose errno numbers `core` maps to the same statuses. WASI preview 1 has symlinks and times
+but no permission bits, so `setMode` is `unsupported` and `copy` and `copyTree` keep no mode. Under node, `setTimes`
+goes through `fs.utimesSync`, which takes seconds as a Number, so it is exact to the microsecond. The browser page's
+in-memory mount has neither symlinks nor times (`symlink` and `setTimes` are `unsupported`) and starts with a `/tmp`
+(`tools/wasm-page/page.mjs`), so the temporaries work there. The bootstrap interpreter's builtins give the same
+statuses from Python's `os`, and the self-hosted interpreter calls the externals through
+`questlang/interpreter/fileCalls`, since `os/files` keeps them private.
+
+**Behavior.** Symlinks are never followed when changing anything, as `cp -R`, `cp -a`, and
+`shutil.copytree(symlinks=True)` behave; the path a caller names is followed where reading it is the point.
+
+- `realPath` resolves one component at a time with `lfind`, putting a symlink's target in its place (from `/` for an
+  absolute one) and taking `..` off what is resolved, and gives up with `other` after 40 symlinks, as `ELOOP`. Being
+  Quest, it needs no `realpath` under WASI, which has none.
+- `makeDirectories` makes each missing component with mode 0o777 before the umask; a component that exists must be a
+  directory, or it raises `exists`.
+- `copy` follows `from`, refuses a directory with `isDirectory`, and refuses `from` and `to` naming the same file (the
+  same `realPath`) with `exists`, as `cp` does, rather than truncating the source. It reads with `reader.file` and
+  writes with `writer.file` in 64 KiB pieces (byte-exact, since strings are bytes), so a file of any size copies in
+  bounded memory, then sets `to`'s permission bits to `from`'s. Like `shutil.copy`, it copies no times or ownership.
+- `copyTree` raises `exists` if anything is at `to`. It follows `from`, then copies by `lstat`: directories made,
+  files copied, symlinks made anew with the same target. A directory's mode is set after its contents are copied, so a
+  read-only directory copies.
+- `removeTree` raises `notFound` if nothing is at `path`; it removes a directory's entries and then the directory, and
+  anything else with `remove`. A failure partway raises with the path that failed and leaves the rest, as `rm -r`
+  does.
+- `move` is `rename` when that succeeds. On `crossDevice` it copies (`copyTree`, a new symlink, or `copy`) and then
+  removes the source, so a failure leaves the source whole.
+- `walk` follows `root`, then uses `lstat` below it, so a symlink's `kind` is `symlink` and it is not entered. It visits
+  in pre-order with names sorted; `visit`'s `false` skips a directory's contents, and an entry gone between `list` and
+  `lstat` is skipped, not raised. It builds nothing, so a large tree costs memory in proportion to its depth.
+  `allFiles` is the paths of `walk`'s regular files, in its order.
+- `glob` takes the pattern a component at a time and lists only the directories the components can reach. A component
+  with no `*`, `?`, or `[` is a name, looked up with `lfind` rather than listed; any other is matched against `list` of
+  the directory with util/path's `matches` (§1.4), which passes over names that start with `.` unless the pattern's
+  component does, and reads an unclosed `[` as a literal, so no pattern is an error. `**` as a whole component is the
+  directory itself and every directory under it whose name does not start with `.`; it starts only from a directory
+  (`x/**` matches nothing for a file `x`), steps only into directories that are not symlinks, and matches a symlink only
+  as the last component, so nothing is reached through a symlink, as with `pathlib`'s glob (Python's `glob.glob` goes
+  through one). A pattern ending in `/` matches directories only, each given with its `/`. A directory that cannot be
+  listed is skipped. Results are sorted as strings with duplicates removed; an absolute pattern gives absolute paths,
+  a relative one paths relative to the current directory. `globIn`'s pattern must be relative (else `other`), and its
+  results are relative to `root`. There is no brace expansion (`{a,b}`); two calls do the same.
+- A temporary's name is the prefix, 10 characters from `[a-z0-9]` (about 51 bits, from a `util/random.fromClock()`
+  generator the module keeps), and the suffix, in `tempDirectory()`: `TMPDIR` if set and not empty, else `/tmp`. It is
+  created exclusively, with `mkdir` (mode 0o700) or `O_CREAT | O_EXCL` (0o600), as `mkdtemp` and `mkstemp` do, and a
+  new name is tried on `exists`, up to 100 times; any other failure raises at once. Doing this in Quest needs no
+  `mkstemp` external, which WASI has no counterpart for. `withTempDirectory` removes its directory with `removeTree`
+  whether its action returns or raises, and re-raises what the action raised.
+
+**Tests.** `tests/source/stdlib/os_files.quest`, a golden test, runs in a directory from `makeTempDirectory` and
+prints paths relative to it, so its output is the same on every run and in every mode, wasmtime and node included. It
+covers each primitive and each `Code` a program can provoke (`notFound`, `exists`, `notEmpty`, `notDirectory`,
+`isDirectory`); `copy` of an empty file, of a 200 KB file of every byte value, and onto itself; `copyTree`, `walk` (its
+order, a skipped directory, a symlink not entered), `allFiles`, `move`, and `removeTree` on a tree with nested, empty,
+and hidden directories, a hidden file, and a symlink; `glob` and `globIn` with each construct, `**` at the start,
+middle, and end, a trailing `/`, a symlinked directory under `**`, and a pattern that matches nothing; and the
+temporaries. It asks `setMode` once, and under wasm the lines about modes hold without setting any.
+`tests/python/test_files.py` compiles `tests/files/globber.quest` and compares its `walk` and `glob` with
+`os.listdir` in pre-order and `glob.glob(recursive=True)`, on seeded random trees of a few hundred entries without
+symlinks (where the two globs differ). `tests/source/stdlib/path_operations.quest` tests `matches`, and
+`tests/repl/temporary_files.quest` uses `withTempDirectory` and `globIn` in the REPL, natively, under node, and in the
+page.
+
+**Left out**, until a program needs them: `appendText`, a writer that appends to a file, which `writer.file` cannot
+make, since it truncates; hard links (`link`); and a native `copy` (`copyfile`, `copy_file_range`) in place of the
+Quest loop, which could replace it without changing the interface if large copies prove slow.
 

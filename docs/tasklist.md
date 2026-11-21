@@ -100,7 +100,7 @@ measurement.
 **Problem.** `util/maybe` exports `T` abstract, though it is only `Option none some with val: A end end` and has no
 invariant to protect. Separate compilation inlines nothing across modules ([ir.md](ir.md) §8.6), so outside
 `util/maybe` every `isSome`, `isNone`, `unwrap`, and `some` is a call, where a visible type would let code write
-`o?some` and `o!some.val`, inline. Measured in [iter-plan.md](iter-plan.md) §2: a `filter` reaching its held element
+`o?some` and `o!some.val`, inline. Measured in [iter.md](iter.md) §2: a `filter` reaching its held element
 through `util/maybe` took 305 instructions per element, and the same stage with an option type of its own, 143.
 
 **Where to start.** Make `T` manifest in `lib/util/maybe.int.quest` (choosing the field's name for good, perhaps
@@ -126,7 +126,7 @@ benchmarks.md, or the idea is dropped with its measurement.
 changes its type (`let %19: iter.T(Int) = %18`, the tuple at the abstract type), and the simplifier does not see
 through that copy when it folds `tuple_field` of a known tuple. So an iterator's closures stay closures called
 through the tuple: `benchmarks/iter/`'s `map` takes 56 instructions per element in a whole program, where the same
-library with `T` visible takes 11, its pipeline folded into the loop ([iter-plan.md](iter-plan.md) decision 2). Any
+library with `T` visible takes 11, its pipeline folded into the loop ([iter.md](iter.md) §2 and rule 2). Any
 module whose abstract type is a tuple of closures, or of known values, pays the same.
 
 **Plan.** [abstract-inlining-plan.md](abstract-inlining-plan.md): the fold, measured with a prototype (56 → 11),
@@ -140,7 +140,7 @@ what else it reaches, and its steps.
 module that defines it twice to match. The self-hosted compiler builds and runs the program; the bootstrap's C fails
 to compile, with `redefinition of typedef 'quest_sig_util__Regexp_matches'`. It was found by adding an iterator
 `matches(r: T s: String): iter.T(Match)` to `util/regexp`, which already had `matches(r: T s: String): Bool`
-([iter-plan.md](iter-plan.md) step 3, where the iterator became `findIter`).
+([iter.md](iter.md) §3, where the iterator became `findIter`).
 
 **Reproduce.** Add `matches(r: T s: String): iter.T(String)` to `lib/util/regexp.int.quest` beside the existing
 `matches`, and a `let matches` to match after the existing one in the module: `./quest --stop-after typecheck` and

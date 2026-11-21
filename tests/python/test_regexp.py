@@ -1,5 +1,5 @@
 """util/regexp against the corpora and against Go's regexp
-(docs/regexp-plan.md section 5, tests/data/regexp/README.md).
+(docs/regexp.md section 5, tests/data/regexp/README.md).
 
 tests/regexp/corpus.quest, compiled once with ./quest, checks a file of cases,
 each a pattern and a subject with the expected match of the whole subject and

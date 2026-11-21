@@ -693,7 +693,7 @@ meanwhile. The times are in `benchmarks/mlton/baselines/2026-10-31/`: `quest-c-3
   an adapter each per iteration rather than using static closures. Contification now leaves a function that never
   calls itself and is not recursive to the inliner ([ir.md](ir.md) §8.6, contification); `49452427` had already hidden
   it here. These whole-program times predate `49452427`, which makes a whole program's abstract types transparent so
-  that the library's members inline across them; they are to be retaken.
+  that the library's members inline across them; they are retaken in §8.2.
 - **Building** the 46 took 42.1 s through C (median 0.4 s), 72.1 s whole (median 0.9 s: each build compiles the
   library with the program), and 34.4 s through arm64.
 
@@ -769,8 +769,8 @@ Times as a fraction of A's (below 1 is faster), for the benchmarks that moved mo
   inner loops. Nothing got slower outside noise (vector32-concat 1.08 separately, 0.92 whole).
 - **Whole programs** gain about as much (0.94). At A, building whole takes 0.94 times as long as building separately,
   and ratio-regions is no longer slower whole (§7.2: 11.4 s against 12.8 s).
-- **What remains** is mostly `maybe.some`, which step 3 (deferred) would remove: at B, 800 million of peek's 960
-  million allocations and 168 million of zebra's 341 million were in `maybe.some`.
+- **What remains** is mostly `maybe.some`, which step 3 would have removed (it was dropped, §3.6): at B, 800
+  million of peek's 960 million allocations and 168 million of zebra's 341 million were in `maybe.some`.
 
 ### 8.3. zebra and the traceback cache
 
@@ -934,7 +934,7 @@ Each backend's time against C's (below 1 is faster), for the programs furthest f
   slow through ssac only (1.7 to 3.9), and arm64 is faster than C on them.
 - **zern, string-concat, mpuz, and the vector concatenations are the code generator's:** ssac takes about C's time
   and arm64 1.8 to 2.8 times it. even-odd (3.4 through arm64, 1.0 through ssac) is a second of mutual tail calls,
-  as the four are small recursions that clang transforms; it is to be looked at before being counted with these.
+  as the four are small recursions that clang transforms; §14 takes it up.
 - **Whole programs** take 0.94 of a separate build's time through C and 0.94 through arm64, which gains most where
   the library's members inline into the program's loops: checksum 0.67, peek 0.67, string-concat 0.62, zebra 0.82.
 - **The JIT** takes 1.18 of arm64's time (geometric mean), since it compiles the program on each run: hamlet, the
@@ -1152,7 +1152,7 @@ pidigits and smith-normal-form use `util/bignum` (`lib/util/bignum.mod.quest`) i
 `ssac`, and `arm64`, each waiting until the load average had been under 4 for two minutes. The collector is still
 libgc, which is not generational. The library allocates each result at its largest possible length and copies it
 when it turns out shorter, counting on a generational collector to make that cheap, so these times are to be taken
-again under the new collector ([collector.md](collector.md)).
+again under the new collector ([collector.md](collector.md)); §27 times both under it.
 
 - `fd1f5a71`: the library. The load was 2.3 to 4.9.
 - `fd1fedee`: `quest_array_new` skips the fill of an array whose initial word is zero. The memory is zeroed already,
@@ -2081,7 +2081,7 @@ but the ratio held:
 
 On 2026-10-30 (§5.1) the arm64-built compiler took 1.58 to 2.24 times as long; now 1.06 to 1.11. The times include
 clang compiling the driver's C, the same for both, so the compilers' own ratio is somewhat higher; it was not
-separated. Where the rest goes is not profiled; the suite's call-bound programs (§21.3) suggest calls.
+separated. Where the rest goes was not profiled here; §21.5 profiles it.
 
 ### 21.3. Programs
 
@@ -2436,7 +2436,7 @@ commit walks a raise's frames by the frame-pointer chain rather than libunwind; 
 information from every binary. Item 3a cleared `main`'s frame (90 to 126 heap pointers at a collection, against 519
 to 717 before and clang's 78 to 81), but mlyacc's median live data fell only from 2.6 MB to 2.0 MB, against clang's
 0.77: what else keeps the rest alive (slots not yet written, callee-saved registers, or something not yet seen) is
-open. Timings were taken on a machine loaded by other suites and are to be taken again.
+open. Timings were taken on a machine loaded by other suites; the baseline below takes them again.
 
 The second batch (items 3b and 4a, 2026-11-01) came with three fixes that measuring it found, each a commit of its
 own: a value dying as a jump's argument was never cleared, since the test of whether a call may follow looked only
@@ -2454,7 +2454,7 @@ C backend, five rounds, at a load of 2 to 22: life 1.33 (1.55 with 3b alone), ml
 the rest alive (perhaps callee-saved registers saved by deeper frames) is open. In life's `qf_nthgen`, 4a takes
 the stack loads from 74 to 34 and the stores from 116 to 59 (clang: 7 and 7). These timings predate escape
 analysis (`88b91256` to `0093eb23`, item 8), which takes zebra to 0.41 of its allocations through the SSA, so zebra's
-and hamlet's, at least, are to be taken again.
+and hamlet's, at least, are to be taken again (the baseline below, §11, and §13 do).
 
 
 The rest came in batches 3 to 7, each pushed after one run of `tools/check`, with each of its items measured alone

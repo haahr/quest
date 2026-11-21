@@ -47,8 +47,8 @@ every golden test compares the two.
 4. **Single assignment for compiler values; mutable variables only where the source has them.** Source-level
    `let var` locals are mutable variables with an assignment node; everything else is bound once. A local that a
    closure captures is held in a box instead, a tuple of one `var` component, and closures may not capture `var`/`out`
-   parameters ([type-system.md](type-system.md) §6.2.3); so every mutable local whose address is not taken could be
-   promoted to SSA values later.
+   parameters ([type-system.md](type-system.md) §6.2.3); so every mutable local whose address is not taken can be
+   promoted to SSA values, which the self-hosted compiler's `ssa/passes/promote` does ([ssa.md](ssa.md) §4.1).
 5. **Symbols for every binder.** Variables, functions, join points, type parameters, and globals are IR symbols
    (unique ids, with a name hint for printing). Lookups are by symbol only.
 6. **Types are lowered shapes; type arguments become values.** Quest cannot erase types (`Dynamic`, auto types,

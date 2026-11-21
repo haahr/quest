@@ -51,8 +51,8 @@ the same change made to the conversion. hamlet's input discards the value of its
 was also checked against the original on an input that prints such values.
 
 model-elimination prints its progress once per third of a second of CPU time spent on its search, and the times it
-took, so no two runs of the original print quite the same thing. Its conversion, which cannot read the clock, sees no
-time pass and prints exactly what the original prints when its timers are changed to read 0; `run.py check` compares
+took, so no two runs of the original print quite the same thing. Its conversion reads no clock, so it sees no time
+pass and prints exactly what the original prints when its timers are changed to read 0; `run.py check` compares
 its output with `expected/` without the progress lines and the times.
 
 clang merges calls to `sin` and `cos` of one argument into one call of `__sincos_stret` in the C MLton generates, which
@@ -73,8 +73,8 @@ exactly what its conversion does. No recorded output depends on those bits.
   until 2026-10-28; a conversion may still do so.
 - SML's formatting of reals (`Real.toString`, `Real.fmt`) comes from `support/`, checked against MLton; its `IntInf`
   is the library's `util/bignum` (`lib/util/bignum.mod.quest`), as MLton's is its own library's.
-- Where Quest lacks something the original uses, the header says what replaces it. Quest cannot read the clock: zern
-  and model-elimination, which time their work, read 0.
+- Where Quest lacks something the original uses, the header says what replaces it. zern and model-elimination, which
+  time their work, read no clock and see no time pass, as model-elimination's entry above says.
 - **tensor's original is changed (2026-11-06):** it used none of its operations' results and printed only their times,
   so MLton removed the work. It and its conversion now sum an element of each result and print the sums, and no
   times ([docs/benchmarks.md](../../docs/benchmarks.md) §1.4).

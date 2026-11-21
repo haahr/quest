@@ -1,6 +1,6 @@
 #!/opt/homebrew/bin/python3.11
 """Times util/regexp against Go's regexp and Python's re
-(benchmarks/regexp/README.md, docs/regexp-plan.md step 5).
+(benchmarks/regexp/README.md, docs/regexp.md section 4).
 
     benchmarks/regexp/run.py [--repeat N] [--only NAME,...] [--no-python]
 

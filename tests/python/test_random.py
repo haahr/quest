@@ -1,5 +1,5 @@
 """util/random's known answers against reference implementations
-(docs/collections-plan.md section 4): xoshiro256** (Blackman and Vigna's
+(docs/libraries.md section 1.11): xoshiro256** (Blackman and Vigna's
 xoshiro256starstar.c), seeded by SplitMix64 (Vigna's splitmix64.c), with
 Lemire's bounded integers. tests/source/stdlib/random_operations.quest prints
 the first numbers from several seeds into its golden; this test computes them

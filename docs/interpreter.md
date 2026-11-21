@@ -263,8 +263,8 @@ The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and
     provided for test assertions and data comparisons.
 
 ### 4.4. Integer Division and Modulo Semantics
-- **Truncation Toward Zero:** Integer division (`/`) and modulo (`%`, `mod`) truncate toward zero as specified by
-  Cardelli (C/Modula-3/MIPS style), differing from Python's floor division:
+- **Truncation Toward Zero:** Integer division (`/`) and modulo (`%`, or the function `mod(a b)`) truncate toward
+  zero as specified by Cardelli (C/Modula-3/MIPS style), differing from Python's floor division:
   - `{0 - 7} / 2` evaluates to `-3` (Python `-7 // 2` is `-4`).
   - `{0 - 7} % 2` evaluates to `-1` (Python `-7 % 2` is `1`).
   - Satisfies invariant: `(a / b) * b + (a % b) == a`.

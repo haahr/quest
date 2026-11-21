@@ -2,7 +2,7 @@
 
 util/regexp against Go's `regexp` (RE2's syntax and leftmost-first semantics, matched without backtracking, like
 this library) and Python's `re` (a backtracking matcher in C), on the same workloads
-([docs/regexp-plan.md](../../docs/regexp-plan.md) step 5).
+([docs/regexp.md](../../docs/regexp.md) §4).
 
 | Path | What |
 |---|---|

@@ -26,7 +26,9 @@ language change the JIT needs (§3.11). What remains open is in §6.
   hot-swapping" is dropped. The REPL's output stays the interpreter's.
 - **Incremental** means that an input compiles only itself; what earlier inputs compiled stays loaded.
 - **A crash ends the session:** a fault or a runaway recursion in a phrase ends the driver as it ends a
-  compiled program (exceptions.md §6). Ctrl-C likewise. Surviving them is open work (§6).
+  compiled program (exceptions.md §6). Ctrl-C likewise, except in a Jupyter kernel's driver (`--kernel`), where the
+  JIT's code checks for an interrupt and it ends only the cell ([jupyter-kernel.md](jupyter-kernel.md) §5); only
+  the kernel pays for the checks. Surviving faults and runaway recursion is open work (§6).
 - **Self-hosted only,** and **runs in a binary built by either backend**: the JIT, and the code it writes, run in a
   binary whose units the C backend or the arm64 backend compiled (`QUEST_BACKEND=c` or `arm64`, for the driver). The
   host's units are reached only through the C ABI that both backends' objects share (§3.10).
@@ -551,5 +553,4 @@ compiled program reports it (exceptions.md §2.5), and a REPL goes on.
   (§3.2), this means direct calls and inlining of slots whose definition has not changed, undone when one does: the
   session would keep each input's IR and each slot's dependents. Only if redefinition's cost (repl.md §6) matters in
   practice.
-- Redefining a function with another type, or a type, which earlier code would need checked or recompiled.
-- Surviving faults and runaway recursion, and Ctrl-C, in the REPL.
+- Surviving faults and runaway recursion in the REPL.

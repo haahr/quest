@@ -482,7 +482,7 @@ export class Host {
         }
         v.setUint32(into, used, true);
       }),
-      // os/time's clocks (docs/time-plan.md section 4): 0 the wall clock, 1
+      // os/time's clocks (docs/libraries.md section 4.5): 0 the wall clock, 1
       // the monotonic one, 2 the process's CPU time, which only node has
       // (ENOSYS elsewhere, for which the runtime reads the monotonic clock);
       // each as nanoseconds, a u64 at into

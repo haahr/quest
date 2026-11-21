@@ -1,4 +1,4 @@
-"""os/files' walk and glob against Python's (docs/files-plan.md section 5),
+"""os/files' walk and glob against Python's (docs/libraries.md section 4.6),
 as tests/python/test_datetime.py checks util/datetime.
 
 A random tree of a few hundred entries (directories, files, hidden ones, and

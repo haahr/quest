@@ -1,6 +1,6 @@
 #!/opt/homebrew/bin/python3.11
 """Counts util/iter's cost per element (benchmarks/iter/README.md,
-docs/iter-plan.md section 2).
+docs/iter.md section 2).
 
     benchmarks/iter/run.py [--elements N] [--only NAME,...]
 

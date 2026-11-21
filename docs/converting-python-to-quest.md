@@ -30,13 +30,26 @@ import util/hash : util/Hash                         (* Universal & primitive ha
 import util/sort : util/Sort                         (* sorted(), list.sort(), bisect *)
 import util/bignum : util/Bignum                     (* Python's arbitrary-precision int *)
 import util/argparse : util/ArgParse                 (* argparse *)
+import util/iter : util/Iter                         (* iterators, generators' use *)
+import util/iterTools : util/IterTools               (* itertools *)
+import util/regexp : util/Regexp                     (* re *)
+import util/json : util/Json                         (* json *)
+import util/datetime : util/DateTime                 (* datetime *)
+import util/random : util/Random                     (* random *)
+import collections/sortedMap : collections/SortedMap (* a dict in key order *)
+import collections/heap : collections/Heap           (* heapq *)
+import collections/deque : collections/Deque         (* collections.deque *)
 import os/path : os/Path                             (* pathlib.Path *)
+import os/files : os/Files                           (* shutil, glob, tempfile *)
 import os/process : os/Process                       (* subprocess.Popen *)
+import os/time : os/Time                             (* time *)
+import io/lines : io/Lines                           (* a file's lines *)
 ```
 
-[libraries.md](libraries.md) describes these and the others under `lib/` (`util/path`, `os/fileStats`,
-`collections/bitset`, `io/readline`, `io/display`); the flat library's `system` (always in scope) has `args`,
-`getEnv`, `run`, and the file system over strings ([extensions.md](extensions.md)).
+[libraries.md](libraries.md) describes these and the others under `lib/` (`util/path`, `util/digest`,
+`collections/sortedSet`, `os/fileStats`, `collections/bitset`, `io/readline`, `io/display`); the flat library's
+`system` (always in scope) has `args`, `getEnv`, `run`, and the file system over strings
+([extensions.md](extensions.md)).
 
 Each library's main type is called `T`, following Quest convention, so you write `vector.T(Int)`, `hashMap.T(String
 Int)`, `hashSet.T(String)`, and `maybe.T(Int)`.
@@ -88,8 +101,6 @@ discover key equality by itself. For strings, pass `stringOp.equal` and `hash.st
 
 ### Still missing
 
-- **Iterators.** No generator or iterator protocol exists. The rules assume a type you define yourself:
-  `Let Iter(A::TYPE)::TYPE = Tuple next():maybe.T(A) end`
 - **Output and formatting helpers.** There is no `print` or `format`. `Writer` is available for output
   (`writer.putString(writer.output str)`), while conversions live in `Conv` (`conv.int`, `conv.real`, `conv.bool`),
   `util/strutil` (`strutil.split`, `strutil.join`, `strutil.strip`, etc.), and `util/hash` (`hash.string`,
@@ -243,15 +254,17 @@ function boundary.
 ... end`. `while` maps directly. `break` becomes `exit` inside `loop ... end`. `continue` has no equivalent, so wrap the
 remainder of the body in an `if`. Loops have type `Ok`.
 
-**17. Iterate with the operation that matches the collection.** For a vector, `for x in xs:` becomes either an index
-loop with `vector.get` or `vector.forEach(:Int xs fun(x:Int):Ok ...)`. For a hash map, `for k, v in d.items():` becomes
+**17. Iterate with the operation that matches the collection.** For a vector, `for x in xs:` becomes an index loop
+with `vector.get`, `vector.forEach(:Int xs fun(x:Int):Ok ...)`, or a loop over `vector.iter(xs)` with `iter.more`
+and `iter.next`, which can `exit` early and walk two collections in step. For a hash map, `for k, v in d.items():`
+becomes
 
 ```quest
 hashMap.forEach(:String :Int d fun(k:String v:Int):Ok ...)
 ```
 
-Iterating over just `d.keys()` or `d.values()` can use `vector.forEach(:String hashMap.keys(:String :Int d) ...)` or
-`forEach` ignoring the unused parameter.
+Iterating over just `d.keys()` or `d.values()` can walk `hashMap.keyIter(d)` or `hashMap.valueIter(d)`, which make
+no vector, or use `forEach` ignoring the unused parameter.
 
 **18. Replace comprehensions and reductions with `map`, `filter`, `fold`, or `filterMap`.**
 Transformations and filters can be chained:
@@ -279,10 +292,12 @@ All of `Vector`, `HashMap`, and `HashSet` provide `forEach`, `map`, `filter`, `f
 On `HashMap`, `map` and `filterMap` transform values while preserving keys, equality, and hashing.
 On `HashSet`, creating a set of a new element type takes `equal` and `hash` functions for the target type.
 
-**19. Replace generators with explicit iterators.** There are no coroutines. A generator becomes a function returning an
-`Iter(A)`: a tuple whose `next()` closes over a private mutable state tuple (rule 23) and returns `maybe.T(A)`, with
-`none` signalling exhaustion. Alternatively, build the whole `vector.T(A)` eagerly, or take a callback in the style of
-`each`/`forEach`.
+**19. Replace generators with iterators.** There are no coroutines. A generator becomes a function returning an
+`iter.T(A)` ([libraries.md](libraries.md) §1.14): `iter.unfold(seed step)` when its state is one value, or
+`iter.make(more next)` with closures over a private mutable state tuple (rule 23), `next` raising
+`iter.exhausted` past the end. A pipeline of generator expressions becomes `iter.map`, `iter.filter`, and their
+kin, and `util/iterTools` has most of Python's `itertools`. Alternatively, build the whole `vector.T(A)` eagerly, or
+take a callback in the style of `each`/`forEach`.
 
 **20. Translate `match` and enum dispatch to `case`.** See rule 25.
 

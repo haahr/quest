@@ -2,7 +2,7 @@
 
 The files here are copied unchanged from Go's distribution (Go 1.27.1, `$(go env GOROOT)/src/regexp/testdata/`),
 which tests Go's `regexp` package with them. `tests/python/test_regexp.py` runs util/regexp against them
-([docs/regexp-plan.md](../../../docs/regexp-plan.md) §5).
+([docs/regexp.md](../../../docs/regexp.md) §5).
 
 | File | What it is | How the test uses it |
 | :--- | :--- | :--- |

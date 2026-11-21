@@ -1,7 +1,6 @@
 # util/iter's Benchmark
 
-What a pipeline of iterators costs per element, against a loop written out ([docs/iter-plan.md](../../docs/iter-plan.md)
-§2 and step 1).
+What a pipeline of iterators costs per element, against a loop written out ([docs/iter.md](../../docs/iter.md) §2).
 
 | Path | What |
 |---|---|
@@ -34,4 +33,4 @@ At `7e9b5f89`, the library's first version (2026-11-20, arm64), instructions ret
 
 Under `--whole-program`, the stages are not inlined into the loop, as they are when `iter.T` is a visible type (11
 instructions per element through `map`): the simplifier does not see through the `let` that gives the tuple its
-abstract type (docs/tasklist.md).
+abstract type ([docs/iter.md](../../docs/iter.md) §7).

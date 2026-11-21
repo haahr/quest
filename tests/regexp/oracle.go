@@ -1,6 +1,6 @@
 // The expected matches of util/regexp's tests, from Go's regexp, whose syntax
 // and leftmost-first semantics are RE2's (tests/python/test_regexp.py,
-// docs/regexp-plan.md section 5).
+// docs/regexp.md section 5).
 //
 // Each line of standard input is a case, "PATTERN SUBJECT" in hexadecimal (two
 // digits a byte, - for none); each line of standard output is the case

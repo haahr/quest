@@ -301,7 +301,8 @@ So a file run with `-i` is slower than the same file run as a program; a program
 
 - **`Ctrl-D` (EOF):** On an empty input line, exits the REPL cleanly with exit code `0`.
 - **`Ctrl-C` (Interrupt):** Cancels the current multi-line input buffer without terminating the session, returning to
-  `">>  "`. While an input runs on the JIT, `Ctrl-C` ends the session, as a fault does ([jit.md](jit.md) §1).
+  `">>  "`. While an input runs on the JIT, `Ctrl-C` ends the session, as a fault does ([jit.md](jit.md) §1); only a
+  Jupyter kernel's driver checks for interrupts, ending just the cell ([jupyter-kernel.md](jupyter-kernel.md) §5).
 
 ---
 

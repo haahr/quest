@@ -423,8 +423,8 @@ local, jumps and breaks name enclosing join points and loops, and terminators en
 internal error.
 
 ### 2.4. Phase Skipping Directives (`(* @skip-phase: ... *)`)
-For language features that are fully supported in the tree-walking Python interpreter but not yet implemented in the
-C compilation backend (or for tests specific to certain phases), tests can include in-file phase skipping directives:
+For tests that cannot run in some phases (a stack overflow that a compiled program cannot catch, say, or a test
+specific to certain phases), tests can include in-file phase skipping directives:
 
 ```quest
 (* @skip-phase: run_c_compiled *)
@@ -609,6 +609,15 @@ arguments that inference finds ([type-system.md](type-system.md) §6.9) througho
 calls inferable from their arguments, then those that need their expected type, restoring any the build rejects),
 and then compares, since omitting a type argument must change no code. Their parts that need no compiler are
 tested by `tests/python/test_omit_type_args.py`.
+
+`questlang/`'s inferable type arguments were omitted this way at `bb17a542` (11,768 calls inferable from their
+arguments) and `81bf1423` (1,178 with their expected type), with every unit's arm64 assembly the same but for
+positions. Since the edits touch most of `questlang/` and conflict with every change in flight, the tool is rerun
+from a fresh base rather than its edits carried across a rebase. `tools/compare-codegen` does not try the driver's
+whole-program build, which once met a bug the edits exposed (`a309845e`), so run a whole-program build too. The
+report does not try a call nested in the arguments of a call whose type arguments are inferred, nor a constructor
+with nothing to infer from (`vector.new(:T)`); the tool's second pass reaches the first kind as the first pass peels
+the outer calls, and a further run would find any the second exposes.
 
 ### 2.10. Keeping Calls Generic
 
