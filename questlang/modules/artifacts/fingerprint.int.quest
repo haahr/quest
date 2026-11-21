@@ -1,24 +1,27 @@
 (* Quest Self-Hosted Compiler: Interface Fingerprints Interface
  *
- * What JIT code assumes of a unit linked into its host (docs/jit.md section
- * 3.3.1): a digest of the unit's interface as its .qi records it, of the
- * fingerprints of the interfaces it imports, and of the ABI version. Each
- * module unit exports its interface's fingerprint as the C string
- * qh_<unit>, and the JIT compares that with the fingerprint of the interface
- * it compiles against. Comments, layout, declaration order, absolute paths,
- * the producer, and the module's implementation are left out. *)
+ * Computes the fingerprint that JIT-compiled code checks against a unit linked
+ * into its host (docs/jit.md section 3.3.1): a digest of the unit's interface
+ * as recorded in its .qi file, the fingerprints of the interfaces it imports,
+ * and the ABI version. Each module unit exports its interface's fingerprint as
+ * the C string qh_<unit>, and the JIT compares that against the fingerprint of
+ * the interface it compiles against. Comments, layout, declaration order,
+ * absolute paths, the producer, and the module's implementation are
+ * excluded. *)
 
 interface Fingerprint
 import
     questlang/types/env : questlang/types/Env
 export
-    (* The fingerprint of an interface: its canonical name (util/Maybe), its
-     * .qi's text, and the fingerprint of each interface it imports, by the
-     * path the .qi records the import by. SHA-256, in hexadecimal. *)
+    (* Computes the hexadecimal SHA-256 fingerprint of an interface from its
+     * canonical name (such as "util/Maybe"), its .qi file text, and a callback
+     * returning the fingerprint of each imported interface by the path
+     * recorded in the .qi file *)
     ofQi(canonical: String qi: String imported: All(path: String) String): String
 
-    (* The fingerprint of interface name, as imported from e's current
-     * directory, from its .qi, brought up to date as the loader does; an
-     * interface without a .qi (a builtin's) is fingerprinted by its name *)
+    (* Computes the fingerprint of interface name as imported from e's current
+     * directory, updating its .qi file if needed as the loader does. A builtin
+     * interface without a .qi file is fingerprinted from the ABI version and
+     * its canonical name. *)
     ofInterface(name: String e: env.T): String
 end

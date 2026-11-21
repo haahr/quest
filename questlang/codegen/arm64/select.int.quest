@@ -1,33 +1,36 @@
 (* Quest Self-Hosted Compiler: arm64 Instruction Selection Interface
  *
- * A function's SSA as a machine function (codegen/machine/machine) of arm64's
- * instructions (codegen/arm64/minst) over virtual registers, one for each SSA
- * value, the same number less the function's firstVirtual, and more for what
- * an instruction needs in between (docs/arm64.md sections 3.17 and
- * 3.5). What it chooses:
+ * This module lowers a function's SSA form into a machine function
+ * (codegen/machine/machine) of arm64 instructions (codegen/arm64/minst) over
+ * virtual registers (unbounded placeholder registers that the register
+ * allocator later maps to hardware registers; docs/arm64.md sections 3.17
+ * and 3.5). Each SSA value v becomes virtual register firstVirtual + v, with
+ * extra temporaries allocated as needed. Key lowering choices:
  *
- *   - immediates: an add, a sub, a shift, or a comparison of a constant that
- *     fits takes it as an immediate, a store of zero stores xzr, and a load
- *     or store takes its offset, all leaving the constant unused unless
- *     something else uses it;
- *   - fused comparisons: a branch on a comparison in its block used nowhere
- *     else is the comparison and a conditional branch (cbz or cbnz against
- *     zero);
- *   - addressing: a load or store from a ptrAdd of a constant addresses
- *     memory from the ptrAdd's pointer, its offset folded in;
- *   - the calling convention (AAPCS64, docs/arm64.md section 3.3) as moves to
- *     and from fixed registers: arguments before a call, its results after,
- *     a function's parameters at its entry, and returned values before a
- *     return;
- *   - control: the entry, a block of its own, jumps to the first block with
- *     the parameters; a conditional branch goes to a block of its own that
- *     jumps on with the target's arguments; a try stores its handler's
- *     record and jumps to its body, its handler entered by a raise through a
- *     block beside it (section 3.6).
+ *   - Immediates: additions, subtractions, logical ops, shifts, and
+ *     comparisons fold fitting constants into immediates; stores of zero use
+ *     xzr; and loads and stores fold fitting offsets, leaving the constant
+ *     dead unless used elsewhere.
+ *   - Fused comparisons: a branch or select on a single-use comparison (or
+ *     bit test or comparison conjunction) in the same block emits the flag
+ *     test and branch or conditional select directly without materializing a
+ *     boolean.
+ *   - Addressing: a load or store through a ptrAdd folds a constant offset or
+ *     a single-use (optionally scaled) index register into the addressing
+ *     mode.
+ *   - Calling convention: AAPCS64 (the 64-bit Arm ABI, docs/arm64.md section
+ *     3.3) is expressed as moves to and from fixed registers for call
+ *     arguments, call results, function parameters, and return values.
+ *   - Control flow: a dedicated entry block moves parameters and jumps to
+ *     block 0; each conditional branch targets a dedicated edge block that
+ *     passes the destination's block arguments; a try stores its exception
+ *     handler record and jumps to its body, while raise resumes through a
+ *     sibling block (section 3.6).
  *
- * Instructions whose results nothing uses are then removed. Labels are
- * prefix_bN for the Nth block. The frame is the outgoing arguments' area at
- * sp, then the stack slots, then what codegen adds after allocation. *)
+ * Pure instructions whose results go unused are then removed. Block labels
+ * are prefix_bN for machine block N. The stack frame places the outgoing
+ * call arguments at sp, followed by stack slots, and then the spill and
+ * callee-saved areas added after register allocation. *)
 
 interface Select
 import
@@ -59,13 +62,15 @@ export
         entersTry: Bool
     end
 
-    (* A function's selection; defined says which symbols the unit defines,
-     * each with whether, as a function, a call of it gets its narrow results
-     * extended (codegen's definedSymbols) *)
+    (* Selects arm64 instructions for f. defined maps every symbol defined in
+     * the unit to a flag saying whether calls to that function already return
+     * narrow integer results sign- or zero-extended (from codegen's
+     * definedSymbols). *)
     select(f: ssa.Function prefix: String defined: hashMap.T(String Bool)): Selection
     label(s: Selection b: Int): String
-    (* An instruction of a kind, its operation added to s's: its first
-     * registers written, as minst.results says, the rest read *)
+    (* Wraps i as a machine instruction of the given kind and appends its
+     * operation to s.ops, marking the first minst.results(i.op) registers as
+     * written and the rest as read *)
     make(s: Selection kind: machine.Kind i: minst.Inst): machine.Inst
     (* Whether an instruction may be made again wherever its result is
      * needed: a constant, a symbol's address, or an address in the frame *)

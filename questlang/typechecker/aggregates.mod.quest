@@ -103,8 +103,8 @@ export
                     if maybe.isSome(early) then
                         maybe.unwrap(early)
                     else
-                        (* The binding of each name: the last, as a dictionary
-                         * has it *)
+                        (* Map each field name to its binding; if a name
+                         * appears more than once, the last binding wins *)
                         let fieldMap = hashMap.new(:String :ast.RecordBinding stringOp.equal hash.string)
                         for i = 0 upto {vector.length(x.fields) - 1} do
                             let b = vector.get(x.fields i)
@@ -164,9 +164,9 @@ export
      * Selection
      * ====================================================================== *)
 
-    (* The type t of a field selected from a value of a tuple type, as seen
-     * outside the tuple, where the names of the tuple's type definitions mean
-     * nothing: with the definitions in their place *)
+    (* Returns the field type t as seen outside its tuple, replacing aliases
+     * for the tuple's own type definitions with their underlying types because
+     * those local type names are not in scope outside the tuple *)
     let outsideTuple(t: Type fields: Array(model.TupleComponent)): Type =
         begin
             Let Definition = Tuple name: String type: Type end
@@ -310,8 +310,8 @@ export
                         let var targetType = evaluate(targetTyped.type)
                         let isRecordOrTuple = case targetType.form when typeRecord then true when typeTuple then true else false end
                         if not(isRecordOrTuple) andif maybe.isNone(kinds.resolveRecordBound(targetType some(e))) then
-                            (* A type parameter bounded by a tuple type:
-                             * selected from as from its bound *)
+                            (* A type parameter bounded by a tuple type is
+                             * selected from using its bound *)
                             targetType := maybe.unwrapOr(kinds.resolveTupleBound(targetType some(e)) targetType)
                         end
                         let recBound = case targetType.form
@@ -402,11 +402,11 @@ export
             end
         end
 
-    (* The payload of an option construction (with let x = ... end), checked
-     * against expected, its case's payload type. That is a tuple type for an
-     * option type as declared; when it is not, a payload of exactly one value
-     * component is checked as that component's value alone, as the
-     * bootstrap's _check_option_payload does *)
+    (* Checks the payload of an option construction (with let x = ... end)
+     * against expected, its case's payload type. Declared option types have a
+     * tuple payload type; when expected is not a tuple, a single-value-field
+     * payload is checked as that value alone, matching the bootstrap's
+     * _check_option_payload. *)
     let checkOptionPayload(c: checker.T payload: ast.Expr expected: Type e: env.T loopDepth: Int): typedAst.Expr =
         begin
             let expectedLazy = evaluate(expected)
@@ -434,12 +434,12 @@ export
             end
         end
 
-    (* option tag of T [with payload] end, or option ordinal(n) of T ... end,
-     * which picks the case by a number computed at run time. The result has
-     * type T as written. A payload is required exactly when the case has
-     * one; construction by ordinal requires every case to have the same
-     * signature, so that the payload fits whichever is chosen
-     * (docs/type-system.md §6.8) *)
+    (* Synthesizes an option construction, either by tag (option tag of T ...)
+     * or by a runtime index (option ordinal(n) of T ...). The result has type
+     * T as written. A payload is required exactly when the case has one;
+     * construction by ordinal requires every case to have the same signature
+     * so that the payload fits whichever case is chosen (docs/type-system.md
+     * §6.8). *)
     let synthOption(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
         case x0.form
             when exprOption with x then
@@ -563,12 +563,13 @@ export
             else internal("a variant check" x0)
         end
 
-    (* target!tag, which fails at run time unless target has that tag. For a
-     * variant its type is the tag's payload type (Ok if it has none); for an
-     * option, a new tuple Tuple :Int ... end, its ordinal in target's static
-     * type followed by the payload's components (a payload that is not a
-     * tuple is one component). docs/type-system.md §6.8 says why options
-     * differ *)
+    (* Synthesizes a tag assertion target!tag, which fails at run time unless
+     * target has that tag. For a variant, the result has the tag's payload
+     * type (or Ok if it has none); for an option, the result is a tuple
+     * Tuple :Int ... end carrying the tag's ordinal in target's static type
+     * followed by the payload's components (or a single component if the
+     * payload is not a tuple). See docs/type-system.md §6.8 for why options
+     * differ. *)
     let synthVariantAssert(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
         case x0.form
             when exprVariantAssert with x then

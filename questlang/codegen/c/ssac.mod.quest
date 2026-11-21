@@ -74,18 +74,19 @@ export
     Let Printer = Tuple
         f: Function
         buf: Builder
-        (* Whether the function enters a try. A raise returns to the try's
-         * _setjmp a second time, and C leaves a local that is not volatile,
-         * and changed since the first return, indeterminate then; so in such
-         * a function every access to memory is volatile, since a stack slot
-         * the body writes may be read in the handler *)
+        (* Whether the function contains a try block. Raising an exception
+         * returns to the try's _setjmp a second time, and C leaves any
+         * non-volatile local modified after the first return indeterminate.
+         * Every memory access in such a function is therefore emitted as
+         * volatile, since a stack slot written in the body may be read in the
+         * handler. *)
         hasTry: Bool
-        (* The values that must be volatile locals for that reason: those
-         * live where a handler begins (handlerLive). The rest are never read
-         * after a raise returns to _setjmp, so they may be indeterminate
-         * then, and C may keep them in registers and share their stack
-         * slots; making every local volatile gave each a slot of its own,
-         * and a large function with a try a frame of kilobytes *)
+        (* Which SSA values must be volatile locals for the _setjmp rule above:
+         * those live (possibly read before redefinition) at the start of any
+         * handler, as computed by handlerLive. Other values are never read
+         * after a raise returns to _setjmp, so C may keep them in registers
+         * and reuse their stack slots rather than reserving a separate stack
+         * slot for every local in a large function. *)
         volatileValue: Array(Bool)
     end
 
@@ -93,7 +94,7 @@ export
     let text(buf: Builder s: String): Ok = begin sb.strShared(buf s) ok end
     let volatile(p: Printer): String = if p.hasTry then " volatile" else "" end
 
-    (* A pointer to memory of C type t at a value plus an offset *)
+    (* An lvalue of C type t dereferenced at address plus offset *)
     let memory(p: Printer t: String address: Int offset: Int): String =
         "*(" <> t <> volatile(p) <> " *)(" <> v(address) <> " + " <> decimal(offset) <> ")"
 
@@ -102,7 +103,7 @@ export
     (* A composite passed through memory: a struct of its bytes *)
     let memoryType(bytes: Int): String = "QSsaMem" <> conv.int(bytes)
 
-    (* The C type of the results of a signature, of the values results *)
+    (* The C return type for a call's result convention and result values vs *)
     let resultOf(results: Array(ssa.Passed) vs: Array(Int) f: Function): String =
         if extent results is 0 then "void"
         elsif extent results is 2 then "QSsaPair"
@@ -114,8 +115,8 @@ export
             end
         end
 
-    (* A call's C function type and arguments, of its arguments from first on,
-     * and its result type *)
+    (* The C function-pointer type, formatted argument list (starting at index
+     * first), and result value indices for a call instruction *)
     Let Call = Tuple fnType: String args: String results: Array(Int) end
     let callOf(p: Printer i: ssa.Inst first: Int): Call =
         begin
@@ -211,10 +212,11 @@ export
                 when opSext8 then set("(int64_t)(int8_t)" <> a(0))
                 when opZext8 then set("(int64_t)(uint8_t)" <> a(0))
                 when opCopy then set(a(0))
-                (* Not printed: ssa/pipeline's lower, which runs before
-                 * ssac, replaces every unproxy (ssa/passes/unproxies). The
-                 * runtime's quest_unproxy named here is one this C, which
-                 * includes no runtime header, does not declare. *)
+                (* Normal compilation never reaches this case, because
+                 * ssa/pipeline.lower runs before ssac and lowers every
+                 * opUnproxy (unwrapping a QProxy forwarding wrapper) via
+                 * ssa/passes/unproxies. The runtime's quest_unproxy helper is
+                 * not declared in ssac's headerless C output. *)
                 when opUnproxy then set("(char *)quest_unproxy(" <> a(0) <> ")")
                 when opLoad then
                     let t = typeOf(f i.results[0])
@@ -252,7 +254,8 @@ export
             end
         end
 
-    (* A jump: the target's parameters assigned its arguments, at once *)
+    (* A jump to t, assigning the target block's parameters in parallel via
+     * temporaries so arguments that alias parameters are not clobbered *)
     let jumpText(p: Printer t: ssa.Target): String =
         begin
             let params = ssa.block(p.f t.block).params
@@ -272,7 +275,8 @@ export
             end
         end
 
-    (* A return: of one result, cast to the C type the signature says *)
+    (* A C return statement for vs, casting a single result to the signature's
+     * C type and packing two results into a QSsaPair *)
     let returnText(p: Printer vs: Array(Int)): String =
         if extent vs is 0 then "return;"
         elsif extent vs is 1 then
@@ -310,10 +314,10 @@ export
                     "(" <> cType(rs[0]) <> ")"
                 else "" end
                 line(p if extent x.call.results is 0 then e <> "; return;" else "return " <> cast <> e <> ";" end)
-            (* The try's handler record is in its stack slot. _setjmp saves
-             * the registers in it and returns 0, and the body runs; a raise
-             * jumps back to it with longjmp, it returns again, nonzero, and
-             * control goes to the handler *)
+            (* The try's handler record lives in its stack slot. On entry,
+             * _setjmp saves the registers there and returns 0 so the body runs.
+             * A raise jumps back via longjmp, making _setjmp return nonzero so
+             * control transfers to the handler. *)
             when termTry with x then
                 line(p "if (_setjmp((int *)(void *)(s" <> conv.int(x.slot) <> " + "
                     <> conv.int(runtimeLayout.offset("QExceptionHandler" "env_jmp")) <> ")) == 0) " <> jumpText(p x.body))
@@ -335,9 +339,10 @@ export
             else "QSsaPair" end
         end
 
-    (* How a parameter is declared, and its value assigned on entry if it is
-     * not the parameter itself: a composite's halves from the pair's words,
-     * a C int extended. C requires main's argument array to be a char ** *)
+    (* The C declaration for parameter k of f, along with any entry statements
+     * needed to unpack it into SSA locals (splitting a QSsaPair into two
+     * values, widening a C int to int64_t, or taking the address of a struct
+     * passed by value). C requires main's second parameter to be char **. *)
     Let Param = Tuple decl: String entry: Array(String) words: Int end
     let param(f: Function k: Int named: Bool): Param =
         begin
@@ -394,10 +399,11 @@ export
     let prototype(f: Function named: Bool): String =
         linkage(f) <> resultType(f) <> " " <> f.symbol <> "(" <> paramsText(f named) <> ")"
 
-    (* The values live at the start of some handler of f: those a path from
-     * a handler uses before (re)defining them. Computed over the blocks a
-     * handler reaches alone, which every path from one stays within, by
-     * iterating each block's live-in set to a fixed point *)
+    (* A boolean array marking every SSA value that is live (possibly read
+     * before redefinition) at the start of some exception handler in f. Because
+     * every path from a handler stays within the blocks reachable from
+     * handlers, liveness is computed over those blocks alone by iterating each
+     * block's live-in set to a fixed point. *)
     let handlerLive(f: Function): Array(Bool) =
         begin
             let n = vector.length(f.blocks)
@@ -460,9 +466,10 @@ export
             result
         end
 
-    (* A function's C: its parameters unpacked, every other value declared as
-     * a local and every stack slot as a byte array, then each block, a label
-     * and its instructions *)
+    (* Writes the C definition of f into buf: its prototype, parameter-unpacking
+     * statements, local declarations for all other SSA values, aligned byte
+     * arrays for stack slots, and each block as a label followed by its
+     * instructions and terminator *)
     let function(buf: Builder f: Function): Ok =
         begin
             let var hasTry = false
@@ -549,10 +556,11 @@ export
                 dataDeclaration(d) <> " = { " <> syntax.comma(ws) <> " };"
         end
 
-    (* The unit's symbols referred to but not defined are found first. Then
-     * the C is, in order: the types and helpers it uses; those symbols,
-     * declared; the unit's data and functions declared, so that each may
-     * refer to any; the data defined; the functions defined *)
+    (* The printer first collects all external symbols referenced by u. The
+     * emitted C file then contains, in order: supporting types and helper
+     * functions, extern declarations for those symbols, forward declarations
+     * for the unit's data and functions (so any definition may refer to any
+     * other), data definitions, and function definitions. *)
     let printUnit(u: ssa.Unit): String =
         begin
             let buf = sb.new()

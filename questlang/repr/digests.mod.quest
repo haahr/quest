@@ -1,10 +1,11 @@
 (* Quest Self-Hosted Compiler: Digests of Types Implementation
  *
- * Digests of types stand for their printed text, which is the same in every
- * compilation. A type whose text is at most printedTextLimit long is
- * digested from its text; a longer one from the text of its outermost node
- * with the digests of its parts in place of theirs, computed once per
- * hash-consed node. *)
+ * Type digests summarize a type's printed text, which is the same in every
+ * compilation. A type whose text is at most printedTextLimit characters is
+ * digested directly from that text; a longer type is digested from its
+ * outermost node's text with its children's digests in place of their text.
+ * Results are cached per hash-consed (deduplicated) node so shared subterms
+ * are digested once. *)
 
 module digests : Digests
 import
@@ -45,7 +46,7 @@ export
     let part(p: Printable): Piece = option piecePart of Piece with let p = p end
     let ofType(t: Type): Piece = part(option pType of Printable with let t = t end)
     let ofKind(k: model.Kind): Piece = part(option pKind of Printable with let k = k end)
-    (* The pieces of items separated by spaces *)
+    (* Append items to pieces, separated by single spaces *)
     let spaced(pieces: vector.T(Piece) items: Array(Piece)): Ok =
         for i = 0 upto {extent items - 1} do
             if i > 0 then vector.append(pieces text(" ")) end
@@ -64,9 +65,9 @@ export
             pieces
         end
     let pieces(items: Array(Piece)): vector.T(Piece) = vector.fromArray(items)
-    (* The text of a node as a list of literal strings and the parts printed in
-     * between, mirroring the bootstrap's __str__ methods; a node not listed
-     * prints as one string *)
+    (* Break a node's printed form into literal strings and child parts,
+     * mirroring the bootstrap's __str__ methods. Any node not handled
+     * explicitly prints as a single string. *)
     let printedParts(node: Printable): vector.T(Piece) =
         case node
             when pType with x then
@@ -235,11 +236,10 @@ export
                 sb.toString(b)
         end
     let printedMemo = hashMap.new(:Int :Printed intEqual hash.int)
-    (* The length of a node's text, the sum of its pieces' lengths, and the
-     * digest of either its text or, if that is too long, its pieces with each
-     * part's digest in place of the part. In the latter a NUL comes before
-     * each part's digest and a byte 1 starts the whole, so that it is never
-     * also some type's text *)
+    (* Return the total length of a node's printed text and its SHA-256
+     * digest. If the text exceeds printedTextLimit, hash the literal pieces
+     * with each child replaced by a NUL byte and its digest, prefixed by
+     * byte 1 so the hashed input can never collide with a plain type's text. *)
     let rec printedUncached(node: Printable): Printed =
         begin
             let var length = 0
@@ -264,9 +264,10 @@ export
             end
             tuple let length = length let digest = digest end
         end
-    (* The length of a node's text and a digest of that text, kept by the
-     * node's id. A type or kind with a metavariable (an unknown the type
-     * checker may yet solve) is not kept, since its text may change *)
+    (* Return the length and digest of a node's printed text, cached by node
+     * id for types and kinds. Any type or kind containing a metavariable (an
+     * unknown the type checker may still solve) is not cached, because its
+     * text may change. *)
     and printed(node0: Printable): Printed =
         begin
             let node = case node0 when pType with x then option pType of Printable with let t = model.prune(x.t) end else node0 end

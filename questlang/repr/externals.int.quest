@@ -1,19 +1,20 @@
 (* Quest Self-Hosted Compiler: The Standard Library's Externals Interface
  *
- * The standard library's members that its modules define as external C
- * functions, and its external types, built into the compiler from lib/
- * (tools/externals writes the module; docs/c-representation.md section 6.2).
- * Each function is a module's path in lib/ (word, collections/vector), a
- * member's name, and its C symbol. A call of such a function from an importer
- * compiles to a call of the C function itself, and importers see such a type
- * as its C type; both only for imports that resolve to lib/'s modules. *)
+ * This interface exposes the standard library's external C functions and
+ * external types, generated into the compiler from lib/ by tools/externals
+ * (docs/c-representation.md section 6.2). Each function entry gives a module's
+ * path in lib/ (such as word or collections/vector), a member's name, and its
+ * C symbol. A call to such a function from an importer compiles to a direct
+ * call of the C function, and importers see an external type as its C type;
+ * both apply only to imports that resolve to modules in lib/. *)
 
 interface Externals export
-    (* The external functions, monomorphic, of value parameters only, and of
-     * scalar and external types *)
+    (* External functions: each is monomorphic, takes value parameters only,
+     * and uses only scalar and external types *)
     functions: Array(Array(String))
-    (* The external types (Let T = external "uint64_t"), each a module's path,
-     * the type's name, its global name (process.T: its module's declared name
-     * and its own), and its C type *)
+    (* External types (such as Let T = external "uint64_t"): each entry gives
+     * the module's path, the type's name, its global name (such as process.T,
+     * combining the module's declared name and the type's name), and its C
+     * type *)
     types: Array(Array(String))
 end

@@ -1,10 +1,12 @@
 (* Quest Self-Hosted Compiler: The Unit Graph Interface
  *
- * bootstrap/python/quest/modules/graph.py: resolving an import path, from a
- * directory with given search paths and program directory, to the unit's file
- * and its names, once per path; the units an environment has loaded, by kind
- * and canonical name, with their type-checked forms (docs/build-process.md
- * section 2.1); and where units' artifacts are under a build directory. *)
+ * Counterpart to bootstrap/python/quest/modules/graph.py. This unit resolves
+ * import paths (given an importing directory, search paths, and program
+ * directory) to source or prebuilt files and canonical names, memoizing each
+ * resolution. It also tracks the units an environment has loaded by kind and
+ * canonical name along with their type-checked forms (docs/build-process.md
+ * section 2.1), and computes where unit artifacts live under a build
+ * directory. *)
 
 interface Graph
 import
@@ -29,7 +31,7 @@ export
      * source is the unit's .int.quest or .mod.quest, none if not found, and
      * prebuilt the .qi found instead (only for an interface without a
      * source). canonical and ifaceName are canonicalName's and
-     * interfaceName's results, computed on first use *)
+     * interfaceName's results, computed on first use. *)
     Def Resolved = Tuple
         kind: units.UnitKind
         path: String
@@ -61,15 +63,15 @@ export
      * one directory shares one Resolved (and so its names). newSession
      * forgets them. variantOf names the variant a module's source is chosen as
      * (paths.variantFile), by its canonical name: none ("") unless a build
-     * sets it, before it resolves anything *)
+     * sets it, before it resolves anything. *)
     Def Resolver = Tuple memo: hashMap.T(String Resolved) var variantOf: All(unit: String) String end
     newResolver(): Resolver
     (* The unit an import of path from fromDir names, searched for in fromDir,
      * then roots.searchPaths, then $QUEST_LIB and the library (docs/modules.md
      * §2.2); found or not, the result is memoized *)
     resolveInterface(res: Resolver path: String fromDir: maybe.T(String) roots: Roots): Resolved
-    (* A module's source is its variant's file, if res.variant names one it
-     * has *)
+    (* Resolves a module import, substituting its variant file if res.variantOf
+     * selects a variant that exists for the module's canonical name *)
     resolveModule(res: Resolver path: String fromDir: maybe.T(String) roots: Roots): Resolved
     (* The unit in a file given directly, rather than imported *)
     resolveFile(res: Resolver file: String roots: Roots): Resolved
@@ -139,6 +141,6 @@ export
     snapshot(g: UnitGraph): Snapshot
     (* Puts the units' typed forms back as snap found them, forgetting the units
      * loaded since. The graph is changed in place, so every holder of it (the
-     * interpreter's root) sees the change *)
+     * interpreter's root) sees the change. *)
     restore(g: UnitGraph snap: Snapshot): Ok
 end

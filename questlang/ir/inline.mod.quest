@@ -225,10 +225,11 @@ export
             else false
         end
 
-    (* A function's static parameters: each value parameter that every call it
-     * makes of itself (in its body, or in the functions its body binds) passes
-     * unchanged, at its own type parameters. A use of the function other than
-     * as such a call's callee leaves it none. *)
+    (* Computes a boolean mask of f's static parameters: value parameters that
+     * every recursive call (in f's body or nested functions) passes unchanged
+     * at f's own type parameters. Returns an empty array if f makes no
+     * recursive calls or is referenced anywhere except as such a call's
+     * callee. *)
     let staticParams(f: nodes.Function): Array(Bool) =
         begin
             let static = array of(extent f.params false)
@@ -341,8 +342,8 @@ export
      * Expansion
      * ====================================================================== *)
 
-    (* The returns of a function's body (not those of the functions it binds),
-     * each replaced, in place, by what replaced makes of its value *)
+    (* Replaces each return in b (excluding nested functions), in place, with
+     * the statement produced by calling replaced on its value and position *)
     let rec returns(b: Body replaced: All(a: Atom pos: Int) Stmt): Ok =
         for i = 0 upto {vector.length(b.statements) - 1} do
             let s = vector.get(b.statements i)
@@ -385,8 +386,8 @@ export
             clone.newRelabelingCloner(subst labels)
         end
 
-    (* Binds each of reads' variables, in the copy c makes, to a local of its
-     * own, by a let of its operation at pos appended to bound *)
+    (* Emits a let binding at pos in bound for each entry in reads, mapping its
+     * variable in c to the fresh local *)
     let bindReads(c: clone.Cloner reads: Array(Read) pos: Int bound: vector.T(Stmt)): Ok =
         for i = 0 upto {extent reads - 1} do
             let v = reads[i].v
@@ -458,10 +459,9 @@ export
             let result = maybe.unwrapOr(into nodes.newVar("r" clone.ty(c f.resultType) false))
             let bound = vector.new(:Stmt)
             bindReads(c reads pos bound)
-            (* The local function's parameters, and the arguments it is called
-             * with, the static ones left out: each of those stands for its
-             * argument, a variable, or one bound to a constant before the
-             * local function *)
+            (* Collect the local function's non-static parameters and arguments;
+             * each static parameter is mapped directly to its argument
+             * variable, or to a fresh local bound to a constant argument *)
             let params = vector.new(:nodes.ParamEntry)
             let types = vector.new(:model.Param)
             let passed = vector.new(:Atom)
@@ -492,7 +492,8 @@ export
             clone.bindVar(c f.v inner)
             clone.bindAll(c f.body)
             let body = clone.copyBody(c f.body)
-            (* Its calls of itself, on the other arguments *)
+            (* Rewrite recursive calls to target inner without the static
+             * arguments *)
             let stmts = walk.walkStatements(body true)
             for i = 0 upto {vector.length(stmts) - 1} do
                 let call = callOfVariable(vector.get(stmts i) inner)

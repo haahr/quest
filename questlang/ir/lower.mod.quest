@@ -458,10 +458,11 @@ export
                     maybe.none()
                 else
                     let found = hashMap.get(l.moduleRefs x.symbol.symbolId)
-                    (* A module an earlier input declared or imported, whose
-                     * record is its value: its entry has no field (the
-                     * session's remember). An earlier input's value binding
-                     * is a field of that input's record, and not a module *)
+                    (* A module declared or imported by an earlier input has an
+                     * empty field in earlier (recorded by the session), so its
+                     * record is the module itself. Value bindings from earlier
+                     * inputs have a non-empty field name and are not
+                     * modules. *)
                     let declared = earlierBinding(l x.symbol.symbolId)
                     if maybe.isNone(found)
                         andif maybe.isSome(declared) andif eq(maybe.unwrap(declared).binding.field "") then
@@ -520,11 +521,11 @@ export
 
     (* Values *)
 
-    (* The atom that holds e's value, with e lowered into the current body at
-     * its offset. With into, the value is bound to that variable and the atom
-     * is it, so that a let binds its own variable rather than a copy; with
-     * none, the atom may be a constant or an existing variable, and a fresh
-     * variable is made only for an operation *)
+    (* Lowers e into the current body at e's source offset and returns the atom
+     * holding its value. When into is given, the value is bound directly to
+     * that variable so a let avoids an extra copy; with none, constants and
+     * existing variables are returned directly and a fresh variable is created
+     * only for an operation. *)
     let rec value(l: Lowerer e: Expr into: maybe.T(Variable)): Atom =
         at(l e.offset fun(): Atom valueForm(l e into))
     and valueForm(l: Lowerer e: Expr into: maybe.T(Variable)): Atom =
@@ -761,11 +762,10 @@ export
             end
         end
 
-    (* A type application, f(:A)(:B) as one. Applied to fewer types than it
-     * takes, a polymorphic function is a closure over the rest (and its value
-     * parameters, if it has any), which applies it to all of them, since the
-     * backend calls a polymorphic function with all its type arguments at
-     * once. *)
+    (* Lowers nested type applications such as f(:A)(:B) into a single
+     * operation. When applied to fewer type arguments than the function
+     * expects, wraps the call in a closure over the remaining type and value
+     * parameters so the backend still passes all type arguments at once. *)
     and typeApplication(l: Lowerer e: Expr into: maybe.T(Variable)): Atom =
         begin
             (* The applications' type arguments, innermost first *)
@@ -844,14 +844,12 @@ export
             end
         end
 
-    (* A call, e (into as for value). The type arguments of f(:A)(:B)(x) are
-     * gathered into one list, A then B, since the backend passes all of a
-     * function's type arguments at once. A call of a built-in function such
-     * as (+) or not is its primitive operation, and one of ordinal an
-     * opOrdinal; a call of a member of the standard library's arrayOp is the
-     * array operation itself (arrayOperation); any other is an opCall of its
-     * callee, a variable or a module's member, whose type as the call sees it
-     * the call records (calleeType) *)
+    (* Lowers a call expression e (with into handled as in value). Nested type
+     * arguments as in f(:A)(:B)(x) are flattened into one list because the
+     * backend passes all type arguments at once. Calls to built-in operators
+     * become primitives (and ordinal becomes opOrdinal), calls to stdlib
+     * arrayOp members lower via arrayOperation, and all other calls become an
+     * opCall recording calleeType when calling a module member. *)
     and call(l: Lowerer e: Expr into: maybe.T(Variable)): Atom =
         case e.form
             when exprApp with app then
@@ -1195,11 +1193,11 @@ export
             else fail("not an extraction")
         end
 
-    (* base, if it is an option's extraction o!tag. A selection o!tag.f used as
-     * a location (an assignment's target or an @ argument) is the option's own
-     * component f, which its case's binder shares (type-system.md section
-     * 6.8), not the component of o!tag's copy. A variant's extraction is its
-     * payload already *)
+    (* Returns base if it is an option extraction o!tag, or none otherwise. A
+     * selection o!tag.f used as a location (an assignment target or @
+     * argument) refers to the option's own component f shared by its case
+     * binder (docs/type-system.md section 6.8), not a copy made by o!tag; a
+     * variant extraction is already its payload. *)
     and payloadBase(base: Expr): maybe.T(Expr) =
         case base.form
             when exprVariantAssert with x then
@@ -1213,7 +1211,7 @@ export
      * which raises there as the extraction does, at its location; otherwise
      * is lowered after it, given that copy, for a value the else must jump
      * with (it never runs). So o is evaluated, then its case checked, then
-     * inCase's own operands, as case o when tag with c then ... end would *)
+     * inCase's own operands, as case o when tag with c then ... end would. *)
     and inPayload(l: Lowerer extraction: Expr inCase: All(c: Variable) Ok otherwise: All(copy: Atom) Ok): Ok =
         begin
             let o = value(l extractedOf(extraction) none)
@@ -1285,7 +1283,7 @@ export
      * - any other target, whose value is a location's address (an array's
      *   element, say): a store at the address.
      * In the last two, target's record, tuple, or address is evaluated
-     * before v *)
+     * before v. *)
     and assign(l: Lowerer target: Expr v: Expr): Ok =
         begin
             let bound = boundVar(l target)
@@ -1355,27 +1353,26 @@ export
             end
         end
 
-    (* Lowers for i = start upto stop do body end (or downto) as a loop over
-     * a mutable counter. start and stop are evaluated once, before it; each
-     * iteration breaks when the counter has passed stop, binds i anew to the
-     * counter's value (an immutable variable, which closures in the body may
-     * capture), runs the body, and steps the counter by 1 (unless the body
-     * ended in a terminator). The loop's label is the one an exit in the
-     * body breaks to:
+    (* Lowers for i = start upto stop do body end (or downto) as a loop over a
+     * mutable counter. start and stop are evaluated once before the loop. If
+     * the range is non-empty, each iteration binds i afresh to the counter's
+     * value (immutably, so closures in body capture that iteration's value),
+     * runs body, and unless body ended in a terminator, breaks at stop before
+     * stepping by 1. The loop's label is the target of exit in body:
      *     var c := start
-     *     loop L {
-     *       if c <= stop { let i = c; body; c := c + 1 } else { break L }
+     *     if c <= stop {
+     *       loop L {
+     *         let i = c; body
+     *         if c is stop { break L }
+     *         c := c + 1
+     *       }
      *     } *)
     and forLoop(l: Lowerer e: Expr): Ok =
         case e.form
             when exprFor with x then
-                (* var c = start; if c <= stop then loop L { let i = c; body;
-                 * if c is stop then break L; c := c + 1 } (downto alike). The
-                 * loop tests the bound before it steps, so a loop to maxInt
-                 * (or downto minInt) ends there rather than wrapping. Each
-                 * iteration binds i afresh, immutably, so a closure made in
-                 * the body captures that iteration's value, not the counter.
-                 * The bootstrap's for_loop (ir/lower.py) is the same *)
+                (* Testing c is stop before stepping avoids signed overflow at
+                 * maxInt (or minInt for downto), matching the bootstrap's
+                 * for_loop in ir/lower.py *)
                 let start = value(l x.start none)
                 let stop = value(l x.stop none)
                 let counter = fresh(x.varName model.intType true)
@@ -1564,10 +1561,11 @@ export
 
     (* Functions *)
 
-    (* The function e, bound to binder if it is let-bound. A function checked
-     * against its variable's type may annotate a value parameter with a
-     * supertype of the type's: its parameter has the variable's type's, which
-     * callers pass, and a let at its entry binds the annotation's *)
+    (* Lowers function expression e (named by binder if let-bound). When e is
+     * checked against an expected function type whose parameter type is a
+     * subtype of e's parameter annotation, the IR parameter takes the expected
+     * type that callers pass and an entry let widens it to the annotated
+     * type. *)
     and function(l: Lowerer e: Expr v: Variable binder: maybe.T(String)): nodes.Function =
         case e.form
             when exprFun with x then
@@ -2210,7 +2208,7 @@ export
 
     (* The phrases are lowered as program() lowers them, into the initializer
      * of a module of their own, whose members are their top-level value
-     * bindings (but those of type Ok, which have no words); its record is
+     * bindings (except those of type Ok, which have no words); its record is
      * made, as a module file's is, when they have run, with a var field for a
      * var (docs/jit.md section 3.2) *)
     let lowerPhrases(prog: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) number: Int

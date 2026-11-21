@@ -1,25 +1,26 @@
 (* Quest Self-Hosted Compiler: Module Manifests Interface
  *
- * bootstrap/python/quest/modules/artifacts/manifest.py: the build metadata of a
- * module file or a program (its .qm): the modules and interfaces it imports,
- * with the sources they were found in, and the ABI version and compiler of its
- * artifacts. A .qm is JSON, written as the bootstrap writes it (two-space
- * indentation), so that each compiler can read the other's, though each takes
- * a manifest the other wrote as stale (isManifestStale) and uses only its own
- * artifacts. *)
+ * Counterpart to bootstrap/python/quest/modules/artifacts/manifest.py. This
+ * unit reads, writes, and validates the build metadata (.qm manifest) of a
+ * module file or program: the modules and interfaces it imports, the source
+ * files they resolved to, and the ABI version, backend, and compiler that
+ * produced its artifacts. A .qm file is JSON with two-space indentation, so
+ * the bootstrap and self-hosted compilers can read each other's manifests,
+ * though each treats a manifest written by the other as stale
+ * (isManifestStale) and uses only its own artifacts. *)
 
 interface Manifest
 import
     util/maybe : util/Maybe
 export
     (* An imported module and its declared interface. source is the module's
-     * source file as the importer found it, or "" for none; path the module
-     * path the importer resolved. *)
+     * source file as the importer found it, or "" for none, and path is the
+     * module path the importer resolved. *)
     Def ImportedModuleRef = Tuple name: String interfaceName: String source: String path: String end
-    (* An imported interface: its canonical name, source file, and time. path is
-     * the interface path the importer resolved; dir is "" for an interface the
-     * unit imports itself, else the directory of the interface that imports
-     * it. *)
+    (* An imported interface: its canonical name, source file, and modification
+     * time. path is the interface path the importer resolved; dir is "" for an
+     * interface the unit imports itself, else the directory of the interface
+     * that imports it. *)
     Def ImportedInterfaceRef = Tuple name: String source: String mtime: Real path: String dir: String end
     Def ModuleManifest = Tuple
         name: String

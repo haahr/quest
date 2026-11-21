@@ -8,7 +8,8 @@ import
 export
     Let Function = ssa.Function
 
-    (* The blocks to check: the entry, and each loop's head *)
+    (* The blocks that need a check: the entry block and every loop header (a
+     * reachable block that dominates one of its reachable predecessors) *)
     let heads(f: Function): Array(Bool) =
         begin
             let g = cfg.graph(f)
@@ -26,8 +27,9 @@ export
             head
         end
 
-    (* Puts the check at the start of block b, the rest of b after it in a new
-     * block; raiser is the block that raises *)
+    (* Split block b to prepend an interrupt check that branches to raiser if
+     * pending, moving b's original instructions and terminator to a new
+     * block *)
     let check(f: Function b: Int raiser: Int): Ok =
         begin
             let blk = ssa.block(f b)

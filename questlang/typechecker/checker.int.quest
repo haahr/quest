@@ -1,15 +1,16 @@
 (* Quest Self-Hosted Compiler: The Checker's State and Shared Helpers Interface
  *
- * The state of one type check and the helpers its construct families share, as
- * bootstrap/python/quest/typechecker/checker.py's Checker. The families
- * (bindings, application, aggregates, control, exceptions, autovalues) reach
- * the dispatch on expression forms (checkExpr, synthExpr), which typecheck
- * defines, through the function fields here, which typecheck fills when it
- * makes a checker; a family calls the families below it directly.
+ * This interface defines the state of one type check and the helpers shared by
+ * its construct families, matching Checker in
+ * bootstrap/python/quest/typechecker/checker.py. The families (bindings,
+ * application, aggregates, control, exceptions, autovalues) reach the
+ * expression dispatch (checkExpr, synthExpr) defined in typecheck through
+ * function fields in T that typecheck fills when creating a checker; a family
+ * calls lower-level families directly.
  *
  * The checker also records the errors it finds (docs/diagnostics.md section
- * 4.5): a binding that fails reports its error and the check goes on with the
- * next binding, until 20 errors. *)
+ * 4.5): a binding that fails reports its error and checking continues with the
+ * next binding, up to 20 errors. *)
 
 interface Checker
 import
@@ -23,7 +24,8 @@ import
     util/maybe : util/Maybe
 export
     (* An implicit type argument of a polymorphic call whose arguments are being
-     * checked: its metavariable, quantifier, and the call's offset *)
+     * checked: its metavariable (a placeholder type solved by unification), its
+     * quantifier, and the call's offset *)
     Def PendingTypeArg = Tuple meta: model.Type quantifier: model.Quantifier offset: Int end
 
     Def Rec T = Tuple
@@ -62,8 +64,9 @@ export
      * alone there *)
     synthCallee(c: T expr: ast.Expr e: env.T loopDepth: Int): typedAst.Expr
 
-    (* body one loop deeper, and inside a function (loops inside cannot exit
-     * outer loops); the depths are restored if body raises an error *)
+    (* Runs body one loop deeper (inLoop) or inside a function body (inFunction,
+     * where loops cannot exit outer loops), restoring the depths if body raises
+     * an error *)
     inLoop(A::TYPE c: T body: All() A): A
     inFunction(A::TYPE c: T body: All() A): A
 
@@ -85,8 +88,8 @@ export
      * A closure may capture a local var variable. *)
     checkCapturable(c: T sym: symbols.ValueSymbol offset: Int): Ok
 
-    (* A value in scope; a symbol a failed declaration poisoned fails
-     * silently *)
+    (* Looks up a value in scope; fails silently if the symbol was poisoned by
+     * an earlier failed declaration, avoiding cascading errors *)
     lookupValue(c: T e: env.T name: String): maybe.T(symbols.ValueSymbol)
     (* Fails silently if sym was poisoned *)
     checkPoisoned(sym: symbols.ValueSymbol): Ok
@@ -97,7 +100,7 @@ export
     (* Records an error caught where it was raised, located as if it had
      * propagated out of the units being loaded *)
     report(c: T err: diagnostics.CompilerError): Ok
-    (* body's result, or none if it raised an error, which is reported unless it
-     * is silent; a fatal error propagates *)
+    (* Runs body and returns its result, or none if it raises a non-fatal error;
+     * non-silent errors are reported, and fatal errors propagate *)
     attempt(A::TYPE c: T body: All() A): maybe.T(A)
 end

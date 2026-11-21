@@ -1,10 +1,12 @@
 (* Quest Self-Hosted Compiler: Static Data Interface
  *
- * A unit's static data, for every backend (docs/arm64.md section 7.5): how
- * each type is described at run time (its descriptor's form), and the names of
- * record types and their offset tables. The C backend spells these in C
- * (codegen/c/types, codegen/c/declarations); the SSA's backends lay them out
- * themselves. *)
+ * This interface describes a compilation unit's static data for every backend
+ * (docs/arm64.md section 7.5): how each type is described at run time (its
+ * descriptor form), the names of record types and their offset tables (which
+ * map a supertype's field names to offsets in a subtype's struct), and
+ * variant tag maps. The C backend emits these as C declarations
+ * (codegen/c/types, codegen/c/declarations); backends lowered from SSA
+ * (static single-assignment IR) lay them out as bytes themselves. *)
 
 interface StaticData
 import
@@ -17,18 +19,19 @@ export
      * message the bootstrap's MissingDescriptorError has *)
     missingDescriptor: Exception(String)
 
-    (* How a type is described at run time. kind is base, a descriptor the
-     * runtime defines (expr is the descriptor expression), or record, tuple,
-     * variant, option, array, exception, fun, auto, opaque, stored, and hole
-     * (the descriptor is quest_type_<tag>, describing type; an opaque
+    (* DescriptorForm records how a type is described at run time. kind is
+     * either "base" for a descriptor defined by the runtime (with expr giving
+     * its C expression), or one of "record", "tuple", "variant", "option",
+     * "array", "exception", "fun", "auto", "opaque", "stored", or "hole" (for
+     * a unit-defined quest_type_<tag> descriptor describing type). An opaque
      * descriptor is compared by name and, for an application of an abstract
-     * type operator, its arguments; a hole's name is its index). struct is
-     * the C struct laid out as type, when its name is not derived from type
-     * itself, and display, for a descriptor that only echo uses, the type as
-     * written, with alias names, whose type components the descriptor writes.
-     * The kinds are spelled as the bootstrap's are, except for an element of
-     * quest_type_bound_vars: the bootstrap's kind for it is bound_var, this
-     * compiler's base. *)
+     * type operator, by its arguments; a hole's name is its index. struct
+     * names the C struct laid out as type when it is not derived from type
+     * itself. display is set only for echo-only descriptors (used when
+     * printing values with their written type components and alias names).
+     * Kind names match the bootstrap compiler, except for elements of
+     * quest_type_bound_vars, which the bootstrap calls "bound_var" and this
+     * compiler calls "base". *)
     Def DescriptorForm = Tuple
         kind: String
         tag: String
@@ -44,9 +47,10 @@ export
         index: Int
     end
 
-    (* Names record types and offset tables in C, after a type alias for the
-     * record where there is one. Every name ends with a digest of the record's
-     * shape, so a name stands for one layout in every C unit. *)
+    (* RecordNaming assigns C names to record types and their offset tables,
+     * using a type alias for the record when one is registered. Every name
+     * ends with a digest of the record's shape, so a name stands for one
+     * layout across every C unit. *)
     Def RecordNaming = Tuple
         (* The names after aliases, by the key of the record's layout *)
         aliasByShape: hashMap.T(String String)
@@ -89,10 +93,9 @@ export
      * The descriptors a unit defines (docs/c-representation.md section 6.4)
      * ====================================================================== *)
 
-    (* The descriptors a unit's types need, by kind (descriptorKinds),
-     * those already emitted left out: the closed types' and their parts', and
-     * for the echo types, their echo-only descriptors and those of their
-     * parts *)
+    (* The descriptors a unit's types need, grouped by kind (descriptorKinds)
+     * and omitting any already emitted: descriptors for the closed types and
+     * their parts, plus echo-only descriptors for echo types and their parts *)
     Def Collected = Tuple
         (* In the order first reached *)
         tags: vector.T(String)
@@ -151,19 +154,17 @@ export
         size: Size
         payload: Payload
     end
-    (* The contents of the static descriptor quest_type_<tag> for the
-     * descriptor form f (one of collectDescriptors' forms), as data both kinds
-     * of backend use: codegen/c/declarations prints it as a C initializer, and
-     * ssa/build/unit lays it out as bytes. It gives the descriptor's
-     * QTypeKind, its name (for most kinds, dump.shortTypeName of the type),
-     * the size of a value of the type as a variable holds it, and a payload
-     * with what the kind needs: a function type's parameters and result, a
-     * record's fields with their offsets, a variant's cases, and so on.
-     * Each part's descriptor is the one partOf gives for the part's type
-     * (callers pass descriptorForm, the shared descriptor), except that an
-     * echo-only form (one with display) refers to its parts' echo-only
-     * descriptors where they have them. Sizes and offsets are spelled with
-     * the struct names C gives them (see Size) *)
+    (* Builds the contents of the static descriptor quest_type_<tag> for the
+     * descriptor form f (from collectDescriptors) as backend-independent data:
+     * codegen/c/declarations prints it as a C initializer, and ssa/build/unit
+     * lays it out as bytes. The result gives the descriptor's QTypeKind, its
+     * name (for most kinds, dump.shortTypeName of the type), the size of a
+     * value as a variable holds it, and a kind-specific payload (a function
+     * type's parameters and result, a record's fields and offsets, a variant's
+     * cases, and so on). Each part's descriptor comes from partOf (callers
+     * pass descriptorForm), except that an echo-only form (one with display)
+     * uses its parts' echo-only descriptors where they exist. Sizes and
+     * offsets use the struct names C assigns them (see Size). *)
     describeDescriptor(f: DescriptorForm ctx: maybe.T(RecordNaming) partOf: All(t: model.Type) DescriptorForm): Descriptor
     (* ======================================================================
      * Offset tables and tag maps

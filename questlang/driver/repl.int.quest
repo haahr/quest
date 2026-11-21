@@ -1,9 +1,9 @@
 (* Quest Self-Hosted Compiler: The REPL Interface
  *
- * bootstrap/python/quest/driver/repl.py: reads phrases a line at a time through
- * io/readline, continuing a phrase while its lines leave it incomplete, and
- * elaborates and runs each input in one environment and frame, rolling back an
- * input that fails (docs/repl.md). *)
+ * Implements the interactive REPL (docs/repl.md; bootstrap counterpart:
+ * bootstrap/python/quest/driver/repl.py). Reads phrases line by line through
+ * io/readline until each input is syntactically complete, then type-checks and
+ * runs it in a persistent environment and frame, rolling back on failure. *)
 
 interface Repl
 import
@@ -30,12 +30,12 @@ export
      * raised it, with its frames (the driver's too) *)
     runErrorDiagnostic(err: model.RunError mainFile: String): diagnostics.Diagnostic
 
-    (* A session: the environment inputs are elaborated in, the frame the next
-     * input runs in, the source an input's error was raised in, when it is
-     * not the input's own (a function an earlier input made), to render it in,
-     * what the last input that failed failed in (kernelFailure), and with
-     * --jit, the JIT's session, which runs inputs instead of the interpreter
-     * (docs/jit.md) *)
+    (* A REPL session's state: the type-checking environment e, the interpreter
+     * frame for the next input, errorSource (the source map where a runtime
+     * error occurred, when it came from an earlier input's function), failure
+     * (the category or exception name of the last failed input, for the
+     * kernel), and jit (the JIT session when running with --jit;
+     * docs/jit.md) *)
     Def T = Tuple
         e: env.T
         var frame: model.Frame
@@ -48,16 +48,17 @@ export
     (* A session in e whose inputs the JIT compiles and runs, their programs
      * seeing args as system.args *)
     newJit(e: env.T f: model.Frame args: Array(String)): T
-    (* Runs a typed program with the JIT as one input (a file, or one -i
-     * names), printing its last phrase's result, or with echo every phrase's,
-     * as interpret does: whether it ran, its errors in bag if not *)
+    (* Runs a typed program with the JIT as one input (such as a file for -i),
+     * printing the last phrase's result (or every phrase's when echo is true)
+     * as interpret does. Returns whether it succeeded, recording errors in
+     * bag. *)
     runInput(r: T program: typedAst.Program sm: location.SourceMap bag: diagbag.T echo: Bool): Bool
-    (* Reads, elaborates, and runs inputs until the end of the input, keeping a
-     * history in ~/.quest_history when lines are edited; the exit status *)
+    (* Reads, type-checks, and runs inputs until EOF, persisting history in
+     * ~/.quest_history when line editing is active. Returns the exit status. *)
     run(r: T): Int
-    (* Compiles and runs one input as a transaction: an input that fails leaves
-     * the session as it found it, its errors in bag; what the input printed,
-     * a line a phrase, if it ran *)
+    (* Compiles and runs one input as a transaction: on failure, the session
+     * state is rolled back and errors are recorded in bag. Returns the
+     * formatted result of each phrase if it succeeded, or none. *)
     evaluate(r: T text: String sm: location.SourceMap bag: diagbag.T): maybe.T(Array(String))
     (* The name inputs' diagnostics give their source *)
     inputName: String

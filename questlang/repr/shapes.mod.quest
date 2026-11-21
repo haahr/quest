@@ -323,13 +323,12 @@ export
      * known, as a substitution, made again when more are known *)
     let representations = tuple let var count = ~1 let var subst = model.newSubst() end
 
-    (* A type with the transparent abstract types in it replaced by their
-     * representations (an application of one by its operator's, which the
-     * shape then reduces), until none is left. Each round replaces one layer,
-     * since a representation may name another module's abstract type (a
-     * set's representation a map's, say). The rounds are bounded, at 8, so
-     * that a representation that names its own abstract type cannot loop for
-     * ever; past the bound, the abstract types left keep their opaque shapes *)
+    (* Replace transparent abstract types in t0 with their representations
+     * until none remain. Each round expands one layer, since one module's
+     * representation may refer to another module's abstract type (for
+     * example, a set implemented with a map). Expansion stops after 8 rounds
+     * so a self-referential representation cannot loop forever; any abstract
+     * types remaining keep opaque shapes. *)
     let transparent(t0: Type): Type =
         begin
             if representations.count isnot abstractTypes.representationCount() then
@@ -595,10 +594,9 @@ export
             end
         end
 
-    (* The shapes asked for, by type: with transparent abstract types, and
-     * without, each kept apart, so that a module compiled on its own in a
-     * whole program's process (one the program keeps importing) sees none of
-     * the program's transparent shapes *)
+    (* Cache of shapes built without expanding abstract types, kept separate
+     * from asked so a module compiled on its own within a whole-program
+     * process never observes transparent shapes from the program *)
     let opaquelyAsked = hashMap.new(:Int :Shape intEqual hash.int)
 
     let rec shapeIn(cache: hashMap.T(Int Shape) open: Bool t0: Type): Shape =

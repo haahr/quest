@@ -76,9 +76,10 @@ export
 
     let componentShape(c: shapes.Component): shapes.Shape = maybe.unwrap(c.shape)
 
-    (* The kinds of the boxes, after the object's words, and the tag's suffix
-     * naming them (none without boxes): a letter a box, its second word's
-     * kind, which tells a variant's box (a) from a record's (p) *)
+    (* Append each embedded box's word kinds to words and return the tag
+     * suffix naming them (empty if boxes is empty). Each box contributes one
+     * letter for its second word's kind, distinguishing a variant box (a)
+     * from a record box (p). *)
     let withBoxes(words: vector.T(Kind) boxes: Array(shapes.Shape)): String =
         begin
             let suffix = sb.new()
@@ -131,8 +132,9 @@ export
     let recordLayout(t: model.Type struct: String boxes: Array(shapes.Shape)): Layout =
         begin
             let words = vector.new(:Kind)
-            (* The box: the payload and the dictionary; the payload's header:
-             * its descriptor; then its fields in the order of their names *)
+            (* Three pointer words precede the fields: the box's payload
+             * pointer and field-offset dictionary pointer, then the payload's
+             * type descriptor pointer; fields follow sorted by name *)
             vector.append(words pointer)
             vector.append(words pointer)
             vector.append(words pointer)
@@ -143,9 +145,9 @@ export
             if extent fields is 0 then vector.append(words scalar) end
             let suffix = withBoxes(words boxes)
             let cSize = if eq(struct "") then "" else "sizeof(QRecordVal) + " <> cSizeOf(struct extent boxes) end
-            (* Named by the struct where the unit names one (two aliases of
-             * one record type name two structs, each sized as itself), and
-             * otherwise by the type *)
+            (* Name the layout after the C struct when one is given (two
+             * aliases of the same record type produce distinct structs with
+             * their own sizeof), and fall back to the type otherwise *)
             let tag = if eq(struct "") then "record_" <> layout.typeTag(t) <> "_" <> digests.typeDigest(t) else struct end
             fixed(tag <> suffix words 16 + layout.recordBytes(t) + 16 * extent boxes cSize)
         end
@@ -190,9 +192,9 @@ export
                 end
                 suffix := "_" <> conv.int(index)
             else
-                (* Each word the kind its cases agree on; ambiguous where a
-                 * word is a pointer in one case and a scalar in another (a
-                 * case that lacks the word leaves it zero, which suits any) *)
+                (* Give each word the kind agreed on by all cases that use it,
+                 * or ambiguous if cases disagree (cases that do not use a
+                 * word leave it zero, which is valid for any kind) *)
                 let set = array of(n false)
                 for k = 0 upto {extent os.cases - 1} do
                     let ks = caseKinds(os.cases[k])

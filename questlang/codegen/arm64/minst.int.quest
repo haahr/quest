@@ -1,35 +1,39 @@
 (* Quest Self-Hosted Compiler: arm64 Machine Instructions Interface
  *
- * arm64's instructions as data (docs/arm64.md section 3.17):
- * Op, an option of the target's operations with their immediates, conditions,
- * addressing modes, and labels, and an instruction, an Op with its registers
- * (codegen/arm64/target's numbers), in an order each Op's comment gives. Only
- * the arm64 backend's code generator, which makes them, and its printer, which
- * spells them (codegen/arm64/printer), case on an Op. A label, and the unwind
- * information's directives, are instructions too, so that a function's code is
- * one sequence. *)
+ * This interface represents arm64 machine instructions as data (docs/arm64.md
+ * section 3.17). Op is a tagged union of arm64 operations carrying their
+ * immediates, conditions, addressing modes, and labels; an Inst pairs an Op
+ * with an array of register numbers (from codegen/arm64/target) in the order
+ * documented on each Op variant. Only the arm64 backend (instruction
+ * selection, code generation, peephole optimization, printing, and encoding)
+ * inspects Op values; target-independent passes such as register allocation
+ * treat them as opaque. Labels, jump-table entries, source locations, and
+ * unwind directives are also represented as instructions so that a function's
+ * code forms a single flat sequence. *)
 
 interface Minst
 export
-    (* A condition, after a comparison: for integers, signed (lt, ge, gt, le)
-     * or unsigned (lo, hs, hi, ls); after fcmp, mi, ls, gt, and ge are false
-     * when either is a NaN, and vs is true when one is *)
+    (* A condition code tested after a comparison. For integers, lt/ge/gt/le
+     * are signed and lo/hs/hi/ls are unsigned. After floating-point fcmp, mi,
+     * ls, gt, and ge are false when either operand is NaN, and vs is true
+     * when either operand is NaN. *)
     Def Cond = Option
         condEq condNe condLt condGe condGt condLe condLo condHs condHi condLs condMi condPl condVs condVc
     end
-    (* The operations of three registers: integers', and reals' *)
+    (* Three-register arithmetic, bitwise, and floating-point operations *)
     Def Arith = Option
         arithAdd arithSub arithMul arithUmulh arithSdiv arithAnd arithOrr arithEor arithLsl arithLsr arithAsr
         arithFadd arithFsub arithFmul arithFdiv
     end
-    (* How a symbol's address is found: its page and its offset in it, the
-     * page and offset of its GOT entry, or of its thread-local descriptor *)
+    (* Relocation kinds for addressing a symbol: the symbol's own page and
+     * offset, its GOT (Global Offset Table) entry for external symbols, or
+     * its Darwin thread-local variable descriptor *)
     Def Reloc = Option relocPage relocGot relocTlv end
-    (* How a load or store addresses memory from its base register: plus an
-     * immediate, the base alone, plus an immediate with the base moved there
-     * first (pre-index) or after (post-index), plus a symbol's offset in its
-     * page, or plus an index register (the instruction's last) shifted left
-     * by shift, 0 or the log of the access's width *)
+    (* Memory addressing modes relative to a base register: base plus
+     * immediate offset, base alone, pre-indexed (update base before access),
+     * post-indexed (update base after access), base plus a symbol's page
+     * offset, or base plus an index register (the instruction's last
+     * register) shifted left by shift (0 or log2 of the access width) *)
     Def Mode = Option
         modeOffset with imm: Int end
         modeBase
@@ -43,32 +47,32 @@ export
     Def Load = Option load64 loadS32 loadS8 loadU8 end
     Def Store = Option store64 store32 store8 end
 
-    (* Each Op's registers, in order, follow it *)
+    (* Each Op comment lists its register operands in order *)
     Def Op = Option
         (* d := an immediate: mov (any, written in one instruction), movz (a
          * halfword shifted), movk (d's halfword replaced; d is read too) *)
         opMovImm with imm: Int end
         opMovz with imm: Int shift: Int end
         opMovk with imm: Int shift: Int end
-        (* d := any Int, in the fewest instructions, which the printer
-         * writes: one mov when one makes it, else a mov from 0 or from ~0,
-         * whichever leaves fewer halfwords, and a movk for each other *)
+        (* d := any 64-bit integer, expanded by the printer into the fewest
+         * instructions: one mov if isMovImm holds, else a mov from 0 or ~0
+         * (whichever leaves fewer 16-bit halfwords to fill) followed by movk
+         * for each remaining halfword *)
         opMovConst with imm: Int end
-        (* d := a symbol's address plus offset: local is whether the unit
-         * defines it, else its address is in the GOT (x17 holds a large
-         * offset) *)
+        (* d := a symbol's address plus offset. When local is true, the symbol
+         * is defined in this unit and addressed directly; otherwise its
+         * address is loaded from the GOT. Large offsets use x17 as scratch. *)
         opSymbolAddress with symbol: String offset: Int local: Bool end
-        (* d (x0) := a thread-local's address, from its accessor, which
-         * clobbers x16 and lr: a call *)
+        (* d (x0) := a thread-local variable's address, obtained by calling
+         * its Darwin TLV accessor (clobbers x16 and lr) *)
         opTlvAddress with symbol: String end
         (* d, s: a register's copy, of either class *)
         opMov
         (* d, x, y *)
         opArith with arith: Arith end
-        (* d, s: d := s plus or less an immediate, add's shifted left by
-         * shift (0 or 12); s and, orr, or eor a logical immediate (a bitmask
-         * immediate.isLogical accepts); or s shifted by one (lsl, lsr, or
-         * asr) *)
+        (* d, s: integer immediate operations: add (with imm shifted left by
+         * shift, 0 or 12), sub, bitwise logic with a bitmask immediate
+         * accepted by isLogical, or shift by an immediate (lsl, lsr, asr) *)
         opAddImm with imm: Int shift: Int end
         opSubImm with imm: Int end
         opLogicImm with arith: Arith imm: Int end
@@ -83,8 +87,8 @@ export
         opCmp
         opFcmp
         opCmpImm with imm: Int end
-        (* x, y; x: where cond holds, the flags of their comparison (or x's
-         * with an immediate of 0 to 31), and otherwise the flags nzcv *)
+        (* x, y (or x with a 0..31 immediate): if cond holds, compare and set
+         * flags; otherwise set the flags to the 4-bit nzcv immediate *)
         opCcmp with nzcv: Int cond: Cond end
         opCcmpImm with imm: Int nzcv: Int cond: Cond end
         (* d: 1 if the condition holds, else 0 *)
@@ -122,16 +126,17 @@ export
         opNop
         (* A label, before the instruction that follows *)
         opLabel with label: String end
-        (* A jump table (docs/arm64.md section 3.11), after the br that
-         * reads it: its start, which is the label label, then an entry for
-         * each value, the offset of its target, the label label, from the
-         * table, as a 32-bit word, then its end, which leaves the block as
-         * the br does *)
+        (* A jump table (docs/arm64.md section 3.11), emitted immediately
+         * after the br that dispatches through it. opJumpTable marks the
+         * table's start label, each opJumpEntry holds a 32-bit offset from
+         * the table label to a target label, and opJumpTableEnd marks the
+         * end of the table and ends the block. *)
         opJumpTable with label: String end
         opJumpEntry with table: String label: String end
         opJumpTableEnd
-        (* r: the unwind information's frame address is r plus offset, or a
-         * register's saved value is at the frame address plus offset *)
+        (* r: DWARF unwind directives setting the Canonical Frame Address
+         * (CFA) to r plus offset, or recording that r is saved at CFA plus
+         * offset *)
         opCfiDefCfa with offset: Int end
         opCfiOffset with offset: Int end
         (* The line table's source position of the instructions that
@@ -168,10 +173,10 @@ export
     (* Whether one mov makes n: movz of its one nonzero halfword, movn of its
      * complement's, or orr of a logical immediate *)
     isMovImm(n: Int): Bool
-    (* How many of an Op's registers, its first, it writes *)
+    (* How many leading registers in its register array op writes *)
     results(op: Op): Int
-    (* Whether an Op only computes its results: no memory, flags, or
-     * control *)
+    (* Whether op is a pure value computation with no memory, flag, control,
+     * or partial-register effects *)
     pure(op: Op): Bool
 
     arithAdd: Arith

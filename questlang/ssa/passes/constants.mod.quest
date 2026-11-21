@@ -33,17 +33,17 @@ export
 
     let siteKey(s: Site): String = conv.int(s.function) <> " " <> conv.int(s.block) <> " " <> conv.int(s.index)
 
-    (* The symbol v is the address of plus an addend, if an opSymbol defines
-     * v *)
+    (* The opSymbol instruction that defines v (giving its symbol and offset),
+     * or none if v is not defined by opSymbol *)
     let symbolOf(defs: Defs v: Int): maybe.T(ssa.Inst) =
         if maybe.isSome(defs[v]) andif ssa.isOp(maybe.unwrap(defs[v]) ssa.opSymbol) then defs[v]
         else maybe.none() end
 
-    (* The runtime's functions that write memory but run no Quest code: those
-     * a module's initialization registers its types, functions, records'
-     * dictionaries, roots, and frame table with (collector.md section 3.8),
-     * before it binds its members, and the write barriers (section 3.5),
-     * which only note the object or the slot stored into for the collector *)
+    (* Runtime functions that write memory without running Quest code: module
+     * startup registration helpers (for types, functions, record dictionaries,
+     * GC roots, and stack frame tables; docs/collector.md section 3.8) and GC
+     * write barriers (section 3.5), which only record modified objects or
+     * slots for the collector *)
     let registrations = array of
         "quest_register_abstract_type" "quest_register_funcs" "quest_register_record_dict" "quest_register_roots"
         "quest_register_frames" "quest_barrier" "quest_barrier_slot"
@@ -67,15 +67,16 @@ export
         seen: Array(Bool)
     end
 
-    (* Whether running instruction i of function fi could read the global:
-     * a load of it, or a call of code that could. A call can run any Quest
-     * code but a call of a function of the unit's own (whose instructions are
-     * looked at in turn), of a runtime function that writes no memory
-     * (runtimeFunctions.callWrites: Quest code is taken to write memory), of
-     * one of the registrations, or, from a module's initialization, of
-     * another's: modules import one another in no cycle (the build engine's
-     * detectModuleCycle), so the modules a module's initialization
-     * initializes reach none of its code *)
+    (* True if executing instruction i of function fi could read the candidate
+     * global, either directly via a load or through a call. Indirect calls and
+     * recursive calls to the storing function are conservatively treated as
+     * reading it. Calls to other functions in the same unit are inspected
+     * recursively, while calls from one module initializer to another cannot
+     * reach the storing module's code because module imports are acyclic
+     * (enforced by detectModuleCycle). External runtime calls are safe only if
+     * they are listed in registrations or do not write memory
+     * (runtimeFunctions.callWrites assumes any call that can run Quest code
+     * writes memory). *)
     let rec reads(q: Query fi: Int i: ssa.Inst): Bool =
         if ssa.isOp(i ssa.opLoad) then
             let a = symbolOf(q.allDefs[fi] i.args[0])
@@ -96,8 +97,9 @@ export
             end
         else false end
 
-    (* Whether running function fi could read the global; false if it has
-     * been looked at already, its answer then part of the first look's *)
+    (* True if executing function fi could read the candidate global. Already
+     * visited functions return false so cycles terminate; their result is
+     * already included in the enclosing traversal. *)
     and functionReads(q: Query fi: Int): Bool =
         if q.seen[fi] then false
         else
@@ -118,10 +120,11 @@ export
             any
         end
 
-    (* Whether nothing that could read the global (reads) runs before its
-     * store at site s, in the function f of control-flow graph g: on no path
-     * from f's entry to s, and s in no loop, which could run s's block after
-     * s, before s again *)
+    (* True if no instruction that could read the global (according to reads)
+     * can run before the store at site s in function f (with control-flow
+     * graph g). The backward walk checks instructions before s in its block
+     * and all reachable predecessor blocks, and rejects s if its block can
+     * reach itself in a loop. *)
     let first(q: Query f: Function g: cfg.Graph s: Site): Bool =
         begin
             let blockReads(b: Int before: Int): Bool =
@@ -181,18 +184,17 @@ export
             i
         end
 
-    (* The type a load of a global holding w must have to be replaced by
-     * w *)
+    (* True if a load of type t can be replaced directly by the static word w *)
     let typeFits(w: ssa.Word t: ssa.Type): Bool =
         case w
             when wordInt then stringOp.equal(ssa.typeName(t) "int")
             when wordSymbol then stringOp.equal(ssa.typeName(t) "ptr")
         end
 
-    (* Whether the candidate c, the global at symbol, is constant: stored
-     * once, with nothing that could read it first (first), and loaded only
-     * as the type of its value; graphs are the control-flow graphs of u's
-     * functions, made when first needed *)
+    (* True if candidate c (the global named symbol) is constant: not ruled
+     * out, stored once, loaded only with a type matching its stored word, and
+     * preceded by nothing that could read it (checked by first). Control-flow
+     * graphs in graphs are built lazily on first use. *)
     let constant(u: ssa.Unit allDefs: Array(Defs) byName: hashMap.T(String Int) graphs: Array(maybe.T(cfg.Graph))
         symbol: String c: Candidate): Bool =
         begin
@@ -233,8 +235,9 @@ export
             end
             let nFunctions = vector.length(u.functions)
             let allDefs = array of(nFunctions array of :maybe.T(ssa.Inst) end)
-            (* Each use of a candidate's address: a whole word's load or store
-             * at it, or anything else, which rules it out *)
+            (* Inspect every use of each candidate's address: record 8-byte
+             * loads and constant stores at offset 0, and rule out any other
+             * use *)
             for fi = 0 upto {nFunctions - 1} do
                 let f = vector.get(u.functions fi)
                 let defs = ssa.definitions(f)
@@ -278,8 +281,8 @@ export
                     end
                 end
             end
-            (* The constant ones: their loads replaced, their stores dropped,
-             * and their data given their values *)
+            (* Promote each constant global by replacing its loads, marking its
+             * store for removal, and making its static datum read-only *)
             let graphs = array of(nFunctions maybe.none(:cfg.Graph))
             let byName = hashMap.new(:String :Int stringOp.equal hash.string)
             for fi = 0 upto {nFunctions - 1} do
@@ -301,8 +304,8 @@ export
                     vector.set(u.data c.datum ssa.words(symbol false false array of c.value end))
                 end
             end
-            (* The stores dropped, each block's together, so that the sites
-             * of the others in it stay right until then *)
+            (* Remove all dropped stores in a final pass per block so that
+             * earlier instruction indices in Site records stay valid *)
             if not(hashMap.empty(dropped)) then
                 for fi = 0 upto {nFunctions - 1} do
                     let f = vector.get(u.functions fi)

@@ -1,10 +1,11 @@
 (* Quest Self-Hosted Compiler: Auto Values Interface
  *
- * The construct family of bootstrap/python/quest/typechecker/auto_values.py:
- * auto values (Cardelli's dynamic types, The Quest Language and System section
- * 4.6), inspect, and the closedness check on types used at run time. Each
- * elaboration takes an expression of its form. docs/type-system.md §6.12
- * gives the rules. *)
+ * This interface provides type-checking for auto values (Cardelli's dynamic
+ * types, The Quest Language and System section 4.6), inspect expressions, and
+ * the closedness check on types used at run time, matching
+ * bootstrap/python/quest/typechecker/auto_values.py. Each elaboration function
+ * takes an expression of its form. See docs/type-system.md §6.12 for the
+ * rules. *)
 
 interface AutoValues
 import
@@ -15,14 +16,14 @@ import
     questlang/typechecker/checker : questlang/typechecker/Checker
     util/maybe : util/Maybe
 export
-    (* inspect on an auto value: its branches are checked against the expected
-     * type if there is one, else joined *)
+    (* Elaborates an inspect expression on an auto value, checking its branches
+     * against expected if one is given and joining their types otherwise *)
     elaborateInspect(c: checker.T expr: ast.Expr expected: maybe.T(model.Type) e: env.T loopDepth: Int): typedAst.Expr
     (* Checks a type that is used at run time: it may not mention a package
      * value's abstract type *)
     checkClosedType(t: model.Type what: String offset: Int): Ok
-    (* auto [let A [HasKind] =] :W with Binding end, against an expected Auto
-     * type, which it needs *)
+    (* Elaborates an auto value (auto [let A [HasKind] =] :W with Binding end),
+     * which requires an expected Auto type *)
     elaborateAuto(c: checker.T expr: ast.Expr expected: maybe.T(model.Type) e: env.T loopDepth: Int): typedAst.Expr
 
     (* Checks with check (the closedness check) the type argument of a function

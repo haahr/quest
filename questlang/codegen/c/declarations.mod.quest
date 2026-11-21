@@ -140,8 +140,9 @@ export
                     hashMap.insert(names name true)
                     vector.append(result tuple let name = name let type = t end)
                 end
-            (* Shapes, not types as written: equal types share one shape, whose
-             * structure declares the struct, and records are named from it *)
+            (* Walk canonical shapes rather than types as written: equal types
+             * share one shape, whose structure declares the struct and gives
+             * records their names *)
             let rec visitShape(ms: maybe.T(Shape)): Ok =
                 if maybe.isSome(ms)
                     andif not(hashMap.contains(visitedShapes maybe.unwrap(ms).id)) then
@@ -325,8 +326,8 @@ export
             lines
         end
 
-    (* The definitions of the structs of the tuple, record, and option types
-     * aggregates names, each by its name, once.
+    (* Emits struct definitions for the tuple, record, and option types in
+     * aggregates, defining each struct name once.
      *
      * Each is guarded by #ifndef, since a unit's C includes the headers of
      * the interfaces it imports, which may define the same structs. A
@@ -492,8 +493,8 @@ export
             sort.sorted(vector.toArray(pairs) compare)
         end
 
-    (* The structs of the record types' offset tables (evidence
-     * dictionaries), and the static tables the unit's code uses.
+    (* Emits the struct definitions for record offset tables (evidence
+     * dictionaries) and the static tables the unit's code uses.
      *
      * A record value (QRecordVal) is a pointer to the struct it was made as
      * and a pointer to a table giving, for each field of the type it is seen
@@ -576,8 +577,8 @@ export
             lines
         end
 
-    (* The checks and tables that let a tuple or a variant be used at a
-     * supertype without being copied, for the (supertype, subtype) pairs the
+    (* Emits the checks and tables that let a tuple or variant be used at a
+     * supertype without copying, for the (supertype, subtype) pairs the
      * unit's code converts between.
      *
      * Where a value is used at a supertype of its type, as when it is passed
@@ -587,7 +588,7 @@ export
      * the conversion; convert in codegen/c/printer prints it. This section
      * supports two kinds of plan.
      *
-     * Tuples (cast). A tuple is a pointer to a struct of its components, and
+     * Tuples (cast): A tuple is a pointer to a struct of its components, and
      * a supertype of a tuple type has a prefix of its components: Tuple :Int
      * :Int end can be used as Tuple :Int end. Rather than copy the tuple, a
      * cast plan reuses the pointer as a pointer to the supertype's struct,
@@ -600,7 +601,7 @@ export
      *     static_assert(offsetof(QTuple_Int_Int, _0)
      *                   == offsetof(QTuple_Int, _0), ...);
      *
-     * Variants (variant_tags). A variant's tag is the index of its case in
+     * Variants (variant_tags): A variant's tag is the index of its case in
      * its type, the cases numbered in the order of their names, so a
      * supertype with more cases may number them differently, and the tag
      * must be translated. The table for a pair is indexed by the subtype's
@@ -943,8 +944,8 @@ export
                 end
 
                 add(lines "/* Static runtime type descriptors for compound and opaque types */")
-                (* By kind, as the bootstrap prints them; variants and options
-                 * last, together *)
+                (* Emit descriptors grouped by kind in the bootstrap's order,
+                 * with variants and options last *)
                 let order = array of "opaque" "stored" "hole" "fun" "auto" "exception" "array" "record" "tuple" "variant"
                     "option" end
                 for k = 0 upto {extent order - 1} do

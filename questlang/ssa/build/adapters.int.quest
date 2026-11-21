@@ -1,26 +1,27 @@
 (* Quest Self-Hosted Compiler: The SSA Builder's Adapters Interface
  *
- * The unit's functions that are not its IR functions, which the builder
- * makes from types and interfaces rather than from code:
+ * Builds the unit's synthesized functions—those generated from types and
+ * interfaces rather than lowered from IR function bodies:
  *
- * - a module file's exported functions, C entry points that call its
- *   members' closures;
- * - for each function type the unit describes at run time, the three
- *   functions its descriptor points to, by which the runtime's quest_convert
- *   changes a closure's type, as dynamic.be and a field stored at a subtype
- *   need (docs/c-representation.md section 6.4.4, "Functions"). A closure's
- *   type fixes its C signature (how each argument is passed), so a closure
- *   used at another type must be wrapped. The adapter does that: it returns
- *   a new closure of this type whose code is the thunk and whose
- *   environment holds the original and both types' descriptors. The thunk,
- *   called at this type's signature, converts each argument to the
- *   original's type and calls it, at this signature directly when the two
- *   signatures agree, else through the original type's invoker; it then
- *   converts the result back. The invoker calls a closure of this type
- *   with its arguments as uniform QVal words, and returns the result as
- *   one, which lets a thunk call a closure whose signature it does not know.
+ * - A module file's exported C entry points, which let other compilation units
+ *   call its exported function and polymorphic members directly.
+ * - For each function type that has a run-time type descriptor, the three
+ *   functions the descriptor points to so quest_convert can change a closure's
+ *   type at run time (for dynamic.be and values stored at a subtype; see
+ *   docs/c-representation.md section 6.4.4, "Functions").
  *
- * The C backend writes the same functions in C (codegen/c/declarations). *)
+ * A closure's static type fixes its C calling signature (how each argument and
+ * result is passed), so a closure used at a different type must be wrapped.
+ * The adapter allocates a new closure of the target type whose code is the
+ * thunk and whose environment holds the original closure and both type
+ * descriptors. The thunk, called at the target signature, converts each
+ * argument to the original type, calls the original closure (directly when the
+ * two signatures agree, or through the original type's invoker otherwise), and
+ * converts the result back. The invoker calls a closure of this type given an
+ * array of uniform 64-bit QVal words and returns a QVal word, allowing a thunk
+ * to call a closure whose C signature it does not know statically.
+ *
+ * The C backend emits the same functions in C (codegen/c/declarations). *)
 
 interface Adapters
 import
@@ -36,19 +37,21 @@ export
     Def Function = ssa.Function
 
     returnValues(fn: vals.Fn vs: Array(Int)): Ok
-    (* The SSA types of the parameters of a C function of a function type's
-     * signature, after lead pointers, and where its 16-byte composites start *)
+    (* A C function's SSA parameter layout: parameter types (after leading
+     * pointer parameters), the starting indices of 16-byte two-word composite
+     * arguments (pairs), and the indices of single-byte arguments (narrow) *)
     Def Params = Tuple types: vector.T(ssa.Type) pairs: vector.T(Int) narrow: vector.T(Int) end
     pointers(n: Int): Params
     newFunction(u: vals.UnitBuilder symbol: String exported: Bool s: Params results: Array(vals.Part)): vals.Fn
     finished(fn: vals.Fn): Function
-    (* A module file's exported function for a member of its interface that is
-     * a function or a polymorphic value (qv_<module>_<member>): it calls the
-     * member's closure, at the interface's C signature
-     * (codegen/c/declarations' moduleFunctionSignature) *)
+    (* Builds a module file's exported C entry point (qv_<module>_<member>) for
+     * an interface member that is a function or polymorphic value, or returns
+     * none otherwise. The entry point uses the interface's C signature
+     * (matching codegen/c/declarations' moduleFunctionSignature) and invokes
+     * the member's underlying function or closure. *)
     exportedFunction(u: vals.UnitBuilder clean: String name: String v: Variable): maybe.T(Function)
-    (* The adapter of a function type (quest_adapt_<tag>), the thunk its
-     * closures call (quest_thunk_<tag>), and its invoker (quest_invoke_<tag>),
-     * as codegen/c/declarations' emitFunTypeAdapters writes them in C *)
+    (* Builds the thunk (quest_thunk_<tag>), adapter (quest_adapt_<tag>), and
+     * invoker (quest_invoke_<tag>) for a function type, matching the C
+     * functions emitted by codegen/c/declarations' emitFunTypeAdapters *)
     funTypeAdapters(u: vals.UnitBuilder tag: String funType: Type): Array(Function)
 end

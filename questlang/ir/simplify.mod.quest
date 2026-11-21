@@ -29,9 +29,9 @@ export
     let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
-    (* A setting below, or the value QUEST_INLINE gives it, a list of
-     * name=value separated by commas (rounds=3,size=60), for measuring
-     * others (docs/inlining.md section 1) *)
+    (* Returns default, or the integer override for name in QUEST_INLINE (a
+     * comma-separated list such as rounds=3,size=60; docs/inlining.md
+     * section 1) *)
     let setting(name: String default: Int): Int =
         begin
             let var value = default
@@ -49,11 +49,11 @@ export
      * what the last one made simpler, and inlines into what it inlined *)
     let maxRounds = setting("rounds" 6)
 
-    (* Inlining (docs/ir.md section 8.6): a function no larger than
-     * inlineSize, less its bonuses for the call, is inlined; one called once,
-     * whatever its size. Calls are inlined until the unit has grown by
-     * growthPercent of its size before the first round (three quarters), or by
-     * minimumBudget, if more. *)
+    (* Inlining heuristics (docs/ir.md section 8.6): a function is inlined if
+     * it is called once (regardless of size) or if its size minus call-site
+     * bonuses is at most inlineSize. Small-function inlining stops once the
+     * unit has grown by growthPercent (75%) of its initial size, or by
+     * minimumBudget if that is larger. *)
     let inlineSize = setting("size" 30)
     let minimumBudget = setting("budget" 1000)
     let growthPercent = setting("growth" 75)
@@ -77,8 +77,9 @@ export
         (* The operation each immutable variable is bound to by a let, by id,
          * for those met so far *)
         defs: hashMap.T(Int Op)
-        (* The variable each copy removed stands for, by id, and the constant
-         * each constant's let removed does *)
+        (* Maps eliminated copy-binding variable ids to their source variables,
+         * and eliminated constant-binding variable ids to their constant
+         * atoms *)
         renames: hashMap.T(Int Variable)
         consts: hashMap.T(Int Atom)
         (* The tag each immutable variable is known to have, by id, in the
@@ -688,13 +689,12 @@ export
             found
         end
 
-    (* What a copy of a module's function, inlined outside the module, reads in
-     * place of the variables of the module's it names (docs/ir.md section
-     * 8.6): each one's member, if each is a member, immutable, and not a
-     * function (whose calls would no longer be known), and of an exception's
-     * type unless the unit's abstract types are transparent (as a whole
-     * program's are), so that the member's type outside the module is its own
-     * inside it *)
+    (* Builds the replacement module-member reads needed to inline a module's
+     * function outside its defining module (docs/ir.md section 8.6). Succeeds
+     * only if every free variable is an immutable non-function member (so
+     * calls do not lose known callees) whose type has the same representation
+     * outside the module (either an exception type, or any type when abstract
+     * types are transparent in whole-program mode). *)
     let memberReads(free: Array(Variable) ref: nodes.ModuleRef): maybe.T(Array(inline.Read)) =
         case ref
             when refModule with r then
@@ -722,10 +722,11 @@ export
             when refImport then maybe.none()
         end
 
-    (* What inlining a function of a size grows the unit by: its size less the
-     * call's, which the copy replaces. Counting the whole size would spend
-     * the bound on copies no larger than their calls (such as maybe.none's,
-     * a constant), leaving larger calls met later uninlined. *)
+    (* Returns the net size growth from inlining a function of the given size,
+     * subtracting the call it replaces. Counting the full size would exhaust
+     * the growth budget on trivial copies no larger than a call (such as
+     * maybe.none), preventing larger calls later in the unit from being
+     * inlined. *)
     let net(size: Int): Int = if size > inline.callSize then size - inline.callSize else 0 end
 
     (* A call to inline: its function, the variables passed by address for its
@@ -753,17 +754,14 @@ export
             else maybe.none() end
         end
 
-    (* What a copy of f at the call reads for the variables of f's module that
-     * f names, if the call is at f's own type; none if it is not. A member
-     * called as a module's (from outside its module) is called at its
-     * interface's type, which may hold the module's abstract types, laid out
-     * otherwise outside it, and may name variables of its module's, out of
-     * the caller's scope: such a call is inlined only at the function's own
-     * type (no interface type, or one of f's shape, or, in a whole program,
-     * where abstract types are transparent, one whose calls are represented
-     * as f's own are), and of a function that is closed or names only
-     * variables of its module's that the copy can read as members
-     * (memberReads) *)
+    (* Returns the module-member reads needed to inline f at call x, or none if
+     * the call cannot be inlined. A call to a module member from outside its
+     * module uses the interface's type, which may hide abstract types with
+     * different layouts, and f may reference module-local variables out of the
+     * caller's scope. Cross-module calls are therefore allowed only when the
+     * call's type matches f's representation (same shape, or same calling
+     * representation when abstract types are transparent) and f's free
+     * variables can all be read as module members via memberReads. *)
     let readsAtItsType(s: Simplifier x: nodes.OpCall f: nodes.Function): maybe.T(Array(inline.Read)) =
         if maybe.isSome(x.callee) then
             maybe.some(array of :inline.Read end)
@@ -773,10 +771,10 @@ export
                 orif {shapes.transparentAbstractTypes()
                     andif eq(genericLayout.signatureRepresentation(maybe.unwrap(x.calleeType))
                         genericLayout.signatureRepresentation(f.v.type))}
-            (* f's free variables as its body is now, not at the round's
-             * start: a call inlined into f earlier in the round (fail's, in
-             * f(): Int = fail(:Int)) may have brought in variables of its
-             * module's (error's) that the analysis does not list *)
+            (* Recompute f's free variables from its current body, because an
+             * earlier inline into f during this round (such as fail into
+             * f(): Int = fail(:Int)) may have pulled in module variables
+             * (such as error) that the round's initial analysis did not see *)
             if not(sameShape) then
                 maybe.none()
             else
@@ -786,15 +784,14 @@ export
             end
         end
 
-    (* Whether f may be inlined (or specialized) at the call, made in a
-     * function of the component within: not in its own component, not
-     * recursive unless it has static parameters and the call passes a
-     * function the round knows for one, with an argument for each type and
-     * value parameter, no bounded type parameter (whose values are seen at
-     * its bound, which a type argument would change: an option's ordinal
-     * counts the bound's cases), and no external call at its type parameters
-     * (which passes their values as QVal words, which a type argument's may
-     * not be) *)
+    (* Returns whether f is eligible for inlining or specialization at call x
+     * inside component within. Rejects calls within f's own strongly connected
+     * component, recursive functions unless they have static parameters and
+     * this call passes a known function for at least one, arity mismatches,
+     * bounded type parameters (substituting a subtype could change layout or
+     * option ordinals), and polymorphic functions that make polymorphic
+     * external calls (which expect boxed QVal words rather than concrete
+     * types). *)
     let eligible(s: Simplifier x: nodes.OpCall f: nodes.Function within: maybe.T(Int)): Bool =
         begin
             let component = hashMap.find(s.analysis.components f.v.id)
@@ -828,13 +825,13 @@ export
             fits
         end
 
-    (* Whether to inline a call, made in a function of the component within
-     * (none, outside functions): one of a function the round knows, at its
-     * own type, eligible, with a variable in scope for each var or out
-     * parameter, called once or small enough. A function recursive through
-     * itself alone is specialized to the call instead, when an argument for
-     * one of its static parameters is a function the round knows, so that
-     * its calls in the copy are known *)
+    (* Decides whether to inline or specialize call x (inside component within,
+     * or none outside functions) and returns the inlining Choice if so.
+     * Requires a known, eligible callee at a compatible type, an in-scope
+     * variable for every var or out parameter, and either a single use or a
+     * size within threshold. A self-recursive function with a known function
+     * passed to a static parameter is specialized instead of inlined so calls
+     * to that parameter become direct in the specialized copy. *)
     let inlining(s: Simplifier x: nodes.OpCall within: maybe.T(Int)): maybe.T(Choice) =
         begin
             let callee = calleeOf(s x)
@@ -847,8 +844,8 @@ export
                 let recursive = hashMap.find(s.analysis.recursive f.v.id)
                 let byRef = array of(extent f.params maybe.none(:Variable))
                 let var fits = maybe.isSome(reads) andif eligible(s x f within)
-                (* Each var or out parameter's variable, and what the
-                 * arguments save in the copy *)
+                (* Resolve var/out parameter addresses and sum call-site
+                 * bonuses *)
                 let var bonus = if extent x.typeArgs > 0 then polymorphicBonus else 0 end
                 for i = 0 upto {extent f.params - 1} do
                     if fits then
@@ -884,12 +881,12 @@ export
             end
         end
 
-    (* A statement's call, and the variable a let binds its result to. A type
-     * application whose instance is not a function (maybe.none(:Int)) runs
-     * the function applied, as a call of it without arguments does
-     * (docs/ir.md section 8.1), and is inlined as one: its function, if
-     * inlining finds one, takes no value parameters. One whose instance is a
-     * function makes a closure, and is not a call. *)
+    (* Extracts the call from an operation or statement (and its result
+     * variable in intoOf). A type application whose result is not a function
+     * (such as maybe.none(:Int)) invokes a zero-argument polymorphic function
+     * immediately (docs/ir.md section 8.1), so it is treated and inlined as a
+     * call. A type application whose result is a function produces a closure
+     * instead and is not treated as a call. *)
     let opCallOf(o: Op result: maybe.T(Variable)): maybe.T(nodes.OpCall) =
         case o
             when opCall with c then maybe.some(c)
@@ -966,11 +963,11 @@ export
             end
         end
 
-    (* What a join point's statement does, as straight-line statements, if its
-     * body never jumps to it (its body), or only by its last statement (its
-     * body, its parameters bound to the jump's arguments, and its
-     * continuation), or its continuation only returns (its body, whose jumps
-     * return what the continuation would) *)
+    (* Flattens a join point into straight-line statements when possible.
+     * Succeeds in three cases: the body never jumps to the join (return the
+     * body), the continuation is a single return (rewrite every jump into a
+     * return), or the only jump is the body's last statement (bind the join
+     * parameters and append the continuation). *)
     let straightened(x: nodes.StmtJoin): maybe.T(vector.T(Stmt)) =
         begin
             let n = jumpsTo(x.body x.label)
@@ -1229,10 +1226,10 @@ export
             b.statements := kept
         end
 
-    (* Removes from b, and the bodies it holds, each funs statement that binds
-     * no function. Contify leaves one when it makes a group's last function a
-     * loop, for the next round to remove (see body); after a last round that
-     * contified, there is no next round *)
+    (* Removes empty funs statements from b and its nested bodies. Contify
+     * leaves an empty funs statement behind when it turns a group's last
+     * function into a loop, expecting the next round to drop it; this cleans
+     * up after the final round when no next round runs. *)
     let rec dropEmptyFuns(b: Body): Ok =
         begin
             let kept = vector.new(:Stmt)

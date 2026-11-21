@@ -1,22 +1,23 @@
 (* Quest Self-Hosted Compiler: The WebAssembly Printer Interface
  *
- * A module (wasm/model) in the text format, which wasm-tools parse turns
- * into exactly the bytes wasm/encode writes (docs/wasm.md section 8.1): the
- * form of the wasm backend's goldens, and what a person reads.
- * Instructions are written flat, one to a line, indented by the structured
- * instructions they are in; an index is written as its $name when it has
- * one, a branch's depth as its label's, and every other as a number. A
- * function's type is always written by index, with its parameters and
- * results after it, so that no type is made implicitly. *)
+ * Prints a WebAssembly module (wasm/model) in the text format (WAT) such that
+ * wasm-tools parse produces byte-for-byte the same binary as wasm/encode
+ * (docs/wasm.md section 8.1). This text form is used both for the wasm
+ * backend's golden tests and for human inspection. Instructions are printed
+ * flat, one per line, indented by nesting depth. Named items are printed as
+ * $name (and branch targets as their target block's $label when unshadowed),
+ * with unnamed items printed as numeric indices. Every function writes an
+ * explicit (type ...) reference alongside its parameters and results so that
+ * wasm-tools never synthesizes an implicit function type. *)
 
 interface Printer
 import
     questlang/wasm/model : questlang/wasm/Model
 export
-    (* The module's text, ending in a newline. Raises model.malformed for
-     * what the text cannot say: a function whose type is not a function
-     * type, a branch deeper than the blocks around it, an end with no block
-     * to end. *)
+    (* Prints m in WebAssembly text format, ending in a newline. Raises
+     * model.malformed when m cannot be printed, such as when a function's type
+     * is not a function type, a branch depth exceeds the enclosing blocks, or
+     * block starts and ends do not match. *)
     print(m: model.Module): String
 
     (* A value type's text: i64, eqref, (ref $t), (ref null 3) *)

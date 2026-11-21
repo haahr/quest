@@ -1,29 +1,29 @@
 (* Quest Self-Hosted Compiler: The Jupyter Kernel's Protocol Interface
  *
- * The driver's kernel mode, through which tools/jupyter's kernel runs a
- * session of the REPL (driver/repl): docs/jupyter-kernel.md section 2. A
- * request or a record is a JSON object on a line of its own, its strings bytes
- * (each above 126 escaped as \u00XX). Standard output and error are the
- * program's, flushed before each record so that what the program wrote is in
- * its pipe ahead of the record. *)
+ * Implements the driver's kernel mode, through which tools/jupyter drives a
+ * REPL session (driver/repl; see docs/jupyter-kernel.md section 2). Each
+ * request and response record is a single-line JSON object whose strings encode
+ * raw bytes (escaping bytes above 126 as \u00XX). Standard output and error
+ * belong to the running program and are flushed before each record so program
+ * output reaches its pipe ahead of the protocol record. *)
 
 interface Kernel
 import
     questlang/driver/repl : questlang/driver/Repl
 export
-    (* Kernel mode (docs/jupyter-kernel.md section 2): reads requests, a JSON
-     * object a line, from descriptor 3, and writes their records to descriptor
-     * 4, until descriptor 3 ends; the exit status *)
+    (* Runs kernel mode (docs/jupyter-kernel.md section 2), reading one JSON
+     * request per line from file descriptor 3 and writing response records to
+     * file descriptor 4 until descriptor 3 reaches EOF. Returns the exit
+     * status. *)
     runKernel(r: repl.T): Int
 
-    (* A host's session (docs/wasm.md section 6.1), when QUEST_HOST_SESSION is
-     * set: the host calls request for each request, rather than the driver
-     * reading them in a loop or the REPL reading lines. serving holds r for
-     * those calls and says whether it did; the driver then returns to the host
-     * without exiting. *)
+    (* Registers r for a host-driven session when QUEST_HOST_SESSION is set
+     * (docs/wasm.md section 6.1) and returns whether it did so. In that mode
+     * the driver returns to the host without exiting, and the host invokes
+     * request() for each request instead of the driver running a read loop. *)
     serving(r: repl.T): Bool
-    (* Answers one request, a line the host makes the next read of descriptor 3
-     * give, writing its records to descriptor 4; 1 if there was a request, 0 if
-     * descriptor 3 was empty or no session is held *)
+    (* Handles a single request staged by the host on file descriptor 3,
+     * writing response records to file descriptor 4. Returns 1 if a request
+     * was read, or 0 if descriptor 3 was empty or no session is registered. *)
     request(): Int
 end

@@ -13,12 +13,12 @@ export
      * may have *)
     let most = 2
 
-    (* Whether an instruction can run whether or not its arm is taken: it
-     * writes nothing, cannot trap, and reads only what is the same before
-     * the branch as in its arm. That is arithmetic but division (whose
-     * divisor the builder tests first), comparisons, conversions, constants,
-     * and a load of static data at a symbol (a module's global), at most 2
-     * of them an arm *)
+    (* Whether an instruction can safely run speculatively before the branch:
+     * it writes nothing, cannot trap, and reads only values unaffected by the
+     * branch. This covers pure arithmetic except integer division and
+     * remainder (whose divisor the builder guards with a branch),
+     * comparisons, conversions, constants, and loads of static symbol data
+     * such as module globals. *)
     let speculable(defs: Array(maybe.T(ssa.Inst)) i: ssa.Inst): Bool =
         case i.op
             when opConst, opRealConst, opSymbol, opNull, opAdd, opSub, opMul, opMulHiU, opAnd, opOr, opXor, opShl,
@@ -35,10 +35,10 @@ export
     (* An arm of a branch: where it goes, and the instructions on its way *)
     Let Arm = Tuple target: ssa.Target insts: Array(ssa.Inst) end
 
-    (* Where a branch's arm t goes: t's block's own target, when that block
-     * has no parameters, a few instructions that can run before the branch,
-     * only jumps on, and is reached only from the branch (preds); otherwise
-     * t itself *)
+    (* Follows branch arm t through its block when that block has a single
+     * predecessor (preds), no parameters, at most two speculable
+     * instructions, and ends in an unconditional jump; otherwise returns t
+     * with no hoisted instructions *)
     let through(f: Function defs: Array(maybe.T(ssa.Inst)) preds: Array(Array(Int)) t: ssa.Target): Arm =
         begin
             let blk = ssa.block(f t.block)
@@ -79,9 +79,9 @@ export
             words andif {selects <= most}
         end
 
-    (* Block b's branch on cond made a jump to the arms' block: the arms'
-     * instructions moved into b, then a select for each argument they pass
-     * differently *)
+    (* Rewrites block b's branch on cond into a jump to the arms' shared
+     * target, hoisting both arms' instructions into b and inserting a select
+     * for each argument where yes and no differ *)
     let convert(f: Function b: Int cond: Int yes: Arm no: Arm): Ok =
         begin
             let blk = ssa.block(f b)
@@ -103,14 +103,15 @@ export
             blk.term := option termJump of ssa.Terminator with let target = ssa.target(to.block args) end
         end
 
-    (* The graph is computed once, and is stale after the first conversion;
-     * it is still safe for through's test that an arm has one predecessor. A
-     * conversion rewrites only its own block's terminator: its arms lose
-     * their one predecessor (and so are no later block's arms, nor
-     * converted, ending in jumps), and its arms' target gains the block and
-     * loses the arms, from two or more. So a block g says has one
-     * predecessor still has at most one, and the staleness can only miss a
-     * conversion (a target left with one), never make a wrong one *)
+    (* The control-flow graph g is computed once and becomes stale after the
+     * first conversion, but it remains safe for through's single-predecessor
+     * test. Each conversion rewrites only its own block's terminator: its
+     * arms lose their sole predecessor (so no later block uses them as arms,
+     * and they end in jumps rather than branches), while their join target
+     * replaces two arm predecessors with the branch block (net decrease).
+     * Thus any block g reports as having one predecessor still has at most
+     * one, so staleness can only miss a follow-on conversion, never make an
+     * unsound one. *)
     let selectFunction(f: Function): Ok =
         begin
             let g = cfg.graph(f)

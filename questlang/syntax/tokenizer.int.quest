@@ -1,9 +1,10 @@
 (* Quest Self-Hosted Compiler: Lexical Analyzer Interface
  *
- * Splits a source file's text into tokens (tokens.Token: a kind, the lexeme,
- * the literal's value, and the span of characters it covers) for the parser,
- * skipping whitespace and nested (* ... *) comments. Callers usually take the
- * whole file at once with tokenizeAll and hand the vector to the parser.
+ * The tokenizer splits a source file's text into tokens (tokens.Token: a kind,
+ * the lexeme, the literal's value, and the span of characters it covers) for
+ * the parser, skipping whitespace and nested (* ... *) comments. Callers
+ * usually take the whole file at once with tokenizeAll and hand the vector to
+ * the parser.
  *
  * Errors: malformed input (an unterminated string, an unknown escape, an
  * out-of-range integer, an unexpected character) is reported to the
@@ -12,7 +13,7 @@
  * unexpected character is skipped. The tokenizer does not raise; the caller
  * decides from the bag whether to stop. The bootstrap counterpart,
  * bootstrap/python/quest/syntax/tokenizer.py, instead raises TokenizerError
- * at the first error. docs/syntax.md §2 describes the lexical rules *)
+ * at the first error. docs/syntax.md §2 describes the lexical rules. *)
 
 interface Tokenizer
 import
@@ -40,13 +41,13 @@ export
     (* The keywords, as they are spelled (the Jupyter kernel's completions) *)
     keywordNames(): Array(String)
 
-    (* The tokens as the tokenize phase's golden output prints them, a line
-     * each, with no final newline:
+    (* Formats tokensList in the tokenize phase's golden-output format, one
+     * token per line with no trailing newline:
      *
      *     <line>:<col>\t<KIND_NAME>\t<lexeme>
      *
-     * and <line>:<col>\tEOF for the end. With showValues, a literal's value
-     * follows as \t(value=...), written as Python's repr writes it (-3 for
-     * ~3), as the bootstrap's dump does. *)
+     * and <line>:<col>\tEOF at the end. When showValues is true, a literal's
+     * value follows as \t(value=...), formatted like Python's repr (-3 for
+     * ~3) to match the bootstrap's dump. *)
     formatDump(tokensList: vector.T(tokens.Token) sm: location.SourceMap showValues: Bool): String
 end

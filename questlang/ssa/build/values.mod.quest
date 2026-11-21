@@ -111,8 +111,9 @@ export
             vector.toArray(all)
         end
 
-    (* The parts of a variable's value: a boxed variable (a record or a variant
-     * the represent pass holds in its box) holds the box's pointer *)
+    (* The parts of a variable's value: a boxed record or variant holds its box
+     * pointer, an unboxed tuple holds its components' slot parts, and other
+     * variables hold parts(v.type) *)
     let varParts(v: Variable): Array(Part) =
         if v.boxed then slotParts(v.type) elsif v.unboxed then unboxedParts(v.type) else parts(v.type) end
 
@@ -172,7 +173,7 @@ export
     (* The let rec being built: the variables it binds, by id, and the
      * captures of them made so far. A closure of a let rec captures
      * variables that the let rec has not bound yet (its own, or a sibling's),
-     * so the closure's words for them are stored after the body *)
+     * so the closure's words for them are stored after the body. *)
     Def Deferred = Tuple vars: hashMap.T(Int Bool) captures: vector.T(DeferredCapture) end
 
     (* How a variable of the function being built is held: as SSA values (an
@@ -204,7 +205,7 @@ export
          * parameters) each of the join's parameters takes. A join point is
          * the IR's sJoin: a labelled continuation that a jump in its body
          * enters with arguments, like a local function called only in tail
-         * position *)
+         * position. *)
         joins: hashMap.T(String Int)
         joinParts: hashMap.T(String Array(Int))
         (* The blocks of each loop, by its label *)
@@ -243,8 +244,9 @@ export
             hashMap.find(u.codeNames f.id)
         end
 
-    (* The symbol of global v; the first time, also its zeroed storage in the
-     * unit's static data, and its root entry if it may hold a pointer *)
+    (* Returns the symbol for global variable v. On first use, also allocates
+     * its zeroed static storage and adds a GC root entry if it may hold a
+     * pointer. *)
     let globalSymbol(u: UnitBuilder v: Variable): String =
         begin
             if not(hashMap.contains(u.globalSymbols v.id)) then
@@ -265,7 +267,8 @@ export
             hashMap.find(u.globalSymbols v.id)
         end
 
-    (* The symbol of the C string s; the first time, also its static data *)
+    (* Returns the symbol for C string s, adding it to static data on first
+     * use *)
     let stringSymbol(u: UnitBuilder s: String): String =
         begin
             if not(hashMap.contains(u.strings s)) then
@@ -333,9 +336,10 @@ export
                 runtimeFunctions.resultTypes(r))
             ok
         end
-    (* Before a call that may collect: logs each object being initialized
-     * that an earlier such call may have left old, for the stores since
-     * (beginInit), and counts the call *)
+    (* Runs before any call that may trigger garbage collection: emits a write
+     * barrier for each object under initialization that an earlier collecting
+     * call may have promoted to the old generation (beginInit), then increments
+     * fn.calls *)
     let mayCollect(fn: Fn): Ok =
         begin
             for i = 0 upto {vector.length(fn.initObjects) - 1} do
@@ -343,12 +347,14 @@ export
             end
             fn.calls := fn.calls + 1
         end
-    (* A call of the runtime's function name (ssa/runtimeFunctions), at
-     * its signature: its results; its one result; none *)
+    (* Emits a call to runtime function name using its signature from
+     * ssa/runtimeFunctions, returning all results (runtime), its single result
+     * (call1), or nothing (callVoid) *)
     let runtime(fn: Fn name: String args: Array(Int)): Array(Int) =
         begin
             let r = runtimeFunctions.function(name)
-            (* Each argument of the type the table says, a QVal word a val *)
+            (* Verify that each argument matches the runtime table's expected
+             * SSA type *)
             let types = runtimeFunctions.paramTypes(r)
             for k = 0 upto {extent args - 1} do
                 if {k < extent types} andif not(eq(ssa.typeName(ssa.typeOf(fn.f args[k])) ssa.typeName(types[k]))) then
@@ -478,8 +484,8 @@ export
     let extension(p: Part): ssa.Opcode =
         if p.signed then ssa.opSext8 else ssa.opZext8 end
 
-    (* A C bool or char a callee returns, which AAPCS64 does not extend:
-     * extended *)
+    (* Extends a 1-byte bool or char returned from a callee to a full word,
+     * since the ARM64 ABI (AAPCS64) leaves the upper bytes unspecified *)
     let narrowed(fn: Fn v: Int p: Part): Int = if p.width is 1 then emit(fn extension(p) array of v end tInt) else v end
 
     (* The source site of a raise or a check, a C string, or NULL *)
@@ -565,9 +571,9 @@ export
             vs
         end
 
-    (* A value in memory (a record's or variant's box, a global record), and a
-     * location (a cell, or what a var or out parameter points to): a record or
-     * variant as its box's pointer (layout.shapeLocationRepresentation) *)
+    (* Reads a value stored directly in memory (a box or global record) versus
+     * a location (a cell or var/out parameter), where records and variants are
+     * held as box pointers (layout.shapeLocationRepresentation) *)
     let readValue(fn: Fn address: Int t: Type): Array(Int) = readParts(fn address parts(t))
     let locationParts(t: Type): Array(Part) =
         if layout.isBoxedInSlots(shapes.shape(t)) then array of wordPart(tPtr) end else parts(t) end
@@ -635,7 +641,7 @@ export
             when constOk then noValues
             when constBool with x then array of constant(fn {if x.b then 1 else 0 end}) end
             when constInt with x then array of constant(fn x.n) end
-            (* A QChar, unsigned (arm64.md section 3.9) *)
+            (* A QChar, unsigned (docs/arm64.md section 3.9) *)
             when constChar with x then array of constant(fn ascii.val(x.c)) end
             when constReal with x then
                 array of ssa.realConstant(fn.f fn.cur realBitsOf(x.r)) end
@@ -673,8 +679,8 @@ export
             r
         end
 
-    (* A call's arguments: an Ok, which has no values, is a QVal word in C,
-     * and the function's parameter is one (function, below) *)
+    (* Lowers call arguments to SSA values. An Ok argument has zero parts, so
+     * it is passed as a 0 QVal word to match the C ABI and codeParamTypes. *)
     let callAtoms(fn: Fn xs: Array(Atom)): Array(Int) =
         begin
             let var r = noValues
@@ -710,7 +716,7 @@ export
             when wordBits then array of fromVal(fn w tInt) end
             when wordInteger then
                 let ps = parts(t)
-                (* A Bool or a Char from a word's low byte, as C converts *)
+                (* Extract Bool or Char from the word's low byte, matching C *)
                 if ps[0].width is 1 then
                     array of emit(fn extension(ps[0]) array of fromVal(fn w tInt) end tInt) end
                 else

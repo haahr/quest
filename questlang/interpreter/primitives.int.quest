@@ -1,10 +1,11 @@
 (* Quest Self-Hosted Compiler: The Interpreter's Primitive Operations Interface
  *
- * bootstrap/python/quest/interpreter/primitives.py: the standard library's
- * error exceptions, and integer and real arithmetic and comparisons with the
- * semantics compiled code has. Here they are compiled code's own operations: an
- * operation that raises the library's native exception (intOp.error,
- * realOp.error) raises the interpreted one. *)
+ * Provides the standard library's error exceptions and integer and real
+ * arithmetic and comparisons with the same semantics as compiled code,
+ * matching bootstrap/python/quest/interpreter/primitives.py. Because this
+ * interpreter is itself compiled Quest, it delegates to the host's native
+ * operations and converts native library exceptions (intOp.error,
+ * realOp.error) into their interpreted counterparts. *)
 
 interface Primitives
 import
@@ -42,8 +43,10 @@ export
     realArithmetic(op: String a: Real b: Real offset: maybe.T(Int)): Real
     (* <<, <<=, >>, >>= *)
     realRelational(op: String a: Real b: Real offset: maybe.T(Int)): Bool
-    (* is at static type t (with its run-time type arguments substituted):
-     * model.same, but options of a case without components at t compare by
-     * case (docs/extensions.md, Options as Values) *)
+    (* Implements `is` at static type t (with run-time type arguments
+     * substituted): behaves like model.same, except that empty option cases
+     * compare by tag and variant values of the same tag compare their payloads
+     * at the case's type (docs/extensions.md, Options as Values, Variants as
+     * Values) *)
     sameAt(t: tm.Type v1: model.Value v2: model.Value): Bool
 end

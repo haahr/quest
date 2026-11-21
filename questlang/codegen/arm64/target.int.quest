@@ -1,14 +1,18 @@
 (* Quest Self-Hosted Compiler: The arm64 Target Description Interface
  *
- * arm64's registers as codegen/machine/target numbers them: x0 to x30 are 0
- * to 30, xzr 31, d0 to d31 32 to 63, and sp 64. The allocatable ones are all
- * but the scratch registers, the platform's x18, and the frame's: x12 to
- * x15, then x8 down to x0, and d16 to d29, then d7 down to d0, which a call
- * clobbers (the arguments' last, so that a value no move hints to one takes
- * one of the others first), and x19 to x28 and d8 to d15, which it preserves.
- * The scratch registers are x9, x10, and x11 for an instruction's operands
- * in memory, x16 and x17 within a sequence that addresses memory (the
- * linker's veneers may use them between instructions), and d30 and d31. *)
+ * arm64's registers follow codegen/machine/target's numbering: x0 to x30 are
+ * 0 to 30, xzr (the zero register) is 31, d0 to d31 (floating-point
+ * registers) are 32 to 63, and sp (the stack pointer) is 64. The register
+ * allocator may use all registers except the scratch registers, x18 (reserved
+ * by Darwin), and the frame and special registers (fp, lr, xzr, and sp).
+ * Caller-saved registers (clobbered by calls) are allocated in the order x12
+ * to x15, then x8 down to x0, and d16 to d29, then d7 down to d0; argument
+ * registers come last so values with no preference take non-argument
+ * registers first. Callee-saved registers (preserved across calls) are x19 to
+ * x28 and d8 to d15. The scratch registers are x9, x10, and x11 for operands
+ * loaded from or stored to memory, x16 and x17 for address calculations (the
+ * linker's branch veneers may clobber them between instructions), and d30 and
+ * d31. *)
 
 interface Target
 import

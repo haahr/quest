@@ -1,42 +1,40 @@
 (* Quest Self-Hosted Compiler: Reduced Types Interface
  *
- * The reduced types of bootstrap/python/quest/types/reduce.py: type operator
- * applications reduced and recursive types unfolded at a type's head, a
- * bounded type's bound followed, and the queries on option types the backends
- * make (an option's cases in order, how is compares its values). The checker
- * keeps types as written (docs/type-system.md §2.2) and uses only
- * collectFunQuantifiers, in typechecker/bindings; types/canonical builds
- * canonical forms on them. *)
+ * Reduces type operator applications and unfolds recursive types at a type's
+ * head, follows bounds of bounded types, and answers backend queries on option
+ * and variant types (such as an option's cases in order and how is compares
+ * values). The type checker keeps types as written (docs/type-system.md §2.2)
+ * and uses only collectFunQuantifiers (in typechecker/bindings);
+ * types/canonical builds canonical forms from these reduced types. The
+ * counterpart is bootstrap/python/quest/types/reduce.py. *)
 
 interface Reduce
 import
     questlang/types/model : questlang/types/Model
     util/maybe : util/Maybe
 export
-    (* Exposing a type's outermost constructor (its head). Several functions
-     * do it, differing in what they look through; use the one whose
-     * difference matters:
+    (* Several functions expose a type's outermost constructor (its head),
+     * differing in what they look through:
      *
-     * - model.evaluateLazily(t lookup): the checker's. Aliases, applications
-     *   (tolerating a mismatch in arity), and recursion, and a type variable
-     *   replaced by its definition in the environment. Not bounds.
-     * - normalizeType: the backends'. Aliases, recursion, and
-     *   applications, with no environment; cached by node.
-     * - betaReduceHead: applications only, stopping at a mismatch in
-     *   arity; neither aliases nor recursion.
-     * - unfoldRecursive and unfoldRecursiveAny: recursion and
+     * - model.evaluateLazily(t lookup): used by the checker. Looks through
+     *   aliases, applications (tolerating an arity mismatch), recursion, and
+     *   type variable definitions in the environment, but not bounds.
+     * - normalizeType: used by the backends. Looks through aliases,
+     *   recursion, and applications with no environment, cached by node id.
+     * - betaReduceHead: reduces applications only, stopping at an arity
+     *   mismatch; looks through neither aliases nor recursion.
+     * - unfoldRecursive and unfoldRecursiveAny: unfolds recursion and reduces
      *   applications until neither is at the head.
-     * - resolveTypeBound: aliases, then the POWER bounds of variables,
-     *   abstract types, and path types, followed to the end; model.powerBoundOf
-     *   takes one such step.
-     * - kinds.unfoldHead: one step of recursion or application, or none;
-     *   kinds' private resolveBound loops over it and over bounds until a
-     *   predicate holds, for the checker's record, variant, sum (variant or
-     *   option), and tuple bounds; kinds.resolveOptionBound walks on its
-     *   own.
+     * - resolveTypeBound: strips aliases, then follows POWER bounds of type
+     *   variables, abstract types, and path types to the end
+     *   (model.powerBoundOf takes one step).
+     * - kinds.unfoldHead: takes one step of recursion or application, or
+     *   returns none. kinds' private resolveBound loops over it and over
+     *   bounds until a predicate holds (for record, variant, sum, and tuple
+     *   bounds); kinds.resolveOptionBound walks on its own.
      *
-     * canonical's canonicalStructure, private to it, is normalizeType's for
-     * canonical forms. *)
+     * canonical's private canonicalStructure plays the same role as
+     * normalizeType for canonical forms. *)
 
     (* How is compares options of an option type (docs/extensions.md,
      * Options as Values): its cases without components (empty) compare by
@@ -65,11 +63,11 @@ export
      * unfolded, until its head is not a recursive type (it may be an
      * application that does not reduce) or maxBetaSteps is reached *)
     unfolding(t0: model.Type): model.Type
-    (* t with recursive types at its head unfolded, and type operator
-     * applications there reduced, until its outermost node is neither; none
-     * if that does not happen, as for an application of an abstract type
-     * operator, or after a limit of 1000 steps. A type that is neither is
-     * itself *)
+    (* Unfolds recursive types and reduces type operator applications at the
+     * head of t until the outermost node is neither. Returns none if that does
+     * not happen (as for an application of an abstract type operator) or after
+     * maxBetaSteps steps. A type whose head is already neither is returned
+     * unchanged. *)
     unfoldRecursiveAny(t: model.Type): maybe.T(model.Type)
     (* That unfolding only when it is a type whose values are represented the
      * same as the recursive type's (a tuple, record, variant, option, array,

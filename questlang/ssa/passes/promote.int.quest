@@ -1,16 +1,20 @@
 (* Quest Self-Hosted Compiler: The SSA's Slot Promotion Interface
  *
- * Promotes stack slots to values (docs/ssa.md section 4.1): a slot of whole
- * words whose address is used only to load and store a word at a time, or a
- * word's first byte, becomes values, one variable per word. Each word must
- * hold values of one type, be stored at one width, and, if stored by byte,
- * not be loaded whole. Each variable becomes values, with block parameters
- * where the definitions that reach a block differ (Cytron et al.'s placement
- * at the iterated dominance frontier, then renaming along the dominator
- * tree). A load before any store reads zero. The slots left are renumbered.
- * A slot accessed in a block that a try's handler reaches is kept, since the
- * handler must see what the body stored (docs/arm64.md section 3.6); one the
- * body alone uses, as a loop's variables inlined there, is promoted. *)
+ * Promotes stack slots to SSA values (docs/ssa.md section 4.1). A slot sized
+ * in whole words whose address is used only to load and store whole words or
+ * a word's first byte is split into one SSA variable per word. Each word must
+ * hold values of a single type, be stored at a single width, and not be
+ * loaded whole if stored by byte.
+ *
+ * Promotion follows Cytron et al.: it places block parameters (SSA's form of
+ * phi nodes) at each variable's iterated dominance frontier — the join blocks
+ * where different definitions can meet — and renames loads and stores in a
+ * walk of the dominator tree (where each block dominates all blocks reachable
+ * only through it). A load before any store reads zero, and remaining slots
+ * are renumbered. A slot accessed in a block reachable from a try's handler
+ * is kept, because the handler must see values stored by the body before
+ * unwinding (docs/arm64.md section 3.6); a slot used only by the body, such
+ * as an inlined loop's variables, is promoted. *)
 
 interface Promote
 import

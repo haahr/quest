@@ -1,15 +1,16 @@
 (* Quest Self-Hosted Compiler: Symbols and Lexical Scopes Interface
  *
- * The symbols and scopes of bootstrap/python/quest/types/symbols.py. Symbols
- * name values, types, and kinds; a scope holds the symbols declared in it, in
- * declaration order. Type and kind symbol ids are unique for the life of the
- * process (allocateSymbolId), and every declared type and kind symbol is also
- * found by its id, globally. Value symbol ids come from a counter of their own
- * (newValueSymbol), so a value id can equal a type or kind id. This module is
- * below subtyping and the unit graph, which need symbols and scopes but not
- * the type-checking environment (types/env), which holds them.
+ * Defines symbols and lexical scopes, matching
+ * bootstrap/python/quest/types/symbols.py. Symbols name values, types, and
+ * kinds; a scope holds the symbols declared in it, in declaration order. Type
+ * and kind symbol ids are unique for the life of the process
+ * (allocateSymbolId), and every declared type and kind symbol is also found
+ * globally by its id. Value symbol ids come from a separate counter
+ * (newValueSymbol), so a value id can equal a type or kind id. This module
+ * sits below subtyping and the unit graph, which need symbols and scopes
+ * without depending on the type-checking environment (types/env).
  * docs/type-system.md §5 describes symbols and scopes, and §2.2 (Symbols
- * resolve globally) the lookup by id. *)
+ * resolve globally) describes lookup by id. *)
 
 interface Symbols
 import
@@ -32,13 +33,13 @@ export
         type: model.Type
         isVar: Bool
         isOut: Bool
-        (* Whether it is a function's parameter, and the number of functions
-         * enclosing its declaration (a parameter counts its own function).
-         * They decide what a function body may use (docs/type-system.md
-         * §6.2.3): a closure may not capture a var or out parameter of an
-         * enclosing function, the address of its caller's location, and no
-         * function may use a top-level var directly
-         * (checker.checkCapturable) *)
+        (* isParam records whether this is a function parameter, and
+         * functionDepth counts the functions enclosing its declaration (a
+         * parameter counts its own function). Together they determine what a
+         * function body may capture (docs/type-system.md §6.2.3): a closure
+         * may not capture a var or out parameter of an enclosing function (it
+         * holds the address of its caller's location), and no function may use
+         * a top-level var directly (checker.checkCapturable). *)
         isParam: Bool
         functionDepth: Int
         symbolId: Int
@@ -157,9 +158,10 @@ export
     (* A globally unique positive symbol id *)
     allocateSymbolId(): Int
 
-    (* Every declared type or kind symbol of an id, which a lookup that finds
-     * none, or a type without a definition, records as seen undefined (the
-     * bootstrap's Environment.lookup_type_by_id and lookup_kind_by_id) *)
+    (* Looks up any declared type or kind symbol globally by id. A lookup that
+     * finds nothing, or finds a type without a definition, records the id as
+     * seen undefined (the bootstrap's Environment.lookup_type_by_id and
+     * lookup_kind_by_id). *)
     typeSymbolById(symbolId: Int): maybe.T(TypeSymbol)
     kindSymbolById(symbolId: Int): maybe.T(KindSymbol)
 
@@ -167,19 +169,20 @@ export
      * evaluation *)
     lookup: model.Lookup
 
-    (* The number of times a symbol id gained a meaning after some lookup saw it
-     * without one: judgments cached about types (the subtype cache) go stale
-     * only then *)
+    (* meaningGeneration returns the counter incremented by meaningsChanged
+     * whenever a symbol id gains or changes a meaning after a lookup saw it
+     * undefined; cached type judgments (the subtype cache) go stale only
+     * then *)
     meaningsChanged(): Ok
     meaningGeneration(): Int
 
     (* =========================================================================
      * 4. Poisoned symbols
      *
-     * The symbols that the names of a failed declaration are bound to, so that
-     * their uses fail without another error (diagnostics.silentError;
-     * docs/diagnostics.md section 4.5): value symbols by their ids, and type
-     * and kind symbols by theirs.
+     * Failed declarations bind their names to poisoned symbols so that later
+     * uses fail without cascading errors (diagnostics.silentError;
+     * docs/diagnostics.md §4.5). Value symbols are tracked by their own id
+     * space, separately from type and kind symbols.
      * ====================================================================== *)
 
     poisonValue(symbolId: Int): Ok

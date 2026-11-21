@@ -189,9 +189,9 @@ export
     let builtinEqual(a: model.Builtin b: model.Builtin): Bool = a is b
     let builtinHash(b: model.Builtin): word.T = hash.identityHash(b)
 
-    (* The state of running one IR unit, at any stage, sharing the tree-walking
-     * interpreter's runtime frame (renv): its values, its call stack, and the
-     * modules it has loaded.
+    (* Interpreter holds the state of running one IR unit at any pipeline
+     * stage, sharing the tree-walking interpreter's runtime frame (renv): its
+     * values, its call stack, and the modules it has loaded.
      *
      * runUnit runs the unit's imports (by the tree-walking interpreter), then
      * each of its modules' initializers, in a frame of its own whose variables
@@ -233,7 +233,7 @@ export
          * for each in its own frame; the let in its body that computes the
          * value may run in a nested frame (a loop body's), so statement binds
          * these variables with bindDeclared, which fills the slot where the
-         * let rec and its fixups look, rather than in the current frame *)
+         * let rec and its fixups look, rather than in the current frame. *)
         declared: hashMap.T(Int Bool)
         fixups: vector.T(vector.T(Fixup))
         var sourceMap: maybe.T(location.SourceMap)
@@ -809,8 +809,9 @@ export
                     else maybe.none(:model.RunError)
                 end
                 if maybe.isNone(e) then fail(:Ok "caught_exception of a value other than a handler's exception") end
-                (* With the frames running, as if it left this frame, which it
-                 * was raised in if it has none (docs/raised.md section 5) *)
+                (* Record the active call frames as if the error had left this
+                 * frame, in case it was raised here (docs/raised.md section
+                 * 5) *)
                 treewalk.noteFrames(maybe.unwrap(e) it.renv)
                 option vRaised of Value with let e = maybe.unwrap(e) end
             when opAddrVar then address(it o f)
@@ -1107,7 +1108,8 @@ export
             try
                 for i = 0 upto {extent unit.imports - 1} do
                     let imp = unit.imports[i]
-                    (* Run once per program, and kept in its unit *)
+                    (* Each imported module runs once per program and is cached
+                     * for this unit *)
                     let value = treewalk.loadModuleForInterpreter(imp.modulePath imp.interfacePath renv maybe.some(imp.canonicalPath))
                     hashMap.insert(it.modules imp.id value)
                 end

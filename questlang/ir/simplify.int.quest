@@ -1,27 +1,23 @@
 (* Quest Self-Hosted Compiler: The Simplifier Interface
  *
- * The Core IR optimized into the simplified stage (docs/ir.md section 8.6),
- * before specialization and closure conversion, while functions are still
- * funs statements with free variables. The self-hosted compiler's alone: the
- * bootstrap has no such stage.
+ * Optimizes the Core IR into the simplified stage (docs/ir.md section 8.6),
+ * before specialization and closure conversion, while nested functions are
+ * still funs statements with free variables. This pass exists only in the
+ * self-hosted compiler; the bootstrap compiler has no simplified stage.
  *
- * The simplifier works in rounds, by default at most 6, until one changes
- * nothing. Each round propagates copies of variables and constants, folds
- * constants (an if or a switch on a constant becomes its branch), removes
- * the lets and funs nothing reads when they cannot raise, replaces a switch
- * on an option or variant made in scope by its case, and the tag tests,
- * payloads, and projections of the options, variants, and tuples (but their
- * var components) made in scope by what made them, decides the tag tests,
- * payloads, and switches of a variable in the then-branch of an if on its
- * tag (and of a tuple's component read again with nothing between that may
- * change it, which becomes a copy of the first read), and inlines calls
- * (questlang/ir/inline): a function's body replaces a call of it when the
- * function is small or called once, within a bound on the unit's growth.
- * Then contification (questlang/ir/contify) turns local functions called
- * from one place, and otherwise only by their own tail calls, into loops at
- * that place. Each round simplifies what the last one inlined and made
- * simpler. The environment variable QUEST_INLINE overrides the bounds and
- * thresholds, for measuring them (docs/inlining.md section 1). *)
+ * The simplifier runs in rounds (at most 6 by default) until a round makes no
+ * changes. Each round propagates variable copies and constants, folds constant
+ * expressions and branches, eliminates unused pure let and funs bindings,
+ * simplifies switches, tag tests, payloads, and immutable tuple projections on
+ * values constructed in scope, decides tag tests, payloads, and switches on a
+ * variable inside the then-branch of an if that tests its tag (and reuses an
+ * earlier read of an unchanged tuple component), and inlines eligible calls
+ * (questlang/ir/inline) that are small or called once within a growth budget.
+ * Each round then runs contification (questlang/ir/contify), which converts
+ * local functions called from one site (plus their own tail calls) into loops
+ * at that site, letting later rounds simplify the result. The QUEST_INLINE
+ * environment variable overrides the default bounds and thresholds for
+ * measurement (docs/inlining.md section 1). *)
 
 interface Simplify
 import

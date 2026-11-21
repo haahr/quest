@@ -1,13 +1,13 @@
 (* Quest Self-Hosted Compiler: The SSA's Pipeline Interface
  *
- * The SSA's passes, by name, in the order they run after the builder
- * (docs/ssa.md section 4.1); passes below lists them. The driver dumps the SSA
- * after a pass as phase ssa_NAME (ssa_built for the builder's, ssa for the
- * last); with QUEST_CHECK_IR=1 the verifier (ssa/verify) and the barrier check
- * (ssa/barriers) check the SSA after the builder and after each pass;
- * QUEST_SKIP_PASSES, a comma-separated list of names, leaves passes out, for a
- * test or a bisection. The final SSA is verified and barrier-checked whatever
- * the variables say. *)
+ * This module runs the SSA optimization passes in the order listed in passes
+ * (docs/ssa.md section 4.1). The driver can dump the SSA after any pass as
+ * phase ssa_NAME (ssa_built after the builder, ssa after the final pass). When
+ * QUEST_CHECK_IR=1, the verifier (ssa/verify) and write-barrier check
+ * (ssa/barriers) run after the builder and after each pass; QUEST_SKIP_PASSES
+ * accepts a comma-separated list of pass names to omit for testing or
+ * bisection. The final SSA is always verified and barrier-checked regardless
+ * of environment variables. *)
 
 interface Pipeline
 import
@@ -16,16 +16,16 @@ import
 export
     (* The passes' names, in order *)
     passes: Array(String)
-    (* The SSA of a described IR unit, built, then each pass that is not left
-     * out run on it in order; after says when the builder and each pass are
-     * done, with their names (built for the builder) *)
+    (* Builds the SSA for unit and runs each non-skipped pass in order, calling
+     * after(name, u) after the builder (with name "built") and after each
+     * pass *)
     run(unit: ir.Unit after: All(name: String u: ssa.Unit) Ok): ssa.Unit
-    (* The same, saying nothing *)
+    (* Builds and optimizes unit without calling an observer *)
     build(unit: ir.Unit): ssa.Unit
-    (* Whether run and build put interrupt checks in the code, after the
-     * passes (ssa/passes/interrupts): only the Jupyter kernel's driver
-     * (--kernel) asks, for the code its JIT compiles; off at first, and left
-     * out when QUEST_SKIP_PASSES names interrupts *)
+    (* Controls whether run and build insert interrupt checks after the passes
+     * (ssa/passes/interrupts) for JIT-compiled code in the Jupyter kernel
+     * (--kernel); defaults to false, and is skipped if QUEST_SKIP_PASSES names
+     * interrupts *)
     setInterruptChecks(on: Bool): Ok
     (* Expands the unit's allocations into the collector's inline sequence
      * (ssa/passes/allocations), for the SSA's backends; left out

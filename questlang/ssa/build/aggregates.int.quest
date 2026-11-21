@@ -1,8 +1,8 @@
 (* Quest Self-Hosted Compiler: The SSA Builder's Aggregates Interface
  *
- * Conversions between representations (the represent pass's plans), tuples,
- * records, variants and options, arrays, and type applications that are not
- * thunks. *)
+ * Builds SSA for representation conversions (the represent pass's plans),
+ * tuples, records, variants, options, arrays, and non-thunk type
+ * applications *)
 
 interface Aggregates
 import
@@ -18,9 +18,10 @@ export
 
     (* Conversions (the represent pass's plans, ir.Plan) *)
     convert(fn: vals.Fn vs: Array(Int) plan: ir.Plan): Array(Int)
-    (* The address of a record's field's slot (the record vs, of shape rs):
-     * through its offset table, or for a bounded type parameter's value, the
-     * view map of its type argument at the bound *)
+    (* Returns the address of field's slot in record vs (of shape rs). For a
+     * bounded type parameter's value, viewMap translates from the concrete
+     * type argument to the bound via quest_view_record_slot; otherwise the
+     * byte offset is loaded from the record's offset table vs[1]. *)
     recordSlot(fn: vals.Fn vs: Array(Int) rs: shapes.Shape field: String viewMap: maybe.T(Variable)): Int
     fieldShape(rs: shapes.Shape field: String): shapes.Shape
     recordField(fn: vals.Fn vs: Array(Int) rs: shapes.Shape o: ir.OpRecordField): Array(Int)
@@ -32,19 +33,22 @@ export
     (* Variants and options *)
     caseShape(s: shapes.Shape tag: String): maybe.T(shapes.Shape)
     tagShape(t: Type): shapes.Shape
-    (* A value mapped through a small table, as a switch: table[v], or v when
-     * the table is the identity *)
+    (* Returns table[v] via an SSA switch, or v directly when table is the
+     * identity *)
     mapped(fn: vals.Fn v: Int table: Array(Int)): Int
     makeOption(fn: vals.Fn o: ir.OpMakeOption t: Type): Array(Int)
-    (* The payload of an option's case, a tuple, which a case's binder shares:
-     * the option's own, after its tag, or through a proxy, the original's *)
+    (* Returns a pointer to the tuple payload of an option's case, which the
+     * case's binder shares. When tagAccess is direct, the payload starts 8
+     * bytes past opt (after its tag); otherwise it unproxies opt or calls
+     * quest_proxy_option_payload when a component is read through a subtype
+     * proxy. *)
     optionCasePayload(fn: vals.Fn opt: Int tagAccess: ir.Access access: Array(ir.Access)): Int
-    (* The payload of case tag of a variant or option vs held at its own view,
-     * read through the view map vm of its type argument at the bound ts and
-     * converted to the bound's type for it, as a value of type t: a variant's
-     * payload, an option's one component, or a new tuple of an option's case
-     * components (after its ordinal, when t has one more component than the
-     * case) *)
+    (* Reads case tag's payload from a variant or option vs held at a bounded
+     * type parameter's own view, converting it to type t through the view map
+     * vm (which translates from the type argument to the bound ts). Returns a
+     * variant's payload, an option's single component, or a freshly allocated
+     * tuple of an option's case components (leaving a leading 0 slot for the
+     * case ordinal when t has more components than the case). *)
     viewPayload(fn: vals.Fn vs: Array(Int) ts: shapes.Shape tag: String vm: Int t: Type): Array(Int)
     payload(fn: vals.Fn o: ir.OpPayload t: Type): Array(Int)
 

@@ -1,8 +1,10 @@
 (* Quest Self-Hosted Compiler: PEG / Packrat Parser Engine Interface
  *
- * The engine of bootstrap/python/quest/syntax/parser.py: grammar constructs,
- * syntax targets and their rules, and a packrat parser that evaluates them over
- * a token stream. The grammar itself is in grammar, its actions in actions. *)
+ * This interface provides the parsing expression grammar (PEG) engine,
+ * mirroring bootstrap/python/quest/syntax/parser.py: grammar constructs,
+ * syntax targets and their rules, and a packrat (memoized backtracking)
+ * parser that evaluates them over a token stream. The grammar itself is in
+ * parser/grammar, and its semantic actions are in parser/actions. *)
 
 interface Engine
 import
@@ -16,12 +18,12 @@ export
      * 1. Semantic Values
      * ====================================================================== *)
 
-    (* The value a construct matches, which rules' actions receive and return:
-     * an optional construct that did not match (Python's None); a token; a
-     * string; the results of a repetition, a separated list, or a sequence of
-     * several non-silent items; or one of the AST's values. A signature item
-     * keeps its position, which ast.Signature does not have; a postfix operator
-     * is a function from its operand to the node. *)
+    (* Val is the semantic value produced when a construct matches, which rule
+     * actions receive and return: absent for an unmatched optional (Python's
+     * None); a token; a string; a list for a repetition, separated list, or
+     * multi-item sequence; or an AST value. A signature item carries its span,
+     * which ast.Signature omits; a postfix operator is a function from its
+     * operand to the resulting AST node. *)
     Def Rec Val = Option
         absent
         tok with val: tokens.Token end
@@ -84,10 +86,10 @@ export
     p(kind: tokens.TokenKind): Construct
     pLex(kind: tokens.TokenKind lexeme: String): Construct
 
-    (* [items]: the items' value, or absent if they do not match; silent if the
-     * items are. The value of several items, here and in rep, is that of the
-     * one non-silent item if there is one, otherwise a list of the non-silent
-     * items' values. *)
+    (* Matches [items], yielding their value or absent if they do not match;
+     * silent if all items are silent. The value of several items, here and in
+     * rep, is the sole non-silent item's value if there is only one, or a list
+     * of the non-silent items' values otherwise. *)
     opt(items: Array(Construct)): Construct
 
     (* {items}: a list of the items' values, for as long as they match; silent
@@ -108,8 +110,9 @@ export
      * source, reporting errors to bag *)
     newParser(g: Grammar toks: vector.T(tokens.Token) sm: location.SourceMap bag: diagbag.T): Parser
 
-    (* The value of start matching all the tokens. Otherwise, it adds an error
-     * to the bag at the farthest token any construct failed to match, naming
-     * what was expected there, and raises diagbag.fatalError. *)
+    (* Parses all tokens using start and returns its semantic value. If parsing
+     * fails or tokens remain, adds an error to the bag at the farthest token
+     * where any construct failed, naming what was expected there, and raises
+     * diagbag.fatalError. *)
     parse(p: Parser start: Construct): Val
 end

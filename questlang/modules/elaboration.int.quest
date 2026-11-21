@@ -1,17 +1,18 @@
 (* Quest Self-Hosted Compiler: Interface, Module, and Import Elaboration
  * Interface
  *
- * bootstrap/python/quest/modules/elaboration.py: Cardelli's module system.
- * Interfaces declare type formals, manifest types, and value signatures; a
- * module is checked against its interface (type equality, subkinding,
- * subtyping), and its abstract types are hidden behind opaque type variables;
- * imports bind interfaces and modules.
+ * Counterpart to bootstrap/python/quest/modules/elaboration.py. This unit
+ * implements Cardelli's module system: interfaces declare type formals,
+ * manifest types, and value signatures; a module is checked against its
+ * interface (type equality, subkinding, subtyping), and its abstract types are
+ * hidden behind opaque type variables; imports bind interfaces and modules.
  *
- * The loader and the checker are above this module: they load and check units
- * by elaborating them here, and it calls back to them through hooks, which they
- * fill (loader.install, typecheck.newChecker). A module's member is a recovery
- * point (docs/diagnostics.md section 4.5): the hook elaborates it, or reports
- * its error and gives none. *)
+ * The loader and the type checker sit above this module: they load and check
+ * units by calling elaboration, and elaboration calls back to them through
+ * hooks that they install (loader.install, typecheck.newChecker). Each module
+ * member is an error recovery point (docs/diagnostics.md section 4.5): the
+ * hook either returns the elaborated binding or reports its error and returns
+ * none. *)
 
 interface Elaboration
 import
@@ -58,12 +59,12 @@ export
     (* The external types (Let T = external "...") a module's source file
      * declares, by name, if src is one *)
     extractModuleExternalTypes(src: maybe.T(String)): hashMap.T(String model.Type)
-    (* The module decl, elaborated in a scope that sees only its imports,
-     * checked against its interface, and declared in e's current scope as a
-     * record of its exports, whose abstract types are opaque (a bindModule;
-     * elaboration.mod explains the steps). Raises a CompilerError if the
-     * module does not conform; members that fail are reported as they fail,
-     * and then raise a silent one *)
+    (* Elaborates decl in a scope that sees only its imports, checks it against
+     * its interface, and declares it in e's current scope as a record of its
+     * exports whose abstract types are opaque (returning a bindModule;
+     * elaboration.mod explains the four steps). Raises CompilerError if the
+     * module does not conform; members that fail are reported as they fail and
+     * then trigger a silent CompilerError. *)
     elaborateModule(decl: ast.ModuleDecl offset: Int e: env.T): typedAst.Binding
     (* A program's import phrase, its interfaces and modules bound in e's
      * current scope under their local names (a bindImport) *)

@@ -1,19 +1,18 @@
 (* Quest Self-Hosted Compiler: The Build Engine Interface
  *
- * bootstrap/python/quest/build/engine.py: builds a program by separate
- * compilation (docs/build-process.md). Each unit (the main program, or a module
- * it imports, directly or through other modules) is compiled on its own to C
- * and to an object file, against the interfaces of the modules it imports, and
- * only the units whose artifacts are stale are compiled again. buildMain
- * compiles the main program, learns from the manifest (.qm) its compilation
- * writes which modules it imports, and buildModules brings them up to date
- * from a first-in, first-out queue, each once, queueing the modules each one's
- * manifest lists. Then every module's interface is checked to conform to the
- * interface each importer expects of it, the modules are checked not to import
- * one another in a cycle, and the objects are linked: the engine's extra
- * objects, the main program's, and the modules', in the order they were
- * queued. Each step is logged (build/logger) to build.log in the build
- * directory, and with verbose, to standard error. *)
+ * Builds a program by separate compilation (docs/build-process.md); the
+ * bootstrap counterpart is bootstrap/python/quest/build/engine.py. Each unit
+ * (the main program, or a module it imports directly or transitively) is
+ * compiled on its own to C and an object file against the interfaces of the
+ * modules it imports, and only units with stale artifacts are recompiled.
+ * buildMain compiles the main program, reads the manifest (.qm) it writes to
+ * learn which modules it imports, and calls buildModules to bring them up to
+ * date via a FIFO queue, queueing the modules each manifest lists. It then
+ * verifies that every module implements the interface each importer expects,
+ * checks that the module import graph has no cycles, and links the object
+ * files in order: extra objects, the main program, and the modules in queue
+ * order. Each step is logged (build/logger) to build.log in the build
+ * directory, and to standard error when verbose is enabled. *)
 
 interface Engine
 import
@@ -42,17 +41,17 @@ export
         nogc: Bool
         compiler: maybe.T(String)
         extraCFlags: Array(String)
-        (* How many modules to compile at once, each in a child process of
-         * driver (the driver's own executable) when more than one
-         * (docs/build-process.md section 7.4) *)
+        (* Maximum number of modules to compile concurrently. When greater than
+         * one, each batch runs in a child process of driver, the compiler
+         * driver executable (docs/build-process.md section 7.4). *)
         jobs: Int
         driver: String
-        (* The backend each unit is compiled by, which its manifest
-         * records: a unit compiled by another is stale *)
+        (* Selects the backend for each unit. Each manifest records the backend
+         * that compiled it, so switching backends marks a unit stale. *)
         backends: choice.T
-        (* The driver's --report-inferable mode, or empty: when given, every
-         * unit is compiled, since only checking a unit finds its calls, and
-         * each writes its calls to standard error *)
+        (* The driver's --report-inferable mode, or empty when disabled. When
+         * non-empty, every unit is recompiled so type checking can find and
+         * report inferable type arguments to standard error. *)
         reportInferable: String
     end
     (* An engine building in buildDir (.build if none), which it makes *)
@@ -62,7 +61,7 @@ export
     (* eng, compiling up to jobs modules at once, in child processes of
      * driver *)
     parallel(eng: T jobs: Int driver: String): T
-    (* The engine, its units compiled by the backends c chooses *)
+    (* Returns eng configured to compile units with backends *)
     withBackends(eng: T backends: choice.T): T
     (* The engine, reporting inferable type arguments in mode (env.T's
      * reportInferable) *)

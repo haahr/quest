@@ -1,11 +1,13 @@
 (* Quest Self-Hosted Compiler: Slots and Proxies Interface
  *
- * bootstrap/python/quest/ir/slots.py, the represent pass's last step
- * (docs/ir.md section 8.3): how values are stored into and read from
- * aggregates' slots, which hold records and variants boxed, and how tuples and
- * options that may be proxies are read (DIRECT, ORIGINAL, or PROXY). Also how a
- * record's field is read (through the offset table's stored types) and whether
- * a record literal's offset table is known statically. *)
+ * This pass is the final step of the represent pass (docs/ir.md section 8.3;
+ * counterpart in bootstrap/python/quest/ir/slots.py). It decides how values
+ * are stored into and read from aggregate slots (which hold records and
+ * variants boxed behind a pointer) and how tuples and options that may be
+ * proxies (subtyping wrappers that redirect accesses to an underlying value)
+ * are accessed (DIRECT, ORIGINAL, or PROXY). It also marks record field reads
+ * that must consult the record's runtime offset table for stored types, and
+ * marks record literals whose offset table must be built at run time. *)
 
 interface Slots
 import
@@ -17,8 +19,9 @@ export
      * need converting when read at s's type (records, variants, options,
      * nonempty tuples, and functions) *)
     mayBeStoredAsSubtype(s: shapes.Shape): Bool
-    (* How component index of a tuple of shape ts is read (or written); fresh:
-     * made by the function reading it *)
+    (* Returns how component index of a tuple with shape ts is accessed. fresh
+     * is true when the tuple was allocated by the current function and so
+     * cannot be a proxy. *)
     tupleAccess(ts: shapes.Shape index: Int fresh: Bool): nodes.Access
     (* How the tag of an option of shape os is read *)
     optionTagAccess(os: shapes.Shape): nodes.Access

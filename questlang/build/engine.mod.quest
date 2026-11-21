@@ -168,7 +168,7 @@ export
             let backends = backends
             let reportInferable = reportInferable
         end
-    (* Its resolver chooses each module's variant by backends from now on *)
+    (* Updates eng.resolver to select each module's variant from backends *)
     let withBackends(eng: T backends: choice.T): T =
         begin
             eng.resolver.variantOf := fun(unit: String): String choice.variantFor(backends unit)
@@ -258,10 +258,10 @@ export
 
     let orNoSource(s: String): String = if stringOp.length(s) > 0 then s else "no source" end
 
-    (* How a unit's recorded imports would now resolve differently, if they
-     * would: each interface and module path it imported, resolved again as its
-     * compilation resolves it (an interface it depends on through another's
-     * imports from that interface's directory, recorded with it) *)
+    (* Returns a description of the first recorded import in m that now
+     * resolves to a different source file or canonical name, or none if all
+     * still match. Transitive interface imports are re-resolved from the
+     * importing interface's recorded directory. *)
     let importResolutionChange(m: manifest.ModuleManifest currentDir: maybe.T(String) includePaths: Array(String)
         programDir: maybe.T(String) res: graph.Resolver): maybe.T(String) =
         begin
@@ -299,14 +299,15 @@ export
             change
         end
 
-    (* Why a unit with a source file must be recompiled, if it must
-     * (docs/build-process.md section 7.1): its artifacts' own freshness, and
-     * its imports still resolving to the files it was compiled against *)
+    (* Returns why a unit with a source file is stale, or none if up to date
+     * (docs/build-process.md section 7.1). Checks artifact freshness, backend
+     * match, WebAssembly runtime compatibility, and whether imports still
+     * resolve to the same files. *)
     let artifactStaleness(eng: T source: String a: graph.ModuleArtifacts programDir: maybe.T(String)): maybe.T(String) =
         begin
             let search = searchPaths(eng)
-            (* Its imports would find other files, or another backend compiled
-             * it *)
+            (* Checks for backend, WebAssembly runtime, or import-resolution
+             * changes *)
             let changed = fun(m: manifest.ModuleManifest): maybe.T(String)
                 begin
                     let name = if eq(m.name "<main>") then choice.programUnit else m.name end
@@ -315,8 +316,9 @@ export
                         maybe.some("compiled by the " <> m.backend <> " backend")
                     elsif choice.isWasm(m.backend) andif system.isFile(choice.codeFile(a.c m.backend))
                         andif not(eq(cBackend.objectRuntimeStamp(maybe.unwrapOr(files.readText(choice.codeFile(a.c m.backend)) "")) cBackend.runtimeStamp())) then
-                        (* a wasm object built against another runtime's types,
-                         * which instantiating it would refuse *)
+                        (* Reject a WebAssembly object built against a
+                         * different runtime's types, which instantiation would
+                         * fail on *)
                         maybe.some("built against another wasm runtime")
                     else
                         importResolutionChange(m maybe.some(files.parent(source)) search programDir eng.resolver)
@@ -346,8 +348,8 @@ export
             system.makeDirectory(files.parent(a.c))
             let text = maybe.unwrapOr(files.readText(mainFile) "")
             let sm = location.newSourceMap(files.displayName(mainFile) text)
-            (* The module system's callbacks, which loading the program's
-             * interfaces needs before the program is checked *)
+            (* Install the module system's callbacks before loading the
+             * program's interfaces *)
             stdlib.install()
             typecheck.install()
             let e = env.new()
@@ -511,10 +513,10 @@ export
         failure: maybe.T(All() Ok)
     end
 
-    (* The stale modules of a wave compiled in child processes of the driver,
-     * when eng.jobs allows more than one at once and there is more than one:
-     * their outcomes, by index in the wave; none for the rest, which are
-     * compiled in this process as their turns come *)
+    (* Compiles the stale modules in wave concurrently using child processes of
+     * eng.driver when eng.jobs > 1 and at least two modules are stale. Returns
+     * an outcome at each compiled module's index and none for the rest, which
+     * the parent compiles in-process when their turn arrives. *)
     let compileWave(eng: T wave: Array(Popped) search: Array(String) programDir: maybe.T(String))
         : Array(maybe.T(workers.Outcome)) =
         begin
@@ -578,7 +580,7 @@ export
      * cannot be found, fails to compile, implements the wrong interface, or
      * is part of a cycle. Unflushed: the build log's entries are batched in
      * eng.logger and not written here; buildModules and buildMain call this
-     * through flushingLog, which writes them out even if it raises *)
+     * through flushingLog, which writes them out even if it raises. *)
     let unflushedBuildModules(eng: T roots: Array(manifest.ImportedModuleRef) importer: String
         programDir: maybe.T(String)): Array(String) =
         begin
@@ -699,9 +701,9 @@ export
                     else
                         paths.lower(item)
                     end
-                    (* Its variant's file, the one the build chooses now
-                     * (docs/build-process.md section 6.4), whatever the
-                     * importer recorded *)
+                    (* Resolve the active build variant for this module
+                     * (docs/build-process.md section 6.4), overriding whatever
+                     * file path the importer recorded *)
                     let src = if maybe.isSome(found) then
                         maybe.some(paths.chooseVariant(maybe.unwrap(found) eng.resolver.variantOf(canon)))
                     else found end
@@ -816,10 +818,10 @@ export
             let outcomeOf = fun(item: String): maybe.T(workers.Outcome)
                 vector.get(outcomes preparedIndex(item))
             let roots = graph.rootsOf(search programDir)
-            (* The modules a popped module's manifest will list, as far as they
-             * can be known before it is compiled: its own top-level imports
-             * resolved as its compilation resolves them (unitModuleRefs). The
-             * imports its C adds are found when its turn comes. *)
+            (* Predicts the modules a popped module's manifest will list before
+             * it is compiled, using its existing manifest if up to date or
+             * parsing its top-level imports if stale. Implicit imports added
+             * during code generation are discovered when its turn comes. *)
             let predictedImports = fun(p: Popped): Array(manifest.ImportedModuleRef)
                 if maybe.isSome(p.failure) orif maybe.isNone(p.src) then
                     array of :manifest.ImportedModuleRef end
@@ -997,7 +999,7 @@ export
      * then brings up to date. The objects are linked in the order
      * eng.extraObjects, the main unit's .o, then the modules' .o files in
      * queue order. Raises buildError if mainFile does not exist, and passes
-     * on the errors of compiling and linking *)
+     * on the errors of compiling and linking. *)
     let unflushedBuildMain(eng: T mainFile: String output: maybe.T(String)): Ok =
         begin
             let main = files.absolute(mainFile)

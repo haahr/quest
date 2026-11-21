@@ -1,20 +1,22 @@
 (* Quest Self-Hosted Compiler: The C Printer Interface
  *
- * bootstrap/python/quest/codegen/c/printer.py (docs/ir.md section 8.5): prints
- * a described IR unit as C, the IR's backend. It prints what the passes
- * decided: each IR function is a C function taking its closure's environment
- * first (and its own type parameters' descriptors, then its parameters), each
- * closure a QClosure of one (a static one when it captures nothing), each
- * variable a C variable of its type's representation (globals for the
- * variables the top levels bind outside loops), and each structured statement
- * a C statement: join points and loop exits are labels, and try regions
- * setjmp handlers, popped on every way out. Every representation decision is
- * the represent pass's, recorded in the IR, and every descriptor the describe
- * pass's. The declarations of the types the unit uses are
- * codegen/c/declarations', spelled in C by codegen/c/types. A module file's
- * unit exports its interface's members: its record (qm_<module>), initializer
- * (qv_mod_<module>_init), and a function for each function or polymorphic
- * value (qv_<module>_<member>), the ABI other units link against. *)
+ * Self-hosted counterpart of bootstrap/python/quest/codegen/c/printer.py
+ * (docs/ir.md section 8.5). This interface prints a described IR unit as C
+ * source code, emitting what the earlier IR passes decided: each IR function
+ * becomes a C function taking its closure environment first (followed by its
+ * type parameters' runtime descriptors and then its value parameters), each
+ * closure becomes a QClosure (a static one when it captures nothing), each
+ * variable becomes a C variable of its representation type (globals for
+ * top-level bindings outside loops), and each structured statement becomes a C
+ * statement. Join points (shared merge blocks) and loop exits compile to C
+ * labels, and try regions compile to setjmp exception handlers that are popped
+ * on every exit path. Representation decisions come from the represent pass,
+ * runtime type descriptors come from the describe pass, and C type
+ * declarations and spellings come from codegen/c/declarations and
+ * codegen/c/types. A module file exports its interface members as its module
+ * record (qm_<module>), its initializer (qv_mod_<module>_init), and a C
+ * function (qv_<module>_<member>) for each exported function or polymorphic
+ * value, forming the ABI that other units link against. *)
 
 interface Printer
 import

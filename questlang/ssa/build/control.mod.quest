@@ -33,8 +33,9 @@ export
      * Operations
      * ====================================================================== *)
 
-    (* An external C value (not a function, which is its thunk's closure): one
-     * of the runtime's constants, or a runtime object's address *)
+    (* Resolves an external C value (not a function, which uses a thunk
+     * closure) to a runtime constant, global variable load, or object
+     * address *)
     let externalValue(fn: vals.Fn symbol: String): Array(Int) =
         begin
             let var found = maybe.none(:Array(Int))
@@ -74,12 +75,12 @@ export
             maybe.unwrap(found)
         end
 
-    (* The values of o, emitted at fn.cur, in the form the variable result
-     * holds them (vals.varParts: a boxed record or variant as its box's
-     * pointer, an unboxed tuple as its components). result is the variable a
-     * let binds, or none for a do, whose value is dropped. Many operations
-     * (making a record, an option, or an array, say) take the type of their
-     * value, and whether it is boxed, from result, and so require one *)
+    (* Emits o at fn.cur and returns its SSA values in the form result expects
+     * (vals.varParts: a boxed record or variant as its box pointer, an unboxed
+     * tuple as its components). result is the variable bound by a let, or none
+     * for a do statement whose value is discarded. Operations that construct
+     * aggregates (records, options, arrays) read their result type and boxing
+     * from result, and therefore require it to be present. *)
     let rec operation(fn: vals.Fn o: ir.Op result: maybe.T(Variable)): Array(Int) =
         case o
             when opAtom with x then vals.atom(fn x.atom)
@@ -106,8 +107,9 @@ export
             when opModuleMember with x then calls.moduleMember(fn x.moduleRef x.member)
             when opMakeTuple with x then
                 if maybe.unwrap(result).unboxed then
-                    (* Its components, unallocated: in slot form, which for
-                     * those of an unboxed tuple is their value's *)
+                    (* Return the components directly without allocating; for
+                     * an unboxed tuple, each component's value form matches
+                     * its slot form *)
                     vals.callAtoms(fn x.args)
                 else
                     aggregates.makeTuple(fn x maybe.unwrap(result).type)
@@ -194,8 +196,9 @@ export
                 elsif vals.isGlobal(fn x.v) then array of vals.symbolAt(fn vals.globalSymbol(fn.u x.v)) end
                 else array of vals.slotOf(fn x.v) end
                 end
-            (* A cell declared without a value is null until assigned
-             * (sVarDecl): its one word, a pointer or a QVal *)
+            (* A cell declared without an initial value is null until assigned
+             * (sVarDecl), so test whether its single pointer or QVal word is
+             * non-null *)
             when opIsSet with x then
                 let w = vals.read(fn x.v)[0]
                 let p = case ssa.typeOf(fn.f w) when typeVal then vals.fromVal(fn w vals.tPtr) else w end
@@ -234,8 +237,8 @@ export
                 representation.slotFromWord(fn vals.loadWord(fn state runtimeLayout.offset("QExceptionState" "payload") vals.tVal)
                     maybe.unwrap(result).type)
             when opCaughtException with x then
-                (* The handler's state, copied to the heap (docs/raised.md
-                 * section 6) *)
+                (* Copy the handler's stack-allocated exception state to the
+                 * heap (docs/raised.md section 6) *)
                 let v = case x.exc when atomVar with y then y.v else ir.newVar("" model.okType false) end
                 array of vals.call1(fn "quest_raised_capture" array of vals.handlerState(fn v) end) end
             when opMakeAuto with x then
@@ -252,9 +255,9 @@ export
             if {extent x.captures is 0} andif {extent x.typeArgs is 0} then
                 array of vals.symbolAt(fn code <> "_closure") end
             else
-                (* One object: the code pointer, then the descriptors of the
-                 * type arguments, then the captures, a word for each of their
-                 * values (docs/c-representation.md section 6.1) *)
+                (* Lay out the closure as one heap object: the code pointer,
+                 * followed by type-argument descriptors, then each captured
+                 * value's words (docs/c-representation.md section 6.1) *)
                 let kinds = vector.new(:objectLayout.Kind)
                 for i = 0 upto {extent x.descriptors - 1} do
                     vector.append(kinds option kindPointer of objectLayout.Kind end)
@@ -296,8 +299,8 @@ export
             end
         end
 
-    (* A capture read from the function's closure, its first parameter, laid
-     * out as makeClosure lays it out: after the code pointer *)
+    (* Reads a captured variable from the closure parameter, laid out as in
+     * makeClosure: after the code pointer and any type-argument descriptors *)
     and envField(fn: vals.Fn x: ir.OpEnvField t: Type): Array(Int) =
         begin
             if maybe.isNone(fn.closure) then raise vals.unsupported with "env_field outside a closure" end end
@@ -322,8 +325,8 @@ export
     let handlerChain = "quest_current_exception_handler"
     let currentException = "quest_current_exception"
 
-    (* Pops the handlers of the trys entered since depth, for a way out of
-     * them *)
+    (* Unwinds the thread-local exception handler chain back to nesting depth,
+     * used when jumping or returning out of enclosing try blocks *)
     let leaveTo(fn: vals.Fn depth: Int): Ok =
         if vector.length(fn.handlers) > depth then
             let h = vector.get(fn.handlers depth)
@@ -333,8 +336,8 @@ export
 
     let labelDepth(fn: vals.Fn label: String): Int = maybe.unwrapOr(hashMap.get(fn.labelDepth label) 0)
 
-    (* What s compiles to is at its source position, or, if it has none, at
-     * the position of the code before it *)
+    (* Updates the builder's current source position to s's position when it
+     * has one, keeping the previous position otherwise *)
     let positioned(fn: vals.Fn s: ir.Stmt): Ok =
         begin
             let pos = ir.stmtPos(s)
@@ -348,7 +351,7 @@ export
     (* Emits s at fn.cur, leaving fn.cur at the block where control goes on
      * after it, which is terminated if s cannot fall through (a return, a
      * jump, a raise). A statement after a terminator is unreachable, and
-     * emits nothing *)
+     * emits nothing. *)
     let rec statement(fn: vals.Fn s: ir.Stmt): Ok =
         if vals.terminated(fn) then
             (* Code after a terminator is unreachable *)
@@ -413,9 +416,10 @@ export
                      * values each jump to it passes, which it receives as a
                      * function receives arguments. The body is built first,
                      * where a jump to the label goes to k (sJump, below); then
-                     * the continuation at k. Both fall through to after. The
-                     * number of trys entered here is kept, so that a jump
-                     * from inside a try in the body leaves that try first *)
+                     * the continuation is built at k. Both fall through to
+                     * after. The number of trys entered here is kept, so that
+                     * a jump from inside a try in the body leaves that try
+                     * first. *)
                     let k = newBlock(fn)
                     let received = array of(extent x.params vals.noValues)
                     let counts = array of(extent x.params 0)
@@ -433,8 +437,9 @@ export
                     body(fn x.body)
                     if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
                     fn.cur := k
-                    (* Its parameters bound as any variable is: a global's
-                     * stored, so that the functions that read it see it *)
+                    (* Bind join parameters like any other variable; if a
+                     * parameter is global, writing it stores to static data so
+                     * other functions see it *)
                     for i = 0 upto {extent x.params - 1} do vals.write(fn x.params[i] received[i]) end
                     body(fn x.continuation)
                     if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
@@ -472,11 +477,10 @@ export
                     vals.terminate(fn option termReturn of ssa.Terminator with let values = values end)
                 when sUnreachable then vals.terminate(fn ssa.termUnreachable)
                 when sStoreAt with x then
-                    (* A store's barrier follows it, here and below: lowering
-                     * the value, or boxing it for its slot, may emit a call
-                     * (an allocation, a string literal's among them) that
-                     * collects, after which a barrier before it has been
-                     * forgotten *)
+                    (* The GC write barrier follows the store, here and below:
+                     * lowering or boxing the value may emit a call that
+                     * triggers garbage collection, which would discard a
+                     * barrier emitted before the store *)
                     let address = vals.atom1(fn x.address)
                     vals.writeLocation(fn address ir.atomType(x.value) vals.atom(fn x.value))
                     if vals.holdsPointer(ir.atomType(x.value)) then
@@ -510,8 +514,9 @@ export
                                 let o = representation.unproxy(fn b)
                                 representation.writeSlot(fn vals.offsetPtr(fn o 8 * x.index) comp.type v)
                                 if barrier then vals.callVoid(fn "quest_barrier" array of o end) end
-                            (* A var component of a proxy is the original's,
-                             * which quest_proxy_store barriers itself *)
+                            (* A var component of a proxy lives in the original
+                             * object; quest_proxy_store runs its own write
+                             * barrier *)
                             when proxy then
                                 representation.choose(fn vals.isProxy(fn b) vals.noValuesTypes
                                     fun(): Array(Int)
@@ -578,8 +583,9 @@ export
                     vals.callVoid(fn "quest_echo_text" array of vals.symbolAt(fn vals.stringSymbol(fn.u x.text)) end)
                 when sRaise with x then
                     let payload = if maybe.isNone(x.payload) then vals.toVal(fn vals.constant(fn 0))
-                        (* In its slot form (the slots pass boxed a record or
-                         * variant), as the C printer's shapeSlotToQval reads it *)
+                        (* Convert the payload from its slot form (records and
+                         * variants are already boxed by the slots pass) to a
+                         * QVal word, matching C's shapeSlotToQval *)
                         else representation.slotToWord(fn vals.atom(fn maybe.unwrap(x.payload)) ir.atomType(maybe.unwrap(x.payload)))
                     end
                     if maybe.isSome(x.descriptor) then
@@ -594,8 +600,8 @@ export
             end
         end
 
-    (* A case on a variant or option, as a switch on its tag (C's switch in
-     * the C printer); a case's binder is bound to its payload *)
+    (* Lowers a case on a variant or option to an SSA switch on its tag,
+     * binding each arm's binder to that case's payload *)
     and switch(fn: vals.Fn x: ir.StmtSwitch): Ok =
         begin
             let v = vals.atom(fn x.value)
@@ -641,13 +647,13 @@ export
                     let binderKind = shapes.shape(binder.type).kind
                     let values = if maybe.isSome(x.viewMap) andif not(isVariant)
                         andif shapes.sameKind(binderKind shapes.shapeTuple) then
-                        (* A bounded type parameter's value: its payload, viewed
-                         * at the bound's payload type *)
+                        (* For a bounded type parameter's option with a tuple
+                         * payload, view the payload at the bound's type *)
                         let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(x.viewMap)))
                         array of vals.call1(fn "quest_view_option_payload" array of v[0] vm end) end
                     elsif maybe.isSome(x.viewMap) then
-                        (* A bounded type parameter's value: its payload read
-                         * through the view map, converted *)
+                        (* For a bounded type parameter's value, read and
+                         * convert the payload through its view map *)
                         aggregates.viewPayload(fn v t c.tags[0] vals.atom1(fn ir.atomOfVar(maybe.unwrap(x.viewMap))) binder.type)
                     elsif isVariant then
                         representation.slotFromWord(fn v[1] binder.type)
@@ -664,10 +670,11 @@ export
             fn.cur := after
         end
 
-    (* A try (docs/ssa.md section 3): its handler record, a stack slot, pushed
-     * on the runtime's chain with what it catches (docs/exceptions.md section
-     * 5.1), then a try terminator whose handler block the runtime resumes at
-     * when the body raises. Its handler's variable is a copy of the exception
+    (* Lowers a try statement (docs/ssa.md section 3). Allocates a stack
+     * QExceptionHandler record, pushes it onto the thread-local handler chain
+     * with the caught exceptions (docs/exceptions.md section 5.1), and emits a
+     * termTry terminator whose handler block the runtime resumes when the body
+     * raises. The handler variable binds a stack copy of the exception
      * state. *)
     and tryStatement(fn: vals.Fn x: ir.StmtTry): Ok =
         begin
@@ -716,9 +723,9 @@ export
             fn.cur := handlerB
             vals.store(fn vals.threadLocal(fn handlerChain) 0 8 vals.loadWord(fn h
                 runtimeLayout.offset("QExceptionHandler" "prev") vals.tPtr))
-            (* The handler's variable: a copy of quest_current_exception, which
-             * any raise the handler's code makes, even one it catches itself,
-             * overwrites *)
+            (* Copy quest_current_exception to a stack slot for the handler's
+             * variable, because any raise inside the handler (even one it
+             * catches itself) overwrites the thread-local global *)
             let stateRecord = maybe.unwrap(runtimeLayout.struct("QExceptionState"))
             let stateSlot = ssa.newSlot(fn.f stateRecord.bytes 8)
             let state = ssa.slotAddress(fn.f fn.cur stateSlot)
@@ -732,8 +739,8 @@ export
             fn.cur := after
         end
 
-    (* An inspect of an auto value: a chain of tests of its type component,
-     * one for each case, as the C printer prints them *)
+    (* Lowers an inspect on a dynamically typed auto value into a chain of
+     * runtime subtype tests on its stored type descriptor, one per case *)
     and inspectAuto(fn: vals.Fn x: ir.StmtInspect): Ok =
         begin
             let autoType = maybe.unwrap(x.autoType)
@@ -802,8 +809,8 @@ export
             fn.cur := after
         end
 
-    (* The components of an auto value at an inspect arm's type, a new tuple,
-     * each converted from its stored form as the arm says *)
+    (* Allocates a tuple of an auto value's components at an inspect arm's
+     * type, converting each field from its stored form via arm.descriptors *)
     and autoArmConverted(fn: vals.Fn arm: ir.InspectArm stored: Int storedType: Type armType: Type): Int =
         begin
             let storedFields = case storedType.form

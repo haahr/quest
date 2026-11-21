@@ -40,10 +40,10 @@ export
     let name16(b: Bytes s: String): Ok =
         for i = 0 upto 15 do byte(b if i < stringOp.length(s) then ascii.val(stringOp.getChar(s i)) else 0 end) end
 
-    (* n0 in LEB128, DWARF's variable-length encoding of integers: seven bits
-     * a byte, least significant first, the top bit set on every byte but the
-     * last; uleb's n0 is unsigned (not negative), and sleb's signed, its last
-     * byte's bit 6 its sign *)
+    (* Encodes n0 in LEB128, DWARF's variable-length integer format: seven bits
+     * per byte, least significant first, with the high bit set on every byte
+     * except the last. uleb encodes non-negative integers; sleb encodes signed
+     * integers with bit 6 of the final byte carrying the sign. *)
     let uleb(b: Bytes n0: Int): Ok =
         begin
             let var n = n0
@@ -107,9 +107,10 @@ export
             b
         end
 
-    (* The compile unit: the unit's code, its first file its name, and a
-     * subprogram for each function; its line table at offset 0. Its
-     * language is 0x8000, from the range DWARF leaves to users, as asm's. *)
+    (* Builds the __debug_info section for one DWARF 4 compile unit covering
+     * the unit's code, named after its first source file, with a subprogram
+     * entry for each function and its line table at offset 0. Uses language
+     * code 0x8000 (DWARF's user-defined range), matching codegen/arm64/asm. *)
     let information(e: encode.Encoded codeAddress: Int files: Array(String)): Bytes =
         begin
             let body = vector.new(:Int)
@@ -141,18 +142,19 @@ export
             b
         end
 
-    (* The line table: a sequence for each function with positions, from its
-     * start, which has its first position (so that a debugger breaking on
-     * the function finds a line there, and skips its prologue to the next
-     * row), to its end; each row an address and the file, line, and column
-     * there *)
+    (* Builds the __debug_line section, emitting one line-number sequence per
+     * function that has source positions. Each sequence runs from the
+     * function's start (carrying its first position so a debugger breaking on
+     * the function finds a line there and skips the prologue to the next row)
+     * to its end, recording an address, file, line, and column per row. *)
     let lineTable(e: encode.Encoded codeAddress: Int files: Array(String)): Bytes =
         begin
-            (* The header after its version and its own length: minimum
-             * instruction length 1, one operation per instruction, rows are
-             * statements, line base -5, line range 14, opcode base 13 and the
-             * operand counts of standard opcodes 1 to 12; then the files'
-             * directories and the files, each in its own directory *)
+            (* Emit the line-table header body (after version and header
+             * length): minimum instruction length 1, max operations per
+             * instruction 1, default_is_stmt 1, line base -5, line range 14,
+             * opcode base 13, operand counts for standard opcodes 1 to 12, and
+             * the directory and file tables (each file referencing its own
+             * directory entry) *)
             let header = vector.new(:Int)
             byte(header 1)
             byte(header 1)
@@ -255,9 +257,9 @@ export
             name16(b "__text") name16(b "__TEXT")
             u64(b codeAddress) u64(b codeBytes) u32(b dataStart) u32(b 2) u32(b 0) u32(b 0)
             u32(b 0x80000400) u32(b 0) u32(b 0) u32(b 0)
-            (* __DWARF's sections, debugging only, at address 0: lldb reads
-             * an object in memory's sections from the process, each at its
-             * address, but one at a small address from the object itself *)
+            (* Emit __DWARF debug-only sections at address 0: for an in-memory
+             * object, lldb reads high-address sections from process memory,
+             * but reads low-address sections directly from the object buffer *)
             let var offset = dataStart + codeBytes
             for i = 0 upto {extent sections - 1} do
                 let size = vector.length(sections[i].bytes)

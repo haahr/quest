@@ -1,19 +1,28 @@
 (* Quest Self-Hosted Compiler: The SSA's Value Numbering Interface
  *
- * Removes redundant values along the dominator tree (docs/ssa.md section 4.1),
- * in the manner of Briggs, Cooper, and Simpson: a pure instruction or a load
- * whose equal (by opcode, immediate, symbol, type, and arguments' numbers, a
- * constant's by its value, a load's address taken apart as a base, an index,
- * and a constant offset) dominates it is replaced by that equal, an ordinary
- * load (not invariant) only while no store or call that may write memory comes
- * between, and a whole word's store is what a load of it reads; a copy by its
- * argument; and a block parameter that every jump binds to one value by that
- * value. The comparisons, bitwise ands, multiplications, and pointer additions
- * that arm64's selection fuses into the instruction using them, and constants,
- * symbols' addresses, and nulls, are replaced only by an equal in their own
- * block; so is a whole word's load whose neighboring word its block also
- * loads, which arm64 can then load as a pair. The pure instructions and loads
- * left without uses are then removed. *)
+ * Performs global value numbering along the dominator tree (docs/ssa.md
+ * section 4.1, following Briggs, Cooper, and Simpson) to eliminate redundant
+ * computations. When a pure instruction or load is dominated by an equivalent
+ * one (a block dominates another when every path from entry passes through
+ * it), the later instruction is replaced by the earlier result. Equivalence
+ * compares opcode, immediate, symbol, type, and operand value numbers (with
+ * constants compared by value, and load addresses decomposed into base,
+ * index, and constant offset).
+ *
+ * Non-invariant loads are deduplicated only while no store or writing call
+ * intervenes, and an 8-byte store forwards its stored value to subsequent
+ * loads of that address. Copies are replaced by their argument, and trivial
+ * block parameters (ones every incoming jump binds to the same value or to
+ * the parameter itself) are replaced by that value.
+ *
+ * Several kinds of instructions are deduplicated only within their own block:
+ * comparisons, bitwise ands, multiplications, and pointer additions (which
+ * arm64 instruction selection fuses into their users within a block);
+ * constants, symbol addresses, and nulls (which otherwise stay live across
+ * blocks and increase register spills); and 8-byte loads whose neighboring
+ * word is also loaded in the same block (so arm64 can combine them into a
+ * pair load). Finally, pure instructions, loads, and copies left with no uses
+ * are removed. *)
 
 interface ValueNumbers
 import

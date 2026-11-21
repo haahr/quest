@@ -1,15 +1,15 @@
 (* Quest Self-Hosted Compiler: Kind Synthesis and Checking Interface
  *
- * The kinds of bootstrap/python/quest/types/kinds.py: well-formedness of kinds,
- * kind synthesis and checking of types, and the resolution of types to the
- * record, variant, option, or tuple types they are bounded by. A kind is the
- * type of a type (TYPE, POWER(B), or ALL(X::K1) K2 for a type operator; see
- * model.Kind), and kind checking rejects, say, Int(Bool) or a type argument
- * outside its parameter's bound. docs/type-system.md §3.1 gives subkinding,
- * and §2.2 the memo of kinds per check. A kind error raises
- * diagnostics.compilerError, at offset 0 (the bootstrap's KindError).
- * The environment is optional, as the bootstrap's is: without one, type
- * variables are not resolved and binders are not declared. *)
+ * Checks kind well-formedness, synthesizes and checks kinds of types, and
+ * resolves types to the record, variant, option, or tuple types they are
+ * bounded by (counterpart: bootstrap/python/quest/types/kinds.py). A kind is
+ * the type of a type (TYPE, POWER(B), or ALL(X::K1) K2 for a type operator;
+ * see model.Kind), and kind checking rejects malformed types such as Int(Bool)
+ * or a type argument outside its parameter's bound. docs/type-system.md §3.1
+ * specifies subkinding, and §2.2 describes the per-check kind memo. A kind
+ * error raises diagnostics.compilerError at offset 0 (the bootstrap's
+ * KindError). The environment is optional, as in the bootstrap: without one,
+ * type variables are not resolved and binders are not declared. *)
 
 interface Kinds
 import
@@ -26,14 +26,14 @@ export
      * outermost call *)
     synthKind(t: model.Type e: Env): model.Kind
 
-    (* One step of exposing the structure of t: a recursive type unfolded, or an
-     * application of a type operator reduced; none for an application of
-     * anything else *)
+    (* One step of exposing the structure of t: unfolds a recursive type or
+     * reduces a type operator application, and returns none otherwise *)
     unfoldHead(t: model.Type): maybe.T(model.Type)
 
-    (* t, or the upper bound of a type variable or path type (through bounds
-     * that are bounded variables), if a record type (a variant, a variant or
-     * option, a tuple); recursive types are unfolded *)
+    (* Resolves t (unfolding recursive types, reducing applications, and
+     * following POWER bounds of type variables, abstract types, and path
+     * types) to a record, variant, sum (variant or option), or tuple type, or
+     * returns none if no such bound exists *)
     resolveRecordBound(t: model.Type e: Env): maybe.T(model.Type)
     resolveVariantBound(t: model.Type e: Env): maybe.T(model.Type)
     resolveSumBound(t: model.Type e: Env): maybe.T(model.Type)

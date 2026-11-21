@@ -171,15 +171,16 @@ export
             end
         end
 
-    (* The identity hash of what `is` compares at the type t, if known (the
-     * resolved type argument of util/hash's identityHash): a scalar's value, or
-     * the object a value holds. Options and variants follow primitives.sameAt,
-     * so that values it finds the same hash alike: an option of a case without
-     * components by its case's name; a variant by its case's name and its
-     * value at the case's type (docs/extensions.md, Options as Values,
-     * Variants as Values). Any other option or variant, or one whose type is
-     * not known, hashes by its object, never by components that could change
-     * after it is stored (a var component). *)
+    (* Returns the identity hash of what `is` compares at type t (the resolved
+     * type argument of util/hash's identityHash), if known: a scalar's value,
+     * or the object identity a value holds. Options and variants follow
+     * primitives.sameAt, so that values it finds the same hash alike: an option
+     * of a case without components hashes by its case name, and a variant
+     * hashes by its case name and its value at the case's type
+     * (docs/extensions.md, Options as Values, Variants as Values). Any other
+     * option or variant, or one whose type is not known, hashes by its object
+     * identity, never by components that could change after it is stored (a
+     * var component). *)
     let rec identityHash(t: maybe.T(tm.Type) v: Value): word.T =
         case v
             when vInt with x then hash.identityHash(x.n)
@@ -257,13 +258,12 @@ export
             unit
         end
 
-    (* dynamic.intern(rd): reads one dynamic value from rd, as dynamic.extern
-     * writes it, and no further (json.read: a reader may hold several
-     * documents in a row), and decodes it (dynamicReader.decodeDocument: JSOG,
-     * JSON with @id and @ref for objects reached more than once).
-     * dynamic.error is raised for a closed reader, input that ends inside the
-     * value or is not JSON, a failed read, and a document that does not
-     * decode. *)
+    (* Implements dynamic.intern(r): reads one dynamic value from r (as
+     * dynamic.extern writes it) and no further (via json.read, since a reader
+     * may hold several documents in a row), then decodes it via
+     * dynamicReader.decodeDocument (which handles @id and @ref for shared
+     * objects). Raises dynamic.error for a closed reader, truncated or
+     * non-JSON input, a failed read, or a document that does not decode. *)
     let dynamicIntern(r: reader.T): Value =
         dynamicReader.decodeDocument(
             try json.read(r json.parsingDynamic)
@@ -271,9 +271,10 @@ export
             when json.error then dynamicFailure()
             end)
 
-    (* Fills table, when this module initializes, with the externals the
-     * interpreter provides, keyed by C symbol: all but quest_system_args,
-     * which resolveExternal makes when asked. The name is never read *)
+    (* Populates table during module initialization with the externals the
+     * interpreter provides, keyed by C symbol (all except quest_system_args,
+     * which resolveExternal constructs on demand). The binding itself is never
+     * read. *)
     let filled =
         begin
             (* Writer *)

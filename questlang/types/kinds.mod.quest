@@ -121,12 +121,13 @@ export
                 end
             end
         end
-    (* Kinds synthesized during the current top-level check, by node: elaborated
-     * types are DAGs (aliases are shared), so without it every shared subterm
-     * is checked again on every path to it. A node's kind depends only on the
-     * node and the binders in scope, which have unique ids, so a shared node
-     * has one kind wherever it occurs. Metavariables are not memoized, and a
-     * nested call with another environment bypasses the memo. *)
+    (* Synthesizes the kind of t, memoizing results by node id for the duration
+     * of the outermost call. Elaborated types are DAGs (aliases share nodes),
+     * so without a memo every shared subterm would be checked once per path to
+     * it. A node's kind depends only on the node and the enclosing binders,
+     * which have unique ids, so a shared node has one kind wherever it occurs.
+     * Metavariables are not memoized, and a nested call with a different
+     * environment bypasses the memo. *)
     and synthKind(t: Type e: Env): Kind =
         case t.form
             when typeMeta then synthUncached(t e)
@@ -408,12 +409,12 @@ export
             end
         end
 
-    (* The first type that wanted accepts on a walk from t, or none: each step
-     * evaluates the current type (without an environment, only unaliases
-     * it), then unfolds a recursive type or reduces an application at its
+    (* Returns the first type accepted by wanted on a walk from t, or none.
+     * Each step evaluates the current type (or only unaliases it when e is
+     * none), then unfolds a recursive type or reduces an application at its
      * head (unfoldHead), or replaces a bounded variable by its bound
-     * (boundedVariable). The walk ends when no step applies, or when it
-     * meets a head it unfolded or a variable it passed through before *)
+     * (boundedVariable). The walk stops when no step applies, or when it
+     * revisits a head it already unfolded or a variable it already followed. *)
     let resolveBound(t: Type e: Env wanted: All(u: Type) Bool): maybe.T(Type) =
         begin
             let visited = hashMap.new(:Int :Bool fun(a: Int b: Int): Bool a is b hash.int)

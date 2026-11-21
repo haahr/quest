@@ -1,21 +1,22 @@
 (* Quest Self-Hosted Compiler: The WebAssembly Runtime Types Interface
  *
- * R, the one recursion group of the types the runtime defines and code tells
- * apart by a cast (docs/wasm.md section 2.11), from one table: every
- * module declares it first, so each of its types has the same index, its
- * position in the table, in every module, and is the same type across
- * modules. A change to it is a change to the ABI.
+ * Defines R, the single WebAssembly GC recursion group of runtime types that
+ * compiled code distinguishes with runtime casts (docs/wasm.md section 2.11).
+ * Every compiled module declares R first from this table so that each type has
+ * the same index and the same iso-recursive identity across modules; any
+ * change to R changes the ABI.
  *
- * It holds $obj, the base of everything with an identity and its hash; the
- * boxes of Int and Real; $slots, $bytes, and $i32s, the arrays; $tupleLike,
- * $tuple, $option, and $proxy (section 2.3); $string and $array (sections
- * 2.7 and 2.4); $varBox, and $record, $dict, and $recBox, a record's payload,
- * its view's table, and the two boxed (section 2.5); $clos, the base of
- * closures (section 3.1); $auto, an auto value; and $exception and $raised
- * (section 2.9). Descriptors and view maps are not in R (section 2.11):
- * they are Quest tuples of runtime/wasm/core (its Desc and ViewMap),
- * and a type of R that refers to one holds it as an eqref ($record's
- * layout, $auto's desc). *)
+ * R contains $obj (the base type for heap values with identity and cached
+ * hash); $boxInt and $boxReal (boxed Int and Real); the array types $slots,
+ * $bytes, and $i32s; $tupleLike, $tuple, $option, and $proxy (section 2.3);
+ * $string and $array (sections 2.7 and 2.4); $varBox (mutable variable cell);
+ * $record, $dict, and $recBox (a record's payload, its view offset dictionary,
+ * and the two boxed together, section 2.5); $clos (the base of closures,
+ * section 3.1); $auto (an existential package); and $exception and $raised
+ * (section 2.9). Type descriptors and view maps are not in R (section 2.11):
+ * they are ordinary Quest tuples defined in runtime/wasm/core (Desc and
+ * ViewMap), so types in R hold them as eqref (WebAssembly's generic GC
+ * reference type), as in $record's layout and $auto's desc fields. *)
 
 interface RuntimeTypes
 import
@@ -24,9 +25,9 @@ export
     (* R's types, in the order of their indices from 0 *)
     group: model.RecGroup
 
-    (* The index of R's type named name (as "tuple" for $tuple), and of its
-     * field named field; each raises model.malformed for a name R does not
-     * have *)
+    (* Returns the index of the type named name in R (such as "tuple" for
+     * $tuple), or of its field named field. Both raise model.malformed if the
+     * name is not found in R. *)
     index(name: String): Int
     field(name: String field: String): Int
 end

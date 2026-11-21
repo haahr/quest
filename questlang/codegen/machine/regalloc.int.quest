@@ -1,10 +1,10 @@
 (* Quest Self-Hosted Compiler: The Register Allocator's Interface
  *
- * Gives each virtual register of a machine function
- * (codegen/machine/machine) one of the target's physical registers
- * (codegen/machine/target), or memory, by linear scan with interval
- * splitting (after Wimmer and Mossenbock, "Optimized Interval Splitting in a
- * Linear Scan Register Allocator"; docs/arm64.md section 3.8).
+ * This module assigns each virtual register of a machine function
+ * (codegen/machine/machine) to one of the target's physical registers
+ * (codegen/machine/target) or to a stack spill slot, using linear scan with
+ * interval splitting (after Wimmer and Mossenbock, "Optimized Interval
+ * Splitting in a Linear Scan Register Allocator"; docs/arm64.md section 3.8).
  * The target is a parameter, so that a test (regalloc_scan) can run the
  * allocator on a toy target with a few registers.
  *
@@ -113,10 +113,9 @@ export
          * order, and its register, or memory *)
         starts: Array(Array(Int))
         homes: Array(Array(Int))
-        (* Whether one has a piece in memory, and so is stored there when it
-         * is defined, unless it is rematerialized (one with no pieces, never
-         * live, is in memory everywhere but never stored, as is one never
-         * read) *)
+        (* Whether each virtual register has a piece in memory and is therefore
+         * stored to its spill slot when defined, unless rematerialized. Values
+         * with no pieces (never live) or no reads are never stored. *)
         spilled: Array(Bool)
         (* Whether one is rematerialized rather than stored *)
         remat: Array(Bool)
@@ -154,16 +153,17 @@ export
      * is defined, and so needs a stack slot *)
     needsSlot(a: Allocation v: Int): Bool
 
-    (* The slot each virtual register that needs one is stored in (by its
-     * index; ~1 for one that needs none), numbered from 0: registers of the
-     * same kind (by register) share a slot where their lifetimes do not
-     * overlap, counting the places rewrite writes a slot outside its value's
-     * lifetime (a block parameter's, on the jumps into its block), so that a frame holds the most values in memory
-     * at once rather than every value ever there. Not for a function a raise
-     * enters, whose handler reads slots where liveness does not see it. *)
+    (* Assigns a stack slot number (from 0, or ~1 if none is needed) to each
+     * virtual register that needs one, indexed by virtual register index.
+     * Registers of the same kind (as classified by kind) share a slot whenever
+     * their lifetimes do not overlap, including places where rewrite writes a
+     * slot outside its value's lifetime (such as a block parameter's slot on
+     * incoming jumps), so the frame only needs room for the peak number of
+     * simultaneously spilled values. Do not use on a function with exception
+     * handlers, whose handlers may read slots not visible to liveness. *)
     shareSlots(f: machine.Function a: Allocation kind: All(v: Int) Int): Array(Int)
 
-    (* The function, its virtual registers replaced by those allocated, the
-     * loads, stores, and moves added *)
+    (* Rewrites f in place to use the allocated physical registers, inserting
+     * spill loads, stores, rematerializations, and parallel moves *)
     rewrite(f: machine.Function a: Allocation lowering: machine.Lowering): Ok
 end

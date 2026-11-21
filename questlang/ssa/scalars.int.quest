@@ -1,14 +1,14 @@
 (* Quest Self-Hosted Compiler: The SSA's Scalar Replacement Interface
  *
- * Objects that are made, read, and passed through block parameters without
- * leaving a function, replaced by the values of their words (docs/ssa.md
- * section 4.3): a loop that carries a tuple carries its components, and a
- * join of options made in several places (or one of them a constant of the
- * unit's static data) joins their tags and components. Escape analysis
- * (section 4.2) removes an allocation that is only ever one value; this pass,
- * after promotion has made the variables a loop carries its parameters,
- * removes those that a block parameter merges with others, which it cannot,
- * and those promotion exposes. *)
+ * This pass replaces heap-allocated or static-constant objects that never
+ * escape a function (even when merged through block parameters) with the SSA
+ * values of their individual words (docs/ssa.md section 4.3). For example, a
+ * loop carrying a tuple instead carries its components directly, and a join of
+ * options constructed in several branches (including static constants) joins
+ * their tags and payloads. Escape analysis (section 4.2) removes single-origin
+ * allocations that never merge; this pass runs after stack-slot promotion has
+ * turned loop-carried variables into block parameters, removing merged
+ * allocations and any further allocations that promotion exposes. *)
 
 interface Scalars
 import
@@ -19,9 +19,9 @@ export
      * as it is, and if so why *)
     Def Verdict = Tuple value: Int constant: Bool left: Bool reason: String end
 
-    (* The origins of f's objects, in the order they are made, without
-     * changing f (replaceFunction first drops the parameters nothing uses,
-     * which can keep objects whole) *)
+    (* Returns the verdict for each object origin in f, in creation order,
+     * without modifying f (replaceFunction first drops unused block
+     * parameters, which can otherwise keep objects from being replaced) *)
     analyze(u: ssa.Unit f: ssa.Function): Array(Verdict)
 
     (* Replaces f's merged objects by their words, the static data of u giving

@@ -23,12 +23,12 @@ export
     let wordScalar = 1
     let wordNested = 2
 
-    (* What the pass knows of a function. An origin is what makes an object:
-     * a quest_alloc of a constant size, or the address of a word of the
-     * unit's static data that is never written (a constant option, say).
-     * Origins whose pointers meet at a block parameter, or one of whose words
-     * holds another's pointer, are in one group, whose objects are replaced
-     * by their words together. *)
+    (* Analysis state for one function. An origin is what creates an object: a
+     * quest_alloc of a constant size, or the address of a word in read-only
+     * static data (such as a constant option). Origins whose pointers meet at
+     * a block parameter or are loaded from the same word of a group belong to
+     * one union-find group, whose objects are replaced by their words
+     * together. *)
     Let State = Tuple
         f: Function
         d: proxyFold.Defs
@@ -91,8 +91,8 @@ export
 
     let live(s: State v: Int): Bool = {v >= 0} andif {s.ptr[v] >= 0} andif not(s.dead[s.ptr[v]])
 
-    (* Whether v tests one of the groups' pointers for being a proxy, which
-     * folds: no origin is one *)
+    (* Reports whether v tests a group pointer for being a runtime proxy
+     * (QProxy); such tests fold to false because no origin is a proxy *)
     let isProxyTest(s: State v: Int): Bool = proxyFold.isProxyTest(s.d v fun(p: Int): Bool live(s p))
 
     let takenTargets(s: State term: ssa.Terminator): Array(ssa.Target) =
@@ -218,9 +218,10 @@ export
                     end
                 end
             end
-            (* Each allocation's initializing stores: in its block, through
-             * its own pointers, each word at most once, none read through
-             * them before the last *)
+            (* Collects each allocation's initializing stores, requiring them
+             * to be in the allocation's own block through its exact pointers,
+             * writing each word at most once, with no loads through those
+             * pointers before the last store *)
             for b = 0 upto {nBlocks - 1} do
                 let blk = ssa.block(f b)
                 for k = 0 upto {vector.length(blk.insts) - 1} do
@@ -286,8 +287,8 @@ export
             end else joined end
         end end
 
-    (* The pointers into the live origins' objects, and their groups, to a
-     * fixed point over the blocks reached *)
+    (* Computes, to a fixed point over reachable blocks, which values point
+     * into live origins' objects and which origins belong to the same group *)
     let pointers(s: State): Ok =
         begin
             let f = s.f
@@ -301,15 +302,16 @@ export
             let var changed = true
             while changed do
                 changed := false
-                (* The parameters that may be pointers: those every taken edge
-                 * binds to a pointer or to another such parameter. Assumed
-                 * of every parameter and dropped where it fails, so that the
-                 * parameters a loop carries its object in, bound to one
-                 * another and each also to an object, are found together *)
+                (* Finds block parameters that may be group pointers: those to
+                 * which every taken incoming edge passes a live pointer or
+                 * another candidate parameter. This starts optimistically with
+                 * every parameter of a reachable target and removes any that
+                 * fail, so mutually recursive loop-carried parameters are found
+                 * together. *)
                 let candidate = array of(extent s.ptr false)
-                (* Each block's edges taken, as the round starts: one that a
-                 * pointer found later in it folds away is dropped a round
-                 * later *)
+                (* Caches each reachable block's taken outgoing edges at the
+                 * start of the round; any edge folded away by a newly
+                 * discovered pointer is dropped in the next round *)
                 let taken = array of(nBlocks array of :ssa.Target end)
                 for b = 0 upto {nBlocks - 1} do
                     if s.reach[b] then taken[b] := takenTargets(s ssa.block(f b).term) end
@@ -489,11 +491,11 @@ export
                                     killGroup(s s.ptr[v] "passed to a parameter bound to other values")
                                 end
                             elsif live(s p) then
-                                (* Bound to another parameter that found no
-                                 * group: one of a cycle of them bound to
-                                 * nothing else, which every path from the
-                                 * entry rules out; kept so that pointers'
-                                 * optimism cannot be unsound *)
+                                (* p is bound to a non-live value (such as a
+                                 * parameter in a cycle with no origin), which
+                                 * is impossible on paths from entry but
+                                 * checked here so the optimistic candidate
+                                 * analysis stays sound *)
                                 killGroup(s s.ptr[p] "a parameter bound to other values")
                             end
                         end
@@ -612,8 +614,8 @@ export
             result
         end
 
-    (* The number of values a group's object is replaced by: its words', a
-     * nested object's own; ~1 if a group nests in itself *)
+    (* Returns the number of scalar values that replace an object in group g
+     * (recursing into nested groups), or ~1 if a group nests inside itself *)
     let rec leafCount(ls: hashMap.T(Int Layout) g: Int visiting: hashMap.T(Int Bool)): Int =
         if hashMap.contains(visiting g) then ~1
         else begin
@@ -812,9 +814,9 @@ export
                 let isPointer(v: Int): Bool = {v < nValues} andif live(s v)
                 let groupOf(v: Int): Int = find(s s.ptr[v])
                 let countOf(g: Int): Int = leafCount(ls g hashMap.new(intEqual hash.int))
-                (* Each pointer's values (its object's, from the word its
-                 * offset is at), by the value whose object it is; each value
-                 * replaced, by what replaces it *)
+                (* Maps each replaced object's base pointer (base[v]) to its
+                 * flattened scalar values, and maps each replaced load result
+                 * (renamed[v]) to its replacement value *)
                 let values = hashMap.new(:Int :Array(Int) intEqual hash.int)
                 let base = array of(nValues ~1)
                 let renamed = array of(nValues ~1)
@@ -900,9 +902,10 @@ export
                         hashMap.insert(values v vector.toArray(result))
                         ok
                     end
-                (* The blocks in reverse postorder, so that each pointer's
-                 * values are recorded before a block it dominates uses them;
-                 * the parameters' are recorded above, for the back edges *)
+                (* Walks blocks in reverse postorder so each pointer's scalar
+                 * values are recorded before any dominated block uses them;
+                 * block parameters were recorded above to handle loop back
+                 * edges *)
                 let g = cfg.graph(f)
                 for r = 0 upto {extent g.order - 1} do
                     let b = g.order[r]

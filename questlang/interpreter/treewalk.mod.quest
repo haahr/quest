@@ -390,9 +390,10 @@ export
             found
         end
 
-    (* e, if it is an option's extraction o!tag, which a selection used as a
-     * location looks through to the option's own payload (docs/type-system.md
-     * section 6.8). A variant's extraction is its payload already *)
+    (* Returns some(e) if e is an option extraction o!tag, so a field selection
+     * used as a mutable location can look through to the option's own payload
+     * (docs/type-system.md section 6.8). A variant extraction already yields
+     * its payload directly. *)
     let optionExtraction(e: Expr): maybe.T(Expr) =
         case e.form
             when exprVariantAssert with x then
@@ -401,9 +402,9 @@ export
             else maybe.none()
         end
 
-    (* The payload of o, an option, for the extraction e (o!tag): the tuple a
-     * case's binder is bound to, rather than o!tag's copy. Raises as o!tag
-     * does if o is of another case *)
+    (* Returns option o's underlying payload tuple for extraction e (o!tag),
+     * matching what a case binder receives rather than the copy o!tag makes.
+     * Raises variant.tagMismatch if o has a different tag. *)
     let ownPayload(o: Value e: Expr): model.TupleValue =
         case e.form
             when exprVariantAssert with x then
@@ -612,9 +613,9 @@ export
                         else maybe.none(:Expr)
                     end
                     if maybe.isSome(through) then
-                        (* o!tag.f := v: the option's own component f, as a
-                         * case's binder has it. o is evaluated and its case
-                         * checked before v *)
+                        (* For o!tag.f := v, write directly into the option's
+                         * own component f (matching a case binder). Evaluate o
+                         * and check its tag before evaluating v. *)
                         let ex = maybe.unwrap(through)
                         let payload = ownPayload(unwrapRefs(evalExpr(extracted(ex) f)) ex)
                         let rhs = evalExpr(x.value f)
@@ -735,10 +736,10 @@ export
                                     let var going = true
                                     while going andif {if x.isDownto then cur >= t.n else cur <= t.n end} do
                                         checkInterrupt(offset)
-                                        (* A scope of its own for each
-                                         * iteration, so that a closure made
-                                         * in the body keeps that iteration's
-                                         * value, as lowering's let does *)
+                                        (* Give each iteration its own scope so
+                                         * closures created in the body capture
+                                         * that iteration's loop variable, as
+                                         * lowering's let does *)
                                         let loopEnv = pushScope(f)
                                         define(loopEnv x.varName model.intValue(cur))
                                         try begin evalExpr(x.body loopEnv) ok end when loopExit then going := false end
@@ -949,14 +950,12 @@ export
                                     maybe.unwrap(handled)
                                 elsif maybe.isSome(x.elseBranch) then
                                     if maybe.isSome(x.elseBinder) then
-                                        (* The else branch names the
-                                         * exception: the error itself,
-                                         * which raised.reraise raises
-                                         * again (docs/raised.md section
-                                         * 5), located and with its frames
-                                         * as if it left this frame, which
-                                         * it was raised in if it has
-                                         * neither *)
+                                        (* Bind the else branch's name to the
+                                         * RunError itself so raised.reraise
+                                         * can re-raise it (docs/raised.md
+                                         * section 5), recording its source
+                                         * location and active frames as if it
+                                         * had left this frame *)
                                         leaving(err f)
                                         let child = pushScope(f)
                                         define(child maybe.unwrap(x.elseBinder).name
@@ -1197,7 +1196,7 @@ export
      * since no member's value sees the others (let x = y and y = x swaps
      * them), and then binds them in a new frame, always, for the same
      * reason. A rec group binds its members in the frame it evaluates them
-     * in, so that each closure sees the others *)
+     * in, so that each closure sees the others. *)
     and evalScopedBinding(b: Binding f0: Frame): Scoped =
         begin
             let var f = f0
@@ -1227,12 +1226,12 @@ export
      * for them *)
     let uninterpreted(canon: String): Bool = stringOp.equal(canon "os/value") orif stringOp.equal(canon "os/code")
 
-    (* Loads and runs module name, as imported from f's directory
-     * (load_module_for_interpreter): the unit f's graph resolves the import to,
-     * run from its typed module, which the type checker elaborated, or which is
-     * elaborated here in an environment of its own (a module the program uses
-     * without importing it). Its value is kept by canonical name, so each
-     * module is run once. *)
+    (* Loads and runs module name as imported from f's directory
+     * (load_module_for_interpreter). It resolves the import in f's unit graph
+     * and runs its typed module, elaborating it in a fresh type environment if
+     * the type checker did not already do so (for a standard module used
+     * without an explicit import). The resulting record is cached by canonical
+     * name so each module runs only once. *)
     let loadModuleForInterpreter(name: String expectedInterface: String f: Frame canonicalName: maybe.T(String)): Value =
         begin
             let root = f.root
@@ -1291,7 +1290,7 @@ export
      * its name is used, and loading it runs the module's bindings, which call
      * lookup again. Rather than make sections 1 to 4 one recursive group, the
      * early code calls the loader through the mutable hooks.loadModule,
-     * assigned here once loadModuleForInterpreter exists *)
+     * assigned here once loadModuleForInterpreter exists. *)
     let installed = begin hooks.loadModule := loadModuleForInterpreter ok end
 
     Let Evaluated = Tuple results: Array(PhraseResult) frame: Frame end

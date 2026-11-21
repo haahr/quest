@@ -1,18 +1,20 @@
 (* Quest Self-Hosted Compiler: Generic Layouts Implementation
  *
  * Generic code (a polymorphic function's body, or code outside a module
- * that uses its abstract types) holds a value of a type parameter T in a
- * QVal word. So it lays out a type that mentions T with a word wherever T
- * appears: an Array(T) has QVal slots. Native code with T = Int lays out
- * Array(Int) with QInt slots, which agree, since a slot is a word either
- * way; with T = a record type, the native slots hold boxes the generic
- * code expects too. But a function value of type All(x: T) T, called with
- * a QVal in generic code and with a QReal in native code at T = Real,
- * disagrees, and must be converted where the value passes between them.
+ * using its abstract types) holds a value of a type parameter T in a
+ * generic 64-bit QVal word. It therefore lays out any type mentioning T
+ * with a word wherever T appears: an Array(T) has QVal slots. Native code
+ * with T = Int lays out Array(Int) with QInt slots, which agree because a
+ * slot is one word either way; with T = a record type, native slots hold
+ * heap-allocated boxes just as generic code expects. By contrast, a
+ * function of type Fun(x: T): T is called with a QVal in generic code and
+ * a QReal in native code when T = Real, so the layouts disagree and the
+ * value must be adapted when crossing between them.
  *
- * Whether the layouts agree depends on where a T is held: in a slot of an
- * aggregate (a word), in a register (a parameter or result, where C's
- * types must match), or in a cell a var or out parameter points to. *)
+ * Whether layouts agree depends on where T is held: in an aggregate slot
+ * (a word), in a register (a parameter or result, where C's calling
+ * conventions must match), or in a cell referenced by a var or out
+ * parameter. *)
 
 module genericLayout : GenericLayout
 import
@@ -93,12 +95,12 @@ export
             when typeVariable with x then maybe.some(x.symbolId)
             else maybe.none()
         end
-    (* Whether a value of shape s, laid out natively with subst's arguments for
-     * its type parameters, is laid out as generic code lays out s, held in the
-     * place. A type that mentions no parameter agrees; a parameter agrees as
-     * storedValueAgrees says; an aggregate agrees when each component does, in
-     * a slot. A recursive shape met again agrees, as far as this walk can
-     * tell *)
+    (* Return whether a value of shape s laid out natively under subst agrees
+     * with generic code's layout of s in the given place. A shape mentioning
+     * no parameter in subst agrees; a type parameter agrees according to
+     * storedValueAgrees; an aggregate agrees when each component does in a
+     * slot. A recursive shape seen again is assumed to agree so the walk
+     * terminates (coinductively). *)
     let rec agrees(s: Shape subst: model.Subst place: String seen: Seen): Bool =
         begin
             let symbol = typeParameter(s)
@@ -158,11 +160,11 @@ export
         begin
             let seen = newSeen()
             let disagrees = fun(component: Shape place: String): Bool not(agrees(component subst place newSeen()))
-            (* Whether a value of s holds mutable data, reachable without
-             * passing through a closure, whose layouts disagree: an array's
-             * or cell's elements, or a var field or case. Converting such a
-             * value would copy it, and writes to the copy would not reach the
-             * original *)
+            (* Return whether a value of shape s holds mutable data (an array
+             * or cell element, or a var field or case) reachable without
+             * passing through a closure whose generic and native layouts
+             * disagree. Converting such a value would copy it, so writes to
+             * the copy would not reach the original. *)
             let rec visit(s: Shape): Bool =
                 if not(mentions(s subst)) then
                     false
@@ -270,9 +272,8 @@ export
                 else
                     hashMap.insert(seen s.id true)
                     (* An abstract application with a known representation
-                     * differs when that representation's generic layout
-                     * disagrees with its native one; any other shape when one
-                     * of its parts does *)
+                     * differs when its generic and native layouts disagree;
+                     * any other shape differs when one of its parts does *)
                     let any = fun(shapes0: Array(maybe.T(Shape))): Bool
                         begin
                             let var found = false

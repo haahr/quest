@@ -48,28 +48,30 @@ export
             when passWord, passReal, passPairRest, passByte, passInt32, passMemory then false
         end
 
-    (* An integer or a pointer (and a composite's copy's address) in the next
-     * x register, a double in the next d register, a 16-byte composite in two
-     * consecutive x registers or wholly on the stack, and the rest on the
-     * stack, as Darwin packs them: a byte (a C bool or char) in a byte, a C
-     * int in 4 aligned bytes, the others in 8 *)
+    (* Assigns AAPCS64 argument locations for types[first..] according to
+     * passed. Integers, pointers, and addresses of large composites take the
+     * next x register; doubles take the next d register; 16-byte composites
+     * take two consecutive x registers or go wholly on the stack. Overflow
+     * arguments are packed on the stack using Darwin's ABI rules: 1 byte for
+     * a C bool or char, 4 aligned bytes for a C int, and 8 bytes otherwise. *)
     let placeArguments(types: Array(ssa.Type) passed: Array(ssa.Passed) first: Int): Placed =
         begin
-            (* AAPCS64's counters: the next general register (x), the next
-             * floating-point register (d), and the next stack offset. A pair
-             * that does not fit in the x registers left goes wholly on the
-             * stack, and then no later integer takes a register *)
+            (* AAPCS64 tracks the next general register (ngrn), the next
+             * floating-point register (nsrn), and the next stack offset
+             * (nsaa). A 16-byte pair that does not fit in the remaining x
+             * registers goes wholly on the stack, and no later integer
+             * argument may use a register. *)
             let places = array of(extent types tuple let reg = memory let offset = 0 let bytes = 8 end)
             let var ngrn = 0
             let var nsrn = 0
             let var nsaa = 0
             let x(n: Int): ArgumentPlace = tuple let reg = target.x(n) let offset = 0 let bytes = 8 end
-            (* The stack place of the argument at k, after at bytes: at its C
-             * type's size and alignment, as Darwin places them (a C bool or
-             * char a byte, a C int 4 bytes, the rest 8; the runtime's
-             * functions take no other narrow type, which
-             * tests/python/test_runtime_signatures.py checks, docs/arm64.md
-             * section 3.3) *)
+            (* Computes the stack slot for argument k starting at offset at,
+             * aligned to its C type's size under Darwin's ABI (1 byte for a
+             * C bool or char, 4 for a C int, 8 otherwise). Runtime functions
+             * use no other narrow types, as checked by
+             * tests/python/test_runtime_signatures.py (docs/arm64.md section
+             * 3.3). *)
             let stackAfter(at: Int k: Int): ArgumentPlace =
                 begin
                     let bytes = case passed[k]
@@ -142,13 +144,15 @@ export
         defs: Array(maybe.T(ssa.Inst))
         defBlock: Array(Int)
         uses: Array(Int)
-        (* The comparisons each fused into the branch on it *)
+        (* Values (comparisons, bit tests, or conjunctions) fused into a
+         * branch or select *)
         fused: Array(Bool)
-        (* The ptrAdds folded into the one load or store that uses each, as
-         * a base and an index register: by the ptrAdd's value, the index's
-         * value (~1 for a value not folded) and its shift; and the values
-         * folded, which are not computed on their own (each such ptrAdd, and
-         * a multiplication by the access's width that only it uses) *)
+        (* Indexed addressing info for single-use ptrAdd instructions folded
+         * into a load or store. For a folded ptrAdd value v, indexOf[v] is
+         * the index SSA value (~1 if not folded) and shiftOf[v] is its
+         * left-shift (log2 of element width). folded[v] marks values (both
+         * the ptrAdd and any single-use width multiplication) omitted from
+         * standalone code generation. *)
         indexOf: Array(Int)
         shiftOf: Array(Int)
         folded: Array(Bool)
@@ -175,9 +179,9 @@ export
             machine.newVirtual(s.m classOf(t))
         end
 
-    (* An instruction, its first registers written (as minst.results says)
-     * and the rest read, with fixed registers it also reads and writes (a
-     * call's arguments and results) *)
+    (* Appends i to the current block, marking its first minst.results(i.op)
+     * registers as written and the rest as read, plus any extra fixed
+     * registers in reads and writes (such as call arguments and results) *)
     let emitFull(s: S kind: machine.Kind i: minst.Inst reads: Array(Int) writes: Array(Int) target: Int): Ok =
         begin
             vector.append(s.ops i.op)
@@ -252,7 +256,8 @@ export
      * Instructions
      * ====================================================================== *)
 
-    (* d := x + n, n an add's immediate, or its negation *)
+    (* Emits d := x + n using an immediate add or sub when n fits, or
+     * materializes n in a temporary otherwise *)
     let addConst(s: S d: Int x: Int n: Int): Ok =
         if {n >= 0} andif {n < 4096} then emit(s minst.addImm(d x n 0))
         elsif {n >= 0} andif addable(n) then emit(s minst.addImm(d x n / 4096 12))
@@ -408,12 +413,12 @@ export
             else emit(s minst.cmp(r(s i.args[0]) r(s i.args[1]))) end
         end
 
-    (* Memory at a value plus imm, for a load or store of width bytes: a
-     * symbol the unit defines, by its page and its offset in the page; a
-     * ptrAdd folded into it, as a base and an index register (index, ~1 for
-     * none); or the offset of a ptrAdd of a constant folded in, then an
-     * immediate offset, scaled or unscaled, if it fits, else the address
-     * computed *)
+    (* Selects an addressing mode for a load or store of width bytes at v +
+     * imm. It handles three fast paths in order: a unit-defined symbol (via
+     * adrp and a page offset), a folded register-indexed ptrAdd (setting
+     * index; ~1 otherwise), or a constant-offset ptrAdd combined with imm
+     * when the offset fits a scaled or unscaled immediate; otherwise it
+     * computes the address into a temporary register. *)
     Let Address = Tuple base: Int mode: minst.Mode index: Int end
     let fits(imm: Int width: Int): Bool =
         {{imm >= 0} andif {imm is {{imm / width} * width}} andif {{imm / width} < 4096}}
@@ -477,10 +482,10 @@ export
         elsif extent results is 2 then array of x0 x1 end
         else none end
 
-    (* A call's arguments to their places, returning the registers they are
-     * in. The stack's go first, so that each argument register is written
-     * just before the call: the allocator can give nothing else a fixed
-     * register from its write to the call, so this keeps that span short *)
+    (* Moves a call's arguments into their ABI locations and returns the
+     * argument registers used. Stack arguments are stored first so that fixed
+     * argument registers are written as close to the call as possible,
+     * keeping their live ranges short for the register allocator. *)
     let arguments(s: S i: ssa.Inst placed: Placed first: Int): Array(Int) =
         begin
             for k = first upto {extent i.args - 1} do
@@ -551,10 +556,9 @@ export
                 when opSub then sub(s d i.args[0] i.args[1])
                 when opMul then arith(minst.arithMul)
                 when opMulHiU then arith(minst.arithUmulh)
-                (* csel by the flags of the condition's comparison, fused
-                 * into it when it is the select's alone, else of the
-                 * condition and 0; cset of 1 and 0 (ssa/passes/selects makes
-                 * the selects) *)
+                (* Emits csel (or cset when selecting between 1 and 0; see
+                 * ssa/passes/selects) using the flags of a fused single-use
+                 * comparison, or by comparing the condition against 0 *)
                 when opSelect then
                     let c = i.args[0]
                     let cond = if s.fused[c] then
@@ -570,8 +574,9 @@ export
                         emit(s minst.cset(minst.inverse(cond) d))
                     else emit(s minst.csel(cond d zeroOr(s i.args[1]) zeroOr(s i.args[2]))) end
                 when opDiv then arith(minst.arithSdiv)
-                (* Fused into the branch on it, as a test of a bit or a
-                 * conjunction of comparisons, or with a logical immediate *)
+                (* Omitted when fused into a branch as a bit test or
+                 * comparison conjunction; otherwise emitted with a logical
+                 * immediate if one fits *)
                 when opAnd then if not(s.fused[i.results[0]]) then logical(minst.arithAnd) end
                 when opOr then logical(minst.arithOrr)
                 when opXor then logical(minst.arithEor)
@@ -632,11 +637,12 @@ export
             emitFull(s machine.kindReturn minst.ret regs none ~1)
         end
 
-    (* A call in tail position (docs/arm64.md section 3.7): of the function
-     * itself, a jump to its first block; of another whose arguments all go in
-     * registers, a branch to it (once the frame is popped, which restores the
-     * callee-saved registers, so an indirect call's target is moved to x9);
-     * otherwise a call and a return *)
+    (* Lowers a tail call (docs/arm64.md section 3.7). A direct self-call
+     * jumps to block 0; a call to another function whose arguments all fit in
+     * registers branches directly after popping the frame (moving an indirect
+     * target into scratch register x9 because callee-saved registers are
+     * restored first); calls needing stack arguments fall back to a regular
+     * call and return. *)
     let tailCall(s: S i: ssa.Inst): Ok =
         begin
             let direct = stringOp.length(i.symbol) > 0
@@ -691,13 +697,13 @@ export
             branchIf(s minst.condEq t)
         end
 
-    (* A switch of v on dense cases from least, size values in all, to
-     * targets, else default: the value less least checked against size,
-     * then an adr of the table, a load of the entry (its target's offset
-     * from the table) by the value, the sum, and a br, the table after it,
-     * an entry for each value, a gap's the default's (docs/arm64.md section
-     * 3.11). Each entry's target is a block of its own, as a branch's is,
-     * which only jumps when it moves nothing, and is then passed over *)
+    (* Compiles a dense switch on v over [least, least + size) into an inline
+     * jump table (docs/arm64.md section 3.11). After bounds-checking
+     * v - least against size, it loads the signed 32-bit target offset from
+     * the table, adds it to the table address, and branches via br; gaps in
+     * the table point to default. Each table entry targets its own edge block
+     * (like any branch) to carry block arguments, which is elided later if it
+     * needs no moves. *)
     let jumpTable(s: S v: Int least: Int size: Int cases: Array(Int) targets: Array(ssa.Target)
             default: ssa.Target): Ok =
         begin
@@ -733,11 +739,12 @@ export
             emitFull(s machine.kindReturn minst.jumpTableEnd none none ~1)
         end
 
-    (* A switch of v on the cases sorted[lo] to sorted[hi] (indices into
-     * cases and targets, in the cases' order), else default: a few compared
-     * in turn, more by a comparison with the middle one, which branches to
-     * its target when equal and to a block of its own for the greater ones,
-     * the lesser ones searched here *)
+    (* Compiles a switch on v over sorted[lo..hi] (indices into cases and
+     * targets, ordered by case value) via binary search. Ranges of at most
+     * linearCases are checked linearly; larger ranges compare against the
+     * midpoint, branch to its target on equality, branch to a new block for
+     * greater values, and continue searching lesser values in the current
+     * block. *)
     let rec search(s: S v: Int cases: Array(Int) targets: Array(ssa.Target) sorted: Array(Int) lo: Int hi: Int
             default: ssa.Target): Ok =
         if {hi - lo} < linearCases then
@@ -757,10 +764,9 @@ export
             s.b := from
         end
 
-    (* A switch: a jump table for at least tableCases dense cases (their
-     * range at most twice their number), a search for more than
-     * linearCases others, else a comparison and a branch for each case in
-     * turn *)
+    (* Compiles a switch using a jump table for at least tableCases dense
+     * cases (spread less than twice the case count), binary search for more
+     * than linearCases cases, or linear comparisons otherwise *)
     let switch(s: S value: Int cases: Array(Int) targets: Array(ssa.Target) default: ssa.Target): Ok =
         begin
             let v = r(s value)
@@ -795,9 +801,10 @@ export
         case t
             when termNone then raise unsupported with "arm64: a block without a terminator" end
             when termJump with x then jump(s x.target)
-            (* The true target is reached through a block of its own (edge),
-             * since a machine branch's target may have no other predecessor
-             * (codegen/machine/machine); the false one by a jump *)
+            (* The true target is reached through a dedicated edge block,
+             * since a machine branch target may have no other predecessor
+             * (codegen/machine/machine); the false target is reached by a
+             * direct jump *)
             when termBranch with x then
                 let e = edge(s x.ifTrue)
                 let l = labelOf(s e)
@@ -807,9 +814,10 @@ export
                 if s.fused[x.cond] andif maybe.isSome(bit) then
                     let t = maybe.unwrap(bit)
                     emitFull(s machine.kindBranch minst.tbnz(r(s t.value) t.bit l) none none e)
-                (* A conjunction of comparisons: the first's flags, then, if
-                 * its condition holds, the second's, and otherwise flags under
-                 * which the second's condition is false *)
+                (* A fused conjunction of two comparisons sets flags for the
+                 * first, then uses ccmp to evaluate the second only if the
+                 * first held, otherwise forcing flags that make the second's
+                 * condition false *)
                 elsif s.fused[x.cond] andif maybe.isSome(both) then
                     let first = maybe.unwrap(s.defs[maybe.unwrap(both)[0]])
                     let second = maybe.unwrap(s.defs[maybe.unwrap(both)[1]])
@@ -849,10 +857,12 @@ export
             when termSwitch with x then switch(s x.value x.cases x.targets x.default)
             when termReturn with x then returnValues(s x.values)
             when termTailCall with x then tailCall(s x.call)
-            (* Its handler's record pushed, a native handler's, resuming at a
-             * block beside the try, which adr reaches, that jumps to the
-             * handler: a raise resumes there with this frame's sp and fp,
-             * every register dead (docs/arm64.md sections 3.6 and 3.8) *)
+            (* Populates the stack-allocated QExceptionHandler record with
+             * this frame's sp, fp, and the address of a sibling resume block
+             * (obtained via adr), then jumps to the try body. On raise, the
+             * runtime restores sp and fp and jumps to the resume block with
+             * all other registers dead, which in turn jumps to the handler
+             * (docs/arm64.md sections 3.6 and 3.8). *)
             when termTry with x then
                 let resume = machine.newBlock(s.m)
                 vector.append(s.layout resume)
@@ -879,9 +889,9 @@ export
      * Functions
      * ====================================================================== *)
 
-    (* The entry: each parameter from its register or the caller's frame
-     * (a C int's upper bits unspecified, extended), then a jump to the first
-     * block *)
+    (* Emits the entry block, moving each parameter from its ABI register or
+     * the caller's frame (sign-extending 32-bit C ints, whose upper bits are
+     * unspecified) and jumping to block 0 *)
     let entry(s: S): Ok =
         begin
             let f = s.f
@@ -918,8 +928,9 @@ export
             let nValues = vector.length(f.types)
             let nBlocks = vector.length(f.blocks)
             let g = cfg.graph(f)
-            (* Each value's definition and uses; the outgoing arguments' area;
-             * whether it enters a try *)
+            (* Collect each value's definition, defining block, and use count,
+             * along with the outgoing stack-argument size and whether the
+             * function enters a try *)
             let defs = array of(nValues maybe.none(:ssa.Inst))
             let defBlock = array of(nValues ~1)
             let uses = array of(nValues 0)
@@ -959,10 +970,10 @@ export
                         if maybe.isSome(defs[c]) andif isComparison(maybe.unwrap(defs[c]).op)
                                 andif here(c) then
                             fused[c] := true
-                            (* A bit compared with 0 for equality, which the
-                             * branch tests with tbz or tbnz without the and.
-                             * Another comparison (> 0, say) compares the
-                             * and's value, so the and stays *)
+                            (* An equality comparison of a single-bit mask
+                             * against 0 fuses into tbz or tbnz, eliminating
+                             * the and. Ordered comparisons (such as > 0)
+                             * depend on the masked value, so the and stays. *)
                             let i = maybe.unwrap(defs[c])
                             let equality = ssa.isOp(i ssa.opEq) orif ssa.isOp(i ssa.opPeq) orif ssa.isOp(i ssa.opNe)
                                 orif ssa.isOp(i ssa.opPne)
@@ -984,7 +995,7 @@ export
                         end
                     when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then ok
                 end
-                (* And into the selects on them *)
+                (* Fuse single-use comparisons into select instructions *)
                 let insts = ssa.block(f b).insts
                 for k = 0 upto {vector.length(insts) - 1} do
                     let i = vector.get(insts k)
@@ -996,10 +1007,10 @@ export
                     end
                 end
             end
-            (* The addresses folded into loads and stores: a ptrAdd of a
-             * base and an index, or of an index times the access's width
-             * (an array's element), made in the access's block for it
-             * alone, the multiplication too *)
+            (* Identify single-use ptrAdd instructions in the same block as
+             * their load or store that can fold into a register-indexed
+             * addressing mode, along with any single-use multiplication by
+             * the access width (as in array indexing) *)
             let indexOf = array of(nValues ~1)
             let shiftOf = array of(nValues 0)
             let folded = array of(nValues false)
@@ -1043,9 +1054,9 @@ export
                 slotAt[k] := at
                 at := at + alignUp(if slot.bytes > 0 then slot.bytes else 8 end 8)
             end
-            (* SSA value v is virtual register v (its index); the entry is a
-             * machine block of its own, before every SSA block's; an SSA
-             * block not reached has no machine block *)
+            (* Map each SSA value v to virtual register index v, create a
+             * dedicated entry block before all SSA blocks, and allocate
+             * machine blocks only for reachable SSA blocks *)
             let m = machine.newFunction(extent target.description.registers)
             let s = tuple
                 let f = f let m = m let ops = vector.new(:minst.Op) let locs = vector.new(:ssa.Loc)

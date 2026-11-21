@@ -29,9 +29,9 @@ export
     let shell(args: Array(String) otherwise: String): String =
         try system.run(args).stdout when system.error then otherwise end
 
-    (* Entries not yet appended to the log file. Starting a shell for each one
-     * took a tenth of a build's time, so when not verbose a shell appends them
-     * in batches, each stamped with the time of its batch *)
+    (* Entries not yet appended to the log file. Spawning a shell per entry is
+     * slow, so non-verbose builds flush entries in batches, stamping every
+     * entry in a batch with that batch's timestamp. *)
     let pending = vector.new(:String)
     let batchScript = "t=$(date +%Y-%m-%dT%H:%M:%S); f=$0; "
         <> "for e in \"$@\"; do printf '[%s] %s\\n' \"$t\" \"$e\" >> \"$f\"; done"

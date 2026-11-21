@@ -38,9 +38,9 @@ export
         end
     let alignUp(n: Int a: Int): Int = {{{n + a} - 1} / a} * a
 
-    (* The registers the frame's code names: the scratch registers (x9, x10,
-     * and x11 for operands in memory, x16 within a sequence that addresses
-     * the frame, d30 and d31) and the frame's *)
+    (* Register shorthands used by frame and spill lowering: scratch registers
+     * (x9-x11 for spilled operands, x16 for large frame offsets) and the
+     * frame registers (sp, fp, lr) *)
     let x9 = target.x(9)
     let x10 = target.x(10)
     let x11 = target.x(11)
@@ -50,27 +50,27 @@ export
     let lr = target.lr
 
     (* =========================================================================
-     * A function compiled: selected, allocated, and rewritten in the
-     * registers allocated. Its frame, below the frame record and the
-     * callee-saved registers it saves: the outgoing arguments' area at sp,
-     * the function's stack slots, then a slot for each virtual register
-     * stored in memory
+     * Per-function compilation: instruction selection, register allocation,
+     * frame layout, and call-site GC maps. Below the frame record and saved
+     * callee-saved registers, a frame lays out the outgoing-argument area at
+     * sp, then the function's explicit stack slots, then spill slots for
+     * virtual registers stored in memory.
      * ====================================================================== *)
 
     Let FrameSlot = Tuple offset: Int bytes: Int type: maybe.T(ssa.Type) id: Int end
 
-    (* What a collection inside a call scans of the caller's frame (section
-     * 3.13): the callee-saved registers that hold values live across the
-     * call, two bits each from x19 (1 for a ptr, a pointer; 2 for an int or a
-     * val, an ambiguous word), and the frame's words that do, each as twice
-     * its index from sp, plus 1 for an ambiguous word *)
+    (* GC root map for a single call site (docs/arm64.md section 3.13).
+     * registers packs two bits per callee-saved register x19-x28 (0 = dead,
+     * 1 = ptr, 2 = ambiguous word for int or val). slots lists each live
+     * spill-slot word as 2 * (word index from sp) + (0 for ptr, 1 for
+     * ambiguous word). *)
     Let CallMap = Tuple registers: Int slots: Array(Int) end
-    (* A function's frame for the unit's frame table: the words from sp to
-     * the frame record, the pairs of callee-saved registers saved (a bit
-     * each, by their indices in savedFirsts), the words at sp that nothing
-     * describes (the outgoing arguments and the stack slots), and each call's
-     * return address, in instructions from the function's start, with its
-     * map *)
+    (* Frame-table entry for one function. below is the number of 8-byte words
+     * from sp to the frame record, saved is a bitmask of saved callee-saved
+     * pairs (indexed by savedFirsts), undescribed is the number of words at
+     * sp scanned conservatively (outgoing arguments and stack slots), and
+     * calls records each call site's return offset (in instructions from the
+     * function's start) and GC root map. *)
     Let CallSite = Tuple offset: Int map: CallMap end
     Let Frame = Tuple below: Int saved: Int undescribed: Int calls: Array(CallSite) end
 
@@ -91,20 +91,20 @@ export
         maps: Array(Array(CallMap))
     end
 
-    (* The callee-saved registers a function saves, in pairs, in the order it
-     * pushes them below its frame record. Each pair's odd register is above
-     * its even one (stp x20, x19), the places Darwin's compact unwind
-     * encoding gives them: in the other order, every function that saves a
-     * pair needed DWARF unwind information, which libunwind interprets at
-     * each frame a raise walks (docs/arm64.md section 3.10) *)
+    (* Callee-saved register pairs in the order they are pushed below the
+     * frame record. Each pair stores its higher-numbered register at the
+     * lower address (for example, stp x20, x19) to match Darwin's compact
+     * unwind encoding. The opposite order would force the assembler to fall
+     * back to DWARF unwind tables, which libunwind must interpret on every
+     * stack frame during an exception raise (docs/arm64.md section 3.10). *)
     let savedFirsts = array of target.x(20) target.x(22) target.x(24) target.x(26) target.x(28) target.d(9)
         target.d(11) target.d(13) target.d(15) end
     let savedSeconds = array of target.x(19) target.x(21) target.x(23) target.x(25) target.x(27) target.d(8)
         target.d(10) target.d(12) target.d(14) end
 
-    (* The frame's memory at sp plus off, by a load or store through x16 when
-     * off is too far for an immediate (an 8-byte access's reaches 8 * 4095,
-     * scaled) *)
+    (* Loads or stores the 8-byte frame slot at sp + off. Offsets up to 32760
+     * (8 * 4095) fit in a scaled immediate; larger offsets compute the base
+     * page in x16 first. *)
     let frameAccess(s: select.Selection off: Int access: All(base: Int m: minst.Mode) minst.Inst):
             Array(machine.Inst) =
         if off <= 32760 then array of select.make(s machine.kindOrdinary access(sp minst.offset(off))) end
@@ -131,9 +131,9 @@ export
                 false
         end
 
-    (* The blocks from which every path raises: one that ends in brk
-     * (termUnreachable), or every block it can go to is cold and it does not
-     * return *)
+    (* Marks blocks from which every path raises an exception: a block that
+     * ends in brk (unreachable after a raise), or a block that does not
+     * return and whose successors are all cold *)
     let coldBlocks(s: select.Selection): Array(Bool) =
         begin
             let m = s.f
@@ -169,13 +169,12 @@ export
             cold
         end
 
-    (* For each block's calls, in order, the values live across each (by a
-     * backward walk from what the block has live out), each where it is
-     * after the call: its slot, as an offset from sp, if it has one (which
-     * holds it wherever it is live), and its register, if it is in one. What
-     * a collection in the call scans of the frame and the callee-saved
-     * registers, other than these, holds no live value (docs/profiling.md
-     * section 6). *)
+    (* Returns, for each block's calls in code order, a formatted list of the
+     * virtual registers live across that call and their locations afterward
+     * (stack slot offset from sp and/or physical register). Computed by
+     * walking each block backward from its live-out set. Used under
+     * QUEST_LIVE_SLOTS=1 to inspect what a garbage collection during a call
+     * actually needs to keep live (docs/profiling.md section 6). *)
     let describeLive(s: select.Selection a: regalloc.Allocation spillAt: Array(Int)): Array(Array(String)) =
         begin
             let m = s.f
@@ -230,21 +229,22 @@ export
             described
         end
 
-    (* How a collection takes a live value of an SSA type: a ptr as a pointer
-     * (1); an int or a val as an ambiguous word (2), a val because its
-     * descriptor, not its type, says whether it is a pointer, and an int
-     * because a pointer's bits may be in one (ptrToInt) with the pointer
-     * itself dead; a real not at all (0) *)
+    (* Classifies an SSA type for garbage-collection root maps: 1 for ptr (a
+     * heap pointer), 2 for int or val (an ambiguous word scanned
+     * conservatively: a val's pointer-ness depends on its runtime type
+     * descriptor, and an int may hold pointer bits from ptrToInt after the
+     * ptr itself is dead), and 0 for real (never a pointer) *)
     let wordClass(t: ssa.Type): Int =
         case t when typePtr then 1 when typeInt, typeVal then 2 when typeReal then 0 end
 
-    (* For each block's calls, in order, the map of each (docs/arm64.md
-     * section 3.13), by the backward walk of describeLive: a value live
-     * across the call that has a slot is taken from the slot, which holds it
-     * wherever it is live, and one that has none from its register, which is
-     * callee-saved, since a call leaves no other with a value in it (a
-     * rematerialized one is in neither: it is a constant or an address that
-     * is not the heap's) *)
+    (* Builds the GC root map for each call site in each block, in code order,
+     * using the same backward liveness walk as describeLive (docs/arm64.md
+     * section 3.13). A live value with a spill slot is recorded at that slot,
+     * which holds it throughout its lifetime. A live value with no spill slot
+     * is recorded in its physical register, which must be callee-saved
+     * because calls clobber all other registers. Rematerialized values (such
+     * as constants or static addresses) have neither a slot nor a register
+     * and never point into the heap. *)
     let callMaps(s: select.Selection a: regalloc.Allocation spillAt: Array(Int)): Array(Array(CallMap)) =
         begin
             let m = s.f
@@ -314,15 +314,15 @@ export
             maps
         end
 
-    (* f compiled, its labels prefixed Lf<index>: selected (defined is
-     * definedSymbols's), allocated, its frame laid out (the stack slots,
-     * then a slot for each value stored in memory, values of one type
-     * sharing one where their lifetimes do not overlap, unless f enters a
-     * try), its calls' maps made, and rewritten in the registers allocated.
-     * A function that enters a try saves every callee-saved pair. A raise
-     * resumes in it with the registers as the function that raised left
-     * them, not as the functions in between restored them, so it must
-     * restore all of its caller's from its own frame. *)
+    (* Compiles f with labels prefixed Lf<index>, using defined (from
+     * definedSymbols) to know which callees extend narrow results. It selects
+     * instructions, runs register allocation, lays out stack slots and spill
+     * slots, builds call-site GC maps, and rewrites virtual registers into
+     * physical registers and frame accesses. Functions that enter a try save
+     * every callee-saved pair: an exception raise resumes at the handler with
+     * the registers left by the raising function rather than restored by
+     * intermediate frames, so the function must restore all of its caller's
+     * callee-saved registers from its own frame. *)
     let compile(f: Function index: Int defined: hashMap.T(String Bool)): Compiled =
         begin
             let s = select.select(f "Lf" <> conv.int(index) defined)
@@ -352,13 +352,14 @@ export
                         minst.store(minst.store64 src base mode))
                 let scratch = array of array of x9 x10 x11 end array of target.d(30) target.d(31) end end
             end
-            (* Values of one SSA type share slots where their lifetimes do not
-             * overlap (docs/arm64.md section 3.8), so a
-             * slot holds one type for its whole life; the first value given
-             * one names it. Not in a function that enters a try: its handler
-             * reloads what it uses from slots, after a raise from anywhere in
-             * the try's body, where liveness does not see the handler's uses,
-             * so each value keeps a slot of its own. *)
+            (* Values of the same SSA type share spill slots when their
+             * lifetimes do not overlap (docs/arm64.md section 3.8), so each
+             * slot has a single type throughout the function and takes its id
+             * from the first value assigned to it. Functions that enter a try
+             * skip sharing: an exception handler reloads its values from
+             * spill slots after a raise from anywhere in the try body, where
+             * normal liveness does not see the handler's uses, so each
+             * spilled value keeps its own slot. *)
             let kind = fun(v: Int): Int
                 case vector.get(s.types machine.index(m v))
                     when typeInt then 0
@@ -420,10 +421,11 @@ export
 
     let emit(e: Emitter i: minst.Inst): Ok = vector.append(e.code i)
 
-    (* The unwind information of the pairs saved: the first of the kth at the
-     * CFA less 16 * (k + 2), the second 8 above it. The second's comes first,
-     * and the pairs in order down from the frame record, as the assembler
-     * needs them to make a compact unwind entry *)
+    (* Emits DWARF .cfi_offset directives for the saved callee-saved pairs:
+     * for pair k, the first register is at CFA - 16 * (k + 2) and the second
+     * is 8 bytes above it. Emitting the second register before the first,
+     * walking downward from the frame record, matches the order the Darwin
+     * assembler requires to synthesize a compact unwind entry. *)
     let savedOffsets(e: Emitter): Ok =
         begin
             let saved = e.c.saved
@@ -433,13 +435,14 @@ export
             end
         end
 
-    (* The frame record, with the pairs saved below it, then the frame. The
-     * lowest pair is stored first, moving sp once, as clang does: a stack
-     * overflow then faults on the prologue's first store or not at all.
-     * Stored downward one at a time, a pair could fault below a record stored
-     * just above the guard page, and the fault's backtrace, by the compact
-     * unwind information, which assumes a whole prologue, read the pair from
-     * the guard page *)
+    (* Emits the function prologue: the frame record (fp, lr), the saved
+     * callee-saved pairs below it, unwind directives, and the local frame
+     * allocation. The lowest saved pair is stored first with a single sp
+     * decrement, matching clang, so a stack overflow faults on the prologue's
+     * very first store or not at all. Storing pairs downward one by one could
+     * fault after the frame record was already written above the guard page,
+     * causing a crash backtrace using compact unwind info (which assumes a
+     * complete prologue) to read the unsaved pair from the guard page. *)
     let prologue(e: Emitter): Ok =
         begin
             let saved = e.c.saved
@@ -475,8 +478,8 @@ export
             end
         end
 
-    (* The frame popped and the caller's registers restored, short of
-     * returning *)
+    (* Emits the epilogue that pops the frame and restores callee-saved
+     * registers, fp, and lr, without emitting ret *)
     let restore(e: Emitter): Ok =
         begin
             let saved = e.c.saved
@@ -513,18 +516,17 @@ export
      * Functions and the unit
      * ====================================================================== *)
 
-    (* The blocks in the order they are emitted, each by where its code is
-     * (final, past the blocks that only jump), in chains: from the entry,
-     * each block is followed by its best successor not yet placed, so that
-     * the edge falls through, and where none is left, by the next block of
-     * the builder's layout. A successor is better if it is not cold (one
-     * from which every path raises), then if it is in a deeper loop, then if
-     * it makes no call (a proxy's slow path, say, beside the fast path), then
-     * if it comes first in the layout. The cold blocks are last, in the
-     * layout's order. Laid out where the builder made them, a check's
-     * raising block came between the check and the code after it, which
-     * jumped over it every time (docs/arm64.md section 3.5), and so did a
-     * proxy's slow path. *)
+    (* Orders blocks for emission into fall-through chains, mapping each block
+     * through final to skip jump-only blocks. Starting from the entry block,
+     * each block is followed by its best unplaced non-cold successor so the
+     * branch can fall through; when none remains, the next unplaced non-cold
+     * block from the builder's layout starts a new chain. Among non-cold
+     * successors, deeper loop nesting wins first, then blocks without calls
+     * (keeping a fast path ahead of a proxy's slow path), then earlier layout
+     * order. Cold blocks (from which every path raises) are placed last in
+     * layout order; otherwise a check's raising block or a proxy's slow path
+     * would sit inline and force the hot path to jump over it on every
+     * execution (docs/arm64.md section 3.5). *)
     let chains(s: select.Selection final: Array(Int)): Array(Int) =
         begin
             let m = s.f
@@ -583,12 +585,12 @@ export
             vector.toArray(order)
         end
 
-    (* Whether a function needs no frame record: it saves no registers, has
-     * no frame, calls nothing (a tail call is a branch), and has no
-     * instruction that uses fp, lr, or sp, as an argument passed on the
-     * stack would. Such a function keeps fp and lr as its caller left them,
-     * and its unwind information is a frameless function's: no collection
-     * can find it on the stack, since it makes no call *)
+    (* Whether a function can omit its frame record: it saves no callee-saved
+     * registers, allocates no local frame, makes no calls (a tail call is a
+     * branch), and has no instruction referencing fp, lr, or sp (such as a
+     * stack-passed argument). Such a function leaves fp and lr untouched and
+     * uses frameless unwind info; garbage collection can never see it on the
+     * stack because it makes no calls. *)
     let frameless(c: Compiled): Bool =
         if {extent c.saved > 0} orif {c.size > 0} then false
         else
@@ -615,10 +617,11 @@ export
     (* The label just past the code of the unit's function numbered index *)
     let endLabel(index: Int): String = "Lf" <> conv.int(index) <> "_end"
 
-    (* A function's machine code, after branch relaxation, and its frame for
-     * the unit's frame table, if its calls have maps. A label after each
-     * such call (prefix_mN) keeps the call's place through pairing and
-     * relaxation, and is then dropped, its offset noted *)
+    (* Emits a function's machine code (after load/store pairing and branch
+     * relaxation) together with its GC frame-table entry when the function
+     * does not enter a try. A temporary label (prefix_mN) after each mapped
+     * call tracks its return address through peephole pairing and branch
+     * relaxation, then is stripped once its instruction offset is recorded. *)
     Let Machined = Tuple code: Code frame: maybe.T(Frame) end
     let machineCode(f: Function index: Int defined: hashMap.T(String Bool)): Machined =
         begin
@@ -627,9 +630,9 @@ export
             let m = s.f
             let e = tuple let c = c let code = vector.new(:minst.Inst) end
             let nBlocks = vector.length(m.blocks)
-            (* A block that only jumps, which a raise does not enter and which
-             * is not the entry, is passed over: what goes to it goes where it
-             * does *)
+            (* A non-entry block that is not a raise target and contains only
+             * an unconditional jump is bypassed by redirecting incoming edges
+             * to its target *)
             let passes(b: Int): Bool =
                 begin
                     let blk = machine.block(m b)
@@ -657,10 +660,10 @@ export
             let var liveLabels = 0
             let marker = s.prefix <> "_m"
             let mapped = vector.new(:CallMap)
-            (* The line table: the source position before each instruction
-             * whose position differs from the last one given. A constant or an
-             * address made again where it is used keeps its definition's
-             * position, so it gives none *)
+            (* Emit a .loc directive before each instruction whose source
+             * position differs from the previous one. Rematerialized values
+             * (constants or addresses recomputed at use sites) still carry
+             * their definition's location, so they do not emit .loc. *)
             let var last = ssa.noLoc
             for k = 0 upto {vector.length(printed) - 1} do
                 let b = vector.get(printed k)
@@ -677,10 +680,11 @@ export
                     for r = 0 upto {extent regs - 1} do regs[r] := i.operands[r].reg end
                     let base = vector.get(s.ops i.op)
                     let op = if i.target >= 0 then retarget(base select.label(s final[i.target])) else base end
-                    (* A conditional branch to the next block, before the
-                     * block's last jump, is its inverse to the jump's target,
-                     * and the jump falls through, as does a jump to the next
-                     * block *)
+                    (* If a conditional branch targets the next block and is
+                     * immediately followed by a trailing unconditional jump,
+                     * invert the condition to branch to the jump's target and
+                     * drop the jump. An unconditional jump to the next block
+                     * also falls through. *)
                     let c = peephole.conditional(op)
                     let following = if {j + 1} < count then
                         maybe.some(vector.get(insts j + 1))
@@ -712,12 +716,12 @@ export
                         vector.append(mapped e.c.maps[b][mappedCalls])
                         mappedCalls := mappedCalls + 1
                     end
-                    (* With QUEST_LIVE_SLOTS=1, a symbol at the return address,
-                     * by which a debugger can find what is live across the
-                     * call, which a comment gives with the size of the frame
-                     * below the saved registers (docs/profiling.md section 6).
-                     * The symbol is an alternative entry, so that the linker
-                     * does not take it to start a function of its own. *)
+                    (* Under QUEST_LIVE_SLOTS=1, emit a symbol and comment at
+                     * the call's return address recording the frame size and
+                     * the values live across the call so a debugger can
+                     * inspect them (docs/profiling.md section 6). Marking the
+                     * symbol .alt_entry prevents the linker from treating it
+                     * as a separate function. *)
                     if machine.isKind(i machine.kindCall) andif {calls < extent e.c.liveAtCalls[b]} then
                         let name = asm.symbol(f.symbol <> "_live_" <> conv.int(liveLabels))
                         let described = e.c.liveAtCalls[b][calls]
@@ -817,12 +821,13 @@ export
             lines
         end
 
-    (* The symbols the unit defines, each with whether a call of it in the
-     * unit gets its narrow results extended, so that the caller need not
-     * extend them again (docs/ssa.md section 2.2): a function's do, since it
-     * extends what it computes, unless it tail-calls, for a narrow result, a
-     * function outside the unit, through a pointer, or one whose results do
-     * not, returning the byte as that callee left it. Data's are false. *)
+    (* Maps every symbol defined in u to whether calling it within u is
+     * guaranteed to return narrow (sub-64-bit) results already sign- or
+     * zero-extended, letting callers skip redundant extension (docs/ssa.md
+     * section 2.2). A function defined in u satisfies this unless it
+     * tail-calls, for a narrow result, an external function, an indirect
+     * function pointer, or another local function that lacks the guarantee.
+     * Data symbols map to false. *)
     let definedSymbols(u: ssa.Unit): hashMap.T(String Bool) =
         begin
             let defined = hashMap.new(:String :Bool eq hash.string)
@@ -858,9 +863,10 @@ export
             defined
         end
 
-    (* The unit's frame table's symbol, a placeholder of which the SSA's
-     * builder makes (ssa/build/unit), with the call that registers it: the
-     * backend writes the table in the placeholder's place *)
+    (* Symbol name of the unit's GC frame table. ssa/build/unit emits a
+     * placeholder data symbol under this name along with the startup call
+     * that registers it, and the backend replaces the placeholder with the
+     * real table. *)
     let framesSymbol = "qr_frames"
     let hasFrames(u: ssa.Unit): Bool =
         begin
@@ -880,7 +886,7 @@ export
             vector.toArray(kept)
         end
 
-    (* An unsigned LEB128 number's bytes *)
+    (* Appends n encoded as unsigned LEB128 (variable-length 7-bit chunks) *)
     let leb(bytes: vector.T(Int) n: Int): Ok =
         begin
             let var rest = n
@@ -897,12 +903,14 @@ export
             end
         end
 
-    (* The unit's frame table before its addresses are known (docs/arm64.md
-     * section 3.13; runtime/quest_gc.c has the form): the functions with
-     * calls that have maps, each with its description: the words from sp to
-     * its frame record, the pairs it saves, the words at sp with no
-     * description, its calls' number, and each call's return address (in
-     * instructions from the call before's), registers, and slots *)
+    (* Encodes the unit's GC frame table before final code addresses are known
+     * (docs/arm64.md section 3.13; runtime/quest_gc.c defines the layout).
+     * Lists every function that has at least one mapped call site, packing
+     * each function's description as unsigned LEB128 integers: words from sp
+     * to the frame record, saved-pair bitmask, undescribed words at sp, call
+     * count, and for each call its delta-encoded return offset (in
+     * instructions from the previous call), live register mask, and live
+     * spill slots. *)
     let frameTable(frames: Array(maybe.T(Frame))): encode.Frames =
         begin
             let listed = vector.new(:encode.Listed)
@@ -932,8 +940,8 @@ export
             end
         end
 
-    (* The unit's functions' machine code, as the encoder takes them, and
-     * their frames, for assembleUnit and encodeUnit alike *)
+    (* Compiles every function in u to machine code and GC frame metadata,
+     * shared by assembleUnit and encodeUnit *)
     Let Compiled = Tuple machines: Array(encode.Function) frames: Array(maybe.T(Frame)) end
     let compiled(u: ssa.Unit defined: hashMap.T(String Bool)): Compiled =
         begin
@@ -1003,9 +1011,9 @@ export
                 appendAll(asm.debugInfo(files[0] functions))
             end
             appendAll(asm.unitEnd)
-            (* With QUEST_CHECK_ENCODING=1, the encoder's code and data for
-             * the unit, as comments, which tests/self-hosted/encoder.py
-             * compares with what the assembler makes of the rest *)
+            (* Under QUEST_CHECK_ENCODING=1, append the binary encoder's
+             * output as assembly comments so tests/self-hosted/encoder.py can
+             * verify it against the system assembler's output *)
             if stringOp.equal(system.getEnv("QUEST_CHECK_ENCODING") "1") then
                 let described = encode.describe(encode.unit(machines data vector.toArray(u.files) table))
                 for k = 0 upto {extent described - 1} do vector.append(lines "// encoded " <> described[k]) end

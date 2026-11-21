@@ -1,8 +1,9 @@
 (* Quest Self-Hosted Compiler: Captured Mutable Variables Interface
  *
- * Lowering's pre-pass over a typed program: the local var variables that
- * functions nested in their scope use, which lowering holds in boxes the
- * closures share (ir/lower). The counterpart is
+ * This pre-pass for IR lowering finds local mutable (var) variables that are
+ * used by functions nested inside their scope. Lowering (ir/lower) stores
+ * those variables in heap-allocated mutable cells (boxes) so that closures
+ * share updates to them. The counterpart is
  * bootstrap/python/quest/ir/captures.py. *)
 
 interface Captures
@@ -10,9 +11,9 @@ import
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     collections/hashMap : collections/HashMap
 export
-    (* Adds to captured the symbols of the local var variables that functions
-     * nested in their scope use: a let var anywhere but directly at a unit's or
-     * a module's top level (where it is global), used inside a function within
-     * its scope *)
+    (* Adds to captured the symbol ids of local var variables used by functions
+     * nested in their scope. A qualifying variable is any let var not declared
+     * directly at a unit's or module's top level (where it is global) that is
+     * referenced inside an inner function. *)
     capturedMutables(prog: typedAst.Program captured: hashMap.T(Int Bool)): Ok
 end

@@ -1,11 +1,11 @@
 (* Quest Self-Hosted Compiler: The Tree-Walking Interpreter Interface
  *
- * bootstrap/python/quest/interpreter/treewalk.py: evaluates typed expressions,
- * bindings, and programs in lexically scoped frames (model.Frame, the
- * bootstrap's RuntimeEnvironment), loading and running the modules a program
- * imports (loadModule). Errors raised while running are model.runError, located
- * in the file whose code raised them, with the frames running
- * (docs/exceptions.md). *)
+ * Evaluates typed expressions, bindings, and programs in lexically scoped
+ * frames (model.Frame, matching the bootstrap's RuntimeEnvironment) and loads
+ * imported modules on demand (loadModuleForInterpreter). Run-time errors are
+ * raised as model.runError, annotated with their source location and active
+ * call frames (docs/exceptions.md). The counterpart is
+ * bootstrap/python/quest/interpreter/treewalk.py. *)
 
 interface Treewalk
 import
@@ -66,15 +66,15 @@ export
      * are its only parameters, and all of them are bound *)
     runsWhenApplied(c: model.Closure): Bool
 
-    (* The poll for an interrupt at each iteration of a loop and each call,
-     * which raises `interrupted` when it says one is pending: only the Jupyter
-     * kernel's driver sets one (docs/jupyter-kernel.md section 5); none at
-     * first *)
+    (* Registers a callback polled on each loop iteration and function call;
+     * when it returns true, the interpreter raises `interrupted`. Only the
+     * Jupyter kernel's driver installs a poll (docs/jupyter-kernel.md section
+     * 5); initially none is set. *)
     setInterruptPoll(poll: All() Bool): Ok
 
-    (* A frame's bindings and its root's module values, for restore (the REPL
-     * rolls back an input that failed). A frame's parent never changes, so it
-     * needs no saving, unlike the bootstrap's *)
+    (* Captures a frame's bindings and its root's loaded module values for
+     * restore, so the REPL can roll back a failed input. A frame's parent
+     * never changes and does not need to be saved, unlike in the bootstrap. *)
     Def Snapshot = Tuple bindings: hashMap.T(String model.Value) moduleValues: hashMap.T(String model.Value) end
     snapshot(f: model.Frame): Snapshot
     (* Puts the bindings and module values back as snap found them; the module

@@ -17,8 +17,8 @@ export
     let eq(a: String b: String): Bool = stringOp.equal(a b)
     let put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok = begin hashMap.insert(m k v) ok end
 
-    (* How far, in instructions, a conditional branch may reach: 1 MB less a
-     * margin; a test of a bit's, 32 KB less a margin *)
+    (* Maximum branch reach in instructions, leaving a safety margin: 1 MB
+     * for cbz, cbnz, and b.cond, and 32 KB for tbz and tbnz *)
     let branchReach = 260000
     let bitBranchReach = 8000
     (* A conditional branch's inverse to a label, its target, and its reach
@@ -54,14 +54,15 @@ export
                 opLoc then
                 maybe.none()
         end
-    (* A function's code with each conditional branch whose target is more
-     * than reach instructions away turned into the inverse branch around an
-     * unconditional one, which reaches 128 MB; repeated until none is *)
+    (* Rewrites out-of-range conditional branches into an inverted branch
+     * around an unconditional branch (which reaches 128 MB), repeating until
+     * all conditional branches are in range *)
     let relaxBranches(code: Code prefix: String reach: Int): Code =
         begin
-            (* Each pass finds each label's position, in instructions, then
-             * relaxes each far branch. Relaxing adds instructions, which may
-             * put another branch out of reach, so the passes repeat *)
+            (* Each pass records each label's position in instructions, then
+             * relaxes every out-of-range branch. Relaxing inserts
+             * instructions, which can push another branch out of range, so
+             * the passes repeat until nothing changes. *)
             let var current = code
             let var changed = true
             let var count = 0
@@ -87,8 +88,9 @@ export
                     let i = vector.get(current k)
                     let c = conditional(i.op)
                     let var far = false
-                    (* The inverse branch relaxing makes, to an _r label,
-                     * only jumps over the b after it, so is never far *)
+                    (* An inverted branch created by relaxation jumps only
+                     * over the b immediately following it to an _r label, so
+                     * it is never out of range *)
                     if maybe.isSome(c) then
                         let target = maybe.unwrap(c).target
                         let t = hashMap.get(at target)
@@ -149,10 +151,11 @@ export
                     maybe.none()
             end
         end
-    (* How an instruction between two accesses bears on pairing them: one a
-     * pair may move across, which touches only registers (and the flags), or
-     * a load of one register (which a load may move across, and a store not),
-     * or neither (a store, a call, a branch, or a label) *)
+    (* Classifies whether an intervening instruction allows pairing across it:
+     * registersOnly touches only registers and flags (safe for loads and
+     * stores), aLoad is a single-register load (safe for loads, not stores),
+     * and barrier (stores, calls, branches, labels, and pre/post-indexed
+     * loads) blocks both *)
     let registersOnly = 0
     let aLoad = 1
     let barrier = 2
@@ -172,11 +175,13 @@ export
                 opCfiOffset then
                 barrier
         end
-    (* Whether b can be a's partner, given the registers written and read
-     * between them: the same kind of access, of the same class of register,
-     * off the same base, at offsets 8 apart that ldp and stp can encode; a
-     * load's partner's register neither written nor read between them, and a
-     * store's own not written *)
+    (* Reports whether b can be paired with a given the registers written and
+     * read between them. Both must be the same kind of access (load or store)
+     * with the same register class and base, distinct target registers, and
+     * 8-byte-aligned offsets 8 bytes apart within ldp/stp range (-512..504).
+     * Neither may cross a write to the base; a moved load's register cannot
+     * be read or written in between, and a moved store's register cannot be
+     * written. *)
     let pairable(a: Access b: Access written: Array(Bool) read: Array(Bool)): Bool =
         begin
             let low = if a.offset < b.offset then a.offset else b.offset end
@@ -190,19 +195,18 @@ export
      * and how many after a pair of stores a lone load of one of its words *)
     let pairWindow = 16
     let forwardWindow = 12
-    (* A function's code with loads (and stores) of 8 bytes off one base, at
-     * offsets 8 apart, merged into ldp (stp) where the instructions between
-     * them allow: a load's partner is moved up to it, across instructions
-     * that neither write its base or register nor read its register, nor
-     * store; a store is moved down to its partner, across instructions that
-     * write neither its base nor its register, nor load or store. Tuples,
-     * list cells, and options' payloads are adjacent words, and so are a
-     * frame's slots, so this is AArch64LoadStoreOptimizer's main pattern.
-     * Two stores are left apart when the code that runs just after loads
-     * one of their two words alone: a load does not forward from half of a
-     * pair's store, and waits for the store to reach the cache
-     * (psdes-random's loop, which makes a tuple and reads a component of it
-     * at once, took 1.22 of its time so: docs/benchmarks.md section 17.2) *)
+    (* Merges pairs of 8-byte loads (or stores) off the same base at offsets 8
+     * bytes apart into ldp (or stp) where intervening instructions allow. A
+     * load's partner moves up across instructions that neither store nor
+     * write the base or touch the partner's register; a store moves down
+     * across instructions that neither load nor store nor write the base or
+     * the stored register. Tuples, list cells, option payloads, and frame
+     * slots all occupy adjacent words, so this is AArch64LoadStoreOptimizer's
+     * main pattern. Two stores are left separate when immediately followed by
+     * a lone load of just one of the two words: CPU store-to-load forwarding
+     * cannot satisfy an 8-byte load from half of a 16-byte stp, stalling
+     * until the store reaches cache (psdes-random's loop took 1.22x longer
+     * when paired: docs/benchmarks.md section 17.2). *)
     let pairs(code: Code): Code =
         begin
             let n = vector.length(code)
@@ -223,12 +227,13 @@ export
                     else ok
                 end
             end
-            (* Whether the code that runs after index from loads one of the
-             * two words at low and low + 8 off base alone: the first load
-             * of either within forwardWindow instructions, following jumps,
-             * until a call, a return, or a write of the base, with no load
-             * of the other in the four instructions after it (two loads so
-             * close become a pair's, which forwards from a pair's store) *)
+            (* Reports whether code starting at index from loads just one of
+             * the two words at low and low + 8 off base. It scans up to
+             * forwardWindow instructions, following unconditional jumps and
+             * stopping at a call, return, or write to base; if it finds a
+             * load of either word with no load of the other within the next
+             * four instructions (which would pair into an ldp that can
+             * forward from stp), it returns true. *)
             let halfLoaded(from: Int base: Int low: Int): Bool =
                 begin
                     let var hazard = false

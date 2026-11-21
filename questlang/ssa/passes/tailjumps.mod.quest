@@ -136,16 +136,17 @@ export
             n
         end
 
-    (* Copies g's first blocks (those it had before any copy was made into
-     * it), and the values they use, into f; the number of the copy's first
-     * block. With at a block of f (at least 0), which has no terminator yet,
-     * g's first block is not copied as a block of its own: its instructions
-     * and terminator are appended to block at, with args in place of its
-     * parameters, so that no block of g may go to its first *)
+    (* Copy the first `blocks` blocks and `values` SSA values of g (its
+     * original body before any earlier copies) into f, returning the block
+     * index of the copy's entry. When `at` >= 0, block `at` of f must have no
+     * terminator: g's entry block is spliced onto `at` with `args` replacing
+     * its parameters, and g's remaining blocks are appended as new blocks
+     * (requiring that no block in g jumps back to its entry block). *)
     let copyBlocks(f: Function g: Function blocks: Int values: Int at: Int args: Array(Int)): Int =
         begin
-            (* With at, g's first block is f's block at, its parameters
-             * args, and its other blocks follow f's *)
+            (* When splicing, g's entry block maps to block `at` with its
+             * parameters bound to `args`, and g's remaining blocks follow f's
+             * existing blocks *)
             let spliced = at >= 0
             let numbers = array of(values ~1)
             if spliced then
@@ -245,8 +246,8 @@ export
                 entries[k] := hashMap.new(stringOp.equal hash.string)
                 let f = function(k)
                 if members[component[k]] > 1 then
-                    (* The members f reaches through its tail calls and its
-                     * copies', each copied once, while the budget lasts *)
+                    (* Copy each reachable group member into f at most once
+                     * while the instruction budget lasts *)
                     let copied = array of(n false)
                     copied[k] := true
                     let var spent = 0

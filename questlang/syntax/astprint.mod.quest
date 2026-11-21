@@ -436,15 +436,15 @@ export
             else simpleField(b v)
         end
 
-    (* Appends v to b, at nesting depth indent (two spaces a level), laid out
-     * as ast_dump lays it out. A node whose fields are all simple goes on one
-     * line, its field values in order without their names, and nil fields
-     * left out: (ExprId 'x'). Otherwise the node's name ends its line and
-     * each field follows on a line of its own as :name value, except fields
-     * that isOmitted; a node value continues on that line, and the items of a
-     * tuple go one to a line below it. A tuple goes on one line if its items
-     * are all simple, where a nil item prints as None and a tuple of strings
-     * as Python's str prints it, with commas: ('a', 'b') *)
+    (* Appends v to b at nesting depth indent (two spaces per level), using
+     * ast_dump's layout rules. A node whose fields are all simple goes on one
+     * line, with its non-nil field values in order and without field names:
+     * (ExprId 'x'). Otherwise, the node's name ends its line and each
+     * non-omitted field (isOmitted is false) follows on its own line as
+     * :name value; a node value continues on that line, while a tuple's items
+     * go one per line below it. A tuple goes on one line if its items are all
+     * simple, with nil printed as None and a tuple of strings formatted like
+     * Python's str, with commas: ('a', 'b'). *)
     let rec render(b: sb.T v: S indent: Int): Ok =
         case v
             when nil then sb.str(b "nil")

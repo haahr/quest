@@ -1,17 +1,18 @@
 (* Quest Self-Hosted Compiler: Object Layouts Interface
  *
- * bootstrap/python/quest/repr/objectlayout.py: the layouts of the objects
- * generated code allocates (docs/collector.md section 3.2), for every backend.
- * Each allocation names a layout, a static QLayout of the unit, which says
- * for each word of the object whether it is a pointer, a scalar, or ambiguous
- * (a QVal of generic code, whose kind the site does not know), so that a
- * precise collector can scan the object and QUEST_GC_CHECK=layouts can check
- * what the compilers say. The kinds come from the shapes the slots hold
- * (repr/layout): a slot's word form, or a value's representation for a
- * closure environment's captures. A unit's layouts are collected in a table
- * by tag, and the C printer and the SSA's builder lay them out as static data
- * (quest_layout_<tag>); the runtime defines the common ones (a closure, an
- * array, an adapter's environment), which generated code names by symbol. *)
+ * Describes the word-level layouts of heap objects allocated by generated
+ * code for every backend (docs/collector.md section 3.2). Each allocation
+ * references a static QLayout struct that classifies every word of the
+ * object as a pointer, a scalar, or ambiguous (a generic QVal whose runtime
+ * kind is unknown at the allocation site), so a precise garbage collector
+ * can scan live pointers and QUEST_GC_CHECK=layouts can verify compiler
+ * output. Word kinds are derived from slot shapes (repr/layout) or, for
+ * closure environment captures, from each captured value's representation.
+ * A unit's layouts are collected in a table by tag and emitted as static
+ * data (quest_layout_<tag>) by the C and SSA backends; common layouts
+ * (adapt closures, adapter closures, and arrays) live in the runtime and are
+ * referenced by symbol. The counterpart is
+ * bootstrap/python/quest/repr/objectlayout.py. *)
 
 interface ObjectLayout
 import
@@ -43,12 +44,13 @@ export
      * array, a header followed by elements counted by an int64_t in the
      * header *)
     Def Form = Option formFixed formArray end
-    (* A layout: its tag (its symbol is quest_layout_<tag>), its form, the
-     * kinds of its words (an array's header's), an array's element's kinds
-     * and the offset of its count, its bytes as a backend laying objects out
-     * itself counts them (a fixed object's, or an array's header's), and its
-     * size as C spells it, when that is not the bytes (sizeof a struct the C
-     * backend declares, so that the two agree by construction) *)
+    (* A heap object layout. Its C symbol is quest_layout_<tag>. For a fixed
+     * object, words lists the kind of each word and bytes is the object's
+     * size; for an array, words and bytes describe the header, element gives
+     * the kinds of each element's words, and lengthOffset is the byte offset
+     * of the element count. When the C backend declares a struct for the
+     * object, cSize holds the sizeof expression so C and layout sizes agree
+     * by construction. *)
     Def Layout = Tuple
         tag: String
         form: Form
@@ -78,20 +80,21 @@ export
      * QRecordVal, then the payload of record type t, whose struct C names
      * `struct`, then the embedded boxes *)
     recordLayout(t: model.Type struct: String boxes: Array(shapes.Shape)): Layout
-    (* An option of shape os, whose struct C names `struct`, of the case named
-     * tag, or of any case (none): then each word is the kinds its cases give
-     * it, ambiguous where they differ *)
+    (* Layout for an option of shape os (whose C struct is named struct).
+     * When tag is some, the layout describes that specific case; when tag is
+     * none, each word takes the kind agreed on by all cases, or ambiguous
+     * where cases disagree. *)
     optionLayout(os: shapes.Shape struct: String tag: maybe.T(String)): Layout
-    (* A closure of code's (struct QClosure_<code>): its code pointer, a
-     * scalar word, then the given words, its descriptors and captures; bytes
-     * counts the code pointer's *)
+    (* Layout for a closure (struct QClosure_<code>): a scalar word for the
+     * code pointer followed by kinds (type descriptors and captured values).
+     * bytes includes the code pointer. *)
     closureLayout(code: String kinds: Array(Kind) bytes: Int cSize: String): Layout
 
     (* A unit's layouts, by tag and in the order first registered *)
     Def Table = Tuple byTag: hashMap.T(String Layout) order: vector.T(String) end
     newTable(): Table
-    (* Registers l, returning its symbol; a layout registered before under
-     * the same tag must be the same *)
+    (* Register l and return its symbol. Raises mismatch if a different layout
+     * is already registered under the same tag. *)
     mismatch: Exception(String)
     register(t: Table l: Layout): String
     layouts(t: Table): Array(Layout)

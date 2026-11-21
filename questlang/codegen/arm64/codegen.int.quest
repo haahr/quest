@@ -1,16 +1,18 @@
 (* Quest Self-Hosted Compiler: The arm64 Backend's Code Generator Interface
  *
- * Compiles a unit's SSA (questlang/ssa) to Darwin arm64 assembly
- * (docs/arm64.md section 3): each function selected as a machine function of
- * codegen/arm64/minst's instructions (codegen/arm64/select), its virtual
- * registers given registers or slots in the frame by
- * codegen/machine/regalloc's linear scan and rewritten in them (section
- * 3.8), then the frame's prologue and epilogues added, blocks that only jump
- * passed over, and a jump to the next block left to fall through. Calls pass
- * arguments and results as AAPCS64 does (section 3.3); a try pushes a
- * native handler's record, and a raise resumes beside it with every register
- * dead (section 3.6). codegen/arm64/printer spells the instructions; the
- * directives are codegen/arm64/asm's. *)
+ * This module compiles a unit's SSA (Static Single Assignment IR,
+ * questlang/ssa) to Darwin arm64 assembly or JIT machine code (docs/arm64.md
+ * section 3). For each function, codegen/arm64/select lowers SSA to
+ * codegen/arm64/minst instructions with virtual registers;
+ * codegen/machine/regalloc assigns physical registers or stack spill slots by
+ * linear scan and rewrites the instructions (section 3.8); and this module
+ * adds the frame prologue and epilogues, bypasses jump-only blocks, orders
+ * blocks so common edges fall through, and relaxes out-of-range branches.
+ * Calls follow the AAPCS64 calling convention (section 3.3). A try pushes a
+ * native exception-handler record, and a raise resumes at the handler with
+ * every register dead (section 3.6). Assembly text is formatted by
+ * codegen/arm64/printer and codegen/arm64/asm; binary encoding is handled by
+ * codegen/arm64/encode. *)
 
 interface Codegen
 import
@@ -20,7 +22,7 @@ import
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 export
-    (* What the backend cannot compile, naming it *)
+    (* Raised when the backend cannot compile a construct, naming it *)
     unsupported: Exception(String)
     (* A unit's assembly *)
     assembleUnit(u: ssa.Unit): String
@@ -28,25 +30,25 @@ export
      * 3.5) *)
     encodeUnit(u: ssa.Unit): encode.Encoded
 
-    (* A slot of a function's frame, at offset from sp after the prologue, of
-     * bytes (docs/arm64.md section 3.13): a virtual register in
-     * memory, of its SSA type (a ptr is a pointer and an int is not, though an
-     * int may be a QVal word, whose pointer-ness its type descriptor says), id
-     * being its index (an SSA value's own number); or with no type, a stack
-     * slot's memory, whose words have no class here, id being the slot. What
-     * the frame table's maps are made from. *)
+    (* A slot in a function's stack frame, located at offset bytes from sp
+     * after the prologue and spanning bytes bytes (docs/arm64.md section
+     * 3.13). When type is present, the slot holds a spilled virtual register
+     * of that SSA type (ptr is a heap pointer; int or val may hold a pointer
+     * or a tagged QVal word) and id is the virtual register's index. When
+     * type is absent, the slot is an explicit stack allocation whose words
+     * are not classified individually, and id is the stack slot index. *)
     Def FrameSlot = Tuple offset: Int bytes: Int type: maybe.T(ssa.Type) id: Int end
     (* The slots of the frame f is compiled with, in order of their offsets *)
     frameSlots(f: ssa.Function): Array(FrameSlot)
-    (* The frame f is compiled with as the unit's frame table describes it to
-     * the collector (docs/arm64.md section 3.13; runtime/quest_gc.c has the
-     * table's form), as text: a line for the frame (the words from sp to its
-     * frame record, the pairs of callee-saved registers it saves, and the
-     * words at sp that nothing describes), then one for each call, in the
-     * order of the code: its return address, in instructions from the
-     * function's start, and what is live across it, each callee-saved
-     * register and each word of the frame (by its offset from sp) as a ptr
-     * or as an ambiguous word. None for a function that enters a try, whose
-     * frame is scanned whole. *)
+    (* A textual summary of f's garbage-collector frame map (docs/arm64.md
+     * section 3.13; runtime/quest_gc.c defines the binary table format). The
+     * first line gives the frame header: the number of 8-byte words from sp
+     * to the frame record, the callee-saved register pairs saved, and the
+     * number of undescribed words at sp. Each subsequent line corresponds to
+     * a call site in code order, giving its return address (in instructions
+     * from the start of f) and every live callee-saved register or frame word
+     * (by offset from sp) classified as a ptr or an ambiguous word. Returns
+     * an empty array for a function that enters a try, since the collector
+     * scans such frames conservatively in full. *)
     frameMaps(f: ssa.Function): Array(String)
 end

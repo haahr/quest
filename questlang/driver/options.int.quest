@@ -1,19 +1,18 @@
 (* Quest Self-Hosted Compiler: The Driver's Command Line Interface
  *
- * driver/main's command line: the phases it can stop after or dump (each IR
- * stage's, the SSA's, the backends'), its usage, and its options, parsed from
- * system.args when the module is initialized, with the bootstrap's spellings
- * (bootstrap/python/quest/driver/options.py). An error in them prints the
- * usage and exits with 2. *)
+ * Defines the driver's command-line phases (front end, IR stages, SSA passes,
+ * and backends), usage reporting, and parsed options. Options are parsed from
+ * system.args at module initialization using the bootstrap compiler's option
+ * spellings (bootstrap/python/quest/driver/options.py); invalid options print
+ * the usage message and exit with status 2. *)
 
 interface Options
 import
     questlang/codegen/choice : questlang/codegen/Choice
     util/maybe : util/Maybe
 export
-    (* The IR's stages (docs/ir.md section 9) the driver dumps (ir_STAGE) and
-     * runs (run_ir_STAGE); every phase it knows; the SSA's phases; and the
-     * backends' *)
+    (* Phase lists: IR stages (docs/ir.md section 9) for ir_STAGE and
+     * run_ir_STAGE, all recognized phases, SSA phases, and backend phases *)
     irStages: Array(String)
     phases: Array(String)
     ssaPhases: Array(String)
@@ -45,9 +44,9 @@ export
         jobs: Int
         wholeProgram: Bool
         backends: choice.T
-        (* The engine a wasm program runs in: wasmtime or node; and whether
-         * the program is run there as a program is natively, its output
-         * written through and its status the driver's (--backend wasm FILE) *)
+        (* The engine for wasm runs (wasmtime or node), and whether --backend
+         * wasm FILE runs directly like a native program (forwarding stdout,
+         * stderr, and exit status) *)
         wasmEngine: String
         runWasm: Bool
         expectedExit: Int

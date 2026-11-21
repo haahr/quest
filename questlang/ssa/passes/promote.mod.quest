@@ -56,10 +56,11 @@ export
             if aligned andif {{i.width is 8} orif {i.width is 1}} then vs.base[s] + {i.imm / 8} else ~1 end
         end
 
-    (* The slots that can be promoted: of whole words, their addresses only
-     * loaded from and stored to, a word at a time, or its first byte, and not
-     * in a block a handler reaches (inHandler); each word of values of one
-     * type, stored all of one width, and loaded whole only if stored whole *)
+    (* Finds the slots eligible for promotion: whole-word slots whose
+     * addresses are used only for aligned 8-byte or 1-byte loads and stores,
+     * and that are not accessed in a block reachable from a handler
+     * (inHandler), where each word has one type, one store width, and is
+     * never loaded whole after a byte store *)
     let variables(f: Function inHandler: Array(Bool)): Variables =
         begin
             let nSlots = vector.length(f.slots)
@@ -137,7 +138,7 @@ export
                 if promoted[s] then
                     for w = 0 upto {{vector.get(f.slots s).bytes / 8} - 1} do
                         let v = base[s] + w
-                        (* A word never loaded or stored is an integer's *)
+                        (* Default an unaccessed word's type to integer *)
                         if kind[v] is ~2 then kind[v] := 0 end
                         if {kind[v] < 0} orif {stored[v] < 0} orif {{stored[v] is 1} andif loadedWhole[v]} then
                             promoted[s] := false
@@ -216,7 +217,8 @@ export
                         end
                     end
                 end
-                (* The parameters, in each block, after its own *)
+                (* Promoted block parameters appended after each block's
+                 * existing parameters *)
                 let paramVariables = array of(nBlocks vector.new(:Int))
                 let paramValues = array of(nBlocks vector.new(:Int))
                 for b = 0 upto {nBlocks - 1} do
@@ -236,8 +238,9 @@ export
                         end
                     end
                 end
-                (* What each load's result is replaced by, and the zeros that
-                 * loads before any store read, made in the entry *)
+                (* Maps each promoted load's result to its replacement value,
+                 * and collects entry-block zero instructions for loads that
+                 * precede any store *)
                 let replaced = array of(nValues ~1)
                 let resolve(v: Int): Int =
                     begin
@@ -260,7 +263,8 @@ export
                                     when typeInt then zero(ssa.opConst array of :Int end zeros[v])
                                     when typePtr then zero(ssa.opNull array of :Int end zeros[v])
                                     when typeReal then zero(ssa.opRealConst array of :Int end zeros[v])
-                                    (* A QVal word's zero, from an int's *)
+                                    (* A QVal (tagged runtime value) zero,
+                                     * converted from an int zero *)
                                     when typeVal then
                                         let n = ssa.newValue(f ssa.typeInt)
                                         zero(ssa.opConst array of :Int end n)
@@ -271,9 +275,9 @@ export
                         else current[v] end
                     end
                 let children = g.children
-                (* Renaming each block before its children, in order, by an
-                 * explicit stack: a block's entry, then its exit, which
-                 * restores the definitions saved at its entry *)
+                (* Rename each block before its dominator-tree children using
+                 * an explicit stack: push an exit marker before the children
+                 * so definitions saved at block entry are restored on exit *)
                 let stackBlocks = vector.new(:Int)
                 let stackExits = vector.new(:Bool)
                 let savedDefinitions = vector.new(:Array(Int))
@@ -301,7 +305,8 @@ export
                                 let v = variableAt(i)
                                 if i.width is 8 then replaced[i.results[0]] := valueOf(v)
                                 else
-                                    (* A byte, the extension of the word's *)
+                                    (* Extract the low byte from the promoted
+                                     * word via sign or zero extension *)
                                     let op = if i.signed then ssa.opSext8 else ssa.opZext8 end
                                     let extended = ssa.inst(op array of valueOf(v) end i.results)
                                     extended.loc := i.loc
@@ -338,7 +343,8 @@ export
                         end
                     end
                 end
-                (* Every use, of what replaced it; the slots left, renumbered *)
+                (* Renumber the unpromoted slots, prepend entry-block zero
+                 * instructions, and rewrite all uses of promoted loads *)
                 let renumbered = array of(nSlots ~1)
                 let left = vector.new(:ssa.Slot)
                 let var count = 0

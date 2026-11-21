@@ -1,5 +1,8 @@
-(* Quest Self-Hosted Compiler: The Backends' Entry Points Implementation: the
- * wasm backend's here, the native ones' through codegen/native *)
+(* Quest Self-Hosted Compiler: The Backends' Entry Points Implementation
+ *
+ * The wasm backend is implemented directly here, while the native backends
+ * (c, ssac, and arm64) are delegated to codegen/native so that a driver
+ * compiled to WebAssembly can omit them. *)
 
 module backend : Backend
 import
@@ -38,11 +41,12 @@ export
 
     let wasmText(unit: nodes.Unit): String = wasmPrinter.print(wasmModule(unit))
 
-    (* The stamp of the runtime this compiler's wasm units are built against:
-     * a hash of the runtime module's encoding, which changes with its types
-     * and functions. Each unit's object carries it in a custom section,
-     * quest.runtime, and the build takes an object with another for stale,
-     * rather than fail when it is instantiated (docs/wasm.md section 5.3) *)
+    (* Computes and caches the stamp of the WebAssembly runtime that wasm units
+     * are built against: a hash of the encoded runtime module, which changes
+     * whenever its types or functions change. Each compiled wasm object embeds
+     * this stamp in a quest.runtime custom section so the build can treat an
+     * object with a different stamp as stale instead of failing at
+     * instantiation time (docs/wasm.md section 5.3). *)
     let stamps = tuple let var made = "" end
     let runtimeStamp(): String =
         begin
@@ -52,7 +56,8 @@ export
             stamps.made
         end
 
-    (* An unsigned LEB128 in bytes at at: its value, and where it ends *)
+    (* Decodes an unsigned LEB128 variable-length integer in bytes starting at
+     * offset at, returning its value and the index immediately after it *)
     Def Leb = Tuple value: Int next: Int end
     let leb(bytes: String at: Int): Leb =
         begin
@@ -94,22 +99,24 @@ export
             found
         end
 
-    (* A unit's C with a datum of its own, exported: a symbol and the C
-     * string it names. A backend's failure is raised as unsupported, so that
-     * callers handle one exception whatever the backend. *)
+    (* Compiles unit for backend, optionally attaching an exported datum (a
+     * symbol name and string payload, embedded as a C string or a WebAssembly
+     * custom section). Any backend failure is re-raised as unsupported so
+     * callers handle one exception type. *)
     let unitWithDatum(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String
         datum: maybe.T(Tuple symbol: String text: String end)): String =
         if stringOp.equal(backend "wasm") then
-            (* A module unit's fingerprint, for a host's JIT to compare
-             * (docs/wasm.md section 5.3), in a custom section *)
+            (* Append the runtime stamp and, for module units, the interface
+             * fingerprint in custom sections so a host JIT can check
+             * compatibility (docs/wasm.md section 5.3) *)
             Let Datum = Tuple symbol: String text: String end
             encode.encode(wasmModule(unit)) <> encode.customSection("quest.runtime" runtimeStamp())
                 <> if maybe.isSome(datum) then
                 encode.customSection("quest.fingerprint" maybe.unwrap(datum).text)
             else "" end
         else
-            (* the native backends' (codegen/native), which a driver compiled
-             * to WebAssembly leaves out *)
+            (* Delegate to the native backends (codegen/native), which a driver
+             * compiled to WebAssembly omits *)
             try native.unitCode(unit interfaceHeader backend datum)
                 when native.unsupported with m then raise unsupported with m end
             end

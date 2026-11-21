@@ -52,8 +52,9 @@ export
             writer.flush(w)
         end
 
-    (* The records of a cell that failed: its error, from the diagnostics in
-     * bag, with the position of the first in the cell, if it has one *)
+    (* Writes the error record for a failed cell from the diagnostics in bag,
+     * including the line and column of the first diagnostic in the cell if it
+     * has one *)
     let failed(r: repl.T w: writer.T sm: location.SourceMap bag: diagbag.T): Ok =
         begin
             let shown = maybe.unwrapOr(r.errorSource sm)
@@ -94,8 +95,8 @@ export
                 r.failure := ""
                 let results = repl.evaluate(r text sm bag)
                 if maybe.isSome(results) then
-                    (* An input that ran may have warnings, on standard error
-                     * as the REPL writes them *)
+                    (* A cell that succeeded may still have warnings; render
+                     * them to standard error just as the REPL does *)
                     writer.flush(writer.output)
                     diagbag.renderAll(bag sm writer.err)
                     writer.flush(writer.err)
@@ -114,8 +115,8 @@ export
         end
 
     (* ----------------------------------------------------------------------
-     * Completion and inspection: names at a cursor, a byte offset into a
-     * cell, from the session's environment
+     * Completion and inspection: resolves names at a cursor (a byte offset
+     * into a cell) against the session's environment
      * ---------------------------------------------------------------------- *)
 
     let isNameChar(c: Char): Bool = strutil.isAlnum(c) orif {c is '_'}
@@ -128,9 +129,9 @@ export
             start
         end
 
-    (* The module a name before a '.' at start names, if the name is one: a
-     * module the session imported or declared, or the standard library's of
-     * the name, which is loaded as a use of it would load it *)
+    (* Looks up the module named before a '.' at start, if any. Checks modules
+     * already imported or declared in the session first, then loads a matching
+     * standard library module on demand. *)
     let qualifier(r: repl.T code: String start: Int): maybe.T(Tuple name: String scope: symbols.Scope end) =
         if {start > 0} andif {stringOp.getChar(code {start - 1}) is '.'} then
             let q = nameStart(code {start - 1})
@@ -154,15 +155,15 @@ export
     let appendAll(names: vector.T(String) more: vector.T(String)): Ok =
         for i = 0 upto {vector.length(more) - 1} do vector.append(names vector.get(more i)) end
 
-    (* The names a scope declares *)
+    (* Appends all value and type names declared in scope to names *)
     let addNames(names: vector.T(String) scope: symbols.Scope): Ok =
         begin
             appendAll(names hashMap.keys(scope.values))
             appendAll(names hashMap.keys(scope.types))
         end
 
-    (* The names that complete the one before cursor: where it starts, and the
-     * names, sorted *)
+    (* Returns the start offset of the identifier before cursor and all
+     * matching completion names, sorted and deduplicated *)
     let completions(r: repl.T code: String cursor: Int): Tuple start: Int matches: Array(String) end =
         begin
             let start = nameStart(code cursor)

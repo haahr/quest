@@ -90,8 +90,8 @@ export
      * same C representations), as Python's repr writes them *)
     let shapeKey(t: Type): String =
         begin
-            (* In a whole program, by its fields as described, abstract types
-             * opaque *)
+            (* Keep abstract types opaque here so fields are keyed as
+             * described *)
             let s = shapes.opaqueShape(t)
             let unsorted = if shapes.kindIs(s shapes.shapeRecord) then recordFields(s.structure)
                 else recordFields(t) end
@@ -189,14 +189,14 @@ export
     let boundIsPower(b: maybe.T(model.Kind)): Bool =
         maybe.isSome(b) andif model.isPower(maybe.unwrap(b))
 
-    (* Decided in order: a descriptor template's hole; a scalar, a Word, the
-     * empty tuple, or a bound variable (an element of quest_type_bound_vars),
-     * whose descriptors the runtime defines (base); a module's bounded
-     * abstract type (stored); a tuple, or a record, variant, or option,
-     * including a type variable bounded by one, named by tag and digest; then
-     * the rest by the form of the type: arrays, exceptions, functions, and
-     * auto types described by structure, and everything else compared by name
-     * (opaque) *)
+    (* Chooses the descriptor form for t0 in priority order: first a descriptor
+     * template hole; next a runtime-defined base descriptor (scalar, Word,
+     * empty tuple, or bound variable in quest_type_bound_vars); next a
+     * module's bounded abstract type (stored); next a tuple, or a record,
+     * variant, or option (including a type variable bounded by one), named by
+     * tag and digest. Remaining types are classified by form: arrays,
+     * exceptions, functions, and auto types are described structurally, and
+     * everything else is compared by name (opaque). *)
     let rec descriptorForm(t0: Type ctx: maybe.T(RecordNaming)): DescriptorForm =
         begin
             let s = shapes.opaqueShape(t0)
@@ -323,10 +323,11 @@ export
             else "QType"
         end
 
-    (* What tells apart the echo-only descriptors of t: the type components that
-     * echo writes for it and its parts, with their alias names, or none if it
-     * writes none. recursive holds the recursive types being unfolded around t:
-     * an occurrence of one adds nothing, which keeps the key finite. *)
+    (* Computes a key distinguishing echo-only descriptors of t: the type
+     * components that echo prints for t and its parts, with their alias names,
+     * or none if echo prints none. recursive holds the recursive types being
+     * unfolded around t; revisiting one adds nothing, keeping the key
+     * finite. *)
     let rec echoKey(t: Type recursive: vector.T(Int)): maybe.T(String) =
         begin
             let identity = written.recursiveIdentity(t)
@@ -507,9 +508,9 @@ export
                 end
             let typeOf(f: DescriptorForm): Type = maybe.unwrap(f.type)
 
-            (* Collects t's descriptor and its parts', each once. A base
-             * descriptor is the runtime's, not the unit's, and a type with
-             * none is left out *)
+            (* Collects t's descriptor and its parts' descriptors, each once. A
+             * base descriptor belongs to the runtime rather than the unit, and
+             * a type with no descriptor is skipped. *)
             let rec visit(t: Type): Ok =
                 begin
                     let form = try maybe.some(descriptorForm(t ctx))
@@ -578,8 +579,8 @@ export
                     ok
                 end
 
-            (* An echo-only descriptor, and those of its parts (echo-only too
-             * where they write type components) *)
+            (* Collects t's shared and echo-only descriptors, and recurses on
+             * the parts that carry written type components *)
             let rec visitEcho(t: Type): Ok =
                 begin
                     visit(t)

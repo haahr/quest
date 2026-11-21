@@ -29,8 +29,9 @@ export
         (* The fresh label of each label the copy binds, when it has them *)
         labels: hashMap.T(String String)
         relabeling: maybe.T(Labels)
-        (* Whether a closure's copy is of the same function: in a closed
-         * unit, whose functions are the unit's, not nested in the code *)
+        (* Whether a copied closure shares the original function, as in a closed
+         * unit whose functions live at the top level rather than nested in
+         * code *)
         sharesCode: Bool
     end
 
@@ -63,8 +64,9 @@ export
 
     let newLabels(): Labels = tuple let var count = 0 end
 
-    (* A label the copy binds, fresh if the cloner relabels: lowering's labels
-     * are a prefix and a number, so a suffix of another makes a new one *)
+    (* Records a fresh replacement for a bound label when the cloner relabels.
+     * Lowering's labels are a prefix and a number, so appending "_<count>"
+     * avoids collisions. *)
     let freshLabel(c: Cloner label: String): Ok =
         if maybe.isSome(c.relabeling) then
             let l = maybe.unwrap(c.relabeling)
@@ -154,10 +156,10 @@ export
             t
         end
 
-    (* A copy of p, if any, with its types substituted and its nested plans,
-     * descriptors, and tables copied; its layout, access, and thunk symbols
-     * are p's own. Plans are made by the represent pass, after the passes
-     * that clone, so a clone meets none in the order the passes run *)
+    (* Returns a copy of p, if present, with its types substituted and its
+     * nested plans, descriptors, and tables copied, while sharing p's layout,
+     * access, and thunkSymbols. Plans are created by the represent pass, which
+     * runs after the passes that clone, so cloning normally sees none. *)
     let rec plan(c: Cloner p: maybe.T(nodes.Plan)): maybe.T(nodes.Plan) =
         if maybe.isNone(p) then
             p

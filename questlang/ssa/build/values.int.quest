@@ -1,12 +1,11 @@
 (* Quest Self-Hosted Compiler: The SSA Builder's Values Interface
  *
- * The builder's foundation (docs/ssa.md, docs/arm64.md section 3.2): how a
- * value's representation is SSA values (its parts), the unit's and each
- * function's builder state, emitting instructions, variables (bound to
- * values, slots, locations, globals, or handlers' state), atoms, values as
- * QVal words and slots, records' and variants' boxes, checks that call the
- * runtime when they fail, and starting and finishing a function.
- * ssa/build/representation reads aggregates' components. *)
+ * Provides the SSA builder's foundation (docs/ssa.md, docs/arm64.md section
+ * 3.2): splitting Quest values into SSA word parts, unit and function builder
+ * state, instruction emission, variable bindings (SSA values, stack slots,
+ * pointers, globals, and exception handler state), atoms, QVal word and box
+ * conversions, runtime error checks, and function lifecycle helpers.
+ * ssa/build/representation handles aggregate component access. *)
 
 interface Values
 import
@@ -48,8 +47,9 @@ export
     parts(t: Type): Array(Part)
     (* Whether a value of shape s is a QVal in a slot (an Ok's is too) *)
     slotIsQVal(s: shapes.Shape): Bool
-    (* The parts of a variable's value: a boxed variable (a record or a variant
-     * the represent pass holds in its box) holds the box's pointer *)
+    (* The parts of a variable's value: a boxed record or variant holds its box
+     * pointer, an unboxed tuple holds its components' slot parts, and other
+     * variables hold parts(v.type) *)
     varParts(v: Variable): Array(Part)
     (* The parts of an unboxed tuple of type t (questlang/ir/unbox): its
      * components in their slot forms, a word each *)
@@ -92,8 +92,9 @@ export
         (* The layouts of the objects the unit allocates (docs/collector.md
          * section 3.2), laid out as its static data *)
         layouts: objectLayout.Table
-        (* The unit's root table (section 3.8): its globals that may hold
-         * pointers and its module records, each symbol with its words *)
+        (* The unit's GC root table (docs/collector.md section 3.8): its
+         * globals that may hold pointers and its module records, each symbol
+         * with its words *)
         roots: vector.T(RootEntry)
     end
     (* The blocks of a loop: its head, where continue jumps, and the block
@@ -105,7 +106,7 @@ export
     (* The let rec being built: the variables it binds, by id, and the
      * captures of them made so far. A closure of a let rec captures
      * variables that the let rec has not bound yet (its own, or a sibling's),
-     * so the environment's words for them are stored after the body *)
+     * so the environment's words for them are stored after the body. *)
     Def Deferred = Tuple vars: hashMap.T(Int Bool) captures: vector.T(DeferredCapture) end
     (* How a variable of the function being built is held: as SSA values (an
      * immutable variable), in a stack slot (a mutable one), at the location a
@@ -136,7 +137,7 @@ export
          * parameters) each of the join's parameters takes. A join point is
          * the IR's sJoin: a labelled continuation that a jump in its body
          * enters with arguments, like a local function called only in tail
-         * position *)
+         * position. *)
         joins: hashMap.T(String Int)
         joinParts: hashMap.T(String Array(Int))
         (* The blocks of each loop, by its label *)
@@ -157,7 +158,7 @@ export
     (* The symbol of the global variable v, g_ and its name. The first time it
      * is asked for, this also adds v's storage to the unit's static data,
      * writable and zeroed, a word for each part (at least one), and to the
-     * root table if a part may be a pointer, so that the collector sees it *)
+     * root table if a part may be a pointer, so that the collector sees it. *)
     globalSymbol(u: UnitBuilder v: Variable): String
     (* The symbol of the read-only C string s, qs_ and a number, added to the
      * unit's static data the first time s is asked for *)
@@ -167,12 +168,12 @@ export
      * header word, quest_layout_string's address with Q_HEADER_READONLY, then
      * the QString, s's length and its bytes (stringSymbol). The string is the
      * object's address plus 8, past its header (docs/extensions.md,
-     * String Literals) *)
+     * String Literals). *)
     stringObject(u: UnitBuilder s: String): String
-    (* The symbol of a read-only table of count words, word i i: as option
-     * struct key's option of tag i, for cases without components, which only
-     * their tags are read of
-     * (docs/c-representation.md section 5.3) *)
+    (* Returns the symbol of a read-only table of count words where word i is
+     * i. Each entry acts as a static option constant of tag i for payload-free
+     * cases of option struct key, whose only accessed field is the tag
+     * (docs/c-representation.md section 5.3). *)
     optionTable(u: UnitBuilder key: String count: Int): String
     constant(fn: Fn n: Int): Int
     binary(fn: Fn op: ssa.Opcode x: Int y: Int): Int
@@ -186,19 +187,20 @@ export
      * closure's code, say (ssa.Inst.invariant) *)
     invariantWord(fn: Fn address: Int offset: Int t: ssa.Type): Int
     store(fn: Fn address: Int offset: Int width: Int value: Int): Ok
-    (* A call of the runtime's function name (ssa/runtimeFunctions), at
-     * its signature: its results; its one result; none *)
+    (* Emits a call to runtime function name using its signature from
+     * ssa/runtimeFunctions, returning all results (runtime), its single result
+     * (call1), or nothing (callVoid) *)
     runtime(fn: Fn name: String args: Array(Int)): Array(Int)
     call1(fn: Fn name: String args: Array(Int)): Int
     callVoid(fn: Fn name: String args: Array(Int)): Ok
-    (* Around an object's initializing stores, which have no barrier, as a
-     * young object's need none. The object stays young until a call that
-     * may collect (one of the program's functions, or one of the runtime's
-     * that allocates), which may mark it old (collector.md section 3.5),
-     * and the stores after that call must be logged before the next
-     * collection: so from the second such call on, the object's barrier is
-     * emitted before the call, and endInit emits it after the last store if
-     * there was a call at all. beginInit's result is endInit's mark *)
+    (* Brackets an object's initializing stores, which normally need no GC
+     * write barrier because the object starts in the young generation. A call
+     * that may trigger collection (any Quest function or allocating runtime
+     * helper) can promote the object to the old generation (docs/collector.md
+     * section 3.5), so subsequent stores must be logged before the next
+     * collection: from the second such call on, a barrier is emitted before
+     * the call, and endInit emits one after the last store if any collecting
+     * call occurred. Pass beginInit's return value as endInit's mark. *)
     beginInit(fn: Fn obj: Int): Int
     endInit(fn: Fn mark: Int obj: Int): Ok
     (* A call of a function of the unit, or another unit's, of no parameters
@@ -221,11 +223,12 @@ export
     (* An int or a ptr as a QVal word, and a QVal word as an int or a ptr *)
     toVal(fn: Fn v: Int): Int
     fromVal(fn: Fn v: Int t: ssa.Type): Int
-    (* vs as the types ts: each a QVal word and a ptr or an int converted
-     * between the two, as a call of a function's code directly does where
-     * the closure's type and the code's hold a pointer and a QVal word alike
-     * (shapes.referencesAlike) and the represent pass made no adapter; vs as
-     * they are if their number differs *)
+    (* Converts each value in vs to match the corresponding SSA type in ts
+     * where one is a QVal word and the other is an int or pointer, leaving
+     * other elements unchanged (or returning vs untouched if the lengths
+     * differ). Used by direct calls when a closure's type and its code's type
+     * treat pointers and QVal words alike (shapes.referencesAlike) and no
+     * adapter was generated. *)
     retyped(fn: Fn vs: Array(Int) ts: Array(ssa.Type)): Array(Int)
     (* The SSA types of the parameters of f's code (as questlang/ssa/build/unit
      * makes them): its closure, its own type parameters' descriptors, then
@@ -240,8 +243,8 @@ export
      * (docs/c-representation.md section 5.8) *)
     isProxy(fn: Fn p: Int): Int
     concat(a: Array(Int) b: Array(Int)): Array(Int)
-    (* A C bool or char a callee returns, which AAPCS64 does not extend:
-     * extended *)
+    (* Extends a 1-byte bool or char returned from a callee to a full word,
+     * since the ARM64 ABI (AAPCS64) leaves the upper bytes unspecified *)
     narrowed(fn: Fn v: Int p: Part): Int
     (* The source site of a raise or a check, a C string, or NULL *)
     site(fn: Fn offset: maybe.T(Int)): Int
@@ -259,13 +262,13 @@ export
     handlerState(fn: Fn v: Variable): Int
     (* The address of a mutable variable's slot (made the first time) *)
     slotOf(fn: Fn v: Variable): Int
-    (* A value of type t at an address, read or stored a part to a word, with
-     * no barrier. A location (a cell, or what a var or out parameter points
-     * to) holds a record or variant as its box's pointer
-     * (layout.shapeLocationRepresentation); writeValue stores the value
-     * itself, as a box or a global record holds it. A store to a location of
-     * no parts (an Ok's) stores nothing, whatever values it is given; else a
-     * count of values other than the parts' raises unsupported *)
+    (* Reads or stores a value of type t at address, one part per word, with no
+     * write barrier. A location (a cell, or a var/out parameter's target)
+     * holds a record or variant as its box pointer
+     * (layout.shapeLocationRepresentation), whereas writeValue stores the
+     * value itself, as in a box or global record. Storing to a zero-part
+     * location (Ok) is a no-op; otherwise a mismatched value count raises
+     * unsupported. *)
     readLocation(fn: Fn address: Int t: Type): Array(Int)
     writeValue(fn: Fn address: Int t: Type values: Array(Int)): Ok
     writeLocation(fn: Fn address: Int t: Type values: Array(Int)): Ok
@@ -286,8 +289,8 @@ export
     (* An atom of one value *)
     atom1(fn: Fn a: Atom): Int
     atoms(fn: Fn xs: Array(Atom)): Array(Int)
-    (* A call's arguments: an Ok, which has no values, is a QVal word in C,
-     * and the function's parameter is one (function, below) *)
+    (* Lowers call arguments to SSA values. An Ok argument has zero parts, so
+     * it is passed as a 0 QVal word to match the C ABI and codeParamTypes. *)
     callAtoms(fn: Fn xs: Array(Atom)): Array(Int)
 
     (* Values as QVal words (layout.wordForm) *)

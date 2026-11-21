@@ -187,8 +187,8 @@ export
             end
         end
 
-    (* A switch's case of a variant, whose binder takes the payload: a record or
-     * variant in its slot form *)
+    (* Rewrites a variant switch case whose payload is boxed so that its binder
+     * receives the box and unboxes it at case entry *)
     let variantCase(st: SlotState vs: Shape c: nodes.Case): Ok =
         if maybe.isSome(c.binder) then
             let b = maybe.unwrap(c.binder)
@@ -198,9 +198,8 @@ export
             end
         end
 
-    (* A switch's case of an option, whose binder takes the payload: a tuple of
-     * its components, read as decided, or a payload that is not a tuple in its
-     * slot form *)
+    (* Sets component access modes for an option switch case, and unboxes its
+     * binder when the payload is a boxed non-tuple *)
     let optionCase(st: SlotState os: Shape c: nodes.Case): Ok =
         if maybe.isSome(c.binder) then
             let b = maybe.unwrap(c.binder)
@@ -236,17 +235,18 @@ export
             else false
         end
 
-    (* Decides how an operation reads and stores slots, converting the atoms it
-     * stores to their slot forms (by lets added to before); whether it yields a
-     * record or variant in its slot form, which the let binding it then binds
-     * to a boxed variable *)
+    (* Decides how o reads and stores slots, appending boxing lets to before
+     * for any record or variant atoms stored into slots. Returns true when o
+     * yields a record or variant in boxed slot form, so the enclosing let
+     * binds a boxed variable and unboxes it. *)
     let operation(st: SlotState o: Op v: maybe.T(Variable) before: vector.T(Stmt)): Bool =
         case o
             when opTupleField with x then
                 let ts = layout.resolvedShape(shapes.shape(typeOf(x.tup)))
                 if layout.ownView(shapes.shape(typeOf(x.tup))) then
-                    (* A tuple-bounded type parameter's value: read through the
-                     * view map, converted, as a value *)
+                    (* Values of a tuple-bounded type parameter are read
+                     * through the view map and converted, so they arrive
+                     * unboxed *)
                     false
                 else
                     x.access := tupleAccess(ts x.index isFresh(st x.tup))
@@ -266,10 +266,9 @@ export
                     let own = layout.ownView(shapes.shape(typeOf(x.recordAtom)))
                     if not(field.isVar)
                         andif {own orif layout.isQVal(fieldShape) orif mayBeStoredAsSubtype(fieldShape)} then
-                        (* A subtype's payload may store it at another type, or
-                         * a bounded type parameter's value at its type
-                         * argument's type for it: read through the offset table
-                         * and converted, as a value *)
+                        (* A subtype or bounded type parameter may store this
+                         * field at a different type, so it is read through the
+                         * offset table and converted to a value *)
                         x.stored := true
                         false
                     else
@@ -288,7 +287,8 @@ export
             when opConvert with x then
                 let p = x.plan
                 if nodes.planIs(p nodes.planUnbox) andif boxed(maybe.some(shapes.shape(p.target))) then
-                    (* A QVal word holds a record or variant as its box *)
+                    (* A QVal (uniform polymorphic value word) holds a record
+                     * or variant as its box *)
                     true
                 else
                     if nodes.planIs(p nodes.planBox) then
@@ -377,8 +377,8 @@ export
                         if maybe.isSome(c) then maybe.unwrap(c).shape else maybe.none() end before)
                 end
                 false
-            (* Whether the binder is boxed: by its own type, the payload's (the
-             * exception's variable, x.exc, has the bare type Exception) *)
+            (* Decide boxing from the binder's payload type because x.exc has
+             * the bare type Exception *)
             when opExceptionPayload then
                 maybe.isSome(v) andif boxed(maybe.some(shapes.shape(maybe.unwrap(v).type)))
             when opIsTag with x then
@@ -399,7 +399,8 @@ export
                 false
             when opPayload with x then
                 if layout.ownView(shapes.shape(typeOf(x.value))) then
-                    (* Read through the view map, converted, as a value *)
+                    (* Values of bounded type parameters are read through the
+                     * view map and converted *)
                     false
                 else
                     let ts = tagShape(typeOf(x.value))
@@ -449,15 +450,13 @@ export
             else false
         end
 
-    (* The statements that replace a let s: s, after the lets that put the
-     * records and variants its operation stores into their boxes (see
-     * operation). When the operation yields a record or variant in its slot
-     * form, a box, s binds a new boxed variable instead, and a let after it
-     * reads the value from the box into s's variable; st remembers the box
-     * as that variable's, so that storing the value again reuses the box. A
-     * let of a copy shares its source's remembered box and freshness, and a
-     * let of a tuple or option being made marks its variable fresh (not a
-     * proxy) *)
+    (* Returns the statements that replace a let statement s, preceded by any
+     * boxing lets needed for records and variants stored into slots (see
+     * operation). When the operation yields a record or variant in boxed slot
+     * form, s binds a new boxed variable and a following let unboxes it into
+     * s's original variable; st remembers the box so later stores can reuse
+     * it. Copying a variable propagates its remembered box and freshness, and
+     * allocating a tuple or option marks its variable fresh (not a proxy). *)
     let letStatement(st: SlotState s: Stmt): Array(Stmt) =
         case s
             when sLet with x then
@@ -490,9 +489,8 @@ export
                         vector.append(before s)
                         vector.toArray(before)
                     else
-                        (* The operation reads the value in its slot form, a
-                         * box: bound to a boxed variable, from which the value
-                         * is read *)
+                        (* The operation yields a boxed value, so bind it to a
+                         * boxed variable and unbox it into v *)
                         let box = newBox(if stringOp.isEmpty(v.hint) then "box" else v.hint <> "_box" end v.type)
                         x.v := box
                         hashMap.insert(st.boxes v.id box)
@@ -504,18 +502,17 @@ export
             else array of s end
         end
 
-    (* How a switch reads an option's tag and payload, and each case's binder
-     * of a boxed payload bound to the payload's box (from which a let at the
-     * case's start reads the value). Decided before the cases' bodies, so that
-     * st remembers the binder's box while they are: a body storing the binder
-     * into another slot reuses the box rather than making one *)
+    (* Decides how a switch reads an option's tag and payload, and rewrites
+     * boxed case binders to bind the payload's box and unbox it at case entry.
+     * This runs before visiting the case bodies so st remembers each binder's
+     * box and any store of the binder into another slot reuses it. *)
     let switchCases(st: SlotState s: Stmt): Ok =
         case s
             when sSwitch with x then
                 let ts = tagShape(typeOf(x.value))
                 if layout.ownView(shapes.shape(typeOf(x.value))) then
-                    (* A bounded type parameter's value: its payloads are
-                     * read through the view map, converted, as values *)
+                    (* Payloads of a bounded type parameter are read through
+                     * the view map and converted to values *)
                     ok
                 elsif maybe.isSome(ts) andif shapes.kindIs(maybe.unwrap(ts) shapes.shapeOption) then
                     x.access := optionTagAccess(maybe.unwrap(ts))
@@ -526,11 +523,11 @@ export
             else ok
         end
 
-    (* The statements that replace s (a let's are letStatement's): s, after
-     * the lets that box the records and variants it stores into slots (a
-     * boxed variable's initial or assigned value, a store's value, a raise's
-     * payload, an echoed value); with how a store writes a tuple's component
-     * decided; a switch's are switchCases' *)
+    (* Returns the statements that replace s, delegating lets to letStatement
+     * and leaving switches to switchCases. Boxes any record or variant stored
+     * into a slot (boxed variable init or assignment, store, raise payload, or
+     * echo) by prepending boxing lets, and sets the access mode for tuple
+     * component stores. *)
     let statement(st: SlotState s: Stmt): Array(Stmt) =
         begin
             let before = vector.new(:Stmt)
@@ -554,8 +551,8 @@ export
                 when sStoreComponent with x then
                     let bs = shapes.shape(typeOf(x.base))
                     if layout.ownView(bs) then
-                        (* Into a tuple-bounded type parameter's value, through
-                         * the view map *)
+                        (* Stores into a tuple-bounded type parameter go
+                         * through the view map *)
                         let ts = layout.resolvedShape(bs)
                         x.value := slotIfBoxed(st x.value ts.components[x.index].shape before)
                     else
@@ -579,9 +576,9 @@ export
             end
         end
 
-    (* Decides the slots of b's statements, in place: those of the bodies in
-     * each statement first, then the statement's own, but a switch's cases
-     * before their bodies *)
+    (* Decides slot boxing and proxy access for b's statements in place. Each
+     * switch's cases are processed before their bodies, and nested bodies are
+     * processed before their enclosing statement. *)
     let rec body(st: SlotState b: Body): Ok =
         begin
             let statements = vector.new(:Stmt)

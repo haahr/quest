@@ -1,9 +1,11 @@
 (* Quest Self-Hosted Compiler: The C Compiler Runner Interface
  *
- * bootstrap/python/quest/build/compiler_runner.py: the host C compiler,
- * found on PATH (clang, else gcc), and the flags C units are compiled with: the
- * runtime's directory, the garbage collector's and the line editor's headers
- * and libraries, and the warnings and optimization every C file gets. *)
+ * Invokes the host C compiler (clang, or gcc if clang is absent on PATH) to
+ * compile generated C or assembly files and link executables against the Quest
+ * runtime. This interface chooses the compiler flags every C unit receives,
+ * including the runtime directory, garbage collector and line-editor options,
+ * and warning and optimization settings. Its bootstrap counterpart is
+ * bootstrap/python/quest/build/compiler_runner.py. *)
 
 interface CompilerRunner
 import
@@ -19,20 +21,22 @@ export
     runtimeDir(): String
     (* The flags every C file is compiled with *)
     baseCFlags(compiler: String): Array(String)
-    (* The collector's flags: none, since the collector is the runtime's own
-     * (runtime/quest_gc.c), or -DQUEST_NOGC with nogc, under which it never
-     * collects *)
+    (* The garbage collector flags: empty by default because the runtime uses
+     * its own collector (runtime/quest_gc.c), or -DQUEST_NOGC when nogc is
+     * true to disable collection *)
     gcFlags(nogc: Bool): Array(String)
-    (* The line editor quest_readline.c is compiled with: GNU readline where it
-     * is installed, else libedit, else none (QUEST_READLINE chooses) *)
+    (* Compiler and linker flags for quest_readline.c: GNU readline when
+     * installed, else libedit, else -DQUEST_NOREADLINE. The QUEST_READLINE
+     * environment variable (gnu, edit, or none) overrides auto-detection. *)
     readlineFlags(): Array(String)
     (* Compiles a C file to an object file *)
     compileCToObject(c: String o: String includePaths: Array(String) nogc: Bool compiler: maybe.T(String)
         extraFlags: Array(String)): Ok
-    (* The runtime's object files, compiled once and kept for every link
-     * (docs/testing.md section 5.2) under QUEST_RUNTIME_CACHE or the project's
-     * .build/runtime, by a key of what they are compiled from: the runtime's
-     * sources and headers, the compiler and its version, and the flags *)
+    (* Returns the runtime's object files, compiling and caching them once for
+     * reuse across links (docs/testing.md section 5.2). Objects are stored
+     * under QUEST_RUNTIME_CACHE (or .build/runtime in the project directory),
+     * keyed by a hash of the runtime sources and headers, the compiler and its
+     * version, and the compilation flags. *)
     runtimeObjects(compiler: String nogc: Bool extraFlags: Array(String)): Array(String)
     (* Compiles a program's C (or with assembly, its assembly), with the runtime
      * and extraObjects, to the executable output *)

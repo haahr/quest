@@ -94,8 +94,9 @@ export
                         let byDescriptor =
                             maybe.isSome(fp) andif ir.planIs(maybe.unwrap(fp) ir.planView)
                         let converted = if byDescriptor then
-                            (* Converted by descriptor, from the slot's QVal
-                             * form to the target slot's *)
+                            (* Convert by runtime type descriptors, moving from
+                             * the source slot's QVal word to the target
+                             * slot's representation *)
                             let f = maybe.unwrap(fp)
                             let word = representation.slotToWord(fn fc sc.type)
                             let w = vals.call1(fn "quest_convert"
@@ -114,7 +115,8 @@ export
             end
         end
 
-    (* A value in a slot as its value, and a value as a slot holds it *)
+    (* Convert between a value's slot form (where records and variants are
+     * boxed) and its unboxed value form *)
     and slotLoad(fn: vals.Fn vs: Array(Int) t: Type): Array(Int) =
         if layout.isBoxedInSlots(shapes.shape(t)) then vals.unboxed(fn vs t) else vs end
     and slotStore(fn: vals.Fn vs: Array(Int) t: Type): Array(Int) =
@@ -124,9 +126,10 @@ export
      * Tuples
      * ====================================================================== *)
 
-    (* Stores an aggregate's fields: each its atom's slot form, or for one the
-     * represent pass embedded, a fresh box in the aggregate's allocation after
-     * its struct (at boxes, 16 bytes each), holding the record or variant *)
+    (* Stores an aggregate's fields at offsets from base. Normal fields are
+     * written in slot form; fields embedded by the represent pass (records or
+     * variants) are written into inline 16-byte boxes starting at byte offset
+     * boxes, and the field slot holds a pointer to that box. *)
     let storeFields(fn: vals.Fn base: Int offsets: Array(Int) args: Array(Atom) types: Array(Type) embedded: Array(Int)
         boxes: Int): Ok =
         begin
@@ -146,8 +149,8 @@ export
             end
         end
 
-    (* The shapes of the args the represent pass embedded, in order: the
-     * boxes after the aggregate's struct *)
+    (* The shapes of the fields embedded by the represent pass, in order,
+     * describing the inline boxes placed after the aggregate's struct *)
     let embeddedShapes(args: Array(Atom) types: Array(Type) embedded: Array(Int)): Array(shapes.Shape) =
         begin
             let res = vector.new(:shapes.Shape)
@@ -193,9 +196,10 @@ export
             index
         end
 
-    (* The address of a record's field's slot (the record vs, of shape rs):
-     * through its offset table, or for a bounded type parameter's value, the
-     * view map of its type argument at the bound *)
+    (* Returns the address of field's slot in record vs (of shape rs). For a
+     * bounded type parameter's value, viewMap translates from the concrete
+     * type argument to the bound via quest_view_record_slot; otherwise the
+     * byte offset is loaded from the record's offset table vs[1]. *)
     let recordSlot(fn: vals.Fn vs: Array(Int) rs: shapes.Shape field: String viewMap: maybe.T(Variable)): Int =
         begin
             let k = fieldIndex(rs field)
@@ -221,8 +225,9 @@ export
                     array of vs[0] vs[1] vm vals.constant(fn fieldIndex(rs o.name)) end)
                 vals.fromWord(fn w fs.type)
             else
-                (* Read as stored, and converted to the field's type, when the
-                 * offset table says the payload stores it at another type *)
+                (* When the offset table records a different stored type for
+                 * this field, load the raw QVal word and convert it to the
+                 * field's type; otherwise read the slot directly *)
                 let k = fieldIndex(rs o.name)
                 let slot = recordSlot(fn vs rs o.name maybe.none())
                 let stored = vals.loadWord(fn vs[1] 8 * extent rs.components vals.tPtr)
@@ -252,7 +257,8 @@ export
             end
             let concrete = model.recordType(vector.toArray(fields) maybe.none())
             let structBytes = layout.recordBytes(concrete)
-            (* The box, then the payload, then the embedded boxes *)
+            (* Layout of the single allocation: 16-byte QRecordVal box, then
+             * the record payload, then any inline embedded boxes *)
             let stored = vector.new(:Int)
             for i = 0 upto {extent o.fields - 1} do
                 if not(shapes.kindIs(shapes.shape(ir.atomType(o.fields[i].atom)) shapes.shapeOk)) then
@@ -313,8 +319,8 @@ export
             h
         end
 
-    (* A value mapped through a small table, as a switch: table[v], or v when
-     * the table is the identity *)
+    (* Returns table[v] via an SSA switch, or v directly when table is the
+     * identity *)
     let mapped(fn: vals.Fn v: Int table: Array(Int)): Int =
         begin
             let var identity = true
@@ -356,8 +362,9 @@ export
                 (* The ordinal counts in the type's cases as written; the tag
                  * numbers the shape's, ordered by name *)
                 let ordinalAtom = maybe.unwrap(o.ordinalAtom)
-                (* One outside the cases raises (quest_check_option_ordinal_at,
-                 * inline): ult takes a negative one for a large one *)
+                (* Reject ordinals outside [0, count) using unsigned less-than
+                 * (opUlt), which treats negative values as large unsigned
+                 * numbers (inlined quest_check_option_ordinal_at) *)
                 let checked = vals.atom1(fn ordinalAtom)
                 let count = vals.constant(fn extent os.cases)
                 vals.check(fn vals.binary(fn ssa.opUlt checked count) true "quest_option_ordinal_error_at"
@@ -411,8 +418,9 @@ export
             for i = 0 upto {extent os.cases - 1} do
                 if not(caseWithoutComponents(os maybe.unwrapOr(os.cases[i].name ""))) then allWithout := false end
             end
-            (* A case without components is its constant, in the option
-             * struct's table (docs/c-representation.md section 5.3) *)
+            (* Payload-free option cases reuse static constants from the option
+             * struct's table instead of allocating (docs/c-representation.md
+             * section 5.3) *)
             let table = fun(): Int vals.symbolAt(fn vals.optionTable(fn.u layout.shapeTag(os) extent os.cases))
             if maybe.isNone(o.ordinalAtom) andif maybe.isSome(o.tag)
                 andif caseWithoutComponents(os maybe.unwrap(o.tag)) then
@@ -431,10 +439,10 @@ export
             end
         end
 
-    (* A new tuple of type tupleType holding the components of case tag of
-     * the option at opt (of shape os), read as access says, after offset
-     * leading components; when there are any, the first is ordinalValue, the
-     * case's ordinal *)
+    (* Allocates a tuple of type tupleType holding the components of case tag
+     * from option opt (of shape os), read according to access. Components are
+     * placed starting at index offset; when offset > 0, slot 0 holds
+     * ordinalValue (the case's ordinal). *)
     let optionCaseTuple(fn: vals.Fn opt: Int os: shapes.Shape tag: String tupleType: Type offset: Int access: Array(ir.Access)
         ordinalValue: Int): Int =
         begin
@@ -466,8 +474,11 @@ export
             tup
         end
 
-    (* The payload of an option's case, a tuple, which a case's binder shares:
-     * the option's own, after its tag, or through a proxy, the original's *)
+    (* Returns a pointer to the tuple payload of an option's case, which the
+     * case's binder shares. When tagAccess is direct, the payload starts 8
+     * bytes past opt (after its tag); otherwise it unproxies opt or calls
+     * quest_proxy_option_payload when a component is read through a subtype
+     * proxy. *)
     let optionCasePayload(fn: vals.Fn opt: Int tagAccess: ir.Access access: Array(ir.Access)): Int =
         begin
             let var proxied = false
@@ -484,12 +495,12 @@ export
             end
         end
 
-    (* The payload of case tag of a variant or option vs held at its own view,
-     * read through the view map vm of its type argument at the bound ts and
-     * converted to the bound's type for it, as a value of type t: a variant's
-     * payload, an option's one component, or a new tuple of an option's case
-     * components (after its ordinal, when t has one more component than the
-     * case) *)
+    (* Reads case tag's payload from a variant or option vs held at a bounded
+     * type parameter's own view, converting it to type t through the view map
+     * vm (which translates from the type argument to the bound ts). Returns a
+     * variant's payload, an option's single component, or a freshly allocated
+     * tuple of an option's case components (leaving a leading 0 slot for the
+     * case ordinal when t has more components than the case). *)
     let viewPayload(fn: vals.Fn vs: Array(Int) ts: shapes.Shape tag: String vm: Int t: Type): Array(Int) =
         begin
             let b = representation.tagIndex(ts tag)
@@ -570,10 +581,10 @@ export
 
     let elementShape(a: Atom): shapes.Shape = shapes.element(shapes.shape(ir.atomType(a)))
 
-    (* The address of an array's element, after its bounds check
-     * (quest_check_array_bounds_at, inline): a null array, or an index
-     * outside it, raises array.error; ult takes a negative index for a
-     * large one *)
+    (* Returns the address of arr[idx] after checking bounds (inlined
+     * quest_check_array_bounds_at). A null array or an out-of-range index
+     * raises array.error; unsigned less-than (opUlt) catches negative indices
+     * as large unsigned values. *)
     let elementAddress(fn: vals.Fn arr: Int idx: Int offset: maybe.T(Int)): Int =
         begin
             let site = fun(): Array(Int) array of vals.site(fn offset) end
@@ -600,8 +611,7 @@ export
         end
 
     (* =========================================================================
-     * Type applications that are not thunks: a polymorphic value of no
-     * parameters, at the type arguments
+     * Non-thunk type applications (polymorphic values with no value parameters)
      * ====================================================================== *)
 
     (* A call of the closure at clos, with the closure itself and args *)
@@ -611,15 +621,15 @@ export
             vals.callQuest(fn "" vals.concat(array of code clos end args) vals.noValues vals.noValues results)
         end
 
-    (* The value of a polymorphic value of no parameters applied to types (a
-     * generic empty list at Int, say). Such a value is compiled as a function
-     * of its type parameters' descriptors, so this calls it (a variable's
-     * closure, a module member's, or an imported module's exported function)
-     * with the type arguments' descriptors, and converts the generic result
-     * by the application's plan to the type the let binds (docs/ir.md
-     * section 8.3). An application whose instance is a function is by now a
-     * closure of its thunk (questlang/ir/thunks, docs/ir.md section 8.4.1),
-     * so one with thunk parameters raises unsupported *)
+    (* Evaluates a polymorphic value with no value parameters applied to type
+     * arguments (for example, a generic empty list at Int). Such a value is
+     * compiled as a function taking runtime type descriptors, so this calls it
+     * (via a variable's closure, a module member's closure, or an imported
+     * function) with the type arguments' descriptors and converts the generic
+     * result using the application's plan (docs/ir.md section 8.3). A type
+     * application whose instance is a function has already been lowered to a
+     * thunk closure (questlang/ir/thunks, docs/ir.md section 8.4.1), so seeing
+     * thunkParams here raises unsupported. *)
     let typeApp(fn: vals.Fn o: ir.OpTypeApp result: Variable): Array(Int) =
         begin
             if maybe.isSome(o.thunkParams) then

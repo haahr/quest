@@ -1,12 +1,13 @@
 (* Quest Self-Hosted Compiler: The Interface Compiler Interface
  *
- * bootstrap/python/quest/modules/interface_compiler.py: compiles interface
- * files (.int.quest) to .qi files, portable JSON documents in the dynamic
- * format (values/dynamicjson) holding a shadow record of the interface: its
- * imports, its types' kinds and definitions, and its values' types, as Quest
- * type syntax. Importers load interfaces from them, and the build keeps them
- * up to date (docs/build-process.md section 5). An interface's C header is the
- * C backend's (codegen/c/headers). *)
+ * Counterpart to bootstrap/python/quest/modules/interface_compiler.py. This
+ * unit compiles interface files (.int.quest) to .qi files, which are portable
+ * JSON documents in Quest's dynamic serialization format (values/dynamicjson)
+ * holding a metadata record of the interface: its imports, its types' kinds
+ * and definitions, and its values' types as Quest type syntax. Importers load
+ * interfaces from .qi files, and the build keeps them up to date
+ * (docs/build-process.md section 5). Generating an interface's C header is
+ * handled by the C backend (codegen/c/headers). *)
 
 interface InterfaceCompiler
 import
@@ -21,7 +22,7 @@ import
     questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
     util/maybe : util/Maybe
 export
-    (* The type of the shadow record a .qi holds *)
+    (* The Quest record type describing the metadata stored in a .qi file *)
     qiSchemaType: String
 
     (* A type, and a kind, as Quest syntax for .qi metadata: alias references
@@ -39,8 +40,8 @@ export
     Def GroupedSignature = Tuple sig: ast.Signature group: Int end
     typeSignatures(decl: ast.InterfaceDecl): Array(GroupedSignature)
 
-    (* An interface's .qi: its declaration and elaborated scope, the source it
-     * was compiled from, and the interfaces it depends on *)
+    (* Serializes an elaborated interface to .qi JSON text from its declaration,
+     * elaborated scope, source path, and recorded interface dependencies *)
     compileInterfaceToQi(decl: ast.InterfaceDecl scope: symbols.Scope source: maybe.T(String)
         deps: Array(paths.InterfaceDependency)): String
 
@@ -83,18 +84,18 @@ export
         targetDir: String
         searchPaths: Array(String)
     end
-    (* Where the .qi of a resolved interface is, made current first
-     * (docs/build-process.md §5: the staleness rules, and §5.1, what is done
-     * about a stale one). A .qi is current if it records this compiler's ABI
-     * version (§5.2) and this source, is at least as new as the source, and
-     * no interface it depends on is newer or would now resolve to another
-     * source. The one in its directory under buildDir is used if current,
-     * else a current one elsewhere on the search path (beside its source,
-     * from a standalone compilation); if neither is, the source is compiled
-     * into buildDir, the interfaces it imports first, and onCompiled is
-     * called for each interface compiled. An interface without a source (a
-     * binary distribution's) is taken as found, but raises a CompilerError if
-     * its .qi has another ABI version; so does an error compiling one *)
+    (* Ensures the .qi artifact for resolved is up to date and returns its
+     * location (docs/build-process.md section 5 for staleness rules and 5.1
+     * for rebuilding). A .qi is current if it records this compiler's ABI
+     * version (section 5.2) and this source, is at least as new as the source,
+     * and no interface it depends on is newer or would now resolve to another
+     * source. The .qi under buildDir is used if current, else a current one on
+     * the search path (such as beside the source from a standalone build);
+     * otherwise the source is compiled into buildDir, its imports first, and
+     * onCompiled is called for each interface compiled. An interface without a
+     * source (a binary distribution) is accepted as found, but raises
+     * CompilerError if its .qi has another ABI version, as does a compilation
+     * error. *)
     ensureResolvedInterfaceArtifacts(resolved: graph.Resolved buildDir: String onCompiled: maybe.T(OnCompiled)
         res: graph.Resolver): InterfaceArtifacts
 
@@ -112,8 +113,8 @@ export
      * string, Boolean, integer, or array, which is "", false, 0, or empty when
      * the field is missing or of another kind *)
     fieldOf(r: values.Value name: String): maybe.T(values.Value)
-    (* The shadow record a .qi's text holds; fails ("Malformed .qi
-     * metadata", in file when it is not empty) if it holds none *)
+    (* Decodes the metadata record from a .qi file's text; fails ("Malformed
+     * .qi metadata", naming file when non-empty) if it is invalid *)
     qiRecord(text: String file: String): values.Value
     stringOf(v: maybe.T(values.Value)): String
     boolOf(v: maybe.T(values.Value)): Bool

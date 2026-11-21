@@ -18,15 +18,15 @@
  * - a test for being a proxy, which folds to false, since a fresh allocation
  *   never is one. A proxy is a tagged pointer standing for a tuple or option
  *   viewed at a supertype (docs/c-representation.md section 5.8);
- * - an argument to a write barrier, which keeps no pointer and which a stack
- *   slot, a root with no header word, does not need;
+ * - an argument to a garbage-collector write barrier, which keeps no pointer
+ *   and is unnecessary for a stack slot (a root with no heap header word);
  * - in escapeUnit, the first argument of a direct call, not a tail call, of
  *   a function of the unit that uses its first parameter only as the address
  *   of loads: a closure passed to its own code. The allocation itself is
- *   passed, none of its words holds its own pointer, which the callee could
- *   load and keep, and the function has no call that would be a tail call
- *   and does not call itself, since tailCalls makes no tail call where a
- *   slot's address is passed to a call.
+ *   passed, none of its words holds its own pointer (which the callee could
+ *   load and keep), and the caller has no call that would be a tail call and
+ *   does not call itself, since tailCalls makes no tail call where a slot's
+ *   address is passed to a call.
  *
  * Any other use (an argument to any other call, a value stored elsewhere, a
  * return, a comparison) makes it escape. *)
@@ -42,10 +42,11 @@ export
     (* The allocations of f, in the order they are made, without changing f *)
     analyze(f: ssa.Function): Array(Verdict)
 
-    (* Replaces each allocation of f that does not escape with a stack slot of
-     * its size, its words stored zero where it was made, its accesses made
-     * through the slot's address, its proxy tests folded and the blocks only
-     * they reached dropped; returns the number replaced *)
+    (* Replaces each non-escaping allocation in f with a stack slot of the
+     * same size, zero-initializing its words at the allocation site,
+     * rewriting its accesses to use the slot address directly, folding its
+     * proxy tests to false, and dropping any blocks that become unreachable.
+     * Returns the number of allocations replaced. *)
     escapeFunction(f: ssa.Function): Int
     escapeUnit(u: ssa.Unit): Int
 end

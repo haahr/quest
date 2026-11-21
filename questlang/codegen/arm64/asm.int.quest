@@ -1,11 +1,12 @@
 (* Quest Self-Hosted Compiler: arm64 Assembly Interface
  *
- * The spellings of Darwin's arm64 assembly (docs/arm64.md section 3.11), in one
- * module, so that another object format would replace only it: symbols with
- * their leading underscore, the sections of code and data, the relocations
- * that address a symbol (its page and offset in it, through the GOT for one
- * the unit does not define, through its descriptor for a thread-local), and
- * data directives. *)
+ * This interface isolates Darwin (macOS) arm64 assembly syntax
+ * (docs/arm64.md section 3.11) in one module so that targeting another object
+ * format requires replacing only this module. It formats symbol names with
+ * their leading underscore, code and data sections, data directives, and
+ * relocations (linker placeholders that address a symbol by its memory page
+ * and page offset, through the GOT for an external symbol, or through a
+ * thread-local descriptor). *)
 
 interface Asm
 import
@@ -17,11 +18,12 @@ export
     (* An Int as the assembler spells it (conv.int spells a negative one
      * with ~) *)
     decimal(n: Int): String
-    (* A symbol with a relocation, as an instruction's operand: its page, or
-     * its offset in its page, or its GOT entry's, or its thread-local
-     * descriptor's. A GOT (global offset table) entry is a word the linker
-     * or loader fills with the symbol's address, through which code reaches
-     * a symbol that may be defined in another image *)
+    (* Returns name with a relocation modifier for use as an instruction
+     * operand: either the 4 KB page address or the offset within that page
+     * (when pageOffset is true), targeting the symbol directly, its GOT
+     * entry, or its thread-local descriptor. A GOT (global offset table)
+     * entry is a word the linker or loader fills with the symbol's address so
+     * code can reach a symbol defined in another binary image. *)
     reference(name: String reloc: minst.Reloc pageOffset: Bool): String
     (* The directives that begin a function's code, and end it *)
     functionStart(name: String exported: Bool): Array(String)
@@ -32,27 +34,30 @@ export
     unitStart: Array(String)
     unitEnd: Array(String)
 
-    (* The line table's source files (docs/arm64.md section 3.16): a .file
-     * directive for each absolute path, numbered from 1, which minst's loc
-     * instructions name; none for an empty path, a file not known *)
+    (* Emits the debug line table's source files (docs/arm64.md section 3.16).
+     * Produces a .file directive for each non-empty absolute path, numbered
+     * from 1 so minst's loc instructions can refer to them by index, and
+     * skips empty paths that represent unknown files. *)
     files(paths: Array(String)): Array(String)
     (* A function, for the debugging information: its symbol, and the label
      * just past its code *)
     Def DebugFunction = Tuple symbol: String endLabel: String end
-    (* The DWARF sections a debugger reads the line table through, which the
-     * assembler, given .loc directives, does not write itself: a compile unit
-     * for the unit's code, named for its file (an absolute path), with a
-     * subprogram for each function, so that dsymutil and lldb place each
-     * function's lines at its address; and the line table's section, which
-     * the assembler fills from the .loc directives *)
+    (* Emits the DWARF debugging sections that a debugger uses to read the
+     * line table, since the assembler does not synthesize them from .loc
+     * directives alone. The output includes a compile unit named for file
+     * (an absolute path) with a subprogram entry for each function so that
+     * dsymutil and lldb map each function's lines to its address, followed by
+     * the line table section that the assembler populates from .loc
+     * directives. *)
     debugInfo(file: String functions: Array(DebugFunction)): Array(String)
 
-    (* A unit's frame table (docs/arm64.md section 3.13; runtime/quest_gc.c
-     * has the form) as the symbol, in the read-only data beside the code:
-     * the first function's address as its distance from the table, each
-     * listed function's as its distance from the first, both left to the
-     * linker, each function's description's offset, and the descriptions'
-     * bytes *)
+    (* Emits a unit's GC frame table (the stack-map table that
+     * runtime/quest_gc.c uses to locate live pointers in stack frames;
+     * docs/arm64.md section 3.13) under symbol in read-only data beside the
+     * code. The table stores the first function's offset from the table, each
+     * listed function's offset from first (both resolved by the linker), the
+     * byte offset of each function's frame description, and the description
+     * bytes themselves. *)
     Def FrameFunction = Tuple symbol: String description: Int end
     frames(symbol: String first: String listed: Array(FrameFunction) descriptions: Array(Int)): Array(String)
 end

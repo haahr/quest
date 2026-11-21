@@ -72,9 +72,9 @@ export
         end
     let shapeOf(t: Type): Shape = shapes.shape(t)
     let isOk(t: Type): Bool = shapes.kindIs(shapeOf(t) shapes.shapeOk)
-    (* Whether a value of type t holds a word that may be a pointer, which a
-     * store of it into an existing object must barrier (docs/collector.md
-     * section 3.5) *)
+    (* Whether a value of type t contains a word that may be a heap pointer,
+     * requiring a GC write barrier when stored into an existing object
+     * (docs/collector.md section 3.5) *)
     let holdsPointer(t: Type): Bool =
         begin
             let ks = objectLayout.representationKinds(shapeOf(t))
@@ -162,9 +162,9 @@ export
         labelDepth: hashMap.T(String Int)
         joinParams: hashMap.T(String Array(Variable))
         var volatile: hashMap.T(Int Bool)
-        (* The lets of tuples made only to be an option's payload, which the
-         * next statement makes: printed as the option's components instead,
-         * by variable (fusedTuples) *)
+        (* Statements fused into the following statement, keyed by variable id
+         * (fusedTuples): a tuple built only as an option's payload, or an
+         * option payload extracted only to read one component *)
         var fused: hashMap.T(Int nodes.Stmt)
         (* The objects being initialized, outermost first (beginInit) *)
         inits: vector.T(Init)
@@ -192,11 +192,11 @@ export
     end
     let text(s: String): Field = option fieldText of Field with let s = s end
 
-    (* An aggregate allocation with room for embedded boxes (embeddedBoxes)
-     * whose statement has not been printed yet: boxes, the temporary that is
-     * to point at the room, and block, the temporary the allocation is
-     * assigned to. The room starts right after block's struct, so once the
-     * allocation is printed, fillEmbedded sets boxes to block + 1 *)
+    (* Tracks an aggregate allocation that reserves trailing space for embedded
+     * field boxes (embeddedBoxes) before the allocation statement is printed.
+     * boxes is the temporary that will point to that trailing space, and block
+     * is the temporary assigned the allocated struct; once the allocation is
+     * printed, fillEmbedded sets boxes to block + 1. *)
     Let Pending = Tuple boxes: String block: String end
     (* A let rec's closures capture the let rec's own variables, whose values
      * do not exist until every closure of it is made. So while its body is
@@ -210,7 +210,7 @@ export
      *     and odd(n: Int): Bool = ... even(n - 1) ...
      *
      * even's environment is made before odd's closure exists, and its
-     * capture of odd is stored once both are made *)
+     * capture of odd is stored once both are made. *)
     Let DeferredCapture = Tuple env: String index: Int a: Atom end
     Let Deferred = Tuple vars: hashMap.T(Int Bool) captures: vector.T(DeferredCapture) end
 
@@ -355,9 +355,10 @@ export
     let emit(p: P line: String): Ok =
         begin
             if callsFunction(line) andif not(strutil.startsWith(line "quest_barrier")) then
-                (* A call may collect. An object being initialized that an
-                 * earlier call may have left old is logged first, for the
-                 * stores since that call (beginInit) *)
+                (* A call may trigger garbage collection. Any object still
+                 * being initialized that an earlier call may have promoted to
+                 * the old generation is logged with a write barrier first,
+                 * covering the stores since that call (beginInit). *)
                 for i = 0 upto {vector.length(p.fs.inits) - 1} do
                     let init = vector.get(p.fs.inits i)
                     if p.calls > init.mark then
@@ -369,21 +370,21 @@ export
             add(p.lines stringOp.new(4 * p.indent ' ') <> line)
         end
 
-    (* Before an object's initializing stores, which have no barrier, as a
-     * young object's need none: the object stays young until a call, in
-     * which a collection may run and mark it old (collector.md section 3.5),
-     * and the stores after that call must be logged before the next
-     * collection. So from the second call on, emit logs the object before
-     * the call, and initBarrier logs it after the last store. The mark is
-     * what initBarrier takes *)
+    (* Starts tracking an object before its initializing stores. A freshly
+     * allocated young object needs no write barriers until a call runs, which
+     * may trigger collection and promote it to the old generation
+     * (docs/collector.md section 3.5); stores after that call must be logged
+     * before the next collection. From the second call onward, emit logs the
+     * object before the call, and initBarrier logs it after the last store
+     * using the returned mark. *)
     let beginInit(p: P obj: String): Int =
         begin
             vector.append(p.fs.inits tuple let obj = obj let mark = p.calls end)
             p.calls
         end
 
-    (* After the initializing stores beginInit began: logs the object if a
-     * call was printed since its allocation *)
+    (* Ends tracking for an object begun by beginInit and logs a write barrier
+     * if any call was printed since its allocation *)
     let initBarrier(p: P mark: Int obj: String): Ok =
         begin
             let var found = false
@@ -418,11 +419,12 @@ export
 
     let noBoxes = array of :Shape end
 
-    (* The layout of a closure, struct QClosure_<code>: its code pointer, then
-     * the fields C lays out after it: a Bool or Char capture is a byte, every
-     * other field a word or two, aligned to a word. The fields' words are
-     * counted from the code pointer's end, which C aligns as it would the
-     * struct's start *)
+    (* Builds the GC object layout for struct QClosure_<code>: its code pointer
+     * followed by the captured type-argument descriptors and value captures.
+     * Bool and Char captures occupy one byte, while all other fields take one
+     * or two 8-byte words aligned to a word boundary. Field words are counted
+     * from the end of the code pointer, which C aligns the same as the start
+     * of the struct. *)
     let closureLayoutOf(code: String o: nodes.OpMakeClosure): objectLayout.Layout =
         begin
             let kinds = vector.new(:objectLayout.Kind)
@@ -919,17 +921,16 @@ export
             end
             index
         end
-    (* The slot of field in the record recC, a QRecordVal (a pointer to the
-     * record's payload, val, and its offset table, dict) seen at shape rs:
-     * what recordField reads, a store into a var field writes, and & of a
-     * field takes. Code that sees a record at a supertype cannot know where
-     * its creator put a field, so it finds the field through the offset
-     * table, a struct of one byte offset per field of the type it is seen at
+    (* Returns the slot of field in record recC (a QRecordVal holding a payload
+     * pointer val and an offset table pointer dict) viewed at shape rs, used
+     * by recordField, stores to var fields, and taking a field's address. Code
+     * that sees a record at a supertype cannot know where its creator placed a
+     * field, so it looks up the byte offset in the offset table
      * (docs/c-representation.md section 5.2). A value of a type parameter
-     * bounded by rs is held at its type argument's view, with that type's
-     * table, whose fields are not rs's; there viewMap, which the function's
-     * prologue fetched from the runtime, gives the index of rs's field among
-     * the argument's (docs/codegen-c.md section 10.4) *)
+     * bounded by rs is held at its type argument's view, whose offset table
+     * lists the argument's fields rather than rs's; there viewMap (fetched
+     * from the runtime in the function prologue) maps rs's field index to the
+     * argument's (docs/codegen-c.md section 10.4). *)
     let recordSlot(p: P recC: String rs: Shape field: String viewMap: maybe.T(Variable)): Slot =
         begin
             let fields = shapes.sortedComponents(rs)
@@ -953,11 +954,10 @@ export
      * Conversions
      * ====================================================================== *)
 
-    (* The C expression for the value of C expression c converted as plan
-     * says: the C for a convert operation, whose plan the represent pass chose
-     * (plan in ir/represent; nodes.Plan lists the kinds). A plan that needs
-     * more than an expression emits statements first, and returns a temporary
-     * holding the result.
+    (* Converts C expression c according to plan, emitting the C for a convert
+     * operation chosen by the represent pass (plan in ir/represent; nodes.Plan
+     * lists the kinds). A plan that needs more than an expression emits
+     * statements first and returns a temporary holding the result.
      *
      * For example, where the plan's kind is (a cast's star is written apart
      * from its parenthesis here, since together they would end this comment)
@@ -1222,9 +1222,11 @@ export
             else false
         end
 
-    (* The lets of a body's tuples that only the next statement uses, as the
-     * payload of the option it makes: those not global, volatile, or unboxed
-     * (docs/c-representation.md section 5.3, payloads not made) *)
+    (* Finds single-use lets in b that can be fused into the immediately
+     * following statement (docs/c-representation.md section 5.3): either a
+     * tuple built only as an option's payload, or an option payload extracted
+     * only to read a single component. Excludes globals, volatile variables,
+     * and unboxed tuples. *)
     let fusedTuples(p: P b: nodes.Body): hashMap.T(Int nodes.Stmt) =
         begin
             let found = hashMap.new(:Int :nodes.Stmt intEqual hash.int)
@@ -1316,16 +1318,15 @@ export
             values
         end
 
-    (* A new option of shape os, allocated as its C struct, struct: makeOption's
-     * case for an option whose case has components (options of cases without
-     * any are entries of a static table). The tag stored is the case's index
-     * in os, whose cases are ordered by name; for option ordinal(n) of T end,
-     * it is computed at run time, from n checked to be in range, through a
-     * table from T's order of cases to os's when they differ. The payload's
-     * components go into the case's member of the struct's union, u.qo_<tag>:
-     * those of a fused tuple (fusedTuples), the payload tuple never made, or
-     * else read from the payload tuple as o.access says, or for a case whose
-     * payload is not a tuple, the payload itself, in .val *)
+    (* Helpers for makeAllocatedOption, which allocates an option of shape os
+     * as its C struct when the case has components (cases without components
+     * use entries of a static table). The stored tag is the case's index in
+     * os, whose cases are ordered by name; for option ordinal(n) of T end,
+     * ordinalTag checks that n is in range and maps T's written case order to
+     * os's order when they differ. The payload's components go into the case's
+     * union member u.qo_<tag>: either directly from a fused tuple
+     * (fusedTuples) without allocating the tuple, read from the payload tuple
+     * as o.access says, or stored in .val when the payload is not a tuple. *)
     (* The tag of an option made with ordinal(value): the ordinal, checked to
      * be one of the type's cases, counts in its cases as written, and the tag
      * numbers the shape's, ordered by name, so it goes through a table unless
@@ -1551,14 +1552,14 @@ export
             else "/* not a payload */ 0"
         end
 
-    (* v!tag, of type t: the payload of the variant or option o.value, after
-     * a check of its tag that raises the runtime's variant error (at o's
-     * site) if it is another case. A variant's payload is its payload word,
-     * in its slot form. An option's is a new tuple, its ordinal (the case's
-     * index in the option's type as written) then copies of the case's
-     * components (docs/c-representation.md section 5.3). For a value of a
-     * type parameter bounded by a variant or option type, the tag is mapped
-     * and the payload read through the view map o.viewMap (see recordSlot) *)
+    (* Extracts v!tag of type t from the variant or option o.value, first
+     * checking its tag and raising a runtime variant error at o's source site
+     * on mismatch. A variant's payload is its payload word in slot form. An
+     * option's payload is a newly allocated tuple holding the case's ordinal
+     * (its index in the option type as written) followed by copies of the
+     * case's components (docs/c-representation.md section 5.3). For a value of
+     * a type parameter bounded by a variant or option type, the tag is mapped
+     * and the payload is read through o.viewMap (see recordSlot). *)
     let payload(p: P o: nodes.OpPayload t: Type): String =
         begin
             let ts = tagShape(atomType(o.value))
@@ -1820,16 +1821,15 @@ export
             end
         end
 
-    (* The C for a module, its record, or with member, the member's value.
-     * A module of this unit names its record's global and its members'
-     * variables directly. An imported module's record is the extern global
-     * qm_<module> its own unit defines (importDeclarations); its members are
-     * fields of that record, read through the record's offset table
-     * (recordSlot), since this unit knows only the record's type, the
-     * module's interface, and not how the module's unit lays the record out.
-     * (A call of an imported module's function does not come here: callOp
-     * calls the C function the module exports.) Raises unsupported for a
-     * member of an import whose interface is unknown or lacks it *)
+    (* Returns the C expression for a module's record, or for the named member
+     * when member is some. A module defined in this unit refers to its record
+     * global and member variables directly. An imported module's record is the
+     * extern global qm_<module> defined by its own unit (importDeclarations);
+     * its members are read through the record's offset table, since this unit
+     * knows only the module's interface type and not how the module lays out
+     * its record. (Calls to an imported module's functions do not come here:
+     * callOp calls the exported C function directly.) Raises unsupported if an
+     * imported module's interface is unknown or lacks the requested member. *)
     let moduleMember(p: P r: nodes.ModuleRef member: maybe.T(String)): String =
         case r
             when refModule with x then
@@ -1870,11 +1870,12 @@ export
                 end
         end
 
-    (* A closure of o.code: the static <code>_closure when it captures
-     * nothing and takes no type arguments; else a new struct QClosure_<code>
-     * (closureStruct) of the code, o's descriptors (d0, d1, ...), and its
-     * captures (c0, c1, ...). A capture of a variable of the let rec being
-     * printed is stored after the let rec's body instead (Deferred). *)
+    (* Builds a closure for o.code: returns the static <code>_closure when it
+     * captures nothing and takes no type arguments, or allocates a struct
+     * QClosure_<code> (closureStruct) holding the code pointer, o's type
+     * descriptors (d0, d1, ...), and its captures (c0, c1, ...). Captures of
+     * variables bound by an enclosing let rec are deferred until after the let
+     * rec's body (Deferred). *)
     let makeClosure(p: P o: nodes.OpMakeClosure): String =
         begin
             let code = codeName(p o.code)
@@ -2267,7 +2268,7 @@ export
      * closure is remembered, so that calls of the variable call its function
      * directly; a let rec's captures of its own variables are stored after its
      * body (Deferred). The Funs of the SSA backends are not C's: they raise
-     * unsupported *)
+     * unsupported. *)
     let rec statement(p: P s: nodes.Stmt): Ok =
         case s
             when sLet with x then
@@ -2775,21 +2776,19 @@ export
             "static Q_UNUSED " <> ret <> " " <> syntax.call(codeName(p f) params)
         end
 
-    (* The C definition of the lifted function f: its signature
+    (* Emits the C definition of the lifted function f: its signature
      * (functionSignature: the raw environment, then its own type parameters'
-     * descriptors, then its parameters), a prologue, the declarations of its
-     * variables and temporaries, and its body. The prologue casts _raw_env,
-     * f's closure, to what it is (a struct QClosure_<f> of its captures, or
-     * for an adapter, a QAdaptClosure, whose orig is the closure it adapts),
-     * loads the descriptors of the type
-     * parameters the closure supplies rather than the caller, and fetches the
-     * view map of each type parameter whose values the body reads through
-     * its bound (codegen-c.md section 10.4). Every variable is declared at
-     * the top, as an IR variable may be read outside the C block that binds
-     * it (a join point's parameters are assigned in one block and read in
-     * another); and the body is printed before the declarations are, since
-     * printing it makes the temporaries. The (void) casts keep the C
-     * compiler from warning of parameters the body does not use *)
+     * descriptors, then its parameters), a prologue, local variable and
+     * temporary declarations, and its body. The prologue casts _raw_env (f's
+     * closure) to its concrete type (a struct QClosure_<f> of its captures, or
+     * a QAdaptClosure for an adapter), loads the descriptors of type
+     * parameters captured by the closure, and fetches the view map of each
+     * type parameter whose values the body reads through its bound
+     * (docs/codegen-c.md section 10.4). Every local is declared at the top of
+     * the function because an IR variable can be read outside the C block that
+     * assigns it (such as a join point's parameters), and the body is printed
+     * before the declarations so all temporaries are known. The (void) casts
+     * silence unused-parameter warnings from the C compiler. *)
     let function(p: P f: nodes.Function): Lines =
         begin
             p.fs := newFnState(maybe.some(f))
@@ -3113,10 +3112,11 @@ export
             res
         end
 
-    (* A module's initializer, whose body makes its record, stored in the
-     * module's global. A module file's is extern, as are its record and its
-     * exported functions, and initializes the modules it imports first, as a
-     * program's main does. *)
+    (* Emits a module's initializer, whose body builds the module's record and
+     * stores it in the module global. For a module file, the initializer (like
+     * its record and exported functions) has external linkage, registers the
+     * unit's tables, and initializes imported modules first, just as main does
+     * for a program. *)
     let moduleInit(p: P m: nodes.Module): Lines =
         begin
             let clean = symbols.mangleModuleName(m.name)
@@ -3151,9 +3151,10 @@ export
             res
         end
 
-    (* The C file of p.unit, a program or a module file, as the bootstrap's
-     * CPrinter.print_unit (bootstrap/python/quest/codegen/c/printer.py)
-     * writes it (docs/codegen-c.md section 3.1).
+    (* Emits the complete C file for p.unit (a program or module file),
+     * matching the bootstrap's CPrinter.print_unit in
+     * bootstrap/python/quest/codegen/c/printer.py (docs/codegen-c.md section
+     * 3.1).
      *
      * Two things come first. The closures each function is made by are
      * collected, for the environment structs and for direct calls (a call of
@@ -3178,7 +3179,7 @@ export
      * A program ends with main, which initializes the runtime, the modules
      * it imports and its own, and then runs its top level. A module file
      * has no main: its initializer is extern, and calls qr_register_dicts
-     * and its imports' initializers itself (moduleInit) *)
+     * and its imports' initializers itself (moduleInit). *)
     let printUnit(p: P): String =
         begin
             let unit = p.unit

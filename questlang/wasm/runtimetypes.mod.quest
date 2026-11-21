@@ -5,13 +5,13 @@ import
     questlang/wasm/model : questlang/wasm/Model
     stringOp = string : StringOp
 export
-    (* What a field of the table holds: a number, a packed byte, an eqref,
-     * or a reference, never null, to another of R's types, by name *)
+    (* The storage kind of a table field: a numeric type, a packed i8 byte, an
+     * eqref, or a non-null reference to another type in R by name *)
     Def Kind = Option kindI32 kindI64 kindF64 kindI8 kindEqref kindRef with name: String end end
     Def Slot = Tuple name: String kind: Kind mutable: Bool end
-    (* A type of R: open to subtypes or final, its supertype's name ("" for
-     * none), and its fields, a struct's, or an array's one element (whose
-     * name is "") *)
+    (* One type entry in R: whether it is final or open to subtypes, its
+     * supertype's name ("" for none), whether it is an array, and either its
+     * struct fields or its single array element (with name "") *)
     Def Entry = Tuple name: String final: Bool super: String isArray: Bool slots: Array(Slot) end
 
     let i32 = option kindI32 of Kind end
@@ -31,8 +31,8 @@ export
      * until it is first asked for *)
     let hash = mutableSlot("hash" i32)
 
-    (* R. A subtype repeats its supertype's fields first, as WebAssembly
-     * requires. *)
+    (* The table defining R. Each subtype repeats its supertype's fields first,
+     * as WebAssembly GC requires. *)
     let table = array of
         entry("obj" false "" array of hash end)
         entry("boxInt" true "" array of slot("value" i64) end)
@@ -43,31 +43,35 @@ export
         entry("tupleLike" false "obj" array of hash end)
         entry("tuple" false "tupleLike" array of hash slot("slots" refTo("slots")) end)
         entry("option" true "tuple" array of hash slot("slots" refTo("slots")) slot("tag" i32) end)
-        (* A proxy (section 2.3, docs/c-representation.md section 5.8): a
-         * tuple or option seen at a supertype at which a component changes
-         * view; its state is the core's (wasm/core's Proxied) *)
+        (* A proxy (section 2.3, docs/c-representation.md section 5.8) wraps a
+         * tuple or option viewed at a supertype where a component changes
+         * representation; its state field holds wasm/core's Proxied tuple *)
         entry("proxy" true "tupleLike" array of hash slot("state" eqref) end)
         entry("string" true "obj" array of hash slot("length" i32) slot("bytes" refTo("bytes")) end)
         entry("array" true "obj" array of hash slot("elems" refTo("slots")) end)
         entry("varBox" true "" array of slot("tag" i32) slot("payload" eqref) end)
         entry("clos" false "obj" array of hash end)
-        (* An auto value (docs/c-representation.md section 8.1): its witness's
-         * descriptor, its type component, and its other components, a tuple *)
+        (* An auto value, Quest's existential package (docs/c-representation.md
+         * section 8.1): desc holds the witness type's runtime descriptor, and
+         * payload holds the tuple of value components *)
         entry("auto" true "obj" array of hash slot("desc" eqref) slot("payload" eqref) end)
-        (* A record's payload, its fields in name order in its slots, and its
-         * layout, the descriptor of the record type it was made at, which its
-         * views' tables are made for (section 2.5); a view's table, the slot
-         * of each of the view's fields, in name order; and a record in a
-         * slot, the pair boxed *)
+        (* Record representation (section 2.5): $record holds the fields in
+         * name order in slots along with layout, the descriptor of the record
+         * type it was constructed at; $dict is a view offset dictionary
+         * mapping each field of a supertype view (in name order) to its slot
+         * index in $record; and $recBox boxes a ($record, $dict) pair when a
+         * record is stored in a generic eqref slot. *)
         entry("record" true "obj" array of hash slot("layout" eqref) slot("slots" refTo("slots")) end)
         entry("dict" true "" array of slot("indices" refTo("i32s")) slot("stored" eqref) end)
         entry("recBox" true "" array of slot("payload" refTo("record")) slot("dict" refTo("dict")) end)
-        (* An exception, made by its declaration (section 2.9), and a raised
-         * one's state, which the one tag carries: the exception, its payload,
-         * the raise's site, and for the uncaught report the payload's type as
-         * the raise wrote it, how to write the payload (0 for none, 1 to 8 by
-         * the base runtime's show, 9 by its descriptor), and its descriptor,
-         * or null *)
+        (* Exceptions (section 2.9): $exception represents an exception
+         * identity created by its declaration, and $raised holds the payload
+         * carried by the single Wasm exception tag. Along with the exception,
+         * its payload, and the raise site, $raised stores metadata for
+         * uncaught-exception reports: text (the payload type as written at the
+         * raise), kind (0 for no payload, 1..8 for the base runtime's show
+         * helpers, 9 to format via desc), and desc (the payload's descriptor,
+         * or null). *)
         entry("exception" true "obj" array of hash slot("name" refTo("string")) end)
         entry("raised" true "" array of
             slot("exception" refTo("exception")) slot("payload" eqref) slot("site" eqref) slot("text" eqref)

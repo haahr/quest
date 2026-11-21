@@ -1,10 +1,12 @@
 (* Quest Self-Hosted Compiler: The Inliner Interface
  *
- * What the simplifier needs to inline calls (docs/ir.md section
- * 8.6): the functions funs statements bind, their strongly connected components
- * in the graph of which functions name which, and their sizes; and a call's
- * expansion, the callee's body copied in its place, with fresh variables and
- * labels. Which calls to inline is the simplifier's decision. *)
+ * This module provides the analysis and code-cloning operations that the
+ * simplifier uses to inline and specialize calls (docs/ir.md section 8.6).
+ * Analysis collects all functions bound by funs statements, groups mutually
+ * recursive functions into strongly connected components, detects static
+ * parameters on self-recursive functions, and computes function sizes.
+ * Expansion and specialization clone a callee's body with fresh variables and
+ * labels; deciding which calls to inline belongs to the simplifier. *)
 
 interface Inline
 import
@@ -22,15 +24,15 @@ export
         components: hashMap.T(Int Int)
         (* Whether each function names itself, directly or not *)
         recursive: hashMap.T(Int Bool)
-        (* Whether each function calls an external function at type arguments
-         * (passing and returning their values as QVal words, which a call at
-         * other type arguments would not box) *)
+        (* Whether each function calls an external function with type arguments
+         * (external calls pass polymorphic values as uniform QVal words, which
+         * a call specialized to concrete types would not box) *)
         callsExternalAtTypes: hashMap.T(Int Bool)
-        (* Each function's static parameters, by its variable's id, for one
-         * recursive through itself alone: whether each value parameter is
-         * passed unchanged by every call the function makes of itself, at its
-         * own type parameters, and the function names itself only in such
-         * calls (none for any other function, or one with none) *)
+        (* For each self-recursive function (not mutually recursive) with at
+         * least one static parameter, a boolean mask over its parameters by
+         * variable id. A value parameter is static if every recursive call
+         * passes it unchanged at the function's own type parameters, and the
+         * function is never referenced except as the callee of such calls. *)
         static: hashMap.T(Int Array(Bool))
         (* Each function's size *)
         sizes: hashMap.T(Int Int)
@@ -38,11 +40,11 @@ export
         size: Int
     end
 
-    (* The functions of a unit's bodies, as they are *)
+    (* Analyzes all functions bound in bodies as they currently stand *)
     analyze(bodies: Array(nodes.Body)): Analysis
 
-    (* A body's size: its statements, with those in the bodies and functions it
-     * holds, a call counting callSize (twice) *)
+    (* A body's statement count, including nested bodies and functions, with
+     * each call weighted by callSize (2) *)
     size(b: nodes.Body): Int
     callSize: Int
 
@@ -51,35 +53,33 @@ export
      * outside the module) *)
     Def Read = Tuple v: nodes.Variable op: nodes.Op end
 
-    (* The variables f names and does not bind, in the order first named (those
-     * of its module's, for one, or of the functions that enclose it), from
-     * its body as it is now, not as the round's analysis found it: calls in
-     * f may have been inlined since *)
+    (* Returns the free variables of f in first-use order (such as module
+     * variables or variables from enclosing functions). Inspects f's current
+     * body rather than cached analysis, because earlier inlining in the same
+     * round may have introduced new free variables. *)
     freeVariables(f: nodes.Function): Array(nodes.Variable)
 
-    (* The statements that do what a call of f does and then what rest does:
-     * the call's result bound to into (or to a fresh variable), f's body
-     * copied with its type parameters substituted by typeArgs, fresh variables
-     * and labels, each value parameter bound to its argument, each var or out
-     * parameter replaced by the variable whose address is passed for it
-     * (byRef), and each variable reads names bound first to what it reads. A
-     * body whose only return is its last statement is followed by rest; any
-     * other is a join point's body, whose returns jump to it, and whose
-     * continuation is rest. The parameters' bindings, the reads', and the
-     * result's are at the call's position, pos; the body keeps its own. *)
+    (* Expands a call to f followed by rest, binding the result to into (or a
+     * fresh variable). Clones f's body with typeArgs substituted for its type
+     * parameters and with fresh variables and labels: value parameters are
+     * bound to args, var/out parameters are replaced by the variables in
+     * byRef, and free variables listed in reads are bound first to their
+     * replacement operations. If f's only return is its final statement, rest
+     * follows inline; otherwise f's body is wrapped in a join point (a labeled
+     * merge block whose continuation is rest) and each return becomes a jump
+     * to it. Bindings for parameters, reads, and the result take source
+     * position pos; cloned body statements keep their own. *)
     expand(f: nodes.Function typeArgs: Array(model.Type) args: Array(nodes.Atom)
         byRef: Array(maybe.T(nodes.Variable)) reads: Array(Read) into: maybe.T(nodes.Variable) pos: Int
         rest: Array(nodes.Stmt) labels: clone.Labels): Array(nodes.Stmt)
-    (* The statements that do what a call of f, a function with static
-     * parameters, does and then what rest does, with f specialized to the
-     * call's arguments for them (docs/ir.md section 8.6): a funs statement
-     * binding a local function of f's other parameters, whose body is f's
-     * copied with its type parameters substituted by typeArgs, each static
-     * parameter replaced by its argument (a variable), each call of f a call
-     * of the local function on the other arguments, and each variable reads
-     * names bound first to what it reads; then the call's result bound to
-     * into (or to a fresh variable) by a call of the local function on the
-     * call's other arguments; then rest. *)
+    (* Specializes a self-recursive function f to the call's arguments for its
+     * static parameters, followed by rest (docs/ir.md section 8.6). Emits
+     * bindings for reads (and any constant static arguments), then a recursive
+     * funs statement defining a local function over only f's non-static
+     * parameters, with typeArgs substituted, static parameters replaced by
+     * their call-site arguments, and recursive calls rewritten to target the
+     * local function. Finally binds into (or a fresh variable) to a call to
+     * the local function on the remaining arguments, followed by rest. *)
     specialize(f: nodes.Function static: Array(Bool) typeArgs: Array(model.Type) args: Array(nodes.Atom)
         reads: Array(Read) into: maybe.T(nodes.Variable) pos: Int rest: Array(nodes.Stmt) labels: clone.Labels)
         : Array(nodes.Stmt)

@@ -23,13 +23,14 @@ export
 
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
-    (* The key of the module of a canonical name: a module's name is imported
-     * in any case (arrayOp, prelinked, is arrayop where a library module
-     * imports it) *)
+    (* Normalizes a canonical module name to lowercase for lookup, since
+     * imports are case-insensitive (e.g. prelinked arrayOp is imported as
+     * arrayop by library modules) *)
     let key(canonical: String): String = paths.lower(canonical)
 
-    (* The source map of the module named canonical, from the file the
-     * resolver resolved its name to, if any: what its raises' sites name *)
+    (* Builds a source map for the module named canonical from its resolved
+     * source file, if available, so exception raise sites carry file and line
+     * info *)
     let sourceMapOf(e: env.T canonical: String): maybe.T(location.SourceMap) =
         begin
             let var found = maybe.none(:location.SourceMap)
@@ -50,9 +51,8 @@ export
             found
         end
 
-    (* Each reference to an imported module in body, and the bodies and
-     * functions in it, made a reference to the module merged (by canonical
-     * name) *)
+    (* Rewrites references to imported modules in body (and any nested bodies
+     * or functions) to point to the corresponding merged module in merged *)
     let rewriteRefs(body: nodes.Body merged: hashMap.T(String Module)): Ok =
         begin
             let ref(r: nodes.ModuleRef): nodes.ModuleRef =
@@ -150,9 +150,8 @@ export
     let dropUnreachable(unit: nodes.Unit): nodes.Unit =
         begin
             let same = fun(a: Int b: Int): Bool a is b
-            (* The statement of an initializer's top level that binds each
-             * variable a module may drop, by the variable's id: a let of a
-             * pure operation, or a function of a funs statement *)
+            (* Maps each droppable variable's id to the top-level initializer
+             * statement that defines it (a pure sLet or an sFuns group) *)
             let binding = hashMap.new(:Int :nodes.Stmt same hash.int)
             let roots = vector.new(:nodes.Stmt)
             for k = 0 upto {vector.length(unit.modules) - 1} do

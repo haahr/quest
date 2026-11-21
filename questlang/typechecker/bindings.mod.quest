@@ -163,15 +163,14 @@ export
             let params = params let body = body let typeParamIds = typeParamIds(quants) let typeOnly = typeOnly
         end
 
-    (* A function of type parameters only whose result is a function or a
-     * polymorphic value, fun(A::TYPE) e with e of type All(B::TYPE x: B) R, as
-     * the function of all those parameters, fun(A::TYPE B::TYPE x: B)
-     * e(:B x), which computes e when it is called and applies it. The two have
-     * the same type, as which callers call either one, with all its arguments
-     * at once; so what e does before it yields its function happens at each
-     * call (type-system.md section 6.4). The result's type parameters are
-     * made afresh, since they are bound in its type, and here become the
-     * function's. *)
+    (* Rewrites a type-only function whose result is a function or polymorphic
+     * value, fun(A::TYPE) e where e has type All(B::TYPE x: B) R, into a
+     * single function taking all those parameters, fun(A::TYPE B::TYPE x: B)
+     * e(:B x), which evaluates e when called and applies it. Both forms have
+     * the same type, so callers pass all arguments at once and any side
+     * effects of e happen on each call (docs/type-system.md section 6.4). The
+     * result's type parameters are given fresh symbols because they move from
+     * the result type into the function's own quantifiers. *)
     let mergeTypeOnlyFun(c: checker.T fun0: typedAst.Expr e: env.T): typedAst.Expr =
         case fun0.form
             when exprFun with x then
@@ -317,15 +316,15 @@ export
                                     end
                                     let innerTyped = checker.checkExpr(c innerExpr bodyExp e loopDepth)
                                     let quantArray = vector.toArray(quants)
-                                    (* The function's value parameters: those
-                                     * it writes, or, for a function written
-                                     * with type parameters only, those of a
-                                     * body that is itself a function,
-                                     * fun(A::TYPE) fun() e, as a curried
-                                     * definition f(A::TYPE)() is, unless that
-                                     * function has type parameters of its
-                                     * own. Otherwise its type parameters are
-                                     * its only ones. *)
+                                    (* Keep the value parameters the function
+                                     * writes, or for a type-only function
+                                     * whose body is a monomorphic function
+                                     * (such as fun(A::TYPE) fun() e, from a
+                                     * curried definition f(A::TYPE)()), adopt
+                                     * the body's value parameters. Otherwise,
+                                     * the function has only type parameters
+                                     * and mergeTypeOnlyFun wraps any returned
+                                     * function. *)
                                     let typeOnly(): typedAst.Expr =
                                         mergeTypeOnlyFun(c typedAst.expr(expr.span.startOffset model.allType(quantArray innerExp)
                                             funForm(array of :typedAst.Param end innerTyped quantArray true)) e)

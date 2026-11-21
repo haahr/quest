@@ -1,14 +1,14 @@
 (* Quest Self-Hosted Compiler: The JIT's Target Interface
  *
- * What jit/session needs of the machine its inputs run on (docs/jit.md
- * section 3; docs/wasm.md section 6.1): a unit compiled and loaded beside
- * the driver, an input's entry called, and the driver's own units and their
- * fingerprints. The build chooses the implementation as one of its module's
- * variants (docs/build-process.md section 6.4): this module's own file, for
- * the native backends, compiles to arm64 and loads into the driver's process
- * (os/code, jit/loader); its wasm variant, which the wasm backend's units
- * take, compiles to WebAssembly and has the host load and run each module;
- * its none variant has no JIT, and the driver interprets. *)
+ * This interface abstracts the target-specific operations that jit/session
+ * needs (docs/jit.md section 3; docs/wasm.md section 6.1): compiling and
+ * loading a unit alongside the driver, invoking an input's entry point, and
+ * querying the driver's built-in modules and interface fingerprints. The build
+ * selects the implementation via module variants (docs/build-process.md
+ * section 6.4): the default implementation compiles to arm64 and loads into
+ * the driver's process (os/code, jit/loader), the wasm variant compiles to
+ * WebAssembly and delegates loading and execution to the host, and the none
+ * variant disables the JIT so the driver falls back to interpretation. *)
 
 interface Target
 import
@@ -39,12 +39,11 @@ export
      * those loaded before; the modules it imports are the driver's or loaded *)
     load(t: T unit: nodes.Unit): Ok
 
-    (* What an input's entry came to: what its phrases showed, if they were
-     * captured, or the exception it raised, with where it was raised
-     * (FILE:LINE:COL, the name its code gives the file), and the frames
-     * running there, most recent first, down to the input's own <main>; or
-     * with fatal, a fatal error that ended it, its message as name (as the
-     * runtime reports one, docs/exceptions.md section 2.2) *)
+    (* The outcome of executing an input's entry point. ran carries captured
+     * phrase output. raised carries the exception name, raise site
+     * (FILE:LINE:COL), and stack frames from most recent down to the input's
+     * <main>; when fatal is true, it represents a fatal runtime error with its
+     * message in name (docs/exceptions.md section 2.2). *)
     Def Ran = Option
         ran with shown: String end
         raised with name: String site: String frames: Array(String) fatal: Bool end

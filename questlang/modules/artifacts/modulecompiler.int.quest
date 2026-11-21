@@ -1,9 +1,10 @@
 (* Quest Self-Hosted Compiler: The Module Compiler Interface
  *
- * bootstrap/python/quest/modules/module_compiler.py: compiles module files
- * (.mod.quest) into C (<name>.mod.c, which includes its interface's header and
- * defines the module's record, initializer, and exported functions), an
- * object (<name>.o, by the host C compiler), and a manifest (<name>.qm). *)
+ * Counterpart to bootstrap/python/quest/modules/module_compiler.py. This unit
+ * compiles module files (.mod.quest) into generated code (typically C in
+ * <name>.mod.c, which includes the interface's header and defines the module's
+ * record, initializer, and exported functions), an object file (<name>.o), and
+ * a build manifest (<name>.qm). *)
 
 interface ModuleCompiler
 import
@@ -27,11 +28,11 @@ export
         nogc: Bool extraFlags: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)
         res: maybe.T(graph.Resolver) backends: choice.T reportInferable: String): ModuleCompileResult
 
-    (* A module file elaborated as compileModuleFile elaborates it, and lowered
-     * to a unit of the module alone, for the JIT to compile and load
-     * (docs/jit.md section 3.4); with its source, and the module files it
-     * imports (each module's canonical name and source, and the offset of
-     * the import item that names it), which are loaded before it *)
+    (* Elaborates a module file as compileModuleFile does and lowers it to a
+     * standalone IR unit for the JIT to compile and load (docs/jit.md section
+     * 3.4). Also returns its source map and the module files it imports (each
+     * with its canonical name, source path, and import offset), which must be
+     * loaded before it. *)
     Def ModuleImport = Tuple name: String source: String offset: Int end
     Def ModuleUnit = Tuple unit: nodes.Unit sourceMap: location.SourceMap imports: Array(ModuleImport) end
     moduleFileUnit(file: String includePaths: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)

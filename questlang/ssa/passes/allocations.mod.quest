@@ -15,14 +15,13 @@ export
 
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
-    (* The runtime's Q_LAYOUT_NOSCAN, in the flags half of a QLayout's second
-     * word (runtime/quest_gc.h), as the unit's layout data lays it out
-     * (ssa/statics) *)
+    (* The runtime's Q_LAYOUT_NOSCAN bit, stored in the upper 32-bit flags
+     * half of a QLayout's second word (runtime/quest_gc.h, ssa/statics) *)
     let noscanFlag = 1
     let high = 4294967296
 
-    (* The space of the objects of each layout the unit lays out, by the
-     * layout's symbol: 1 for a noscan layout, 0 otherwise *)
+    (* The heap space for each layout defined in u, keyed by the layout's
+     * symbol: 1 for a pointer-free (noscan) layout, 0 otherwise *)
     let spaces(u: ssa.Unit): hashMap.T(String Int) =
         begin
             let m = hashMap.new(:String :Int eq hash.string)
@@ -80,10 +79,10 @@ export
             found
         end
 
-    (* Expands the call of quest_alloc at index k of block b of f, of an
-     * object of sz bytes in space `space`: the block ends with the test, the
-     * fast and slow paths each jump to a new block holding the rest of b,
-     * whose parameter is the allocation's base *)
+    (* Block b is split at the quest_alloc call at index k (allocating sz bytes
+     * in heap space `space`). Block b ends with the fast/slow branch, and both
+     * paths jump to a new continuation block holding the rest of b, passing
+     * the allocation's base address as a block parameter. *)
     let expand(f: Function b: Int k: Int sz: Int space: Int): Ok =
         begin
             let blk = ssa.block(f b)
@@ -138,9 +137,10 @@ export
                 let ifFalse = ssa.target(fast none)
             end
             blk.termLoc := at
-            (* The fast path bumps the cursor past the object, and stores
-             * the header word, which the slow path stores itself (with the
-             * collector's flags, while a collection marks: quest_gc.c) *)
+            (* The fast path bumps the cursor past the object and writes the
+             * layout header word. The slow path writes that header itself,
+             * adding any collector flags needed during incremental marking
+             * (runtime/quest_gc.c). *)
             store(fast cursorAt binary(fast ssa.opAdd cursor bytes) 8)
             store(fast unary(fast ssa.opIntToPtr cursor ssa.typePtr) layout 8)
             let fastBlk = ssa.block(f fast)
@@ -159,13 +159,15 @@ export
             let moved = ssa.block(f rest)
             let baseParam = ssa.newValue(f ssa.typeInt)
             vector.append(moved.params baseParam)
-            (* The address the bump gives, the header word's, stays an int
-             * here: the object's own is the first ptr the rest of the block
-             * has. A ptr at the header would be live wherever the object is
-             * used (selection folds the object's offsets into it), and the
-             * collector takes a ptr in a frame for the object it is at,
-             * inside, or at the end of (docs/arm64.md section 3.13): the
-             * one before this one *)
+            (* Keep the bumped header address as an int so the object's own
+             * address (baseParam + 8) is the first pointer value in this
+             * block. If the header address had pointer type, instruction
+             * selection could fold object field offsets into it, keeping a
+             * pointer to the header word live across calls. Because the
+             * header sits right at the end of the preceding object, the
+             * collector would mistake a header pointer in a stack frame for
+             * an end-of-object pointer to that preceding object (docs/arm64.md
+             * section 3.13). *)
             put(rest ssa.instruction(ssa.opIntToPtr array of binary(rest ssa.opAdd baseParam constant(rest 8)) end
                 array of obj end 0 "" 0 false ssa.emptySignature))
             let low = loadWord(rest address(rest "quest_gc_heap_lo" 0) ssa.typeInt)
@@ -187,12 +189,13 @@ export
     let inlineFunction(f: Function spaces: hashMap.T(String Int)): Ok =
         begin
             let cs = constants(f)
-            (* Found before the expansions, whose values name no symbol *)
+            (* Collect symbol definitions before expanding calls; values added
+             * during expansion are never layout arguments to existing calls *)
             let symbols = symbolsOf(f)
             let symbolOf(v: Int): String = if v < extent symbols then symbols[v] else "" end
             let var b = 0
-            (* The blocks the expansions add hold the rest of a block, and are
-             * reached in turn *)
+            (* Each expansion appends a continuation block for the rest of the
+             * split block, which this loop visits in turn *)
             while b < vector.length(f.blocks) do
                 let blk = ssa.block(f b)
                 let var k = 0

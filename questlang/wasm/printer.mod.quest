@@ -23,9 +23,10 @@ export
      * Numbers, names, and strings
      * ====================================================================== *)
 
-    (* n in decimal, with - for a negative one, as the text format has it
-     * (conv.int writes ~). The magnitude is written as an unsigned word, so
-     * that the least Int, whose negation is itself, comes out right *)
+    (* Formats n in decimal using "-" for negative numbers, as WebAssembly text
+     * requires (Quest's conv.int uses "~"). The magnitude is computed as an
+     * unsigned word so that the minimum Int, whose signed negation overflows,
+     * formats correctly. *)
     let signed(n: Int): String =
         if n >= 0 then conv.int(n)
         else
@@ -62,9 +63,9 @@ export
             if stringOp.isEmpty(s) then "0" else s end
         end
 
-    (* The real whose bits are given, exactly, as the text format writes a
-     * hexadecimal float: 0x1.8p+1, 0x0.0000000000001p-1022, 0x0p+0, inf,
-     * nan:0x8000000000000, each after - when the sign bit is set *)
+    (* Formats an IEEE 754 f64 bit pattern as an exact WebAssembly hexadecimal
+     * float (such as 0x1.8p+1, 0x0.0000000000001p-1022, 0x0p+0, inf, or
+     * nan:0x8000000000000), prefixed with "-" when the sign bit is set *)
     let hexFloat(bits: Int): String =
         begin
             let w = word.fromInt(bits)
@@ -85,8 +86,8 @@ export
             end
         end
 
-    (* A string in quotes, its bytes outside printable ASCII, a quote, and a
-     * backslash each as \hh *)
+    (* Formats s as a WebAssembly quoted string, escaping double quotes,
+     * backslashes, and bytes outside printable ASCII as \hh *)
     let quoted(s: String): String =
         begin
             let b = sb.new()
@@ -122,8 +123,8 @@ export
             when heapIndex with x then typeId(m x.index)
         end
 
-    (* A nullable abstract reference type in its short form, as wasm/encode
-     * writes it; others in full *)
+    (* Formats a reference type, using the short form (like eqref) for nullable
+     * abstract heap types to match wasm/encode, and (ref ...) for all others *)
     let refType(m: Module nullable: Bool h: HeapType): String =
         if nullable andif not(h?heapIndex) then
             case h
@@ -142,8 +143,8 @@ export
             when valRef with x then refType(m x.nullable x.heap)
         end
 
-    (* Value types after a keyword, as (param i64 i32) or (result eqref);
-     * nothing for none *)
+    (* Formats a non-empty array of value types as " (<keyword> ...)", such as
+     * " (param i64 i32)" or " (result eqref)", or "" when ts is empty *)
     let typeList(m: Module keyword: String ts: Array(ValType)): String =
         if extent ts is 0 then ""
         else
@@ -202,10 +203,11 @@ export
      * labels of the structured instructions around it, innermost last *)
     Def Context = Tuple locals: Array(String) labels: vector.T(String) end
 
-    (* A branch's target at depth d: its label's name, if it has one and no
-     * label within it has the same name (the text format takes a name to
-     * the innermost label of that name), else d. Depth n, past every block,
-     * is the function's body *)
+    (* Formats a branch target at relative depth d. Uses the target block's
+     * $name if it is named and not shadowed by an inner block of the same name
+     * (WAT resolves label names to the innermost match), otherwise falls back
+     * to the numeric depth d. Depth n (past all blocks) targets the function
+     * body itself. *)
     let label(c: Context d: Int): String =
         begin
             let n = vector.length(c.labels)
@@ -315,8 +317,9 @@ export
 
     let named(label: String): String = if stringOp.isEmpty(label) then "" else " $" <> label end
 
-    (* An instruction's text, without its indentation; a structured one's
-     * label is pushed, and an end's popped *)
+    (* Formats a single instruction without leading indentation. Pushes a
+     * block's label onto c.labels when entering a structured instruction and
+     * pops it on instEnd. *)
     let instruction(m: Module ns: Names c: Context i: Inst): String =
         case i
             when instOp with x then x.op.name <> immediates(m ns c x.op x.args)
@@ -353,9 +356,9 @@ export
             when instSelect with x then "select" <> typeList(m "result" x.types)
         end
 
-    (* Instructions flat, one to a line, after indent spaces and two more for
-     * each structured instruction they are in; an else or an end is
-     * indented as its block's start is *)
+    (* Prints insts flat, one per line, starting at indent spaces plus two
+     * spaces per enclosing structured instruction. Each instElse and instEnd
+     * is aligned with the structured instruction that opened its block. *)
     let instructions(b: Builder m: Module ns: Names c: Context insts: vector.T(Inst) indent: Int): Ok =
         for k = 0 upto vector.length(insts) - 1 do
             let i = vector.get(insts k)

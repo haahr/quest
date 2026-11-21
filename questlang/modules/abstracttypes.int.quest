@@ -1,15 +1,16 @@
 (* Quest Self-Hosted Compiler: Modules' Abstract Types Interface
  *
- * bootstrap/python/quest/modules/abstract_types.py: the abstract types modules
- * export, by global name (a module's canonical path, a dot, and the type's
- * name: "geo/coord.P"), for serializing dynamic values (docs/dynamic.md section
- * 2.3). Each global name has one opaque type symbol id in the process, so that
- * every environment that elaborates or imports the module agrees on it.
+ * Counterpart to bootstrap/python/quest/modules/abstract_types.py. This unit
+ * tracks the abstract types that modules export, indexed by global name (a
+ * module's canonical path, a dot, and the type's name, as in "geo/coord.P"),
+ * for serializing dynamic values (docs/dynamic.md section 2.3). Each global
+ * name has one opaque type symbol id in the process, so that every environment
+ * that elaborates or imports the module agrees on it.
  *
  * The self-hosted compiler also uses the representations recorded here to lay
- * out a whole program's abstract types as their representations
- * (representations, unbounded, setRegisteringApart, representationCount, for
- * questlang/repr/shapes), which the bootstrap does not do. *)
+ * out a whole program's abstract types as their concrete representations
+ * (representations, unbounded, setRegisteringApart, and representationCount,
+ * for questlang/repr/shapes), which the bootstrap does not do. *)
 
 interface AbstractTypes
 import
@@ -17,14 +18,14 @@ import
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 export
-    (* For a module the program does not link, the representation a
-     * serialized value gave one use of its type: rep is what the type applied
-     * to args (no args for a type that is not an operator) stands for *)
+    (* One representation recorded by a serialized value for a type from a
+     * module the program does not link: rep is what the type applied to args
+     * (empty when the type is not a type operator) stands for *)
     Def Instance = Tuple args: Array(model.Type) rep: model.Type end
-    (* An abstract type exported by a module: linked if the program links the
-     * module; rep, its representation, once the module has been elaborated from
-     * its source; and an unlinked type's representations, as dynamic.intern
-     * read them *)
+    (* An abstract type exported by a module. linked is true if the program
+     * links the module, rep holds its concrete representation once the module
+     * has been elaborated from source, and instances holds the representations
+     * read by dynamic.intern when the module is not linked. *)
     Def ModuleAbstractType = Tuple
         globalName: String
         typeVar: model.Type
@@ -38,36 +39,39 @@ export
     abstractTypeSymbolId(globalName: String): Int
     (* Whether abstractTypeSymbolId allocated symbolId *)
     isAbstractTypeSymbol(symbolId: Int): Bool
-    (* The global name a module abstract type's opaque type has its symbol id
-     * for (abstractTypeSymbolId), if it is one *)
+    (* The global name associated with symbolId by abstractTypeSymbolId, if
+     * any *)
     abstractTypeGlobalName(symbolId: Int): maybe.T(String)
     (* Records that a linked module exports globalName with opaque type
-     * typeVar, as each elaboration of its export scope does; the
-     * representation is unknown until the next function gives it *)
+     * typeVar, as each elaboration of its export scope does. Its
+     * representation remains unknown until registerAbstractTypeRepresentation
+     * supplies it. *)
     registerExportedAbstractType(globalName: String typeVar: model.Type): Ok
-    (* Records rep as the representation of globalName, opaque type typeVar,
-     * once its module has been elaborated from source; marks it as a module
-     * compiled apart's while setRegisteringApart is on *)
+    (* Records rep as the representation of globalName (opaque type typeVar)
+     * once its module has been elaborated from source. When
+     * setRegisteringApart is on, marks globalName as belonging to a separately
+     * compiled module. *)
     registerAbstractTypeRepresentation(globalName: String typeVar: model.Type rep: model.Type): Ok
     (* Records an abstract type read from a module the program does not link *)
     registerUnlinkedAbstractType(globalName: String typeVar: model.Type): ModuleAbstractType
     (* The entry for an opaque type's symbol id *)
     abstractTypeBySymbol(symbolId: Int): maybe.T(ModuleAbstractType)
-    (* A substitution from abstract types' opaque types, by symbol id, to
-     * their representations, with which a whole program sees through the
-     * abstract types of the modules merged into its unit (shapes.transparent
-     * lays such a type out as its representation). It holds each type whose
-     * representation is known, that has no bound (a bounded type is seen at
-     * its bound outside its module), and whose module was not compiled apart
-     * (registered while setRegisteringApart was on) *)
+    (* A substitution mapping each eligible abstract type's symbol id to its
+     * concrete representation, so a whole program can see through abstract
+     * types of modules merged into its compilation unit (shapes.transparent
+     * lays such a type out as its representation). It includes each type whose
+     * representation is known, that has no upper bound (a bounded type is seen
+     * at its bound outside its module), and whose module was not compiled
+     * separately (registered while setRegisteringApart was on). *)
     representations(): model.Subst
-    (* While on, the representations registered are of a module compiled apart
-     * (a module file, not merged into the unit being compiled) *)
+    (* Controls whether representations registered via
+     * registerAbstractTypeRepresentation belong to a separately compiled
+     * module rather than one merged into the current compilation unit *)
     setRegisteringApart(on: Bool): Ok
     (* Whether setRegisteringApart is on *)
     registeringApart(): Bool
-    (* Whether an abstract type has no bound, and so is laid out as its
-     * representation is in a whole program, if that is known *)
+    (* Whether e has no upper bound and can therefore be laid out as its
+     * concrete representation in a whole-program build, when known *)
     unbounded(e: ModuleAbstractType): Bool
     (* How many representations have been registered: a caller that caches
      * representations() (shapes.transparent) makes it again only when this

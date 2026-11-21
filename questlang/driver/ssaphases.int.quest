@@ -1,16 +1,17 @@
-(* Quest Self-Hosted Compiler: The Driver's SSA Phases
+(* Quest Self-Hosted Compiler: The Driver's SSA Phases Interface
  *
- * The SSA of a unit for --stop-after and --dump-after (docs/ssa.md), apart
- * from the driver so that a variant can leave it out: ssaphases.wasm, which a
- * driver compiled to WebAssembly takes (docs/build-process.md section 6.4),
- * has no SSA (docs/wasm.md section 5.1). *)
+ * Runs the SSA (Static Single Assignment) pipeline for --stop-after and
+ * --dump-after (docs/ssa.md). This lives in a separate module so that the
+ * WebAssembly driver can substitute ssaphases.wasm (docs/build-process.md
+ * section 6.4) and omit the SSA subsystem (docs/wasm.md section 5.1). *)
 
 interface SsaPhases
 import
     questlang/ir/nodes : questlang/ir/Nodes
 export
-    (* Builds unit's SSA through its passes, dumping each pass's SSA that shows
-     * names (ssa_NAME) and the last (ssa), which with checks must read back
-     * as itself: the failure's message, or "" *)
+    (* Runs unit through the SSA passes, calling dump for each pass requested
+     * by shows (ssa_NAME) and for the final output (ssa). When checks is true,
+     * verifies that the printed SSA parses back identically. Returns an error
+     * message on failure, or "". *)
     run(unit: nodes.Unit shows: All(name: String) Bool dump: All(text: String) Ok checks: Bool): String
 end

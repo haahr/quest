@@ -1,13 +1,14 @@
 (* Quest Self-Hosted Compiler: The SSA's Interrupt Checks Interface
  *
- * docs/jupyter-kernel.md section 5: in a Jupyter kernel's driver (--kernel),
- * the code the JIT compiles for a cell checks the runtime's interrupt flag,
- * which its SIGINT handler sets, at each function's entry and at the head of
- * each loop (a block that a back edge goes to), and raises `interrupted` if it
- * is set. The check is a load of quest_interrupt_pending, a word, and a branch
- * to a block that calls quest_interrupt_raise; the block it is put in is split,
- * its instructions and terminator moving to a new block after the check. No
- * other compilation runs it (ssa/pipeline's setInterruptChecks). *)
+ * This pass inserts periodic interrupt checks for the Jupyter kernel's JIT
+ * driver (--kernel; docs/jupyter-kernel.md section 5). The generated code
+ * checks the runtime's interrupt flag (set by its SIGINT handler) at each
+ * function entry and at every loop header (a block targeted by a back edge),
+ * raising `interrupted` if the flag is nonzero. Each check splits the block,
+ * moving its original instructions and terminator into a new block after a
+ * load of quest_interrupt_pending and a branch to a shared block that calls
+ * quest_interrupt_raise. Other compilation modes do not run this pass (see
+ * ssa/pipeline's setInterruptChecks). *)
 
 interface Interrupts
 import

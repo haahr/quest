@@ -16,11 +16,11 @@ export
         end
 
     (* Whether a stack slot's address may escape from f: stored, passed to a
-     * call, or returned. The values derived from a slot's address (by
-     * arithmetic, copies, selects, and block parameters) are found to a fixed
-     * point first, then checked for each of those uses. If one may, f makes
-     * no tail calls: a tail call frees f's frame, where its slots are, before
-     * the callee runs *)
+     * call, or returned. Values derived from a slot's address (by arithmetic,
+     * copies, selects, and block parameters) are found to a fixed point
+     * first, then checked for each of those uses. If any escapes, f makes no
+     * tail calls, because a tail call frees f's stack frame (and its slots)
+     * before the callee runs. *)
     let slotsEscape(f: Function): Bool =
         begin
             let n = vector.length(f.types)
@@ -48,7 +48,8 @@ export
                             for r = 0 upto {extent i.results - 1} do if mark(i.results[r]) then changed := true end end
                         end
                     end
-                    (* A block's parameters, from what jumps pass them *)
+                    (* Propagate slot-derived taint from jump arguments into
+                     * block parameters *)
                     let pass(t: ssa.Target): Ok =
                         begin
                             let params = ssa.block(f t.block).params
@@ -87,10 +88,10 @@ export
         end
 
     (* Whether a jump to t returns exactly values: t's block does nothing but
-     * return, or pass on to another such block (through at most a few), what
-     * are values once its parameters are taken as the jump's arguments. A
-     * parameter the block does not return (one a join left dead) may be
-     * passed anything *)
+     * return — or forward through at most 8 hops to another such block — what
+     * equals values once its parameters are substituted with t's arguments. A
+     * parameter the block does not return (left dead by a join) may receive
+     * any argument. *)
     let rec returnsWithin(f: Function t: ssa.Target values: Array(Int) depth: Int): Bool =
         begin
             let blk = ssa.block(f t.block)
@@ -118,11 +119,11 @@ export
 
     let returnsThrough(f: Function t: ssa.Target values: Array(Int)): Bool = returnsWithin(f t values 0)
 
-    (* How many of blk's last instructions a tail call would replace: its
-     * last, a call whose results blk returns (through jumps to blocks that
-     * only return them), or a call and the extension of its byte, which this
-     * function's caller makes again (docs/ssa.md section 2.2), or its result
-     * retyped as a QVal word or back; 0 when blk ends in no such call *)
+    (* How many trailing instructions of blk a tail call would replace: 1 for
+     * a call whose results blk returns (directly or through forwarding
+     * blocks), 2 for a call followed by a byte sign/zero extension (which the
+     * caller will perform anyway; docs/ssa.md section 2.2) or a pointer/QVal
+     * (tagged runtime value) retype, or 0 otherwise *)
     let tailPops(f: Function blk: ssa.Block): Int =
         begin
             let n = vector.length(blk.insts)
@@ -178,7 +179,8 @@ export
                     marked := true
                 end
             end
-            (* The blocks that only returned what a tail call now returns *)
+            (* Drop blocks that only forwarded values now returned by a tail
+             * call *)
             if marked then cfg.dropUnreached(f) end
         end
 

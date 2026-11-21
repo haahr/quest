@@ -24,7 +24,8 @@ export
 
     let byte(b: Builder n: Int): Ok = begin sb.char(b ascii.char(n)) ok end
 
-    (* An unsigned LEB128 number, n from 0 to 2^32 - 1 *)
+    (* Encodes n (0 to 2^32 - 1) in unsigned LEB128, WebAssembly's
+     * variable-length little-endian base-128 integer encoding *)
     let u32(b: Builder n: Int): Ok =
         begin
             if {n < 0} orif {n > 0xFFFFFFFF} then fail("the unsigned 32-bit number " <> conv.int(n)) end
@@ -40,8 +41,9 @@ export
             end
         end
 
-    (* A signed LEB128 number, any Int: 7 bits at a time from the bottom, the
-     * rest shifted arithmetically, until what is left is all sign *)
+    (* Encodes any Int in signed LEB128, emitting 7 bits at a time from the
+     * least significant end and shifting right arithmetically until only the
+     * sign bits remain *)
     let sleb(b: Builder n: Int): Ok =
         begin
             let var v = n
@@ -71,8 +73,8 @@ export
             sb.str(b s) ok
         end
 
-    (* What one builder holds, after its length, as a section or a function's
-     * body is written *)
+    (* Appends the contents of inner to b preceded by its byte length, as used
+     * for sections and function bodies *)
     let sized(b: Builder inner: Builder): Ok =
         begin
             u32(b sb.length(inner))
@@ -99,10 +101,10 @@ export
      * Types
      * ====================================================================== *)
 
-    (* An abstract heap type is one byte; a type index is a signed LEB128
-     * number, as is a block type's index, so that its first byte, positive,
-     * is never taken for an abstract type's code, which read signed is
-     * negative *)
+    (* Encodes a heap type. Abstract heap types (such as any, eq, and func) are
+     * single bytes in 0x69..0x74, which are negative when read as signed
+     * LEB128, while concrete type indices are non-negative signed LEB128
+     * integers so the two encodings never collide. *)
     let heapType(b: Builder h: HeapType): Ok =
         case h
             when heapAny then byte(b 0x6E) when heapEq then byte(b 0x6D) when heapI31 then byte(b 0x6C)
@@ -114,8 +116,9 @@ export
                 sleb(b x.index)
         end
 
-    (* A reference type: a nullable abstract one in its byte alone, as the
-     * text's eqref is, any other after 0x63 (nullable) or 0x64 *)
+    (* Encodes a reference type: a nullable abstract heap type uses its
+     * single-byte shorthand (like eqref), while any other reference type is
+     * prefixed by 0x63 (nullable) or 0x64 (non-nullable) *)
     let refType(b: Builder nullable: Bool h: HeapType): Ok =
         if nullable andif not(h?heapIndex) then heapType(b h)
         else
@@ -413,8 +416,8 @@ export
             section(b 8 s)
         end
 
-    (* The functions ref.func takes, in one declarative segment (flags 3) of
-     * function indices (element kind 0, funcref) *)
+    (* Emits a single declarative element segment (flags 3, element kind 0 for
+     * funcref) listing every function index referenced by ref.func in code *)
     let elementSection(b: Builder m: Module): Ok =
         if vector.length(m.declared) > 0 then
             let s = sb.new()
@@ -442,7 +445,7 @@ export
             end
         end
 
-    (* Whether two value types are one, which their encodings say *)
+    (* Reports whether two value types are equal by comparing their encodings *)
     let sameType(x: ValType y: ValType): Bool =
         begin
             let a = sb.new()
@@ -507,8 +510,8 @@ export
      * The name section
      * ====================================================================== *)
 
-    (* A name map of the names given, by index, leaving out the empty ones;
-     * whether there was any *)
+    (* Encodes a name map of non-empty entries from names by index, and returns
+     * whether at least one entry was written *)
     let nameMap(b: Builder names: Array(String)): Bool =
         begin
             let var n = 0
@@ -530,8 +533,9 @@ export
             if nameMap(s names) then section(b id s) end
         end
 
-    (* An indirect name map's subsection: for each index outer gives with any
-     * names, those names *)
+    (* Encodes an indirect name map subsection (such as locals per function or
+     * fields per struct), omitting outer entries that have no non-empty
+     * names *)
     let indirect(b: Builder id: Int outer: Array(Int) inner: Array(Array(String))): Ok =
         begin
             let s = sb.new()
@@ -606,10 +610,10 @@ export
             else array of :String end
         end
 
-    (* The custom section "name", its subsections by id in increasing order,
-     * as the format requires: 0 the module, 1 functions, 2 locals, 3
-     * labels, 4 types, 6 memories, 7 globals, 9 data segments, 10 fields,
-     * and 11 tags; one with no names is left out *)
+    (* Emits the custom "name" section with its subsections in ascending id
+     * order, as required by the WebAssembly format: 0 module, 1 functions, 2
+     * locals, 3 labels, 4 types, 6 memories, 7 globals, 9 data segments, 10
+     * fields, and 11 tags. Any subsection with no names is omitted. *)
     let nameSection(b: Builder m: Module): Ok =
         begin
             let s = sb.new()
@@ -675,9 +679,10 @@ export
             let b = sb.new()
             (* The magic number, "\0asm", and the version, 1 *)
             sb.str(b "\x00asm\x01\x00\x00\x00")
-            (* The sections in the order the format requires, which is not
-             * their ids': the tag section (13) between memory and global, the
-             * data count (12) before code *)
+            (* Emit sections in the order required by the WebAssembly spec,
+             * which is not strictly by section id: the tag section (13) sits
+             * between memory (5) and global (6), and data count (12) sits
+             * before code (10) *)
             typeSection(b m)
             importSection(b m)
             functionSection(b m)

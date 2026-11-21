@@ -95,7 +95,8 @@ export
             for k = 0 upto {extent inner - 1} do gather(u inner[k]) end
         end
 
-    (* The ids of a body and of the bodies it holds, its functions' too *)
+    (* Records the ids of b and all nested bodies (including inside nested
+     * functions) in ids *)
     let rec bodyIds(b: Body ids: hashMap.T(Int Bool)): Ok =
         begin
             hashMap.insert(ids b.id true)
@@ -119,10 +120,10 @@ export
     Let Tail = Tuple body: Body index: Int withReturn: Bool end
     Let Scan = Tuple tails: vector.T(Tail) var calls: Int end
 
-    (* The calls of f in a body of f's (not of its functions'); allowed
-     * whether a call in it may be a tail call (not in a try's region, which
-     * holds the call), and fallsOk whether falling off its end returns ok
-     * from f *)
+    (* Counts calls to f in b (excluding nested functions) and records tail
+     * calls in sc. allowed is false inside a try body, where the exception
+     * handler prevents tail calls; fallsOk is true when falling off the end of
+     * b returns ok from f. *)
     let rec scan(f: nodes.Function sc: Scan b: Body allowed: Bool fallsOk: Bool): Ok =
         begin
             let n = vector.length(b.statements)
@@ -168,8 +169,9 @@ export
                             if maybe.isSome(x.elseBody) then scan(f sc maybe.unwrap(x.elseBody) allowed tail) end
                         end
                     when sJoin with x then begin scan(f sc x.continuation allowed tail) scan(f sc x.body allowed tail) end
-                    (* Falling off a loop's body repeats it; a try's body is its
-                     * region, which holds the calls in it *)
+                    (* Falling off a loop's body repeats it; a try's body runs
+                     * under an exception handler, so calls inside it are not
+                     * tail calls *)
                     when sTry with x then begin scan(f sc x.body false false) scan(f sc x.handler allowed false) end
                     when sLoop, sLetRec then
                         let inner = walk.statementBodies(st)
@@ -196,14 +198,15 @@ export
             found
         end
 
-    (* Whether control cannot fall off b's end: its last statement returns,
-     * raises, jumps, or is unreachable, or is an if, a switch with an else,
-     * an inspect (which raises when no case matches and it has no else), a
-     * join, or a try whose bodies all end so, or a loop that nothing in it
-     * breaks out of (falling off a loop's body repeats it). Conservative: a
-     * switch without an else counts as falling off. The transformation needs
-     * it of f's body, which becomes a loop's body, where falling off the end
-     * would repeat the loop rather than return *)
+    (* Returns true when control cannot fall off the end of b. This holds when
+     * the last statement transfers control (return, raise, unreachable, jump,
+     * break, or continue), is a structured statement (if, switch with else,
+     * inspect, join, or try) whose branches all end control (an inspect without
+     * an else raises on mismatch), or is a loop with no matching break. This
+     * check is conservative: a switch without an else is treated as falling
+     * off. Contification requires this of f's body because it becomes a loop
+     * body, where falling off the end would repeat the loop instead of
+     * returning. *)
     let rec endsControl(b: Body): Bool =
         begin
             let n = vector.length(b.statements)
@@ -272,7 +275,7 @@ export
      *     }
      * Each iteration binds the parameters anew, immutable, because f's own
      * functions may capture them and no function may capture a mutable
-     * variable (closure conversion rejects one). funs no longer binds f *)
+     * variable (closure conversion rejects one). funs no longer binds f. *)
     let transform(f: nodes.Function funs: nodes.StmtFuns site: Site tails: vector.T(Tail) labels: clone.Labels): Ok =
         begin
             labels.count := labels.count + 1
@@ -344,11 +347,11 @@ export
             funs.functions := vector.toArray(others)
         end
 
-    (* Contifies the first function in all, in the order gather finds them,
-     * that can be (see the interface) and is not pinned: whether there was
-     * one. It gathers the functions, uses, and call sites afresh, since a
-     * transformation moves bodies and statements, which leaves the sites
-     * gathered before it stale *)
+    (* Contifies the first eligible, unpinned function in all (in the order
+     * gather finds them) and returns whether one was contified. It gathers
+     * functions, uses, and call sites afresh each round because each
+     * transformation moves bodies and statements, invalidating earlier
+     * sites. *)
     let contifyOne(all: Array(Body) recursive: hashMap.T(Int Bool) pinned: hashMap.T(Int Bool) labels: clone.Labels)
         : Bool =
         begin

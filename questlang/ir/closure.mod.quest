@@ -30,8 +30,8 @@ export
             vector.toArray(result)
         end
 
-    (* Replaces, in place, the uses in body of the variables renamed maps (none
-     * of which body binds) *)
+    (* Replaces uses in b, in place, of variables mapped by renamed (none of
+     * which b binds) *)
     let rename(b: Body renamed: hashMap.T(Int Variable)): Ok =
         begin
             let stmts = walk.walkStatements(b false)
@@ -41,9 +41,10 @@ export
 
     Let Lifted = Tuple code: nodes.Function captures: Array(Variable) end
 
-    (* Replaces, in place, the funs statements of b and of the bodies it holds
-     * by lets of closures of their lifted functions (funs); typeParams are
-     * the type parameters of the functions enclosing b, outermost first *)
+    (* Replaces the funs statements in b and its nested bodies, in place, with
+     * let bindings that construct closures of their lifted functions (via
+     * funs). The typeParams array lists the type parameters of enclosing
+     * functions, outermost first. *)
     let rec convertBody(c: Converter b: Body typeParams: Array(nodes.TypeParam)): Ok =
         begin
             let statements = vector.new(:Stmt)
@@ -62,17 +63,16 @@ export
             b.statements := statements
         end
 
-    (* The statements that replace a funs statement binding functions (a let
-     * rec when recursive), nested in functions whose type parameters,
-     * outermost first, are typeParams: a let of each function's closure, of
-     * its lifted code and its captures, passing typeParams to the code as its
-     * leading type arguments. When a closure captures one of the group, the
-     * lets are in a let rec, so that each closure can hold the others. But
-     * when the group captures nothing but its own functions and no
-     * polymorphic function encloses it, no closure needs an environment: each
-     * code reads the others as closures without captures (docs/ir.md section
-     * 8.2), which are static, rather than allocated each time the enclosing
-     * function runs *)
+    (* Builds the statements that replace a funs statement, given enclosing
+     * type parameters (outermost first) in typeParams. Each function becomes a
+     * let binding for a closure pairing its lifted code with its captures,
+     * passing typeParams as leading type arguments. When a recursive group
+     * captures one of its own functions, the bindings are wrapped in a let rec
+     * so each closure can reference the others. If the group captures nothing
+     * outside itself and has no enclosing type parameters, however, no closure
+     * needs an environment: each lifted function constructs static,
+     * capture-free closures for the others instead (docs/ir.md section 8.2),
+     * avoiding heap allocation on every call to the enclosing function. *)
     and funs(c: Converter functions: Array(nodes.Function) recursive: Bool typeParams: Array(nodes.TypeParam)): Array(Stmt) =
         begin
             let typeArgs = array of(extent typeParams model.okType)
@@ -87,7 +87,8 @@ export
             let all = array of(extent functions tuple
                 let code = functions[0] let captures = array of :Variable end
             end)
-            (* Whether the group's functions capture nothing but each other *)
+            (* True when the group has no enclosing type parameters or outer
+             * captures *)
             let var closed = extent typeParams is 0
             for i = 0 upto {extent functions - 1} do
                 all[i] := lift(c functions[i] typeParams)
@@ -97,10 +98,11 @@ export
                 end
             end
             if closed andif capturesGroup then
-                (* Then each function's closure is static: what it reads from
-                 * its environment is the static closure of another (as a
-                 * specialized local function's of itself, docs/ir.md section
-                 * 8.6), and none needs one *)
+                (* Every closure in this group is static: each lifted function
+                 * only captured peers (for example, a specialized local
+                 * function calling itself, docs/ir.md section 8.6), so we
+                 * replace the prologue's environment reads with capture-free
+                 * closures and drop the environment parameter *)
                 let codes = hashMap.new(:Int :nodes.Function intEqual hash.int)
                 for i = 0 upto {extent functions - 1} do
                     hashMap.insert(codes functions[i].v.id all[i].code)
@@ -183,10 +185,9 @@ export
             end
             let var env = maybe.none(:Variable)
             if not(vector.empty(captures)) orif {extent typeParams > 0} then
-                (* The environment (of the captured values, and of the
-                 * descriptors of the enclosing functions' type parameters) is
-                 * not a value of a Quest type; its type is a placeholder (it
-                 * prints without one) *)
+                (* The closure environment holds captured values and runtime
+                 * type descriptors for enclosing type parameters; it has no
+                 * Quest type, so okType serves as a placeholder *)
                 let e = nodes.newVar("env" model.okType false)
                 env := maybe.some(e)
                 let renamed = hashMap.new(:Int :Variable intEqual hash.int)

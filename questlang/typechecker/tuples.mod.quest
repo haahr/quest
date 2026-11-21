@@ -32,11 +32,11 @@ export
     let internal(A::TYPE what: String x: ast.Expr): A = diagnostics.fail("internal: not " <> what x.span.startOffset)
     let newIntMap(V::TYPE): hashMap.T(Int V) = hashMap.new(fun(a: Int b: Int): Bool a is b hash.int)
 
-    (* A component of a tuple, its declarations' members flattened: a type
+    (* A component of a tuple after flattening declarations' members: a type
      * binding of a type declaration (its index in typeGroups), a member of a
-     * recursive value declaration (in recGroups), or a value component, perhaps
-     * of a simultaneous declaration (in simGroups); pos is its position among
-     * its declaration's members *)
+     * recursive value declaration (in recGroupsAst), or a value component,
+     * optionally from a simultaneous declaration (in simGroups); pos is its
+     * position among its declaration's members *)
     Let Item = Option
         typeItem with b: ast.TypeBinding group: Int pos: Int end
         recItem with decl: ast.Decl group: Int pos: Int end
@@ -69,15 +69,15 @@ export
         end
     let newLabel(c: checker.T name: String t: Type isVar: Bool): symbols.ValueSymbol =
         symbols.newValueSymbol(name t isVar false false c.functionDepth 0)
-    (* Steps 2 and 3 of elaborateTupleComponents, run in the scope it opens
-     * for the tuple: the typed tuple of items, step 1's flattened components,
-     * elaborated in order. typeGroups, recGroupsAst, simGroups, and
-     * kindsBefore are step 1's too. Checking, expectedTuple holds the
-     * expected type's components, which items match one for one, and the
-     * tuple has that type, expectedTupleType. Synthesizing, both are none, and
-     * the tuple's type is built from its components' (a type component
-     * becomes a manifest one, Let A = T). Raises diagnostics errors on a
-     * mismatch *)
+    (* Runs steps 2 and 3 of elaborateTupleComponents in the tuple's scope,
+     * elaborating step 1's flattened items in order and returning the typed
+     * tuple. The typeGroups, recGroupsAst, simGroups, and kindsBefore
+     * collections also come from step 1. In checking mode, expectedTuple holds
+     * the expected type's components, which items match one for one, and the
+     * tuple gets expectedTupleType. In synthesis mode, both are none, and the
+     * tuple's type is built from its components (each type component becomes a
+     * manifest binding, Let A = T). Raises diagnostics.compilerError on a
+     * mismatch. *)
     let tupleScope(
         c: checker.T x0: ast.Expr items: vector.T(Item) typeGroups: vector.T(TypeGroup) recGroupsAst: vector.T(RecGroup)
         simGroups: vector.T(vector.T(ast.TupleFieldBinding)) kindsBefore: hashMap.T(Int vector.T(KindDecl))
@@ -140,8 +140,7 @@ export
              *    component's name) is in scope for the components after it.
              *    Each component falls into one of four cases, chosen by what
              *    the expected type says of it (expectsFormal, expectsBinding,
-             *    checking) or what it
-             *    is (synthesizing). *)
+             *    checking) or what it is (synthesizing). *)
             for index = 0 upto {n - 1} do
                 declareKinds(index)
                 let item = vector.get(items index)
@@ -245,10 +244,10 @@ export
                         else ok
                     end
                 else
-                    (* A value component. The members of a let rec are all
+                    (* Value component: the members of a let rec are all
                      * declared when the first is reached, so that each can
                      * refer to the others; those of a let ... and ... have
-                     * their labels declared after the last. *)
+                     * their labels declared after the last *)
                     let expFieldType =if maybe.isSome(expF) then
                         case maybe.unwrap(expF)
                             when tupleField with f then

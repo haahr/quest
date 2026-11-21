@@ -221,7 +221,7 @@ export
      * addresses taken, view maps, descriptor variables) by f, and the atoms
      * it holds by g. replaceVarsInOp passes a g that renames by f, and
      * replaceAtomsInOp an f that keeps each variable; mapInStmt does the same
-     * for statements, whose binders are variables *)
+     * for statements, whose binders are variables. *)
     let mapInOp(o: Op f: Rename g: AtomMap): Ok =
         case o
             when opAtom with x then x.atom := g(x.atom)
@@ -338,9 +338,10 @@ export
             else ok
         end
 
-    (* mapInOp for a statement's own fields (not its nested bodies): every
-     * variable clone copies there, binders and descriptor variables included,
-     * is renamed by f, so that a pass may rename at any stage *)
+    (* Applies f to variables and g to atoms in s's own fields (not its nested
+     * bodies). Every variable that clone copies there, including binders and
+     * descriptor variables, is renamed by f so passes can rename at any
+     * stage. *)
     let mapInStmt(s: Stmt f: Rename g: AtomMap): Ok =
         case s
             when sLet with x then

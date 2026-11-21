@@ -226,14 +226,14 @@ export
             f
         end
 
-    (* The adapter of an adapt plan: a function of the plan's target type whose
-     * environment is the closure it adapts, of the plan's source type. It
-     * takes the target's type parameters (the plan's thunk parameters), passes
-     * them on to the closure, converting each argument and the result by the
-     * plan's fields. The adapter of a known function, a closure of it without
-     * captures or type arguments, or of an imported member, has no
-     * environment: it calls the function, or the member as any call of an
-     * imported member does, directly, and its closure is static. *)
+    (* Returns the adapter function for an adapt plan, creating and caching it
+     * if needed. The adapter has the plan's target type and takes the target's
+     * type parameters (the plan's thunk parameters), forwarding them to the
+     * adapted closure while converting each argument and the result using the
+     * plan's field plans. When known is none, the adapted closure is passed as
+     * the adapter's environment; when known is a capture-free function or an
+     * imported module member, the adapter needs no environment, calls it
+     * directly, and yields a static closure. *)
     let adapter(t: Thunker plan: Plan a: Adapted known: maybe.T(Known)): Function =
         begin
             let knownKey = if maybe.isNone(known) then ""
@@ -282,9 +282,9 @@ export
                     let f = nodes.newFunction(nodes.newVar("qa_adapt" plan.target false) typeParams params target.result
                         nodes.bodyOf(vector.toArray(stmts)) maybe.none())
                     if maybe.isNone(known) then f.env := maybe.some(orig) end
-                    (* A thunk parameter stands for the target's type parameter
-                     * and the source's it is passed as; as the function's, for
-                     * the target's *)
+                    (* Each thunk parameter carries both the target and source
+                     * type-parameter symbol ids; on the adapter function
+                     * itself, record only the target's symbol id *)
                     let descriptorParams = vector.new(:nodes.DescriptorParam)
                     for i = 0 upto {extent a.thunkParams - 1} do
                         let tp = a.thunkParams[i]
@@ -296,8 +296,8 @@ export
             end
         end
 
-    (* Each return in b, and in the bodies it holds, of its value converted by
-     * plan *)
+    (* Rewrites each return in b and its nested bodies, in place, to convert
+     * its value with plan *)
     let rec convertReturns(b: Body plan: Plan): Ok =
         begin
             let rewritten = vector.new(:Stmt)
@@ -320,7 +320,8 @@ export
             b.statements := rewritten
         end
 
-    (* b without the lets of the variables a conversion made unused *)
+    (* Removes let bindings in b and its nested bodies for variables marked in
+     * t.dropped *)
     let rec dropLets(t: Thunker b: Body): Ok =
         begin
             let kept = vector.new(:Stmt)
@@ -334,13 +335,12 @@ export
             b.statements := kept
         end
 
-    (* A closure made only to be converted, made instead at the converted
-     * type: a copy of c's function whose parameters and result are the plan's
-     * target's, converting its parameters by the plan's fields to the
-     * function's types and its returns by the last. It has the function's
-     * captures, in the function's order, so a closure of it holds what c
-     * would have, and it reads them as the function does. One allocation, the
-     * closure, where an adapter's closure would have held c's *)
+    (* Builds a specialized copy of c's function directly at plan's target type
+     * for a closure that is created only to be adapted. The copy converts its
+     * parameters using a.fields, clones the body with the same environment
+     * layout and capture order as c, and converts every return using the final
+     * field plan. This avoids double allocation: one closure holds the
+     * captures directly instead of an adapter closure wrapping c's closure. *)
     let lambdaAdapter(t: Thunker plan: Plan a: Adapted c: nodes.OpMakeClosure): Function =
         begin
             let f = c.code
@@ -358,13 +358,13 @@ export
             end
             let env = nodes.newVar("env" model.okType false)
             clone.bindVar(cl maybe.unwrap(f.env) env)
-            (* Without the lets its own conversions already made unused: the
-             * copy's would be fresh variables the drop does not know *)
+            (* Drop dead lets from f's body before cloning, because cloning
+             * assigns fresh variable ids that t.dropped does not list *)
             dropLets(t f.body)
             clone.bindAll(cl f.body)
             let copied = clone.copyBody(cl f.body)
-            (* The copy's variables are fresh: their uses, for its own
-             * conversions *)
+            (* Count uses of the copy's fresh variables so conversions inside
+             * the copy can detect single-use closures *)
             walk.countBodyUses(copied t.uses hashMap.new(:Int :Bool intEqual hash.int))
             let last = if extent a.fields > 0 then a.fields[extent a.fields - 1] else maybe.none(:Plan) end
             if maybe.isSome(last) then convertReturns(copied maybe.unwrap(last)) end
@@ -384,13 +384,13 @@ export
             g
         end
 
-    (* The thunk of a type application whose instance is a function: a function
-     * of the instance's type (targetType) whose environment captures the
-     * function applied (of origType) and the type arguments, which it takes
-     * first, as closure conversion's lifted functions take their enclosing
-     * functions' type parameters. It passes on the type arguments and its own
-     * type parameters, converting each argument and the result by the
-     * application's plans. *)
+    (* Returns the wrapper thunk for a type application whose result is a
+     * function of targetType, creating and caching it if needed. Its
+     * environment captures the applied function (of origType) and its leading
+     * type parameters match the applied type arguments, mirroring how closure
+     * conversion lifts enclosing type parameters. The thunk forwards both sets
+     * of type parameters and descriptors to the original function while
+     * converting each argument and the result via o.plans. *)
     let typeAppThunk(t: Thunker o: nodes.OpTypeApp origType: Type targetType: Type): Function =
         begin
             let typeArgKeys = vector.new(:String)
@@ -558,11 +558,12 @@ export
             tuple let atom = nodes.atomOfVar(v) let type = ty end
         end
 
-    (* The closure a conversion converts, when it was made only to be
-     * converted: a variable bound to a closure with captures, used once, of a
-     * function made into no other closure, with no type parameters,
-     * descriptors, or view maps of its own, of value parameters only, whose
-     * result the plan converts (or neither result is Ok, or both) *)
+    (* Returns the OpMakeClosure converted by x when that closure was created
+     * solely for this adapt conversion and can be fused into lambdaAdapter.
+     * Requires a single-use variable bound to a capturing closure whose
+     * function has no other closures, no type parameters, descriptors, or
+     * record view maps, no unboxed result, only value parameters, and
+     * compatible Ok-ness between source and target results. *)
     let lambdaOf(t: Thunker x: nodes.OpConvert): maybe.T(nodes.OpMakeClosure) =
         begin
             let isAdapt = case x.plan.kind when planAdapt then true else false end
@@ -610,9 +611,9 @@ export
                 end
         end
 
-    (* Whether plan p, of fields and thunk parameters a, converts by no
-     * descriptor but static ones and its own thunk parameters': so that it
-     * can convert where nothing of the code it appears in is bound *)
+    (* Whether a plan (with descriptors descs and fields/thunk parameters a)
+     * uses only static descriptors and its own thunk parameters, so the
+     * conversion can be hoisted out of the local scope where it appears *)
     let rec planOwnDescriptors(descs: Array(Descriptor) a: Adapted own: hashMap.T(Int Bool)): Bool =
         begin
             for i = 0 upto {extent a.thunkParams - 1} do
@@ -630,10 +631,11 @@ export
             ok1
         end
 
-    (* The global holding x's conversion, when x converts by an adapt plan an
-     * immutable global the unit's top level binds, by a plan of static
-     * descriptors: made once, by a let after the global's (pending), and
-     * read wherever the global is converted so *)
+    (* Hoists an adapt conversion of an immutable top-level global when the
+     * plan depends only on static descriptors and its own thunk parameters.
+     * Schedules a single top-level let binding in t.pending right after the
+     * global's definition and returns that cached variable for all matching
+     * conversions. *)
     let globalConversion(t: Thunker x: nodes.OpConvert): maybe.T(Variable) =
         case x.value
             when atomVar with v then
@@ -881,13 +883,15 @@ export
              * need thunks of their own *)
             let var i = 0
             while i < vector.length(unit.functions) do
-                (* Not a function a conversion's copy has replaced: the copy,
-                 * made of its body as it was, is walked instead *)
+                (* Skip functions replaced by lambdaAdapter: their specialized
+                 * copies were cloned from the original body and are walked
+                 * instead *)
                 let f = vector.get(unit.functions i)
                 if not(hashMap.contains(t.droppedFunctions f.id)) then body(t f.body) end
                 i := i + 1
             end
-            (* Each global conversion, after its global's let *)
+            (* Insert each hoisted global conversion right after its global is
+             * bound *)
             for k = 0 upto {vector.length(t.pending) - 1} do
                 let p = vector.get(t.pending k)
                 let site = hashMap.find(t.topLets p.after)
@@ -904,8 +908,8 @@ export
                 end
                 b.statements := rewritten
             end
-            (* The closures made only to be converted, and their functions,
-             * now unused *)
+            (* Remove dead lets and functions left behind by fused lambda
+             * closures *)
             if not(hashMap.empty(t.dropped)) then
                 dropLets(t unit.main)
                 for k = 0 upto {vector.length(unit.modules) - 1} do dropLets(t vector.get(unit.modules k).init) end

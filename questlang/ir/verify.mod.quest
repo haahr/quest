@@ -32,16 +32,17 @@ export
 
     let irChecksEnabled(): Bool = eq(system.getEnv("QUEST_CHECK_IR") "1")
 
-    (* The scopes and the core invariants are questlang/ir/verifycore's; this
+    (* The scopes and the core invariants are questlang/ir/verifyCore's; this
      * module adds the represented and described stages' checks *)
 
     (* =========================================================================
      * Representations (after the represent pass)
      *
-     * The uses of values in another representation than their use requires: a
-     * value's representation is its type's, or for a boxed value its slot
-     * representation (a boxed mutable variable reads its value, and is assigned
-     * its box); and the slots of aggregates take records and variants boxed.
+     * Checks that every value is used in the representation its use requires.
+     * A value's representation comes from its type, or from its slot
+     * representation when boxed (a boxed mutable variable reads as its value
+     * and is assigned its box); aggregate slots require records and variants to
+     * be boxed unless embedded in the aggregate's own allocation.
      * ====================================================================== *)
 
     let representationProblems(unit: nodes.Unit): vector.T(String) =
@@ -233,9 +234,9 @@ export
     (* =========================================================================
      * Descriptors (after the describe pass)
      *
-     * The descriptor operands missing, unbound, or ill-formed, and the static
-     * descriptors and tables operations refer to that are not the unit's static
-     * data.
+     * Checks that no descriptor operand is missing, out of scope, or
+     * ill-formed, and that every static descriptor, offset table, and tag map
+     * referenced by an operation is listed in the unit's static data.
      * ====================================================================== *)
 
     (* The descriptor variables in scope, and the symbols of the type parameters
@@ -475,8 +476,9 @@ export
                     bind(f.descriptorParams where)
                     let inner = withParams(top f.descriptorParams)
                     body(f.body inner where)
-                    (* View maps: each of a type parameter of the function, at
-                     * the bound, and every one used is the function's *)
+                    (* Each view map must belong to one of the function's type
+                     * parameters, and every view map used in the body must be
+                     * declared on the function *)
                     let own = verifyCore.newIds()
                     for j = 0 upto {extent f.descriptorParams - 1} do hashMap.insert(own f.descriptorParams[j].v.id true) end
                     let maps = verifyCore.newIds()

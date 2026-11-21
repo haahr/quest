@@ -1,15 +1,16 @@
 (* Quest Self-Hosted Compiler: The SSA's Tail Jumps Interface
  *
- * Makes loops of mutual tail calls (docs/ssa.md section 4.1): the unit's
- * functions and the direct tail calls between them form a graph, whose
- * strongly connected components are the groups of mutually tail-recursive
- * functions. Into each function of a group of more than one are copied the
- * other members it reaches through tail calls, each once: those without stack
- * slots or a try, whose parameters are passed in registers and whose results
- * are passed as the function's, while the copies total at most 100
- * instructions. Each tail call of a member copied in then jumps to its copy's
- * first block; a tail call of the function itself is left, for the backends
- * to make a jump. *)
+ * This pass turns mutual tail recursion into intra-function loops
+ * (docs/ssa.md section 4.1). Direct tail calls between functions in a unit
+ * form a call graph whose strongly connected components (maximal groups of
+ * functions that can all reach one another) are the mutually tail-recursive
+ * groups. Into each function in a multi-function group, this pass copies the
+ * other group members it reaches through tail calls (each at most once) as
+ * long as the copied function has no stack slots or try blocks, passes all
+ * parameters in registers, matches the target function's return types and
+ * calling convention, and fits within a 100-instruction budget. Tail calls to
+ * copied members are then rewritten as jumps to the copy's entry block, while
+ * self tail calls are left for the backends to turn into jumps. *)
 
 interface TailJumps
 import
@@ -17,15 +18,18 @@ import
 export
     jumpUnit(u: ssa.Unit): Ok
 
-    (* What questlang/ssa/passes/trampolines shares. Whether g can be copied
-     * into another function: it has no stack slots and no try, and each of
-     * its parameters is passed in a register, as a jump passes it *)
+    (* Helpers shared with questlang/ssa/passes/trampolines. True if g can be
+     * copied into another function: it has no stack slots or try terminators,
+     * and all of its parameters are passed in registers (as a jump passes
+     * block arguments). *)
     copiable(g: ssa.Function): Bool
-    (* Whether g's returns are f's: the same results, passed the same way *)
+    (* True if f and g have the same result types and return calling
+     * convention *)
     sameResults(f: ssa.Function g: ssa.Function): Bool
-    (* Appends a copy of g to block at of f, which has no terminator yet:
-     * g's first block's instructions and terminator, args in place of its
-     * parameters, and its other blocks as new blocks of f. No block of g may
-     * go to its first *)
+    (* Append a copy of g into block `at` of f (which must not have a
+     * terminator yet). The instructions and terminator of g's entry block are
+     * appended to `at` with args substituted for g's parameters, and g's
+     * remaining blocks are added as new blocks of f. No block in g may branch
+     * back to g's entry block. *)
     spliceInto(f: ssa.Function at: Int g: ssa.Function args: Array(Int)): Ok
 end

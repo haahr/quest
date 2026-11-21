@@ -1,23 +1,25 @@
 (* Quest Self-Hosted Compiler: Shapes Interface
  *
- * bootstrap/python/quest/repr/shapes.py: the backend's view of Quest types
- * (docs/ir.md section 4.1). A shape says what a type is structurally, with
- * aliases stripped, applications of type operators reduced, and recursion made
- * explicit. shape(t) is computed from the canonical form of t, and shapes are
- * cached per canonical type, so equal types have the same shape; a recursive
- * type's shape is a cycle. Shapes are built once and not changed afterwards.
+ * Provides the backend's structural view of Quest types (docs/ir.md
+ * section 4.1). A shape strips type aliases, reduces type operator
+ * applications, and makes recursion explicit as a cycle in the shape graph.
+ * shape(t) is computed from the canonical form of t and cached per canonical
+ * type, so equal types share the same shape. Shapes are built once and never
+ * modified afterwards.
  *
- * A shape is a record with identity (its id), whose fields are set as its kind
- * says (see Shape). Its element, result, and body, which the bootstrap leaves
- * None for the other kinds, are unwrapped by the functions of those names. *)
+ * Each Shape is a node with a unique id whose populated fields depend on its
+ * kind (see Shape below). The element, result, and body accessors unwrap the
+ * corresponding optional fields (which are none for other kinds). The
+ * counterpart is bootstrap/python/quest/repr/shapes.py. *)
 
 interface Shapes
 import
     questlang/types/model : questlang/types/Model
     util/maybe : util/Maybe
 export
-    (* The kinds of shapes: the scalars (int to bottom), and the rest; pending
-     * is a placeholder's while it is built *)
+    (* The kinds of shapes: scalars (int through bottom) and compound or
+     * opaque kinds; pending is a temporary placeholder while a recursive
+     * shape is built *)
     Def ShapeKind = Option shapeInt shapeReal shapeBool shapeChar shapeString shapeOk shapeWord shapeBottom shapeTuple
         shapeRecord shapeVariant shapeOption shapeArray shapeCell shapeOut shapeException shapeFun shapeAll shapeAuto
         shapeTypevar shapeAbstract shapeExternal shapeOperator shapePending end
@@ -48,22 +50,22 @@ export
     (* A kind's name, as the bootstrap spells it *)
     kindName(k: ShapeKind): String
 
-    (* The backend's view of a type, whose fields are set as its kind is:
+    (* The backend's structural view of a type, with fields populated by kind:
      * - components: tuple (value components), record (fields), auto
      *   (signature);
      * - cases: variant (a payload shape each, or none) and option (a tuple
      *   shape each, or none);
-     * - element: array, cell (Var), out (Out), exception (payload);
-     * - params and result: fun; typeParams and body: all; typeParams (one) and
-     *   components: auto;
-     * - symbolId, name, and bound: typevar, a type parameter or an abstract
-     *   type of a module or interface; bound is the shape of its POWER bound,
-     *   if any;
-     * - name: abstract (by its short name) and external (its C type).
-     * An operator shape is a type operator's, passed for a higher-kinded type
-     * parameter: opaque. type is the canonical type the shape describes, and
-     * structure the type whose outermost constructor it describes (the
-     * unfolding of a recursive type). *)
+     * - elementShape: array, cell (Var), out (Out), exception (payload);
+     * - params and resultShape: fun; typeParams and bodyShape: all;
+     *   typeParams (one) and components: auto;
+     * - symbolId, name, and bound: typevar (a type parameter or an abstract
+     *   type of a module or interface); bound is the shape of its POWER
+     *   (subtype) bound, if any;
+     * - name: abstract (its short name) and external (its C type).
+     * An operator shape represents a type operator passed for a higher-kinded
+     * type parameter and is opaque. type is the canonical type the shape
+     * describes, and structure is the type whose outermost constructor it
+     * describes (the unfolding for a recursive type). *)
     Def Rec Shape = Tuple
         id: Int
         var kind: ShapeKind
@@ -92,24 +94,23 @@ export
 
     (* The shape of a type (which must not contain unsolved metavariables) *)
     shape(t: model.Type): Shape
-    (* Whether a module's abstract types whose representations are known (the
-     * modules elaborated from their sources) have their representations'
-     * shapes, as in a whole program, whose modules are one unit
-     * (docs/ir.md section 4.1): set once, before any shape is asked for.
-     * Otherwise, and for the others, an abstract type's shape is opaque *)
+    (* Control whether module abstract types with known representations (from
+     * modules elaborated from source) expand to their representation shapes,
+     * as in whole-program compilation (docs/ir.md section 4.1). Must be set
+     * once before any shape is requested; otherwise abstract types keep opaque
+     * shapes. *)
     setTransparentAbstractTypes(on: Bool): Ok
     transparentAbstractTypes(): Bool
-    (* Whether the unit being compiled holds a pointer and a QVal alike, as one
-     * reference, so that boxing or unboxing one changes no function's
-     * signature: the wasm backend's eqref (docs/wasm.md section 3.2),
-     * set by the backend that runs the passes for each unit *)
+    (* Control whether pointers and QVals share one reference representation
+     * (such as WebAssembly's eqref, docs/wasm.md section 3.2), so boxing or
+     * unboxing a pointer does not change a function's signature. Set per unit
+     * by the active backend. *)
     setReferencesAlike(on: Bool): Ok
     referencesAlike(): Bool
-    (* The shape of a type as its values are described at run time, whose
-     * module's abstract types are opaque even where they are transparent to
-     * shape: a descriptor's form, echo's, and a static descriptor's identity
-     * (docs/ir.md section 4.1). Where abstract types are not transparent,
-     * the type's shape *)
+    (* The runtime-descriptor shape of t, keeping module abstract types opaque
+     * even when transparentAbstractTypes is enabled (used for descriptors and
+     * echo; docs/ir.md section 4.1). When transparentAbstractTypes is false,
+     * this is identical to shape(t). *)
     opaqueShape(t: model.Type): Shape
 
     element(s: Shape): Shape

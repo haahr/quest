@@ -32,10 +32,12 @@ export
     let returnValues(fn: vals.Fn vs: Array(Int)): Ok = vals.terminate(fn option termReturn of ssa.Terminator with let values = vs end)
     let param(f: Function i: Int): Int = vector.get(ssa.block(f 0).params i)
 
-    (* The SSA types of the parameters of a C function of a function type's
-     * signature, after lead pointers: its type parameters' descriptors, then
-     * its parameters (a var or out parameter's location, an Ok as a word);
-     * and where its 16-byte composites start *)
+    (* Builds the SSA parameter layout for a C function matching sig after lead
+     * pointer parameters: type-parameter descriptors come first, followed by
+     * value parameters (with var/out parameters passed as pointers and Ok
+     * parameters passed as a QVal word). Records the starting indices of
+     * 16-byte two-word composites in pairs and single-byte arguments in
+     * narrow. *)
     Def Params = Tuple types: vector.T(ssa.Type) pairs: vector.T(Int) narrow: vector.T(Int) end
     let paramsOf(lead: Int sig: staticdata.ShapeSignature): Params =
         begin
@@ -65,8 +67,8 @@ export
             tuple let types = types let pairs = vector.new() let narrow = vector.new() end
         end
 
-    (* The pairs (or the narrow bytes) xs of a signature's parameters, for a
-     * call that passes by more lead words before them *)
+    (* Returns parameter indices xs (pairs or narrow) shifted by adding by,
+     * accounting for extra leading arguments passed at a call site *)
     let shifted(xs: vector.T(Int) by: Int): Array(Int) =
         begin
             let r = vector.toArray(xs)
@@ -84,12 +86,12 @@ export
 
     let finished(fn: vals.Fn): Function = begin vals.finish(fn) fn.f end
 
-    (* A module file's exported function for a member of its interface that is
-     * a function or a polymorphic value (qv_<module>_<member>): it calls the
-     * member's function directly when the member is known to be a closure
-     * without captures (an adapter's, when the interface's type differs), and
-     * its closure otherwise, at the interface's C signature
-     * (codegen/c/declarations' moduleFunctionSignature) *)
+    (* Builds a module file's exported C entry point (qv_<module>_<member>) for
+     * an interface member that is a function or polymorphic value, using the
+     * interface's C signature (codegen/c/declarations'
+     * moduleFunctionSignature). When the member is known to be a capture-free
+     * closure (or an adapter when the interface type differs), it calls the
+     * underlying function directly; otherwise it calls through the closure. *)
     let exportedFunction(u: vals.UnitBuilder clean: String name: String v: Variable): maybe.T(Function) =
         begin
             let shape = shapes.shape(v.type)
@@ -107,7 +109,9 @@ export
                     andif {extent maybe.unwrap(:ir.OpMakeClosure known).typeArgs is 0}
                     andif {extent maybe.unwrap(:ir.OpMakeClosure known).captures is 0}
                 let results = if direct then
-                    (* At the code's own types (vals.retyped) *)
+                    (* Retype arguments and results to match the callee's own
+                     * SSA types (which may use pointers where the interface
+                     * uses QVal words) *)
                     let code = maybe.unwrap(known).code
                     let all = vals.retyped(fn vals.concat(array of vals.null(fn) end args) vals.codeParamTypes(code))
                     let vs = vals.callQuest(fn vals.codeName(u code) all shifted(s.pairs 1) shifted(s.narrow 1)
@@ -124,9 +128,9 @@ export
             end
         end
 
-    (* The adapter of a function type (quest_adapt_<tag>), the thunk its
-     * closures call (quest_thunk_<tag>), and its invoker (quest_invoke_<tag>),
-     * as codegen/c/declarations' emitFunTypeAdapters writes them in C *)
+    (* Builds the thunk (quest_thunk_<tag>), adapter (quest_adapt_<tag>), and
+     * invoker (quest_invoke_<tag>) for a function type, matching the C
+     * functions emitted by codegen/c/declarations' emitFunTypeAdapters *)
     let funTypeAdapters(u: vals.UnitBuilder tag: String funType: Type): Array(Function) =
         begin
             let sig = staticdata.funShapeSignature(funType)
@@ -173,7 +177,8 @@ export
                 at := at + n
                 vector.append(paramValues vs)
             end
-            (* Called directly, at the type's own C signature *)
+            (* Fast path: signatures match, so call orig directly at this C
+             * signature *)
             thunk.cur := directB
             let var directArgs = vals.concat(array of orig end descs)
             for j = 0 upto {np - 1} do
@@ -193,8 +198,8 @@ export
                 vals.fromWord(thunk convertWord(thunk vals.toWord(thunk directResults ret) vals.loadWord(thunk from resultAt vals.tPtr)
                     vals.loadWord(thunk to resultAt vals.tPtr)) ret)
             else directResults end)
-            (* Called through the invoker of the closure's own type, with
-             * words *)
+            (* Slow path: signatures differ, so pack arguments as QVal words
+             * and call orig through its own type's invoker *)
             thunk.cur := uniformB
             let words = array of({nq + np} 0)
             for k = 0 upto {nq - 1} do words[k] := vals.toVal(thunk descs[k]) end
@@ -215,7 +220,7 @@ export
                     ret)
                 end)
 
-            (* The adapter: a closure of the thunk *)
+            (* Adapter: allocates a QFunAdapterClosure pointing to the thunk *)
             let adapt = newFunction(u "quest_adapt_" <> tag false pointers(3) array of vals.part(vals.tPtr 8 false) end)
             let af = adapt.f
             let adapted = representation.alloc(adapt bytes("QFunAdapterClosure") objectLayout.adapterClosureSymbol)
@@ -231,7 +236,8 @@ export
             vals.endInit(adapt mark adapted)
             returnValues(adapt array of adapted end)
 
-            (* The invoker: a call of a closure of this type with words *)
+            (* Invoker: unpacks QVal words and calls a closure at this C
+             * signature *)
             let invoke = newFunction(u "quest_invoke_"
                 <> tag false pointers(2) array of vals.part(vals.tVal 8 false) end)
             let vf = invoke.f

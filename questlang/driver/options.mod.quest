@@ -162,9 +162,9 @@ export
             system.sysexit(2)
         end
 
-    (* The command line: the phase to stop after, the file or the program
-     * given, and the program's arguments. Each option has the bootstrap's
-     * spellings. *)
+    (* Parses system.args into the driver's options, including the stop phase,
+     * input source, and program arguments. Accepts the bootstrap compiler's
+     * option spellings. *)
     let options: T =
         begin
             let var stopAfter = if compileMode then "codegen_c" else "interpret" end
@@ -411,11 +411,11 @@ export
             let fromStdin = stringOp.equal(file "-") orif {noProgram andif not(interactive) andif not(kernel)
                 andif not(atTerminal)}
             let fromFile = not(stringOp.equal(file "")) andif not(fromStdin)
-            (* --backend wasm and a program file, with no phase, output, or
-             * compile: the program compiled to WebAssembly and run in
-             * --wasm-engine's engine, not on the native JIT. -e, -i, the
-             * kernel, and the REPL, which run on the JIT, are refused with it
-             * (docs/wasm.md section 8.2) *)
+            (* With --backend wasm and a program file (and no phase, output, or
+             * compile), compile to WebAssembly and run in --wasm-engine's
+             * engine rather than on the native JIT. Forms that require the JIT
+             * (-e, -i, --kernel, and the REPL) are rejected with --backend
+             * wasm (docs/wasm.md section 8.2). *)
             let plainRun = not(stopGiven) andif not(compileMode) andif maybe.isNone(output)
                 andif {vector.length(dumpAfter) is 0}
             let runWasm = plainRun andif stringOp.equal(backend "wasm") andif fromFile andif not(interactive)

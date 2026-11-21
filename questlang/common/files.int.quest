@@ -1,11 +1,12 @@
 (* Quest Self-Hosted Compiler: File Operations Interface
  *
- * Paths and files as the compiler uses them, over util/path, os/path, and
- * os/fileStats: joining and normalizing paths, their components, files' text
- * and times, and writing a file so that no other process reads it half
- * written. The compiler's own files (a build's, or tests') may be in memory
- * (common/memoryFiles), which these read and write too. modules/paths finds
- * units on top of them. *)
+ * Provides the path and file operations the compiler uses on top of
+ * util/path, os/path, and os/fileStats: joining and normalizing paths,
+ * inspecting path components, reading file text and timestamps, and writing
+ * files atomically so no other process observes a partial write. Compiler
+ * artifacts may also live in memory (common/memoryFiles), which these
+ * operations read and write transparently. modules/paths builds unit
+ * discovery on top of this interface. *)
 
 interface Files
 import
@@ -35,18 +36,18 @@ export
     (* A regular file's modification time in nanoseconds, from a single stat;
      * none if the path names anything else or nothing *)
     fileTime(file: String): maybe.T(Int)
-    (* What a path names' modification time in nanoseconds, the greatest Int
-     * for a file in memory; raises system.error if it names nothing *)
+    (* Modification time of p in nanoseconds, or the greatest Int for a file in
+     * memory; raises system.error if p does not exist *)
     modifiedNs(p: String): Int
     (* Whether a path names a regular file, or a file in memory that has been
      * written *)
     isFile(p: String): Bool
     (* Names this process's temporary files apart from other workers' *)
     setWorkerTag(tag: String): Ok
-    (* Writes text to file (making its directory) through a temporary file
-     * renamed over it, so that another process never reads it half written:
-     * the workers of a parallel build may write the same interface's
-     * artifacts at once; or to the file in memory *)
+    (* Writes text to file, creating parent directories as needed. On disk,
+     * writes to a temporary file and renames it atomically so parallel build
+     * workers writing the same interface artifacts never expose a partial
+     * write; for in-memory paths, updates common/memoryFiles directly. *)
     writeAtomically(file: String text: String): Ok
     (* A file name's last component without its last suffix (Python's
      * Path.stem): main for src/main.quest, .profile for .profile *)

@@ -50,7 +50,7 @@ export
             found
         end
 
-    (* Whether g takes args, of f, as its parameters *)
+    (* Whether g's parameter types match the types of args in f *)
     let takes(f: Function g: Function args: Array(Int)): Bool =
         begin
             let var same = extent args is vector.length(g.paramTypes)
@@ -89,8 +89,9 @@ export
             end
         end
 
-    (* Copies into f, an export of one block, the function its block
-     * tail-calls, while it can; the symbols of the functions copied *)
+    (* If f is an exported single-block function, splices the chain of
+     * eligible functions its entry block tail-calls into f and returns their
+     * symbols *)
     let trampolineFunction(f: Function functions: vector.T(Function) numbers: hashMap.T(String Int))
         : vector.T(String) =
         begin
@@ -135,12 +136,12 @@ export
             end
         end
 
-    (* The unit's table of its functions' names for tracebacks (ssa/build's
-     * unit, qr_funcs), as pairs of words: a function's code and its name.
-     * A frame is named by the exact start of its function, so an export
-     * with a function copied into it gets an entry of that function's name,
-     * and the count that qr_register_dicts passes quest_register_funcs grows
-     * to match *)
+    (* Updates the unit's traceback name table (qr_funcs, built by
+     * ssa/build/unit as pairs of function-start symbol and name pointer). A
+     * stack frame is identified by the exact entry address of its function,
+     * so each export that inlined a callee gets a new entry with that
+     * callee's name, and the count passed to quest_register_funcs is updated
+     * to match. *)
     let name(u: ssa.Unit exports: vector.T(String) callees: vector.T(vector.T(String))): Ok =
         begin
             let var table = ~1
@@ -161,7 +162,8 @@ export
                         end
                         let words = vector.fromArray(x.words)
                         for e = 0 upto {vector.length(exports) - 1} do
-                            (* The last function copied that has a name *)
+                            (* Record the name of the last inlined callee that
+                             * has one in qr_funcs *)
                             let copied = vector.get(callees e)
                             let var found = false
                             for c = 0 upto {vector.length(copied) - 1} do

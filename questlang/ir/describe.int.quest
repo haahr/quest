@@ -1,23 +1,24 @@
 (* Quest Self-Hosted Compiler: The Describe Pass Interface
  *
- * bootstrap/python/quest/ir/describe.py (docs/ir.md sections 7, 8.4): the pass
- * after represent that makes run-time types explicit, producing the described
- * stage. Every run-time use of a type gets a descriptor operand: a type
- * parameter in scope is its descriptor variable, a type that mentions none is
- * its static descriptor, and a type that mentions some is its template, a hole
- * for each, instantiated with their descriptors. The pass also lists the unit's
- * static data (static descriptors, offset tables, tag maps, and the types whose
- * aggregates a backend declares) and each module's abstract types'
- * registrations. *)
+ * Mirrors bootstrap/python/quest/ir/describe.py (docs/ir.md sections 7 and
+ * 8.4). This pass runs after represent and makes run-time type information
+ * explicit, producing the described stage. Every run-time use of a type gets a
+ * descriptor operand (a run-time representation of a type): a type parameter in
+ * scope uses its descriptor variable, a closed type uses a static descriptor,
+ * and a type mentioning type parameters in scope uses a template with a hole
+ * for each parameter, instantiated with their descriptors. The pass also
+ * collects the unit's static data (static descriptors, record offset tables,
+ * variant tag maps, and the types whose aggregate structs a backend declares)
+ * and registers each module's abstract types. *)
 
 interface Describe
 import
     questlang/types/model : questlang/types/Model
     questlang/ir/nodes : questlang/ir/Nodes
 export
-    (* A descriptor the pass cannot make: in a thunk, of a type mentioning a
-     * type parameter of the enclosing function, whose descriptor the thunk is
-     * not passed *)
+    (* Raised when the pass cannot build a descriptor, such as inside a
+     * generated adapter thunk for a type that mentions an enclosing function's
+     * type parameter whose descriptor the thunk does not receive *)
     unsupportedDescriptor: Exception(String)
 
     (* How echo writes a value of type t without a descriptor: "Word", "fun",

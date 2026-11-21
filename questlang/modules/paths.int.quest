@@ -1,15 +1,15 @@
 (* Quest Self-Hosted Compiler: Unit File Paths Interface
  *
- * bootstrap/python/quest/modules/paths.py, from source: finding the files of
- * interfaces (<name>.int.quest), modules (<name>.mod.quest), and objects
- * (<name>.o) on the search path (the importing unit's directory, the include
- * paths, QUEST_LIB, lib/, and the project directory), and the canonical names
- * of units (docs/modules.md section 2.3).
+ * Counterpart to bootstrap/python/quest/modules/paths.py. This unit locates
+ * interface (.int.quest), module (.mod.quest), and object (.o) files on the
+ * search path (the importing unit's directory, include paths, QUEST_LIB, lib/,
+ * and the project directory) and computes canonical unit names
+ * (docs/modules.md section 2.3).
  *
- * Paths are strings, and are made absolute and normalized lexically (. and ..
- * removed), not through the file system: the bootstrap's Path.resolve also
- * follows symbolic links. The project directory, which the bootstrap knows as
- * its own source tree, is QUEST_HOME, which the test runners set, or else the
+ * Paths are strings made absolute and normalized lexically (. and .. removed),
+ * not through the file system; the bootstrap's Path.resolve also follows
+ * symbolic links. The project directory, which the bootstrap knows as its own
+ * source tree, comes from QUEST_HOME (set by the test runners) or else the
  * current directory. *)
 
 interface Paths
@@ -53,11 +53,11 @@ export
     resolveInterfaceSourceFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String)
     resolveModuleFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String)
     resolveObjectFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String)
-    (* Interface name on the search path: a fresh .qi if there is one (one that
-     * records this compiler's ABI version and the source it was built from,
-     * is at least as new as that source, and whose dependencies have not
-     * changed), else its .int.quest. Without a source, the first .qi found,
-     * whatever its ABI version. *)
+    (* Resolves interface name on the search path to a fresh .qi file if one
+     * exists (recording this compiler's ABI version and the source it was
+     * built from, at least as new as that source, with unchanged dependencies),
+     * or else its .int.quest source. If no source exists, returns the first
+     * .qi file found regardless of ABI version. *)
     resolveInterfaceFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String)
 
     (* An interface that an interface imports, directly or through the
@@ -96,12 +96,12 @@ export
      * canonicalizeModulePath *)
     findCanonicalModuleSource(canonName: String includePaths: Array(String) programDir: maybe.T(String))
         : maybe.T(String)
-    (* The canonical name of the interface in file (util/Path for
-     * lib/util/path.int.quest): the directory of the file's canonical path,
-     * with the last segment of declaredName, the name the interface declares
-     * or the path it was imported by, which keeps the capitals that file names
-     * do not have. For a file at a root, declaredName itself if it has a
-     * directory, else that last segment; without a file, declaredName *)
+    (* Returns the canonical name of the interface in file (such as util/Path
+     * for lib/util/path.int.quest): the directory of the file's canonical path
+     * joined with the last segment of declaredName, which preserves the
+     * capitalization that file names lack. For a file directly under a root,
+     * returns declaredName if it includes a directory, else its last segment;
+     * when file is none, returns declaredName. *)
     canonicalizeInterfaceName(
         file: maybe.T(String) includePaths: Array(String) declaredName: String programDir: maybe.T(String)
     ): String

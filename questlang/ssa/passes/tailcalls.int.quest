@@ -1,12 +1,16 @@
 (* Quest Self-Hosted Compiler: The SSA's Tail Calls Interface
  *
- * Marks the SSA's calls in tail position as tail calls (docs/ssa.md section 3,
- * docs/arm64.md section 3.7): a call whose results, or the extension of its
- * byte result, are what the function returns, directly or through blocks that
- * only pass them on to a return. A function a stack slot's address may escape
- * from (stored, passed to a call, or returned) has none, since a tail call
- * ends its frame: that includes every function that enters a try, whose
- * handler record is a slot on the chain. *)
+ * Marks calls in tail position as tail calls (docs/ssa.md section 3,
+ * docs/arm64.md section 3.7). A call is in tail position when its results —
+ * or a byte sign/zero extension or pointer/QVal retype of its result — are
+ * what the function returns, either directly or through empty blocks that
+ * only forward them to a return.
+ *
+ * A function from which any stack slot's address may escape (stored into
+ * memory, passed to a call, or returned) gets no tail calls, because a tail
+ * call reuses the caller's stack frame and invalidates its slots. That
+ * includes every function that enters a try, since its exception-handler
+ * record is a stack slot linked onto the handler chain. *)
 
 interface TailCalls
 import

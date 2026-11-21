@@ -198,13 +198,14 @@ export
 
     let newScope(): hashMap.T(Int Variable) = hashMap.new(intEqual hash.int)
 
-    (* A static descriptor operand for t (a closed type, or a template), whose
-     * descriptor is listed once in the unit's static data. Types of one shape
-     * share one listed descriptor (keyed "s" and the shape's id), but an
-     * echo descriptor writes the alias names the type was written with, so
-     * each type has its own (keyed "e" and the type's id). The operand is a
-     * new node, apart from the one listed: a backend finds the listed one by
-     * the operand's type, as the bootstrap's describe does *)
+    (* Returns a static descriptor operand for t (a closed type or a template)
+     * and records its descriptor once in the unit's static data. Types with the
+     * same shape share one static descriptor (keyed by "s" and the shape's id),
+     * whereas an echo descriptor preserves the alias names written in the type,
+     * so each type gets its own (keyed by "e" and the type's id). The returned
+     * operand is a fresh node separate from the listed entry; a backend looks
+     * up the listed entry by the operand's type, matching the bootstrap
+     * compiler. *)
     let static(d: Describer t: Type echo: Bool): nodes.StaticDescriptor =
         begin
             let key = if echo then "e" <> conv.int(t.id) else "s" <> conv.int(shapes.opaqueShape(t).id) end
@@ -346,11 +347,12 @@ export
             end
         end
 
-    (* The offset table of a record laid out as lay viewed at view, listed
-     * once in the unit's static data for each pair of shapes. With registered
-     * (both types are closed), the table also gets its types' static
-     * descriptors, by which the runtime finds it for a dynamic value; a table
-     * once registered stays so for every literal that shares it *)
+    (* Returns the offset table for a record laid out as lay and viewed at view,
+     * listing it once in the unit's static data for each pair of shapes. When
+     * registered is true (both types are closed), the table also records static
+     * descriptors for both types so the runtime can find it for dynamic values;
+     * once registered, the table stays registered for every literal that shares
+     * it. *)
     let offsetTable(d: Describer view: Type lay: Type registered: Bool): nodes.OffsetTable =
         begin
             let key = conv.int(shapes.shape(view).id) <> "," <> conv.int(shapes.shape(lay).id)
@@ -418,9 +420,10 @@ export
 
     (* Bodies *)
 
-    (* The view map a value is read through its type's bound by, if its type is
-     * a type parameter in scope bounded by a record, variant, option, or tuple
-     * type; made for the function on first use *)
+    (* Returns the view map (a runtime mapping from a concrete type's layout to
+     * its bound's layout) used to read a value of a type parameter in scope
+     * bounded by a record, variant, option, or tuple type. Creates and records
+     * the view map on the enclosing function on first use. *)
     let viewMap(d: Describer a: Atom): maybe.T(Variable) =
         begin
             let s = shapes.shape(typeOf(a))
@@ -458,29 +461,28 @@ export
 
     let memberType(m: nodes.Module name: String): Type = hashMap.find(m.members.vars name).type
 
-    (* Gives operation o, which the let of result binds (none for a do), the
-     * descriptors it needs at run time, in place (docs/ir.md section 8.4):
-     * - a read of a value of a type parameter bounded by a record, variant,
-     *   option, or tuple type (a field, a component, a tag, a payload, an
-     *   ordinal, an address) the view map it reads through (viewMap);
-     * - is and isnot, when whether two values are the same depends on their
-     *   type, their type's: for QVal words, whose bits are compared except
-     *   for a Real's 0.0 and ~0.0, and a tuple's or option's proxies
-     *   (quest_val_is); and for options that is compares by case, with no
-     *   components (quest_option_is, docs/extensions.md, Options as Values).
-     *   Not for a handler's exception variable, which holds the exception
-     *   with its payload and is compared by the exception's address;
-     * - calls, external calls, closures, and type applications their type
-     *   arguments'; a type application of a function also its thunk's
-     *   descriptor variables, which its plans use;
-     * - conversions their plans' (describePlan);
-     * - a record literal its own type's, which its header carries, and its
-     *   view's offset table: the static one, listed in the unit's static
-     *   data, or with run-time offsets the view's descriptor, from which the
-     *   runtime finds the table;
-     * - a field read through the offset table's stored types its type's, to
-     *   convert it to;
-     * - an auto value its witness's, its run-time type component *)
+    (* Attaches the run-time descriptors and view maps needed by operation o in
+     * place, where result is the variable bound by the enclosing let (none for
+     * a do statement; docs/ir.md section 8.4):
+     * - reads of a type parameter bounded by a record, variant, option, or
+     *   tuple (field, component, tag, payload, ordinal, or address) get the
+     *   view map they read through (viewMap);
+     * - is and isnot get the operand type's descriptor when identity depends on
+     *   the type: QVal (generic uniform-word) values (quest_val_is), options
+     *   compared by case (quest_option_is, docs/extensions.md, Options as
+     *   Values), and variants (QVariantVal). Handler exception variables are
+     *   excluded because they are compared by the exception's address;
+     * - calls, external calls, closures, and type applications get descriptors
+     *   for their type arguments; a type application of a function also gets
+     *   its thunk's descriptor variables for its plans;
+     * - conversions describe their plans (describePlan);
+     * - record literals get their concrete type's descriptor (stored in the
+     *   record header) plus either a static offset table or, with run-time
+     *   offsets, the view's descriptor so the runtime can look up the table;
+     * - field reads marked stored (converted from a subtype's stored type) get
+     *   the expected field type's descriptor;
+     * - auto values get the descriptor of their witness (run-time type
+     *   component). *)
     let operation(d: Describer o: Op result: maybe.T(Variable)): Ok =
         begin
             case o
@@ -576,15 +578,15 @@ export
      * x.witness is a new descriptor variable standing for the value's type
      * component, its A (the C printer binds it to the value's type_desc).
      * Each case gets its matched type's descriptor, and the arm of a case
-     * with binders a DescriptorPair per component the represent pass marked
-     * converted (arm.converted; the others are copied), the descriptors it is
-     * converted from and to:
+     * with binders gets a DescriptorPair per component the represent pass
+     * marked converted (arm.converted; the others are copied), giving the
+     * descriptors it is converted from and to:
      * - "component", a component of type A itself (a): from the witness to
      *   the case's type for it;
      * - "mentions", one whose type mentions A otherwise (show): from its stored
      *   type, A being the witness, to the case's type for it.
      * The arm's descriptors, and its plan's for an exact case, are described
-     * with A's symbol bound to the witness *)
+     * with A's symbol bound to the witness. *)
     let describeInspect(d: Describer x: nodes.StmtInspect): Ok =
         if maybe.isSome(x.autoType) then
             let autoType = maybe.unwrap(x.autoType)
@@ -637,10 +639,10 @@ export
             b.statements := statements
         end
 
-    (* s, given the descriptors and view maps it needs (as operation says
-     * for its operation), as are the statements in it, in place; or the
-     * statement that replaces it: an echo of a package, whose line its type
-     * gives, becomes the text echoed *)
+    (* Attaches the needed descriptors and view maps to s and its nested
+     * statements in place, returning s or its replacement. An echo of a
+     * package, whose output line is determined statically by its written type,
+     * is replaced by sEchoText. *)
     and statement(d: Describer s: Stmt): Stmt =
         begin
             let var replaced = maybe.none(:Stmt)
@@ -767,19 +769,18 @@ export
         end
 
     (* =========================================================================
-     * The types a unit's C declares the aggregates of
+     * Aggregate types declared in a unit's C output
      *
-     * Those of its variables and functions' results, of the operations' and
-     * plans' types (and those plans convert inside), of the records its
-     * literals make and the payloads its inspect arms make, of its imports'
-     * interfaces, and of its offset tables, in the order first met: the order
-     * of the bootstrap's traversal of nodes' fields (walk.contents), which this
-     * lists case by case.
+     * Collects the types of a unit's variables, function results, operations,
+     * plans (and the types converted inside them), record literals, inspect-arm
+     * payloads, imported interfaces, and offset tables in order of first
+     * appearance. The traversal visits each node's fields in the same order as
+     * the bootstrap compiler's walk.contents.
      * ====================================================================== *)
 
-    (* The ids seen of types, of IR nodes, and of kinds, apart: kinds take
-     * their ids from the type model's counter and nodes from ir/nodes', so
-     * one set could hold the same id for a kind and a node *)
+    (* Tracks visited type, IR node, and kind ids separately: kinds use the type
+     * model's id counter and IR nodes use ir/nodes's, so a kind and a node can
+     * share the same numeric id *)
     Let Collector = Tuple
         found: vector.T(Type) seenTypes: hashMap.T(Int Bool) seenNodes: hashMap.T(Int Bool) seenKinds: hashMap.T(Int Bool)
     end
@@ -1050,14 +1051,13 @@ export
             n
         end
 
-    (* Takes the descriptors a closure supplies its function away from the
-     * function and its closures where the function uses none of them, so
-     * that a closure that captures no values as well is static rather than
-     * allocated each time it is made (a function nested in a polymorphic one
-     * that never needs its type parameters at run time: one that only holds
-     * their values in words). Dropping one function's may leave the
-     * descriptors of the function its closures are made in unused in turn,
-     * so it runs until none changes *)
+    (* Removes enclosing type-parameter descriptors from a function and its
+     * closures when the function never uses any of them. A closure that also
+     * captures no values can then be emitted statically instead of allocated on
+     * each creation (for example, a nested function that only passes enclosing
+     * type-parameter values around as uniform words). Removing one function's
+     * descriptors may make its enclosing function's descriptors unused as well,
+     * so this repeats to a fixed point. *)
     let unusedEnclosing(unit: nodes.Unit): Ok =
         begin
             let closures = hashMap.new(:Int :vector.T(nodes.OpMakeClosure) intEqual hash.int)
@@ -1154,7 +1154,8 @@ export
             for i = 0 upto {vector.length(unit.functions) - 1} do function(d vector.get(unit.functions i)) end
             unusedEnclosing(unit)
             uses.counts := hashMap.new(intEqual hash.int)
-            (* As the bootstrap's, before the unit has its static data *)
+            (* Collect unit types before attaching staticData, matching the
+             * bootstrap compiler *)
             let found = unitTypes(unit)
             for i = 0 upto {extent found - 1} do vector.append(d.data.types found[i]) end
             unit.staticData := maybe.some(d.data)

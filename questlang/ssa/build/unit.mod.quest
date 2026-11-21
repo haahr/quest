@@ -47,9 +47,10 @@ export
             n
         end
 
-    (* A function of the unit: its closure, then its own type parameters'
-     * descriptors (those its closure supplies it reads from the closure, after
-     * the code pointer), then its parameters *)
+    (* Lowers an IR function to SSA. Its C calling signature takes the closure
+     * pointer first, then descriptors for its own type parameters, then its
+     * value and var/out parameters. Captured type-parameter descriptors are
+     * loaded from the closure immediately after its code pointer. *)
     let function(u: vals.UnitBuilder f: ir.Function): Function =
         begin
             let own = countTypeParams(f.v.type)
@@ -85,16 +86,18 @@ export
             let next(): Int = begin let v = vector.get(params at) at := at + 1 v end
             let envValue = next()
             if maybe.isSome(f.env) then
-                (* A lifted function's environment, of the placeholder type
-                 * Ok, is its closure; an adapter's is the closure it adapts,
-                 * which its own closure holds (ir/thunks) *)
+                (* A lambda-lifted function's env parameter has placeholder
+                 * type Ok and refers to its own closure. An adapter's env has
+                 * a function type and refers to the adapted closure stored in
+                 * QAdaptClosure.orig (see questlang/ir/thunks). *)
                 let env = maybe.unwrap(f.env)
                 let v = if shapes.kindIs(shapes.shape(env.type) shapes.shapeOk) then envValue
                     else vals.invariantWord(fn envValue runtimeLayout.offset("QAdaptClosure" "orig") vals.tPtr)
                 end
                 vals.bindToValues(fn env array of v end)
             end
-            (* The descriptors its closure supplies, after the code pointer *)
+            (* Load captured type-parameter descriptors stored after the code
+             * pointer *)
             for i = 0 upto {nCaptured - 1} do
                 let d = vals.loadWord(fn envValue 8 * {i + 1} vals.tPtr)
                 vals.bindToValues(fn f.descriptorParams[i].v array of d end)
@@ -113,8 +116,8 @@ export
                         vals.bindToValues(fn entry.v vals.noValues)
                     else
                         let vs = array of(extent ps 0)
-                        (* A Bool or a Char from C, its upper bits unspecified
-                         * (AAPCS64), extended *)
+                        (* Zero- or sign-extend narrow parameters (Bool or
+                         * Char), whose upper bits are unspecified by AAPCS64 *)
                         for k = 0 upto {extent ps - 1} do vs[k] := vals.narrowed(fn next() ps[k]) end
                         if entry.v.isMutable then vals.write(fn entry.v vs)
                         else vals.bindToValues(fn entry.v vs) end
@@ -132,11 +135,10 @@ export
             sf
         end
 
-    (* A top level (the main routine's, or a module's initializer's): its
-     * statements, between what before and after emit (after only if the
-     * statements fall off their end). The variables it binds outside loops
-     * that functions or other bodies name are the unit's globals
-     * (walk.globalVariables). *)
+    (* Builds a top-level SSA function (main, a JIT phrase entry, or a module
+     * initializer) by emitting before, lowering body b, and emitting after if
+     * control does not already terminate. Variables bound outside loops and
+     * referenced by other bodies become unit globals (walk.globalVariables). *)
     let topLevel(u: vals.UnitBuilder symbol: String b: ir.Body before: All(fn: vals.Fn) Ok after: All(fn: vals.Fn) Ok
         results: Array(ssa.Type) params: Array(ssa.Type) exported: Bool): Function =
         begin
@@ -157,9 +159,9 @@ export
     let addressWord(symbol: String): ssa.Word = option wordSymbol of ssa.Word with let symbol = symbol let addend = 0 end
     let addData(u: vals.UnitBuilder d: ssa.Data): Ok = vector.append(u.built.data d)
 
-    (* The unit's static descriptors, offset tables, and tag maps, as the C
-     * printer's declarations define them, and the adapters of its function
-     * types *)
+    (* Emits static data for the unit's type descriptors, record offset tables,
+     * and variant tag maps (matching the C printer's declarations), along with
+     * the adapter functions for each function-type descriptor *)
     let descriptorData(u: vals.UnitBuilder): Ok =
         if maybe.isSome(u.unit.staticData) then
             let data = maybe.unwrap(u.unit.staticData)
@@ -191,7 +193,8 @@ export
                 let table = staticdata.describeOffsetTable(u.naming t.view t.layout)
                 if not(hashMap.contains(seen table.symbol)) then
                     vals.put(seen table.symbol true)
-                    (* Each field's offset, then stored_types *)
+                    (* Each field's byte offset, followed by a null stored_types
+                     * pointer slot *)
                     let ws = array of({extent table.offsets + 1} wordOf(0))
                     for j = 0 upto {extent table.offsets - 1} do ws[j] := wordOf(table.offsets[j].bytes) end
                     addData(u ssa.words(table.symbol false false ws))
@@ -211,17 +214,17 @@ export
 
     let isModuleFile(unit: ir.Unit): Bool = not(unit.isProgram)
 
-    (* A phrase unit's module, whose initializer runs its phrases, and its
-     * entry, which the JIT calls (docs/jit.md section 3.2) *)
+    (* Names the synthetic module that runs a JIT phrase unit's phrases and the
+     * entry point the JIT invokes (docs/jit.md section 3.2) *)
     let phraseModule(unit: ir.Unit): String =
         if maybe.isSome(unit.phrase) then "qj_" <> conv.int(maybe.unwrap(unit.phrase).number)
         else "" end
     let phraseEntry(unit: ir.Unit): String = phraseModule(unit) <> "_entry"
 
-    (* The function table (docs/exceptions.md section 5.2) of the unit's
-     * functions with frames in tracebacks, and qr_register_dicts, which
-     * registers it and the offset tables of records the unit views at
-     * supertypes *)
+    (* Emits the traceback function table qr_funcs (docs/exceptions.md section
+     * 5.2), a placeholder frame table qr_frames, and the qr_register_dicts
+     * helper that registers GC roots, frames, traceback functions, and record
+     * offset tables for supertype views *)
     let registration(u: vals.UnitBuilder): Function =
         begin
             let unit = u.unit
@@ -252,8 +255,9 @@ export
             end
             let fn = adapters.newFunction(u "qr_register_dicts" false adapters.pointers(0) array of :vals.Part end)
             vals.callVoid(fn "quest_register_roots" array of vals.symbolAt(fn "qr_roots") end)
-            (* The unit's frame table (docs/arm64.md section 3.13): an empty
-             * one here, in whose place the arm64 backend writes its own *)
+            (* Emit an empty placeholder for the GC frame table (docs/arm64.md
+             * section 3.13); the arm64 backend replaces it with the real
+             * table *)
             addData(u ssa.words("qr_frames" false false array of wordOf(0) end))
             vals.callVoid(fn "quest_register_frames" array of vals.symbolAt(fn "qr_frames") end)
             if not(vector.empty(entries)) then
@@ -280,7 +284,7 @@ export
             adapters.finished(fn)
         end
 
-    (* main, called by C: its argc and its result C ints *)
+    (* Marks main's argc parameter and return value as 32-bit C ints *)
     let mainOf(f: Function): Function =
         begin
             f.signature := ssa.withResult(ssa.withParam(f.signature 0 ssa.passInt32) ssa.passInt32)
@@ -306,16 +310,15 @@ export
                 let layouts = objectLayout.newTable()
                 let roots = vector.new(:vals.RootEntry)
             end
-            (* The source files, by the IR's numbers plus 1: the unit's own,
-             * then those merged into it, as absolute paths, or empty if not
-             * known *)
+            (* Record source files as absolute paths (or "" if unknown): index
+             * 0 is the unit's own file, followed by any merged sources *)
             for k = 0 upto vector.length(unit.mergedSources) do
                 let file = ir.sourceFile(unit k)
                 vector.append(u.built.files
                     if maybe.isSome(file) then files.absolute(maybe.unwrap(file)) else "" end)
             end
-            (* The closure of each lifted function, for its environment's
-             * layout *)
+            (* Record one OpMakeClosure per lifted function so lowering can
+             * determine its closure environment layout *)
             let bodies = vector.new(:ir.Body)
             vector.append(bodies unit.main)
             for i = 0 upto {vector.length(unit.modules) - 1} do
@@ -340,9 +343,9 @@ export
                     end
                 end
             end
-            (* The closure each variable is known to hold, for direct calls:
-             * a let's, a copy's, and an environment's read of one
-             * (walk.knownClosures) *)
+            (* Map variables statically known to hold a specific closure
+             * (through let bindings, copies, or environment reads; see
+             * walk.knownClosures) so call sites can emit direct calls *)
             let known = walk.knownClosures(unit)
             let entries = hashMap.entryIter(known)
             while iter.more(entries) do
@@ -361,8 +364,9 @@ export
                     let symbol = symbols.moduleRecordIdent(clean) let exported = exported let writable = true
                     let contents = option contentsZero of ssa.Contents with let bytes = 16 end
                 end)
-                (* A record is a root, but not one a whole program's module
-                 * is left without (whole.dropUnreachable), which stays zero *)
+                (* Register the module record as a GC root unless
+                 * whole.dropUnreachable removed its recordVar, leaving the
+                 * global zeroed *)
                 if maybe.isSome(m.recordVar) then
                     vector.append(u.roots tuple
                         let symbol = symbols.moduleRecordIdent(clean) let words = 2 end)
@@ -374,7 +378,8 @@ export
                 vector.append(u.built.functions topLevel(u "qv_mod_" <> clean <> "_init" m.init
                     fun(fn: vals.Fn): Ok
                         begin
-                            (* Its guard: initialized once *)
+                            (* Idempotence guard: return immediately if already
+                             * initialized *)
                             let flag = vals.symbolAt(fn initialized)
                             let done = vals.load(fn flag 0 vals.part(vals.tInt 1 false))
                             let ret = control.newBlock(fn)
@@ -386,9 +391,9 @@ export
                             vals.terminate(fn option termReturn of ssa.Terminator with let values = vals.noValues end)
                             fn.cur := go
                             vals.store(fn vals.symbolAt(fn initialized) 0 1 vals.constant(fn 1))
-                            (* Its abstract types, registered for dynamic
-                             * values; a representation without a descriptor is
-                             * not *)
+                            (* Register the module's abstract types for dynamic
+                             * values, skipping any representation that has no
+                             * static descriptor *)
                             for j = 0 upto {extent m.abstractTypes - 1} do
                                 let entry = m.abstractTypes[j]
                                 let form = try maybe.some(descriptors.staticFormOf(u entry.descriptor))
@@ -399,8 +404,9 @@ export
                                         vals.constant(fn entry.arity) descriptors.formAddress(fn maybe.unwrap(form)) end)
                                 end
                             end
-                            (* A module file's initializes the modules it
-                             * imports, as a program's main does *)
+                            (* An exported module's initializer registers this
+                             * unit's tables and initializes its imports, just
+                             * as a program's main does *)
                             if exported then
                                 vals.callOwn(fn "qr_register_dicts")
                                 for j = 0 upto {extent unit.imports - 1} do
@@ -419,9 +425,9 @@ export
                             vals.terminate(fn option termReturn of ssa.Terminator with let values = vals.noValues end)
                         end
                     array of :ssa.Type end array of :ssa.Type end exported))
-                (* Direct calls of the exported functions, for other units; but
-                 * not of a phrase unit's bindings, which later inputs read
-                 * from its record *)
+                (* Emit exported C entry points for other compilation units,
+                 * except for a JIT phrase unit's own module, whose bindings
+                 * later phrases read from its module record *)
                 if exported andif not(stringOp.equal(m.name phraseModule(unit))) then
                     let exports = maybe.unwrap(m.exports)
                     for j = 0 upto {vector.length(exports.names) - 1} do
@@ -431,8 +437,8 @@ export
                     end
                 end
             end
-            (* A static closure of each function, for closures without
-             * captures *)
+            (* Emit a static closure object for each function, used whenever a
+             * closure captures no variables *)
             for i = 0 upto {vector.length(unit.functions) - 1} do
                 let code = vals.codeName(u vector.get(unit.functions i))
                 addData(u ssa.words(code <> "_closure" false false array of addressWord(code) end))
@@ -440,10 +446,11 @@ export
             descriptorData(u)
             vector.append(u.built.functions registration(u))
             if maybe.isSome(unit.phrase) then
-                (* A phrase unit's entry: main's, without the collector's and
-                 * the builtins' initialization, which the host has done. With
-                 * capture, what its phrases show is captured, and left in
-                 * qj_<n>_echo, a string *)
+                (* Build the JIT phrase entry point. Like main, it registers
+                 * tables and initializes modules, but skips GC and builtin
+                 * setup because the host has already run them. When capture is
+                 * enabled, echoed output is captured and stored as a string in
+                 * qj_<n>_echo. *)
                 let capture = maybe.unwrap(unit.phrase).capture
                 let echoed = phraseModule(unit) <> "_echo"
                 if capture then
@@ -493,16 +500,16 @@ export
                     end
                 fun(fn: vals.Fn): Ok vals.terminate(fn option termReturn of ssa.Terminator with let values = array of vals.constant(fn 0) end end)
                 array of vals.tInt end array of vals.tInt vals.tPtr end true))) end
-            (* The layouts of the objects the unit's code allocates, which
-             * every function above has registered *)
+            (* Emit GC object layout descriptors for every heap object shape
+             * registered while lowering the functions above *)
             let ls = objectLayout.layouts(u.layouts)
             for i = 0 upto {extent ls - 1} do
                 let ds = statics.layoutData(ls[i] fun(s: String): String vals.stringSymbol(u s))
                 for j = 0 upto {extent ds - 1} do addData(u ds[j]) end
             end
-            (* The root table (docs/collector.md section 3.8): the globals
-             * that may hold pointers, which every function above has named,
-             * and the module records, ended by a null slot *)
+            (* Emit the GC root table (docs/collector.md section 3.8) listing
+             * all pointer-holding globals and module records collected above,
+             * terminated by a pair of zero words *)
             let rootWords = vector.new(:ssa.Word)
             for i = 0 upto {vector.length(u.roots) - 1} do
                 let e = vector.get(u.roots i)

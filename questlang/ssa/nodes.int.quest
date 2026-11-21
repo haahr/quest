@@ -1,11 +1,12 @@
 (* Quest Self-Hosted Compiler: The SSA's Nodes Interface
  *
- * The SSA of docs/ssa.md: a function's values, blocks, and stack slots are
- * numbered densely from 0 and live in tables of the function (docs/arm64.md
- * section 3.15), so that passes keep their own tables as arrays indexed by
- * those numbers. Every instruction has one shape: an opcode, argument and
- * result values, an immediate, a symbol, and for loads, stores, and calls the
- * few fields they need. *)
+ * This module defines the SSA intermediate representation (docs/ssa.md). A
+ * function's values, basic blocks, and stack slots are numbered densely from 0
+ * and stored in tables on the function (docs/arm64.md section 3.15), so passes
+ * can keep side tables as plain arrays indexed by those numbers. Every
+ * instruction shares one record shape: an opcode, argument and result values,
+ * an immediate, a symbol, and the few extra fields needed by loads, stores,
+ * and calls. *)
 
 interface Nodes
 import
@@ -28,13 +29,14 @@ export
         opMulHiU opSelect opUnproxy
     end
 
-    (* How C passes a parameter or a result (docs/ssa.md section 2.2): an
-     * integer or a pointer in a word; a double; the first or the second word
-     * of a 16-byte composite (a pair), in two registers or on the stack; a
-     * byte, a C bool or char, which Darwin's AAPCS64 packs on the stack and
-     * leaves the upper bits of in a register; a C int (main's argc), whose
-     * upper bits are unspecified; or a composite of more than 16 bytes, which
-     * the SSA passes as the address of a copy, as AAPCS64 does *)
+    (* How C passes a parameter or a result under ARM64's calling convention,
+     * AAPCS64 (docs/ssa.md section 2.2): an integer or pointer in a word; a
+     * double; the first or second word of a 16-byte composite (a pair), in two
+     * registers or on the stack; a byte (a C bool or char), which Darwin's
+     * AAPCS64 packs on the stack and leaves with unspecified upper bits in a
+     * register; a 32-bit C int (such as main's argc), whose upper bits are
+     * unspecified; or a composite larger than 16 bytes, passed as the address
+     * of a copy *)
     Def Passed = Option
         passWord passReal passPair passPairRest passByte passInt32
         passMemory with bytes: Int end
@@ -48,12 +50,13 @@ export
      * none, file 0 *)
     Def Loc = Tuple file: Int line: Int col: Int end
 
-    (* An instruction. For a load or a store, width is 8, 4, or 1 bytes and
-     * signed says how a narrow load extends; a call has its signature (others
-     * an empty one); loc is the source position it is compiled from. A load
-     * is invariant when nothing writes what it reads once the object it reads
-     * from is made (docs/ssa.md section 2.1), as the builder
-     * knows of a closure's code, say; false for any other instruction. *)
+    (* An instruction. For a load or store, width is 8, 4, or 1 bytes and
+     * signed says whether a narrow load sign-extends; a call carries its
+     * signature (other instructions carry emptySignature); loc is the source
+     * position the instruction was compiled from. For a load, invariant is
+     * true when nothing writes that address after the object is created
+     * (docs/ssa.md section 2.1), such as a closure's code pointer; it is false
+     * for any other instruction. *)
     Def Inst = Tuple
         op: Opcode
         var args: Array(Int)
@@ -80,30 +83,30 @@ export
         (* Go to ifTrue if the int cond is nonzero, else to ifFalse *)
         termBranch with cond: Int ifTrue: Target ifFalse: Target end
         (* Go to targets[k] if the int value is cases[k], else to default.
-         * cases and targets have the same length and no case repeats *)
+         * cases and targets have the same length and no case repeats. *)
         termSwitch with value: Int cases: Array(Int) targets: Array(Target) default: Target end
         (* Return values, as many as the function has results *)
         termReturn with values: Array(Int) end
         (* A call in tail position, whose results are the function's
          * (marked by questlang/ssa/passes/tailCalls) *)
         termTailCall with call: Inst end
-        (* Enter a try: go to body; if an exception is raised in the body,
-         * or in anything it calls, go to block handler instead. slot is the
-         * stack slot holding the handler record (a QExceptionHandler) that
-         * the builder has already pushed on the runtime's handler chain.
-         * The handler block has no parameters and no other predecessor, so
-         * the values it uses are those defined before the try; ssac enters
-         * it when _setjmp returns a second time *)
+        (* Enter a try: go to body; if an exception is raised in the body or in
+         * anything it calls, go to block handler instead. slot is the stack
+         * slot holding the handler record (a QExceptionHandler) that the
+         * builder has already pushed onto the runtime's handler chain. The
+         * handler block has no parameters and no other predecessor, so the
+         * values it uses are those defined before the try; the SSA-to-C
+         * backend enters it when _setjmp returns a second time. *)
         termTry with slot: Int body: Target handler: Int end
         (* Control never reaches the end of the block *)
         termUnreachable
     end
 
     (* A basic block. Its params are the values a jump to it binds, one per
-     * argument of the jump's Target: SSA's replacement for phi nodes, so a
-     * value that differs by the path taken (a loop counter, say) is a
-     * parameter of the block where the paths meet. Block 0 is the entry, and
-     * its params are the function's parameters *)
+     * argument of the jump's Target: this is SSA's replacement for phi nodes,
+     * so a value that differs by incoming path (such as a loop counter) is a
+     * parameter of the block where the paths meet. Block 0 is the entry block,
+     * and its params are the function's parameters. *)
     Def Block = Tuple
         params: vector.T(Int)
         insts: vector.T(Inst)
@@ -159,10 +162,10 @@ export
         files: vector.T(String)
     end
 
-    (* The signature of parameters and results of types params and results:
-     * each a word or a real, but 16-byte composites starting at the indices
-     * pairs, bytes at narrow, and two results a pair; empty has neither
-     * parameters nor results *)
+    (* Builds a calling-convention signature for params and results: each value
+     * is passed as a word or a real, except 16-byte composites starting at
+     * indices in pairs, bytes at indices in narrow, and a two-result return
+     * passed as a pair. emptySignature has neither parameters nor results. *)
     signature(params: Array(Type) results: Array(Type) pairs: Array(Int) narrow: Array(Int)): Signature
     emptySignature: Signature
     passWord: Passed
@@ -262,9 +265,10 @@ export
     newSlot(f: Function bytes: Int align: Int): Int
     block(f: Function b: Int): Block
     typeOf(f: Function v: Int): Type
-    (* A type as a small integer, for a pass's tables of types (typeInt 0,
-     * typePtr 1, typeReal 2, typeVal 3), and back; any other code is typeInt,
-     * as for a word ssa/passes/escape finds nothing typing *)
+    (* Converts a Type to a small integer (typeInt 0, typePtr 1, typeReal 2,
+     * typeVal 3) for compact pass tables, and back. Any other code maps to
+     * typeInt, which ssa/passes/escape uses for words whose type is
+     * unknown. *)
     typeCode(t: Type): Int
     typeOfCode(code: Int): Type
     (* The types of values *)

@@ -1,10 +1,11 @@
 (* Quest Self-Hosted Compiler: The IR's Nodes Interface
  *
- * bootstrap/python/quest/ir/nodes.py (docs/ir.md sections 3, 5, 6). A unit is a
- * body of statements (its main) together with the modules it defines. Bodies
- * are sequences of statements. Operations take atoms (variables and constants)
- * and are named by let; structured statements (if, switch, loop, try) contain
- * bodies; values produced on several paths join through join points.
+ * Mirrors bootstrap/python/quest/ir/nodes.py (docs/ir.md sections 3, 5, and
+ * 6). A unit is a body of statements (its main) together with the modules it
+ * defines. Bodies are sequences of statements. Operations take atoms (variables
+ * and constants) and are named by let; structured statements (if, switch, loop,
+ * try) contain bodies; values produced on several paths join through join
+ * points.
  *
  * Binders are records with identity: a Variable (the bootstrap's Var) is bound
  * by exactly one binder, and every use refers to that same record (same
@@ -104,7 +105,7 @@ export
      *   originals are compared;
      * - proxy: it may be a proxy, and the component's type can change view,
      *   so the read checks for a proxy and converts through it (a write goes
-     *   into the original). An option's tag is read direct or proxy *)
+     *   into the original). An option's tag is read direct or proxy. *)
     Def Access = Option direct original proxy end
     direct: Access
     original: Access
@@ -145,7 +146,7 @@ export
      * function computes one where it begins, from the type parameter's
      * descriptor and the bound's (Function.viewMaps), for each such type
      * parameter whose values it reads so, and those reads name it (their
-     * viewMap fields) *)
+     * viewMap fields). *)
     descriptorType: Type
     viewMapType: Type
 
@@ -181,13 +182,13 @@ export
      * type parameters and are filled in at run time (descInstantiate); a
      * backend emits it as a constant. echo: the descriptor echo writes a value
      * of the closed type by, which writes its type components by their alias
-     * names, rather than the one shared by every type of its shape *)
+     * names, rather than the one shared by every type of its shape. *)
     and StaticDescriptor = Tuple id: Int type: Type echo: Bool end
     (* A descriptor operand (after the describe pass, docs/ir.md section 8.4):
      * a type parameter's descriptor variable, a static descriptor, or a
      * template instantiated with the descriptors of its holes, in order. The
      * operands are small pure expressions rather than variables bound by let,
-     * so a backend evaluates each where it is used *)
+     * so a backend evaluates each where it is used. *)
     and Descriptor = Option
         descVar with v: Variable end
         descStatic with d: StaticDescriptor end
@@ -196,7 +197,7 @@ export
     (* A descriptor variable v bound for a type parameter (see descriptorType).
      * symbols are the ids the type parameter is named by in the types it
      * describes: one for a function's, but a thunk's type parameter is named
-     * both in the closure's type and in the type it is adapted to *)
+     * both in the closure's type and in the type it is adapted to. *)
     and DescriptorParam = Tuple v: Variable symbols: Array(Int) end
     (* A view map variable v (see viewMapType) for the type parameter named
      * symbol, computed where its function begins from descriptor, the type
@@ -208,7 +209,7 @@ export
     (* A static offset table (docs/c-representation.md section 5.2): where each
      * field of the record type view is in a record laid out as the record
      * type layout. registered is set when both types are closed. id is view's
-     * shape's id, by which the verifier checks that a table is listed *)
+     * shape's id, by which the verifier checks that a table is listed. *)
     and OffsetTable = Tuple id: Int view: Type layout: Type var registered: maybe.T(Registered) end
     (* A static table that maps a variant's tags from source's numbering to
      * that of its supertype target, for a variantTags plan; id is target's
@@ -250,7 +251,7 @@ export
      *   representations it converts from and to;
      * - thunkParams: an adapt plan's thunk's descriptor variables, which the
      *   descriptors of its fields use;
-     * - tagMap: a variantTags plan's table *)
+     * - tagMap: a variantTags plan's table. *)
     and Plan = Tuple
         id: Int
         kind: PlanKind
@@ -283,7 +284,7 @@ export
      *   describe pass;
      * - viewMap: for a value of a type parameter bounded by a record,
      *   variant, option, or tuple type, the view map it is read through its
-     *   bound by (viewMapType), set by the describe pass *)
+     *   bound by (viewMapType), set by the describe pass. *)
     and Op = Option
         opAtom with var atom: Atom end
         (* For is and isnot: access original (set by the represent pass) when
@@ -319,7 +320,7 @@ export
          * thunkSymbols, the symbols the thunk's own type parameters are named
          * by in those plans. The describe pass sets thunkParams, for a
          * function only: the thunk's descriptor variables, which its plans'
-         * descriptors use (docs/ir.md section 8.4) *)
+         * descriptors use (docs/ir.md section 8.4). *)
         opTypeApp with
             var callee: maybe.T(Variable)
             var typeArgs: Array(Type)
@@ -358,7 +359,7 @@ export
         end
         (* A value a closure captured, read from the environment env of the
          * function it runs: its index'th capture. Closure conversion binds
-         * one at a function's start for each variable it captures *)
+         * one at a function's start for each variable it captures. *)
         opEnvField with var env: Atom index: Int end
         (* A value changed from one representation to another, as plan says
          * (made by the represent pass) *)
@@ -368,7 +369,7 @@ export
          * IR's dumps and its interpreter. embedded (set by the represent
          * pass) lists the positions of the records and variants the tuple's
          * own allocation boxes, rather than a box of their own (a box is
-         * immutable, so it may be shared) *)
+         * immutable, so it may be shared). *)
         opMakeTuple with var args: Array(Atom) typeComponents: Array(TypeComponent) var embedded: Array(Int) end
         opTupleField with var tup: Atom var index: Int var access: Access var viewMap: maybe.T(Variable) end
         (* A record, made in its box. embedded is as a tuple's. The represent
@@ -379,7 +380,7 @@ export
          * record's own type (its fields' atoms' types), which the record
          * carries, and either offsets, the static offset table of its view,
          * or with runtime offsets viewDescriptor, the view's descriptor, by
-         * which the runtime finds the table (quest_record_dict) *)
+         * which the runtime finds the table (quest_record_dict). *)
         opMakeRecord with
             var fields: Array(FieldAtom)
             var embedded: Array(Int)
@@ -392,7 +393,7 @@ export
          * field that a subtype's record may hold at another type
          * (docs/c-representation.md section 5.2): it is read through the
          * offset table's stored types and converted to the field's type,
-         * whose descriptor the describe pass sets *)
+         * whose descriptor the describe pass sets. *)
         opRecordField with
             var recordAtom: Atom
             name: String
@@ -406,7 +407,7 @@ export
          * names of the cases of the option's type as written
          * (reduce.optionCaseNames), not its shape's order. A payload is a
          * tuple of the case's components, which access says how to read
-         * (set by the represent pass) *)
+         * (set by the represent pass). *)
         opMakeOption with
             tag: maybe.T(String)
             var payload: maybe.T(Atom)
@@ -421,9 +422,9 @@ export
          * variant's, or an option's components as a new tuple, which starts
          * with ordinalIndex, the case's index in the option's type as written
          * (docs/ir.md section 5). access says how the tag is read, and
-         * components (set by the represent pass) how the components are. A
-         * decided payload's tag is known to be tag (the simplifier sets it),
-         * so it is not tested *)
+         * components (set by the represent pass) says how the components are.
+         * When decided is true (set by the simplifier), the tag is already
+         * known to be tag, so it is not tested again. *)
         opPayload with
             var value: Atom
             tag: String
@@ -444,7 +445,7 @@ export
          * docs/c-representation.md section 8.1): witness, its type component,
          * the type A stands for in it, and payload, a tuple of its other
          * components. The describe pass sets descriptor, the witness's, which
-         * the value carries, for inspect to test *)
+         * the value carries, for inspect to test. *)
         opMakeAuto with witness: Type autoType: Type var payload: Atom var descriptor: maybe.T(Descriptor) end
         (* A new exception (exceptions are generative), with the type of the
          * payload it carries, if any *)
@@ -480,7 +481,7 @@ export
      * 2.3), none for the thunks the passes make. The describe pass sets
      * descriptorParams, a descriptor variable for each of its type
      * parameters, in order, and viewMaps, those its body reads values of
-     * bounded type parameters through (see viewMapType) *)
+     * bounded type parameters through (see viewMapType). *)
     and Function = Tuple
         id: Int
         var v: Variable
@@ -499,14 +500,14 @@ export
     (* A case of a switch: the tags it matches, its body, and the variable
      * bound to the payload, if any. An option's payload is a new tuple of the
      * case's components, read as components says (set by the represent
-     * pass) *)
+     * pass). *)
     and Case = Tuple tags: Array(String) var body: Body var binder: maybe.T(Variable) var components: Array(Access) end
     and DescriptorPair = Tuple source: Descriptor target: Descriptor end
     (* How an inspect case of an auto value obtains its components from the
      * payload, which is stored in the auto type's witness-independent layout
      * (docs/c-representation.md section 8.1): its signature's layout with the
      * type component an abstract type, the same whatever type the witness
-     * is. Decided by the represent pass.
+     * is. The represent pass computes this.
      *
      * converted says, for each component, how a new tuple of the case's
      * components gets it: none, copied as it is; "component", a value of the
@@ -522,7 +523,7 @@ export
      * so var components are shared too) or converted by plan; if not, the
      * components are converted as for any case, after raising a layout error
      * (layoutError) when the auto type has var components, whose updates a
-     * copy would not share *)
+     * copy would not share. *)
     and InspectArm = Tuple
         converted: Array(maybe.T(String))
         exact: Bool
@@ -581,7 +582,7 @@ export
          * offset. The describe pass sets witness, the descriptor variable that
          * stands for the value's type component, bound under the auto type's
          * own symbol in the cases' arms (InspectArm), which convert the
-         * value's components by it *)
+         * value's components by it. *)
         sInspect with
             var pos: Int
             var value: Atom
@@ -598,7 +599,7 @@ export
          * are the exceptions its branches name, evaluated before the try, by
          * which a raise tells whether it will be caught, and walks the stack
          * for a traceback's frames only if not (docs/exceptions.md section
-         * 5.1) *)
+         * 5.1). *)
         sTry with var body: Body var exc: Variable var handler: Body catching: Catching var catches: Array(Atom) end
         (* A join point (docs/ir.md section 6.3), where paths that produce a
          * value meet. Lowering makes let x = if c then 1 else 2 end; rest
@@ -607,12 +608,12 @@ export
          * from a function it binds, binds params to args and runs
          * continuation, the only place params are in scope. After the
          * continuation, or if body ends without jumping, control goes on
-         * after the join *)
+         * after the join. *)
         sJoin with label: String var params: Array(Variable) var continuation: Body var body: Body end
         (* Prints a top-level phrase's value as the driver's --echo does: prefix
          * (let x:T = , for a binding) and the value, or for an expression
          * (prefix empty) the value and : type. The describe pass sets
-         * descriptor when the type does not say how the value is written *)
+         * descriptor when the type does not say how the value is written. *)
         sEcho with var pos: Int var value: Atom type: Type prefix: String var descriptor: maybe.T(Descriptor) end
         sEchoText with text: String end
         sReturn with var pos: Int var value: Atom end
@@ -927,7 +928,7 @@ export
      * a pass different things depending on how a unit's imports were loaded,
      * which in a parallel build is a race; and IR variables carry their types
      * as written, so a copy between a parameter and its argument would stay
-     * when their types are spelled otherwise *)
+     * when their types are spelled otherwise. *)
     sameType(a: model.Type b: model.Type): Bool
     (* The source position of a statement that makes code where it is (a let,
      * a store, a branch, a jump, a raise; not a loop, a try, a join point, or

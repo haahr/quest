@@ -190,14 +190,12 @@ export
             diagnostics.raiseError(diagnostics.atImport(err offset 1 file))
         end
 
-    (* A module file the driver does not link, which an input or another such
-     * module imports, loaded once in a session (docs/jit.md section 3.4):
-     * compiled from source, after the module files it imports. Its
-     * initializer runs when an importer's first does. It is elaborated as a
-     * build elaborates a module file (typecheck.install), so that an error in
-     * one of its members is raised, not recorded by the input's checker, whose
-     * hook the module system would otherwise call back to; the input's is put
-     * back after. *)
+    (* Compiles and loads a module file that is not linked into the driver,
+     * once per session, after recursively loading its own imports (docs/jit.md
+     * section 3.4). Its initializer runs when an importer first executes. The
+     * module is elaborated with typecheck.install so that member errors are
+     * raised immediately rather than recorded in the REPL input's checker, and
+     * the previous elaboration hook is restored afterwards even on error. *)
     let rec loadModuleFile(s: T canonical: String source: String): Ok =
         if target.has(s.target canonical) orif hashMap.contains(s.loaded canonical) then
             ok
@@ -264,13 +262,12 @@ export
             if maybe.isSome(site) then importedAt(load maybe.unwrap(site) file) else load() end
         end
 
-    (* A module a later input may name: an imported one, by its record, as
-     * the unit imported it; a declared one, by its record, which the unit
-     * exported. Its entry in s.earlier, under the module's symbol, has an
-     * empty field: the module's value is its holder's whole record, not a
-     * field of it. rememberImport records each module an import item names
-     * whose record the unit imported; rememberModule records the module
-     * moduleName the unit declared *)
+    (* Records a module in s.earlier so later inputs can reference it: imported
+     * modules by the record the unit imported, and declared modules by the
+     * record the unit exported. Its entry has an empty field name because the
+     * module's value is the holder's entire record rather than a field of it.
+     * rememberImport records each imported module named by item;
+     * rememberModule records a module declared in unit. *)
     let remember(s: T symbolId: Int holder: String recordType: tm.Type): Ok =
         begin
             hashMap.insert(s.earlier symbolId tuple
@@ -315,21 +312,17 @@ export
             vector.toArray(shown)
         end
 
-    (* run's work, without its rollback of loaded modules. The input gets the
-     * next number N: its code is the module qj_N, and its source is kept
-     * under the name <repl>#N, which its code records in the sites of its
-     * raises, so that located can map a site back to this input's text. It
-     * is lowered against the bindings of the inputs that ran before it
-     * (s.earlier), the modules it imports that the driver does not link are
-     * loaded, and its unit is compiled and loaded. Its entry, qj_N_entry, runs
-     * under os/code's call, which catches any exception it raises; the
-     * exception becomes a raised outcome, and the input's bindings are not
-     * recorded. If it returns, each of its top-level bindings (but a
-     * redefinition's, which stores into an earlier input's box) and each
-     * module it declares or imports is recorded in s.earlier, as a field of
-     * qj_N's record or a module's own record, for later inputs to name. With
-     * capture, what its phrases showed is read from its qj_N_echo string.
-     * Raises unsupported for what cannot be lowered, compiled or loaded *)
+    (* Performs run's work without rolling back newly loaded modules on
+     * failure. Assigns the input the next number N (module qj_N, source name
+     * <repl>#N so located can map raise sites back to sourceMap), lowers it
+     * against prior bindings in s.earlier, loads any unlinked imported
+     * modules, and compiles and loads the unit via target. target.run then
+     * executes the entry under an exception-catching handler: on exception,
+     * bindings are not recorded and a raised outcome is returned; on success,
+     * top-level bindings (excluding redefinitions, which store into an earlier
+     * input's box) and declared or imported modules are recorded in s.earlier
+     * for later inputs. Raises unsupported if lowering, compilation, or
+     * loading fails. *)
     let runInput(s: T program: typedAst.Program sourceMap: location.SourceMap echo: Bool printResult: Bool
         capture: Bool): Outcome =
         begin

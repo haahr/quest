@@ -1,25 +1,26 @@
 (* Quest Self-Hosted Compiler: The WebAssembly Locals' Reuse Interface
  *
- * The backend declares a local for each variable of the IR, and V8's baseline
- * code gives every declared local a slot in the frame, whether or not it is
- * live: 8 bytes each, so a function of a thousand locals takes 8 KB of stack
- * for each call that is active. In a browser's worker, of 512 KB, the
- * interpreter's evalExpr, of some 1,200, allows about 40 interpreted calls
- * (docs/wasm.md sections 2.12, 6.2, and 9.4). So, after the code is made,
- * the locals that are never live together share one, by type. *)
+ * The backend declares a local for each IR variable, and V8's baseline
+ * compiler allocates a stack frame slot for every declared local whether or
+ * not it is live: 8 bytes each, so a function with a thousand locals uses
+ * 8 KB of stack per active call. In a 512 KB browser worker stack, the
+ * interpreter's evalExpr (about 1,200 locals) would allow only around 40
+ * nested interpreted calls (docs/wasm.md sections 2.12, 6.2, and 9.4). After
+ * code generation, this pass merges locals of the same type that are never
+ * live at the same time into shared slots. *)
 
 interface Locals
 import
     questlang/wasm/model : questlang/wasm/Model
 export
-    (* Each of m's functions' locals other than its parameters given a slot,
-     * one of its type that no local live at the same time holds, the slots
-     * its new locals, and its code rewritten to them. A local is live from its
-     * first use to its last, in the code's order, and across the whole of any
-     * loop it is live in at the loop's repetition: one live before the loop
-     * and in it, or in it and after it, or read in it before it is set. The
-     * backend's code sets a local before it reads it on every path, as the
-     * IR binds a variable before using it, which is what makes the code's
-     * order enough. A local never used is dropped. *)
+    (* Rewrites each function in m in place so non-parameter locals of the same
+     * type share slots whenever their live ranges do not overlap, replacing
+     * the function's local declarations with the resulting slots. A local is
+     * live from its first use to its last in instruction order, and across the
+     * entire extent of any loop it spans across iterations: any local live
+     * both before and inside a loop, inside and after a loop, or read inside a
+     * loop before being written. Because the backend sets every local before
+     * reading it on every path (matching the IR's bind-before-use rule), a
+     * linear scan in instruction order is sound. Unused locals are dropped. *)
     reuse(m: model.Module): Ok
 end

@@ -72,9 +72,10 @@ export
             let order = reversePostorder(succs)
             let rank = array of(n ~1)
             for i = 0 upto {extent order - 1} do rank[order[i]] := i end
-            (* Immediate dominators, to a fixed point in reverse postorder.
-             * While it runs, the entry is its own, so that intersect's walks
-             * up the tree stop there; the graph records it as ~1. *)
+            (* Computes immediate dominators to a fixed point in reverse
+             * postorder. While the loop runs, the entry block is its own
+             * immediate dominator so that intersect's walks up the tree stop
+             * there; the finished graph records it as ~1. *)
             let idom = array of(n ~1)
             if n > 0 then idom[0] := 0 end
             let intersect(a0: Int b0: Int): Int =
@@ -106,8 +107,9 @@ export
                 end
             end
             if n > 0 then idom[0] := ~1 end
-            (* The dominator tree, and its preorder and postorder numbers, by an
-             * explicit stack of (block, next child) *)
+            (* Builds the dominator tree and computes its preorder and
+             * postorder numbers using an explicit stack of (block, next
+             * child) *)
             let childLists = array of(n vector.new(:Int))
             for b = 0 upto {n - 1} do childLists[b] := vector.new() end
             for i = 0 upto {extent order - 1} do
@@ -165,7 +167,8 @@ export
     let dominates(g: Graph a: Int b: Int): Bool =
         reached(g a) andif reached(g b) andif {g.pre[a] <= g.pre[b]} andif {g.post[b] <= g.post[a]}
 
-    (* Cooper, Harvey, and Kennedy's: from each predecessor of a join up the
+    (* Computes dominance frontiers using Cooper, Harvey, and Kennedy's
+     * algorithm, walking from each predecessor of a join block up the
      * dominator tree to the join's immediate dominator *)
     let frontiers(g: Graph): Array(Array(Int)) =
         begin

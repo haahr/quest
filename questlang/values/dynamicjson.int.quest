@@ -1,18 +1,20 @@
 (* Quest Self-Hosted Compiler: The Dynamic Format's Types Interface
  *
- * bootstrap/python/quest/values/dynamic_json.py's types: format version 1 of
- * serialized dynamic values (docs/dynamic.md section 2). A document holds a
- * type table and a value:
+ * Defines the shared type representation for format version 1 of serialized
+ * dynamic values (docs/dynamic.md section 2), matching
+ * bootstrap/python/quest/values/dynamic_json.py. A document holds a type table
+ * and a value:
  *
  *     {"quest":1,"types":[<type node>,...],"type":<type ref>,"value":<value>}
  *
- * The table is canonical, so that the interpreter and compiled code write the
- * same text for the same value: the writer (values/dynamicWriter) builds the
- * graph of the types it meets, merges structurally equivalent nodes (the
- * coarsest bisimulation), and numbers the rest in the order a depth-first
- * walk from the roots first reaches them; the reader (values/dynamicReader)
- * makes types of the table's nodes. This module is the graph, the table, and
- * the types' encoding the two share. A failure raises dynamic.error.
+ * The table is canonical so that the interpreter and compiled code write the
+ * same text for the same value. The writer (values/dynamicWriter) builds the
+ * graph of the types it meets, merges structurally equivalent nodes into the
+ * fewest equivalence classes (the coarsest bisimulation), and numbers the rest
+ * in the order a depth-first walk from the roots first reaches them. The
+ * reader (values/dynamicReader) builds Quest types from the table's nodes.
+ * This module provides the type graph, the canonical table, and the type
+ * encoding shared by both. Any failure raises dynamic.error.
  *
  * The bootstrap's parse_type_string, which only .qi files use, is
  * interfacecompiler.parseTypeString. *)
@@ -62,16 +64,16 @@ export
     isRef(r: Ref name: String): Bool
     (* Whether a field's label marks it var ("var" or "var name") *)
     isVarLabel(label: String): Bool
-    (* A JSON array's items, and a JSON string's text; fail for anything
-     * else *)
+    (* Return a JSON array's items or a JSON string's text, raising
+     * dynamic.error for any other JSON value *)
     items(v: json.Value): vector.T(json.Value)
     text(v: json.Value): String
     (* A ref's node in g, and its kind ("" for a built-in type) *)
     nodeOf(g: Graph r: Ref): Node
     kindOf(g: Graph r: Ref): String
-    (* How the table refers to t, adding the nodes of t and its parts to g the
-     * first time they are met; raises dynamic.error for a type the format
-     * cannot encode *)
+    (* Returns how the table refers to t, adding the nodes of t and its parts
+     * to g the first time they are met. Raises dynamic.error for a type the
+     * format cannot encode. *)
     ref(g: Graph t: tm.Type): Ref
     (* The canonical table of a graph's nodes reachable from the roots: its
      * structurally equivalent nodes merged and the rest numbered as a

@@ -91,13 +91,13 @@ export
             if not(replaced) then vector.append(into from[i]) end
         end
 
-    (* The scope of the standard interface name (StringOp, stringop, or its
-     * module's name, string), now registered in e under its own name and
-     * name; none if name is not a standard one. The first request in the
-     * process elaborates the interface in a fresh environment with no
-     * registry, so that the scope depends on no requester and can be cached
-     * for all; each requester then adopts the units that loading it loaded
-     * (its imports), sharing them rather than loading them again *)
+    (* Returns the scope of the standard interface name (StringOp, stringop, or
+     * its module's name, string), registering it in e under both its canonical
+     * name and name, or returns none if name is not a standard interface. The
+     * first request in the process elaborates the interface in a fresh
+     * environment with no registry so the scope is independent of any caller
+     * and can be cached; each caller then adopts the imported units loaded
+     * with it instead of reloading them. *)
     let ensureInterface(name: String e: env.T): maybe.T(Scope) =
         begin
             let target = hashMap.get(interfaceNames name)
@@ -122,13 +122,13 @@ export
             end
         end
 
-    (* The export scope of the standard module name (string), with its
-     * interface, now registered in e, and the module's record value declared
-     * in e's global scope, so that string.length works without an import;
-     * none if name is not a standard module. A standard module is never
-     * elaborated from source, as its code is the native library: its scope is
-     * made from its interface (elaboration.separatelyCompiledModuleScope),
-     * once for the process *)
+    (* Returns the export scope of the standard module name (such as string),
+     * registering it and its interface in e and declaring the module's record
+     * value in e's global scope so that string.length works without an import,
+     * or returns none if name is not a standard module. A standard module is
+     * never elaborated from source because its implementation is in the native
+     * library: its scope is built once per process from its interface via
+     * elaboration.separatelyCompiledModuleScope. *)
     let ensureModule(name: String e: env.T): maybe.T(Scope) =
         begin
             let norm = hashMap.get(moduleNames name)

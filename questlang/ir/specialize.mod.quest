@@ -99,15 +99,14 @@ export
     let holdsRecordOrVariant(s: Shape): Bool =
         holds(s fun(t: Shape): Bool shapes.kindIs(t shapes.shapeRecord) orif shapes.kindIs(t shapes.shapeVariant))
 
-    (* Whether a call of f at typeArgs would give a clone the bound's case
-     * numbering of a value of another numbering: a type parameter bounded by
-     * a type that is or holds an option or variant, whose argument is of
-     * another shape. Lowering records, on the operations that read or make an
-     * option or variant (an ordinal, a switch's cases, a payload), the cases
-     * of its type as written, which in f is the bound's; generic code reads
-     * values of the parameter's type through the bound, converting them
-     * (docs/c-representation.md section 5.1), but a clone would apply the
-     * bound's numbering to values of the argument's. *)
+    (* Returns true if specializing f at typeArgs would apply a bound's case
+     * numbering to values of a differently numbered option or variant. This
+     * happens when a type parameter is bounded by a type containing an option
+     * or variant and the type argument has a different shape. Lowering records
+     * the written type's case list (the bound's, inside f) on option and
+     * variant operations; generic code converts through the bound via a view
+     * map (docs/c-representation.md section 5.1), whereas a clone would apply
+     * the bound's numbering directly to the argument's values. *)
     let renumbersCases(f: nodes.Function typeArgs: Array(Type)): Bool =
         begin
             let var found = false
@@ -206,9 +205,9 @@ export
     Let Definition = Tuple function: nodes.Function funs: Stmt owner: maybe.T(nodes.Module) enclosing: Ids end
     Let Pending = Tuple clone: nodes.Function enclosing: Ids depth: Int end
 
-    (* The state of specializing a unit: finding the functions that its funs
-     * statements (the IR's binders of groups of functions) bind, then
-     * redirecting calls of them to clones made for the calls' type arguments.
+    (* State for specializing a unit. The pass collects every function bound by
+     * a funs statement (the IR's binder for a group of functions) and redirects
+     * eligible calls to clones instantiated for the calls' type arguments.
      *
      *     let id(A::TYPE x: A): A = x;
      *     let p = id(:Record x: Int end record x = 1 end);
@@ -279,13 +278,13 @@ export
             found
         end
 
-    (* The clone of definition's function at typeArgs, made once and shared
-     * by every call at the same type arguments; none when the call is in a
-     * clone maxDepth deep, which leaves it generic. A new clone is bound by
-     * the original's funs statement, beside it, and for a module's function
-     * is also the module's member <name>_spec<n>, the nth clone of it. It
-     * becomes a definition, as do its local functions, and waits in pending
-     * for its own calls to be specialized, one level deeper *)
+    (* Returns the clone of definition's function at typeArgs, creating it once
+     * and sharing it across all calls with the same type arguments, or none
+     * when the current specialization depth has reached maxDepth (leaving the
+     * call generic). A new clone is added to the original's funs statement and,
+     * for a module member, registered as <name>_spec<n> (its nth clone). The
+     * clone and its local functions are added to definitions, and the clone is
+     * queued in pending to specialize its own calls at depth + 1. *)
     let clone(sp: Specializer definition: Definition typeArgs: Array(Type)): maybe.T(nodes.Function) =
         begin
             let f = definition.function
@@ -369,11 +368,11 @@ export
             {extent typeArgs is extent f.typeParams} andif not(open) andif shouldSpecialize(f typeArgs)
         end
 
-    (* Whether a call of a module's member from outside the module, at
-     * typeArgs, would give its clone values of the module's abstract types
-     * that the clone lays out otherwise than code outside the module does
-     * (generically, docs/c-representation.md section 5.1): such a call stays
-     * generic, rather than convert them at every call *)
+    (* Returns true if specializing a cross-module call at typeArgs would give
+     * the clone values of the module's abstract types in a different layout
+     * than callers outside the module use (generic layout,
+     * docs/c-representation.md section 5.1). Such calls stay generic to avoid
+     * converting at every call site. *)
     let crossesAbstractLayouts(moduleRef: maybe.T(nodes.ModuleRef) calleeType: maybe.T(Type) typeArgs: Array(Type)):
             Bool =
         if maybe.isNone(moduleRef) orif maybe.isNone(calleeType) then
@@ -412,12 +411,12 @@ export
             else ok
         end
 
-    (* A type application whose instance is not a function runs the function
-     * applied, as a call without arguments does: specialized as such a call
-     * is, it is a call of the clone. Otherwise its result would be laid out
-     * generically where the clones made for a whole program's calls of the
-     * module's functions expect it native (an identity hash map of Reals,
-     * made by hashMap.newIdentityMap) *)
+    (* Specializes a type application whose result is not a function (a
+     * polymorphic value, evaluated like a zero-argument call) into a direct
+     * call to the specialized clone. Without this, its result would keep a
+     * generic layout while specialized callers in a whole-program build expect
+     * the native layout (for example, an identity hash map of Reals created by
+     * hashMap.newIdentityMap). *)
     let specializeTypeApp(sp: Specializer o: Op result: Variable enclosing: Ids): maybe.T(Op) =
         case o
             when opTypeApp with app then

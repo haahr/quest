@@ -1,13 +1,13 @@
 (* Quest Self-Hosted Compiler: Contractiveness of Recursive Types Interface
  *
- * The check of bootstrap/python/quest/types/contractiveness.py that a recursive
- * type is contractive in its variables (C succ X, Cardelli and Longo 1991): a
- * recursive variable must be guarded by a type constructor. Rec(L) Tuple
- * head: Int tail: L end is contractive, Rec(X) X and Let Rec A = B and B = A
- * are not. A type that is not has no unique meaning, and unfolding it never
- * reaches a constructor, which evaluateLazily relies on doing. The
- * elaboration of recursive type declarations calls it; docs/type-system.md
- * §3.3 gives the rule. *)
+ * Checks that a recursive type is contractive in its recursion variables (the
+ * bootstrap's bootstrap/python/quest/types/contractiveness.py; C succ X in
+ * Cardelli and Longo 1991): every recursive reference must be guarded by a
+ * type constructor. Rec(L) Tuple head: Int tail: L end is contractive;
+ * Rec(X) X and Let Rec A = B and B = A are not. A non-contractive type has no
+ * unique meaning, and unfolding it never reaches a type constructor, which
+ * model.evaluateLazily relies on. Recursive type elaboration calls this check;
+ * docs/type-system.md §3.3 gives the rule. *)
 
 interface Contractiveness
 import
@@ -16,8 +16,9 @@ import
     collections/hashMap : collections/HashMap
     util/maybe : util/Maybe
 export
-    (* Whether t is contractive in the ids (a set: the map's keys). Raises
-     * diagnostics.compilerError (fatal) past the expansion depth limit. *)
+    (* Returns whether t is contractive in ids, a set represented by the map's
+     * keys. Raises a fatal diagnostics.compilerError past the expansion depth
+     * limit. *)
     isTypeContractive(t: model.Type ids: hashMap.T(Int Bool) e: maybe.T(env.T)): Bool
     (* Raises a diagnostics error (not fatal) naming varName, at offset, if t
      * is not contractive in the ids; the bootstrap raises a KindError *)

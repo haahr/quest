@@ -1,11 +1,11 @@
 (* Quest Self-Hosted Compiler: Unit Loader Interface
  *
- * bootstrap/python/quest/modules/loader.py: loading interfaces and modules
- * from their files on the search path, or an interface from its fresh .qi,
- * checking that a file holds one declaration that matches its name, detecting
- * cycles, and sharing loaded units among importers by canonical name.
- * install registers the loader with elaboration, which calls it to load the
- * units imports name. *)
+ * Counterpart to bootstrap/python/quest/modules/loader.py. This unit loads
+ * interfaces and modules from their files on the search path (or an interface
+ * from a fresh .qi file), checks that each file contains one declaration
+ * matching its name, detects import cycles, and shares loaded units among
+ * importers by canonical name. install registers the loader with elaboration,
+ * which calls it to load imported units. *)
 
 interface Loader
 import
@@ -15,23 +15,23 @@ import
     questlang/modules/graph : questlang/modules/Graph
     util/maybe : util/Maybe
 export
-    (* The scope of interface name, as imported from e's current directory:
-     * one already loaded, else from a .qi or its source (loader.mod's comment
-     * on loadInterface gives the order). Raises a CompilerError
+    (* Returns the scope of interface name as imported from e's current
+     * directory, reusing an already loaded scope or loading from a .qi file or
+     * source (see loader.mod for the exact search order). Raises CompilerError
      * (diagnostics.fail) if no file is found, if the file declares another
-     * name, or on a cycle of interface imports, and passes on any error in
-     * elaborating it *)
+     * name, or on a cycle of interface imports, and propagates any elaboration
+     * error. *)
     loadInterface(name: String e: env.T): symbols.Scope
-    (* The typed module name, which the importer expects to implement
-     * expectedInterface, elaborated from its source once per canonical name
-     * and shared by later importers. A module that is precompiled (found only
-     * as a .o, or hierarchical when compiling C, whose object the build makes)
-     * gets a binding without code, typed against its interface. Raises a
-     * CompilerError if neither a source nor an object is found, on a cycle of
-     * module imports, or if the file is not one module declaration whose
-     * name matches the file's and whose header names expectedInterface (or
-     * the same last segment, as Ast for questlang/syntax/Ast); and passes on
-     * any error in elaborating it *)
+    (* Loads and returns the typed module name, which the importer expects to
+     * implement expectedInterface, elaborating its source once per canonical
+     * name and sharing the result with later importers. A precompiled module
+     * (found only as a .o file, or a hierarchical module when compiling to C
+     * whose object the build produces separately) receives a codeless binding
+     * typed against its interface. Raises CompilerError if neither a source
+     * nor an object is found, on a cycle of module imports, or if the file
+     * does not hold a single module declaration whose name matches the file
+     * and whose header names expectedInterface (or its last segment, as Ast
+     * for questlang/syntax/Ast), and propagates any elaboration error. *)
     loadModule(name: String expectedInterface: String e: env.T): typedAst.Binding
     (* Sets elaboration.hooks to loadInterface and loadModule, which
      * elaboration cannot import, since this module imports it *)

@@ -19,8 +19,9 @@ export
      * as its box's pointer) *)
     let readSlot(fn: vals.Fn address: Int t: Type): Array(Int) = vals.readParts(fn address vals.slotParts(t))
     let writeSlot(fn: vals.Fn address: Int t: Type values: Array(Int)): Ok = vals.writeParts(fn address vals.slotParts(t) values)
-    (* A slot's contents as a QVal word, and back (shapeSlotToQval and
-     * shapeQvalToSlot): a box is its pointer's word *)
+    (* Convert between a slot's SSA values and a 64-bit QVal word
+     * (shapeSlotToQval and shapeQvalToSlot); a boxed record or variant is its
+     * box pointer's word *)
     let slotToWord(fn: vals.Fn vs: Array(Int) t: Type): Int =
         if layout.isBoxedInSlots(shapes.shape(t)) then vals.toVal(fn vs[0]) else vals.toWord(fn vs t) end
     let slotFromWord(fn: vals.Fn w: Int t: Type): Array(Int) =
@@ -44,9 +45,9 @@ export
             h
         end
     let componentShape(s: shapes.Shape i: Int): shapes.Shape = maybe.unwrap(s.components[i].shape)
-    (* A value chosen by a branch on cond: the values yes makes in one block,
-     * or those no makes in another, merged as the parameters, of the types
-     * given, of a third block, where fn.cur is left *)
+    (* Branches on cond, evaluating yes in one block and no in another, and
+     * merges their results as SSA block parameters (of the given types) in a
+     * join block where fn.cur is left *)
     let choose(fn: vals.Fn cond: Int types: Array(ssa.Type) yes: All() Array(Int) no: All() Array(Int)): Array(Int) =
         begin
             let thenB = ssa.newBlock(fn.f)
@@ -64,11 +65,11 @@ export
             fn.cur := merged
             results
         end
-    (* The object a tuple's or an option's pointer is: the original a proxy
-     * views (its first field, the pointer less its tag bit), or the pointer
-     * itself (quest_unproxy). An unproxy instruction, so that value
-     * numbering merges the tests of one value, which ssa/passes/unproxies
-     * lowers for the backends *)
+    (* Returns the underlying object of a tuple or option pointer p: the
+     * original if p is a subtype proxy (its first field, after clearing the
+     * proxy tag bit), or p itself otherwise (quest_unproxy). Emits an opUnproxy
+     * instruction so value numbering can deduplicate repeated unproxy checks on
+     * the same pointer; ssa/passes/unproxies later lowers it for backends. *)
     let unproxy(fn: vals.Fn p: Int): Int = ssa.emit(fn.f fn.cur ssa.opUnproxy array of p end vals.tPtr)
     (* Component i of the tuple at t (shape ts), in its slot form, read as
      * access says: directly, from the original of what may be a proxy, or
@@ -136,8 +137,8 @@ export
                         fun(): Array(Int) readSlot(fn vals.offsetPtr(fn o offset) comp.type))
             end
         end
-    (* A new object of n bytes, zeroed by the collector, laid out as the
-     * layout at the symbol says *)
+    (* Allocates a zeroed heap object of the given number of bytes using the
+     * GC layout descriptor at symbol layout *)
     let alloc(fn: vals.Fn bytes: Int layout: String): Int =
         vals.call1(fn "quest_alloc" array of vals.constant(fn bytes) vals.symbolAt(fn layout) end)
 end

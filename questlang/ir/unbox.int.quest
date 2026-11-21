@@ -1,17 +1,16 @@
 (* Quest Self-Hosted Compiler: Unboxed Tuples Interface
  *
- * The tuples a function returns that need not be allocated (docs/ir.md
- * section 8.7): after closure conversion, a function whose every call
- * is known (its closures are only called, directly) and whose every return is
- * of a tuple it makes for the return, to callers that only read the result's
- * components, returns the components instead (Function.unboxedResult): the
- * tuples it returns and the results its calls bind are unboxed variables
- * (Variable.unboxed), whose values are their components, which the backends
- * hold as they hold any values (a C struct; the SSA's values), never
- * allocated. The tuple's type is the function's result type, of one or two
- * components, each an Int, Bool, Char, or String and none var, so that no
- * conversion, box, or proxy is needed for them, and two words of results fit
- * every backend's convention. *)
+ * Identifies function-returned tuples that do not need heap allocation
+ * (docs/ir.md section 8.7). After closure conversion, a monomorphic function
+ * qualifies when every closure of it is only called directly, every return
+ * builds a fresh tuple exclusively for that return, and every caller only
+ * reads components from the result. Qualifying functions are marked with
+ * Function.unboxedResult, and both the returned tuples and call-result
+ * bindings are marked Variable.unboxed so backends pass their components
+ * directly (as a C struct or SSA register values) without allocating. The
+ * tuple must match the function's result type and have one or two immutable
+ * components, each an Int, Bool, Char, or String, so no conversion, box, or
+ * proxy is needed and two words fit every backend's return convention. *)
 
 interface Unbox
 import

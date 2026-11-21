@@ -1,11 +1,11 @@
 (* Quest Self-Hosted Compiler: IR Traversals Interface
  *
- * bootstrap/python/quest/ir/walk.py: traversals of the IR shared by the passes
- * and the verifier: the bodies a statement contains, the variables it binds,
- * the atoms it uses, and the global variables of a unit; and replacing the
- * variables a node holds. The bootstrap's reflective traversal (fields_of,
- * rebuild, contents) has no counterpart: each walker that used it lists the
- * fields it reads, case by case. *)
+ * Provides IR traversals and variable/atom substitution helpers shared by the
+ * IR passes and verifier (counterpart: bootstrap/python/quest/ir/walk.py).
+ * These cover statement bodies, binders, atom uses, unit globals, known
+ * closures, and in-place variable or atom replacement. The bootstrap's
+ * reflective traversals (fields_of, rebuild, contents) have no counterpart
+ * here; each walker inspects every node variant explicitly. *)
 
 interface Walk
 import
@@ -29,25 +29,22 @@ export
     (* Every statement in body and the bodies it contains (and in the functions
      * funs statements bind, if intoFunctions), in order *)
     walkStatements(body: nodes.Body intoFunctions: Bool): vector.T(nodes.Stmt)
-    (* The variables (by id) that are globals: those that a unit's main body
-     * or a module's initializer binds, outside any loop or function, and that
-     * are named elsewhere (by a function, or by another of those bodies) or
-     * are a module's members, exports, or record. Functions read globals
-     * directly rather than capture them (questlang/ir/closure). The rest are
-     * locals of the body that binds them, which a backend can keep in
-     * registers. A variable bound in a loop is a local even at the top level:
-     * it is bound anew on each iteration, and the closures made in different
-     * iterations capture different values, where a global would hold only
-     * the last *)
+    (* Returns the variable ids that are globals: those that a unit's main body
+     * or a module's initializer binds outside any loop or function, and that
+     * are named elsewhere (by a function or by another top-level body) or are
+     * a module's members, exports, or record. Functions read globals directly
+     * rather than capturing them (questlang/ir/closure). The rest are locals
+     * of the body that binds them, which a backend can keep in registers. A
+     * variable bound in a loop is a local even at the top level: it is bound
+     * anew on each iteration, so closures made in different iterations capture
+     * different values, whereas a global would hold only the last. *)
     globalVariables(unit: nodes.Unit): hashMap.T(Int Bool)
-    (* The closure each variable of a closed unit is known to hold, by the
-     * variable's id, so that a call through it can call the closure's
-     * function directly: a let of the closure, a copy of a variable known to
-     * hold one, and the read of a lifted function's environment (env_field)
-     * at an index where every closure made of that function captures a
-     * variable known to hold a closure of one function (the closure of a
-     * local function another local function names, docs/ir.md section
-     * 8.2) *)
+    (* Maps each variable id in a closure-converted unit to the closure it is
+     * known to hold, enabling direct calls instead of indirect closure calls
+     * (docs/ir.md section 8.2). Tracks closure allocations, copies of known
+     * closures, and environment reads (env_field) at indices where every
+     * closure of that lifted function captures a closure of the same target
+     * function. *)
     knownClosures(unit: nodes.Unit): hashMap.T(Int nodes.OpMakeClosure)
 
     (* Replaces, in place, each variable v that a statement or operation holds
@@ -78,7 +75,7 @@ export
      * unit's bodies, and pinned with the variables a pass must keep as they
      * are, since they are named from outside the bodies or bound together:
      * the modules' members and exports, their record variables, and each let
-     * rec's variables. Both are cleared first *)
+     * rec's variables. Both are cleared first. *)
     countUses(unit: nodes.Unit uses: hashMap.T(Int Int) pinned: hashMap.T(Int Bool)): Ok
     (* Adds b's uses to uses, and pins its let recs' variables, without
      * clearing either *)

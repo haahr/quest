@@ -1,19 +1,21 @@
 (* Quest Self-Hosted Compiler: IR Pipeline Interface
  *
- * bootstrap/python/quest/ir/pipeline.py: what every backend does with a
- * unit before writing its code (docs/ir.md): the IR's passes after
- * lowering, and the modules a unit uses without importing them. *)
+ * Runs the post-lowering IR passes shared by every backend before code
+ * generation, and identifies modules a unit references implicitly without
+ * importing them (docs/ir.md; counterpart:
+ * bootstrap/python/quest/ir/pipeline.py) *)
 
 interface Pipeline
 import
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
 export
-    (* The unit, described: every pass run, and, when QUEST_CHECK_IR=1, the
-     * result verified after simplify, specialize, closure conversion,
-     * represent, and thunks. Unbox's result is checked with represent's, and
-     * describe's with thunks', since the described stage's invariants include
-     * the adapters the thunks pass makes (docs/ir.md section 9) *)
+    (* Runs all post-lowering IR passes on unit, advancing it to the described
+     * stage, and returns it. When QUEST_CHECK_IR=1, verifies the IR after
+     * simplify, specialize, closure conversion, represent, and thunks. The
+     * unbox pass is checked together with represent, and describe together
+     * with thunks, because the described stage's invariants require the
+     * adapter functions that the thunks pass creates (docs/ir.md section 9). *)
     runPasses(unit: nodes.Unit): nodes.Unit
     (* The modules (by canonical name and interface) a program's unit uses
      * without importing them: standard library modules, which it links

@@ -27,10 +27,10 @@ export
     let readlineInterrupted = model.exceptionValue("readline.interrupted")
     let variantError = model.exceptionValue("variant.tagMismatch")
     let stackOverflow = model.exceptionValue("stack.overflow")
-    (* QUEST_CALL_LIMIT, when it is a positive number, else 1,000: a host
-     * whose stack holds fewer interpreted calls sets it lower, so that a deep
-     * recursion raises stack.overflow before the stack runs out
-     * (docs/wasm.md section 6.2) *)
+    (* Returns limit if it is a positive integer, or 1,000 otherwise. A host
+     * whose stack holds fewer interpreted calls can set QUEST_CALL_LIMIT lower
+     * so that deep recursion raises stack.overflow before exhausting the host
+     * stack (docs/wasm.md section 6.2). *)
     let callLimit(limit: maybe.T(Int)): Int =
         if maybe.isSome(limit) andif {maybe.unwrap(limit) > 0} then maybe.unwrap(limit) else 1000 end
     let maxCallDepth = callLimit(strutil.tryToInt(system.getEnv("QUEST_CALL_LIMIT")))
@@ -100,9 +100,9 @@ export
                     else false
                 end
             when vVariant with x then
-                (* Of the same case, and their values the same at its type;
-                 * a case of type Ok is its case (docs/extensions.md,
-                 * Variants as Values) *)
+                (* Variants match when they share a tag and their payloads are
+                 * equal at the case's type; a case with no payload matches by
+                 * tag alone (docs/extensions.md, Variants as Values) *)
                 case v2
                     when vVariant with y then
                         stringOp.equal(x.v.tag y.v.tag) andif begin
@@ -116,8 +116,8 @@ export
                             if maybe.isNone(x.v.payload) orif maybe.isNone(y.v.payload) then
                                 maybe.isNone(x.v.payload) andif maybe.isNone(y.v.payload)
                             elsif maybe.isNone(caseType) then
-                                (* Not known to be a variant type: the same
-                                 * object only *)
+                                (* Without a known variant type, fall back to
+                                 * object identity *)
                                 false
                             else
                                 sameAt(maybe.unwrap(caseType) maybe.unwrap(x.v.payload)

@@ -1,19 +1,23 @@
 (* Quest Self-Hosted Compiler: The SSA's Inline Allocation Interface
  *
- * Expands each call of quest_alloc into the collector's allocation sequence
- * (docs/collector.md section 3.4, docs/ssa.md section 4.1), for the SSA's
- * backends: the arm64 backend and the JIT cannot get it from the runtime's
- * header as the C printer does, and ssac's printer calls every runtime
- * function out of line. The cursor and limit of the object's space are loaded,
- * and unless a checking mode is on or the hole has no room, the cursor is
- * bumped past the object; else the runtime's slow path (quest_gc_alloc_slow)
- * is called, which finds the next hole or collects. The header word naming
- * the layout is stored before the object, by the fast path or by the
- * runtime's, which adds the collector's flags to it while a collection marks
- * (docs/collector.md section 3.10), and either way the object's start bit is
- * set in the collector's bitmap. The space is read from the unit's
- * layout data (a pointer-free layout's objects go to the noscan space); a
- * layout the runtime owns puts its objects in the scanned space. *)
+ * This pass expands each constant-size call to quest_alloc into the garbage
+ * collector's inline bump-pointer allocation sequence (docs/collector.md
+ * section 3.4, docs/ssa.md section 4.1). The arm64 and JIT backends cannot
+ * inline the allocation helper from the runtime's C header as the C backend
+ * does, and ssac's C printer calls every runtime function out of line.
+ *
+ * The expanded sequence loads the free-region cursor and limit for the
+ * object's heap space. Unless a GC checking mode is active or the current
+ * free hole has too little room, the fast path bumps the cursor past the
+ * object and writes the layout header word before it. Otherwise, the slow
+ * path calls quest_gc_alloc_slow, which finds the next hole or runs a
+ * collection and writes the header word (including any GC mark flags during
+ * incremental marking; docs/collector.md section 3.10). Both paths then set
+ * the object's start bit in the collector's bitmap.
+ *
+ * Each layout's heap space is read from the unit's static layout data:
+ * pointer-free layouts allocate in the noscan space, while runtime-owned
+ * layouts and layouts with pointers allocate in the scanned space. *)
 
 interface Allocations
 import

@@ -1,9 +1,9 @@
 (* Quest Self-Hosted Compiler: The JIT's Target Implementation, for arm64
  *
- * The plain variant of jit/target, which the native backends' units take:
- * a unit compiled by the arm64 backend's pipeline, encoded
- * (codegen/arm64/encode), loaded into the driver's own process (jit/loader),
- * and its entry called under a handler that catches every exception
+ * This is the default (arm64) variant of jit/target used by native builds.
+ * It compiles each unit through the arm64 backend, encodes machine code
+ * (codegen/arm64/encode), loads it into the driver's process (jit/loader),
+ * and invokes each input's entry point under an exception-catching handler
  * (os/code). *)
 
 unsound module target : Target
@@ -88,9 +88,9 @@ export
     let codeBytes = 134217728
     let dataBytes = 67108864
 
-    (* system.args, an external value, is copied into the driver's system
-     * record when system is initialized, from the runtime's array: both are
-     * made args, the record's field at its index in name order *)
+    (* Updates both the runtime's argument array and the args field of the
+     * driver's already-initialized system module record (located by its
+     * alphabetical field index in the System interface) *)
     let setArgs(e: env.T args: Array(String)): Ok =
         begin
             code.setArgs(args)
@@ -132,12 +132,12 @@ export
             end
         end
 
-    (* The frames the runtime prints of the input's code: those above
-     * os/code's call (or this module's runInput or run, where a C-built
-     * driver keeps no frame of call's), and the driver's below them, each
-     * "  in NAME", a run of one written once and then "  ... NAME repeated N
-     * more times". The input's top level is <main>, which its entry, running
-     * a module the input declared, does not show *)
+    (* Parses the runtime's stack-trace text to extract frames belonging to the
+     * JIT input, stopping at os/code.call (or jit/target.run,
+     * jit/session.runInput, or jit/session.run when a C-built driver elides
+     * call's frame). Each frame line has the form "  in NAME", with
+     * consecutive duplicates summarized as "  ... NAME repeated N more times".
+     * Appends <main> as the bottom frame if it is not already present. *)
     let framesOf(text: String): Array(String) =
         begin
             let frames = vector.new(:String)
@@ -237,15 +237,15 @@ export
             end
         end
 
-    (* The source of code that has no file of its own, written to a file
-     * named name in a directory of the session's own under TMPDIR, which
-     * finish removes; its path *)
+    (* Writes source text that has no backing file on disk to a file named name
+     * inside a session-specific temporary directory under TMPDIR (cleaned up
+     * by finish), and returns its path *)
     let writeSource(t: T name: String text: String): String =
         begin
             if stringOp.length(t.sourceDir) is 0 then
-                (* Named by a number taken from an address in this process,
-                 * which another driver rarely shares, and the first suffix
-                 * -N not yet taken *)
+                (* Name the directory using a hash of a process address (which
+                 * concurrent drivers rarely share) plus the first unused -N
+                 * suffix *)
                 let tmp = system.getEnv("TMPDIR")
                 let base = files.join(if stringOp.length(tmp) > 0 then tmp else "/tmp" end
                     "quest-jit-" <> conv.int(value.be(bytesOf(name)) % 1000000007))
@@ -272,10 +272,9 @@ export
             end
         end
 
-    (* Where a debugger finds the source of a unit's file: an input's (named
-     * <repl>#N in its code) is its file, if it has one, else its text written
-     * to input-N.quest in the session's own directory (writeSource); a module
-     * file's is itself *)
+    (* Returns the on-disk path a debugger should use for file: a REPL input
+     * (<repl>#N) uses its backing file if one exists or is written to
+     * input-N.quest via writeSource; a module file uses its own path *)
     let debugFile(t: T file: String): String =
         begin
             let slash = strutil.rfind(file "/")
@@ -318,8 +317,8 @@ export
                 let built = ssaPipeline.build(passes.runPasses(unit))
                 ssaPipeline.lower(built)
                 arm64.encodeUnit(built)
-                (* The IR passes' failures, which are the compiler's (a rejected
-                 * conversion, the program's, is raised as its error) *)
+                (* Convert IR, SSA, arm64, and encoding failures into
+                 * unsupported *)
                 when closure.capturesMutable with x then fail(:encode.Encoded x)
                 when represent.unsupportedConversion with x then fail(:encode.Encoded x)
                 when represent.rejectedConversion with x then fail(:encode.Encoded x)

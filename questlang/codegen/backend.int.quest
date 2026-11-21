@@ -1,24 +1,26 @@
 (* Quest Self-Hosted Compiler: The Backends' Entry Points Interface
  *
- * The one place the driver, the build engine and the module compiler turn a
- * typed program or module file into code, whichever backend compiles it. Each
- * entry lowers the typed AST to the IR (ir/lower), runs the IR's passes
- * (ir/pipeline) and hands the unit to the backend named by its backend
- * argument (codegen/choice):
+ * This interface is the single entry point through which the driver, the
+ * build engine, and the module compiler turn a typed program or module file
+ * into code, regardless of backend. Each entry lowers the typed AST to the
+ * compiler's intermediate representation (IR, in ir/lower), runs the IR
+ * passes (ir/pipeline), and hands the unit to the backend named by its
+ * backend argument (codegen/choice):
  *
  *   c      the C printer (codegen/c/printer) prints the IR as C
- *   ssac   the IR is built into SSA form (ssa/pipeline) and printed as C by
- *          codegen/c/ssac
- *   arm64  the same SSA is compiled to assembly (codegen/arm64/codegen)
+ *   ssac   the IR is converted to static single-assignment (SSA) form
+ *          (ssa/pipeline) and printed as C by codegen/c/ssac
+ *   arm64  the same SSA form is compiled to assembly (codegen/arm64/codegen)
  *   wasm   the IR is compiled to a WebAssembly module (wasm/codegen), and
- *          unitToC returns its bytes (docs/wasm.md)
+ *          unitToC returns its encoded bytes (docs/wasm.md)
  *
- * What a backend cannot compile raises its own exception (the C printer's
- * unsupported, the SSA's builder's and verifier's, ssac's, arm64's); each is
- * raised again as this module's unsupported, so that a caller handles one
- * exception whatever the backend. The bootstrap's counterpart is
- * bootstrap/python/quest/codegen/backend.py, which has the C printer
- * alone. *)
+ * Each backend raises its own exception when it cannot compile a unit (such
+ * as the C printer's, SSA builder's, ssac's, arm64's, or wasm's unsupported,
+ * or the SSA verifier's or wasm model's errors). This module catches those
+ * and re-raises them as unsupported, so callers handle one exception type
+ * for any backend. The bootstrap counterpart is
+ * bootstrap/python/quest/codegen/backend.py, which supports only the C
+ * printer. *)
 
 interface Backend
 import
@@ -30,14 +32,15 @@ import
 export
     (* What the unit's backend cannot compile, with why *)
     unsupported: Exception(String)
-    (* The code backend prints for a unit whose IR passes have run: C, or
-     * assembly for arm64. The C printer's output includes interfaceHeader, the
-     * path of the unit's interface header, if there is one. What the backend
-     * cannot compile raises unsupported *)
+    (* Returns the code produced by backend for a unit whose IR passes have
+     * already run: C source for c and ssac, assembly for arm64, or encoded
+     * module bytes for wasm. For the C printer, output includes interfaceHeader
+     * when provided. Raises unsupported if the backend cannot compile the
+     * unit. *)
     unitToC(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String): String
-    (* A program unit's WebAssembly module as text (wasm/printer), whose
-     * bytes unitToC returns for the wasm backend; raises unsupported as
-     * unitToC does *)
+    (* Returns a unit's WebAssembly module in text format (wasm/printer),
+     * matching the binary module that unitToC returns for the wasm backend.
+     * Raises unsupported if compilation fails. *)
     wasmText(unit: nodes.Unit): String
     (* The flags a backend's C is compiled with, besides the C compiler's
      * usual ones *)
@@ -46,9 +49,9 @@ export
     programToC(program: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool printResult: Bool
         backend: String)
         : Tuple c: String unit: nodes.Unit end
-    (* A module file's code, as unitToC prints it, which exports its
-     * interface's members, and its interface's fingerprint
-     * (modules/artifacts/fingerprint) as the string qh_<module> *)
+    (* Compiles a module file via unitToC, exporting its interface members and
+     * its interface fingerprint (modules/artifacts/fingerprint) as the symbol
+     * qh_<module> in native code or as a custom section in WebAssembly *)
     moduleFileToC(m: typedAst.Binding e: env.T sourceMap: maybe.T(location.SourceMap)
         interfaceHeader: maybe.T(String) backend: String fingerprint: String): String
     (* The stamp of the runtime wasm units are built against, and the one a

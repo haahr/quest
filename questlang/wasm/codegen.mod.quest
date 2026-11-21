@@ -1,11 +1,10 @@
 (* Quest Self-Hosted Compiler: The wasm Code Generator Implementation
  *
- * The interface says what it compiles. docs/wasm.md specifies the
- * representation it follows (section 2), closures (section 3), and a module
- * for each unit (section 5.1). The module's sections, by their banners: the
- * module's and a function's state, closures' types, values, aggregates,
- * descriptors, the library's externals, statements, and the unit as a
- * whole. *)
+ * Implements Codegen, compiling represented IR into WasmGC modules according
+ * to docs/wasm.md: value representation (section 2), closures (section 3),
+ * and one module per unit (section 5.1). The sections below cover module and
+ * function state, closure types, values, aggregates, descriptors, library
+ * externals, statements, and unit assembly. *)
 
 module codegen : Codegen
 import
@@ -51,14 +50,13 @@ export
      * The module's state
      * ====================================================================== *)
 
-    (* What compiling the unit's functions shares: the module made; the ids of
-     * the unit's global variables (walk.globalVariables), each one's global,
-     * each function's index (by Function.id), and each known closure
-     * (walk.knownClosures), by variable id; the runtime's functions by field;
-     * the function types made, by their text; the string literals' bytes, the
-     * one data segment; the names given, so that each is given once; and the
-     * records' field tables made (dict), by their view's and layout's shape
-     * ids *)
+    (* Shared state while compiling a unit: the output module, the unit's
+     * global variable ids (walk.globalVariables) and their WebAssembly global
+     * indices, function indices by Function.id, known closures
+     * (walk.knownClosures) by variable id, imported runtime functions by
+     * field, interned function types by signature text, the string-literal
+     * data buffer, fresh-name counters, and record field-offset tables (dict)
+     * keyed by view and layout shape ids *)
     Def G = Tuple
         unit: ir.Unit
         m: model.Module
@@ -222,11 +220,10 @@ export
      * A function's state
      * ====================================================================== *)
 
-    (* A structured instruction open around the code being made: an IR
-     * label's loop (its exit, a block, or its repetition, the loop), a join
-     * point (its continuation's entry, or the end after it), an if, or a
-     * try's body (labelTry), inside which a call is never a tail call, since
-     * a tail call would leave the try (insideTry) *)
+    (* An open WebAssembly structured instruction: an IR loop's exit block or
+     * loop header, a join point's block or outer after-block, an if, or a
+     * try_table body (labelTry, inside which tail calls are disallowed because
+     * a tail call would leave the handler; see insideTry) *)
     Def LabelKind = Option labelExit labelRepeat labelJoin labelAfter labelIf labelTry end
     Def Label = Tuple name: String kind: LabelKind end
 
@@ -690,12 +687,12 @@ export
      * it (runtime/wasm/core's objectHash) *)
     let readOnly = 1073741824
 
-    (* The string a Quest string literal denotes: one for each distinct text in
-     * the unit, the same at every evaluation, and read-only, so that setChar
-     * and setSub raise string.error on it (docs/extensions.md, String
-     * Literals). It is made the first time it is evaluated and kept in a
-     * global, rather than made as the unit starts, which would cost a unit
-     * with thousands of literals the time to make them all *)
+    (* Emits the string denoted by a Quest string literal: one read-only
+     * instance per distinct text in the unit, identical across evaluations, so
+     * setChar and setSub raise string.error on it (docs/extensions.md, String
+     * Literals). Each literal is allocated lazily on first evaluation and
+     * cached in a global, avoiding the startup cost of allocating thousands of
+     * literals at unit init. *)
     let questLiteral(f: F s: String): Ok =
         begin
             if not(hashMap.contains(f.g.literalGlobals s)) then
@@ -734,11 +731,12 @@ export
 
     let atomType(a: ir.Atom): ValType = valType(ir.atomType(a))
 
-    (* The unit's own copy of the runtime's boxInt or unboxInt (an Int in an
-     * i31ref when it fits, else in a $boxInt), made the first time it is
-     * called: the runtime's are another instance's, whose calls V8 cannot
-     * inline, and boxing is a tenth of self-compilation's time
-     * (benchmarks.md section 25). Its index *)
+    (* Returns the function index of this unit's local copy of boxInt or
+     * unboxInt (storing 31-bit signed Ints in unallocated i31refs and larger
+     * Ints in $boxInt structs), creating it on first use. Calling the runtime
+     * module's exports crosses an instance boundary that V8 cannot inline, and
+     * Int boxing accounts for roughly a tenth of self-compilation time
+     * (benchmarks.md section 25). *)
     let intBoxing(g: G field: String): Int =
         begin
             let key = "own." <> field
@@ -915,10 +913,10 @@ export
     let isRuntimeUnit(name: String): Bool =
         stringOp.equal(name "wasm/core") orif stringOp.equal(name "wasm/print")
 
-    (* A call of the runtime unit's function key ("wasm/core.member"). A
-     * Quest function's native entry takes its closure first, so the caller
-     * pushes noClosure's global before the arguments; a host function
-     * (quest.host) takes none *)
+    (* Emits a call to the runtime unit function named by key (for example,
+     * "wasm/core.member"). Because a Quest function's native entry takes its
+     * closure first, the caller pushes noClosure before the arguments; host
+     * functions (quest.host) take no closure. *)
     let runtimeUnitCall(f: F key: String): Ok =
         if hashMap.contains(f.g.runtimeUnits key) then
             emit(f i1(ops.call hashMap.find(f.g.runtimeUnits key)))
@@ -1390,12 +1388,11 @@ export
                 emit(f model.endInst)
         end
 
-    (* A tuple or option read through a view map may be a proxy: the value
-     * of a bounded type parameter whose type argument is a supertype of the
-     * value's, upcast (natively quest_view_tuple_slot and its siblings take
-     * one; section 2.3). A component read so is read
-     * through the proxy; one written, or its address taken, is the
-     * original's *)
+    (* A tuple or option read through a view map (for a bounded type parameter
+     * whose type argument is a supertype) may be a proxy, matching
+     * quest_view_tuple_slot and its siblings (section 2.3). Reads go through
+     * the proxy, while writes and address-of operations unwrap to the
+     * underlying original. *)
     let viewedRead(access: ir.Access m: maybe.T(ir.Variable)): ir.Access =
         if maybe.isSome(m) then ir.proxy else access end
     let viewedSlot(access: ir.Access m: maybe.T(ir.Variable)): ir.Access =
@@ -1833,9 +1830,8 @@ export
     (* The most elements an array may have here, V8's (section 2.10) *)
     let maxElements = 134217720
 
-    (* Raises arrayOp.error unless the Int index is within the array *)
-    (* Raises arrayOp.error at offset unless index is in arr's bounds; the
-     * comparison is unsigned, so that a negative index fails it too *)
+    (* Raises arrayOp.error at offset unless index is within arr's bounds;
+     * unsigned comparison rejects negative indices in the same test *)
     let checkIndex(f: F arr: ir.Atom index: ir.Atom offset: maybe.T(Int)): Ok =
         begin
             atom(f index)
@@ -1909,9 +1905,9 @@ export
             unboxFor(f elementType(ir.atomType(x.arr)) target)
         end
 
-    (* Integer division or remainder, the divisor tested for 0, which raises
-     * int.error, and for -1, whose quotient negates (wrapping) and whose
-     * remainder is 0, so that neither traps *)
+    (* Emits signed integer division or remainder. A zero divisor raises
+     * int.error, and a divisor of -1 is handled directly (wrapping negation
+     * for quotient, 0 for remainder) so INT64_MIN / -1 does not trap. *)
     let divide(f: F x: ir.OpPrim remainder: Bool): Ok =
         begin
             let a = x.args[0]
@@ -2343,10 +2339,11 @@ export
             runtimeCall(f "concat")
         end
 
-    (* A call of the library's external symbol (section 4.2): to the base,
-     * the runtime that is not Quest (runtimeCall); to a runtime unit in
-     * Quest (wasm/core, util/realconv, util/realmath); or an instruction
-     * sequence in place. One this target lacks fails when it is called *)
+    (* Compiles a call to the library external symbol (section 4.2): as a call
+     * to the base runtime (runtimeCall), a call to a Quest runtime unit
+     * (wasm/core, util/realconv, or util/realmath), or inline instructions.
+     * Externals unavailable on this target compile to a stub that fails if
+     * called. *)
     let externalCall(f: F symbol: String args: Array(ir.Atom) descs: Array(ir.Descriptor)
         target: maybe.T(ir.Variable)): Ok =
         begin
@@ -2457,11 +2454,11 @@ export
                 runtimeCall(f "fatal")
                 okValue()
             elsif named("quest_system_is_terminal") then emit(f model.i32Const(0))
-            (* What has no counterpart here raises its module's error
-             * (section 4.2): no process can be run, no code made or called,
-             * no address read, no line edited. os/code's address answers
-             * that there is no such symbol, as natively for a name the
-             * binary lacks, since the driver asks at its top level *)
+            (* Library externals with no WebAssembly equivalent raise their
+             * module's error (section 4.2): no subprocesses, JIT code
+             * generation, raw address inspection, or line editing. os/code's
+             * symbol lookup returns null (matching a missing native symbol)
+             * because the driver queries it at top level. *)
             elsif named("quest_system_run") orif strutil.startsWith(symbol "quest_process_") then
                 raiseAt(f "system.error" maybe.none())
             elsif named("quest_code_symbol") orif named("quest_code_tlv_getter") then
@@ -3565,14 +3562,14 @@ export
                 unboxFor(f x.plan.target target)
         end
 
-    (* A built-in operator as a value (opBuiltin), as the C runtime's
-     * trampolines are (qv_sym_plus_closure): a static closure of $closS for
-     * its signature, whose native entry computes it and whose uniform entry
-     * unboxes and boxes. Int's arithmetic and comparisons, division and
-     * remainder raising int.error with no site; Real's, raising real.error
-     * as the operators do, ^^ by util/realmath (which the unit imports when
-     * it sees the operator, as for the primitive); String's <>; and Bool's
-     * eager /\ and \/ *)
+    (* Returns the global index of the static closure for built-in operator
+     * name (opBuiltin, matching the C runtime's trampolines such as
+     * qv_sym_plus_closure), building it on first use. Its $closS struct holds
+     * a native entry for the operator and a uniform entry that unboxes and
+     * boxes around it. Covers Int arithmetic and comparisons (raising
+     * int.error with no site on zero division), Real operators (raising
+     * real.error as usual, with ^^ calling util/realmath), String <>, and
+     * eager Bool /\ and \/. *)
     let builtinClosure(g: G name: String): Int =
         if hashMap.contains(g.builtins name) then hashMap.find(g.builtins name)
         else
@@ -3698,13 +3695,13 @@ export
             n
         end
 
-    (* The adapter of closures of uniform arity n seen at a function
-     * supertype (the core's convert, quest_convert's meta->adapt): a closure
-     * type $adaptN, a subtype of $closU(n), that holds the closure adapted
-     * and the two function types, and its uniform entry, which converts each
-     * argument by the core's adaptArg (function adaptArg), calls the closure
-     * through its uniform entry, and converts the result by adaptResult. Its
-     * type and its entry's index *)
+    (* Builds a closure adapter for uniform arity n when viewing a function at
+     * a supertype (used by wasm/core.convert, matching quest_convert's
+     * meta->adapt). Creates a $adaptN subtype of $closU(n) holding the wrapped
+     * closure and source/target type descriptors, along with a uniform entry
+     * that converts each argument via adaptArg, calls the wrapped closure's
+     * uniform entry, and converts the result via adaptResult. Returns the
+     * struct type index and entry function index. *)
     Def Adapter = Tuple type: Int entry: Int end
     let adapterOf(g: G n: Int adaptArg: Int adaptResult: Int): Adapter =
         begin
@@ -3757,11 +3754,10 @@ export
             tuple let type = t let entry = at end
         end
 
-    (* The adapters the core makes, when its adaptClosure is first compiled:
-     * one for each uniform arity up to maxAdapted, and the function that
-     * makes one for an arity, or past those asks the core's adapterFor for
-     * the maker a unit registered (adaptersPast). The index of that
-     * function *)
+    (* Builds wasm/core's adaptClosure dispatcher on first use and returns its
+     * function index. Handles uniform arities up to maxAdapted directly, and
+     * for larger arities looks up a unit-registered maker via adapterFor (see
+     * adaptersPast). *)
     let maxAdapted = 8
     let adapters(g: G): Int =
         if hashMap.contains(g.runtimeFunctions "adaptClosure") then
@@ -4683,19 +4679,16 @@ export
                 end
             else maybe.none()
         end
-    (* An accumulating recursion (the SSA's accumulate pass, section 3.3): a
-     * function returning an Int, one of whose blocks
-     * returns its own call's result plus (or times) another value, is a loop
-     * with an accumulator. Each such site adds (or multiplies) the other
-     * value into the accumulator and branches to the loop around the
-     * function's code, its parameters set, as a self tail call does; each
-     * other return gives what it returns combined with the accumulator,
-     * which starts at the operation's identity. A tail call of another
-     * function would return without it, so in such a function none is made.
-     * accumulation gives the operation: 1 for +, 2 for times, 0 for none, found
-     * in the body as the first call of the function itself whose result the
-     * next statement combines; none in a function with a try, whose handler
-     * would see the accumulation *)
+    (* Detects accumulating recursion (matching the SSA accumulate pass,
+     * section 3.3). When an Int-returning function returns a recursive call to
+     * itself added to or multiplied by another value, the function compiles
+     * as a loop with an accumulator initialized to the operation's identity:
+     * each recursive site folds the other operand into the accumulator and
+     * branches back to the loop header, and every other return combines its
+     * value with the accumulator. Tail calls to other functions are disabled
+     * because they would bypass the accumulator, and functions containing try
+     * are excluded because a handler could observe partial accumulation.
+     * Returns 1 for addition, 2 for multiplication, or 0 for none. *)
     let accumulation(f: F fn: ir.Function): Int =
         if {extent f.results isnot 1} orif not(f.results[0]?valI64) orif fn.unboxedResult then 0
         else
@@ -4718,10 +4711,10 @@ export
             if tried then 0 else op end
         end
     let combine(f: F): Ok = emit(f i(if f.accOp is 1 then ops.i64Add else ops.i64Mul end))
-    (* A site at ss[k]: the call, the statement that combines its result,
-     * and the return of that (the next statement, or after's): compiled as
-     * the accumulator combined and a branch to the loop. How many of ss it
-     * takes, or 0 if it is not one *)
+    (* If ss[k] starts an accumulating self-call site (self-call, combine with
+     * f.accOp, and return of the combined result), emits the accumulator
+     * update and back-branch to the function loop. Returns the number of
+     * statements consumed from ss (2 or 3), or 0 if not a site. *)
     let accumulateSite(f: F ss: Array(ir.Stmt) k: Int after: maybe.T(ir.Stmt)): Int =
         if {f.accOp is 0} orif {{k + 1} >= extent ss} then 0
         else
@@ -4750,13 +4743,13 @@ export
             end
         end
 
-    (* Makes s and next a tail call, if s's call's result is what next
-     * returns, the callee's results are the function's, and the code is in
-     * no try (in an accumulating recursion, only a call of itself): a call
-     * of the function itself branches to the loop around its code
-     * (selfLabel), another direct call is a return_call, and a call through
-     * a closure a return_call_ref, or a call and a return where the uniform
-     * entry's result must be unboxed. Whether it did *)
+    (* Compiles s and next as a tail call when s's call result is returned by
+     * next, the callee's result types match the current function's, and code
+     * is not inside a try (in an accumulating recursion, only self-calls
+     * qualify). Self-calls branch to the function's loop (selfLabel), other
+     * direct calls emit return_call, and closure calls emit return_call_ref
+     * (or call_ref + unbox + return when the uniform entry must be unboxed).
+     * Returns true if a tail call was emitted. *)
     let tailCall(f: F s: ir.Stmt next: ir.Stmt): Bool =
         begin
             let found = callIn(f s)
@@ -4828,15 +4821,13 @@ export
                 end
             else maybe.none()
         end
-    (* A chain of <> made one allocation (docs/ssa.md section 4.1), as
-     * the SSA's concats pass makes it for the native backends: ss[k] binds a
-     * concatenation, and each statement after it one of the one before's
-     * result, which is used there only, and another atom. The chain's
-     * parts, in order, are joined by the runtime's concatN, seven at a time
-     * (each group's string the first part of the next), and the last
-     * statement's variable bound. The statements are adjacent, so nothing
-     * runs between them to change a part. The count of statements taken, 0
-     * for none *)
+    (* Folds a chain of adjacent <> concatenations starting at ss[k] into
+     * calls to the runtime's concatN (docs/ssa.md section 4.1, matching the
+     * native SSA concats pass). Each intermediate result must be used only by
+     * the next concatenation; adjacency guarantees no side effects intervene.
+     * Parts are joined seven at a time (carrying each batch's result into the
+     * next) and stored in the final variable. Returns the number of
+     * statements consumed, or 0 if ss[k] does not start a multi-step chain. *)
     let concatSite(f: F ss: Array(ir.Stmt) k: Int): Int =
         begin
             let first = concatOf(ss[k])
@@ -5117,13 +5108,13 @@ export
             when sInspect with x then inspectAuto(f x)
         end
 
-    (* inspect (an auto value's type component tested, docs/ir.md section
-     * 5): a case matches when the witness is a subtype of its type, or for
-     * an exact case equal to it, as the core's isSubtype says. Its binders get
-     * the components at the case's type: for an exact case, the stored ones,
-     * shared or converted by one plan (every layout is one here, so the
-     * stored is the case's); else a new tuple, each converted by the arm's
-     * descriptors where it has them. With no else, raises dynamic.error *)
+    (* Compiles inspect, which tests an auto (existential) value's witness
+     * type (docs/ir.md section 5). A case matches when wasm/core.isSubtype
+     * holds from the witness to the case type (or both directions for an exact
+     * case). Exact-case binders reuse the stored payload or convert it with
+     * one plan; non-exact cases build a new tuple converting each component by
+     * its descriptor pair. Raises dynamic.error if no case matches and there
+     * is no else branch. *)
     and inspectAuto(f: F x: ir.StmtInspect): Ok =
         begin
             let value = scratch(f model.refNull(rt.index("auto")))
@@ -5215,12 +5206,12 @@ export
             close(f)
         end
 
-    (* A switch on an option's or a variant's tag: a block for each case,
-     * inside one for else and one for the end, entered by a br_table on the
-     * tag (through the view map or a proxy where the value may be read
-     * through one). An option case's binder is the option itself, which
-     * shares its components, or its one component; a variant case's, its
-     * payload. With no else, raises variant.tagMismatch *)
+    (* Compiles a switch on an option or variant tag as nested blocks (one per
+     * case inside an else block and an after block) dispatched by br_table on
+     * the tag (read through a view map or proxy when needed). An option case
+     * binds either the option itself (sharing its slots) or its single
+     * component; a variant case binds its payload. Raises variant.tagMismatch
+     * if no case matches and there is no else branch. *)
     and switch(f: F x: ir.StmtSwitch): Ok =
         begin
             let viewed = maybe.isSome(x.viewMap)
@@ -5390,14 +5381,14 @@ export
             let names = array of(extent sig.params "")
             let f = newF(g names sig.results fn.id)
             names[0] := fresh(f.names "closure")
-            (* A loop around its code, to which a call of itself in tail
-             * position branches, its parameters set, rather than return_call:
-             * V8 checks for termination at a loop's back edge, not at a tail
-             * call, so that the page can end the worker running an endless
-             * self recursion (section 3.3); a mutual recursion's tail calls
-             * still cannot be interrupted there (section 6.4). Left out if no
-             * such call is compiled. It begins after the prologue, below; an
-             * accumulating recursion's accumulator is set here, before it *)
+            (* Wrap the body in a loop so self tail calls update parameters and
+             * branch back rather than using return_call: V8 checks for worker
+             * termination at loop back-edges, not at tail calls, allowing the
+             * host to interrupt endless self-recursion (section 3.3; mutual
+             * tail recursion still cannot be interrupted there, section 6.4).
+             * The loop is stripped afterwards if no self tail call is emitted.
+             * It starts after the prologue below, while an accumulating
+             * recursion initializes its accumulator here before the loop. *)
             f.accOp := accumulation(f fn)
             if f.accOp > 0 then
                 f.accLocal := scratch(f model.i64)
@@ -5741,13 +5732,11 @@ export
                         importFunction(unitName(i) "init" funcType(g noTypes noTypes)))
                 end
             end
-            (* The runtime's units' functions, each at its interface's
-             * closure signature: for a unit whose code uses descriptors
-             * (described), the core's constructors, which its initializer
-             * makes them with; print's echo; the core's proxies and
-             * adapters. A unit whose modules have abstract types uses
-             * descriptors too, registering their representations'
-             * (registerAbstracts) *)
+            (* Import functions from the Quest runtime units at their interface
+             * closure signatures: wasm/core's descriptor, proxy, and adapter
+             * helpers, plus wasm/print's echo. A unit whose modules declare
+             * abstract types also needs descriptors to register their
+             * representations (registerAbstracts). *)
             let var abstracts = false
             for k = 0 upto vector.length(unit.modules) - 1 do
                 if extent vector.get(:ir.Module unit.modules k).abstractTypes > 0 then abstracts := true end
@@ -5760,10 +5749,10 @@ export
                     importFunction(unitName field funcType(g withClosure(params) results)))
             let e = model.eqref
             let n = model.i64
-            (* print's echo, for a unit that echoes a value its descriptor
-             * writes; and a program's report of an uncaught exception
-             * writes a payload by its descriptor with print's show. No
-             * other unit imports print, which imports the library *)
+            (* Import wasm/print when a unit echoes descriptor-formatted values
+             * or when a program needs wasm/print.show to format uncaught
+             * exception payloads. Other units avoid importing wasm/print
+             * because it depends on the standard library. *)
             let var echoes = false
             let echoBodies = walk.unitBodies(unit)
             for b = 0 upto extent echoBodies - 1 do

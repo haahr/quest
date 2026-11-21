@@ -1,7 +1,8 @@
 (* Quest Self-Hosted Compiler: The SSA Builder's Descriptors Interface
  *
- * Type descriptors as SSA values: static ones by their symbols, instantiated
- * ones made at run time, and arrays of them on the stack. *)
+ * Lowers run-time type descriptors to SSA values: static descriptors addressed
+ * by symbol, polymorphic descriptors instantiated at run time, and
+ * stack-allocated pointer arrays used to pass descriptor lists. *)
 
 interface Descriptors
 import
@@ -11,13 +12,13 @@ import
     vals = questlang/ssa/build/values : questlang/ssa/build/Values
 export
 
-    (* The address of a static descriptor, of a form *)
+    (* The SSA address of the static type descriptor described by f *)
     formAddress(fn: vals.Fn f: staticdata.DescriptorForm): Int
-    (* The static descriptor of a static descriptor operand: its echo form,
-     * if it has one *)
+    (* Resolves a static descriptor operand to its DescriptorForm, preferring
+     * its echo form (for value printing) when d.echo is set and one exists *)
     staticFormOf(u: vals.UnitBuilder d: ir.StaticDescriptor): staticdata.DescriptorForm
     descriptor(fn: vals.Fn d: ir.Descriptor): Int
-    (* A stack array of the pointers, its address *)
+    (* Allocates a stack array holding ptrs and returns its address *)
     slotArray(fn: vals.Fn ptrs: Array(Int)): Int
     descriptors(fn: vals.Fn ds: Array(ir.Descriptor)): Array(Int)
     maybeDescriptor(fn: vals.Fn d: maybe.T(ir.Descriptor)): Int

@@ -1,10 +1,11 @@
 (* Quest Self-Hosted Compiler: Typed AST Interface
  *
- * The typed AST of bootstrap/python/quest/typechecker/typed_ast.py, node for
- * node: what the type checker elaborates expressions, bindings, and programs
- * into. An expression has its type; a binding (a declaration, a statement, an
- * import, an interface, or a module) has none. Every node has the offset of the
- * syntax it was elaborated from.
+ * This interface defines the typed AST that the type checker elaborates
+ * expressions, bindings, and programs into, mirroring
+ * bootstrap/python/quest/typechecker/typed_ast.py node for node. Every
+ * expression carries its type, while a binding (a declaration, statement,
+ * import, interface, or module) has none. Every node records the byte offset of
+ * the syntax it was elaborated from.
  *
  * The bootstrap's TypedTypeWitness has a kind (TYPE) as its type_val, which
  * nothing reads; here its type is Ok. *)
@@ -30,7 +31,7 @@ export
         exprOk
         exprExternal with symbol: String end
         exprVar with name: String symbol: symbols.ValueSymbol end
-        (* Functions and applications; a function's type parameter ids are those
+        (* Functions and applications: a function's type parameter ids are those
          * its body refers to. typeOnly says whether they are its only
          * parameters, as in fun(A::TYPE) e, whose application to types
          * computes e; a function of type parameters then value parameters,
@@ -40,10 +41,10 @@ export
         exprApp with func: Expr args: Array(Expr) end
         exprTypeApp with func: Expr typeArgs: Array(model.Type) end
         exprInfix with left: Expr op: String right: Expr end
-        (* Aggregates and projections. A tuple's groups list the indices of the
-         * components declared together: recursive ones, and simultaneous ones
-         * (let ... and ...); labels the symbol each component's label binds for
-         * the components after it. *)
+        (* Aggregates and projections: a tuple's recGroups and
+         * simultaneousGroups list the indices of components declared together
+         * (recursive and let ... and ... groups), and labels holds the symbol
+         * each component's label binds for later components *)
         exprRecord with fields: Array(RecordField) end
         exprTypeWitness with name: String witnessType: model.Type bound: maybe.T(model.Kind) end
         exprTuple with
@@ -57,16 +58,16 @@ export
         exprIndexAssign with target: Expr index: Expr value: Expr end
         exprArray with elements: Array(Expr) end
         exprArrayRep with count: Expr initVal: Expr end
-        (* Mutable references and assignment. A reference is a node of type
+        (* Mutable references and assignment: a reference is a node of type
          * Var(T) that stands for a location rather than its contents, which
-         * is what a var or out argument passes (docs/type-system.md §6.2):
-         * exprVarCell, var(e), a fresh location holding e; exprSelectRef,
-         * @r.f, a record's var field; exprIndexRef, @a[i]; and
-         * exprTupleSelectRef, @t.f or @t.1, a tuple's var component, by its
-         * index among the value components (field is its name, if written
-         * by name). An exprVar of a var variable or parameter is a reference
-         * too. exprDerefCell reads one: a var variable used as a value is
-         * exprDerefCell of its exprVar, of type T *)
+         * is what a var or out argument passes (docs/type-system.md §6.2).
+         * exprVarCell (var(e)) is a fresh location holding e; exprSelectRef
+         * (@r.f) is a record's var field; exprIndexRef is @a[i]; and
+         * exprTupleSelectRef (@t.f or @t.1) is a tuple's var component,
+         * indexed among the value components (field is its name if written by
+         * name). An exprVar of a var variable or parameter is also a
+         * reference. exprDerefCell reads one: a var variable used as a value
+         * is an exprDerefCell of its exprVar, of type T. *)
         exprVarCell with value: Expr end
         exprDerefCell with target: Expr end
         exprSelectRef with target: Expr field: String end
@@ -93,7 +94,7 @@ export
         exprLoop with body: Expr end
         exprFor with varName: String symbol: symbols.ValueSymbol start: Expr isDownto: Bool stop: Expr body: Expr end
         exprExit
-        (* Exceptions; a named exception also binds its name (symbol) in the
+        (* Exceptions: a named exception also binds its name (symbol) in the
          * scope where it appears *)
         exprException with name: String payloadType: maybe.T(model.Type) symbol: maybe.T(symbols.ValueSymbol) end
         exprRaise with exc: Expr payload: maybe.T(Expr) end
@@ -134,11 +135,11 @@ export
         bindDefKind with name: String symbol: symbols.KindSymbol end
         bindExprStmt with expr: Expr end
         bindInterface with name: String signatures: Array(Binding) scope: symbols.Scope end
-        (* A module. isPrecompiled marks one compiled separately, whose
-         * typed module the loader makes from its interface rather than its
-         * source: its bindings are empty, and the lowering emits no code for
-         * it. symbolId is the id of the value symbol the module's name binds,
-         * which uses of the module refer to *)
+        (* Module binding: isPrecompiled marks a module compiled separately,
+         * whose typed node the loader builds from its interface rather than
+         * its source, leaving bindings empty so lowering emits no code for it.
+         * symbolId is the id of the value symbol bound to the module's name,
+         * which uses of the module refer to. *)
         bindModule with
             name: String
             interfaceName: String

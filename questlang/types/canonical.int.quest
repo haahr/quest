@@ -1,23 +1,25 @@
 (* Quest Self-Hosted Compiler: Canonical Forms of Types Interface
  *
- * bootstrap/python/quest/types/canonical.py: the canonical form of a type
- * containing recursion, its minimal graph, so that equal types have one
- * representation however they are written (which the IR's shapes are built
- * from); the reduced forms they start from are types/reduce's. The checker
- * keeps types as written and does not use canonical forms
- * (docs/type-system.md §2.2); docs/c-representation.md §5.7 describes the C
- * side. *)
+ * Computes the canonical form of a recursive type by minimizing its graph, so
+ * that equal recursive types share one representation however they are written
+ * (which the IR uses to build runtime shapes). Canonicalization starts from
+ * the reduced forms of types/reduce. The type checker keeps types as written
+ * and does not use canonical forms (docs/type-system.md §2.2). The counterpart
+ * is bootstrap/python/quest/types/canonical.py, and docs/c-representation.md
+ * §5.7 describes the C side. *)
 
 interface Canonical
 import
     questlang/types/model : questlang/types/Model
     util/maybe : util/Maybe
 export
-    (* The canonical form of t if t contains recursion and is not in canonical
-     * form. Equal types containing recursion have the same canonical form. With
-     * QUEST_CHECK_CANONICAL=1, a canonical form that is not equal to its type,
-     * or not a fixed point, raises canonicalError; otherwise the former is a
-     * warning. *)
+    (* Returns the canonical form of t if t contains recursion and is not
+     * already canonical, or none otherwise (including when t contains unsolved
+     * type metavariables). Equal recursive types produce the same canonical
+     * form. With QUEST_CHECK_CANONICAL=1, a result that is not equal to t or
+     * is not a fixed point (canonicalizing it again changes it) raises
+     * canonicalError; otherwise an unequal result prints a warning and returns
+     * none. *)
     canonicalType(t: model.Type): maybe.T(model.Type)
     canonicalError: Exception(String)
 

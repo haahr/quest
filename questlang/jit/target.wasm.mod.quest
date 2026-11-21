@@ -1,18 +1,17 @@
 (* Quest Self-Hosted Compiler: The JIT's Target Implementation, for wasm
  *
- * The wasm variant of jit/target, which the wasm backend's units take
- * (docs/wasm.md section 6.1): a unit compiled to a WebAssembly module by
- * the wasm backend, its bytes given to the host, which compiles the module
- * and instantiates it beside the driver's and the units loaded before; and
- * an input's entry run by the host, which catches an engine's stack overflow,
- * a trap, or a fatal error (which the runtime holds while the input runs) at
- * its own frame, so that the driver's frames below are intact and the input
- * fails as if it had raised. A Quest exception the input
- * raises crosses the host's frame to the handler here.
+ * This is the wasm variant of jit/target, used when the driver itself runs on
+ * WebAssembly (docs/wasm.md section 6.1). Each unit is compiled to a
+ * WebAssembly module by the wasm backend and passed as bytes to the host,
+ * which compiles and instantiates it alongside the driver and previously
+ * loaded units. When the host runs an input's entry point, it catches engine
+ * stack overflows, traps, and fatal runtime errors at its own frame so the
+ * driver's stack stays intact; Quest exceptions raised by the input unwind
+ * across the host frame to the handler here.
  *
- * The host's functions are quest.host's imports (wasm.host.NAME), each of
- * Ints, and a string crosses to it as its bytes in the runtime's linear
- * memory, at area (runtime/wasm/jit.mjs). *)
+ * Host functions are imported as wasm.host.NAME with integer parameters;
+ * strings are passed via the runtime's linear memory at offset area
+ * (runtime/wasm/jit.mjs). *)
 
 unsound module target : Target
 import
@@ -69,9 +68,9 @@ export
     let raisedSite(r: raised.T): String = external "wasm.raisedSite"
     let fatalReport(): String = external "wasm.fatalReport"
 
-    (* A fatal error's report, as the runtime writes it: its message, its
-     * first line, and its site, from its second line, "  at SITE", if it has
-     * one *)
+    (* Splits a runtime fatal-error report into a two-element array [message,
+     * site]: message is the first line, and site is extracted from a second
+     * line beginning with "  at " if present *)
     let reportParts(report: String): Array(String) =
         begin
             let n = stringOp.length(report)
@@ -94,9 +93,10 @@ export
             array of message site end
         end
 
-    (* The driver's own record of system, and a field of a record set, by
-     * its index in name order: a record's payload is no Quest value, and is
-     * typed here as a String, which no conversion touches *)
+    (* External helpers to fetch the driver's system module record and update a
+     * field by alphabetical index. A record's payload is not a normal Quest
+     * value, so it is typed as String here to pass through without
+     * conversion. *)
     let systemRecord(unit: String): String = external "wasm.importedRecord"
     let recordSet(payload: String index: Int value: Array(String)): Ok = external "wasm.recordSet"
 
@@ -109,9 +109,9 @@ export
 
     let refusal(): maybe.T(String) = maybe.none(:String)
 
-    (* system.args, made args in the driver's own system record, which the
-     * inputs read: its field at its index in name order, as the arm64
-     * target sets it *)
+    (* Sets system.args in the driver's system module record by its
+     * alphabetical field index in the System interface, matching the arm64
+     * target *)
     let setArgs(e: env.T args: Array(String)): Ok =
         begin
             let scope = elaboration.loadInterface("System" e)
@@ -141,14 +141,13 @@ export
         begin
             let bytes = try
                 begin
-                    (* The passes hold a pointer and a boxed value alike, as
-                     * the wasm backend's one eqref, which whoever runs them
-                     * for a wasm unit sets: here the target *)
+                    (* Tell the IR passes that pointers and boxed values share
+                     * the same representation (WebAssembly eqref) *)
                     shapes.setReferencesAlike(true)
                     encode.encode(wasm.unitModule(passes.runPasses(unit)))
                 end
-                (* The IR passes' failures, which are the compiler's (a rejected
-                 * conversion, the program's, is raised as its error) *)
+                (* Convert IR and WebAssembly backend failures into
+                 * unsupported *)
                 when closure.capturesMutable with x then fail(:String x)
                 when represent.unsupportedConversion with x then fail(:String x)
                 when represent.rejectedConversion with x then fail(:String x)
@@ -159,9 +158,9 @@ export
             let n = vector.length(:nodes.Module unit.modules)
             if n is 0 then fail(:Ok "a unit with no module") end
             let name = vector.get(:nodes.Module unit.modules n - 1).name
-            (* The bytes given, then loaded under the unit's last module's
-             * name; a load that fails leaves its message at area and gives
-             * its length *)
+            (* Hand the encoded bytes to the host and load the module under the
+             * unit's last module's name; on failure, hostLoad writes the error
+             * message at area and returns its length *)
             let given = hostGive(area put(bytes))
             let failed = hostLoad(area put(name))
             if failed > 0 then fail(:Ok fromMemory(area failed)) end

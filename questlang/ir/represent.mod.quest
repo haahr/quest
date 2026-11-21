@@ -294,12 +294,12 @@ export
     let planning = hashMap.new(:String :Bool stringOp.equal hash.string)
     let adapting = hashMap.new(:String :Bool stringOp.equal hash.string)
 
-    (* lay's part of a key of planning: "-" for none, or its substitution's
-     * identity (the bootstrap's id) and its direction. Identity suffices, as
-     * the key only has to tell apart the layouts of the plans in progress,
-     * whose substitutions are live, distinct objects (a nested plan passes
-     * its layout on as it is, so a recursive type's pair meets the same one
-     * again) *)
+    (* Returns lay's contribution to a planning key: "-" for none, or its
+     * substitution's object identity and direction. Identity suffices because
+     * the key only distinguishes layouts of plans currently in progress, whose
+     * substitutions are live, distinct objects (a nested plan forwards its
+     * layout unchanged, so a recursive type meets the same substitution
+     * again). *)
     let layoutKey(lay: Layout): String =
         if maybe.isNone(lay) then
             "-"
@@ -308,9 +308,9 @@ export
             conv.int(word.toInt(hash.identityHash(l.subst))) <> if l.toGeneric then "t" else "f" end
         end
 
-    (* The plan converting a value of type source for use at type target, or
-     * none if it serves as it is, decided from the two types' shapes and their
-     * C representations.
+    (* Returns the plan converting a value of type source for use at type
+     * target, or none if it serves as it is, decided from the two types'
+     * shapes and their C representations.
      *
      * A shape is a type reduced to what decides how C holds its values
      * (repr/shapes), its representation: an Int as an int64_t, a tuple as a
@@ -319,35 +319,37 @@ export
      * change, and a proxy is a small object that shows a tuple or option at
      * another view (docs/c-representation.md section 5.8).
      *
-     * planInner and viewPlan make the tests in order, and the first that
-     * applies decides:
+     * planInner and viewPlan test cases in order, and the first that applies
+     * decides:
      *
      * 1. Ok on either side: nothing to convert.
-     * 2. A function type on each side: adaptPlan, which wraps the closure in
+     * 2. An applied abstract type operator crossing between its module's
+     *    generic layout and its concrete representation: abstractPlan.
+     * 3. A function type on each side: adaptPlan, which wraps the closure in
      *    a thunk if its C signature, or an argument or result, changes.
-     * 3. A value passed to or returned from a polymorphic callee (lay given)
+     * 4. A value passed to or returned from a polymorphic callee (lay given)
      *    whose generic layout there differs from its layout at the call's
      *    type arguments: layoutPlan. (If that finds nothing to do but either
      *    side is a module's abstract type held at its bound, the tests go
      *    on.)
-     * 4. Into or out of a QVal, the one word in which generic code holds an
+     * 5. Into or out of a QVal, the one word in which generic code holds an
      *    unbounded type parameter's values: box or unbox. A call id(:Int 2) of
      *    id(A::TYPE x: A): A, not specialized, boxes 2 and unboxes the result.
      *    Both QVals, or equal types at the same views: nothing.
-     * 5. A type parameter bounded by a record, variant, option, or tuple type,
+     * 6. A type parameter bounded by a record, variant, option, or tuple type,
      *    whose values are held at their own view, their type argument's: view,
      *    converted at run time between the two types' descriptors. The same
      *    parameter on both sides needs nothing.
-     * 6. Records: record_view, since a record seen at a supertype has another
+     * 7. Records: record_view, since a record seen at a supertype has another
      *    table of field offsets (docs/c-representation.md section 5.2).
-     * 7. Variants: nothing if both number the cases alike and no payload
+     * 8. Variants: nothing if both number the cases alike and no payload
      *    changes view; variant_tags to renumber a subtype's tags; otherwise
      *    view.
-     * 8. Options: nothing, or a cast between C types, if their cases agree;
+     * 9. Options: nothing, or a cast between C types, if their cases agree;
      *    otherwise a view, a proxy of the original.
-     * 9. Tuples: nothing, or a cast, if no component changes but by boxing;
-     *    otherwise a view (a proxy). A tuple cannot gain components.
-     * 10. The same representation (but for functions, options, and arrays),
+     * 10. Tuples: nothing, or a cast, if no component changes but by boxing;
+     *     otherwise a view (a proxy). A tuple cannot gain components.
+     * 11. The same representation (but for functions, options, and arrays),
      *     or arrays whose elements need at most boxing either way: nothing.
      *
      * Anything else raises unsupportedConversion, rather than leave the C
@@ -489,13 +491,13 @@ export
             end
         end
 
-    (* A value of an application of a module's abstract type operator, laid out
-     * outside the module as the module's generic code lays it out, used at its
-     * representation at the same arguments (inside the module), or back: a
-     * view converting it at run time between the generic layout and the
-     * native one, where they differ (docs/c-representation.md section 5.1).
-     * None, the tests going on, where they agree or the other side is not the
-     * native representation (a generic function's, which agrees) *)
+    (* Plans conversion between an applied abstract type operator (laid out
+     * outside its module in the module's generic layout) and its concrete
+     * representation inside the module at the same type arguments
+     * (docs/c-representation.md section 5.1). Returns a runtime view plan when
+     * the two layouts differ (or raises rejectedConversion if that would copy
+     * mutable data), and none so later tests run when the layouts agree or the
+     * other side is not the native representation. *)
     and abstractPlan(source: Type target: Type ss: Shape ts: Shape cs: String ct: String): maybe.T(maybe.T(Plan)) =
         begin
             let toGeneric = shapes.kindIs(ts shapes.shapeAbstract)
@@ -529,7 +531,7 @@ export
         end
 
     (* The plan from source to target, of shapes ss and ts and C
-     * representations cs and ct, by plan's tests 4 to 10 (boxing, bounded
+     * representations cs and ct, by plan's tests 5 to 11 (boxing, bounded
      * type parameters' views, records, variants, options, tuples, and the
      * rest), where neither a function's adapter nor a polymorphic callee's
      * layout decided it *)
@@ -1260,15 +1262,14 @@ export
             c.body.statements := lets
         end
 
-    (* The statements that replace s: s, its atoms converted to the
-     * representations its uses require (docs/ir.md section 8.3), after the
-     * conversions of its operands and before those of its result (and a
-     * call's copies out of temporaries for var and out arguments, see
-     * refArgument). A polymorphic call's result converts in two steps: from
-     * the callee's generic layout to its type at the type arguments, then to
-     * the let's type. function is the function whose body holds s, if any,
-     * whose result type a return converts to; an inspect's cases get their
-     * arms *)
+    (* Returns the statements that replace s, with conversions inserted before s
+     * for its operands and after s for its result (plus any writebacks from
+     * temporaries for var and out arguments; see refArgument and docs/ir.md
+     * section 8.3). A polymorphic call's result converts in two steps: first
+     * from the callee's generic layout to the instantiated type, then to the
+     * let variable's type. function is the enclosing function, if any, whose
+     * result type a return converts to; inspect cases also receive their
+     * InspectArm plans here. *)
     let statement(r: Representer s: Stmt function: maybe.T(nodes.Function)): Array(Stmt) =
         begin
             let before = vector.new(:Stmt)

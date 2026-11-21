@@ -26,7 +26,7 @@ export
     (* An integer as Python writes it (conv.int writes negative ones with ~) *)
     let pyInt(n: Int): String = pyRepr.number(conv.int(n))
 
-    (* The file name is found as on PATH (Python's shutil.which) *)
+    (* Searches PATH for a file named name, like Python's shutil.which *)
     let which(name: String): maybe.T(String) =
         begin
             let dirs = strutil.split(system.getEnv("PATH") ":")
@@ -64,9 +64,10 @@ export
             end
         end
 
-    (* Flags that keep tracebacks' frames (docs/exceptions.md section 5.3): GCC
-     * moves the cold paths of functions, which hold the calls that raise, into
-     * separate sections that tracebacks cannot attribute to the functions *)
+    (* Returns flags that preserve stack-trace frames (docs/exceptions.md
+     * section 5.3). GCC moves cold paths, which hold exception-raising calls,
+     * into separate sections that tracebacks cannot attribute to their
+     * functions; -fno-reorder-blocks-and-partition disables that split. *)
     let tracebackFlags(compiler: String): vector.T(String) =
         begin
             let flags = vector.new(:String)
@@ -121,9 +122,9 @@ export
                     if maybe.isNone(found) then
                         let inc = files.join(prefixes[i] "include")
                         let lib = files.join(prefixes[i] "lib")
-                        (* The library, and rlconf.h, a header of GNU
-                         * readline's own, which libedit's compatibility
-                         * headers do not have *)
+                        (* Require both the library and rlconf.h, which is
+                         * specific to GNU readline and absent from libedit's
+                         * compatibility headers *)
                         let hasLib = system.fileExists(files.join(lib "libreadline.dylib"))
                             orif system.fileExists(files.join(lib "libreadline.so"))
                             orif system.fileExists(files.join(lib "libreadline.a"))
@@ -226,9 +227,9 @@ export
             appendAll(libraries readlineFlags())
             appendAll(libraries extraFlags)
             appendAll(flags vector.toArray(compileFlagsOf(vector.toArray(libraries))))
-            (* The key of what the objects are compiled from: the compiler, its
-             * version, the flags, and the runtime's sources and headers, each
-             * ended by a NUL so that no two keys run together alike *)
+            (* Build the cache key from the compiler, its version, the flags,
+             * and every runtime source and header, terminating each piece with
+             * a NUL byte so distinct inputs cannot concatenate identically *)
             let key = vector.new(:String)
             let nul = stringOp.new(1 ascii.char(0))
             vector.append(key compiler <> nul)
@@ -254,8 +255,8 @@ export
                 let name = runtimeSources[i]
                 let o = files.join(cache stringOp.getSub(name 0 {stringOp.length(name) - 2}) <> ".o")
                 if not(system.fileExists(o)) then
-                    (* Written to a temporary file and renamed, so that builds
-                     * linking at once never see half of one *)
+                    (* Compile to a temporary file and rename atomically so
+                     * concurrent builds never link a half-written object *)
                     system.makeDirectory(cache)
                     let temp = temporary(false files.join(cache "tmpXXXXXXXX"))
                     let command = vector.new(:String)
@@ -285,8 +286,8 @@ export
         begin
             let cc = if maybe.isSome(compiler) then maybe.unwrap(compiler) else findCCompiler() end
             let dir = runtimeDir()
-            (* Built before the temporary directory is made, so that a failure
-             * building them leaves nothing behind *)
+            (* Build runtime objects before creating the temporary directory so
+             * a runtime compilation failure leaves no temp directory behind *)
             let runtime = runtimeObjects(cc nogc extraFlags)
             (* The source, in a temporary file of its own *)
             let tempDir = temporary(true files.join(maybe.unwrapOr(nonEmpty(system.getEnv("TMPDIR")) "/tmp")
@@ -304,8 +305,8 @@ export
             vector.append(command output)
             appendAll(command gcFlags(nogc))
             appendAll(command readlineFlags())
-            (* Last, as the bootstrap passes them, so that a library they name
-             * comes after the objects that use it *)
+            (* Append extraFlags last, matching the bootstrap, so any library
+             * they name comes after the object files that reference it *)
             appendAll(command extraFlags)
             let r = try
                 begin
@@ -338,8 +339,8 @@ export
             appendAll(command objects)
             vector.append(command "-o")
             vector.append(command output)
-            (* The libraries' linker flags; the runtime's objects were compiled
-             * with the rest *)
+            (* Pass only linker flags here; the runtime objects were already
+             * compiled with the other readline flags *)
             let rl = readlineFlags()
             for i = 0 upto {extent rl - 1} do if isLinkerFlag(rl[i]) then vector.append(command rl[i]) end end
             appendAll(command extraFlags)

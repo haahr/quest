@@ -1,18 +1,18 @@
 (* Quest Self-Hosted Compiler: Run-Time Values Interface
  *
- * The values of bootstrap/python/quest/values/model.py, which the interpreter
- * (questlang/interpreter) computes: a case of Value for each QValue class. A
- * string, word, reader, writer, or string builder is the native Quest value,
- * which the standard library's externals act on directly
- * (questlang/interpreter/builtins); a record, tuple, array, variant, option,
- * closure, reference, auto value, exception, or type value is a tuple (or
- * array) whose identity is the value's, so that `is` on two values is `is` on
- * what they hold (Cardelli's identity, qvalue_is).
+ * Defines the run-time values computed by the interpreter
+ * (questlang/interpreter), mirroring bootstrap/python/quest/values/model.py
+ * with a Value case for each QValue class. A string, word, reader, writer, or
+ * string builder is stored as the native Quest value, which the standard
+ * library's externals act on directly (questlang/interpreter/builtins); a
+ * record, tuple, array, variant, option, closure, reference, auto value,
+ * exception, or type value is a tuple (or array) whose identity is the
+ * value's, so that `is` on two values is `is` on what they hold (Cardelli's
+ * identity, qvalue_is).
  *
- * The bootstrap's closures hold its RuntimeEnvironment, which is the
- * tree-walking interpreter's; in Quest a closure's type needs the
- * environment's, so the frames (Frame) are declared here, and their operations
- * are treewalk's. *)
+ * The bootstrap's closures hold its RuntimeEnvironment, which belongs to the
+ * tree-walking interpreter. In Quest a closure's type needs the environment's
+ * type, so Frame is declared here while its operations live in treewalk. *)
 
 interface Model
 import
@@ -173,11 +173,11 @@ export
     (* The human-readable type name of a value (QValue.type_name) *)
     typeName(v: Value): String
 
-    (* Cardelli's is: value equality for Ok, Bool, Int, Word, Real, and Char,
-     * type equality for type values, and identity for the rest. It knows no
-     * static type, so it does not compare options by case as is does at an
-     * option type (docs/extensions.md, Options as Values); the interpreter's
-     * primitives.sameAt does *)
+    (* Implements Cardelli's `is`: value equality for Ok, Bool, Int, Word, Real,
+     * and Char, type equality for type values, and reference identity for the
+     * rest. Because it knows no static type, it does not compare options by
+     * case as `is` does at an option type (docs/extensions.md, Options as
+     * Values); the interpreter's primitives.sameAt handles that. *)
     same(v1: Value v2: Value): Bool
     (* The canonical text of a value (qvalue_to_str), with cycles shown as
      * ... *)

@@ -142,8 +142,8 @@ export
             ""
         end
 
-    (* The view map an operation reads a value through its type's bound by, if
-     * it has one *)
+    (* Formats the view map (runtime layout mapping for a bounded type
+     * parameter) used by an operation, if any *)
     let through(p: Printer viewMap: maybe.T(Variable)): String =
         if maybe.isSome(viewMap) then " through " <> name(p maybe.unwrap(viewMap)) else "" end
 
@@ -187,8 +187,8 @@ export
             found
         end
 
-    (* Atoms, those the represent pass boxes in the aggregate's allocation
-     * marked box *)
+    (* Formats atoms, prefixing with "box " any index that the represent pass
+     * allocates inline inside the aggregate *)
     let boxedAtoms(p: Printer items: Array(Atom) embedded: Array(Int)): String =
         begin
             let texts = vector.new(:String)
@@ -435,8 +435,8 @@ export
             let env = if maybe.isSome(f.env) then " {" <> bind(p maybe.unwrap(f.env)) <> "}" else "" end
             emit(p depth "fun " <> name(p f.v) <> env <> tps <> "(" <> joinWith(", " params) <> "): "
                 <> if f.unboxedResult then "unboxed(" <> typeText(f.resultType) <> ")" else typeText(f.resultType) end <> " {")
-            (* The view maps it reads its type parameters' values through their
-             * bounds by (after the describe pass) *)
+            (* View maps (after the describe pass) map a bounded type
+             * parameter's runtime layout to its upper bound *)
             for i = 0 upto {extent f.viewMaps - 1} do
                 let m = f.viewMaps[i]
                 emit(p depth + 1 "view_map " <> bind(p m.v) <> " = view_map(" <> name(p m.descriptor) <> ", "

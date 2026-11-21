@@ -1,15 +1,14 @@
 (* Quest Self-Hosted Compiler: The JIT Session Interface
  *
- * docs/jit.md section 3: the REPL's inputs compiled to arm64 code in the
- * driver's own process, loaded (jit/loader), and run, instead of interpreted.
- * Each input is a phrase unit (ir/lower's lowerPhrases): the arm64 backend's
- * pipeline compiles it, codegen/arm64/encode encodes it, and its entry runs
- * under a handler that catches every exception. Its phrases' results are
- * printed by the runtime as they run, as a compiled program prints them, or
- * captured for the REPL; its bindings stay in its record for later inputs,
- * which read them as the record's fields. The module files an input imports
- * that the driver does not link are compiled from source and loaded first,
- * once in a session (docs/jit.md section 3.4). *)
+ * This module manages a REPL JIT session, compiling each input into native or
+ * WebAssembly code through jit/target instead of interpreting it (docs/jit.md
+ * section 3). Each input is lowered as a phrase unit (ir/lower's
+ * lowerPhrases), compiled and loaded by jit/target, and executed under an
+ * exception-catching handler. Phrase results are printed by the runtime as
+ * they run or captured for the REPL, and top-level bindings are stored in the
+ * input's module record so later inputs can read them as fields. Any imported
+ * module not already linked into the driver is compiled from source and loaded
+ * once per session before the input runs (docs/jit.md section 3.4). *)
 
 interface Session
 import
@@ -30,13 +29,11 @@ export
      * as system.args *)
     new(e: env.T args: Array(String)): T
 
-    (* What an input came to: what each of its phrases showed, if they were
-     * captured (as interpret shows a phrase, its lines after the first
-     * continuing it; empty for a phrase that shows nothing), or the exception
-     * it raised: its name, where it was raised (the source of the input whose
-     * code raised it, and the offset in it), if known, and the frames running
-     * there, most recent first, down to the input's own; with fatal, a fatal
-     * error, its message as name *)
+    (* The outcome of running a JIT input. ran carries each phrase's captured
+     * output (empty for a phrase that prints nothing). raised carries the
+     * exception name, optional source map and byte offset of the raise site,
+     * and stack frames from most recent down to the input's own; when fatal is
+     * true, it represents a fatal runtime error with its message in name. *)
     Def Outcome = Option
         ran with shown: Array(String) end
         raised with
@@ -48,12 +45,12 @@ export
         end
     end
 
-    (* Compiles, loads, and runs an input, typed in the session's
-     * environment from the source sourceMap holds; its bindings are known to
-     * later inputs only if it ran. Its phrases show their results as a
-     * program's do, with the runtime's printers (docs/jit.md section 3.8):
-     * with echo every phrase's, with printResult the last's; written as they
-     * run, or with capture, returned *)
+    (* Compiles, loads, and runs program, which was typechecked in the
+     * session's environment from sourceMap; its bindings become visible to
+     * later inputs only if execution succeeds. Phrase results are formatted
+     * with the runtime's printers (docs/jit.md section 3.8): echo prints every
+     * phrase, printResult prints the last, and capture returns the output
+     * instead of writing it immediately. *)
     run(s: T program: typedAst.Program sourceMap: location.SourceMap echo: Bool printResult: Bool capture: Bool):
         Outcome
 

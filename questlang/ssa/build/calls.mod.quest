@@ -34,11 +34,12 @@ export
             let checked(helper: String): Array(Int) =
                 array of vals.call1(fn helper array of x() y() vals.site(fn o.offset) end) end
             let site(): Array(Int) = array of vals.site(fn o.offset) end
-            (* Int division and remainder (quest_int_div_at and
-             * quest_int_mod_at, inline): a zero divisor raises int.error, and
-             * a divisor of -1, whose one quotient outside Int's range wraps,
-             * is negation (or a remainder of 0), which div and rem leave
-             * undefined *)
+            (* Lowers Int division and remainder inline (matching
+             * quest_int_div_at and quest_int_mod_at). A zero divisor raises
+             * int.error. A divisor of -1 is handled separately because
+             * INT64_MIN / -1 overflows signed division (leaving SSA opDiv and
+             * opRem undefined); byMinusOne yields wrapping negation for
+             * division or 0 for remainder. *)
             let divided(op: ssa.Opcode byMinusOne: All(a: Int) Int): Array(Int) =
                 begin
                     let a = x()
@@ -48,8 +49,9 @@ export
                         fun(): Array(Int) array of byMinusOne(a) end
                         fun(): Array(Int) array of vals.binary(fn op a b) end)
                 end
-            (* Real arithmetic (quest_real_add_at and the rest, inline): a NaN
-             * result raises real.error, and so, for //, does a zero divisor *)
+            (* Lowers Real arithmetic inline (matching quest_real_add_at and
+             * its siblings): any NaN result raises real.error. Division (//)
+             * checks for a zero divisor before calling this helper. *)
             let real(op: ssa.Opcode a: Int b: Int): Array(Int) =
                 begin
                     let r = vals.binary(fn op a b)
@@ -66,19 +68,21 @@ export
                         vals.narrowed(fn vals.call1(fn "quest_val_is" args) vals.part(vals.tInt 1 false))
                     elsif maybe.isSome(o.descriptor)
                         andif vals.eq(layout.representation(ir.atomType(first)) "QVariantVal") then
-                        (* By case and value (docs/extensions.md, Variants as
-                         * Values) *)
+                        (* Compares variants by tag and payload value (see
+                         * docs/extensions.md, "Variants as Values") *)
                         let a = vals.atom(fn o.args[0])
                         let b = vals.atom(fn o.args[1])
                         let args = array of descriptors.maybeDescriptor(fn o.descriptor) a[0] a[1] b[0] b[1] end
                         vals.narrowed(fn vals.call1(fn "quest_variant_is" args) vals.part(vals.tInt 1 false))
                     elsif vals.eq(layout.representation(ir.atomType(first)) "QRecordVal") then
-                        (* A record is its payload: a view changes only its
-                         * offset table (quest_record_view) *)
+                        (* Record identity compares payload pointers only: a
+                         * supertype view (quest_record_view) replaces the
+                         * offset table without changing the record itself *)
                         vals.binary(fn ssa.opPeq vals.atom(fn o.args[0])[0] vals.atom(fn o.args[1])[0])
                     elsif maybe.isSome(o.descriptor) then
-                        (* An option type whose options is compares by case or
-                         * component (docs/extensions.md, Options as Values) *)
+                        (* Compares option values by case or component using
+                         * their descriptor (docs/extensions.md, "Options as
+                         * Values") *)
                         let args = array of descriptors.maybeDescriptor(fn o.descriptor) vals.atom1(fn o.args[0])
                             vals.atom1(fn o.args[1]) end
                         vals.narrowed(fn vals.call1(fn "quest_option_is" args) vals.part(vals.tInt 1 false))
@@ -144,7 +148,7 @@ export
      * Calls
      * ====================================================================== *)
 
-    (* The C signature's results of a function type's result *)
+    (* The C ABI result parts for a function type's return type *)
     let resultParts(t: Type): Array(vals.Part) =
         begin
             let var s = shapes.shape(t)
@@ -159,8 +163,8 @@ export
             r
         end
 
-    (* Where each 16-byte composite starts among a call's arguments, from the
-     * IR atoms that make them (after leading words) *)
+    (* Returns the starting argument indices of 16-byte two-word composite
+     * arguments in args, offset by lead leading word arguments *)
     let pairsOf(lead: Int args: Array(Atom)): Array(Int) =
         begin
             let starts = vector.new(:Int)
@@ -173,8 +177,8 @@ export
             vector.toArray(starts)
         end
 
-    (* Which of a call's arguments C passes as one byte, from the IR atoms
-     * that make them (after leading words) *)
+    (* Returns the argument indices in args that C passes as a single byte
+     * (such as Bool or Char), offset by lead leading word arguments *)
     let narrowOf(lead: Int args: Array(Atom)): Array(Int) =
         begin
             let found = vector.new(:Int)
@@ -195,11 +199,11 @@ export
             when atomVar then maybe.none()
         end
 
-    (* What a call of an external C function that the runtime defines inline
-     * (runtime/quest_runtime.h) is, as the C compiler compiles it: the word
-     * module's arithmetic, bitwise operations, comparisons, conversions, and
-     * shifts and rotations by a constant count, and ascii.val (a Char is held
-     * zero-extended); none for any other call *)
+    (* Emits inline SSA instructions for external C runtime functions defined
+     * inline in runtime/quest_runtime.h: word arithmetic, bitwise operations,
+     * unsigned comparisons, int/word conversions, constant-count shifts and
+     * rotations, and ascii.val (since Char is already held zero-extended).
+     * Returns none for any other symbol. *)
     let inlineExternal(fn: vals.Fn symbol: String args: Array(Atom)): maybe.T(Int) =
         begin
             let x(): Int = vals.atom1(fn args[0])
@@ -228,8 +232,8 @@ export
                 one(inverted(below(y() a)))
             elsif named("quest_word_ge") then one(inverted(below(x() y())))
             elsif named("quest_word_shift_val") andif maybe.isSome(count) then
-                (* A left shift by a positive count, a logical right shift by
-                 * a negative one, and 0 past either end *)
+                (* Positive counts shift left, negative counts shift right
+                 * logically, and counts of magnitude 64 or more yield 0 *)
                 let c = maybe.unwrap(count)
                 if {c >= 64} orif {c <= ~64} then
                     one(vals.constant(fn 0))
@@ -340,10 +344,10 @@ export
     let directCall(fn: vals.Fn symbol: String lead: Array(Int) args: Array(Atom) resultType: Type): Array(Int) =
         directCallOf(fn symbol lead args resultParts(resultType))
 
-    (* The external C function that f only calls, if f is an external's thunk
-     * (questlang/ir/thunks): its body a call of the external with f's value
-     * parameters in order, and no descriptors, then a return of the call's
-     * result (or of ok) *)
+    (* Returns the external C symbol if f is a simple forwarding thunk
+     * (questlang/ir/thunks) that takes no type descriptors, calls the external
+     * with f's value parameters in order, and immediately returns the result
+     * (or ok). Returns none otherwise. *)
     let forwardedExternal(f: ir.Function): maybe.T(String) =
         begin
             let stmts = f.body.statements
@@ -374,10 +378,11 @@ export
             found
         end
 
-    (* A call of the closure the variable holds: its function directly, when
-     * the variable is bound to a closure of one of the unit's functions (and
-     * the external C function directly, when that function is an external's
-     * thunk), or through its function pointer *)
+    (* Lowers a call to the closure held in callee. When callee is statically
+     * known to hold a closure of a unit-local function with no captured type
+     * arguments, this emits a direct call to that function (or directly to the
+     * external C function, or inline SSA, when it is an external's thunk);
+     * otherwise it loads and calls the closure's function pointer. *)
     let rec callClosure(fn: vals.Fn callee: Variable descs: Array(Int) args: Array(Atom)): Array(Int) =
         begin
             let known = hashMap.get(fn.u.closureVars callee.id)
@@ -404,8 +409,9 @@ export
                 elsif maybe.isSome(thunked) then
                     directCallOf(fn maybe.unwrap(thunked) array of :Int end args ps)
                 else
-                    (* At the code's own types, which hold a pointer where the
-                     * closure's type may hold a QVal word (vals.retyped) *)
+                    (* Convert arguments and results to the callee's own SSA
+                     * types (vals.retyped), which may use a pointer where the
+                     * closure's type uses a uniform QVal word *)
                     let lead = vals.concat(array of env end descs)
                     let all = vals.retyped(fn vals.concat(lead vals.callAtoms(fn args)) vals.codeParamTypes(k.code))
                     let vs = vals.callQuest(fn vals.codeName(fn.u k.code) all pairsOf(extent lead args)
@@ -432,10 +438,10 @@ export
     let importOf(r: ir.ModuleRef): maybe.T(ir.Import) =
         case r when refImport with x then maybe.some(x.i) else maybe.none() end
 
-    (* Whether a function type's parameters and result are all held as words
-     * or bytes, not QVal words (or the result is Ok): a library function's
-     * wrapper then has the C function's signature (as the C printer's
-     * libraryExternal requires) *)
+    (* Reports whether every parameter of function type t is represented as an
+     * Int, Word, Bool, Char, or pointer (and the result is one of those or
+     * void). Only then does a library wrapper match the C function's
+     * signature, as required by the C printer's libraryExternal. *)
     let concrete(t: maybe.T(Type)): Bool =
         if maybe.isNone(t) then false
         else
@@ -455,12 +461,12 @@ export
             end
         end
 
-    (* The C function a call of an imported member is, if the member is one of
-     * the standard library's external functions built into the compiler
-     * (questlang/repr/externals), the import resolves to lib/, and no
-     * argument or result is held as a QVal, as the importer holds an external
-     * type it sees only as abstract (os/process's process.T); as the C
-     * printer's libraryExternal *)
+    (* Returns the underlying C symbol for an imported member if it is a
+     * standard-library external built into the compiler
+     * (questlang/repr/externals), the import resolves to lib/, and no argument
+     * or result is represented as a QVal word (which happens when the importer
+     * sees an external type only as abstract, such as os/process's process.T).
+     * Mirrors the C printer's libraryExternal. *)
     let libraryExternal(imp: ir.Import member: String args: Array(Atom) calleeType: Type): maybe.T(String) =
         begin
             let held(ps: Array(vals.Part)): Bool =
@@ -512,8 +518,8 @@ export
                         if maybe.isSome(inlined) then
                             array of maybe.unwrap(inlined) end
                         elsif maybe.isSome(direct) then
-                            (* The C function itself, rather than the module's
-                             * wrapper, which has its signature *)
+                            (* Call the C function directly instead of the
+                             * module wrapper, since their signatures match *)
                             directCall(fn maybe.unwrap(direct) array of :Int end o.args calleeType)
                         else
                             directCall(fn symbols.mangleModuleIdent(clean member) descs o.args calleeType)
@@ -531,9 +537,9 @@ export
 
     let sortBefore(a: String b: String): Bool = sort.stringCompare(a b) < 0
 
-    (* An imported module's member, from its record: the field's offset in the
-     * record's payload is in the record's offset table, at the field's index in
-     * name order *)
+    (* Loads a member from an imported module's record. The field's byte offset
+     * within the record payload is stored in the record's offset table
+     * (dictionary) at the field's alphabetical index. *)
     let importedMember(fn: vals.Fn imp: ir.Import member: String): Array(Int) =
         begin
             let clean = symbols.mangleModuleName(imp.canonicalPath)
@@ -557,8 +563,8 @@ export
             representation.readSlot(fn vals.indexPtr(fn val offset) fieldType)
         end
 
-    (* The record of the module named name, as its two words: its value and
-     * its offset table *)
+    (* Loads the two-word QRecordVal for the module named name: its payload
+     * pointer and its offset table pointer *)
     let moduleRecord(fn: vals.Fn name: String): Array(Int) =
         begin
             let recordAt = vals.symbolAt(fn symbols.moduleRecordIdent(symbols.mangleModuleName(name)))

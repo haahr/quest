@@ -1,20 +1,22 @@
 (* Quest Self-Hosted Compiler: The WebAssembly Runtime Interface
  *
- * The base of the runtime (docs/wasm.md section 4.2), the module that
- * every unit the wasm backend compiles imports, as the module named name. It
- * holds what Quest cannot say, built here instruction by instruction from
- * wasm/model: the exception tag and the built-in exceptions, the memory that
- * bytes cross to the host in (section 4.4) and the host's functions, Int's
- * boxing, string's externals, and the text that output, conversions, and
- * the uncaught and fatal reports need. The runtime's core
- * (runtime/wasm/core), in Quest, holds the rest. The backend calls these
- * functions for the operations they implement, and Quest code, the core's
- * among it, names one as the external wasm.base.FIELD.
+ * Builds the base runtime module (docs/wasm.md section 4.2), which every unit
+ * compiled by the wasm backend imports under the module name below. It
+ * provides the low-level primitives that cannot be written in Quest, built
+ * instruction by instruction from wasm/model: the shared exception tag and
+ * built-in exceptions, the linear memory used to pass bytes to and from the
+ * host (section 4.4) along with host imports, Int boxing, string primitives,
+ * and formatting for output, conversions, and uncaught or fatal error
+ * reports. Higher-level runtime support lives in Quest in runtime/wasm/core.
+ * The backend calls these exports directly for compiled operations, and Quest
+ * code (including the core) binds them via externals named wasm.base.FIELD.
  *
- * Every reference crosses as an eqref (section 3.2); the runtime casts. The
- * host it imports is WASI's first preview, fd_write, proc_exit, and the
- * functions it passes on to the core (wasiFunctions in its implementation),
- * which wasmtime provides, and runtime/wasm/run.mjs for node. *)
+ * Every heap reference crosses the module boundary as an eqref (WasmGC's
+ * general reference type, section 3.2), and the runtime casts to concrete
+ * types internally. The module imports WASI preview 1 (WebAssembly System
+ * Interface): fd_write, proc_exit, and the system functions forwarded to the
+ * core (listed in wasiFunctions in the implementation), provided by wasmtime
+ * or by runtime/wasm/run.mjs under Node. *)
 
 interface Runtime
 import
@@ -69,8 +71,8 @@ export
      *                            itself, an exception
      *   payloadOf(state)         a raised exception's payload
      *
-     * and after them raisedText, holdFatal, fatalReport, the memory's
-     * functions for the core, and WASI's, each described where the
+     * and after them raisedText, holdFatal, fatalReport, concatN, the memory
+     * helpers for the core, and WASI's wrappers, each described where the
      * implementation lists it *)
     exports: Array(Export)
 
@@ -83,6 +85,7 @@ export
     builtinExceptions: Array(String)
     exceptionField(name: String): String
 
-    (* The runtime module itself, with R first (wasm/runtimeTypes) *)
+    (* Builds the runtime module, placing the shared runtime type group
+     * (wasm/runtimeTypes) first *)
     runtimeModule(): model.Module
 end

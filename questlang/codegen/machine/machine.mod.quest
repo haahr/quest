@@ -71,12 +71,13 @@ export
             when kindBranch then "branch" when kindCall then "call" when kindReturn then "return"
         end
 
-    (* Counts each virtual register's uses, then removes each pure ordinary
-     * instruction or move all of whose results are virtual and unused, and
-     * takes its operands' uses off their counts. Removing one can leave
-     * another's results unused, so the passes repeat until one removes
-     * nothing. A result in a physical register is never counted (shared code
-     * does not track who reads it), so it keeps its instruction *)
+    (* Counts uses of each virtual register, then iteratively removes pure
+     * ordinary instructions and moves whose defined registers are all virtual
+     * and unused, decrementing their operands' use counts. Removing one
+     * instruction can make its inputs dead, so passes repeat until a full pass
+     * removes nothing. Physical-register results are never counted because
+     * shared code does not track their readers, so they keep their
+     * instructions. *)
     let removeDead(f: Function pure: All(i: Inst) Bool): Ok =
         begin
             let nBlocks = vector.length(f.blocks)
@@ -151,12 +152,13 @@ export
             cfg.loopDepths(cfg.graphOf(succs))
         end
 
-    (* Standard backward liveness. First each block's defs (its parameters
-     * and results) and uses (the registers it reads before defining them).
-     * Then, until nothing changes, a block's live out is the union of its
-     * successors' live in, and its live in is its uses and whatever is live
-     * out that it does not define. Taking the blocks in postorder (each after
-     * its successors, except around a loop) makes this take few passes *)
+    (* Standard backward dataflow liveness analysis. First, collect each
+     * block's defs (its parameters and instruction results) and upward-exposed
+     * uses (the virtual registers it reads before defining them). Then iterate
+     * until convergence: a block's liveOut is the union of its successors'
+     * liveIn, and its liveIn is its uses unioned with (liveOut minus defs).
+     * Visiting blocks in postorder (each block after its successors, except
+     * across loop back-edges) minimizes the number of passes. *)
     let live(f: Function): Live =
         begin
             let n = virtuals(f)

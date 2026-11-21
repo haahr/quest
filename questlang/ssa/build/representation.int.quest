@@ -1,9 +1,9 @@
 (* Quest Self-Hosted Compiler: The SSA Builder's Representation Interface
  *
- * The SSA's reads and writes of slots and of aggregates' components
- * (docs/arm64.md section 7.2), over ssa/build/values: a slot's values and its
- * QVal word, tuples' and options' components read directly, through the
- * original of a proxy, or through the proxy, tags, and new objects. *)
+ * Emits SSA operations for memory slots, aggregate components, variant/option
+ * tags, and heap allocations (docs/arm64.md section 7.2), layered over
+ * ssa/build/values. Handles direct access as well as access through subtype
+ * proxies (wrappers that forward operations to an underlying value). *)
 
 interface Representation
 import
@@ -18,8 +18,9 @@ export
      * as its box's pointer) *)
     readSlot(fn: vals.Fn address: Int t: model.Type): Array(Int)
     writeSlot(fn: vals.Fn address: Int t: model.Type values: Array(Int)): Ok
-    (* A slot's contents as a QVal word, and back (shapeSlotToQval and
-     * shapeQvalToSlot): a box is its pointer's word *)
+    (* Convert between a slot's SSA values and a 64-bit QVal word
+     * (shapeSlotToQval and shapeQvalToSlot); a boxed record or variant is its
+     * box pointer's word *)
     slotToWord(fn: vals.Fn vs: Array(Int) t: model.Type): Int
     slotFromWord(fn: vals.Fn w: Int t: model.Type): Array(Int)
     (* The index of a case of a variant or option shape (0 if it has none of
@@ -27,14 +28,14 @@ export
     tagIndex(s: shapes.Shape tag: String): Int
     heldShape(t: model.Type kind: shapes.ShapeKind): shapes.Shape
     componentShape(s: shapes.Shape i: Int): shapes.Shape
-    (* A value chosen by a branch on cond: the values yes makes in one block,
-     * or those no makes in another, merged as the parameters, of the types
-     * given, of a third block, where fn.cur is left *)
+    (* Branches on cond, evaluating yes in one block and no in another, and
+     * merges their results as SSA block parameters (of the given types) in a
+     * join block where fn.cur is left *)
     choose(fn: vals.Fn cond: Int types: Array(ssa.Type) yes: All() Array(Int) no: All() Array(Int)): Array(Int)
     (* Proxies *)
-    (* The object a tuple's or an option's pointer is: the original a proxy
-     * views, or the pointer itself (quest_unproxy), as an unproxy
-     * instruction (docs/ssa.md section 2) *)
+    (* Emits an unproxy instruction (docs/ssa.md section 2) returning the
+     * underlying object of a tuple or option pointer: the original if p is a
+     * subtype proxy, or p itself otherwise (quest_unproxy) *)
     unproxy(fn: vals.Fn p: Int): Int
     (* Component i of the tuple at t (shape ts), in its slot form, read as
      * access says: directly, from the original of what may be a proxy, or

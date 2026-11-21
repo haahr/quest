@@ -1,15 +1,17 @@
 (* Quest Self-Hosted Compiler: Layouts of Values Interface
  *
- * bootstrap/python/quest/repr/layout.py: how values are laid out, for every
- * backend (docs/c-representation.md), computed from shapes and cached per
- * shape: each type's layout tag (which names its struct and descriptor;
- * repr/digests tells apart the types it conflates), its representation (the
- * runtime's C type for it: a scalar, a QVal word, a 16-byte record or variant
- * value, or a pointer), and its slot representation (as an aggregate slot or a
- * QVal word holds it: a record or variant as a pointer to an immutable box, a
- * Bool or Char in a word of its own). Also whether a value of a tuple or option
- * type may be a proxy. Whether generic code's layout of a type agrees with the
- * native one is repr/genericlayout's. *)
+ * This interface computes how values are laid out for every backend
+ * (docs/c-representation.md), mirroring bootstrap/python/quest/repr/layout.py.
+ * Layouts depend only on shapes and are cached per shape. They provide each
+ * type's layout tag (which names its C struct and descriptor; repr/digests
+ * distinguishes types that share a tag), its representation (the runtime C
+ * type: a scalar, a QVal uniform 64-bit word, a 16-byte record or variant
+ * value, or a pointer), and its slot representation (how an aggregate field
+ * or QVal word stores it: a record or variant as a pointer to an immutable
+ * box, and a Bool or Char widened to a full word). It also decides whether a
+ * tuple or option value may be a proxy (a wrapper created when upcasting
+ * changes how a component is viewed). Checking whether generic code's layout
+ * agrees with the native layout belongs to repr/genericlayout. *)
 
 interface Layout
 import
@@ -87,10 +89,10 @@ export
     (* The word form of values of shape s, as resolved to its bound *)
     wordForm(s: shapes.Shape): WordForm
 
-    (* The layouts of aggregates' structs (docs/c-representation.md section
-     * 5), in bytes, as C lays them out on a 64-bit target, for backends that
-     * lay them out themselves (docs/arm64.md section 3.3); the C asserts
-     * them. Every slot is one word. *)
+    (* These functions give aggregate struct layouts in bytes on a 64-bit
+     * target (docs/c-representation.md section 5) for backends that lay them
+     * out themselves (docs/arm64.md section 3.3); the C backend asserts them.
+     * Every slot is one 8-byte word. *)
     (* A struct of n slots, which C gives a char of its own when n is 0 *)
     slotsBytes(n: Int): Int
     (* A tuple type's struct: its value components, slot i at 8i *)

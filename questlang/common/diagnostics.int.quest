@@ -1,6 +1,7 @@
 (* Quest Self-Hosted Compiler: Diagnostics Interface
  *
- * The compiler's two forms of error, and how they are printed.
+ * Defines the compiler's two error representations and how diagnostics are
+ * printed.
  *
  * A Diagnostic is what the user sees: a severity, a message, the span of
  * source it points at, and any further labels, notes, and help. Diagnostics
@@ -20,7 +21,7 @@
  * The bootstrap counterpart is bootstrap/python/quest/common/diagnostics.py
  * (Diagnostic, and QuestCompilerError with its subclasses).
  * docs/diagnostics.md §2 describes both forms, §3 how they are reported, and
- * §5 the rendering *)
+ * §5 the rendering. *)
 
 interface Diagnostics
 import
@@ -87,11 +88,11 @@ export
     (* The source maps of the files diagnostics may be in, besides the one
      * format is given (units the program imports), by file name *)
     registerSource(sm: location.SourceMap): Ok
-    (* d as the user sees it, in lines that each end with a newline: its
+    (* Formats d as the user sees it, with each line ending in a newline: its
      * location, severity, and message; the source line with carets under its
      * span (at least one, and none past the end of the line); each secondary
-     * label, as ::: file:line:col, its line, and dashes under it; the notes,
-     * the help, and an uncaught exception's frames. For example
+     * label as ::: file:line:col, its line, and dashes under it; the notes,
+     * the help, and an uncaught exception's frames. For example:
      *
      *     two.quest:1:14: error: Type mismatch: ...
      *         let x: Int = "a"
@@ -100,7 +101,7 @@ export
      * The source comes from the map registered for d's file, else sm. A
      * diagnostic without a location (no file, or a negative offset) has
      * neither the location nor the source line. The code (setCode) is not
-     * printed. docs/diagnostics.md §5 describes the layout *)
+     * printed. docs/diagnostics.md §5 describes the layout. *)
     format(d: Diagnostic sm: location.SourceMap): String
     (* Writes format(d sm) to w *)
     render(d: Diagnostic sm: location.SourceMap w: writer.T): Ok
@@ -147,9 +148,10 @@ export
     (* An error located in file, unless it already is (the bootstrap's
      * in_unit) *)
     inFile(e: CompilerError file: String): CompilerError
-    (* An error propagating out of the import at offset in file (the bootstrap's
-     * at_import): one not yet located in a file is located at the import, and
-     * one in another file gets an "imported here" label *)
+    (* Updates e as it propagates out of an import at offset in file (like the
+     * bootstrap's at_import): locates an unlocated error at the import, leaves
+     * an error already in file unchanged, and adds an "imported here" label to
+     * an error from another file *)
     atImport(e: CompilerError offset: Int length: Int file: String): CompilerError
     (* The diagnostic of an error, in its file, or else in file *)
     errorDiagnostic(e: CompilerError file: String): Diagnostic

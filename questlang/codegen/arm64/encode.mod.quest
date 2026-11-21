@@ -1,10 +1,10 @@
 (* Quest Self-Hosted Compiler: The arm64 Encoder Implementation
  *
- * The encodings are the Arm Architecture Reference Manual's (A64), for the
- * forms the printer's mnemonics stand for: mov of registers is orr (or add,
- * with sp), lsl and the others of an immediate are ubfm and sbfm, cmp is subs
- * to xzr, cset is csinc, mul is madd, and a mov of an immediate is movz, movn,
- * or orr, as the assembler chooses. *)
+ * Instruction encodings follow the Arm Architecture Reference Manual (A64),
+ * using the underlying forms behind the printer's assembly aliases. Register
+ * mov encodes as orr (or add #0 with sp), immediate shifts as ubfm or sbfm,
+ * cmp as subs into xzr, cset as csinc, mul as madd, and immediate mov as
+ * movz, movn, or orr, matching the assembler's choices. *)
 
 module encode : Encode
 import
@@ -53,8 +53,8 @@ export
     (* n's low bits bits, as an unsigned field (n may be negative) *)
     let field(n: Int bits: Int): Int = words.toInt(words.extract(words.fromInt(n) 0 bits))
 
-    (* A register's number in an instruction: x0-x30, and 31 for both xzr and
-     * sp; d0-d31 *)
+    (* The 5-bit register number encoded in an instruction: 0-30 for x0-x30,
+     * 31 for both xzr and sp, and 0-31 for d0-d31 *)
     let reg(r: Int): Int =
         if r is target.sp then 31 elsif target.isReal(r) then r - target.d(0) else r end
 
@@ -76,11 +76,11 @@ export
 
     let soleHalfword(n: Int): Int = minst.soleHalfword(n)
 
-    (* A logical immediate's N:immr:imms (at bits 22, 16, and 10), for an n
-     * that minst.isLogical accepts: the element, the run of ones in it, and
-     * immr, the rotation right that makes the element from the run at its
-     * bottom, which undoes the rotation right (r below) that brings the
-     * element's run to its bottom *)
+    (* Encodes a 64-bit logical immediate n (accepted by minst.isLogical) into
+     * arm64's N:immr:imms bitmask fields at bits 22, 16, and 10. A logical
+     * immediate repeats an e-bit element containing a single contiguous run
+     * of ones; r is the right-rotation that moves that run to bit 0, so immr
+     * is the inverse right-rotation that reconstructs the element. *)
     let bitmask(n: Int): Int =
         begin
             let w = words.fromInt(n)
@@ -173,10 +173,10 @@ export
             when relocTlv then option relocTlvPage21 of RelocKind end
         end
 
-    (* The word of op on registers rs at code offset at, the relocations it
-     * needs appended to relocs (Encode.word). Each word is its form's fixed
-     * bits plus each operand shifted to its field (rd, rn, and the others
-     * above) *)
+    (* Encodes op on registers rs at byte offset at, appending any needed
+     * relocations to relocs (see Encode.word). Each word combines the
+     * instruction format's fixed opcode bits with each operand shifted into
+     * its bit field (rd, rn, and the other helpers above). *)
     let word(op: minst.Op rs: Array(Int) at: Int labelOffset: All(label: String) Int
         localFunction: All(symbol: String) Int relocs: vector.T(Reloc)): Int =
         begin
@@ -308,8 +308,9 @@ export
                     else 0xEB00001F (* subs *) + rm(rs[1]) + rn(rs[0]) end
                 when opFcmp then 0x1E602000 + rm(rs[1]) + rn(rs[0])
                 when opCmpImm with x then
-                    (* subs xzr (cmp), or adds xzr (cmn) of a negative one;
-                     * shifted by 12 when its low 12 bits are 0 *)
+                    (* Encodes as subs xzr (cmp), or adds xzr (cmn) for a
+                     * negative immediate, shifted left by 12 when the low 12
+                     * bits are zero *)
                     let base = if x.imm < 0 then 0xB100001F else 0xF100001F end
                     let n = if x.imm < 0 then 0 - x.imm else x.imm end
                     let imm = if {n >= 4096} andif {{n % 4096} is 0} then shl(1 22) + shl(n / 4096 10)
@@ -375,10 +376,11 @@ export
     let unit(functions: Array(Function) data: Array(ssa.Data) files: Array(String) frames: maybe.T(Frames)):
             Encoded =
         begin
-            (* Each label's offset: its function's instructions laid out one
-             * after another, each function starting on a 16-byte boundary,
-             * as asm.functionStart aligns them, after nops to it, as the
-             * assembler pads; a function's size is its own code's *)
+            (* First pass: compute each label's byte offset and each
+             * function's start and size. Functions are laid out in order on
+             * 16-byte boundaries (matching asm.functionStart, padded with
+             * nops in the second pass), and a function's size covers only
+             * its own instructions. *)
             let labels = hashMap.new(:String :Int eq hash.string)
             let symbols = vector.new(:Symbol)
             let var at = 0
@@ -405,8 +407,9 @@ export
                     if maybe.isNone(found) then raise unencodable with "label " <> l end end
                     maybe.unwrap(found)
                 end
-            (* A function's recursive calls of itself, which asm resolves: the
-             * function being encoded, if it is not exported *)
+            (* Resolves direct self-calls for the current function when it is
+             * not exported, matching what the assembler resolves without a
+             * relocation *)
             let var current = maybe.none(:Symbol)
             let localFunction(symbol: String): Int =
                 if maybe.isSome(current) andif eq(maybe.unwrap(current).name symbol)
@@ -484,10 +487,11 @@ export
                     let exported = d.exported
                 end)
             end
-            (* The frame table, as runtime/quest_gc.c reads it: the code's
-             * address, left to the loader; the functions listed, each by its
-             * offset in the code and its description's in the table; and the
-             * descriptions *)
+            (* Builds the GC frame table in the layout runtime/quest_gc.c
+             * expects: a placeholder word for the code offset (patched by the
+             * loader), the function count, each listed function's code offset
+             * and description offset within the table, and the packed
+             * description bytes *)
             let frameWords = vector.new(:Int)
             if maybe.isSome(frames) then
                 let t = maybe.unwrap(frames)

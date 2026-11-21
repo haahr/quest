@@ -1,24 +1,27 @@
 (* Quest Self-Hosted Compiler: The WebAssembly Encoder Interface
  *
- * A module (wasm/model) in the binary format, byte for byte what wasm-tools
- * parse makes of the text wasm/printer writes for it (docs/wasm.md section
- * 8.1), name section included: so a module's text, which
- * the backend's goldens hold, says exactly what its bytes are, and the
- * engines' stack traces name functions. Where the format leaves a choice,
- * this takes the one wasm-tools does: the short form of a final type with no
- * supertype and of a nullable abstract reference type, runs of locals of one
- * type, sections only when not empty, and a data count section exactly
- * when code names a data segment. *)
+ * Encodes a WebAssembly module (wasm/model) in the binary format, producing
+ * byte-for-byte the same output that wasm-tools parse generates from the text
+ * format written by wasm/printer (docs/wasm.md section 8.1), including the
+ * name section. This guarantees that a module's text form (stored in the
+ * backend's golden tests) matches its binary encoding exactly, and lets
+ * WebAssembly engines include function names in stack traces. Where the binary
+ * format allows a choice, this encoder matches wasm-tools: it uses the short
+ * form for final types without supertypes and for nullable abstract reference
+ * types, groups consecutive locals of the same type into runs, omits empty
+ * sections, and emits a data count section only when code references a data
+ * segment. *)
 
 interface Encode
 import
     questlang/wasm/model : questlang/wasm/Model
 export
-    (* The module's bytes, one to a character. Raises model.malformed for
-     * what the format cannot hold: an index or count out of range, a
-     * constant too wide for its type. *)
+    (* Encodes m into binary WebAssembly bytes, one byte per character. Raises
+     * model.malformed for values the binary format cannot represent, such as
+     * an out-of-range index or count, a constant too wide for its type, a
+     * subtype with more than one supertype, or a wrong immediate count. *)
     encode(m: model.Module): String
-    (* A custom section of a name and bytes, which may follow an encoded
-     * module's sections *)
+    (* Encodes a custom section with the given name and raw payload bytes,
+     * which can be appended after an encoded module's sections *)
     customSection(name: String bytes: String): String
 end

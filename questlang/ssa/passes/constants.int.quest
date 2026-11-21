@@ -1,15 +1,19 @@
 (* Quest Self-Hosted Compiler: The SSA's Constant Globals Interface
  *
- * Constant globals (docs/ssa.md section 4.1): a global of the unit's own, a
- * word of static data that starts as zero, which the unit stores to once,
- * with a constant or a symbol's address, outside any loop and before any load
- * of it and any call that could run Quest code in the function that stores
- * it, and otherwise only loads, becomes static data holding that value from
- * the start, read-only, and each of its loads the value itself. A module's
- * global bound to a constant, as util/bignum's oneW = word.fromInt(1), is such
- * a global: its module's initialization stores it, and without this pass each
- * use loads it, in every iteration of a loop that uses it. Only a global the
- * unit does not export: another unit could store to one it does. *)
+ * This pass promotes write-once static globals to read-only constants
+ * (docs/ssa.md section 4.1). A non-exported, zero-initialized static word in
+ * the unit qualifies if the unit stores to it once (with an integer constant
+ * or a symbol's address), outside any loop and before any load of it or any
+ * call that could read it in the storing function, and otherwise only loads
+ * it with a matching type. Each qualifying global becomes read-only static
+ * data holding that value from startup, its single store is removed, and
+ * every load of it is replaced by the constant or symbol address directly.
+ *
+ * For example, a module-level constant such as util/bignum's
+ * `oneW = word.fromInt(1)` is initialized once during module startup; without
+ * this pass, every use (including inside loops) would reload it from memory.
+ * Exported globals are excluded because another compilation unit could store
+ * to them. *)
 
 interface Constants
 import

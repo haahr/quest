@@ -1,13 +1,13 @@
 (* Quest Self-Hosted Compiler: Abstract Syntax Tree Interface
  *
- * The syntax tree the parser builds. The same types serve every phase that
- * works on source syntax: desugar rewrites a tree into one of the same types
- * without the syntactic sugar, and the type checker and the module loader
- * read it; there is no separate tree per phase.
+ * This interface defines the syntax tree that the parser builds. The same
+ * types serve every phase that works on source syntax: desugar rewrites a tree
+ * into one of the same types without the syntactic sugar, and the type checker
+ * and the module loader read it; there is no separate tree per phase.
  *
  * Every node is a Node(Form): the span of source it covers, for error
  * messages, and a form, an option whose tag says what construct it is
- * (exprIf, typeTuple, ...). The forms follow Quest's levels, the paper's term
+ * (exprIf, typeTuple, ...). The forms follow Quest's levels, Cardelli's term
  * for values, the types that classify values, and the kinds that classify
  * types:
  *
@@ -23,7 +23,7 @@
  * that astprint prints it in the bootstrap's form and the two parsers can be
  * compared on every Quest file (docs/testing.md §2.3).
  * docs/compiler-organization.md §3 explains the design, and docs/syntax.md §4
- * lists the bootstrap's nodes *)
+ * lists the bootstrap's nodes. *)
 
 interface Ast
 import
@@ -60,16 +60,19 @@ export
 
     (* Components have the offset the bootstrap gives the corresponding node *)
 
-    (* A type parameter, X::K or X <: B; bound is always a kind, so X <: B is
-     * stored as X::POWER(B). An anonymous one (::K) is named _ *)
+    (* TypeFormalOf represents a type parameter (X::K or X <: B). Its bound is
+     * always a kind, so X <: B is stored as X::POWER(B), and an anonymous
+     * parameter (::K) is named _. *)
     Def TypeFormalOf(T::TYPE) = Tuple offset: Int name: String bound: T end
-    (* One parameter of All(...): a type parameter (isType) bounded as in
-     * TypeFormalOf, or a value parameter [var | out] x: T, bounded by POWER(T)
-     * and named _ if anonymous. So All(A::TYPE x: A) A has two quantifiers *)
+    (* QuantifierOf represents one parameter of All(...): either a type
+     * parameter (isType is true) bounded as in TypeFormalOf, or a value
+     * parameter [var | out] x: T bounded by POWER(T) and named _ if anonymous.
+     * For example, All(A::TYPE x: A) A has two quantifiers. *)
     Def QuantifierOf(T::TYPE) = Tuple offset: Int name: String bound: T mode: ParamMode isType: Bool end
-    (* A value field of a tuple type, an interface, or an Auto type's
-     * signature: [var | out] x: T, or the anonymous :T (name none). The
-     * parser always gives typeSig; it is a maybe as in the bootstrap *)
+    (* FieldSigOf represents a value field of a tuple type, an interface, or an
+     * Auto type's signature: [var | out] x: T, or the anonymous :T (with name
+     * none). The parser always supplies typeSig; it is a maybe to match the
+     * bootstrap. *)
     Def FieldSigOf(T::TYPE) = Tuple offset: Int name: maybe.T(String) typeSig: maybe.T(T) mode: ParamMode end
     Def RecordFieldSigOf(T::TYPE) = Tuple offset: Int name: String typeSig: T isVar: Bool end
     Def VariantFieldSigOf(T::TYPE) = Tuple offset: Int tag: String typeSig: T isVar: Bool end
@@ -103,8 +106,8 @@ export
         kindType
         (* POWER(B), the kind of the subtypes of B *)
         kindPower with bound: Node(TypeForm) end
-        (* ALL(X::K) K', the kind of a type operator; the parser curries
-         * ALL(X::K Y::K) into one parameter per kindAll *)
+        (* ALL(X::K) K' is the kind of a type operator. The parser curries
+         * ALL(X::K Y::K) into one parameter per kindAll node. *)
         kindAll with paramName: String paramKind: Node(TypeForm) bodyKind: Node(TypeForm) end
         (* A kind named by a DEF *)
         kindId with name: String end
@@ -114,17 +117,18 @@ export
         (* Level 1: Types *)
         (* A named type, possibly qualified: Int is [Int], m.T is [m, T] *)
         typePath with path: vector.T(String) end
-        (* All(quantifiers) resultType: a function type, or a polymorphic one
-         * if a quantifier is a type. f(x: Int)(y: Int): Int has the type
-         * All(x: Int) All(y: Int) Int, one typeAll per parameter group *)
+        (* All(quantifiers) resultType is a function type, or a polymorphic
+         * function type if any quantifier is a type parameter. For example,
+         * f(x: Int)(y: Int): Int has type All(x: Int) All(y: Int) Int, with
+         * one typeAll per parameter group. *)
         typeAll with quantifiers: vector.T(QuantifierOf(Node(TypeForm))) resultType: Node(TypeForm) end
         typeTuple with fields: vector.T(SignatureOf(Node(TypeForm))) end
         typeRecord with fields: vector.T(RecordFieldSigOf(Node(TypeForm))) end
         typeOption with variants: vector.T(OptionFieldSigOf(Node(TypeForm))) end
         typeVariant with fields: vector.T(VariantFieldSigOf(Node(TypeForm))) end
-        (* Auto [A] HasKind with signature end, the type of an auto value (an
-         * existential: a hidden type component and values that use it,
-         * docs/syntax.md §3.9); typeParam is A, none if unnamed *)
+        (* Auto [A] HasKind with signature end is the type of an auto value (an
+         * existential package: a hidden type component and values that use it;
+         * see docs/syntax.md §3.9). typeParam is A, or none if unnamed. *)
         typeAuto with
             typeParam: maybe.T(String)
             kindBound: Node(TypeForm)
@@ -141,8 +145,9 @@ export
         typeRec with varName: String bound: Node(TypeForm) body: Node(TypeForm) end
         (* T(A B), a type operator applied to arguments *)
         typeApp with constructor: Node(TypeForm) arguments: vector.T(Node(TypeForm)) end
-        (* left op right; the type checker accepts only -> (a one-parameter
-         * function type) and rejects any other operator *)
+        (* An infix type expression (left op right) holds the operator name;
+         * the type checker accepts only -> (a one-parameter function type) and
+         * rejects any other operator *)
         typeInfix with left: Node(TypeForm) op: String right: Node(TypeForm) end
         typeArray with elementType: Node(TypeForm) end
         (* Var(T), a mutable cell of T, and Out(T), a cell that may only be
@@ -169,8 +174,8 @@ export
     Def TypeBinding = TypeBindingOf(TypeExpr)
     Def Signature = SignatureOf(TypeExpr)
 
-    (* A function's value parameter, [var | out] x: T; the parser always gives
-     * typeAnnot *)
+    (* FormalParam represents a function's value parameter, [var | out] x: T.
+     * The parser always supplies typeAnnot. *)
     Def FormalParam = Tuple
         offset: Int
         name: String
@@ -185,19 +190,22 @@ export
         typeAnnot: maybe.T(TypeExpr)
     end
 
-    (* An import, which a program holds at its top level, and which the
-     * bootstrap's parser also accepts as a declaration anywhere else (a block,
-     * a tuple, an argument, a module body), for its type checker to reject.
+    (* ImportItem represents an import item. Programs hold imports at the top
+     * level, and the parser also accepts them as declarations elsewhere (in a
+     * block, tuple, argument, or module body) for the type checker to reject,
+     * matching the bootstrap.
      *
-     * names are the local names of the modules imported (empty for an
-     * interface alone) and interfaceName the local name of the interface.
-     * modulePaths and interfacePath are the files' paths, or none, meaning
-     * the path is the local name itself (as for ascii : Ascii). For example
+     * names holds the local names of the imported modules (empty for an
+     * interface-only import), and interfaceName is the local name of the
+     * interface. modulePaths and interfacePath hold explicit file paths, or
+     * none when the path is the local name itself (as in ascii : Ascii). For
+     * example,
      *
      *     cnt : Cnt = util/counter : util/Counter
      *
      * has names [cnt], interfaceName Cnt, modulePaths [util/counter], and
-     * interfacePath util/Counter; docs/modules.md §4.3 lists the forms *)
+     * interfacePath util/Counter. docs/modules.md §4.3 lists all import
+     * forms. *)
     Def ImportItem = Tuple
         offset: Int
         names: vector.T(String)
@@ -274,8 +282,9 @@ export
         kindArg with kindVal: KindExpr end
 
         (* Control Flow & Blocks *)
-        (* begin ... end: declarations and statements (declExprStmt) in order.
-         * Its value is the last phrase's if that is a statement, else ok *)
+        (* A begin ... end block holds declarations and statements
+         * (declExprStmt) in order. Its value is the last phrase's value if
+         * that phrase is a statement, and ok otherwise. *)
         exprBlock with bindings: vector.T(Node(ExprForm)) end
         exprIf with
             cond: Node(ExprForm)
@@ -298,10 +307,10 @@ export
         end
 
         (* Functions & Calls *)
-        (* fun(...) [: T] body, for one parenthesized parameter group, which
-         * may hold type parameters (typeParams) as well as value parameters; a
-         * curried fun(x: Int)(y: Int) is nested exprFuns, the return type on
-         * the innermost *)
+        (* exprFun represents fun(...) [: T] body for one parenthesized
+         * parameter group, which may hold both type parameters (typeParams)
+         * and value parameters. A curried fun(x: Int)(y: Int) is represented
+         * as nested exprFun nodes, with returnType on the innermost. *)
         exprFun with
             params: vector.T(FormalParam)
             returnType: maybe.T(TypeExpr)
@@ -309,10 +318,10 @@ export
             typeParams: vector.T(TypeFormal)
         end
         exprApp with func: Node(ExprForm) args: vector.T(Node(ExprForm)) end
-        (* left op right, for any infix operator (+, :=, andif, or one a
-         * program defines); desugar turns andif and orif into exprIf,
-         * a[i] := v into exprIndexAssign, and an operator that is not built in
-         * into a call of the function the operator names *)
+        (* exprInfix represents left op right for any infix operator (+, :=,
+         * andif, or a user-defined operator). Desugaring turns andif and orif
+         * into exprIf, a[i] := v into exprIndexAssign, and any non-built-in
+         * operator into a call to the function it names. *)
         exprInfix with left: Node(ExprForm) op: String right: Node(ExprForm) end
 
         (* Aggregates *)
@@ -344,10 +353,11 @@ export
         exprIndex with target: Node(ExprForm) index: Node(ExprForm) end
         (* target[index] := value; only desugar builds it *)
         exprIndexAssign with target: Node(ExprForm) index: Node(ExprForm) value: Node(ExprForm) end
-        (* The two arguments a var or out parameter accepts
-         * (docs/type-system.md §6.5): var(value), a new cell holding value,
-         * and @target, the mutable location target names (@x, @r.field).
-         * exprDerefCell takes the location, it does not read the cell *)
+        (* These two forms are the arguments a var or out parameter accepts
+         * (docs/type-system.md §6.5): var(value) allocates a new mutable cell
+         * holding value, and @target passes the mutable location that target
+         * names (such as @x or @r.field). exprDerefCell takes the location; it
+         * does not read the cell. *)
         exprVarCell with value: Node(ExprForm) end
         exprDerefCell with target: Node(ExprForm) end
         (* target?tag, whether target has the tag, and target!tag, its payload
@@ -369,8 +379,9 @@ export
         (* exception name [: T] end, a new exception whose payload is a T (Ok
          * without one) *)
         exprException with name: String typeAnnot: maybe.T(TypeExpr) end
-        (* raise exc [with payload] [as T] end; raise does not return, so as T
-         * gives it a type where no expected type does (Ok otherwise) *)
+        (* exprRaise represents raise exc [with payload] [as T] end. Because
+         * raise does not return, an explicit as T gives it a type when no
+         * expected type is available (otherwise its type defaults to Ok). *)
         exprRaise with exc: Node(ExprForm) payload: maybe.T(Node(ExprForm)) asType: maybe.T(TypeExpr) end
         exprTry with
             body: Node(ExprForm)

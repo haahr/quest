@@ -1,23 +1,24 @@
 (* Quest Self-Hosted Compiler: The SSA's Proxy Folding Interface
  *
- * What escape analysis (ssa/passes/escape) and scalar replacement
- * (ssa/scalars) share. Both follow the pointers of objects a function makes,
- * and both know those objects are never proxies (a proxy is a tagged pointer
- * standing for a tuple or option viewed at a supertype,
- * docs/c-representation.md section 5.8): a test of one of their pointers for
- * being a proxy is false, so the branch on it goes only to its false arm.
- * Which pointers are tracked is each pass's own; this module finds where each
- * value is defined, the proxy tests of tracked pointers, and the blocks
- * reached once those tests fold. *)
+ * This module holds analysis helpers shared by escape analysis
+ * (ssa/passes/escape) and scalar replacement (ssa/scalars). Both passes track
+ * pointers to objects allocated inside the current function and know those
+ * objects are never proxies (a proxy is a tagged pointer standing for a tuple
+ * or option viewed at a supertype; docs/c-representation.md section 5.8). Any
+ * proxy-tag test on a tracked pointer therefore evaluates to false, so its
+ * branch takes only the false arm. Each pass decides which pointers to track;
+ * this module maps values to their definitions, recognizes proxy tests on
+ * tracked pointers, and computes block reachability with those branches
+ * folded. *)
 
 interface ProxyFold
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     collections/vector : collections/Vector
 export
-    (* A function's values' definitions: each value's defining instruction, by
-     * block and index (~1 for a block parameter), and whether it is a
-     * constant (opConst), and its value *)
+    (* Definition table for a function's SSA values: each value's defining
+     * instruction by block and index (~1 for block parameters), plus whether
+     * it is an opConst and its integer value *)
     Def Defs = Tuple
         f: ssa.Function
         defBlock: Array(Int)
@@ -32,26 +33,26 @@ export
     definedBy(d: Defs v: Int op: ssa.Opcode): Bool
     isConstant(d: Defs v: Int n: Int): Bool
 
-    (* Whether v tests a pointer for being a proxy, and the pointer is one
-     * tracked says is the pass's: v is and(ptrToInt(p), QUEST_PROXY_TAG) *)
+    (* True if v is a proxy-tag test and(ptrToInt(p), QUEST_PROXY_TAG) on a
+     * pointer p for which tracked(p) holds *)
     isProxyTest(d: Defs v: Int tracked: All(p: Int) Bool): Bool
-    (* Sets reach to the blocks reached from the entry, a branch whose
-     * condition isTest says is a folded proxy test going only to its false
-     * arm *)
+    (* Fill reach with the blocks reachable from the entry block, treating any
+     * branch whose condition satisfies isTest as taking only its false arm *)
     reachable(d: Defs reach: Array(Bool) isTest: All(v: Int) Bool): Ok
     (* The targets of a reached block's terminator that are taken: a branch
      * on a folded proxy test takes only its false one *)
     takenTargets(term: ssa.Terminator isTest: All(v: Int) Bool): Array(ssa.Target)
-    (* The pointers and the blocks reached, to a fixed point: each depends on
-     * the other (a parameter's pointer on the edges reached, the edges on the
-     * proxy tests of pointers). Starts with every block reached, runs
-     * pointers, then reachable, until reach does not change *)
+    (* Compute tracked pointers and reachable blocks to a fixed point, since
+     * block-parameter pointers depend on reachable edges and reachable edges
+     * depend on folded proxy tests. This marks all blocks reachable and then
+     * alternates pointers() and reachable() until reach stops changing. *)
     settle(d: Defs reach: Array(Bool) pointers: All() Ok isTest: All(v: Int) Bool): Ok
 
-    (* Whether symbol is a write barrier (collector.md section 3.5), which only
-     * logs the object or marks the slot's card: it keeps no pointer, so
-     * passing it one is no use of the object, and an object made a stack slot
-     * or replaced by its words needs none *)
+    (* True if symbol is a GC write barrier (docs/collector.md section 3.5).
+     * Write barriers only log the object or mark its card-table entry for the
+     * collector without retaining the pointer, so passing a pointer to one
+     * does not make the object escape, and stack-allocated or scalar-replaced
+     * objects do not need barriers. *)
     isBarrier(symbol: String): Bool
     (* The word an access at offset base + imm of width bytes is, ~1 if it is
      * not a whole aligned word *)

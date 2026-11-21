@@ -153,7 +153,7 @@ export
 
     let newAcc(): Acc = tuple let ids = vector.new() let var hasMeta = false end
 
-    (* Adds ids, but those in bound *)
+    (* Adds every id in ids that is not in bound *)
     let addIds(acc: Acc ids: Array(Int) bound: vector.T(Int)): Ok =
         for i = 0 upto {extent ids - 1} do
             let id = ids[i]
@@ -307,15 +307,15 @@ export
     (* =========================================================================
      * 4. Hash-consing
      *
-     * Types, kinds, and their components are hash-consed: constructing a node
-     * (make, makeKind) gives the canonical node of its structure, so
-     * structurally identical nodes are one node, and same decides structural
-     * identity. The key is the form's tag and every field, display-only fields
-     * included (record provenance, binder and path names), so two nodes that
-     * would print differently are never merged. Child nodes appear in keys by
-     * id, which is sound because they are canonical already. Structural
-     * identity is not type equality: an alias and its target, a recursive type
-     * and its unfolding, and types differing only in binder names are equal
+     * Types and kinds are hash-consed: constructing a node (make, makeKind)
+     * gives the canonical node of its structure, so structurally identical
+     * nodes are one node, and same decides structural identity. The key is the
+     * form's tag and every field, display-only fields included (record
+     * provenance, binder and path names), so two nodes that would print
+     * differently are never merged. Child nodes appear in keys by id, which is
+     * sound because they are canonical already. Structural identity is not
+     * type equality: an alias and its target, a recursive type and its
+     * unfolding, and types differing only in binder names are equal
      * (subtyping.isTypeEqual) but distinct nodes. Nodes containing a
      * metavariable are not hash-consed: a metavariable is mutable, and a node
      * that is shared must not change meaning when one inside it is solved.
@@ -1051,13 +1051,12 @@ export
      * 7. Unfolding recursive types, and lazy evaluation
      * ====================================================================== *)
 
-    (* The nodes of a recursive group's bindings, shared by all of them. The
-     * nodes are hash-consed, so recGroupType(bindings i) is the same node
-     * whichever member asks; the first member to be asked stores one array in
-     * every member's siblings, and a member that asks later finds it there, or
-     * on the group's first node. t is stored to as well, for a t that is not
-     * hash-consed (it contains a metavariable) and so is not among the
-     * nodes *)
+    (* Returns the nodes of a recursive group's bindings as one array shared by
+     * all members. Because nodes are hash-consed, recGroupType(bindings i)
+     * returns the same node whichever member asks; the first member to ask
+     * stores the array in every member's siblings cache, and later callers
+     * find it there or on the group's first node. t's own siblings field is
+     * also set in case t contains a metavariable and is not hash-consed. *)
     let siblings(t: Type): Array(Type) =
         case t.form
             when typeRecGroup with x then
@@ -1462,9 +1461,9 @@ export
             parts
         end
 
-    (* A type with its child types and kinds mapped (in mapAliases and
-     * stripAliases): t itself if every part maps to itself. A closure cannot
-     * assign a var, so a part's change is noted in a tuple's field. *)
+    (* rebuild maps a type's child types and kinds (for mapAliases and
+     * stripAliases), returning t itself if every part maps to itself. Because
+     * a closure cannot assign a var, changes are recorded in a tuple field. *)
     Let Changed = Tuple var any: Bool end
 
     let rebuild(t: Type ft: All(x: Type) Type fk: All(x: Kind) Kind): Type =
@@ -1674,9 +1673,8 @@ export
             mapType(t)
         end
 
-    (* The types without metavariables stripped of their aliases, by id, kept
-     * across calls (the bootstrap's _STRIPPED), and cleared when they grow
-     * past a bound *)
+    (* Cache of alias-stripped metavariable-free types, keyed by node id (the
+     * bootstrap's _STRIPPED) and cleared when it grows past 200,000 entries *)
     let strippedTypes = newMemo(:Type)
 
     let stripAliases(t: Type): Type =

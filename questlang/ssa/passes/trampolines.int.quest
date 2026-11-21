@@ -1,19 +1,22 @@
 (* Quest Self-Hosted Compiler: The SSA's Trampolines Interface
  *
- * Makes an export its function (docs/ssa.md section 4.1). Another unit calls
- * a module's function through its export, qv_, which passes the function's
- * environment as null and tail-calls it, often through an adapter of the
- * unit's own (ir.md section 8.4.1) that tail-calls the function in turn:
- * vector.get was three branches, where the C build's export is the function,
- * since clang inlines the two. An exported function of one block that ends in
- * a tail call of a function of the unit gets a copy of that function in place
- * of the call, again while that block still ends in such a call, up to 4
- * times, so that an adapter is copied in and then the function it calls. A
- * function is copied when it has at most 64 instructions, every call it makes
- * is a tail call or one in a block that never ends (a raise), it takes the
- * call's arguments as they are passed, its results are the export's, and
- * tailJumps.copiable says it can be. Its other callers are left as they
- * are. *)
+ * Inlines small target functions into exported wrapper trampolines
+ * (docs/ssa.md section 4.1). Another compilation unit calls a module's
+ * function through its exported qv_ wrapper, which passes a null closure
+ * environment and tail-calls the implementation — often through a local
+ * adapter (ir.md section 8.4.1) that tail-calls the implementation in turn.
+ * Without this pass, a cross-unit call such as vector.get takes three jumps,
+ * whereas in the C build clang inlines both wrappers.
+ *
+ * When an exported single-block function ends in a tail call to another
+ * function in the same unit, this pass splices a copy of the callee in place
+ * of the tail call, repeating up to 4 times while the entry block still ends
+ * in an eligible tail call (so an adapter is inlined first, then its target).
+ * A callee is eligible when it has at most 64 instructions (counting
+ * terminators), makes no non-tail calls outside blocks ending in unreachable
+ * (such as raises), has no branch back to its entry block, matches the call's
+ * argument and result types, and satisfies tailJumps.copiable. Other callers
+ * of the callee are unchanged. *)
 
 interface Trampolines
 import

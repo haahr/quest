@@ -73,20 +73,21 @@ export
          * "Exception: ": its name, and its payload, as shown writes it (or
          * the base's show, if shown is null), and its type *)
         entry("raisedText" array of model.eqref model.eqref end array of model.eqref end)
-        (* Fatal errors held (nonzero) or not: while the JIT's host runs an
-         * input, fatal keeps its report, for fatalReport, and traps, so that
-         * the input fails and the driver goes on (docs/wasm.md section 4.2);
-         * starting to hold clears the report kept. The report kept, or null *)
+        (* holdFatal toggles fatal-error holding (nonzero to hold). While the
+         * JIT host runs an input, fatal stores its report for fatalReport and
+         * traps instead of exiting, so the input fails without terminating the
+         * driver (docs/wasm.md section 4.2); enabling hold clears any stored
+         * report. fatalReport returns the stored report, or null if none. *)
         entry("holdFatal" array of model.i32 end none)
         entry("fatalReport" none array of model.eqref end)
-        (* Up to seven strings joined in one allocation, a null one absent: a
-         * chain of <>, which the backend joins (the C runtime's
-         * quest_string_concat_n) *)
+        (* Joins up to seven strings in one allocation, skipping null entries.
+         * The backend folds chains of <> into this call (matching the C
+         * runtime's quest_string_concat_n). *)
         entry("concatN" array of(7 model.eqref) array of model.eqref end)
-        (* Memory, for the core's calls of WASI: a byte, a 32-bit word, and a
-         * 64-bit one, read and written at an address; the memory grown to
-         * hold an address; n bytes from an address as a new string; a
-         * string's bytes written at an address *)
+        (* Linear-memory helpers for wasm/core's WASI calls: load and store 8-,
+         * 32-, and 64-bit values at an address, grow memory to cover an
+         * address, copy n bytes into a new string, and write a string's bytes
+         * into memory *)
         entry("memLoad8" array of model.i64 end array of model.i64 end)
         entry("memStore8" array of model.i64 model.i64 end none)
         entry("memLoad32" array of model.i64 end array of model.i64 end)
@@ -211,10 +212,9 @@ export
     let hiddenText = piece(59 8)
     let valText = piece(67 5)
     let stringMemoryText = piece(72 40)
-    (* The longest string the runtime makes, in bytes: one longer is out of
-     * memory, as natively an allocation that fails is, rather than a size
-     * that wraps or an engine's trap (docs/wasm.md section 2.10, and
-     * section 10 on V8's limit) *)
+    (* Maximum string length in bytes. Longer allocations report out of memory
+     * (matching a failed native allocation) instead of wrapping the length or
+     * triggering an engine trap (docs/wasm.md sections 2.10 and 10). *)
     let maxBytes = 1073741824
 
     let runtimeModule(): model.Module =
@@ -248,9 +248,9 @@ export
             let sLength = rt.field("string" "length")
             let sBytes = rt.field("string" "bytes")
             let sHash = rt.field("string" "hash")
-            (* A read-only string (a literal, its hash word's bit set, as
-             * codegen's questLiteral makes it) raises string.error on a write,
-             * as natively (quest_string_set_char): the string in local str *)
+            (* Emits a check that local str is writable: string literals have
+             * bit 30 of their hash word set (by codegen's questLiteral) and
+             * raise string.error on mutation, matching quest_string_set_char *)
             let readOnlyCheck(str: Int): Array(Inst) = array of
                 i1(ops.localGet str) i2(ops.structGet tString sHash) c32(1073741824) i(ops.i32And)
                 model.ifInst(empty "") i1(ops.call stringError) model.endInst
@@ -322,12 +322,14 @@ export
             let typeOf = array of(extent exports 0)
             for k = 0 upto extent exports - 1 do typeOf[k] := funcType(exports[k].params exports[k].results) end
 
-            (* Bytes cross at 16 and up; the iovec is at 0, the count written
-             * at 8. A write may take only some of them (node's to a pipe takes
-             * 64 KB), so the iovec is advanced by the count and written again
-             * until none is left; "try again" (6) is tried again; and another
-             * error leaves its number in local err, which the caller returns
-             * for the core to raise writer.error (docs/wasm.md section 4.2) *)
+            (* Writes bytes staged at memory offset 16 using a WASI iovec
+             * (pointer/length pair) at offset 0 and the bytes-written output
+             * at offset 8. Because a single fd_write may write fewer bytes
+             * than requested (Node's pipe writes cap at 64 KB), the loop
+             * advances the iovec until nothing remains. WASI EAGAIN (6) is
+             * retried; any other errno is left in local err for the caller to
+             * return so wasm/core can raise writer.error (docs/wasm.md
+             * section 4.2). *)
             let write(fd: Array(Inst) err: Int): Array(Inst) = cat(array of
                 array of
                     c32(0) c32(16) i1(ops.i32Store 0)
@@ -408,17 +410,19 @@ export
             add("convChar" typeOf[5] array of "c" end array of :model.Local end array of
                 c32(0) c32(1) i1(ops.localGet 0) c32(1) i1(ops.arrayNew tBytes) i1(ops.structNew tString)
             end)
-            (* Raises exception with its payload at site (section 2.9): its
-             * state, which the one tag carries *)
+            (* Packages the exception, payload, and raise-site metadata into a
+             * $raised struct and throws it on tag 0 (docs/wasm.md
+             * section 2.9) *)
             add("raise" typeOf[6] array of "exception" "payload" "site" "text" "kind" "desc" end
                 array of :model.Local end
                 array of
                     i1(ops.localGet 0) castTo(tException) i1(ops.localGet 1) i1(ops.localGet 2) i1(ops.localGet 3)
                     i1(ops.localGet 4) i1(ops.localGet 5) i1(ops.structNew tRaised) i1(ops.throw 0)
                 end)
-            (* An uncaught exception's report, as quest_reraise writes it, less
-             * the frames (decision 12): Exception: NAME, with its payload as
-             * echo writes it and its type, and the raise's site *)
+            (* Writes an uncaught exception report to stderr and exits with
+             * status 1, matching quest_reraise without stack frames (decision
+             * 12): "Exception: NAME", optional payload and type, and raise
+             * site *)
             add("uncaught" typeOf[7] array of "state" "shown" end
                 array of local("s" model.refNull(tRaised)) local("report" model.eqref) local("kind" model.i32) end
                 cat(array of
@@ -489,8 +493,9 @@ export
                     c32(0) c32(16) i1(ops.localGet 2) i(ops.i32Sub) i1(ops.localGet 4) i(ops.refAsNonNull)
                     i1(ops.structNew tString)
                 end)
-            (* s's bytes escaped as echo writes them inside quotes quote
-             * (quest_escape_char): the length found first, then the bytes *)
+            (* Escapes s for echo inside delimiter quote (matching
+             * quest_escape_char): computes the escaped length in a first pass,
+             * then allocates and fills the output bytes *)
             let printable = array of
                 i1(ops.localGet 9) c32(32) i(ops.i32GeU) i1(ops.localGet 9) c32(126) i(ops.i32LeU) i(ops.i32And)
             end
@@ -560,9 +565,11 @@ export
                         c32(0) i1(ops.localGet 6) i1(ops.localGet 7) i(ops.refAsNonNull) i1(ops.structNew tString)
                     end
                 end))
-            (* An Int in a slot (docs/wasm.md section 2.2): an i31 if it fits
-             * 31 bits as a signed number, else a box. It fits when n + 2^30,
-             * compared unsigned, is below 2^31: one test for both ends *)
+            (* Boxes an Int for storage in an eqref slot (docs/wasm.md
+             * section 2.2): values that fit in a signed 31-bit integer become
+             * an unallocated i31ref, and larger values allocate a $boxInt
+             * struct. Comparing (n + 2^30) < 2^31 unsigned tests both bounds
+             * in one check. *)
             add("boxInt" typeOf[11] array of "n" end array of :model.Local end array of
                 i1(ops.localGet 0) model.i64Const(0x40000000) i(ops.i64Add) model.i64Const(0x80000000) i(ops.i64LtU)
                 model.ifInst(result(model.eqref) "")
@@ -583,12 +590,12 @@ export
                 model.endInst
                 i(ops.i31GetS) i(ops.i64ExtendI32S)
             end)
-            (* A fatal error's report, which no handler catches, and the
-             * status the program ends with, as the C runtime's quest_fail_at
-             * (1) and its collector's out of memory (70) end a program; or
-             * while fatal errors are held, the report kept and a trap. An
-             * empty report is never held: system.exit's is empty, and ends
-             * the program even while an input runs *)
+            (* Writes a fatal error report to stderr and exits with status,
+             * matching quest_fail_at (status 1) and collector out-of-memory
+             * (status 70). While holdFatal is active, a non-empty report is
+             * saved in fatalReport and execution traps instead of exiting. An
+             * empty report (used by system.exit) is never held and always
+             * exits immediately. *)
             add("fatal" typeOf[13] array of "report" "status" end array of :model.Local end array of
                 i1(ops.globalGet heldGlobal) model.ifInst(empty "")
                 i1(ops.localGet 0) castTo(tString) i2(ops.structGet tString sLength) model.ifInst(empty "")
@@ -598,10 +605,10 @@ export
                 c32(2) i(ops.refI31) i1(ops.localGet 0) i1(ops.call putString) i(ops.drop)
                 i1(ops.localGet 1) i1(ops.call procExit)
             end)
-            (* string's externals, as the C runtime's quest_string functions
-             * are: an index or a substring outside the string raises
-             * string.error, with no site; an index is compared unsigned,
-             * which catches a negative one too *)
+            (* String primitives matching the C runtime's quest_string
+             * functions. Any out-of-bounds index or substring raises
+             * string.error with no source site; unsigned comparison catches
+             * negative indices in the same check. *)
             let checkIndex(s: Int index: Int str: Int): Array(Inst) = array of
                 i1(ops.localGet s) castTo(tString) i1(ops.localTee str) i2(ops.structGet tString sLength)
                 i(ops.i64ExtendI32U) i1(ops.localGet index) i(ops.i64LeU)
@@ -863,10 +870,10 @@ export
                 c32(16) i(ops.i32ShrU) i1(ops.memoryGrow 0) i(ops.drop)
                 model.endInst
             end)
-            (* n in decimal, after sign when negative: ~ as conv.int writes it,
-             * - as echo does. The digits come from 0 - n, divided unsigned,
-             * so the least Int, whose negation is itself, is written right;
-             * 20 bytes hold 19 digits and a sign *)
+            (* Formats n in decimal, prefixing sign when negative ('~' for
+             * conv.int, '-' for echo). Dividing (0 - n) unsigned handles the
+             * minimum 64-bit Int whose negation overflows to itself; 20 bytes
+             * suffice for 19 digits plus the sign. *)
             add("digits" funcType(array of model.i64 model.i32 end array of model.eqref end) array of "n" "sign" end
                 array of local("buf" nullBytes) local("p" model.i32) local("m" model.i64) local("out" nullBytes) end
                 array of
@@ -920,8 +927,8 @@ export
                     i1(ops.localGet 0) i1(ops.localGet 1) i1(ops.localGet 2) i1(ops.arraySet tBytes)
                     i1(ops.localGet 1) c32(1) i(ops.i32Add)
                 end)
-            (* A string too long to make: out of memory, status 70, as the
-             * collector's is natively *)
+            (* Reports out-of-memory (status 70, matching the native collector)
+             * when a string allocation exceeds maxBytes *)
             add("stringMemory" funcType(none none) array of :String end array of :model.Local end cat(array of
                 pieceString(stringMemoryText)
                 array of c32(70) i1(ops.call fatal) i(ops.unreachable) end
@@ -937,12 +944,12 @@ export
                     i1(ops.call raiseIt)
                 end
             end))
-            (* A payload as echo writes a value (quest_put_value), by its kind:
-             * 1 Int, 2 Bool, 3 Char, 4 String, 5 Ok, 6 Word, 7 a function, 8
-             * an abstract type's value; any other <val>. A payload of kind 9
-             * is written by its descriptor (wasm/print), and its callers,
-             * uncaught and raisedText, call this only when that text is
-             * absent *)
+            (* Formats an exception payload as echo does (matching
+             * quest_put_value), dispatched by kind: 1 Int, 2 Bool, 3 Char,
+             * 4 String, 5 Ok, 6 Word, 7 function, 8 abstract value, and <val>
+             * for anything else. Kind 9 payloads are formatted via their type
+             * descriptor in wasm/print; uncaught and raisedText fall back to
+             * this function only when that formatted string is absent. *)
             let kindIs(k: Int): Array(Inst) = array of i1(ops.localGet 1) c32(k) i(ops.i32Eq) end
             let eqrefResult = result(model.eqref)
             add("show" funcType(array of model.eqref model.i32 end array of model.eqref end)

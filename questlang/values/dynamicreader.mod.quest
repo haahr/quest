@@ -72,16 +72,16 @@ export
             when jNumber with x then
                 if not(x.isInteger) then fail(:Ok) end
                 let n = strutil.tryToInt(x.text)
-                (* past an Int's range, saturated, as C's strtoll reads it
-                 * (its syntax json.parse has checked) *)
+                (* Saturate integers outside Int's range, matching C's strtoll;
+                 * json.parse has already checked the numeric syntax *)
                 if maybe.isSome(n) then maybe.unwrap(n)
                 elsif strutil.startsWith(x.text "-") then {0 - 9223372036854775807} - 1
                 else 9223372036854775807
                 end
             else fail()
         end
-    (* Reads a document's value back by its type, from the document's type
-     * table, raising dynamic.error (fail) at anything ill-formed.
+    (* Reader decodes a document's value by its type using the document's type
+     * table, raising dynamic.error (fail) on anything ill-formed.
      *
      * newReader checks every node of the table before anything is read
      * (checkNode). typeOf makes the type of a node, once: a node reached
@@ -291,12 +291,12 @@ export
                 tuple let kind = kind let body = member(o kind) end
             end
         end
-    (* The ref that a value of type r0 is written at: r0 itself, unless it is
-     * an abstract node, which is followed to its representation, or a param
-     * node, which is followed to the witness of the auto value it is inside
-     * (from witnesses, by depth). Raises dynamic.error (fail) for a param
-     * with no such auto value, and for a chain longer than the table and the
-     * witnesses, which can only be a cycle *)
+    (* Returns the ref that a value of type r0 is written at: r0 itself, unless
+     * it is an abstract node (followed to its representation) or a param node
+     * (followed to the witness of its enclosing auto value from witnesses, by
+     * depth). Raises dynamic.error (fail) for a param with no such auto value,
+     * or for a chain longer than the table and witnesses, which can only be a
+     * cycle. *)
     let concreteRef(rd: Reader r0: Ref): Ref =
         begin
             let var r = r0
@@ -507,9 +507,10 @@ export
         else
             tm.exceptionOf(typeOf(rd checkRef(rd e.body)))
         end
-    (* Resolves {"@ref": n} read at the type r, whose object must have been
-     * read at a subtype of r (as the runtime's quest_read_value checks);
-     * otherwise the object's @id (if any) and its contents *)
+    (* Resolves {"@ref": n} at type r, verifying that the referenced object was
+     * read at a subtype of r (as the runtime's quest_read_value checks).
+     * Otherwise returns the object's @id, if any, and its unwrapped
+     * contents. *)
     Let Shared = Tuple existing: maybe.T(Value) objId: maybe.T(Int) contents: json.Value end
     let sameRef(a: Ref b: Ref): Bool = stringOp.equal(a.name b.name) andif {a.index is b.index}
     let sharedOf(rd: Reader data: json.Value kind: String r: Ref): Shared =

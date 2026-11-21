@@ -9,13 +9,13 @@ import
 export
     Let Function = ssa.Function
 
-    (* A block that ends in a call of the function itself and op of its
-     * result and other, or in such a call alone (a tail call: op the call
-     * itself, and other ~1) *)
+    (* A recursive call site: a block ending in a self-call followed by op on
+     * its result and other, or in a self-call alone (a tail call, where op is
+     * the call itself and other is ~1) *)
     Let Site = Tuple block: Int call: ssa.Inst op: ssa.Inst other: Int end
 
-    (* The operations an accumulator combines with: associative and
-     * commutative on ints, which wrap *)
+    (* Whether i is an operation an accumulator can combine with: associative
+     * and commutative on wrapping ints *)
     let combines(i: ssa.Inst): Bool =
         ssa.isOp(i ssa.opAdd) orif ssa.isOp(i ssa.opMul) orif ssa.isOp(i ssa.opAnd) orif ssa.isOp(i ssa.opOr)
             orif ssa.isOp(i ssa.opXor)
@@ -53,8 +53,9 @@ export
     let jump(block: Int args: Array(Int)): ssa.Terminator =
         option termJump of ssa.Terminator with let target = ssa.target(block args) end
 
-    (* The function's sites: its blocks that return a call of it, or op of
-     * one, op being the first such block's *)
+    (* The function's recursive sites: blocks that return a self-call, or that
+     * return op applied to a self-call, where op is the first combining
+     * operation found *)
     let sites(f: Function): vector.T(Site) =
         begin
             let found = vector.new(:Site)
@@ -99,8 +100,9 @@ export
                 for k = 0 upto {vector.length(found) - 1} do
                     if vector.get(found k).other >= 0 then op := vector.get(found k).op end
                 end
-                (* The header: the entry's instructions and terminator, and
-                 * parameters for the function's, which replace them, and the
+                (* Build the loop header from the entry block's instructions
+                 * and terminator, giving it fresh parameters for the
+                 * function's parameters (which replace them) plus the
                  * accumulator *)
                 let entry = ssa.block(f 0)
                 let header = ssa.newBlock(f)

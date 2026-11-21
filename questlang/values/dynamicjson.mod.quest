@@ -97,11 +97,12 @@ export
             else false
         end
 
-    (* t with aliases, solved metavariables, applications, and recursion
-     * unfolded down to its outer constructor, giving up (fail) after
-     * reduce.maxBetaSteps steps. Not reduce.normalizeType, which leaves an
-     * application whose operator takes another number of arguments, while
-     * evaluateLazily reduces it *)
+    (* Returns t0 with aliases, solved metavariables (inferred type variables),
+     * applications, and recursion unfolded down to its outer constructor,
+     * raising dynamic.error after reduce.maxBetaSteps steps. This does not use
+     * reduce.normalizeType, because normalizeType leaves an application whose
+     * operator takes a different number of arguments, whereas evaluateLazily
+     * reduces it. *)
     let structure(t0: Type): Type =
         begin
             let var t = t0
@@ -242,8 +243,8 @@ export
             sb.toString(b)
         end
 
-    (* The graph of the types a value mentions, from which the document's
-     * type table is made (canonicalTable).
+    (* Graph holds the types a value mentions, from which canonicalTable builds
+     * the document's type table.
      *
      * ref(g t) returns how the table refers to t: a built-in type by its name
      * ("Int", "String", "Dynamic"), and any other type by the index of its
@@ -296,12 +297,13 @@ export
 
     let refs(n: Int): Array(Ref) = array of(n builtin("Ok"))
 
-    (* How the table refers to t (see Graph), adding the nodes of t and its
-     * parts to g the first time they are met. A type parameter of an enclosing
-     * auto type is a param node of its depth; any other type is keyed by the
-     * id of its structure and, if it mentions enclosing auto types'
-     * parameters, by which ones at which depths. Raises dynamic.error (fail)
-     * for a type the format cannot encode, or when g reaches maxTypeNodes *)
+    (* Returns how the table refers to t (see Graph), adding the nodes of t and
+     * its parts to g the first time they are met. A type parameter of an
+     * enclosing auto type becomes a param node recording its depth; any other
+     * type is keyed by the id of its structure and, if it mentions enclosing
+     * auto types' parameters, by which ones at which depths. This raises
+     * dynamic.error (fail) for a type the format cannot encode, or when g
+     * reaches maxTypeNodes. *)
     let rec ref(g: Graph t: Type): Ref =
         begin
             let s = structure(t)
@@ -344,11 +346,11 @@ export
                 end
             end
         end
-    (* The ref of g's node for key, made the first time key is met: from
-     * structure s by makeNode if isStructure, else a param node of depth. The
-     * node's index is taken, holding a placeholder, before makeNode visits
-     * the parts, so that a part that leads back to s (a recursive type) finds
-     * the index and refers to it, which ends the walk *)
+    (* Returns the ref of g's node for key, creating it the first time key is
+     * met: from structure s via makeNode if isStructure is true, or as a param
+     * node of depth otherwise. The node's index is reserved with a placeholder
+     * before makeNode visits its parts, so that a part leading back to s (a
+     * recursive type) finds the index and refers to it, ending the walk. *)
     and add(g: Graph key: String s: Type isStructure: Bool depth: Int): Ref =
         begin
             let existing = hashMap.get(g.index key)
@@ -383,7 +385,8 @@ export
                     make(shape("record" labels noFlags "" 0) children)
                 when typeTuple with x then
                     let components = tm.tupleValueFields(x.fields)
-                    (* Type components (an abstract tuple): not encodable yet *)
+                    (* Type components (abstract tuples) are not encodable
+                     * yet *)
                     if extent components isnot extent x.fields then fail(:Ok) end
                     let labels = array of(extent components "")
                     let children = refs(extent components)
@@ -458,8 +461,8 @@ export
                         make(shape("external" noLabels noFlags wordType 0) array of :Ref end)
                     else
                         let found = moduleAbstractType(s)
-                        (* Polymorphic types, other abstract and external types,
-                         * and type operators: not encodable *)
+                        (* Polymorphic types, other abstract or external types,
+                         * and type operators are not encodable *)
                         if maybe.isNone(found) then fail(:Ok) end
                         let a = maybe.unwrap(found)
                         let children = refs({extent a.args + 1})
@@ -479,9 +482,9 @@ export
     let refJson(r: Ref t: Table): json.Value =
         if isBuiltin(r) then json.string(r.name) else json.int(hashMap.find(t.index r.index)) end
 
-    (* The type table for the types the roots refer to, and the table index
-     * of each node whose type is in it, made canonical: equal types give the
-     * same text, however the graph spells them (docs/dynamic.md section 2.2,
+    (* Builds the canonical type table for the types reachable from roots, along
+     * with the table index of each included node, so that equal types produce
+     * the same text however the graph spells them (docs/dynamic.md section 2.2,
      * "Canonical tables"). The graph need not be minimal: an interpreter's
      * type and a compiled descriptor unroll a recursive type differently,
      * and equal types written differently may make separate nodes.
@@ -498,7 +501,7 @@ export
      * reaches them, from each root in turn and each node's children in
      * order, and the table lists one node of each class reached. Neither
      * step depends on the graph's node numbering, so equal types number
-     * alike *)
+     * alike. *)
     let canonicalTable(nodes: vector.T(Node) roots: vector.T(Ref)): Table =
         begin
             let n = vector.length(nodes)

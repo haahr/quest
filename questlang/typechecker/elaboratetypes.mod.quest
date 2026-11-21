@@ -426,9 +426,9 @@ export
             else
                 let modScope = moduleOrInterface(e first)
                 if maybe.isSome(modScope) then
-                    (* Module or interface scope lookup. Scopes hold no modules,
-                     * so a longer path names none (the bootstrap's Scope has no
-                     * lookup_module). *)
+                    (* Look up the type in the module or interface scope. Scopes
+                     * hold no nested modules, so a longer path names none (the
+                     * bootstrap's Scope has no lookup_module). *)
                     if n > 2 then
                         diagnostics.fail(:Ok "Undefined module/interface '" <> vector.get(path 1) <>
                             "' in type path '" <> joinPath(path) <> "'" offset)
@@ -459,15 +459,15 @@ export
             end
         end
 
-    (* The type a path x.A or x.y.A names (case 2 above), where valSym is x's
-     * symbol. x must be immutable; each middle segment selects a value field
-     * of the tuple so far, and the last a type component of the tuple
-     * reached. For an abstract component A::K, the result is a path type
-     * with x's symbol as its root, A as its component, and K with the
+    (* Returns the type named by a path x.A or x.y.A (case 2 above), where
+     * valSym is x's symbol. x must be immutable; each middle segment selects a
+     * value field of the tuple so far, and the last selects a type component of
+     * the tuple reached. For an abstract component A::K, the result is a path
+     * type with x's symbol as its root, A as its component, and K with the
      * tuple's other abstract components rewritten as path types of the same
-     * root; for a manifest component, its definition, rewritten the same
-     * way. A poisoned x (one whose declaration failed to check) raises the
-     * silent error, as its use does elsewhere *)
+     * root; for a manifest component, it returns the definition rewritten the
+     * same way. A poisoned x (one whose declaration failed to check) raises the
+     * silent error, as its use does elsewhere. *)
     and elaborateProjection(path: vector.T(String) valSym: symbols.ValueSymbol offset: Int e: env.T): Type =
         begin
             let n = vector.length(path)
@@ -600,8 +600,8 @@ export
             for i = 0 upto {extent bindings - 1} do
                 let b = bindings[i]
                 declare(e b.sym)
-                (* Without a bound, a component is a type (checked), as a tuple
-                 * value's says *)
+                (* Without an explicit bound, a type component has kind TYPE,
+                 * already checked by elaborateTupleTypeBindings *)
                 vector.append(components option tupleTypeBinding of model.TupleComponent with
                     let name = b.member.name
                     let type = maybe.unwrap(b.sym.definition)

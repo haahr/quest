@@ -54,12 +54,13 @@ export
 
     let cType(t: Type): String = types.qtypeToCType(t)
 
-    (* The header, in order: the ABI stamp and include guard; an include of
-     * each imported interface's header; the structs of the aggregate types
-     * the interface's types and values mention; a typedef of each type's C
-     * representation (quest_type_<interface>_<name>); and a typedef of each
-     * value's (quest_sig_<interface>_<name>), a function pointer for a
-     * function, its type parameters' descriptors first *)
+    (* Returns the interface header in five sections: the ABI stamp and include
+     * guard, #include directives for imported interfaces, aggregate struct
+     * definitions referenced by the interface's types and values, C typedefs
+     * for declared types (quest_type_<interface>_<name>), and C typedefs for
+     * exported values (quest_sig_<interface>_<name>). Functions become
+     * function-pointer typedefs, with a runtime QTypeDescriptor pointer
+     * parameter prepended for each type parameter of a polymorphic function. *)
     let compileInterfaceToHeader(decl: ast.InterfaceDecl scope: symbols.Scope canonicalName: String): String =
         begin
             let cName = strutil.replace(canonicalName "/" "__")
@@ -121,7 +122,7 @@ export
                 for i = 0 upto {vector.length(structs) - 1} do add(lines vector.get(structs i)) end
             end
 
-            (* Abstract types (erased to QVal in C) *)
+            (* Abstract and manifest type declarations *)
             add(lines "/* --- Type Declarations --- */")
             let var hasTypes = false
             let sigs = interfaceCompiler.typeSignatures(decl)
@@ -184,7 +185,7 @@ export
             if not(hasTypes) then add(lines "/* (No types declared) */") end
             add(lines "")
 
-            (* Member signatures as function pointer typedefs *)
+            (* Member value and function-pointer typedefs *)
             add(lines "/* --- Member Signatures for Interface " <> decl.name <> " --- */")
             let var hasValues = false
             for i = 0 upto {vector.length(decl.signatures) - 1} do

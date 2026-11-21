@@ -107,14 +107,13 @@ export
     (* A module elaborated and lowered, for moduleFileUnit *)
     Let Lowered = Tuple x: Elaborated unit: nodes.Unit end
 
-    (* body, compiling a module file. A module file is compiled for other
-     * units, which see its abstract types opaquely, even in a whole program's
-     * process (one of the library's prelinked modules, which the program keeps
-     * importing): while body runs, the process's abstract types are opaque in
-     * shapes, and the representations registered are a module compiled
-     * apart's, never transparent. Both are put back as they were when body
-     * returns or raises, so that later compilations in the process (a driver
-     * build's, the REPL's) are not left with them *)
+    (* Runs body while compiling a separately compiled module file. Other units
+     * must see a module file's abstract types opaquely, even inside a
+     * whole-program build (such as a prelinked library module that the program
+     * imports). While body runs, abstract types are kept opaque in shapes and
+     * any representations registered are marked as separately compiled so they
+     * never become transparent. Both flags are restored when body returns or
+     * raises, so later compilations in the same process are unaffected. *)
     let compilingApart(A::TYPE body: All() A): A =
         begin
             let wasTransparent = shapes.transparentAbstractTypes()
@@ -131,8 +130,8 @@ export
             result
         end
 
-    (* Steps 1 to 3 of compiling the module decl to a module file, in e, which
-     * it sets up for C compilation; within compilingApart *)
+    (* Runs steps 1 to 3 of compiling decl to a module file in e, configuring e
+     * for C compilation; callers must invoke this inside compilingApart *)
     let elaborate(decl: ast.ModuleDecl offset: Int e: env.T canonicalName: String buildDir: maybe.T(String)):
         Elaborated =
         begin
@@ -160,9 +159,9 @@ export
             for i = 0 upto {vector.length(decl.imports) - 1} do
                 let imp = vector.get(decl.imports i)
                 let ifacePath = ast.effectiveInterfacePath(imp)
-                (* At the import, so that an interface it names that cannot
-                 * be found or loaded is reported there, as elaboration
-                 * reports it, not at the module's first line *)
+                (* Report any missing or unloadable interface at the import's
+                 * offset, as elaboration does, rather than at the module's
+                 * first line *)
                 let imported = env.atImport(e imp.offset 1 fun(): graph.Resolved
                     begin
                         if maybe.isNone(env.lookupInterface(e ifacePath))
@@ -232,9 +231,7 @@ export
              * object *)
             let library = strutil.startsWith(files.absolute(sourceFile) files.join(paths.projectDir() "lib") <> "/")
             let backend = choice.forFile(backends name library)
-            (* What its backend or the IR passes cannot compile is an error
-             * (a conversion the represent pass rejects is raised as the
-             * program's error, where it is) *)
+            (* Turn backend and IR pass failures into compiler diagnostics *)
             let fp = fingerprint.ofInterface(decl.interfaceName e)
             let c = try cBackend.moduleFileToC(typed e maybe.some(sourceMap) interfaceHeader backend
                 fp)
@@ -260,9 +257,9 @@ export
                 if not(seen) then vector.append(unique d) end
             end
             if choice.isWasm(backend) then
-                (* A WebAssembly module, which is its unit's object as well as
-                 * its code: no C compiler, no linker (docs/wasm.md section
-                 * 5.1) *)
+                (* A WebAssembly module serves as both its unit's generated
+                 * code and its object file, with no C compiler or linker
+                 * (docs/wasm.md section 5.1) *)
                 let o = writer.file(oFile)
                 writer.putString(o c)
                 writer.close(o)
@@ -300,8 +297,8 @@ export
         modPath: String
     end
 
-    (* body on the module file file, prepared as compileModuleFile's
-     * arguments say *)
+    (* Parses file, prepares its ModuleFile environment as compileModuleFile
+     * expects, and runs body on it *)
     let withModuleFile(A::TYPE file: String includePaths: Array(String) buildDir: maybe.T(String)
         programDir: maybe.T(String) res: maybe.T(graph.Resolver) body: All(m: ModuleFile) A): A =
         begin

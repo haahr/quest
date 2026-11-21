@@ -1,17 +1,17 @@
 (* Quest Self-Hosted Compiler: The Kernel's Interrupts Interface
  *
- * docs/jupyter-kernel.md section 5: in a Jupyter kernel's driver (--kernel), an
- * interrupt (SIGINT) sets the runtime's flag, quest_interrupt_pending, through
- * a handler the driver installs; the code the JIT compiles checks it
- * (ssa/passes/interrupts), and the interpreter polls it. The runtime's symbols
- * are found by name (os/code's symbol), so a driver whose runtime lacks them
- * (the release's, building stage 1) runs without interrupts. *)
+ * Handles SIGINT interrupts in Jupyter kernel mode (--kernel; see
+ * docs/jupyter-kernel.md section 5). A signal handler installed by the driver
+ * sets the runtime flag quest_interrupt_pending, which JIT-compiled code checks
+ * (ssa/passes/interrupts) and the interpreter polls. The runtime symbols are
+ * looked up dynamically by name (os/code's symbol) so that a driver linked
+ * against an older runtime without them still runs, just without interrupts. *)
 
 interface Interrupts export
-    (* Installs the handler; whether the runtime has one *)
+    (* Installs the SIGINT handler; returns whether the runtime supports it *)
     install(): Bool
-    (* Whether an interrupt is pending; clears it if so *)
+    (* Returns whether an interrupt is pending, clearing the flag if so *)
     take(): Bool
-    (* Forgets an interrupt that arrived between cells *)
+    (* Clears any pending interrupt, such as one that arrived between cells *)
     clear(): Ok
 end

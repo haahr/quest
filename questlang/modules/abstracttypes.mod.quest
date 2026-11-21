@@ -48,10 +48,11 @@ export
 
     let symbolOf(typeVar: model.Type): Int = case typeVar.form when typeVariable with v then v.symbolId else 0 end
 
-    (* The entry for globalName as typeVar, linked or not: the one recorded
-     * already if it is for the same opaque type and linkage, else a new one
-     * that replaces it by name. Either way it is recorded by typeVar's symbol
-     * id, so an older opaque type's id still finds its own entry *)
+    (* Returns the entry for globalName as typeVar (linked or unlinked),
+     * reusing the existing entry if it has the same opaque type and linkage or
+     * creating a new one that replaces it in byName. Either way, the entry is
+     * also recorded under typeVar's symbol id in bySymbol so an older opaque
+     * type's id still finds its own entry. *)
     let recordType(globalName: String typeVar: model.Type linked: Bool): ModuleAbstractType =
         begin
             let found = hashMap.get(byName globalName)
@@ -100,10 +101,10 @@ export
 
     let representationCount(): Int = represented.count
 
-    (* Only a POWER bound (A <: T) counts. Outside its module a bounded type is
-     * seen as its bound, whose layout (the numbering of its fields and cases)
-     * may differ from its representation's, so it is never laid out as its
-     * representation *)
+    (* Only a POWER bound (A <: T, meaning a subtype upper bound) counts.
+     * Outside its module a bounded type is seen as its bound, whose memory
+     * layout (field and case numbering) may differ from its representation's,
+     * so it is never laid out as its representation. *)
     let unbounded(e: ModuleAbstractType): Bool =
         case e.typeVar.form
             when typeVariable with v then

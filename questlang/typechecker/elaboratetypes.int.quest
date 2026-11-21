@@ -1,10 +1,10 @@
 (* Quest Self-Hosted Compiler: Type and Kind Elaboration Interface
  *
- * The elaboration of bootstrap/python/quest/typechecker/elaborate_types.py:
- * syntactic types and kinds become semantic ones (questlang/types/model), and
- * type and kind declarations become symbols in the environment's current scope.
- * An error raises diagnostics.compilerError at the offset of the syntax at
- * fault. *)
+ * This interface elaborates types and kinds, mirroring
+ * bootstrap/python/quest/typechecker/elaborate_types.py. Syntactic types and
+ * kinds become semantic ones (questlang/types/model), and type and kind
+ * declarations become symbols in the environment's current scope. Any error
+ * raises diagnostics.compilerError at the offset of the offending syntax. *)
 
 interface ElaborateTypes
 import
@@ -34,9 +34,9 @@ export
      * declared bound, if any *)
     Def TupleTypeBinding = Tuple member: ast.TypeBinding sym: symbols.TypeSymbol bound: maybe.T(model.Kind) end
     (* Elaborates the type bindings of one component of a tuple or tuple type,
-     * without declaring them in the tuple's scope. The members of a group
-     * without Rec are elaborated simultaneously; recursive ones, alone or in a
-     * group, as anywhere else, in a scope of their own. *)
+     * without declaring them in the tuple's scope. Non-recursive group members
+     * are elaborated simultaneously, while recursive bindings (alone or in a
+     * group) are elaborated in a scope of their own, as anywhere else. *)
     elaborateTupleTypeBindings(members: vector.T(ast.TypeBinding) isGroup: Bool e: env.T): Array(TupleTypeBinding)
 
     (* Recursive type operators (Let Rec T(A::K) = ...), alone or as a group
@@ -44,9 +44,10 @@ export
      * declared *)
     elaborateRecTypeOperators(members: vector.T(ast.TypeBinding) e: env.T): Array(symbols.TypeSymbol)
 
-    (* Let [Rec] T1 = ... and T2 = ..., or the same with Def, declared in the
-     * current scope. Without Rec, the members do not see one another; with Rec,
-     * they are mutually recursive. *)
+    (* Elaborates a group of type bindings (Let [Rec] T1 = ... and T2 = ..., or
+     * the same with Def) and declares them in the current scope. Without Rec,
+     * the members do not see one another; with Rec, they are mutually
+     * recursive. *)
     elaborateTypeBindingGroup(members: vector.T(ast.TypeBinding) e: env.T): Array(symbols.TypeSymbol)
     (* Let T = Type or Def T = Type, declared in the current scope *)
     elaborateTypeBinding(b: ast.TypeBinding e: env.T): symbols.TypeSymbol

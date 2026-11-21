@@ -7,15 +7,15 @@ import
     util/hash : util/Hash
     util/maybe : util/Maybe
 export
-    (* Adds to captured the symbols of the local var variables that functions
-     * nested in their scope use: a let var anywhere but directly at a unit's or
-     * a module's top level (where it is global), used inside a function within
-     * its scope *)
+    (* Adds to captured the symbol ids of local var variables used by functions
+     * nested in their scope. A qualifying variable is any let var not declared
+     * directly at a unit's or module's top level (where it is global) that is
+     * referenced inside an inner function. *)
     let capturedMutables(prog: typedAst.Program captured: hashMap.T(Int Bool)): Ok =
         begin
-            (* The depth of function nesting at which each local var is
-             * declared, by symbol: a use at a greater depth is in a function
-             * nested in the variable's scope *)
+            (* Maps each local var's symbol id to the function-nesting depth
+             * where it is declared. A reference at a greater depth is inside a
+             * nested function and therefore captures the variable. *)
             let declared = hashMap.new(:Int :Int fun(a: Int b: Int): Bool a is b hash.int)
             let rec walkChild(c: typedAst.Child depth: Int top: Bool): Ok =
                 case c

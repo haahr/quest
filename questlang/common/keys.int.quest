@@ -1,17 +1,16 @@
 (* Quest Self-Hosted Compiler: Integer Keys Interface
  *
- * Interning keys that are sequences of integers, numbered in the order they
- * are first interned (0, 1, 2, ...). A key is written into the table's buffer
- * (start, then int, bool, and str), then looked up (find) or interned
- * (intern). The buffer is reused, so that looking up a key allocates nothing.
- * Strings are interned to integers of their own, so equal strings are written
- * as equal integers. A key does not record which of int, bool, and str wrote
- * each integer (str of the first string interned writes 0, as int(0) and
- * bool(false) do), so a table's keys must be written so that the values
- * before an integer tell what it is, as a flag written before an optional
- * part does. The bootstrap keys its tables by tuples, which Python hashes;
- * strings built for the purpose made the self-hosted compiler several times
- * slower. *)
+ * Interns integer-sequence keys, assigning each distinct sequence a dense
+ * integer ID (0, 1, 2, ...) in order of first insertion. Callers write a key
+ * into the table's reusable buffer (start, then int, bool, and str) before
+ * calling find or intern, so lookups allocate nothing. Strings are interned
+ * to their own integer IDs so equal strings write equal integers. Because a
+ * key does not tag which of int, bool, or str wrote each integer (the first
+ * interned string writes 0, just like int(0) and bool(false)), callers must
+ * encode enough structure before each value to disambiguate it, such as a tag
+ * before an optional field. The bootstrap keys its tables by Python tuples;
+ * building string keys instead is several times slower in the self-hosted
+ * compiler. *)
 
 interface Keys
 import

@@ -10,15 +10,15 @@ import
     vals = questlang/ssa/build/values : questlang/ssa/build/Values
 export
 
-    (* The address of a static descriptor, of a form *)
+    (* The SSA address of the static type descriptor described by f *)
     let formAddress(fn: vals.Fn f: staticdata.DescriptorForm): Int =
         begin
             ssa.symbolPlus(fn.f fn.cur f.symbol
                 f.index * maybe.unwrap(runtimeLayout.struct("QTypeDescriptor")).bytes)
         end
 
-    (* The static descriptor of a static descriptor operand: its echo form,
-     * if it has one *)
+    (* Resolves a static descriptor operand to its DescriptorForm, preferring
+     * its echo form (for value printing) when d.echo is set and one exists *)
     let staticFormOf(u: vals.UnitBuilder d: ir.StaticDescriptor): staticdata.DescriptorForm =
         begin
             let ctx = maybe.some(u.naming)
@@ -44,7 +44,7 @@ export
                 end
         end
 
-    (* A stack array of the pointers, its address *)
+    (* Allocates a stack array holding ptrs and returns its address *)
     and slotArray(fn: vals.Fn ptrs: Array(Int)): Int =
         begin
             let s = ssa.newSlot(fn.f 8 * {if extent ptrs is 0 then 1 else extent ptrs end} 8)

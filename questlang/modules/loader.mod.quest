@@ -54,8 +54,8 @@ export
             sm
         end
 
-    (* body with e's current directory dir and name pushed on loading; both are
-     * restored if body raises an exception *)
+    (* Runs body with e's current directory set to dir and name pushed onto
+     * stack; restores both even if body raises an exception *)
     let loading(A::TYPE e: env.T dir: String stack: vector.T(String) name: String body: All() A): A =
         begin
             let savedDir = e.currentDir
@@ -141,7 +141,7 @@ export
      * be found, a mismatched name, or a cycle of interface imports, found
      * from the chain e.loadingInterfaces of interfaces being loaded. The
      * bootstrap counterpart is load_interface in
-     * bootstrap/python/quest/modules/loader.py *)
+     * bootstrap/python/quest/modules/loader.py. *)
     let rec loadInterface(name: String e: env.T): Scope =
         begin
             let normName = paths.lower(name)
@@ -202,7 +202,7 @@ export
                          * as one built with quest -c beside its source, is
                          * taken from this build. The bootstrap does the same.
                          * The tests do not depend on the order: the module
-                         * tests pass with outRoot last *)
+                         * tests pass with outRoot last. *)
                         env.searchFirst(e outRoot)
                         let mtime = files.modifiedNs(qi)
                         let cached = hashMap.get(loadedQis qi)
@@ -292,7 +292,7 @@ export
                          * separately compiled modules have them (raised.T must
                          * be the type of an else binder, docs/raised.md
                          * section 3.2), else os/code's value.T would differ
-                         * from os/value's *)
+                         * from os/value's. *)
                         let exportScope = if maybe.isSome(u.exportScope) then
                             maybe.unwrap(u.exportScope)
                         else
@@ -341,16 +341,16 @@ export
             end
         end
 
-    (* The typed module elaborated from file, its source, for loadModule (u is
-     * its unit, canon its canonical name). The file must hold just one module
-     * declaration, named for the file, implementing expectedInterface. The
-     * module's own interface is loaded as its header names it, from the
-     * module's directory; if that name finds no source there, the scope the
-     * importer knows as expectedInterface stands in for it. The module is
-     * elaborated in a fresh scope above e's base scope, so that it sees only
-     * the builtins and its own imports, and e's current scope is restored
-     * after, even if elaboration raises. The result is renamed to canon, the
-     * name C symbols use for it, and registered in e under name and canon *)
+    (* Elaborates the module in file (with unit u and canonical name canon) for
+     * loadModule. The file must hold just one module declaration, named for
+     * the file, implementing expectedInterface. The module's own interface is
+     * loaded as its header names it, from the module's directory; if that name
+     * finds no source there, the scope the importer knows as expectedInterface
+     * stands in for it. The module is elaborated in a fresh scope above e's
+     * base scope, so that it sees only the builtins and its own imports, and
+     * e's current scope is restored after, even if elaboration raises. The
+     * result is renamed to canon, the name C symbols use for it, and
+     * registered in e under name and canon. *)
     and loadModuleSource(
         name: String expectedInterface: String e: env.T file: String canon: String u: graph.Unit
     ): typedAst.Binding =

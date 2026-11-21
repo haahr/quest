@@ -31,13 +31,14 @@ export
             when opStore, opCall, opCallIndirect, opCopy then false
         end
 
-    (* Whether only an equal in its own block may replace an instruction:
-     * what arm64's selection fuses into the branch or the access that uses
-     * it, when both are in one block (codegen/arm64/select's fused and
-     * indexOf); and constants, symbols' addresses, and nulls, which shared
-     * across blocks are live longer, and spilled where arm64's allocator does
-     * not rematerialize them (docs/ssa.md section 4.1: hamlet's stack accesses
-     * rose from 8,129 to 10,022) *)
+    (* Whether an instruction may be replaced only by an equal in its own
+     * block. This includes operations that arm64 instruction selection fuses
+     * into a same-block branch or memory access (codegen/arm64/select's fused
+     * and indexOf), plus constants, symbol addresses, and nulls, which
+     * otherwise stay live across blocks and spill to the stack because
+     * arm64's register allocator does not rematerialize (recompute) them
+     * (docs/ssa.md section 4.1: hamlet's stack accesses rose from 8,129 to
+     * 10,022). *)
     let local(op: ssa.Opcode): Bool =
         case op
             when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN,
@@ -76,9 +77,9 @@ export
                     maybe.some(maybe.unwrap(defs[v]).imm)
                 else maybe.none() end
 
-            (* The jumps to each block, and the parameters every jump binds
-             * to one value (or to the parameter itself), to a fixed point:
-             * each is that value *)
+            (* Collect incoming jumps to each block and collapse trivial block
+             * parameters (ones every jump binds to the same value or to the
+             * parameter itself) to a fixed point *)
             let incoming = array of(nBlocks vector.new(:ssa.Target))
             for b = 0 upto {nBlocks - 1} do incoming[b] := vector.new() end
             for b = 0 upto {nBlocks - 1} do
@@ -158,9 +159,9 @@ export
                             <> addressKey(i.args[0] i.imm)
                     elsif ssa.isOp(i ssa.opLoad) then loadKey(i.width i.signed t i.args[0] i.imm memory)
                     else
-                        (* Each argument by its number, or a constant by its
-                         * value, since constants are numbered only within a
-                         * block; commutative ones in order *)
+                        (* Format each operand by its value number — or by its
+                         * constant value, since constants are only numbered
+                         * within a block — and sort commutative operands *)
                         let args = array of(extent i.args "")
                         for a = 0 upto {extent i.args - 1} do
                             let v = find(i.args[a])
@@ -179,13 +180,14 @@ export
                     end
                 end
 
-            (* The walk of the dominator tree, in preorder: an entry is
-             * available where the block it was made in dominates, and one
-             * that does not is from a subtree already left, and is replaced.
-             * Memory is in a generation, which a store or a call that may
-             * write starts anew; a block continues its predecessor's when it
-             * has one and is not a try's handler (which the try's body may
-             * have written before raising), and starts one otherwise *)
+            (* Walk the dominator tree in preorder. A table entry is valid
+             * only while its defining block dominates the current block;
+             * entries from already-finished subtrees are overwritten on
+             * collision. Memory state is tracked by a generation counter that
+             * increments on any store or writing call; a block inherits its
+             * sole predecessor's generation unless it is a try handler (since
+             * the try body may have written memory before raising), and
+             * otherwise starts a fresh generation. *)
             let table = hashMap.new(:String :Int stringOp.equal hash.string)
             let madeIn = hashMap.new(:String :Int stringOp.equal hash.string)
             let enter(text: String v: Int b: Int): Ok =
@@ -205,12 +207,13 @@ export
                 let b = vector.pop(stack)
                 let blk = ssa.block(f b)
                 let kept = vector.new(:ssa.Inst)
-                (* The words this block loads, by address: a whole word's load
-                 * whose neighbor it also loads stays, though an equal from
-                 * another block is available, so that arm64 loads the two as a
-                 * pair (codegen/arm64/peephole's pairs): a lone load of half of
-                 * a pair just stored took psdes-random's loop from 1.39 to 1.90
-                 * of C's time, as an ldp did not *)
+                (* Record the 8-byte word addresses loaded in this block. A
+                 * word load whose neighboring word (+/- 8 bytes) is also
+                 * loaded here is kept even if a dominating block has an equal
+                 * load, so arm64 can fuse the pair into an ldp instruction
+                 * (codegen/arm64/peephole's pairs). Replacing one half of a
+                 * pair breaks ldp formation (which slowed psdes-random's loop
+                 * from 1.39x to 1.90x of C's time). *)
                 let words = hashMap.new(:String :Bool stringOp.equal hash.string)
                 for k = 0 upto {vector.length(blk.insts) - 1} do
                     let i = vector.get(blk.insts k)
@@ -274,7 +277,8 @@ export
             end
             ssa.replaceUses(f find)
 
-            (* The dropped parameters, and what jumps bind to them *)
+            (* Remove collapsed block parameters and their incoming jump
+             * arguments *)
             for b = 0 upto {nBlocks - 1} do
                 let ts = ssa.targets(ssa.block(f b).term)
                 for k = 0 upto {extent ts - 1} do
@@ -297,7 +301,8 @@ export
                 for j = 0 upto {vector.length(left) - 1} do vector.append(params vector.get(left j)) end
             end
 
-            (* The instructions left without uses, to a fixed point *)
+            (* Remove dead removable instructions (those with no remaining
+             * uses) to a fixed point *)
             let uses = array of(n 0)
             for b = 0 upto {nBlocks - 1} do
                 let blk = ssa.block(f b)

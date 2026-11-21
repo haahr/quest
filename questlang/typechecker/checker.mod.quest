@@ -115,12 +115,11 @@ export
     ): typedAst.Expr =
         checks.requireSubtype(expr.span.startOffset synthExpr(c expr e loopDepth) expected e typeDesc)
 
-    (* Whether sym is a global var variable, which functions may not refer to
-     * directly (Typeful Programming section 4.8): one a unit's or a module's
-     * top level declares, outside any local scope (env.localScoped: a block,
-     * function, tuple, branch, or for loop). The scope that
-     * declares it is the first one, out from the current scope, that has its
-     * name, since it was just looked up by its name. *)
+    (* Reports whether sym is a global var variable, which functions may not
+     * refer to directly (Typeful Programming section 4.8). A global var is one
+     * declared at a unit's or module's top level, outside any local scope
+     * (env.localScoped: a block, function, tuple, branch, or for loop). Its
+     * declaring scope is the innermost enclosing scope that binds sym. *)
     let isGlobalVar(c: T sym: symbols.ValueSymbol): Bool =
         if not(sym.isVar) orif sym.isParam orif sym.isOut orif {sym.functionDepth > 0} then
             false
@@ -145,12 +144,13 @@ export
             isGlobal
         end
 
-    (* Rejects a use, from a closure, of a var or out parameter of an enclosing
-     * function: such a parameter is the address of its caller's location,
-     * which may not outlive the call. Also rejects a use of a global var
-     * variable from inside any function (isGlobalVar). A closure may capture
-     * a local var variable, which the lowering then holds in a box the frame
-     * and the closure share (capturedMutables in questlang/ir/lower). *)
+    (* Rejects a closure's use of a var or out parameter of an enclosing
+     * function, because such a parameter is the address of its caller's
+     * location and may not outlive the call. It also rejects any function's
+     * direct use of a global var variable (isGlobalVar). A closure may capture
+     * a local var variable, which lowering then holds in a heap-allocated box
+     * shared by the frame and the closure (capturedMutables in
+     * questlang/ir/lower). *)
     let checkCapturable(c: T sym: symbols.ValueSymbol offset: Int): Ok =
         if {sym.isOut orif sym.isVar} andif sym.isParam andif {sym.functionDepth > 0}
             andif {c.functionDepth > sym.functionDepth} then

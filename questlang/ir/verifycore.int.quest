@@ -1,9 +1,10 @@
 (* Quest Self-Hosted Compiler: The IR's Core Invariants Interface
  *
- * The invariants every stage of the IR keeps (docs/ir.md section 9): ANF, each
- * variable bound once and used only in its scope, jumps and breaks to what
- * encloses them, and the rest; the scopes they are checked in. ir/verify adds
- * the later stages' and runs them all. The counterpart is
+ * Checks the structural invariants preserved by every stage of the IR
+ * (docs/ir.md section 9): A-Normal Form (every operand is an atom), single
+ * binding and lexical scoping for variables, valid targets for jumps, breaks,
+ * and continues, and stage-appropriate operations. The ir/verify module adds
+ * stage-specific checks and runs the full verifier. Counterpart:
  * bootstrap/python/quest/ir/verify_core.py. *)
 
 interface VerifyCore
@@ -22,21 +23,21 @@ export
     Def Verifier = Tuple
         problems: vector.T(String)
         bound: Ids
-        (* The modules the unit defines and imports, which module references
-         * must be *)
+        (* Ids of modules defined or imported by the unit, for checking module
+         * references *)
         modules: Ids
-        (* After closure conversion, the unit's functions, which closures must
-         * be of *)
+        (* After closure conversion, the unit's function ids, which closures
+         * must target *)
         var functions: maybe.T(Ids)
         (* Whether the unit is past the represent pass, before which no
          * operation may be a convert *)
         var represented: Bool
     end
-    (* What is in scope at a point: variables, join points, loops, and the
-     * enclosing function. The bootstrap's scopes are immutable values, each
-     * extended for the rest of a body; this is one mutable scope, whose
-     * additions in a body are undone when the body ends (logs), and whose
-     * other fields function saves and restores around a function *)
+    (* Lexical scope at the current verification point: variables, join points,
+     * loops, and enclosing-function state. Whereas the bootstrap verifier uses
+     * immutable scopes extended per statement, this verifier mutates one scope
+     * in place, undoing body-local bindings via logs when a body ends and
+     * saving/restoring the other fields around each function. *)
     Def Scope = Tuple
         vars: Ids
         var joins: vector.T(JoinPoint)

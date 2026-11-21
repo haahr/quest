@@ -11,14 +11,15 @@ export
     Let Function = ssa.Function
     Let Defs = Array(maybe.T(ssa.Inst))
 
-    (* The fewest cases a switch made a table has, and the most blocks an arm
-     * may pass through on its way to the join *)
+    (* Minimum number of cases required to build a lookup table, and maximum
+     * number of intermediate constant-only blocks an arm may traverse to reach
+     * the join block *)
     let fewest = 4
     let longest = 8
 
-    (* Whether block b's instructions are all constants, which an arm may
-     * make on its way: they cannot be used past the arm, which some other
-     * arm does not pass through to the join *)
+    (* True if blk contains only constant definitions (opConst or opSymbol).
+     * Because other arms bypass blk on their way to the join block, values
+     * defined here cannot be used past the join except as block arguments. *)
     let onlyConstants(blk: ssa.Block): Bool =
         begin
             let var all = true
@@ -29,9 +30,9 @@ export
             all
         end
 
-    (* Where an arm that starts with target t goes: the first target on its
-     * way that passes arguments, when the blocks before it have no
-     * parameters, only make constants, and only jump on; otherwise none *)
+    (* Follow a switch arm starting at target t through up to `longest`
+     * parameterless, constant-only jump blocks, returning the first target
+     * that passes arguments (or none if the arm does not fit that shape) *)
     let follow(f: Function t: ssa.Target): maybe.T(ssa.Target) =
         begin
             let var at = t
@@ -82,8 +83,8 @@ export
         words: Array(Array(ssa.Word))
     end
 
-    (* The plan for a switch of value on cases to targets, else default, if it
-     * can be made a table *)
+    (* The lookup-table plan for a switch over cases/targets with the given
+     * default target, or none if the switch cannot be converted *)
     let plan(f: Function defs: Defs cases: Array(Int) targets: Array(ssa.Target) default: ssa.Target): maybe.T(Plan) =
         if extent cases < fewest then maybe.none()
         else
@@ -93,8 +94,8 @@ export
                 if cases[k] < least then least := cases[k] end
                 if cases[k] > most then most := cases[k] end
             end
-            (* The range's size, checked before it is computed, so that cases
-             * far apart cannot overflow it *)
+            (* Check that spread is non-negative and dense before adding 1 for
+             * size, so widely separated cases cannot wrap around *)
             let spread = most - least
             let dense = {spread >= 0} andif {spread < 2 * extent cases}
             let arms = array of(extent cases maybe.none(:ssa.Target))
@@ -168,10 +169,10 @@ export
             end
         end
 
-    (* Block b's switch on value made a check of its range, to default when
-     * out of it, and a block that loads each varying argument from its table
-     * (appended to u's data as symbol, symbol_1, ...) and jumps to the
-     * join *)
+    (* Replace block b's switch on value with a range check (branching to
+     * default when out of range) and a new block that loads each varying
+     * argument from its static table (appended to u.data as symbol, symbol_1,
+     * ...) before jumping to p.join *)
     let convert(u: ssa.Unit f: Function b: Int value: Int default: ssa.Target p: Plan symbol: String): Ok =
         begin
             let blk = ssa.block(f b)

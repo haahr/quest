@@ -1,10 +1,11 @@
 (* Quest Self-Hosted Compiler: C Declarations Interface
  *
- * bootstrap/python/quest/codegen/c/declarations.py: the declarations of the C
- * the IR's printer writes (codegen/c/printer) and of interfaces' C headers
- * (codegen/c/headers): aggregate structs, offset tables, coercion tables, type
- * descriptors, function type adapters, and modules' exported functions. Each
- * emitter returns lines of C. *)
+ * Self-hosted counterpart of bootstrap/python/quest/codegen/c/declarations.py.
+ * This interface emits the C declarations used by the IR printer
+ * (codegen/c/printer) and by interface C headers (codegen/c/headers):
+ * aggregate structs, record offset tables, subtyping coercion tables, runtime
+ * type descriptors, function type adapters, and extern declarations for
+ * modules' exported functions. Each emitter returns a vector of C lines. *)
 
 interface Declarations
 import
@@ -15,21 +16,22 @@ import
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 export
-    (* The C function a module file exports for a member of its interface that
-     * is a function or a polymorphic value (qv_<module>_<member>, taking its
-     * type parameters' descriptors and then its parameters, at the
-     * interface's types): its result's C type, its name, and its parameters'
-     * declarations; none for other members *)
+    (* Returns the C function signature that a module file exports for an
+     * interface member that is a function or polymorphic value, or none for
+     * other members. The exported function is named qv_<module>_<member> and
+     * takes its type parameters' runtime descriptors followed by its value
+     * parameters, typed according to the interface. *)
     Def FunctionSignature = Tuple result: String name: String params: vector.T(String) end
     moduleFunctionSignature(cleanMod: String name: String t: model.Type): maybe.T(FunctionSignature)
     (* The names of the parameters moduleFunctionSignature declares, in
      * order *)
     moduleFunctionArguments(t: model.Type): vector.T(String)
 
-    (* The aggregate types (tuples, records, options, variants) reached from
-     * types, from their shapes, each by its struct's name and its shape's
-     * structure, in the order first reached (which interfaces' C headers pin,
-     * tests/abi); the variant types; and every type's structure reached *)
+    (* Collects the aggregate types reached from ts via their canonical shapes.
+     * The returned record holds the tuple, record, and option structs (each
+     * paired with its C struct name and shape structure, in first-reached
+     * order as pinned by interface C headers in tests/abi), the variant types,
+     * and every reached shape's structure. *)
     Def Aggregate = Tuple name: String type: model.Type end
     Def Aggregates = Tuple
         aggregates: vector.T(Aggregate)
@@ -63,23 +65,26 @@ export
     emitPrecompiledModuleDeclarations(e: Emitter modules: vector.T(ModuleRecord)): vector.T(String)
     (* The C struct of each tuple, record, and option type in aggregates *)
     emitAggregateStructs(e: Emitter aggregates: vector.T(Aggregate)): vector.T(String)
-    (* The offset tables ("evidence dictionaries") of the record types: for a
-     * record seen at a type, a struct of the byte offset of each of that
-     * type's fields in the record's own struct, which code that knows only
-     * the type it sees reads fields through (docs/c-representation.md section
-     * 5.2). Defines the table struct of each record type in aggregates, and
-     * the static table of each (view, layout) pair in needed *)
+    (* Emits offset tables ("evidence dictionaries") for record subtyping
+     * (docs/c-representation.md section 5.2). For a record viewed at a
+     * supertype, its offset table holds the byte offset of each supertype
+     * field in the record's concrete struct, so code that knows only the
+     * supertype can read fields through it. Defines the table struct for each
+     * record type in aggregates and the static table for each (view, layout)
+     * pair in needed. *)
     emitEvidenceDictionaries(e: Emitter aggregates: vector.T(Aggregate) needed: vector.T(Pair)): vector.T(String)
-    (* What lets a value be used at a supertype without a copy, for the pairs
-     * the unit's code converts between: for tuple pairs, static assertions
-     * that the supertype's components are at the same offsets in both
-     * structs, so that a pointer may be cast; for variant pairs, tables that
-     * renumber the subtype's tags as the supertype's *)
+    (* Emits the checks and tables that let a value be used at a supertype
+     * without copying. For each tuple pair in tuples, emits static assertions
+     * confirming that the supertype's components sit at identical offsets in
+     * both structs so the pointer can be cast safely. For each variant pair in
+     * variants, emits a table that maps the subtype's case tags to the
+     * supertype's tag numbering. *)
     emitCoercionTables(e: Emitter tuples: vector.T(Pair) variants: vector.T(Pair)): vector.T(String)
-    (* The static descriptors of types (and those that echo uses for
-     * echoTypes), each with the descriptors of its parts, for those that have
-     * one; formOf gives the descriptor form of a part's type, by which it is
-     * referred to, and definedStructs names the structs already defined *)
+    (* Emits static runtime type descriptors for ts and for echoTypes (used by
+     * echo), along with descriptors for their component types. formOf returns
+     * the descriptor form used to refer to a component type, and
+     * definedStructs lists the aggregate structs already defined so any
+     * missing ones can be emitted first. *)
     emitTypeDescriptors(e: Emitter ts: vector.T(model.Type) formOf: All(t: model.Type) staticdata.DescriptorForm
         echoTypes: vector.T(model.Type) definedStructs: vector.T(String)): vector.T(String)
     (* The adapter and the invoker of each function type that has a runtime

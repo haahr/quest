@@ -67,8 +67,8 @@ export
             end
         end
 
-    (* Follows bounds until a shape that is not a bounded type variable or
-     * abstract type; seen stops a cycle of bounds *)
+    (* Follows bounds until reaching a shape that is neither a bounded type
+     * variable nor a bounded abstract type; seen breaks cycles of bounds *)
     let resolvedShape(s0: Shape): Shape =
         begin
             let seen = hashMap.new(:Int :Bool intEqual hash.int)
@@ -109,7 +109,7 @@ export
         else representation
         end
 
-    (* The kinds of shapes a recursive type of which is named by recursiveTag *)
+    (* Whether a recursive type with shape s is named by recursiveTag *)
     let isSelfNamed(s: Shape): Bool =
         case s.kind
             when shapeTuple, shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell, shapeOut, shapeAuto then
@@ -142,10 +142,10 @@ export
 
     and typeTag(t: Type): String = shapeTag(shapes.shape(t))
 
-    (* The tag of a recursive type whose unfolding's tag is built from its
-     * parts' tags: its body, its variable replaced by a placeholder numbered by
-     * nesting depth, so that the tag is finite and the same for
-     * alpha-equivalent types *)
+    (* The tag of a recursive type whose unfolding is named from its parts: its
+     * body with each recursion variable replaced by a placeholder numbered by
+     * nesting depth, so the tag is finite and independent of bound variable
+     * names *)
     and recursiveTag(s: Shape): String =
         begin
             let t = s.type
@@ -183,11 +183,11 @@ export
             if aggregate andif not(endsWith(tag "_empty")) then tag <> "_end" else tag end
         end
 
-    (* The tag of shape s0, before shapeTag shortens it: a C identifier made
-     * from the structure of its type, which names the type's struct,
+    (* Returns the full tag of shape s0 before shapeTag shortens it: a C
+     * identifier derived from the type's structure that names its struct,
      * descriptor, and tables in C. A tag longer than 64 characters is
-     * shortened to its first 24, an underscore, and 16 hex digits of its
-     * SHA-256 digest.
+     * shortened to its first 24 characters, an underscore, and 16 hex digits
+     * of its SHA-256 digest.
      *
      * A tag depends only on the type, not on the unit or the order in which
      * types are met, so that separately compiled units name a type alike and
@@ -212,11 +212,11 @@ export
      * not change its layout: Tuple x: Int y: Int end is QTuple_Int_Int too.
      * An aggregate's tag nested in another's ends with _end (elementTag), so
      * that the last two tuples above, which nest differently, have different
-     * tags. A recursive tuple, record, variant, option, array, or auto type is
-     * named by its body, with Self and its nesting depth for its recursion
-     * variable (recursiveTag), so that its tag is finite. Every function type
-     * is QClosure, since every closure has one representation, and a type it
-     * does not otherwise name is QVal. *)
+     * tags. A recursive tuple, record, variant, option, array, cell, out, or
+     * auto type is named by its body, with Self and its nesting depth for its
+     * recursion variable (recursiveTag), so that its tag is finite. Every
+     * function type is QClosure, since every closure has one representation,
+     * and a type it does not otherwise name is QVal. *)
     and rawTag(s0: Shape): String =
         begin
             let s = resolvedShape(s0)
@@ -363,7 +363,7 @@ export
             when repVoid, repInt, repWord, repBool, repChar, repReal, repPointer, repQVal then false
         end
 
-    (* The C spelling of a representation, of shape s's *)
+    (* The C type spelling for shape s0's representation *)
     and rawRepresentation(s0: Shape): String =
         begin
             let s = resolvedShape(s0)
@@ -540,9 +540,9 @@ export
     let rec componentChangesView(s: Shape seen: Seen): Bool = holdsProxies(s) orif viewSensitive(s seen)
 
     (* Whether values of subtypes of s may be represented differently at s:
-     * records and variants, options of several cases, tuples and options that
-     * may be proxies, type variables, and functions whose signatures mention
-     * any of these *)
+     * records, variants, type variables, abstract, auto, and operator types,
+     * tuples and options that may be proxies, polymorphic functions, and
+     * monomorphic functions whose signatures mention any of these *)
     and viewSensitive(s: Shape seen: Seen): Bool =
         case s.kind
             when shapeRecord, shapeVariant, shapeTypevar, shapeAbstract, shapeAuto, shapeOperator then true

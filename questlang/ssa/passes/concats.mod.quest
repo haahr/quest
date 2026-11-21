@@ -37,9 +37,9 @@ export
             counts
         end
 
-    (* A call of quest_string_concat_n of parts (at most seven) whose result
-     * is result, at loc; the arguments it does not read are nulls, made by
-     * insts appended to emitted *)
+    (* Builds a call to quest_string_concat_n for parts (at most seven) with
+     * result and source location loc. Appends the count constant and the null
+     * instructions for unused trailing argument slots to emitted. *)
     let joinCall(f: Function emitted: vector.T(ssa.Inst) parts: vector.T(Int) result: Int loc: ssa.Loc): ssa.Inst =
         begin
             let r = runtimeFunctions.function("quest_string_concat_n")
@@ -69,12 +69,12 @@ export
     let concatBlock(f: Function b: Int counts: Array(Int)): Ok =
         begin
             let blk = ssa.block(f b)
-            (* Each concatenation's parts, by its result, the memory it read
-             * them in, and the results absorbed into a later concatenation.
-             * The memory is a count of the writes before it: a merged chain
-             * reads its parts where its last call was, so one whose parts a
-             * write between them could change (setChar on a part, or a call
-             * of Quest code) is not merged across it. *)
+            (* Track each concatenation's parts (by result value), the memory
+             * generation in which it ran, and which results were absorbed
+             * into a later concatenation. The memory generation counts prior
+             * writes: a merged chain reads its parts at the final call site,
+             * so a concatenation is not merged across a write (such as
+             * setChar or a call that may write) that could mutate its parts. *)
             let partsOf = hashMap.new(:Int :vector.T(Int) intEqual hash.int)
             let memoryOf = hashMap.new(:Int :Int intEqual hash.int)
             let absorbed = hashMap.new(:Int :Bool intEqual hash.int)
@@ -113,8 +113,8 @@ export
                         let var parts = hashMap.find(partsOf i.results[0])
                         if vector.length(parts) is 2 then vector.append(emitted i)
                         else
-                            (* Seven at a time, each group's string the first
-                             * part of the rest *)
+                            (* Join seven parts at a time, passing each
+                             * group's result as the first part of the next *)
                             while vector.length(parts) > most do
                                 let group = vector.new(:Int)
                                 for p = 0 upto {most - 1} do vector.append(group vector.get(parts p)) end

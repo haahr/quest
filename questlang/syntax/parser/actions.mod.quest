@@ -1196,9 +1196,10 @@ export
             let kindVal = ty(args[1])
         end)
 
-    (* ide {( TypeFormals )} [HasKind] = Type: a type operator's formals, all
-     * its groups' in one list, make its value a Fun, whose result kind the
-     * HasKind is; without formals, the HasKind is the binding's bound *)
+    (* Builds a type declaration (ide {( TypeFormals )} [HasKind] = Type). When
+     * type formals are present, all parameter groups are flattened into a
+     * single Fun type operator whose resultKind is the optional HasKind.
+     * Without formals, HasKind becomes the binding's bound. *)
     let typeDecl(ctx: Ctx args: Args): Val =
         begin
             let ide = tok(args[0])
@@ -1344,9 +1345,9 @@ export
             let phrase = tuple let items = imports(args[1]) end
         end))
 
-    (* A top-level phrase: a type or kind argument is an expression, other
-     * expressions and declarations are declarations (an expression is an
-     * expression statement) *)
+    (* Converts a parsed item into a top-level phrase: a type or kind argument
+     * becomes phraseExpr, while other declarations and expression statements
+     * become phraseDecl *)
     let topPhrase(v: Val): ast.Phrase =
         case v
             when phrase with x then

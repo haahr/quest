@@ -1,11 +1,11 @@
 (* Quest Self-Hosted Compiler: The Runtime's Functions Interface
  *
- * The functions of runtime/quest_runtime.h that the SSA's builder calls
- * (docs/ssa.md section 2.2): each one's C prototype, from
- * which its signature and the SSA types of its parameters and results follow,
- * and its effects, for optimizations to read. The table is checked against
- * the header: the questlang test codegen_runtime_functions prints each
- * prototype as a C assertion that the function has that type, which
+ * This module catalogs the functions from runtime/quest_runtime.h that the SSA
+ * builder calls (docs/ssa.md section 2.2), recording each function's C
+ * prototype (which determines its calling signature and SSA parameter and
+ * result types) and its side effects for optimization passes. The table is
+ * checked against the C header: the questlang test codegen_runtime_functions
+ * emits a C type assertion for each entry, which
  * tests/python/test_runtime_layout.py compiles against quest_runtime.h. *)
 
 interface RuntimeFunctions
@@ -27,14 +27,16 @@ export
     unknown: Exception(String)
     function(name: String): Function
     isPure(f: Function): Bool
-    (* Whether a call of i, an instruction that is a call, may write memory:
-     * any but a direct call of a function the table says does not
-     * (quest_alloc writes only what it makes). Quest code is taken to write
-     * memory, so a call that does not runs none. *)
+    (* Reports whether call instruction i may write observable memory: true for
+     * every call except a direct call to a runtime function whose table entry
+     * does not have memoryWrites (quest_alloc writes only the object it
+     * returns). All Quest functions are conservatively treated as writing
+     * memory, so a call for which callWrites is false cannot run Quest code. *)
     callWrites(i: ssa.Inst): Bool
-    (* How C passes the function's parameters and results, and their SSA
-     * types: a 16-byte struct (QRecordVal, QVariantVal) two words, a larger
-     * one (QExceptionState) its copy's address *)
+    (* Returns how C passes f's parameters and results, along with their SSA
+     * types: a 16-byte struct (QRecordVal, QVariantVal) passes as two words,
+     * and a larger struct (such as QExceptionState) passes as the address of a
+     * copy *)
     signature(f: Function): ssa.Signature
     paramTypes(f: Function): Array(ssa.Type)
     resultTypes(f: Function): Array(ssa.Type)

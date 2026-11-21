@@ -93,8 +93,8 @@ export
 
     let setTrace(d: Diagnostic frames: Array(String)): Ok = d.trace := frames
 
-    (* The lines listing a traceback's frames, a run of the same frame shown
-     * once with its count *)
+    (* Appends traceback frame lines to sb, collapsing consecutive duplicate
+     * frames into a repeat count *)
     let traceLines(sb: stringBuilder.T frames: Array(String)): Ok =
         begin
             let var i = 0
@@ -191,9 +191,9 @@ export
                 stringBuilder.char(sb '\n')
             end
 
-            (* Secondary labels, each in its own file (an import in the main
-             * file, say): one not registered is sm0's, the caller's, not the
-             * error's *)
+            (* Format each secondary label using its own file's registered
+             * source map, falling back to sm0 (the caller's map, not the
+             * primary error's) if unregistered *)
             for i = 0 upto {vector.length(d.labels) - 1} do
                 let label = vector.get(d.labels i)
                 if not(label.isPrimary) then

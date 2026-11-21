@@ -1,18 +1,21 @@
 (* Quest Self-Hosted Compiler: The SSA's Selects Interface
  *
- * If-conversion (docs/ssa.md section 4.1): a branch whose two arms only pass
- * values on to one block, each arm directly or through a block of its own
- * that only jumps on, becomes a jump to that block, each argument the arms
- * pass differently a select of the two by the branch's condition. A carry in
- * a loop of arbitrary-precision arithmetic, if b then 1 else 0 for a b as
- * likely false as true, is such a branch: arm64 makes the select a csel or a
- * cset, where the branch was mispredicted half the time, and C's compiler
- * already makes one of the branch. An arm's block may have up to two
- * instructions that cannot trap or write, and read nothing the branch could
- * change (arithmetic, comparisons, a load of a module's global), which then
- * run before the branch whichever arm it takes. Arguments of type real are
- * left alone (arm64 would need fcsel), and so is a branch that would need
- * more than two selects. *)
+ * Performs if-conversion, turning simple branches into branchless select
+ * instructions (docs/ssa.md section 4.1). When a branch's two arms both lead
+ * to the same join block — either directly or through a single-predecessor
+ * block that only jumps there — the pass replaces the branch with a jump to
+ * the join block, using a select on the branch condition for each argument
+ * where the two arms differ.
+ *
+ * A carry in an arbitrary-precision arithmetic loop (if b then 1 else 0 for
+ * an unpredictable b) is a typical case: arm64 lowers a select to a
+ * conditional select (csel or cset), avoiding a branch mispredicted half the
+ * time (as the C compiler already does). An arm's block may contain up to two
+ * speculable instructions — ones that cannot trap or write and read nothing
+ * the branch could affect, such as arithmetic, comparisons, or a load of a
+ * module global — which are hoisted before the jump. Branches with real-typed
+ * differing arguments (which would need arm64's fcsel) or needing more than
+ * two selects are left as branches. *)
 
 interface Selects
 import

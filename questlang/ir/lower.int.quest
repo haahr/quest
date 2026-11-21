@@ -1,12 +1,13 @@
 (* Quest Self-Hosted Compiler: Lowering to Core IR Interface
  *
- * bootstrap/python/quest/ir/lower.py (docs/ir.md section 1): the typed
- * AST lowered to a Core IR unit. An expression is lowered into the current
- * body, giving the atom that holds its value; one producing a value on several
- * paths joins them through a join point. Every typed-AST symbol is mapped to
- * one IR variable when its binder is lowered. The bootstrap's lower_program
- * takes the compiler's options for echo alone; this one takes echo and
- * printResult. *)
+ * Lowers a typed AST into a Core IR unit (docs/ir.md section 1; counterpart
+ * in bootstrap/python/quest/ir/lower.py). Each expression is lowered into the
+ * current body, producing an atom (a variable or constant) for its value;
+ * expressions that yield a value along multiple control paths merge them via
+ * a join point (a local labeled continuation). Every typed-AST symbol maps to
+ * a single IR variable when its binder is lowered. Unlike the bootstrap's
+ * lower_program, which reads echo from compiler options, this interface takes
+ * echo and printResult explicitly. *)
 
 interface Lower
 import
@@ -32,17 +33,16 @@ export
      * (nodes.fileOffset: 0 but for the modules driver/whole merges) *)
     lowerModuleFile(m: typedAst.Binding e: env.T sourceMap: maybe.T(location.SourceMap) file: Int): nodes.Unit
 
-    (* An earlier input's binding, which a phrase unit reads (or writes, a var)
-     * as a field of a record (docs/jit.md section 3.2): holder, the module
-     * whose record holds it, the field, the record's type, and whether it is
-     * a var; or a module that input declared or imported, whose record is
-     * holder's, and whose field is empty. A slot's binding (boxed) is its box,
-     * which every use reads and a redefinition stores to
-     * (docs/jit.md section 3.2); the earlier bindings are by slot, a
-     * slot's by its first symbol *)
+    (* Describes a binding from an earlier REPL input that a phrase unit reads
+     * (or writes, if isVar) as a field of a module record (docs/jit.md section
+     * 3.2). holder names the module owning the record, field names the record
+     * field (empty when referring to a module declared or imported by that
+     * input), and recordType is the record's type. When boxed is true, the
+     * field holds a mutable box for a redefinable interactive slot, keyed by
+     * the slot's first symbol id. *)
     Def Earlier = Tuple holder: String field: String recordType: model.Type isVar: Bool boxed: Bool end
-    (* Whether a phrase unit holds a symbol's slot in a box: an interactive
-     * input's top-level let's, but one of type Ok *)
+    (* Whether a phrase unit holds a symbol's interactive top-level let slot in
+     * a box (all such slots except those of type Ok) *)
     boxesSlot(e: env.T sym: symbols.ValueSymbol): Bool
     (* The module whose initializer runs input number's phrases (qj_<number>),
      * whose name begins the names of the modules the input declares
@@ -50,12 +50,11 @@ export
      * symbol symbolId *)
     phraseModuleName(number: Int): String
     phraseField(symbolId: Int): String
-    (* An input of the REPL, numbered number, lowered to a phrase unit
-     * (nodes.Phrase), which names earlier inputs' bindings, by symbol, as
-     * earlier gives them. Its phrases show their results as a program's do
-     * (with echo every phrase's, with printResult the last's), written as they
-     * run, or with capture, captured for the REPL, each phrase's after a
-     * line of phraseSeparator *)
+    (* Lowers REPL input number into a phrase unit (nodes.Phrase), resolving
+     * references to earlier inputs' bindings via earlier (keyed by symbol id).
+     * Results are echoed like a program's (every phrase with echo, or the last
+     * with printResult); when capture is true, each phrase's output is
+     * prefixed by a phraseSeparator line so the REPL can split it. *)
     phraseSeparator: String
     lowerPhrases(program: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) number: Int
         earlier: hashMap.T(Int Earlier) echo: Bool printResult: Bool capture: Bool): nodes.Unit

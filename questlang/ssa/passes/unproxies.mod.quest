@@ -8,7 +8,8 @@ import
 export
     Let Function = ssa.Function
 
-    (* Splits block b at its instruction k, an unproxy *)
+    (* Split block b at the opUnproxy instruction at index k, replacing it with
+     * a tag-check branch and continuation block *)
     let lower(f: Function b: Int k: Int): Ok =
         begin
             let blk = ssa.block(f b)
@@ -58,8 +59,8 @@ export
     let lowerFunction(f: Function): Ok =
         begin
             let var b = 0
-            (* The blocks a split adds hold the rest of a block, and are
-             * reached in turn *)
+            (* Each split appends a continuation block for the rest of the
+             * block, which this loop visits in turn *)
             while b < vector.length(f.blocks) do
                 let blk = ssa.block(f b)
                 let var k = 0

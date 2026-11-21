@@ -1,9 +1,10 @@
 (* Quest Self-Hosted Compiler: Generic Layouts Interface
  *
- * Whether generic code's layout of a value agrees with the native one, which
- * decides where values are converted between them (docs/c-representation.md
- * section 6.4), and the layouts of module abstract types' applications, over
- * repr/layout. The counterpart is
+ * Decides whether generic code's layout of a value agrees with the native
+ * layout at concrete type arguments, which determines where values must be
+ * converted between the two (docs/c-representation.md section 6.4). Also
+ * inspects applications of module abstract type operators and function call
+ * signatures, building on repr/layout. The counterpart is
  * bootstrap/python/quest/repr/generic_layout.py. *)
 
 interface GenericLayout
@@ -19,17 +20,17 @@ export
      * one at subst would copy mutable data whose layouts differ *)
     genericLayoutCopiesMutableData(t: model.Type subst: model.Subst): Bool
     (* An application of a module's abstract type operator whose representation
-     * is known (the module was elaborated from its source): the
-     * representation's body, generic in the operator's parameters, and the
-     * arguments substituted for them. Outside the module, its values are laid
-     * out as the body is by generic code (docs/c-representation.md section
-     * 5.1) *)
+     * is known because the module was elaborated from source: the
+     * representation's body (generic in the operator's parameters) and the
+     * substitution mapping those parameters to the type arguments. Outside the
+     * module, values of this type use the body's generic layout
+     * (docs/c-representation.md section 5.1). *)
     Def AbstractInstance = Tuple generic: model.Type subst: model.Subst end
     abstractInstance(t: model.Type): maybe.T(AbstractInstance)
-    (* Whether a value of type t is or holds an application of an abstract type
-     * operator laid out at its arguments otherwise than generically: the
-     * module's code at those arguments and the code outside it lay it out
-     * differently, as a closure whose C signature changes with them *)
+    (* Whether a value of type t is or contains an abstract type operator
+     * application whose native layout at its arguments differs from its
+     * generic layout, such as a closure whose C signature depends on the
+     * arguments *)
     abstractLayoutsDiffer(t: model.Type): Bool
     (* The representation of a function type's calls (its result's and
      * parameters' representations and its number of type parameters), as a key:

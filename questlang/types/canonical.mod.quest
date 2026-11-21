@@ -1,11 +1,12 @@
 (* Quest Self-Hosted Compiler: Canonical Forms of Types Implementation
  *
- * canonicalType, for the IR and the C backend rather than the checker: a type
- * containing recursion as a graph, minimized and written back as a type, so
- * that equal recursive types get one C struct and one run-time descriptor
- * (the comment on Graph gives the steps). It works on types/reduce's reduced
- * forms. The counterpart is bootstrap/python/quest/types/canonical.py;
- * docs/type-system.md §2.2 says why only the backend canonicalizes. *)
+ * Implements canonicalType for the IR and C backend rather than the type
+ * checker. Each recursive type is converted to a graph, minimized, and written
+ * back as a type so that equal recursive types share one C struct and one
+ * runtime descriptor (the comment on Graph gives the steps). It starts from
+ * the reduced forms of types/reduce. The counterpart is
+ * bootstrap/python/quest/types/canonical.py, and docs/type-system.md §2.2
+ * explains why only the backend canonicalizes. *)
 
 module canonical : Canonical
 import
@@ -66,9 +67,9 @@ export
     (* =========================================================================
      * Canonical forms of recursive types
      *
-     * The graph of a type's nodes, minimized by partition refinement, written
-     * back as a type whose recursion variables and binders' parameters have
-     * reserved ids (the comment on Graph explains).
+     * Builds the graph of a type's nodes, minimizes it by partition
+     * refinement, and writes it back as a type whose recursion variables and
+     * binder parameters have reserved ids (see the comment on Graph)
      * ====================================================================== *)
 
     let maxCanonicalNodes = 100000
@@ -667,8 +668,8 @@ export
     Let Graph = Tuple
         (* By node: its structure, and whether none of its free variables is
          * bound by a binder inside the graph (so that its canonical form
-         * does not depend on where it is reached from); and the root's
-         * class, none if the root is a leaf *)
+         * does not depend on where it is reached from); and the root's node
+         * index, or none if the root is a leaf *)
         objects: Array(Node)
         closed: Array(Bool)
         root: maybe.T(Int)
@@ -793,8 +794,9 @@ export
             end
             let n = vector.length(objects)
 
-            (* Partition refinement to the coarsest bisimulation, starting from
-             * each node's shape, following scope edges *)
+            (* Minimize the graph by partition refinement to the coarsest
+             * bisimulation (merging nodes with the same shape whose children
+             * and scope edges lead to the same classes) *)
             let shapeIds = keys.new()
             let var cls = array of(n 0)
             for i = 0 upto {n - 1} do
@@ -869,11 +871,10 @@ export
                 qScope[k] := if s >= 0 then classes[s] else ~1 end
             end
 
-            (* The strongly connected components of the quotient graph (Tarjan's
-             * algorithm, iteratively, along structural edges only), whether
-             * each is cyclic, whether each reaches a cyclic one, and the binder
-             * classes each refers to (by occurrences of their parameters) and
-             * reaches *)
+            (* Find the strongly connected components of the quotient graph
+             * using iterative Tarjan's algorithm along structural edges only,
+             * recording whether each component is cyclic, whether it reaches a
+             * cycle, and which binder classes it or its descendants refer to *)
             let classKids = array of(classCount array of :Int end)
             for k = 0 upto {classCount - 1} do
                 let found = vector.new(:Int)
@@ -1156,8 +1157,8 @@ export
                             keys.int(g.built vector.get(params j).symbolId)
                         end
                     end
-                    (* Numbered before the node is built, which builds others
-                     * (with the table's buffer) *)
+                    (* Intern the key before building the node, because
+                     * recursive calls reuse g.built's key buffer *)
                     let number = keys.intern(g.built)
                     let found = if number < vector.length(g.builtNodes) then
                         vector.get(g.builtNodes number)
@@ -1167,9 +1168,9 @@ export
                     if maybe.isSome(found) then
                         maybe.unwrap(found)
                     else
-                        (* Inside the recursive type being written, not in a
-                         * cycle, or a node that recursion variables do not
-                         * bind: the node is written with each of its parts *)
+                        (* Write the node directly from its parts when we are
+                         * already inside its recursive type, outside any cycle,
+                         * or at a shape that recursion variables do not bind *)
                         let result = if inRec orif not(g.cyclic[comp]) orif not(isRecShape(g k comp)) then
                             buildNode(g k ctx)
                         else
@@ -1466,9 +1467,9 @@ export
     Let GraphClass = Tuple graph: Graph k: Int end
     let canonicalNodes = hashMap.new(:Int :GraphClass intEqual hash.int)
 
-    (* Builds the canonical graph of a structure and records the graph and class
-     * of each of its nodes whose free variables are all free in s; none if s
-     * has no graph (it is a leaf, or its graph is too large) *)
+    (* Builds the canonical graph of s and records the graph and class of each
+     * node whose free variables are all free in s. Returns none if s has no
+     * graph (it is a leaf or exceeds maxCanonicalNodes). *)
     let registerGraph(s: Type): maybe.T(Graph) =
         begin
             let built = try maybe.some(newGraph(s)) when notCanonicalizable then maybe.none(:Graph) end
@@ -1611,10 +1612,10 @@ export
             if not(mayRecur(t)) then
                 maybe.none()
             elsif selfNamed then
-                (* A body of a recursive type being named, its variables
-                 * replaced by placeholders: the recursive type is in canonical
-                 * form already (or is named as written), and so are the body's
-                 * parts *)
+                (* This is the body of a recursive type being named, with its
+                 * recursion variables replaced by placeholders; the enclosing
+                 * recursive type is already canonical (or named as written),
+                 * so its parts need no further canonicalization *)
                 maybe.none()
             else
                 let s = canonicalStructure(t)

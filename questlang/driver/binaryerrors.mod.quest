@@ -27,8 +27,9 @@ export
             if offset > stringOp.length(text) then stringOp.length(text) else offset end
         end
 
-    (* The frames of a traceback's lines, a run of calls of the same function
-     * listed in full *)
+    (* Extracts stack frame names from traceback lines starting at from,
+     * expanding collapsed "... F repeated N more times" lines into individual
+     * frames *)
     let traceOf(lines: vector.T(String) from: Int): Array(String) =
         begin
             let frames = vector.new(:String)
@@ -97,11 +98,11 @@ export
             end
         end
 
-    (* The diagnostic for the error output of a compiled program
-     * (docs/exceptions.md section 2.2): its message, located at the site the
-     * program printed, in the program's file or the file the site names, which
-     * is read for its source line, with the frames it printed. Without a site,
-     * or when the file cannot be read, the diagnostic has no location. *)
+    (* Builds a diagnostic from a compiled program's standard error output
+     * (docs/exceptions.md section 2.2). It extracts the error message, stack
+     * trace frames, and raise site, reading the named file if it differs from
+     * sm so the diagnostic can show the source line. If there is no raise site
+     * or the file cannot be read, the diagnostic has no source location. *)
     let binaryErrorDiagnostic(stderr: String sm: location.SourceMap): diagnostics.Diagnostic =
         begin
             let var text = stderr

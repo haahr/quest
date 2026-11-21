@@ -93,7 +93,8 @@ export
     let items(v: json.Value): vector.T(json.Value) =
         case v when jArray with x then x.items else vector.new() end
 
-    (* The file's text, as the driver finds the lines of errors in it *)
+    (* Registers file's source map so the driver can display error lines from
+     * it *)
     let register(file: String): Ok =
         if {stringOp.length(file) > 0} andif system.isFile(file) then
             let text = files.readText(file)
@@ -212,10 +213,11 @@ export
             vector.toArray(args)
         end
 
-    (* Each job of a batch's outcome, from how its child ended. A child that
-     * fails writes the index of the job that failed in its batch on a line of
-     * its own, then the error; it compiles no job after it. One that writes
-     * nothing crashed, which fails every job of its batch. *)
+    (* Builds each job's outcome from its child process's exit result. A child
+     * that fails writes the failing job's batch index on the first line of
+     * stdout, followed by the encoded error, and skips remaining jobs in the
+     * batch. A non-zero exit without that index means the child crashed,
+     * failing every job in the batch. *)
     let batchOutcomes(batch: Array(Job) r: process.Result): Array(Outcome) =
         begin
             let outcome = fun(b: Int failure: maybe.T(String)): Outcome
@@ -343,8 +345,8 @@ export
                 let step = if eq(arg "--nogc") then 1 else 2 end
                 i := i + step
             end
-            (* Its temporary files apart from other workers'
-             * (files.writeAtomically) *)
+            (* Give this worker a distinct tag for files.writeAtomically temp
+             * files *)
             files.setWorkerTag("." <> worker)
             stdlib.install()
             (* One resolver for the batch, as a serial build has one for all *)

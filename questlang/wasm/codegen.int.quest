@@ -1,38 +1,42 @@
 (* Quest Self-Hosted Compiler: The wasm Code Generator Interface
  *
- * A unit's represented IR (docs/ir.md) as a WebAssembly module on WasmGC
- * (wasm/model), as docs/wasm.md specifies: values (section 2),
- * closures (section 3), the runtime it imports (section 4), and a module
- * for each unit (section 5.1).
+ * Compiles a unit's represented IR (docs/ir.md) into a WebAssembly module
+ * using WasmGC (garbage-collected structs and arrays, modeled by wasm/model),
+ * following docs/wasm.md: values (section 2), closures (section 3), the
+ * runtime it imports (section 4), and one module per unit (section 5.1).
  *
- * Values: an Int, Word, Bool, Char, or Real is a WebAssembly number; a
- * record is two values, its payload and its view's table, a variant two,
- * its tag and its payload, and a location (section 2.6) two, a slot array
- * and an index; anything else is an eqref, cast where it is used. A slot of
- * an aggregate holds each value boxed (section 2.1). Tuples are $tuples
- * over slots, and unboxed tuples (ir/unbox) a value for each component,
- * returned as several results; options are tagged in name order; arrays
- * test their indices and counts first. A value that may be a proxy, or
- * that is read through a view map, is read through the runtime's core.
+ * Values: Int, Word, Bool, Char, and Real map to WebAssembly numbers. A
+ * record is two values, its payload and its view table (which maps field
+ * lookups to payload slots under subtyping); a variant is two, its tag and
+ * its payload; and a location (section 2.6, for mutable variables and out
+ * parameters) is two, a slot array and an index. Anything else is an eqref
+ * (WasmGC's general garbage-collected reference), cast where it is used.
+ * Slots in aggregates hold boxed values (section 2.1). Tuples are $tuples
+ * over slots, while unboxed tuples (ir/unbox) pass and return one value per
+ * component directly as multiple results. Options are tagged in name order,
+ * and arrays check their indices and counts before access. Any value that
+ * may be a proxy (a lazy or remapped wrapper) or that is read through a
+ * view map goes through the runtime's core.
  *
- * Code: statements' joins, loops, switches, and trys are blocks, branches,
- * and try_tables (section 4.1). A call of the unit's own function is
- * direct, and a tail call wherever its result reaches a return (section
- * 3.3); a call through a closure takes its native entry when the closure is
- * of the callee type's signature, else its uniform entry (section 3.1).
- * Division and remainder test their divisor before the instruction that
- * would trap (section 2.10).
+ * Code: IR joins, loops, switches, and trys compile to WebAssembly blocks,
+ * branches, and try_tables (section 4.1). Calls to functions in the same
+ * unit are direct and become tail calls whenever their result reaches a
+ * return (section 3.3). Calls through a closure take its native entry when
+ * the closure matches the callee type's signature, and otherwise take its
+ * uniform entry, which passes all arguments boxed as eqrefs (section 3.1).
+ * Division and remainder check their divisor before executing instructions
+ * that would trap (section 2.10).
  *
- * The runtime: the base, which wasm/runtime builds, and the units in Quest,
- * wasm/core and wasm/print (section 4.2). The library's externals compile
- * to calls of them, of util/realconv and util/realmath, or to instructions
- * in place, as do the intrinsics (section 4.5) that the runtime's units
- * use. The unit's initializer makes the descriptors its code needs through
- * the core.
+ * The runtime: The runtime consists of the base module built by wasm/runtime
+ * and the Quest units wasm/core and wasm/print (section 4.2). Library
+ * externals compile to calls to these units, to util/realconv and
+ * util/realmath, or to inline instructions, as do the intrinsics
+ * (section 4.5) used by the runtime units themselves. The unit's initializer
+ * builds the type descriptors its code needs through wasm/core.
  *
- * What it cannot compile raises unsupported, naming it; in a module's unit
- * (not a program's, nor the runtime's), a function it cannot compile ends
- * the program when it is called instead. *)
+ * Constructs that cannot be compiled raise unsupported with a description.
+ * In a module unit (not a program or runtime unit), an unsupported function
+ * instead compiles to a stub that ends the program if called. *)
 
 interface Codegen
 import
@@ -41,11 +45,12 @@ import
 export
     unsupported: Exception(String)
 
-    (* A unit's module (docs/wasm.md section 5.1): a program's, which
-     * exports _start, or a module file's, which exports its init, its
-     * record's two globals, and its functions, each at its interface type's
-     * closure signature. A phrase unit, a JIT's input, is compiled as a
-     * module file's, its init running its top level. Each imports the units
-     * it does by their names, a library unit's its path in lib/ *)
+    (* Compiles unit to a WebAssembly module (docs/wasm.md section 5.1). A
+     * program unit exports _start; a module unit exports its init function,
+     * the two globals holding its module record, and its functions, each at
+     * its interface type's closure signature. A phrase unit (a JIT input) is
+     * compiled like a module unit, with its init running its top-level code.
+     * Each unit imports its dependencies by name, using the path under lib/
+     * for library units. *)
     unitModule(unit: ir.Unit): model.Module
 end

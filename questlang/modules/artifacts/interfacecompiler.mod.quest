@@ -231,10 +231,10 @@ export
 
     and formatTypeForQi(t: Type): String = formatType(t hashMap.new(intEqual hash.int))
 
-    (* A member of a group of recursive type operators (Fun(A::K) applied to a
-     * group) as the operator it declares, Fun(A::K) Body, with the group's
-     * variables written as their operators applied to the parameters, as in
-     * its declaration *)
+    (* Formats one member of a mutually recursive group of type operators as
+     * Fun(A::K) Body, replacing the group's internal recursion variables with
+     * applications of the operators to their parameters as originally
+     * declared *)
     let formatRecOperatorMember(definition: Type kind: Kind): String =
         case definition.form
             when typeOperator with op then
@@ -357,11 +357,11 @@ export
     let compileInterfaceToQi(decl: ast.InterfaceDecl scope: Scope source: maybe.T(String)
         deps: Array(paths.InterfaceDependency)): String =
         begin
-            (* Each import item as text: :I for an interface imported alone,
-             * n1,n2=p1,p2:I for names bound to module paths written out, and
-             * n1,n2:I otherwise; I is the interface path.
-             * loadInterfaceFromQiFile and fingerprint.importedPath read it
-             * back. *)
+            (* Encode each import item as text: :I for a bare interface import,
+             * n1,n2=p1,p2:I when local names map to explicit module paths, and
+             * n1,n2:I otherwise, where I is the interface path.
+             * loadInterfaceFromQiFile and fingerprint.importedPath parse this
+             * format back. *)
             let imports = vector.new(:Value)
             for i = 0 upto {vector.length(decl.imports) - 1} do
                 let imp = vector.get(decl.imports i)
@@ -878,8 +878,9 @@ export
                     end
                     let records = vector.new(:TypeRecord)
                     let typeItems = itemsOf(fieldOf(rec0 "types"))
-                    (* Pass 1: every type symbol, with a fresh id and its kind,
-                     * so that each is visible in the interface's scope *)
+                    (* Pass 1: declare every type symbol with a fresh id and its
+                     * kind so that all interface types are visible in
+                     * ifaceScope *)
                     for i = 0 upto {extent typeItems - 1} do
                         let item = typeItems[i]
                         let kindText = stringOf(fieldOf(item "kind"))
@@ -898,12 +899,13 @@ export
                             let group = intOf(fieldOf(item "group"))
                         end)
                     end
-                    (* Pass 2: the definitions, with every interface type in
-                     * scope. A recursive group's members are consecutive, and
-                     * their bodies are elaborated before any is defined, so
-                     * that each refers to the others by their symbols, which
-                     * become the group's variables; a group of recursive type
-                     * operators is elaborated together, as declared. *)
+                    (* Pass 2: attach type definitions now that every interface
+                     * type is in scope. A recursive group's members are
+                     * consecutive, and their bodies are elaborated before any
+                     * is defined, so that each refers to the others by their
+                     * symbols, which become the group's variables; a group of
+                     * recursive type operators is elaborated together, as
+                     * declared. *)
                     Let Member = Tuple name: String sym: symbols.TypeSymbol body: Type end
                     let members = vector.new(:Member)
                     let operatorSyms = vector.new(:symbols.TypeSymbol)

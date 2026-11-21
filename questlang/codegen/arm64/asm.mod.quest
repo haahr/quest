@@ -23,10 +23,10 @@ export
             when relocPage then "@PAGE" when relocGot then "@GOTPAGE" when relocTlv then "@TLVPPAGE"
         end <> if pageOffset then "OFF" else "" end
 
-    (* A function starts on a 16-byte boundary. At 4 bytes, the alignment
-     * of a function's loops moved with every change to the code before it:
-     * fib and tak took 12 and 15 percent longer where a smaller program put
-     * them (benchmarks.md section 20) *)
+    (* Each function starts on a 16-byte boundary. At 4-byte alignment, the
+     * alignment of a function's loops shifted with every change to preceding
+     * code, making fib and tak 12 and 15 percent slower depending on layout
+     * (docs/benchmarks.md section 20). *)
     let functionStart(name: String exported: Bool): Array(String) =
         begin
             let lines = vector.new(:String)
@@ -38,8 +38,9 @@ export
         end
     let functionEnd = array of ".cfi_endproc" end
 
-    (* A string as .ascii spells it: a quote, a backslash, and characters
-     * outside printable ASCII escaped, the last as three octal digits *)
+    (* Formats s as a quoted assembly string literal, escaping double quotes,
+     * backslashes, and non-printable ASCII characters (the last as three
+     * octal digits) *)
     let quoted(s: String): String =
         begin
             let b = sb.new()
@@ -150,11 +151,12 @@ export
 
     Let DebugFunction = Tuple symbol: String endLabel: String end
 
-    (* DWARF 4's codes (DWARF 4, sections 7.5 and 7.12): the tags of a compile
-     * unit and a subprogram; the attributes producer, language, name,
-     * stmt_list, comp_dir, low_pc, and high_pc; the forms string, data2,
-     * sec_offset, addr, and data4; and the language code, from the range
-     * left to users, as DWARF has none for Quest *)
+    (* DWARF 4 encoding constants (DWARF 4 standard, sections 7.5 and 7.12).
+     * These define the tags for a compile unit and subprogram, the attribute
+     * codes (producer, language, name, stmt_list, comp_dir, low_pc, high_pc),
+     * their encoding forms (string, data2, sec_offset, addr, data4), and a
+     * user-range language code because DWARF has no standard code for
+     * Quest. *)
     let tagCompileUnit = 17
     let tagSubprogram = 46
     let atProducer = 37
@@ -181,15 +183,16 @@ export
                     for k = 0 upto {extent ns - 1} do texts[k] := conv.int(ns[k]) end
                     put(".byte " <> strutil.joinArray(", " texts))
                 end
-            (* A difference of labels, as a 4-byte field: Mach-O's assembler
-             * writes a difference only through a symbol set to it *)
+            (* Emits the difference between two labels as a 4-byte field;
+             * Mach-O's assembler accepts a label difference only through an
+             * intermediate symbol assigned to it *)
             let difference(name: String later: String earlier: String): Ok =
                 begin
                     put(name <> " = " <> later <> "-" <> earlier)
                     put(".long " <> name)
                 end
-            (* The abbreviations: 1, the compile unit, which has children,
-             * and 2, a subprogram, which has none *)
+            (* Abbreviation 1 describes the compile unit (which has children),
+             * and abbreviation 2 describes a subprogram (which has none) *)
             put(".section __DWARF,__debug_abbrev,regular,debug")
             put("Ldebug_abbrev:")
             bytes(array of 1 tagCompileUnit 1 end)

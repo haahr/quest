@@ -1,20 +1,22 @@
 (* Quest Self-Hosted Compiler: WebAssembly Modules as Data Interface
  *
- * What the wasm backend makes (docs/wasm.md section 8.1): a
- * WebAssembly module with garbage collection, exceptions, and tail calls, as
- * data that wasm/encode writes in the binary format and wasm/printer in the
- * text format, the same module either way. Only what the backend needs is
- * here: no tables, no 32-bit floats beyond their type, no vectors, and at
- * most one memory, which carries bytes across to the host.
+ * Defines the in-memory representation of a WebAssembly module produced by the
+ * wasm backend (docs/wasm.md section 8.1), covering WebAssembly GC (structs,
+ * arrays, and typed references), exceptions, and tail calls. Both wasm/encode
+ * (binary format) and wasm/printer (text format) consume this representation
+ * to emit the exact same module. Only the subset the backend needs is modeled:
+ * no tables, no 32-bit float instructions beyond the f32 type, no SIMD
+ * vectors, and at most one linear memory used to pass bytes across the host
+ * boundary.
  *
- * Everything is referred to by its index in its space, as in the binary
- * format: types by their position among all the module's types, counting
- * every member of every recursion group; functions, globals, and tags with
- * the imported ones first, in the order of the imports, then the defined ones;
- * a branch's target by its depth, 0 being the innermost enclosing block. A
- * name, which may be "", is only for the printer's identifiers and the name
- * section, and a name given is one of the text format's identifier
- * characters, without the "$". *)
+ * Every entity is referenced by its index in its index space, matching the
+ * binary format. Types are indexed across all members of all recursion groups
+ * (groups of mutually recursive type definitions); functions, globals, and
+ * tags number imports first in import order and definitions after; branch
+ * targets use relative nesting depth, with 0 naming the innermost enclosing
+ * block. Names (which may be "") are used only for text-format identifiers and
+ * the binary name section, and any non-empty name must consist of valid
+ * text-format identifier characters without the leading "$". *)
 
 interface Model
 import
@@ -31,15 +33,15 @@ export
         heapIndex with index: Int end
     end
 
-    (* A value type: a number, or a reference to a heap type, which null may
-     * be when nullable *)
+    (* A value type: a numeric type, or a reference to a heap type (which
+     * admits null when nullable is true) *)
     Def ValType = Option
         valI32 valI64 valF32 valF64
         valRef with nullable: Bool heap: HeapType end
     end
 
-    (* A reference type apart from value types, as ref.test, ref.cast, and
-     * br_on_cast take one *)
+    (* A standalone reference type, as taken by ref.test, ref.cast, and
+     * br_on_cast *)
     Def RefType = Tuple nullable: Bool heap: HeapType end
 
     (* What a field or an array's element holds: a value, or a packed
@@ -54,10 +56,10 @@ export
         compArray with element: Field end
     end
 
-    (* A type definition: final or open to subtypes, its declared supertype
-     * (by index; none, or one), and its structure. A final type with no
-     * supertype is written in the short form, as the text format's
-     * (type (struct ...)) is. *)
+    (* A type definition, specifying whether it is final or open to subtyping,
+     * its optional declared supertype (at most one, by index), and its
+     * composite structure. A final type with no supertype is encoded and
+     * printed in the short form, such as (type (struct ...)). *)
     Def SubType = Tuple name: String final: Bool supers: Array(Int) composite: Composite end
 
     (* The module's types are a sequence of recursion groups. A group of one
@@ -70,21 +72,21 @@ export
      * Instructions
      * ====================================================================== *)
 
-    (* What an operation's immediates are, each one Int of an instruction's
-     * args, in order: an index in a space (a type, a function, a local, a
-     * global, a tag, a data segment, the memory); a branch's depth; a field
-     * of the struct type given by the immediate before it; a count; a
-     * signed 32- or 64-bit constant; a memory access's offset in bytes, at
-     * the operation's natural alignment *)
+    (* Describes the role of each Int argument in an Op's args array, in order.
+     * An immediate can be an index in a module space (type, function, local,
+     * global, tag, data segment, or memory), a branch depth (immLabel), a
+     * field index in the struct type named by the preceding immediate, a
+     * count, a signed 32- or 64-bit constant, or a byte offset for a memory
+     * access at the operation's natural alignment. *)
     Def Imm = Option
         immType immFunc immLocal immGlobal immTag immData immMemory immLabel immField immCount immI32 immI64
         immOffset
     end
 
-    (* An operation whose immediates are all Ints: its text name, its opcode
-     * (prefix 0 for a one-byte opcode, else 0xFB or 0xFC with code after it),
-     * its immediates, and, for a memory access, the log of its natural
-     * alignment *)
+    (* A WebAssembly operation whose immediates are all Ints: its text name,
+     * its opcode (prefix 0 for a one-byte opcode, or a prefix byte like 0xFB
+     * or 0xFC followed by code), its immediate kinds, and, for memory
+     * accesses, the base-2 log of its natural alignment *)
     Def Op = Tuple name: String prefix: Int code: Int imms: Array(Imm) align: Int end
 
     (* A structured instruction's kind, and its type: no values, one value
@@ -97,16 +99,17 @@ export
         blockIndex with index: Int end
     end
 
-    (* A try_table's clause: catch (a tag's values), catch_ref (and the
-     * exception's reference), catch_all, catch_all_ref; each branches to the
-     * label at its depth, counted from outside the try_table *)
+    (* A try_table catch clause: catch delivers a tag's payload values,
+     * catch_ref also delivers the exception reference (exnref), and catch_all
+     * / catch_all_ref match any exception. Each clause branches to label,
+     * whose depth is counted from outside the try_table. *)
     Def CatchKind = Option catchTag catchTagRef catchAll catchAllRef end
     Def Catch = Tuple kind: CatchKind tag: Int label: Int end
 
-    (* An instruction. A block, loop, if, or try_table starts a structured
-     * instruction, which a later instEnd ends (and an if's instElse divides),
-     * as the binary format writes them; label names it for the printer and
-     * the name section. *)
+    (* A single WebAssembly instruction. A block, loop, if, or try_table opens
+     * a structured instruction that a later instEnd closes (and instElse
+     * splits an if), matching the flat binary instruction stream; label names
+     * the block for the printer and the name section. *)
     Def Inst = Option
         instOp with op: Op args: Array(Int) end
         instBlock with kind: BlockKind type: BlockType label: String end
@@ -114,14 +117,14 @@ export
         instElse
         instEnd
         instBrTable with labels: Array(Int) default: Int end
-        (* f64.const of the real whose 64 bits are bits, so that every NaN is
-         * one *)
+        (* f64.const storing the raw IEEE 754 64-bit pattern so that -0.0 and
+         * specific NaN payloads are preserved *)
         instF64Const with bits: Int end
         instRefNull with heap: HeapType end
         instRefTest with type: RefType end
         instRefCast with type: RefType end
-        (* br_on_cast, or br_on_cast_fail when fail, from one reference type
-         * to a subtype of it *)
+        (* br_on_cast (or br_on_cast_fail when fail is true), branching on a
+         * runtime cast from one reference type to a subtype *)
         instBrOnCast with fail: Bool label: Int from: RefType to: RefType end
         (* select, typed when types is not empty *)
         instSelect with types: Array(ValType) end
@@ -166,10 +169,10 @@ export
      * active, at offset in the memory *)
     Def Data = Tuple name: String bytes: String offset: Int end
 
-    (* A module, in the order of the text format's fields. declared lists
-     * the functions ref.func takes that are not otherwise referred to
-     * outside code, which must be declared (an elem declare segment); start
-     * is the start function's index, ~1 for none. *)
+    (* A WebAssembly module, with fields ordered to match the text format.
+     * declared lists function indices referenced by ref.func in code that must
+     * be declared in a declarative element segment; start is the start
+     * function's index, or ~1 if there is none. *)
     Def Module = Tuple
         name: String
         types: vector.T(RecGroup)
@@ -197,12 +200,13 @@ export
     importedTags(m: Module): Int
     importedMemories(m: Module): Int
 
-    (* The type index of the function at index i in the function space,
-     * imported or defined: of its function type, which gives its
-     * parameters and results. Raises malformed for an i past the end. *)
+    (* Returns the type index of function i in the combined function index
+     * space (imports followed by definitions). Raises malformed if i is past
+     * the end. *)
     functionType(m: Module i: Int): Int
 
-    (* What cannot be encoded or printed, naming it *)
+    (* Raised with a description when a module construct cannot be encoded or
+     * printed *)
     malformed: Exception(String)
 
     (* ======================================================================

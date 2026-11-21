@@ -1,26 +1,28 @@
 (* Quest Self-Hosted Compiler: The Thunks Pass Interface
  *
- * The described IR's thunks as functions of the unit (docs/ir.md section
- * 8.4.1), so that every backend compiles them as it compiles any function,
- * rather than making them itself: the adapters of adapt plans, the thunks of
- * type applications whose instances are functions, and the closures of
- * external C functions used as values. The pass ends the described stage;
- * the bootstrap has no such pass, and its C printer makes its thunks as it
- * prints. *)
+ * Materializes the described IR's wrapper functions (thunks) as ordinary
+ * functions in the unit so every backend compiles them uniformly rather than
+ * synthesizing them during code generation (docs/ir.md section 8.4.1). This
+ * covers adapter functions for function-coercion plans (adapt plans),
+ * wrapper thunks for type applications whose result is a function, and
+ * closures for external C functions used as first-class values. The pass
+ * completes the described stage; the bootstrap compiler has no separate pass
+ * and emits these thunks directly in its C printer. *)
 
 interface Thunks
 import
     questlang/ir/nodes : questlang/ir/Nodes
 export
-    (* The unit with its thunks among its functions:
-     * - an adapt plan names its adapter (Plan.thunk), a function whose
+    (* Materializes all thunks in unit as functions of the unit, in place, and
+     * returns it:
+     * - each adapt plan names its adapter (Plan.thunk), a function whose
      *   environment is the closure it adapts;
-     * - a type application whose instance is a function is a closure of its
-     *   thunk, capturing the function applied and the type arguments;
-     * - an external C function used as a value is the static closure of a
-     *   function calling it, and a call of a variable bound to one calls it
+     * - each type application whose instance is a function becomes a closure
+     *   of its thunk, capturing the applied function and type arguments;
+     * - each external C function used as a value becomes a static closure of a
+     *   wrapper calling it, and calls to variables bound to one call it
      *   directly.
-     * Thunks alike (by the types they convert between, and their layout) are
-     * one function. *)
+     * Identical thunks (matching types and layout) are deduplicated into one
+     * function. *)
     thunkUnit(unit: nodes.Unit): nodes.Unit
 end

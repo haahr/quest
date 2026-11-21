@@ -1,44 +1,45 @@
 (* Quest Self-Hosted Compiler: Driver
  *
- * The quest command: it runs a program, prints a phase's output, compiles a
- * unit file alone, builds a binary, or enters the REPL, as the command line
- * asks (usageText lists the forms and options; the bootstrap counterpart is
- * bootstrap/python/quest/driver/main.py). The forms:
+ * Entry point for the `quest` command: it runs a program, prints a compiler
+ * phase's output, compiles a single unit file, builds a binary, or enters the
+ * REPL (usageText lists all forms and options; the bootstrap counterpart is
+ * bootstrap/python/quest/driver/main.py).
  *
  * Running a program (FILE, -e PROGRAM, or - for standard input): the program
  * is compiled and run by the JIT (questlang/jit), or by the tree-walking
- * interpreter with --no-jit, an option only the interpreter has (such as
- * --stop-after), or a driver that cannot host the JIT. It prints the last
- * phrase's result, or every phrase's with --echo. The arguments after FILE,
- * or after a --, are the program's (system.args). With neither FILE nor -e,
- * the REPL (questlang/driver/repl) starts at a terminal, and otherwise
- * standard input holds the program; -i enters the REPL after running FILE,
- * in its environment and frame.
+ * interpreter when --no-jit is passed, an interpreter-only option (such as
+ * --stop-after) is given, or this driver cannot host the JIT. It prints the
+ * last top-level phrase's result, or every phrase's with --echo. Arguments
+ * after FILE, or after --, become the program's system.args. With neither FILE
+ * nor -e, the REPL (questlang/driver/repl) starts on a terminal, and otherwise
+ * standard input is run as a program; -i enters the REPL after running FILE,
+ * preserving its environment and runtime frame.
  *
  * Phases (--stop-after PHASE, --dump-after PHASE): the driver runs the
- * phases through PHASE and prints its output (tokenize, parse, desugar, and
- * typecheck in the bootstrap's format; the IR at a stage, or run; the SSA
- * after a pass; the program's C or arm64 assembly; or the compiled program
- * run) on standard output, and diagnostics on standard error, exiting with 1
- * if there are errors. run_tests.py --self-hosted checks these outputs
- * against the bootstrap's goldens (docs/testing.md section 2.3).
+ * pipeline through PHASE and prints its output on standard output (tokenize,
+ * parse, desugar, and typecheck in the bootstrap's format; the IR at a stage,
+ * printed or interpreted; SSA after a pass; generated C, arm64 assembly, or
+ * WebAssembly text; or the compiled program's output), with diagnostics on
+ * standard error, exiting with 1 on error. run_tests.py --self-hosted checks
+ * these outputs against the bootstrap's goldens (docs/testing.md section 2.3).
  *
- * A unit file (.int.quest, .mod.quest) given without a phase or -e is
- * compiled alone (compileUnitFile; -c, which says so, is optional): an
- * interface to its .qi and C header, a module to its C, object, and .qm,
- * beside -o, else under --build-dir, else beside the file.
+ * Unit files (.int.quest, .mod.quest): given without a phase or -e, a unit
+ * file is compiled on its own (compileUnitFile; -c is optional). An interface
+ * produces a compiled interface (.qi) and C header, and a module produces its
+ * backend code, object file, and module metadata (.qm), placed beside -o,
+ * under --build-dir, or beside the source file.
  *
  * Building (quest compile FILE, or a program with -o): the build engine
- * (questlang/build) compiles the program and its modules separately, each
- * only if stale, and links a binary, FILE without .quest or -o's; with -c it
- * compiles them without linking. compile --emit-c writes the program's C
- * (to -o, else standard output) instead, and --whole-program compiles the
- * program and its modules as one unit, both without the engine. Object files
- * given on the command line are linked with the program, which then runs
- * compiled (run_c_compiled) unless a phase or -o is given.
+ * (questlang/build) compiles the program and its imported modules separately,
+ * rebuilding only stale units, and links a binary (named FILE without .quest,
+ * or -o's value); -c compiles without linking. Both `compile --emit-c` (which
+ * writes C to -o or standard output) and --whole-program (which merges the
+ * program and its modules into one unit) bypass the build engine. Object files
+ * on the command line are linked with the program, which then runs compiled
+ * (run_c_compiled) unless a phase or -o is given.
  *
- * A worker of a parallel build is this program too, run with a worker's
- * command line (build/workers) *)
+ * Parallel build workers also invoke this same executable with a worker
+ * command line (build/workers). *)
 
 import
     questlang/common/strings : questlang/common/Strings
@@ -157,10 +158,10 @@ let printResult(phrase: typedAst.Binding v: model.Value): Ok =
         if stringOp.length(shown) > 0 then print(shown) end
     end;
 
-(* The dumps of the phases --dump-after names, and of the one --stop-after
- * does, in phase order. As the bootstrap's driver prints its phases' dumps once
- * its pipeline has run, they follow what the program writes as it runs, but
- * precede an interpreted program's result and a compiled program's output. *)
+(* Buffers phase dumps requested by --dump-after and --stop-after in phase
+ * order. Matching the bootstrap driver, dumps are printed after the pipeline
+ * finishes, so they follow any output the program wrote while running but
+ * precede an interpreted program's result or a compiled program's output. *)
 let pendingDumps = vector.new(:String);
 let dump(text: String): Ok = vector.append(pendingDumps text);
 let flushDumps(): Ok =
@@ -169,8 +170,8 @@ let flushDumps(): Ok =
         vector.clear(pendingDumps)
     end;
 
-(* Whether the program goes through the C backend: compiled, with compile or
- * -o, linked with objects, or for a C phase *)
+(* Whether the program goes through a compiled backend (C, ssac, arm64, or
+ * wasm): via `compile`, -o, linked object files, or a backend phase *)
 let cPipeline =
     begin
         let var dumpsC = false
@@ -213,11 +214,12 @@ let irStage(prefix: String): maybe.T(String) =
         found
     end;
 
-(* The phases the program goes through, as the bootstrap's pipelines have them:
- * the front end's, then either the C backend's (with run_c_compiled unless
- * compile or -o writes a binary), the IR's through the stage run_ir_STAGE runs,
- * the IR's through the last stage dumped or stopped after, or interpret; and of
- * those, the phases through the one --stop-after names *)
+(* The sequence of phases the program runs through, matching the bootstrap's
+ * pipelines: the front end (tokenize through typecheck), then one of the
+ * compiled backend pipeline (ending in run_c_compiled unless compile or -o
+ * writes a binary), the IR pipeline through run_ir_STAGE, the SSA pipeline,
+ * the IR pipeline through the last dumped or stopped stage, or interpret. The
+ * list is truncated after the phase named by --stop-after. *)
 let pipeline: Array(String) =
     begin
         let ps = vector.fromArray(array of "tokenize" "parse" "desugar" "typecheck" end)
@@ -327,9 +329,9 @@ let lowered(program: typedAst.Program e: env.T sm: location.SourceMap printResul
 let internalError(bag: diagbag.T message: String): Ok =
     diagbag.add(bag diagnostics.error(message location.span("" ~1 ~1)));
 
-(* body, with what lowering, the IR passes, the SSA, the IR interpreter, or a
- * backend raises on failing (each an internal error) reported to bag; failed
- * is the result then *)
+(* Runs body and catches internal compiler exceptions from lowering, IR passes,
+ * the IR interpreter, or the backend, recording each as an internal error in
+ * bag and returning failed *)
 let reportingInternal(A::TYPE bag: diagbag.T failed: A body: All() A): A =
     begin
         let internal = fun(message: String): A begin internalError(bag message) failed end
@@ -346,8 +348,9 @@ let reportingInternal(A::TYPE bag: diagbag.T failed: A body: All() A): A =
         end
     end;
 
-(* Lowers the program through the last IR stage it goes through, dumping the
- * stages shown, as the bootstrap's ir_STAGE phases do *)
+(* Lowers the program through the last requested IR stage (and runs SSA passes
+ * if requested), dumping each shown stage as the bootstrap's ir_STAGE phases
+ * do *)
 let lowerOnly(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
     begin
         let var last = irStages[0]
@@ -403,9 +406,9 @@ let newEngine(e: env.T): engine.T =
         maybe.some(e.units.resolver)) options.jobs system.args[0]) options.backends)
         options.reportInferable);
 
-(* A whole program is one unit, the program's with its modules', which
- * --backend chooses the backend of (docs/arm64.md section 3.12), so a
- * unit of its own has none *)
+(* Whole-program compilation merges all modules into one unit compiled by
+ * --backend (docs/arm64.md section 3.12), so per-unit --unit-backend overrides
+ * are rejected *)
 if options.wholeProgram andif {extent options.backends.overrides > 0} then
     usage("--whole-program compiles one unit, so --unit-backend has none to choose for")
 end;
@@ -444,14 +447,15 @@ let keptImports(unit: nodes.Unit): Array(passes.ImplicitImport) =
         vector.toArray(kept)
     end;
 
-(* Takes a type-checked program through the C backend, as the bootstrap's
- * codegen_c and run_c_compiled phases (and -o and compile) do: prints its C, or
- * compiles it, with the modules it imports (built by the engine), and runs it
- * or writes it to -o (or compile's output). compile --emit-c writes the C. *)
-(* The modules a WebAssembly module's import section names, each once: those it
- * is instantiated after. The section's entries are functions, tables,
- * memories, globals, and tags, laid out as WebAssembly 3.0's binary format
- * has them; anything malformed ends the list early *)
+(* Compiled backend execution (compiled, below): takes a type-checked program
+ * through the selected backend (C, ssac, arm64, or wasm), matching the
+ * bootstrap's codegen_c and run_c_compiled phases as well as -o and `compile`.
+ * It prints generated code, writes a binary or wasm bundle, or runs the
+ * compiled program, building imported modules with the build engine. *)
+(* Returns the distinct module names from a WebAssembly binary's import section
+ * (section id 2), which determines instantiation order. Parses function, table,
+ * memory, global, and tag imports per the WebAssembly 3.0 binary format,
+ * stopping early if the bytes are truncated or malformed. *)
 let wasmImports(bytes: String): Array(String) =
     begin
         let found = vector.new(:String)
@@ -557,19 +561,19 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
             let running = reaches("run_c_compiled")
             let writing = {compileMode orif maybe.isSome(options.output)} andif not(options.stopGiven)
                 andif not(options.emitC)
-            (* A run's result: its stderr made a diagnostic if it did not exit
-             * as expected, and its stdout run_c_compiled's dump, as the
-             * bootstrap has it, printed when that phase is stopped after (as
-             * linking objects alone does) or dumped *)
-            (* A wasm program's exit status above 125, which wasmtime cannot
-             * give: the core ends it with 125 and a last line on standard
-             * error naming the status (runtime/wasm/core's exitStatus), which
-             * this takes off and gives as the status *)
+            (* Helpers for a compiled run's result (exitAbove and finishRun,
+             * below): unexpected exit codes turn stderr into a diagnostic, and
+             * stdout is printed when run_c_compiled is stopped after (including
+             * when linking extra objects) or dumped. *)
+            (* Decodes a wasm program's exit status above 125, which wasmtime
+             * cannot return directly. runtime/wasm/core's exitStatus exits with
+             * 125 and writes a final "quest: exit status N" line to stderr;
+             * this helper strips that line and restores N. *)
             let exitAbove = fun(r0: Tuple code: Int stdout: String stderr: String end):
                 Tuple code: Int stdout: String stderr: String end
                 begin
-                    (* and wasmtime's report of an overflow as natively: an
-                     * uncaught stack.overflow, status 1 *)
+                    (* Map wasmtime's stack-exhaustion error to the same
+                     * uncaught stack.overflow (exit status 1) as native runs *)
                     let r = if {r0.code isnot 0} andif {strutil.find(r0.stderr "call stack exhausted") >= 0} then
                             tuple let code = 1 let stdout = r0.stdout let stderr = "Exception: stack.overflow\n" end
                         else r0
@@ -634,11 +638,11 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                     writer.putString(writer.output t.c)
                 end
             elsif choice.isWasm(programBackend) andif {running orif writing} then
-                (* The program's module, the runtime's, and those of the
-                 * units it imports, the library's included, built by the
-                 * engine (docs/wasm.md section 5.1): each unit's object is
-                 * its module, named by its canonical name, its path in the
-                 * build directory *)
+                (* Builds and runs or writes the WebAssembly bundle
+                 * (docs/wasm.md section 5.1): the program's module, the
+                 * runtime module, and every imported unit (including standard
+                 * library modules). Each unit's .o artifact in buildDir is its
+                 * compiled wasm module, named by its canonical path. *)
                 let save = fun(path: String contents: String): Ok
                     begin
                         let w = writer.file(path)
@@ -647,9 +651,9 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                     end
                 let runtimeBytes = encode.encode(wasmRuntime.runtimeModule())
                 try
-                    (* The runtime's units in Quest (section 4.5), wasm/core and
-                     * wasm/print, found under runtime/, which every unit the
-                     * backend compiles may import *)
+                    (* Include runtime/ so the build engine finds the Quest
+                     * runtime modules (wasm/core, wasm/print; section 4.5)
+                     * that any wasm-compiled unit may import *)
                     let runtimeRoot = files.join(paths.projectDir() "runtime")
                     let includes = vector.copy(e.includePaths)
                     let implicit = vector.new(:passes.ImplicitImport)
@@ -657,8 +661,8 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                     for k = 0 upto extent found - 1 do vector.append(implicit found[k]) end
                     vector.append(implicit
                         tuple let canonicalPath = "wasm/print" let interfacePath = "wasm/Print" end)
-                    (* real's mathematical functions and ^^, which the
-                     * backend calls in util/realmath (section 4.3) *)
+                    (* The wasm backend lowers real math functions and ^^ to
+                     * calls in util/realmath (section 4.3) *)
                     vector.append(implicit
                         tuple let canonicalPath = "util/realmath" let interfacePath = "util/RealMath" end)
                     let modules = engine.unitModuleRefs(importRefs(program) vector.toArray(implicit)
@@ -672,10 +676,10 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         engineIncludes options.verbose options.nogc options.extraObjects
                         maybe.some(e.units.resolver)) options.jobs system.args[0]) options.backends)
                     let objects = engine.buildModules(wasmEngine modules importer e.programDir)
-                    (* The units' modules: each named by its canonical name, its
-                     * path in the build directory, with the units it imports,
-                     * which its module's imports name: the ones its source
-                     * names, and the runtime's that the backend adds *)
+                    (* Collect each compiled wasm unit's canonical name (its
+                     * relative path in buildDir), file path, and imported
+                     * module names (from both source imports and runtime
+                     * modules added by the backend) *)
                     let names = vector.new(:String)
                     let locations = vector.new(:String)
                     let needs = vector.new(:Array(String))
@@ -690,8 +694,9 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                             vector.append(needs wasmImports(bytes))
                         end
                     end
-                    (* In an order that puts each after those it imports, which
-                     * the engines instantiate it after *)
+                    (* Topologically sort the units so each module appears after
+                     * every module it imports, matching wasm instantiation
+                     * order *)
                     let units = vector.new(:String)
                     let placed = array of(vector.length(names) false)
                     let var progress = true
@@ -719,10 +724,10 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         end
                     end
                     if writing then
-                        (* The program's module at the target, and beside it the
-                         * runtime's, TARGET.runtime.wasm, each unit's,
-                         * TARGET.N.wasm, and TARGET.units, a line NAME=PATH
-                         * for each unit, in the order to load them *)
+                        (* Write the program module to target, the runtime to
+                         * TARGET.runtime.wasm, each dependency to
+                         * TARGET.N.wasm, and the load order (NAME=PATH lines)
+                         * to TARGET.units *)
                         let target = files.absolute(maybe.unwrap(compileOutput))
                         save(target t.c)
                         save(target <> ".runtime.wasm" runtimeBytes)
@@ -742,13 +747,14 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         save(runtimePath runtimeBytes)
                         let command = vector.new(:String)
                         if stringOp.equal(options.wasmEngine "node") then
-                            (* node:wasi is experimental, and says so on standard
-                             * error, which a program's own must not have *)
+                            (* Suppress Node's experimental node:wasi warning
+                             * so it does not pollute the program's stderr *)
                             vector.append(command "node")
                             vector.append(command "--no-warnings")
-                            (* about 8 MB of stack, as natively and as wasmtime
-                             * is given, below the main thread's own (as
-                             * benchmarks/run.py's --node-stack) *)
+                            (* Give Node about 8 MB of stack, matching native
+                             * and wasmtime runs while staying under the main
+                             * thread's limit (like benchmarks/run.py's
+                             * --node-stack) *)
                             vector.append(command "--stack-size=7800")
                             vector.append(command files.join(paths.projectDir() "runtime/wasm/run.mjs"))
                             for k = 0 upto vector.length(units) - 1 do
@@ -763,12 +769,13 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                             vector.append(command "gc=y,function-references=y,tail-call=y,exceptions=y")
                             vector.append(command "-C")
                             vector.append(command "collector=copying")
-                            (* 8 MB of stack, as natively (section 8.2), not
-                             * wasmtime's 512 KB *)
+                            (* Raise wasmtime's stack limit from 512 KB to 8 MB
+                             * to match native execution (section 8.2) *)
                             vector.append(command "-W")
                             vector.append(command "max-wasm-stack=8388608")
-                            (* WASI's: / and . opened, the environment, and the
-                             * current directory as PWD *)
+                            (* Grant WASI access to / and ., inherit the
+                             * environment, and pass the current directory as
+                             * PWD *)
                             vector.append(command "--dir")
                             vector.append(command "/")
                             vector.append(command "--dir")
@@ -811,9 +818,10 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                 when engine.buildError with m then located(m)
                 end
             elsif running orif writing then
-                (* A whole program's modules are in its unit, but for those it
-                 * still imports, known only through their interfaces (the
-                 * library's, driver/whole), which are built apart *)
+                (* In whole-program mode, source modules are already merged
+                 * into t.unit; only precompiled modules known solely through
+                 * their interfaces (such as the standard library; see
+                 * driver/whole) remain to be built separately *)
                 let modules = if options.wholeProgram then
                         engine.unitModuleRefs(array of :engine.ImportRef end keptImports(t.unit)
                             e.currentDir vector.toArray(e.includePaths) e.programDir e.units.resolver)
@@ -887,8 +895,9 @@ let runIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag
             end)
     end;
 
-(* Runs a type-checked program, as the bootstrap's interpret phase does: the
- * frame the phrases after it would run in, where the REPL continues *)
+(* Runs a type-checked program in the tree-walking interpreter, matching the
+ * bootstrap's interpret phase. Returns the resulting frame so -i can continue
+ * the REPL in it. *)
 let interpret(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): model.Frame =
     begin
         let f = runFrame(e sm)
@@ -1010,19 +1019,19 @@ let compileUnitFile(): Ok =
         finish(bag sm)
     end;
 
-(* Runs the program given (a file, -e's, or standard input) through the
- * pipeline's phases, as far as the command line asks (reaches), dumping each
- * phase it shows. Each phase runs only if the ones before it found no errors:
- * the tokenizer's errors stop it before parsing, a syntax error (raised as
- * diagbag.fatalError) at once, and type errors before any backend. A program
- * that type checks then goes to one of: the C or arm64 backend (codegen_c
- * and the phases after it), the IR interpreter (run_ir_STAGE), the IR's
- * dump alone (ir_STAGE), the JIT, or the tree-walking interpreter, which may
- * go on into the REPL. The environment is set up for the backend: compiled
- * code, and the JIT's, know imported modules through their interfaces
- * (unless the whole program is one unit), with the build directory's
- * artifacts (the JIT's in memory without --build-dir). finish prints the
- * diagnostics and exits *)
+(* Runs the given program (from a file, -e, or standard input) through the
+ * pipeline's phases as far as the command line asks (reaches), dumping each
+ * phase it shows. Each phase runs only if earlier phases found no errors:
+ * tokenizer errors stop before parsing, syntax errors (raised as
+ * diagbag.fatalError) stop immediately, and type errors stop before any
+ * backend. A program that type-checks then goes to a compiled backend (C,
+ * ssac, arm64, or wasm via codegen_c and later phases), the IR interpreter
+ * (run_ir_STAGE), IR/SSA dumping (ir_STAGE, ssa_PASS), the JIT, or the
+ * tree-walking interpreter (which may continue into the REPL or kernel). The
+ * environment is configured for the target: compiled code and the JIT see
+ * imported modules through their interfaces (unless --whole-program merges
+ * them) using artifacts in the build directory (or in memory for the JIT
+ * without --build-dir). Finally, finish prints diagnostics and exits. *)
 let run(): Ok =
     begin
         let source = if maybe.isSome(options.code) then
@@ -1050,9 +1059,8 @@ let run(): Ok =
                 if reaches("typecheck") then
                     stdlib.install()
                     let e = env.new()
-                    (* Each module's variant, as the build chooses it
-                     * (docs/build-process.md section 6.4), before anything
-                     * is resolved *)
+                    (* Install the variant selector before any module is
+                     * resolved (docs/build-process.md section 6.4) *)
                     e.units.resolver.variantOf := fun(unit: String): String choice.variantFor(options.backends unit)
                     let dir = if options.fromFile then files.parent(files.absolute(options.file))
                         else files.absolute(".") end
@@ -1064,11 +1072,11 @@ let run(): Ok =
                      * (docs/repl.md section 6) *)
                     e.interactive := options.interactive
                     if cPipeline orif options.jit then
-                        (* Compiled to C, or by the JIT, the modules are known
-                         * through their interfaces, with the build
-                         * directory's artifacts, which is searched first;
-                         * the JIT's, unless --build-dir names one, are kept
-                         * in memory (docs/jit.md section 3.4.1) *)
+                        (* For compiled backends and the JIT, imported modules
+                         * are checked through their interfaces using artifacts
+                         * from the build directory, which is searched first.
+                         * Without --build-dir, the JIT keeps its artifacts in
+                         * memory (docs/jit.md section 3.4.1). *)
                         let artifacts = if options.jit andif maybe.isNone(options.buildDir) then memoryFiles.root
                             else buildDir end
                         e.compilingC := not(options.wholeProgram)
@@ -1078,10 +1086,10 @@ let run(): Ok =
                     for i = 0 upto {extent options.includePaths - 1} do
                         vector.append(e.includePaths options.includePaths[i])
                     end
-                    (* The runtime's units in Quest (docs/wasm.md section
-                     * 4.5), found under runtime/, which the library's wasm
-                     * variants import (lib/dynamic.wasm imports wasm/core),
-                     * so that a program is checked as it is compiled *)
+                    (* Add runtime/ to the search path so type-checking finds
+                     * the Quest runtime units (docs/wasm.md section 4.5) that
+                     * wasm library variants import (e.g. lib/dynamic.wasm
+                     * imports wasm/core) *)
                     if choice.isWasm(programBackend) then
                         vector.append(e.includePaths files.join(paths.projectDir() "runtime"))
                     end
@@ -1159,12 +1167,12 @@ let buildProgram(): Ok =
 
 (* A worker of a parallel build compiles one module (build/workers). A
  * program goes to the build engine when it is to be built into a binary
- * (compile, or -o) and nothing asks for another path: no whole program, no
+ * (compile, or -o) and nothing asks for another path: no --whole-program, no
  * phase or dump, no --echo, no compile --emit-c or --print-result, a file
- * rather than -e or standard input, and a backend other than wasm, whose
- * program run() builds and runs (docs/wasm.md section 8.2); anything else is
- * run. A unit file is compiled alone unless a phase or -e asks for it to be
- * run *)
+ * rather than -e or standard input, and a backend other than wasm (whose
+ * programs run() builds and runs; docs/wasm.md section 8.2); anything else
+ * goes through run(). A unit file is compiled alone unless a phase or -e asks
+ * for it to be run. *)
 if workers.isUnitMode(system.args) then
     workers.unitMain(system.args)
 else

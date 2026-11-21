@@ -1,11 +1,12 @@
-(* Quest Self-Hosted Compiler: The Native Backends
+(* Quest Self-Hosted Compiler: The Native Backends Interface
  *
- * What codegen/backend and the driver need of the native backends: a unit's C
- * (codegen/c/printer), its SSA's C (ssac) or arm64 assembly, and the SSA's
- * interrupt checks. A variant of its own leaves them out: native.wasm, which
- * a driver compiled to WebAssembly takes (docs/build-process.md section 6.4),
- * has none, so that the SSA's and the native backends' units are not in it,
- * nor in the page's archive (docs/wasm.md section 5.1). *)
+ * This interface exposes the native code-generation entry points needed by
+ * codegen/backend and the driver: C printing (codegen/c/printer), SSA-based
+ * C printing (ssac), arm64 assembly generation, and SSA interrupt-check
+ * configuration. The native.wasm variant (docs/build-process.md
+ * section 6.4), used when compiling the driver to WebAssembly, stubs out
+ * these entry points so the SSA pipeline and native backends are omitted
+ * from the WebAssembly build (docs/wasm.md section 5.1). *)
 
 interface Native
 import
@@ -15,14 +16,15 @@ export
     (* A native backend's failure, or the absence of the native backends *)
     unsupported: Exception(String)
 
-    (* A unit's code for backend c, ssac, or arm64: its C, or its assembly,
-     * with a datum exported if given, a symbol and the C string it names *)
+    (* Compiles unit for backend c, ssac, or arm64, returning C source or arm64
+     * assembly. If datum is present, exports its text as a read-only C string
+     * under datum.symbol. *)
     Def Datum = Tuple symbol: String text: String end
     unitCode(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String datum: maybe.T(Datum)): String
 
-    (* The C compiler's flags backend's C needs *)
+    (* Extra C compiler flags required for the C code emitted by backend *)
     cFlags(backend: String): Array(String)
 
-    (* Whether the SSA's code checks for an interrupt, as the kernel's does *)
+    (* Enables or disables periodic interrupt checks in SSA-generated code *)
     setInterruptChecks(on: Bool): Ok
 end

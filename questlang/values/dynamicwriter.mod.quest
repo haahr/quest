@@ -37,7 +37,8 @@ export
             else hash.int(0)
         end
     let newIdentityMap(V::TYPE): hashMap.T(Value V) = hashMap.new(model.same identityHash)
-    (* Writes a value as the document's value, by its type, in two passes.
+    (* Writer serializes a value into the document's JSON payload according to
+     * its type, in two passes.
      *
      * scan walks the value first and finds the objects reached more than
      * once: records, arrays, and nonempty tuples, which have identity.
@@ -286,8 +287,9 @@ export
                         else fail()
                     end
                 elsif stringOp.equal(kind "auto") then
-                    (* As a dynamic value is: its witness, then its components
-                     * at their types, which refer to it *)
+                    (* Encode an auto value like a dynamic value: emit its
+                     * witness type, then its components at their types (which
+                     * refer to the witness via param) *)
                     let parts = autoParts(w v r)
                     let target = json.newObject()
                     json.put(target "@type" json.null)

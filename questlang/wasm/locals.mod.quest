@@ -37,7 +37,7 @@ export
     let isGet(inst: Inst): Bool =
         case inst when instOp with x then {x.op.prefix is 0} andif {x.op.code is 0x20} else false end
 
-    (* inst, one of localOf's three, on the local index instead *)
+    (* Rewrites inst (a local.get, local.set, or local.tee) to target index *)
     let rewrite(inst: Inst index: Int): Inst =
         case inst
             when instOp with x then option instOp of model.Inst with let op = x.op let args = array of index end end
@@ -47,14 +47,14 @@ export
     (* A loop's extent: the positions in the body of its start and its end *)
     Def Range = Tuple start: Int stop: Int end
 
-    (* reuse for one function f, in place. A position is an index into f's
-     * body, and local k here is local nparams + k of the function, the
-     * parameters being kept as they are. Each local's live range, from its
-     * first use to its last and widened for loops, is found first; then the
-     * locals, in order of where they start, each take the first slot of
-     * their type whose locals have all ended before it starts, or a new one.
-     * Taking ranges in order of start so needs no more slots of a type than
-     * the most locals of that type live at once. *)
+    (* Reuses non-parameter locals in a single function f in place. Positions
+     * are indices into f's body, and local k refers to function local
+     * nparams + k so parameters stay untouched. The pass first computes each
+     * local's live range (from first to last use, widened across loops) and
+     * then assigns locals in start-position order to the first slot of their
+     * type whose previous occupant has already ended, allocating a new slot if
+     * none is free. Processing intervals in start order uses no more slots of
+     * a type than the maximum number of locals of that type live at once. *)
     let reuseIn(f: model.Function): Ok =
         begin
             let nparams = extent f.params
@@ -65,8 +65,8 @@ export
                 let first = array of(n ~1)
                 let last = array of(n ~1)
                 let readFirst = array of(n false)
-                (* The loops, in the order their ends come, so inner ones
-                 * first, and the structured instructions open *)
+                (* Collect loops in closing order (innermost first) using a
+                 * stack of open structured instructions *)
                 let loops = vector.new(:Range)
                 let opened = vector.new(:Int)
                 for i = 0 upto size - 1 do
@@ -89,13 +89,13 @@ export
                             end
                     end
                 end
-                (* Live across a loop's repetition: the whole loop. A local
-                 * used in a loop whose range crosses the loop's start or
-                 * end, or whose first use is a read, may carry a value from
-                 * one iteration to the next, so its range takes in the whole
-                 * loop. One set and used only inside the loop keeps its
-                 * range. Inner loops come first, so an outer loop sees the
-                 * ranges an inner one widened. *)
+                (* Widen any live range that may carry a value across a loop's
+                 * back-edge to cover the entire loop: a local used inside the
+                 * loop whose range crosses its start or end, or whose first
+                 * use is a read, extends to the full loop. A local written and
+                 * used strictly inside the loop keeps its narrower range.
+                 * Because inner loops are processed first, outer loops see
+                 * ranges already widened by inner ones. *)
                 for j = 0 upto vector.length(loops) - 1 do
                     let range = vector.get(loops j)
                     for k = 0 upto n - 1 do
@@ -108,9 +108,9 @@ export
                         end
                     end
                 end
-                (* The locals by where they start, by a counting sort on
-                 * first, which keeps locals of one start in index order;
-                 * each takes the first slot of its type free by then *)
+                (* Sort used locals by start position using counting sort,
+                 * preserving index order on ties, then assign each local the
+                 * first slot of its type that is free at its start *)
                 let order = vector.new(:Int)
                 for k = 0 upto n - 1 do if first[k] >= 0 then vector.append(order k) end end
                 let sorted = vector.toArray(order)
@@ -131,8 +131,8 @@ export
                 let slotOf = array of(n ~1)
                 let slots = vector.new(:model.Local)
                 let slotEnds = vector.new(:Int)
-                (* The slots of each type, by typeKey; slotEnds holds where
-                 * each slot's latest local ends *)
+                (* Map each typeKey to its allocated slots; slotEnds records
+                 * the end position of each slot's latest local *)
                 let ofType = hashMap.new(:String :vector.T(Int) stringOp.equal hash.string)
                 for i = 0 upto extent ordered - 1 do
                     let k = ordered[i]

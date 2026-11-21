@@ -21,7 +21,7 @@ export
     let intEqual(a: Int b: Int): Bool = a is b
     let newIds(): Ids = hashMap.new(intEqual hash.int)
 
-    (* ids with one more *)
+    (* A copy of ids *)
     let copy(ids: Ids): Ids = hashMap.filter(ids fun(k: Int v: Bool): Bool true)
 
     let plus(ids: Ids id: Int): Ids =
@@ -40,14 +40,18 @@ export
 
     let has(ids: Ids id: Int): Bool = hashMap.contains(ids id)
 
-    (* Whether t is contractive in ids (Cardelli and Longo, section 2.4):
-     * primitive types and type constructors are contractive; a variable is
-     * contractive in X iff it is not X; All(X' :: K) B iff B is; an
-     * application iff its (opaque, since evaluation reduces applications of
-     * type operators) constructor is; Rec(X') B iff B is in X' and in X.
+    (* Returns whether t is contractive in ids (Cardelli and Longo 1991,
+     * section 2.4). Primitive types and type constructors are contractive; a
+     * type variable is contractive in ids when its symbol id is not in ids;
+     * All(X' :: K) B is contractive when B is; a type application is
+     * contractive when its evaluated constructor is (evaluation has already
+     * reduced applications of type operators); Rec(X') B is contractive when B
+     * is contractive in both X' and ids; and a mutually recursive group binding
+     * is contractive when its body is contractive in ids together with all
+     * bindings in the group.
      *
-     * Given an environment, evaluation follows type variables' definitions
-     * through it. depth counts the nested calls, against
+     * When e is present, lazy evaluation follows type variables' definitions
+     * through the global symbol table. depth counts nested calls against
      * maxTypeExpansionDepth. *)
     let rec contractive(t: Type ids: Ids e: maybe.T(env.T) depth: Int): Bool =
         begin
@@ -73,9 +77,9 @@ export
                 (* Evaluation has followed the variable's definition, if it
                  * has one, so this variable has none *)
                 when typeVariable with x then not(has(ids x.symbolId))
-                (* An unsolved metavariable (evaluateLazily looks through a
-                 * solved one) is not a recursive variable, so it is
-                 * contractive *)
+                (* An unsolved metavariable (an inference placeholder;
+                 * evaluateLazily looks through solved ones) is not a recursive
+                 * variable, so it is contractive *)
                 when typeMeta then true
                 when typeRec with x then
                     contractive(x.body plus(newIds() x.symbolId) e {depth + 1}) andif

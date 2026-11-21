@@ -1,20 +1,21 @@
 (* Quest Self-Hosted Compiler: The JIT's Debugging Objects Interface
  *
- * docs/jit.md section 3.12: what a debugger is told of a unit the JIT loaded,
- * as an object file in memory that lldb reads through the GDB JIT interface
- * (jit/session's register): a Mach-O arm64 object whose one section of
- * code is the unit's, at the address it was loaded at, so that nothing is
- * relocated; a symbol for each function; and DWARF 4, a compile unit with a
- * subprogram for each function and a line table from the encoder's positions
- * (codegen/arm64/encode's lines), as codegen/arm64/asm writes them for a
- * unit assembled to a file (docs/arm64.md section 3.16). *)
+ * This module builds an in-memory Mach-O arm64 object file describing a
+ * JIT-loaded unit so that lldb can inspect it through the GDB JIT interface
+ * (registered by jit/target; docs/jit.md section 3.12). The object contains
+ * a single code section placed at the unit's loaded address (requiring no
+ * relocation), a symbol for each function, and DWARF 4 debugging sections: a
+ * compile unit with one subprogram per function and a line table built from
+ * the encoder's source positions (codegen/arm64/encode's lines), matching
+ * what codegen/arm64/asm emits for ahead-of-time assembly (docs/arm64.md
+ * section 3.16). *)
 
 interface DebugObject
 import
     questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
 export
-    (* The object describing e, whose code was loaded at codeAddress, its
-     * source files the absolute paths files (e's, as the debugger should find
-     * them), as a string of its bytes *)
+    (* Builds the in-memory Mach-O object file (returned as raw bytes) for e,
+     * whose code is loaded at codeAddress, using files as the absolute source
+     * file paths shown to the debugger *)
     object(e: encode.Encoded codeAddress: Int files: Array(String)): String
 end

@@ -48,30 +48,31 @@ export
      * and its immediate, and where the store is *)
     Let Store = Tuple root: Int offset: Int exact: Bool address: Int imm: Int block: Int index: Int end
 
-    (* The check of docs/ssa.md section 7 (the rule is docs/collector.md
-     * section 3.5's): a forward dataflow analysis, which computes facts at
-     * each block's start from those at its predecessors' ends, over two sets:
+    (* Runs the write-barrier check of docs/ssa.md section 7 (enforcing the
+     * rule in docs/collector.md section 3.5). This is a forward dataflow
+     * analysis that computes two sets at each block's start from the sets at
+     * its predecessors' ends:
      *
-     *   fresh  the quest_alloc results with no call that may collect since,
-     *          on every path here: young objects, whose stores need no
-     *          barrier
-     *   owed   the covered stores, into objects not fresh, that no barrier
-     *          has answered since, on some path here
+     *   fresh  quest_alloc results with no call that may collect since on any
+     *          path here (young objects, whose stores need no barrier)
+     *   owed   covered stores into non-fresh objects that no barrier has
+     *          satisfied since on some path here
      *
-     * At a join, fresh is the intersection of the predecessors' sets (young
-     * only if young on every path) and owed the union (owed if owed on any).
-     * The entry and each try's handler start with both empty. A call that may
-     * collect clears both (it is where an owed store is due), and an
-     * allocation's result then becomes fresh; a barrier removes the stores it
-     * answers. The analysis visits the blocks in reverse postorder until no
-     * block's sets at its end change, ignoring predecessors not yet visited
-     * (whose sets are not yet known), so a loop's head starts from its
-     * entering edge and is revisited once its back edge has a value.
+     * At a join point, fresh is the intersection of the predecessors' sets
+     * (young only if young on every path) and owed is the union (owed if owed
+     * on any path). The entry block and each try handler start with both sets
+     * empty. A call that may collect clears both sets (owed stores are due
+     * before it), and an allocation's result then becomes fresh; a barrier
+     * removes the stores it satisfies. The analysis iterates over blocks in
+     * reverse postorder (predecessors before successors, except loop back
+     * edges) until no block's exit sets change, skipping unvisited
+     * predecessors so a loop header starts from its entry edge and is
+     * revisited once its back edge is computed.
      *
-     * A second pass then walks each block once from the fixed point's sets
-     * at its start, and reports every store still owed at a call that may
-     * collect, a return, or a tail call, naming the store and the point.
-     * A function with no covered stores needs neither pass *)
+     * A second pass then walks each block once from the fixed-point entry
+     * sets and reports every store still owed at a call that may collect, a
+     * return, or a tail call. A function with no covered stores skips both
+     * passes. *)
     let functionProblems(f: Function): Array(String) =
         begin
             let problems = vector.new(:String)
@@ -115,11 +116,12 @@ export
                     end
                     tuple let root = root let offset = offset let exact = exact end
                 end
-            (* Whether a stored value is a pointer the rule covers: a ptr
-             * other than a symbol's address or null, or a val made from one.
-             * A val made from an int is no pointer; any other val (a
-             * parameter, a load's or a call's result) may be one or not by a
-             * type the SSA does not have, and is the builder's to judge *)
+            (* Reports whether a stored value is a pointer the rule covers: a
+             * ptr other than a symbol's address or null, or a val made from
+             * one via toVal. A val made from an int is not a pointer; any
+             * other val (a parameter, load, or call result) may or may not be
+             * a pointer depending on a high-level type the SSA does not track,
+             * and is left to the builder to judge. *)
             let heapPointer(v: Int): Bool =
                 case ssa.typeOf(f v)
                     when typePtr then not(isDef(v ssa.opSymbol)) andif not(isDef(v ssa.opNull))
@@ -133,9 +135,9 @@ export
                         end
                     when typeInt, typeReal then false
                 end
-            (* The stores the rule covers, numbered, and found by the position
-             * of their instruction in f, counting through the blocks in order
-             * (starts[b] the position of block b's first) *)
+            (* The stores the rule covers, numbered and indexed by their flat
+             * instruction position in f (starts[b] is the position of block
+             * b's first instruction) *)
             let stores = vector.new(:Store)
             let storeOf = hashMap.new(:Int :Int fun(a: Int b: Int): Bool a is b hash.int)
             let starts = array of(nBlocks 0)
@@ -186,9 +188,9 @@ export
                 let describe(s: Store): String =
                     "the store in block " <> conv.int(s.block) <> " (instruction " <> conv.int(s.index) <> ") into %"
                         <> conv.int(s.root) <> if s.exact then " at " <> conv.int(s.offset) else "" end
-                (* A block's instructions and terminator applied to what holds
-                 * at its start; with report, the stores owed where they may
-                 * not be are problems *)
+                (* Applies block b's instructions and terminator to the entry
+                 * sets fresh and owed; when report is true, records any store
+                 * still owed at a collection point, return, or tail call *)
                 let transfer(b: Int fresh: bitset.T owed: bitset.T report: Bool): Ok =
                     begin
                         let due(what: String): Ok =
@@ -252,9 +254,9 @@ export
                             else ok
                         end
                     end
-                (* What holds at a block's start: the allocations young at the
-                 * end of every predecessor seen so far, and the stores owed at
-                 * the end of any *)
+                (* Computes fresh and owed at the start of block b: allocations
+                 * young at the end of every visited predecessor, and stores
+                 * owed at the end of any visited predecessor *)
                 let enter(b: Int fresh: bitset.T owed: bitset.T): Ok =
                     begin
                         bitset.clear(fresh)
