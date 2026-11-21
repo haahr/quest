@@ -66,22 +66,6 @@ the stress tier are unchanged.
 
 ---
 
-## `selects` reads predecessors after changing terminators
-
-**Problem.** `selectFunction` (questlang/ssa/passes/selects.mod.quest:106–126) computes `cfg.graph(f)` once and
-goes on using `g.preds` in `through` after `convert` has rewritten earlier blocks' terminators, so later blocks see a
-graph that is no longer the function's. It is safe only because an arm `through` accepts has exactly one
-predecessor, which a conversion of a different block cannot change; nothing states this.
-
-**Where to start.** Confirm the argument (a conversion rewrites only its own block's terminator, and an arm block's
-only predecessor is that block), then state it in a comment at `selectFunction`, or recompute the graph after each
-conversion. A per-function analysis cache cleared when a pass changes the CFG
-([compiler-refactoring-ideas.md](compiler-refactoring-ideas.md) §5.5) would make the question explicit.
-
-**Done when.** The argument is written down at the loop, or the graph is recomputed, with the ssa goldens unchanged.
-
----
-
 ## The bootstrap's C gives a converted known function a new adapter each time
 
 **Problem.** Passing a program's own function to a generic one twice and comparing the two, as in

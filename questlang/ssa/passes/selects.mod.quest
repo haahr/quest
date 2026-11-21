@@ -103,6 +103,14 @@ export
             blk.term := option termJump of ssa.Terminator with let target = ssa.target(to.block args) end
         end
 
+    (* The graph is computed once, and is stale after the first conversion;
+     * it is still safe for through's test that an arm has one predecessor. A
+     * conversion rewrites only its own block's terminator: its arms lose
+     * their one predecessor (and so are no later block's arms, nor
+     * converted, ending in jumps), and its arms' target gains the block and
+     * loses the arms, from two or more. So a block g says has one
+     * predecessor still has at most one, and the staleness can only miss a
+     * conversion (a target left with one), never make a wrong one *)
     let selectFunction(f: Function): Ok =
         begin
             let g = cfg.graph(f)
