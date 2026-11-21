@@ -222,3 +222,28 @@ arm64 backend's assembling and linking (`questlang/codegen/arm64/`, the driver's
 
 **Done when.** Stages 2 and 3 are the same binary through arm64, or the difference is known and the note says what
 it is.
+
+---
+
+## A tag test that a dominating `?tag` decides is made again
+
+**Problem.** In `if o?made then o!made.x := v end`, the tag is tested twice: `o?made` is an `is_tag`, and `o!made`,
+whether read or used as a location, tests it again (a location is lowered as a one-case `switch` whose other case
+raises). The simplifier folds a `switch` or a `!` only when the option is made in sight (`madeOf`), not when an
+enclosing `if` on `is_tag` of the same value has taken its true branch. Where the option is a `var` field, as
+util/iter's lookahead slot (`l.slot`), the two even read it separately (`%57 = tuple_field(%54, 0)`, `is_tag(%57,
+made)`, then `%59 = tuple_field(%54, 0)`, `switch tag(%59)`), though nothing between them can change it. Measured
+2026-11-20 with `benchmarks/iter/` ([iter.md](iter.md) rule 5): `hold` written so takes a `filter` 46.1 instructions
+per element in a whole program against the `case` binder's 45.1, and 156.7 against 153.2 separately, which is why
+util/iter keeps the `case`.
+
+**Where to start.** Two levels, the self-hosted compiler's alone, as optimizations are. In the simplifier
+(`questlang/ir/simplify`), walking an `if`'s then-branch whose condition is `is_tag(a, t)` with `a` immutable, keep
+`a`'s tag as `t`, and fold a `switch` on `a` and a `!t` of it as `sSwitch` does a known option's; that covers an
+option bound by `let`. For two loads of a `var` field, the loads must first be seen to be one value: in the SSA,
+`ssa_valueNumbers` could merge loads with no store or call between them that may change the field, after which a
+branch on a tag that a dominating block already tested can be folded.
+
+**Done when.** `if o?made then ... o!made.x ... end` has one tag test in the IR or SSA for an immutable `o` and for a
+`var` field read twice with nothing between, and `benchmarks/iter/` measures `hold` written with `?made` and `!made.x
+:=` at the `case` binder's cost, so that util/iter may use either (iter.md rule 5 then says so).
