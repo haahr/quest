@@ -21,7 +21,8 @@ arm64-built compiler's gap to the C-built one narrowed (§22), times the reuse o
 the arm64 performance review (§24), measures the compiler compiled to WebAssembly, and the MLton suite on it
 (§25), measures the strings work (§26), times every backend, WebAssembly included, at one commit (§27),
 measures the collections tuned on the compiler (§28), the compiler on `util/json` (§29), scalar replacement
-through a loop's parameters (§30), and character I/O without a lock per character (§31).
+through a loop's parameters (§30), character I/O without a lock per character (§31), one object per closure (§32),
+and ssac's `volatile` locals (§33).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -931,7 +932,7 @@ Each backend's time against C's (below 1 is faster), for the programs furthest f
 - **md5, checksum, and psdes-random are slow in the SSA, not the code generator:** ssac takes 3.7 to 4.1 times C's
   time on them, as arm64 does 4.8 to 6.8. What the C path keeps and the SSA loses is not yet known (they are word
   arithmetic in loops); fixing it speeds up ssac, arm64, and the JIT alike. flat-array, count-graphs, and boyer are
-  slow through ssac only (1.7 to 3.9), and arm64 is faster than C on them.
+  slow through ssac only (1.7 to 3.9), and arm64 is faster than C on them; §33 finds why.
 - **zern, string-concat, mpuz, and the vector concatenations are the code generator's:** ssac takes about C's time
   and arm64 1.8 to 2.8 times it. even-odd (3.4 through arm64, 1.0 through ssac) is a second of mutual tail calls,
   as the four are small recursions that clang transforms; §14 takes it up.
@@ -1088,7 +1089,7 @@ them:
   matrix-multiply take 1.2 to 1.5 of C's time; ssac takes about C's time on all of them, so they are the code
   generator's.
 - **ssac is still slow on flat-array (3.51), count-graphs (2.13), and boyer (1.64),** where arm64 is faster than
-  C; this is in ssac's C, not the SSA.
+  C; this is in ssac's C, not the SSA (§33: its `volatile` locals).
 - **C moved by 0.98,** within noise except tailmerge, at 1.25 of its §11 time; a second run took 54.6 seconds, and
   every run before §11 took 50 to 54, so §11's 44.1 was the outlier.
 
@@ -2878,7 +2879,7 @@ Each backend's mean over all 46 is lower than its programs justify, C's and ssac
 - **knuth-bendix fails through ssac.** At its count, 768, it ends at once with `stack.overflow`, after about 1,190
   nested calls of `kbCompletion.kbrec.nextCriticals`, which the arm64 backend runs in constant stack; at count 1 its
   output is wrong (`run.py check --backend ssac knuth-bendix`). `run.py time` checks a program's output only at count
-  1, so the failure was recorded as a time of 0.34 s.
+  1, so the failure was recorded as a time of 0.34 s. Both are fixed in §33.
 
 Without those six, the three native backends are within 6% of one another.
 
@@ -3139,3 +3140,44 @@ to a call): life's `nthgen` recursed instead, 8 percent slower, so the rule now 
 call themselves, alone. It is kept, being about 100 lines with a unit test (`ssa_escape`), but tsp is the only program
 it helps.
 
+## 33. ssac's `volatile` locals (2026-11-20)
+
+knuth-bendix failed through ssac with `stack.overflow` (§27.3): `kbCompletion.kbrec.nextCriticals` calls `process`
+inside a `try`, which calls `nextCriticals` again, so each round keeps a frame, about 1,190 of them, in every
+backend. arm64's frame for it is small; ssac's was 6.8 KB, and 1,190 of those are the 8 MB stack. ssac declared every
+value of a function that enters a `try` `volatile` (1,941 of them in `nextCriticals`, after inlining), and clang
+gives each `volatile` local a stack slot of its own, kept in no register and shared with no other.
+
+C needs a local `volatile` only if it is read after `_setjmp` returns a second time and may have changed since the
+first. The values live where a handler begins are the only ones a raise can lead to reading, so ssac now declares
+those alone `volatile`, found by a liveness pass over the blocks the handlers reach (`handlerLive` in
+`questlang/codegen/c/ssac`); memory is still reached through `volatile` pointers, since a stack slot the body writes
+may be read in the handler. `nextCriticals`' frame is 816 bytes, and `ssac_print`'s try (tests/source/questlang)
+keeps `volatile` the two values its handler uses and no other.
+
+`run.py time` checked a run's output only at count 1, since expected/ records no other count's, so the overflow was
+timed as 0.34 s. A run at any other count must now exit as the run at count 1 does; one that does not is recorded as
+failed, with the first line of its standard error.
+
+ssac, before (the release at `6d16a73c`) and after, `run.py time --backend ssac --clean --scale 0.25`, one run each,
+once the load average had been under 5 for three minutes (3.8 at the start, 5.3 at the end), with MLton's times
+from §27.4:
+
+| Benchmark | n | before (s) | after (s) | before / after | after / MLton | C / MLton (§27.4) |
+|---|--:|--:|--:|--:|--:|--:|
+| flat-array | 12288 | 251.90 | 60.48 | 4.17 | 7.47 | 6.94 |
+| count-graphs | 3 | 34.36 | 9.79 | 3.51 | 2.18 | 2.47 |
+| vliw | 256 | 15.68 | 5.84 | 2.68 | 1.10 | 1.28 |
+| model-elimination | 1 | 39.82 | 16.13 | 2.47 | 2.14 | 2.70 |
+| boyer | 3072 | 43.52 | 22.69 | 1.92 | 4.20 | 4.10 |
+| hamlet | 96 | 8.89 | 5.08 | 1.75 | 0.49 | 0.81 |
+| mlyacc | 768 | 6.68 | 5.90 | 1.13 | 1.01 | 1.23 |
+| zebra | 16 | 20.40 | 18.73 | 1.09 | 6.37 | 4.54 |
+| knuth-bendix | 768 | failed | 30.72 | | 3.45 | 3.42 |
+| tak | 8 | 0.81 | 0.80 | 1.01 | 0.06 | 0.06 |
+| fib | 8 | 0.77 | 0.78 | 0.99 | 0.05 | 0.05 |
+| peek | 48 | 105.27 | 105.90 | 0.99 | 41.2 | 37.1 |
+
+So the programs §13 and §27.4 found slow through ssac alone (flat-array, count-graphs, boyer, vliw,
+model-elimination) were slow for this reason, and now run in about C's time; those without a `try` in their hot
+code (tak, fib, peek) are unchanged. The rest of the suite was not timed again.

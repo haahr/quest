@@ -263,12 +263,21 @@ def differences(name: str, stdout: str, status: int, written: dict[str, bytes], 
     return problems
 
 
+def expected_status(name: str) -> int:
+    """The exit status expected/'s record of name's output ends with"""
+    text = (EXPECTED_DIR / f"{name}.out").read_text(encoding="latin-1")
+    match = re.search(r"\[exit (-?\d+)\]\n?$", text)
+    return int(match.group(1)) if match else 0
+
+
 def time_runs(name: str, system: str, program: Path | list[str], count: int, args: argparse.Namespace) -> list[float]:
     """The seconds each of --runs runs of program took, appended to --results
     if given with the processor seconds of each. A run that times out ends the
     runs, and is recorded as taking longer than --timeout. A run at count 1
-    must print what expected/ holds; one that does not is recorded with the
-    first line of its standard error."""
+    must print what expected/ holds, and a run at any other count, whose output
+    expected/ does not record, must at least exit as the run at count 1 does;
+    one that does not is recorded with the first line of its standard error,
+    rather than as a time."""
     seconds: list[float] = []
     cpu: list[float] = []
     timed_out = False
@@ -281,7 +290,7 @@ def time_runs(name: str, system: str, program: Path | list[str], count: int, arg
             break
         seconds.append(elapsed)
         cpu.append(used)
-        if count == 1 and differences(name, stdout, status, written):
+        if differences(name, stdout, status, written) if count == 1 else status != expected_status(name):
             errors = [line for line in stderr.splitlines() if "error" in line.lower()]
             wrong = re.sub(r"^\S+:\d+:\d+: ", "", (errors or stderr.splitlines() or ["(no error)"])[0])
             break
@@ -297,7 +306,7 @@ def time_runs(name: str, system: str, program: Path | list[str], count: int, arg
     if timed_out:
         raise subprocess.TimeoutExpired(system, args.timeout)
     if wrong is not None:
-        raise BuildError(f"{system} printed the wrong output: {wrong}")
+        raise BuildError(f"{system} printed the wrong output or exited as it should not: {wrong}")
     return seconds
 
 

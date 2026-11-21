@@ -7,6 +7,7 @@ import
     questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
+    collections/bitset : collections/Bitset
     util/hash : util/Hash
     util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
@@ -76,9 +77,16 @@ export
         (* Whether the function enters a try. A raise returns to the try's
          * _setjmp a second time, and C leaves a local that is not volatile,
          * and changed since the first return, indeterminate then; so in such
-         * a function every local is volatile, and so is every access to
-         * memory *)
+         * a function every access to memory is volatile, since a stack slot
+         * the body writes may be read in the handler *)
         hasTry: Bool
+        (* The values that must be volatile locals for that reason: those
+         * live where a handler begins (handlerLive). The rest are never read
+         * after a raise returns to _setjmp, so they may be indeterminate
+         * then, and C may keep them in registers and share their stack
+         * slots; making every local volatile gave each a slot of its own,
+         * and a large function with a try a frame of kilobytes *)
+        volatileValue: Array(Bool)
     end
 
     let line(p: Printer s: String): Ok = begin sb.strShared(p.buf "    " <> s <> "\n") ok end
@@ -386,6 +394,72 @@ export
     let prototype(f: Function named: Bool): String =
         linkage(f) <> resultType(f) <> " " <> f.symbol <> "(" <> paramsText(f named) <> ")"
 
+    (* The values live at the start of some handler of f: those a path from
+     * a handler uses before (re)defining them. Computed over the blocks a
+     * handler reaches alone, which every path from one stays within, by
+     * iterating each block's live-in set to a fixed point *)
+    let handlerLive(f: Function): Array(Bool) =
+        begin
+            let n = vector.length(f.blocks)
+            let nv = vector.length(f.types)
+            let result = array of(nv false)
+            let reached = array of(n false)
+            let handlers = vector.new(:Int)
+            let work = vector.new(:Int)
+            for b = 0 upto {n - 1} do
+                case ssa.block(f b).term
+                    when termTry with x then
+                        vector.append(handlers x.handler)
+                        if not(reached[x.handler]) then
+                            reached[x.handler] := true
+                            vector.append(work x.handler)
+                        end
+                    when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then ok
+                end
+            end
+            while not(vector.empty(work)) do
+                let succs = ssa.successors(ssa.block(f vector.pop(work)).term)
+                for i = 0 upto {extent succs - 1} do
+                    if not(reached[succs[i]]) then
+                        reached[succs[i]] := true
+                        vector.append(work succs[i])
+                    end
+                end
+            end
+            let liveIn = array of(n bitset.new(0))
+            for b = 0 upto {n - 1} do if reached[b] then liveIn[b] := bitset.new(nv) end end
+            let var changed = true
+            while changed do
+                changed := false
+                for k = 0 upto {n - 1} do
+                    let b = {n - 1} - k
+                    if reached[b] then
+                        let blk = ssa.block(f b)
+                        let live = bitset.new(nv)
+                        let succs = ssa.successors(blk.term)
+                        for i = 0 upto {extent succs - 1} do bitset.unionWith(live liveIn[succs[i]]) end
+                        let uses = ssa.terminatorUses(blk.term)
+                        for i = 0 upto {extent uses - 1} do bitset.insert(live uses[i]) end
+                        for j = 0 upto {vector.length(blk.insts) - 1} do
+                            let inst = vector.get(blk.insts {vector.length(blk.insts) - 1} - j)
+                            for i = 0 upto {extent inst.results - 1} do bitset.remove(live inst.results[i]) end
+                            for i = 0 upto {extent inst.args - 1} do bitset.insert(live inst.args[i]) end
+                        end
+                        for i = 0 upto {vector.length(blk.params) - 1} do bitset.remove(live vector.get(blk.params i)) end
+                        if not(bitset.equal(live liveIn[b])) then
+                            bitset.assign(liveIn[b] live)
+                            changed := true
+                        end
+                    end
+                end
+            end
+            for i = 0 upto {vector.length(handlers) - 1} do
+                let live = bitset.elements(liveIn[vector.get(handlers i)])
+                for j = 0 upto {extent live - 1} do result[live[j]] := true end
+            end
+            result
+        end
+
     (* A function's C: its parameters unpacked, every other value declared as
      * a local and every stack slot as a byte array, then each block, a label
      * and its instructions *)
@@ -398,7 +472,8 @@ export
                     when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then ok
                 end
             end
-            let p = tuple let f = f let buf = buf let hasTry = hasTry end
+            let volatileValue = if hasTry then handlerLive(f) else array of :Bool end end
+            let p = tuple let f = f let buf = buf let hasTry = hasTry let volatileValue = volatileValue end
             text(buf prototype(f true) <> " {\n")
             let params = ssa.block(f 0).params
             let isParam = array of(vector.length(f.types) false)
@@ -412,8 +487,9 @@ export
             for n = 0 upto {vector.length(f.types) - 1} do
                 if not(isParam[n]) then
                     let t = typeOf(f n)
-                    let decl = case t when typePtr then "char *" <> volatile(p) <> " "
-                        else if p.hasTry then "volatile " else "" end <> cType(t) <> " " end
+                    let isVolatile = p.hasTry andif p.volatileValue[n]
+                    let decl = case t when typePtr then if isVolatile then "char * volatile " else "char * " end
+                        else if isVolatile then "volatile " else "" end <> cType(t) <> " " end
                     line(p decl <> v(n) <> ";")
                 end
             end

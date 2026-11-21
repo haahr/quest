@@ -3,8 +3,9 @@
  * Builds a unit of the SSA (questlang/ssa/nodes, docs/ssa.md) by hand and prints
  * it with ssac (questlang/codegen/c/ssac, docs/arm64.md section 3.14): functions
  * that take and return 16-byte composites, a call that passes one through
- * memory, an indirect call and a tail call, a try (whose function's values and
- * memory are volatile), a switch, loads and stores of every width, the
+ * memory, an indirect call and a tail call, a try (whose function's memory,
+ * and the values live where its handler begins, are volatile, and no other
+ * value), a switch, loads and stores of every width, the
  * conversions, Int and Real constants (INT64_MIN among them), and data of zeros,
  * of text, and of words that hold integers and symbols' addresses; and a use of
  * a thread-local. tests/python/test_ssac.py compiles the golden with the flags
@@ -117,7 +118,9 @@ ret(tailF 0 array of params(tailF)[1] end);
 add(tailF);
 
 (* 4. A try, whose handler uses a value defined before it, and a variable in a
- * slot assigned in its body *)
+ * slot assigned in its body: the two values the handler uses, the constant and
+ * the slot's address, are volatile; those the body and the handler define are
+ * not *)
 let tries = ssa.newFunction("qf_try" false array of tInt end array of tInt end);
 let handlerRecord = ssa.newSlot(tries 240 16);
 let cell = ssa.newSlot(tries 8 8);

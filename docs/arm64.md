@@ -540,7 +540,11 @@ only prints what the SSA says, so a test that passes through it checks the SSA's
 - **`try`** is as in the C printer's C: the handler record, `_setjmp` at the region's entry, and a `goto` to the handler
   block when it returns again. The SSA's rule for `try` (§3.6) is the rule `_setjmp` needs: values the handler uses
   were defined before the region, and mutable variables live in it are stack slots. A function that enters a `try`
-  has its values `volatile`, and reaches memory through `volatile` pointers.
+  reaches memory through `volatile` pointers, and declares `volatile` the values live where a handler begins, which
+  a liveness pass over the blocks the handlers reach finds (`handlerLive`); its other values are never read after
+  `_setjmp` returns again, so clang may keep them in registers and share their slots. Making every value `volatile`
+  gave each a slot of its own: `nextCriticals`, in knuth-bendix, had a frame of 6.8 KB and overflowed the stack
+  (benchmarks.md §33).
 - **Data** is arrays of words (`void *` for words, `char` for text, `uint64_t` for zeros), declared before the
   functions and defined after them, so that data and functions may refer to one another in any order.
 - **Tail calls** are ordinary calls, which clang may or may not make jumps.
