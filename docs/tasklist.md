@@ -5,40 +5,6 @@ it, where to start, and when it is done. Remove a task when the work lands.
 
 ---
 
-## The write barriers' inline fast paths, not kept, may be worth another try
-
-**Problem.** The arm64-built compiler spends time in `quest_barrier_slot` and `quest_barrier_object`, called out of
-line at every barriered store. Inlining their fast paths (an SSA expansion after the barrier rule's check, in arm64's
-and the JIT's code) took `quest_barrier_slot` from 924 of the compiler's samples to 27, but made the compiler 1.3
-percent slower (0.9 percent with the slot barrier alone inline) and its text 1.8 percent larger, and the suite didn't
-move ([benchmarks.md](benchmarks.md) §22.2, item 3). It wasn't kept. It may pay once the code around a barrier is
-shorter, or with a smaller expansion: only in loops, only the slot barrier, or a shared out-of-line tail.
-
-**Where to start.** Branch `claude/inline-barriers-not-kept` on origin (`87acb5e7`, on `238a594f`):
-`questlang/ssa/writeBarriers` and its test `ssa_write_barriers`, the runtime's entries in `codegen/runtimeFunctions`
-and `codegen/runtimeLayout`, and the pipeline's call. It predates the restructuring: the
-pass belongs in `questlang/ssa/passes/`, and `runtimeLayout` is now `questlang/repr/runtimeLayout`.
-
-**Done when.** A variant makes the compiler or the suite faster, measured as §22.1 measures, and is kept, or the idea
-is dropped and the branch with it.
-
----
-
-## The collector's growth target counts a recyclable block as wholly in use
-
-**Problem.** After a full collection the heap may grow to `Q_GC_GROWTH` times the blocks in use
-(the target `quest_gc_sweep` sets in `runtime/quest_gc.c`), and a recyclable block with one live line counts as a
-block in use, so a heap of mostly empty recyclable blocks collects more often than its live data warrants
-([benchmarks.md](benchmarks.md) §16.3).
-
-**Where to start.** The target's computation after the sweep, which could count a recyclable block's free lines
-(its holes) as free, as the allocator does.
-
-**Done when.** The target counts holes as free, and the suite and the compiler's timings (benchmarks.md §16.1) are no
-worse.
-
----
-
 ## A closure and its environment are two allocations
 
 **Problem.** A closure that escapes is a `QClosure` and a separate environment object, so making one allocates
@@ -111,65 +77,6 @@ against its interface.
 
 **Done when.** Both compilers reject a repeated member name in an interface, with the same message, and an error
 test under `tests/errors` shows it.
-
----
-
-## The collector never moves objects
-
-**Problem.** Minor collections leave small survivors scattered over nearly every block they filled, and their sticky
-marks keep those lines until the next full collection, so allocation hops between ever smaller holes; only moving the
-survivors gives the blocks back whole ([collector.md](collector.md) §3.6). Live lines are about twice live bytes after
-the compiler's build and a long REPL session (collector.md §8.4, 2026-11-05). The owner chose on 2026-11-05 not to
-take evacuation for now.
-
-**Where to start.** The design in [collector.md](collector.md) §9.1 (evacuation after marking through a bounded slot
-log, metadata allocated pinned at birth) and §9.2 (the three-state identity hash, serialization holding moves off);
-the header's reserved bits in `runtime/quest_gc.h`.
-
-**Done when.** The criteria of collector.md §9.1 are met, or the idea is dropped with its measurement.
-
----
-
-## Generic allocation sites have no precise layouts
-
-**Problem.** An aggregate allocated in generic code (`Tuple A Int end` in a polymorphic function, `Array(A)`'s
-elements) has ambiguous words, which the collector validates and which would pin their referents if objects moved
-([collector.md](collector.md) §3.3). Worth doing only after evacuation, on its measured pinned fraction (decision 13).
-
-**Where to start.** [collector.md](collector.md) §9.2: descriptor parameters (`DescriptorParam`) extended to
-functions that allocate such aggregates, and an inline cache of the layout at the site; `repr/objectLayout` in both
-compilers. An ABI change.
-
-**Done when.** The criteria of collector.md §9.2 are met, or the idea is dropped.
-
----
-
-## Incremental marking runs on the mutator's core
-
-**Problem.** A full collection's cycle marks in slices inside the allocation slow path ([collector.md](collector.md)
-§3.10). A marker thread would take that work off the mutator, at the cost of fences in the barrier's slow path and a
-protocol for the shared bitmaps. No workload has shown the need (the compiler's build takes the same time with cycles
-as without, collector.md §8.6, 2026-11-05); the owner chose on 2026-11-05 not to take it for now.
-
-**Where to start.** [collector.md](collector.md) §9.3; write the protocol down before coding; a `concurrent` checking
-mode beside `incremental` in `runtime/quest_gc.c`.
-
-**Done when.** A measured workload shows the mutator paying for marking and the thread recovers it, or the idea is
-dropped.
-
----
-
-## Quest has no allocation-free check or typed overlay on raw memory
-
-**Problem.** A module cannot be checked to allocate nothing, and unsound code reads raw memory by hand-computed
-offsets (`os/value.fetch`, the JIT's session reading record payloads). Both are what a collector written in Quest
-would need ([collector.md](collector.md) §3.11, §9.4), and both are useful on their own: for inlined externals and
-loops that must not allocate, and for readable `os/value` code.
-
-**Where to start.** The IR after escape analysis, for the check; *Typeful Programming* §9.2 (`Still` values) for the
-overlay.
-
-**Done when.** Either facility exists with tests, or the idea is dropped.
 
 ---
 

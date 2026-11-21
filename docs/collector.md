@@ -140,7 +140,7 @@ right to move is reserved in the header and designed (§9.1), and not taken (dec
 - **Sizing:** a full collection is due when the blocks in use reach their target, twice those in use after the last
   collection and at least `QUEST_GC_MIN_HEAP` megabytes (64 by default). A block with one live line counts as in use,
   so a heap of scattered survivors holds more blocks than its live bytes need (§8.3); counting a recyclable block's
-  holes as free is a task ([tasklist.md](tasklist.md)).
+  holes as free is open work (§9.6).
 
 ### 3.2. Objects
 
@@ -333,7 +333,7 @@ dead values' slots unnecessary, and it does none. `QUEST_GC_MAPS=0` scans every 
 - **The barriers are declared as reading memory** (`effects(memoryReads ...)` in `ssa/runtimeFunctions`), not
   writing it: they write only the header's logged byte, the log, and the cards, none of which compiled code loads, so
   value numbering keeps its loads across them. The SSA's backends call both out of line; their fast paths inline in
-  the SSA were tried and not kept ([arm64.md](arm64.md) §3.13, [tasklist.md](tasklist.md)).
+  the SSA were tried and not kept ([arm64.md](arm64.md) §3.13, §9.5).
 - **The log and the dirty list live outside the heap** (as do the work list and the young list), so the barriers'
   slow paths never collect and §1's rule that a collection happens only inside an allocation holds.
 
@@ -791,12 +791,13 @@ are those the first numbers were taken with; the two bounds came from them: a sl
 words took 13 ms, and one that followed a 4 MB allocation 16 ms. `incremental` passed on its first run; `roots`, in
 the stress tier, found the two statics of the piecewise scan holding heap addresses unlisted.
 
-## 9. Open Work: Moving, Generic Layouts, a Marker Thread
+## 9. Open Work
 
 Three steps were designed with the collector and left conditional on measurements; on 2026-11-05 the owner chose to
 take none of them for now. Their designs stay here so that nothing built since is built in their way: the header's
-bits are reserved for them (§3.2), and decisions 11 and 13 fix their order. Tasks for them are in
-[tasklist.md](tasklist.md).
+bits are reserved for them (§3.2), and decisions 11 and 13 fix their order. §9.4 holds the language facilities a
+collector in Quest would need, and §9.5 and §9.6 two smaller items: barrier fast paths tried and not kept, and the
+growth target.
 
 ### 9.1. Evacuation
 
@@ -833,7 +834,10 @@ itself a case. Its design:
   catching a stale address kept across an allocation.
 - **Done when** the suites, the transcripts, and the driver's build pass under `stress,barriers,incremental`,
   `identityHash` is stable under a test that forces moves, and fragmentation before and after, the slot log's size,
-  and the pinned fraction after long compiler runs are recorded, the last by what pins it.
+  and the pinned fraction after long compiler runs are recorded, the last by what pins it, or the idea is dropped with
+  its measurement.
+- **Where to start:** this section and §9.2's hash and serialization, and the header's reserved bits in
+  `runtime/quest_gc.h`.
 
 ### 9.2. The identity hash under moving, and generic layouts
 
@@ -859,7 +863,8 @@ itself a case. Its design:
   then the cached layout). Descriptors are passed only where an allocation or a descriptor needs them, as now; the
   specializer's clones need none. An ABI change, in both compilers. *Done when* `layouts` reports the ambiguous words
   of the compiler's build and of the suite before and after, the pinned fraction is recorded against evacuation's,
-  and the cost of the added descriptor arguments on the MLton suite is recorded.
+  and the cost of the added descriptor arguments on the MLton suite is recorded, or the idea is dropped. *Where to
+  start:* `repr/objectLayout` in both compilers.
 
 ### 9.3. A marker thread
 
@@ -873,11 +878,41 @@ object-start and mark bitmaps, the line marks, the log), written down before it 
 slices as mutator assists even with its marker threads, so nothing of §3.10 would be undone. A checking mode,
 `concurrent`, would run as `incremental` with the marker forced to yield between objects. Taken only if a measured
 workload shows the mutator paying for marking it could offload; on 2026-11-05 none did (§8.6: the compiler's build
-takes the same time with cycles as without).
+takes the same time with cycles as without). *Done when* such a workload is measured and the thread recovers what it
+pays, or the idea is dropped. *Where to start:* the protocol, written down, then the `concurrent` mode beside
+`incremental` in `runtime/quest_gc.c`.
 
 ### 9.4. Language facilities a collector in Quest would need
 
 From §3.11, worth having on their own merits: an **allocation-free check** for a module, cheap given the IR after
 escape analysis and useful for the inlined externals and for loops that must not allocate; and a **typed overlay on
 raw memory**, a `Still`-like view of an address as a record of words, which would make `os/value` code readable (the
-JIT's session reads record payloads by hand-computed offsets). Neither is started.
+JIT's session reads record payloads by hand-computed offsets, as `os/value.fetch` does). Neither is started.
+*Where to start:* the IR after escape analysis, for the check; *Typeful Programming* §9.2 (`Still` values) for the
+overlay. *Done when* either facility exists with tests, or the idea is dropped.
+
+### 9.5. The write barriers' inline fast paths, tried and not kept
+
+The arm64-built compiler spends time in `quest_barrier_slot` and `quest_barrier_object`, called out of line at every
+barriered store. Inlining their fast paths (an SSA expansion after the barrier rule's check, in arm64's and the JIT's
+code) took `quest_barrier_slot` from 924 of the compiler's samples to 27, but made the compiler 1.3 percent slower
+(0.9 percent with the slot barrier alone inline) and its text 1.8 percent larger, and the suite didn't move
+([benchmarks.md](benchmarks.md) §22.2, item 3). It wasn't kept. It may pay once the code around a barrier is shorter,
+or with a smaller expansion: only in loops, only the slot barrier, or a shared out-of-line tail.
+
+*Where to start:* branch `claude/inline-barriers-not-kept` on origin (`87acb5e7`, on `238a594f`):
+`questlang/ssa/writeBarriers` and its test `ssa_write_barriers`, the runtime's entries in `codegen/runtimeFunctions`
+and `codegen/runtimeLayout`, and the pipeline's call. It predates the restructuring: the pass belongs in
+`questlang/ssa/passes/`, and `runtimeLayout` is now `questlang/repr/runtimeLayout`. *Done when* a variant makes the
+compiler or the suite faster, measured as benchmarks.md §22.1 measures, and is kept, or the idea is dropped and the
+branch with it.
+
+### 9.6. The growth target counts a recyclable block as wholly in use
+
+After a full collection the heap may grow to `Q_GC_GROWTH` times the blocks in use (the target `quest_gc_sweep` sets
+in `runtime/quest_gc.c`), and a recyclable block with one live line counts as a block in use, so a heap of mostly
+empty recyclable blocks collects more often than its live data warrants ([benchmarks.md](benchmarks.md) §16.3).
+
+*Where to start:* the target's computation after the sweep, which could count a recyclable block's free lines (its
+holes) as free, as the allocator does (§3.1). *Done when* the target counts holes as free, and the suite and the
+compiler's timings (benchmarks.md §16.1) are no worse.
