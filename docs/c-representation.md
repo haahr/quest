@@ -832,7 +832,9 @@ its own padding), since another unit reads only `fn`.
 Two closures the compilers make have the runtime's types:
 
 - **An adapt plan's** (§3.1's adaptation thunks): `QAdaptClosure { fn, orig }`, layout `quest_layout_adapt_closure`;
-  the thunk reads `orig`, the closure it adapts, from its first parameter.
+  the thunk reads `orig`, the closure it adapts, from its first parameter. The bootstrap gives a known function's
+  adapter a static `QAdaptClosure` instead, whose thunk calls the function's closure itself (for an imported member,
+  read from its module's record, with `orig` null).
 - **A run-time adapter's** (`quest_adapt_<tag>`, §6.4): `QFunAdapterClosure { fn, orig, from, to, direct }`, layout
   `quest_layout_adapter_closure`.
 

@@ -902,26 +902,30 @@ In element.quest (§12), the adapter that lets the generic `argmax` call `string
 <!-- excerpt: examples/argmax/element.quest codegen_c -->
 ```c
 ...
+static Q_UNUSED QAdaptClosure qs_adapt_closure = { (void *)qa_adapt, NULL };
+...
 static Q_UNUSED QVal qa_adapt(void *_raw_env, QVal qa_0) {
-    const QClosure *orig = ((const QAdaptClosure *)_raw_env)->orig;
+    const QClosure *orig = (const QClosure *)(*((QClosure * *)((char *)qm_string.val + ((const ... *)qm_string.dict)->offset_length)));
+    (void)_raw_env;
     QInt _t2;
     _t2 = ((QInt (*)(void *, QString *))(orig->fn))((void *)orig, ((QString *)(qa_0.p)));
     return ((QVal){ .i = (int64_t)(_t2) });
 }
 ...
-    _t3 = (QAdaptClosure *)quest_alloc(sizeof(QAdaptClosure), &quest_layout_adapt_closure);
-    _t3->fn = (void *)qa_adapt;
-    _t3->orig = (const QClosure *)(g_t);
-    g_t_3 = ((QClosure *)_t3);
-...
+    g_t_3 = ((QClosure *)&qs_adapt_closure);
+    g_t_4 = ((QClosure *)&qs_adapt_2_closure);
     g_longest = qf_argmax(NULL, &quest_type_String, &quest_type_Int, g_words, g_t_3, g_t_4);
     g_longest_2 = ((QString *)(g_longest.p));
 ...
 ```
 
-The adapter is itself a closure, which holds the original closure, `string.length`, after its code pointer: it unwraps its word
-argument into a string pointer, calls the original, and wraps the integer result in a word. The call passes the
-descriptors of `String` and `Int` before the arguments, and the result is unwrapped from its word. Every call of
+The adapter is itself a closure. Since `string.length` is known where it is converted (an imported module's member,
+which the module makes once), the adapter's closure is static, the same one at each conversion, and its function reads
+the member from the module's record when called: it unwraps its word argument into a string pointer, calls the
+original, and wraps the integer result in a word. `{>}`, a builtin, gets one too (`qs_adapt_2_closure`, holding the
+builtin's static closure). A closure that is not known, one with captures, is wrapped in an adapter closure allocated
+at each conversion, which holds the original after the code pointer. The call passes the descriptors of `String` and
+`Int` before the arguments, and the result is unwrapped from its word. Every call of
 `key` and `isGreater` inside `argmax` goes through an adapter, which is the time specialization saves.
 
 ---

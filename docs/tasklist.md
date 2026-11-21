@@ -49,30 +49,6 @@ of variables across units finds it cannot happen.
 
 ---
 
-
-## The bootstrap's C gives a converted known function a new adapter each time
-
-**Problem.** Passing a program's own function to a generic one twice and comparing the two, as in
-
-```
-let same(A::TYPE f: All(x: A y: A) Int g: All(x: A y: A) Int): Bool = f is g
-let own(x: Int y: Int): Int = x - y
-same(:Int own own)
-```
-
-gives `true` in both interpreters and in the self-hosted compiler's code, whose thunk pass makes a known function's
-adapter a static closure ([ir.md](ir.md) §8.4.1), and `false` in the bootstrap's C, whose printer allocates the
-adapter's closure at each conversion. The same holds for an imported function (`sort.intCompare`) since the
-adapter-closures plan's first step.
-
-**Where to start.** The bootstrap's adapt plans, `codegen/c/printer.py`'s `convert` (`case "adapt"`) and `adapter`:
-for a known function, or an imported member, a static closure of an adapter that calls it directly, as `ir/thunks`
-does.
-
-**Done when.** A shared test that compares converted functions with `is` gives the same answer in every phase.
-
----
-
 ## A tag test that a dominating `?tag` decides is made again
 
 **Problem.** In `if o?made then o!made.x := v end`, the tag is tested twice: `o?made` is an `is_tag`, and `o!made`,

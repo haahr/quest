@@ -1,0 +1,35 @@
+(* A known function converted twice to the uniform signature of a generic
+ * function's type parameters is the same value both times, in every phase:
+ * the interpreters convert nothing, and the compilers give a known function's
+ * adapter one static closure (docs/ir.md section 8.4.1). The program's own
+ * functions at Int and at String, a lambda without captures bound by a let,
+ * a builtin ({-}), and an imported module's member (sort.intCompare), each
+ * compared with `is` after two conversions, and in a function called several
+ * times; and two different functions, which stay different. *)
+
+import writer : Writer;
+import conv : Conv;
+import util/sort : util/Sort;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+let same(A::TYPE f: All(x: A y: A) Int g: All(x: A y: A) Int): Bool = f is g;
+
+let own(x: Int y: Int): Int = x - y;
+let other(x: Int y: Int): Int = y - x;
+let ownString(x: String y: String): Int = 0;
+
+print("own " <> conv.bool(same(:Int own own)));
+print("imported " <> conv.bool(same(:Int sort.intCompare sort.intCompare)));
+print("strings " <> conv.bool(same(:String ownString ownString)));
+let times = fun(x: Int y: Int): Int x * y;
+print("lambda " <> conv.bool(same(:Int times times)));
+print("builtin " <> conv.bool(same(:Int {-} {-})));
+print("different " <> conv.bool(same(:Int own other)));
+print("own and imported " <> conv.bool(same(:Int own sort.intCompare)));
+
+let rec twice(k: Int): Bool =
+    if k is 0 then true
+    else same(:Int own own) andif {same(:Int sort.intCompare sort.intCompare)} andif {twice(k - 1)}
+    end;
+print("in a function " <> conv.bool(twice(3)));

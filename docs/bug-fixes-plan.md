@@ -4,8 +4,8 @@ A plan to fix every bug in [tasklist.md](tasklist.md) as of 2026-11-20, in an or
 faults go first, steps touching the same files go one after another, and investigations that may find nothing go
 last. Delete this plan when its last step lands, as each step deletes its task.
 
-**Status, 2026-11-21:** steps 0, 1, and 3 to 8 are done. Step 2 (the bootstrap's static adapters) is being done in
-another session; this plan goes when it lands. Step 8 found two faults and fixed them (an unassigned out argument,
+**Status, 2026-11-21:** steps 0 to 8 are done (step 2, the bootstrap's static adapters, in another session, with
+`language/converted_function_identity` as its test); this plan can go. Step 8 found two faults and fixed them (an unassigned out argument,
 and wasm's auto record components); its third report, the JIT's, is a task of its own.
 
 ## 1. The Task List, Sorted
@@ -16,7 +16,7 @@ and wasm's auto record components); its third report, the JIT's, is a task of it
 | :--- | :--- | :--- |
 | Closures made in a `for` loop share the loop variable | confirmed, in both treewalks only; being fixed | both |
 | An interface may declare a member twice | confirmed | both |
-| The bootstrap's C gives a converted known function a new adapter | confirmed | bootstrap |
+| The bootstrap's C gives a converted known function a new adapter | fixed | bootstrap |
 | The C printer decides where a collection can happen by reading its own C | latent: no wrong barrier known | both |
 | A failed subtyping alternative leaves its metavariables solved | latent: no program known | self-hosted; bootstrap? |
 | The IR's renaming walk misses descriptors that cloning copies | latent: may be safe by stage order | self-hosted |

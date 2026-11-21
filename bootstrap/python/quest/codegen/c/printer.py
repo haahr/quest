@@ -181,6 +181,11 @@ class CPrinter:
         # External C functions bound by lets (by variable), which are called
         # directly
         self.externals: dict[int, ir.External] = {}
+        # Imported modules' members bound by lets (by variable), whose adapted
+        # conversions are static (known_source)
+        self.members: dict[int, ir.ModuleMember] = {}
+        # Builtins bound by lets (by variable), each a static closure
+        self.builtins: dict[int, ir.Builtin] = {}
         self.handler_vars: set[int] = set()
         # The pairs of tuple types converted by casts (whose layouts agree,
         # which the C asserts)
@@ -653,7 +658,7 @@ class CPrinter:
                 if plan.kind == "box" and isinstance(v, ir.Var) and v.boxed and not v.mutable:
                     # A box is a record's or variant's QVal word
                     return shape_slot_to_qval(self.atom(v), shape(plan.source))
-                return self.convert(self.atom(v), plan)
+                return self.convert(self.atom(v), plan, v)
             case ir.MakeException(name=name):
                 return call("quest_alloc_exception", [c_string(name)])
             case ir.ExceptionPayload(exception=e):
@@ -752,7 +757,7 @@ class CPrinter:
                 return shape_qval_to_slot(f"({arr}->data[{idx}])", self.element_shape(a))
         raise NotImplementedError(f"C printing of {type(o).__name__}")
 
-    def convert(self, c: str, plan: ir.Plan) -> str:
+    def convert(self, c: str, plan: ir.Plan, source: Optional[ir.Atom] = None) -> str:
         """The C expression for the value of C expression c converted as plan
         says: the C for a `convert` operation, whose plan the represent pass
         chose (_plan in ir/represent.py; ir.Plan lists the kinds). A plan that
@@ -785,7 +790,11 @@ class CPrinter:
           two types (quest_convert), through a QVal;
         - adapt: a closure wrapped in a new closure whose function is a thunk
           (adapter) converting the arguments and the result, and whose
-          environment is the original closure;
+          environment is the original closure; when source, the IR atom
+          converted, is a known function (known_source), a static closure of
+          an adapter calling it, the same one at each conversion, as the
+          self-hosted compiler's thunk pass makes (docs/ir.md section 8.4.1),
+          so that two conversions of one function are the same value;
         - copy: a new tuple, each component read from the source and converted
           by its own plan."""
         match plan.kind:
@@ -818,6 +827,8 @@ class CPrinter:
                 converted = f"quest_convert({qval_wrap(c, plan.source)}, {source_d}, {target_d})"
                 return qval_unwrap(converted, plan.target, self.ctx)
             case "adapt":
+                if source is not None and (known := self.known_source(source)) is not None:
+                    return self.static_adapter(plan, *known)
                 thunk = self.adapter(plan)
                 clos = self.temp("QAdaptClosure *")
                 self.emit(f"{clos} = (QAdaptClosure *)quest_alloc(sizeof(QAdaptClosure), &quest_layout_adapt_closure);")
@@ -910,10 +921,12 @@ class CPrinter:
         self.thunk_decls.append(sig + ";")
         self.thunk_defs.extend([sig + " {", *body, "}", ""])
 
-    def adapter(self, plan: ir.Plan) -> str:
+    def adapter(self, plan: ir.Plan, known: Optional[str] = None) -> str:
         """The thunk adapting a closure of plan.source's type to plan.target's
-        (an adapt plan)."""
-        key = ("adapt", type_identity_key(plan.source), type_identity_key(plan.target), self.layout_key(plan.layout))
+        (an adapt plan): of the closure its environment holds, or, when known,
+        of the closure that C expression gives (static_adapter)."""
+        key = ("adapt", type_identity_key(plan.source), type_identity_key(plan.target), self.layout_key(plan.layout),
+               known)
         if key in self.thunks:
             return self.thunks[key]
         name = self.fresh_name("qa_adapt")
@@ -930,9 +943,57 @@ class CPrinter:
             fn = f"(({closure_fn_ptr_type(plan.source, self.ctx)})(orig->fn))"
             self.finish_thunk_call(call(fn, ['(void *)orig'] + descs + args), s_result, t_result, plan.fields[-1])
             ret = "void" if self.is_ok(t_result) else self.c_type(t_result)
-            self.thunk(name, ret, decls, ["const QClosure *orig = ((const QAdaptClosure *)_raw_env)->orig;"]
-                       + [f"(void){d};" for d in descs])
+            orig = "((const QAdaptClosure *)_raw_env)->orig" if known is None else f"(const QClosure *){known}"
+            self.thunk(name, ret, decls, [f"const QClosure *orig = {orig};"]
+                       + ([] if known is None else ["(void)_raw_env;"]) + [f"(void){d};" for d in descs])
         return name
+
+    def known_source(self, v: ir.Atom) -> Optional[tuple[tuple, Optional[str], Any]]:
+        """Whether v, converted, is a function known where it is printed: a
+        closure of a function without captures or type arguments, a builtin,
+        an external C function, or an imported module's member (whose closure
+        the module makes once). Gives its key, the constant C expression of its closure
+        (None for an imported member, read where the adapter calls it), and
+        the member."""
+        if not isinstance(v, ir.Var) or v.mutable:
+            return None
+        member = self.members.get(id(v))
+        if member is not None and isinstance(member.module, ir.Module):
+            # This unit's own module: the member is the variable it binds
+            v = member.module.members[member.member]
+            member = None
+        if member is not None:
+            return ("member", member.module.canonical_path, member.member), None, member
+        closure = self.closures.get(id(v))
+        if closure is not None and not closure.captures and not closure.type_args:
+            code = self.code_name(closure.code)
+            return ("function", code), f"(&{code}_closure)", None
+        builtin = self.builtins.get(id(v))
+        if builtin is not None:
+            return ("builtin", builtin.name), f"(&{mangle_ident(builtin.name)}_closure)", None
+        external = self.externals.get(id(v))
+        if external is not None:
+            return ("external", external.symbol), self.external_closure(external, v.type), None
+        return None
+
+    def static_adapter(self, plan: ir.Plan, key: tuple, orig: Optional[str], member) -> str:
+        """The static closure of an adapter of a known function (known_source)
+        to plan.target's type: one for each function and plan in the unit."""
+        full = ("static_adapt", key, type_identity_key(plan.source), type_identity_key(plan.target),
+                self.layout_key(plan.layout))
+        if full not in self.thunks:
+            if orig is None:
+                with self.auxiliary():
+                    read = self.module_member(member.module, member.member)
+                thunk = self.adapter(plan, read)
+            else:
+                thunk = self.adapter(plan, orig)
+            name = self.fresh_name("qs_adapt")
+            self.thunks[full] = name
+            orig_c = "NULL" if orig is None else f"(const QClosure *){orig}"
+            self.thunk_decls.append(f"static Q_UNUSED QAdaptClosure {name}_closure = "
+                                    f"{{ (void *){thunk}, {orig_c} }};")
+        return f"((QClosure *)&{self.thunks[full]}_closure)"
 
     def finish_thunk_call(self, called: str, source_result: QType, target_result: QType, result_plan) -> None:
         if self.is_ok(target_result):
@@ -2008,6 +2069,10 @@ class CPrinter:
                 elif isinstance(s, ir.Let) and isinstance(s.value, ir.External) and self.is_function(s.var.type):
                     # Called directly
                     self.externals[id(s.var)] = s.value
+                elif isinstance(s, ir.Let) and isinstance(s.value, ir.ModuleMember) and s.value.member is not None:
+                    self.members[id(s.var)] = s.value
+                elif isinstance(s, ir.Let) and isinstance(s.value, ir.Builtin):
+                    self.builtins[id(s.var)] = s.value
 
         functions = []
         for f in self.unit.functions:

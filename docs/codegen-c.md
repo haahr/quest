@@ -576,7 +576,10 @@ are lowered as follows:
 - **Closure Adaptation Thunks (`adapt` plans, ir.md §8.3):** When packaging or coercing a tuple containing closures
   whose concrete signatures differ from the abstract interface signature (e.g., `create(init: Int): Counter` where
   `Counter = Int` coerced to `create(init: Int): A`), the printer makes static adaptation thunks
-  (`qa_adapt`), whose closure (`QAdaptClosure`) holds the original closure. The thunk calls it, unwraps any `QVal` arguments with
+  (`qa_adapt`), whose closure (`QAdaptClosure`) holds the original closure; for a known function (a closure without
+  captures or type arguments, a builtin, an external, or an imported module's member) the closure is static
+  (`qs_adapt_N_closure`), one for each function and plan, so that converting a function twice gives the same value, as
+  in the self-hosted compiler (ir.md §8.4.1). The thunk calls it, unwraps any `QVal` arguments with
   `qval_unwrap`, invokes the underlying native function, and wraps any abstract return value with `qval_wrap`. A thunk
   is also made when a closure is used at a function supertype whose arguments or result need converting (records,
   variants, options, tuples, functions): it coerces each argument from the target parameter type to the closure's
