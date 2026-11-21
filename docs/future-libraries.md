@@ -36,10 +36,8 @@ and a wasm counterpart (marked "runtime" below).
 
 ## Numbers
 
-- **Exact arithmetic, `util/rational`** (Python's `fractions`). Fractions are a thin layer over `util/bignum`;
-  decimal arithmetic (Python's `decimal`) would be a larger one.
-- **Statistics, `util/stats`** (Python's `statistics`). Mean, median, variance, and percentiles, which the benchmark
-  tools compute in Python today.
+- **Decimal arithmetic, `util/decimal`** (Python's `decimal`). Fixed and floating decimal numbers with a chosen
+  precision and rounding, over `util/bignum`; larger than `util/rational` (libraries.md §1.18), which is exact.
 
 ## Collections
 

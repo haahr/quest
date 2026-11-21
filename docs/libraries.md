@@ -1104,6 +1104,174 @@ export
 end
 ```
 
+### 1.18. `util/rational : util/Rational`
+
+Exact rational numbers, as Python's `fractions.Fraction`: a numerator and a positive denominator of any size
+(`util/bignum`), in lowest terms, so equal numbers have equal parts.
+
+```quest
+let third = rational.make(1 3);
+rational.toString(rational.add(third rational.make(1 6)))    (* "1/2" *)
+```
+
+- **Every operation is exact; only `toReal` rounds.** `add`, `sub`, `mul`, `div`, `neg`, `abs`, `inv`, and `pow` (of
+  either sign) reduce by the parts' gcd; `div`, `inv`, a zero denominator, and zero to a negative power raise `divide`.
+  `floor`, `ceil`, `trunc`, and `round` (ties to even, as Python's) give bignums.
+- **Reals convert exactly, and back correctly rounded.** `fromReal` gives a finite real's exact value (every one is a
+  fraction with a power of two below), as `Fraction(x)` does, and raises `error` for an infinity or a NaN. `toReal`
+  rounds to the nearest real, ties to even, as `float(Fraction)` does: the magnitudes' quotient scaled to 54 to 56
+  bits, rounded to 53 by hand with the remainder breaking a tie, then scaled back by a power of two. It is exact for
+  results of normal magnitude and gives an infinity past the largest real; a subnormal result may be off in its last
+  bit (untested).
+- **`limitDenominator`** is Python 3.11's `limit_denominator`: the continued fraction's convergents, then the closer of
+  the last one and the best semiconvergent.
+- **Strings** are `util/bignum`'s, `~` for negatives: `toString` writes `"~3/4"` or `"5"`; `fromString` reads an
+  integer, `"num/den"`, or a decimal (`"1.25"`, `".5"`), each with an optional `~`, `-`, or `+`, and gives none for
+  anything else or a zero denominator. `toDecimal(t places)` writes a fixed number of places, the last rounded half
+  to even.
+- **`hash`** agrees with `equal`, for hash maps; it hashes the parts' decimal strings, so it costs their conversion.
+- **Left out:** Python's arithmetic mixing fractions with ints and floats (Quest has no overloading; `fromInt` and
+  `fromReal` say where a conversion happens), `Decimal` input, and `__format__`.
+
+`tests/source/stdlib/rational_operations.quest` tests lowest terms and signs, the arithmetic, the roundings with
+negatives and ties, reals both ways (ties to even, 2000 round trips, an overflow), `limitDenominator`, the strings
+both ways, `toDecimal`, `hash`, and the errors; every line was checked against Python 3.11's `fractions`.
+
+#### Interface Summary
+
+```quest
+interface Rational
+import
+    util/bignum : util/Bignum
+    util/maybe : util/Maybe
+    word: Word
+export
+    T::TYPE
+    divide: Exception
+    error: Exception
+    zero: T
+    one: T
+    make(num: Int den: Int): T
+    fromBignums(num: bignum.T den: bignum.T): T
+    fromInt(n: Int): T
+    fromBignum(n: bignum.T): T
+    fromReal(r: Real): T
+    numerator(t: T): bignum.T
+    denominator(t: T): bignum.T
+    add(a: T b: T): T
+    sub(a: T b: T): T
+    mul(a: T b: T): T
+    div(a: T b: T): T
+    neg(t: T): T
+    abs(t: T): T
+    inv(t: T): T
+    pow(t: T n: Int): T
+    equal(a: T b: T): Bool
+    less(a: T b: T): Bool
+    compare(a: T b: T): Int
+    sign(t: T): Int
+    isInteger(t: T): Bool
+    floor(t: T): bignum.T
+    ceil(t: T): bignum.T
+    trunc(t: T): bignum.T
+    round(t: T): bignum.T
+    toReal(t: T): Real
+    limitDenominator(t: T maxDenominator: Int): T
+    toString(t: T): String
+    fromString(s: String): maybe.T(T)
+    toDecimal(t: T places: Int): String
+    hash(t: T): word.T
+end
+```
+
+### 1.19. `util/stats : util/Stats`
+
+Statistics of real data, as Python 3.11's `statistics`, function by function, so that the results are Python's to the
+last bit:
+
+```quest
+let heights = iter.map(vector.iter(people) fun(p: Person): Real p.height);
+stats.mean(heights)
+```
+
+- **Data comes as an iterator** (§1.14), as Python's functions take any iterable, so a vector, a map's values, or a
+  pipeline is read without being copied; an array is `iter.ofArray(xs)`. An iterator is one-shot, so two statistics
+  of the same data take two iterators of an array or a vector.
+- **One pass, or an array form.** `fsum`, the means, the variances and standard deviations, `mode`, and `multimode`
+  read the iterator as they go. The seven that need all the data at once collect it (`iter.toArray`) and call an
+  array form, exported too, for data already in an array: `median`, `medianLow`, `medianHigh`, and `quantiles` sort,
+  and `covariance`, `correlation`, and `linearRegression` pass twice. The array forms are named for what they are
+  computed from, `medianOfArray` (the median of an array), not `medianArray` (which could read as an array that is a
+  median), nor `arrayMedian` (`lib/`'s container prefixes, as in `iterFrom`, name what is made); they never change
+  their arrays.
+- **Exact where Python is.** `mean`, `variance`, `pvariance`, and `harmonicMean` sum the data's exact values as
+  rationals (§1.18) and round once, as Python's `_sum` and `_ss` do (the sum of the squared deviations is the sum of
+  the squares less the square of the sum over n). `stdev` and `pstdev` are Python's `_float_sqrt_of_frac`: the
+  integer square root of the exact variance, scaled to 2 × 53 + 3 bits and rounded to odd, so the one rounding to a
+  real is correct. These cost a rational sum, a gcd per value, as Python's do.
+- **In reals where Python is.** `fsum` is CPython's `math.fsum` (Shewchuk's partials and its half-way correction),
+  correctly rounded; `fmean` is `fsum` over n, the fast mean; `covariance`, `correlation`, and `linearRegression` are
+  computed over it with Python's formulas; `geometricMean` is `exp` of the `fmean` of the logs, so its last bit is the
+  platform's `exp` and `log`'s.
+- **`median`, `quantiles`, and `mode` are Python's code:** the even median is the mean of the middle two;
+  `quantiles(it n inclusive)` is Python's exclusive method (a sample) or inclusive one (a population), with its
+  clamping and exact integer interpolation weights. `mode` and `multimode` are generic over any `A` with an `equal`
+  and a `hash`, counting in a `hashMap`, which keeps first-seen order, so `mode`'s tie goes to the first value seen.
+- **Errors are one exception, `error`,** Python's `StatisticsError`: too few values, a negative value for
+  `harmonicMean` (where a zero before any negative gives 0, as in Python), a zero or negative one for
+  `geometricMean`, two variables of different lengths, and a constant variable for `correlation` and
+  `linearRegression`. Data must be finite for the exact functions: `rational.fromReal` raises `rational.error` for an
+  infinity or a NaN.
+- **Left out:** `NormalDist`, `median_grouped`, weights, a mean passed in (`xbar`, `mu`), `linear_regression`'s
+  `proportional`, and `Decimal` or `Fraction` data (a rational version of each function would be a module of its
+  own). `util/stats` and `util/rational` each have their own small bit length; `stats` its own integer square root,
+  which `util/bignum` could gain.
+
+`tests/source/stdlib/stats_operations.quest` tests every function on Python's documentation examples and on data
+where exact and naive arithmetic part (values that cancel, a variance of values offset by 4e9), the medians, `mode`'s
+tie, both quantile methods, the array forms, a vector and pipelines as sources, and the errors. Every line was checked
+against Python 3.11's `statistics`; `geometricMean`'s is printed to nine places, since `exp` and `log` may differ in
+their last bit between backends.
+
+#### Interface Summary
+
+```quest
+interface Stats
+import
+    util/iter : util/Iter
+    word: Word
+export
+    error: Exception
+    Def Regression = Record slope: Real intercept: Real end
+    fromInts(it: iter.T(Int)): iter.T(Real)
+    fsum(it: iter.T(Real)): Real
+    mean(it: iter.T(Real)): Real
+    fmean(it: iter.T(Real)): Real
+    geometricMean(it: iter.T(Real)): Real
+    harmonicMean(it: iter.T(Real)): Real
+    median(it: iter.T(Real)): Real
+    medianLow(it: iter.T(Real)): Real
+    medianHigh(it: iter.T(Real)): Real
+    medianOfArray(xs: Array(Real)): Real
+    medianLowOfArray(xs: Array(Real)): Real
+    medianHighOfArray(xs: Array(Real)): Real
+    mode: All(A::TYPE) All(it: iter.T(A) equal: All(x: A y: A) Bool hash: All(x: A) word.T) A
+    multimode: All(A::TYPE) All(it: iter.T(A) equal: All(x: A y: A) Bool hash: All(x: A) word.T) Array(A)
+    quantiles(it: iter.T(Real) n: Int inclusive: Bool): Array(Real)
+    quantilesOfArray(xs: Array(Real) n: Int inclusive: Bool): Array(Real)
+    variance(it: iter.T(Real)): Real
+    pvariance(it: iter.T(Real)): Real
+    stdev(it: iter.T(Real)): Real
+    pstdev(it: iter.T(Real)): Real
+    covariance(x: iter.T(Real) y: iter.T(Real)): Real
+    covarianceOfArray(x: Array(Real) y: Array(Real)): Real
+    correlation(x: iter.T(Real) y: iter.T(Real)): Real
+    correlationOfArray(x: Array(Real) y: Array(Real)): Real
+    linearRegression(x: iter.T(Real) y: iter.T(Real)): Regression
+    linearRegressionOfArray(x: Array(Real) y: Array(Real)): Regression
+end
+```
+
 ---
 
 ## 2. Collections (`lib/collections/`)

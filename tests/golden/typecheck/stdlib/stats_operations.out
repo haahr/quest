@@ -1,0 +1,2287 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('stats') : 'Stats')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('iter') : 'Iter')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('vector') : 'Vector')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('hash') : 'Hash')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('stringOp') : 'StringOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('real') : 'RealOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('word') : 'Word')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'r' :type Fun(x: Real): String
+      :value (TypedFun :params (('x' : Real)) :type Fun(x: Real): String
+        :body (TypedApp :type String
+          :func (TypedSelect 'real' :type Fun(r: Real): String
+            :target (TypedVar 'conv' :type Module 'conv'))
+          :args (
+            (TypedVar 'x' :type Real)
+          ))))
+    (TypedLetValue 'reals' :type Fun(a: Array(Real)): String
+      :value (TypedFun :params (('a' : Array(Real))) :type Fun(a: Array(Real)): String
+        :body (TypedBlock :type String
+          :bindings (
+            (TypedLetValue 'text' :type String
+              :value (TypedString '[' :type String))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [Real] :type Fun(a: Array(Real)): Int
+                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                    :args (
+                      (TypedVar 'a' :type Array(Real))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedAssign
+                  :target (TypedVar 'text' :type Var(String))
+                  :value (TypedInfix '<>' :type String
+                    :left (TypedDerefCell :type String
+                      :target (TypedVar 'text' :type Var(String)))
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedString ' ' :type String)
+                      :right (TypedApp :type String
+                        :func (TypedSelect 'real' :type Fun(r: Real): String
+                          :target (TypedVar 'conv' :type Module 'conv'))
+                        :args (
+                          (TypedIndex :type Real
+                            :target (TypedVar 'a' :type Array(Real))
+                            :index (TypedVar 'i' :type Int))
+                        )))))))
+          )
+          :result (TypedInfix '<>' :type String
+            :left (TypedDerefCell :type String
+              :target (TypedVar 'text' :type Var(String)))
+            :right (TypedString ' ]' :type String)))))
+    (TypedLetValue 'same' :type Fun(a: Real b: Real): Bool
+      :value (TypedFun :params (('a' : Real) ('b' : Real)) :type Fun(a: Real b: Real): Bool
+        :body (TypedIf :type Bool
+          :cond (TypedInfix '<<=' :type Bool
+            :left (TypedVar 'a' :type Real)
+            :right (TypedVar 'b' :type Real))
+          :then (TypedInfix '>>=' :type Bool
+            :left (TypedVar 'a' :type Real)
+            :right (TypedVar 'b' :type Real))
+          :else (TypedBool false))))
+    (TypedLetValue 'realHash' :type Fun(x: Real): word.T
+      :value (TypedFun :params (('x' : Real)) :type Fun(x: Real): word.T
+        :body (TypedApp :type word.T
+          :func (TypedSelect 'string' :type Fun(s: String): word.T
+            :target (TypedVar 'hash' :type Module 'hash'))
+          :args (
+            (TypedApp :type String
+              :func (TypedSelect 'real' :type Fun(r: Real): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedVar 'x' :type Real)
+              ))
+          ))))
+    (TypedLetValue 'nine' :type Fun(x: Real): String
+      :value (TypedFun :params (('x' : Real)) :type Fun(x: Real): String
+        :body (TypedApp :type String
+          :func (TypedSelect 'format' :type Fun(r: Real style: Char digits: Int): String
+            :target (TypedVar 'real' :type Module 'real'))
+          :args (
+            (TypedVar 'x' :type Real)
+            (TypedChar 'f' :type Char)
+            (TypedInt 9 :type Int)
+          ))))
+    (TypedLetValue 'it' :type Fun(a: Array(Real)): iter.T(Real)
+      :value (TypedFun :params (('a' : Array(Real))) :type Fun(a: Array(Real)): iter.T(Real)
+        :body (TypedApp :type iter.T(Real)
+          :func (TypedTypeApp [Real] :type Fun(a: Array(Real)): iter.T(Real)
+            :func (TypedSelect 'ofArray' :type All(A :: TYPE) Fun(a: Array(A)): iter.T(A)
+              :target (TypedVar 'iter' :type Module 'iter')))
+          :args (
+            (TypedVar 'a' :type Array(Real))
+          ))))
+    (TypedLetValue 'ints' :type Fun(a: Array(Int)): Array(Real)
+      :value (TypedFun :params (('a' : Array(Int))) :type Fun(a: Array(Int)): Array(Real)
+        :body (TypedApp :type Array(Real)
+          :func (TypedTypeApp [Real] :type Fun(it: iter.T(Real)): Array(Real)
+            :func (TypedSelect 'toArray' :type All(A :: TYPE) Fun(it: iter.T(A)): Array(A)
+              :target (TypedVar 'iter' :type Module 'iter')))
+          :args (
+            (TypedApp :type iter.T(Real)
+              :func (TypedSelect 'fromInts' :type Fun(it: iter.T(Int)): iter.T(Real)
+                :target (TypedVar 'stats' :type Module 'stats'))
+              :args (
+                (TypedApp :type iter.T(Int)
+                  :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): iter.T(Int)
+                    :func (TypedSelect 'ofArray' :type All(A :: TYPE) Fun(a: Array(A)): iter.T(A)
+                      :target (TypedVar 'iter' :type Module 'iter')))
+                  :args (
+                    (TypedVar 'a' :type Array(Int))
+                  ))
+              ))
+          ))))
+    (TypedLetValue 'docs' :type Array(Real)
+      :value (TypedArray :type Array(Real)
+        :elements (
+          (TypedReal 2.75 :type Real)
+          (TypedReal 1.75 :type Real)
+          (TypedReal 1.25 :type Real)
+          (TypedReal 0.25 :type Real)
+          (TypedReal 0.5 :type Real)
+          (TypedReal 1.25 :type Real)
+          (TypedReal 3.5 :type Real)
+        )))
+    (TypedLetValue 'population' :type Array(Real)
+      :value (TypedArray :type Array(Real)
+        :elements (
+          (TypedReal 0.0 :type Real)
+          (TypedReal 0.25 :type Real)
+          (TypedReal 0.25 :type Real)
+          (TypedReal 1.25 :type Real)
+          (TypedReal 1.5 :type Real)
+          (TypedReal 1.75 :type Real)
+          (TypedReal 2.75 :type Real)
+          (TypedReal 3.25 :type Real)
+        )))
+    (TypedLetValue 'spread' :type Array(Real)
+      :value (TypedArray :type Array(Real)
+        :elements (
+          (TypedReal 1.5 :type Real)
+          (TypedReal 2.5 :type Real)
+          (TypedReal 2.5 :type Real)
+          (TypedReal 2.75 :type Real)
+          (TypedReal 3.25 :type Real)
+          (TypedReal 4.75 :type Real)
+        )))
+    (TypedLetValue 'small' :type Array(Real)
+      :value (TypedApp :type Array(Real)
+        :func (TypedVar 'ints' :type Fun(a: Array(Int)): Array(Real))
+        :args (
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 1 :type Int)
+              (TypedInt 2 :type Int)
+              (TypedInt 3 :type Int)
+              (TypedInt 4 :type Int)
+              (TypedInt 4 :type Int)
+            ))
+        )))
+    (TypedLetValue 'tenths' :type Array(Real)
+      :value (TypedArray :type Array(Real)
+        :elements (
+          (TypedReal 0.1 :type Real)
+          (TypedReal 0.1 :type Real)
+          (TypedReal 0.1 :type Real)
+          (TypedReal 0.1 :type Real)
+          (TypedReal 0.1 :type Real)
+          (TypedReal 0.1 :type Real)
+          (TypedReal 0.1 :type Real)
+          (TypedReal 0.1 :type Real)
+          (TypedReal 0.1 :type Real)
+          (TypedReal 0.1 :type Real)
+        )))
+    (TypedLetValue 'cancelling' :type Array(Real)
+      :value (TypedArray :type Array(Real)
+        :elements (
+          (TypedReal 1e+100 :type Real)
+          (TypedReal 1.0 :type Real)
+          (TypedReal -1e+100 :type Real)
+          (TypedReal 1e-100 :type Real)
+          (TypedReal 1e+50 :type Real)
+          (TypedReal -1.0 :type Real)
+          (TypedReal -1e+50 :type Real)
+        )))
+    (TypedLetValue 'thirds' :type Array(Real)
+      :value (TypedArray :type Array(Real)
+        :elements (
+          (TypedReal 1e+16 :type Real)
+          (TypedReal 1.0 :type Real)
+          (TypedReal -1e+16 :type Real)
+        )))
+    (TypedLetValue 'offset' :type Array(Real)
+      :value (TypedArray :type Array(Real)
+        :elements (
+          (TypedReal 4000000004.0 :type Real)
+          (TypedReal 4000000007.0 :type Real)
+          (TypedReal 4000000013.0 :type Real)
+          (TypedReal 4000000016.0 :type Real)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'fsum ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'r' :type Fun(x: Real): String)
+                :args (
+                  (TypedApp :type Real
+                    :func (TypedSelect 'fsum' :type Fun(it: iter.T(Real)): Real
+                      :target (TypedVar 'stats' :type Module 'stats'))
+                    :args (
+                      (TypedApp :type iter.T(Real)
+                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                        :args (
+                          (TypedVar 'tenths' :type Array(Real))
+                        ))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'r' :type Fun(x: Real): String)
+                    :args (
+                      (TypedApp :type Real
+                        :func (TypedSelect 'fsum' :type Fun(it: iter.T(Real)): Real
+                          :target (TypedVar 'stats' :type Module 'stats'))
+                        :args (
+                          (TypedApp :type iter.T(Real)
+                            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                            :args (
+                              (TypedVar 'cancelling' :type Array(Real))
+                            ))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedVar 'r' :type Fun(x: Real): String)
+                      :args (
+                        (TypedApp :type Real
+                          :func (TypedSelect 'fsum' :type Fun(it: iter.T(Real)): Real
+                            :target (TypedVar 'stats' :type Module 'stats'))
+                          :args (
+                            (TypedApp :type iter.T(Real)
+                              :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                              :args (
+                                (TypedArray :type Array(Real)
+                                  :elements ())
+                              ))
+                          ))
+                      )))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'mean ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'r' :type Fun(x: Real): String)
+                :args (
+                  (TypedApp :type Real
+                    :func (TypedSelect 'mean' :type Fun(it: iter.T(Real)): Real
+                      :target (TypedVar 'stats' :type Module 'stats'))
+                    :args (
+                      (TypedApp :type iter.T(Real)
+                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                        :args (
+                          (TypedVar 'small' :type Array(Real))
+                        ))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'r' :type Fun(x: Real): String)
+                    :args (
+                      (TypedApp :type Real
+                        :func (TypedSelect 'mean' :type Fun(it: iter.T(Real)): Real
+                          :target (TypedVar 'stats' :type Module 'stats'))
+                        :args (
+                          (TypedApp :type iter.T(Real)
+                            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                            :args (
+                              (TypedVar 'thirds' :type Array(Real))
+                            ))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedVar 'r' :type Fun(x: Real): String)
+                        :args (
+                          (TypedApp :type Real
+                            :func (TypedSelect 'mean' :type Fun(it: iter.T(Real)): Real
+                              :target (TypedVar 'stats' :type Module 'stats'))
+                            :args (
+                              (TypedApp :type iter.T(Real)
+                                :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                :args (
+                                  (TypedVar 'docs' :type Array(Real))
+                                ))
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ', fmean ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedVar 'r' :type Fun(x: Real): String)
+                            :args (
+                              (TypedApp :type Real
+                                :func (TypedSelect 'fmean' :type Fun(it: iter.T(Real)): Real
+                                  :target (TypedVar 'stats' :type Module 'stats'))
+                                :args (
+                                  (TypedApp :type iter.T(Real)
+                                    :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                    :args (
+                                      (TypedVar 'small' :type Array(Real))
+                                    ))
+                                ))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ' ' :type String)
+                            :right (TypedInfix '<>' :type String
+                              :left (TypedApp :type String
+                                :func (TypedVar 'r' :type Fun(x: Real): String)
+                                :args (
+                                  (TypedApp :type Real
+                                    :func (TypedSelect 'fmean' :type Fun(it: iter.T(Real)): Real
+                                      :target (TypedVar 'stats' :type Module 'stats'))
+                                    :args (
+                                      (TypedApp :type iter.T(Real)
+                                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                        :args (
+                                          (TypedVar 'thirds' :type Array(Real))
+                                        ))
+                                    ))
+                                ))
+                              :right (TypedInfix '<>' :type String
+                                :left (TypedString ' ' :type String)
+                                :right (TypedApp :type String
+                                  :func (TypedVar 'r' :type Fun(x: Real): String)
+                                  :args (
+                                    (TypedApp :type Real
+                                      :func (TypedSelect 'fmean' :type Fun(it: iter.T(Real)): Real
+                                        :target (TypedVar 'stats' :type Module 'stats'))
+                                      :args (
+                                        (TypedApp :type iter.T(Real)
+                                          :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                          :args (
+                                            (TypedVar 'docs' :type Array(Real))
+                                          ))
+                                      ))
+                                  )))))))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'geometricMean ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'nine' :type Fun(x: Real): String)
+                :args (
+                  (TypedApp :type Real
+                    :func (TypedSelect 'geometricMean' :type Fun(it: iter.T(Real)): Real
+                      :target (TypedVar 'stats' :type Module 'stats'))
+                    :args (
+                      (TypedApp :type iter.T(Real)
+                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                        :args (
+                          (TypedArray :type Array(Real)
+                            :elements (
+                              (TypedReal 54.0 :type Real)
+                              (TypedReal 24.0 :type Real)
+                              (TypedReal 36.0 :type Real)
+                            ))
+                        ))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedVar 'nine' :type Fun(x: Real): String)
+                  :args (
+                    (TypedApp :type Real
+                      :func (TypedSelect 'geometricMean' :type Fun(it: iter.T(Real)): Real
+                        :target (TypedVar 'stats' :type Module 'stats'))
+                      :args (
+                        (TypedApp :type iter.T(Real)
+                          :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                          :args (
+                            (TypedVar 'docs' :type Array(Real))
+                          ))
+                      ))
+                  )))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'harmonicMean ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'r' :type Fun(x: Real): String)
+                :args (
+                  (TypedApp :type Real
+                    :func (TypedSelect 'harmonicMean' :type Fun(it: iter.T(Real)): Real
+                      :target (TypedVar 'stats' :type Module 'stats'))
+                    :args (
+                      (TypedApp :type iter.T(Real)
+                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                        :args (
+                          (TypedArray :type Array(Real)
+                            :elements (
+                              (TypedReal 40.0 :type Real)
+                              (TypedReal 60.0 :type Real)
+                            ))
+                        ))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'r' :type Fun(x: Real): String)
+                    :args (
+                      (TypedApp :type Real
+                        :func (TypedSelect 'harmonicMean' :type Fun(it: iter.T(Real)): Real
+                          :target (TypedVar 'stats' :type Module 'stats'))
+                        :args (
+                          (TypedApp :type iter.T(Real)
+                            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                            :args (
+                              (TypedArray :type Array(Real)
+                                :elements (
+                                  (TypedReal 2.5 :type Real)
+                                  (TypedReal 3.0 :type Real)
+                                  (TypedReal 10.0 :type Real)
+                                ))
+                            ))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedVar 'r' :type Fun(x: Real): String)
+                        :args (
+                          (TypedApp :type Real
+                            :func (TypedSelect 'harmonicMean' :type Fun(it: iter.T(Real)): Real
+                              :target (TypedVar 'stats' :type Module 'stats'))
+                            :args (
+                              (TypedApp :type iter.T(Real)
+                                :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                :args (
+                                  (TypedArray :type Array(Real)
+                                    :elements (
+                                      (TypedReal 1.0 :type Real)
+                                      (TypedReal 0.0 :type Real)
+                                      (TypedReal 2.0 :type Real)
+                                    ))
+                                ))
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedVar 'r' :type Fun(x: Real): String)
+                            :args (
+                              (TypedApp :type Real
+                                :func (TypedSelect 'harmonicMean' :type Fun(it: iter.T(Real)): Real
+                                  :target (TypedVar 'stats' :type Module 'stats'))
+                                :args (
+                                  (TypedApp :type iter.T(Real)
+                                    :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                    :args (
+                                      (TypedArray :type Array(Real)
+                                        :elements (
+                                          (TypedReal 7.5 :type Real)
+                                        ))
+                                    ))
+                                ))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ' ' :type String)
+                            :right (TypedApp :type String
+                              :func (TypedVar 'r' :type Fun(x: Real): String)
+                              :args (
+                                (TypedApp :type Real
+                                  :func (TypedSelect 'harmonicMean' :type Fun(it: iter.T(Real)): Real
+                                    :target (TypedVar 'stats' :type Module 'stats'))
+                                  :args (
+                                    (TypedApp :type iter.T(Real)
+                                      :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                      :args (
+                                        (TypedVar 'docs' :type Array(Real))
+                                      ))
+                                  ))
+                              )))))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'median ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'r' :type Fun(x: Real): String)
+                :args (
+                  (TypedApp :type Real
+                    :func (TypedSelect 'median' :type Fun(it: iter.T(Real)): Real
+                      :target (TypedVar 'stats' :type Module 'stats'))
+                    :args (
+                      (TypedApp :type iter.T(Real)
+                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                        :args (
+                          (TypedArray :type Array(Real)
+                            :elements (
+                              (TypedReal 5.0 :type Real)
+                              (TypedReal 1.0 :type Real)
+                              (TypedReal 3.0 :type Real)
+                            ))
+                        ))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'r' :type Fun(x: Real): String)
+                    :args (
+                      (TypedApp :type Real
+                        :func (TypedSelect 'median' :type Fun(it: iter.T(Real)): Real
+                          :target (TypedVar 'stats' :type Module 'stats'))
+                        :args (
+                          (TypedApp :type iter.T(Real)
+                            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                            :args (
+                              (TypedArray :type Array(Real)
+                                :elements (
+                                  (TypedReal 7.0 :type Real)
+                                  (TypedReal 1.0 :type Real)
+                                  (TypedReal 5.0 :type Real)
+                                  (TypedReal 3.0 :type Real)
+                                ))
+                            ))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' low ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedVar 'r' :type Fun(x: Real): String)
+                        :args (
+                          (TypedApp :type Real
+                            :func (TypedSelect 'medianLow' :type Fun(it: iter.T(Real)): Real
+                              :target (TypedVar 'stats' :type Module 'stats'))
+                            :args (
+                              (TypedApp :type iter.T(Real)
+                                :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                :args (
+                                  (TypedArray :type Array(Real)
+                                    :elements (
+                                      (TypedReal 7.0 :type Real)
+                                      (TypedReal 1.0 :type Real)
+                                      (TypedReal 5.0 :type Real)
+                                      (TypedReal 3.0 :type Real)
+                                    ))
+                                ))
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' high ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedVar 'r' :type Fun(x: Real): String)
+                            :args (
+                              (TypedApp :type Real
+                                :func (TypedSelect 'medianHigh' :type Fun(it: iter.T(Real)): Real
+                                  :target (TypedVar 'stats' :type Module 'stats'))
+                                :args (
+                                  (TypedApp :type iter.T(Real)
+                                    :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                    :args (
+                                      (TypedArray :type Array(Real)
+                                        :elements (
+                                          (TypedReal 7.0 :type Real)
+                                          (TypedReal 1.0 :type Real)
+                                          (TypedReal 5.0 :type Real)
+                                          (TypedReal 3.0 :type Real)
+                                        ))
+                                    ))
+                                ))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ' ' :type String)
+                            :right (TypedApp :type String
+                              :func (TypedVar 'r' :type Fun(x: Real): String)
+                              :args (
+                                (TypedApp :type Real
+                                  :func (TypedSelect 'median' :type Fun(it: iter.T(Real)): Real
+                                    :target (TypedVar 'stats' :type Module 'stats'))
+                                  :args (
+                                    (TypedApp :type iter.T(Real)
+                                      :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                      :args (
+                                        (TypedVar 'docs' :type Array(Real))
+                                      ))
+                                  ))
+                              )))))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'mode ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'r' :type Fun(x: Real): String)
+                :args (
+                  (TypedApp :type Real
+                    :func (TypedTypeApp [Real] :type Fun(it: iter.T(Real) equal: Fun(x: Real y: Real): Bool hash: Fun(x: Real): word.T): Real
+                      :func (TypedSelect 'mode' :type All(A :: TYPE) Fun(it: iter.T(A) equal: Fun(x: A y: A): Bool hash: Fun(x: A): word.T): A
+                        :target (TypedVar 'stats' :type Module 'stats')))
+                    :args (
+                      (TypedApp :type iter.T(Real)
+                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                        :args (
+                          (TypedArray :type Array(Real)
+                            :elements (
+                              (TypedReal 1.0 :type Real)
+                              (TypedReal 1.0 :type Real)
+                              (TypedReal 2.0 :type Real)
+                              (TypedReal 3.0 :type Real)
+                              (TypedReal 3.0 :type Real)
+                              (TypedReal 3.0 :type Real)
+                              (TypedReal 3.0 :type Real)
+                              (TypedReal 4.0 :type Real)
+                            ))
+                        ))
+                      (TypedVar 'same' :type Fun(a: Real b: Real): Bool)
+                      (TypedVar 'realHash' :type Fun(x: Real): word.T)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' tie ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'r' :type Fun(x: Real): String)
+                    :args (
+                      (TypedApp :type Real
+                        :func (TypedTypeApp [Real] :type Fun(it: iter.T(Real) equal: Fun(x: Real y: Real): Bool hash: Fun(x: Real): word.T): Real
+                          :func (TypedSelect 'mode' :type All(A :: TYPE) Fun(it: iter.T(A) equal: Fun(x: A y: A): Bool hash: Fun(x: A): word.T): A
+                            :target (TypedVar 'stats' :type Module 'stats')))
+                        :args (
+                          (TypedApp :type iter.T(Real)
+                            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                            :args (
+                              (TypedArray :type Array(Real)
+                                :elements (
+                                  (TypedReal 2.0 :type Real)
+                                  (TypedReal 2.0 :type Real)
+                                  (TypedReal 1.0 :type Real)
+                                  (TypedReal 1.0 :type Real)
+                                ))
+                            ))
+                          (TypedVar 'same' :type Fun(a: Real b: Real): Bool)
+                          (TypedVar 'realHash' :type Fun(x: Real): word.T)
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' multimode ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedVar 'reals' :type Fun(a: Array(Real)): String)
+                        :args (
+                          (TypedApp :type Array(Real)
+                            :func (TypedTypeApp [Real] :type Fun(it: iter.T(Real) equal: Fun(x: Real y: Real): Bool hash: Fun(x: Real): word.T): Array(Real)
+                              :func (TypedSelect 'multimode' :type All(A :: TYPE) Fun(it: iter.T(A) equal: Fun(x: A y: A): Bool hash: Fun(x: A): word.T): Array(A)
+                                :target (TypedVar 'stats' :type Module 'stats')))
+                            :args (
+                              (TypedApp :type iter.T(Real)
+                                :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                :args (
+                                  (TypedArray :type Array(Real)
+                                    :elements (
+                                      (TypedReal 1.0 :type Real)
+                                      (TypedReal 1.0 :type Real)
+                                      (TypedReal 2.0 :type Real)
+                                      (TypedReal 2.0 :type Real)
+                                      (TypedReal 2.0 :type Real)
+                                      (TypedReal 3.0 :type Real)
+                                      (TypedReal 4.0 :type Real)
+                                      (TypedReal 4.0 :type Real)
+                                      (TypedReal 4.0 :type Real)
+                                    ))
+                                ))
+                              (TypedVar 'same' :type Fun(a: Real b: Real): Bool)
+                              (TypedVar 'realHash' :type Fun(x: Real): word.T)
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' none ' :type String)
+                        :right (TypedApp :type String
+                          :func (TypedVar 'reals' :type Fun(a: Array(Real)): String)
+                          :args (
+                            (TypedApp :type Array(Real)
+                              :func (TypedTypeApp [Real] :type Fun(it: iter.T(Real) equal: Fun(x: Real y: Real): Bool hash: Fun(x: Real): word.T): Array(Real)
+                                :func (TypedSelect 'multimode' :type All(A :: TYPE) Fun(it: iter.T(A) equal: Fun(x: A y: A): Bool hash: Fun(x: A): word.T): Array(A)
+                                  :target (TypedVar 'stats' :type Module 'stats')))
+                              :args (
+                                (TypedApp :type iter.T(Real)
+                                  :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                  :args (
+                                    (TypedArray :type Array(Real)
+                                      :elements ())
+                                  ))
+                                (TypedVar 'same' :type Fun(a: Real b: Real): Bool)
+                                (TypedVar 'realHash' :type Fun(x: Real): word.T)
+                              ))
+                          )))))))))
+        )))
+    (TypedLetValue 'letters' :type Array(String)
+      :value (TypedArray :type Array(String)
+        :elements (
+          (TypedString 'a' :type String)
+          (TypedString 'a' :type String)
+          (TypedString 'b' :type String)
+          (TypedString 'b' :type String)
+          (TypedString 'b' :type String)
+          (TypedString 'b' :type String)
+          (TypedString 'c' :type String)
+          (TypedString 'c' :type String)
+          (TypedString 'd' :type String)
+          (TypedString 'd' :type String)
+          (TypedString 'd' :type String)
+          (TypedString 'd' :type String)
+          (TypedString 'e' :type String)
+          (TypedString 'e' :type String)
+          (TypedString 'f' :type String)
+          (TypedString 'f' :type String)
+          (TypedString 'f' :type String)
+          (TypedString 'f' :type String)
+          (TypedString 'g' :type String)
+          (TypedString 'g' :type String)
+        )))
+    (TypedLetValue 'modes' :type Array(String)
+      :value (TypedApp :type Array(String)
+        :func (TypedTypeApp [String] :type Fun(it: iter.T(String) equal: Fun(x: String y: String): Bool hash: Fun(x: String): word.T): Array(String)
+          :func (TypedSelect 'multimode' :type All(A :: TYPE) Fun(it: iter.T(A) equal: Fun(x: A y: A): Bool hash: Fun(x: A): word.T): Array(A)
+            :target (TypedVar 'stats' :type Module 'stats')))
+        :args (
+          (TypedApp :type iter.T(String)
+            :func (TypedTypeApp [String] :type Fun(a: Array(String)): iter.T(String)
+              :func (TypedSelect 'ofArray' :type All(A :: TYPE) Fun(a: Array(A)): iter.T(A)
+                :target (TypedVar 'iter' :type Module 'iter')))
+            :args (
+              (TypedVar 'letters' :type Array(String))
+            ))
+          (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+            :target (TypedVar 'stringOp' :type Module 'stringOp'))
+          (TypedSelect 'string' :type Fun(s: String): word.T
+            :target (TypedVar 'hash' :type Module 'hash'))
+        )))
+    (TypedLetValue 'modeText' :type String
+      :value (TypedString '' :type String))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [String] :type Fun(a: Array(String)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'modes' :type Array(String))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedAssign
+          :target (TypedVar 'modeText' :type Var(String))
+          :value (TypedInfix '<>' :type String
+            :left (TypedDerefCell :type String
+              :target (TypedVar 'modeText' :type Var(String)))
+            :right (TypedIndex :type String
+              :target (TypedVar 'modes' :type Array(String))
+              :index (TypedVar 'i' :type Int))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'multimode of strings ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedDerefCell :type String
+                :target (TypedVar 'modeText' :type Var(String)))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', mode ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedTypeApp [String] :type Fun(it: iter.T(String) equal: Fun(x: String y: String): Bool hash: Fun(x: String): word.T): String
+                    :func (TypedSelect 'mode' :type All(A :: TYPE) Fun(it: iter.T(A) equal: Fun(x: A y: A): Bool hash: Fun(x: A): word.T): A
+                      :target (TypedVar 'stats' :type Module 'stats')))
+                  :args (
+                    (TypedApp :type iter.T(String)
+                      :func (TypedTypeApp [String] :type Fun(a: Array(String)): iter.T(String)
+                        :func (TypedSelect 'ofArray' :type All(A :: TYPE) Fun(a: Array(A)): iter.T(A)
+                          :target (TypedVar 'iter' :type Module 'iter')))
+                      :args (
+                        (TypedVar 'letters' :type Array(String))
+                      ))
+                    (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+                      :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                    (TypedSelect 'string' :type Fun(s: String): word.T
+                      :target (TypedVar 'hash' :type Module 'hash'))
+                  )))))
+        )))
+    (TypedLetValue 'scores' :type Array(Real)
+      :value (TypedApp :type Array(Real)
+        :func (TypedVar 'ints' :type Fun(a: Array(Int)): Array(Real))
+        :args (
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 105 :type Int)
+              (TypedInt 129 :type Int)
+              (TypedInt 87 :type Int)
+              (TypedInt 86 :type Int)
+              (TypedInt 111 :type Int)
+              (TypedInt 111 :type Int)
+              (TypedInt 89 :type Int)
+              (TypedInt 81 :type Int)
+              (TypedInt 108 :type Int)
+              (TypedInt 92 :type Int)
+              (TypedInt 110 :type Int)
+              (TypedInt 100 :type Int)
+              (TypedInt 75 :type Int)
+              (TypedInt 105 :type Int)
+              (TypedInt 103 :type Int)
+              (TypedInt 109 :type Int)
+              (TypedInt 76 :type Int)
+              (TypedInt 119 :type Int)
+              (TypedInt 99 :type Int)
+              (TypedInt 91 :type Int)
+              (TypedInt 103 :type Int)
+              (TypedInt 129 :type Int)
+              (TypedInt 106 :type Int)
+              (TypedInt 101 :type Int)
+              (TypedInt 84 :type Int)
+              (TypedInt 111 :type Int)
+              (TypedInt 74 :type Int)
+              (TypedInt 87 :type Int)
+              (TypedInt 86 :type Int)
+              (TypedInt 103 :type Int)
+              (TypedInt 103 :type Int)
+              (TypedInt 106 :type Int)
+              (TypedInt 86 :type Int)
+              (TypedInt 111 :type Int)
+              (TypedInt 75 :type Int)
+              (TypedInt 87 :type Int)
+              (TypedInt 102 :type Int)
+              (TypedInt 121 :type Int)
+              (TypedInt 111 :type Int)
+              (TypedInt 88 :type Int)
+              (TypedInt 89 :type Int)
+              (TypedInt 101 :type Int)
+              (TypedInt 106 :type Int)
+              (TypedInt 95 :type Int)
+              (TypedInt 103 :type Int)
+              (TypedInt 107 :type Int)
+              (TypedInt 101 :type Int)
+              (TypedInt 81 :type Int)
+              (TypedInt 109 :type Int)
+              (TypedInt 104 :type Int)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'deciles ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'reals' :type Fun(a: Array(Real)): String)
+              :args (
+                (TypedApp :type Array(Real)
+                  :func (TypedSelect 'quantiles' :type Fun(it: iter.T(Real) n: Int inclusive: Bool): Array(Real)
+                    :target (TypedVar 'stats' :type Module 'stats'))
+                  :args (
+                    (TypedApp :type iter.T(Real)
+                      :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                      :args (
+                        (TypedVar 'scores' :type Array(Real))
+                      ))
+                    (TypedInt 10 :type Int)
+                    (TypedBool false)
+                  ))
+              )))
+        )))
+    (TypedLetValue 'ten' :type Array(Real)
+      :value (TypedApp :type Array(Real)
+        :func (TypedVar 'ints' :type Fun(a: Array(Int)): Array(Real))
+        :args (
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 1 :type Int)
+              (TypedInt 2 :type Int)
+              (TypedInt 3 :type Int)
+              (TypedInt 4 :type Int)
+              (TypedInt 5 :type Int)
+              (TypedInt 6 :type Int)
+              (TypedInt 7 :type Int)
+              (TypedInt 8 :type Int)
+              (TypedInt 9 :type Int)
+              (TypedInt 10 :type Int)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'quartiles ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'reals' :type Fun(a: Array(Real)): String)
+                :args (
+                  (TypedApp :type Array(Real)
+                    :func (TypedSelect 'quantiles' :type Fun(it: iter.T(Real) n: Int inclusive: Bool): Array(Real)
+                      :target (TypedVar 'stats' :type Module 'stats'))
+                    :args (
+                      (TypedApp :type iter.T(Real)
+                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                        :args (
+                          (TypedVar 'ten' :type Array(Real))
+                        ))
+                      (TypedInt 4 :type Int)
+                      (TypedBool false)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' inclusive ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'reals' :type Fun(a: Array(Real)): String)
+                    :args (
+                      (TypedApp :type Array(Real)
+                        :func (TypedSelect 'quantiles' :type Fun(it: iter.T(Real) n: Int inclusive: Bool): Array(Real)
+                          :target (TypedVar 'stats' :type Module 'stats'))
+                        :args (
+                          (TypedApp :type iter.T(Real)
+                            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                            :args (
+                              (TypedVar 'ten' :type Array(Real))
+                            ))
+                          (TypedInt 4 :type Int)
+                          (TypedBool true)
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' n 1 ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedVar 'reals' :type Fun(a: Array(Real)): String)
+                      :args (
+                        (TypedApp :type Array(Real)
+                          :func (TypedSelect 'quantiles' :type Fun(it: iter.T(Real) n: Int inclusive: Bool): Array(Real)
+                            :target (TypedVar 'stats' :type Module 'stats'))
+                          :args (
+                            (TypedApp :type iter.T(Real)
+                              :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                              :args (
+                                (TypedVar 'ten' :type Array(Real))
+                              ))
+                            (TypedInt 1 :type Int)
+                            (TypedBool false)
+                          ))
+                      )))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'two ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'reals' :type Fun(a: Array(Real)): String)
+                :args (
+                  (TypedApp :type Array(Real)
+                    :func (TypedSelect 'quantiles' :type Fun(it: iter.T(Real) n: Int inclusive: Bool): Array(Real)
+                      :target (TypedVar 'stats' :type Module 'stats'))
+                    :args (
+                      (TypedApp :type iter.T(Real)
+                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                        :args (
+                          (TypedArray :type Array(Real)
+                            :elements (
+                              (TypedReal 1.0 :type Real)
+                              (TypedReal 2.0 :type Real)
+                            ))
+                        ))
+                      (TypedInt 4 :type Int)
+                      (TypedBool false)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedVar 'reals' :type Fun(a: Array(Real)): String)
+                  :args (
+                    (TypedApp :type Array(Real)
+                      :func (TypedSelect 'quantiles' :type Fun(it: iter.T(Real) n: Int inclusive: Bool): Array(Real)
+                        :target (TypedVar 'stats' :type Module 'stats'))
+                      :args (
+                        (TypedApp :type iter.T(Real)
+                          :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                          :args (
+                            (TypedArray :type Array(Real)
+                              :elements (
+                                (TypedReal 1.0 :type Real)
+                                (TypedReal 2.0 :type Real)
+                              ))
+                          ))
+                        (TypedInt 4 :type Int)
+                        (TypedBool true)
+                      ))
+                  )))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'variance ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'r' :type Fun(x: Real): String)
+                :args (
+                  (TypedApp :type Real
+                    :func (TypedSelect 'variance' :type Fun(it: iter.T(Real)): Real
+                      :target (TypedVar 'stats' :type Module 'stats'))
+                    :args (
+                      (TypedApp :type iter.T(Real)
+                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                        :args (
+                          (TypedVar 'docs' :type Array(Real))
+                        ))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'r' :type Fun(x: Real): String)
+                    :args (
+                      (TypedApp :type Real
+                        :func (TypedSelect 'variance' :type Fun(it: iter.T(Real)): Real
+                          :target (TypedVar 'stats' :type Module 'stats'))
+                        :args (
+                          (TypedApp :type iter.T(Real)
+                            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                            :args (
+                              (TypedVar 'offset' :type Array(Real))
+                            ))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedVar 'r' :type Fun(x: Real): String)
+                        :args (
+                          (TypedApp :type Real
+                            :func (TypedSelect 'variance' :type Fun(it: iter.T(Real)): Real
+                              :target (TypedVar 'stats' :type Module 'stats'))
+                            :args (
+                              (TypedApp :type iter.T(Real)
+                                :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                :args (
+                                  (TypedVar 'small' :type Array(Real))
+                                ))
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ', pvariance ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedVar 'r' :type Fun(x: Real): String)
+                            :args (
+                              (TypedApp :type Real
+                                :func (TypedSelect 'pvariance' :type Fun(it: iter.T(Real)): Real
+                                  :target (TypedVar 'stats' :type Module 'stats'))
+                                :args (
+                                  (TypedApp :type iter.T(Real)
+                                    :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                    :args (
+                                      (TypedVar 'population' :type Array(Real))
+                                    ))
+                                ))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ' ' :type String)
+                            :right (TypedInfix '<>' :type String
+                              :left (TypedApp :type String
+                                :func (TypedVar 'r' :type Fun(x: Real): String)
+                                :args (
+                                  (TypedApp :type Real
+                                    :func (TypedSelect 'pvariance' :type Fun(it: iter.T(Real)): Real
+                                      :target (TypedVar 'stats' :type Module 'stats'))
+                                    :args (
+                                      (TypedApp :type iter.T(Real)
+                                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                        :args (
+                                          (TypedVar 'offset' :type Array(Real))
+                                        ))
+                                    ))
+                                ))
+                              :right (TypedInfix '<>' :type String
+                                :left (TypedString ' ' :type String)
+                                :right (TypedApp :type String
+                                  :func (TypedVar 'r' :type Fun(x: Real): String)
+                                  :args (
+                                    (TypedApp :type Real
+                                      :func (TypedSelect 'pvariance' :type Fun(it: iter.T(Real)): Real
+                                        :target (TypedVar 'stats' :type Module 'stats'))
+                                      :args (
+                                        (TypedApp :type iter.T(Real)
+                                          :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                          :args (
+                                            (TypedArray :type Array(Real)
+                                              :elements (
+                                                (TypedReal 3.0 :type Real)
+                                              ))
+                                          ))
+                                      ))
+                                  )))))))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'stdev ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'r' :type Fun(x: Real): String)
+                :args (
+                  (TypedApp :type Real
+                    :func (TypedSelect 'stdev' :type Fun(it: iter.T(Real)): Real
+                      :target (TypedVar 'stats' :type Module 'stats'))
+                    :args (
+                      (TypedApp :type iter.T(Real)
+                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                        :args (
+                          (TypedVar 'spread' :type Array(Real))
+                        ))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'r' :type Fun(x: Real): String)
+                    :args (
+                      (TypedApp :type Real
+                        :func (TypedSelect 'stdev' :type Fun(it: iter.T(Real)): Real
+                          :target (TypedVar 'stats' :type Module 'stats'))
+                        :args (
+                          (TypedApp :type iter.T(Real)
+                            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                            :args (
+                              (TypedVar 'offset' :type Array(Real))
+                            ))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedVar 'r' :type Fun(x: Real): String)
+                        :args (
+                          (TypedApp :type Real
+                            :func (TypedSelect 'stdev' :type Fun(it: iter.T(Real)): Real
+                              :target (TypedVar 'stats' :type Module 'stats'))
+                            :args (
+                              (TypedApp :type iter.T(Real)
+                                :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                :args (
+                                  (TypedVar 'docs' :type Array(Real))
+                                ))
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ', pstdev ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedVar 'r' :type Fun(x: Real): String)
+                            :args (
+                              (TypedApp :type Real
+                                :func (TypedSelect 'pstdev' :type Fun(it: iter.T(Real)): Real
+                                  :target (TypedVar 'stats' :type Module 'stats'))
+                                :args (
+                                  (TypedApp :type iter.T(Real)
+                                    :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                    :args (
+                                      (TypedVar 'spread' :type Array(Real))
+                                    ))
+                                ))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ' ' :type String)
+                            :right (TypedInfix '<>' :type String
+                              :left (TypedApp :type String
+                                :func (TypedVar 'r' :type Fun(x: Real): String)
+                                :args (
+                                  (TypedApp :type Real
+                                    :func (TypedSelect 'pstdev' :type Fun(it: iter.T(Real)): Real
+                                      :target (TypedVar 'stats' :type Module 'stats'))
+                                    :args (
+                                      (TypedApp :type iter.T(Real)
+                                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                        :args (
+                                          (TypedVar 'population' :type Array(Real))
+                                        ))
+                                    ))
+                                ))
+                              :right (TypedInfix '<>' :type String
+                                :left (TypedString ' ' :type String)
+                                :right (TypedApp :type String
+                                  :func (TypedVar 'r' :type Fun(x: Real): String)
+                                  :args (
+                                    (TypedApp :type Real
+                                      :func (TypedSelect 'pstdev' :type Fun(it: iter.T(Real)): Real
+                                        :target (TypedVar 'stats' :type Module 'stats'))
+                                      :args (
+                                        (TypedApp :type iter.T(Real)
+                                          :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                          :args (
+                                            (TypedArray :type Array(Real)
+                                              :elements (
+                                                (TypedReal 3.0 :type Real)
+                                                (TypedReal 3.0 :type Real)
+                                              ))
+                                          ))
+                                      ))
+                                  )))))))))))))
+        )))
+    (TypedLetValue 'nines' :type Array(Real)
+      :value (TypedApp :type Array(Real)
+        :func (TypedVar 'ints' :type Fun(a: Array(Int)): Array(Real))
+        :args (
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 1 :type Int)
+              (TypedInt 2 :type Int)
+              (TypedInt 3 :type Int)
+              (TypedInt 4 :type Int)
+              (TypedInt 5 :type Int)
+              (TypedInt 6 :type Int)
+              (TypedInt 7 :type Int)
+              (TypedInt 8 :type Int)
+              (TypedInt 9 :type Int)
+            ))
+        )))
+    (TypedLetValue 'cycle' :type Array(Real)
+      :value (TypedApp :type Array(Real)
+        :func (TypedVar 'ints' :type Fun(a: Array(Int)): Array(Real))
+        :args (
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 1 :type Int)
+              (TypedInt 2 :type Int)
+              (TypedInt 3 :type Int)
+              (TypedInt 1 :type Int)
+              (TypedInt 2 :type Int)
+              (TypedInt 3 :type Int)
+              (TypedInt 1 :type Int)
+              (TypedInt 2 :type Int)
+              (TypedInt 3 :type Int)
+            ))
+        )))
+    (TypedLetValue 'down' :type Array(Real)
+      :value (TypedApp :type Array(Real)
+        :func (TypedVar 'ints' :type Fun(a: Array(Int)): Array(Real))
+        :args (
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 9 :type Int)
+              (TypedInt 8 :type Int)
+              (TypedInt 7 :type Int)
+              (TypedInt 6 :type Int)
+              (TypedInt 5 :type Int)
+              (TypedInt 4 :type Int)
+              (TypedInt 3 :type Int)
+              (TypedInt 2 :type Int)
+              (TypedInt 1 :type Int)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'covariance ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'r' :type Fun(x: Real): String)
+                :args (
+                  (TypedApp :type Real
+                    :func (TypedSelect 'covariance' :type Fun(x: iter.T(Real) y: iter.T(Real)): Real
+                      :target (TypedVar 'stats' :type Module 'stats'))
+                    :args (
+                      (TypedApp :type iter.T(Real)
+                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                        :args (
+                          (TypedVar 'nines' :type Array(Real))
+                        ))
+                      (TypedApp :type iter.T(Real)
+                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                        :args (
+                          (TypedVar 'cycle' :type Array(Real))
+                        ))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'r' :type Fun(x: Real): String)
+                    :args (
+                      (TypedApp :type Real
+                        :func (TypedSelect 'covariance' :type Fun(x: iter.T(Real) y: iter.T(Real)): Real
+                          :target (TypedVar 'stats' :type Module 'stats'))
+                        :args (
+                          (TypedApp :type iter.T(Real)
+                            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                            :args (
+                              (TypedVar 'cycle' :type Array(Real))
+                            ))
+                          (TypedApp :type iter.T(Real)
+                            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                            :args (
+                              (TypedVar 'nines' :type Array(Real))
+                            ))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedVar 'r' :type Fun(x: Real): String)
+                      :args (
+                        (TypedApp :type Real
+                          :func (TypedSelect 'covariance' :type Fun(x: iter.T(Real) y: iter.T(Real)): Real
+                            :target (TypedVar 'stats' :type Module 'stats'))
+                          :args (
+                            (TypedApp :type iter.T(Real)
+                              :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                              :args (
+                                (TypedVar 'nines' :type Array(Real))
+                              ))
+                            (TypedApp :type iter.T(Real)
+                              :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                              :args (
+                                (TypedVar 'down' :type Array(Real))
+                              ))
+                          ))
+                      )))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'correlation ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'r' :type Fun(x: Real): String)
+                :args (
+                  (TypedApp :type Real
+                    :func (TypedSelect 'correlation' :type Fun(x: iter.T(Real) y: iter.T(Real)): Real
+                      :target (TypedVar 'stats' :type Module 'stats'))
+                    :args (
+                      (TypedApp :type iter.T(Real)
+                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                        :args (
+                          (TypedVar 'nines' :type Array(Real))
+                        ))
+                      (TypedApp :type iter.T(Real)
+                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                        :args (
+                          (TypedVar 'nines' :type Array(Real))
+                        ))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'r' :type Fun(x: Real): String)
+                    :args (
+                      (TypedApp :type Real
+                        :func (TypedSelect 'correlation' :type Fun(x: iter.T(Real) y: iter.T(Real)): Real
+                          :target (TypedVar 'stats' :type Module 'stats'))
+                        :args (
+                          (TypedApp :type iter.T(Real)
+                            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                            :args (
+                              (TypedVar 'nines' :type Array(Real))
+                            ))
+                          (TypedApp :type iter.T(Real)
+                            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                            :args (
+                              (TypedVar 'down' :type Array(Real))
+                            ))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedVar 'r' :type Fun(x: Real): String)
+                      :args (
+                        (TypedApp :type Real
+                          :func (TypedSelect 'correlation' :type Fun(x: iter.T(Real) y: iter.T(Real)): Real
+                            :target (TypedVar 'stats' :type Module 'stats'))
+                          :args (
+                            (TypedApp :type iter.T(Real)
+                              :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                              :args (
+                                (TypedVar 'nines' :type Array(Real))
+                              ))
+                            (TypedApp :type iter.T(Real)
+                              :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                              :args (
+                                (TypedVar 'cycle' :type Array(Real))
+                              ))
+                          ))
+                      )))))))
+        )))
+    (TypedLetValue 'years' :type Array(Real)
+      :value (TypedApp :type Array(Real)
+        :func (TypedVar 'ints' :type Fun(a: Array(Int)): Array(Real))
+        :args (
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 1971 :type Int)
+              (TypedInt 1975 :type Int)
+              (TypedInt 1979 :type Int)
+              (TypedInt 1982 :type Int)
+              (TypedInt 1983 :type Int)
+            ))
+        )))
+    (TypedLetValue 'films' :type Array(Real)
+      :value (TypedApp :type Array(Real)
+        :func (TypedVar 'ints' :type Fun(a: Array(Int)): Array(Real))
+        :args (
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 1 :type Int)
+              (TypedInt 2 :type Int)
+              (TypedInt 3 :type Int)
+              (TypedInt 4 :type Int)
+              (TypedInt 5 :type Int)
+            ))
+        )))
+    (TypedLetValue 'fit' :type Regression
+      :value (TypedApp :type Regression
+        :func (TypedSelect 'linearRegression' :type Fun(x: iter.T(Real) y: iter.T(Real)): Regression
+          :target (TypedVar 'stats' :type Module 'stats'))
+        :args (
+          (TypedApp :type iter.T(Real)
+            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+            :args (
+              (TypedVar 'years' :type Array(Real))
+            ))
+          (TypedApp :type iter.T(Real)
+            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+            :args (
+              (TypedVar 'films' :type Array(Real))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'linearRegression ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'r' :type Fun(x: Real): String)
+                :args (
+                  (TypedSelect 'slope' :type Real
+                    :target (TypedVar 'fit' :type Regression))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'r' :type Fun(x: Real): String)
+                    :args (
+                      (TypedSelect 'intercept' :type Real
+                        :target (TypedVar 'fit' :type Regression))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', 2019 ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedVar 'r' :type Fun(x: Real): String)
+                      :args (
+                        (TypedInfix '++' :type Real
+                          :left (TypedInfix '**' :type Real
+                            :left (TypedSelect 'slope' :type Real
+                              :target (TypedVar 'fit' :type Regression))
+                            :right (TypedReal 2019.0 :type Real))
+                          :right (TypedSelect 'intercept' :type Real
+                            :target (TypedVar 'fit' :type Regression)))
+                      )))))))
+        )))
+    (TypedLetValue 'unsorted' :type Array(Real)
+      :value (TypedArray :type Array(Real)
+        :elements (
+          (TypedReal 7.0 :type Real)
+          (TypedReal 1.0 :type Real)
+          (TypedReal 5.0 :type Real)
+          (TypedReal 3.0 :type Real)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'arrays ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'r' :type Fun(x: Real): String)
+                :args (
+                  (TypedApp :type Real
+                    :func (TypedSelect 'medianOfArray' :type Fun(xs: Array(Real)): Real
+                      :target (TypedVar 'stats' :type Module 'stats'))
+                    :args (
+                      (TypedVar 'unsorted' :type Array(Real))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'r' :type Fun(x: Real): String)
+                    :args (
+                      (TypedApp :type Real
+                        :func (TypedSelect 'medianLowOfArray' :type Fun(xs: Array(Real)): Real
+                          :target (TypedVar 'stats' :type Module 'stats'))
+                        :args (
+                          (TypedVar 'unsorted' :type Array(Real))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedVar 'r' :type Fun(x: Real): String)
+                        :args (
+                          (TypedApp :type Real
+                            :func (TypedSelect 'medianHighOfArray' :type Fun(xs: Array(Real)): Real
+                              :target (TypedVar 'stats' :type Module 'stats'))
+                            :args (
+                              (TypedVar 'unsorted' :type Array(Real))
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedVar 'reals' :type Fun(a: Array(Real)): String)
+                            :args (
+                              (TypedApp :type Array(Real)
+                                :func (TypedSelect 'quantilesOfArray' :type Fun(xs: Array(Real) n: Int inclusive: Bool): Array(Real)
+                                  :target (TypedVar 'stats' :type Module 'stats'))
+                                :args (
+                                  (TypedVar 'ten' :type Array(Real))
+                                  (TypedInt 4 :type Int)
+                                  (TypedBool false)
+                                ))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ' ' :type String)
+                            :right (TypedInfix '<>' :type String
+                              :left (TypedApp :type String
+                                :func (TypedVar 'r' :type Fun(x: Real): String)
+                                :args (
+                                  (TypedApp :type Real
+                                    :func (TypedSelect 'covarianceOfArray' :type Fun(x: Array(Real) y: Array(Real)): Real
+                                      :target (TypedVar 'stats' :type Module 'stats'))
+                                    :args (
+                                      (TypedVar 'nines' :type Array(Real))
+                                      (TypedVar 'cycle' :type Array(Real))
+                                    ))
+                                ))
+                              :right (TypedInfix '<>' :type String
+                                :left (TypedString ' ' :type String)
+                                :right (TypedInfix '<>' :type String
+                                  :left (TypedApp :type String
+                                    :func (TypedVar 'r' :type Fun(x: Real): String)
+                                    :args (
+                                      (TypedApp :type Real
+                                        :func (TypedSelect 'correlationOfArray' :type Fun(x: Array(Real) y: Array(Real)): Real
+                                          :target (TypedVar 'stats' :type Module 'stats'))
+                                        :args (
+                                          (TypedVar 'nines' :type Array(Real))
+                                          (TypedVar 'down' :type Array(Real))
+                                        ))
+                                    ))
+                                  :right (TypedInfix '<>' :type String
+                                    :left (TypedString ' ' :type String)
+                                    :right (TypedInfix '<>' :type String
+                                      :left (TypedApp :type String
+                                        :func (TypedVar 'r' :type Fun(x: Real): String)
+                                        :args (
+                                          (TypedSelect 'slope' :type Real
+                                            :target (TypedApp :type Regression
+                                              :func (TypedSelect 'linearRegressionOfArray' :type Fun(x: Array(Real) y: Array(Real)): Regression
+                                                :target (TypedVar 'stats' :type Module 'stats'))
+                                              :args (
+                                                (TypedVar 'years' :type Array(Real))
+                                                (TypedVar 'films' :type Array(Real))
+                                              )))
+                                        ))
+                                      :right (TypedInfix '<>' :type String
+                                        :left (TypedString ', unchanged ' :type String)
+                                        :right (TypedApp :type String
+                                          :func (TypedVar 'reals' :type Fun(a: Array(Real)): String)
+                                          :args (
+                                            (TypedVar 'unsorted' :type Array(Real))
+                                          )))))))))))))))))
+        )))
+    (TypedLetValue 'v' :type vector.T(Real)
+      :value (TypedApp :type vector.T(Real)
+        :func (TypedTypeApp [Real] :type Fun(arr: Array(Real)): vector.T(Real)
+          :func (TypedSelect 'fromArray' :type All(A :: TYPE) Fun(arr: Array(A)): vector.T(A)
+            :target (TypedVar 'vector' :type Module 'vector')))
+        :args (
+          (TypedVar 'docs' :type Array(Real))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'vector ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'r' :type Fun(x: Real): String)
+                :args (
+                  (TypedApp :type Real
+                    :func (TypedSelect 'mean' :type Fun(it: iter.T(Real)): Real
+                      :target (TypedVar 'stats' :type Module 'stats'))
+                    :args (
+                      (TypedApp :type iter.T(Real)
+                        :func (TypedTypeApp [Real] :type Fun(v: vector.T(Real)): iter.T(Real)
+                          :func (TypedSelect 'iter' :type All(A :: TYPE) Fun(v: vector.T(A)): iter.T(A)
+                            :target (TypedVar 'vector' :type Module 'vector')))
+                        :args (
+                          (TypedVar 'v' :type vector.T(Real))
+                        ))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'r' :type Fun(x: Real): String)
+                    :args (
+                      (TypedApp :type Real
+                        :func (TypedSelect 'median' :type Fun(it: iter.T(Real)): Real
+                          :target (TypedVar 'stats' :type Module 'stats'))
+                        :args (
+                          (TypedApp :type iter.T(Real)
+                            :func (TypedTypeApp [Real] :type Fun(v: vector.T(Real)): iter.T(Real)
+                              :func (TypedSelect 'iter' :type All(A :: TYPE) Fun(v: vector.T(A)): iter.T(A)
+                                :target (TypedVar 'vector' :type Module 'vector')))
+                            :args (
+                              (TypedVar 'v' :type vector.T(Real))
+                            ))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedVar 'r' :type Fun(x: Real): String)
+                      :args (
+                        (TypedApp :type Real
+                          :func (TypedSelect 'stdev' :type Fun(it: iter.T(Real)): Real
+                            :target (TypedVar 'stats' :type Module 'stats'))
+                          :args (
+                            (TypedApp :type iter.T(Real)
+                              :func (TypedTypeApp [Real] :type Fun(v: vector.T(Real)): iter.T(Real)
+                                :func (TypedSelect 'iter' :type All(A :: TYPE) Fun(v: vector.T(A)): iter.T(A)
+                                  :target (TypedVar 'vector' :type Module 'vector')))
+                              :args (
+                                (TypedVar 'v' :type vector.T(Real))
+                              ))
+                          ))
+                      )))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'pipeline ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'r' :type Fun(x: Real): String)
+                :args (
+                  (TypedApp :type Real
+                    :func (TypedSelect 'mean' :type Fun(it: iter.T(Real)): Real
+                      :target (TypedVar 'stats' :type Module 'stats'))
+                    :args (
+                      (TypedApp :type iter.T(Real)
+                        :func (TypedTypeApp [Int Real] :type Fun(it: iter.T(Int) f: Fun(a: Int): Real): iter.T(Real)
+                          :func (TypedSelect 'map' :type All(A :: TYPE B :: TYPE) Fun(it: iter.T(A) f: Fun(a: A): B): iter.T(B)
+                            :target (TypedVar 'iter' :type Module 'iter')))
+                        :args (
+                          (TypedApp :type iter.T(Int)
+                            :func (TypedSelect 'range' :type Fun(lo: Int hi: Int): iter.T(Int)
+                              :target (TypedVar 'iter' :type Module 'iter'))
+                            :args (
+                              (TypedInt 1 :type Int)
+                              (TypedInt 101 :type Int)
+                            ))
+                          (TypedFun :params (('n' : Int)) :type Fun(n: Int): Real
+                            :body (TypedApp :type Real
+                              :func (TypedSelect 'int' :type Fun(n: Int): Real
+                                :target (TypedVar 'real' :type Module 'real'))
+                              :args (
+                                (TypedInfix '*' :type Int
+                                  :left (TypedVar 'n' :type Int)
+                                  :right (TypedVar 'n' :type Int))
+                              )))
+                        ))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'r' :type Fun(x: Real): String)
+                    :args (
+                      (TypedApp :type Real
+                        :func (TypedSelect 'pvariance' :type Fun(it: iter.T(Real)): Real
+                          :target (TypedVar 'stats' :type Module 'stats'))
+                        :args (
+                          (TypedApp :type iter.T(Real)
+                            :func (TypedSelect 'fromInts' :type Fun(it: iter.T(Int)): iter.T(Real)
+                              :target (TypedVar 'stats' :type Module 'stats'))
+                            :args (
+                              (TypedApp :type iter.T(Int)
+                                :func (TypedSelect 'range' :type Fun(lo: Int hi: Int): iter.T(Int)
+                                  :target (TypedVar 'iter' :type Module 'iter'))
+                                :args (
+                                  (TypedInt 1 :type Int)
+                                  (TypedInt 11 :type Int)
+                                ))
+                            ))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedVar 'r' :type Fun(x: Real): String)
+                      :args (
+                        (TypedApp :type Real
+                          :func (TypedSelect 'median' :type Fun(it: iter.T(Real)): Real
+                            :target (TypedVar 'stats' :type Module 'stats'))
+                          :args (
+                            (TypedApp :type iter.T(Real)
+                              :func (TypedTypeApp [Real] :type Fun(it: iter.T(Real) p: Fun(a: Real): Bool): iter.T(Real)
+                                :func (TypedSelect 'filter' :type All(A :: TYPE) Fun(it: iter.T(A) p: Fun(a: A): Bool): iter.T(A)
+                                  :target (TypedVar 'iter' :type Module 'iter')))
+                              :args (
+                                (TypedApp :type iter.T(Real)
+                                  :func (TypedSelect 'fromInts' :type Fun(it: iter.T(Int)): iter.T(Real)
+                                    :target (TypedVar 'stats' :type Module 'stats'))
+                                  :args (
+                                    (TypedApp :type iter.T(Int)
+                                      :func (TypedSelect 'range' :type Fun(lo: Int hi: Int): iter.T(Int)
+                                        :target (TypedVar 'iter' :type Module 'iter'))
+                                      :args (
+                                        (TypedInt 0 :type Int)
+                                        (TypedInt 20 :type Int)
+                                      ))
+                                  ))
+                                (TypedFun :params (('x' : Real)) :type Fun(x: Real): Bool
+                                  :body (TypedInfix '>>' :type Bool
+                                    :left (TypedVar 'x' :type Real)
+                                    :right (TypedReal 4.5 :type Real)))
+                              ))
+                          ))
+                      )))))))
+        )))
+    (TypedLetValue 'raised' :type Fun(f: Fun(): Ok): String
+      :value (TypedFun :params (('f' : Fun(): Ok)) :type Fun(f: Fun(): Ok): String
+        :body (TypedTry :type String
+          :body (TypedBlock :type String
+            :bindings (
+              (TypedExprStmt
+                :expr (TypedApp :type Ok
+                  :func (TypedVar 'f' :type Fun(): Ok)
+                  :args ()))
+            )
+            :result (TypedString 'none' :type String))
+          :branches (
+            (TypedTryBranch
+              :exc_pattern (TypedSelect 'error' :type Exception
+                :target (TypedVar 'stats' :type Module 'stats'))
+              :body (TypedString 'error' :type String))
+          ))))
+    (TypedLetValue 'none' :type Array(Real)
+      :value (TypedArray :type Array(Real)
+        :elements ()))
+    (TypedLetValue 'one' :type Array(Real)
+      :value (TypedArray :type Array(Real)
+        :elements (
+          (TypedReal 1.0 :type Real)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'errors ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'raised' :type Fun(f: Fun(): Ok): String)
+                :args (
+                  (TypedFun :params () :type Fun(): Ok
+                    :body (TypedBlock :type Ok
+                      :bindings (
+                        (TypedLetValue 'x' :type Real
+                          :value (TypedApp :type Real
+                            :func (TypedSelect 'mean' :type Fun(it: iter.T(Real)): Real
+                              :target (TypedVar 'stats' :type Module 'stats'))
+                            :args (
+                              (TypedApp :type iter.T(Real)
+                                :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                :args (
+                                  (TypedVar 'none' :type Array(Real))
+                                ))
+                            )))
+                      )
+                      :result (TypedOk)))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'raised' :type Fun(f: Fun(): Ok): String)
+                    :args (
+                      (TypedFun :params () :type Fun(): Ok
+                        :body (TypedBlock :type Ok
+                          :bindings (
+                            (TypedLetValue 'x' :type Real
+                              :value (TypedApp :type Real
+                                :func (TypedSelect 'fmean' :type Fun(it: iter.T(Real)): Real
+                                  :target (TypedVar 'stats' :type Module 'stats'))
+                                :args (
+                                  (TypedApp :type iter.T(Real)
+                                    :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                    :args (
+                                      (TypedVar 'none' :type Array(Real))
+                                    ))
+                                )))
+                          )
+                          :result (TypedOk)))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedVar 'raised' :type Fun(f: Fun(): Ok): String)
+                        :args (
+                          (TypedFun :params () :type Fun(): Ok
+                            :body (TypedBlock :type Ok
+                              :bindings (
+                                (TypedLetValue 'x' :type Real
+                                  :value (TypedApp :type Real
+                                    :func (TypedSelect 'median' :type Fun(it: iter.T(Real)): Real
+                                      :target (TypedVar 'stats' :type Module 'stats'))
+                                    :args (
+                                      (TypedApp :type iter.T(Real)
+                                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                        :args (
+                                          (TypedVar 'none' :type Array(Real))
+                                        ))
+                                    )))
+                              )
+                              :result (TypedOk)))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedVar 'raised' :type Fun(f: Fun(): Ok): String)
+                            :args (
+                              (TypedFun :params () :type Fun(): Ok
+                                :body (TypedBlock :type Ok
+                                  :bindings (
+                                    (TypedLetValue 'x' :type Real
+                                      :value (TypedApp :type Real
+                                        :func (TypedTypeApp [Real] :type Fun(it: iter.T(Real) equal: Fun(x: Real y: Real): Bool hash: Fun(x: Real): word.T): Real
+                                          :func (TypedSelect 'mode' :type All(A :: TYPE) Fun(it: iter.T(A) equal: Fun(x: A y: A): Bool hash: Fun(x: A): word.T): A
+                                            :target (TypedVar 'stats' :type Module 'stats')))
+                                        :args (
+                                          (TypedApp :type iter.T(Real)
+                                            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                            :args (
+                                              (TypedVar 'none' :type Array(Real))
+                                            ))
+                                          (TypedVar 'same' :type Fun(a: Real b: Real): Bool)
+                                          (TypedVar 'realHash' :type Fun(x: Real): word.T)
+                                        )))
+                                  )
+                                  :result (TypedOk)))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ' ' :type String)
+                            :right (TypedInfix '<>' :type String
+                              :left (TypedApp :type String
+                                :func (TypedVar 'raised' :type Fun(f: Fun(): Ok): String)
+                                :args (
+                                  (TypedFun :params () :type Fun(): Ok
+                                    :body (TypedBlock :type Ok
+                                      :bindings (
+                                        (TypedLetValue 'x' :type Real
+                                          :value (TypedApp :type Real
+                                            :func (TypedSelect 'variance' :type Fun(it: iter.T(Real)): Real
+                                              :target (TypedVar 'stats' :type Module 'stats'))
+                                            :args (
+                                              (TypedApp :type iter.T(Real)
+                                                :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                                :args (
+                                                  (TypedVar 'one' :type Array(Real))
+                                                ))
+                                            )))
+                                      )
+                                      :result (TypedOk)))
+                                ))
+                              :right (TypedInfix '<>' :type String
+                                :left (TypedString ' ' :type String)
+                                :right (TypedInfix '<>' :type String
+                                  :left (TypedApp :type String
+                                    :func (TypedVar 'raised' :type Fun(f: Fun(): Ok): String)
+                                    :args (
+                                      (TypedFun :params () :type Fun(): Ok
+                                        :body (TypedBlock :type Ok
+                                          :bindings (
+                                            (TypedLetValue 'x' :type Real
+                                              :value (TypedApp :type Real
+                                                :func (TypedSelect 'stdev' :type Fun(it: iter.T(Real)): Real
+                                                  :target (TypedVar 'stats' :type Module 'stats'))
+                                                :args (
+                                                  (TypedApp :type iter.T(Real)
+                                                    :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                                    :args (
+                                                      (TypedVar 'one' :type Array(Real))
+                                                    ))
+                                                )))
+                                          )
+                                          :result (TypedOk)))
+                                    ))
+                                  :right (TypedInfix '<>' :type String
+                                    :left (TypedString ' ' :type String)
+                                    :right (TypedInfix '<>' :type String
+                                      :left (TypedApp :type String
+                                        :func (TypedVar 'raised' :type Fun(f: Fun(): Ok): String)
+                                        :args (
+                                          (TypedFun :params () :type Fun(): Ok
+                                            :body (TypedBlock :type Ok
+                                              :bindings (
+                                                (TypedLetValue 'x' :type Real
+                                                  :value (TypedApp :type Real
+                                                    :func (TypedSelect 'pvariance' :type Fun(it: iter.T(Real)): Real
+                                                      :target (TypedVar 'stats' :type Module 'stats'))
+                                                    :args (
+                                                      (TypedApp :type iter.T(Real)
+                                                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                                        :args (
+                                                          (TypedVar 'none' :type Array(Real))
+                                                        ))
+                                                    )))
+                                              )
+                                              :result (TypedOk)))
+                                        ))
+                                      :right (TypedInfix '<>' :type String
+                                        :left (TypedString ' ' :type String)
+                                        :right (TypedInfix '<>' :type String
+                                          :left (TypedApp :type String
+                                            :func (TypedVar 'raised' :type Fun(f: Fun(): Ok): String)
+                                            :args (
+                                              (TypedFun :params () :type Fun(): Ok
+                                                :body (TypedBlock :type Ok
+                                                  :bindings (
+                                                    (TypedLetValue 'x' :type Array(Real)
+                                                      :value (TypedApp :type Array(Real)
+                                                        :func (TypedSelect 'quantiles' :type Fun(it: iter.T(Real) n: Int inclusive: Bool): Array(Real)
+                                                          :target (TypedVar 'stats' :type Module 'stats'))
+                                                        :args (
+                                                          (TypedApp :type iter.T(Real)
+                                                            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                                            :args (
+                                                              (TypedVar 'ten' :type Array(Real))
+                                                            ))
+                                                          (TypedInt 0 :type Int)
+                                                          (TypedBool false)
+                                                        )))
+                                                  )
+                                                  :result (TypedOk)))
+                                            ))
+                                          :right (TypedInfix '<>' :type String
+                                            :left (TypedString ' ' :type String)
+                                            :right (TypedApp :type String
+                                              :func (TypedVar 'raised' :type Fun(f: Fun(): Ok): String)
+                                              :args (
+                                                (TypedFun :params () :type Fun(): Ok
+                                                  :body (TypedBlock :type Ok
+                                                    :bindings (
+                                                      (TypedLetValue 'x' :type Array(Real)
+                                                        :value (TypedApp :type Array(Real)
+                                                          :func (TypedSelect 'quantiles' :type Fun(it: iter.T(Real) n: Int inclusive: Bool): Array(Real)
+                                                            :target (TypedVar 'stats' :type Module 'stats'))
+                                                          :args (
+                                                            (TypedApp :type iter.T(Real)
+                                                              :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                                              :args (
+                                                                (TypedVar 'one' :type Array(Real))
+                                                              ))
+                                                            (TypedInt 4 :type Int)
+                                                            (TypedBool false)
+                                                          )))
+                                                    )
+                                                    :result (TypedOk)))
+                                              )))))))))))))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'domain ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'raised' :type Fun(f: Fun(): Ok): String)
+                :args (
+                  (TypedFun :params () :type Fun(): Ok
+                    :body (TypedBlock :type Ok
+                      :bindings (
+                        (TypedLetValue 'x' :type Real
+                          :value (TypedApp :type Real
+                            :func (TypedSelect 'harmonicMean' :type Fun(it: iter.T(Real)): Real
+                              :target (TypedVar 'stats' :type Module 'stats'))
+                            :args (
+                              (TypedApp :type iter.T(Real)
+                                :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                :args (
+                                  (TypedArray :type Array(Real)
+                                    :elements (
+                                      (TypedReal -1.0 :type Real)
+                                      (TypedReal 2.0 :type Real)
+                                    ))
+                                ))
+                            )))
+                      )
+                      :result (TypedOk)))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'raised' :type Fun(f: Fun(): Ok): String)
+                    :args (
+                      (TypedFun :params () :type Fun(): Ok
+                        :body (TypedBlock :type Ok
+                          :bindings (
+                            (TypedLetValue 'x' :type Real
+                              :value (TypedApp :type Real
+                                :func (TypedSelect 'harmonicMean' :type Fun(it: iter.T(Real)): Real
+                                  :target (TypedVar 'stats' :type Module 'stats'))
+                                :args (
+                                  (TypedApp :type iter.T(Real)
+                                    :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                    :args (
+                                      (TypedArray :type Array(Real)
+                                        :elements (
+                                          (TypedReal 0.0 :type Real)
+                                          (TypedReal -1.0 :type Real)
+                                        ))
+                                    ))
+                                )))
+                          )
+                          :result (TypedOk)))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedVar 'raised' :type Fun(f: Fun(): Ok): String)
+                        :args (
+                          (TypedFun :params () :type Fun(): Ok
+                            :body (TypedBlock :type Ok
+                              :bindings (
+                                (TypedLetValue 'x' :type Real
+                                  :value (TypedApp :type Real
+                                    :func (TypedSelect 'geometricMean' :type Fun(it: iter.T(Real)): Real
+                                      :target (TypedVar 'stats' :type Module 'stats'))
+                                    :args (
+                                      (TypedApp :type iter.T(Real)
+                                        :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                        :args (
+                                          (TypedArray :type Array(Real)
+                                            :elements (
+                                              (TypedReal 0.0 :type Real)
+                                              (TypedReal 1.0 :type Real)
+                                            ))
+                                        ))
+                                    )))
+                              )
+                              :result (TypedOk)))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedVar 'raised' :type Fun(f: Fun(): Ok): String)
+                            :args (
+                              (TypedFun :params () :type Fun(): Ok
+                                :body (TypedBlock :type Ok
+                                  :bindings (
+                                    (TypedLetValue 'x' :type Real
+                                      :value (TypedApp :type Real
+                                        :func (TypedSelect 'covariance' :type Fun(x: iter.T(Real) y: iter.T(Real)): Real
+                                          :target (TypedVar 'stats' :type Module 'stats'))
+                                        :args (
+                                          (TypedApp :type iter.T(Real)
+                                            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                            :args (
+                                              (TypedVar 'nines' :type Array(Real))
+                                            ))
+                                          (TypedApp :type iter.T(Real)
+                                            :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                            :args (
+                                              (TypedVar 'films' :type Array(Real))
+                                            ))
+                                        )))
+                                  )
+                                  :result (TypedOk)))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ' ' :type String)
+                            :right (TypedInfix '<>' :type String
+                              :left (TypedApp :type String
+                                :func (TypedVar 'raised' :type Fun(f: Fun(): Ok): String)
+                                :args (
+                                  (TypedFun :params () :type Fun(): Ok
+                                    :body (TypedBlock :type Ok
+                                      :bindings (
+                                        (TypedLetValue 'x' :type Real
+                                          :value (TypedApp :type Real
+                                            :func (TypedSelect 'correlation' :type Fun(x: iter.T(Real) y: iter.T(Real)): Real
+                                              :target (TypedVar 'stats' :type Module 'stats'))
+                                            :args (
+                                              (TypedApp :type iter.T(Real)
+                                                :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                                :args (
+                                                  (TypedVar 'nines' :type Array(Real))
+                                                ))
+                                              (TypedApp :type iter.T(Real)
+                                                :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                                :args (
+                                                  (TypedApp :type Array(Real)
+                                                    :func (TypedVar 'ints' :type Fun(a: Array(Int)): Array(Real))
+                                                    :args (
+                                                      (TypedArray :type Array(Int)
+                                                        :elements (
+                                                          (TypedInt 1 :type Int)
+                                                          (TypedInt 1 :type Int)
+                                                          (TypedInt 1 :type Int)
+                                                          (TypedInt 1 :type Int)
+                                                          (TypedInt 1 :type Int)
+                                                          (TypedInt 1 :type Int)
+                                                          (TypedInt 1 :type Int)
+                                                          (TypedInt 1 :type Int)
+                                                          (TypedInt 1 :type Int)
+                                                        ))
+                                                    ))
+                                                ))
+                                            )))
+                                      )
+                                      :result (TypedOk)))
+                                ))
+                              :right (TypedInfix '<>' :type String
+                                :left (TypedString ' ' :type String)
+                                :right (TypedApp :type String
+                                  :func (TypedVar 'raised' :type Fun(f: Fun(): Ok): String)
+                                  :args (
+                                    (TypedFun :params () :type Fun(): Ok
+                                      :body (TypedBlock :type Ok
+                                        :bindings (
+                                          (TypedLetValue 'x' :type Regression
+                                            :value (TypedApp :type Regression
+                                              :func (TypedSelect 'linearRegression' :type Fun(x: iter.T(Real) y: iter.T(Real)): Regression
+                                                :target (TypedVar 'stats' :type Module 'stats'))
+                                              :args (
+                                                (TypedApp :type iter.T(Real)
+                                                  :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                                  :args (
+                                                    (TypedApp :type Array(Real)
+                                                      :func (TypedVar 'ints' :type Fun(a: Array(Int)): Array(Real))
+                                                      :args (
+                                                        (TypedArray :type Array(Int)
+                                                          :elements (
+                                                            (TypedInt 2 :type Int)
+                                                            (TypedInt 2 :type Int)
+                                                            (TypedInt 2 :type Int)
+                                                          ))
+                                                      ))
+                                                  ))
+                                                (TypedApp :type iter.T(Real)
+                                                  :func (TypedVar 'it' :type Fun(a: Array(Real)): iter.T(Real))
+                                                  :args (
+                                                    (TypedVar 'films' :type Array(Real))
+                                                  ))
+                                              )))
+                                        )
+                                        :result (TypedOk)))
+                                  )))))))))))))
+        )))
+  ))

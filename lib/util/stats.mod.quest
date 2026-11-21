@@ -1,0 +1,381 @@
+(* Statistics of real data (docs/libraries.md section 1.19), after Python
+ * 3.11's statistics module, function by function: the exact ones sum the
+ * data's exact values as rationals and round once (util/rational's toReal),
+ * and the rest are computed in reals over fsum, a port of CPython's
+ * math.fsum. The one-pass functions read their iterator as it goes; the rest
+ * collect it (iter.toArray) and call their array forms. *)
+
+module stats : Stats
+import
+    util/iter : util/Iter
+    util/rational : util/Rational
+    util/bignum : util/Bignum
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    real: RealOp
+    word: Word
+export
+    let error: Exception = exception error: Ok end
+
+    Let Regression = Record slope: Real intercept: Real end
+
+    let fromInts(it: iter.T(Int)): iter.T(Real) = iter.map(it fun(n: Int): Real real.int(n))
+
+    let realEqual(a: Real b: Real): Bool = {a <<= b} andif {a >>= b}
+
+    (* A sum and how many values made it *)
+    Let Counted = Tuple sum: Real count: Int end
+
+    (* Shewchuk's algorithm as CPython's math_fsum has it: the partial sums,
+     * nonoverlapping and increasing in magnitude, are kept exactly (each
+     * addition split into its rounded sum and the error lost), and then added
+     * from the top down until an addition loses something, with the
+     * half-way case corrected by the sign of the next partial. The partials
+     * are the first p.count of p.at, which doubles when full. *)
+    let counted(it: iter.T(Real)): Counted =
+        begin
+            let p = tuple let var at = array of(8 0.0) let var count = 0 let var values = 0 end
+            while iter.more(it) do
+                let var x = iter.next(it)
+                p.values := p.values + 1
+                let var i = 0
+                for j = 0 upto {p.count - 1} do
+                    let var y = p.at[j]
+                    if real.abs(x) << real.abs(y) then
+                        let t = x
+                        x := y
+                        y := t
+                    end
+                    let hi = x ++ y
+                    let lo = y -- {hi -- x}
+                    if not(realEqual(lo 0.0)) then
+                        p.at[i] := lo
+                        i := i + 1
+                    end
+                    x := hi
+                end
+                if i is extent p.at then
+                    let wider = array of(2 * extent p.at 0.0)
+                    for k = 0 upto {i - 1} do wider[k] := p.at[k] end
+                    p.at := wider
+                end
+                p.at[i] := x
+                p.count := i + 1
+            end
+            let partials = p.at
+            let sum = if p.count is 0 then
+                0.0
+            else
+                let var n = p.count - 1
+                let var hi = partials[n]
+                let var lo = 0.0
+                let var stopped = false
+                while {n > 0} andif not(stopped) do
+                    let x = hi
+                    n := n - 1
+                    let y = partials[n]
+                    hi := x ++ y
+                    let yr = hi -- x
+                    lo := y -- yr
+                    if not(realEqual(lo 0.0)) then stopped := true end
+                end
+                if {n > 0} andif {{{lo << 0.0} andif {partials[n - 1] << 0.0}}
+                        orif {{lo >> 0.0} andif {partials[n - 1] >> 0.0}}} then
+                    let y = lo ** 2.0
+                    let x = hi ++ y
+                    let yr = x -- hi
+                    if realEqual(y yr) then hi := x end
+                end
+                hi
+            end
+            tuple let sum = sum let count = p.values end
+        end
+
+    let fsum(it: iter.T(Real)): Real = counted(it).sum
+
+    let needs(n: Int least: Int): Ok = if n < least then raise error end end
+
+    (* The data's exact sum, and how many values *)
+    Let Exact = Tuple sx: rational.T ss: rational.T count: Int end
+
+    (* The exact sum, the sum of the squared deviations from the mean (the sum
+     * of the squares less the square of the sum over n, as Python's _ss), and
+     * the count, in one pass *)
+    let exact(it: iter.T(Real)): Exact =
+        begin
+            let c = tuple let var sx = rational.zero let var sxx = rational.zero let var count = 0 end
+            while iter.more(it) do
+                let x = rational.fromReal(iter.next(it))
+                c.sx := rational.add(c.sx x)
+                c.sxx := rational.add(c.sxx rational.mul(x x))
+                c.count := c.count + 1
+            end
+            let ss = if c.count is 0 then rational.zero
+                else rational.sub(c.sxx rational.div(rational.mul(c.sx c.sx) rational.fromInt(c.count))) end
+            tuple let sx = c.sx let ss = ss let count = c.count end
+        end
+
+    (* Only the sum, for mean, which needs no squares *)
+    let exactSum(it: iter.T(Real)): Exact =
+        begin
+            let c = tuple let var sx = rational.zero let var count = 0 end
+            while iter.more(it) do
+                c.sx := rational.add(c.sx rational.fromReal(iter.next(it)))
+                c.count := c.count + 1
+            end
+            tuple let sx = c.sx let ss = rational.zero let count = c.count end
+        end
+
+    let mean(it: iter.T(Real)): Real =
+        begin
+            let e = exactSum(it)
+            needs(e.count 1)
+            rational.toReal(rational.div(e.sx rational.fromInt(e.count)))
+        end
+
+    let fmean(it: iter.T(Real)): Real =
+        begin
+            let c = counted(it)
+            needs(c.count 1)
+            c.sum // real.int(c.count)
+        end
+
+    let geometricMean(it: iter.T(Real)): Real =
+        real.exponential(fmean(iter.map(it fun(x: Real): Real if x <<= 0.0 then raise error end else real.log(x) end)))
+
+    (* In order, as Python's: a negative value raises error, and a zero before
+     * any negative makes the mean 0 at once; one value is itself, not the
+     * reciprocal of its reciprocal *)
+    let harmonicMean(it: iter.T(Real)): Real =
+        begin
+            let c = tuple let var total = rational.zero let var count = 0 let var first = 0.0 let var zero = false end
+            while {not(c.zero)} andif iter.more(it) do
+                let x = iter.next(it)
+                if x << 0.0 then raise error end end
+                if c.count is 0 then c.first := x end
+                c.count := c.count + 1
+                if realEqual(x 0.0) then c.zero := true
+                else c.total := rational.add(c.total rational.fromReal(1.0 // x)) end
+            end
+            needs(c.count 1)
+            if c.zero then
+                0.0
+            elsif {c.count is 1} andif not(iter.more(it)) then
+                c.first
+            else
+                rational.toReal(rational.div(rational.fromInt(c.count) c.total))
+            end
+        end
+
+    let sorted(xs: Array(Real)): Array(Real) = sort.sorted(xs sort.realCompare)
+
+    let medianOfArray(xs: Array(Real)): Real =
+        begin
+            needs(extent xs 1)
+            let s = sorted(xs)
+            let n = extent s
+            if {n % 2} is 1 then s[n / 2] else {s[{n / 2} - 1] ++ s[n / 2]} // 2.0 end
+        end
+    let medianLowOfArray(xs: Array(Real)): Real =
+        begin
+            needs(extent xs 1)
+            let s = sorted(xs)
+            let n = extent s
+            if {n % 2} is 1 then s[n / 2] else s[{n / 2} - 1] end
+        end
+    let medianHighOfArray(xs: Array(Real)): Real =
+        begin
+            needs(extent xs 1)
+            let s = sorted(xs)
+            s[extent s / 2]
+        end
+    let median(it: iter.T(Real)): Real = medianOfArray(iter.toArray(it))
+    let medianLow(it: iter.T(Real)): Real = medianLowOfArray(iter.toArray(it))
+    let medianHigh(it: iter.T(Real)): Real = medianHighOfArray(iter.toArray(it))
+
+    (* The counts in a hash map, which keeps the order keys were first
+     * inserted in *)
+    let multimode(A::TYPE)(it: iter.T(A) equal: All(x: A y: A) Bool hash: All(x: A) word.T): Array(A) =
+        begin
+            let m = hashMap.new(:A :Int equal hash)
+            while iter.more(it) do
+                let x = iter.next(it)
+                let added = hashMap.insert(m x maybe.unwrapOr(hashMap.get(m x) 0) + 1)
+            end
+            let most = hashMap.fold(m 0 fun(acc: Int k: A v: Int): Int if v > acc then v else acc end)
+            let result = vector.new(:A)
+            hashMap.forEach(m fun(k: A v: Int): Ok if v is most then vector.append(result k) end)
+            vector.toArray(result)
+        end
+    let mode(A::TYPE)(it: iter.T(A) equal: All(x: A y: A) Bool hash: All(x: A) word.T): A =
+        begin
+            let modes = multimode(it equal hash)
+            if extent modes is 0 then raise error end else modes[0] end
+        end
+
+    let quantilesOfArray(xs: Array(Real) n: Int inclusive: Bool): Array(Real) =
+        begin
+            if n < 1 then raise error end end
+            needs(extent xs 2)
+            let data = sorted(xs)
+            let ld = extent data
+            let result = array of(n - 1 0.0)
+            let rn = real.int(n)
+            for i = 1 upto {n - 1} do
+                if inclusive then
+                    let m = ld - 1
+                    let j = {i * m} / n
+                    let delta = {i * m} - {j * n}
+                    result[i - 1] := {{data[j] ** real.int(n - delta)} ++ {data[j + 1] ** real.int(delta)}} // rn
+                else
+                    let m = ld + 1
+                    let j0 = {i * m} / n
+                    let j = if j0 < 1 then 1 elsif j0 > ld - 1 then ld - 1 else j0 end
+                    let delta = {i * m} - {j * n}
+                    result[i - 1] := {{data[j - 1] ** real.int(n - delta)} ++ {data[j] ** real.int(delta)}} // rn
+                end
+            end
+            result
+        end
+    let quantiles(it: iter.T(Real) n: Int inclusive: Bool): Array(Real) = quantilesOfArray(iter.toArray(it) n inclusive)
+
+    let variance(it: iter.T(Real)): Real =
+        begin
+            let e = exact(it)
+            needs(e.count 2)
+            rational.toReal(rational.div(e.ss rational.fromInt(e.count - 1)))
+        end
+    let pvariance(it: iter.T(Real)): Real =
+        begin
+            let e = exact(it)
+            needs(e.count 1)
+            rational.toReal(rational.div(e.ss rational.fromInt(e.count)))
+        end
+
+    let one = bignum.fromInt(1)
+
+    let bitLength(b: bignum.T): Int =
+        begin
+            let var v = b
+            let var bits = 0
+            while bignum.sign(v) > 0 do
+                v := bignum.shiftRight(v 1)
+                bits := bits + 1
+            end
+            bits
+        end
+
+    (* The integer square root of n >= 0, by Newton's iteration from above *)
+    let isqrt(n: bignum.T): bignum.T =
+        if bignum.less(n bignum.fromInt(2)) then
+            n
+        else
+            let c = tuple
+                let var x = bignum.shiftLeft(one {bitLength(n) + 1} / 2)
+                let var going = true
+            end
+            while c.going do
+                let y = bignum.shiftRight(bignum.add(c.x bignum.quot(n c.x)) 1)
+                if bignum.less(y c.x) then c.x := y else c.going := false end
+            end
+            c.x
+        end
+
+    (* The square root of n / m, rounded to odd (truncated, with its last bit
+     * set if anything was lost) *)
+    let isqrtRoundOdd(n: bignum.T m: bignum.T): bignum.T =
+        begin
+            let a = isqrt(bignum.quot(n m))
+            if bignum.equal(bignum.mul(bignum.mul(a a) m) n) then a else bignum.orBits(a one) end
+        end
+
+    (* The square root of a rational >= 0, correctly rounded, as Python's
+     * _float_sqrt_of_frac: the root scaled to 2 * 53 + 3 bits and rounded to
+     * odd, so that the one rounding of the quotient to a real is correct *)
+    let sqrtOf(t: rational.T): Real =
+        if rational.sign(t) is 0 then
+            0.0
+        else
+            let n = rational.numerator(t)
+            let m = rational.denominator(t)
+            let diff = {bitLength(n) - bitLength(m)} - 109
+            let q = if diff >= 0 then diff / 2 else 0 - {{1 - diff} / 2} end
+            if q >= 0 then
+                rational.toReal(rational.fromBignum(bignum.shiftLeft(isqrtRoundOdd(n bignum.shiftLeft(m 2 * q)) q)))
+            else
+                let root = isqrtRoundOdd(bignum.shiftLeft(n {0 - 2 * q}) m)
+                rational.toReal(rational.fromBignums(root bignum.shiftLeft(one {0 - q})))
+            end
+        end
+
+    let stdev(it: iter.T(Real)): Real =
+        begin
+            let e = exact(it)
+            needs(e.count 2)
+            sqrtOf(rational.div(e.ss rational.fromInt(e.count - 1)))
+        end
+    let pstdev(it: iter.T(Real)): Real =
+        begin
+            let e = exact(it)
+            needs(e.count 1)
+            sqrtOf(rational.div(e.ss rational.fromInt(e.count)))
+        end
+
+    let paired(x: Array(Real) y: Array(Real)): Ok =
+        begin
+            if extent x isnot extent y then raise error end end
+            needs(extent x 2)
+        end
+
+    (* The sums of the products of the deviations, as Python's: each mean is
+     * fsum over n, and each sum an fsum *)
+    Let Sums = Tuple xbar: Real ybar: Real sxy: Real sxx: Real syy: Real end
+    let sums(x: Array(Real) y: Array(Real)): Sums =
+        begin
+            let n = real.int(extent x)
+            let xbar = fsum(iter.ofArray(x)) // n
+            let ybar = fsum(iter.ofArray(y)) // n
+            let xy = array of(extent x 0.0)
+            let xx = array of(extent x 0.0)
+            let yy = array of(extent x 0.0)
+            for i = 0 upto {extent x - 1} do
+                let dx = x[i] -- xbar
+                let dy = y[i] -- ybar
+                xy[i] := dx ** dy
+                xx[i] := dx ** dx
+                yy[i] := dy ** dy
+            end
+            tuple
+                let xbar = xbar let ybar = ybar
+                let sxy = fsum(iter.ofArray(xy)) let sxx = fsum(iter.ofArray(xx)) let syy = fsum(iter.ofArray(yy))
+            end
+        end
+
+    let covarianceOfArray(x: Array(Real) y: Array(Real)): Real =
+        begin
+            paired(x y)
+            sums(x y).sxy // real.int(extent x - 1)
+        end
+    let correlationOfArray(x: Array(Real) y: Array(Real)): Real =
+        begin
+            paired(x y)
+            let s = sums(x y)
+            let product = s.sxx ** s.syy
+            if realEqual(product 0.0) then raise error end end
+            s.sxy // real.sqrt(product)
+        end
+    let linearRegressionOfArray(x: Array(Real) y: Array(Real)): Regression =
+        begin
+            paired(x y)
+            let s = sums(x y)
+            if realEqual(s.sxx 0.0) then raise error end end
+            let slope = s.sxy // s.sxx
+            record slope = slope intercept = s.ybar -- {slope ** s.xbar} end
+        end
+    let covariance(x: iter.T(Real) y: iter.T(Real)): Real = covarianceOfArray(iter.toArray(x) iter.toArray(y))
+    let correlation(x: iter.T(Real) y: iter.T(Real)): Real = correlationOfArray(iter.toArray(x) iter.toArray(y))
+    let linearRegression(x: iter.T(Real) y: iter.T(Real)): Regression =
+        linearRegressionOfArray(iter.toArray(x) iter.toArray(y))
+end

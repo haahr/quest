@@ -1,0 +1,275 @@
+(* Exact rational numbers (docs/libraries.md section 1.18): a tuple of a
+ * numerator and a positive denominator, util/bignum's, in lowest terms; every
+ * operation that makes one reduces it by the parts' gcd. *)
+
+module rational : Rational
+import
+    util/bignum : util/Bignum
+    util/maybe : util/Maybe
+    hashLib = util/hash : util/Hash
+    util/strutil : util/Strutil
+    real: RealOp
+    stringOp = string : StringOp
+    word: Word
+export
+    Let T = Tuple num: bignum.T den: bignum.T end
+
+    let divide: Exception = exception divide: Ok end
+    let error: Exception = exception error: Ok end
+
+    let bigZero = bignum.fromInt(0)
+    let bigOne = bignum.fromInt(1)
+    let bigTwo = bignum.fromInt(2)
+
+    (* num / den in lowest terms with den positive; raises divide if den is
+     * zero *)
+    let reduced(num: bignum.T den: bignum.T): T =
+        begin
+            if bignum.sign(den) is 0 then raise divide end end
+            let g = bignum.gcd(num den)
+            let n = bignum.quot(num g)
+            let d = bignum.quot(den g)
+            if bignum.sign(d) < 0 then
+                tuple let num = bignum.neg(n) let den = bignum.neg(d) end
+            else
+                tuple let num = n let den = d end
+            end
+        end
+
+    let zero: T = tuple let num = bigZero let den = bigOne end
+    let one: T = tuple let num = bigOne let den = bigOne end
+
+    let fromBignums(num: bignum.T den: bignum.T): T = reduced(num den)
+    let make(num: Int den: Int): T = reduced(bignum.fromInt(num) bignum.fromInt(den))
+    let fromBignum(n: bignum.T): T = tuple let num = n let den = bigOne end
+    let fromInt(n: Int): T = fromBignum(bignum.fromInt(n))
+
+    let numerator(t: T): bignum.T = t.num
+    let denominator(t: T): bignum.T = t.den
+
+    let add(a: T b: T): T = reduced(bignum.add(bignum.mul(a.num b.den) bignum.mul(b.num a.den)) bignum.mul(a.den b.den))
+    let sub(a: T b: T): T = reduced(bignum.sub(bignum.mul(a.num b.den) bignum.mul(b.num a.den)) bignum.mul(a.den b.den))
+    let mul(a: T b: T): T = reduced(bignum.mul(a.num b.num) bignum.mul(a.den b.den))
+    let div(a: T b: T): T = reduced(bignum.mul(a.num b.den) bignum.mul(a.den b.num))
+    let neg(t: T): T = tuple let num = bignum.neg(t.num) let den = t.den end
+    let abs(t: T): T = tuple let num = bignum.abs(t.num) let den = t.den end
+    let inv(t: T): T = reduced(t.den t.num)
+
+    (* The parts of a fraction in lowest terms raised to a power are in lowest
+     * terms too *)
+    let pow(t: T n: Int): T =
+        if n >= 0 then
+            tuple let num = bignum.pow(t.num n) let den = bignum.pow(t.den n) end
+        else
+            let i = inv(t)
+            tuple let num = bignum.pow(i.num {0 - n}) let den = bignum.pow(i.den {0 - n}) end
+        end
+
+    let compare(a: T b: T): Int = bignum.compare(bignum.mul(a.num b.den) bignum.mul(b.num a.den))
+    let equal(a: T b: T): Bool = bignum.equal(a.num b.num) andif bignum.equal(a.den b.den)
+    let less(a: T b: T): Bool = compare(a b) < 0
+    let sign(t: T): Int = bignum.sign(t.num)
+    let isInteger(t: T): Bool = bignum.equal(t.den bigOne)
+
+    let floor(t: T): bignum.T = bignum.div(t.num t.den)
+    let ceil(t: T): bignum.T = bignum.neg(bignum.div(bignum.neg(t.num) t.den))
+    let trunc(t: T): bignum.T = bignum.quot(t.num t.den)
+
+    (* The floor f, and then twice the fraction left, against the denominator:
+     * below, f; above, f + 1; a tie, the even one *)
+    let round(t: T): bignum.T =
+        begin
+            let f = floor(t)
+            let twice = bignum.mul(bigTwo bignum.sub(t.num bignum.mul(f t.den)))
+            let c = bignum.compare(twice t.den)
+            if {c < 0} orif {{c is 0} andif {bignum.sign(bignum.rem(f bigTwo)) is 0}} then
+                f
+            else
+                bignum.add(f bigOne)
+            end
+        end
+
+    (* The number of bits of b > 0: whole 64-bit words, then bits *)
+    let bitLength(b: bignum.T): Int =
+        begin
+            let word64 = bignum.shiftLeft(bigOne 64)
+            let var v = b
+            let var bits = 0
+            while not(bignum.less(v word64)) do
+                v := bignum.shiftRight(v 64)
+                bits := bits + 64
+            end
+            while bignum.sign(v) > 0 do
+                v := bignum.shiftRight(v 1)
+                bits := bits + 1
+            end
+            bits
+        end
+
+    (* 2 to the power e, by squaring; scaled multiplies by it in two halves,
+     * so that neither factor overflows or underflows where the product would
+     * not, exactly where the product is a normal real *)
+    let power2(e: Int): Real =
+        begin
+            let var r = 1.0
+            let var b = if e < 0 then 0.5 else 2.0 end
+            let var k = if e < 0 then 0 - e else e end
+            while k > 0 do
+                if {k % 2} is 1 then r := r ** b end
+                k := k / 2
+                if k > 0 then b := b ** b end
+            end
+            r
+        end
+    let scaled(x: Real e: Int): Real = {x ** power2(e / 2)} ** power2(e - e / 2)
+
+    (* The quotient of the magnitudes, scaled by 2 to the power shift to 54 to
+     * 56 bits, rounded by hand to 53 (to even on a tie, the remainder r
+     * breaking it), which is a real exactly, then scaled back *)
+    let toReal(t: T): Real =
+        if bignum.sign(t.num) is 0 then
+            0.0
+        else
+            let n = bignum.abs(t.num)
+            let d = t.den
+            let shift = 55 - {bitLength(n) - bitLength(d)}
+            let top = if shift >= 0 then bignum.shiftLeft(n shift) else n end
+            let bottom = if shift >= 0 then d else bignum.shiftLeft(d {0 - shift}) end
+            let q = bignum.quot(top bottom)
+            let r = bignum.rem(top bottom)
+            let extra = bitLength(q) - 53
+            let var m = bignum.shiftRight(q extra)
+            let low = bignum.sub(q bignum.shiftLeft(m extra))
+            let c = bignum.compare(low bignum.shiftLeft(bigOne {extra - 1}))
+            let odd = bignum.sign(bignum.rem(m bigTwo)) isnot 0
+            if {c > 0} orif {{c is 0} andif {{bignum.sign(r) > 0} orif odd}} then m := bignum.add(m bigOne) end
+            let x = scaled(real.int(bignum.toInt(m)) {extra - shift})
+            if bignum.sign(t.num) < 0 then 0.0 -- x else x end
+        end
+
+    let realEqual(a: Real b: Real): Bool = {a <<= b} andif {a >>= b}
+
+    (* Halved while 2^53 or more, which keeps it an integer, then doubled
+     * until it is one, both exact; the integer, times 2 to the power of the
+     * halvings less the doublings *)
+    let fromReal(r: Real): T =
+        if not(r <<= r) orif {r >> real.maxReal} orif {r << real.minReal} then
+            raise error end
+        else
+            let limit = 9007199254740992.0
+            let var m = r
+            let var e = 0
+            while real.abs(m) >>= limit do
+                m := m // 2.0
+                e := e + 1
+            end
+            while not(realEqual(real.int(real.trunc(m)) m)) do
+                m := m ** 2.0
+                e := e - 1
+            end
+            let n = bignum.fromInt(real.trunc(m))
+            if e >= 0 then fromBignum(bignum.shiftLeft(n e)) else reduced(n bignum.shiftLeft(bigOne {0 - e})) end
+        end
+
+    (* Python 3.11's limit_denominator: the continued fraction's convergents
+     * until a denominator passes the bound, then whichever of the last
+     * convergent and the best semiconvergent is closer, the convergent on a
+     * tie *)
+    let limitDenominator(t: T maxDenominator: Int): T =
+        if maxDenominator < 1 then
+            raise error end
+        else
+            let bound = bignum.fromInt(maxDenominator)
+            if not(bignum.less(bound t.den)) then
+                t
+            else
+                let c = tuple
+                    let var p0 = bigZero let var q0 = bigOne let var p1 = bigOne let var q1 = bigZero
+                    let var n = t.num let var d = t.den let var going = true
+                end
+                while c.going do
+                    let a = bignum.div(c.n c.d)
+                    let q2 = bignum.add(c.q0 bignum.mul(a c.q1))
+                    if bignum.less(bound q2) then
+                        c.going := false
+                    else
+                        let p2 = bignum.add(c.p0 bignum.mul(a c.p1))
+                        c.p0 := c.p1
+                        c.q0 := c.q1
+                        c.p1 := p2
+                        c.q1 := q2
+                        let nd = bignum.sub(c.n bignum.mul(a c.d))
+                        c.n := c.d
+                        c.d := nd
+                    end
+                end
+                let k = bignum.div(bignum.sub(bound c.q0) c.q1)
+                let bound1 = reduced(bignum.add(c.p0 bignum.mul(k c.p1)) bignum.add(c.q0 bignum.mul(k c.q1)))
+                let bound2 = reduced(c.p1 c.q1)
+                if compare(abs(sub(bound2 t)) abs(sub(bound1 t))) <= 0 then bound2 else bound1 end
+            end
+        end
+
+    let toString(t: T): String =
+        if isInteger(t) then bignum.toString(t.num) else bignum.toString(t.num) <> "/" <> bignum.toString(t.den) end
+
+    (* The digits of s from i to j - 1 as a bignum, 0 if there are none *)
+    let digits(s: String i: Int j: Int): bignum.T =
+        if i >= j then bigZero else maybe.unwrap(bignum.fromString(stringOp.getSub(s i {j - i}))) end
+
+    (* An optional sign, then digits, then nothing, "/" and digits, or "." and
+     * digits, with digits on at least one side of the point *)
+    let fromString(s: String): maybe.T(T) =
+        begin
+            let n = stringOp.length(s)
+            let var i = 0
+            let var negative = false
+            if {i < n} andif {{stringOp.getChar(s i) is '~'} orif {stringOp.getChar(s i) is '-'}} then
+                negative := true
+                i := i + 1
+            elsif {i < n} andif {stringOp.getChar(s i) is '+'} then
+                i := i + 1
+            end
+            let start = i
+            while {i < n} andif strutil.isDigit(stringOp.getChar(s i)) do i := i + 1 end
+            let whole = digits(s start i)
+            let wholeDigits = i - start
+            let signed(t: T): maybe.T(T) = maybe.some(if negative then neg(t) else t end)
+            if i is n then
+                if wholeDigits is 0 then maybe.none() else signed(fromBignum(whole)) end
+            elsif {stringOp.getChar(s i) is '/'} andif {wholeDigits > 0} then
+                let after = i + 1
+                let var j = after
+                while {j < n} andif strutil.isDigit(stringOp.getChar(s j)) do j := j + 1 end
+                let den = digits(s after j)
+                if {j isnot n} orif {j is after} orif {bignum.sign(den) is 0} then maybe.none()
+                else signed(reduced(whole den)) end
+            elsif stringOp.getChar(s i) is '.' then
+                let after = i + 1
+                let var j = after
+                while {j < n} andif strutil.isDigit(stringOp.getChar(s j)) do j := j + 1 end
+                if {j isnot n} orif {{wholeDigits is 0} andif {j is after}} then
+                    maybe.none()
+                else
+                    let scale = bignum.pow(bignum.fromInt(10) {j - after})
+                    signed(reduced(bignum.add(bignum.mul(whole scale) digits(s after j)) scale))
+                end
+            else
+                maybe.none()
+            end
+        end
+
+    let toDecimal(t: T places: Int): String =
+        begin
+            let p = if places < 0 then 0 else places end
+            let r = round(mul(t fromBignum(bignum.pow(bignum.fromInt(10) p))))
+            let var text = bignum.toString(bignum.abs(r))
+            while stringOp.length(text) <= p do text := "0" <> text end
+            let k = stringOp.length(text) - p
+            let body = if p is 0 then text else stringOp.getSub(text 0 k) <> "." <> stringOp.getSub(text k p) end
+            if bignum.sign(r) < 0 then "~" <> body else body end
+        end
+
+    let hash(t: T): word.T =
+        hashLib.combine(hashLib.string(bignum.toString(t.num)) hashLib.string(bignum.toString(t.den)))
+end

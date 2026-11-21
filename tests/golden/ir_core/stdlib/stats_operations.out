@@ -1,0 +1,700 @@
+import stats = "util/stats" : util/Stats
+import iter = "util/iter" : util/Iter
+import vector = "collections/vector" : collections/Vector
+import hash = "util/hash" : util/Hash
+import stringOp = "string" : StringOp
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import real = "real" : RealOp
+import word = "word" : Word
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @22:45
+      let %2: String = prim <>(s, "\n") @22:59
+      let %3: Ok = call writer.putString(%1, %2) @22:28
+      return %3
+    }
+  }
+  funs {
+    fun r(x: Real): String {
+      let %4: String = call conv.real(x) @23:26
+      return %4
+    }
+  }
+  funs {
+    fun reals(a: Array(Real)): String {
+      var text: String = "[" @26:9
+      let %5: Int = prim extent(a) @27:25
+      let %6: Int = prim -(%5, 1) @27:25
+      var i: Int = 0 @27:9
+      let %7: Bool = prim <=(i, %6) @27:9
+      if %7 { @27:9
+        loop L1 {
+          let i.1: Int = i @27:9
+          let %8: Real = index(a, i.1) @27:75
+          let %9: String = call conv.real(%8) @27:65
+          let %10: String = prim <>(" ", %9) @27:58
+          let %11: String = prim <>(text, %10) @27:50
+          text := %11 @27:42
+          let %12: Bool = prim is(i, %6) @27:9
+          if %12 { @27:9
+            break L1 @27:9
+          }
+          let %13: Int = prim +(i, 1) @27:9
+          i := %13 @27:9
+        }
+      }
+      let %14: String = prim <>(text, " ]") @28:9
+      return %14
+    }
+  }
+  funs {
+    fun same(a.1: Real, b: Real): Bool {
+      join k1(r.1: Bool) {
+        return r.1
+      } in {
+        let %15: Bool = prim <<=(a.1, b) @30:36
+        if %15 { @30:36
+          let %16: Bool = prim >>=(a.1, b) @30:52
+          jump k1(%16) @30:36
+        } else {
+          jump k1(false) @30:36
+        }
+      }
+    }
+  }
+  funs {
+    fun realHash(x.1: Real): word.T {
+      let %17: String = call conv.real(x.1) @31:45
+      let %18: word.T = call hash.string(%17) @31:33
+      return %18
+    }
+  }
+  funs {
+    fun nine(x.2: Real): String {
+      let %19: String = call real.format(x.2, 'f', 9) @32:29
+      return %19
+    }
+  }
+  funs {
+    fun it(a.2: Array(Real)): iter.T(Real) {
+      let %20: iter.T(Real) = call iter.ofArray [Real](a.2) @33:40
+      return %20
+    }
+  }
+  funs {
+    fun ints(a.3: Array(Int)): Array(Real) {
+      let %21: iter.T(Int) = call iter.ofArray [Int](a.3) @34:68
+      let %22: iter.T(Real) = call stats.fromInts(%21) @34:53
+      let %23: Array(Real) = call iter.toArray [Real](%22) @34:40
+      return %23
+    }
+  }
+  let docs: Array(Real) = array(2.75, 1.75, 1.25, 0.25, 0.5, 1.25, 3.5) @36:12
+  let population: Array(Real) = array(0.0, 0.25, 0.25, 1.25, 1.5, 1.75, 2.75, 3.25) @37:18
+  let spread: Array(Real) = array(1.5, 2.5, 2.5, 2.75, 3.25, 4.75) @38:14
+  let %24: Array(Int) = array(1, 2, 3, 4, 4) @39:18
+  let small: Array(Real) = call ints(%24) @39:13
+  let tenths: Array(Real) = array(0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1) @40:14
+  let cancelling: Array(Real) = array(1e+100, 1.0, -1e+100, 1e-100, 1e+50, -1.0, -1e+50) @41:18
+  let thirds: Array(Real) = array(1e+16, 1.0, -1e+16) @42:14
+  let offset: Array(Real) = array(4000000004.0, 4000000007.0, 4000000013.0, 4000000016.0) @43:14
+  let %25: iter.T(Real) = call it(tenths) @46:31
+  let %26: Real = call stats.fsum(%25) @46:20
+  let %27: String = call r(%26) @46:18
+  let %28: iter.T(Real) = call it(cancelling) @46:67
+  let %29: Real = call stats.fsum(%28) @46:56
+  let %30: String = call r(%29) @46:54
+  let %31: Array(Real) = array() @47:24
+  let %32: iter.T(Real) = call it(%31) @47:21
+  let %33: Real = call stats.fsum(%32) @47:10
+  let %34: String = call r(%33) @47:8
+  let %35: String = prim <>(" ", %34) @46:87
+  let %36: String = prim <>(%30, %35) @46:54
+  let %37: String = prim <>(" ", %36) @46:47
+  let %38: String = prim <>(%27, %37) @46:18
+  let %39: String = prim <>("fsum ", %38) @46:7
+  do call print(%39) @46:1
+  let %40: iter.T(Real) = call it(small) @48:31
+  let %41: Real = call stats.mean(%40) @48:20
+  let %42: String = call r(%41) @48:18
+  let %43: iter.T(Real) = call it(thirds) @48:66
+  let %44: Real = call stats.mean(%43) @48:55
+  let %45: String = call r(%44) @48:53
+  let %46: iter.T(Real) = call it(docs) @48:102
+  let %47: Real = call stats.mean(%46) @48:91
+  let %48: String = call r(%47) @48:89
+  let %49: iter.T(Real) = call it(small) @50:22
+  let %50: Real = call stats.fmean(%49) @50:10
+  let %51: String = call r(%50) @50:8
+  let %52: iter.T(Real) = call it(thirds) @50:58
+  let %53: Real = call stats.fmean(%52) @50:46
+  let %54: String = call r(%53) @50:44
+  let %55: iter.T(Real) = call it(docs) @50:95
+  let %56: Real = call stats.fmean(%55) @50:83
+  let %57: String = call r(%56) @50:81
+  let %58: String = prim <>(" ", %57) @50:74
+  let %59: String = prim <>(%54, %58) @50:44
+  let %60: String = prim <>(" ", %59) @50:37
+  let %61: String = prim <>(%51, %60) @50:8
+  let %62: String = prim <>(", fmean ", %61) @49:8
+  let %63: String = prim <>(%48, %62) @48:89
+  let %64: String = prim <>(" ", %63) @48:82
+  let %65: String = prim <>(%45, %64) @48:53
+  let %66: String = prim <>(" ", %65) @48:46
+  let %67: String = prim <>(%42, %66) @48:18
+  let %68: String = prim <>("mean ", %67) @48:7
+  do call print(%68) @48:1
+  let %69: Array(Real) = array(54.0, 24.0, 36.0) @51:55
+  let %70: iter.T(Real) = call it(%69) @51:52
+  let %71: Real = call stats.geometricMean(%70) @51:32
+  let %72: String = call nine(%71) @51:27
+  let %73: iter.T(Real) = call it(docs) @52:33
+  let %74: Real = call stats.geometricMean(%73) @52:13
+  let %75: String = call nine(%74) @52:8
+  let %76: String = prim <>(" ", %75) @51:89
+  let %77: String = prim <>(%72, %76) @51:27
+  let %78: String = prim <>("geometricMean ", %77) @51:7
+  do call print(%78) @51:1
+  let %79: Array(Real) = array(40.0, 60.0) @53:50
+  let %80: iter.T(Real) = call it(%79) @53:47
+  let %81: Real = call stats.harmonicMean(%80) @53:28
+  let %82: String = call r(%81) @53:26
+  let %83: Array(Real) = array(2.5, 3.0, 10.0) @54:32
+  let %84: iter.T(Real) = call it(%83) @54:29
+  let %85: Real = call stats.harmonicMean(%84) @54:10
+  let %86: String = call r(%85) @54:8
+  let %87: Array(Real) = array(1.0, 0.0, 2.0) @55:32
+  let %88: iter.T(Real) = call it(%87) @55:29
+  let %89: Real = call stats.harmonicMean(%88) @55:10
+  let %90: String = call r(%89) @55:8
+  let %91: Array(Real) = array(7.5) @56:32
+  let %92: iter.T(Real) = call it(%91) @56:29
+  let %93: Real = call stats.harmonicMean(%92) @56:10
+  let %94: String = call r(%93) @56:8
+  let %95: iter.T(Real) = call it(docs) @56:83
+  let %96: Real = call stats.harmonicMean(%95) @56:64
+  let %97: String = call r(%96) @56:62
+  let %98: String = prim <>(" ", %97) @56:55
+  let %99: String = prim <>(%94, %98) @56:8
+  let %100: String = prim <>(" ", %99) @55:63
+  let %101: String = prim <>(%90, %100) @55:8
+  let %102: String = prim <>(" ", %101) @54:64
+  let %103: String = prim <>(%86, %102) @54:8
+  let %104: String = prim <>(" ", %103) @53:79
+  let %105: String = prim <>(%82, %104) @53:26
+  let %106: String = prim <>("harmonicMean ", %105) @53:7
+  do call print(%106) @53:1
+  let %107: Array(Real) = array(5.0, 1.0, 3.0) @57:38
+  let %108: iter.T(Real) = call it(%107) @57:35
+  let %109: Real = call stats.median(%108) @57:22
+  let %110: String = call r(%109) @57:20
+  let %111: Array(Real) = array(7.0, 1.0, 5.0, 3.0) @58:26
+  let %112: iter.T(Real) = call it(%111) @58:23
+  let %113: Real = call stats.median(%112) @58:10
+  let %114: String = call r(%113) @58:8
+  let %115: Array(Real) = array(7.0, 1.0, 5.0, 3.0) @60:29
+  let %116: iter.T(Real) = call it(%115) @60:26
+  let %117: Real = call stats.medianLow(%116) @60:10
+  let %118: String = call r(%117) @60:8
+  let %119: Array(Real) = array(7.0, 1.0, 5.0, 3.0) @61:30
+  let %120: iter.T(Real) = call it(%119) @61:27
+  let %121: Real = call stats.medianHigh(%120) @61:10
+  let %122: String = call r(%121) @61:8
+  let %123: iter.T(Real) = call it(docs) @63:23
+  let %124: Real = call stats.median(%123) @63:10
+  let %125: String = call r(%124) @63:8
+  let %126: String = prim <>(" ", %125) @62:8
+  let %127: String = prim <>(%122, %126) @61:8
+  let %128: String = prim <>(" high ", %127) @60:64
+  let %129: String = prim <>(%118, %128) @60:8
+  let %130: String = prim <>(" low ", %129) @59:8
+  let %131: String = prim <>(%114, %130) @58:8
+  let %132: String = prim <>(" ", %131) @57:69
+  let %133: String = prim <>(%110, %132) @57:20
+  let %134: String = prim <>("median ", %133) @57:7
+  do call print(%134) @57:1
+  let %135: Array(Real) = array(1.0, 1.0, 2.0, 3.0, 3.0, 3.0, 3.0, 4.0) @64:34
+  let %136: iter.T(Real) = call it(%135) @64:31
+  let %137: Real = call stats.mode [Real](%136, same, realHash) @64:20
+  let %138: String = call r(%137) @64:18
+  let %139: Array(Real) = array(2.0, 2.0, 1.0, 1.0) @65:24
+  let %140: iter.T(Real) = call it(%139) @65:21
+  let %141: Real = call stats.mode [Real](%140, same, realHash) @65:10
+  let %142: String = call r(%141) @65:8
+  let %143: Array(Real) = array(1.0, 1.0, 2.0, 2.0, 2.0, 3.0, 4.0, 4.0, 4.0) @66:33
+  let %144: iter.T(Real) = call it(%143) @66:30
+  let %145: Array(Real) = call stats.multimode [Real](%144, same, realHash) @66:14
+  let %146: String = call reals(%145) @66:8
+  let %147: Array(Real) = array() @67:33
+  let %148: iter.T(Real) = call it(%147) @67:30
+  let %149: Array(Real) = call stats.multimode [Real](%148, same, realHash) @67:14
+  let %150: String = call reals(%149) @67:8
+  let %151: String = prim <>(" none ", %150) @66:102
+  let %152: String = prim <>(%146, %151) @66:8
+  let %153: String = prim <>(" multimode ", %152) @65:73
+  let %154: String = prim <>(%142, %153) @65:8
+  let %155: String = prim <>(" tie ", %154) @64:99
+  let %156: String = prim <>(%138, %155) @64:18
+  let %157: String = prim <>("mode ", %156) @64:7
+  do call print(%157) @64:1
+  let letters: Array(String) = array("a", "a", "b", "b", "b", "b", "c", "c", "d", "d", "d", "d", "e", "e", "f", "f", "f", "f", "g", "g") @68:15
+  let %158: iter.T(String) = call iter.ofArray [String](letters) @69:29
+  let %159: Fun(s1: String s2: String): Bool = member stringOp.equal @69:51
+  let %160: Fun(s: String): word.T = member hash.string @69:66
+  let modes: Array(String) = call stats.multimode [String](%158, %159, %160) @69:13
+  var modeText: String = "" @70:1
+  let %161: Int = prim extent(modes) @71:17
+  let %162: Int = prim -(%161, 1) @71:17
+  var i.2: Int = 0 @71:1
+  let %163: Bool = prim <=(i.2, %162) @71:1
+  if %163 { @71:1
+    loop L2 {
+      let i.3: Int = i.2 @71:1
+      let %164: String = index(modes, i.3) @71:62
+      let %165: String = prim <>(modeText, %164) @71:50
+      modeText := %165 @71:38
+      let %166: Bool = prim is(i.2, %162) @71:1
+      if %166 { @71:1
+        break L2 @71:1
+      }
+      let %167: Int = prim +(i.2, 1) @71:1
+      i.2 := %167 @71:1
+    }
+  }
+  let %168: iter.T(String) = call iter.ofArray [String](letters) @72:70
+  let %169: Fun(s1: String s2: String): Bool = member stringOp.equal @72:92
+  let %170: Fun(s: String): word.T = member hash.string @72:107
+  let %171: String = call stats.mode [String](%168, %169, %170) @72:59
+  let %172: String = prim <>(", mode ", %171) @72:46
+  let %173: String = prim <>(modeText, %172) @72:34
+  let %174: String = prim <>("multimode of strings ", %173) @72:7
+  do call print(%174) @72:1
+  let %175: Array(Int) = array(105, 129, 87, 86, 111, 111, 89, 81, 108, 92, 110, 100, 75, 105, 103, 109, 76, 119, 99, 91, 103, 129, 106, 101, 84, 111, 74, 87, 86, 103, 103, 106, 86, 111, 75, 87, 102, 121, 111, 88, 89, 101, 106, 95, 103, 107, 101, 81, 109, 104) @75:19
+  let scores: Array(Real) = call ints(%175) @75:14
+  let %176: iter.T(Real) = call it(scores) @77:43
+  let %177: Array(Real) = call stats.quantiles(%176, 10, false) @77:27
+  let %178: String = call reals(%177) @77:21
+  let %179: String = prim <>("deciles ", %178) @77:7
+  do call print(%179) @77:1
+  let %180: Array(Int) = array(1, 2, 3, 4, 5, 6, 7, 8, 9, 10) @78:16
+  let ten: Array(Real) = call ints(%180) @78:11
+  let %181: iter.T(Real) = call it(ten) @79:45
+  let %182: Array(Real) = call stats.quantiles(%181, 4, false) @79:29
+  let %183: String = call reals(%182) @79:23
+  let %184: iter.T(Real) = call it(ten) @79:105
+  let %185: Array(Real) = call stats.quantiles(%184, 4, true) @79:89
+  let %186: String = call reals(%185) @79:83
+  let %187: iter.T(Real) = call it(ten) @81:30
+  let %188: Array(Real) = call stats.quantiles(%187, 1, false) @81:14
+  let %189: String = call reals(%188) @81:8
+  let %190: String = prim <>(" n 1 ", %189) @80:8
+  let %191: String = prim <>(%186, %190) @79:83
+  let %192: String = prim <>(" inclusive ", %191) @79:66
+  let %193: String = prim <>(%183, %192) @79:23
+  let %194: String = prim <>("quartiles ", %193) @79:7
+  do call print(%194) @79:1
+  let %195: Array(Real) = array(1.0, 2.0) @82:42
+  let %196: iter.T(Real) = call it(%195) @82:39
+  let %197: Array(Real) = call stats.quantiles(%196, 4, false) @82:23
+  let %198: String = call reals(%197) @82:17
+  let %199: Array(Real) = array(1.0, 2.0) @83:33
+  let %200: iter.T(Real) = call it(%199) @83:30
+  let %201: Array(Real) = call stats.quantiles(%200, 4, true) @83:14
+  let %202: String = call reals(%201) @83:8
+  let %203: String = prim <>(" ", %202) @82:77
+  let %204: String = prim <>(%198, %203) @82:17
+  let %205: String = prim <>("two ", %204) @82:7
+  do call print(%205) @82:1
+  let %206: iter.T(Real) = call it(docs) @86:39
+  let %207: Real = call stats.variance(%206) @86:24
+  let %208: String = call r(%207) @86:22
+  let %209: iter.T(Real) = call it(offset) @86:77
+  let %210: Real = call stats.variance(%209) @86:62
+  let %211: String = call r(%210) @86:60
+  let %212: iter.T(Real) = call it(small) @87:25
+  let %213: Real = call stats.variance(%212) @87:10
+  let %214: String = call r(%213) @87:8
+  let %215: iter.T(Real) = call it(population) @89:26
+  let %216: Real = call stats.pvariance(%215) @89:10
+  let %217: String = call r(%216) @89:8
+  let %218: iter.T(Real) = call it(offset) @89:71
+  let %219: Real = call stats.pvariance(%218) @89:55
+  let %220: String = call r(%219) @89:53
+  let %221: Array(Real) = array(3.0) @90:29
+  let %222: iter.T(Real) = call it(%221) @90:26
+  let %223: Real = call stats.pvariance(%222) @90:10
+  let %224: String = call r(%223) @90:8
+  let %225: String = prim <>(" ", %224) @89:87
+  let %226: String = prim <>(%220, %225) @89:53
+  let %227: String = prim <>(" ", %226) @89:46
+  let %228: String = prim <>(%217, %227) @89:8
+  let %229: String = prim <>(", pvariance ", %228) @88:8
+  let %230: String = prim <>(%214, %229) @87:8
+  let %231: String = prim <>(" ", %230) @86:93
+  let %232: String = prim <>(%211, %231) @86:60
+  let %233: String = prim <>(" ", %232) @86:53
+  let %234: String = prim <>(%208, %233) @86:22
+  let %235: String = prim <>("variance ", %234) @86:7
+  do call print(%235) @86:1
+  let %236: iter.T(Real) = call it(spread) @91:33
+  let %237: Real = call stats.stdev(%236) @91:21
+  let %238: String = call r(%237) @91:19
+  let %239: iter.T(Real) = call it(offset) @91:70
+  let %240: Real = call stats.stdev(%239) @91:58
+  let %241: String = call r(%240) @91:56
+  let %242: iter.T(Real) = call it(docs) @91:107
+  let %243: Real = call stats.stdev(%242) @91:95
+  let %244: String = call r(%243) @91:93
+  let %245: iter.T(Real) = call it(spread) @93:23
+  let %246: Real = call stats.pstdev(%245) @93:10
+  let %247: String = call r(%246) @93:8
+  let %248: iter.T(Real) = call it(population) @93:61
+  let %249: Real = call stats.pstdev(%248) @93:48
+  let %250: String = call r(%249) @93:46
+  let %251: Array(Real) = array(3.0, 3.0) @94:26
+  let %252: iter.T(Real) = call it(%251) @94:23
+  let %253: Real = call stats.pstdev(%252) @94:10
+  let %254: String = call r(%253) @94:8
+  let %255: String = prim <>(" ", %254) @93:81
+  let %256: String = prim <>(%250, %255) @93:46
+  let %257: String = prim <>(" ", %256) @93:39
+  let %258: String = prim <>(%247, %257) @93:8
+  let %259: String = prim <>(", pstdev ", %258) @92:8
+  let %260: String = prim <>(%244, %259) @91:93
+  let %261: String = prim <>(" ", %260) @91:86
+  let %262: String = prim <>(%241, %261) @91:56
+  let %263: String = prim <>(" ", %262) @91:49
+  let %264: String = prim <>(%238, %263) @91:19
+  let %265: String = prim <>("stdev ", %264) @91:7
+  do call print(%265) @91:1
+  let %266: Array(Int) = array(1, 2, 3, 4, 5, 6, 7, 8, 9) @97:18
+  let nines: Array(Real) = call ints(%266) @97:13
+  let %267: Array(Int) = array(1, 2, 3, 1, 2, 3, 1, 2, 3) @98:18
+  let cycle: Array(Real) = call ints(%267) @98:13
+  let %268: Array(Int) = array(9, 8, 7, 6, 5, 4, 3, 2, 1) @99:17
+  let down: Array(Real) = call ints(%268) @99:12
+  let %269: iter.T(Real) = call it(nines) @100:43
+  let %270: iter.T(Real) = call it(cycle) @100:53
+  let %271: Real = call stats.covariance(%269, %270) @100:26
+  let %272: String = call r(%271) @100:24
+  let %273: iter.T(Real) = call it(cycle) @100:94
+  let %274: iter.T(Real) = call it(nines) @100:104
+  let %275: Real = call stats.covariance(%273, %274) @100:77
+  let %276: String = call r(%275) @100:75
+  let %277: iter.T(Real) = call it(nines) @102:27
+  let %278: iter.T(Real) = call it(down) @102:37
+  let %279: Real = call stats.covariance(%277, %278) @102:10
+  let %280: String = call r(%279) @102:8
+  let %281: String = prim <>(" ", %280) @101:8
+  let %282: String = prim <>(%276, %281) @100:75
+  let %283: String = prim <>(" ", %282) @100:68
+  let %284: String = prim <>(%272, %283) @100:24
+  let %285: String = prim <>("covariance ", %284) @100:7
+  do call print(%285) @100:1
+  let %286: iter.T(Real) = call it(nines) @103:45
+  let %287: iter.T(Real) = call it(nines) @103:55
+  let %288: Real = call stats.correlation(%286, %287) @103:27
+  let %289: String = call r(%288) @103:25
+  let %290: iter.T(Real) = call it(nines) @103:97
+  let %291: iter.T(Real) = call it(down) @103:107
+  let %292: Real = call stats.correlation(%290, %291) @103:79
+  let %293: String = call r(%292) @103:77
+  let %294: iter.T(Real) = call it(nines) @105:28
+  let %295: iter.T(Real) = call it(cycle) @105:38
+  let %296: Real = call stats.correlation(%294, %295) @105:10
+  let %297: String = call r(%296) @105:8
+  let %298: String = prim <>(" ", %297) @104:8
+  let %299: String = prim <>(%293, %298) @103:77
+  let %300: String = prim <>(" ", %299) @103:70
+  let %301: String = prim <>(%289, %300) @103:25
+  let %302: String = prim <>("correlation ", %301) @103:7
+  do call print(%302) @103:1
+  let %303: Array(Int) = array(1971, 1975, 1979, 1982, 1983) @106:18
+  let years: Array(Real) = call ints(%303) @106:13
+  let %304: Array(Int) = array(1, 2, 3, 4, 5) @107:18
+  let films: Array(Real) = call ints(%304) @107:13
+  let %305: iter.T(Real) = call it(years) @108:34
+  let %306: iter.T(Real) = call it(films) @108:44
+  let fit: Regression = call stats.linearRegression(%305, %306) @108:11
+  let %307: Real = record_field(fit, slope) @109:32
+  let %308: String = call r(%307) @109:30
+  let %309: Real = record_field(fit, intercept) @109:55
+  let %310: String = call r(%309) @109:53
+  let %311: Real = record_field(fit, slope) @110:11
+  let %312: Real = prim **(%311, 2019.0) @110:11
+  let %313: Real = record_field(fit, intercept) @110:35
+  let %314: Real = prim ++(%312, %313) @110:11
+  let %315: String = call r(%314) @110:8
+  let %316: String = prim <>(", 2019 ", %315) @109:73
+  let %317: String = prim <>(%310, %316) @109:53
+  let %318: String = prim <>(" ", %317) @109:46
+  let %319: String = prim <>(%308, %318) @109:30
+  let %320: String = prim <>("linearRegression ", %319) @109:7
+  do call print(%320) @109:1
+  let unsorted: Array(Real) = array(7.0, 1.0, 5.0, 3.0) @113:16
+  let %321: Real = call stats.medianOfArray(unsorted) @114:22
+  let %322: String = call r(%321) @114:20
+  let %323: Real = call stats.medianLowOfArray(unsorted) @114:65
+  let %324: String = call r(%323) @114:63
+  let %325: Real = call stats.medianHighOfArray(unsorted) @115:10
+  let %326: String = call r(%325) @115:8
+  let %327: Array(Real) = call stats.quantilesOfArray(ten, 4, false) @115:61
+  let %328: String = call reals(%327) @115:55
+  let %329: Real = call stats.covarianceOfArray(nines, cycle) @116:10
+  let %330: String = call r(%329) @116:8
+  let %331: Real = call stats.correlationOfArray(nines, down) @116:60
+  let %332: String = call r(%331) @116:58
+  let %333: Regression = call stats.linearRegressionOfArray(years, films) @117:10
+  let %334: Real = record_field(%333, slope) @117:10
+  let %335: String = call r(%334) @117:8
+  let %336: String = call reals(unsorted) @117:81
+  let %337: String = prim <>(", unchanged ", %336) @117:63
+  let %338: String = prim <>(%335, %337) @117:8
+  let %339: String = prim <>(" ", %338) @116:101
+  let %340: String = prim <>(%332, %339) @116:58
+  let %341: String = prim <>(" ", %340) @116:51
+  let %342: String = prim <>(%330, %341) @116:8
+  let %343: String = prim <>(" ", %342) @115:101
+  let %344: String = prim <>(%328, %343) @115:55
+  let %345: String = prim <>(" ", %344) @115:48
+  let %346: String = prim <>(%326, %345) @115:8
+  let %347: String = prim <>(" ", %346) @114:102
+  let %348: String = prim <>(%324, %347) @114:63
+  let %349: String = prim <>(" ", %348) @114:56
+  let %350: String = prim <>(%322, %349) @114:20
+  let %351: String = prim <>("arrays ", %350) @114:7
+  do call print(%351) @114:1
+  let v: vector.T(Real) = call vector.fromArray [Real](docs) @118:9
+  let %352: iter.T(Real) = call vector.iter [Real](v) @119:33
+  let %353: Real = call stats.mean(%352) @119:22
+  let %354: String = call r(%353) @119:20
+  let %355: iter.T(Real) = call vector.iter [Real](v) @119:75
+  let %356: Real = call stats.median(%355) @119:62
+  let %357: String = call r(%356) @119:60
+  let %358: iter.T(Real) = call vector.iter [Real](v) @120:22
+  let %359: Real = call stats.stdev(%358) @120:10
+  let %360: String = call r(%359) @120:8
+  let %361: String = prim <>(" ", %360) @119:95
+  let %362: String = prim <>(%357, %361) @119:60
+  let %363: String = prim <>(" ", %362) @119:53
+  let %364: String = prim <>(%354, %363) @119:20
+  let %365: String = prim <>("vector ", %364) @119:7
+  do call print(%365) @119:1
+  let %366: iter.T(Int) = call iter.range(1, 101) @121:44
+  funs {
+    fun f(n: Int): Real {
+      let %367: Int = prim *(n, n) @121:89
+      let %368: Real = call real.int(%367) @121:80
+      return %368
+    }
+  }
+  let %369: iter.T(Real) = call iter.map [Int Real](%366, f) @121:35
+  let %370: Real = call stats.mean(%369) @121:24
+  let %371: String = call r(%370) @121:22
+  let %372: iter.T(Int) = call iter.range(1, 11) @122:41
+  let %373: iter.T(Real) = call stats.fromInts(%372) @122:26
+  let %374: Real = call stats.pvariance(%373) @122:10
+  let %375: String = call r(%374) @122:8
+  let %376: iter.T(Int) = call iter.range(0, 20) @123:50
+  let %377: iter.T(Real) = call stats.fromInts(%376) @123:35
+  funs {
+    fun f.1(x.3: Real): Bool {
+      let %378: Bool = prim >>(x.3, 4.5) @123:87
+      return %378
+    }
+  }
+  let %379: iter.T(Real) = call iter.filter [Real](%377, f.1) @123:23
+  let %380: Real = call stats.median(%379) @123:10
+  let %381: String = call r(%380) @123:8
+  let %382: String = prim <>(" ", %381) @122:64
+  let %383: String = prim <>(%375, %382) @122:8
+  let %384: String = prim <>(" ", %383) @121:102
+  let %385: String = prim <>(%371, %384) @121:22
+  let %386: String = prim <>("pipeline ", %385) @121:7
+  do call print(%386) @121:1
+  funs {
+    fun raised(f.2: Fun(): Ok): String {
+      join k2(r.2: String) {
+        return r.2
+      } in {
+        let %387: Exception = member stats.error @126:65
+        try catching (%387) {
+          do call f.2() @126:45
+          jump k2("none") @126:35
+        } handle (e: Exception) {
+          let %388: Bool = prim is(e, %387) @126:35
+          if %388 { @126:35
+            jump k2("error") @126:35
+          } else {
+            reraise e @126:35
+          }
+        }
+      }
+    }
+  }
+  let none: Array(Real) = array() @127:12
+  let one: Array(Real) = array(1.0) @128:11
+  funs {
+    fun f.3(): Ok {
+      let %389: iter.T(Real) = call it(none) @129:62
+      let x.4: Real = call stats.mean(%389) @129:51
+      return ok
+    }
+  }
+  let %390: String = call raised(f.3) @129:20
+  funs {
+    fun f.4(): Ok {
+      let %391: iter.T(Real) = call it(none) @130:51
+      let x.5: Real = call stats.fmean(%391) @130:39
+      return ok
+    }
+  }
+  let %392: String = call raised(f.4) @130:8
+  funs {
+    fun f.5(): Ok {
+      let %393: iter.T(Real) = call it(none) @131:59
+      let x.6: Real = call stats.median(%393) @131:46
+      return ok
+    }
+  }
+  let %394: String = call raised(f.5) @131:15
+  funs {
+    fun f.6(): Ok {
+      let %395: iter.T(Real) = call it(none) @132:50
+      let x.7: Real = call stats.mode [Real](%395, same, realHash) @132:39
+      return ok
+    }
+  }
+  let %396: String = call raised(f.6) @132:8
+  funs {
+    fun f.7(): Ok {
+      let %397: iter.T(Real) = call it(one) @133:54
+      let x.8: Real = call stats.variance(%397) @133:39
+      return ok
+    }
+  }
+  let %398: String = call raised(f.7) @133:8
+  funs {
+    fun f.8(): Ok {
+      let %399: iter.T(Real) = call it(one) @134:51
+      let x.9: Real = call stats.stdev(%399) @134:39
+      return ok
+    }
+  }
+  let %400: String = call raised(f.8) @134:8
+  funs {
+    fun f.9(): Ok {
+      let %401: iter.T(Real) = call it(none) @135:55
+      let x.10: Real = call stats.pvariance(%401) @135:39
+      return ok
+    }
+  }
+  let %402: String = call raised(f.9) @135:8
+  funs {
+    fun f.10(): Ok {
+      let %403: iter.T(Real) = call it(ten) @136:55
+      let x.11: Array(Real) = call stats.quantiles(%403, 0, false) @136:39
+      return ok
+    }
+  }
+  let %404: String = call raised(f.10) @136:8
+  funs {
+    fun f.11(): Ok {
+      let %405: iter.T(Real) = call it(one) @137:55
+      let x.12: Array(Real) = call stats.quantiles(%405, 4, false) @137:39
+      return ok
+    }
+  }
+  let %406: String = call raised(f.11) @137:8
+  let %407: String = prim <>(" ", %406) @136:80
+  let %408: String = prim <>(%404, %407) @136:8
+  let %409: String = prim <>(" ", %408) @135:73
+  let %410: String = prim <>(%402, %409) @135:8
+  let %411: String = prim <>(" ", %410) @134:68
+  let %412: String = prim <>(%400, %411) @134:8
+  let %413: String = prim <>(" ", %412) @133:71
+  let %414: String = prim <>(%398, %413) @133:8
+  let %415: String = prim <>(" ", %414) @132:82
+  let %416: String = prim <>(%396, %415) @132:8
+  let %417: String = prim <>(" ", %416) @131:77
+  let %418: String = prim <>(%394, %417) @131:15
+  let %419: String = prim <>(" ", %418) @131:8
+  let %420: String = prim <>(%392, %419) @130:8
+  let %421: String = prim <>(" ", %420) @129:80
+  let %422: String = prim <>(%390, %421) @129:20
+  let %423: String = prim <>("errors ", %422) @129:7
+  do call print(%423) @129:1
+  funs {
+    fun f.12(): Ok {
+      let %424: Array(Real) = array(-1.0, 2.0) @138:73
+      let %425: iter.T(Real) = call it(%424) @138:70
+      let x.13: Real = call stats.harmonicMean(%425) @138:51
+      return ok
+    }
+  }
+  let %426: String = call raised(f.12) @138:20
+  funs {
+    fun f.13(): Ok {
+      let %427: Array(Real) = array(0.0, -1.0) @139:61
+      let %428: iter.T(Real) = call it(%427) @139:58
+      let x.14: Real = call stats.harmonicMean(%428) @139:39
+      return ok
+    }
+  }
+  let %429: String = call raised(f.13) @139:8
+  funs {
+    fun f.14(): Ok {
+      let %430: Array(Real) = array(0.0, 1.0) @140:62
+      let %431: iter.T(Real) = call it(%430) @140:59
+      let x.15: Real = call stats.geometricMean(%431) @140:39
+      return ok
+    }
+  }
+  let %432: String = call raised(f.14) @140:8
+  funs {
+    fun f.15(): Ok {
+      let %433: iter.T(Real) = call it(nines) @141:56
+      let %434: iter.T(Real) = call it(films) @141:66
+      let x.16: Real = call stats.covariance(%433, %434) @141:39
+      return ok
+    }
+  }
+  let %435: String = call raised(f.15) @141:8
+  funs {
+    fun f.16(): Ok {
+      let %436: iter.T(Real) = call it(nines) @142:57
+      let %437: Array(Int) = array(1, 1, 1, 1, 1, 1, 1, 1, 1) @142:75
+      let %438: Array(Real) = call ints(%437) @142:70
+      let %439: iter.T(Real) = call it(%438) @142:67
+      let x.17: Real = call stats.correlation(%436, %439) @142:39
+      return ok
+    }
+  }
+  let %440: String = call raised(f.16) @142:8
+  funs {
+    fun f.17(): Ok {
+      let %441: Array(Int) = array(2, 2, 2) @144:70
+      let %442: Array(Real) = call ints(%441) @144:65
+      let %443: iter.T(Real) = call it(%442) @144:62
+      let %444: iter.T(Real) = call it(films) @144:91
+      let x.18: Regression = call stats.linearRegression(%443, %444) @144:39
+      return ok
+    }
+  }
+  let %445: String = call raised(f.17) @144:8
+  let %446: String = prim <>(" ", %445) @143:8
+  let %447: String = prim <>(%440, %446) @142:8
+  let %448: String = prim <>(" ", %447) @141:85
+  let %449: String = prim <>(%435, %448) @141:8
+  let %450: String = prim <>(" ", %449) @140:93
+  let %451: String = prim <>(%432, %450) @140:8
+  let %452: String = prim <>(" ", %451) @139:93
+  let %453: String = prim <>(%429, %452) @139:8
+  let %454: String = prim <>(" ", %453) @138:105
+  let %455: String = prim <>(%426, %454) @138:20
+  let %456: String = prim <>("domain ", %455) @138:7
+  do call print(%456) @138:1
+}
+

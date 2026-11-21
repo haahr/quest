@@ -1,0 +1,99 @@
+(* Statistics of real data, as Python's statistics module: averages, spread,
+ * quantiles, and relations between two variables. Each function takes its
+ * data as an iterator (util/iter), as Python's take any iterable, so a
+ * vector, a map's values, or a pipeline is read without being copied; an
+ * array is iter.ofArray(xs).
+ *
+ * Most read their data in one pass. Those that need all of it at once (the
+ * medians and quantiles, which sort, and the two-variable ones, which pass
+ * twice) collect it into an array and call their array form, named for
+ * what it is computed from (medianOfArray, the median of an array), which is
+ * exported too, for data already in an array; the array forms never change
+ * the array they are given.
+ *
+ * The results are Python 3.11's for the same data. mean, variance, pvariance,
+ * stdev, pstdev, and harmonicMean are computed exactly, with util/rational,
+ * and rounded once, so they are correctly rounded (and cost a rational sum);
+ * fsum is a correctly rounded sum too (Python's math.fsum), and fmean,
+ * covariance, correlation, and linearRegression are computed in reals over
+ * it, as Python's are. Data must be finite: an infinity or a NaN raises
+ * rational.error in the exact functions, and gives what IEEE arithmetic
+ * gives in the others. *)
+
+interface Stats
+import
+    util/iter : util/Iter
+    word: Word
+export
+    (* Raised for data too short for the statistic, values out of its domain
+     * (as each says), and two variables of different lengths *)
+    error: Exception
+
+    (* The slope and intercept of a line fitted by least squares *)
+    Def Regression = Record slope: Real intercept: Real end
+
+    (* The integers as reals *)
+    fromInts(it: iter.T(Int)): iter.T(Real)
+
+    (* The sum, correctly rounded (Shewchuk's algorithm, Python's math.fsum);
+     * 0.0 for none *)
+    fsum(it: iter.T(Real)): Real
+
+    (* Averages; each raises error for no data *)
+
+    (* The arithmetic mean, computed exactly and correctly rounded *)
+    mean(it: iter.T(Real)): Real
+    (* fsum over n: faster, and correctly rounded but for the division *)
+    fmean(it: iter.T(Real)): Real
+    (* exp of the mean of the logs (Python's geometric_mean); raises error if
+     * a value is zero or negative *)
+    geometricMean(it: iter.T(Real)): Real
+    (* n over the sum of the reciprocals, exactly; 0.0 if a value is zero
+     * before any negative one; raises error for a negative one *)
+    harmonicMean(it: iter.T(Real)): Real
+    (* The middle value, or the mean of the two middle ones; the lower and the
+     * higher of those two for an even count *)
+    median(it: iter.T(Real)): Real
+    medianLow(it: iter.T(Real)): Real
+    medianHigh(it: iter.T(Real)): Real
+    medianOfArray(xs: Array(Real)): Real
+    medianLowOfArray(xs: Array(Real)): Real
+    medianHighOfArray(xs: Array(Real)): Real
+
+    (* The most common value, the first seen among the most common, by equal
+     * and hash; raises error for no data *)
+    mode: All(A::TYPE) All(it: iter.T(A) equal: All(x: A y: A) Bool hash: All(x: A) word.T) A
+    (* Every most common value, in the order first seen; none for no data *)
+    multimode: All(A::TYPE) All(it: iter.T(A) equal: All(x: A y: A) Bool hash: All(x: A) word.T) Array(A)
+
+    (* The n - 1 cut points dividing the sorted data into n groups of equal
+     * probability, interpolated linearly, as Python's quantiles: inclusive
+     * for a population (its least and greatest values the 0th and 100th
+     * percentiles), else exclusive for a sample; raises error if n < 1 or
+     * there are fewer than two values *)
+    quantiles(it: iter.T(Real) n: Int inclusive: Bool): Array(Real)
+    quantilesOfArray(xs: Array(Real) n: Int inclusive: Bool): Array(Real)
+
+    (* Spread, exactly and correctly rounded: the sample variance and
+     * standard deviation (n - 1 below; at least two values) and the
+     * population's (n below; at least one) *)
+    variance(it: iter.T(Real)): Real
+    pvariance(it: iter.T(Real)): Real
+    stdev(it: iter.T(Real)): Real
+    pstdev(it: iter.T(Real)): Real
+
+    (* Two variables, x and y of the same length; each raises error for
+     * different lengths or fewer than two values *)
+
+    (* The sample covariance *)
+    covariance(x: iter.T(Real) y: iter.T(Real)): Real
+    covarianceOfArray(x: Array(Real) y: Array(Real)): Real
+    (* Pearson's correlation coefficient; raises error if x or y is
+     * constant *)
+    correlation(x: iter.T(Real) y: iter.T(Real)): Real
+    correlationOfArray(x: Array(Real) y: Array(Real)): Real
+    (* The least squares line y = slope * x + intercept; raises error if x is
+     * constant *)
+    linearRegression(x: iter.T(Real) y: iter.T(Real)): Regression
+    linearRegressionOfArray(x: Array(Real) y: Array(Real)): Regression
+end
