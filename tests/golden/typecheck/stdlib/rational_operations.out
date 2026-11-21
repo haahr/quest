@@ -1241,10 +1241,35 @@
         )))
     (TypedLetValue 'trips' :type Int
       :value (TypedInt 0 :type Int))
+    (TypedLetValue 'roundTrips' :type Fun(x: Real): Bool
+      :value (TypedFun :params (('x' : Real)) :type Fun(x: Real): Bool
+        :body (TypedBlock :type Bool
+          :bindings (
+            (TypedLetValue 'back' :type Real
+              :value (TypedApp :type Real
+                :func (TypedSelect 'toReal' :type Fun(t: rational.T): Real
+                  :target (TypedVar 'rational' :type Module 'rational'))
+                :args (
+                  (TypedApp :type rational.T
+                    :func (TypedSelect 'fromReal' :type Fun(r: Real): rational.T
+                      :target (TypedVar 'rational' :type Module 'rational'))
+                    :args (
+                      (TypedVar 'x' :type Real)
+                    ))
+                )))
+          )
+          :result (TypedIf :type Bool
+            :cond (TypedInfix '<<=' :type Bool
+              :left (TypedVar 'back' :type Real)
+              :right (TypedVar 'x' :type Real))
+            :then (TypedInfix '>>=' :type Bool
+              :left (TypedVar 'back' :type Real)
+              :right (TypedVar 'x' :type Real))
+            :else (TypedBool false)))))
     (TypedExprStmt
       :expr (TypedFor 'i' :upto
         :start (TypedInt 1 :type Int)
-        :stop (TypedInt 1000 :type Int)
+        :stop (TypedInt 100 :type Int)
         :body (TypedBlock :type Ok
           :bindings (
             (TypedLetValue 'x' :type Real
@@ -1280,34 +1305,11 @@
                 )))
             (TypedExprStmt
               :expr (TypedIf :type Ok
-                :cond (TypedIf :type Bool
-                  :cond (TypedInfix '<<=' :type Bool
-                    :left (TypedApp :type Real
-                      :func (TypedSelect 'toReal' :type Fun(t: rational.T): Real
-                        :target (TypedVar 'rational' :type Module 'rational'))
-                      :args (
-                        (TypedApp :type rational.T
-                          :func (TypedSelect 'fromReal' :type Fun(r: Real): rational.T
-                            :target (TypedVar 'rational' :type Module 'rational'))
-                          :args (
-                            (TypedVar 'x' :type Real)
-                          ))
-                      ))
-                    :right (TypedVar 'x' :type Real))
-                  :then (TypedInfix '>>=' :type Bool
-                    :left (TypedApp :type Real
-                      :func (TypedSelect 'toReal' :type Fun(t: rational.T): Real
-                        :target (TypedVar 'rational' :type Module 'rational'))
-                      :args (
-                        (TypedApp :type rational.T
-                          :func (TypedSelect 'fromReal' :type Fun(r: Real): rational.T
-                            :target (TypedVar 'rational' :type Module 'rational'))
-                          :args (
-                            (TypedVar 'x' :type Real)
-                          ))
-                      ))
-                    :right (TypedVar 'x' :type Real))
-                  :else (TypedBool false))
+                :cond (TypedApp :type Bool
+                  :func (TypedVar 'roundTrips' :type Fun(x: Real): Bool)
+                  :args (
+                    (TypedVar 'x' :type Real)
+                  ))
                 :then (TypedBlock :type Ok
                   :bindings (
                     (TypedExprStmt
@@ -1322,34 +1324,11 @@
                 :else (TypedOk)))
           )
           :result (TypedIf :type Ok
-            :cond (TypedIf :type Bool
-              :cond (TypedInfix '<<=' :type Bool
-                :left (TypedApp :type Real
-                  :func (TypedSelect 'toReal' :type Fun(t: rational.T): Real
-                    :target (TypedVar 'rational' :type Module 'rational'))
-                  :args (
-                    (TypedApp :type rational.T
-                      :func (TypedSelect 'fromReal' :type Fun(r: Real): rational.T
-                        :target (TypedVar 'rational' :type Module 'rational'))
-                      :args (
-                        (TypedVar 'y' :type Real)
-                      ))
-                  ))
-                :right (TypedVar 'y' :type Real))
-              :then (TypedInfix '>>=' :type Bool
-                :left (TypedApp :type Real
-                  :func (TypedSelect 'toReal' :type Fun(t: rational.T): Real
-                    :target (TypedVar 'rational' :type Module 'rational'))
-                  :args (
-                    (TypedApp :type rational.T
-                      :func (TypedSelect 'fromReal' :type Fun(r: Real): rational.T
-                        :target (TypedVar 'rational' :type Module 'rational'))
-                      :args (
-                        (TypedVar 'y' :type Real)
-                      ))
-                  ))
-                :right (TypedVar 'y' :type Real))
-              :else (TypedBool false))
+            :cond (TypedApp :type Bool
+              :func (TypedVar 'roundTrips' :type Fun(x: Real): Bool)
+              :args (
+                (TypedVar 'y' :type Real)
+              ))
             :then (TypedBlock :type Ok
               :bindings (
                 (TypedExprStmt
@@ -1376,7 +1355,7 @@
                   (TypedDerefCell :type Int
                     :target (TypedVar 'trips' :type Var(Int)))
                 ))
-              :right (TypedString ' of 2000' :type String)))
+              :right (TypedString ' of 200' :type String)))
         )))
     (TypedLetValue 'pi' :type rational.T
       :value (TypedApp :type rational.T
