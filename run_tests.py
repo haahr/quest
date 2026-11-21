@@ -24,9 +24,9 @@ from quest.testing.runner import main
 
 if __name__ == "__main__":
     # A test run outside tools/check waits while another worktree's check or
-    # timing holds the machine-wide lock (docs/testing.md section 4.2)
+    # timing holds the machine-wide lock (docs/testing.md section 4.2), unless
+    # given --no-exclusive
     sys.path.insert(0, str(ROOT_DIR / "tools"))
     import exclusive
 
-    exclusive.yield_to_holder("run_tests.py")
-    sys.exit(main())
+    sys.exit(main(lambda: exclusive.yield_to_holder("run_tests.py")))

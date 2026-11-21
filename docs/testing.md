@@ -835,20 +835,22 @@ the arm64-whole tests' timeouts and the terminal tests fail under load, and time
 So the heavy jobs take turns, on one lock that every worktree shares, `quest-exclusive.lock` in the git common
 directory (beside `quest-release`):
 
-- **`tools/check`, `benchmarks/mlton/run.py time`, and cutting a release (`tools/release`)** take the lock
-  themselves. Each waits for the job holding it, saying whose it is, and holds the lock until it ends. A timing then
-  waits too, until the 1-minute load average has stayed under 5 for 3 minutes, since a time taken under load says
-  nothing. A check and a cut do not wait for the load: their results do not depend on their speed, and the timeouts
-  that load can cause are run again (below). `--no-exclusive` runs at once, without the lock; it is for results that
-  do not depend on a quiet machine, such as a quick `--scale 0.05` timing while iterating or a narrow rerun of one
-  suite to confirm a fix, and never for the check before a push or for timings recorded in
-  [benchmarks.md](benchmarks.md).
+- **`tools/check` and `benchmarks/mlton/run.py time`** take the lock themselves. Each waits for the job holding it,
+  saying whose it is, and holds the lock until it ends. A timing then waits too, until the 1-minute load average has
+  stayed under 5 for 3 minutes, since a time taken under load says nothing. A check does not wait for the load: its
+  results do not depend on its speed, and the timeouts that load can cause are run again (below). `--no-exclusive`
+  runs either at once, without the lock; it is for results that do not depend on a quiet machine, such as a quick
+  `--scale 0.05` timing while iterating or a narrow rerun of one suite to confirm a fix, and never for the check
+  before a push or for timings recorded in [benchmarks.md](benchmarks.md).
+- **Cutting a release (`tools/release`)** neither takes the lock nor waits for it, and runs its check with
+  `run_tests.py --no-exclusive`: a cut starts at once, whatever else is running.
 - **`tools/exclusive COMMAND...`** does the same for any other command (`--no-quiet` without the quiet wait), and
   `tools/exclusive --status` says who holds the lock and who waits for it, from `quest-exclusive.json` beside it.
 - **Builds and tests outside the lock yield to it:** `./quest`'s stage builds, `run_tests.py`, `run.py`'s other
   commands, and `allocations.py` wait while another job holds the lock, so that they do not load the machine it is
-  timing. What runs under the lock is marked by `QUEST_EXCLUSIVE_HELD` in its environment, and neither waits on the
-  lock nor yields to it, so a check's own builds and tests run at once.
+  timing. `run_tests.py --no-exclusive` does not wait, for a run whose result does not depend on a quiet machine or
+  a run timed under load on purpose. What runs under the lock is marked by `QUEST_EXCLUSIVE_HELD` in its
+  environment, and neither waits on the lock nor yields to it, so a check's own builds and tests run at once.
 - **Load explains some failures,** and `tools/check` runs them again: when the only failures are tests that timed
   out and the terminal tests, each runs again alone, once, and the check passes if they all pass then. Any other
   failure is reported as it is, and nothing is run again.

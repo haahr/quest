@@ -12,12 +12,13 @@ git common directory (as the releases share quest-release there), so sessions
 in different worktrees take turns. A timing (run.py time, or a command run by
 tools/exclusive without --no-quiet), once it has the lock, waits until the
 1-minute load average has stayed under 5 for 3 minutes, so that it is timed on
-a machine doing nothing else. tools/check and tools/release's cuts hold the
-lock without that wait: their results do not depend on their speed, and
-tools/check runs again the timeouts that load can cause.
+a machine doing nothing else. tools/check holds the lock without that wait:
+its results do not depend on its speed, and it runs again the timeouts that
+load can cause. tools/release's cuts neither take the lock nor yield to it,
+running their checks with run_tests.py --no-exclusive.
 
-tools/check, benchmarks/mlton/run.py time, and tools/release's cuts take the
-lock themselves (unless given --no-exclusive); ./quest's stage builds,
+tools/check and benchmarks/mlton/run.py time take the lock themselves (unless
+given --no-exclusive); ./quest's stage builds,
 run_tests.py, run.py's other commands, and allocations.py yield to it, waiting
 while another job holds it.
 A job run under the lock passes QUEST_EXCLUSIVE_HELD to what it starts, so

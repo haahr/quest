@@ -47,13 +47,13 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
   no suites; it decides from the files that differ from `origin/main` (testing.md §4.1), and `--all` overrides it.
   Anything either compiler shares (the language, `lib/`, `runtime/`, what programs do or what errors say, the tests)
   needs the full `tools/check` ([testing.md](testing.md) §4.1).
-- **One heavy job at a time:** `tools/check`, `benchmarks/mlton/run.py time`, and `tools/release` take a lock every
-  worktree shares, then wait for a quiet machine (the load under 5 for 3 minutes), and builds and tests started
-  outside it wait while another job holds it ([testing.md](testing.md) §4.2). Run them directly, not under a script of your own
-  that waits for quiet; `tools/exclusive COMMAND` gives any other timing the same, and `tools/exclusive --status`
-  says who holds the lock. Pass `--no-exclusive` only when the result does not depend on a quiet machine: a quick
-  `run.py time --scale 0.05` while iterating, or a narrow rerun of one suite to confirm a fix. Never for the check
-  before a push, or for timings recorded in benchmarks.md.
+- **One heavy job at a time:** `tools/check` and `benchmarks/mlton/run.py time` take a lock every worktree shares
+  (a timing then waits for a quiet machine: the load under 5 for 3 minutes; `tools/release` takes no lock), and builds
+  and tests started outside it wait while another job holds it ([testing.md](testing.md) §4.2). Run them directly,
+  not under a script of your own that waits for quiet; `tools/exclusive COMMAND` gives any other timing the same, and
+  `tools/exclusive --status` says who holds the lock. Pass `--no-exclusive` only when the result does not depend on
+  a quiet machine: a quick `run.py time --scale 0.05` while iterating, or a narrow rerun of one suite to confirm a
+  fix. Never for the check before a push, or for timings recorded in benchmarks.md.
 - **The compiler:** `./quest PROGRAM` runs the self-hosted compiler, which is the default; `./quest --stop-after PHASE
   file.quest` prints a phase, with `PHASE` one of `tokenize`, `parse`, `desugar`, `typecheck`, `ir_STAGE`,
   `interpret`, `codegen_c` (prints the C), `codegen_arm64` (prints the arm64 assembly), `run_c_compiled`; `--echo`

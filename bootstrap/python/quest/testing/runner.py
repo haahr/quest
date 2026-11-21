@@ -552,7 +552,7 @@ def with_pending(
     return run
 
 
-def main() -> int:
+def main(yield_to_lock: Optional[Callable[[], None]] = None) -> int:
     """The test runner's command line (run_tests.py): runs the tests the
     options select and returns the exit status, run_all_tests's (0 if every
     test passed or is pending). docs/testing.md §2.3 describes the options.
@@ -563,7 +563,11 @@ def main() -> int:
     which needs --self-hosted or --self-hosting: one self-hosted driver then
     serves every mode (with --self-hosting, the stage 2 that the fixed-point
     check, run once, built; else --self-hosted-driver or one compiled here),
-    and each mode's tests run in turn, the status the worst of theirs."""
+    and each mode's tests run in turn, the status the worst of theirs.
+
+    yield_to_lock, run_tests.py's, waits while another job holds the
+    machine-wide lock (docs/testing.md §4.2); it is called once the options
+    are read, unless --no-exclusive says not to."""
     available_phases = [
         "tokenize",
         "parse",
@@ -611,6 +615,11 @@ def main() -> int:
         "--python",
         default="/opt/homebrew/opt/python@3.11/libexec/bin/python",
         help="Python binary to use.",
+    )
+    arg_parser.add_argument(
+        "--no-exclusive",
+        action="store_true",
+        help="Run at once, without waiting while another job holds the machine-wide lock.",
     )
     arg_parser.add_argument(
         "--timeout",
@@ -692,6 +701,8 @@ def main() -> int:
     )
 
     args = arg_parser.parse_args()
+    if yield_to_lock is not None and not args.no_exclusive:
+        yield_to_lock()
 
     jobs = max(1, args.jobs)
     if args.build_dir:
