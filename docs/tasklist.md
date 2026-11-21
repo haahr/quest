@@ -11,8 +11,9 @@ it, where to start, and when it is done. Remove a task when the work lands.
 twice ([benchmarks.md](benchmarks.md) §3.2). Inlining, contification, and escape analysis remove many closures, but
 not those that are stored or returned.
 
-**Where to start.** The closure's layout in `questlang/repr/layout` and its construction in the SSA builder
-(`questlang/ssa/build/`), with the runtime's `QClosure` (`runtime/quest_runtime.h`, an ABI change).
+**Where to start.** The design in [closure-objects-plan.md](closure-objects-plan.md): the representation (§2), its
+steps (§6), and the counts that make the case (§1.1: up to 16.3 percent of the MLton benchmarks' allocations, 3.3 of
+the compiler's).
 
 **Done when.** A closure is one object, its environment inline, in both backends, or the idea is dropped with its
 measurement.
