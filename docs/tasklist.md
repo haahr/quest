@@ -5,6 +5,33 @@ it, where to start, and when it is done. Remove a task when the work lands.
 
 ---
 
+## Closures made in a `for` loop share the loop variable
+
+**Problem.** A closure made in a `for` loop's body that captures the loop variable sees its last value, not the
+iteration's: every closure in
+
+```
+let adders = array of(50 fun(x: Int): Int x)
+for i = 0 upto 49 do adders[i] := fun(x: Int): Int x + i end
+```
+
+adds 49, where each should add its own `i`. The loop variable is one mutable variable updated each time round, and a
+closure capturing a mutable variable captures its box (`ir/captures`), so all of them share it. Every evaluator agrees
+(both interpreters, compiled code), so no test noticed; `language/closure_objects` works around it with `let j = i`.
+It is a bug: a `for` loop's variable cannot be assigned in its body, so each iteration reads as a binding of its own,
+and a closure should keep the value of the iteration that made it, as `let j = i` does.
+
+**Where to start.** How `for` is lowered (questlang/ir/lower, the bootstrap's `ir/lower.py`) and interpreted (both
+treewalks): the loop counts with a hidden mutable variable and binds the loop variable afresh, immutably, at the top
+of each iteration, so that a closure captures its value. The IR's loops after contification, the escape and scalar
+passes that see the counter, and the wasm backend come along, as they lower the same IR.
+
+**Done when.** A test (closures made in a `for` loop, upward and downward, captured directly and through a nested
+closure, and stored and called after the loop) prints each iteration's value on every evaluator and backend, and
+syntax.md's `for` says the variable is bound once per iteration.
+
+---
+
 ## A function value converted to a supertype allocates its adapter's closure every time
 
 **Problem.** An adapt plan (a closure used at a function type whose arguments or result need converting, ir.md §8.4.1)
@@ -158,3 +185,40 @@ conversion. A per-function analysis cache cleared when a pass changes the CFG
 **Done when.** The argument is written down at the loop, or the graph is recomputed, with the ssa goldens unchanged.
 
 ---
+
+## The bootstrap's C gives a converted known function a new adapter each time
+
+**Problem.** Passing a program's own function to a generic one twice and comparing the two, as in
+
+```
+let same(A::TYPE f: All(x: A y: A) Int g: All(x: A y: A) Int): Bool = f is g
+let own(x: Int y: Int): Int = x - y
+same(:Int own own)
+```
+
+gives `true` in both interpreters and in the self-hosted compiler's code, whose thunk pass makes a known function's
+adapter a static closure ([ir.md](ir.md) §8.4.1), and `false` in the bootstrap's C, whose printer allocates the
+adapter's closure at each conversion. The same holds for an imported function (`sort.intCompare`) since the
+adapter-closures plan's first step.
+
+**Where to start.** The bootstrap's adapt plans, `codegen/c/printer.py`'s `convert` (`case "adapt"`) and `adapter`:
+for a known function, or an imported member, a static closure of an adapter that calls it directly, as `ir/thunks`
+does.
+
+**Done when.** A shared test that compares converted functions with `is` gives the same answer in every phase.
+
+---
+
+## The arm64 fixed point's stages 2 and 3 are different binaries from the same assembly
+
+**Problem.** `run_tests.py --self-hosting --fixed-point-only --stage-backend arm64` ends with "Note: the binaries of
+stages 2 and 3 differ, from identical assembly" (`bootstrap/python/quest/testing/selfhost.py`), where through C it
+reports "Stages 2 and 3 are the same binary". The fixed point holds (the artifacts are the same), so something
+between the assembly and the binary differs from one build to the next: a path, a timestamp, the order the linker is
+given objects in, or the Mach-O UUID.
+
+**Where to start.** Compare the two binaries (`cmp -l`, `otool -l` for LC_UUID, `dwarfdump` for paths), then the
+arm64 backend's assembling and linking (`questlang/codegen/arm64/`, the driver's link step) against the C backend's.
+
+**Done when.** Stages 2 and 3 are the same binary through arm64, or the difference is known and the note says what
+it is.
