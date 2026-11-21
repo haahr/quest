@@ -277,7 +277,15 @@ def check_self_hosting(python_executable: str, build_dir: Path, seed: str = "boo
     elif backend == "c":
         print("(Seeded by the bootstrap: --seed release also checks that the bootstrap builds the release's compiler)")
     if stage2.read_bytes() != stage3.read_bytes():
-        print("Note: the binaries of stages 2 and 3 differ, from identical " + ("C" if backend != "arm64" else "assembly"))
+        # Through arm64 the objects carry debugging information, so the linker
+        # writes a debug map naming each object by its path in the stage's own
+        # build directory, with its modification time, and derives the binary's
+        # UUID from them; lldb reads the objects through it. The code is the
+        # same, as the assembly is
+        why = (" (the debug map's object paths and times, and the UUID made from them)"
+               if backend == "arm64" else "")
+        print("Note: the binaries of stages 2 and 3 differ, from identical "
+              + ("C" if backend != "arm64" else "assembly") + why)
     else:
         print("Stages 2 and 3 are the same binary")
     return stage2

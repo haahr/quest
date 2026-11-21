@@ -89,22 +89,6 @@ does.
 
 ---
 
-## The arm64 fixed point's stages 2 and 3 are different binaries from the same assembly
-
-**Problem.** `run_tests.py --self-hosting --fixed-point-only --stage-backend arm64` ends with "Note: the binaries of
-stages 2 and 3 differ, from identical assembly" (`bootstrap/python/quest/testing/selfhost.py`), where through C it
-reports "Stages 2 and 3 are the same binary". The fixed point holds (the artifacts are the same), so something
-between the assembly and the binary differs from one build to the next: a path, a timestamp, the order the linker is
-given objects in, or the Mach-O UUID.
-
-**Where to start.** Compare the two binaries (`cmp -l`, `otool -l` for LC_UUID, `dwarfdump` for paths), then the
-arm64 backend's assembling and linking (`questlang/codegen/arm64/`, the driver's link step) against the C backend's.
-
-**Done when.** Stages 2 and 3 are the same binary through arm64, or the difference is known and the note says what
-it is.
-
----
-
 ## A tag test that a dominating `?tag` decides is made again
 
 **Problem.** In `if o?made then o!made.x := v end`, the tag is tested twice: `o?made` is an `is_tag`, and `o!made`,
