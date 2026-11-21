@@ -401,3 +401,89 @@ b0(%0: ptr):
   %3: int = const 8
   return %0
 }
+== closures passed to their own code
+-- after escapeUnit: 1 removed
+function code(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  jump b1(%0)
+b1(%2: ptr):
+  %3: int = load8 %2 + 8
+  %4: int = add %3, %1
+  return %4
+}
+function keeps(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %2: ptr = symbol g_kept
+  store8 %2 + 0, %0
+  return %1
+}
+function local(%0: int): int slots [16:8] {
+b0(%0: int):
+  %1: int = const 16
+  %100: ptr = symbol closure_code
+  %2: ptr = slot 0
+  %101: ptr = null
+  store8 %2 + 0, %101
+  %102: int = const 0
+  store8 %2 + 8, %102
+  %3: ptr = symbol code
+  store8 %2 + 0, %3
+  store8 %2 + 8, %0
+  %4: int = call code(%2, %0)
+  %5: int = add %4, %0
+  return %5
+}
+function kept(%0: int): int {
+b0(%0: int):
+  %1: int = const 16
+  %100: ptr = symbol closure_keeps
+  %2: ptr = call quest_alloc(%1, %100)
+  store8 %2 + 8, %0
+  %4: int = call keeps(%2, %0)
+  %5: int = add %4, %0
+  return %5
+}
+function second(%0: ptr): int {
+b0(%0: ptr):
+  %1: int = const 16
+  %100: ptr = symbol closure_code
+  %2: ptr = call quest_alloc(%1, %100)
+  %4: int = call code(%0, %2)
+  %5: int = const 1
+  %6: int = add %4, %5
+  return %6
+}
+function look(%0: ptr) {
+b0(%0: ptr):
+  %1: int = load8 %0 + 8
+  return
+}
+function tail(%0: int) {
+b0(%0: int):
+  %1: int = const 16
+  %100: ptr = symbol closure_look
+  %2: ptr = call quest_alloc(%1, %100)
+  store8 %2 + 8, %0
+  tail call look(%2)
+}
+function again(%0: int): int {
+b0(%0: int):
+  %1: int = const 16
+  %100: ptr = symbol closure_code
+  %2: ptr = call quest_alloc(%1, %100)
+  store8 %2 + 8, %0
+  %4: int = call code(%2, %0)
+  %5: int = call again(%4)
+  %6: int = add %5, %0
+  return %6
+}
+function itself(%0: int): int {
+b0(%0: int):
+  %1: int = const 16
+  %100: ptr = symbol closure_code
+  %2: ptr = call quest_alloc(%1, %100)
+  store8 %2 + 8, %2
+  %4: int = call code(%2, %0)
+  %5: int = add %4, %0
+  return %5
+}

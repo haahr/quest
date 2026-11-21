@@ -369,8 +369,8 @@ each pass (`ssa_escape`, `ssa_promote`, `ssa_constants`, `ssa_concats`, `ssa_val
 `ssa/passes/escape` removes allocations whose pointers never leave the function that makes them: a tuple made only to be
 taken apart, the tuple `o!tag` makes to read one component of, an option's payload tuple copied into the option, a
 record's box only read. Inlining ([ir.md](ir.md) §8.6) is what brings producer and consumer into one function. The
-pass is local and conservative, one function at a time with no summaries of others, and reuses promotion rather than
-repeating it. `benchmarks/mlton/allocations.py` counts a program's allocations by function, to see what it removes
+pass is local and conservative, one function at a time with one fact about the unit's others (whether each uses its
+first parameter only to load from), and reuses promotion rather than repeating it. `benchmarks/mlton/allocations.py` counts a program's allocations by function, to see what it removes
 and what still escapes ([benchmarks.md](benchmarks.md) §9).
 
 **What escapes.** A candidate is a call of `quest_alloc` with a constant size and a layout's address; `quest_array_new`,
@@ -386,13 +386,22 @@ The allocation does not escape when every use of each of its pointers is the add
 offset within its size, such a store into a word holding its pointer, a proxy test (`proxyFold.isProxyTest`:
 `and(ptrToInt(p), QUEST_PROXY_TAG)`), or an argument to a write barrier (`quest_barrier` among and after an
 aggregate's initializing stores when a call came between them and its allocation, `quest_barrier_slot` after a pointer
-store into a field or element; [collector.md](collector.md) §3.5), which keeps no pointer. A fresh allocation is
+store into a field or element; [collector.md](collector.md) §3.5), which keeps no pointer, or the first argument of a
+direct call, not a tail call, of a function of the unit that uses its first parameter only as the address of loads,
+directly or through the block parameters it is passed to (`firstLoadOnly`): a closure passed to its own code, which
+reads its captures and keeps nothing once it returns. The allocation itself is passed there, not a pointer derived
+from it, and only when no word of it holds its own pointer, which the callee could load and keep (a `let rec`
+closure capturing itself). Nor in a function with a call `tailCalls` would make a tail call (`tailCalls.hasTailCalls`)
+or a call of itself, which `accumulate` may make one: `tailCalls` makes no tail call in a function a slot's address
+escapes from, so a recursion there would grow the stack (life's `nthgen` did, 8 percent slower, when this was
+tried without the condition). Measured in [benchmarks.md](benchmarks.md) §32. A fresh allocation is
 never a proxy, so the test folds to zero, and the branches the builder's `representation.unproxy` and the tuple and
 option readers make on it go to their direct arm. The fold is escape analysis's and scalar replacement's alone (§4.3),
 which share it in `ssa/passes/proxyFold` (the values' definitions, the proxy tests of the pointers each tracks, and
 the blocks reached once they fold), since nothing else in the SSA knows that `quest_alloc` returns an aligned
 pointer.
-Anything else is an escape: an argument to any other call (the runtime's included: `quest_option_is`, `quest_val_is`,
+Anything else is an escape: an argument to any other call (a tail call's, which outlives the caller's frame, and the
+runtime's included: `quest_option_is`, `quest_val_is`,
 a conversion), a value stored elsewhere, a return,
 a parameter bound to other values too, a comparison (`peq`, which could fold but does not), a `toVal`, any other
 `ptrToInt`, or an access of part of a word holding a pointer. Since the folds decide which blocks are reached, and a

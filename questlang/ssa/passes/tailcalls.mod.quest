@@ -5,7 +5,6 @@ import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/cfg : questlang/ssa/Cfg
     collections/vector : collections/Vector
-    util/maybe : util/Maybe
 export
     Let Function = ssa.Function
 
@@ -119,52 +118,64 @@ export
 
     let returnsThrough(f: Function t: ssa.Target values: Array(Int)): Bool = returnsWithin(f t values 0)
 
+    (* How many of blk's last instructions a tail call would replace: its
+     * last, a call whose results blk returns (through jumps to blocks that
+     * only return them), or a call and the extension of its byte, which this
+     * function's caller makes again (docs/ssa.md section 2.2), or its result
+     * retyped as a QVal word or back; 0 when blk ends in no such call *)
+    let tailPops(f: Function blk: ssa.Block): Int =
+        begin
+            let n = vector.length(blk.insts)
+            let isPtr(v: Int): Bool = case ssa.typeOf(f v) when typePtr then true else false end
+            let isExtension(i: ssa.Inst): Bool = ssa.isOp(i ssa.opZext8) orif ssa.isOp(i ssa.opSext8)
+                orif {ssa.isOp(i ssa.opToVal) andif isPtr(i.args[0])}
+                orif {ssa.isOp(i ssa.opFromVal) andif isPtr(i.results[0])}
+            let var returned = array of(0 0)
+            let var pops = 0
+            if n > 0 then
+                let last = vector.get(blk.insts {n - 1})
+                if ssa.isCall(last) then
+                    returned := last.results
+                    pops := 1
+                elsif {n > 1} andif isExtension(last) then
+                    let before = vector.get(blk.insts {n - 2})
+                    if ssa.isCall(before) andif sameValues(last.args before.results) then
+                        returned := last.results
+                        pops := 2
+                    end
+                end
+            end
+            let tail = if pops is 0 then false
+                else case blk.term
+                    when termReturn with x then sameValues(x.values returned)
+                    when termJump with x then returnsThrough(f x.target returned)
+                    when termNone, termBranch, termSwitch, termTailCall, termTry, termUnreachable then false
+                end
+            end
+            if tail then pops else 0 end
+        end
+
+    let hasTailCalls(f: Function): Bool =
+        begin
+            let var found = false
+            for b = 0 upto {vector.length(f.blocks) - 1} do
+                if tailPops(f ssa.block(f b)) > 0 then found := true end
+            end
+            found
+        end
+
     let markFunction(f: Function): Ok =
         if not(slotsEscape(f)) then
             let var marked = false
             for b = 0 upto {vector.length(f.blocks) - 1} do
                 let blk = ssa.block(f b)
-                let n = vector.length(blk.insts)
-                (* An extension of a byte, or a pointer retyped as a QVal word
-                 * or back, which change nothing in the register returned *)
-                let isPtr(v: Int): Bool = case ssa.typeOf(f v) when typePtr then true else false end
-                let isExtension(i: ssa.Inst): Bool = ssa.isOp(i ssa.opZext8) orif ssa.isOp(i ssa.opSext8)
-                    orif {ssa.isOp(i ssa.opToVal) andif isPtr(i.args[0])}
-                    orif {ssa.isOp(i ssa.opFromVal) andif isPtr(i.results[0])}
-                (* The call, and what it returns: its results, or the extension
-                 * of its byte, which this function's caller makes again
-                 * (docs/ssa.md section 2.2), or its result retyped *)
-                let var call = maybe.none(:ssa.Inst)
-                let var returned = array of(0 0)
-                let var pops = 0
-                if n > 0 then
-                    let last = vector.get(blk.insts {n - 1})
-                    if ssa.isCall(last) then
-                        call := maybe.some(last)
-                        returned := last.results
-                        pops := 1
-                    elsif {n > 1} andif isExtension(last) then
-                        let before = vector.get(blk.insts {n - 2})
-                        if ssa.isCall(before) andif sameValues(last.args before.results) then
-                            call := maybe.some(before)
-                            returned := last.results
-                            pops := 2
-                        end
-                    end
-                end
-                if maybe.isSome(call) then
-                    let tail = case blk.term
-                        when termReturn with x then sameValues(x.values returned)
-                        when termJump with x then returnsThrough(f x.target returned)
-                        when termNone, termBranch, termSwitch, termTailCall, termTry, termUnreachable then false
-                    end
-                    if tail then
-                        for k = 1 upto pops do let ignored = vector.pop(blk.insts) end
-                        let c = maybe.unwrap(call)
-                        blk.term := option termTailCall of ssa.Terminator with let call = c end
-                        blk.termLoc := c.loc
-                        marked := true
-                    end
+                let pops = tailPops(f blk)
+                if pops > 0 then
+                    let c = vector.get(blk.insts {vector.length(blk.insts) - pops})
+                    for k = 1 upto pops do let ignored = vector.pop(blk.insts) end
+                    blk.term := option termTailCall of ssa.Terminator with let call = c end
+                    blk.termLoc := c.loc
+                    marked := true
                 end
             end
             (* The blocks that only returned what a tail call now returns *)

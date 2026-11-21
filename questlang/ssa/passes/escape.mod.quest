@@ -5,7 +5,10 @@ import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/cfg : questlang/ssa/Cfg
     questlang/ssa/passes/proxyFold : questlang/ssa/passes/ProxyFold
+    questlang/ssa/passes/tailCalls : questlang/ssa/passes/TailCalls
     collections/vector : collections/Vector
+    collections/hashMap : collections/HashMap
+    util/hash : util/Hash
     stringOp = string : StringOp
     conv : Conv
 export
@@ -33,7 +36,67 @@ export
         selfOff: Array(Array(Int))
         (* The blocks reached once proxy tests of the candidates fold *)
         reach: Array(Bool)
+        (* Whether the function of the unit a symbol names uses its first
+         * parameter only as the address of loads (firstLoadOnly) *)
+        loadOnly: All(symbol: String) Bool
     end
+
+    (* Whether f's first parameter, the closure a call of f passes it, is only
+     * ever the address of loads, directly or through the block parameters it
+     * is passed to, so that f keeps no pointer to it once it returns *)
+    let firstLoadOnly(f: Function): Bool =
+        begin
+            let entry = ssa.block(f 0)
+            if vector.length(entry.params) is 0 then false
+            else
+                let inSet = array of(vector.length(f.types) false)
+                inSet[vector.get(entry.params 0)] := true
+                let var only = true
+                let var changed = true
+                while only andif changed do
+                    changed := false
+                    for b = 0 upto {vector.length(f.blocks) - 1} do
+                        let blk = ssa.block(f b)
+                        for k = 0 upto {vector.length(blk.insts) - 1} do
+                            let i = vector.get(blk.insts k)
+                            for j = 0 upto {extent i.args - 1} do
+                                if inSet[i.args[j]] andif not(ssa.isOp(i ssa.opLoad) andif {j is 0}) then
+                                    only := false
+                                end
+                            end
+                        end
+                        let used = case blk.term
+                            when termBranch with x then array of x.cond end
+                            when termSwitch with x then array of x.value end
+                            when termReturn with x then x.values
+                            when termTailCall with x then x.call.args
+                            when termNone, termJump, termTry, termUnreachable then array of :Int end
+                        end
+                        for j = 0 upto {extent used - 1} do if inSet[used[j]] then only := false end end
+                        let ts = ssa.targets(blk.term)
+                        for t = 0 upto {extent ts - 1} do
+                            let params = ssa.block(f ts[t].block).params
+                            for j = 0 upto {extent ts[t].args - 1} do
+                                if inSet[ts[t].args[j]] andif not(inSet[vector.get(params j)]) then
+                                    inSet[vector.get(params j)] := true
+                                    changed := true
+                                end
+                            end
+                        end
+                    end
+                end
+                only
+            end
+        end
+
+    (* Whether candidate a holds its own pointer, which a load from it gives
+     * whatever it is passed to *)
+    let holdsItself(s: State a: Int): Bool =
+        begin
+            let var found = false
+            for w = 0 upto {extent s.selfHas[a] - 1} do if s.selfHas[a][w] then found := true end end
+            found
+        end
 
     let defOf(s: State v: Int): ssa.Inst = proxyFold.defOf(s.d v)
 
@@ -217,6 +280,12 @@ export
                                 elsif ssa.isOp(i ssa.opPtrToInt) then
                                     if not(onlyProxyTests(i.results[0])) then escapes(s a "converted to an integer") end
                                 elsif ssa.isCall(i) andif proxyFold.isBarrier(i.symbol) then ok
+                                elsif ssa.isOp(i ssa.opCall) andif {j is 0} andif {s.allocValue[a] is v}
+                                    andif not(holdsItself(s a)) andif s.loadOnly(i.symbol)
+                                then
+                                    (* A closure passed to its own code, which
+                                     * reads its captures and keeps nothing *)
+                                    ok
                                 elsif ssa.isCall(i) then escapes(s a "passed to " <> i.symbol)
                                 else escapes(s a "used by " <> ssa.opcodeName(i.op)) end
                             end
@@ -254,7 +323,7 @@ export
         end
 
     (* The analysis of f *)
-    let solve(f: Function): State =
+    let solve(f: Function loadOnly: All(symbol: String) Bool): State =
         begin
             let nValues = vector.length(f.types)
             let nBlocks = vector.length(f.blocks)
@@ -291,6 +360,7 @@ export
                 let ptr = array of(nValues ~1) let off = array of(nValues 0)
                 let selfHas = selfHas let selfOff = selfOff
                 let reach = array of(nBlocks true)
+                let loadOnly = loadOnly
             end
             (* Optimistically, none escapes; each round drops those that do,
              * until none more does *)
@@ -311,9 +381,11 @@ export
             s
         end
 
+    let nothingLoadOnly(symbol: String): Bool = false
+
     let analyze(f: Function): Array(Verdict) =
         begin
-            let s = solve(f)
+            let s = solve(f nothingLoadOnly)
             let n = extent s.allocValue
             let verdicts = array of(n tuple let value = 0 let bytes = 0 let escapes = false let reason = "" end)
             for a = 0 upto {n - 1} do
@@ -328,9 +400,9 @@ export
     let typeCode = ssa.typeCode
     let typeOfCode = ssa.typeOfCode
 
-    let escapeFunction(f: Function): Int =
+    let escapeIn(f: Function loadOnly: All(symbol: String) Bool): Int =
         begin
-            let s = solve(f)
+            let s = solve(f loadOnly)
             let n = extent s.allocValue
             let isPointer(v: Int): Bool = {s.ptr[v] >= 0} andif s.alive[s.ptr[v]]
             let var removed = 0
@@ -472,11 +544,42 @@ export
             removed
         end
 
+    let escapeFunction(f: Function): Int = escapeIn(f nothingLoadOnly)
+
+    let callsItself(f: Function): Bool =
+        begin
+            let var found = false
+            for b = 0 upto {vector.length(f.blocks) - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts k)
+                    if ssa.isOp(i ssa.opCall) andif stringOp.equal(i.symbol f.symbol) then found := true end
+                end
+            end
+            found
+        end
+
+    (* Each function of u, knowing which of the unit's functions use their
+     * first parameter only to load from, so that a closure passed to its own
+     * code there need not escape *)
     let escapeUnit(u: ssa.Unit): Int =
         begin
+            let loadOnly = hashMap.new(:String :Bool stringOp.equal hash.string)
+            for i = 0 upto {vector.length(u.functions) - 1} do
+                let f = vector.get(u.functions i)
+                if firstLoadOnly(f) then begin hashMap.insert(loadOnly f.symbol true) ok end end
+            end
+            let known(symbol: String): Bool = hashMap.contains(loadOnly symbol)
             let var count = 0
             for i = 0 upto {vector.length(u.functions) - 1} do
-                count := count + escapeFunction(vector.get(u.functions i))
+                (* Not where a slot passed to a call would cost a tail call:
+                 * tailCalls makes none in a function a slot's address
+                 * escapes from, and a recursion would then grow the stack.
+                 * A function calling itself is left alone too, since
+                 * accumulate may make that call a tail call later *)
+                let f = vector.get(u.functions i)
+                let keepsTails = tailCalls.hasTailCalls(f) orif callsItself(f)
+                count := count + escapeIn(f if keepsTails then nothingLoadOnly else known end)
             end
             count
         end

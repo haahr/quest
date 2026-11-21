@@ -12,7 +12,13 @@
  * reading it makes; an access outside it; one in a function that enters a
  * try; and one whose stores write barriers follow, which keep no pointer and
  * go with it. Each allocation names its layout, as the builder's do
- * (quest_alloc(size, layout)): the pass takes no other call for one. *)
+ * (quest_alloc(size, layout)): the pass takes no other call for one. Then,
+ * through escapeUnit, closures passed as the first argument of a function of
+ * their unit: one whose code only loads from it, through a loop's parameter
+ * too, which does not escape; and one whose code stores it, one passed as
+ * another argument, one passed in a tail call, one made in a function that
+ * calls itself (whose call accumulate may make a tail call), and one holding
+ * its own pointer, which do. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
@@ -244,6 +250,104 @@ show("followed by write barriers" array of
     "  store8 %4 + 0, %0"
     "  call quest_barrier_slot(%4)"
     "  %5: ptr = load8 %4 + 0"
+    "  return %5"
+    "}"
+end);
+
+(* A unit's functions, before and after escapeUnit *)
+let showUnit(title: String lines: Array(String)): Ok =
+    begin
+        emit("== " <> title <> "\n")
+        let u = parser.readUnit(strutil.joinArray("\n" lines) <> "\n")
+        let removed = escape.escapeUnit(u)
+        emit("-- after escapeUnit: " <> conv.int(removed) <> " removed\n")
+        for k = 0 upto {vector.length(:ssa.Function u.functions) - 1} do
+            let f = vector.get(:ssa.Function u.functions k)
+            emit(printer.formatFunction(f))
+            let problems = verify.functionProblems(f)
+            for j = 0 upto {extent problems - 1} do emit("!! " <> problems[j] <> "\n") end
+        end
+    end;
+
+showUnit("closures passed to their own code" array of
+    "function code(%0: ptr, %1: int): int {"
+    "b0(%0: ptr, %1: int):"
+    "  jump b1(%0)"
+    "b1(%2: ptr):"
+    "  %3: int = load8 %2 + 8"
+    "  %4: int = add %3, %1"
+    "  return %4"
+    "}"
+    "function keeps(%0: ptr, %1: int): int {"
+    "b0(%0: ptr, %1: int):"
+    "  %2: ptr = symbol g_kept"
+    "  store8 %2 + 0, %0"
+    "  return %1"
+    "}"
+    "function local(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 16"
+    "  %100: ptr = symbol closure_code"
+    "  %2: ptr = call quest_alloc(%1, %100)"
+    "  %3: ptr = symbol code"
+    "  store8 %2 + 0, %3"
+    "  store8 %2 + 8, %0"
+    "  %4: int = call code(%2, %0)"
+    "  %5: int = add %4, %0"
+    "  return %5"
+    "}"
+    "function kept(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 16"
+    "  %100: ptr = symbol closure_keeps"
+    "  %2: ptr = call quest_alloc(%1, %100)"
+    "  store8 %2 + 8, %0"
+    "  %4: int = call keeps(%2, %0)"
+    "  %5: int = add %4, %0"
+    "  return %5"
+    "}"
+    "function second(%0: ptr): int {"
+    "b0(%0: ptr):"
+    "  %1: int = const 16"
+    "  %100: ptr = symbol closure_code"
+    "  %2: ptr = call quest_alloc(%1, %100)"
+    "  %4: int = call code(%0, %2)"
+    "  %5: int = const 1"
+    "  %6: int = add %4, %5"
+    "  return %6"
+    "}"
+    "function look(%0: ptr) {"
+    "b0(%0: ptr):"
+    "  %1: int = load8 %0 + 8"
+    "  return"
+    "}"
+    "function tail(%0: int) {"
+    "b0(%0: int):"
+    "  %1: int = const 16"
+    "  %100: ptr = symbol closure_look"
+    "  %2: ptr = call quest_alloc(%1, %100)"
+    "  store8 %2 + 8, %0"
+    "  tail call look(%2)"
+    "}"
+    "function again(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 16"
+    "  %100: ptr = symbol closure_code"
+    "  %2: ptr = call quest_alloc(%1, %100)"
+    "  store8 %2 + 8, %0"
+    "  %4: int = call code(%2, %0)"
+    "  %5: int = call again(%4)"
+    "  %6: int = add %5, %0"
+    "  return %6"
+    "}"
+    "function itself(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 16"
+    "  %100: ptr = symbol closure_code"
+    "  %2: ptr = call quest_alloc(%1, %100)"
+    "  store8 %2 + 8, %2"
+    "  %4: int = call code(%2, %0)"
+    "  %5: int = add %4, %0"
     "  return %5"
     "}"
 end);
