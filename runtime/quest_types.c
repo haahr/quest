@@ -698,7 +698,7 @@ const QTypeDescriptor *quest_make_fun_descriptor(
     QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
     desc->kind = QTYPE_KIND_FUN;
     desc->name = dup_name;
-    desc->size = sizeof(QClosure);
+    desc->size = sizeof(QClosure *);
     desc->alignment = sizeof(void *);
     desc->is_subtype = quest_is_subtype;
 

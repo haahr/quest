@@ -109,8 +109,8 @@ Q_INLINE size_t quest_sized_bytes(const void *obj) {
  * header's inline helpers allocate with */
 extern const QLayout quest_layout_record_box;      /* a QRecordVal: its payload and dictionary */
 extern const QLayout quest_layout_variant_box;     /* a QVariantVal: its tag and payload */
-extern const QLayout quest_layout_closure;         /* a QClosure */
-extern const QLayout quest_layout_adapter_env;     /* a QFunAdapterEnv */
+extern const QLayout quest_layout_adapt_closure;   /* a QAdaptClosure */
+extern const QLayout quest_layout_adapter_closure; /* a QFunAdapterClosure */
 extern const QLayout quest_layout_array_pointer;   /* a QArray whose elements are pointers */
 extern const QLayout quest_layout_array_scalar;    /* a QArray whose elements are scalars */
 extern const QLayout quest_layout_array_ambiguous; /* a QArray whose elements are QVals of unknown kind */

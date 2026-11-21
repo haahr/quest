@@ -274,7 +274,7 @@ calling convention ([arm64.md](arm64.md) §3.3):
 
 | Register(s) | AAPCS64 Role | Quest Runtime Usage |
 | :--- | :--- | :--- |
-| `x0` – `x7` | Argument & Return | Closure `env` in `x0`, then descriptors & value args; returns in `x0`/`(x0, x1)`. |
+| `x0` – `x7` | Argument & Return | The closure in `x0`, then descriptors & value args; returns in `x0`/`(x0, x1)`. |
 | `d0` – `d7` | FP Arg & Return | Unboxed `Real` (`double`) args & results; boxed only at polymorphic boundaries. |
 | `x8` | Indirect Result | Unused for Quest types, since all Quest values and fat pointers are $\le 16$ bytes. |
 | `x9` – `x15` | Caller-Saved Temps | arm64: `x9`–`x11` scratch within an instruction sequence; `x12`–`x15` allocated. |
@@ -286,13 +286,14 @@ calling convention ([arm64.md](arm64.md) §3.3):
 | `sp` | Stack Pointer | 16-byte aligned at all call boundaries. |
 
 ### 4.1. Uniform Closure Calling Convention
-Every first-class Quest function (`QClosure = { void *fn, void *env }`) is invoked by passing `closure->env` as the
-first argument (`x0`), followed by any runtime type descriptors (`const QTypeDescriptor *`) for `All(A::TYPE)`
-quantifiers, followed by the value parameters:
+Every first-class Quest function is a closure, one object whose first word is its code (`QClosure = { void *fn }`)
+and whose further words are its captures. It is invoked by passing the closure itself as the first argument (`x0`),
+followed by any runtime type descriptors (`const QTypeDescriptor *`) for `All(A::TYPE)` quantifiers, followed by the
+value parameters:
 ```c
-((RetType (*)(void *, ...))closure->fn)(closure->env, descriptor_A, arg1, arg2);
+((RetType (*)(void *, ...))closure->fn)((void *)closure, descriptor_A, arg1, arg2);
 ```
-Top-level and non-capturing functions use a static closure struct `{ (void *)qf_foo, NULL }` so that first-class
+Top-level and non-capturing functions use a static closure struct `{ (void *)qf_foo }` so that first-class
 function values require zero heap allocation when they capture no local variables.
 
 ---

@@ -74,8 +74,8 @@ immediate.
 
 A load is **invariant** (`Inst.invariant`) when nothing writes what it reads once the object it reads from is made, so
 that value numbering may reuse it across stores and calls (§4.1). The builder marks the loads it knows of
-(`values.invariantWord`): a closure's code and environment pointers and its environment's words (a deferred capture of a
-`let rec` is stored before the closure can run), an array's and a string's length and a string's data pointer (the
+(`values.invariantWord`): a closure's code pointer and its words (a deferred capture of a `let rec` is stored before the
+closure can run), an array's and a string's length and a string's data pointer (the
 runtime writes a string's bytes, never these), a proxy's original, an option's tag, a record's offset table, a view
 map's index, and a conversion's static map. A module's record is written while its module is initialized, and is not
 marked. A field's static type does not make it invariant, since an immutable view may alias a `var` field (`Tuple var a:
@@ -158,8 +158,9 @@ and `unit` (functions, static data, registration, and the unit).
   location (a cell, what a `var` or `out` parameter points to) holds a record or variant as its box's pointer
   (`layout.shapeLocationRepresentation`). Offsets come from `repr/layout`, `repr/staticdata`, and
   `repr/runtimeLayout`, which the C asserts.
-- **Closures.** A closure's environment is the descriptors of its type arguments then its captures, a word for each
-  of their values: private to the unit, which alone reads it ([arm64.md](arm64.md) §7.1). A call of a variable bound
+- **Closures.** A closure is one object, its code pointer and then the descriptors of its type arguments and its
+  captures, a word for each of their values: past the code pointer, private to the unit, which alone reads it
+  ([arm64.md](arm64.md) §7.1). Its code takes the closure as its first argument. A call of a variable bound
   to a closure of one of the unit's functions calls the function directly, as the C printer does; when that function
   is an external's thunk (`qx_`, ir.md §8.4.1), which only forwards its arguments, the call is of the external C
   function itself, as the C compiler makes it by inlining the thunk. A call of an imported member that is one of the

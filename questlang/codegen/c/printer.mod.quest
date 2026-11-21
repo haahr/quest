@@ -415,10 +415,12 @@ export
 
     let noBoxes = array of :Shape end
 
-    (* The layout of a closure's environment, struct QEnv_<code>, whose
-     * fields C lays out: a Bool or Char capture is a byte, every other
-     * field a word or two, aligned to a word *)
-    let envLayoutOf(code: String o: nodes.OpMakeClosure): objectLayout.Layout =
+    (* The layout of a closure, struct QClosure_<code>: its code pointer, then
+     * the fields C lays out after it: a Bool or Char capture is a byte, every
+     * other field a word or two, aligned to a word. The fields' words are
+     * counted from the code pointer's end, which C aligns as it would the
+     * struct's start *)
+    let closureLayoutOf(code: String o: nodes.OpMakeClosure): objectLayout.Layout =
         begin
             let kinds = vector.new(:objectLayout.Kind)
             let scalar = option kindScalar of objectLayout.Kind end
@@ -452,9 +454,8 @@ export
                     end
                 end
             end
-            if vector.length(kinds) is 0 then wordAt(0 scalar) end
-            objectLayout.envLayout(code vector.toArray(kinds)
-                8 * vector.length(kinds) "sizeof(struct QEnv_" <> code <> ")")
+            objectLayout.closureLayout(code vector.toArray(kinds)
+                8 * {vector.length(kinds) + 1} "sizeof(struct QClosure_" <> code <> ")")
         end
 
     (* The definitions of the unit's layouts, after every function has been
@@ -1030,13 +1031,13 @@ export
                     if maybe.isNone(plan.thunk) then
                         raise unsupported with "C printing of an adapt plan without its adapter" end
                     end
-                    let clos = temp(p "QClosure *")
-                    emit(p clos <> " = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
+                    let clos = temp(p "QAdaptClosure *")
+                    emit(p clos <> " = (QAdaptClosure *)quest_alloc(sizeof(QAdaptClosure), &quest_layout_adapt_closure);")
                     let mark = beginInit(p clos)
                     emit(p clos <> "->fn = (void *)" <> codeName(p maybe.unwrap(plan.thunk)) <> ";")
-                    emit(p clos <> "->env = (void *)(" <> c <> ");")
+                    emit(p clos <> "->orig = (const QClosure *)(" <> c <> ");")
                     initBarrier(p mark clos)
-                    clos
+                    "((QClosure *)" <> clos <> ")"
                 when planRuntime then
                     let l = maybe.unwrap(plan.layout)
                     let genericType = if l.toGeneric then plan.target else plan.source end
@@ -1741,12 +1742,12 @@ export
             if maybe.isSome(known)
                 andif {extent maybe.unwrap(:nodes.OpMakeClosure known).typeArgs is 0} then
                 let k = maybe.unwrap(known)
-                let env = if extent k.captures is 0 then "NULL" else name(p callee) <> "->env" end
+                let env = if extent k.captures is 0 then "NULL" else "(void *)" <> name(p callee) end
                 syntax.call(codeName(p k.code) joinedWith(one(env) cArgs))
             else
                 let fnPtr = types.closureFnPtrType(callee.type)
                 let clos = varAtom(p callee)
-                syntax.call("((" <> fnPtr <> ")(" <> clos <> "->fn))" joinedWith(one(clos <> "->env") cArgs))
+                syntax.call("((" <> fnPtr <> ")(" <> clos <> "->fn))" joinedWith(one("(void *)" <> clos) cArgs))
             end
         end
 
@@ -1860,21 +1861,21 @@ export
         end
 
     (* A closure of o.code: the static <code>_closure when it captures
-     * nothing and takes no type arguments; else a new QClosure of the code
-     * and a new environment, struct QEnv_<code> (envStruct), of o's
-     * descriptors (d0, d1, ...) and captures (c0, c1, ...). A capture of a
-     * variable of the let rec being printed is stored after the let rec's
-     * body instead (Deferred). *)
+     * nothing and takes no type arguments; else a new struct QClosure_<code>
+     * (closureStruct) of the code, o's descriptors (d0, d1, ...), and its
+     * captures (c0, c1, ...). A capture of a variable of the let rec being
+     * printed is stored after the let rec's body instead (Deferred). *)
     let makeClosure(p: P o: nodes.OpMakeClosure): String =
         begin
             let code = codeName(p o.code)
             if {extent o.captures is 0} andif {extent o.typeArgs is 0} then
                 "(&" <> code <> "_closure)"
             else
-                let env = temp(p "struct QEnv_" <> code <> " *")
-                emit(p env <> " = (struct QEnv_" <> code <> " *)quest_alloc(sizeof(struct QEnv_" <> code <> "), "
-                    <> layoutRef(p envLayoutOf(code o)) <> ");")
+                let env = temp(p "struct QClosure_" <> code <> " *")
+                emit(p env <> " = (struct QClosure_" <> code <> " *)quest_alloc(sizeof(struct QClosure_" <> code
+                    <> "), " <> layoutRef(p closureLayoutOf(code o)) <> ");")
                 let mark = beginInit(p env)
+                emit(p env <> "->fn = (void *)" <> code <> ";")
                 for i = 0 upto {extent o.descriptors - 1} do
                     emit(p env <> "->d" <> cInt(i) <> " = " <> descriptor(p o.descriptors[i]) <> ";")
                 end
@@ -1894,11 +1895,7 @@ export
                     if not(isDeferred) then emit(p env <> "->c" <> cInt(i) <> " = " <> atom(p a) <> ";") end
                 end
                 initBarrier(p mark env)
-                let clos = temp(p "QClosure *")
-                emit(p clos <> " = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
-                emit(p clos <> "->fn = (void *)" <> code <> ";")
-                emit(p clos <> "->env = (void *)" <> env <> ";")
-                clos
+                "((QClosure *)" <> env <> ")"
             end
         end
 
@@ -1939,7 +1936,7 @@ export
                         descs)
                 else
                     let fnPtr = types.closureFnPtrType(origType)
-                    syntax.call("((" <> fnPtr <> ")(" <> clos <> "->fn))" joinedWith(one(clos <> "->env") descs))
+                    syntax.call("((" <> fnPtr <> ")(" <> clos <> "->fn))" joinedWith(one("(void *)" <> clos) descs))
                 end
                 let pl = o.plans[0]
                 if maybe.isNone(pl) then called else convert(p called maybe.unwrap(pl)) end
@@ -2759,9 +2756,10 @@ export
     (* The C definition of the lifted function f: its signature
      * (functionSignature: the raw environment, then its own type parameters'
      * descriptors, then its parameters), a prologue, the declarations of its
-     * variables and temporaries, and its body. The prologue casts _raw_env to
-     * what f's closure carries (a struct QEnv_<f> of its captures, or for an
-     * adapter, the closure it adapts), loads the descriptors of the type
+     * variables and temporaries, and its body. The prologue casts _raw_env,
+     * f's closure, to what it is (a struct QClosure_<f> of its captures, or
+     * for an adapter, a QAdaptClosure, whose orig is the closure it adapts),
+     * loads the descriptors of the type
      * parameters the closure supplies rather than the caller, and fetches the
      * view map of each type parameter whose values the body reads through
      * its bound (codegen-c.md section 10.4). Every variable is declared at
@@ -2786,9 +2784,10 @@ export
                  * closure's type (ir/thunks); a lifted function's, a struct of
                  * captures, has the placeholder type Ok *)
                 let env = maybe.unwrap(f.env)
-                add(prologue cType(env.type) <> " " <> name(p env) <> " = (" <> cType(env.type) <> ")_raw_env;")
+                add(prologue cType(env.type) <> " " <> name(p env) <> " = (" <> cType(env.type)
+                    <> ")((const QAdaptClosure *)_raw_env)->orig;")
             elsif maybe.isSome(f.env) then
-                let envStruct = "struct QEnv_" <> codeName(p f)
+                let envStruct = "struct QClosure_" <> codeName(p f)
                 let envName = name(p maybe.unwrap(f.env))
                 add(prologue envStruct <> " *" <> envName <> " = (" <> envStruct <> " *)_raw_env;")
                 (* The descriptors of the type parameters its closure
@@ -2835,10 +2834,11 @@ export
             res
         end
 
-    let envStruct(p: P f: nodes.Function closure: nodes.OpMakeClosure): Lines =
+    let closureStruct(p: P f: nodes.Function closure: nodes.OpMakeClosure): Lines =
         begin
             let lines = vector.new(:String)
-            add(lines "struct QEnv_" <> codeName(p f) <> " {")
+            add(lines "struct QClosure_" <> codeName(p f) <> " {")
+            add(lines "    void *fn;")
             for i = 0 upto {extent closure.typeArgs - 1} do add(lines "    const QTypeDescriptor *d" <> cInt(i)
                 <> ";") end
             for i = 0 upto {extent closure.captures - 1} do
@@ -2847,8 +2847,6 @@ export
                 let t = atomType(closure.captures[i])
                 add(lines "    " <> if isOk(t) then "QVal" else cType(t) end <> " c" <> cInt(i) <> ";")
             end
-            if {extent closure.typeArgs is 0}
-                andif {extent closure.captures is 0} then add(lines "    char _unused;") end
             add(lines "};")
             lines
         end
@@ -3080,7 +3078,7 @@ export
                     else
                         let fnPtr = types.closureFnPtrType(exportVar.type)
                         let clos = name(p exportVar)
-                        syntax.call("((" <> fnPtr <> ")(" <> clos <> "->fn))" joinedWith(one(clos <> "->env") args))
+                        syntax.call("((" <> fnPtr <> ")(" <> clos <> "->fn))" joinedWith(one("(void *)" <> clos) args))
                     end
                     let params = if vector.empty(fsig.params) then one("void") else fsig.params end
                     add(res fsig.result <> " " <> syntax.call(fsig.name params) <> " {")
@@ -3223,7 +3221,7 @@ export
                 let f = vector.get(unit.functions i)
                 let closure = hashMap.get(closuresOf f.id)
                 if maybe.isSome(f.env) andif maybe.isSome(closure) then
-                    addAll(res envStruct(p f maybe.unwrap(closure)))
+                    addAll(res closureStruct(p f maybe.unwrap(closure)))
                 end
             end
             add(res "")
@@ -3231,7 +3229,7 @@ export
                 let f = vector.get(unit.functions i)
                 add(res functionSignature(p f) <> ";")
                 let code = codeName(p f)
-                add(res "static Q_UNUSED QClosure " <> code <> "_closure = { (void *)" <> code <> ", NULL };")
+                add(res "static Q_UNUSED QClosure " <> code <> "_closure = { (void *)" <> code <> " };")
             end
             add(res "")
             let globalDecls = globalDeclarations(p)

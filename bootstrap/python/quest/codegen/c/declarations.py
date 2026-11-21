@@ -984,7 +984,7 @@ class CDeclarationEmitter:
             direct: list[str] = []
             uniform: list[str] = [f"QVal qv_args[{c_int(max(1, nq + len(params)))}];"]
             uniform.extend(f"qv_args[{c_int(k)}].p = (void *)qv_desc_{c_int(k)};" for k in range(nq))
-            call_args = ["e->orig->env"] + [f"qv_desc_{c_int(k)}" for k in range(nq)]
+            call_args = ["(void *)e->orig"] + [f"qv_desc_{c_int(k)}" for k in range(nq)]
             for i, p in enumerate(params):
                 name = f"qv_arg_{c_int(i)}"
                 slot = f"qv_args[{c_int(nq + i)}]"
@@ -1028,7 +1028,7 @@ class CDeclarationEmitter:
                 )
             thunk = f"quest_thunk_{tag}"
             lines.append(f"static {ret_c} {call(thunk, param_decls)} {{")
-            lines.append("    const QFunAdapterEnv *e = (const QFunAdapterEnv *)_raw_env;")
+            lines.append("    const QFunAdapterClosure *e = (const QFunAdapterClosure *)_raw_env;")
             lines.append("    const QFunTypeDescriptor *from = (const QFunTypeDescriptor *)e->from->extra;")
             lines.append("    const QFunTypeDescriptor *to = (const QFunTypeDescriptor *)e->to->extra;")
             lines.append("    if (e->direct) {")
@@ -1040,19 +1040,18 @@ class CDeclarationEmitter:
                 f"static QClosure *quest_adapt_{tag}(const QClosure *orig, const QTypeDescriptor *from, "
                 f"const QTypeDescriptor *to) {{"
             )
-            lines.append("    QFunAdapterEnv *e = (QFunAdapterEnv *)quest_alloc(sizeof(QFunAdapterEnv), &quest_layout_adapter_env);")
+            lines.append("    QFunAdapterClosure *e = (QFunAdapterClosure *)quest_alloc(sizeof(QFunAdapterClosure), "
+                         "&quest_layout_adapter_closure);")
+            lines.append(f"    e->fn = (void *){thunk};")
             lines.append("    e->orig = orig;")
             lines.append("    e->from = from;")
             lines.append("    e->to = to;")
             lines.append("    e->direct = quest_fun_signature_equivalent(from, to);")
-            lines.append("    QClosure *adapted = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
-            lines.append(f"    adapted->fn = (void *){thunk};")
-            lines.append("    adapted->env = e;")
-            lines.append("    return adapted;")
+            lines.append("    return (QClosure *)e;")
             lines.append("}")
             # The invoker: a call with QVal forms, for adapters whose closure
             # has this type's C signature
-            inv_args = ["c->env"] + [f"(const QTypeDescriptor *)args[{c_int(k)}].p" for k in range(nq)]
+            inv_args = ["(void *)c"] + [f"(const QTypeDescriptor *)args[{c_int(k)}].p" for k in range(nq)]
             for i, p in enumerate(params):
                 arg = f"args[{c_int(nq + i)}]"
                 if p.is_var or p.is_out:

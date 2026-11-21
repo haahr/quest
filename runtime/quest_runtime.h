@@ -110,16 +110,24 @@ typedef struct QString {
     char   *data;
 } QString;
 
-/* A closure (docs/c-representation.md §6.1, §6.2), passed by pointer. fn is a C function whose first parameter is
- * env, followed by the descriptors of the function type's type parameters, then its value parameters in their C
- * types (var and out parameters as pointers); its result is the result type's C type, or void for Ok. A closure is
- * called through a cast of fn to that signature, as ((R (*)(void *, ...))c->fn)(c->env, ...). env points to a
- * struct of the captured variables, or is NULL for a function that captures none, whose closure is a static
- * singleton. */
+/* A closure (docs/c-representation.md §6.1, §6.2), passed by pointer: one object, whose first word is fn and whose
+ * further words, the closure's own, are the descriptors it supplies and the variables it captured, laid out by the
+ * unit that made it. QClosure is that first word, all that code outside the unit reads. fn is a C function whose
+ * first parameter is the closure itself, followed by the descriptors of the function type's type parameters, then
+ * its value parameters in their C types (var and out parameters as pointers); its result is the result type's C
+ * type, or void for Ok. A closure is called through a cast of fn to that signature, as ((R (*)(void *, ...))c->fn)(c,
+ * ...). A function that captures nothing has a static singleton closure of fn alone, and ignores its first
+ * parameter. */
 typedef struct QClosure {
     void *fn;
-    void *env;
 } QClosure;
+
+/* The closure of an adapt plan (docs/c-representation.md §6.3): fn converts its arguments and result around a call
+ * of orig, the closure it adapts */
+typedef struct QAdaptClosure {
+    void           *fn;
+    const QClosure *orig;
+} QAdaptClosure;
 
 /* Array representation: length-prefixed buffer of 64-bit QVal words */
 typedef struct QArray {
@@ -280,7 +288,8 @@ static_assert(sizeof(void *)        == 8, ptr_must_be_8_bytes);
 static_assert(sizeof(QVal)          == 8, qval_must_be_8_bytes);
 static_assert(sizeof(uint64_t)      == 8, u64_must_be_8_bytes);
 static_assert(sizeof(QString)       == 16, qstring_must_be_16_bytes);
-static_assert(sizeof(QClosure)      == 16, qclosure_must_be_16_bytes);
+static_assert(sizeof(QClosure)      == 8, qclosure_must_be_8_bytes);
+static_assert(sizeof(QAdaptClosure) == 16, qadaptclosure_must_be_16_bytes);
 static_assert(sizeof(QRecordHeader) == 8, qrecord_header_must_be_8_bytes);
 static_assert(sizeof(QRecordVal)    == 16, qrecordval_must_be_16_bytes);
 static_assert(offsetof(QRecordVal, dict) == 8, qrecordval_dict_at_offset_8);
@@ -289,7 +298,7 @@ static_assert(offsetof(QVariantVal, tag)     == 0,  qvariantval_tag_at_offset_0)
 static_assert(offsetof(QVariantVal, payload) == 8,  qvariantval_payload_at_offset_8);
 static_assert(sizeof(QException)    == 8, qexception_must_be_8_bytes);
 static_assert(sizeof(QExceptionState) == 48, qexception_state_must_be_48_bytes);
-static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
+static_assert(offsetof(QAdaptClosure, orig) == 8, qadaptclosure_orig_at_offset_8);
 static_assert(offsetof(QArray, data)  == 8, qarray_data_at_offset_8);
 static_assert(offsetof(QOptionHeader, fields) == 8, qoptionheader_fields_at_offset_8);
 static_assert(offsetof(QExceptionState, payload) == 8, qexception_state_payload_at_offset_8);

@@ -81,8 +81,8 @@ since their units link with C's.
 The inventory (§7) lists each decision and where the SSA backends get it. In short:
 
 - **Layout is simple.** Every aggregate slot is one word, so tuples, records, options, and offset tables are word
-  arithmetic, which the shared `layout` module computes (§3.3). Closure environments are private to their unit,
-  so the SSA backends need not lay them out as C does.
+  arithmetic, which the shared `layout` module computes (§3.3). A closure's words after its code pointer are
+  private to its unit, so the SSA backends need not lay them out as C does.
 - **Shared** (§7.5): thunks are IR functions made by a pass, so that every backend gets them; static data
   (descriptors, offset tables, tag maps) has a shared description; slot conversions are data in `layout`; and the
   runtime's inline helpers have external definitions too.
@@ -117,7 +117,7 @@ after it has goldens, since machine code changes with almost any backend change.
     `repr/runtimeLayout`, a table that the questlang test `codegen_runtime_layout` prints as C assertions and
     `tests/python/test_runtime_layout.py` compiles against `quest_runtime.h`.
 
-  Closure environments are private to their unit and need no assertions (§7.1).
+  A closure's words after its code pointer are private to its unit and need no assertions (§7.1).
 - **Calls** follow Apple's AAPCS64, as clang does for the same C declarations: integer and pointer arguments in
   `x0`–`x7`, `double`s in `d0`–`d7`, the rest on the stack; a 16-byte composite that is not all `double`s in two `x`
   registers, even if it holds a `double`; results in `x0`/`x1` or `d0`; the caller extends arguments narrower than 32
@@ -808,7 +808,7 @@ alignment beyond 8.
 | Records: one allocation of the box (`QRecordVal`, 16 bytes) and then the payload: a header word (the layout's descriptor), then the fields sorted by name, a word each | `makeRecord`, `emitAggregateStructs` | layout |
 | Options: `int64_t tag` at 0, then a union of the cases' components at 8, a word each; a case's binder points at offset 8, sharing the components | `emitAggregateStructs`, `optionCasePayload` | layout |
 | Embedded boxes: the boxes of an aggregate's fresh record and variant components, 16 bytes each, after it in the same allocation | `embeddedBoxes`, `fillEmbedded` | build |
-| Closure environments: descriptors `d_i`, then captures `c_i` in their C types, not slots (so `bool`, `char`, and 16-byte values, with C's padding); a type application's environment `{ orig, desc[n] }` | `envStruct`, `typeAppThunk` | build; only the unit that makes an environment reads it, so the SSA backends lay environments out as they like |
+| Closures: the code pointer `fn`, then descriptors `d_i`, then captures `c_i` in their C types, not slots (so `bool`, `char`, and 16-byte values, with C's padding); a type application's closure `{ fn, orig, desc[n] }` | `closureStruct`, `typeAppThunk` | build; only the unit that makes a closure reads past `fn`, so the SSA backends lay closures out as they like |
 | Offset tables (record evidence): a `size_t` for each field of the view, sorted by name, then `stored_types`; static ones by `offsetof` | `emitEvidenceDictionaries` | layout for the offsets (word indices), data for the tables |
 | Variant tags: a case's index in name order; tag maps between subtypes are static `int64_t` arrays | `shapes`, `emitCoercionTables` | layout, data |
 | Tuple casts: a supertype's components at the same offsets as the subtype's prefix, checked by `static_assert` | `emitCoercionTables` | nothing: true of word slots by construction |
@@ -835,8 +835,8 @@ alignment beyond 8.
 | Variants: tag tests, the payload's check (`quest_raise_variant_error_at`), tags translated through a view map (`index[tag]`) or a tag map | `payload`, `tagOf`, `convert` | build |
 | Conversion plans: `box`, `unbox`, `cast`, `unproxy`, `slot_box`, `slot_unbox`, and `variant_tags` inline; `record_view`, `view`, and `runtime` through the runtime; `copy` as a new tuple; `adapt` as a thunk | `convert` | build; `adapt` by the shared pass (§7.5) |
 | Thunks: adapters (`qa_adapt`), type applications' thunks (`qa_type_app`) and environments, closures of externals (`qx_`), each made once for its key | `ir/thunks`, printed as functions (§7.5) | pass (§7.5) |
-| Calls: a known closure directly (`f(env or NULL, ...)`), an external directly, an imported module's member through its exported function `qv_<mod>_<member>`, others through `fn` and `env`; descriptors after the environment; an `Ok` result is `void`, an `Ok` argument `QVal` 0 | `callClosure`, `callOp` | build, abi |
-| Closures: a static closure `{ f, NULL }` for every function; otherwise environment and closure allocated apart; a `let rec`'s captures of its own variables filled in afterwards | `makeClosure`, `sLetRec` | build, data |
+| Calls: a known closure directly (`f(closure or NULL, ...)`), an external directly, an imported module's member through its exported function `qv_<mod>_<member>`, others through `fn` with the closure; descriptors after the closure; an `Ok` result is `void`, an `Ok` argument `QVal` 0 | `callClosure`, `callOp` | build, abi |
+| Closures: a static closure `{ f }` for every function; otherwise one object, the code pointer and the captures; a `let rec`'s captures of its own variables filled in afterwards | `makeClosure`, `sLetRec` | build, data |
 | Descriptor operands: variables, static descriptors (symbols), templates instantiated by `quest_instantiate_descriptor(t, n, array)` with the array on the stack; view maps fetched in the prologue (`quest_view_map`) | `descriptor`, `function` | build, data; the array a stack slot |
 | Auto values and `inspect`: `quest_auto_new`, `quest_is_subtype`, `quest_layout_equivalent`, conversions arm by arm | `makeAuto`, `inspectAuto` | build, runtime |
 | Exceptions: `quest_alloc_exception(name)` at each evaluation; the handler record and catch array on the C stack, popped on every way out (`leaveTo`); the handler's variable a copy of `QExceptionState` (48 bytes); `quest_raise_at(exc, payload, site)`, or `quest_raise_typed_at(exc, payload, descriptor, text, site)` with a payload of a type other than `Ok`; `quest_reraise(state)` (by value, so through memory) | `sTry`, `sRaise`, `emitCatches` | build (§3.6), runtime, abi |

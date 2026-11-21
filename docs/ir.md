@@ -422,7 +422,7 @@ directly when the variable called holds a known closure: one a let makes, a copy
 read of a lifted function's environment at an index where every closure made of that function captures a variable
 holding a closure of one function. The last is a local function's call of another it names (zebra's `isConsistent`
 calling `same`), which closure conversion makes a capture; the analysis runs to a fixed point, so a chain of captures
-is known too. The environment passed is read from the closure called, as for any known closure.
+is known too. The closure called is passed as its environment, as for any known closure.
 `language/captured_known_calls` shows each case.
 
 `type_app` stays an operation, on closures from this stage on: instantiating a polymorphic closure binds its next

@@ -25,8 +25,8 @@ From `runtime/quest_runtime.h`, [c-representation.md](c-representation.md), and 
   object's layout. The C backends print calls of the header's inline functions; the SSA's backends select the same
   sequence themselves ([ssa.md](ssa.md) §4.1); the runtime makes its own allocations by the same functions, naming
   layouts from a fixed table in `quest_gc.c`.
-- **Objects are their words, after a header.** A tuple is its words (`{QVal _0; int64_t _1}`), a closure two words
-  (`fn`, `env`), a closure environment a struct of its captures, an option a tag and words, an array a length and
+- **Objects are their words, after a header.** A tuple is its words (`{QVal _0; int64_t _1}`), a closure its code
+  pointer and then its descriptors and captures, an option a tag and words, an array a length and
   words, a string a length and buffer pointer, an auto value a descriptor and a word. A record's payload
   also carries a descriptor (`QRecordHeader`), and a `QRecordVal` is two words, payload and dictionary, boxed when
   stored. The header word sits before the object, outside every struct (§3.2).
@@ -177,7 +177,7 @@ right to move is reserved in the header and designed (§9.1), and not taken (dec
 - **Where layouts come from:** the compilers compute them from shapes (`repr/objectLayout`, the bootstrap's
   `quest/repr/objectlayout.py`), deduplicated per unit, and emit them as static data (`quest_layout_<tag>`, its kinds
   `qlk_<tag>`) beside the descriptors: both C printers, and the SSA's builder through `ssa/statics`. The runtime's own
-  are a fixed table in `runtime/quest_gc.c` (`quest_layout_closure`, `quest_layout_array_pointer`, `_scalar`,
+  are a fixed table in `runtime/quest_gc.c` (`quest_layout_adapt_closure`, `quest_layout_array_pointer`, `_scalar`,
   `_ambiguous`, `quest_layout_string`, the descriptors' and caches' layouts, ...), checked against the C structs'
   sizes by static assertions where they can be. The runtime's generic copies of values (`quest_convert`'s,
   serialization's) and its tables of mixed words take a layout of ambiguous words (`quest_layout_words`).
@@ -409,8 +409,8 @@ serialization would need, are in §9.2.
 - **Pointer-free objects** are marked *noscan* by their layouts, skipped by the marker, and kept in blocks of their
   own (Go's noscan spans): a second allocation cursor, so that a collection never reads their words and string
   buffers do not fragment pointer-bearing blocks.
-- **Small objects** are the common case and the design's center: a two- or three-word tuple, a closure and its
-  environment, a boxed record, allocated at a rate of hundreds of millions per run in the benchmarks.
+- **Small objects** are the common case and the design's center: a two- or three-word tuple, a closure, a boxed
+  record, allocated at a rate of hundreds of millions per run in the benchmarks.
 
 ### 3.10. Latency and incremental marking
 

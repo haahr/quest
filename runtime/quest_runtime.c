@@ -312,81 +312,81 @@ void quest_builtins_init(int argc, char **argv) {
 /* ============================================================================
  * Built-in operators as values (see qv_sym_plus_closure in the header): for
  * each, a trampoline, a C function of the closure calling convention whose
- * environment is unused, and the static closure of it
+ * first parameter, the closure, is unused, and the static closure of it
  * ============================================================================
  */
 
 /* Integer arithmetic */
 static QInt qv_sym_plus_trampoline(void *env, QInt a, QInt b) { (void)env; return a + b; }
-QClosure qv_sym_plus_closure = { (void *)qv_sym_plus_trampoline, NULL };
+QClosure qv_sym_plus_closure = { (void *)qv_sym_plus_trampoline };
 
 static QInt qv_sym_minus_trampoline(void *env, QInt a, QInt b) { (void)env; return a - b; }
-QClosure qv_sym_minus_closure = { (void *)qv_sym_minus_trampoline, NULL };
+QClosure qv_sym_minus_closure = { (void *)qv_sym_minus_trampoline };
 
 static QInt qv_sym_star_trampoline(void *env, QInt a, QInt b) { (void)env; return a * b; }
-QClosure qv_sym_star_closure = { (void *)qv_sym_star_trampoline, NULL };
+QClosure qv_sym_star_closure = { (void *)qv_sym_star_trampoline };
 
 static QInt qv_sym_slash_trampoline(void *env, QInt a, QInt b) { (void)env; return quest_int_div(a, b); }
-QClosure qv_sym_slash_closure = { (void *)qv_sym_slash_trampoline, NULL };
+QClosure qv_sym_slash_closure = { (void *)qv_sym_slash_trampoline };
 
 static QInt qv_sym_percent_trampoline(void *env, QInt a, QInt b) { (void)env; return quest_int_mod(a, b); }
-QClosure qv_sym_percent_closure = { (void *)qv_sym_percent_trampoline, NULL };
+QClosure qv_sym_percent_closure = { (void *)qv_sym_percent_trampoline };
 
 static QInt qv_mod_trampoline(void *env, QInt a, QInt b) { (void)env; return quest_int_mod(a, b); }
-QClosure qv_mod_closure = { (void *)qv_mod_trampoline, NULL };
+QClosure qv_mod_closure = { (void *)qv_mod_trampoline };
 
 /* Integer relational */
 static QBool qv_sym_lt_trampoline(void *env, QInt a, QInt b) { (void)env; return a < b; }
-QClosure qv_sym_lt_closure = { (void *)qv_sym_lt_trampoline, NULL };
+QClosure qv_sym_lt_closure = { (void *)qv_sym_lt_trampoline };
 
 static QBool qv_sym_lt_equals_trampoline(void *env, QInt a, QInt b) { (void)env; return a <= b; }
-QClosure qv_sym_lt_equals_closure = { (void *)qv_sym_lt_equals_trampoline, NULL };
+QClosure qv_sym_lt_equals_closure = { (void *)qv_sym_lt_equals_trampoline };
 
 static QBool qv_sym_gt_trampoline(void *env, QInt a, QInt b) { (void)env; return a > b; }
-QClosure qv_sym_gt_closure = { (void *)qv_sym_gt_trampoline, NULL };
+QClosure qv_sym_gt_closure = { (void *)qv_sym_gt_trampoline };
 
 static QBool qv_sym_gt_equals_trampoline(void *env, QInt a, QInt b) { (void)env; return a >= b; }
-QClosure qv_sym_gt_equals_closure = { (void *)qv_sym_gt_equals_trampoline, NULL };
+QClosure qv_sym_gt_equals_closure = { (void *)qv_sym_gt_equals_trampoline };
 
 /* Real arithmetic, raising real.error as the operators do (quest_real_result_at) */
 static QReal qv_sym_plus_plus_trampoline(void *env, QReal a, QReal b) { (void)env; return quest_real_add(a, b); }
-QClosure qv_sym_plus_plus_closure = { (void *)qv_sym_plus_plus_trampoline, NULL };
+QClosure qv_sym_plus_plus_closure = { (void *)qv_sym_plus_plus_trampoline };
 
 static QReal qv_sym_minus_minus_trampoline(void *env, QReal a, QReal b) { (void)env; return quest_real_sub(a, b); }
-QClosure qv_sym_minus_minus_closure = { (void *)qv_sym_minus_minus_trampoline, NULL };
+QClosure qv_sym_minus_minus_closure = { (void *)qv_sym_minus_minus_trampoline };
 
 static QReal qv_sym_star_star_trampoline(void *env, QReal a, QReal b) { (void)env; return quest_real_mul(a, b); }
-QClosure qv_sym_star_star_closure = { (void *)qv_sym_star_star_trampoline, NULL };
+QClosure qv_sym_star_star_closure = { (void *)qv_sym_star_star_trampoline };
 
 static QReal qv_sym_slash_slash_trampoline(void *env, QReal a, QReal b) { (void)env; return quest_real_divide(a, b); }
-QClosure qv_sym_slash_slash_closure = { (void *)qv_sym_slash_slash_trampoline, NULL };
+QClosure qv_sym_slash_slash_closure = { (void *)qv_sym_slash_slash_trampoline };
 
 static QReal qv_sym_caret_caret_trampoline(void *env, QReal a, QReal b) { (void)env; return quest_real_pow(a, b); }
-QClosure qv_sym_caret_caret_closure = { (void *)qv_sym_caret_caret_trampoline, NULL };
+QClosure qv_sym_caret_caret_closure = { (void *)qv_sym_caret_caret_trampoline };
 
 /* Real relational */
 static QBool qv_sym_lt_lt_trampoline(void *env, QReal a, QReal b) { (void)env; return a < b; }
-QClosure qv_sym_lt_lt_closure = { (void *)qv_sym_lt_lt_trampoline, NULL };
+QClosure qv_sym_lt_lt_closure = { (void *)qv_sym_lt_lt_trampoline };
 
 static QBool qv_sym_lt_lt_equals_trampoline(void *env, QReal a, QReal b) { (void)env; return a <= b; }
-QClosure qv_sym_lt_lt_equals_closure = { (void *)qv_sym_lt_lt_equals_trampoline, NULL };
+QClosure qv_sym_lt_lt_equals_closure = { (void *)qv_sym_lt_lt_equals_trampoline };
 
 static QBool qv_sym_gt_gt_trampoline(void *env, QReal a, QReal b) { (void)env; return a > b; }
-QClosure qv_sym_gt_gt_closure = { (void *)qv_sym_gt_gt_trampoline, NULL };
+QClosure qv_sym_gt_gt_closure = { (void *)qv_sym_gt_gt_trampoline };
 
 static QBool qv_sym_gt_gt_equals_trampoline(void *env, QReal a, QReal b) { (void)env; return a >= b; }
-QClosure qv_sym_gt_gt_equals_closure = { (void *)qv_sym_gt_gt_equals_trampoline, NULL };
+QClosure qv_sym_gt_gt_equals_closure = { (void *)qv_sym_gt_gt_equals_trampoline };
 
 /* String concatenation */
 static QString *qv_sym_lt_gt_trampoline(void *env, const QString *a, const QString *b) {
     (void)env;
     return quest_string_concat(a, b);
 }
-QClosure qv_sym_lt_gt_closure = { (void *)qv_sym_lt_gt_trampoline, NULL };
+QClosure qv_sym_lt_gt_closure = { (void *)qv_sym_lt_gt_trampoline };
 
 /* Boolean eager operations */
 static QBool qv_sym_slash_backslash_trampoline(void *env, QBool a, QBool b) { (void)env; return a && b; }
-QClosure qv_sym_slash_backslash_closure = { (void *)qv_sym_slash_backslash_trampoline, NULL };
+QClosure qv_sym_slash_backslash_closure = { (void *)qv_sym_slash_backslash_trampoline };
 
 static QBool qv_sym_backslash_slash_trampoline(void *env, QBool a, QBool b) { (void)env; return a || b; }
-QClosure qv_sym_backslash_slash_closure = { (void *)qv_sym_backslash_slash_trampoline, NULL };
+QClosure qv_sym_backslash_slash_closure = { (void *)qv_sym_backslash_slash_trampoline };

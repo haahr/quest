@@ -83,8 +83,8 @@ extern char _end[];
 /* The layouts generated code and the header's inline helpers use */
 Q_FIXED(quest_layout_record_box, "QRecordVal", 16, P, P);
 Q_FIXED(quest_layout_variant_box, "QVariantVal", 16, S, A);
-Q_FIXED(quest_layout_closure, "QClosure", 16, P, P);
-Q_FIXED(quest_layout_adapter_env, "QFunAdapterEnv", 32, P, P, P, S);
+Q_FIXED(quest_layout_adapt_closure, "QAdaptClosure", 16, S, P);
+Q_FIXED(quest_layout_adapter_closure, "QFunAdapterClosure", 40, S, P, P, P, S);
 Q_ARRAY(quest_layout_array_pointer, "QArray(pointer)", 8, 0, 1, S, P);
 const QLayout quest_layout_array_scalar = { "QArray(scalar)", Q_LAYOUT_ARRAY, Q_LAYOUT_NOSCAN, 8, 0, 1, 1, NULL };
 Q_ARRAY(quest_layout_array_ambiguous, "QArray(QVal)", 8, 0, 1, S, A);

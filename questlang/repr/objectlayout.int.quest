@@ -62,10 +62,10 @@ export
     (* Whether a layout's objects hold no pointers (every word a scalar), so
      * that the collector never scans them (Q_LAYOUT_NOSCAN) *)
     noscan(l: Layout): Bool
-    (* The runtime's layouts generated code names: a QClosure's, a
-     * QFunAdapterEnv's, and a QArray's whose elements are of kind k *)
-    closureSymbol: String
-    adapterEnvSymbol: String
+    (* The runtime's layouts generated code names: a QAdaptClosure's, a
+     * QFunAdapterClosure's, and a QArray's whose elements are of kind k *)
+    adaptClosureSymbol: String
+    adapterClosureSymbol: String
     arraySymbol(k: Kind): String
 
     (* A tuple of shape ts, whose struct C names `struct`, with the boxes of
@@ -82,8 +82,10 @@ export
      * tag, or of any case (none): then each word is the kinds its cases give
      * it, ambiguous where they differ *)
     optionLayout(os: shapes.Shape struct: String tag: maybe.T(String)): Layout
-    (* A closure's environment (struct QEnv_<code>) of the given words *)
-    envLayout(code: String kinds: Array(Kind) bytes: Int cSize: String): Layout
+    (* A closure of code's (struct QClosure_<code>): its code pointer, a
+     * scalar word, then the given words, its descriptors and captures; bytes
+     * counts the code pointer's *)
+    closureLayout(code: String kinds: Array(Kind) bytes: Int cSize: String): Layout
 
     (* A unit's layouts, by tag and in the order first registered *)
     Def Table = Tuple byTag: hashMap.T(String Layout) order: vector.T(String) end

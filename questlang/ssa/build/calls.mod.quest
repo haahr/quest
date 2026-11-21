@@ -308,9 +308,9 @@ export
             if maybe.isSome(known)
                 andif {extent maybe.unwrap(:ir.OpMakeClosure known).typeArgs is 0} then
                 let k = maybe.unwrap(known)
-                let env = if extent k.captures is 0 then vals.null(fn)
-                    else vals.invariantWord(fn vals.atom1(fn ir.atomOfVar(callee)) runtimeLayout.offset("QClosure" "env") vals.tPtr)
-                end
+                (* The code's first argument is the closure itself, which
+                 * holds its captures *)
+                let env = if extent k.captures is 0 then vals.null(fn) else vals.atom1(fn ir.atomOfVar(callee)) end
                 (* A function returning an unboxed tuple returns its
                  * components (questlang/ir/unbox) *)
                 let ps = if k.code.unboxedResult then vals.unboxedParts(k.code.resultType) else resultParts(callee.type) end
@@ -340,9 +340,8 @@ export
         begin
             let clos = vals.atom1(fn ir.atomOfVar(callee))
             let fnPtr = vals.invariantWord(fn clos runtimeLayout.offset("QClosure" "fn") vals.tPtr)
-            let env = vals.invariantWord(fn clos runtimeLayout.offset("QClosure" "env") vals.tPtr)
             let ps = resultParts(callee.type)
-            let all = vals.concat(vals.concat(array of fnPtr env end descs) vals.callAtoms(fn args))
+            let all = vals.concat(vals.concat(array of fnPtr clos end descs) vals.callAtoms(fn args))
             let vs = vals.callQuest(fn "" all pairsOf({2 + extent descs} args) narrowOf({2 + extent descs} args) ps)
             resultsOf(fn ps vs)
         end

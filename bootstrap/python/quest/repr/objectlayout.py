@@ -23,8 +23,8 @@ from quest.types import QType
 SCALAR, POINTER, AMBIGUOUS = 0, 1, 2
 KIND_LETTERS = {SCALAR: "s", POINTER: "p", AMBIGUOUS: "a"}
 
-CLOSURE_SYMBOL = "quest_layout_closure"
-ADAPTER_ENV_SYMBOL = "quest_layout_adapter_env"
+ADAPT_CLOSURE_SYMBOL = "quest_layout_adapt_closure"
+ADAPTER_CLOSURE_SYMBOL = "quest_layout_adapter_closure"
 ARRAY_SYMBOLS = {
     SCALAR: "quest_layout_array_scalar",
     POINTER: "quest_layout_array_pointer",
@@ -187,9 +187,11 @@ def option_layout(os: Shape, struct: str, tag: str | None) -> Layout:
     return Layout(shape_tag(os) + suffix, tuple(words), size, _c_size(struct, 0))
 
 
-def env_layout(code: str, kinds: list[int], size: int, c_size: str) -> Layout:
-    """A closure's environment (struct QEnv_<code>) of the given words."""
-    return Layout(f"env_{code}", tuple(kinds), size, c_size)
+def closure_layout(code: str, kinds: list[int], size: int, c_size: str) -> Layout:
+    """A closure of code's (struct QClosure_<code>): its code pointer, a scalar
+    word, then the given words, its descriptors and captures; size counts the
+    code pointer's."""
+    return Layout(f"closure_{code}", (SCALAR, *kinds), size, c_size)
 
 
 @dataclass

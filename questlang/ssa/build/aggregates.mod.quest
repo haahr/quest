@@ -71,10 +71,11 @@ export
                     if maybe.isNone(plan.thunk) then
                         raise vals.unsupported with "an adapt plan without its adapter" end
                     end
-                    let clos = representation.alloc(fn 16 objectLayout.closureSymbol)
+                    let clos = representation.alloc(fn maybe.unwrap(runtimeLayout.struct("QAdaptClosure")).bytes
+                        objectLayout.adaptClosureSymbol)
                     let code = vals.symbolAt(fn vals.codeName(fn.u maybe.unwrap(plan.thunk)))
-                    vals.store(fn clos runtimeLayout.offset("QClosure" "fn") 8 code)
-                    vals.store(fn clos runtimeLayout.offset("QClosure" "env") 8 vs[0])
+                    vals.store(fn clos runtimeLayout.offset("QAdaptClosure" "fn") 8 code)
+                    vals.store(fn clos runtimeLayout.offset("QAdaptClosure" "orig") 8 vs[0])
                     array of clos end
                 when planCopy then
                     let source = vs[0]
@@ -600,12 +601,11 @@ export
      * parameters, at the type arguments
      * ====================================================================== *)
 
-    (* A call of the closure at clos, with its environment and args *)
+    (* A call of the closure at clos, with the closure itself and args *)
     let callClosureWith(fn: vals.Fn clos: Int args: Array(Int) results: Array(vals.Part)): Array(Int) =
         begin
             let code = vals.invariantWord(fn clos runtimeLayout.offset("QClosure" "fn") vals.tPtr)
-            let env = vals.invariantWord(fn clos runtimeLayout.offset("QClosure" "env") vals.tPtr)
-            vals.callQuest(fn "" vals.concat(array of code env end args) vals.noValues vals.noValues results)
+            vals.callQuest(fn "" vals.concat(array of code clos end args) vals.noValues vals.noValues results)
         end
 
     (* The value of a polymorphic value of no parameters applied to types (a

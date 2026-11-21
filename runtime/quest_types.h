@@ -143,14 +143,15 @@ typedef QClosure *(*QFunAdapter)(const QClosure *orig, const QTypeDescriptor *fr
  * in .p); returns the result in its QVal form. Compiled code supplies one for each function type it describes. */
 typedef QVal (*QFunInvoker)(const QClosure *c, const QVal *args);
 
-/* The environment of a closure made by a QFunAdapter. `direct` is true when orig has the adapted closure's own C
- * signature, so that it is called directly rather than through `from`'s invoker. */
-typedef struct QFunAdapterEnv {
+/* A closure made by a QFunAdapter: fn, the function type's thunk, and what it captured. `direct` is true when orig
+ * has the adapted closure's own C signature, so that it is called directly rather than through `from`'s invoker. */
+typedef struct QFunAdapterClosure {
+    void                  *fn;
     const QClosure        *orig;
     const QTypeDescriptor *from;
     const QTypeDescriptor *to;
     bool                   direct;
-} QFunAdapterEnv;
+} QFunAdapterClosure;
 
 /* A function type, possibly polymorphic: All(A1..An) Fun(params) result. In the parameter and result types (and in
  * later bounds), a type parameter is described by quest_type_bound_vars[i], where i counts binders outward from

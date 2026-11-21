@@ -996,7 +996,7 @@ export
                     for k = 0 upto {nq - 1} do add(uniform "qv_args[" <> cInt(k) <> "].p = (void *)qv_desc_"
                         <> cInt(k) <> ";") end
                     let callArgs = vector.new(:String)
-                    add(callArgs "e->orig->env")
+                    add(callArgs "(void *)e->orig")
                     for k = 0 upto {nq - 1} do add(callArgs "qv_desc_" <> cInt(k)) end
                     for j = 0 upto {np - 1} do
                         let p = vector.get(sig.params j)
@@ -1041,7 +1041,7 @@ export
                     end
                     let thunk = "quest_thunk_" <> tag
                     add(lines "static " <> retC <> " " <> syntax.call(thunk paramDecls) <> " {")
-                    add(lines "    const QFunAdapterEnv *e = (const QFunAdapterEnv *)_raw_env;")
+                    add(lines "    const QFunAdapterClosure *e = (const QFunAdapterClosure *)_raw_env;")
                     add(lines "    const QFunTypeDescriptor *from = (const QFunTypeDescriptor *)e->from->extra;")
                     add(lines "    const QFunTypeDescriptor *to = (const QFunTypeDescriptor *)e->to->extra;")
                     add(lines "    if (e->direct) {")
@@ -1054,20 +1054,19 @@ export
                     add(lines "static QClosure *quest_adapt_" <> tag
                         <> "(const QClosure *orig, const QTypeDescriptor *from, "
                         <> "const QTypeDescriptor *to) {")
-                    add(lines "    QFunAdapterEnv *e = (QFunAdapterEnv *)quest_alloc(sizeof(QFunAdapterEnv), &quest_layout_adapter_env);")
+                    add(lines "    QFunAdapterClosure *e = (QFunAdapterClosure *)quest_alloc(sizeof(QFunAdapterClosure), "
+                        <> "&quest_layout_adapter_closure);")
+                    add(lines "    e->fn = (void *)" <> thunk <> ";")
                     add(lines "    e->orig = orig;")
                     add(lines "    e->from = from;")
                     add(lines "    e->to = to;")
                     add(lines "    e->direct = quest_fun_signature_equivalent(from, to);")
-                    add(lines "    QClosure *adapted = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
-                    add(lines "    adapted->fn = (void *)" <> thunk <> ";")
-                    add(lines "    adapted->env = e;")
-                    add(lines "    return adapted;")
+                    add(lines "    return (QClosure *)e;")
                     add(lines "}")
                     (* The invoker: a call with QVal forms, for adapters whose
                      * closure has this type's C signature *)
                     let invArgs = vector.new(:String)
-                    add(invArgs "c->env")
+                    add(invArgs "(void *)c")
                     for k = 0 upto {nq - 1} do add(invArgs "(const QTypeDescriptor *)args[" <> cInt(k) <> "].p") end
                     for j = 0 upto {np - 1} do
                         let p = vector.get(sig.params j)

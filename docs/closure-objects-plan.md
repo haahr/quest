@@ -121,7 +121,7 @@ It depends on §2–4 and is measured by itself, so it is a step of its own.
 ## 6. Steps
 
 1. **The representation, in one change** (an ABI change, 88), since C units and SSA units are linked together and
-   both compilers' C runs on the same runtime:
+   both compilers' C runs on the same runtime. **Done**, with `language/closure_objects` as its test:
    - the runtime: `QClosure` (one word), its static asserts, the 22 operator closures and their trampolines,
      `QFunAdapterEnv` with `fn`, `quest_layout_closure` (S, P) and `quest_layout_adapter_env` (S, P, P, P, S), and the
      function-type descriptor's size (`quest_types.c`'s `sizeof(QClosure)`, which then agrees with

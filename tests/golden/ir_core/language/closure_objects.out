@@ -1,0 +1,249 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import string = "string" : StringOp
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @11:45
+      let %2: String = prim <>(s, "\n") @11:59
+      let %3: Ok = call writer.putString(%1, %2) @11:28
+      return %3
+    }
+  }
+  funs {
+    fun churn(): Ok {
+      var s.1: String = "" @17:9
+      var i: Int = 0 @18:9
+      let %4: Bool = prim <=(i, 20000) @18:9
+      if %4 { @18:9
+        loop L1 {
+          let i.1: Int = i @18:9
+          let %5: String = prim <>(s.1, "abcdefgh") @18:52
+          let %6: String = call string.getSub(%5, 0, 8) @18:38
+          s.1 := %6 @18:33
+          let %7: Bool = prim is(i, 20000) @18:9
+          if %7 { @18:9
+            break L1 @18:9
+          }
+          let %8: Int = prim +(i, 1) @18:9
+          i := %8 @18:9
+        }
+      }
+      return ok
+    }
+  }
+  funs {
+    fun mixed(n: Int, b: Bool, c: Char, r: Real, s.2: String, t: Tuple x: Int y: String end): Fun(): String {
+      funs {
+        fun f(): String {
+          let %9: String = call conv.int(n) @24:9
+          let %10: String = call conv.bool(b) @24:31
+          let %11: String = call conv.char(c) @24:54
+          let %12: String = call conv.real(r) @24:77
+          let %13: Int = tuple_field(t, 0) @25:25
+          let %14: String = call conv.int(%13) @25:16
+          let %15: String = tuple_field(t, 1) @25:33
+          let %16: String = prim <>(%14, %15) @25:16
+          let %17: String = prim <>(" ", %16) @24:105
+          let %18: String = prim <>(s.2, %17) @24:100
+          let %19: String = prim <>(" ", %18) @24:93
+          let %20: String = prim <>(%12, %19) @24:77
+          let %21: String = prim <>(" ", %20) @24:70
+          let %22: String = prim <>(%11, %21) @24:54
+          let %23: String = prim <>(" ", %22) @24:47
+          let %24: String = prim <>(%10, %23) @24:31
+          let %25: String = prim <>(" ", %24) @24:24
+          let %26: String = prim <>(%9, %25) @24:9
+          return %26
+        }
+      }
+      return f
+    }
+  }
+  let x: Int = 3 @26:50
+  let y: String = "!" @26:60
+  let %27: Tuple x: Int y: String end = tuple(x, y) @26:36
+  let m: Fun(): String = call mixed(7, true, 'q', 2.5, "str", %27) @26:9
+  do call churn() @27:1
+  let %28: String = call m() @28:19
+  let %29: String = prim <>("mixed ", %28) @28:7
+  do call print(%29) @28:1
+  funs {
+    fun parity(offset: Int): Tuple even: Fun(n: Int): Bool odd: Fun(n: Int): Bool count: Fun(n: Int): Int end {
+      funs rec {
+        fun even(n.1: Int): Bool {
+          join k1(r.1: Bool) {
+            return r.1
+          } in {
+            let %30: Bool = prim is(n.1, offset) @33:41
+            if %30 { @33:38
+              jump k1(true) @33:38
+            } else {
+              let %31: Int = prim -(n.1, 1) @33:72
+              let %32: Bool = call odd(%31) @33:68
+              jump k1(%32) @33:38
+            }
+          }
+        }
+        fun odd(n.2: Int): Bool {
+          join k2(r.2: Bool) {
+            return r.2
+          } in {
+            let %33: Bool = prim is(n.2, offset) @34:36
+            if %33 { @34:33
+              jump k2(false) @34:33
+            } else {
+              let %34: Int = prim -(n.2, 1) @34:69
+              let %35: Bool = call even(%34) @34:64
+              jump k2(%35) @34:33
+            }
+          }
+        }
+        fun count(n.3: Int): Int {
+          join k3(r.3: Int) {
+            return r.3
+          } in {
+            let %36: Bool = prim <=(n.3, offset) @35:37
+            if %36 { @35:34
+              jump k3(0) @35:34
+            } else {
+              let %37: Int = prim -(n.3, 1) @35:71
+              let %38: Int = call count(%37) @35:65
+              let %39: Int = prim +(1, %38) @35:61
+              jump k3(%39) @35:34
+            }
+          }
+        }
+      }
+      let even.1: Fun(n: Int): Bool = even @36:26
+      let odd.1: Fun(n: Int): Bool = odd @36:41
+      let count.1: Fun(n: Int): Int = count @36:57
+      let %40: Tuple even: Fun(n: Int): Bool odd: Fun(n: Int): Bool count: Fun(n: Int): Int end = tuple(even.1, odd.1, count.1) @36:9
+      return %40
+    }
+  }
+  let p: Tuple even: Fun(n: Int): Bool odd: Fun(n: Int): Bool count: Fun(n: Int): Int end = call parity(3) @38:9
+  do call churn() @39:1
+  let %41: Fun(n: Int): Bool = tuple_field(p, 0) @40:30
+  let %42: Bool = call %41(13) @40:30
+  let %43: String = call conv.bool(%42) @40:20
+  let %44: Fun(n: Int): Bool = tuple_field(p, 1) @40:62
+  let %45: Bool = call %44(13) @40:62
+  let %46: String = call conv.bool(%45) @40:52
+  let %47: Fun(n: Int): Int = tuple_field(p, 2) @40:92
+  let %48: Int = call %47(13) @40:92
+  let %49: String = call conv.int(%48) @40:83
+  let %50: String = prim <>(" ", %49) @40:76
+  let %51: String = prim <>(%46, %50) @40:52
+  let %52: String = prim <>(" ", %51) @40:45
+  let %53: String = prim <>(%43, %52) @40:20
+  let %54: String = prim <>("parity ", %53) @40:7
+  do call print(%54) @40:1
+  funs {
+    fun f.1(x.1: Int): Int {
+      return x.1
+    }
+  }
+  let adders: Array(Fun(x: Int): Int) = array_rep(50, f.1) @43:14
+  var i.2: Int = 0 @44:1
+  let %55: Bool = prim <=(i.2, 49) @44:1
+  if %55 { @44:1
+    loop L2 {
+      let i.3: Int = i.2 @44:1
+      let j: Int = i.3 @45:13
+      let %56: String = call conv.int(j) @46:24
+      let label: String = prim <>("n", %56) @46:17
+      funs {
+        fun f.2(x.2: Int): Int {
+          let %57: Int = call string.length(label) @47:43
+          let %58: Int = prim +(j, %57) @47:39
+          let %59: Int = prim +(x.2, %58) @47:35
+          return %59
+        }
+      }
+      store adders[i.3] := f.2 @47:5
+      let %60: Bool = prim is(i.2, 49) @44:1
+      if %60 { @44:1
+        break L2 @44:1
+      }
+      let %61: Int = prim +(i.2, 1) @44:1
+      i.2 := %61 @44:1
+    }
+  }
+  do call churn() @49:1
+  var sum: Int = 0 @50:1
+  var i.4: Int = 0 @51:1
+  let %62: Bool = prim <=(i.4, 49) @51:1
+  if %62 { @51:1
+    loop L3 {
+      let i.5: Int = i.4 @51:1
+      let %63: Fun(x: Int): Int = index(adders, i.5) @51:35
+      let %64: Int = call %63(1) @51:35
+      let %65: Int = prim +(sum, %64) @51:29
+      sum := %65 @51:22
+      let %66: Bool = prim is(i.4, 49) @51:1
+      if %66 { @51:1
+        break L3 @51:1
+      }
+      let %67: Int = prim +(i.4, 1) @51:1
+      i.4 := %67 @51:1
+    }
+  }
+  let %68: String = call conv.int(sum) @52:20
+  let %69: String = prim <>("adders ", %68) @52:7
+  do call print(%69) @52:1
+  funs {
+    fun twice [A::TYPE](f.3: Fun(a: A): A): Fun(a: A): A {
+      funs {
+        fun f.4(a: A): A {
+          let %70: A = call f.3(a) @55:65
+          let %71: A = call f.3(%70) @55:63
+          return %71
+        }
+      }
+      return f.4
+    }
+  }
+  funs {
+    fun f.5(s.3: String): String {
+      let %72: String = prim <>(s.3, "!") @56:50
+      return %72
+    }
+  }
+  let shout: Fun(a: String): String = call twice [String](f.5) @56:13
+  do call churn() @57:1
+  let %73: String = call shout("hey") @58:19
+  funs {
+    fun f.6(n.4: Int): Int {
+      let %74: Int = prim *(n.4, 3) @58:79
+      return %74
+    }
+  }
+  let %75: Fun(a: Int): Int = call twice [Int](f.6) @58:51
+  let %76: Int = call %75(2) @58:51
+  let %77: String = call conv.int(%76) @58:42
+  let %78: String = prim <>(" ", %77) @58:35
+  let %79: String = prim <>(%73, %78) @58:19
+  let %80: String = prim <>("twice ", %79) @58:7
+  do call print(%80) @58:1
+  let k: Int = 10 @64:9
+  funs {
+    fun grow(s.4: Small): Big {
+      let %81: Int = record_field(s.4, x) @65:38
+      let %82: Int = prim +(%81, k) @65:38
+      let %83: Int = record_field(s.4, x) @65:50
+      let %84: Int = prim *(%83, k) @65:50
+      let %85: Record x: Int y: Int end = record(x = %82, y = %84) @65:27
+      return %85
+    }
+  }
+  let shrink: Fun(b: Big): Small = grow @66:33
+  do call churn() @67:1
+  let %86: Record x: Int y: Int end = record(x = 4, y = 0) @68:37
+  let %87: Small = call shrink(%86) @68:30
+  let %88: Int = record_field(%87, x) @68:30
+  let %89: String = call conv.int(%88) @68:21
+  let %90: String = prim <>("adapted ", %89) @68:7
+  do call print(%90) @68:1
+}
+

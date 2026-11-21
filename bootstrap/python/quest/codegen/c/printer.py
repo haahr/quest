@@ -361,10 +361,12 @@ class CPrinter:
         _FreshBoxes), in order."""
         return [f.shape for f in fields if isinstance(f, _FreshBox)]
 
-    def env_layout_of(self, code: str, o: ir.MakeClosure) -> objectlayout.Layout:
-        """The layout of a closure's environment, struct QEnv_<code>, whose
-        fields C lays out: a Bool or Char capture is a byte, every other field
-        a word or two, aligned to a word."""
+    def closure_layout_of(self, code: str, o: ir.MakeClosure) -> objectlayout.Layout:
+        """The layout of a closure, struct QClosure_<code>: its code pointer,
+        then the fields C lays out after it: a Bool or Char capture is a byte,
+        every other field a word or two, aligned to a word. The fields' words
+        are counted from the code pointer's end, which C aligns as it would the
+        struct's start."""
         kinds: list[int] = []
         offset = 0
 
@@ -393,9 +395,7 @@ class CPrinter:
                 offset += 1
             else:
                 words(objectlayout.representation_kinds(shape(t)))
-        if not kinds:
-            kinds.append(objectlayout.SCALAR)
-        return objectlayout.env_layout(code, kinds, 8 * len(kinds), f"sizeof(struct QEnv_{code})")
+        return objectlayout.closure_layout(code, kinds, 8 * (len(kinds) + 1), f"sizeof(struct QClosure_{code})")
 
     def embedded_boxes(self, block: str, size: str, fields: list) -> tuple[str, list[str]]:
         """The size of an aggregate's allocation with room after it (size, at
@@ -810,13 +810,13 @@ class CPrinter:
                 return qval_unwrap(converted, plan.target, self.ctx)
             case "adapt":
                 thunk = self.adapter(plan)
-                clos = self.temp("QClosure *")
-                self.emit(f"{clos} = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
+                clos = self.temp("QAdaptClosure *")
+                self.emit(f"{clos} = (QAdaptClosure *)quest_alloc(sizeof(QAdaptClosure), &quest_layout_adapt_closure);")
                 mark = self.begin_init(clos)
                 self.emit(f"{clos}->fn = (void *){thunk};")
-                self.emit(f"{clos}->env = (void *)({c});")
+                self.emit(f"{clos}->orig = (const QClosure *)({c});")
                 self.init_barrier(clos, mark)
-                return clos
+                return f"((QClosure *){clos})"
             case "runtime":
                 instantiation, to_generic = plan.layout
                 generic_t = plan.target if to_generic else plan.source
@@ -919,9 +919,10 @@ class CPrinter:
             for p, n, fp in zip(t_params, names, plan.fields):
                 args.append(n if fp is None else self.convert(n, fp))
             fn = f"(({closure_fn_ptr_type(plan.source, self.ctx)})(orig->fn))"
-            self.finish_thunk_call(call(fn, ['orig->env'] + descs + args), s_result, t_result, plan.fields[-1])
+            self.finish_thunk_call(call(fn, ['(void *)orig'] + descs + args), s_result, t_result, plan.fields[-1])
             ret = "void" if self.is_ok(t_result) else self.c_type(t_result)
-            self.thunk(name, ret, decls, ["QClosure *orig = (QClosure *)_raw_env;"] + [f"(void){d};" for d in descs])
+            self.thunk(name, ret, decls, ["const QClosure *orig = ((const QAdaptClosure *)_raw_env)->orig;"]
+                       + [f"(void){d};" for d in descs])
         return name
 
     def finish_thunk_call(self, called: str, source_result: QType, target_result: QType, result_plan) -> None:
@@ -968,24 +969,23 @@ class CPrinter:
                 called = call(mangle_module_ident(mangle_module_name(o.module.canonical_path), o.member), descs)
             else:
                 fn_ptr = closure_fn_ptr_type(orig_t, self.ctx)
-                called = call(f"(({fn_ptr})({clos}->fn))", [f"{clos}->env"] + descs)
+                called = call(f"(({fn_ptr})({clos}->fn))", [f"(void *){clos}"] + descs)
             p = o.plans[0]
             return called if p is None else self.convert(called, p)
         thunk, env_struct = self.type_app_thunk(orig_t, result.type, o)
+        # One object, the thunk's closure: its code pointer, the closure it
+        # applies, and the descriptors
         env = self.temp(f"{env_struct} *")
-        env_layout = objectlayout.env_layout(env_struct, [objectlayout.POINTER] * (1 + max(len(descs), 1)),
-                                             8 * (1 + max(len(descs), 1)), f"sizeof({env_struct})")
+        env_layout = objectlayout.closure_layout(env_struct, [objectlayout.POINTER] * (1 + max(len(descs), 1)),
+                                                 8 * (2 + max(len(descs), 1)), f"sizeof({env_struct})")
         self.emit(f"{env} = ({env_struct} *)quest_alloc(sizeof({env_struct}), {self.layout_ref(env_layout)});")
         mark = self.begin_init(env)
+        self.emit(f"{env}->fn = (void *){thunk};")
         self.emit(f"{env}->orig = {clos};")
         for i, d in enumerate(descs):
             self.emit(f"{env}->desc[{c_int(i)}] = {d};")
         self.init_barrier(env, mark)
-        c = self.temp("QClosure *")
-        self.emit(f"{c} = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
-        self.emit(f"{c}->fn = (void *){thunk};")
-        self.emit(f"{c}->env = (void *){env};")
-        return c
+        return f"((QClosure *){env})"
 
     def type_app_thunk(self, orig_t: QType, target_t: QType, o: ir.TypeApp) -> tuple[str, str]:
         """The thunk of a type application (and its environment's struct),
@@ -1003,7 +1003,8 @@ class CPrinter:
         self.thunks[key] = (name, env_struct)
         n = len(type_args)
         self.thunk_decls.append(
-            f"typedef struct {{ QClosure *orig; const QTypeDescriptor *desc[{c_int(max(n, 1))}]; }} {env_struct};"
+            f"typedef struct {{ void *fn; QClosure *orig; const QTypeDescriptor *desc[{c_int(max(n, 1))}]; }} "
+            f"{env_struct};"
         )
         _, _, o_result = fun_shape_signature(orig_t)
         _, t_params, t_result = fun_shape_signature(target_t)
@@ -1011,7 +1012,7 @@ class CPrinter:
             decls, descs, names = self.thunk_params(o.thunk_params, t_params)
             args = [a if p is None else self.convert(a, p) for a, p in zip(names, plans[:-1])]
             env_descs = [f"_env->desc[{c_int(i)}]" for i in range(n)]
-            call_args = ["_env->orig->env"] + env_descs + descs + args
+            call_args = ["(void *)_env->orig"] + env_descs + descs + args
             fn = f"(({closure_fn_ptr_type(orig_t, self.ctx)})(_env->orig->fn))"
             self.finish_thunk_call(call(fn, call_args), o_result, t_result, plans[-1])
             ret = "void" if self.is_ok(t_result) else self.c_type(t_result)
@@ -1373,7 +1374,7 @@ class CPrinter:
             ret = "void" if self.is_ok(result_t) else self.c_type(result_t)
             self.emit(f"{called};" if ret == "void" else f"return {called};")
             self.thunk(name, ret, decls, ["(void)_raw_env;"] + [f"(void){d};" for d in descs])
-        self.thunk_decls.append(f"static Q_UNUSED QClosure {name}_closure = {{ (void *){name}, NULL }};")
+        self.thunk_decls.append(f"static Q_UNUSED QClosure {name}_closure = {{ (void *){name} }};")
         return f"(&{name}_closure)"
 
     def call_closure(self, callee: ir.Var, descs: list[str], args: tuple[ir.Atom, ...]) -> str:
@@ -1383,11 +1384,11 @@ class CPrinter:
             return self.external_call(external, [], self.args((), args))
         known = self.closures.get(id(callee))
         if known is not None and not known.type_args:
-            env = "NULL" if not known.captures else f"{self.name(callee)}->env"
+            env = "NULL" if not known.captures else f"(void *){self.name(callee)}"
             return call(self.code_name(known.code), [env] + c_args)
         fn_ptr = closure_fn_ptr_type(callee.type, self.ctx)
         clos = self.atom(callee)
-        return call(f"(({fn_ptr})({clos}->fn))", [f"{clos}->env"] + c_args)
+        return call(f"(({fn_ptr})({clos}->fn))", [f"(void *){clos}"] + c_args)
 
     def module_member(self, module: ir.ModuleRef, member: Optional[str]) -> str:
         if isinstance(module, ir.Module):
@@ -1412,10 +1413,12 @@ class CPrinter:
         code = self.code_name(o.code)
         if not o.captures and not o.type_args:
             return f"(&{code}_closure)"
-        env = self.temp(f"struct QEnv_{code} *")
-        self.emit(f"{env} = (struct QEnv_{code} *)quest_alloc(sizeof(struct QEnv_{code}), "
-                  f"{self.layout_ref(self.env_layout_of(code, o))});")
+        # One object: the code pointer, the descriptors, then the captures
+        env = self.temp(f"struct QClosure_{code} *")
+        self.emit(f"{env} = (struct QClosure_{code} *)quest_alloc(sizeof(struct QClosure_{code}), "
+                  f"{self.layout_ref(self.closure_layout_of(code, o))});")
         mark = self.begin_init(env)
+        self.emit(f"{env}->fn = (void *){code};")
         for i, d in enumerate(o.descriptors):
             self.emit(f"{env}->d{c_int(i)} = {self.descriptor(d)};")
         for i, a in enumerate(o.captures):
@@ -1426,11 +1429,7 @@ class CPrinter:
                 continue
             self.emit(f"{env}->c{c_int(i)} = {self.atom(a)};")
         self.init_barrier(env, mark)
-        clos = self.temp("QClosure *")
-        self.emit(f"{clos} = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
-        self.emit(f"{clos}->fn = (void *){code};")
-        self.emit(f"{clos}->env = (void *){env};")
-        return clos
+        return f"((QClosure *){env})"
 
     deferred: Optional[tuple[set[int], list]] = None
 
@@ -1929,7 +1928,7 @@ class CPrinter:
         for p in f.descriptor_params[n_captured:]:
             prologue.append(f"(void){self.name(p.var)};")
         if f.env is not None:
-            env_struct = f"struct QEnv_{self.code_name(f)}"
+            env_struct = f"struct QClosure_{self.code_name(f)}"
             prologue.append(f"{env_struct} *{self.name(f.env)} = ({env_struct} *)_raw_env;")
             # The descriptors of the type parameters its closure supplies
             for i, p in enumerate(f.descriptor_params[:n_captured]):
@@ -1957,8 +1956,8 @@ class CPrinter:
         out.append("")
         return out
 
-    def env_struct(self, f: ir.Function, closure: ir.MakeClosure) -> list[str]:
-        lines = [f"struct QEnv_{self.code_name(f)} {{"]
+    def closure_struct(self, f: ir.Function, closure: ir.MakeClosure) -> list[str]:
+        lines = [f"struct QClosure_{self.code_name(f)} {{", "    void *fn;"]
         for i, _ in enumerate(closure.type_args):
             lines.append(f"    const QTypeDescriptor *d{c_int(i)};")
         for i, a in enumerate(closure.captures):
@@ -1966,8 +1965,6 @@ class CPrinter:
             # An Ok has no C type of its own (void): its field holds Q_OK_VAL,
             # as a slot does
             lines.append(f"    {'QVal' if self.is_ok(t) else self.c_type(t)} c{c_int(i)};")
-        if not closure.type_args and not closure.captures:
-            lines.append("    char _unused;")
         lines.append("};")
         return lines
 
@@ -2015,12 +2012,12 @@ class CPrinter:
         for f in self.unit.functions:
             closure = closures_of.get(id(f))
             if f.env is not None and closure is not None:
-                out.extend(self.env_struct(f, closure))
+                out.extend(self.closure_struct(f, closure))
         out.append("")
         for f in self.unit.functions:
             out.append(self.function_signature(f) + ";")
             code = self.code_name(f)
-            out.append(f"static Q_UNUSED QClosure {code}_closure = {{ (void *){code}, NULL }};")
+            out.append(f"static Q_UNUSED QClosure {code}_closure = {{ (void *){code} }};")
         out.append("")
         globals_ = self.global_declarations()
         for v_id, name, c_t in globals_:
@@ -2190,7 +2187,7 @@ class CPrinter:
             else:
                 fn_ptr = closure_fn_ptr_type(export.type, self.ctx)
                 clos = self.name(export)
-                called = call(f"(({fn_ptr})({clos}->fn))", [f"{clos}->env"] + args)
+                called = call(f"(({fn_ptr})({clos}->fn))", [f"(void *){clos}"] + args)
             out.append(f"{ret_c} {call(ident, param_decls or ['void'])} {{")
             out.append(f"    {called};" if ret_c == "void" else f"    return {called};")
             out.append("}")

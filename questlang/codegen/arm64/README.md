@@ -48,7 +48,7 @@ compiles to a loop with no call and no frame, because an SSA pass made the recur
 _qf_fact:
 	mov x12, #1           ; the accumulator
 Lf0_b4:
-	cbz x1, Lf0_b2        ; n is 0?  (x0 is the closure's environment, x1 is n)
+	cbz x1, Lf0_b2        ; n is 0?  (x0 is the closure, x1 is n)
 	sub x13, x1, #1
 	mul x12, x12, x1
 	mov x1, x13

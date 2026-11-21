@@ -65,8 +65,8 @@ export
         end
 
     let symbol(l: Layout): String = "quest_layout_" <> l.tag
-    let closureSymbol = "quest_layout_closure"
-    let adapterEnvSymbol = "quest_layout_adapter_env"
+    let adaptClosureSymbol = "quest_layout_adapt_closure"
+    let adapterClosureSymbol = "quest_layout_adapter_closure"
     let arraySymbol(k: Kind): String =
         case k
             when kindScalar then "quest_layout_array_scalar"
@@ -212,11 +212,12 @@ export
             fixed(layout.shapeTag(os) <> suffix words bytes cSizeOf(struct 0))
         end
 
-    let envLayout(code: String kinds: Array(Kind) bytes: Int cSize: String): Layout =
+    let closureLayout(code: String kinds: Array(Kind) bytes: Int cSize: String): Layout =
         begin
             let words = vector.new(:Kind)
+            vector.append(words scalar)
             for i = 0 upto {extent kinds - 1} do vector.append(words kinds[i]) end
-            fixed("env_" <> code words bytes cSize)
+            fixed("closure_" <> code words bytes cSize)
         end
 
     let newTable(): Table =

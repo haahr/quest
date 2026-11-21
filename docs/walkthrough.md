@@ -640,7 +640,7 @@ renumbered too.
 Quest functions can be defined inside other functions, and can use the variables of the functions around them, as
 Python's nested functions and lambdas can. C cannot do this: its functions are all defined at the top level and see
 only their parameters and global variables. **Closure conversion** bridges the gap. It moves every function to the
-top level and gives each a **closure**: a pair of the function and an *environment*, a record of the variables it
+top level and gives each a **closure**: one object holding the function and its *environment*, the variables it
 uses from around it (its *captures*). Python does the same thing at run time; a nested function's `__closure__`
 holds its captures.
 
@@ -663,7 +663,7 @@ main {
 
 The functions now come before `main` rather than inside it, and `main` makes a closure for each. Every function
 value in compiled Quest is a closure, so `key` and `isGreater`, which argmax receives as arguments, are closures too,
-and calling one calls its function with its environment.
+and calling one calls its function with the closure, which holds its environment.
 
 ---
 
@@ -816,7 +816,7 @@ static Q_UNUSED QTuple_Int_String * qf_argmax_spec(void *_raw_env, QArray * l_a_
     l_best_2 = 0LL;
     quest_check_array_bounds_at(l_a_2, 0LL, "examples/argmax/argmax.quest:18:31");
     l_t_12 = ((QString *)((l_a_2->data[0LL]).p));
-    l_t_13 = ((QInt (*)(void *, QString *))(l_key_2->fn))(l_key_2->env, l_t_12);
+    l_t_13 = ((QInt (*)(void *, QString *))(l_key_2->fn))((void *)l_key_2, l_t_12);
     l_bestKey_2 = l_t_13;
     l_t_14 = ((l_n_2) - (1LL));
     l_i_3 = 1LL;
@@ -826,8 +826,8 @@ static Q_UNUSED QTuple_Int_String * qf_argmax_spec(void *_raw_env, QArray * l_a_
             l_i_4 = l_i_3;
             quest_check_array_bounds_at(l_a_2, l_i_4, "examples/argmax/argmax.quest:20:25");
             l_t_16 = ((QString *)((l_a_2->data[l_i_4]).p));
-            l_k_2 = ((QInt (*)(void *, QString *))(l_key_2->fn))(l_key_2->env, l_t_16);
-            l_t_17 = ((QBool (*)(void *, QInt, QInt))(l_isGreater_2->fn))(l_isGreater_2->env, l_k_2, l_bestKey_2);
+            l_k_2 = ((QInt (*)(void *, QString *))(l_key_2->fn))((void *)l_key_2, l_t_16);
+            l_t_17 = ((QBool (*)(void *, QInt, QInt))(l_isGreater_2->fn))((void *)l_isGreater_2, l_k_2, l_bestKey_2);
             if (l_t_17) {
                 l_best_2 = l_i_4;
                 l_bestKey_2 = l_k_2;
@@ -855,14 +855,14 @@ static Q_UNUSED QTuple_Int_String * qf_argmax_spec(void *_raw_env, QArray * l_a_
 
 It follows the IR line for line. Some details:
 
-- Every C function takes `_raw_env` first, the environment of the closure it was called through (§9). This one
-  ignores it.
+- Every C function takes `_raw_env` first, the closure it was called through, which holds its environment (§9).
+  This one ignores it.
 - `raise empty` calls the run-time system's `quest_raise_at`, passing where in the source the `raise` is, for the
   error message if nothing catches it.
 - Every index into an array is checked first (`quest_check_array_bounds_at`), as Python checks `a[i]`.
 - An array's elements are words (§10), so reading one takes the pointer out of the word, `.p`, and casts it to
   a `QString *`.
-- Calling a closure calls its function pointer, `fn`, with its environment, `env`, first. The function pointer is
+- Calling a closure calls its function pointer, `fn`, with the closure itself first. The function pointer is
   cast to the function's C type, which the closure's Quest type fixes: `key` is called as a function from a string
   to an integer.
 - The result tuple is allocated with `quest_alloc`, which allocates garbage-collected memory: as in Python, memory
@@ -903,23 +903,23 @@ In element.quest (§12), the adapter that lets the generic `argmax` call `string
 ```c
 ...
 static Q_UNUSED QVal qa_adapt(void *_raw_env, QVal qa_0) {
-    QClosure *orig = (QClosure *)_raw_env;
+    const QClosure *orig = ((const QAdaptClosure *)_raw_env)->orig;
     QInt _t2;
-    _t2 = ((QInt (*)(void *, QString *))(orig->fn))(orig->env, ((QString *)(qa_0.p)));
+    _t2 = ((QInt (*)(void *, QString *))(orig->fn))((void *)orig, ((QString *)(qa_0.p)));
     return ((QVal){ .i = (int64_t)(_t2) });
 }
 ...
-    _t3 = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);
+    _t3 = (QAdaptClosure *)quest_alloc(sizeof(QAdaptClosure), &quest_layout_adapt_closure);
     _t3->fn = (void *)qa_adapt;
-    _t3->env = (void *)(g_t);
-    g_t_3 = _t3;
+    _t3->orig = (const QClosure *)(g_t);
+    g_t_3 = ((QClosure *)_t3);
 ...
     g_longest = qf_argmax(NULL, &quest_type_String, &quest_type_Int, g_words, g_t_3, g_t_4);
     g_longest_2 = ((QString *)(g_longest.p));
 ...
 ```
 
-The adapter is itself a closure, whose environment is the original closure, `string.length`: it unwraps its word
+The adapter is itself a closure, which holds the original closure, `string.length`, after its code pointer: it unwraps its word
 argument into a string pointer, calls the original, and wraps the integer result in a word. The call passes the
 descriptors of `String` and `Int` before the arguments, and the result is unwrapped from its word. Every call of
 `key` and `isGreater` inside `argmax` goes through an adapter, which is the time specialization saves.
@@ -1016,56 +1016,59 @@ only raise errors left out:
 <!-- excerpt: self-hosted examples/argmax/argmax.quest ssa -->
 ```
 ...
-b11(%240: int, %243: int, %246: int):
+b6():
+...
+  @18:27
+  %46: ptr = load8 %21 + 0 invariant
+  %47: int = callIndirect %46, %21, %45
+...
+b11(%222: int, %225: int, %228: int):
   @20:25
-  %69: ptr = null
-  %70: int = peq %6, %69
-  branch %70, b14(), b13()
+  %60: ptr = null
+  %61: int = peq %6, %60
+  branch %61, b14(), b13()
 ...
 b13():
   @20:25
-  %73: int = ult %246, %31
-  branch %73, b15(), b16()
+  %64: int = ult %228, %23
+  branch %64, b15(), b16()
 ...
 b15():
   @20:25
-  %75: int = const 8
-  %76: int = mul %246, %75
-  %78: ptr = ptrAdd %6, %75
-  %79: ptr = ptrAdd %78, %76
-  %80: val = load8 %79 + 0
-  %81: ptr = fromVal %80
+  %66: int = const 8
+  %67: int = mul %228, %66
+  %69: ptr = ptrAdd %6, %66
+  %70: ptr = ptrAdd %69, %67
+  %71: val = load8 %70 + 0
+  %72: ptr = fromVal %71
   @20:21
-  %82: ptr = load8 %29 + 0 invariant
-  %83: ptr = load8 %29 + 8 invariant
-  %84: int = callIndirect %82, %83, %81
+  %74: int = callIndirect %46, %21, %72
   @21:16
-  %85: ptr = load8 %30 + 0 invariant
-  %86: ptr = load8 %30 + 8 invariant
-  %89: int = callIndirect %85, %86, %84, %243 result narrow
-  %90: int = zext8 %89
+  %75: ptr = load8 %22 + 0 invariant
+  %78: int = callIndirect %75, %22, %74, %225 result narrow
+  %79: int = zext8 %78
   @21:13
-  %255: int = select %90, %246, %240
-  %256: int = select %90, %84, %243
-  jump b17(%255, %256)
+  %237: int = select %79, %228, %222
+  %238: int = select %79, %74, %225
+  jump b17(%237, %238)
 ...
-b17(%241: int, %244: int):
+b17(%223: int, %226: int):
   @19:9
-  %95: int = eq %246, %60
-  branch %95, b18(), b19()
+  %84: int = eq %228, %51
+  branch %84, b18(), b19()
 ...
 b20():
   @19:9
-  %98: int = const 1
-  %99: int = add %246, %98
-  jump b11(%241, %244, %99)
+  %87: int = const 1
+  %88: int = add %228, %87
+  jump b11(%223, %226, %88)
 ...
 ```
 
-Block `b11` is the loop's head. Its parameters are `best` (`%240`), `bestKey` (`%243`), and `i` (`%246`); the jump
+Block `b11` is the loop's head. Its parameters are `best` (`%222`), `bestKey` (`%225`), and `i` (`%228`); the jump
 into the loop passes `0`, the first key, and `1`, and the jump at the end of `b20` passes the new `best`, the new
-`bestKey`, and `i + 1`. Elsewhere in the function, `%6` is the `words` array, `%31` its length, `%60` is `n - 1`, and
-`%29` and `%30` are the closures for `key` and `isGreater`.
+`bestKey`, and `i + 1`. Elsewhere in the function, `%6` is the `words` array, `%23` its length, `%51` is `n - 1`, and
+`%21` and `%22` are the closures for `key` and `isGreater`; `b6` calls `key` on the first element before the loop.
 
 Reading `words[i]` is three blocks. `b11` checks that the array pointer is not null and `b13` that `i` is below the
 length (`ult`, an unsigned comparison, which also rejects a negative `i`); each failure branches to a block that
@@ -1074,9 +1077,10 @@ elements, eight bytes each, so element `i` is at `8 + 8 * i`. The element is a `
 array's representation does not depend on its element type, and `fromVal` reinterprets it as the pointer to a string
 it is known to be here.
 
-A call through a closure loads two words from the closure, the code and its environment, and calls the code with the
-environment as an extra first argument (`callIndirect`). The loads are marked `invariant`: a closure never changes
-once made, which lets the optimizer treat repeated loads of it as the same value. `result narrow` and `zext8` say that
+A call through a closure loads one word from the closure, the code, and calls the code with the closure itself as an
+extra first argument (`callIndirect`), from which the code reads its captures. The load is marked `invariant`: a
+closure never changes once made, which lets the optimizer treat repeated loads of it as the same value, as it does
+here: the loop's call of `key` reuses `%46`, the code `b6` loaded for the call before the loop. `result narrow` and `zext8` say that
 `isGreater` returns a `Bool` in the low byte of a register, which is widened to a full word.
 
 The IR's `if isGreater(...) then best := i; bestKey := k end` has become two `select`s, which choose a value by a
@@ -1099,43 +1103,46 @@ Lf1_b12:
 	.loc 1 20 25
 	cbz x20, Lf1_b15
 Lf1_b14:
-	cmp x27, x23
+	cmp x28, x23
 	b.hs Lf1_b17
 Lf1_b16:
 	add x12, x20, #8
-	ldr x12, [x12, x27, lsl #3]
-	.loc 1 20 21
-	ldp x13, x0, [x21]
+	ldr x12, [x12, x28, lsl #3]
+	mov x0, x21
 	mov x1, x12
-	blr x13
-	mov x28, x0
+	.loc 1 20 21
+	blr x25
+	mov x21, x0
 	.loc 1 21 16
-	ldp x12, x0, [x22]
-	mov x1, x28
-	mov x2, x26
+	ldr x12, [x22, #0]
+	mov x0, x22
+	mov x1, x21
+	mov x2, x27
 	blr x12
 	and x12, x0, #0xff
 	.loc 1 21 13
 	cmp x12, #0
-	csel x13, x27, x24, ne
+	csel x13, x28, x24, ne
 	cmp x12, #0
-	csel x12, x28, x26, ne
+	csel x12, x21, x27, ne
 Lf1_b18:
 	.loc 1 19 9
-	cmp x27, x25
+	cmp x28, x26
 	b.eq Lf1_b13
 Lf1_b21:
-	add x27, x27, #1
+	add x28, x28, #1
 	mov x24, x13
-	mov x26, x12
+	mov x27, x12
+	ldr x21, [sp, #0]
 	b Lf1_b12
 ...
 ```
 
 arm64 has 31 general registers, `x0` to `x30`. Values that must survive a call live in the *callee-saved* registers
 `x19` to `x28`, which a called function must restore before it returns: here `x20` holds the array, `x21` and `x22`
-the two closures, `x23` the length, `x25` is `n - 1`, and the loop's three block parameters are `x24` (`best`), `x26`
-(`bestKey`), and `x27` (`i`). Arguments go in `x0`, `x1`, `x2`, ... and a result comes back in `x0`, as the platform's
+the two closures, `x23` the length, `x25` the code of `key`, `x26` is `n - 1`, and the loop's three block parameters
+are `x24` (`best`), `x27` (`bestKey`), and `x28` (`i`). The key's result needs a register too, and the allocator gives
+it `x21`, reloading the `key` closure from the stack (`ldr x21, [sp, #0]`) before the jump back. Arguments go in `x0`, `x1`, `x2`, ... and a result comes back in `x0`, as the platform's
 calling convention says, so the C functions of the runtime and Quest's compiled functions can call each other.
 
 Each SSA instruction is a few machine instructions, and some SSA instructions fold together:
@@ -1144,8 +1151,9 @@ Each SSA instruction is a few machine instructions, and some SSA instructions fo
   same, unsigned): both jump to blocks that raise, which the backend lays out at the end of the function, away from
   the loop.
 - The element's load is one `ldr` with a scaled index: `[x12, x27, lsl #3]` is the address `x12 + x27 * 8`.
-- A call through a closure is `ldp`, which loads the code into `x13` and the environment into `x0` (the first
-  argument) in one instruction, then the arguments, then `blr` (branch with link to register).
+- A call through a closure loads its code (`ldr x12, [x22, #0]`), moves the closure into `x0`, the first argument,
+  then the arguments, then `blr` (branch with link to register). The call of `key` uses the code loaded before the
+  loop, in `x25`.
 - The two `select`s are `csel`, conditional select, each after a `cmp` that sets the flags it tests.
 - The block parameters are registers: the jump back to `b11` is the `mov`s that put the new `best` and `bestKey`
   where the loop's head expects them, and a `b` to the head.

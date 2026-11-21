@@ -14,6 +14,7 @@ import
     questlang/repr/symbols : questlang/repr/Symbols
     questlang/repr/staticdata : questlang/repr/StaticData
     questlang/repr/objectLayout : questlang/repr/ObjectLayout
+    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/iter : util/Iter
@@ -46,9 +47,9 @@ export
             n
         end
 
-    (* A function of the unit: its environment, then its own type parameters'
-     * descriptors (those its closure supplies it reads from its environment),
-     * then its parameters *)
+    (* A function of the unit: its closure, then its own type parameters'
+     * descriptors (those its closure supplies it reads from the closure, after
+     * the code pointer), then its parameters *)
     let function(u: vals.UnitBuilder f: ir.Function): Function =
         begin
             let own = countTypeParams(f.v.type)
@@ -84,11 +85,18 @@ export
             let next(): Int = begin let v = vector.get(params at) at := at + 1 v end
             let envValue = next()
             if maybe.isSome(f.env) then
-                vals.bindToValues(fn maybe.unwrap(f.env) array of envValue end)
+                (* A lifted function's environment, of the placeholder type
+                 * Ok, is its closure; an adapter's is the closure it adapts,
+                 * which its own closure holds (ir/thunks) *)
+                let env = maybe.unwrap(f.env)
+                let v = if shapes.kindIs(shapes.shape(env.type) shapes.shapeOk) then envValue
+                    else vals.invariantWord(fn envValue runtimeLayout.offset("QAdaptClosure" "orig") vals.tPtr)
+                end
+                vals.bindToValues(fn env array of v end)
             end
-            (* The descriptors its closure supplies, from its environment *)
+            (* The descriptors its closure supplies, after the code pointer *)
             for i = 0 upto {nCaptured - 1} do
-                let d = vals.loadWord(fn envValue 8 * i vals.tPtr)
+                let d = vals.loadWord(fn envValue 8 * {i + 1} vals.tPtr)
                 vals.bindToValues(fn f.descriptorParams[i].v array of d end)
             end
             for i = nCaptured upto {extent f.descriptorParams - 1} do
@@ -427,7 +435,7 @@ export
              * captures *)
             for i = 0 upto {vector.length(unit.functions) - 1} do
                 let code = vals.codeName(u vector.get(unit.functions i))
-                addData(u ssa.words(code <> "_closure" false false array of addressWord(code) wordOf(0) end))
+                addData(u ssa.words(code <> "_closure" false false array of addressWord(code) end))
             end
             descriptorData(u)
             vector.append(u.built.functions registration(u))

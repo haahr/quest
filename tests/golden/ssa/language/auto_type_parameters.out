@@ -9,30 +9,81 @@ b0(%0: ptr, %1: int):
 
 function qf_qa_adapt(%0: ptr, %1: val): ptr {
 b0(%0: ptr, %1: val):
-  %2: int = fromVal %1
-  %3: ptr = load8 %0 + 0 invariant
-  %4: ptr = load8 %0 + 8 invariant
-  tail %5: ptr = callIndirect %3, %4, %2
+  %2: ptr = load8 %0 + 8 invariant
+  %3: int = fromVal %1
+  %4: ptr = load8 %2 + 0 invariant
+  tail %5: ptr = callIndirect %4, %2, %3
 }
 
 function quest_thunk_fun_173daca62bdfc50d(%0: ptr, %1: val): ptr slots [8:8] {
 b0(%0: ptr, %1: val):
-  %2: ptr = load8 %0 + 0
-  %3: ptr = load8 %0 + 8
+  %2: ptr = load8 %0 + 8
+  %3: ptr = load8 %0 + 16
   %4: ptr = load8 %3 + 40
-  %5: ptr = load8 %0 + 16
+  %5: ptr = load8 %0 + 24
   %6: ptr = load8 %5 + 40
-  %7: int = load1 %0 + 24
+  %7: int = load1 %0 + 32
   branch %7, b1(), b2()
 b1():
-  %8: ptr = load8 %2 + 8 invariant
-  %9: ptr = load8 %2 + 0 invariant
-  %10: ptr = callIndirect %9, %8, %1
-  return %10
+  %8: ptr = load8 %2 + 0 invariant
+  %9: ptr = callIndirect %8, %2, %1
+  return %9
 b2():
+  %10: ptr = load8 %6 + 48
+  %11: ptr = load8 %4 + 48
+  %12: val = call quest_convert(%1, %10, %11)
+  %13: ptr = slot 0
+  store8 %13 + 0, %12
+  %14: ptr = load8 %4 + 24
+  %15: val = callIndirect %14, %2, %13
+  %16: ptr = load8 %4 + 8
+  %17: ptr = load8 %6 + 8
+  %18: val = call quest_convert(%15, %16, %17)
+  %19: ptr = fromVal %18
+  return %19
+}
+
+function quest_adapt_fun_173daca62bdfc50d(%0: ptr, %1: ptr, %2: ptr): ptr {
+b0(%0: ptr, %1: ptr, %2: ptr):
+  %3: int = const 40
+  %4: ptr = symbol quest_layout_adapter_closure
+  %5: ptr = call quest_alloc(%3, %4)
+  %6: ptr = symbol quest_thunk_fun_173daca62bdfc50d
+  store8 %5 + 0, %6
+  store8 %5 + 8, %0
+  store8 %5 + 16, %1
+  store8 %5 + 24, %2
+  %7: int = call quest_fun_signature_equivalent(%1, %2) result narrow
+  %8: int = zext8 %7
+  store1 %5 + 32, %8
+  return %5
+}
+
+function quest_invoke_fun_173daca62bdfc50d(%0: ptr, %1: ptr): val {
+b0(%0: ptr, %1: ptr):
+  %2: val = load8 %1 + 0
+  %3: ptr = load8 %0 + 0 invariant
+  tail %4: ptr = callIndirect %3, %0, %2
+}
+
+function quest_thunk_fun_5d3070cb6d2244b6(%0: ptr, %1: int): ptr slots [8:8] {
+b0(%0: ptr, %1: int):
+  %2: ptr = load8 %0 + 8
+  %3: ptr = load8 %0 + 16
+  %4: ptr = load8 %3 + 40
+  %5: ptr = load8 %0 + 24
+  %6: ptr = load8 %5 + 40
+  %7: int = load1 %0 + 32
+  branch %7, b1(), b2()
+b1():
+  %8: ptr = load8 %2 + 0 invariant
+  %9: ptr = callIndirect %8, %2, %1
+  return %9
+b2():
+  %10: val = toVal %1
   %11: ptr = load8 %6 + 48
   %12: ptr = load8 %4 + 48
-  %13: val = call quest_convert(%1, %11, %12)
+  %13: val = call quest_convert(%10, %11, %12)
   %14: ptr = slot 0
   store8 %14 + 0, %13
   %15: ptr = load8 %4 + 24
@@ -44,91 +95,28 @@ b2():
   return %20
 }
 
-function quest_adapt_fun_173daca62bdfc50d(%0: ptr, %1: ptr, %2: ptr): ptr {
-b0(%0: ptr, %1: ptr, %2: ptr):
-  %3: int = const 32
-  %4: ptr = symbol quest_layout_adapter_env
-  %5: ptr = call quest_alloc(%3, %4)
-  store8 %5 + 0, %0
-  store8 %5 + 8, %1
-  store8 %5 + 16, %2
-  %6: int = call quest_fun_signature_equivalent(%1, %2) result narrow
-  %7: int = zext8 %6
-  store1 %5 + 24, %7
-  %8: int = const 16
-  %9: ptr = symbol quest_layout_closure
-  %10: ptr = call quest_alloc(%8, %9)
-  %11: ptr = symbol quest_thunk_fun_173daca62bdfc50d
-  store8 %10 + 0, %11
-  store8 %10 + 8, %5
-  return %10
-}
-
-function quest_invoke_fun_173daca62bdfc50d(%0: ptr, %1: ptr): val {
-b0(%0: ptr, %1: ptr):
-  %2: ptr = load8 %0 + 8 invariant
-  %3: val = load8 %1 + 0
-  %4: ptr = load8 %0 + 0 invariant
-  tail %5: ptr = callIndirect %4, %2, %3
-}
-
-function quest_thunk_fun_5d3070cb6d2244b6(%0: ptr, %1: int): ptr slots [8:8] {
-b0(%0: ptr, %1: int):
-  %2: ptr = load8 %0 + 0
-  %3: ptr = load8 %0 + 8
-  %4: ptr = load8 %3 + 40
-  %5: ptr = load8 %0 + 16
-  %6: ptr = load8 %5 + 40
-  %7: int = load1 %0 + 24
-  branch %7, b1(), b2()
-b1():
-  %8: ptr = load8 %2 + 8 invariant
-  %9: ptr = load8 %2 + 0 invariant
-  %10: ptr = callIndirect %9, %8, %1
-  return %10
-b2():
-  %11: val = toVal %1
-  %12: ptr = load8 %6 + 48
-  %13: ptr = load8 %4 + 48
-  %14: val = call quest_convert(%11, %12, %13)
-  %15: ptr = slot 0
-  store8 %15 + 0, %14
-  %16: ptr = load8 %4 + 24
-  %17: val = callIndirect %16, %2, %15
-  %18: ptr = load8 %4 + 8
-  %19: ptr = load8 %6 + 8
-  %20: val = call quest_convert(%17, %18, %19)
-  %21: ptr = fromVal %20
-  return %21
-}
-
 function quest_adapt_fun_5d3070cb6d2244b6(%0: ptr, %1: ptr, %2: ptr): ptr {
 b0(%0: ptr, %1: ptr, %2: ptr):
-  %3: int = const 32
-  %4: ptr = symbol quest_layout_adapter_env
+  %3: int = const 40
+  %4: ptr = symbol quest_layout_adapter_closure
   %5: ptr = call quest_alloc(%3, %4)
-  store8 %5 + 0, %0
-  store8 %5 + 8, %1
-  store8 %5 + 16, %2
-  %6: int = call quest_fun_signature_equivalent(%1, %2) result narrow
-  %7: int = zext8 %6
-  store1 %5 + 24, %7
-  %8: int = const 16
-  %9: ptr = symbol quest_layout_closure
-  %10: ptr = call quest_alloc(%8, %9)
-  %11: ptr = symbol quest_thunk_fun_5d3070cb6d2244b6
-  store8 %10 + 0, %11
-  store8 %10 + 8, %5
-  return %10
+  %6: ptr = symbol quest_thunk_fun_5d3070cb6d2244b6
+  store8 %5 + 0, %6
+  store8 %5 + 8, %0
+  store8 %5 + 16, %1
+  store8 %5 + 24, %2
+  %7: int = call quest_fun_signature_equivalent(%1, %2) result narrow
+  %8: int = zext8 %7
+  store1 %5 + 32, %8
+  return %5
 }
 
 function quest_invoke_fun_5d3070cb6d2244b6(%0: ptr, %1: ptr): val {
 b0(%0: ptr, %1: ptr):
-  %2: ptr = load8 %0 + 8 invariant
-  %3: val = load8 %1 + 0
-  %4: int = fromVal %3
-  %5: ptr = load8 %0 + 0 invariant
-  tail %6: ptr = callIndirect %5, %2, %4
+  %2: val = load8 %1 + 0
+  %3: int = fromVal %2
+  %4: ptr = load8 %0 + 0 invariant
+  tail %5: ptr = callIndirect %4, %0, %3
 }
 
 function qr_register_dicts() {
@@ -219,14 +207,14 @@ b1(%30: int):
   branch %58, b7(), b8()
 b2():
   @9:27
-  %336: int = const 0
-  return %336
+  %335: int = const 0
+  return %335
 b3():
   @20:3
   %38: ptr = slot 2
-  %338: int = const 0
-  %337: val = toVal %338
-  store8 %38 + 0, %337
+  %337: int = const 0
+  %336: val = toVal %337
+  store8 %38 + 0, %336
   %39: val = load8 %32 + 0
   %40: ptr = symbol quest_type_Int
   %41: val = call quest_convert(%39, %31, %40)
@@ -265,9 +253,9 @@ b6():
 b7():
   @21:3
   %61: ptr = slot 3
-  %340: int = const 0
-  %339: val = toVal %340
-  store8 %61 + 0, %339
+  %339: int = const 0
+  %338: val = toVal %339
+  store8 %61 + 0, %338
   %62: val = load8 %55 + 0
   %63: ptr = symbol quest_type_QT_record_e041b0e95a6dc00f
   %64: val = call quest_convert(%62, %54, %63)
@@ -318,9 +306,9 @@ b12():
 b13():
   @24:45
   %95: ptr = slot 4
-  %342: int = const 0
-  %341: val = toVal %342
-  store8 %95 + 0, %341
+  %341: int = const 0
+  %340: val = toVal %341
+  store8 %95 + 0, %340
   %96: val = load8 %89 + 0
   %97: ptr = symbol quest_type_Int
   %98: val = call quest_convert(%96, %88, %97)
@@ -375,9 +363,9 @@ b16():
 b17():
   @24:45
   %118: ptr = slot 5
-  %344: int = const 0
-  %343: val = toVal %344
-  store8 %118 + 0, %343
+  %343: int = const 0
+  %342: val = toVal %343
+  store8 %118 + 0, %342
   %119: val = load8 %112 + 0
   %120: ptr = symbol quest_type_Int
   %121: val = call quest_convert(%119, %111, %120)
@@ -431,9 +419,9 @@ b20():
 b21():
   @24:45
   %154: ptr = slot 6
-  %346: int = const 0
-  %345: val = toVal %346
-  store8 %154 + 0, %345
+  %345: int = const 0
+  %344: val = toVal %345
+  store8 %154 + 0, %344
   %155: val = load8 %148 + 0
   %156: ptr = symbol quest_type_QT_record_543b67e72e28fb18
   %157: val = call quest_convert(%155, %147, %156)
@@ -502,9 +490,9 @@ b26():
 b27():
   @32:3
   %195: ptr = slot 7
-  %348: int = const 0
-  %347: val = toVal %348
-  store8 %195 + 0, %347
+  %347: int = const 0
+  %346: val = toVal %347
+  store8 %195 + 0, %346
   %196: val = load8 %189 + 0
   %197: ptr = symbol quest_type_String
   %198: val = call quest_convert(%196, %188, %197)
@@ -540,7 +528,7 @@ b29(%225: int):
   %272: ptr = call quest_alloc(%264, %271)
   %274: val = toVal %267
   store8 %272 + 0, %274
-  %279: ptr = symbol quest_layout_closure
+  %279: ptr = symbol quest_layout_adapt_closure
   %280: ptr = call quest_alloc(%264, %279)
   %281: ptr = symbol qf_qa_adapt
   store8 %280 + 0, %281
@@ -567,9 +555,9 @@ b30():
 b31():
   @37:3
   %236: ptr = slot 8
-  %352: int = const 0
-  %351: val = toVal %352
-  store8 %236 + 0, %351
+  %351: int = const 0
+  %350: val = toVal %351
+  store8 %236 + 0, %350
   %237: val = load8 %230 + 0
   %238: ptr = symbol quest_type_QT_record_543b67e72e28fb18
   %239: val = call quest_convert(%237, %229, %238)
@@ -595,17 +583,17 @@ b34():
   jump b29(%252)
 b35(%287: ptr):
   @9:44
-  %328: ptr = symbol qm_writer
-  %329: ptr = load8 %328 + 0
-  %330: ptr = load8 %328 + 8
-  %331: int = load8 %330 + 40
-  %332: ptr = ptrAdd %329, %331
-  %333: ptr = load8 %332 + 0
+  %327: ptr = symbol qm_writer
+  %328: ptr = load8 %327 + 0
+  %329: ptr = load8 %327 + 8
+  %330: int = load8 %329 + 40
+  %331: ptr = ptrAdd %328, %330
+  %332: ptr = load8 %331 + 0
   @9:58
-  %334: ptr = symbol qso_15 + 8
-  %335: ptr = call quest_string_concat(%287, %334)
+  %333: ptr = symbol qso_15 + 8
+  %334: ptr = call quest_string_concat(%287, %333)
   @9:27
-  call quest_writer_put_string(%333, %335)
+  call quest_writer_put_string(%332, %334)
   jump b36()
 b36():
   @9:27
@@ -617,8 +605,8 @@ b37():
   branch %297, b39(), b40()
 b38():
   @43:3
-  %327: ptr = symbol qso_16 + 8
-  jump b35(%327)
+  %326: ptr = symbol qso_16 + 8
+  jump b35(%326)
 b39():
   @43:3
   %299: val = toVal %289
@@ -662,14 +650,13 @@ b41(%298: ptr):
   %323: int = load8 %298 + 0
   @43:40
   %324: ptr = load8 %322 + 0 invariant
-  %325: ptr = load8 %322 + 8 invariant
-  %326: ptr = callIndirect %324, %325, %323
+  %325: ptr = callIndirect %324, %322, %323
   @43:3
-  jump b35(%326)
+  jump b35(%325)
 }
 
-data qf_f_closure words [qf_f, 0]
-data qf_qa_adapt_closure words [qf_qa_adapt, 0]
+data qf_f_closure words [qf_f]
+data qf_qa_adapt_closure words [qf_qa_adapt]
 data qs_1 text "?0"
 data qhole_desc_hole_0 words [0, 0]
 data quest_type_hole_0 words [16, qs_1, 8, 8, quest_is_subtype, qhole_desc_hole_0]

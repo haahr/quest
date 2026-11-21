@@ -54,16 +54,23 @@ class TestRuntimeLayout(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout)
 
     def test_a_wrong_layout_fails(self) -> None:
-        # The check can fail: an assertion off by one does not compile
+        # The check can fail: an assertion off by one does not compile, though
+        # the same assertion with the right offset does
         compiler = find_c_compiler()
-        with tempfile.TemporaryDirectory() as tmp:
-            src = Path(tmp) / "wrong.c"
-            src.write_text('#include <stddef.h>\n#include "quest_runtime.h"\n\n'
-                           "static_assert(offsetof(QClosure, env) == 9, wrong_QClosure_env);\n")
-            result = subprocess.run(
-                [compiler, *base_c_flags(compiler), "-DQUEST_NOGC", f"-I{get_runtime_dir()}", "-fsyntax-only", str(src)],
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            self.assertNotEqual(result.returncode, 0)
+
+        def compiles(offset: int) -> bool:
+            with tempfile.TemporaryDirectory() as tmp:
+                src = Path(tmp) / "layout.c"
+                src.write_text('#include <stddef.h>\n#include "quest_runtime.h"\n\n'
+                               f"static_assert(offsetof(QAdaptClosure, orig) == {offset}, QAdaptClosure_orig);\n")
+                result = subprocess.run(
+                    [compiler, *base_c_flags(compiler), "-DQUEST_NOGC", f"-I{get_runtime_dir()}", "-fsyntax-only",
+                     str(src)],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                return result.returncode == 0
+
+        self.assertTrue(compiles(8))
+        self.assertFalse(compiles(9))
 
 
 class TestRuntimeFunctions(unittest.TestCase):

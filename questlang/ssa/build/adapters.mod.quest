@@ -116,8 +116,7 @@ export
                 else
                     let clos = vals.read(fn v)[0]
                     let fnPtr = vals.invariantWord(fn clos runtimeLayout.offset("QClosure" "fn") vals.tPtr)
-                    let env = vals.invariantWord(fn clos runtimeLayout.offset("QClosure" "env") vals.tPtr)
-                    vals.callQuest(fn "" vals.concat(array of fnPtr env end args) shifted(s.pairs 2) shifted(s.narrow 2)
+                    vals.callQuest(fn "" vals.concat(array of fnPtr clos end args) shifted(s.pairs 2) shifted(s.narrow 2)
                         ps)
                 end
                 returnValues(fn calls.resultsOf(fn ps results))
@@ -147,16 +146,15 @@ export
             let convertWord(fn: vals.Fn w: Int from: Int to: Int): Int = vals.call1(fn "quest_convert" array of w from
                 to end)
             let closureFn(fn: vals.Fn c: Int): Int = vals.invariantWord(fn c runtimeLayout.offset("QClosure" "fn") vals.tPtr)
-            let closureEnv(fn: vals.Fn c: Int): Int = vals.invariantWord(fn c runtimeLayout.offset("QClosure" "env") vals.tPtr)
 
-            (* The thunk, whose environment is a QFunAdapterEnv *)
+            (* The thunk, whose closure is a QFunAdapterClosure *)
             let thunk = newFunction(u thunkName false s retParts)
             let tf = thunk.f
             let e = param(tf 0)
-            let orig = vals.loadWord(thunk e runtimeLayout.offset("QFunAdapterEnv" "orig") vals.tPtr)
-            let from = vals.loadWord(thunk vals.loadWord(thunk e runtimeLayout.offset("QFunAdapterEnv" "from") vals.tPtr) extraAt vals.tPtr)
-            let to = vals.loadWord(thunk vals.loadWord(thunk e runtimeLayout.offset("QFunAdapterEnv" "to") vals.tPtr) extraAt vals.tPtr)
-            let directFlag = vals.load(thunk e runtimeLayout.offset("QFunAdapterEnv" "direct") vals.part(vals.tInt 1 false))
+            let orig = vals.loadWord(thunk e runtimeLayout.offset("QFunAdapterClosure" "orig") vals.tPtr)
+            let from = vals.loadWord(thunk vals.loadWord(thunk e runtimeLayout.offset("QFunAdapterClosure" "from") vals.tPtr) extraAt vals.tPtr)
+            let to = vals.loadWord(thunk vals.loadWord(thunk e runtimeLayout.offset("QFunAdapterClosure" "to") vals.tPtr) extraAt vals.tPtr)
+            let directFlag = vals.load(thunk e runtimeLayout.offset("QFunAdapterClosure" "direct") vals.part(vals.tInt 1 false))
             let directB = control.newBlock(thunk)
             let uniformB = control.newBlock(thunk)
             vals.terminate(thunk option termBranch of ssa.Terminator with
@@ -177,7 +175,7 @@ export
             end
             (* Called directly, at the type's own C signature *)
             thunk.cur := directB
-            let var directArgs = vals.concat(array of closureEnv(thunk orig) end descs)
+            let var directArgs = vals.concat(array of orig end descs)
             for j = 0 upto {np - 1} do
                 let p = vector.get(sig.params j)
                 let vs = vector.get(paramValues j)
@@ -220,19 +218,17 @@ export
             (* The adapter: a closure of the thunk *)
             let adapt = newFunction(u "quest_adapt_" <> tag false pointers(3) array of vals.part(vals.tPtr 8 false) end)
             let af = adapt.f
-            let env = representation.alloc(adapt bytes("QFunAdapterEnv") objectLayout.adapterEnvSymbol)
-            let mark = vals.beginInit(adapt env)
-            vals.store(adapt env runtimeLayout.offset("QFunAdapterEnv" "orig") 8 param(af 0))
-            vals.store(adapt env runtimeLayout.offset("QFunAdapterEnv" "from") 8 param(af 1))
-            vals.store(adapt env runtimeLayout.offset("QFunAdapterEnv" "to") 8 param(af 2))
+            let adapted = representation.alloc(adapt bytes("QFunAdapterClosure") objectLayout.adapterClosureSymbol)
+            let mark = vals.beginInit(adapt adapted)
+            vals.store(adapt adapted runtimeLayout.offset("QFunAdapterClosure" "fn") 8 vals.symbolAt(adapt thunkName))
+            vals.store(adapt adapted runtimeLayout.offset("QFunAdapterClosure" "orig") 8 param(af 0))
+            vals.store(adapt adapted runtimeLayout.offset("QFunAdapterClosure" "from") 8 param(af 1))
+            vals.store(adapt adapted runtimeLayout.offset("QFunAdapterClosure" "to") 8 param(af 2))
             let same = vals.narrowed(adapt vals.call1(adapt "quest_fun_signature_equivalent" array of param(af 1)
                 param(af 2) end)
                 vals.part(vals.tInt 1 false))
-            vals.store(adapt env runtimeLayout.offset("QFunAdapterEnv" "direct") 1 same)
-            vals.endInit(adapt mark env)
-            let adapted = representation.alloc(adapt bytes("QClosure") objectLayout.closureSymbol)
-            vals.store(adapt adapted runtimeLayout.offset("QClosure" "fn") 8 vals.symbolAt(adapt thunkName))
-            vals.store(adapt adapted runtimeLayout.offset("QClosure" "env") 8 env)
+            vals.store(adapt adapted runtimeLayout.offset("QFunAdapterClosure" "direct") 1 same)
+            vals.endInit(adapt mark adapted)
             returnValues(adapt array of adapted end)
 
             (* The invoker: a call of a closure of this type with words *)
@@ -241,7 +237,7 @@ export
             let vf = invoke.f
             let c = param(vf 0)
             let argv = param(vf 1)
-            let var invokeArgs = array of closureEnv(invoke c) end
+            let var invokeArgs = array of c end
             for k = 0 upto {nq - 1} do invokeArgs := vals.concat(invokeArgs array of vals.loadWord(invoke argv 8 * k vals.tPtr) end) end
             for j = 0 upto {np - 1} do
                 let p = vector.get(sig.params j)

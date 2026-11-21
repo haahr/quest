@@ -32,8 +32,8 @@ bootstrap's C working too.
 
 Every value fits a 64-bit word, `QVal`, or a pair of them. An `Int`, `Real`, `Bool`, or `Char` is the word itself.
 A string (`QString`) is a header with a length and a pointer to NUL-terminated bytes. An array is a length followed by
-words. A closure (`QClosure`) is a pair of a C function and an environment of captured variables; calling it passes
-the environment first, then the descriptors of its type arguments, then its arguments.
+words. A closure (`QClosure`) is a C function followed by the variables it captured, in one object; calling it passes
+the closure itself first, then the descriptors of its type arguments, then its arguments.
 
 Structural subtyping is what makes the layout interesting. A record of type `Record a: Int b: Int c: Int end` may be
 passed where `Record b: Int end` is expected, and the code that receives it cannot know where `b` is. So a record value

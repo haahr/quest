@@ -153,11 +153,12 @@ with `qf_` (with a suffix when two share a name):
   module's clones are its members `<name>_spec<n>`, so `qf_map_spec1`).
 
 ### 5.2. Closures
-- **Environment structure:** `struct QEnv_<function>`, with descriptor fields `d<i>` and captures `c<i>`
-  - E.g. `struct QEnv_qf_h { QInt c0; };`
-- **Environment pointer:** the function's environment variable, `(struct QEnv_<function> *)_raw_env`.
+- **Closure structure:** `struct QClosure_<function>`, its code pointer `fn`, then descriptor fields `d<i>` and
+  captures `c<i>`
+  - E.g. `struct QClosure_qf_h { void *fn; QInt c0; };`
+- **Environment pointer:** the function's environment variable, its closure, `(struct QClosure_<function> *)_raw_env`.
 - **Static closure:** every function has one, used when it captures nothing:
-  - `static Q_UNUSED QClosure qf_<name>_closure = { (void *)qf_<name>, NULL };`
+  - `static Q_UNUSED QClosure qf_<name>_closure = { (void *)qf_<name> };`
 
 ### 5.3. Variables
 - **Globals** (what the top levels bind outside loops): `static <type> g_<name>;`
@@ -173,7 +174,7 @@ with `qf_` (with a suffix when two share a name):
   for tracebacks (`qr_funcs`), its roots (`qr_roots`: the globals that may hold a pointer, and the module records), and
   the offset tables of the records it views at supertypes
 - **Object layouts** (what the collector reads of an allocation's words, `repr/objectlayout.py`):
-  `quest_layout_<tag>`, the runtime's own among them (`quest_layout_closure`, `quest_layout_array_pointer`, ...)
+  `quest_layout_<tag>`, the runtime's own among them (`quest_layout_adapt_closure`, `quest_layout_array_pointer`, ...)
 
 ---
 
@@ -284,7 +285,7 @@ declared at the function's start. Exception handlers are `_qh`, `_qh_2`, ...
 | **Module Operator** | `qv_<clean_mod>_sym_<tokens>` | `int.+` | `qv_int_sym_plus` |
 | **Module Header** | `<interface_stem>.int.h` | `string.int.quest` | `string.int.h` |
 | **Function** | `qf_<name>` | `let f()` | `qf_f` |
-| **Closure Struct** | `struct QEnv_<function>` | `fun(x: Int): Int x + y` | `struct QEnv_qf_f` |
+| **Closure Struct** | `struct QClosure_<function>` | `fun(x: Int): Int x + y` | `struct QClosure_qf_f` |
 | **Static Closure** | `qf_<name>_closure` | `fun(x: Int): Int x * 2` | `qf_f_closure` |
 | **Specialized Function** | `qf_<name>_spec` | `map` at `P` | `qf_map_spec` |
 | **Record Struct Tag** | `struct QT_<name>` | `Point` | `struct QT_Point` |

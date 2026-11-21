@@ -327,7 +327,7 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
   When a tuple with concrete function signatures (e.g. `create: Int -> Counter` where `Counter = Int`) is coerced or
   packed into an existential tuple with abstract signatures (e.g. `create: Int -> A`), the underlying C function
   pointer types differ (`QInt (*)(void *, QInt)` vs `QVal (*)(void *, QInt)`). The represent pass converts it with
-  an `adapt` plan, which the printer prints as a static adaptation thunk (`qa_adapt`) that forwards the environment, unwraps any `QVal` arguments, calls the concrete
+  an `adapt` plan, which the printer prints as a static adaptation thunk (`qa_adapt`) that calls the closure it adapts, unwraps any `QVal` arguments, calls the concrete
   function, and wraps abstract return values with `qval_wrap`. The same thunks implement function subtyping: a closure
   of type `Fun(x: Small): Big` used at `Fun(x: Big): Small` gets a thunk that coerces each argument from the target's
   parameter type to the closure's (giving the `Big` record a `Small` view) and the result from the closure's result
@@ -760,20 +760,22 @@ typedef struct QProxy {
 In Quest, functions are first-class values and can capture lexical bindings:
 
 ### 6.1. Closure Representation (`QClosure`)
-Every closure is a uniform 16-byte structure containing a C function pointer and an environment pointer:
+A closure is one object: its first word is a C function pointer, and the words after it are the closure's own, the
+descriptors it supplies and the variables it captured (§6.3). `QClosure` is that first word, all that code outside the
+unit that made the closure reads:
 ```c
 typedef struct QClosure {
     void *fn;   /* C function pointer */
-    void *env;  /* Captured environment pointer or NULL */
 } QClosure;
 
-static_assert(sizeof(QClosure) == 16, qclosure_must_be_16_bytes);
-static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
+static_assert(sizeof(QClosure) == 8, qclosure_must_be_8_bytes);
 ```
+A function value is a `QClosure *`, whatever its closure holds after `fn`; `is` compares the pointers.
 
 ### 6.2. Function Signatures and Calling Conventions
 1. **Closed IR Functions:** Every Quest function is lifted by closure conversion (`ir/closure_convert.py`) to a
-   module-scope C function `qf_<name>` with a leading `void *_raw_env` parameter:
+   module-scope C function `qf_<name>` with a leading `void *_raw_env` parameter, the closure it was called
+   through:
    ```c
    static QInt qf_square(void *_raw_env, QInt qv_x) {
        (void)_raw_env;
@@ -783,7 +785,7 @@ static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
 2. **Non-Capturing Functions:** For functions that capture no variables (`captures` is empty), the C printer emits a
    static singleton closure alongside the function:
    ```c
-   static QClosure qf_square_closure = { (void *)qf_square, NULL };
+   static QClosure qf_square_closure = { (void *)qf_square };
    ```
    Direct calls invoke `qf_square(NULL, ...)` directly; referencing `square` as a first-class value uses
    `(&qf_square_closure)` without allocating.
@@ -805,19 +807,34 @@ static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
    compiles to its operator. The SSA's builder makes the same calls their instructions ([ssa.md](ssa.md) §4).
 4. **Indirect Call Site:**
    ```c
-   ((RetType (*)(void *, ParamTypes...))(c_func->fn))(c_func->env, args...);
+   ((RetType (*)(void *, ParamTypes...))(c_func->fn))((void *)c_func, args...);
    ```
+   A direct call of a known closure passes it the same way, `qf_add_x((void *)c_func, args...)`, or `NULL` when it
+   captures nothing.
 
-### 6.3. Flat Environment Frames
-Captured variables are grouped into a flat environment struct allocated via `quest_alloc`:
+### 6.3. Flat Closures
+A capturing closure is a struct of its own, the code pointer first, then the descriptors of the type arguments it
+supplies, then the captured variables:
 ```c
-struct QEnv_qf_add_x {
-    QInt qv_x;
-    QReal qv_y;
+struct QClosure_qf_add_x {
+    void *fn;
+    QInt c0;
+    QReal c1;
 };
 ```
-Creating a capturing closure (`make_closure`) allocates both `struct QEnv_qf_<name>` and `QClosure` on the heap and
-populates the captured fields.
+Creating a capturing closure (`make_closure`) allocates one `struct QClosure_qf_<name>` with `quest_alloc` (its
+layout `quest_layout_closure_qf_<name>`, whose first word is a scalar, since code is never in the heap), stores `fn`
+and the fields, and is that closure. The function's prologue casts `_raw_env` to the struct and reads its captures
+(`env->c0`). A closure of a `let rec` group capturing a member of the group is made first and the capture stored after
+the group's body, with a barrier. Each unit lays its closures out as it likes (the SSA builder a word a part, C with
+its own padding), since another unit reads only `fn`.
+
+Two closures the compilers make have the runtime's types:
+
+- **An adapt plan's** (§3.1's adaptation thunks): `QAdaptClosure { fn, orig }`, layout `quest_layout_adapt_closure`;
+  the thunk reads `orig`, the closure it adapts, from its first parameter.
+- **A run-time adapter's** (`quest_adapt_<tag>`, §6.4): `QFunAdapterClosure { fn, orig, from, to, direct }`, layout
+  `quest_layout_adapter_closure`.
 
 ### 6.4. Polymorphic Functions and Runtime Type Descriptors (`QTypeDescriptor`)
 While monomorphic functions pass values directly, polymorphic functions (`All(A::K) ...`) require **Intensional Type Analysis (ITA)** (see `docs/type-system.md` §6.11.1) to support Cardelli's `Dynamic` operations (`dynamic.new`, `dynamic.be`) and first-class abstraction barriers without restricting generic wrappers.
@@ -946,7 +963,7 @@ struct QTypeDescriptor {
   signature that converts arguments and result by descriptor with `quest_convert`. `quest_convert` uses it for
   function values, so `dynamic.be`, `inspect`, and reads of function fields stored at a subtype adapt closures at run
   time. The thunk calls the closure through its own C signature when the closure has it
-  (`quest_fun_signature_equivalent`, recorded in the adapter's environment as `direct`), as closures of types related
+  (`quest_fun_signature_equivalent`, recorded in the adapter's closure as `direct`), as closures of types related
   by subtyping do; otherwise (one of the two types is laid out generically, §6.4.5) it calls it through the invoker
   of the closure's type, `quest_invoke_fun_<digest>`, which takes the type parameters' descriptors and the arguments
   in their `QVal` forms, calls the closure with that type's C signature, and returns the result's `QVal` form. Runtime subtyping of function types is contravariant in value parameters, invariant in `var` parameters, and
@@ -1358,14 +1375,14 @@ document are unchanged.
 
 A compiler's allocation site names a layout the unit defines (`quest_layout_<tag>`, computed by
 `repr/objectLayout` in the self-hosted compiler and `quest/repr/objectlayout.py` in the bootstrap: a tuple's or
-a record's struct with the boxes embedded after it, an option's case, a closure's environment) or one of the
-runtime's (`quest_layout_closure`, `quest_layout_adapter_env`, and `quest_layout_array_pointer`, `_scalar`, and
+a record's struct with the boxes embedded after it, an option's case, a closure) or one of the
+runtime's (`quest_layout_adapt_closure`, `quest_layout_adapter_closure`, and `quest_layout_array_pointer`, `_scalar`, and
 `_ambiguous` for arrays by their elements' kind); the runtime's own allocations name theirs (`runtime/quest_gc.c`).
 `quest_array_new(len, init, layout)` takes the array's.
 
 **Write barriers and root tables** (docs/collector.md §3.5, §3.8). A store of a word that may be a pointer (`ptr` or
 `val`) into an object that already exists is followed by `quest_barrier(obj)`, with the object's address where the
-site has it (a tuple's component, a closure environment filled after a `let rec`'s body), or
+site has it (a tuple's component, a closure filled after a `let rec`'s body), or
 `quest_barrier_slot(slot)` with the slot's address where the object may be large or has no header at a fixed
 distance (an array's element, a record's field through its payload, a `var` or `out` location, which may be on the
 stack, a view's slot). The barrier follows the store, with nothing called between the two, since the value stored

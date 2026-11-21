@@ -120,9 +120,9 @@ The printer writes a unit's C in this order (`CPrinter.print_unit`):
 1. `#include "quest_runtime.h"`, and a module file's interface header (`<interface>.int.h`) if it has one.
 2. The declarations of the types the unit uses (`c/declarations.py`), and extern declarations of the modules it
    imports: their records (`qm_<module>`), initializers (`qv_mod_<module>_init`), and exported functions.
-3. The environment struct of each closure that captures values (`struct QEnv_<function>`).
+3. The struct of each closure that captures values (`struct QClosure_<function>`).
 4. A prototype of each of the unit's functions (every function, lifted by closure conversion), with a static closure
-   of it for when it captures nothing (`static QClosure qf_<name>_closure = { (void *)qf_<name>, NULL };`).
+   of it for when it captures nothing (`static QClosure qf_<name>_closure = { (void *)qf_<name> };`).
 5. Globals: the variables the top levels bind outside loops, at file scope (`static QInt g_x;`), and the records of
    the unit's modules. The self-hosted compiler's are only those that a function or another top level names, or
    that are a module's members, exports, or record ([ir.md](ir.md) §8.2); its other top-level variables are locals
@@ -205,8 +205,8 @@ in strict ISO C99 without statement expressions:
 
 ## 5. Functions and Calls
 
-Closure conversion lifts every function to file scope (ir.md §8.2). Each is a static C function taking its closure's
-environment first, then its type parameters' descriptors, then its parameters (pointers for `var` and `out`):
+Closure conversion lifts every function to file scope (ir.md §8.2). Each is a static C function taking its closure
+first, then its type parameters' descriptors, then its parameters (pointers for `var` and `out`):
 ```c
 /* let add(x: Int y: Int): Int = x + y; */
 static QInt qf_add(void *_raw_env, QInt l_x, QInt l_y) {
@@ -215,8 +215,9 @@ static QInt qf_add(void *_raw_env, QInt l_x, QInt l_y) {
     return l_t;
 }
 ```
-- **Calls:** a call of a closure the unit makes (a variable bound to it) calls its function directly, passing its
-  environment (`qf_add(NULL, 10LL, 20LL)`), and any other call goes through the closure (§7.4). `Ok`-returning
+- **Calls:** a call of a closure the unit makes (a variable bound to it) calls its function directly, passing the
+  closure, or `NULL` when it captures nothing (`qf_add(NULL, 10LL, 20LL)`), and any other call goes through the
+  closure (§7.3). `Ok`-returning
   functions return `void`.
 - **Imported modules:** a call of an imported module's function calls the function the module exports,
   `qv_<module>_<member>` (§10.7), and its other members are fields of its record.
@@ -316,40 +317,37 @@ In Quest, functions are first-class values that can be passed to higher-order fu
 and capture variables from enclosing lexical scopes.
 
 ### 7.1. Closure Representation (`QClosure`)
-First-class function values use the uniform 16-byte `QClosure` struct defined in `runtime/quest_runtime.h`:
+A first-class function value is a `QClosure *` (`runtime/quest_runtime.h`), a pointer to a closure whose first word is
+its C function pointer; the words after it are the closure's own (§7.2), read only by its function:
 ```c
 typedef struct QClosure {
-    void *fn;   /* C function pointer: RetType (*)(void *env, ...) */
-    void *env;  /* Captured environment struct pointer or NULL */
+    void *fn;   /* C function pointer: RetType (*)(void *closure, ...) */
 } QClosure;
 
-static_assert(sizeof(QClosure) == 16, qclosure_must_be_16_bytes);
-static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
+static_assert(sizeof(QClosure) == 8, qclosure_must_be_8_bytes);
 ```
 
 ### 7.2. Closures
 Closure conversion ([ir.md §8.3](ir.md)) decides what each closure captures: the values it uses from enclosing functions
 (the top levels' variables are globals, which it uses instead), and the descriptors of the enclosing functions' type
 parameters its types mention.
-- **Capturing closures** get an environment struct, allocated with the closure where the closure is made:
+- **Capturing closures** are one struct each, the code pointer, then the descriptors, then the captures, allocated
+  where the closure is made:
   ```c
-  _t1 = (struct QEnv_qf_h *)quest_alloc(sizeof(struct QEnv_qf_h), &quest_layout_env_qf_h);
+  _t1 = (struct QClosure_qf_h *)quest_alloc(sizeof(struct QClosure_qf_h), &quest_layout_closure_qf_h);
+  _t1->fn = (void *)qf_h;
   _t1->c0 = l_x;
-  _t2 = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);
-  _t2->fn = (void *)qf_h;
-  _t2->env = (void *)_t1;
   ```
-  The function reads its captures from the environment (`env_field`).
+  The function reads its captures from its first parameter, the closure (`env_field`).
 - **Closures capturing nothing** are the function's static closure, `(&qf_<name>_closure)`, with no allocation.
 - **Recursive groups:** a closure capturing a member of its own recursive group (`let rec f ... and g ...`) is made in
-  a `let rec`, and the captures of the group's members are stored in the environments once every member has been
-  made.
+  a `let rec`, and the captures of the group's members are stored in the closures once every member has been made.
 
 ### 7.3. Indirect Closure Invocations
 When calling an indirect target (`ir.Call` with a closure callee), the call site casts `fn` to the expected C function
-pointer signature and passes `env` as the first argument:
+pointer signature and passes the closure itself as the first argument:
 ```c
-((QInt (*)(void *, QInt))(l_f->fn))(l_f->env, l_x)
+((QInt (*)(void *, QInt))(l_f->fn))((void *)l_f, l_x)
 ```
 
 ---
@@ -578,7 +576,7 @@ are lowered as follows:
 - **Closure Adaptation Thunks (`adapt` plans, ir.md §8.3):** When packaging or coercing a tuple containing closures
   whose concrete signatures differ from the abstract interface signature (e.g., `create(init: Int): Counter` where
   `Counter = Int` coerced to `create(init: Int): A`), the printer makes static adaptation thunks
-  (`qa_adapt`). The thunk unpacks/forwards the original closure's environment, unwraps any `QVal` arguments with
+  (`qa_adapt`), whose closure (`QAdaptClosure`) holds the original closure. The thunk calls it, unwraps any `QVal` arguments with
   `qval_unwrap`, invokes the underlying native function, and wraps any abstract return value with `qval_wrap`. A thunk
   is also made when a closure is used at a function supertype whose arguments or result need converting (records,
   variants, options, tuples, functions): it coerces each argument from the target parameter type to the closure's
