@@ -836,10 +836,13 @@ So the heavy jobs take turns, on one lock that every worktree shares, `quest-exc
 directory (beside `quest-release`):
 
 - **`tools/check`, `benchmarks/mlton/run.py time`, and cutting a release (`tools/release`)** take the lock
-  themselves. Each waits for the job holding it, saying whose it is, then waits until the 1-minute load average has
-  stayed under 5 for 3 minutes, and holds the lock until it ends. `--no-exclusive` runs at once, without either wait; it is for results that do not depend on
-  a quiet machine, such as a quick `--scale 0.05` timing while iterating or a narrow rerun of one suite to confirm a
-  fix, and never for the check before a push or for timings recorded in [benchmarks.md](benchmarks.md).
+  themselves. Each waits for the job holding it, saying whose it is, and holds the lock until it ends. A timing then
+  waits too, until the 1-minute load average has stayed under 5 for 3 minutes, since a time taken under load says
+  nothing. A check and a cut do not wait for the load: their results do not depend on their speed, and the timeouts
+  that load can cause are run again (below). `--no-exclusive` runs at once, without the lock; it is for results that
+  do not depend on a quiet machine, such as a quick `--scale 0.05` timing while iterating or a narrow rerun of one
+  suite to confirm a fix, and never for the check before a push or for timings recorded in
+  [benchmarks.md](benchmarks.md).
 - **`tools/exclusive COMMAND...`** does the same for any other command (`--no-quiet` without the quiet wait), and
   `tools/exclusive --status` says who holds the lock and who waits for it, from `quest-exclusive.json` beside it.
 - **Builds and tests outside the lock yield to it:** `./quest`'s stage builds, `run_tests.py`, `run.py`'s other

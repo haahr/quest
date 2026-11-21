@@ -13,11 +13,12 @@ between them.
     tools/check --no-exclusive     any of these without taking the machine-wide lock
 
 Each takes the lock that tools/exclusive takes (docs/testing.md section 4.2):
-it waits for any other worktree's check or timing to end, and then for the
-machine to be quiet (the load under 5 for 3 minutes), and holds the lock
-until it is done, so that its timeouts are those of a machine doing nothing
-else. When the only failures are timeouts and the terminal tests, each is run
-again, alone, once, and the run passes if they pass then.
+it waits for any other worktree's check or timing to end, and holds the lock
+until it is done, so that no other heavy job loads the machine meanwhile. It
+does not wait for the load to fall first, as a timing does: a check's results
+do not depend on its speed, but for its timeouts, and when the only failures
+are timeouts and the terminal tests, each is run again, alone, once, and the
+run passes if they pass then.
 
 The change is what differs from origin/main: the commits since they diverged,
 and what is not yet committed. A change only to the self-hosted compiler, its
@@ -374,11 +375,11 @@ def main() -> int:
                         help="the cores to split between the suites, rather than the machine's; also each build's "
                         "modules at once (QUEST_JOBS)")
     parser.add_argument("--no-exclusive", action="store_true",
-                        help="run at once, without the machine-wide lock and the wait for a quiet machine")
+                        help="run at once, without the machine-wide lock")
     args = parser.parse_args()
     if args.no_exclusive:
         return checks(args, parser)
-    with exclusive.exclusive("tools/check " + " ".join(sys.argv[1:])):
+    with exclusive.exclusive("tools/check " + " ".join(sys.argv[1:]), quiet=False):
         return checks(args, parser)
 
 

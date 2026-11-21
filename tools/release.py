@@ -19,9 +19,9 @@ current names the release that seeds builds, and previous the one before it.
                                copy the current release to PREFIX/share/quest/COMMIT (PREFIX is ~/.local by
                                default), check it there, and point PREFIX/bin/quest at it
 
-Cutting a release takes the machine-wide lock tools/check takes, and waits
-for a quiet machine (docs/testing.md section 4.2); --no-exclusive cuts at
-once, without either wait.
+Cutting a release takes the machine-wide lock tools/check takes, without
+waiting for a quiet machine (docs/testing.md section 4.2); --no-exclusive cuts
+at once, without the lock.
 """
 
 import argparse
@@ -363,7 +363,7 @@ def main() -> None:
     elif args.no_exclusive:
         cut(sys.executable, args.check_dir.resolve(), args.seed, args.backend, args.whole_program)
     else:
-        with exclusive.exclusive("tools/release " + " ".join(sys.argv[1:])):
+        with exclusive.exclusive("tools/release " + " ".join(sys.argv[1:]), quiet=False):
             cut(sys.executable, args.check_dir.resolve(), args.seed, args.backend, args.whole_program)
 
 
