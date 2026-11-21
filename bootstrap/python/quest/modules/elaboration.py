@@ -207,7 +207,18 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
                     import_scope.declare_value(ValueSymbol(name=name, type_val=mod_type))
 
     # 2. Elaborate signatures in a child scope of the interface, where
-    #    'external' is refused, as it is everywhere but in an unsound module
+    #    'external' is refused, as it is everywhere but in an unsound module.
+    #    A name may be declared once in each of the interface's namespaces
+    #    (values, types, kinds); a module could not implement both of two
+    #    members of one name, and C could not declare both
+    declared: dict[str, set[str]] = {"Value": set(), "Type": set(), "Kind": set()}
+
+    def declare_once(space: str, name: str, offset: int) -> None:
+        if name in declared[space]:
+            what = f"'{name}'" if space == "Value" else f"{space} '{name}'"
+            raise QuestTypeError(f"{what} is declared more than once in interface '{decl.name}'", offset=offset)
+        declared[space].add(name)
+
     saved_scope = env.current_scope
     saved_unsound = env.in_unsound_module
     env.current_scope = interface_scope
@@ -216,21 +227,26 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
         for sig in decl.signatures:
             match sig:
                 case ast.TypeFormal(name=name, bound=bound):
+                    declare_once("Type", name, sig.offset)
                     bound_kind = elaborate_kind(bound, env) if bound else TYPE_KIND
                     symbol_id = env.fresh_symbol_id()
                     type_symbol = TypeSymbol(name=name, symbol_id=symbol_id, kind=bound_kind, definition=None)
                     interface_scope.declare_type(type_symbol)
 
                 case ast.TypeBinding():
+                    declare_once("Type", sig.name, sig.offset)
                     type_symbol = elaborate_type_binding(sig, env)
                     interface_scope.declare_type(type_symbol)
 
                 case ast.TypeBindingGroup():
+                    for member in sig.bindings:
+                        declare_once("Type", member.name, member.offset)
                     for type_symbol in elaborate_type_binding_group(sig, env):
                         interface_scope.declare_type(type_symbol)
 
                 case ast.FieldSig(name=field_name, type_sig=type_sig, mode=mode):
                     if field_name:
+                        declare_once("Value", field_name, sig.offset)
                         val_type = elaborate_type(type_sig, env)
                         val_symbol = ValueSymbol(
                             name=field_name,
@@ -241,6 +257,7 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
                         interface_scope.declare_value(val_symbol)
 
                 case ast.DefKindBinding():
+                    declare_once("Kind", sig.name, sig.offset)
                     kind_symbol = elaborate_kind_binding(sig, env)
                     interface_scope.declare_kind(kind_symbol)
     finally:

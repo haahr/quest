@@ -30,28 +30,6 @@ benchmarks.md, or the idea is dropped with its measurement.
 
 ---
 
-## An interface may declare a member twice
-
-**Problem.** Both typecheckers accept an interface that declares the same member twice, with different types, and a
-module that defines it twice to match. The self-hosted compiler builds and runs the program; the bootstrap's C fails
-to compile, with `redefinition of typedef 'quest_sig_util__Regexp_matches'`. It was found by adding an iterator
-`matches(r: T s: String): iter.T(Match)` to `util/regexp`, which already had `matches(r: T s: String): Bool`
-([iter.md](iter.md) §3, where the iterator became `findIter`).
-
-**Reproduce.** Add `matches(r: T s: String): iter.T(String)` to `lib/util/regexp.int.quest` beside the existing
-`matches`, and a `let matches` to match after the existing one in the module: `./quest --stop-after typecheck` and
-`./questboot --stop-after typecheck` accept the module, and `run_tests.py -k stdlib/regexp_operations --phase
-run_c_compiled` fails in the bootstrap's C. (A smaller case, not yet tried: an interface declaring `f` twice.)
-
-**Where to start.** The checks of an interface's declarations in `questlang/typechecker/` (where a duplicate type
-or exception name would be caught, if one is) and `bootstrap/python/quest/typechecker/`, and a module's lets
-against its interface.
-
-**Done when.** Both compilers reject a repeated member name in an interface, with the same message, and an error
-test under `tests/errors` shows it.
-
----
-
 ## Faults the wasm review reported that no probe reproduced
 
 **Problem.** A review of the wasm backend (2026-11-15) reported three faults that probes written the same day did not

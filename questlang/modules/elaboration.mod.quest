@@ -23,6 +23,7 @@ import
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/iter : util/Iter
     util/hash : util/Hash
@@ -409,12 +410,26 @@ export
             end
 
             (* 2. The signatures, in the interface's scope, where 'external' is
-             *    refused, as it is everywhere but in an unsound module *)
+             *    refused, as it is everywhere but in an unsound module. A name
+             *    may be declared once in each of the interface's namespaces
+             *    (values, types, kinds); a module could not implement both of
+             *    two members of one name, and C could not declare both *)
+            let declaredValues = hashSet.new(:String stringOp.equal hash.string)
+            let declaredTypes = hashSet.new(:String stringOp.equal hash.string)
+            let declaredKinds = hashSet.new(:String stringOp.equal hash.string)
+            let declareOnce(declared: hashSet.T(String) what: String name: String at: Int): Ok =
+                if hashSet.contains(declared name) then
+                    diagnostics.fail(:Ok
+                        what <> "'" <> name <> "' is declared more than once in interface '" <> decl.name <> "'" at)
+                else
+                    begin hashSet.insert(declared name) ok end
+                end
             inScope(e interfaceScope false fun(): Ok
                 for i = 0 upto {vector.length(decl.signatures) - 1} do
                     case vector.get(decl.signatures i)
                         when sigType with x then
                             begin
+                                declareOnce(declaredTypes "Type " x.val.name x.val.offset)
                                 let bound = elaborateTypes.elaborateKind(x.val.bound e)
                                 symbols.declareType(interfaceScope
                                     symbols.newTypeSymbol(x.val.name env.freshSymbolId(e) bound maybe.none(:Type)))
@@ -422,17 +437,23 @@ export
                             end
                         when sigTypeBinding with x then
                             begin
+                                declareOnce(declaredTypes "Type " x.val.name x.val.offset)
                                 symbols.declareType(interfaceScope elaborateTypes.elaborateTypeBinding(x.val e))
                                 ok
                             end
                         when sigTypeBindingGroup with x then
                             begin
+                                for j = 0 upto {vector.length(x.val) - 1} do
+                                    let member = vector.get(x.val j)
+                                    declareOnce(declaredTypes "Type " member.name member.offset)
+                                end
                                 let syms = elaborateTypes.elaborateTypeBindingGroup(x.val e)
                                 for j = 0 upto {extent syms - 1} do symbols.declareType(interfaceScope syms[j]) end
                             end
                         when sigValue with x then
                             if maybe.isSome(x.val.name) andif
                                     not(stringOp.equal(maybe.unwrap(x.val.name) "")) then
+                                declareOnce(declaredValues "" maybe.unwrap(x.val.name) x.val.offset)
                                 let t = elaborateTypes.elaborateType(maybe.unwrap(x.val.typeSig) e)
                                 let isVar = case x.val.mode when modeVar then true else false end
                                 let isOut = case x.val.mode when modeOut then true else false end
@@ -442,6 +463,7 @@ export
                             end
                         when sigKindBinding with x then
                             begin
+                                declareOnce(declaredKinds "Kind " x.val.name x.val.offset)
                                 symbols.declareKind(interfaceScope
                                     elaborateTypes.elaborateKindBinding(x.val.name x.val.kindVal e))
                                 ok
