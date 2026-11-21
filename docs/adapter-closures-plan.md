@@ -130,8 +130,12 @@ C), the counts of §1 again, and a commit; `tools/check` once at the end, then t
    stage 2 rebuilt from an empty `.build/quest-stages` (a stage 2 whose unchanged units were cached from the compiler
    before counted none fewer). Its test, `language/imported_adapters`, converts library functions at generic types
    (comparators, hashes, equality) in a loop and in a function called often, on every backend.
-2. **Lambdas made at the converted type** (§2.3): simple's 13.7 million and the compiler's 5.3 million. A test of a
-   lambda converted once, at a type parameter and at a supertype of a record, with captures of each kind.
+2. **Lambdas made at the converted type** (§2.3): simple's 13.7 million and the compiler's 5.3 million. **Done:**
+   simple 13.7 million adapter closures to 816 (201.3 to 186.6 million allocations), the compiler's 5.2 million to
+   none. Its test, `language/converted_lambdas`, gives lambdas to `vector.map`, `vector.fold`, and `hashMap.forEach`
+   with captures of each kind, and one converted inside another. The C fixed point found that `ir/clone` copied a
+   closure's function with it, right before closure conversion and wrong after: a closed cloner
+   (`clone.newClosedCloner`) keeps it.
 3. **Globals' conversions made once** (§2.2): model-elimination's 6.7 million. A test of a global closure converted in
    a loop, and one converted inside a function called before the global is bound.
 4. **Repeated conversions** (§2.4): the counts by site and original closure; if a site converts one closure many

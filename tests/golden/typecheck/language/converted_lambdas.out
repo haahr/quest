@@ -1,0 +1,428 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('realOp') : 'RealOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('stringOp') : 'StringOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('vector') : 'Vector')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('hashMap') : 'HashMap')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('hash') : 'Hash')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'intEqual' :type Fun(a: Int b: Int): Bool
+      :value (TypedFun :params (('a' : Int) ('b' : Int)) :type Fun(a: Int b: Int): Bool
+        :body (TypedInfix 'is' :type Bool
+          :left (TypedVar 'a' :type Int)
+          :right (TypedVar 'b' :type Int))))
+    (TypedLetValue 'ints' :type vector.T(Int)
+      :value (TypedTypeApp [Int] :type vector.T(Int)
+        :func (TypedSelect 'new' :type All(A :: TYPE) vector.T(A)
+          :target (TypedVar 'vector' :type Module 'vector'))))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 1 :type Int)
+        :stop (TypedInt 3 :type Int)
+        :body (TypedApp :type Ok
+          :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) value: Int): Ok
+            :func (TypedSelect 'append' :type All(A :: TYPE) Fun(v: vector.T(A) value: A): Ok
+              :target (TypedVar 'vector' :type Module 'vector')))
+          :args (
+            (TypedVar 'ints' :type vector.T(Int))
+            (TypedVar 'i' :type Int)
+          ))))
+    (TypedLetValue 'scaled' :rec :type Fun(n: Int r: Real b: Bool c: Char s: String): Real
+      :value (TypedFun :params (('n' : Int) ('r' : Real) ('b' : Bool) ('c' : Char) ('s' : String)) :type Fun(n: Int r: Real b: Bool c: Char s: String): Real
+        :body (TypedIf :type Real
+          :cond (TypedInfix 'is' :type Bool
+            :left (TypedVar 'n' :type Int)
+            :right (TypedInt 0 :type Int))
+          :then (TypedReal 0.0 :type Real)
+          :else (TypedBlock :type Real
+            :bindings (
+              (TypedLetValue 'rs' :type vector.T(Real)
+                :value (TypedApp :type vector.T(Real)
+                  :func (TypedTypeApp [Int Real] :type Fun(v: vector.T(Int) f: Fun(elem: Int): Real): vector.T(Real)
+                    :func (TypedSelect 'map' :type All(A :: TYPE B :: TYPE) Fun(v: vector.T(A) f: Fun(elem: A): B): vector.T(B)
+                      :target (TypedVar 'vector' :type Module 'vector')))
+                  :args (
+                    (TypedVar 'ints' :type vector.T(Int))
+                    (TypedFun :params (('x' : Int)) :type Fun(x: Int): Real
+                      :body (TypedIf :type Real
+                        :cond (TypedIf :type Bool
+                          :cond (TypedVar 'b' :type Bool)
+                          :then (TypedInfix 'is' :type Bool
+                            :left (TypedVar 'c' :type Char)
+                            :right (TypedChar 'q' :type Char))
+                          :else (TypedBool false))
+                        :then (TypedInfix '**' :type Real
+                          :left (TypedApp :type Real
+                            :func (TypedSelect 'int' :type Fun(n: Int): Real
+                              :target (TypedVar 'realOp' :type Module 'realOp'))
+                            :args (
+                              (TypedInfix '*' :type Int
+                                :left (TypedVar 'x' :type Int)
+                                :right (TypedInfix '+' :type Int
+                                  :left (TypedVar 'n' :type Int)
+                                  :right (TypedApp :type Int
+                                    :func (TypedSelect 'length' :type Fun(string: String): Int
+                                      :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                                    :args (
+                                      (TypedVar 's' :type String)
+                                    ))))
+                            ))
+                          :right (TypedVar 'r' :type Real))
+                        :else (TypedReal 0.0 :type Real)))
+                  )))
+            )
+            :result (TypedInfix '++' :type Real
+              :left (TypedApp :type Real
+                :func (TypedTypeApp [Real Real] :type Fun(v: vector.T(Real) init: Real f: Fun(acc: Real elem: Real): Real): Real
+                  :func (TypedSelect 'fold' :type All(A :: TYPE Acc :: TYPE) Fun(v: vector.T(A) init: Acc f: Fun(acc: Acc elem: A): Acc): Acc
+                    :target (TypedVar 'vector' :type Module 'vector')))
+                :args (
+                  (TypedVar 'rs' :type vector.T(Real))
+                  (TypedReal 0.0 :type Real)
+                  (TypedFun :params (('acc' : Real) ('e' : Real)) :type Fun(acc: Real e: Real): Real
+                    :body (TypedInfix '++' :type Real
+                      :left (TypedVar 'acc' :type Real)
+                      :right (TypedInfix '**' :type Real
+                        :left (TypedVar 'e' :type Real)
+                        :right (TypedVar 'r' :type Real))))
+                ))
+              :right (TypedApp :type Real
+                :func (TypedVar 'scaled' :type Fun(n: Int r: Real b: Bool c: Char s: String): Real)
+                :args (
+                  (TypedInfix '-' :type Int
+                    :left (TypedVar 'n' :type Int)
+                    :right (TypedInt 1 :type Int))
+                  (TypedVar 'r' :type Real)
+                  (TypedVar 'b' :type Bool)
+                  (TypedVar 'c' :type Char)
+                  (TypedVar 's' :type String)
+                )))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'scaled ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'real' :type Fun(r: Real): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Real
+                  :func (TypedVar 'scaled' :type Fun(n: Int r: Real b: Bool c: Char s: String): Real)
+                  :args (
+                    (TypedInt 4 :type Int)
+                    (TypedReal 0.5 :type Real)
+                    (TypedBool true)
+                    (TypedChar 'q' :type Char)
+                    (TypedString 'ab' :type String)
+                  ))
+              )))
+        )))
+    (TypedLetValue 'pairs' :rec :type Fun(k: Int): Int
+      :value (TypedFun :params (('k' : Int)) :type Fun(k: Int): Int
+        :body (TypedIf :type Int
+          :cond (TypedInfix 'is' :type Bool
+            :left (TypedVar 'k' :type Int)
+            :right (TypedInt 0 :type Int))
+          :then (TypedInt 0 :type Int)
+          :else (TypedBlock :type Int
+            :bindings (
+              (TypedLetValue 'ps' :type vector.T(Tuple x: Int y: Int end)
+                :value (TypedApp :type vector.T(Tuple x: Int y: Int end)
+                  :func (TypedTypeApp [Int Tuple x: Int y: Int end] :type Fun(v: vector.T(Int) f: Fun(elem: Int): Tuple x: Int y: Int end): vector.T(Tuple x: Int y: Int end)
+                    :func (TypedSelect 'map' :type All(A :: TYPE B :: TYPE) Fun(v: vector.T(A) f: Fun(elem: A): B): vector.T(B)
+                      :target (TypedVar 'vector' :type Module 'vector')))
+                  :args (
+                    (TypedVar 'ints' :type vector.T(Int))
+                    (TypedFun :params (('x' : Int)) :type Fun(x: Int): Tuple x: Int y: Int end
+                      :body (TypedTuple :type Tuple x: Int y: Int end
+                        :elements (
+                          (TypedInfix '+' :type Int
+                            :left (TypedVar 'x' :type Int)
+                            :right (TypedVar 'k' :type Int))
+                          (TypedInfix '*' :type Int
+                            :left (TypedVar 'x' :type Int)
+                            :right (TypedVar 'k' :type Int))
+                        )))
+                  )))
+            )
+            :result (TypedInfix '+' :type Int
+              :left (TypedApp :type Int
+                :func (TypedTypeApp [Tuple x: Int y: Int end Int] :type Fun(v: vector.T(Tuple x: Int y: Int end) init: Int f: Fun(acc: Int elem: Tuple x: Int y: Int end): Int): Int
+                  :func (TypedSelect 'fold' :type All(A :: TYPE Acc :: TYPE) Fun(v: vector.T(A) init: Acc f: Fun(acc: Acc elem: A): Acc): Acc
+                    :target (TypedVar 'vector' :type Module 'vector')))
+                :args (
+                  (TypedVar 'ps' :type vector.T(Tuple x: Int y: Int end))
+                  (TypedInt 0 :type Int)
+                  (TypedFun :params (('acc' : Int) ('p' : Tuple x: Int y: Int end)) :type Fun(acc: Int p: Tuple x: Int y: Int end): Int
+                    :body (TypedInfix '+' :type Int
+                      :left (TypedVar 'acc' :type Int)
+                      :right (TypedInfix '*' :type Int
+                        :left (TypedSelect 'x' :type Int
+                          :target (TypedVar 'p' :type Tuple x: Int y: Int end))
+                        :right (TypedSelect 'y' :type Int
+                          :target (TypedVar 'p' :type Tuple x: Int y: Int end)))))
+                ))
+              :right (TypedApp :type Int
+                :func (TypedVar 'pairs' :type Fun(k: Int): Int)
+                :args (
+                  (TypedInfix '-' :type Int
+                    :left (TypedVar 'k' :type Int)
+                    :right (TypedInt 1 :type Int))
+                )))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'pairs ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedVar 'pairs' :type Fun(k: Int): Int)
+                  :args (
+                    (TypedInt 5 :type Int)
+                  ))
+              )))
+        )))
+    (TypedLetValue 'visited' :rec :type Fun(m: hashMap.T(Int Int) k: Int): Int
+      :value (TypedFun :params (('m' : hashMap.T(Int Int)) ('k' : Int)) :type Fun(m: hashMap.T(Int Int) k: Int): Int
+        :body (TypedIf :type Int
+          :cond (TypedInfix 'is' :type Bool
+            :left (TypedVar 'k' :type Int)
+            :right (TypedInt 0 :type Int))
+          :then (TypedInt 0 :type Int)
+          :else (TypedBlock :type Int
+            :bindings (
+              (TypedLetValue 'acc' :type Tuple var s: Int end
+                :value (TypedTuple :type Tuple var s: Int end
+                  :elements (
+                    (TypedInt 0 :type Int)
+                  )))
+              (TypedExprStmt
+                :expr (TypedApp :type Ok
+                  :func (TypedTypeApp [Int Int] :type Fun(m: hashMap.T(Int Int) action: Fun(k: Int v: Int): Ok): Ok
+                    :func (TypedSelect 'forEach' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) action: Fun(k: K v: V): Ok): Ok
+                      :target (TypedVar 'hashMap' :type Module 'hashMap')))
+                  :args (
+                    (TypedVar 'm' :type hashMap.T(Int Int))
+                    (TypedFun :params (('a' : Int) ('b' : Int)) :type Fun(a: Int b: Int): Ok
+                      :body (TypedAssign
+                        :target (TypedSelect 's' :type Int
+                          :target (TypedVar 'acc' :type Tuple var s: Int end))
+                        :value (TypedInfix '+' :type Int
+                          :left (TypedSelect 's' :type Int
+                            :target (TypedVar 'acc' :type Tuple var s: Int end))
+                          :right (TypedInfix '*' :type Int
+                            :left (TypedVar 'a' :type Int)
+                            :right (TypedInfix '+' :type Int
+                              :left (TypedVar 'b' :type Int)
+                              :right (TypedVar 'k' :type Int))))))
+                  )))
+            )
+            :result (TypedInfix '+' :type Int
+              :left (TypedSelect 's' :type Int
+                :target (TypedVar 'acc' :type Tuple var s: Int end))
+              :right (TypedApp :type Int
+                :func (TypedVar 'visited' :type Fun(m: hashMap.T(Int Int) k: Int): Int)
+                :args (
+                  (TypedVar 'm' :type hashMap.T(Int Int))
+                  (TypedInfix '-' :type Int
+                    :left (TypedVar 'k' :type Int)
+                    :right (TypedInt 1 :type Int))
+                )))))))
+    (TypedLetValue 'm' :type hashMap.T(Int Int)
+      :value (TypedApp :type hashMap.T(Int Int)
+        :func (TypedTypeApp [Int Int] :type Fun(equal: Fun(k1: Int k2: Int): Bool hash: Fun(k: Int): word.T): hashMap.T(Int Int)
+          :func (TypedSelect 'new' :type All(K :: TYPE V :: TYPE) Fun(equal: Fun(k1: K k2: K): Bool hash: Fun(k: K): word.T): hashMap.T(K V)
+            :target (TypedVar 'hashMap' :type Module 'hashMap')))
+        :args (
+          (TypedVar 'intEqual' :type Fun(a: Int b: Int): Bool)
+          (TypedSelect 'int' :type Fun(n: Int): word.T
+            :target (TypedVar 'hash' :type Module 'hash'))
+        )))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInt 9 :type Int)
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'ignored' :type Bool
+              :value (TypedApp :type Bool
+                :func (TypedTypeApp [Int Int] :type Fun(m: hashMap.T(Int Int) key: Int value: Int): Bool
+                  :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K value: V): Bool
+                    :target (TypedVar 'hashMap' :type Module 'hashMap')))
+                :args (
+                  (TypedVar 'm' :type hashMap.T(Int Int))
+                  (TypedVar 'i' :type Int)
+                  (TypedInfix '+' :type Int
+                    :left (TypedVar 'i' :type Int)
+                    :right (TypedInt 1 :type Int))
+                )))
+          )
+          :result (TypedOk))))
+    (TypedLetValue 'all' :type Int
+      :value (TypedInt 0 :type Int))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 1 :type Int)
+        :stop (TypedInt 200 :type Int)
+        :body (TypedAssign
+          :target (TypedVar 'all' :type Var(Int))
+          :value (TypedInfix '+' :type Int
+            :left (TypedDerefCell :type Int
+              :target (TypedVar 'all' :type Var(Int)))
+            :right (TypedApp :type Int
+              :func (TypedVar 'visited' :type Fun(m: hashMap.T(Int Int) k: Int): Int)
+              :args (
+                (TypedVar 'm' :type hashMap.T(Int Int))
+                (TypedInfix '%' :type Int
+                  :left (TypedVar 'i' :type Int)
+                  :right (TypedInt 4 :type Int))
+              ))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'visited ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedDerefCell :type Int
+                  :target (TypedVar 'all' :type Var(Int)))
+              )))
+        )))
+    (TypedLetValue 'double' :type Fun(x: Int): Int
+      :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Int
+        :body (TypedInfix '*' :type Int
+          :left (TypedInt 2 :type Int)
+          :right (TypedVar 'x' :type Int))))
+    (TypedLetValue 'nested' :rec :type Fun(k: Int): Int
+      :value (TypedFun :params (('k' : Int)) :type Fun(k: Int): Int
+        :body (TypedIf :type Int
+          :cond (TypedInfix 'is' :type Bool
+            :left (TypedVar 'k' :type Int)
+            :right (TypedInt 0 :type Int))
+          :then (TypedInt 0 :type Int)
+          :else (TypedBlock :type Int
+            :bindings (
+              (TypedLetValue 'sums' :type vector.T(Int)
+                :value (TypedApp :type vector.T(Int)
+                  :func (TypedTypeApp [Int Int] :type Fun(v: vector.T(Int) f: Fun(elem: Int): Int): vector.T(Int)
+                    :func (TypedSelect 'map' :type All(A :: TYPE B :: TYPE) Fun(v: vector.T(A) f: Fun(elem: A): B): vector.T(B)
+                      :target (TypedVar 'vector' :type Module 'vector')))
+                  :args (
+                    (TypedVar 'ints' :type vector.T(Int))
+                    (TypedFun :params (('x' : Int)) :type Fun(x: Int): Int
+                      :body (TypedBlock :type Int
+                        :bindings (
+                          (TypedLetValue 'acc' :type Tuple var s: Int end
+                            :value (TypedTuple :type Tuple var s: Int end
+                              :elements (
+                                (TypedInt 0 :type Int)
+                              )))
+                          (TypedExprStmt
+                            :expr (TypedApp :type Ok
+                              :func (TypedTypeApp [Int Int] :type Fun(m: hashMap.T(Int Int) action: Fun(k: Int v: Int): Ok): Ok
+                                :func (TypedSelect 'forEach' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) action: Fun(k: K v: V): Ok): Ok
+                                  :target (TypedVar 'hashMap' :type Module 'hashMap')))
+                              :args (
+                                (TypedVar 'm' :type hashMap.T(Int Int))
+                                (TypedFun :params (('a' : Int) ('b' : Int)) :type Fun(a: Int b: Int): Ok
+                                  :body (TypedAssign
+                                    :target (TypedSelect 's' :type Int
+                                      :target (TypedVar 'acc' :type Tuple var s: Int end))
+                                    :value (TypedInfix '+' :type Int
+                                      :left (TypedSelect 's' :type Int
+                                        :target (TypedVar 'acc' :type Tuple var s: Int end))
+                                      :right (TypedInfix '+' :type Int
+                                        :left (TypedApp :type Int
+                                          :func (TypedVar 'double' :type Fun(x: Int): Int)
+                                          :args (
+                                            (TypedVar 'a' :type Int)
+                                          ))
+                                        :right (TypedInfix '*' :type Int
+                                          :left (TypedVar 'x' :type Int)
+                                          :right (TypedVar 'k' :type Int))))))
+                              )))
+                        )
+                        :result (TypedSelect 's' :type Int
+                          :target (TypedVar 'acc' :type Tuple var s: Int end))))
+                  )))
+            )
+            :result (TypedInfix '+' :type Int
+              :left (TypedApp :type Int
+                :func (TypedTypeApp [Int Int] :type Fun(v: vector.T(Int) init: Int f: Fun(acc: Int elem: Int): Int): Int
+                  :func (TypedSelect 'fold' :type All(A :: TYPE Acc :: TYPE) Fun(v: vector.T(A) init: Acc f: Fun(acc: Acc elem: A): Acc): Acc
+                    :target (TypedVar 'vector' :type Module 'vector')))
+                :args (
+                  (TypedVar 'sums' :type vector.T(Int))
+                  (TypedInt 0 :type Int)
+                  (TypedFun :params (('t' : Int) ('e' : Int)) :type Fun(t: Int e: Int): Int
+                    :body (TypedInfix '+' :type Int
+                      :left (TypedVar 't' :type Int)
+                      :right (TypedVar 'e' :type Int)))
+                ))
+              :right (TypedApp :type Int
+                :func (TypedVar 'nested' :type Fun(k: Int): Int)
+                :args (
+                  (TypedInfix '-' :type Int
+                    :left (TypedVar 'k' :type Int)
+                    :right (TypedInt 1 :type Int))
+                )))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'nested ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedVar 'nested' :type Fun(k: Int): Int)
+                  :args (
+                    (TypedInt 3 :type Int)
+                  ))
+              )))
+        )))
+  ))

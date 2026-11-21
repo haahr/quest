@@ -29,6 +29,9 @@ export
         (* The fresh label of each label the copy binds, when it has them *)
         labels: hashMap.T(String String)
         relabeling: maybe.T(Labels)
+        (* Whether a closure's copy is of the same function: in a closed
+         * unit, whose functions are the unit's, not nested in the code *)
+        sharesCode: Bool
     end
 
     let newCloner(subst: model.Subst): Cloner =
@@ -37,6 +40,16 @@ export
             let vars = hashMap.new(intEqual hash.int)
             let labels = hashMap.new(stringOp.equal hash.string)
             let relabeling = maybe.none()
+            let sharesCode = false
+        end
+
+    let newClosedCloner(subst: model.Subst): Cloner =
+        begin
+            let c = newCloner(subst)
+            tuple
+                let subst = c.subst let vars = c.vars let labels = c.labels
+                let relabeling = c.relabeling let sharesCode = true
+            end
         end
 
     let newRelabelingCloner(subst: model.Subst counter: Labels): Cloner =
@@ -44,7 +57,7 @@ export
             let c = newCloner(subst)
             tuple
                 let subst = c.subst let vars = c.vars let labels = c.labels
-                let relabeling = maybe.some(counter)
+                let relabeling = maybe.some(counter) let sharesCode = false
             end
         end
 
@@ -282,7 +295,7 @@ export
                 end
             when opMakeClosure with x then
                 option opMakeClosure of Op with
-                    let var code = copyFunction(c x.code) let var captures = atoms(c x.captures) let var typeArgs = tys(c x.typeArgs)
+                    let var code = if c.sharesCode then x.code else copyFunction(c x.code) end let var captures = atoms(c x.captures) let var typeArgs = tys(c x.typeArgs)
                     let var descriptors = descriptors(c x.descriptors)
                 end
             when opEnvField with x then option opEnvField of Op with let var env = atom(c x.env) let index = x.index end

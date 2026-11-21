@@ -592,6 +592,15 @@ printer makes its thunks itself.
   adapter calls the member as any call of an imported member does (through `qv_<module>_<member>`): a member never
   changes once its module is initialized, which is before its importer's code runs. `hashMap.new(intEqual
   hash.int)` and `sort.sort(a sort.intCompare)` allocate nothing for their functions (`language/imported_adapters`).
+- **A closure made only to be converted** (a variable bound to a closure with captures, used once, by the conversion,
+  of a function made into no other closure and without type parameters, descriptors, or view maps of its own) is
+  made at the converted type instead: a closure of `qa_lambda`, a copy of its function (`ir/clone`) whose parameters
+  and result are the plan's target's, converting its parameters by the plan's fields and each return by the last.
+  It has the function's captures in the function's order, and reads them as the function does; the closure's `let`
+  and the function, unused, are dropped. A lambda passed to a library's generic function (`vector.map(v fun(x: Int):
+  Real ...)`, `hashMap.forEach(m fun(k v) ...)`) is then one allocation, where the closure and its adapter were two
+  (`language/converted_lambdas`). Within one unit, the specializer's clones of generic functions already take such
+  closures at their own types.
 - **A type application whose instance is a function** is a closure of its thunk (`qa_type_app`), capturing the function
   applied and taking the type arguments, as closure conversion's lifted functions take their enclosing functions' type
   parameters: the thunk's type parameters are the applied function's first ones, supplied by the closure, then the
