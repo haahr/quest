@@ -835,9 +835,9 @@ the arm64-whole tests' timeouts and the terminal tests fail under load, and time
 So the heavy jobs take turns, on one lock that every worktree shares, `quest-exclusive.lock` in the git common
 directory (beside `quest-release`):
 
-- **`tools/check` and `benchmarks/mlton/run.py time`** take the lock themselves. Each waits for the job holding it,
-  saying whose it is, then waits until the 1-minute load average has stayed under 5 for 3 minutes, and holds the
-  lock until it ends. `--no-exclusive` runs at once, without either wait; it is for results that do not depend on
+- **`tools/check`, `benchmarks/mlton/run.py time`, and cutting a release (`tools/release`)** take the lock
+  themselves. Each waits for the job holding it, saying whose it is, then waits until the 1-minute load average has
+  stayed under 5 for 3 minutes, and holds the lock until it ends. `--no-exclusive` runs at once, without either wait; it is for results that do not depend on
   a quiet machine, such as a quick `--scale 0.05` timing while iterating or a narrow rerun of one suite to confirm a
   fix, and never for the check before a push or for timings recorded in [benchmarks.md](benchmarks.md).
 - **`tools/exclusive COMMAND...`** does the same for any other command (`--no-quiet` without the quiet wait), and

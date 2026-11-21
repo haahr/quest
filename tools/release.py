@@ -18,6 +18,10 @@ current names the release that seeds builds, and previous the one before it.
     tools/release --install [PREFIX]
                                copy the current release to PREFIX/share/quest/COMMIT (PREFIX is ~/.local by
                                default), check it there, and point PREFIX/bin/quest at it
+
+Cutting a release takes the machine-wide lock tools/check takes, and waits
+for a quiet machine (docs/testing.md section 4.2); --no-exclusive cuts at
+once, without either wait.
 """
 
 import argparse
@@ -37,7 +41,9 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
+sys.path.insert(0, str(ROOT_DIR / "tools"))
 
+import exclusive  # noqa: E402
 from quest.testing.releases import releases_dir  # noqa: E402
 
 RELEASES = releases_dir(ROOT_DIR)
@@ -340,6 +346,8 @@ def main() -> None:
                         help="the backend that compiles the released compiler (stages 2 and 3; default arm64)")
     parser.add_argument("--whole-program", action="store_true",
                         help="release stage 2's whole-program build of the driver rather than stage 2")
+    parser.add_argument("--no-exclusive", action="store_true",
+                        help="cut at once, without the machine-wide lock and the wait for a quiet machine")
     args = parser.parse_args()
     if args.verify:
         problem = verify(target(CURRENT)) if CURRENT.is_dir() else f"there is no current release in {RELEASES}"
@@ -352,8 +360,11 @@ def main() -> None:
         show()
     elif args.install is not None:
         install(args.install.expanduser().resolve())
-    else:
+    elif args.no_exclusive:
         cut(sys.executable, args.check_dir.resolve(), args.seed, args.backend, args.whole_program)
+    else:
+        with exclusive.exclusive("tools/release " + " ".join(sys.argv[1:])):
+            cut(sys.executable, args.check_dir.resolve(), args.seed, args.backend, args.whole_program)
 
 
 if __name__ == "__main__":

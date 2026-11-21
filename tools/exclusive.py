@@ -14,9 +14,10 @@ until the 1-minute load average has stayed under 5 for 3 minutes, so that
 what it runs (tools/check, run.py time) is timed and timed out on a machine
 doing nothing else.
 
-tools/check and benchmarks/mlton/run.py time take the lock themselves (unless
-given --no-exclusive); ./quest's stage builds, run_tests.py, run.py's other
-commands, and allocations.py yield to it, waiting while another job holds it.
+tools/check, benchmarks/mlton/run.py time, and tools/release's cuts take the
+lock themselves (unless given --no-exclusive); ./quest's stage builds,
+run_tests.py, run.py's other commands, and allocations.py yield to it, waiting
+while another job holds it.
 A job run under the lock passes QUEST_EXCLUSIVE_HELD to what it starts, so
 that nothing it runs waits on the lock it holds.
 

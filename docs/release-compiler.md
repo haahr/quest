@@ -61,6 +61,10 @@ seconds.
      one, and remove the releases neither names. Each link is replaced by renaming a new one over it, which is
      atomic, so an interrupted release never leaves `current` naming a half-written release.
 
+  A cut runs under the machine-wide lock that `tools/check` takes, after waiting its turn and for a quiet machine
+  ([testing.md](testing.md) §4.2), so that its check is not timed out by another job's load; `--no-exclusive` cuts
+  at once.
+
   `tools/release --verify` checks the current release, `--rollback` swaps `previous` and `current` (with the lock
   held), and `--show` describes both. A release removed while a build in another worktree still uses it can only be
   one two cuts old.
