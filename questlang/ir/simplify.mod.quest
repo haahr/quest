@@ -1060,6 +1060,28 @@ export
             b.statements := kept
         end
 
+    (* Removes from b, and the bodies it holds, each funs statement that binds
+     * no function. Contify leaves one when it makes a group's last function a
+     * loop, for the next round to remove (see body); after a last round that
+     * contified, there is no next round *)
+    let rec dropEmptyFuns(b: Body): Ok =
+        begin
+            let kept = vector.new(:Stmt)
+            for i = 0 upto {vector.length(b.statements) - 1} do
+                let st = vector.get(b.statements i)
+                case st
+                    when sFuns with x then
+                        for k = 0 upto {extent x.functions - 1} do dropEmptyFuns(x.functions[k].body) end
+                        if extent x.functions > 0 then vector.append(kept st) end
+                    else
+                        let inner = walk.statementBodies(st)
+                        for k = 0 upto {extent inner - 1} do dropEmptyFuns(inner[k]) end
+                        vector.append(kept st)
+                end
+            end
+            b.statements := kept
+        end
+
     let simplifyUnit(unit: nodes.Unit): nodes.Unit =
         begin
             let s = tuple
@@ -1086,6 +1108,10 @@ export
                 for b = 0 upto {extent all - 1} do body(s all[b] maybe.none()) end
                 if contify.contify(all s.analysis.recursive s.pinned s.labels) then s.changed := true end
                 round := round + 1
+            end
+            if s.changed then
+                let all = walk.unitBodies(unit)
+                for b = 0 upto {extent all - 1} do dropEmptyFuns(all[b]) end
             end
             unit.stage := "simplified"
             unit
