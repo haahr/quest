@@ -22,7 +22,8 @@ the arm64 performance review (§24), measures the compiler compiled to WebAssemb
 (§25), measures the strings work (§26), times every backend, WebAssembly included, at one commit (§27),
 measures the collections tuned on the compiler (§28), the compiler on `util/json` (§29), scalar replacement
 through a loop's parameters (§30), character I/O without a lock per character (§31), one object per closure (§32),
-and ssac's `volatile` locals (§33).
+ssac's `volatile` locals (§33) and adapter closures made once (§34), and times every backend again, arm64 whole
+program included (§35).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -3233,3 +3234,96 @@ run. Dead young objects cost the collector almost nothing; what the 66 million a
 allocation, the call through each, and its conversions, about 6 ns apiece. The stats also report no minor collections
 (`gc minors: 0`) for simple's 465, which is worth a look of its own.
 
+## 35. Every backend at `7dfe1ddb` (2026-11-21)
+
+The suite through C, ssac, arm64 (unit by unit and whole program), and WebAssembly in node, at one commit, after the
+work since §27 had landed on main: character I/O without a lock per character (§31), one object per closure (§32),
+ssac's `volatile` locals (§33), and adapter closures made once (§34), among others.
+
+### 35.1. How they were taken
+
+`run.py time --scale 0.25`, one run each, with `--backend c` (with `--clean` and `--mlton`, so MLton's times are from
+the same hour), `--backend ssac`, `--backend arm64`, `--backend arm64 --whole-program`, and `--backend wasm
+--wasm-engine node`, in that order. Each run took the lock and waited for the load to stay under 5 for 180 s
+(`tools/exclusive`). The compiler was `./quest` at `7dfe1ddb`, its stage 2 built by arm64. The times are in
+`benchmarks/mlton/baselines/2026-11-21/`: `mlton.jsonl` and `quest-{c,ssac,arm64,arm64-whole,wasm-node}-7dfe1ddb.jsonl`.
+
+mlyacc failed to compile as a whole program, on every backend: when the simplifier's last round (its sixth) contified
+a group's last function, the group's empty funs statement reached closure conversion, which read its first function.
+`26e6351f` drops such statements; mlyacc's whole-program time is from a compiler with that fix, alone of the 46.
+
+### 35.2. Programs
+
+| System | Geometric mean of time / MLton's | Without fib, tailfib, and tak | Without §27.3's six | Run time, all 46 | Against §27 |
+|---|--:|--:|--:|--:|--:|
+| C | **1.73** | 2.17 | 2.11 | 11.8 min | 0.88 |
+| ssac | **1.25** | 1.54 | 1.70 | 9.1 min | 0.76 |
+| arm64 | **1.79** | 1.96 | 2.00 | 10.6 min | 0.88 |
+| arm64, whole program | **1.85** | 2.03 | 2.04 | 10.6 min | |
+| WebAssembly, node | **6.79** | 7.92 | 7.43 | 58.4 min | 1.00 |
+
+"Against §27" is the geometric mean of each program's time over its time in §27.4, knuth-bendix left out (§27.3's
+ssac time of it was a failure). arm64 takes 1.04 of C's time (0.95 without §27.3's six), as in §27; whole program,
+1.07 (0.97), and 1.03 of arm64's unit by unit.
+
+- **The three native backends gained 12 to 24%** since §27, most of it in a few programs: output1 and wc-input1 take
+  0.12 and 0.15 of their §27 times through each (§31), ray 0.56 to 0.58, and ratio-regions 0.72 to 0.73. ssac's
+  larger gain is §33's: flat-array 0.25 of its §27 time, count-graphs 0.28, vliw 0.37, model-elimination 0.39, boyer
+  0.47, and hamlet 0.53.
+- **The WebAssembly backend is unchanged**, no program moving by more than 15%.
+- **Whole program is slower than unit by unit for a few programs:** checksum takes 2.18 times arm64's unit-by-unit
+  time, string-concat 1.77, md5 1.29, count-graphs 1.19, and mpuz 1.15; it is faster for ratio-regions (0.66), peek
+  (0.75), and zebra (0.77). Unexplained.
+
+### 35.3. Each program
+
+Time against MLton's (below 1 is faster).
+
+| Benchmark | n | MLton (s) | C | ssac | arm64 | arm64, whole | wasm, node |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| barnes-hut | 8192 | 4.64 | 1.90 | 1.81 | 1.95 | 1.96 | 4.37 |
+| boyer | 3072 | 5.45 | 3.87 | 3.71 | 3.38 | 3.47 | 23.9 |
+| checksum | 3072 | 9.86 | 5.13 | 0.85 | 1.35 | 2.95 | 10.1 |
+| count-graphs | 3 | 4.48 | 2.49 | 2.08 | 2.09 | 2.47 | 8.60 |
+| DLXSimulator | 2 | 4.77 | 2.80 | 2.13 | 2.38 | 2.38 | 5.29 |
+| even-odd | 6 | 4.09 | 0.30 | 0.29 | 0.53 | 0.53 | 0.62 |
+| fft | 4 | 4.15 | 1.17 | 1.18 | 1.32 | 1.34 | 15.3 |
+| fib | 8 | 14.46 | 0.05 | 0.06 | 0.34 | 0.34 | 0.26 |
+| flat-array | 12288 | 8.07 | 6.95 | 7.33 | 4.88 | 4.87 | 15.7 |
+| hamlet | 96 | 10.15 | 0.79 | 0.45 | 0.65 | 0.73 | 1.45 |
+| imp-for | 1024 | 4.17 | 2.63 | 0.06 | 1.28 | 1.30 | 35.0 |
+| knuth-bendix | 768 | 8.86 | 3.18 | 3.35 | 2.17 | 2.11 | 27.1 |
+| lexgen | 384 | 3.62 | 1.76 | 1.69 | 1.67 | 1.67 | 4.13 |
+| life | 8 | 7.82 | 1.08 | 0.96 | 1.11 | 1.08 | 3.81 |
+| logic | 64 | 6.75 | 1.66 | 1.25 | 1.30 | 1.27 | 2.59 |
+| mandelbrot | 2 | 3.21 | 1.53 | 1.52 | 1.55 | 1.59 | 3.68 |
+| matrix-multiply | 48 | 5.21 | 1.12 | 1.12 | 1.42 | 1.43 | 8.16 |
+| md5 | 3 | 7.55 | 2.21 | 1.72 | 1.96 | 2.53 | 2.74 |
+| mlyacc | 768 | 5.93 | 1.17 | 0.97 | 1.07 | 1.06 | 2.31 |
+| model-elimination | 1 | 7.50 | 2.36 | 1.99 | 2.05 | 2.08 | 10.2 |
+| mpuz | 32 | 4.48 | 2.37 | 1.02 | 1.58 | 1.81 | 4.97 |
+| nucleic | 1024 | 4.72 | 1.25 | 1.16 | 1.27 | 1.27 | 2.77 |
+| output1 | 3 | 6.80 | 0.95 | 0.94 | 0.94 | 0.95 | 4.77 |
+| peek | 48 | 2.50 | 36.8 | 39.4 | 46.2 | 34.8 | 159 |
+| pidigits | 1024 | 1.13 | 8.17 | 8.58 | 10.3 | 11.4 | 23.5 |
+| psdes-random | 6 | 11.62 | 1.68 | 1.10 | 1.12 | 1.13 | 8.93 |
+| ratio-regions | 384 | 1.22 | 2.65 | 2.61 | 2.99 | 1.98 | 12.3 |
+| ray | 384 | 6.56 | 0.97 | 0.93 | 1.00 | 1.09 | 1.72 |
+| raytrace | 24 | 6.47 | 1.12 | 1.07 | 1.19 | 1.19 | 2.47 |
+| simple | 256 | 10.58 | 0.67 | 0.60 | 0.75 | 0.71 | 1.80 |
+| smith-normal-form | 48 | 4.19 | 14.0 | 12.2 | 23.7 | 23.7 | 150 |
+| string-concat | 64 | 2.04 | 3.83 | 0.36 | 1.19 | 2.09 | 6.48 |
+| tailfib | 128 | 3.01 | 0.08 | 0.08 | 0.73 | 0.74 | 4.00 |
+| tailmerge | 6144 | 5.43 | 7.35 | 2.92 | 2.92 | 2.93 | 28.3 |
+| tak | 8 | 13.09 | 0.06 | 0.06 | 0.46 | 0.46 | 0.40 |
+| tensor | 2 | 7.47 | 2.06 | 1.81 | 2.21 | 2.22 | 6.06 |
+| tsp | 4 | 4.04 | 2.49 | 2.34 | 2.75 | 2.77 | 6.05 |
+| tyan | 96 | 5.43 | 1.39 | 1.13 | 1.24 | 1.19 | 3.08 |
+| vector-rev | 24 | 3.79 | 1.90 | 1.52 | 2.29 | 2.30 | 17.4 |
+| vector32-concat | 12 | 2.63 | 1.52 | 1.33 | 2.58 | 2.60 | 19.6 |
+| vector64-concat | 8 | 2.14 | 1.31 | 1.13 | 2.17 | 2.18 | 16.1 |
+| vliw | 256 | 5.38 | 1.19 | 1.04 | 1.02 | 1.10 | 2.01 |
+| wc-input1 | 4096 | 9.29 | 1.21 | 1.22 | 1.22 | 1.21 | 7.27 |
+| wc-scanStream | 8192 | 5.61 | 9.90 | 3.30 | 3.55 | 4.00 | 91.2 |
+| zebra | 16 | 2.78 | 4.76 | 5.03 | 4.96 | 3.81 | 12.8 |
+| zern | 4096 | 3.35 | 1.02 | 0.91 | 1.26 | 1.26 | 9.25 |
