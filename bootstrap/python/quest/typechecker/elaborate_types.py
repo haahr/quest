@@ -201,14 +201,16 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                 # 1. Module or interface scope lookup
                 mod_scope = env.lookup_module(path[0]) or env.lookup_interface(path[0])
                 if mod_scope is not None:
+                    # A scope holds only what its module or interface exports,
+                    # and imports are not exported, so a longer path, such as
+                    # hash.word.T for a word that util/hash imports, names
+                    # nothing (as questlang/typechecker/elaboratetypes says)
+                    if len(path) > 2:
+                        raise KindError(
+                            f"Undefined module/interface '{path[1]}' in type path '{'.'.join(path)}'",
+                            offset=offset,
+                        )
                     curr_scope = mod_scope
-                    for seg in path[1:-1]:
-                        curr_scope = curr_scope.lookup_module(seg) or curr_scope.lookup_interface(seg)
-                        if curr_scope is None:
-                            raise KindError(
-                                f"Undefined module/interface '{seg}' in type path '{'.'.join(path)}'",
-                                offset=offset,
-                            )
                     type_name = path[-1]
                     sym = curr_scope.lookup_type(type_name)
                     if sym is None:

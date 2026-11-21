@@ -194,11 +194,14 @@ second lookup for `moveToEnd` and two or three relinking stores. A miss adds the
 
 ## 7. Found along the way
 
-- **The bootstrap's typechecker crashes on a type named through another module's import.** `hash.word.T` as a
-  function's return type raises `AttributeError: 'Scope' object has no attribute 'lookup_module'` in `elaborate_type`
-  (`bootstrap/python/quest/typechecker/elaborate_types.py`). The self-hosted compiler reports it as an error,
-  "Undefined module/interface 'word' in type path 'hash.word.T'", which the bootstrap should print too. The tests
-  import `word` and write `word.T` instead.
+- **The bootstrap's typechecker crashed on a type named through another module's import,** fixed 2026-11-20.
+  `hash.word.T` raised `AttributeError: 'Scope' object has no attribute 'lookup_module'` in `elaborate_type`
+  (`bootstrap/python/quest/typechecker/elaborate_types.py`): for a path of three or more parts rooted at a module or
+  interface, a loop looked the middle parts up in the module's `Scope`, which has no such method (the type
+  environment does), so it could never succeed. A scope holds only its module's exports, and imports are not
+  exported, so such a path names nothing; the self-hosted compiler already reported "Undefined module/interface
+  'word' in type path 'hash.word.T'", as the bootstrap now does too, and
+  `tests/errors/typecheck/modules/type_path_through_import.quest` holds both compilers to it.
 
 ## 8. Steps
 
@@ -212,6 +215,5 @@ second lookup for `moveToEnd` and two or three relinking stores. A miss adds the
    release, then any compiler use; the compiler uses none of them today.
 2. **Document:** libraries.md sections for `util/lazy`, `util/memo`, and `collections/linkedHashMap` (§1.16, §1.17,
    and §2.9), with their interface summaries, and all three out of future-libraries.md: done. Left: retire this plan
-   into those sections once step 1's release is cut and step 3 is done or moved to tasklist.md.
-3. **The bootstrap crash** (§7): an error test of its own, with the self-hosted compiler's message as the expected
-   one, and the bootstrap's `elaborate_type` fixed to report it.
+   into those sections once step 1's release is cut.
+3. **The bootstrap crash** (§7): done.
