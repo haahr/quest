@@ -493,7 +493,10 @@ with its own build directory (docs/release-compiler.md §2):
 
 The stages record their seed and their backend, and are discarded when either changes. A release's `home/` has its
 commit's file times, so §5's timestamp rules cannot compare artifacts built against one release with another
-release's sources.
+release's sources. Stage 2's build directory is also emptied whenever rebuilding stage 1 changes its binary: stage
+2's units are reused on their sources and the ABI, not on the compiler that compiled them, so a changed stage 1 would
+otherwise leave units it now compiles differently. Stage 1's link is deterministic (the fixed point depends on it), so an
+unchanged stage 1 keeps stage 2 incremental.
 
 What this misses: a contract change that nothing in the corpus exercises. The corpus covers the whole library and the
 test suite's interfaces, and grows when a gap is found.

@@ -94,7 +94,8 @@ Stage 2 is the new compiler. Each stage has its own build directory, and the eng
   (`.build/quest-stages/seed`: the release's commit, the digest of its `quest`, and the backend) and starts over
   when the seed or the backend changes, as when a release is cut in another worktree. A release's `home/` carries
   its commit's times, so artifacts built against one release could look fresh against the next one's older
-  sources.
+  sources. When rebuilding stage 1 changes its binary, it empties stage 2's build directory, whose units would
+  otherwise be reused although the compiler that made them has changed.
 - **`QUEST_BACKEND=c` or `ssac`** has stage 1 compile stage 2 through that backend rather than arm64, the default,
   its stages kept apart in `.build/quest-stages-BACKEND` ([arm64.md](arm64.md) §3.12). Stage 1 is the seed's,
   compiled by C (`--backend c`), either way.
