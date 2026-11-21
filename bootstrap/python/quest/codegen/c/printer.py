@@ -126,7 +126,10 @@ def _type_parameter_count(t: QType) -> int:
 
 # A line of C that calls a function (an identifier before a parenthesis,
 # sizeof aside): a call may allocate, and so collect
-_CALL_RE = re.compile(r"\b(?!sizeof\b)[A-Za-z_]\w*\(")
+# A call: an identifier right before a parenthesis (sizeof aside), or a call
+# through a closure's code pointer, which every indirect call is,
+# ((T)(clos->fn))(...), whose parenthesis follows another
+_CALL_RE = re.compile(r"\b(?!sizeof\b)[A-Za-z_]\w*\(|->fn\)\)\(")
 
 
 @dataclasses.dataclass

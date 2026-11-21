@@ -50,26 +50,6 @@ of variables across units finds it cannot happen.
 ---
 
 
-## The C printer decides where a collection can happen by reading its own C
-
-**Problem.** Whether an emitted line may allocate, and so collect, is decided by scanning its text for an identifier
-right before a parenthesis (`callsFunction`, questlang/codegen/c/printer.mod.quest:330–352), with `sizeof` and lines
-starting `quest_barrier` excepted. `emit` then logs each object under initialization (`quest_barrier`) before such a
-line. The collector's correctness therefore depends on the spelling of generated C: a call that reaches the
-allocator without that shape (a macro used without parentheses, or a call through a cast function pointer, whose `(`
-follows a `)`) misses its barrier, which is a fault; a non-call with the shape (a field macro, `f(` inside a string
-literal) only adds a barrier that costs time.
-
-**Where to start.** Whether any emitted line today calls without the shape, by comparing the lines `callsFunction`
-accepts with the calls the printer makes (`QUEST_COLLECTOR_STRESS` runs, [collector.md](collector.md), would show a
-missed barrier). The structural fix is the printer recording calls as it builds them, the first step of
-[compiler-refactoring-ideas.md](compiler-refactoring-ideas.md) §6.4.
-
-**Done when.** Barriers are placed from what the printer knows it called, not from the text, and the C goldens and
-the stress tier are unchanged.
-
----
-
 ## The bootstrap's C gives a converted known function a new adapter each time
 
 **Problem.** Passing a program's own function to a generic one twice and comparing the two, as in

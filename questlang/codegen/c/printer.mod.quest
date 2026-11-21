@@ -328,8 +328,11 @@ export
         end
 
     (* Whether a line of C calls a function (an identifier right before a
-     * parenthesis; sizeof aside): a call may allocate, and so collect *)
+     * parenthesis, sizeof aside, or a call through a closure's code pointer,
+     * which every indirect call is, ((T)(clos->fn))(...), whose parenthesis
+     * follows another): a call may allocate, and so collect *)
     let callsFunction(line: String): Bool =
+        strutil.contains(line "->fn))(") orif
         begin
             let n = stringOp.length(line)
             let var found = false

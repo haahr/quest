@@ -278,8 +278,9 @@ section 4.1) rather than a fact about the opcode.
    `MCAssembler`), feeding one streamer with a text sink and an object sink (LLVM's `MCStreamer`, Go's `obj.Prog`),
    so alignment and layout are decided once rather than kept equal by `QUEST_CHECK_ENCODING`. Medium; asm text stays
    identical.
-4. **A C AST behind the C printer.** Besides §4.3, whether a call may collect is decided on emitted text
-   (tasklist.md). A small C expression and statement AST (or just Call nodes first) with `mayCollect(e)` computed
+4. **A C AST behind the C printer.** Besides §4.3, whether a call may collect is decided on emitted text: an
+   identifier before a parenthesis, or a closure's code pointer (`->fn))(`, added 2026-11-21 when the review found
+   indirect calls missed), so a new way of calling must be taught to `callsFunction` and `_CALL_RE`. A small C expression and statement AST (or just Call nodes first) with `mayCollect(e)` computed
    from it (GHC's PprC printing Cmm, CompCert's Clight, MLton's C codegen). Large for the whole 3,370-line printer,
    staged.
 5. **arm64 calling convention as data** (*checked*). `targets.Target`'s `arguments`, `results`, `scratch`,
